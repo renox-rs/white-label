@@ -53,8 +53,9 @@ use renox::state_machine::{
     Machine, Outcome, StateMachine, Transition, TransitionCtx, TransitionError,
 };
 use serde::{Deserialize, Serialize};
-use wl_kernel::approvals::{self, ApprovalRequest};
+use wl_kernel::approvals::{self, ApprovalPolicy, ApprovalRequest, Require, Required};
 use wl_kernel::block_guard::{ActionKind, GuardOutcome, guard};
+use wl_kernel::inventory::{OrderFacts, order_rules};
 
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel};
 
@@ -721,6 +722,9 @@ pub async fn revise(
     if let GuardOutcome::Blocked(refusal) = blocked {
         return Err(TransitionError::Failed(refusal.into_error()));
     }
+    if let Some(request) = ask_rules(state, user, &order, name, &found).await? {
+        return Ok(ReviseOutcome::Waiting(request));
+    }
     let outcome = order
         .transition(name)
         .by(user)
@@ -740,6 +744,60 @@ pub async fn revise(
                 .find(|request| request.action == ACTION)
                 .ok_or(Error::NotFound)?;
             Ok(ReviseOutcome::Waiting(request))
+        }
+    }
+}
+
+/// The approval a vertical's rule asks for before the revision runs (02
+/// `CON.ACL.13`), if any: the rule's steps first, then the steps of the
+/// limit policy (`STK.ACL.03`) when the new total is above one, in one
+/// request. The revision in force stays so until the last step approves.
+async fn ask_rules(
+    state: &AppState,
+    user: &AuthUser,
+    order: &PurchaseOrder,
+    name: &str,
+    found: &ReviseInput,
+) -> std::result::Result<Option<ApprovalRequest>, TransitionError> {
+    let scope = crate::location::Location::find(&state.db, order.location_id)
+        .await?
+        .and_then(|location| location.scope_subject());
+    let facts = OrderFacts {
+        order: order.subject(),
+        supplier: order.supplier(),
+        scope,
+        on_date: wl_kernel::documents::today(),
+        transition: name.to_owned(),
+    };
+    let Some(extra) = order_rules(state).approval_for(state, &facts).await? else {
+        return Ok(None);
+    };
+    let payload = renox::serde_json::to_value(found).map_err(internal)?;
+    let mut tx = state.db.begin().await?;
+    let limit = ApprovalPolicy::for_action(&mut tx, ACTION, &payload).await?;
+    let (action, steps) = match limit {
+        Some(policy) => {
+            let mut steps = extra.steps;
+            steps.extend(policy.steps.0.clone());
+            (ACTION.to_owned(), steps)
+        }
+        None => (extra.action, extra.steps),
+    };
+    let require = Require::new(
+        action,
+        order.subject(),
+        name,
+        user.id,
+        order.status.as_str(),
+    )
+    .payload(payload)
+    .steps(steps);
+    match approvals::require_in(&mut tx, &require).await? {
+        Required::Allowed => Ok(None),
+        Required::Pending(request) => {
+            tx.commit().await?;
+            approvals::announce_request(state, &request).await?;
+            Ok(Some(*request))
         }
     }
 }

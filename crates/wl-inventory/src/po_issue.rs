@@ -20,6 +20,13 @@
 //!   transaction, so a refusal leaves no gap), and the PDF document of
 //!   revision 1.
 //!
+//! - a vertical's rule (`PurchaseOrderRules`, 02 `CON.ACL.13`) may ask for an
+//!   approval of its own before the order is issued: after the block guard
+//!   passed, an approval request for the steps the rule names is made, the
+//!   order stays a `draft` ([`IssueOutcome::ApprovalRequested`]), and the
+//!   kernel runs `issue_approved` at the last approval. The requester never
+//!   approves.
+//!
 //! Decisions: the segregation of duties and the value limits of `issue`
 //! (`STK.ACL.01`, `STK.ACL.03`) are left to the verticals that set limits
 //! (none is registered here), and `PurchaseOrderIssued` comes with the issue
@@ -30,8 +37,9 @@ use renox::db::Transaction;
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::{Machine, Transition, TransitionError};
-use wl_kernel::approvals::{self, ApprovalRequest};
-use wl_kernel::block_guard::{self, BlockRefusal, GuardedError};
+use wl_kernel::approvals::{self, ApprovalRequest, Require, Required};
+use wl_kernel::block_guard::{self, ActionKind, BlockRefusal, GuardOutcome, GuardedError};
+use wl_kernel::inventory::{OrderFacts, order_rules};
 use wl_kernel::numbering::{Reset, Series};
 
 use crate::item::Item;
@@ -67,6 +75,9 @@ pub enum IssueOutcome {
     /// The exception was asked for the approver the guard names; the order
     /// stays a `draft`.
     ExceptionRequested(ApprovalRequest),
+    /// A vertical's rule needs an approval before the order is issued
+    /// (`CON.ACL.13`); the order stays a `draft` until the last step approves.
+    ApprovalRequested(ApprovalRequest),
 }
 
 /// The first thing that keeps `order` from being issued, read in `tx`.
@@ -214,6 +225,9 @@ pub async fn issue(
     if exception {
         return ask_exception(state, user, &order).await;
     }
+    if let Some(request) = ask_rules(state, user, &order).await? {
+        return Ok(request);
+    }
     match block_guard::run_guarded(state, user, &order, ISSUE, json!({})).await {
         Ok(_outcome) => {
             let done = PurchaseOrder::find_or_404(&state.db, order.id).await?;
@@ -221,6 +235,49 @@ pub async fn issue(
         }
         Err(GuardedError::Blocked(refusal)) => Ok(IssueOutcome::Refused(refusal)),
         Err(GuardedError::Transition(error)) => Err(error),
+    }
+}
+
+/// The approval a vertical's rule asks for before `order` is issued, if any.
+/// The order is checked first, and so is the block guard: a blocked supplier
+/// is refused before any request of the rule is made.
+async fn ask_rules(
+    state: &AppState,
+    user: &AuthUser,
+    order: &PurchaseOrder,
+) -> std::result::Result<Option<IssueOutcome>, TransitionError> {
+    let scope = crate::location::Location::find(&state.db, order.location_id)
+        .await?
+        .and_then(|location| location.scope_subject());
+    let facts = OrderFacts {
+        order: order.subject(),
+        supplier: order.supplier(),
+        scope,
+        on_date: wl_kernel::documents::today(),
+        transition: ISSUE.to_owned(),
+    };
+    let Some(extra) = order_rules(state).approval_for(state, &facts).await? else {
+        return Ok(None);
+    };
+    let mut tx = state.db.begin().await?;
+    if let Some(problem) = problem_in(&mut tx, order).await? {
+        return Err(TransitionError::Guard(problem));
+    }
+    let blocked = block_guard::guard(state)
+        .check_in(&mut tx, Some(user), order.supplier(), ActionKind::Start)
+        .await?;
+    if let GuardOutcome::Blocked(refusal) = blocked {
+        return Ok(Some(IssueOutcome::Refused(refusal)));
+    }
+    let require =
+        Require::new(extra.action, order.subject(), ISSUE, user.id, "draft").steps(extra.steps);
+    match approvals::require_in(&mut tx, &require).await? {
+        Required::Allowed => Ok(None),
+        Required::Pending(request) => {
+            tx.commit().await?;
+            approvals::announce_request(state, &request).await?;
+            Ok(Some(IssueOutcome::ApprovalRequested(*request)))
+        }
     }
 }
 

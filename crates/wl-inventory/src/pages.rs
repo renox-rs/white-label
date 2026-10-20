@@ -455,6 +455,11 @@ async fn issue_order(
             renox::HxRefresh,
         )
             .into_response()),
+        Ok(IssueOutcome::ApprovalRequested(_)) => Ok((
+            Toast::success(text(&lang, "issue.approval_asked")),
+            renox::HxRefresh,
+        )
+            .into_response()),
         Ok(IssueOutcome::Refused(refusal)) => Ok(refusal_fragment(
             &lang,
             &refusal,

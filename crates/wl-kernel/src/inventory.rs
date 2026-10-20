@@ -525,6 +525,73 @@ pub fn supplier_incidents(state: &AppState) -> Arc<dyn SupplierIncidentSource> {
     }
 }
 
+/// A purchase order as a vertical's rule sees it when the order is issued or
+/// revised.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderFacts {
+    /// The order, `inventory.purchase_order:3`.
+    pub order: Subject,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The scope of the delivery location (a project), if it has one.
+    pub scope: Option<Subject>,
+    /// The order's date: the day it is issued or revised, in Asia/Dubai.
+    pub on_date: NaiveDate,
+    /// The transition asked: `issue`, `revise` or `revise_part`.
+    pub transition: String,
+}
+
+/// An approval a vertical's rule adds to issuing or revising an order
+/// (`CON.ACL.13`): the action key of an approval policy the vertical
+/// registers (the policy has to match), and the steps that decide it. The
+/// requester never approves (segregation of duties); the order stays as it is
+/// until the last step approves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderApproval {
+    /// The action key of the vertical's approval policy.
+    pub action: String,
+    /// The steps that decide the request, in order.
+    pub steps: Vec<crate::approvals::Step>,
+}
+
+/// Rules a vertical adds to the purchase order (wl-inventory §4 *Purchase
+/// order* `issue` and `revise`). A vertical provides it with
+/// [`provide_order_rules`]; `wl-inventory` asks it after the block guard
+/// passed and before the transition runs, so an order to a blocked supplier
+/// never gets a request of its own.
+pub trait PurchaseOrderRules: Send + Sync + 'static {
+    /// The approval the order needs before `facts.transition` runs, if any.
+    /// The default asks for none.
+    fn approval_for<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _facts: &'a OrderFacts,
+    ) -> MatchFuture<'a, Option<OrderApproval>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The rules when no vertical provides any: none.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoOrderRules;
+
+impl PurchaseOrderRules for NoOrderRules {}
+
+/// Makes `rules` the app's [`PurchaseOrderRules`].
+pub fn provide_order_rules(app: &mut Registry, rules: impl PurchaseOrderRules) {
+    let rules: Arc<dyn PurchaseOrderRules> = Arc::new(rules);
+    app.provide(rules);
+}
+
+/// The app's [`PurchaseOrderRules`], or [`NoOrderRules`] when none is
+/// provided.
+pub fn order_rules(state: &AppState) -> Arc<dyn PurchaseOrderRules> {
+    match state.provided::<Arc<dyn PurchaseOrderRules>>() {
+        Some(rules) => Arc::clone(&rules),
+        None => Arc::new(NoOrderRules),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -15,6 +15,7 @@
 //! primary (else the first) address and e-mail contact points, and the
 //! company's e-invoicing recipient identifier when it has one.
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::notify::{
     ContactKind, ContactPurpose, ContactRelation, NotifyChannel, PartyContactPoint, PartyContacts,
@@ -28,6 +29,7 @@ use crate::contacts::{ContactPoint, ContactStatus, ContactType};
 use crate::details::CompanyDetails;
 use crate::party::{Channel, Party};
 use crate::relationships::{self, Relationship, RelationshipType};
+use crate::roles::PartyRole;
 
 /// Reads the `wl_parties_parties` table for the kernel contract.
 #[derive(Debug, Clone, Copy, Default)]
@@ -87,6 +89,27 @@ impl PartyDirectory for Directory {
 
     fn status<'a>(&'a self, db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
         Box::pin(async move { Ok(Party::find(db, party.0).await?.map(|p| p.status)) })
+    }
+
+    fn has_role<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+        role_key: &'a str,
+        on_date: NaiveDate,
+    ) -> PartyFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(PartyRole::query()
+                .where_(PartyRole::PARTY_ID.eq(party.0))
+                .where_(PartyRole::ROLE_KEY.eq(role_key))
+                .get(db)
+                .await?
+                .iter()
+                .any(|role| {
+                    role.since.is_none_or(|since| since <= on_date)
+                        && role.until.is_none_or(|until| until >= on_date)
+                }))
+        })
     }
 
     fn contacts<'a>(

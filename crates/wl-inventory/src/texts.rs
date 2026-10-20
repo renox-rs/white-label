@@ -431,6 +431,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.issue.exception_asked",
         "The exception was asked for; the purchase order stays a draft until it is approved.",
     ),
+    (
+        "wl_inventory.issue.approval_asked",
+        "The purchase order was sent for approval; it stays a draft until it is approved.",
+    ),
     // The suppliers of an item and the reorder suggestions.
     (
         "wl_inventory.supplier.twice",
