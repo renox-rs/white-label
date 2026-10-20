@@ -77,6 +77,15 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.midday.note",
         "Worked :minutes minutes inside the midday break, :from to :to.",
     ),
+    // Work permit, visa and qualifications (`HRM.RUL.14`).
+    (
+        "wl_attendance.permit.note",
+        "Not valid on :date: :kinds.",
+    ),
+    (
+        "wl_attendance.submit.flagged_record",
+        "The attendance record :record of :date at :location is flagged (:flags) and must be reviewed first.",
+    ),
     // Notifications.
     (
         "wl_attendance.notices.flagged_subject",

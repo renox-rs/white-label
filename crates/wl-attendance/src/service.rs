@@ -231,6 +231,7 @@ pub async fn record(state: &AppState, input: NewRecord) -> Result<AttendanceReco
     if input.check_out.is_some_and(|out| out <= input.check_in) {
         return Err(refuse(english("wl_attendance.record.times", &[])));
     }
+    let prepared = checks::prepare(state, input.employee, &location, date).await?;
     let _lock = lock::take(input.employee.0, date).await;
     let mut tx = state.db.begin().await?;
     if input.method == AttendanceMethod::SelfCheckIn {
@@ -252,7 +253,7 @@ pub async fn record(state: &AppState, input: NewRecord) -> Result<AttendanceReco
     };
     record.insert(&mut tx).await?;
     let mut pending = Pending::default();
-    checks::run_in(state, &mut tx, &record, &location, &mut pending).await?;
+    checks::run_in(state, &mut tx, &record, &location, &prepared, &mut pending).await?;
     tx.commit().await?;
     let stored = AttendanceRecord::find_or_404(&state.db, record.id).await?;
     emit_recorded(state, &stored).await?;
@@ -316,6 +317,7 @@ pub async fn check_out(state: &AppState, record_id: i64, at: DateTime) -> Result
     let location = WorkLocation::find(&state.db, found.location_id)
         .await?
         .ok_or(Error::NotFound)?;
+    let prepared = checks::prepare(state, found.employee(), &location, found.date).await?;
     let _lock = lock::take(found.employee_id, found.date).await;
     let mut tx = state.db.begin().await?;
     AttendanceRecord::query()
@@ -324,7 +326,7 @@ pub async fn check_out(state: &AppState, record_id: i64, at: DateTime) -> Result
         .await?;
     let closed = AttendanceRecord::find_or_404(&mut tx, record_id).await?;
     let mut pending = Pending::default();
-    checks::run_in(state, &mut tx, &closed, &location, &mut pending).await?;
+    checks::run_in(state, &mut tx, &closed, &location, &prepared, &mut pending).await?;
     tx.commit().await?;
     let stored = AttendanceRecord::find_or_404(&state.db, record_id).await?;
     emit_recorded(state, &stored).await?;

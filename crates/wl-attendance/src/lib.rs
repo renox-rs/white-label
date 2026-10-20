@@ -12,6 +12,8 @@ mod notices;
 pub mod overlap;
 pub mod overtime;
 pub mod pages;
+pub mod permit;
+pub mod proposal;
 pub mod record;
 pub mod service;
 mod texts;
@@ -82,6 +84,20 @@ impl WlAttendance {
     pub fn overtime_cap(mut self, per_day: i64, per_window: i64) -> Self {
         self.config.overtime_day_minutes = per_day * 60;
         self.config.overtime_window_minutes = per_window * 60;
+        self
+    }
+
+    /// Whether `HRM.RUL.14` checks the work permit, the residence visa and the
+    /// qualifications the context requires (default on).
+    pub fn permit_check(mut self, on: bool) -> Self {
+        self.config.permit_check = on;
+        self
+    }
+
+    /// The document kinds `HRM.RUL.14` checks for every employee (default
+    /// `work_permit` and `residence_visa`).
+    pub fn permit_kinds(mut self, kinds: &[&str]) -> Self {
+        self.config.permit_kinds = kinds.iter().map(|k| (*k).to_owned()).collect();
         self
     }
 
