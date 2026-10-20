@@ -1,0 +1,64 @@
+{#- accounting: a CDD file: the client, the rating, the screened parties and
+    their screening, and the actions the user may run (add a party, assess,
+    submit, approve, reject, reopen, exit). The exit or rejection reason shows
+    only to the MLRO and deputy. Replace it with
+    resources/views/accounting/cdd_file.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="file.number">
+  <rx-stack>
+    <rx-page-header :title="file.number" :subtitle="file.client" :back="route('accounting.engagements')" :back-label="tx['engagements.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_prepare">
+        <rx-action-sheet :id="'cdd-party-' ~ file.id" :label="tx['cdd.add_party']" :action="route('accounting.cdd_party_add', file.id)"
+                         :title="tx['cdd.add_party']" :description="tx['cdd.add_party_description']" :submit-label="tx['cdd.add_party']" icon="user-plus">
+          <rx-input name="party" :label="tx['cdd.party']" :id="'cdd-party-id-' ~ file.id" required/>
+          <rx-select name="role" :label="tx['cdd.party_role']" :options="roles" :selected="'ubo'" :id="'cdd-party-role-' ~ file.id"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'cdd-assess-' ~ file.id" :label="tx['cdd.assess']" :action="route('accounting.cdd_assess', file.id)"
+                         :title="tx['cdd.assess']" :description="tx['cdd.assess_description']" :submit-label="tx['cdd.assess']" icon="gauge">
+          <rx-select name="rating" :label="tx['cdd.rating']" :options="ratings" :selected="'low'" :id="'cdd-assess-rating-' ~ file.id"/>
+          <rx-textarea name="risk_factors" :label="tx['cdd.risk_factors']" :id="'cdd-assess-factors-' ~ file.id"/>
+          <rx-textarea name="edd_notes" :label="tx['cdd.edd_notes']" :id="'cdd-assess-notes-' ~ file.id"/>
+          <rx-select name="documents" :label="tx['cdd.documents']" :options="[['1', tx['cdd.documents_attached']], ['0', tx['cdd.documents_missing']]]" :selected="'1'" :id="'cdd-assess-documents-' ~ file.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_submit">
+        <rx-confirm :id="'cdd-submit-' ~ file.id" :label="tx['cdd.submit']" :action="route('accounting.cdd_submit', file.id)" method="POST"
+                    :title="tx['cdd.submit']" :message="tx['cdd.submit_message']" :confirm-label="tx['cdd.submit']" :cancel-label="tx['button_cancel']" icon="send"/>
+      </template>
+      <template rx-if="can_approve">
+        <rx-confirm :id="'cdd-approve-' ~ file.id" :label="tx['cdd.approve']" :action="route('accounting.cdd_approve', file.id)" method="POST"
+                    :title="tx['cdd.approve']" :message="tx['cdd.approve_message']" :confirm-label="tx['cdd.approve']" :cancel-label="tx['button_cancel']" icon="check"/>
+        <rx-action-sheet :id="'cdd-reject-' ~ file.id" :label="tx['cdd.reject']" :action="route('accounting.cdd_reject', file.id)"
+                         :title="tx['cdd.reject']" :description="tx['cdd.reason_description']" :submit-label="tx['cdd.reject']" icon="x">
+          <rx-textarea name="reason" :label="tx['cdd.reason']" :id="'cdd-reject-reason-' ~ file.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_reopen">
+        <rx-confirm :id="'cdd-reopen-' ~ file.id" :label="tx['cdd.reopen']" :action="route('accounting.cdd_reopen', file.id)" method="POST"
+                    :title="tx['cdd.reopen']" :message="tx['cdd.reopen_message']" :confirm-label="tx['cdd.reopen']" :cancel-label="tx['button_cancel']" icon="rotate-ccw"/>
+      </template>
+      <template rx-if="can_exit">
+        <rx-action-sheet :id="'cdd-exit-' ~ file.id" :label="tx['cdd.exit']" :action="route('accounting.cdd_exit', file.id)"
+                         :title="tx['cdd.exit']" :description="tx['cdd.reason_description']" :submit-label="tx['cdd.exit']" icon="log-out">
+          <rx-textarea name="reason" :label="tx['cdd.reason']" :id="'cdd-exit-reason-' ~ file.id" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-for="line in screening" kind="warning" :message="line"/>
+    <rx-card :title="tx['cdd.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['engagements.client']" :value="file.client"/>
+        <rx-entry :label="tx['cdd.rating']" :value="file.rating"/>
+        <rx-entry :label="tx['cdd.risk_factors']" :value="file.risk_factors" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['cdd.documents']" :value="file.documents"/>
+        <rx-entry :label="tx['cdd.next_review']" :value="file.next_review" :placeholder="tx['none']"/>
+        <rx-entry rx-if="file.decision_reason" :label="tx['cdd.reason']" :value="file.decision_reason"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="parties" as="row" :key="row.name ~ row.role" :caption="tx['cdd.parties']" card>
+      <rx-column :label="tx['cdd.party']">{{ row.name }}</rx-column>
+      <rx-column :label="tx['cdd.party_role']">{{ row.role }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cdd.parties_empty']" icon="users"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

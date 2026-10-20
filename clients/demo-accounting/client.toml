@@ -1,0 +1,27 @@
+# The demo client of F4 (04 Accounting): an accounting firm and fractional CFO
+# services provider. Data is fictional. Boot it with
+# CLIENT_CONFIG=clients/demo-accounting/client.toml.
+
+[client]
+name    = "Falcon Ledger Accountants LLC"
+app     = "accounting"
+domain  = "demo.falconledger.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#1D4ED8"
+second       = "#B45309"
+display_font = "Poppins"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "portal"]
+
+[[legal_entities]]
+code      = "FLA"
+name_en   = "Falcon Ledger Accountants LLC"
+emirate   = "dubai"
+licensing_authority = "Dubai Department of Economy and Tourism"
+trade_licence_no = "7654321"
+trn       = "100000000000003"
+address_en = "Office 902, Business Bay, Dubai"
+default   = true

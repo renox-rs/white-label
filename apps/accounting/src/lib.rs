@@ -1,0 +1,123 @@
+#![doc = include_str!("../README.md")]
+#![warn(missing_docs)]
+
+pub mod activation;
+pub mod calendar;
+pub mod cdd;
+pub mod cdd_files;
+pub mod cdd_machine;
+mod db;
+pub mod engagement;
+pub mod engagement_machine;
+pub mod engagements;
+mod events;
+pub mod pages;
+pub mod permissions;
+pub mod reasons;
+pub mod retainer;
+pub mod seed;
+pub mod tax_profile;
+mod texts;
+
+use renox::db::Migration;
+use renox::nav::NavLink;
+use renox::prelude::*;
+
+pub use cdd::{CddFile, CddParty, CddStatus, RiskRating, ScreenedRole};
+pub use engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
+pub use tax_profile::{TaxProfile, VatPeriod};
+
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory (`resources/views/accounting/engagement.html`).
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "accounting/engagements.html",
+        include_str!("../views/accounting/engagements.html"),
+    ),
+    (
+        "accounting/engagement.html",
+        include_str!("../views/accounting/engagement.html"),
+    ),
+    (
+        "accounting/cdd_file.html",
+        include_str!("../views/accounting/cdd_file.html"),
+    ),
+];
+
+/// Dirhams as text from fils: `AED 25,000.00`.
+pub fn money_text(fils: i64) -> String {
+    let sign = if fils < 0 { "-" } else { "" };
+    let magnitude = fils.unsigned_abs();
+    let whole = (magnitude / 100).to_string();
+    let mut grouped = String::new();
+    for (index, digit) in whole.chars().enumerate() {
+        if index > 0 && (whole.len() - index).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    format!("{sign}AED {grouped}.{:02}", magnitude % 100)
+}
+
+/// The Accounting module. Add it to the app with
+/// `.module(accounting::Accounting)`.
+pub struct Accounting;
+
+impl Module for Accounting {
+    fn name(&self) -> &'static str {
+        "accounting"
+    }
+
+    fn routes(&self) -> Routes {
+        pages::routes()
+    }
+
+    fn migrations(&self) -> &'static [Migration] {
+        renox::migrations!()
+    }
+
+    fn register(&self, app: &mut Registry) {
+        app.view_data::<pages::engagements::IndexPage>()
+            .view_data::<pages::engagements::ShowPage>()
+            .view_data::<pages::cdd::CddPage>();
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
+        app.model::<Engagement>()
+            .model::<CddFile>()
+            .model::<CddParty>()
+            .model::<TaxProfile>();
+        engagement_machine::register();
+        cdd_machine::register();
+        events::register(app);
+        // In the app group of the staff sidebar; the label is the host's
+        // `nav.engagements` text.
+        app.nav(
+            "app",
+            NavLink::route("accounting.engagements", "nav.engagements")
+                .icon("briefcase")
+                .group("nav.app")
+                .order(10)
+                .permission(permissions::ENGAGEMENTS_VIEW),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn money_reads_as_dirhams_with_grouped_thousands() {
+        assert_eq!(money_text(2_500_000), "AED 25,000.00");
+        assert_eq!(money_text(5), "AED 0.05");
+        assert_eq!(money_text(-123_456_789), "-AED 1,234,567.89");
+        assert_eq!(money_text(0), "AED 0.00");
+    }
+}

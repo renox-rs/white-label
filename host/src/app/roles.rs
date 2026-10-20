@@ -3,6 +3,7 @@
 //! permission here, give it to roles, and `define` makes the database agree
 //! (it runs on every sign-up, seed and `users:admin`).
 
+use accounting::permissions as acc;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
@@ -69,6 +70,18 @@ pub const PROPERTY_MANAGER: &str = prp::PROPERTY_MANAGER_ROLE;
 /// The leasing agent: drafts and submits leases, asks for a cancellation
 /// (01 §3.1, `PRP.ACL.18`).
 pub const LEASING_AGENT: &str = prp::LEASING_AGENT_ROLE;
+/// The partner of an accounting firm: owns the client relationships, ends
+/// engagements (04 §3.1).
+pub const PARTNER: &str = acc::PARTNER_ROLE;
+/// The engagement manager: runs a portfolio of clients, activates,
+/// suspends and resumes their engagements, prepares CDD files and tax
+/// profiles (04 §3.1).
+pub const ENGAGEMENT_MANAGER: &str = acc::MANAGER_ROLE;
+/// The tax specialist: returns and tax profiles (04 §3.1).
+pub const TAX_SPECIALIST: &str = acc::TAX_SPECIALIST_ROLE;
+/// Billing and admin: proposals, retainers, invoices and collections
+/// (04 §3.1).
+pub const BILLING: &str = acc::BILLING_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
@@ -188,6 +201,14 @@ pub const ROLES: &[(&str, &[&str])] = &[
             prp::OWNER_STATEMENTS_APPROVE,
             prp::AGREEMENTS_MANAGE,
             prp::COMPLIANCE_VIEW,
+            acc::ENGAGEMENTS_VIEW,
+            acc::ENGAGEMENTS_MANAGE,
+            acc::ENGAGEMENTS_END,
+            acc::CDD_VIEW,
+            acc::CDD_PREPARE,
+            acc::CDD_APPROVE,
+            acc::TAX_PROFILES_VIEW,
+            acc::TAX_PROFILES_MANAGE,
         ],
     ),
     (
@@ -239,6 +260,78 @@ pub const ROLES: &[(&str, &[&str])] = &[
             parties::BLOCK,
             parties::BLOCK_REASON_VIEW,
             parties::BLOCK_EXCEPTION,
+            // 04: the MLRO approves CDD files and the one-use override of
+            // an expired KYC document (`DOC.ACL.02`).
+            documents::VIEW,
+            documents::BLOCK_OVERRIDE,
+            acc::ENGAGEMENTS_VIEW,
+            acc::CDD_VIEW,
+            acc::CDD_PREPARE,
+            acc::CDD_APPROVE,
+        ],
+    ),
+    (
+        PARTNER,
+        &[
+            acc::ENGAGEMENTS_VIEW,
+            acc::ENGAGEMENTS_MANAGE,
+            acc::ENGAGEMENTS_END,
+            acc::CDD_VIEW,
+            acc::TAX_PROFILES_VIEW,
+            parties::VIEW,
+            documents::VIEW,
+            invoices::VIEW,
+            invoices::SUBSCRIPTIONS_VIEW,
+            tickets::TASKS_VIEW,
+        ],
+    ),
+    (
+        ENGAGEMENT_MANAGER,
+        &[
+            acc::ENGAGEMENTS_VIEW,
+            acc::ENGAGEMENTS_MANAGE,
+            acc::CDD_VIEW,
+            acc::CDD_PREPARE,
+            acc::TAX_PROFILES_VIEW,
+            acc::TAX_PROFILES_MANAGE,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            documents::VIEW,
+            documents::UPLOAD,
+            invoices::VIEW,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            tickets::TASKS_REVIEW,
+        ],
+    ),
+    (
+        TAX_SPECIALIST,
+        &[
+            acc::ENGAGEMENTS_VIEW,
+            acc::TAX_PROFILES_VIEW,
+            acc::TAX_PROFILES_MANAGE,
+            parties::VIEW,
+            documents::VIEW,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            tickets::TASKS_REVIEW,
+        ],
+    ),
+    (
+        BILLING,
+        &[
+            acc::ENGAGEMENTS_VIEW,
+            parties::VIEW,
+            invoices::VIEW,
+            invoices::CREATE,
+            invoices::ISSUE,
+            invoices::CREDIT,
+            invoices::RECEIVABLES_VIEW,
+            invoices::SUBSCRIPTIONS_VIEW,
+            invoices::SUBSCRIPTIONS_MANAGE,
+            payments::VIEW,
+            payments::RECORD,
         ],
     ),
     (
@@ -284,6 +377,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // calendar, wl-ticketing §4.4).
             tickets::TASKS_VIEW,
             tickets::TASKS_WORK,
+            // 04: sees the engagements, prepares CDD files.
+            acc::ENGAGEMENTS_VIEW,
+            acc::CDD_VIEW,
+            acc::CDD_PREPARE,
+            acc::TAX_PROFILES_VIEW,
             payments::VIEW,
             payments::RECORD,
             payments::REVERSE,

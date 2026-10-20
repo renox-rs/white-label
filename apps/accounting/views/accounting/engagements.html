@@ -1,0 +1,26 @@
+{#- accounting: the engagements, newest first, with their client, services,
+    status and neutral reason, and the action that creates one. Replace it
+    with resources/views/accounting/engagements.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['engagements.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['engagements.title']" :subtitle="tx['engagements.subtitle']">
+      <template rx-if="can_create">
+        <rx-action-sheet id="engagement-new" :label="tx['engagements.new']" :action="route('accounting.engagement_create')"
+                         :title="tx['engagements.new']" :description="tx['engagements.new_description']" :submit-label="tx['engagements.new']" icon="plus">
+          <rx-input name="client" :label="tx['engagements.client_party']" id="engagement-new-client" required/>
+          <rx-input name="title" :label="tx['engagements.services']" id="engagement-new-title" required/>
+          <rx-select name="fee_basis" :label="tx['engagements.fee_basis']" :options="fee_bases" :selected="'retainer'" id="engagement-new-basis"/>
+          <rx-input name="retainer_fee" :label="tx['engagements.retainer_fee']" id="engagement-new-fee"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="engagements" as="row" :key="row.id" :caption="tx['engagements.title']" card>
+      <rx-column :label="tx['engagements.number']"><a href="{{ route('accounting.engagement', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['engagements.client']">{{ row.client }}</rx-column>
+      <rx-column :label="tx['engagements.services']" hide-narrow>{{ row.title }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-column :label="tx['engagements.reason']" hide-narrow>{{ row.reason }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['engagements.empty']" icon="briefcase"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

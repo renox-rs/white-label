@@ -1,0 +1,68 @@
+{#- accounting: an engagement: its client, services, letter, tax profile and
+    neutral reason, its history, and the actions the user may run (record the
+    signed letter, activate, decline, suspend, resume, end). Replace it with
+    resources/views/accounting/engagement.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="engagement.number">
+  <rx-stack>
+    <rx-page-header :title="engagement.number" :subtitle="engagement.client" :back="route('accounting.engagements')" :back-label="tx['engagements.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_letter">
+        <rx-action-sheet :id="'engagement-letter-' ~ engagement.id" :label="tx['engagements.record_letter']" :action="route('accounting.engagement_letter', engagement.id)"
+                         :title="tx['engagements.record_letter']" :description="tx['engagements.record_letter_description']" :submit-label="tx['engagements.record_letter']" icon="file-signature">
+          <rx-input name="signed_on" type="date" :label="tx['engagements.signed_on']" :value="today" :id="'engagement-letter-on-' ~ engagement.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_activate">
+        <rx-confirm :id="'engagement-activate-' ~ engagement.id" :label="tx['engagements.activate']" :action="route('accounting.engagement_activate', engagement.id)" method="POST"
+                    :title="tx['engagements.activate']" :message="tx['engagements.activate_message']" :confirm-label="tx['engagements.activate']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_decline">
+        <rx-action-sheet :id="'engagement-decline-' ~ engagement.id" :label="tx['engagements.decline']" :action="route('accounting.engagement_decline', engagement.id)"
+                         :title="tx['engagements.decline']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.decline']" icon="x">
+          <rx-select name="reason" :label="tx['engagements.reason']" :options="decline_reasons" :selected="''" :id="'engagement-decline-reason-' ~ engagement.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_suspend">
+        <rx-action-sheet :id="'engagement-suspend-' ~ engagement.id" :label="tx['engagements.suspend']" :action="route('accounting.engagement_suspend', engagement.id)"
+                         :title="tx['engagements.suspend']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.suspend']" icon="pause">
+          <rx-select name="reason" :label="tx['engagements.reason']" :options="suspend_reasons" :selected="''" :id="'engagement-suspend-reason-' ~ engagement.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_resume">
+        <rx-confirm :id="'engagement-resume-' ~ engagement.id" :label="tx['engagements.resume']" :action="route('accounting.engagement_resume', engagement.id)" method="POST"
+                    :title="tx['engagements.resume']" :message="tx['engagements.resume_message']" :confirm-label="tx['engagements.resume']" :cancel-label="tx['button_cancel']" icon="play"/>
+      </template>
+      <template rx-if="can_end">
+        <rx-action-sheet :id="'engagement-end-' ~ engagement.id" :label="tx['engagements.end']" :action="route('accounting.engagement_end', engagement.id)"
+                         :title="tx['engagements.end']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.end']" icon="flag">
+          <rx-select name="reason" :label="tx['engagements.reason']" :options="end_reasons" :selected="''" :id="'engagement-end-reason-' ~ engagement.id"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['engagements.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['engagements.client']" :value="engagement.client"/>
+        <rx-entry :label="tx['engagements.services']" :value="engagement.title"/>
+        <rx-entry :label="tx['engagements.fee_basis']" :value="engagement.fee_basis"/>
+        <rx-entry :label="tx['engagements.retainer_fee']" :value="engagement.retainer"/>
+        <rx-entry :label="tx['engagements.start']" :value="engagement.start" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['engagements.letter']" :value="engagement.letter"/>
+        <rx-entry :label="tx['engagements.tax_profile']" :value="engagement.tax_profile"/>
+        <rx-entry :label="tx['engagements.reason']" :value="engagement.reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['engagements.activated_on']" :value="engagement.activated" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['engagements.ended_on']" :value="engagement.ended" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['engagements.cdd']" :value="cdd_status" :placeholder="tx['none']"/>
+      </rx-infolist>
+      <template rx-if="cdd_id">
+        <a href="{{ route('accounting.cdd_file', cdd_id) }}">{{ tx['engagements.open_cdd'] }}</a>
+      </template>
+    </rx-card>
+    <rx-table :rows="history" as="row" :key="row.at ~ row.action" :caption="tx['history.title']" card>
+      <rx-column :label="tx['history.at']">{{ row.at }}</rx-column>
+      <rx-column :label="tx['history.action']">{{ row.action }}</rx-column>
+      <rx-column :label="tx['engagements.reason']">{{ row.reason }}</rx-column>
+      <rx-column :label="tx['history.by']" hide-narrow>{{ row.by }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['history.empty']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

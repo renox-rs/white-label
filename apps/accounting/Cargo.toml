@@ -1,0 +1,22 @@
+[package]
+name = "accounting"
+description = "Accounting: the vertical app for accounting firms and fractional CFO services (engagements, CDD, tax profiles, the compliance calendar)."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real modules in the integration tests: parties (screening, blocks and
+# restricted reasons), documents (KYC documents and their one-use override)
+# and the portal (what a client user sees).
+wl-parties = { path = "../../crates/wl-parties" }
+wl-documents = { path = "../../crates/wl-documents" }
+wl-portal = { path = "../../crates/wl-portal" }

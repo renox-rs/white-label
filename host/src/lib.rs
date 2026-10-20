@@ -101,7 +101,7 @@ impl Tuning {
 pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App, ConfigError> {
     let mut tuning = tuning;
     let client_app = config.client.app.clone();
-    let vertical = vertical(&client_app)?;
+    check_vertical(&client_app)?;
     let manifest = config.manifest()?;
     let entities: Vec<String> = config
         .legal_entities
@@ -131,22 +131,41 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         app = app.module(app::property_seed::PropertySeed);
     }
     // The page that shows the shared modules' settings of this client.
-    Ok(app
+    let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
         .module(app::compliance_settings::ComplianceSettings::new(
             &client_app,
             &owner_role,
-        ))
-        .module(vertical))
+        ));
+    mount_vertical(app, &client_app)
 }
 
-/// The vertical app named in `[client] app`.
-fn vertical(name: &str) -> Result<property::Property, ConfigError> {
+/// The vertical apps built so far, as `[client] app` names them.
+pub const VERTICALS: &[&str] = &["property", "accounting"];
+
+/// The refusal of a vertical app that is not built.
+fn unbuilt_vertical(name: &str) -> ConfigError {
+    ConfigError(format!(
+        "[client] app `{name}` is not built yet; the apps built are `property` and `accounting`"
+    ))
+}
+
+/// Refuses an `[client] app` that is not built, before anything mounts.
+fn check_vertical(name: &str) -> Result<(), ConfigError> {
+    if VERTICALS.contains(&name) {
+        Ok(())
+    } else {
+        Err(unbuilt_vertical(name))
+    }
+}
+
+/// Mounts the vertical app named in `[client] app`, last: one arm per app,
+/// each mounting its own module type.
+fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError> {
     match name {
-        "property" => Ok(property::Property),
-        other => Err(ConfigError(format!(
-            "[client] app `{other}` is not built yet; F1 has `property`"
-        ))),
+        "property" => Ok(app.module(property::Property)),
+        "accounting" => Ok(app.module(accounting::Accounting)),
+        other => Err(unbuilt_vertical(other)),
     }
 }
 
