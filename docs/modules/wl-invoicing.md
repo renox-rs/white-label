@@ -52,7 +52,7 @@ the budget lines of a cost object in `FIN.CST.01` (job costing).
 | Quotation line | One priced item | description, catalogue item (optional), quantity, unit, unit price, discount, VAT category, cost code (optional) |
 | Charge schedule | Amounts to bill over time for an agreement | source (`Subject`: lease, engagement, enrolment, contract), party (one billed party in the MVP; billing shares for split invoicing Later, 01 §13 question 2), currency, start, end |
 | Charge | One scheduled amount | schedule, due date, charge type, amount, VAT category, issuing entity (from the source's scope, or the charge type's override), invoice (once billed), status |
-| Charge type | An entry in the client's charge catalogue; no charge type is hard-coded (01 §13 question 3) | code, names EN/AR, default VAT category, frequency, basis (fixed or per area), issuing entity override (`PLT.ENT.01`), invoice grouping (own invoice per charge, or combined with the agreement's other charges), account mapping for export, active |
+| Charge type | An entry in the client's charge catalogue; no charge type is hard-coded (01 §13 question 3). In F1 the lease's charge types and schedule are kept in apps/property (see `ChargeScheduler`, §6) | code, names EN/AR, default VAT category, frequency, basis (fixed or per area), issuing entity override (`PLT.ENT.01`), invoice grouping (own invoice per charge, or combined with the agreement's other charges), account mapping for export, active |
 | Subscription | A recurring plan billed every cycle | party, plan (catalogue item or price), quantity, cycle (week, month, quarter, year), anchor day, start, end, notice period, payment mode (manual / automatic charge), source (`Subject`), status |
 | Rate card | Prices for usage or estimates, per contract | party (customer, or a payer such as an insurer), purpose (customer contract or payer agreement), source contract (`Subject`), currency, service levels (e.g. same day, next day), valid from/to, lines |
 | Rate card line | One price rule | service or role key, pricing model (see below), dimensions (zone, weight band, route, vehicle class, shift…), unit (hour, day, month, item, trip, kg, pallet, CBM, panel), price or price table, price rule (list − %, cost + %), multipliers (overtime, public holiday, rest day, night), minimum quantity or charge (e.g. minimum hours per shift), surcharges (fuel, remote area, COD fee as % of the collected amount with a minimum), default VAT category |
@@ -1048,17 +1048,19 @@ computed, not stored.
 
 | Service | Purpose |
 |---|---|
-| `Invoicer` | Create a draft invoice from an `InvoiceDraft` (party, source, lines, due date) |
+| `Invoicer` | The invoice contract other modules call (crates/wl-kernel/src/invoicing.rs): `draft` from an `InvoiceDraft` (party, source, scope, lines with VAT category, due date), `update_draft`, `discard_draft`, `issue`, `find`; `allocate`, `unallocate`, `unallocate_all`; `dispute`; `credit_in_full`, `credit_partly`, `find_credit_note`, `credit_notes_for`, `open_credit`, `take_credit_for_refund`; `write_off`, `written_off_of`. With invoicing off, `NoInvoicer` drafts nothing and refuses the rest with a 422 |
 | `Quotations` | Create, send and accept quotations; read accepted lines for conversion |
-| `ChargeScheduler` | Create, change or cancel a charge schedule for an agreement |
+| `ChargeScheduler` | Create, change or cancel a charge schedule for an agreement. **Not built in F1:** the lease keeps its own schedule (`LeaseCharge`, apps/property/src/charge.rs) and the charge types it needs (apps/property/src/charge_type.rs), and bills them through `Invoicer`. The boundary stays: the catalogue and schedules belong here, so another vertical does not copy the lease's; they move here when a second vertical needs them |
 | `Subscriptions` | Start, pause, resume, cancel a subscription; query its status |
 | `UsageRecorder` | Record a priced usage line from a source `Subject` |
 | `RateCards` | Find the rate card for a party or payer and price a line (used by usage billing and by 08 estimates with an insurer's card) |
 | `PayerBilling` | Record a payer split, issue and resubmit payer bills, record remittances, transfer or write off open amounts; payer statements and ageing (`FIN.TPP.01`) |
+| `SupplierBills` | Read a supplier bill line, apply money to an approved bill (`pay`) and give it back (`unallocate`); used by wl-payments and wl-sales (`NoSupplierBills` when invoicing is off) |
 | `SupplierDebitNotes` | Draft, issue, settle or cancel a supplier debit note against a supplier bill; supplier debit balance (used by wl-inventory returns and by wl-payments for supplier refunds) |
 | `EInvoicing` | E-invoice status of a document; transmission queue per entity; resubmit (adapters per ASP behind `EInvoiceAdapter`) |
 | `CostPoster` | Post or reverse committed, actual or amortised cost on a cost object (called by wl-attendance, wl-hr, wl-inventory, wl-payments and verticals); wl-inventory also posts wastage (with its reason: expired, damaged, cancelled order, discarded delivery, lost in delivery), the purchase price variance and the landed cost variance, to the cost object or to the variance account set in §7 |
 | `CostLedger` | Read budget vs committed vs actual per cost object and cost code |
+| `OwnerDrawings` | The owner drawings category and the approval request of a drawing on another module's record (`FIN.ACL.21`); emits `OwnerDrawingDecided` |
 | `CompanyBudgets` | Approved company budget per entity, category and month; actual and variance (`FIN.BUD.01`); whether a budget category is owner drawings (used by wl-payments for the payment purpose and by reports that leave drawings out) |
 | `CashForecast` | Projected receipts, payments and balance per week for an entity (`FIN.CFL.01`); used by `FIN.RUL.23` and dashboards; other modules and verticals add lines through `CashForecastSource` (§8) |
 | `Receivables` | Balance, ageing and statement per party (used by credit limits in wl-sales) |
@@ -1075,7 +1077,7 @@ certificates for quotations, write-off notices), `wl-notify` (sending), `wl-paym
 claims via an `InputVatSource` trait), `wl-inventory` (PO and goods received for matching,
 accepted quantities only, via a `PurchaseMatchSource` trait; `SupplierReturnDispatched` →
 supplier debit note draft, `FIN.RUL.17`; wastage and variance postings through
-`CostPoster`), `wl-delivery` (`DeliveryDelivered` per-line delivered qty and COD difference
+`CostPoster`; the legal entity of a landed cost a bill line is coded to, through `LandedCosts`), `wl-delivery` (`DeliveryDelivered` per-line delivered qty and COD difference
 for billing on delivery; `DeliveryDisputed` → system `dispute`; `DeliveryDisputeClosed` →
 `resolve_dispute` `upheld`; `DeliveryReversed`, `DeliveryLost` → task on a disputed invoice,
 §5.10), `wl-payments` for the cash-flow forecast and budgets (`Cheques`: open cheques by date
@@ -1114,6 +1116,8 @@ vendor contract bills and their allocation basis; tickets for invoice disputes,
 | `UsageUnpriced` | usage without a matching rate line | usage record, source |
 | `PayerBillIssued` / `PayerRemittanceRecorded` / `PayerBillClosed` | payer bill transitions (`PayerBillClosed` on `transfer_to_customer`, `write_off`, `void`) | payer bill, payer, source, claimed, paid, denied, open amount; outcome (transferred, written off, voided) for `PayerBillClosed` |
 | `SupplierBillApproved` | `approve` | bill, supplier, amount, cost objects, landed cost reference per line (when coded to a landed cost; wl-inventory drafts a landed cost adjustment) |
+| `SupplierBillVoided` | supplier bill `void` | bill, reason |
+| `OwnerDrawingDecided` | a pending drawing request ended | source record, legal entity, approved (yes/no), approved by, reason when not approved |
 | `SupplierBillReopened` | supplier bill `unallocate` | bill, supplier, amount restored, balance, reason (payment reversed, debit note cancelled) |
 | `SupplierBillMatched` | `approve` of a PO-linked bill | bill, PO, lines and billed quantities |
 | `BudgetThresholdReached` | committed + actual ≥ threshold | cost object, cost code, % used |
