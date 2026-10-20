@@ -8,6 +8,7 @@ pub mod approval;
 pub mod checks;
 pub mod config;
 pub mod crew;
+pub mod crews_affected;
 pub mod entry;
 pub mod flags;
 pub mod history;
@@ -175,6 +176,10 @@ impl Module for WlAttendance {
         renox::state_machine::register::<Timesheet>();
         notices::register_types();
         period_end::schedule(app);
+        wl_kernel::documents::register_future_work(
+            crews_affected::GUARDED,
+            crews_affected::CrewsAffected,
+        );
     }
 }
 

@@ -81,6 +81,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.crew.no_break",
         "No midday break applies on this day.",
     ),
+    (
+        "wl_attendance.crews.label",
+        "Employee :employee is on the crew of this site",
+    ),
     // Flags.
     (
         "wl_attendance.flags.outside_geofence",

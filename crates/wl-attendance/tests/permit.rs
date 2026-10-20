@@ -356,3 +356,58 @@ async fn att04_a_flagged_record_proposes_nothing_and_an_accepted_one_non_billabl
         })
     );
 }
+
+/// `DOC.RUL.02`, the crews affected: the look-ahead of a work permit that
+/// expires on 2027-05-01 lists the employee of the crew from 2027-05-02, under
+/// their site; an employee who is gone, has no site, or another subject
+/// is not listed.
+#[renox::test]
+async fn att04_the_crews_affected_by_an_expiring_permit_are_listed() {
+    use wl_kernel::documents::{BlockEntry, BlockMode, OverrideMode, future_work};
+
+    let t = boot().await;
+    let site = support::project(1);
+    let a = t.employee(1, &[]);
+    let gone = t.employee(2, &[]);
+    let loose = t.employee(3, &[]);
+    for employee in [a, gone] {
+        t.staff
+            .change(employee, |profile| profile.scopes = vec![site.clone()]);
+    }
+    t.staff.change(gone, |profile| profile.listed = false);
+    let entry = BlockEntry {
+        kind: "work_permit".into(),
+        guarded: "attendance_record.accept".into(),
+        mode: BlockMode::Flag,
+        override_mode: OverrideMode::Never,
+        condition: None,
+        locked: false,
+    };
+    let provider = future_work("attendance_record.accept").expect("the module registers it");
+    let from = nov(2);
+    let planned = |subject: wl_kernel::Subject| {
+        let (provider, entry, state) = (provider.clone(), entry.clone(), t.state());
+        async move {
+            provider
+                .planned_from(state, &entry, &subject, from)
+                .await
+                .unwrap()
+        }
+    };
+
+    let found = planned(a.subject()).await;
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].record, a.subject());
+    assert_eq!(found[0].date, from);
+    assert!(found[0].label.contains("Employee 1"), "{}", found[0].label);
+    assert_eq!(
+        found[0].scope,
+        Some(renox::auth::permissions::Scope::new(
+            &site.subject_type,
+            site.subject_id
+        ))
+    );
+    assert!(planned(gone.subject()).await.is_empty());
+    assert!(planned(loose.subject()).await.is_empty());
+    assert!(planned(support::project(9)).await.is_empty());
+}
