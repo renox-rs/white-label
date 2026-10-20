@@ -28,6 +28,7 @@ use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provid
 use wl_kernel::tickets::{ChecklistRunId, Checklists, TicketFuture, provide_checklists};
 use wl_kernel::workforce::{
     EmployeeActivated, EmployeeAssignmentChanged, OnboardingCompleted, OnboardingStarted,
+    QualificationExpired, QualificationExpiring,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -65,6 +66,11 @@ pub fn other_branch() -> Subject {
 /// The scope of [`branch`].
 pub fn branch_scope() -> Scope {
     Scope::new("test.branch", 2)
+}
+
+/// The scope of `subject`.
+pub fn branch_scope_of(subject: &Subject) -> Scope {
+    Scope::new(&subject.subject_type, subject.subject_id)
 }
 
 /// A date in November 2026.
@@ -190,17 +196,51 @@ impl SopAcknowledgements for SopDesk {
     }
 }
 
-/// The accepted documents of the employees: `(subject, kind)` to a document id.
+/// What the document desk holds for one subject and kind.
 #[derive(Clone, Default)]
-pub struct DocDesk(Arc<Mutex<BTreeMap<(String, String), i64>>>);
+struct DocEntry {
+    /// The accepted document and its expiry date.
+    accepted: Option<(i64, Option<NaiveDate>)>,
+    /// A renewal waiting for review.
+    pending: Option<i64>,
+}
+
+/// The documents of the employees: `(subject, kind)` to what is held. Its
+/// `is_valid` follows `document_valid` (wl-documents §5.6): valid on or
+/// before the expiry date, a renewal that waits for review is no answer.
+#[derive(Clone, Default)]
+pub struct DocDesk(Arc<Mutex<BTreeMap<(String, String), DocEntry>>>);
 
 impl DocDesk {
-    /// `subject` has an accepted document `document` of `kind`.
+    /// `subject` has an accepted document `document` of `kind` that does not
+    /// expire.
     pub fn accepted(&self, subject: &Subject, kind: &str, document: i64) {
-        self.0
-            .lock()
-            .unwrap()
-            .insert((subject.to_string(), kind.to_owned()), document);
+        self.accepted_until(subject, kind, document, None);
+    }
+
+    /// `subject` has an accepted document `document` of `kind`, valid
+    /// through `expires_on`; any renewal waiting is settled.
+    pub fn accepted_until(
+        &self,
+        subject: &Subject,
+        kind: &str,
+        document: i64,
+        expires_on: Option<NaiveDate>,
+    ) {
+        let mut all = self.0.lock().unwrap();
+        let entry = all
+            .entry((subject.to_string(), kind.to_owned()))
+            .or_default();
+        entry.accepted = Some((document, expires_on));
+        entry.pending = None;
+    }
+
+    /// A renewal `document` of `kind` was uploaded and waits for review.
+    pub fn pending_review(&self, subject: &Subject, kind: &str, document: i64) {
+        let mut all = self.0.lock().unwrap();
+        all.entry((subject.to_string(), kind.to_owned()))
+            .or_default()
+            .pending = Some(document);
     }
 }
 
@@ -218,21 +258,47 @@ impl DocumentGuard for DocDesk {
         _db: &'a Db,
         subject: &'a Subject,
         kind: &'a str,
-        _on_date: NaiveDate,
+        on_date: NaiveDate,
     ) -> DocumentFuture<'a, Validity> {
         Box::pin(async move {
-            let found = self
+            let entry = self
                 .0
                 .lock()
                 .unwrap()
                 .get(&(subject.to_string(), kind.to_owned()))
-                .copied();
-            Ok(match found {
-                Some(id) => Validity::Valid {
+                .cloned()
+                .unwrap_or_default();
+            Ok(match entry {
+                DocEntry {
+                    accepted: Some((id, expires_on)),
+                    ..
+                } if expires_on.is_none_or(|day| day >= on_date) => Validity::Valid {
                     document: Some(wl_kernel::DocumentId(id)),
-                    expires_on: None,
+                    expires_on,
                 },
-                None => Validity::Invalid {
+                DocEntry {
+                    pending: Some(id),
+                    accepted,
+                    ..
+                } => Validity::Invalid {
+                    reason: wl_kernel::InvalidReason::PendingReview,
+                    document: Some(wl_kernel::DocumentId(id)),
+                    expired_on: accepted.and_then(|(_, expires_on)| expires_on),
+                    pending: Some(wl_kernel::documents::PendingRenewal {
+                        document: wl_kernel::DocumentId(id),
+                        submitted_on: on_date,
+                    }),
+                },
+                DocEntry {
+                    accepted: Some((id, expires_on)),
+                    ..
+                } => Validity::Invalid {
+                    reason: wl_kernel::InvalidReason::Expired,
+                    document: Some(wl_kernel::DocumentId(id)),
+                    expired_on: expires_on,
+                    pending: None,
+                },
+                _ => Validity::Invalid {
                     reason: wl_kernel::InvalidReason::Missing,
                     document: None,
                     expired_on: None,
@@ -313,6 +379,8 @@ struct Fakes {
     completed: Arc<Mutex<Vec<OnboardingCompleted>>>,
     activated: Arc<Mutex<Vec<EmployeeActivated>>>,
     changed: Arc<Mutex<Vec<EmployeeAssignmentChanged>>>,
+    qualification_expired: Arc<Mutex<Vec<QualificationExpired>>>,
+    qualification_expiring: Arc<Mutex<Vec<QualificationExpiring>>>,
 }
 
 /// Records `event`s of type `E` into `log`.
@@ -341,6 +409,8 @@ impl Module for Fakes {
         record(app, &self.completed);
         record(app, &self.activated);
         record(app, &self.changed);
+        record(app, &self.qualification_expired);
+        record(app, &self.qualification_expiring);
     }
 }
 
@@ -366,6 +436,10 @@ pub struct Booted {
     pub activated: Recorded<EmployeeActivated>,
     /// `EmployeeAssignmentChanged`.
     pub changed: Recorded<EmployeeAssignmentChanged>,
+    /// `QualificationExpired`.
+    pub qualification_expired: Recorded<QualificationExpired>,
+    /// `QualificationExpiring`.
+    pub qualification_expiring: Recorded<QualificationExpiring>,
 }
 
 impl Booted {
@@ -505,7 +579,13 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         completed: Arc::default(),
         activated: Arc::default(),
         changed: Arc::default(),
+        qualification_expired: Arc::default(),
+        qualification_expiring: Arc::default(),
     };
+    let (qualification_expired, qualification_expiring) = (
+        Recorded(fakes.qualification_expired.clone()),
+        Recorded(fakes.qualification_expiring.clone()),
+    );
     let (notices, checklists, sops, docs) = (
         fakes.notices.clone(),
         fakes.checklists.clone(),
@@ -585,6 +665,8 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         completed,
         activated,
         changed,
+        qualification_expired,
+        qualification_expiring,
     }
 }
 

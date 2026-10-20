@@ -147,7 +147,11 @@ async fn hrm04_a_rejection_changes_nothing_and_tells_the_requester() {
     assert!(pending(&t, &e).await.is_empty());
     let told = notices(&t, &a, "approval-decided").await;
     assert_eq!(told.len(), 1);
-    assert!(told[0].contains("wait for the second attempt"), "{}", told[0]);
+    assert!(
+        told[0].contains("wait for the second attempt"),
+        "{}",
+        told[0]
+    );
     // The request ended, so a new one is accepted.
     post(&t, &a, &e, &absconding()).await.assert_ok();
     assert_eq!(pending(&t, &e).await.len(), 1);
@@ -180,7 +184,10 @@ async fn hrm04_a_request_without_its_documents_is_refused_at_request() {
     let a = t.user_with("Hana", "hr").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
 
-    let death = [("transition", "record_death"), ("reason", "died in service")];
+    let death = [
+        ("transition", "record_death"),
+        ("reason", "died in service"),
+    ];
     post(&t, &a, &e, &death).await.assert_status(422);
     assert!(all_requests(&t, &e).await.is_empty());
 
@@ -239,7 +246,9 @@ async fn hrm04_who_may_ask_and_from_which_state() {
     let md = t.user_with("Basel", "md").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
 
-    post(&t, &viewer, &e, &absconding()).await.assert_forbidden();
+    post(&t, &viewer, &e, &absconding())
+        .await
+        .assert_forbidden();
     post(&t, &md, &e, &absconding()).await.assert_forbidden();
     // `reinstate` leaves `absconded` only; `activate` is not one of the five.
     let reinstate = [
@@ -384,7 +393,10 @@ async fn hrm04_each_exit_moves_the_employee_once_approved() {
     let cases: [(EmployeeStatus, Vec<(&str, &str)>, EmployeeStatus); 4] = [
         (
             EmployeeStatus::Onboarding,
-            vec![("transition", "cancel_onboarding"), ("reason", "visa refused")],
+            vec![
+                ("transition", "cancel_onboarding"),
+                ("reason", "visa refused"),
+            ],
             EmployeeStatus::OnboardingCancelled,
         ),
         (
