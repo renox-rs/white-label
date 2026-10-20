@@ -73,6 +73,19 @@ fn the_roles_hold_the_project_permissions() {
         PROJECT_MANAGER,
         construction::permissions::IPAS_CERTIFY
     ));
+    // The QS records the deductions, the project manager decides them.
+    assert!(holds(
+        QUANTITY_SURVEYOR,
+        construction::permissions::IPAS_DEDUCTIONS_RECORD
+    ));
+    assert!(!holds(
+        QUANTITY_SURVEYOR,
+        construction::permissions::IPAS_DEDUCTIONS_DECIDE
+    ));
+    assert!(holds(
+        PROJECT_MANAGER,
+        construction::permissions::IPAS_DEDUCTIONS_DECIDE
+    ));
     assert!(!holds(MEMBER, construction::permissions::PROJECTS_VIEW));
 }
 

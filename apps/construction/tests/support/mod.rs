@@ -683,6 +683,7 @@ pub async fn boot() -> Booted {
             perm::PROJECTS_TERMINATE,
             perm::PROJECTS_AWARD,
             perm::IPAS_SUBMIT,
+            perm::IPAS_DEDUCTIONS_DECIDE,
         ],
     )
     .await
@@ -691,7 +692,11 @@ pub async fn boot() -> Booted {
     permissions::define_role(
         app.db(),
         perm::QS_ROLE,
-        &[perm::PROJECTS_VIEW, perm::IPAS_CERTIFY],
+        &[
+            perm::PROJECTS_VIEW,
+            perm::IPAS_CERTIFY,
+            perm::IPAS_DEDUCTIONS_RECORD,
+        ],
     )
     .await
     .unwrap();
