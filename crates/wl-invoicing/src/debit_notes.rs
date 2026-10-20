@@ -392,9 +392,16 @@ pub async fn issue(
             .await?,
         );
     }
+    // A note applied in full to its own bill settles at once when the client
+    // accepts the debit note without the supplier's tax credit note.
+    let required = crate::config_of(state).tax_credit_note_required;
+    let settled = crate::debit_note_settle::settle_if_ready(&mut tx, &stored, required, &by).await?;
     tx.commit().await?;
     issued.emit(state).await.map_err(TransitionError::Failed)?;
     if let Some(outcome) = paid {
+        outcome.emit(state).await.map_err(TransitionError::Failed)?;
+    }
+    if let Some(outcome) = settled {
         outcome.emit(state).await.map_err(TransitionError::Failed)?;
     }
     Ok(SupplierDebitNote::find_or_404(&state.db, id).await?)

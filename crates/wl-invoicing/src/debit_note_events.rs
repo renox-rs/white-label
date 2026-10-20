@@ -1,6 +1,9 @@
 //! What follows a supplier debit note, from listeners that run only after a
 //! commit (wl-invoicing §4, §6):
 //!
+//! - `settle` / `settle_system` emit `SupplierDebitNoteSettled`;
+//! - `cancel` / `cancel_system` put the cost back of an issued note, tell the
+//!   supplier and emit `SupplierDebitNoteCancelled`;
 //! - `issue` / `issue_system` reverse the actual cost on the cost objects of
 //!   the lines through the kernel's `CostPoster` (the net of each line in AED
 //!   fils, one request per note under the key `invoicing.supplier_debit_note:<id>`
@@ -16,13 +19,14 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::Transitioned;
 use wl_kernel::invoicing::{
-    ReverseCost, SupplierBillId, SupplierDebitNoteIssued, SupplierReturnDispatched, cost_poster,
+    ReverseCost, SupplierBillId, SupplierDebitNoteCancelled, SupplierDebitNoteIssued,
+    SupplierDebitNoteSettled, SupplierReturnDispatched, cost_poster,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 
 use crate::allocate::amount_text;
 use crate::bill_machine::{APPROVE, APPROVE_SYSTEM};
-use crate::debit_note_machine::{ISSUE, ISSUE_SYSTEM};
+use crate::debit_note_machine::{CANCEL, CANCEL_SYSTEM, ISSUE, ISSUE_SYSTEM, SETTLE, SETTLE_SYSTEM};
 use crate::debit_notes::lines_of;
 use crate::supplier_bill::SupplierBill;
 use crate::supplier_debit_note::SupplierDebitNote;
@@ -31,7 +35,10 @@ use crate::texts::english;
 /// The notification type that tells the supplier of an issued note.
 pub const ISSUED: &str = "invoicing.supplier_debit_note_issued";
 
-/// Registers [`ISSUED`] and the accountant's draft notice.
+/// The notification type that tells the supplier of a withdrawn note.
+pub const CANCELLED: &str = "invoicing.supplier_debit_note_cancelled";
+
+/// Registers [`ISSUED`], [`CANCELLED`] and the accountant's draft notice.
 pub(crate) fn register_types() {
     notify::register_type(
         NotificationTypeDef::new(ISSUED, "invoicing")
@@ -42,6 +49,17 @@ pub(crate) fn register_types() {
                 "en",
                 Some(english("wl_invoicing.debit_note_issued.subject")),
                 english("wl_invoicing.debit_note_issued.body"),
+            ),
+    );
+    notify::register_type(
+        NotificationTypeDef::new(CANCELLED, "invoicing")
+            .group("supplier_bills")
+            .category(Category::Transactional)
+            .template(
+                NotifyChannel::Email,
+                "en",
+                Some(english("wl_invoicing.debit_note_cancelled.subject")),
+                english("wl_invoicing.debit_note_cancelled.body"),
             ),
     );
     crate::debit_note_contract::register_types();
@@ -84,6 +102,8 @@ async fn issued(state: &AppState, note_id: i64) -> Result {
     let Some(bill_id) = note.bill_id else {
         return Ok(());
     };
+    // The accountant records the supplier's tax credit note when it comes.
+    crate::debit_note_settle::open_tax_credit_task(state, &note).await?;
     let bill = SupplierBill::find_or_404(&state.db, bill_id).await?;
     let request = NotifyRequest::new(ISSUED, note.subject())
         .subject_label(note.number.as_deref().unwrap_or_default())
@@ -106,12 +126,66 @@ async fn issued(state: &AppState, note_id: i64) -> Result {
         .await
 }
 
+/// After the commit of `settle`: the event.
+async fn settled(state: &AppState, note_id: i64) -> Result {
+    let note = SupplierDebitNote::find_or_404(&state.db, note_id).await?;
+    let Some(bill_id) = note.bill_id else {
+        return Ok(());
+    };
+    state
+        .emit(SupplierDebitNoteSettled {
+            debit_note: note.debit_note_id(),
+            supplier: note.supplier(),
+            bill: SupplierBillId(bill_id),
+            amount: note.gross_total,
+            difference: note.settle_difference,
+        })
+        .await
+}
+
+/// After the commit of `cancel`: an issued note's cost is put back and the
+/// supplier is told; then the event.
+async fn cancelled(state: &AppState, note_id: i64) -> Result {
+    let note = SupplierDebitNote::find_or_404(&state.db, note_id).await?;
+    let reason = note.cancel_reason.clone().unwrap_or_default();
+    if let (Some(number), Some(bill_id)) = (note.number.clone(), note.bill_id) {
+        let mut restore = cost_reversals(&state.db, &note).await?;
+        restore.key = format!("{}:cancel", restore.key);
+        if !restore.lines.is_empty() {
+            cost_poster(state).restore(state, restore).await?;
+        }
+        let bill = SupplierBill::find_or_404(&state.db, bill_id).await?;
+        let request = NotifyRequest::new(CANCELLED, note.subject())
+            .subject_label(&number)
+            .data(json!({
+                "number": number,
+                "amount": amount_text(&note.currency, note.gross_total),
+                "bill": bill.supplier_invoice_number,
+                "reason": reason,
+            }))
+            .to_party(note.supplier());
+        notify::notifier(state).notify(state, request).await?;
+    }
+    state
+        .emit(SupplierDebitNoteCancelled {
+            debit_note: note.debit_note_id(),
+            supplier: note.supplier(),
+            bill: note.bill(),
+            return_to_supplier: note.source(),
+            amount: note.gross_total,
+            reason,
+        })
+        .await
+}
+
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(
         |event: Transitioned<SupplierDebitNote>, state: AppState| async move {
             match event.transition.as_str() {
                 ISSUE | ISSUE_SYSTEM => issued(&state, event.key).await,
+                SETTLE | SETTLE_SYSTEM => settled(&state, event.key).await,
+                CANCEL | CANCEL_SYSTEM => cancelled(&state, event.key).await,
                 _ => Ok(()),
             }
         },

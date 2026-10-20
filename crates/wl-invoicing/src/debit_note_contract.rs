@@ -358,6 +358,34 @@ impl SupplierDebitNotes for DebitNotes {
     ) -> SupplierBillFuture<'a, i64> {
         Box::pin(async move { debit_balance_of(db, supplier, entity, currency).await })
     }
+
+    fn settle_from_payment<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: SupplierDebitNoteId,
+        payment: wl_kernel::Subject,
+        amount: i64,
+        key: &'a str,
+    ) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async move {
+            crate::debit_note_settle::refund(state, id.0, &payment, amount, key).await
+        })
+    }
+
+    fn cancel<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: SupplierDebitNoteId,
+        reason: &'a str,
+        by: Option<i64>,
+    ) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async move {
+            crate::debit_note_settle::cancel(state, crate::credit_notes::By::System(by), id.0, reason)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.into_error())
+        })
+    }
 }
 
 /// What `supplier` has open as a debit balance with `entity` in `currency`:
