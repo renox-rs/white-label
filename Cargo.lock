@@ -913,6 +913,7 @@ dependencies = [
  "property",
  "renox",
  "serde",
+ "wl-delivery",
  "wl-documents",
  "wl-hr",
  "wl-invoicing",
@@ -3440,6 +3441,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
+name = "wl-delivery"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
+]
+
+[[package]]
 name = "wl-documents"
 version = "0.1.0"
 dependencies = [
@@ -3468,6 +3479,7 @@ dependencies = [
  "serde",
  "sha2 0.11.1",
  "tempfile",
+ "wl-delivery",
  "wl-kernel",
  "wl-payments",
  "wl-ticketing",
