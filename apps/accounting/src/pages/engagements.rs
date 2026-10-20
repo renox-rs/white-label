@@ -21,8 +21,9 @@
 //!
 //! The reason shown everywhere (the list, the page, the history, the export)
 //! is the engagement's neutral code ([`crate::reasons`]): no page reads a
-//! block's reason (`ACC.ACL.14`). A holder of `parties.block_reason.view`
-//! gets a link to the client's party page, where the Block record shows the
+//! block's reason (`ACC.ACL.14`); only a holder of `parties.block_reason.view`
+//! reads *CDD rejected* on a declined engagement where others read
+//! *Declined*. That holder also gets a link to the client's party page, where the Block record shows the
 //! real reason, and chooses the neutral template that tells the client. The
 //! actions answer with a toast and a refresh; a refusal answers 422 with its
 //! lines.
@@ -113,6 +114,18 @@ pub(crate) fn reason_label(lang: &Lang, engagement: &Engagement) -> String {
         .as_deref()
         .map(|code| reasons::label(lang, code))
         .unwrap_or_default()
+}
+
+/// The reason code `code` as a reader sees it: the neutral text, except that
+/// the holders of `parties.block_reason.view` (the MLRO and deputy) read
+/// *CDD rejected* where everybody else reads *Declined* (BL-ACC-02: "the
+/// reason stays visible to the MLRO only").
+fn shown_label(lang: &Lang, code: &str, sees_restricted: bool) -> String {
+    if sees_restricted && code == reasons::NOT_ACCEPTED {
+        text(lang, "reasons.not_accepted_option")
+    } else {
+        reasons::label(lang, code)
+    }
 }
 
 /// One engagement of the list.
@@ -285,6 +298,7 @@ pub async fn history_rows(
     state: &AppState,
     lang: &Lang,
     engagement: &Engagement,
+    sees_restricted: bool,
 ) -> Result<Vec<HistoryRow>> {
     let mut rows = Vec::new();
     for row in history(&state.db, Engagement::TABLE, engagement.id).await? {
@@ -298,7 +312,7 @@ pub async fn history_rows(
             reason: row
                 .reason
                 .as_deref()
-                .map(|code| reasons::label(lang, code))
+                .map(|code| shown_label(lang, code, sees_restricted))
                 .unwrap_or_default(),
             by,
         });
@@ -518,6 +532,7 @@ async fn show(
         (false, _) => text(&lang, "engagements.letter_not_signed"),
     };
     let cdd = CddFile::current(&state.db, found.client()).await?;
+    let sees_reasons = user.has_permission(permissions::BLOCK_REASON_VIEW);
     let view = EngagementView {
         id: found.id,
         number: found.number(),
@@ -531,7 +546,11 @@ async fn show(
         start: found.start_date.map(|d| d.to_string()).unwrap_or_default(),
         letter,
         tax_profile,
-        reason: reason_label(&lang, &found),
+        reason: found
+            .reason_code
+            .as_deref()
+            .map(|code| shown_label(&lang, code, sees_reasons))
+            .unwrap_or_default(),
         activated: found
             .activated_on
             .map(|d| d.to_string())
@@ -541,7 +560,6 @@ async fn show(
     let onboarding = found.status == EngagementStatus::Onboarding;
     // The MLRO and deputy: the link to the Block record and the neutral
     // template that fits the status.
-    let sees_reasons = user.has_permission(permissions::BLOCK_REASON_VIEW);
     let template = [NeutralTemplate::OnHold, NeutralTemplate::Ended]
         .into_iter()
         .find(|t| t.fits(found.status));
@@ -671,7 +689,7 @@ async fn show(
         send_notice_id,
         status: status_label(&lang, found.status),
         status_kind: status_kind(found.status),
-        history: history_rows(&state, &lang, &found).await?,
+        history: history_rows(&state, &lang, &found, sees_reasons).await?,
         cdd_id: cdd.as_ref().map(|f| f.id),
         tax_profile_id: user
             .has_permission(permissions::TAX_PROFILES_VIEW)

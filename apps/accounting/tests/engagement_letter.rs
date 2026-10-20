@@ -11,7 +11,9 @@ use accounting::letters::{EngagementLetter, LETTER_REMINDER, run};
 use accounting::{Engagement, EngagementStatus};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::history;
 use wl_kernel::notify::NotifyRecipient;
+use wl_kernel::notify::{self, NotifyChannel};
 use wl_kernel::tickets::Assignee;
 
 use support::{Booted, Client, boot, d};
@@ -380,4 +382,52 @@ async fn a_cdd_rejected_decline_shows_only_declined_to_the_partner() {
     let body = accounting::client_notices::NeutralTemplate::Unable.as_str();
     assert_eq!(body, "unable");
     assert!(t.notices.of_type(DECLINED_NOTICE).is_empty());
+
+    // The template the client reads, rendered in both languages, never says
+    // why: no due diligence, CDD, rejection or screening.
+    let def = notify::notification_type(UNABLE_NOTICE).expect("registered");
+    for language in ["en", "ar"] {
+        let template = def
+            .template_for(NotifyChannel::Email, language)
+            .unwrap_or_else(|| panic!("a {language} template"));
+        let rendered = format!(
+            "{} {}",
+            notify::fill(
+                template.subject.as_deref().unwrap_or_default(),
+                &sent[0].data
+            ),
+            notify::fill(&template.body, &sent[0].data)
+        );
+        assert!(!rendered.trim().is_empty(), "{language}");
+        for hidden in ["due diligence", "CDD", "reject", "KYC", "screen", "AML"] {
+            assert!(
+                !rendered.to_lowercase().contains(&hidden.to_lowercase()),
+                "the {language} template says `{hidden}`: {rendered}"
+            );
+        }
+        if language == "en" {
+            assert!(rendered.contains("unable to proceed"), "{rendered}");
+        }
+    }
+
+    // The history of the engagement carries no more than the partner saw.
+    let rows = history(t.db(), Engagement::TABLE, engagement.id)
+        .await
+        .unwrap();
+    let shown = format!("{rows:?}");
+    assert!(!shown.contains("due diligence") && !shown.contains("CDD"));
+
+    // The MLRO and the deputy read the reason; the partner and manager do not.
+    let (mlro, deputy) = (t.mlro().await, t.deputy().await);
+    let page = format!("/accounting/engagements/{}", engagement.id);
+    for viewer in [&mlro, &deputy] {
+        t.get(viewer, &page)
+            .await
+            .assert_ok()
+            .assert_see("CDD rejected");
+    }
+    for viewer in [&partner, &manager] {
+        let text = t.get(viewer, &page).await.text();
+        assert!(!text.contains("CDD rejected"), "{text}");
+    }
 }
