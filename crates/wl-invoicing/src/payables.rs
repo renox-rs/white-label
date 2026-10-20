@@ -6,14 +6,17 @@
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::invoicing::{
-    BillBalance, PayBill, SupplierBillFuture, SupplierBillId, SupplierBillLine, SupplierBillLineId,
-    SupplierBillStatus as KernelStatus, SupplierBillSummary, SupplierBills, UnallocateBill,
+    BillBalance, BillRequest, PayBill, SupplierBillFuture, SupplierBillId, SupplierBillLine,
+    SupplierBillLineId, SupplierBillStatus as KernelStatus, SupplierBillSummary, SupplierBills,
+    UnallocateBill,
 };
 
 use crate::bill_allocation::BillAllocation;
-use crate::bill_line::BillLine;
+use crate::bill_line::{BillLine, BillLineDraft};
 use crate::bill_pay::pay_keyed_in;
-use crate::supplier_bill::{SupplierBill, SupplierBillStatus};
+use crate::bill_submit;
+use crate::credit_notes::By;
+use crate::supplier_bill::{self, BillDraft, SupplierBill, SupplierBillStatus};
 
 /// The kernel's name for the module's bill state; the same seven states.
 pub fn kernel_status(status: SupplierBillStatus) -> KernelStatus {
@@ -104,6 +107,14 @@ impl SupplierBills for Payables {
         })
     }
 
+    fn create_submitted<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: BillRequest,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillId>> {
+        Box::pin(async move { create_submitted(state, request).await })
+    }
+
     fn pay<'a>(
         &'a self,
         state: &'a AppState,
@@ -119,6 +130,41 @@ impl SupplierBills for Payables {
     ) -> SupplierBillFuture<'a, BillBalance> {
         Box::pin(async move { crate::bill_unallocate::run(state, request).await })
     }
+}
+
+/// [`SupplierBills::create_submitted`]: a `draft` bill with the request's
+/// lines, in AED, then `submit` as the system. The bill has no purchase order
+/// to match, so it lands in `matched` (or `exception` when the duplicate
+/// check holds it) and waits for the approval of the accountant.
+async fn create_submitted(
+    state: &AppState,
+    request: BillRequest,
+) -> Result<Option<SupplierBillId>> {
+    if request.lines.is_empty() {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "a supplier bill needs at least one line".to_owned(),
+        ));
+    }
+    let mut draft = BillDraft::new(request.supplier, &request.number, request.bill_date);
+    draft.legal_entity_id = request.legal_entity_id;
+    for line in &request.lines {
+        if line.discount != 0 {
+            return Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "a line of a supplier bill takes no discount".to_owned(),
+            ));
+        }
+        draft = draft.line(
+            BillLineDraft::new(&line.description, line.unit_price, line.vat_category)
+                .quantity_milli(line.quantity_milli),
+        );
+    }
+    let bill = supplier_bill::create(&state.db, &draft, None).await?;
+    let bill = bill_submit::submit(state, By::System(None), bill.id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(Some(SupplierBillId(bill.id)))
 }
 
 /// The bill as the kernel answers a call: its state and balance.

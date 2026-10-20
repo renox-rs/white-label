@@ -1430,6 +1430,59 @@ impl UnallocateBill {
     }
 }
 
+/// A supplier bill another module asks wl-invoicing to record from a party
+/// that sent it (`SupplierBills::create_submitted`): a vertical records what
+/// a client deducts from a certificate as a bill from the client, to be set
+/// off against its own invoice (02 Construction §7.1 *IPA* `invoice`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BillRequest {
+    /// The party that sent the bill.
+    pub supplier: PartyId,
+    /// The number of the bill; the duplicate check compares it, so it is
+    /// unique per source.
+    pub number: String,
+    /// The date on the bill.
+    pub bill_date: NaiveDate,
+    /// The receiving legal entity; the default one when `None`.
+    pub legal_entity_id: Option<i64>,
+    /// The record the bill is for (an IPA, a deduction…).
+    pub source: Subject,
+    /// The lines, in AED; the discount of a line must be 0.
+    pub lines: Vec<DraftLine>,
+}
+
+impl BillRequest {
+    /// A bill of `supplier` numbered `number` dated `bill_date` for
+    /// `source`, with no lines yet.
+    pub fn new(
+        supplier: PartyId,
+        number: impl Into<String>,
+        bill_date: NaiveDate,
+        source: Subject,
+    ) -> Self {
+        BillRequest {
+            supplier,
+            number: number.into(),
+            bill_date,
+            legal_entity_id: None,
+            source,
+            lines: Vec::new(),
+        }
+    }
+
+    /// With `line` added at the end.
+    pub fn line(mut self, line: DraftLine) -> Self {
+        self.lines.push(line);
+        self
+    }
+
+    /// Received by the legal entity `id`.
+    pub fn legal_entity(mut self, id: i64) -> Self {
+        self.legal_entity_id = Some(id);
+        self
+    }
+}
+
 /// The outcome of [`SupplierBills::pay`] and [`SupplierBills::unallocate`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BillBalance {
@@ -1470,6 +1523,19 @@ pub trait SupplierBills: Send + Sync + 'static {
         _db: &'a Db,
         _id: SupplierBillId,
     ) -> SupplierBillFuture<'a, Option<SupplierBillSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Records a supplier bill from `request` and submits it, as the system:
+    /// it has no purchase order to match, so it waits for the accountant's
+    /// approval. Returns its id; `None` when invoicing is off (the default).
+    /// Refused (422) for a bill with no lines, a line with a discount, or
+    /// any refusal of the bill itself.
+    fn create_submitted<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: BillRequest,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillId>> {
         Box::pin(async { Ok(None) })
     }
 
