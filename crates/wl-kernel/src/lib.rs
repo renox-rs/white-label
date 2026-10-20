@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod approvals;
+pub mod attendance;
 pub mod automation;
 pub mod bank_statements;
 pub mod block_effects;
