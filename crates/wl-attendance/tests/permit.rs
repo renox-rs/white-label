@@ -9,7 +9,6 @@ mod support;
 use wl_attendance::proposal::{self, Proposal};
 use wl_attendance::service::{self, NewRecord};
 use wl_attendance::{AttendanceFlag, AttendanceStatus, FlagType, WlAttendance, WorkLocation};
-use wl_kernel::calendar::calendar;
 
 use support::{at, boot, boot_with, nov, users_of};
 
@@ -333,5 +332,4 @@ async fn att04_a_flagged_record_proposes_nothing_and_an_accepted_one_non_billabl
             billable: true
         })
     );
-    let _ = calendar(t.state());
 }

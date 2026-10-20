@@ -324,7 +324,9 @@ pub async fn check_out(state: &AppState, record_id: i64, at: DateTime) -> Result
         .where_(AttendanceRecord::ID.eq(record_id))
         .update(&mut tx, &[("check_out", &Some(at)), ("updated_at", &now())])
         .await?;
-    let closed = AttendanceRecord::find_or_404(&mut tx, record_id).await?;
+    let closed = AttendanceRecord::find(&mut tx, record_id)
+        .await?
+        .ok_or(Error::NotFound)?;
     let mut pending = Pending::default();
     checks::run_in(state, &mut tx, &closed, &location, &prepared, &mut pending).await?;
     tx.commit().await?;
