@@ -3,7 +3,8 @@
 //!
 //! When wl-inventory dispatches a return ([`SupplierReturnDispatched`]), a
 //! debit note is drafted for the returned lines, once per return (a repeat
-//! of the event gives the existing draft; the source is unique):
+//! of the event gives the existing draft; the source (the return itself, so
+//! the issued note names the return it came from) is unique):
 //!
 //! - **The bill exists.** The oldest `approved`, `partially_paid` or `paid`
 //!   bill of the supplier that has a line for every returned PO line is the
@@ -189,8 +190,8 @@ pub async fn draft_for_return(
 ) -> Result<(SupplierDebitNote, bool)> {
     let db = &state.db;
     let existing = SupplierDebitNote::query()
-        .where_(SupplierDebitNote::SOURCE_TYPE.eq(event.source.subject_type.clone()))
-        .where_(SupplierDebitNote::SOURCE_ID.eq(event.source.subject_id))
+        .where_(SupplierDebitNote::SOURCE_TYPE.eq(event.supplier_return.subject_type.clone()))
+        .where_(SupplierDebitNote::SOURCE_ID.eq(event.supplier_return.subject_id))
         .first(db)
         .await?;
     if let Some(note) = existing {
@@ -211,8 +212,8 @@ pub async fn draft_for_return(
     let mut note = SupplierDebitNote {
         party_id: event.supplier.0,
         origin: DebitNoteOrigin::Return,
-        source_type: Some(event.source.subject_type.clone()),
-        source_id: Some(event.source.subject_id),
+        source_type: Some(event.supplier_return.subject_type.clone()),
+        source_id: Some(event.supplier_return.subject_id),
         reason: returned
             .iter()
             .map(|l| l.reason.trim())
