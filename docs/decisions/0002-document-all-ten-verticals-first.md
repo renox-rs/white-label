@@ -47,5 +47,5 @@ Order of work:
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md) §6 (module × app matrix) is a first guess. It is
   replaced by [CAPABILITY-MAP.md](../CAPABILITY-MAP.md) once the map exists.
-- The roadmap phases F0–F4 start only after this phase is done and the module list is
+- The roadmap phases F0–F10 start only after this phase is done and the module list is
   approved.

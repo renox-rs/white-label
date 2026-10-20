@@ -12,7 +12,7 @@ here as `~~question~~ Answered (date): ...`.
 
 | Gate | Meaning |
 |---|---|
-| **Build 1** | Changes the data model or a rule in the first build (01 Property, 09 Manpower and the modules they use); answer before coding those parts |
+| **Build 1** | Changes the data model or a rule in the first build (F1 Property, F2 Construction and the modules they use); answer before coding those parts |
 | **Client 1** | Needed for the contract, data processing agreement or security pack before the first production client of any vertical |
 | **Launch NN** | Needed before selling vertical NN (or before selling it outside Dubai, where noted) |
 | **Onboarding** | Collected per client during onboarding; the app already has a setting or a manual path |

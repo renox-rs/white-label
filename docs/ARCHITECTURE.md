@@ -9,7 +9,7 @@
 |---|---|---|
 | 1 | Business model | **Hosted per client**: 1 binary + 1 SQLite database per client, setup fee + monthly subscription |
 | 2 | Customisation | **Configuration + extension crate**. No per-client forks |
-| 3 | App order | **Property** (proves the core), then **Manpower** (tests reuse). See [decision 0001](decisions/0001-first-two-verticals.md) |
+| 3 | App order | **Follows the vertical numbers**: F1 Property (proves the core), F2 Construction, F3 Logistics … F10 EdTech. See [decision 0005](decisions/0005-phases-follow-vertical-numbers.md) |
 | 4 | Platform | **Responsive web + PWA** (Renox/HTMX). No native apps or offline mode yet |
 | 5 | Database | **SQLite per client** + Litestream replication to S3-compatible storage on a backup VPS in the UAE (another provider) |
 | 6 | Library location | **Two layers**: generic components go into `renox` (OSS), business modules stay in `white-label` (private) |
@@ -301,11 +301,18 @@ extension gets its own binary: `host` + the `ext/` crate linked at build time.
 
 | Phase | Scope | Done when |
 |---|---|---|
-| **F0 — Renox foundations** (**done in Renox 1.2.0, 2026-10-18**; what is left is adoption: pin 1.2, run `migrate`, build the module crates on the new APIs) | R1 RTL/Arabic, R2 settings, R3 PDF, R4 admin contributions, R7 make:package, R9 brand tokens, R10 `NavLink`, R12 state machines (with the approval interceptor from Renox #39). Also needed before Build 1 ships: R13 sequences, R14 custom fields, R15 passwordless login, R17 + R18 payments and money, R22 search, R23 import, and R5, R6, R20 for 09 attendance | A module crate can ship an admin page and an Arabic PDF; a transition blocked by a limit becomes an approval request |
+| **F0 — Renox foundations** (**done in Renox 1.2.0, 2026-10-18**; what is left is adoption: pin 1.2, run `migrate`, build the module crates on the new APIs) | R1 RTL/Arabic, R2 settings, R3 PDF, R4 admin contributions, R7 make:package, R9 brand tokens, R10 `NavLink`, R12 state machines (with the approval interceptor from Renox #39). Also needed before Build 1 ships: R13 sequences, R14 custom fields, R15 passwordless login, R17 + R18 payments and money, R22 search, R23 import, and R5, R6, R20 for attendance (F2) | A module crate can ship an admin page and an Arabic PDF; a transition blocked by a limit becomes an approval request |
 | **F1 — Property** | `wl-kernel`, `wl-parties`, `wl-portal`, `wl-documents`, `wl-invoicing`, `wl-payments` (Stripe), `wl-ticketing`, `wl-notify` (email first), `wl-sales` (lead sources and campaigns), `wl-hr` (minimal employee records and onboarding, no payroll or visas) + `apps/property` + `host` + 1 demo client | End-to-end demo: unit → lease → VAT invoice → payment → maintenance ticket from the tenant portal |
-| **F2 — Manpower** | `wl-attendance`, the rest of `wl-hr` (visas, leave, payroll, WPS, final settlement), R5 (geolocate, camera), R6 PWA + `apps/manpower`. **Measure** new code vs reuse; refactor modules that leaked domain logic | ≥ 60% of Manpower's features run on existing modules without modification |
-| **F3 — Fleet rollout** | `deploy/rollout`, tested backup/restore, R8 `rnx new --from`, client onboarding in < 1 day | A new client goes live from `client.toml` alone |
-| **F4+ — Next verticals** | Chosen by prospects: Accounting (cheapest, modules nearly complete) → Clinics/EdTech (`wl-scheduling`) → Construction/F&B/Manufacturing/Auto (`wl-inventory`; Auto also needs orders and POS from `wl-sales`) → Logistics | — |
+| **F2 — Construction** | `wl-attendance` (geofenced crew attendance, timesheets by cost code), `wl-inventory` (purchasing, site stores), job costing and supplier-bill matching in `wl-invoicing`, R5 (geolocate, camera), R6 PWA + `apps/construction`. **Measure** new code vs reuse; refactor modules that leaked domain logic | ≥ 70% of Construction's features run on existing modules without modification |
+| **F3 — Logistics** | `wl-delivery` (dispatch, runs, proof of delivery, COD) + `apps/logistics` | Last-mile run from dispatch to proof of delivery and COD settlement |
+| **F4 — Accounting** | `apps/accounting` on existing modules (cheapest; modules nearly complete) | Filing calendar and client engagement end to end |
+| **F5 — Clinics** | `wl-scheduling` (resources, bookings, reminders) + `apps/clinics` | Appointment to invoice, with licence expiry blocks |
+| **F6 — F&B** | Recipes and lots in `wl-inventory`, orders and POS in `wl-sales`, aggregator integrations + `apps/fnb` | Order to dispatch to food-safety log. Validate partner API access first |
+| **F7 — Manufacturing** | BOMs, lots and quality in `wl-inventory` + `apps/manufacturing` | Work order to finished stock with landed cost |
+| **F8 — Auto** | Orders and POS in `wl-sales` (if not done in F6), job cards + `apps/auto` | Job card to invoice, insurance repair |
+| **F9 — Manpower** | The rest of `wl-hr` (visas, leave, payroll, WPS, final settlement) + `apps/manpower` | Deployment to client timesheet to WPS payroll |
+| **F10 — EdTech** | Batches, enrolments, tutors, certificates on `wl-scheduling` + `apps/edtech` | Enrolment to attendance to certificate |
+| **Rollout track** (after F1, before the second paying client) | `deploy/rollout`, tested backup/restore, R8 `rnx new --from`, client onboarding in < 1 day | A new client goes live from `client.toml` alone |
 
 ## 10. Risks and items to verify
 
@@ -314,7 +321,7 @@ extension gets its own binary: `host` + the `ext/` crate linked at build time.
 | **UAE FTA e-invoicing** (Peppol-based model; Ministerial Decisions 243 and 244 of 2025: pilot from 1 July 2026, mandatory from 1 January 2027 for revenue ≥ AED 50m and from 1 July 2027 for others; B2C excluded for now, see [01-property.md](verticals/01-property.md) [S18]) | Design `wl-invoicing` around structured data from day one, then add an adapter through an Accredited Service Provider. Most clients must be ready by **mid-2027**; the adapter is therefore part of the first year, not Later. ✔ ASP appointment deadlines: 30 October 2026 for revenue of AED 50m or more (amended by Ministerial Resolution 66/2026), 31 March 2027 for the rest ([01-property.md](verticals/01-property.md) Sources) |
 | Local payment gateways (N-Genius, Telr) are not in Renox | Gateway trait in `wl-payments`. Stripe and N-Genius in the MVP; other local gateways when a client asks for them |
 | WhatsApp Business API requires a BSP (e.g. Twilio, 360dialog) | Trait-based channel in `wl-notify`, provider chosen per client |
-| F&B aggregator APIs (Talabat etc.) and eClaimLink are not openly available | These verticals are deliberately placed in F4+. Validate partner access first |
+| F&B aggregator APIs (Talabat etc.) and eClaimLink are not openly available | These verticals are deliberately placed late (F6, F3). Validate partner access first |
 | Premature abstraction | Rule of three: new modules are extracted from app code that has proven reuse |
 | Client customisation leaking into the core | Mandatory review for every client request: configuration? event? extension crate? The core changes only if the change helps ≥ 2 clients |
 
