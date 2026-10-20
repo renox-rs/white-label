@@ -56,6 +56,33 @@ use wl_parties::{
     ScreeningTrigger, WlParties, record_run,
 };
 
+/// A test-only route: the signed-in user confirms the possible match of
+/// screening `id` (what the reviewer's page does).
+async fn confirm_route(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let screening = Screening::find_or_404(&state.db, id).await?;
+    let _outcome = wl_parties::confirm_match(&state, &user, &screening, "Same date of birth")
+        .await
+        .map_err(|e| Error::permanent_message(e.to_string()))?;
+    Ok("done".into_response())
+}
+
+/// Mounts [`confirm_route`].
+struct ConfirmRoute;
+
+impl Module for ConfirmRoute {
+    fn name(&self) -> &'static str {
+        "confirm-route"
+    }
+
+    fn routes(&self) -> Routes {
+        Routes::new().post("/t/confirm/{id}", confirm_route)
+    }
+}
+
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
 const LAYOUT: &str = r#"<!doctype html>
@@ -801,6 +828,7 @@ pub const REVIEWER: &str = "document_reviewer";
 /// wl-parties' and wl-documents' permissions the roles hold.
 const PARTIES_VIEW: &str = wl_parties::permissions::VIEW;
 const PARTIES_BLOCK: &str = wl_parties::permissions::BLOCK;
+const SCREENING_REVIEW: &str = wl_parties::permissions::SCREENING_REVIEW;
 const DOCUMENTS_VIEW: &str = wl_documents::permissions::VIEW;
 const DOCUMENTS_REVIEW: &str = wl_documents::permissions::REVIEW;
 const BLOCK_OVERRIDE: &str = wl_documents::permissions::BLOCK_OVERRIDE;
@@ -825,6 +853,7 @@ async fn define_roles(db: &Db) {
                 perm::RETURNS_REVIEW,
                 perm::RETURNS_FILE,
                 perm::WIP_WRITE_OFF,
+                perm::AML_RAISE,
                 PARTIES_VIEW,
             ],
         ),
@@ -840,6 +869,7 @@ async fn define_roles(db: &Db) {
                 perm::RETURNS_VIEW,
                 perm::RETURNS_REVIEW,
                 perm::WIP_WRITE_OFF,
+                perm::AML_RAISE,
                 PARTIES_VIEW,
                 DOCUMENTS_VIEW,
                 // As the host gives the 04 manager (A2).
@@ -859,6 +889,7 @@ async fn define_roles(db: &Db) {
                 perm::TAX_PROFILES_VIEW,
                 perm::RETURNS_VIEW,
                 perm::RETURNS_PREPARE,
+                perm::AML_RAISE,
             ],
         ),
         (
@@ -869,6 +900,11 @@ async fn define_roles(db: &Db) {
                 perm::CDD_PREPARE,
                 perm::CDD_APPROVE,
                 perm::BLOCK_REASON_VIEW,
+                // The MLRO's cases, and the second review of a confirmed
+                // match (the host gives the compliance role both).
+                perm::AML_RAISE,
+                perm::AML_MANAGE,
+                SCREENING_REVIEW,
                 PARTIES_VIEW,
                 PARTIES_BLOCK,
                 DOCUMENTS_VIEW,
@@ -950,7 +986,7 @@ default = true
 /// wl-parties (screening on) and wl-documents, the fakes and the roles; the
 /// sanctions lists exist, current, and the KYC kinds are installed.
 pub async fn boot() -> Booted {
-    boot_with(false, false).await
+    boot_with(false, false, true).await
 }
 
 /// [`boot`] with the real wl-ticketing (deadline tasks held, released and
@@ -959,14 +995,21 @@ pub async fn boot() -> Booted {
 /// wl-invoicing (the retainer subscription paused and resumed) instead of
 /// the fakes; the notifier is still the recording one.
 pub async fn boot_real() -> Booted {
-    boot_with(true, false).await
+    boot_with(true, false, true).await
 }
 
 /// [`boot_real`] where the subscription's cycle invoices are issued by
 /// themselves (as the host sets it for 04), so a cancel can credit the cycle
 /// invoice of the retainer.
 pub async fn boot_billing() -> Booted {
-    boot_with(true, true).await
+    boot_with(true, true, true).await
+}
+
+/// [`boot_real`] where wl-parties' related-person block is off: a confirmed
+/// match blocks the matched person only, so `ACC.RUL.12` must block the
+/// client company itself.
+pub async fn boot_unrelated() -> Booted {
+    boot_with(true, false, false).await
 }
 
 /// `module` with the 04 reasons for `close_missed`, as the host sets them.
@@ -981,7 +1024,7 @@ fn missed_reasons(mut module: wl_ticketing::WlTicketing) -> wl_ticketing::WlTick
     module
 }
 
-async fn boot_with(real: bool, billing: bool) -> Booted {
+async fn boot_with(real: bool, billing: bool, related_block: bool) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1007,7 +1050,12 @@ async fn boot_with(real: bool, billing: bool) -> Booted {
         .module(Auth::new())
         .module(Permissions)
         .module(Audit)
-        .module(WlParties::new().screening(true))
+        .module(
+            WlParties::new()
+                .screening(true)
+                .related_company_block(related_block),
+        )
+        .module(ConfirmRoute)
         .module(wl_documents::WlDocuments)
         .module(wl_portal::WlPortal);
     if real {
@@ -1633,5 +1681,80 @@ impl Booted {
             .run(self.state())
             .await
             .unwrap_or_else(|e| panic!("{name}: {e}"));
+    }
+
+    // ---- confirmed matches and AML cases ------------------------------------
+
+    /// Dina, the MLRO's deputy: the second reviewer of a confirmed match.
+    pub async fn deputy(&self) -> User {
+        self.user_with("Dina", MLRO).await
+    }
+
+    /// `first` confirms the possible match `screening` and `second` gives the
+    /// second review (wl-parties' real approval): the party is blocked, the
+    /// freeze and report tasks are opened and `ScreeningMatchConfirmed`
+    /// follows, all at the app's clock.
+    pub async fn confirm_match(&self, screening: &Screening, first: &User, second: &User) {
+        self.app.acting_as(first);
+        self.app
+            .post(&format!("/t/confirm/{}", screening.id), &[])
+            .await
+            .assert_ok();
+        let request = wl_kernel::ApprovalRequest::query()
+            .where_(wl_kernel::ApprovalRequest::SUBJECT_TYPE.eq("parties.screening"))
+            .where_(wl_kernel::ApprovalRequest::SUBJECT_ID.eq(screening.id))
+            .first(self.db())
+            .await
+            .unwrap()
+            .expect("the confirmation waits for the second reviewer");
+        self.run(wl_kernel::approvals::approve(
+            self.state(),
+            request.id,
+            second,
+            "ok",
+        ))
+        .await
+        .unwrap()
+        .expect("the request ended");
+    }
+
+    /// The freeze and report tasks of `screening` (wl-parties).
+    pub async fn compliance_tasks(&self, screening: &Screening) -> Vec<wl_parties::ComplianceTask> {
+        wl_parties::ComplianceTask::for_screening(self.db(), screening.id)
+            .await
+            .unwrap()
+    }
+
+    /// The freeze or report task of `screening` of the kind `kind` is done
+    /// (a fixture: the compliance officer completes it on wl-parties' page).
+    pub async fn finish_task(&self, screening: &Screening, kind: wl_parties::ComplianceTaskKind) {
+        let task = self
+            .compliance_tasks(screening)
+            .await
+            .into_iter()
+            .find(|task| task.kind == kind)
+            .expect("the task exists");
+        renox::db::sql("UPDATE wl_parties_compliance_tasks SET status = 'done' WHERE id = ?")
+            .bind(task.id)
+            .execute(self.db())
+            .await
+            .unwrap();
+    }
+
+    /// Every AML case, oldest first.
+    pub async fn aml_cases(&self) -> Vec<accounting::AmlCase> {
+        accounting::AmlCase::query()
+            .order_by(accounting::AmlCase::ID)
+            .get(self.db())
+            .await
+            .unwrap()
+    }
+
+    /// `case`, as stored now.
+    pub async fn aml_case(&self, case: &accounting::AmlCase) -> accounting::AmlCase {
+        accounting::AmlCase::find(self.db(), case.id)
+            .await
+            .unwrap()
+            .unwrap()
     }
 }
