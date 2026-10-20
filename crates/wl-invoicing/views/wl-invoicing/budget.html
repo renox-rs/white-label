@@ -1,0 +1,50 @@
+{#- wl-invoicing: one company budget version: its status, who prepared,
+    submitted and approved it, the approval card, the figures (an amount per
+    category and month) and the history. A draft has the submit action and the
+    sheets that set an amount over a range of months, remove a line, import
+    pasted CSV (with a dry run) and discard it. Replace it with
+    resources/views/wl-invoicing/budget.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="budget.name" :back="route('wl_invoicing.budgets')" :back-label="tx['budget.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="can_edit">
+        <rx-confirm :id="'submit-budget-' ~ budget.id" :label="tx['budget.submit.action']" :action="route('wl_invoicing.budget_submit', budget.id)" method="POST"
+                    :title="tx['budget.submit.confirm_title']" :message="tx['budget.submit.confirm_message']" :confirm-label="tx['budget.submit.action']" icon="send"/>
+        <rx-include template="wl-invoicing/_budget_sheets.html"/>
+      </template>
+    </rx-page-header>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card :title="tx['budget.sections.summary']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['budget.fields.entity']" :value="entity"/>
+        <rx-entry :label="tx['budget.fields.year']" :value="budget.fiscal_year"/>
+        <rx-entry :label="tx['budget.fields.version']" :value="budget.version"/>
+        <rx-entry :label="tx['budget.fields.start']" :value="start_label"/>
+        <rx-entry :label="tx['budget.fields.prepared_by']" :value="prepared_by" placeholder="-"/>
+        <rx-entry :label="tx['budget.fields.submitted_by']" :value="submitted_by" placeholder="-"/>
+        <rx-entry :label="tx['budget.fields.approved_by']" :value="approved_by" placeholder="-"/>
+        <rx-entry :label="tx['budget.fields.approved_at']" :value="budget.approved_at" format="date" placeholder="-"/>
+        <rx-entry rx-if="budget.revision_reason" :label="tx['budget.fields.revision_reason']" :value="budget.revision_reason"/>
+        <rx-entry rx-if="budget.return_reason" :label="tx['budget.fields.return_reason']" :value="budget.return_reason"/>
+        <rx-entry rx-if="budget.discard_reason" :label="tx['budget.fields.discard_reason']" :value="budget.discard_reason"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['budget.sections.lines']">
+      <rx-simple-table :head="head" :caption="tx['budget.sections.lines']">
+        <tr rx-for="row in rows">
+          <td>{{ row.category }}</td>
+          <td rx-for="cell in row.cells">{{ cell }}</td>
+          <td>{{ row.total }}</td>
+        </tr>
+      </rx-simple-table>
+      <rx-empty rx-if="not rows" :title="tx['budget.lines.empty']" icon="list"/>
+    </rx-card>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

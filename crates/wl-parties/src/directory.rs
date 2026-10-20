@@ -12,7 +12,8 @@
 //!
 //! The billing identity gives `wl-invoicing` what an invoice is addressed
 //! to: the legal names, the company's TRN when it is VAT registered, and the
-//! primary (else the first) address and e-mail contact points.
+//! primary (else the first) address and e-mail contact points, and the
+//! company's e-invoicing recipient identifier when it has one.
 
 use renox::prelude::*;
 use wl_kernel::notify::{
@@ -229,6 +230,11 @@ impl Party {
                 .filter(|trn| !trn.trim().is_empty()),
             billing_address: first(ContactType::Address),
             billing_email: first(ContactType::Email),
+            einvoice_recipient_id: company
+                .and_then(|c| c.einvoice_recipient_id.as_deref())
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned),
         }
     }
 }
@@ -401,6 +407,7 @@ mod tests {
             party_id: 7,
             vat_registered: true,
             trn: Some("100000000000003".into()),
+            einvoice_recipient_id: Some("0235:100000000000003".into()),
             ..Default::default()
         };
         let points = [
@@ -418,6 +425,10 @@ mod tests {
             Some("Office 12, Deira, Dubai")
         );
         assert_eq!(identity.billing_email.as_deref(), Some("ap@alnoor.ae"));
+        assert_eq!(
+            identity.einvoice_recipient_id.as_deref(),
+            Some("0235:100000000000003")
+        );
 
         let unregistered = CompanyDetails {
             vat_registered: false,

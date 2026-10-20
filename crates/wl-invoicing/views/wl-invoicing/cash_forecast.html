@@ -1,0 +1,76 @@
+{#- wl-invoicing: the cash-flow forecast, read only: the weeks across, the
+    opening balance, the receipts and payments of each week (each opens the
+    lines behind it), the projected balance, the memo lines that are shown and
+    not counted, the warnings, the opening balance of each bank account and,
+    for cashflow.manage, the opening cash balances entered by hand. Replace it
+    with resources/views/wl-invoicing/cash_forecast.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['cash.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['cash.title']" :subtitle="tx['cash.subtitle']"/>
+    <rx-form method="GET" action="{{ route('wl_invoicing.cash_forecast') }}">
+      <rx-row>
+        <rx-select name="entity" :label="tx['cash.entity']" :options="entities" :selected="entity" id="cash-forecast-entity"/>
+        <rx-button type="submit" :label="tx['cash.show']"/>
+      </rx-row>
+    </rx-form>
+    <rx-alert rx-for="warning in warnings" kind="warning" :message="warning"/>
+    <rx-simple-table :head="head" :caption="tx['cash.title']">
+      <tr rx-for="row in rows">
+        <td>{{ row.name }}</td>
+        <td rx-for="cell in row.cells">
+          <a rx-if="cell.href" href="{{ cell.href }}">{{ cell.text }}</a>
+          <span rx-if="not cell.href">{{ cell.text }}</span>
+        </td>
+      </tr>
+    </rx-simple-table>
+    <template rx-if="later">
+      <rx-table :rows="later" as="item" :key="item.label ~ item.date" :caption="later_caption" card>
+        <rx-column :label="tx['cash.cell.line']">{{ item.label }}</rx-column>
+        <rx-column :label="tx['cash.cell.date']">{{ item.date }}</rx-column>
+        <rx-column :label="tx['cash.cell.amount']">{{ item.amount }}</rx-column>
+      </rx-table>
+      <p>{{ tx['cash.later_hint'] }} {{ tx['cash.cell.total'] }}: <strong>{{ later_total }}</strong></p>
+    </template>
+    <rx-table :rows="openings" as="opening" :key="opening.account" :caption="tx['cash.accounts']" card>
+      <rx-column :label="tx['cash.account']">{{ opening.entity }} {{ opening.account }}</rx-column>
+      <rx-column :label="tx['cash.balance_of']">{{ opening.balance }}</rx-column>
+      <rx-column :label="tx['cash.as_of']" hide-narrow>{{ opening.as_of }}</rx-column>
+      <rx-column :label="tx['cash.source']" hide-narrow>{{ opening.source }}</rx-column>
+      <rx-column :label="tx['cash.movements']" hide-narrow>{{ opening.movements }}</rx-column>
+      <rx-column :label="tx['cash.opening']">{{ opening.opening }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cash.no_accounts']" :message="tx['cash.no_accounts_hint']" icon="landmark"/></rx-slot>
+    </rx-table>
+    <template rx-if="can_manage">
+      <rx-form route="wl_invoicing.cash_balances.store" novalidate>
+        <rx-card :title="tx['cash.balances.add']">
+          <rx-form-errors/>
+          <rx-form-grid columns="2">
+            <rx-select name="legal_entity_id" :label="tx['cash.entity']" :options="form_entities" required/>
+            <rx-input name="bank_account" :label="tx['cash.account']" required/>
+            <rx-input name="amount" :label="tx['cash.balances.amount']" :hint="tx['cash.balances.amount_hint']" required/>
+            <rx-input name="as_of" type="date" :label="tx['cash.as_of']" :value="today" required/>
+            <rx-input name="note" :label="tx['cash.balances.note']"/>
+          </rx-form-grid>
+          <div class="rx-card__footer"><rx-button :label="tx['cash.balances.save']"/></div>
+        </rx-card>
+      </rx-form>
+      <rx-table :rows="history" as="balance" :key="balance.id" :caption="tx['cash.balances.history']" card>
+        <rx-column :label="tx['cash.account']">{{ balance.entity }} {{ balance.account }}</rx-column>
+        <rx-column :label="tx['cash.balances.amount']">{{ balance.amount }}</rx-column>
+        <rx-column :label="tx['cash.as_of']">{{ balance.as_of }}</rx-column>
+        <rx-column :label="tx['cash.balances.note']" hide-narrow>{{ balance.note }}</rx-column>
+        <rx-column :label="tx['cash.balances.status']" hide-narrow>
+          <rx-badge rx-if="balance.voided" kind="warning" :text="tx['cash.balances.voided'] ~ ': ' ~ balance.void_reason"/>
+        </rx-column>
+        <rx-column label="">
+          <template rx-if="balance.can_void">
+            <rx-action-sheet :id="'void-balance-' ~ balance.id" :label="tx['cash.balances.void']" :action="route('wl_invoicing.cash_balances.void', balance.id)"
+                             :title="tx['cash.balances.void_title']" :submit-label="tx['cash.balances.void']" icon="ban" danger>
+              <rx-textarea name="reason" :label="tx['cash.balances.void_reason']" :id="'void-reason-' ~ balance.id" required/>
+            </rx-action-sheet>
+          </template>
+        </rx-column>
+      </rx-table>
+    </template>
+  </rx-stack>
+</rx-page>

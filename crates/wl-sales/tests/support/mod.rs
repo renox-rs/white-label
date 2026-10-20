@@ -3,9 +3,14 @@
 
 #![allow(dead_code)]
 
+use std::sync::{Arc, Mutex};
+
 use renox::auth::{Auth, Permissions, permissions};
 use renox::prelude::*;
 use renox::testing::TestApp;
+use wl_kernel::sales::{
+    CustomerAcquired, CustomerAcquisitionChanged, LeadCreated, LeadLost, LeadWinReverted, LeadWon,
+};
 use wl_sales::WlSales;
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -79,6 +84,12 @@ impl Module for Noop {
 
 /// [`boot`] with one more module (a recorder of events or messages).
 pub async fn boot_with(extra: impl Module) -> Booted {
+    boot_configured(WlSales::new(), extra).await
+}
+
+/// [`boot_with`] with `sales` as the sales module, for a test that changes
+/// the settings.
+pub async fn boot_configured(sales: WlSales, extra: impl Module) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -87,7 +98,7 @@ pub async fn boot_with(extra: impl Module) -> Booted {
         .module(Auth::new())
         .module(Permissions)
         .module(renox::audit::Audit)
-        .module(WlSales::new())
+        .module(sales)
         .module(extra);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -98,4 +109,61 @@ pub async fn boot_with(extra: impl Module) -> Booted {
         .await
         .expect("sales:install runs");
     Booted { app, _views: views }
+}
+
+/// The lead and acquisition events a test saw, recorded by a module that
+/// listens to them.
+#[derive(Clone, Default)]
+pub struct Events {
+    /// `LeadCreated`.
+    pub created: Arc<Mutex<Vec<LeadCreated>>>,
+    /// `LeadWon`.
+    pub won: Arc<Mutex<Vec<LeadWon>>>,
+    /// `LeadLost`.
+    pub lost: Arc<Mutex<Vec<LeadLost>>>,
+    /// `LeadWinReverted`.
+    pub reverted: Arc<Mutex<Vec<LeadWinReverted>>>,
+    /// `CustomerAcquired`.
+    pub acquired: Arc<Mutex<Vec<CustomerAcquired>>>,
+    /// `CustomerAcquisitionChanged`.
+    pub changed: Arc<Mutex<Vec<CustomerAcquisitionChanged>>>,
+}
+
+/// Records `event`s of type `E` into `log`.
+fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Arc<Mutex<Vec<E>>>) {
+    let log = log.clone();
+    app.listen(move |event: E, _state: AppState| {
+        let log = log.clone();
+        async move {
+            log.lock().unwrap().push(event);
+            Ok(())
+        }
+    });
+}
+
+impl Module for Events {
+    fn name(&self) -> &'static str {
+        "events"
+    }
+
+    fn register(&self, app: &mut Registry) {
+        record(app, &self.created);
+        record(app, &self.won);
+        record(app, &self.lost);
+        record(app, &self.reverted);
+        record(app, &self.acquired);
+        record(app, &self.changed);
+    }
+}
+
+/// `WlSales` with the recorded events.
+pub async fn boot_events() -> (Booted, Events) {
+    boot_events_with(WlSales::new()).await
+}
+
+/// [`boot_events`] with `sales` as the sales module.
+pub async fn boot_events_with(sales: WlSales) -> (Booted, Events) {
+    let events = Events::default();
+    let t = boot_configured(sales, events.clone()).await;
+    (t, events)
 }

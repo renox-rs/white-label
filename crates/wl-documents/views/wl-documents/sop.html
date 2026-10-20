@@ -42,6 +42,31 @@
         </rx-action-sheet>
       </rx-stack>
     </rx-card>
+    <rx-card rx-for="report in acks" :title="tx['acks.report'] ~ ' ' ~ report.version">
+      <rx-stack>
+        <rx-row>
+          <rx-badge kind="success" :text="tx['acks.acknowledged_count'] ~ ': ' ~ (report.acknowledged | length)"/>
+          <rx-badge kind="warning" :text="tx['acks.pending_count'] ~ ': ' ~ (report.pending | length)"/>
+          <rx-badge rx-if="report.overdue" kind="error" :text="tx['acks.overdue'] ~ ': ' ~ report.overdue"/>
+        </rx-row>
+        <rx-table rx-if="report.acknowledged" :rows="report.acknowledged" as="a" :key="a.reader ~ a.when" :caption="tx['acks.acknowledged_list']">
+          <rx-column :label="tx['acks.reader']">{{ a.reader }}</rx-column>
+          <rx-column :label="tx['acks.at']">{{ a.when }}</rx-column>
+          <rx-column :label="tx['acks.method']" hide-narrow>{{ a.method }}</rx-column>
+          <rx-column :label="tx['sops.fields.language']" hide-narrow>{{ a.language }}</rx-column>
+          <rx-column :label="tx['acks.witness']" hide-narrow>{{ a.witness or tx['none'] }}</rx-column>
+        </rx-table>
+        <rx-table rx-if="report.pending" :rows="report.pending" as="p" :key="p.reader ~ p.when" :caption="tx['acks.pending_list']">
+          <rx-column :label="tx['acks.reader']">{{ p.reader }}</rx-column>
+          <rx-column :label="tx['acks.due']">{{ p.when }} <rx-badge rx-if="p.overdue" kind="error" :text="tx['acks.overdue']"/></rx-column>
+          <rx-column :label="tx['acks.reminders']" align="num" hide-narrow>{{ p.reminders }}</rx-column>
+        </rx-table>
+        <rx-table rx-if="report.in_person" :rows="report.in_person" as="w" :key="w.witness" :caption="tx['acks.in_person_records']">
+          <rx-column :label="tx['acks.witness']">{{ w.witness }}</rx-column>
+          <rx-column :label="tx['acks.readers']">{{ w.readers }}</rx-column>
+        </rx-table>
+      </rx-stack>
+    </rx-card>
     <template rx-for="version in versions">
       <rx-table :rows="[version]" as="v" :key="v.id" :caption="tx['sops.versions.title'] ~ ' ' ~ version.label" card>
         <rx-column :label="tx['sops.fields.version']">{{ v.label }}</rx-column>

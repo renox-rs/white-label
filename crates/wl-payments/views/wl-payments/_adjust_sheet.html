@@ -1,0 +1,11 @@
+{#- wl-payments: the "adjust" action on a held deposit, a sheet with the new
+    amount its agreement requires, the version of the agreement and the day the
+    change takes effect. Replace it with
+    resources/views/wl-payments/_adjust_sheet.html in the app. -#}
+<rx-action-sheet :id="'adjust-deposit-' ~ deposit.id" :label="tx['deposits.adjust.action']" :action="route('wl_payments.deposits.adjust', deposit.id)"
+                 :title="tx['deposits.adjust.title']" :description="tx['deposits.adjust.description']" :submit-label="tx['deposits.adjust.submit']"
+                 icon="scale">
+  <rx-input name="new_amount" :label="tx['deposits.adjust.new_amount']" :hint="tx['fields.amount_hint']" :id="'adjust-amount-' ~ deposit.id" required/>
+  <rx-input name="source_version" type="number" :label="tx['deposits.adjust.version']" :hint="tx['deposits.adjust.version_hint']" :id="'adjust-version-' ~ deposit.id" required/>
+  <rx-input name="effective_on" type="date" :label="tx['deposits.adjust.effective_on']" :id="'adjust-date-' ~ deposit.id" required/>
+</rx-action-sheet>

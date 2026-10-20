@@ -481,7 +481,10 @@ confirmed `⚠ open: lawyer (L-19)` (§10).
   languages), approvals (deletion batches), automation rules.
 - `wl-notify`: delivery of reminders, review requests and signature links.
 - `wl-parties`: signers and notified parties; party consents for notifications.
-- `wl-hr`: `Workforce::employees_in(role, scope)` for SOP required readers (employees in
+- `wl-hr`: `Workforce` for SOP required readers: `all_staff` and `staff` (the employee's
+  role, scopes, account, legal entity, manager and leave; a reader is matched against the
+  SOP's readers with `employees_in`'s rule) and `employee_of_user` for the staff inbox
+  (employees in
   `onboarding`, `active`, `on_leave` or `notice`; reminders go only to readers it lists
   and not `on_leave`); events `OnboardingStarted`, `EmployeeAssignmentChanged`,
   `EmployeeExited`, `EmployeeDeceased` and `EmployeeOnboardingCancelled` for

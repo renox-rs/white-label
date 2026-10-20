@@ -1,0 +1,23 @@
+{#- wl-invoicing: the lines behind one cell of the cash-flow forecast, with
+    the documents they stand for. Replace it with
+    resources/views/wl-invoicing/cash_forecast_cell.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :back="back" :back-label="tx['cash.title']"/>
+    <rx-table :rows="lines" as="line" :key="line.label ~ line.date" card>
+      <rx-column :label="tx['cash.cell.line']">{{ line.label }}</rx-column>
+      <rx-column :label="tx['cash.cell.kind']" hide-narrow>{{ line.kind }}</rx-column>
+      <rx-column :label="tx['cash.cell.party']" hide-narrow>{{ line.party }}</rx-column>
+      <rx-column :label="tx['cash.cell.date']" hide-narrow>{{ line.date }}</rx-column>
+      <rx-column :label="tx['cash.cell.amount']">{{ line.amount }}</rx-column>
+      <rx-column :label="tx['cash.cell.flags']" hide-narrow>
+        <rx-badge rx-for="flag in line.flags" kind="warning" :text="flag"/>
+      </rx-column>
+      <rx-column label="">
+        <a rx-for="link in line.links" href="{{ link[1] }}">{{ link[0] }}</a>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cash.cell.empty']" :message="tx['cash.cell.empty_hint']" icon="list"/></rx-slot>
+    </rx-table>
+    <p>{{ tx['cash.cell.total'] }}: <strong>{{ total }}</strong></p>
+  </rx-stack>
+</rx-page>

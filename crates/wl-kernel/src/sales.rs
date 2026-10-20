@@ -5,16 +5,28 @@
 //! and the verticals may listen. Campaigns are referred to by [`CampaignId`]
 //! or as a [`Subject`] of type [`CAMPAIGN_SUBJECT_TYPE`].
 //!
+//! Leads and the acquisition of customers (BL-SAL-20): `wl-sales` emits the
+//! lead events ([`LeadCreated`], [`LeadWon`], [`LeadLost`],
+//! [`LeadWinReverted`]) and [`CustomerAcquired`] / [`CustomerAcquisitionChanged`].
+//! A vertical whose first sale is its own record reports it through
+//! [`CampaignAttribution`] and marks a lead won through [`LeadConversion`];
+//! without `sales` both fall back to [`NoCampaignAttribution`] and
+//! [`NoLeadConversion`], which do nothing.
+//!
 //! The purpose and the marketing channel are the stored names of the
 //! `wl-sales` enums (e.g. `acquisition`, `meta`), so the kernel holds no copy
 //! of those lists.
 
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::parties::PartyId;
 use crate::subject::Subject;
 
 /// The subject type of a campaign, for [`Subject`] references.
@@ -87,6 +99,352 @@ pub struct CampaignEnded {
 
 impl Event for CampaignEnded {}
 
+/// The subject type of a lead, for [`Subject`] references.
+pub const LEAD_SUBJECT_TYPE: &str = "sales.lead";
+
+/// The id of a lead.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct LeadId(pub i64);
+
+impl LeadId {
+    /// The lead as a [`Subject`]: `sales.lead:5`.
+    pub fn subject(self) -> Subject {
+        Subject::new(LEAD_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for LeadId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for LeadId {
+    fn from(id: i64) -> Self {
+        LeadId(id)
+    }
+}
+
+/// A lead was created (by staff, a web form or an import).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeadCreated {
+    /// The lead.
+    pub lead: LeadId,
+    /// The party, if the lead has one yet.
+    pub party: Option<PartyId>,
+    /// The code of the lead source.
+    pub source: String,
+    /// The campaign it is attributed to, if any.
+    pub campaign: Option<CampaignId>,
+    /// The staff member who owns it.
+    pub owner: Option<i64>,
+}
+
+impl Event for LeadCreated {}
+
+/// A lead was won (`win`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeadWon {
+    /// The lead.
+    pub lead: LeadId,
+    /// The party that became a customer.
+    pub party: Option<PartyId>,
+    /// The code of the lead source.
+    pub source: String,
+    /// The staff member who owns it.
+    pub owner: Option<i64>,
+    /// The vertical's conversion record.
+    pub converted: Subject,
+}
+
+impl Event for LeadWon {}
+
+/// A lead was lost (`lose`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeadLost {
+    /// The lead.
+    pub lead: LeadId,
+    /// The party, if any.
+    pub party: Option<PartyId>,
+    /// The code of the lead source.
+    pub source: String,
+    /// The staff member who owns it.
+    pub owner: Option<i64>,
+    /// The lost reason, e.g. `duplicate` or `spam_or_invalid`.
+    pub reason: String,
+}
+
+impl Event for LeadLost {}
+
+/// A won lead went back to `qualified` because its conversion record was
+/// voided as entered in error (`revert_win`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeadWinReverted {
+    /// The lead.
+    pub lead: LeadId,
+    /// The party, if any.
+    pub party: Option<PartyId>,
+    /// The voided conversion record.
+    pub voided: Subject,
+}
+
+impl Event for LeadWinReverted {}
+
+/// A party's first sale was linked: it is a new customer. Sent once per
+/// party.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomerAcquired {
+    /// The party.
+    pub party: PartyId,
+    /// The code of the source of the acquisition.
+    pub source: String,
+    /// The campaign, if any.
+    pub campaign: Option<CampaignId>,
+    /// The first sale.
+    pub first_sale: Subject,
+    /// Its value excluding VAT, in fils of AED.
+    pub value: i64,
+}
+
+impl Event for CustomerAcquired {}
+
+/// A party acquisition changed: its first sale was replaced or cleared, its
+/// source or campaign was changed (`SAL.ACL.09`), or it was superseded by a
+/// merge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomerAcquisitionChanged {
+    /// The party.
+    pub party: PartyId,
+    /// The source code before.
+    pub old_source: Option<String>,
+    /// The source code after.
+    pub new_source: Option<String>,
+    /// The campaign before.
+    pub old_campaign: Option<CampaignId>,
+    /// The campaign after.
+    pub new_campaign: Option<CampaignId>,
+    /// The first sale before.
+    pub old_first_sale: Option<Subject>,
+    /// The first sale after.
+    pub new_first_sale: Option<Subject>,
+    /// Why: the reason of a staff change, or `first_sale_replaced`,
+    /// `first_sale_cleared`, `first_sale_credited`, `lead_win_reverted`,
+    /// `merged`.
+    pub reason: String,
+}
+
+impl Event for CustomerAcquisitionChanged {}
+
+/// The future the sales contract's methods return.
+pub type SalesFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// What an attribution is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AttributionTarget {
+    /// A party's acquisition.
+    Party(PartyId),
+    /// A lead.
+    Lead(LeadId),
+}
+
+/// Where a party or lead came from: [`CampaignAttribution::attribute`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attribute {
+    /// The party or lead.
+    pub target: AttributionTarget,
+    /// The code of the lead source.
+    pub source: String,
+    /// The code of the campaign, if known (the web form link code or the
+    /// promo code).
+    pub campaign: Option<String>,
+    /// What set it: `lead`, `staff`, `web_form`, `promo_code` or `import`.
+    pub set_from: String,
+}
+
+impl Attribute {
+    /// The acquisition of `party` came from `source`.
+    pub fn party(party: PartyId, source: &str) -> Self {
+        Attribute {
+            target: AttributionTarget::Party(party),
+            source: source.to_owned(),
+            campaign: None,
+            set_from: "staff".to_owned(),
+        }
+    }
+
+    /// The lead `lead` came from `source`.
+    pub fn lead(lead: LeadId, source: &str) -> Self {
+        Attribute {
+            target: AttributionTarget::Lead(lead),
+            source: source.to_owned(),
+            campaign: None,
+            set_from: "staff".to_owned(),
+        }
+    }
+
+    /// With the campaign code.
+    pub fn campaign(mut self, code: &str) -> Self {
+        self.campaign = Some(code.to_owned());
+        self
+    }
+
+    /// Set from `from`.
+    pub fn set_from(mut self, from: &str) -> Self {
+        self.set_from = from.to_owned();
+        self
+    }
+}
+
+/// A sale of a party, reported as a candidate for its first sale:
+/// [`CampaignAttribution::record_first_sale`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FirstSale {
+    /// The party that bought.
+    pub party: PartyId,
+    /// The sale: a confirmed sales order, a completed counter sale, an issued
+    /// invoice, or the vertical's conversion record.
+    pub subject: Subject,
+    /// Its value excluding VAT, in fils of AED.
+    pub value: i64,
+    /// Its document date.
+    pub date: NaiveDate,
+    /// The branch of the sale, if any.
+    pub branch: Option<Subject>,
+    /// The legal entity of the sale, if known.
+    pub legal_entity_id: Option<i64>,
+}
+
+impl FirstSale {
+    /// A sale of `party`.
+    pub fn new(party: PartyId, subject: Subject, value: i64, date: NaiveDate) -> Self {
+        FirstSale {
+            party,
+            subject,
+            value,
+            date,
+            branch: None,
+            legal_entity_id: None,
+        }
+    }
+
+    /// At `branch`.
+    pub fn branch(mut self, branch: Subject) -> Self {
+        self.branch = Some(branch);
+        self
+    }
+
+    /// Of the legal entity `id`.
+    pub fn legal_entity(mut self, id: i64) -> Self {
+        self.legal_entity_id = Some(id);
+        self
+    }
+}
+
+/// What verticals ask of the campaign attribution (wl-sales §6). `wl-sales`
+/// provides it; without that module, [`campaign_attribution`] gives
+/// [`NoCampaignAttribution`].
+pub trait CampaignAttribution: Send + Sync + 'static {
+    /// Records where a party or lead came from. Never overwrites: a party
+    /// that already has an acquisition keeps it. Returns whether it was
+    /// recorded. The default records nothing.
+    fn attribute<'a>(&'a self, _state: &'a AppState, _request: Attribute) -> SalesFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Reports a sale of a party. The party's first sale is linked when it
+    /// has none yet; a later call for the same party keeps the first and
+    /// only remembers the sale, in case the first is voided, cancelled or
+    /// credited in full. Returns whether `sale` is the party's first sale
+    /// (also when it was already). The default does nothing.
+    fn record_first_sale<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _sale: FirstSale,
+    ) -> SalesFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Tells that a reported sale was cancelled or voided; the nightly run
+    /// links the party's next sale as the first. The default does nothing.
+    fn sale_gone<'a>(&'a self, _state: &'a AppState, _sale: Subject) -> SalesFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// The campaign attribution when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCampaignAttribution;
+
+impl CampaignAttribution for NoCampaignAttribution {}
+
+/// Makes `attribution` the app's [`CampaignAttribution`]; `wl-sales` calls
+/// it in `register`.
+pub fn provide_campaign_attribution(app: &mut Registry, attribution: impl CampaignAttribution) {
+    let attribution: Arc<dyn CampaignAttribution> = Arc::new(attribution);
+    app.provide(attribution);
+}
+
+/// The app's [`CampaignAttribution`], or [`NoCampaignAttribution`] when none
+/// is provided.
+pub fn campaign_attribution(state: &AppState) -> Arc<dyn CampaignAttribution> {
+    match state.provided::<Arc<dyn CampaignAttribution>>() {
+        Some(attribution) => Arc::clone(&attribution),
+        None => Arc::new(NoCampaignAttribution),
+    }
+}
+
+/// What verticals ask to mark a lead won from their conversion event
+/// (wl-sales §4.1). `wl-sales` provides it.
+pub trait LeadConversion: Send + Sync + 'static {
+    /// Runs `win` on `lead` with the vertical's conversion record. Returns
+    /// whether the lead was won (it is `contacted` or `qualified`). The
+    /// default wins nothing.
+    fn win<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _lead: LeadId,
+        _converted: Subject,
+    ) -> SalesFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Runs `win` on the newest open (`contacted` or `qualified`) lead of
+    /// `party`. Returns whether a lead was won. The default wins nothing.
+    fn win_for_party<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _party: PartyId,
+        _converted: Subject,
+    ) -> SalesFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// The lead conversion when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoLeadConversion;
+
+impl LeadConversion for NoLeadConversion {}
+
+/// Makes `conversion` the app's [`LeadConversion`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_lead_conversion(app: &mut Registry, conversion: impl LeadConversion) {
+    let conversion: Arc<dyn LeadConversion> = Arc::new(conversion);
+    app.provide(conversion);
+}
+
+/// The app's [`LeadConversion`], or [`NoLeadConversion`] when none is
+/// provided.
+pub fn lead_conversion(state: &AppState) -> Arc<dyn LeadConversion> {
+    match state.provided::<Arc<dyn LeadConversion>>() {
+        Some(conversion) => Arc::clone(&conversion),
+        None => Arc::new(NoLeadConversion),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +496,53 @@ mod tests {
             renox::serde_json::from_str::<CampaignEnded>(&json).unwrap(),
             ended
         );
+    }
+
+    #[test]
+    fn a_lead_id_is_a_subject_and_the_attribution_builders_set_their_parts() {
+        assert_eq!(LeadId(5).subject(), Subject::new("sales.lead", 5));
+        let request = Attribute::party(PartyId(3), "paid_ads")
+            .campaign("SPRING26")
+            .set_from("web_form");
+        assert_eq!(request.target, AttributionTarget::Party(PartyId(3)));
+        assert_eq!(request.campaign.as_deref(), Some("SPRING26"));
+        assert_eq!(request.set_from, "web_form");
+        assert_eq!(Attribute::lead(LeadId(1), "walk_in").set_from, "staff");
+        let day = NaiveDate::from_ymd_opt(2026, 4, 2).unwrap();
+        let sale = FirstSale::new(
+            PartyId(3),
+            Subject::new("invoicing.invoice", 9),
+            200_000,
+            day,
+        )
+        .legal_entity(1);
+        assert_eq!(sale.legal_entity_id, Some(1));
+        assert!(sale.branch.is_none());
+    }
+
+    #[test]
+    fn the_acquisition_events_round_trip_through_json() {
+        let acquired = CustomerAcquired {
+            party: PartyId(3),
+            source: "paid_ads".into(),
+            campaign: Some(CampaignId(1)),
+            first_sale: Subject::new("invoicing.invoice", 9),
+            value: 200_000,
+        };
+        let json = renox::serde_json::to_string(&acquired).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<CustomerAcquired>(&json).unwrap(),
+            acquired
+        );
+        let won = LeadWon {
+            lead: LeadId(2),
+            party: Some(PartyId(3)),
+            source: "referral".into(),
+            owner: None,
+            converted: Subject::new("test.conversion", 1),
+        };
+        let json = renox::serde_json::to_value(&won).unwrap();
+        assert_eq!(json["lead"], 2);
+        assert!(json["owner"].is_null());
     }
 }

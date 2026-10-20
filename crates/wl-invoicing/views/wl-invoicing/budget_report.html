@@ -1,0 +1,39 @@
+{#- wl-invoicing: budget vs actual per category for a month or the year to date,
+    for one legal entity or for all of the user's entities: budget, actual,
+    variance in AED and %, marked when unfavourable; the operating result; the
+    owner drawings below it (their total only, unless the user holds
+    drawings.approve); the result after drawings. Replace it with
+    resources/views/wl-invoicing/budget_report.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['budget.report.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['budget.report.title']" :subtitle="tx['budget.report.subtitle']"/>
+    <rx-form method="GET" action="{{ route('wl_invoicing.budget_report') }}">
+      <rx-row>
+        <rx-select name="entity" :label="tx['budget.report.entity']" :options="entities" :selected="entity" id="budget-report-entity"/>
+        <rx-input name="month" type="month" :label="tx['budget.report.month']" :value="month" id="budget-report-month"/>
+        <rx-checkbox name="ytd" :label="tx['budget.report.ytd']" :checked="ytd" id="budget-report-ytd"/>
+        <rx-button type="submit" :label="tx['budget.report.show']"/>
+      </rx-row>
+    </rx-form>
+    <rx-alert rx-if="without_budget" kind="warning" :message="tx['budget.report.no_budget'] ~ ' ' ~ without_budget"/>
+    <rx-simple-table :head="head" :caption="tx['budget.report.title']">
+      <tr rx-for="row in rows">
+        <td>{{ row.name }}</td>
+        <td>{{ row.budget }}</td>
+        <td>{{ row.actual }}</td>
+        <td>{{ row.variance }}</td>
+        <td>{{ row.percent }}</td>
+        <td><rx-badge rx-if="row.unfavourable" kind="warning" :text="tx['budget.report.unfavourable']"/></td>
+      </tr>
+    </rx-simple-table>
+    <rx-alert rx-if="mapping_changed" kind="info" :message="tx['budget.report.mapping_changed'] ~ ' ' ~ mapping_changed"/>
+    <rx-table rx-if="drawings_detail and drawings" :rows="drawings" as="item" :key="item.description" :caption="tx['budget.report.drawings_lines']" card>
+      <rx-column :label="tx['budget.report.month']">{{ item.month }}</rx-column>
+      <rx-column :label="tx['budget.report.description']">{{ item.description }}</rx-column>
+      <rx-column :label="tx['budget.report.payee']" hide-narrow>{{ item.payee }}</rx-column>
+      <rx-column :label="tx['budget.report.amount']">{{ item.amount }}</rx-column>
+      <rx-column :label="tx['budget.report.self_approved']"><rx-badge rx-if="item.self_approved" kind="warning" :text="tx['budget.report.self_approved']"/></rx-column>
+      <rx-column label=""><a rx-if="item.link" href="{{ item.link }}">{{ tx['budget.report.open'] }}</a></rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>

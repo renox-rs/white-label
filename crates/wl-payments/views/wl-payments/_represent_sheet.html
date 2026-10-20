@@ -1,0 +1,11 @@
+{#- wl-payments: the "present again" action on a bounced cheque's page, a
+    sheet with the new presentation date, the party's confirmation of funds
+    and a note. Replace it with
+    resources/views/wl-payments/_represent_sheet.html in the app. -#}
+<rx-action-sheet :id="'represent-cheque-' ~ cheque.id" :label="tx['cheques.represent.action']" :action="route('wl_payments.cheques.represent', cheque.id)"
+                 :title="tx['cheques.represent.title']" :description="tx['cheques.represent.description']" :submit-label="tx['cheques.represent.submit']"
+                 icon="repeat">
+  <rx-input name="date" type="date" :label="tx['cheques.represent.date']" :min="today" :id="'represent-date-' ~ cheque.id" required/>
+  <rx-checkbox name="funds_confirmed" :label="tx['cheques.represent.funds']" :id="'represent-funds-' ~ cheque.id"/>
+  <rx-textarea name="note" :label="tx['cheques.represent.note']" :hint="tx['cheques.represent.note_hint']" :id="'represent-note-' ~ cheque.id"/>
+</rx-action-sheet>

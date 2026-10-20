@@ -65,8 +65,15 @@ pub struct Payment {
     pub prepaid_type: Option<String>,
     /// The id of the record paid in advance for.
     pub prepaid_id: Option<i64>,
-    /// What the money is for; `none` until owner drawings and the like.
+    /// What the money is for: `none`, or `owner_drawings` (an owner drawing
+    /// out, a repayment by the owner in; `FIN.ACL.21`).
     pub purpose: String,
+    /// The code of the drawings category of an owner drawings payment.
+    pub drawing_category: Option<String>,
+    /// The drawing request it was recorded from (`FIN.ACL.21`).
+    pub drawing_request_id: Option<i64>,
+    /// Whether the sole owner approved the drawing alone (`FIN.ACL.23`).
+    pub self_approved: bool,
     /// The user who recorded it; `None` for the system.
     pub recorded_by: Option<i64>,
     /// The gateway's dispute reference (chargeback flow).

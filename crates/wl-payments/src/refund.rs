@@ -22,10 +22,11 @@
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::documents::today;
+use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::payments::{
     DepositId, Direction, PAYMENT_SUBJECT_TYPE, PaymentId, PaymentMethod, PaymentSource,
     RecordPayment, RefundFailureKind, RefundId, RefundSource as KernelRefundSource, ReversalReason,
+    UnpaidRefund,
 };
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
@@ -39,6 +40,35 @@ use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
 use crate::refund_fail::{FAIL, FAIL_BY_SYSTEM, FailInput};
 use crate::refund_machine::{APPROVE, PAY, PAY_BY_SYSTEM, PayBySystemInput, PayInput, REJECT};
 use crate::reverse;
+
+/// The refunds of `legal_entity_id` that are `approved` or `failed`: money
+/// still to go out, oldest first (`FIN.CFL.01`). A `requested` refund is not
+/// decided yet, a `cancelled` one is back on the party's credit.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn unpaid(db: &Db, legal_entity_id: i64) -> Result<Vec<UnpaidRefund>> {
+    let refunds = Refund::query()
+        .where_(Refund::LEGAL_ENTITY_ID.eq(legal_entity_id))
+        .where_(Refund::STATUS.is_in([RefundStatus::Approved, RefundStatus::Failed]))
+        .order_by(Refund::ID)
+        .get(db)
+        .await?;
+    Ok(refunds
+        .iter()
+        .map(|refund| UnpaidRefund {
+            id: refund.refund_id(),
+            party: refund.party(),
+            legal_entity_id: refund.legal_entity_id,
+            amount: refund.amount,
+            currency: refund.currency.clone(),
+            failed: refund.status == RefundStatus::Failed,
+            approved_on: refund.approved_at.map(dubai_date),
+            source: refund.source_subject(),
+        })
+        .collect())
+}
 
 /// The lifecycle state of a refund (wl-payments §4); the state of the
 /// Refund machine.
@@ -175,6 +205,14 @@ pub struct Refund {
     pub failure_kind: Option<RefundFailureKind>,
     /// The reason given for it.
     pub failure_reason: Option<String>,
+    /// The details a changed method pays to: an IBAN, or the name on a
+    /// cheque that is not the party's (`change_method`).
+    pub payee_details: Option<String>,
+    /// The user who set them: new bank details are approved by someone else
+    /// (`FIN.ACL.04`).
+    pub details_by: Option<i64>,
+    /// Why a failed refund was cancelled.
+    pub cancel_reason: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: RefundStatus,
     /// When the row was created.
@@ -420,7 +458,8 @@ async fn insert_requested_in(
     Ok(refund)
 }
 
-/// The refund of the held amount of `deposit` by `method`, requested by
+/// The refund of `amount` fils of the held amount of `deposit` (what is left
+/// after the published deductions) by `method`, requested by
 /// user `by` in `tx`: the effect of the deposit's `refund`. The deposit
 /// transition checked the user's permission, so none is asked here; the
 /// refund still waits for an approval by another user (`FIN.ACL.04`).
@@ -428,6 +467,7 @@ pub(crate) async fn request_for_deposit_in(
     tx: &mut renox::db::Transaction,
     deposit: &Deposit,
     method: PaymentMethod,
+    amount: i64,
     by: Option<i64>,
 ) -> Result<Refund> {
     let resolved = Resolved {
@@ -441,10 +481,41 @@ pub(crate) async fn request_for_deposit_in(
         by,
         &resolved,
         &KernelRefundSource::Deposit(deposit.deposit_id()),
-        deposit.held_amount,
+        amount,
         Some(method),
         None,
         &format!("Refund of deposit {}", deposit.id),
+    )
+    .await
+}
+
+/// The part refund of `amount` fils of `deposit`, requested by user `by` in
+/// `tx` (`None` = the system): the effect of the deposit's `adjust` for a
+/// decrease. The method is chosen when it is paid. The refund still waits for
+/// an approval by another user (`FIN.ACL.04`); the held amount falls when it is
+/// paid ([`crate::deposit_adjust`]).
+pub(crate) async fn request_part_for_deposit_in(
+    tx: &mut renox::db::Transaction,
+    deposit: &Deposit,
+    amount: i64,
+    by: Option<i64>,
+    reason: &str,
+) -> Result<Refund> {
+    let resolved = Resolved {
+        party: deposit.party(),
+        legal_entity_id: deposit.legal_entity_id,
+        currency: deposit.currency.clone(),
+        refundable: deposit.held_amount,
+    };
+    insert_requested_in(
+        tx,
+        by,
+        &resolved,
+        &KernelRefundSource::Deposit(deposit.deposit_id()),
+        amount,
+        None,
+        None,
+        reason,
     )
     .await
 }
@@ -668,6 +739,9 @@ pub async fn pay(
         return Err(TransitionError::Forbidden);
     }
     let reference = reference.trim();
+    if let Some(message) = part_refund_refusal(state, refund).await? {
+        return Err(TransitionError::Guard(message));
+    }
     if latest_attempt_pending(state, refund).await? {
         return Err(guard("A gateway refund is waiting for the gateway."));
     }
@@ -720,6 +794,34 @@ pub async fn pay(
     reload(state, refund).await
 }
 
+/// The neutral refusal when `refund` is the part refund of a held deposit
+/// adjustment and its party is blocked: the part refund is money out and
+/// waits under `PTY.ACL.03` (it stays `approved`) until the party is
+/// unblocked. Other refunds are guarded where they are requested (the
+/// deposit `refund`) or not at all. Only a question: nothing is written.
+async fn part_refund_refusal(
+    state: &AppState,
+    refund: &Refund,
+) -> std::result::Result<Option<String>, TransitionError> {
+    use wl_kernel::block_guard::{ActionKind, GuardOutcome};
+    let part = crate::deposit_adjust::DepositAdjustment::query()
+        .where_(crate::deposit_adjust::DepositAdjustment::REFUND_ID.eq(refund.id))
+        .first(&state.db)
+        .await?;
+    if part.is_none() {
+        return Ok(None);
+    }
+    let mut tx = state.db.begin().await?;
+    let outcome = wl_kernel::block_guard::guard(state)
+        .check_in(&mut tx, None, refund.party(), ActionKind::MoneyOut)
+        .await?;
+    drop(tx);
+    Ok(match outcome {
+        GuardOutcome::Allowed => None,
+        GuardOutcome::Blocked(refusal) => Some(refusal.message_en()),
+    })
+}
+
 async fn latest_attempt_pending(
     state: &AppState,
     refund: &Refund,
@@ -761,6 +863,9 @@ pub async fn send_to_gateway(
     else {
         return Err(guard("A gateway refund needs the gateway transaction."));
     };
+    if let Some(message) = part_refund_refusal(state, &refund).await? {
+        return Err(TransitionError::Guard(message));
+    }
     if latest_attempt_pending(state, &refund).await? {
         return Err(guard("The refund is already with the gateway."));
     }

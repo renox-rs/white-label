@@ -8,12 +8,13 @@
 //! `record_by_system` and stores the id in `recorded_by`; the calling module
 //! has authorized its user already.
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::Subject;
 use wl_kernel::payments::{
-    AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
-    RefundId, RefundRequest as KernelRefundRequest, ReversalReason,
+    AllocationTarget, BankPayment, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary,
+    RecordPayment, RefundId, RefundRequest as KernelRefundRequest, ReversalReason, UnpaidRefund,
 };
 
 use crate::payment::Payment;
@@ -123,6 +124,29 @@ impl PaymentRecorder for Payments {
                 .map(|refund| RefundId(refund.id))
                 .map_err(|e| e.into_error())
         })
+    }
+
+    fn payments_after<'a>(
+        &'a self,
+        db: &'a Db,
+        legal_entity_id: i64,
+        bank_account: &'a str,
+        after: NaiveDate,
+    ) -> PaymentFuture<'a, Vec<BankPayment>> {
+        Box::pin(credit::payments_after(
+            db,
+            legal_entity_id,
+            bank_account,
+            after,
+        ))
+    }
+
+    fn refunds_unpaid<'a>(
+        &'a self,
+        db: &'a Db,
+        legal_entity_id: i64,
+    ) -> PaymentFuture<'a, Vec<UnpaidRefund>> {
+        Box::pin(refund::unpaid(db, legal_entity_id))
     }
 }
 

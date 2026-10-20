@@ -13,13 +13,28 @@ use renox::chrono::{Days, NaiveDate};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
+use wl_invoicing::bill_machine;
+use wl_invoicing::bill_submit;
+use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
+use wl_invoicing::credit_notes::By;
+use wl_invoicing::supplier_bill::{self, BillDraft};
 use wl_invoicing::vat_summary::{self, VatSummary, VatSummaryStatus};
 use wl_invoicing::{
-    AdjustmentKind, Invoice, InvoicingConfig, VatAdjustment, WlInvoicing, permissions as perm,
+    AdjustmentKind, BudgetCategory, CompanyBudget, Invoice, InvoicingConfig, StartChoice,
+    VatAdjustment, WlInvoicing, permissions as perm,
 };
+use wl_invoicing::{BillLineDraft, DrawingApproval, DrawingStatus, SupplierBill};
 use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalRequest};
+use wl_kernel::bank_statements::{BankBalance, BankStatementFuture, BankStatements};
+use wl_kernel::budgets::{CompanyBudgetApproved, CompanyBudgetVarianceReached};
+use wl_kernel::cash_forecast::CashForecastBelowThreshold;
+use wl_kernel::cheques::{
+    ChequeFuture, ChequeId, ChequeSchedule, ChequeSummary, Cheques, OpenCheque, RegisterCheque,
+};
 use wl_kernel::documents::today;
+use wl_kernel::drawings::OwnerDrawingDecided;
+use wl_kernel::einvoice::{EInvoiceAccepted, EInvoiceRejected};
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
     InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceReopened,
@@ -28,10 +43,14 @@ use wl_kernel::invoicing::{
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, PartyStatus, PartySummary};
 use wl_kernel::payments::{
-    AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
-    RefundId, RefundRequest, ReversalReason,
+    AllocationTarget, BankPayment, Direction, PaymentFuture, PaymentId, PaymentMethod,
+    PaymentRecorder, PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest,
+    ReversalReason, UnpaidRefund,
 };
-use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
+use wl_kernel::tickets::{
+    ContractCover, OpenTicket, ServiceContractCoverage, ServiceContractId, TaskCreator,
+    TicketFuture, TicketId, TicketRef,
+};
 use wl_kernel::{ClientConfig, PartyId, Subject};
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -68,21 +87,44 @@ pub const BLUE_DUNES_EMAIL: &str = "ap@bluedunes.example";
 /// Quiet Sands LLC: no billing e-mail.
 pub const QUIET_SANDS: PartyId = PartyId(2);
 
-/// The parties the tests bill.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct TestDirectory;
+/// A party whose status is `blocked`; it exists only for status reads.
+pub const BLOCKED_PARTY: PartyId = PartyId(3);
+
+/// An individual: a B2C recipient, outside the e-invoicing mandate.
+pub const OMAR: PartyId = PartyId(4);
+
+/// The parties the tests bill. Cloning shares the recipient identifiers a
+/// test sets.
+#[derive(Debug, Clone, Default)]
+pub struct TestDirectory(Arc<Mutex<std::collections::BTreeMap<i64, String>>>);
+
+impl TestDirectory {
+    /// Sets (or clears) the e-invoicing recipient identifier of `party`.
+    pub fn set_recipient(&self, party: PartyId, identifier: Option<&str>) {
+        let mut map = self.0.lock().unwrap();
+        match identifier {
+            Some(id) => map.insert(party.0, id.to_owned()),
+            None => map.remove(&party.0),
+        };
+    }
+}
 
 /// The summary of a test party, by id.
 fn summary_of(party: PartyId) -> Option<PartySummary> {
     let (code, name) = match party {
         BLUE_DUNES => ("P-00001", "Blue Dunes LLC"),
         QUIET_SANDS => ("P-00002", "Quiet Sands LLC"),
+        OMAR => ("P-00004", "Omar Hassan"),
         _ => return None,
     };
     Some(PartySummary {
         id: party,
         code: code.to_owned(),
-        kind: wl_kernel::parties::PartyKind::Company,
+        kind: if party == OMAR {
+            wl_kernel::parties::PartyKind::Person
+        } else {
+            wl_kernel::parties::PartyKind::Company
+        },
         display_name: name.to_owned(),
         status: PartyStatus::Active,
         display_block_reason: None,
@@ -116,8 +158,14 @@ impl PartyDirectory for TestDirectory {
         Box::pin(async { Ok(None) })
     }
 
-    fn status<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
-        Box::pin(async { Ok(Some(PartyStatus::Active)) })
+    fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
+        // Party 3 is blocked (the cash-flow forecast tests).
+        let status = if party == BLOCKED_PARTY {
+            PartyStatus::Blocked
+        } else {
+            PartyStatus::Active
+        };
+        Box::pin(async move { Ok(Some(status)) })
     }
 
     fn billing_identity<'a>(
@@ -128,8 +176,10 @@ impl PartyDirectory for TestDirectory {
         let (name, email) = match party {
             BLUE_DUNES => ("Blue Dunes LLC", Some(BLUE_DUNES_EMAIL.to_owned())),
             QUIET_SANDS => ("Quiet Sands LLC", None),
+            OMAR => ("Omar Hassan", None),
             _ => return Box::pin(async { Ok(None) }),
         };
+        let recipient = self.0.lock().unwrap().get(&party.0).cloned();
         Box::pin(async move {
             Ok(Some(BillingIdentity {
                 party,
@@ -138,6 +188,7 @@ impl PartyDirectory for TestDirectory {
                 trn: Some("100000000000011".to_owned()),
                 billing_address: Some("Office 12, Business Bay, Dubai".to_owned()),
                 billing_email: email,
+                einvoice_recipient_id: recipient,
             }))
         })
     }
@@ -156,6 +207,7 @@ impl Module for Probe {
         Routes::new()
             .get("/probe/{id}/available", probe_available)
             .get("/probe/{id}/offered", probe_offered)
+            .post("/probe/{id}/contract-issue", probe_contract_issue)
     }
 }
 
@@ -172,6 +224,24 @@ async fn probe_available(
         .map(|action| action.name)
         .collect();
     Ok(names.join(","))
+}
+
+/// `Invoicer::issue` for the signed-in user: the answer is `ok` or the error's
+/// status.
+async fn probe_contract_issue(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> String {
+    match wl_kernel::invoicing::invoicer(&state)
+        .issue(&state, wl_kernel::invoicing::InvoiceId(id), Some(&user))
+        .await
+    {
+        Ok(()) => "ok".to_owned(),
+        Err(Error::Status(code, _)) => code.as_u16().to_string(),
+        Err(Error::Forbidden) => "403".to_owned(),
+        Err(_) => "error".to_owned(),
+    }
 }
 
 async fn probe_offered(
@@ -245,9 +315,62 @@ pub type Asked = (RefundRequest, Option<i64>);
 pub struct RefundDesk {
     asked: Arc<Mutex<Vec<Asked>>>,
     refuse: Arc<AtomicBool>,
+    bank: Arc<Mutex<Vec<(i64, BankPayment)>>>,
+    unpaid: Arc<Mutex<Vec<UnpaidRefund>>>,
 }
 
 impl RefundDesk {
+    /// A payment of `entity` in `account` for the cash-flow reads.
+    pub fn bank_payment(
+        &self,
+        entity: i64,
+        account: &str,
+        direction: Direction,
+        amount: i64,
+        date: NaiveDate,
+        reference: Option<&str>,
+    ) {
+        let mut bank = self.bank.lock().unwrap();
+        let id = bank.len() as i64 + 1;
+        bank.push((
+            entity,
+            BankPayment {
+                payment: PaymentSummary {
+                    id: PaymentId(id),
+                    number: None,
+                    party: BLUE_DUNES,
+                    legal_entity_id: entity,
+                    direction,
+                    method: PaymentMethod::Transfer,
+                    amount,
+                    allocated: 0,
+                    unallocated: amount,
+                    currency: "AED".to_owned(),
+                    status: PaymentStatus::Received,
+                    date,
+                },
+                bank_account: account.to_owned(),
+                reference: reference.map(str::to_owned),
+            },
+        ));
+    }
+
+    /// A refund approved or failed and not paid, for the cash-flow reads.
+    pub fn unpaid_refund(&self, entity: i64, amount: i64, failed: bool) {
+        let mut unpaid = self.unpaid.lock().unwrap();
+        let id = unpaid.len() as i64 + 1;
+        unpaid.push(UnpaidRefund {
+            id: RefundId(id),
+            party: BLUE_DUNES,
+            legal_entity_id: entity,
+            amount,
+            currency: "AED".to_owned(),
+            failed,
+            approved_on: None,
+            source: Subject::new("invoicing.credit_note", id),
+        });
+    }
+
     /// The requests so far, oldest first, each with its user.
     pub fn asked(&self) -> Vec<Asked> {
         self.asked.lock().unwrap().clone()
@@ -332,6 +455,219 @@ impl PaymentRecorder for RefundDesk {
             let mut asked = self.asked.lock().unwrap();
             asked.push((request, by));
             Ok(RefundId(asked.len() as i64))
+        })
+    }
+
+    fn payments_after<'a>(
+        &'a self,
+        _db: &'a Db,
+        legal_entity_id: i64,
+        bank_account: &'a str,
+        after: NaiveDate,
+    ) -> PaymentFuture<'a, Vec<BankPayment>> {
+        Box::pin(async move {
+            Ok(self
+                .bank
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(entity, p)| {
+                    *entity == legal_entity_id
+                        && p.bank_account == bank_account
+                        && p.payment.date > after
+                })
+                .map(|(_, p)| p.clone())
+                .collect())
+        })
+    }
+
+    fn refunds_unpaid<'a>(
+        &'a self,
+        _db: &'a Db,
+        legal_entity_id: i64,
+    ) -> PaymentFuture<'a, Vec<UnpaidRefund>> {
+        Box::pin(async move {
+            Ok(self
+                .unpaid
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r.legal_entity_id == legal_entity_id)
+                .cloned()
+                .collect())
+        })
+    }
+}
+
+/// The cheques and the statement balances the cash-flow forecast reads,
+/// scripted by the test.
+#[derive(Clone, Default)]
+pub struct ForecastDesk {
+    open: Arc<Mutex<Vec<(i64, OpenCheque)>>>,
+    bounced: Arc<Mutex<Vec<(i64, OpenCheque)>>>,
+    balances: Arc<Mutex<Vec<BankBalance>>>,
+}
+
+impl ForecastDesk {
+    /// A cheque not cleared, of `entity`.
+    pub fn open_cheque(&self, entity: i64, cheque: OpenCheque) {
+        self.open.lock().unwrap().push((entity, cheque));
+    }
+
+    /// A cheque that bounced, of `entity`.
+    pub fn bounced_cheque(&self, entity: i64, cheque: OpenCheque) {
+        self.bounced.lock().unwrap().push((entity, cheque));
+    }
+
+    /// A completed statement's closing balance; it replaces the one the
+    /// account had (the latest closing balance is read).
+    pub fn statement(&self, entity: i64, account: &str, amount: i64, as_of: NaiveDate) {
+        self.balances
+            .lock()
+            .unwrap()
+            .retain(|b| !(b.legal_entity_id == entity && b.bank_account == account));
+        self.balances.lock().unwrap().push(BankBalance {
+            legal_entity_id: entity,
+            bank_account: account.to_owned(),
+            amount,
+            currency: "AED".to_owned(),
+            as_of,
+            import_id: 1,
+        });
+    }
+}
+
+/// A scripted [`OpenCheque`] of `amount` fils dated `date` paying
+/// `documents` (each with the part applied).
+pub fn open_cheque(
+    id: i64,
+    number: &str,
+    direction: Direction,
+    date: NaiveDate,
+    amount: i64,
+    documents: &[(Subject, i64)],
+) -> OpenCheque {
+    OpenCheque {
+        cheque: ChequeSummary {
+            id: ChequeId(id),
+            direction,
+            party: BLUE_DUNES,
+            legal_entity_id: 0,
+            bank: "ENBD".to_owned(),
+            number: number.to_owned(),
+            date,
+            amount,
+            honoured_amount: 0,
+            open_amount: amount,
+            currency: "AED".to_owned(),
+            presentations: 1,
+            status: wl_kernel::cheques::ChequeStatus::Received,
+            agreement: None,
+            linked: documents.iter().map(|(d, _)| d.clone()).collect(),
+        },
+        documents: documents
+            .iter()
+            .map(|(document, amount)| wl_kernel::cheques::ChequeDocument {
+                document: document.clone(),
+                amount: *amount,
+            })
+            .collect(),
+    }
+}
+
+impl Cheques for ForecastDesk {
+    fn register<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _cheque: RegisterCheque,
+        _by: Option<i64>,
+    ) -> ChequeFuture<'a, ChequeSummary> {
+        Box::pin(async { Err(desk_off("not registered")) })
+    }
+
+    fn register_schedule<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _schedule: ChequeSchedule,
+        _by: Option<i64>,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        Box::pin(async { Err(desk_off("not registered")) })
+    }
+
+    fn find<'a>(&'a self, _db: &'a Db, _id: ChequeId) -> ChequeFuture<'a, Option<ChequeSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn of_agreement<'a>(
+        &'a self,
+        _db: &'a Db,
+        _agreement: &'a Subject,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_bounced_amount<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> ChequeFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+
+    fn not_cleared<'a>(
+        &'a self,
+        _state: &'a AppState,
+        legal_entity_id: i64,
+        direction: Direction,
+    ) -> ChequeFuture<'a, Vec<OpenCheque>> {
+        Box::pin(async move {
+            Ok(self
+                .open
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(entity, c)| *entity == legal_entity_id && c.cheque.direction == direction)
+                .map(|(_, c)| c.clone())
+                .collect())
+        })
+    }
+
+    fn bounced<'a>(
+        &'a self,
+        _state: &'a AppState,
+        legal_entity_id: i64,
+    ) -> ChequeFuture<'a, Vec<OpenCheque>> {
+        Box::pin(async move {
+            Ok(self
+                .bounced
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(entity, _)| *entity == legal_entity_id)
+                .map(|(_, c)| c.clone())
+                .collect())
+        })
+    }
+}
+
+impl BankStatements for ForecastDesk {
+    fn latest_closing_balances<'a>(
+        &'a self,
+        _db: &'a Db,
+        legal_entity_id: i64,
+    ) -> BankStatementFuture<'a, Vec<BankBalance>> {
+        Box::pin(async move {
+            let mut found: Vec<BankBalance> = self
+                .balances
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|b| b.legal_entity_id == legal_entity_id)
+                .cloned()
+                .collect();
+            found.sort_by(|a, b| a.bank_account.cmp(&b.bank_account));
+            Ok(found)
         })
     }
 }
@@ -425,6 +761,37 @@ fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
     })
 }
 
+/// The service contracts' coverage of a day, as ticketing answers it: a
+/// contract covers the days up to the last day the test sets; an unset
+/// contract is unknown.
+#[derive(Debug, Clone, Default)]
+pub struct ContractDesk(Arc<Mutex<std::collections::BTreeMap<i64, NaiveDate>>>);
+
+impl ContractDesk {
+    /// Sets the last day `contract` covers (its end or termination date).
+    pub fn ends_on(&self, contract: i64, last_day: NaiveDate) {
+        self.0.lock().unwrap().insert(contract, last_day);
+    }
+}
+
+impl ServiceContractCoverage for ContractDesk {
+    fn covers<'a>(
+        &'a self,
+        _db: &'a Db,
+        contract: ServiceContractId,
+        on: NaiveDate,
+    ) -> TicketFuture<'a, ContractCover> {
+        Box::pin(async move {
+            let ends = self.0.lock().unwrap().get(&contract.0).copied();
+            Ok(match ends {
+                None => ContractCover::Unknown,
+                Some(last) if on <= last => ContractCover::Covered,
+                Some(last) => ContractCover::AfterEnd { ends_on: last },
+            })
+        })
+    }
+}
+
 /// The app under test with what it emitted.
 pub struct Booted {
     /// The app.
@@ -447,6 +814,10 @@ pub struct Booted {
     pub invoice_reopened: Recorded<InvoiceReopened>,
     /// The refunds asked of payments.
     pub refunds: RefundDesk,
+    /// The cheques and statement balances the cash-flow forecast reads.
+    pub forecast: ForecastDesk,
+    /// The coverage of service contracts the match asks of ticketing.
+    pub contracts: ContractDesk,
     /// `BadDebtRecovered`.
     pub recovered: Recorded<BadDebtRecovered>,
     /// `InvoiceDisputeResolved`.
@@ -461,6 +832,20 @@ pub struct Booted {
     pub bill_voided: Recorded<SupplierBillVoided>,
     /// `SupplierBillReopened`.
     pub bill_reopened: Recorded<SupplierBillReopened>,
+    /// `CompanyBudgetApproved`.
+    pub budget_approved: Recorded<CompanyBudgetApproved>,
+    /// `CompanyBudgetVarianceReached`.
+    pub variance_reached: Recorded<CompanyBudgetVarianceReached>,
+    /// `CashForecastBelowThreshold`.
+    pub below_threshold: Recorded<CashForecastBelowThreshold>,
+    /// `OwnerDrawingDecided`.
+    pub drawing_decided: Recorded<OwnerDrawingDecided>,
+    /// `EInvoiceAccepted`.
+    pub einvoice_accepted: Recorded<EInvoiceAccepted>,
+    /// `EInvoiceRejected`.
+    pub einvoice_rejected: Recorded<EInvoiceRejected>,
+    /// The test parties' directory: set a recipient identifier here.
+    pub directory: TestDirectory,
 }
 
 impl Booted {
@@ -589,6 +974,258 @@ impl Booted {
         };
         entity.insert(self.db()).await.unwrap();
         entity
+    }
+
+    /// A user who prepares budgets (and sees them), made once.
+    pub async fn budget_preparer(&self, name: &str) -> User {
+        self.helper(name, &[perm::BUDGETS_VIEW, perm::BUDGETS_MANAGE])
+            .await
+    }
+
+    /// A user who approves budgets (and sees them), made once.
+    pub async fn budget_approver(&self, name: &str) -> User {
+        self.helper(name, &[perm::BUDGETS_VIEW, perm::BUDGETS_APPROVE])
+            .await
+    }
+
+    /// The budget category with this code.
+    pub async fn category(&self, code: &str) -> BudgetCategory {
+        BudgetCategory::by_code(self.db(), code)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("no budget category {code}"))
+    }
+
+    /// Budget `id`, as stored now.
+    pub async fn budget(&self, id: i64) -> CompanyBudget {
+        CompanyBudget::find(self.db(), id).await.unwrap().unwrap()
+    }
+
+    /// `budget`, as stored now.
+    pub async fn budget_now(&self, budget: &CompanyBudget) -> CompanyBudget {
+        self.budget(budget.id).await
+    }
+
+    /// A draft version for the entity `code` and `year`, started as `start`,
+    /// made by `by`.
+    pub async fn new_budget(
+        &self,
+        code: &str,
+        year: i64,
+        start: StartChoice,
+        by: &User,
+    ) -> CompanyBudget {
+        let entity = self.entity(code).await;
+        budget_lines::create(
+            self.state(),
+            NewBudget {
+                legal_entity_id: entity.id,
+                fiscal_year: year,
+                name: String::new(),
+                start,
+                revision_reason: None,
+            },
+            Some(by.id),
+        )
+        .await
+        .expect("the draft is made")
+    }
+
+    /// Sets `amount` fils for the category `code` in each month of
+    /// `budget` from the `from`-th to the `to`-th (1 to 12, of the fiscal
+    /// year).
+    pub async fn fill(
+        &self,
+        budget: &CompanyBudget,
+        code: &str,
+        amount: i64,
+        from: usize,
+        to: usize,
+    ) {
+        let category = self.category(code).await;
+        let months = budget.months();
+        let lines: Vec<LineInput> = months[from - 1..to]
+            .iter()
+            .map(|month| LineInput {
+                category_id: category.id,
+                month: *month,
+                amount,
+                note: None,
+            })
+            .collect();
+        budget_lines::set_lines(self.db(), budget.id, &lines)
+            .await
+            .expect("the lines are set");
+    }
+
+    /// `POST path` as `by` with `fields`, as a sheet or a button sends it.
+    pub async fn post_as(
+        &self,
+        path: &str,
+        by: &User,
+        fields: &[(&str, &str)],
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(by);
+        self.app.htmx().post(path, fields).await
+    }
+
+    /// Submits `budget` for approval as `by` (the page's button).
+    pub async fn submit_budget(&self, budget: &CompanyBudget, by: &User) {
+        self.post_as(&format!("/budgets/{}/submit", budget.id), by, &[])
+            .await
+            .assert_redirect(&format!("/budgets/{}", budget.id));
+    }
+
+    /// The pending approval request about `budget`.
+    pub async fn budget_request(&self, budget: &CompanyBudget) -> ApprovalRequest {
+        let mut pending = approvals::pending_for(self.db(), &budget.subject())
+            .await
+            .unwrap();
+        assert_eq!(pending.len(), 1, "one pending request");
+        pending.remove(0)
+    }
+
+    /// The names of the transitions `budget` went through, in order.
+    pub async fn budget_history(&self, budget: &CompanyBudget) -> Vec<String> {
+        renox::state_machine::history(self.db(), CompanyBudget::TABLE, budget.id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| row.transition)
+            .collect()
+    }
+
+    /// `user`'s notices of `kind`, newest first, as JSON text.
+    pub async fn notices_of(&self, user: &User, kind: &str) -> Vec<String> {
+        user.notifications(self.db(), 50)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|n| n.kind == kind)
+            .map(|n| n.data.to_string())
+            .collect()
+    }
+
+    /// A user holding `grants` through a role given in the scope of the legal
+    /// entity `entity_id` only, made once.
+    pub async fn scoped_user(&self, name: &str, grants: &[&str], entity_id: i64) -> User {
+        let email = format!("{}@example.com", name.to_lowercase());
+        if let Some(user) = User::find_by_email(self.db(), &email).await.unwrap() {
+            return user;
+        }
+        let user = User::register(self.db(), name, &email, "password123")
+            .await
+            .unwrap();
+        let role = format!("scoped_{}", name.to_lowercase());
+        permissions::define_role(self.db(), &role, grants)
+            .await
+            .unwrap();
+        let scope = renox::auth::permissions::Scope::of_id::<LegalEntity>(entity_id);
+        user.assign_role_in(self.db(), &role, &scope).await.unwrap();
+        user
+    }
+
+    /// An approved budget of the entity `code` for `year` with the lines
+    /// `(category code, month 1 to 12, amount in fils)`.
+    pub async fn approved_budget(
+        &self,
+        code: &str,
+        year: i64,
+        lines: &[(&str, usize, i64)],
+    ) -> CompanyBudget {
+        let preparer = self.budget_preparer("Budgeter").await;
+        let approver = self.budget_approver("Boss").await;
+        let draft = self
+            .new_budget(code, year, StartChoice::Empty, &preparer)
+            .await;
+        for (category, month, amount) in lines {
+            self.fill(&draft, category, *amount, *month, *month).await;
+        }
+        self.submit_budget(&draft, &preparer).await;
+        let request = self.budget_request(&draft).await;
+        approvals::approve(self.state(), request.id, &approver, "")
+            .await
+            .unwrap()
+            .expect("the approval runs");
+        self.budget_now(&draft).await
+    }
+
+    /// A supplier bill of Blue Dunes to the entity `entity`, dated `date`,
+    /// approved, with the lines `(description, price in fils, cost code,
+    /// VAT category)`.
+    pub async fn approved_bill(
+        &self,
+        entity: &LegalEntity,
+        number: &str,
+        date: NaiveDate,
+        lines: &[(&str, i64, &str, VatCategory)],
+    ) -> SupplierBill {
+        let mut draft = BillDraft::new(BLUE_DUNES, number, date);
+        draft.legal_entity_id = Some(entity.id);
+        for (description, price, code, category) in lines {
+            draft = draft.line(BillLineDraft::new(description, *price, *category).cost_code(code));
+        }
+        // The user who enters and submits the bill asks for the approval of
+        // a drawing on it; another user, a holder of `drawings.approve`,
+        // gives it.
+        let drawer = self.helper("Drawer", &[perm::SUPPLIER_BILLS_CREATE]).await;
+        let bill = supplier_bill::create(self.db(), &draft, Some(drawer.id))
+            .await
+            .expect("the bill is made");
+        bill_submit::submit(self.state(), By::System(Some(drawer.id)), bill.id)
+            .await
+            .expect("the bill is submitted");
+        let drawings = DrawingApproval::for_source(self.db(), &bill.subject())
+            .await
+            .unwrap();
+        if let Some(request) = drawings
+            .iter()
+            .find(|d| d.status == DrawingStatus::Requested)
+            .and_then(|d| d.approval_request_id)
+        {
+            let owner = self
+                .helper(
+                    "Downer",
+                    &[perm::SUPPLIER_BILLS_VIEW, perm::DRAWINGS_APPROVE],
+                )
+                .await;
+            approvals::approve(self.state(), request, &owner, "")
+                .await
+                .unwrap()
+                .expect("the drawing is approved");
+        }
+        bill_machine::approve(self.state(), By::System(Some(drawer.id)), bill.id, "")
+            .await
+            .expect("the bill is approved")
+    }
+
+    /// An issued invoice of `entity` with a line of `price` fils (exempt)
+    /// billed under the charge type `charge_type`, with the date of supply
+    /// `supply`.
+    pub async fn invoice_with_charge(
+        &self,
+        entity: &LegalEntity,
+        charge_type: &str,
+        price: i64,
+        supply: NaiveDate,
+        by: &User,
+    ) -> Invoice {
+        let draft = self
+            .draft_of(
+                InvoiceDraft::new(BLUE_DUNES, Subject::new("property.lease", 9))
+                    .line(
+                        DraftLine::new("Rent", price, VatCategory::Exempt).charge_type(charge_type),
+                    )
+                    .legal_entity(entity.id),
+            )
+            .await;
+        let issued = self.issue(&draft, by).await;
+        Invoice::query()
+            .where_(Invoice::ID.eq(issued.id))
+            .update(self.db(), &[("date_of_supply", &Some(supply))])
+            .await
+            .unwrap();
+        self.reload(&issued).await
     }
 
     /// The summary of `entity` for the period that contains `date`, taken
@@ -744,6 +1381,23 @@ impl Booted {
         }
     }
 
+    /// Moves the clock forward to `date` at `hour:minute` UTC.
+    pub fn travel_to(&self, date: &str, hour: u32, minute: u32) {
+        let target = date
+            .parse::<NaiveDate>()
+            .expect("a date")
+            .and_hms_opt(hour, minute, 0)
+            .expect("a time")
+            .and_utc();
+        // `now()` outside `at_travelled_time` is the real clock, so a second
+        // trip starts from the present again instead of adding to the first.
+        self.app.travel_back();
+        let seconds = (target - renox::db::now()).num_seconds();
+        assert!(seconds > 0, "the target {target} is in the past");
+        self.app
+            .travel(std::time::Duration::from_secs(seconds as u64));
+    }
+
     /// A draft to Blue Dunes with lines of `(unit price in fils, category)`,
     /// through the kernel contract.
     pub async fn draft(&self, lines: &[(i64, VatCategory)], due: Option<NaiveDate>) -> Invoice {
@@ -807,6 +1461,15 @@ impl Booted {
                 &[("reason_code", code), ("reason_text", text)],
             )
             .await
+    }
+
+    /// `Invoicer::issue` on `draft` as `by`: `ok`, or the status that refused.
+    pub async fn contract_issue(&self, draft: &Invoice, by: &User) -> String {
+        self.app.acting_as(by);
+        self.app
+            .post(&format!("/probe/{}/contract-issue", draft.id), &[])
+            .await
+            .text()
     }
 
     /// Issues `draft` as `by`.
@@ -921,6 +1584,14 @@ pub async fn boot() -> Booted {
 /// `module` booted in an app with auth and the kernel, the roles of the
 /// host (`receivables`, `admin`) defined.
 pub async fn boot_with(module: WlInvoicing) -> Booted {
+    boot_with_poster(module, None).await
+}
+
+/// [`boot_with`] with `poster` as the app's `CostPoster`, when given.
+pub async fn boot_with_poster(
+    module: WlInvoicing,
+    poster: Option<Arc<dyn wl_kernel::invoicing::CostPoster>>,
+) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -938,12 +1609,24 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let bill_approved = Recorded::new();
     let bill_voided = Recorded::new();
     let bill_reopened = Recorded::new();
+    let budget_approved = Recorded::new();
+    let variance_reached = Recorded::new();
+    let below_threshold = Recorded::new();
+    let drawing_decided = Recorded::new();
+    let einvoice_accepted = Recorded::new();
+    let einvoice_rejected = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
+    let contracts = ContractDesk::default();
+    let coverage: Arc<dyn ServiceContractCoverage> = Arc::new(contracts.clone());
     let notices = Recording::default();
     let refunds = RefundDesk::default();
     let recorder: Arc<dyn PaymentRecorder> = Arc::new(refunds.clone());
-    let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
+    let forecast = ForecastDesk::default();
+    let cheque_book: Arc<dyn Cheques> = Arc::new(forecast.clone());
+    let statements: Arc<dyn BankStatements> = Arc::new(forecast.clone());
+    let directory_state = TestDirectory::default();
+    let directory: Arc<dyn PartyDirectory> = Arc::new(directory_state.clone());
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
     let app = App::new()
         .module(Auth::new())
@@ -952,8 +1635,15 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         .module(Probe)
         .provide(directory)
         .provide(recorder)
+        .provide(cheque_book)
+        .provide(statements)
         .provide(creator)
+        .provide(coverage)
         .provide(notifier);
+    let app = match poster {
+        Some(poster) => app.provide(poster),
+        None => app,
+    };
     let app = record(app, &issued);
     let app = record(app, &overdue);
     let app = record(app, &paid);
@@ -966,6 +1656,12 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &bill_approved);
     let app = record(app, &bill_voided);
     let app = record(app, &bill_reopened);
+    let app = record(app, &budget_approved);
+    let app = record(app, &variance_reached);
+    let app = record(app, &below_threshold);
+    let app = record(app, &drawing_decided);
+    let app = record(app, &einvoice_accepted);
+    let app = record(app, &einvoice_rejected);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -974,6 +1670,9 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    wl_invoicing::budget_category::install(app.db())
+        .await
+        .expect("the budget categories are seeded");
     let all = [
         perm::VIEW,
         perm::CREATE,
@@ -989,6 +1688,12 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         perm::SUPPLIER_BILLS_VIEW,
         perm::SUPPLIER_BILLS_CREATE,
         perm::SUPPLIER_BILLS_APPROVE,
+        perm::BUDGETS_VIEW,
+        perm::BUDGETS_MANAGE,
+        perm::BUDGETS_APPROVE,
+        perm::BUDGET_CATEGORIES_MANAGE,
+        perm::CASHFLOW_VIEW,
+        perm::CASHFLOW_MANAGE,
     ];
     permissions::define_role(app.db(), "admin", &all)
         .await
@@ -1006,7 +1711,24 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
             perm::SUPPLIER_BILLS_VIEW,
             perm::SUPPLIER_BILLS_CREATE,
             perm::SUPPLIER_BILLS_APPROVE,
+            perm::BUDGETS_VIEW,
+            perm::BUDGETS_MANAGE,
+            perm::BUDGET_CATEGORIES_MANAGE,
+            perm::CASHFLOW_VIEW,
+            perm::CASHFLOW_MANAGE,
         ],
+    )
+    .await
+    .unwrap();
+    // The role a seeded category tells (marketing).
+    permissions::define_role(app.db(), "marketing_manager", &[perm::VIEW])
+        .await
+        .unwrap();
+    // The host's `finance_manager` role: sees budgets and approves them.
+    permissions::define_role(
+        app.db(),
+        "finance_manager",
+        &[perm::VIEW, perm::BUDGETS_VIEW, perm::BUDGETS_APPROVE],
     )
     .await
     .unwrap();
@@ -1035,6 +1757,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         reopened,
         invoice_reopened,
         refunds,
+        forecast,
+        contracts,
         recovered,
         resolved,
         disputed,
@@ -1042,5 +1766,12 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         bill_approved,
         bill_voided,
         bill_reopened,
+        budget_approved,
+        variance_reached,
+        below_threshold,
+        drawing_decided,
+        einvoice_accepted,
+        einvoice_rejected,
+        directory: directory_state,
     }
 }

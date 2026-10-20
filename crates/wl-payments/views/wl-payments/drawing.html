@@ -1,0 +1,25 @@
+{#- wl-payments: an owner drawing request and where it stands (FIN.ACL.21):
+    waiting for the approval, approved and waiting for its cheque, recorded as
+    a payment, or not approved. Replace it with
+    resources/views/wl-payments/drawing.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="party_name" :back="route('wl_payments.index')" :back-label="tx['title']"
+                    :badge="status_label" :badge-kind="status_kind"/>
+    <rx-card :title="tx['drawings.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.party']" :value="party_name"/>
+        <rx-entry :label="tx['fields.entity']" :value="entity_name"/>
+        <rx-entry :label="tx['fields.drawing_category']" :value="drawing.category"/>
+        <rx-entry :label="tx['fields.method']" :value="method_label"/>
+        <rx-entry :label="tx['fields.amount']" :value="amount"/>
+        <rx-entry :label="tx['fields.date']" :value="drawing.payment_date" format="date"/>
+        <rx-entry :label="tx['fields.reference']" :value="drawing.reference"/>
+        <rx-entry :label="tx['fields.bank_account']" :value="drawing.bank_account"/>
+        <rx-entry :label="tx['drawings.reason']" :value="drawing.reason"/>
+      </rx-infolist>
+      <p rx-if="drawing.self_approved">{{ tx['drawings.self_approved'] }}</p>
+      <p rx-if="payment_link"><a href="{{ payment_link }}">{{ tx['drawings.payment'] }}</a></p>
+    </rx-card>
+  </rx-stack>
+</rx-page>

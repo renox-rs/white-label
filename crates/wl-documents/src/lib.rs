@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod acknowledgements;
 pub mod documents;
 pub mod expiry;
 pub mod flags;
@@ -9,6 +10,7 @@ pub mod kinds;
 pub mod machine;
 pub mod overrides;
 pub mod pages;
+pub mod registrations;
 pub mod sops;
 mod texts;
 
@@ -16,6 +18,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use acknowledgements::{AckRefused, AckStatus, Acknowledgements, SopAcknowledgement, SopDesk};
 pub use documents::{
     Attach, AttachReason, AttachRefused, CorrectionInput, Document, DocumentSource, DocumentStatus,
     DocumentVersion, Documents, FieldsUpdate, NewDocument,
@@ -25,7 +28,7 @@ pub use flags::DocumentFlag;
 pub use guard::DocumentsGuard;
 pub use kinds::{
     BlockChangeRefused, BlockSeed, DocumentKind, KindBlock, KindSeed, RefusalReason, Sensitivity,
-    add_block, blocks_for, register_kind, remove_block, set_block_mode,
+    add_block, blocks_for, register_kind, remove_block, set_block_mode, set_enabled,
 };
 pub use overrides::{BlockOverride, BlockOverrideStatus};
 pub use sops::{Sop, SopInput, SopReader, SopStatus, SopTranslation, Sops};
@@ -100,6 +103,10 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-documents/sop_form.html",
         include_str!("../views/wl-documents/sop_form.html"),
     ),
+    (
+        "wl-documents/acknowledgements.html",
+        include_str!("../views/wl-documents/acknowledgements.html"),
+    ),
 ];
 
 /// The documents module. The host adds it with
@@ -115,6 +122,7 @@ impl Module for WlDocuments {
         pages::routes()
             .merge(overrides::web::routes())
             .merge(sops::web::routes())
+            .merge(acknowledgements::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -144,7 +152,8 @@ impl Module for WlDocuments {
             .view_data::<overrides::web::OverridePage>()
             .view_data::<sops::web::SopsPage>()
             .view_data::<sops::web::SopFormPage>()
-            .view_data::<sops::web::SopPage>();
+            .view_data::<sops::web::SopPage>()
+            .view_data::<acknowledgements::web::AcknowledgementsPage>();
         // `DOC.RUL.01` to `DOC.RUL.03`: the `documents.expiring` and
         // `documents.expired` types, the daily `documents:expiry` task
         // (01:00 Asia/Dubai) and its command.
@@ -157,6 +166,9 @@ impl Module for WlDocuments {
         overrides::register(app);
         // The SOP and SOP translation kinds.
         sops::register();
+        // `DOC.RUL.04`: SOP acknowledgements, their machine, the events that
+        // ask and cancel, the daily run and the kernel contract wl-hr asks.
+        acknowledgements::register(app);
         // The dashboard's "approvals waiting for you" links to the override.
         wl_kernel::approvals::register_subject_link(overrides::SUBJECT_TYPE, |id| {
             format!("/documents/overrides/{id}")
@@ -166,19 +178,22 @@ impl Module for WlDocuments {
         // The standard guard `document_valid` other modules call through
         // `wl_kernel::documents::guard`.
         wl_kernel::documents::provide_guard(app, DocumentsGuard);
-        // The kinds modules and verticals register are installed by this
-        // module's command and seeder; both keep the client's changes and
-        // lock legal blocks again.
+        // The kinds modules and verticals register, and the kinds for
+        // registrations and certifications every client gets (#54), are
+        // installed by this module's command and seeder; both keep the
+        // client's changes and lock legal blocks again.
         app.command(
             "documents:install",
             "Store the document kinds the modules register, and lock legal blocks again",
             |_args, state: AppState| async move {
-                let created = kinds::install(&state.db).await?;
+                let created = registrations::install_all(&state).await?;
                 println!("{created} document kinds created.");
                 Ok(())
             },
         );
-        app.seeder(|state: AppState| async move { kinds::install(&state.db).await.map(|_| ()) });
+        app.seeder(|state: AppState| async move {
+            registrations::install_all(&state).await.map(|_| ())
+        });
         // The review queue in the app group and the kinds in the admin group
         // of the staff sidebar; the labels are the app's `nav.documents_review`
         // and `nav.document_kinds` texts.
@@ -212,6 +227,16 @@ impl Module for WlDocuments {
                 .group("nav.app")
                 .order(38)
                 .permission(permissions::VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route(
+                "wl_documents.acknowledgements",
+                "nav.document_acknowledgements",
+            )
+            .icon("check")
+            .group("nav.app")
+            .order(39),
         );
         app.nav(
             "app",

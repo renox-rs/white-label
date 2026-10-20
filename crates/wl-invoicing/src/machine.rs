@@ -54,10 +54,10 @@ impl StateMachine for Invoice {
             .state(Credited)
             .tone("neutral")
             .terminal()
-            .transition(crate::issue::transition())
             .transition(crate::overdue::transition());
-        crate::allocate::transitions()
+        crate::issue::transitions()
             .into_iter()
+            .chain(crate::allocate::transitions())
             .chain(crate::write_off::transitions())
             .chain(crate::recover::transitions())
             .chain(crate::credit::transitions())

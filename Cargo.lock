@@ -914,11 +914,13 @@ dependencies = [
  "renox",
  "serde",
  "wl-documents",
+ "wl-hr",
  "wl-invoicing",
  "wl-kernel",
  "wl-notify",
  "wl-parties",
  "wl-payments",
+ "wl-portal",
  "wl-sales",
  "wl-ticketing",
 ]
@@ -1736,6 +1738,10 @@ dependencies = [
  "renox",
  "serde",
  "tempfile",
+ "wl-documents",
+ "wl-invoicing",
+ "wl-kernel",
+ "wl-payments",
 ]
 
 [[package]]
@@ -3445,13 +3451,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "wl-invoicing"
+name = "wl-hr"
 version = "0.1.0"
 dependencies = [
  "renox",
  "serde",
  "tempfile",
  "wl-kernel",
+]
+
+[[package]]
+name = "wl-invoicing"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "sha2 0.11.1",
+ "tempfile",
+ "wl-kernel",
+ "wl-payments",
+ "wl-ticketing",
 ]
 
 [[package]]
@@ -3496,6 +3515,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "wl-portal"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
+ "wl-parties",
+]
+
+[[package]]
 name = "wl-sales"
 version = "0.1.0"
 dependencies = [
@@ -3512,7 +3542,9 @@ dependencies = [
  "renox",
  "serde",
  "tempfile",
+ "wl-documents",
  "wl-kernel",
+ "wl-parties",
 ]
 
 [[package]]

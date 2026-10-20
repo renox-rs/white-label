@@ -1,0 +1,16 @@
+{#- wl-portal: the log of portal actions refused because the party is blocked
+    (PTY.ACL.02): when, the portal user, the party and the action. Only staff
+    with parties.block_reason.view reach it. Replace it with
+    resources/views/wl-portal/refusal_log.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['refusals.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['refusals.title']" :subtitle="tx['refusals.subtitle']"/>
+    <rx-table :rows="entries" as="entry" :key="entry.id" :caption="tx['refusals.title']" card>
+      <rx-column :label="tx['refusals.at']">{{ entry.at }}</rx-column>
+      <rx-column :label="tx['refusals.user']">{{ entry.user }}</rx-column>
+      <rx-column :label="tx['refusals.party']">{{ entry.party }}</rx-column>
+      <rx-column :label="tx['refusals.action']">{{ entry.action }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['refusals.empty']" icon="shield"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

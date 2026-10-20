@@ -16,6 +16,7 @@ use wl_kernel::documents::{DocumentId, DocumentRejected, SopId, SopPublished, So
 use super::model::Sop;
 use super::service::{Sops, require_manage};
 use super::{KIND_SOP, SUBJECT_TYPE};
+use crate::acknowledgements::Acknowledgements;
 use crate::documents::{emit_accepted, emit_superseded, supersede_previous};
 use crate::expiry::responsible::holders_in;
 use crate::machine::{ACCEPT_SOP, ARCHIVE_SOP, REJECT_SOP, SopRunInput};
@@ -211,8 +212,8 @@ impl Sops {
     /// Withdraws `sop`: `archive_sop` on its current version by `by`
     /// (holding `sops.manage`; the owner role is not needed). The archived
     /// version stays the current one, so the SOP reads `withdrawn` until a
-    /// new version is accepted. Emits `SopWithdrawn` (no acknowledgements to
-    /// cancel yet, #53).
+    /// new version is accepted. Cancels the pending acknowledgements and emits
+    /// `SopWithdrawn` with their ids.
     ///
     /// # Errors
     ///
@@ -251,12 +252,16 @@ impl Sops {
         }
         let outcome = run.run(state).await?;
         if !outcome.is_pending() {
+            // `cancel`: the readers need not acknowledge a withdrawn SOP; the
+            // acknowledged ones stay as history (`DOC.RUL.04`).
+            let reason = crate::texts::english("wl_documents.acks.cancelled_withdrawn", &[]);
+            let cancelled = Acknowledgements::cancel_for_sop(state, row.id, &reason).await?;
             state
                 .emit(SopWithdrawn {
                     sop: SopId(row.id),
                     document: DocumentId(current.id),
                     version: Sops::version_number(&state.db, &current).await?,
-                    cancelled_acknowledgements: Vec::new(),
+                    cancelled_acknowledgements: cancelled,
                 })
                 .await?;
         }

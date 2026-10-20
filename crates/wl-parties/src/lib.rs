@@ -11,6 +11,7 @@ pub mod contacts;
 pub mod create;
 pub mod details;
 pub mod directory;
+pub mod einvoice;
 pub mod events;
 pub mod evidence;
 pub mod feed;
@@ -54,6 +55,7 @@ pub use contacts::{ContactPoint, ContactStatus, ContactType, update_contact, ver
 pub use create::{NewParty, create};
 pub use details::{CompanyDetails, PersonDetails};
 pub use directory::Directory;
+pub use einvoice::{lookup_recipient, set_recipient_id};
 pub use events::{SanctionsListStale, SanctionsListUpdated};
 pub use evidence::{UnblockBasis, UnblockEvidence};
 pub use feed::{FeedError, ListFeed, ListVersion, NoListFeed};
@@ -124,6 +126,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-parties/show.html",
         include_str!("../views/wl-parties/show.html"),
+    ),
+    (
+        "wl-parties/einvoice.html",
+        include_str!("../views/wl-parties/einvoice.html"),
     ),
     (
         "wl-parties/_card.html",

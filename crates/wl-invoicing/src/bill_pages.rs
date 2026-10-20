@@ -34,6 +34,7 @@ use renox::serde_json::Value;
 use renox::state_machine::{self, TransitionError};
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::invoicing::VatCategory;
 use wl_kernel::{LegalEntity, PartyId};
 
@@ -43,7 +44,10 @@ use crate::bill_line::{BillLine, BillLineDraft};
 use crate::bill_submit::submit;
 use crate::bill_unallocate::reason_key;
 use crate::bill_unallocation::BillUnallocation;
+use crate::budget_actual::Mapped;
 use crate::credit_notes::By;
+use crate::drawings::{self, amount_of};
+use crate::drawings_machine::{DrawingApproval, DrawingStatus};
 use crate::duplicates::exceptions_of;
 use crate::pages::{AllocationRow, ReopenedRow, TaskRow, reopen_reason_text};
 use crate::permissions;
@@ -212,6 +216,8 @@ pub(crate) struct LineRow {
     vat: String,
     gross: String,
     service_date: Option<NaiveDate>,
+    service_end_date: Option<NaiveDate>,
+    cost_code: Option<String>,
 }
 
 /// One VAT category's totals.
@@ -230,6 +236,9 @@ pub(crate) struct ExceptionRow {
     /// The earlier bill's supplier invoice number and page.
     related: Option<String>,
     related_link: Option<String>,
+    /// What the reason is about, e.g. the lines of work after the contract
+    /// end.
+    detail: Option<String>,
 }
 
 /// One reason sheet (`approve` or `void`).
@@ -280,6 +289,36 @@ pub(crate) struct ShowPage {
     can_submit: bool,
     /// The approve and void sheets this user may use.
     sheets: Vec<ReasonSheet>,
+    /// The owner drawings of the bill (`FIN.ACL.21`).
+    drawings: DrawingsView,
+    /// The approval cards of the drawing (`wl-kernel/approval_card.html`).
+    approvals: Vec<ApprovalCard>,
+}
+
+/// One recoding of a line, as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct RecodingRow {
+    line: String,
+    from: String,
+    to: String,
+    by: String,
+    at: Option<DateTime>,
+}
+
+/// What the page shows of the owner drawings on a bill: the total, never the
+/// lines unless the user holds `drawings.approve` (`FIN.ACL.22`).
+#[derive(Serialize, Debug, Clone, Default)]
+pub(crate) struct DrawingsView {
+    present: bool,
+    total: String,
+    status: String,
+    status_kind: &'static str,
+    reason: Option<String>,
+    can_request: bool,
+    can_recode: bool,
+    /// The lines of the bill, `(id, label)`, for the recode sheet.
+    lines: Vec<(String, String)>,
+    recodings: Vec<RecodingRow>,
 }
 
 /// The name of user `id`, if there is one.
@@ -304,7 +343,9 @@ fn sheets_for(t: Text<'_>, user: &AuthUser, bill: &SupplierBill) -> Vec<ReasonSh
         return Vec::new();
     }
     let held = bill.status == SupplierBillStatus::Exception;
-    let own_duplicate = held && bill.duplicate_of.is_some() && bill.created_by == Some(user.id);
+    let own_duplicate = held
+        && (bill.duplicate_of.is_some() || bill.after_end_hold)
+        && bill.created_by == Some(user.id);
     let mut sheets = Vec::new();
     if matches!(
         bill.status,
@@ -353,19 +394,48 @@ async fn show(
     let t = texts_in(&lang);
     let db = state.db.clone();
     let money = |fils: i64| amount_text(&bill.currency, fils);
-    let lines = supplier_bill::lines_of(&db, bill.id)
-        .await?
+    let mapped = Mapped::load(&db).await?;
+    let can_see_drawings = match bill.legal_entity_id {
+        Some(entity) => user
+            .scopes_with::<LegalEntity>(permissions::DRAWINGS_APPROVE)
+            .contains(&entity),
+        None => user.has_permission(permissions::DRAWINGS_APPROVE),
+    };
+    let bill_lines = supplier_bill::lines_of(&db, bill.id).await?;
+    let lines = bill_lines
         .iter()
-        .map(|line: &BillLine| LineRow {
-            id: line.id,
-            description: line.description.clone(),
-            quantity: decimal_text(line.quantity_milli, 3, 0),
-            unit_price: money(line.unit_price),
-            category: t(&format!("vat_category.{}", line.vat_category.as_str())),
-            net: money(line.net_amount),
-            vat: money(line.vat_amount),
-            gross: money(line.gross_amount),
-            service_date: line.service_date,
+        .map(|line: &BillLine| {
+            // The lines of owner drawings are shown to the holders of
+            // `drawings.approve` only (`FIN.ACL.22`); the totals are not.
+            if !can_see_drawings && mapped.is_drawings_code(line.cost_code.as_deref()) {
+                let dash = || "\u{2014}".to_owned();
+                return LineRow {
+                    id: line.id,
+                    description: t("drawings.hidden"),
+                    quantity: dash(),
+                    unit_price: dash(),
+                    category: dash(),
+                    net: dash(),
+                    vat: dash(),
+                    gross: dash(),
+                    service_date: None,
+                    service_end_date: None,
+                    cost_code: None,
+                };
+            }
+            LineRow {
+                id: line.id,
+                description: line.description.clone(),
+                quantity: decimal_text(line.quantity_milli, 3, 0),
+                unit_price: money(line.unit_price),
+                category: t(&format!("vat_category.{}", line.vat_category.as_str())),
+                net: money(line.net_amount),
+                vat: money(line.vat_amount),
+                gross: money(line.gross_amount),
+                service_date: line.service_date,
+                service_end_date: line.service_end_date,
+                cost_code: line.cost_code.clone(),
+            }
         })
         .collect();
     let vat = supplier_bill::totals_of(&db, bill.id)
@@ -397,6 +467,7 @@ async fn show(
             related_link: row
                 .related_bill_id
                 .map(|id| format!("/supplier-bills/{id}")),
+            detail: row.detail.clone(),
         });
     }
     let allocations = BillAllocation::of_bill(&db, bill.id)
@@ -467,6 +538,16 @@ async fn show(
         state_machine::timeline(&history, Some(&state_machine::info_of::<SupplierBill>()));
     let draft = bill.status == SupplierBillStatus::Draft;
     let may_create = user.has_permission(permissions::SUPPLIER_BILLS_CREATE);
+    let (drawings, approval_cards) = drawings_view(
+        &state,
+        &lang,
+        &user,
+        &bill,
+        &mapped,
+        &bill_lines,
+        (can_see_drawings, may_create),
+    )
+    .await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: bill.supplier_invoice_number.clone(),
@@ -490,8 +571,115 @@ async fn show(
         can_edit: draft && may_create,
         can_submit: draft && may_create,
         sheets: sheets_for(&t, &user, &bill),
+        drawings,
+        approvals: approval_cards,
         bill,
     }))
+}
+
+/// The owner drawings of `bill` as the page shows them, with the approval
+/// cards of the drawing that waits. `rights` is whether the user may see the
+/// lines and whether they may change the bill.
+async fn drawings_view(
+    state: &AppState,
+    lang: &Lang,
+    user: &AuthUser,
+    bill: &SupplierBill,
+    mapped: &Mapped,
+    bill_lines: &[BillLine],
+    rights: (bool, bool),
+) -> Result<(DrawingsView, Vec<ApprovalCard>)> {
+    let (can_see, may_create) = rights;
+    let t = texts_in(lang);
+    let db = &state.db;
+    let drawing_lines = drawings::drawing_lines(mapped, bill_lines.to_vec());
+    let approvals_of = DrawingApproval::for_source(db, &bill.subject()).await?;
+    let recodings = drawings::recodings_of(db, bill.id).await?;
+    if drawing_lines.is_empty() && approvals_of.is_empty() && recodings.is_empty() {
+        return Ok((DrawingsView::default(), Vec::new()));
+    }
+    let total = amount_of(&drawing_lines);
+    let latest = approvals_of.first();
+    let (status, status_kind) = match latest {
+        None => (t("drawings.status.none"), "warning"),
+        Some(a) => (
+            if a.self_approved {
+                t("drawings.status.self_approved")
+            } else {
+                t(&format!("drawings.status.{}", a.status.as_str()))
+            },
+            match a.status {
+                DrawingStatus::Draft => "info",
+                DrawingStatus::Requested => "warning",
+                DrawingStatus::Approved => "success",
+                DrawingStatus::Rejected => "error",
+            },
+        ),
+    };
+    let editable = matches!(
+        bill.status,
+        SupplierBillStatus::Draft | SupplierBillStatus::Matched | SupplierBillStatus::Exception
+    );
+    let covered = approvals_of.iter().any(|a| {
+        a.amount == total && matches!(a.status, DrawingStatus::Requested | DrawingStatus::Approved)
+    });
+    let mut cards = Vec::new();
+    for approval in approvals_of
+        .iter()
+        .filter(|a| a.status == DrawingStatus::Requested)
+    {
+        cards.extend(approvals::cards_for(db, &approval.subject(), user, lang).await?);
+    }
+    let positions: BTreeMap<i64, i64> = bill_lines.iter().map(|l| (l.id, l.position)).collect();
+    let by = names_of(db, recodings.iter().filter_map(|r| r.recoded_by).collect()).await?;
+    let view = DrawingsView {
+        present: true,
+        total: amount_text("AED", total),
+        status,
+        status_kind,
+        reason: latest
+            .filter(|a| a.status == DrawingStatus::Rejected)
+            .and_then(|a| a.rejected_reason.clone()),
+        can_request: may_create && editable && !drawing_lines.is_empty() && !covered,
+        can_recode: may_create && editable,
+        lines: bill_lines
+            .iter()
+            .map(|l| {
+                let hidden = !can_see && mapped.is_drawings_code(l.cost_code.as_deref());
+                let label = if hidden {
+                    format!("{}. {}", l.position, t("drawings.hidden"))
+                } else {
+                    format!("{}. {}", l.position, l.description)
+                };
+                (l.id.to_string(), label)
+            })
+            .collect(),
+        recodings: recodings
+            .iter()
+            .map(|r| RecodingRow {
+                line: positions
+                    .get(&r.line_id)
+                    .map_or_else(|| format!("#{}", r.line_id), ToString::to_string),
+                from: r.from_code.clone().unwrap_or_default(),
+                to: r.to_code.clone().unwrap_or_default(),
+                by: r
+                    .recoded_by
+                    .and_then(|id| by.get(&id).cloned())
+                    .unwrap_or_default(),
+                at: r.created_at,
+            })
+            .collect(),
+    };
+    Ok((view, cards))
+}
+
+/// The names of users `ids`.
+async fn names_of(db: &Db, ids: Vec<i64>) -> Result<BTreeMap<i64, String>> {
+    if ids.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let users = User::query().where_in("id", ids).get(db).await?;
+    Ok(users.into_iter().map(|user| (user.id, user.name)).collect())
 }
 
 /// One line row of the form.
@@ -503,6 +691,8 @@ pub(crate) struct LineSlot {
     unit_price: String,
     vat: String,
     service_date: String,
+    service_end_date: String,
+    cost_code: String,
 }
 
 /// What the form page needs.
@@ -622,6 +812,18 @@ fn lines_of_form(
                 line = line.service_date(parse_date(date).ok_or((name("service_date"), "date"))?);
             }
         }
+        match get(n, "service_end_date") {
+            "" => {}
+            date => {
+                let end = parse_date(date).ok_or((name("service_end_date"), "date"))?;
+                // A period ends on or after the day it starts.
+                if line.service_date.is_none_or(|start| end < start) {
+                    return Err((name("service_end_date"), "period"));
+                }
+                line = line.service_end_date(end);
+            }
+        }
+        line = line.cost_code(get(n, "cost_code"));
         lines.push(line);
     }
     Ok(lines)
@@ -789,6 +991,8 @@ async fn form_page(state: &AppState, lang: &Lang, bill: Option<&SupplierBill>) -
                 unit_price: decimal_text(line.unit_price, 2, 2),
                 vat: line.vat_category.as_str().to_owned(),
                 service_date: date(line.service_date),
+                service_end_date: date(line.service_end_date),
+                cost_code: line.cost_code.clone().unwrap_or_default(),
             });
         }
     } else {
@@ -1021,6 +1225,29 @@ mod tests {
             ]),
             ("line_1_service_date".to_owned(), "date")
         );
+        // A period needs its first day and ends on or after it.
+        for (start, end) in [("", "2026-10-05"), ("2026-10-05", "2026-10-04")] {
+            let mut pairs = vec![
+                ("line_1_description", "A"),
+                ("line_1_unit_price", "1"),
+                ("line_1_service_end_date", end),
+            ];
+            if !start.is_empty() {
+                pairs.push(("line_1_service_date", start));
+            }
+            assert_eq!(
+                bad(&pairs),
+                ("line_1_service_end_date".to_owned(), "period")
+            );
+        }
+        let ok = lines_of_form(&form(&[
+            ("line_1_description", "A"),
+            ("line_1_unit_price", "1"),
+            ("line_1_service_date", "2026-09-25"),
+            ("line_1_service_end_date", "2026-10-05"),
+        ]))
+        .unwrap();
+        assert_eq!(ok[0].service_end_date, NaiveDate::from_ymd_opt(2026, 10, 5));
     }
 
     #[test]
@@ -1059,6 +1286,7 @@ mod tests {
                 "amount",
                 "category",
                 "not_draft",
+                "period",
             ]
             .iter()
             .map(|k| format!("supplier_bill.errors.{k}")),

@@ -1,0 +1,54 @@
+{#- wl-payments: the expense claims with the submit, approve, reject and return
+    actions, and the form that records a claim. A line in the Owner drawings
+    category waits for the drawings approval. Replace it with
+    resources/views/wl-payments/expense_claims.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['expense_claims.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['expense_claims.title']" :subtitle="tx['expense_claims.description']"/>
+    <rx-table :rows="rows" as="claim" :key="claim.id" card>
+      <rx-column :label="tx['fields.entity']" hide-narrow>{{ claim.entity }}</rx-column>
+      <rx-column :label="tx['expense_claims.claim_title']">{{ claim.title }}</rx-column>
+      <rx-column :label="tx['expense_claims.total']">{{ claim.total }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="claim.status_kind" :text="claim.status"/> {{ claim.note }}</rx-column>
+      <rx-column :label="tx['expense_claims.actions']">
+        <template rx-if="claim.can_submit">
+          <rx-confirm :id="'submit-claim-' ~ claim.id" :label="tx['expense_claims.submit.action']" :action="route('wl_payments.expense_claims.submit', claim.id)" method="POST"
+                      :title="tx['expense_claims.submit.title']" :message="tx['expense_claims.submit.message']" :confirm-label="tx['expense_claims.submit.action']" icon="send"/>
+        </template>
+        <template rx-if="claim.can_decide">
+          <rx-confirm :id="'approve-claim-' ~ claim.id" :label="tx['expense_claims.approve.action']" :action="route('wl_payments.expense_claims.approve', claim.id)" method="POST"
+                      :title="tx['expense_claims.approve.title']" :message="tx['expense_claims.approve.message']" :confirm-label="tx['expense_claims.approve.action']" icon="check"/>
+          <rx-action-sheet :id="'return-claim-' ~ claim.id" :label="tx['expense_claims.return.action']" :action="route('wl_payments.expense_claims.return', claim.id)"
+                           :title="tx['expense_claims.return.title']" :description="tx['expense_claims.reason_hint']" :submit-label="tx['expense_claims.return.action']" icon="undo-2">
+            <rx-textarea name="reason" :label="tx['expense_claims.reason']" :id="'return-reason-' ~ claim.id" required/>
+          </rx-action-sheet>
+          <rx-action-sheet :id="'reject-claim-' ~ claim.id" :label="tx['expense_claims.reject.action']" :action="route('wl_payments.expense_claims.reject', claim.id)"
+                           :title="tx['expense_claims.reject.title']" :description="tx['expense_claims.reason_hint']" :submit-label="tx['expense_claims.reject.action']" icon="octagon-x" variant="danger" danger>
+            <rx-textarea name="reason" :label="tx['expense_claims.reason']" :id="'reject-reason-' ~ claim.id" required/>
+          </rx-action-sheet>
+        </template>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['expense_claims.empty']" :message="tx['expense_claims.empty_hint']" icon="receipt"/></rx-slot>
+    </rx-table>
+    <rx-form rx-if="can_submit" route="wl_payments.expense_claims.store" novalidate>
+      <rx-card :title="tx['expense_claims.new']">
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-select name="legal_entity_id" :label="tx['fields.entity']" :options="entities" required/>
+          <rx-input name="title" :label="tx['expense_claims.claim_title']"/>
+        </rx-form-grid>
+        <rx-form-grid rx-for="n in slots" columns="2">
+          <rx-select :name="'line_' ~ n ~ '_category'" :label="tx['expense_claims.line.category']" :options="categories"/>
+          <rx-input :name="'line_' ~ n ~ '_date'" type="date" :label="tx['expense_claims.line.date']"/>
+          <rx-input :name="'line_' ~ n ~ '_amount'" :label="tx['expense_claims.line.amount']" :hint="tx['expense_claims.line.amount_hint']"/>
+          <rx-input :name="'line_' ~ n ~ '_vat'" :label="tx['expense_claims.line.vat']"/>
+          <rx-input :name="'line_' ~ n ~ '_merchant'" :label="tx['expense_claims.line.merchant']"/>
+          <rx-input :name="'line_' ~ n ~ '_description'" :label="tx['expense_claims.line.description']"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['expense_claims.record']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

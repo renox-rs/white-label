@@ -1,0 +1,24 @@
+{#- property: the management agreements, newest first, with their owner, fee
+    and status, and the action that drafts a new one. Replace it with
+    resources/views/property/agreements.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['agreements.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['agreements.title']" :subtitle="tx['agreements.subtitle']" :back="route('property.index')" :back-label="tx['portfolio.title']">
+      <rx-action-sheet id="agreement-new" :label="tx['agreements.new']" :action="route('property.agreement_create')"
+                       :title="tx['agreements.new']" :description="tx['agreements.new_description']" :submit-label="tx['agreements.new']" icon="plus">
+        <rx-input name="owner" :label="tx['agreements.owner_party']" id="agreement-new-owner" required/>
+        <rx-input name="fee" :label="tx['agreements.fee_percent']" id="agreement-new-fee"/>
+        <rx-input name="fee_fixed" :label="tx['agreements.fee_fixed']" id="agreement-new-fee-fixed"/>
+        <rx-input name="start" type="date" :label="tx['agreements.start_date']" :value="today" id="agreement-new-start" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-table :rows="agreements" as="row" :key="row.id" :caption="tx['agreements.title']" card>
+      <rx-column :label="tx['agreements.number']"><a href="{{ route('property.agreement', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['agreements.owner']">{{ row.owner }}</rx-column>
+      <rx-column :label="tx['agreements.fee']" hide-narrow>{{ row.fee }}</rx-column>
+      <rx-column :label="tx['agreements.start']" hide-narrow>{{ row.start }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['agreements.empty']" icon="file-signature"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

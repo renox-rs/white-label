@@ -24,6 +24,7 @@
         <rx-entry rx-if="summary.filing_reference" :label="tx['vat.fields.filing_reference']" :value="summary.filing_reference" copyable/>
       </rx-infolist>
     </rx-card>
+    <rx-alert rx-if="blocked_drawings_vat" kind="info" :message="tx['vat.blocked_drawings'] ~ ': ' ~ blocked_drawings_vat ~ '. ' ~ tx['vat.blocked_drawings_note']"/>
     <rx-table :rows="adjustments" as="adjustment" :key="adjustment.id" :caption="tx['vat.sections.adjustments']" card>
       <rx-column :label="tx['vat.adjustments.kind']">{{ adjustment.kind }}</rx-column>
       <rx-column :label="tx['vat.adjustments.invoice']">{{ adjustment.invoice if not adjustment.invoice_id else "" }}<a rx-if="adjustment.invoice_id" href="{{ route('wl_invoicing.show', adjustment.invoice_id) }}">{{ adjustment.invoice }}</a></rx-column>

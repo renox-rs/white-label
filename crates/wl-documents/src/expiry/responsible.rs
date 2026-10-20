@@ -147,7 +147,7 @@ pub(crate) async fn holders_in(db: &Db, role: &str, scope: &Scope) -> Result<BTr
 }
 
 /// The users holding `role` in any scope, now (assignment dates respected).
-async fn holders_anywhere(db: &Db, role: &str) -> Result<BTreeSet<i64>> {
+pub(crate) async fn holders_anywhere(db: &Db, role: &str) -> Result<BTreeSet<i64>> {
     let at = now();
     let ids: Vec<i64> = sql("SELECT DISTINCT ru.user_id FROM role_user ru \
          JOIN roles r ON r.id = ru.role_id WHERE r.name = ? \

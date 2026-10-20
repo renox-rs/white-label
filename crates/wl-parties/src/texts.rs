@@ -708,6 +708,44 @@ const TEXTS: &[(&str, &str)] = &[
         "Times are shown in Asia/Dubai.",
     ),
     (
+        "wl_parties.fields.einvoice_recipient_id",
+        "E-invoicing recipient ID",
+    ),
+    (
+        "wl_parties.fields.einvoice_recipient_id_hint",
+        "Peppol participant ID, scheme and identifier, e.g. 0235:100123456700003.",
+    ),
+    ("wl_parties.einvoice.lookup", "Look up"),
+    ("wl_parties.einvoice.save", "Save"),
+    (
+        "wl_parties.einvoice.found",
+        "Found :id. Check it and save to keep it.",
+    ),
+    (
+        "wl_parties.einvoice.not_found",
+        "No e-invoicing ID found for this TRN; enter it by hand",
+    ),
+    (
+        "wl_parties.einvoice.lookup_failed",
+        "The lookup did not work; enter the ID by hand",
+    ),
+    (
+        "wl_parties.einvoice.unavailable",
+        "The lookup is not available now; enter the ID by hand",
+    ),
+    (
+        "wl_parties.einvoice.saved",
+        "E-invoicing recipient ID saved.",
+    ),
+    (
+        "wl_parties.errors.einvoice_person",
+        "Only a company has an e-invoicing recipient ID.",
+    ),
+    (
+        "wl_parties.errors.einvoice_lookup_trn",
+        "Enter the company's 15-digit TRN to look up its e-invoicing ID.",
+    ),
+    (
         "wl_parties.errors.unblock_file_type",
         "Evidence files must be PDF, JPG, PNG, HEIC, DOCX or XLSX.",
     ),

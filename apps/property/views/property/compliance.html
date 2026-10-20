@@ -1,0 +1,17 @@
+{#- property: the buildings flagged non-compliant, with the cause and since
+    when. Replace it with resources/views/property/compliance.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['compliance.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['compliance.title']" :subtitle="tx['compliance.subtitle']" :back="route('property.index')" :back-label="tx['portfolio.title']"/>
+    <rx-stats columns="1">
+      <rx-stat :label="tx['compliance.count']" :value="count"/>
+    </rx-stats>
+    <rx-table :rows="flags" as="row" :key="row.building ~ row.cause ~ row.category" :caption="tx['compliance.title']" card>
+      <rx-column :label="tx['compliance.building']">{{ row.building }}</rx-column>
+      <rx-column :label="tx['compliance.cause']">{{ row.cause }}</rx-column>
+      <rx-column :label="tx['compliance.category']" hide-narrow>{{ row.category }}</rx-column>
+      <rx-column :label="tx['compliance.since']">{{ row.since }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['compliance.empty']" icon="shield-check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

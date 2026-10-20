@@ -117,6 +117,9 @@ pub struct Invoice {
     pub balance: i64,
     /// The user who issued it.
     pub owner_id: Option<i64>,
+    /// The invoice this one replaces after an e-invoice correction: named by
+    /// the user on the new invoice (`supersede`).
+    pub replaces_invoice_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: InvoiceStatus,
     /// Whether the party disputes it.
@@ -298,6 +301,7 @@ mod tests {
             trn: Some("100000000000003".into()),
             billing_address: Some("Dubai".into()),
             billing_email: Some("ap@bluedunes.ae".into()),
+            einvoice_recipient_id: None,
         };
         let snapshot = PartySnapshot::of(&identity);
         assert_eq!(snapshot.legal_name_en, "Blue Dunes LLC");

@@ -79,3 +79,55 @@ async fn the_models_match_the_schema() {
 async fn every_view_compiles() {
     boot().await.app.assert_views_compile();
 }
+
+/// #147: a module that drafts one invoice per record replaces the lines of
+/// its draft through the kernel contract; the totals follow, the party and
+/// source stay, and an issued invoice is never rewritten.
+#[renox::test]
+async fn update_draft_replaces_the_lines_of_a_draft_only() {
+    use wl_kernel::invoicing::{DraftLine, InvoiceDraft, invoicer};
+
+    let t = boot().await;
+    let a = t.user_a().await;
+    let draft = t.draft(&[(33_333, VatCategory::Standard)], None).await;
+    assert_eq!(draft.gross_total, 35_000);
+
+    let replacement = InvoiceDraft::new(
+        wl_kernel::PartyId(999),
+        wl_kernel::Subject::new("property.lease", 10),
+    )
+    .line(DraftLine::new(
+        "Replace AC capacitor",
+        20_000,
+        VatCategory::Standard,
+    ))
+    .line(DraftLine::new("Call-out", 5_000, VatCategory::Exempt));
+    let changed = invoicer(t.state())
+        .update_draft(t.db(), draft.invoice_id(), replacement.clone())
+        .await
+        .unwrap();
+    assert!(changed);
+    let after = t.reload(&draft).await;
+    assert_eq!(
+        (after.net_total, after.vat_total, after.gross_total),
+        (25_000, 1_000, 26_000)
+    );
+    assert_eq!(after.balance, 26_000);
+    assert_eq!(after.party_id, draft.party_id, "the party stays");
+    assert_eq!(after.source_id, draft.source_id);
+    let lines = wl_invoicing::invoicer::lines_of(t.db(), draft.id)
+        .await
+        .unwrap();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0].description, "Replace AC capacitor");
+
+    let issued = t
+        .issued(&[(100_000, VatCategory::Standard)], None, &a)
+        .await;
+    let untouched = invoicer(t.state())
+        .update_draft(t.db(), issued.invoice_id(), replacement)
+        .await
+        .unwrap();
+    assert!(!untouched);
+    assert_eq!(t.reload(&issued).await.gross_total, issued.gross_total);
+}

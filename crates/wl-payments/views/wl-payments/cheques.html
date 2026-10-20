@@ -1,0 +1,7 @@
+{#- wl-payments: the cheque register, a renox::grid (party, number, bank,
+    date, amounts, direction, status). Replace it with
+    resources/views/wl-payments/cheques.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['cheques.title']">
+  <rx-page-header :title="tx['cheques.title']"/>
+  <rx-grid :page="cheques"/>
+</rx-page>

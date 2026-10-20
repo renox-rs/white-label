@@ -1,0 +1,27 @@
+{#- wl-invoicing: the form that makes a draft budget version: the legal
+    entity, the fiscal year, a name, how a first version starts (empty, a copy
+    of last year's budget, or from last year's actual) and, for a revision,
+    its reason. When the entity and year already have an approved version the
+    new one is a revision of it. Replace it with
+    resources/views/wl-invoicing/budget_form.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :back="cancel" :back-label="tx['budget.title']"/>
+    <rx-form :action="action" novalidate>
+      <rx-card :title="tx['budget.sections.summary']">
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-select name="legal_entity_id" :label="tx['budget.fields.entity']" :options="entities" :selected="values['legal_entity_id']" required/>
+          <rx-input name="fiscal_year" type="number" :label="tx['budget.fields.year']" :hint="tx['budget.new.year_hint']" :value="values['fiscal_year']" required/>
+          <rx-input name="name" :label="tx['budget.fields.name']" :value="values['name']"/>
+          <rx-select name="start" :label="tx['budget.fields.start']" :hint="tx['budget.new.start_hint']" :options="starts" :selected="values['start']"/>
+          <rx-textarea name="revision_reason" :label="tx['budget.fields.revision_reason']" :hint="tx['budget.new.reason_hint']" :value="values['revision_reason']" span="full"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-link-button :href="cancel" :label="tx['budget.new.cancel']" variant="plain"/>
+          <rx-button :label="tx['budget.new.save']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

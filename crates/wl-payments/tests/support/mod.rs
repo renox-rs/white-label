@@ -19,7 +19,23 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use renox::testing::{TestApp, TestResponse};
 use serde::Deserialize;
-use wl_kernel::invoicing::{InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer};
+use wl_kernel::approvals::{ApprovalDecided, ApprovalEnd};
+use wl_kernel::cheques::{
+    BounceFeeCharge, BounceFees, ChargeInvoicer, ChequeBounceResolved, ChequeBounced, ChequeFuture,
+    ChequeReferredToLegal, RegisterCheque, cheques as cheque_contract,
+};
+use wl_kernel::deposits::{
+    DepositAdjusted, DepositFuture, DepositSettled, DepositTopUps, DisputeDeductions, TopUpCharge,
+    deposit_deductions,
+};
+use wl_kernel::documents::today;
+use wl_kernel::drawings::{
+    DrawingCategory, DrawingFuture, DrawingRequest, DrawingStart, OwnerDrawings,
+};
+use wl_kernel::invoicing::{
+    InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
+    WriteOffAnswer,
+};
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::payments::{
@@ -31,7 +47,7 @@ use wl_payments::deposit::HoldDeposit;
 use wl_payments::gateway::FakeGateway;
 use wl_payments::refund::{RefundRequest, RefundSource, RequestRefund};
 use wl_payments::{
-    Allocation, Deposit, FollowupTask, Payment, Refund, WlPayments, permissions as perm,
+    Allocation, Cheque, Deposit, FollowupTask, Payment, Refund, WlPayments, permissions as perm,
 };
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -148,6 +164,10 @@ struct Ledger {
     invoices: Vec<InvoiceSummary>,
     allocations: Vec<AllocateCall>,
     drafts: usize,
+    /// Whether a write-off waits for an approval (above the limit).
+    approval: bool,
+    /// The write-offs asked for, with the approval request when one waits.
+    write_offs: Vec<(InvoiceId, Option<i64>)>,
 }
 
 /// An `Invoicer` that holds invoices in memory and records every call.
@@ -183,6 +203,70 @@ impl RecordingInvoicer {
     /// How many invoices were drafted.
     pub fn drafts(&self) -> usize {
         self.0.lock().unwrap().drafts
+    }
+
+    /// Whether the next write-offs wait for an approval, as above the
+    /// `FIN.ACL.15` limit (the default: they are made at once).
+    pub fn require_approval(&self, on: bool) {
+        self.0.lock().unwrap().approval = on;
+    }
+
+    /// The invoices a write-off was asked for, oldest first.
+    pub fn write_offs(&self) -> Vec<InvoiceId> {
+        self.0
+            .lock()
+            .unwrap()
+            .write_offs
+            .iter()
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// The approval request of the write-off asked for `id`, if one waits.
+    pub fn request_of(&self, id: InvoiceId) -> Option<i64> {
+        self.0
+            .lock()
+            .unwrap()
+            .write_offs
+            .iter()
+            .rev()
+            .find(|(invoice, _)| *invoice == id)
+            .and_then(|(_, request)| *request)
+    }
+
+    /// Flags the invoice `id` as disputed.
+    pub fn set_disputed(&self, id: InvoiceId, disputed: bool) {
+        let mut ledger = self.0.lock().unwrap();
+        if let Some(invoice) = ledger.invoices.iter_mut().find(|i| i.id == id) {
+            invoice.disputed = disputed;
+        }
+    }
+
+    /// Sets the balance of the invoice `id`, as when the party pays.
+    pub fn set_balance(&self, id: InvoiceId, balance: i64) {
+        let mut ledger = self.0.lock().unwrap();
+        if let Some(invoice) = ledger.invoices.iter_mut().find(|i| i.id == id) {
+            invoice.balance = balance;
+        }
+    }
+
+    /// Marks the invoice `id` written off; its summary, if it exists.
+    fn mark_written_off(&self, id: InvoiceId) -> Option<InvoiceSummary> {
+        let mut ledger = self.0.lock().unwrap();
+        let invoice = ledger.invoices.iter_mut().find(|i| i.id == id)?;
+        invoice.status = InvoiceStatus::WrittenOff;
+        Some(invoice.clone())
+    }
+
+    /// The status of the invoice `id`.
+    pub fn status_of(&self, id: InvoiceId) -> Option<InvoiceStatus> {
+        self.0
+            .lock()
+            .unwrap()
+            .invoices
+            .iter()
+            .find(|i| i.id == id)
+            .map(|i| i.status)
     }
 }
 
@@ -236,6 +320,99 @@ impl Invoicer for RecordingInvoicer {
         }
         Box::pin(async move { result })
     }
+
+    fn write_off<'a>(
+        &'a self,
+        state: &'a AppState,
+        _by: &'a AuthUser,
+        id: InvoiceId,
+        _reason_code: &'a str,
+        _reason_text: Option<&'a str>,
+    ) -> InvoiceFuture<'a, WriteOffAnswer> {
+        Box::pin(async move {
+            let (refusal, approval, request) = {
+                let mut ledger = self.0.lock().unwrap();
+                let found = ledger.invoices.iter().find(|i| i.id == id).cloned();
+                let refusal = match found {
+                    None => Some("The invoice was not found.".to_owned()),
+                    Some(i) if i.disputed => Some("The invoice is disputed.".to_owned()),
+                    Some(i) if i.balance <= 0 || !i.status.is_open() => {
+                        Some("The invoice has no balance to write off.".to_owned())
+                    }
+                    Some(_) => None,
+                };
+                let approval = ledger.approval;
+                let request = (refusal.is_none() && approval).then(|| {
+                    ledger
+                        .write_offs
+                        .iter()
+                        .filter(|(_, r)| r.is_some())
+                        .count() as i64
+                        + 1
+                });
+                if refusal.is_none() {
+                    ledger.write_offs.push((id, request));
+                }
+                (refusal, approval, request)
+            };
+            if let Some(message) = refusal {
+                return Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message));
+            }
+            if approval {
+                return Ok(WriteOffAnswer::Pending {
+                    request: request.unwrap_or_default(),
+                });
+            }
+            let summary = self.mark_written_off(id).expect("the invoice exists");
+            state.emit(written_off_event(&summary)).await?;
+            Ok(WriteOffAnswer::WrittenOff)
+        })
+    }
+}
+
+fn written_off_event(invoice: &InvoiceSummary) -> InvoiceWrittenOff {
+    InvoiceWrittenOff {
+        invoice: invoice.id,
+        party: invoice.party,
+        source: Subject::new("property.lease", 9),
+        amount: invoice.balance,
+        reason_code: "other".to_owned(),
+        approver: None,
+    }
+}
+
+/// Charges that can be invoiced: `register` a charge, and `invoice` makes an
+/// issued invoice of its amount in the shared ledger.
+#[derive(Clone)]
+pub struct RecordingCharges {
+    invoices: RecordingInvoicer,
+    charges: Arc<Mutex<Vec<(i64, PartyId, i64)>>>,
+}
+
+impl RecordingCharges {
+    /// Knows the charge `id` of `party` for `amount` fils.
+    pub fn register(&self, id: i64, party: PartyId, amount: i64) {
+        self.charges.lock().unwrap().push((id, party, amount));
+    }
+}
+
+impl ChargeInvoicer for RecordingCharges {
+    fn invoice<'a>(
+        &'a self,
+        _state: &'a AppState,
+        charge: &'a Subject,
+    ) -> ChequeFuture<'a, Option<InvoiceId>> {
+        let known = self
+            .charges
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(id, _, _)| *id == charge.subject_id)
+            .copied();
+        let invoice = known
+            .map(|(id, party, amount)| self.invoices.add(party, &format!("INV-CHG-{id}"), amount));
+        Box::pin(async move { Ok(invoice) })
+    }
 }
 
 /// A notifier that records every request and queues nothing.
@@ -276,6 +453,94 @@ impl Notifier for Recording {
     }
 }
 
+/// A [`BounceFees`] that records every charge it is asked for and makes it
+/// (a charge of the next number) unless told not to.
+#[derive(Clone)]
+pub struct RecordingFees {
+    charges: Arc<Mutex<Vec<BounceFeeCharge>>>,
+    makes: Arc<Mutex<bool>>,
+}
+
+impl Default for RecordingFees {
+    fn default() -> Self {
+        RecordingFees {
+            charges: Arc::new(Mutex::new(Vec::new())),
+            makes: Arc::new(Mutex::new(true)),
+        }
+    }
+}
+
+impl RecordingFees {
+    /// The charges asked for, oldest first.
+    pub fn charges(&self) -> Vec<BounceFeeCharge> {
+        self.charges.lock().unwrap().clone()
+    }
+
+    /// Whether the next charges are made (the default) or left out, as when
+    /// invoicing cannot schedule charges.
+    pub fn make_charges(&self, makes: bool) {
+        *self.makes.lock().unwrap() = makes;
+    }
+}
+
+impl BounceFees for RecordingFees {
+    fn add<'a>(
+        &'a self,
+        _state: &'a AppState,
+        charge: BounceFeeCharge,
+    ) -> ChequeFuture<'a, Option<Subject>> {
+        let mut charges = self.charges.lock().unwrap();
+        charges.push(charge);
+        let made = *self.makes.lock().unwrap();
+        let number = charges.len() as i64;
+        Box::pin(async move { Ok(made.then(|| Subject::new("invoicing.charge", number))) })
+    }
+}
+
+/// A [`DepositTopUps`] that records every charge it is asked for and makes it
+/// (a charge of the next number) unless told not to.
+#[derive(Clone)]
+pub struct RecordingTopUps {
+    charges: Arc<Mutex<Vec<TopUpCharge>>>,
+    makes: Arc<Mutex<bool>>,
+}
+
+impl Default for RecordingTopUps {
+    fn default() -> Self {
+        RecordingTopUps {
+            charges: Arc::new(Mutex::new(Vec::new())),
+            makes: Arc::new(Mutex::new(true)),
+        }
+    }
+}
+
+impl RecordingTopUps {
+    /// The charges asked for, oldest first.
+    pub fn charges(&self) -> Vec<TopUpCharge> {
+        self.charges.lock().unwrap().clone()
+    }
+
+    /// Whether the next charges are made (the default) or left out, as when
+    /// nothing can schedule charges.
+    pub fn make_charges(&self, makes: bool) {
+        *self.makes.lock().unwrap() = makes;
+    }
+}
+
+impl DepositTopUps for RecordingTopUps {
+    fn request<'a>(
+        &'a self,
+        _state: &'a AppState,
+        charge: TopUpCharge,
+    ) -> DepositFuture<'a, Option<Subject>> {
+        let mut charges = self.charges.lock().unwrap();
+        charges.push(charge);
+        let made = *self.makes.lock().unwrap();
+        let number = charges.len() as i64;
+        Box::pin(async move { Ok(made.then(|| Subject::new("invoicing.charge", 100 + number))) })
+    }
+}
+
 /// Everything of one type `E` emitted so far.
 #[derive(Clone)]
 pub struct Recorded<E>(Arc<Mutex<Vec<E>>>);
@@ -300,6 +565,79 @@ fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
             Ok(())
         }
     })
+}
+
+/// The owner drawings approval wl-invoicing provides, scripted by the test: the
+/// category `owner_drawings` has an owner party (Quiet Sands unless changed),
+/// and a request waits for the approvers unless the desk approves at once.
+#[derive(Clone)]
+pub struct DrawingsDesk(Arc<Mutex<DeskState>>);
+
+struct DeskState {
+    owner: Option<PartyId>,
+    start: DrawingStart,
+    asked: Vec<DrawingRequest>,
+}
+
+impl Default for DrawingsDesk {
+    fn default() -> Self {
+        DrawingsDesk(Arc::new(Mutex::new(DeskState {
+            owner: Some(QUIET_SANDS),
+            start: DrawingStart::Pending,
+            asked: Vec::new(),
+        })))
+    }
+}
+
+impl DrawingsDesk {
+    /// Sets the owner party of the category (`None`: it has none yet).
+    pub fn owner(&self, party: Option<PartyId>) {
+        self.0.lock().unwrap().owner = party;
+    }
+
+    /// From now on a request is approved at once (the sole owner,
+    /// `FIN.ACL.23`), flagged or not.
+    pub fn approves_at_once(&self, self_approved: bool) {
+        self.0.lock().unwrap().start = DrawingStart::Approved { self_approved };
+    }
+
+    /// From now on a request waits for the approvers.
+    pub fn waits(&self) {
+        self.0.lock().unwrap().start = DrawingStart::Pending;
+    }
+
+    /// The requests asked so far, oldest first.
+    pub fn asked(&self) -> Vec<DrawingRequest> {
+        self.0.lock().unwrap().asked.clone()
+    }
+}
+
+impl OwnerDrawings for DrawingsDesk {
+    fn category<'a>(
+        &'a self,
+        _db: &'a Db,
+        code: &'a str,
+    ) -> DrawingFuture<'a, Option<DrawingCategory>> {
+        Box::pin(async move {
+            Ok((code == "owner_drawings").then(|| DrawingCategory {
+                code: code.to_owned(),
+                name_en: "Owner drawings".to_owned(),
+                owner_party: self.0.lock().unwrap().owner,
+            }))
+        })
+    }
+
+    fn request<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: DrawingRequest,
+    ) -> DrawingFuture<'a, DrawingStart> {
+        Box::pin(async move {
+            let mut desk = self.0.lock().unwrap();
+            desk.asked.push(request);
+            Ok(desk.start)
+        })
+    }
 }
 
 /// What the refund routes take.
@@ -329,6 +667,8 @@ struct RefundForm {
     source_id: Option<i64>,
     #[serde(default)]
     gateway_txn: Option<String>,
+    #[serde(default)]
+    details: Option<String>,
 }
 
 /// What the deposit routes take.
@@ -427,7 +767,17 @@ async fn deposit_act(
         }
         "refund" => {
             let method = method_of(form.method.as_deref())?;
-            wl_payments::deposit::refund(&state, &user, &deposit, method).await
+            return match wl_payments::deposit::refund_or_ask(&state, &user, &deposit, method)
+                .await
+                .map_err(TransitionError::into_error)?
+            {
+                wl_payments::deposit::RefundOutcome::Refunded(done) => {
+                    Ok(format!("{:?}", done.status))
+                }
+                wl_payments::deposit::RefundOutcome::ExceptionRequested(request) => {
+                    Ok(format!("exception:{}", request.id))
+                }
+            };
         }
         _ => return Err(Error::NotFound),
     };
@@ -498,10 +848,67 @@ async fn refund_act(
             let reason = form.reason.unwrap_or_default();
             wl_payments::refund::fail(&state, &user, &refund, kind, &reason).await
         }
+        "retry" => wl_payments::refund_recover::retry(&state, &user, &refund).await,
+        "change_method" => {
+            let method = method_of(form.method.as_deref())?.ok_or(Error::NotFound)?;
+            wl_payments::refund_recover::change_method(
+                &state,
+                &user,
+                &refund,
+                method,
+                form.details.as_deref(),
+            )
+            .await
+        }
+        "cancel" => {
+            let reason = form.reason.unwrap_or_default();
+            wl_payments::refund_recover::cancel(&state, &user, &refund, &reason).await
+        }
         _ => return Err(Error::NotFound),
     };
     done.map(|r| format!("{:?}", r.status))
         .map_err(TransitionError::into_error)
+}
+
+/// The parties the block guard of the test refuses (`PTY.ACL.03`).
+#[derive(Clone, Default)]
+pub struct BlockedParties(Arc<Mutex<Vec<i64>>>);
+
+impl BlockedParties {
+    /// The party is on hold from now on.
+    pub fn block(&self, party: PartyId) {
+        self.0.lock().unwrap().push(party.0);
+    }
+
+    /// The party is free again.
+    pub fn free(&self, party: PartyId) {
+        self.0.lock().unwrap().retain(|id| *id != party.0);
+    }
+}
+
+impl wl_kernel::block_guard::BlockGuard for BlockedParties {
+    fn check_in<'a>(
+        &'a self,
+        _tx: &'a mut renox::db::Transaction,
+        _viewer: Option<&'a User>,
+        party: PartyId,
+        kind: wl_kernel::block_guard::ActionKind,
+    ) -> wl_kernel::block_guard::BlockFuture<'a, wl_kernel::block_guard::GuardOutcome> {
+        Box::pin(async move {
+            let blocked = kind.is_guarded() && self.0.lock().unwrap().contains(&party.0);
+            Ok(if blocked {
+                wl_kernel::block_guard::GuardOutcome::Blocked(
+                    wl_kernel::block_guard::BlockRefusal::neutral(party, kind, "Compliance"),
+                )
+            } else {
+                wl_kernel::block_guard::GuardOutcome::Allowed
+            })
+        })
+    }
+
+    fn exception_step(&self) -> wl_kernel::block_guard::ExceptionStep {
+        wl_kernel::block_guard::ExceptionStep::new("compliance")
+    }
 }
 
 /// The test-only routes.
@@ -542,6 +949,26 @@ pub struct Booted {
     pub refund_paid: Recorded<RefundPaid>,
     /// `RefundFailed`.
     pub refund_failed: Recorded<RefundFailed>,
+    /// `ChequeBounced`.
+    pub cheque_bounced: Recorded<ChequeBounced>,
+    /// `ChequeBounceResolved`.
+    pub cheque_resolved: Recorded<ChequeBounceResolved>,
+    /// `ChequeReferredToLegal`.
+    pub cheque_referred: Recorded<ChequeReferredToLegal>,
+    /// `DepositSettled`.
+    pub deposit_settled: Recorded<DepositSettled>,
+    /// `DepositAdjusted`.
+    pub deposit_adjusted: Recorded<DepositAdjusted>,
+    /// The parties on hold (`PTY.ACL.03`).
+    pub blocked: BlockedParties,
+    /// The top-up charges asked for.
+    pub top_ups: RecordingTopUps,
+    /// The bounce fee charges asked of invoicing.
+    pub fees: RecordingFees,
+    /// The charges that can be invoiced.
+    pub charges: RecordingCharges,
+    /// The owner drawings approval.
+    pub drawings: DrawingsDesk,
 }
 
 impl Booted {
@@ -867,6 +1294,417 @@ impl Booted {
         Refund::find_or_404(self.db(), id).await.unwrap()
     }
 
+    /// A user with every cheque permission (and the payments ones to view).
+    pub async fn cheque_staff(&self, name: &str) -> User {
+        self.user(
+            name,
+            &[
+                perm::VIEW,
+                perm::CHEQUES_VIEW,
+                perm::CHEQUES_DEPOSIT,
+                perm::CHEQUES_MANAGE,
+                perm::CHEQUES_LEGAL,
+            ],
+        )
+        .await
+    }
+
+    /// Registers `request` through the kernel contract; the cheque.
+    pub async fn register_cheque(&self, request: RegisterCheque) -> Cheque {
+        let summary = cheque_contract(self.state())
+            .register(self.state(), request, None)
+            .await
+            .expect("the cheque is registered");
+        self.cheque(summary.id.0).await
+    }
+
+    /// A received cheque of `amount` fils of `party`, dated today, paying
+    /// `invoice` when given.
+    pub async fn received_cheque(
+        &self,
+        party: PartyId,
+        number: &str,
+        amount: i64,
+        invoice: Option<InvoiceId>,
+    ) -> Cheque {
+        let entity = self.entity("PGP").await;
+        let mut request = RegisterCheque::new(party, entity.id, "ENBD", number, today(), amount);
+        if let Some(invoice) = invoice {
+            request = request.link(invoice.subject());
+        }
+        self.register_cheque(request).await
+    }
+
+    /// The cheque `id`, as stored now.
+    pub async fn cheque(&self, id: i64) -> Cheque {
+        Cheque::find_or_404(self.db(), id).await.unwrap()
+    }
+
+    /// `by` posts `action` (`deposit`, `clear`, `bounce`, ...) to the page
+    /// route of `cheque`.
+    pub async fn cheque_action(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        action: &str,
+        pairs: &[(&str, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/cheques/{}/{action}", cheque.id), pairs)
+            .await
+    }
+
+    /// `by` deposits `cheque`; the cheque.
+    pub async fn deposit_cheque(&self, by: &User, cheque: &Cheque) -> Cheque {
+        self.cheque_action(by, cheque, "deposit", &[])
+            .await
+            .assert_ok();
+        self.cheque(cheque.id).await
+    }
+
+    /// `by` records the bounce of the deposited `cheque`.
+    pub async fn bounce_cheque(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        reason: &str,
+        certificate: &str,
+        honoured: &str,
+    ) -> TestResponse {
+        self.cheque_action(
+            by,
+            cheque,
+            "bounce",
+            &[
+                ("reason", reason),
+                ("certificate", certificate),
+                ("honoured", honoured),
+            ],
+        )
+        .await
+    }
+
+    /// `by` presents the bounced `cheque` again on `date` (`2027-02-05`),
+    /// with the party's confirmation of funds when `funds_confirmed`, and
+    /// `note`.
+    pub async fn represent_cheque(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        date: &str,
+        funds_confirmed: bool,
+        note: &str,
+    ) -> TestResponse {
+        let mut pairs = vec![("date", date), ("note", note)];
+        if funds_confirmed {
+            pairs.push(("funds_confirmed", "on"));
+        }
+        self.cheque_action(by, cheque, "represent", &pairs).await
+    }
+
+    /// A received cheque of `amount` fils paying `invoice`, dated today,
+    /// deposited by `by` and bounced for "insufficient funds" with the
+    /// certificate "CERT-1" and `honoured` dirhams paid (`""` for nothing);
+    /// the cheque as stored after the bounce.
+    pub async fn bounced_cheque(
+        &self,
+        by: &User,
+        party: PartyId,
+        number: &str,
+        amount: i64,
+        invoice: Option<InvoiceId>,
+        honoured: &str,
+    ) -> Cheque {
+        let cheque = self.received_cheque(party, number, amount, invoice).await;
+        let cheque = self.deposit_cheque(by, &cheque).await;
+        self.bounce_cheque(by, &cheque, "insufficient_funds", "CERT-1", honoured)
+            .await
+            .assert_ok();
+        self.cheque(cheque.id).await
+    }
+
+    /// `by` records a part payment of `amount` dirhams (`"4000.00"`) by
+    /// `method` towards the bounced `cheque`.
+    pub async fn settle_cheque(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        method: &str,
+        amount: &str,
+        reference: &str,
+    ) -> TestResponse {
+        self.cheque_action(
+            by,
+            cheque,
+            "settle",
+            &[
+                ("method", method),
+                ("amount", amount),
+                ("reference", reference),
+            ],
+        )
+        .await
+    }
+
+    /// `by` links the cheque or payment `id` (`kind` is `cheque` or
+    /// `payment`) as a replacement of the bounced `cheque`.
+    pub async fn link_replacement(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        kind: &str,
+        id: i64,
+    ) -> TestResponse {
+        let id = id.to_string();
+        self.cheque_action(
+            by,
+            cheque,
+            "replacements",
+            &[("kind", kind), ("ref_id", id.as_str())],
+        )
+        .await
+    }
+
+    /// `by` marks the bounced `cheque` replaced.
+    pub async fn replace_cheque(&self, by: &User, cheque: &Cheque) -> TestResponse {
+        self.cheque_action(by, cheque, "replace", &[]).await
+    }
+
+    /// `by` refers the bounced `cheque` to a legal case (`case_type` is
+    /// `civil_execution` or `criminal_complaint`), owned by user `owner`
+    /// when given.
+    pub async fn refer_cheque(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        case_type: &str,
+        owner: Option<i64>,
+    ) -> TestResponse {
+        let owner = owner.map(|id| id.to_string());
+        let mut pairs = vec![("case_type", case_type)];
+        if let Some(owner) = owner.as_deref() {
+            pairs.push(("case_owner", owner));
+        }
+        self.cheque_action(by, cheque, "refer", &pairs).await
+    }
+
+    /// A user of the `finance_manager` role (told of a legal referral).
+    pub async fn finance_manager(&self, name: &str) -> User {
+        let user = User::register(
+            self.db(),
+            name,
+            &format!("{}@example.com", name.to_lowercase()),
+            "password123",
+        )
+        .await
+        .unwrap();
+        permissions::define_role(self.db(), "finance_manager", &[perm::VIEW])
+            .await
+            .unwrap();
+        user.assign_role(self.db(), "finance_manager")
+            .await
+            .unwrap();
+        user
+    }
+
+    /// A deposit of `amount` fils of `party`, held with a received payment
+    /// and `settlement_pending`.
+    pub async fn settling_deposit(&self, by: &User, party: PartyId, amount: i64) -> Deposit {
+        let payment = self.receive(party, amount).await;
+        let deposit = self.hold_deposit(by, party, amount, Some(&payment)).await;
+        self.deposit_action(by, &deposit, "start_settlement", &[])
+            .await
+            .assert_ok();
+        self.deposit(deposit.id).await
+    }
+
+    /// `by` posts to the page route `action` of `deposit`.
+    pub async fn deposit_page(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        action: &str,
+        pairs: &[(&str, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/deposits/{}/{action}", deposit.id), pairs)
+            .await
+    }
+
+    /// `by` publishes the deductions `lines` (`description | amount |
+    /// evidence` per row), or the forfeiture when `forfeiture` is not empty.
+    pub async fn publish_deductions(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        lines: &str,
+        forfeiture: &str,
+    ) -> TestResponse {
+        self.deposit_page(
+            by,
+            deposit,
+            "deductions",
+            &[("lines", lines), ("forfeiture_reason", forfeiture)],
+        )
+        .await
+    }
+
+    /// `by` answers the open disputes of `deposit`; `changes` has a
+    /// `line id | new amount` per row (empty: upheld).
+    pub async fn answer_dispute(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        changes: &str,
+    ) -> TestResponse {
+        self.deposit_page(
+            by,
+            deposit,
+            "answer",
+            &[
+                ("response", "The inspection report shows the damage."),
+                ("evidence", "inspection-2027-02"),
+                ("changes", changes),
+            ],
+        )
+        .await
+    }
+
+    /// `by` forfeits `deposit` for `reason`, approved by `approver`.
+    pub async fn forfeit_deposit(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        reason: &str,
+        approver: Option<i64>,
+    ) -> TestResponse {
+        let approver = approver.map(|id| id.to_string());
+        let mut pairs = vec![("reason", reason)];
+        if let Some(approver) = approver.as_deref() {
+            pairs.push(("approver", approver));
+        }
+        self.deposit_page(by, deposit, "forfeit", &pairs).await
+    }
+
+    /// `party` disputes the lines `lines` of version `version` of the
+    /// deductions of `deposit`, through the kernel contract the portal uses.
+    pub async fn dispute_lines(
+        &self,
+        party: PartyId,
+        deposit: &Deposit,
+        version: i32,
+        lines: Vec<i64>,
+    ) -> Result<()> {
+        let request = DisputeDeductions {
+            deposit: deposit.deposit_id(),
+            version,
+            lines,
+            comment: "The wall was already damaged when I moved in.".to_owned(),
+        };
+        // `today()` reads the clock only inside `at_travelled_time`.
+        self.app
+            .at_travelled_time(deposit_deductions(self.state()).dispute(
+                self.state(),
+                party,
+                request,
+            ))
+            .await
+    }
+
+    /// What the portal shows `party` of the deductions now.
+    pub async fn published_for(
+        &self,
+        party: PartyId,
+    ) -> Vec<wl_kernel::deposits::PublishedDeductions> {
+        // `today()` reads the clock only inside `at_travelled_time`.
+        self.app
+            .at_travelled_time(deposit_deductions(self.state()).published_for(self.state(), party))
+            .await
+            .unwrap()
+    }
+
+    /// `by` adjusts the held `deposit` to `amount` dirhams (`"6000.00"`) for
+    /// version `version` of its agreement, effective on `date`.
+    pub async fn adjust_deposit(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        amount: &str,
+        version: &str,
+        date: &str,
+    ) -> TestResponse {
+        self.deposit_page(
+            by,
+            deposit,
+            "adjust",
+            &[
+                ("new_amount", amount),
+                ("source_version", version),
+                ("effective_on", date),
+            ],
+        )
+        .await
+    }
+
+    /// Allocates `amount` fils of `payment` to the held `deposit`.
+    pub async fn allocate_to_deposit(
+        &self,
+        payment: &Payment,
+        deposit: &Deposit,
+        amount: i64,
+    ) -> Result<Allocation> {
+        wl_payments::allocate::allocate(
+            self.state(),
+            payment.payment_id(),
+            AllocationTarget::Deposit(deposit.deposit_id()),
+            amount,
+            None,
+        )
+        .await
+    }
+
+    /// `by` writes off the bounced `cheque` for `reason`.
+    pub async fn write_off_cheque(&self, by: &User, cheque: &Cheque, reason: &str) -> TestResponse {
+        self.cheque_action(by, cheque, "write_off", &[("reason", reason)])
+            .await
+    }
+
+    /// The approvers say yes to the waiting write-off of `invoice`: the
+    /// invoice is written off and `InvoiceWrittenOff` arrives.
+    pub async fn approve_invoice_write_off(&self, invoice: InvoiceId) {
+        let summary = self
+            .invoices
+            .mark_written_off(invoice)
+            .expect("the invoice exists");
+        self.state()
+            .emit(written_off_event(&summary))
+            .await
+            .expect("the event is handled");
+    }
+
+    /// The approvers end the waiting write-off request of `invoice` with
+    /// `decision`.
+    pub async fn end_invoice_write_off(&self, invoice: InvoiceId, decision: ApprovalEnd) {
+        let request = self
+            .invoices
+            .request_of(invoice)
+            .expect("a write-off waits for the invoice");
+        self.state()
+            .emit(ApprovalDecided {
+                request,
+                decision,
+                approvers: Vec::new(),
+                subject: invoice.subject(),
+                state_returned_to: None,
+            })
+            .await
+            .expect("the event is handled");
+    }
+
     /// Moves the clock forward to `date` at `hour:minute` UTC.
     pub fn travel_to(&self, date: &str, hour: u32, minute: u32) {
         let target = date
@@ -911,11 +1749,36 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let reversed = Recorded::new();
     let refund_paid = Recorded::new();
     let refund_failed = Recorded::new();
+    let cheque_bounced = Recorded::new();
+    let cheque_resolved = Recorded::new();
+    let cheque_referred = Recorded::new();
+    let deposit_settled = Recorded::new();
+    let deposit_adjusted = Recorded::new();
+    let top_ups = RecordingTopUps::default();
+    let top_up_provider: Arc<dyn DepositTopUps> = Arc::new(top_ups.clone());
+    let fees = RecordingFees::default();
     let notices = Recording::default();
     let invoices = RecordingInvoicer::default();
     let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
     let invoicer: Arc<dyn Invoicer> = Arc::new(invoices.clone());
+    let bounce_fees: Arc<dyn BounceFees> = Arc::new(fees.clone());
+    let charges = RecordingCharges {
+        invoices: invoices.clone(),
+        charges: Arc::new(Mutex::new(Vec::new())),
+    };
+    let charge_invoicer: Arc<dyn ChargeInvoicer> = Arc::new(charges.clone());
+    let drawings = DrawingsDesk::default();
+    let owner_drawings: Arc<dyn OwnerDrawings> = Arc::new(drawings.clone());
+    let blocked = BlockedParties::default();
+    let block_guard: Arc<dyn wl_kernel::block_guard::BlockGuard> = Arc::new(blocked.clone());
+    // What wl-parties registers: an exception is decided by the compliance role.
+    wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
+        .with_step(
+            wl_kernel::approvals::Step::one_of(["compliance"])
+                .requiring(wl_kernel::BLOCK_EXCEPTION_ACTION),
+        )
+        .register();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -923,11 +1786,21 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         .module(Harness)
         .provide(directory)
         .provide(notifier)
-        .provide(invoicer);
+        .provide(invoicer)
+        .provide(bounce_fees)
+        .provide(charge_invoicer)
+        .provide(top_up_provider)
+        .provide(owner_drawings)
+        .provide(block_guard);
     let app = record(app, &received);
     let app = record(app, &reversed);
     let app = record(app, &refund_paid);
     let app = record(app, &refund_failed);
+    let app = record(app, &cheque_bounced);
+    let app = record(app, &cheque_resolved);
+    let app = record(app, &cheque_referred);
+    let app = record(app, &deposit_settled);
+    let app = record(app, &deposit_adjusted);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -959,5 +1832,15 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         reversed,
         refund_paid,
         refund_failed,
+        cheque_bounced,
+        cheque_resolved,
+        cheque_referred,
+        deposit_settled,
+        deposit_adjusted,
+        blocked,
+        top_ups,
+        fees,
+        charges,
+        drawings,
     }
 }

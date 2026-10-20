@@ -27,6 +27,7 @@ use renox::state_machine::{Machine, StateMachine, Transition, TransitionError};
 use serde::{Deserialize, Serialize};
 
 use super::AutomationFailed;
+use crate::compliance::{self, AlertKind};
 use crate::subject::Subject;
 
 /// The attempts of one run before it is `failed`.
@@ -448,7 +449,7 @@ where
             .update(db, &[("error", &Some(error.clone()))])
             .await?;
         transition(state, &run, transitions::STOP).await?;
-        announce(state, &spec, error).await?;
+        announce(state, &spec, error, AlertKind::Stopped).await?;
         return Ok(RunOutcome::Stopped);
     }
 
@@ -474,6 +475,12 @@ where
     match action(state.clone()).await {
         Ok(()) => {
             transition(state, &run, transitions::RUN).await?;
+            // A rerun that succeeds closes the owner's alert of a
+            // compliance-critical rule.
+            if is_critical(&spec) {
+                compliance::run_succeeded(state, &spec.rule, &spec.subject, &spec.occurrence_key)
+                    .await?;
+            }
             Ok(RunOutcome::Succeeded)
         }
         Err(error) => {
@@ -486,7 +493,7 @@ where
                 Ok(RunOutcome::Retrying)
             } else {
                 transition(state, &run, transitions::FAIL).await?;
-                announce(state, &spec, message).await?;
+                announce(state, &spec, message, AlertKind::Failed).await?;
                 Ok(RunOutcome::Failed)
             }
         }
@@ -503,16 +510,34 @@ async fn transition(state: &AppState, run: &RuleRun, name: &str) -> Result {
         .map_err(TransitionError::into_error)
 }
 
-/// Emits `AutomationFailed` for a run that failed or was stopped.
-async fn announce(state: &AppState, spec: &RuleRunSpec, error: String) -> Result {
+/// Whether the run is of a compliance-critical rule: the spec says so, or
+/// the rule is registered with [`compliance::CriticalRule`].
+fn is_critical(spec: &RuleRunSpec) -> bool {
+    spec.compliance_critical || compliance::is_critical(&spec.rule)
+}
+
+/// Emits `AutomationFailed` for a run that failed or was stopped. For a
+/// compliance-critical rule the business owner role and the company admin
+/// are alerted at once, in the same job (`PLT.RUL.04`).
+async fn announce(state: &AppState, spec: &RuleRunSpec, error: String, kind: AlertKind) -> Result {
+    let critical = is_critical(spec);
     state
         .emit(AutomationFailed {
             rule: spec.rule.clone(),
             subject: spec.subject.clone(),
-            error,
-            compliance_critical: spec.compliance_critical,
+            error: error.clone(),
+            compliance_critical: critical,
         })
-        .await
+        .await?;
+    if critical {
+        compliance::raise(
+            state,
+            compliance::Raised::new(&spec.rule, spec.subject.clone(), &spec.occurrence_key, kind)
+                .error(&error),
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

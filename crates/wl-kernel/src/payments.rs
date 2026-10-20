@@ -471,6 +471,10 @@ pub struct RecordPayment {
     pub statement_line_id: Option<i64>,
     /// The user who collected the money, if any.
     pub collected_by: Option<i64>,
+    /// The bank account the money moved in or out of, if any (a transfer, a
+    /// card or a cheque): the cash-flow forecast reads the payments of an
+    /// account ([`PaymentRecorder::payments_after`]).
+    pub bank_account: Option<String>,
 }
 
 impl RecordPayment {
@@ -491,6 +495,7 @@ impl RecordPayment {
             source: PaymentSource::Manual,
             statement_line_id: None,
             collected_by: None,
+            bank_account: None,
         }
     }
 
@@ -547,10 +552,16 @@ impl RecordPayment {
         self.collected_by = Some(user);
         self
     }
+
+    /// Through this bank account.
+    pub fn bank_account(mut self, account: &str) -> Self {
+        self.bank_account = Some(account.to_owned());
+        self
+    }
 }
 
 /// What other modules see of a payment.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaymentSummary {
     /// The id.
     pub id: PaymentId,
@@ -577,6 +588,41 @@ pub struct PaymentSummary {
     pub status: PaymentStatus,
     /// The day the money moved.
     pub date: NaiveDate,
+}
+
+/// A payment in a bank account, for the cash-flow forecast:
+/// [`PaymentRecorder::payments_after`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BankPayment {
+    /// The payment.
+    pub payment: PaymentSummary,
+    /// The bank account it moved in or out of.
+    pub bank_account: String,
+    /// Its reference; an outgoing VAT payment names its VAT summary here.
+    pub reference: Option<String>,
+}
+
+/// A refund approved or failed and not paid yet:
+/// [`PaymentRecorder::refunds_unpaid`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnpaidRefund {
+    /// The refund.
+    pub id: RefundId,
+    /// Who is paid back.
+    pub party: PartyId,
+    /// The legal entity paying.
+    pub legal_entity_id: i64,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// Whether the last payment attempt failed (`failed`) rather than the
+    /// refund waiting to be paid (`approved`).
+    pub failed: bool,
+    /// The day it was approved (Asia/Dubai).
+    pub approved_on: Option<NaiveDate>,
+    /// What it is refunded from.
+    pub source: Subject,
 }
 
 /// The future a [`PaymentRecorder`] method returns.
@@ -657,6 +703,33 @@ pub trait PaymentRecorder: Send + Sync + 'static {
         _by: Option<i64>,
     ) -> PaymentFuture<'a, RefundId> {
         Box::pin(async { Err(payments_off("a refund cannot be requested")) })
+    }
+
+    /// The `received` payments of `legal_entity_id` in `bank_account` dated
+    /// strictly after `after`, by the payment's own date (a balance is as of
+    /// the end of its day, so a payment dated that day is in it), oldest
+    /// first. Reversed payments and those without a bank account (a
+    /// set-off) are never returned. Read only; the default finds none
+    /// (`FIN.CFL.01`).
+    fn payments_after<'a>(
+        &'a self,
+        _db: &'a Db,
+        _legal_entity_id: i64,
+        _bank_account: &'a str,
+        _after: NaiveDate,
+    ) -> PaymentFuture<'a, Vec<BankPayment>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The refunds of `legal_entity_id` that are `approved` or `failed`
+    /// (not `requested`, `cancelled`, `rejected` or `paid`), oldest first.
+    /// Read only; the default finds none (`FIN.CFL.01`).
+    fn refunds_unpaid<'a>(
+        &'a self,
+        _db: &'a Db,
+        _legal_entity_id: i64,
+    ) -> PaymentFuture<'a, Vec<UnpaidRefund>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 }
 

@@ -257,6 +257,9 @@ pub(crate) struct ShowPage {
     timeline: Vec<Value>,
     /// The transitions this user may run (`<rx-transition-actions>`).
     actions: Vec<Available>,
+    /// The input VAT of the period that is not recovered on owner drawings
+    /// (`FIN.ACL.21`, §10), when there is any.
+    blocked_drawings_vat: Option<String>,
 }
 
 /// Whether adjustments of a summary in `status` can still be decided.
@@ -346,6 +349,13 @@ async fn show(
     let timeline = state_machine::timeline(&history, Some(&state_machine::info_of::<VatSummary>()));
     let actions = summary.available(&user, &db).await?;
     let period = period_text(summary.period_start, summary.period_end);
+    let blocked = crate::drawings::blocked_input_vat(
+        &db,
+        summary.legal_entity_id,
+        summary.period_start,
+        summary.period_end,
+    )
+    .await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: format!("{entity} {period}"),
@@ -359,6 +369,7 @@ async fn show(
         adjustments,
         timeline,
         actions,
+        blocked_drawings_vat: (blocked != 0).then(|| amount_text("AED", blocked)),
         summary,
     }))
 }

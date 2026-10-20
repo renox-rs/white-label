@@ -18,9 +18,13 @@
 //! `approve` (matched or exception to approved, `supplier_bills.approve`)
 //! takes a `reason` (the run's reason, which the history row carries). From
 //! `exception` the reason must not be blank, and a bill held as a possible
-//! duplicate cannot be approved by the user who entered it, whatever their
-//! permissions. The approver and the reason are stored on the bill; one
-//! approval covers every exception row.
+//! duplicate, or held for work after the contract end, cannot be approved by
+//! the user who entered it, whatever their permissions. The approver and the
+//! reason are stored on the bill; one approval covers every exception row.
+//!
+//! A bill with a line coded to owner drawings is approved only after the
+//! approval of the drawing ([`crate::drawings`], `FIN.ACL.21`): the effect of
+//! both approve transitions refuses (422) until one covers the same amount.
 //!
 //! `void` (draft, matched or exception to void, `supplier_bills.approve`)
 //! takes a `reason` that must not be blank and is stored on the bill. The
@@ -156,10 +160,11 @@ fn approve_rules(transition: Transition<SupplierBill>) -> Transition<SupplierBil
             })
         })
         .guard("not_creator", |bill: &SupplierBill, ctx| {
-            // A held possible duplicate: never the user who entered it.
+            // A held possible duplicate, or work after the contract end:
+            // never the user who entered it.
             let creator = bill.created_by;
             let blocked = bill.status == SupplierBillStatus::Exception
-                && bill.duplicate_of.is_some()
+                && (bill.duplicate_of.is_some() || bill.after_end_hold)
                 && creator.is_some()
                 && actor_id(ctx) == creator;
             Box::pin(async move {
@@ -175,6 +180,10 @@ fn approve_rules(transition: Transition<SupplierBill>) -> Transition<SupplierBil
             let approver = actor_id(ctx);
             let reason = reason_of(ctx);
             Box::pin(async move {
+                // A bill with an owner drawing is approved only after the
+                // approval of the drawing (`FIN.ACL.21`); a refusal rolls
+                // the transition back (422).
+                crate::drawings::ensure_bill_approved(&mut *tx, id).await?;
                 // Not the status column, so outside the machine's guard.
                 SupplierBill::query()
                     .where_(SupplierBill::ID.eq(id))

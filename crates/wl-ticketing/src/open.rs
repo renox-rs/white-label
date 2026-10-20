@@ -12,15 +12,17 @@
 
 use renox::db::DateTime;
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::calendar::calendar;
 use wl_kernel::tickets::{
-    OpenTicket, Requester, TICKET_SERIES, TaskComment, TaskCreator, TicketFuture, TicketId,
-    TicketRef,
+    Assignee, OpenTicket, Requester, TICKET_SERIES, TaskComment, TaskCreator, TicketFuture,
+    TicketId, TicketRef,
 };
 
 use crate::assign::{assign_as_system, check_assignee};
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::Category;
+use crate::contract::{ServiceContract, ServiceContracts};
 use crate::ticket::{Ticket, TicketStatus};
 use crate::work::{complete, resolve_from_source};
 use renox::state_machine::TransitionError;
@@ -61,7 +63,17 @@ impl Tickets {
                 )));
             }
         };
-        if let Some(assignee) = request.assignee {
+        // A planned visit of a contract whose vendor is blocked is created
+        // unassigned: the plans do not hand new work to a blocked vendor
+        // (`PTY.ACL.03`).
+        let mut assignee = request.assignee;
+        if let Some(Assignee::Party { id }) = assignee
+            && request.planned_due.is_some()
+            && crate::vendor_block::is_blocked(state, id).await?
+        {
+            assignee = None;
+        }
+        if let Some(assignee) = assignee {
             check_assignee(state, assignee)
                 .await
                 .map_err(|error| unprocessable(error.to_string()))?;
@@ -73,6 +85,15 @@ impl Tickets {
             .filter(|key| !key.is_empty())
             .map(str::to_owned);
         let on = calendar(state).local(at).date_naive();
+        // The contract it is handled under: the one a planned visit names, else
+        // the one covering the subject and the category. Its SLA policy
+        // replaces the category's.
+        let contract = match request.contract {
+            Some(id) => ServiceContract::find(&state.db, id.0).await?,
+            None => ServiceContracts::coverage(&state.db, &request.subject, category.id, on)
+                .await?
+                .map(|covering| covering.contract),
+        };
         let number = TICKET_SERIES
             .next_allowing_gaps(&state.db, None, None, on)
             .await?;
@@ -91,10 +112,19 @@ impl Tickets {
             priority: category.default_priority,
             requester_user_id,
             requester_party_id,
+            bill_party_id: request.bill_party.map(|party| party.0),
+            planned_due_date: request.planned_due,
             channel: request.channel,
             title: title.to_owned(),
             description: request.description.trim().to_owned(),
-            sla_policy_id: category.sla_policy_id,
+            sla_policy_id: contract
+                .as_ref()
+                .and_then(|c| c.sla_policy_id)
+                .or(category.sla_policy_id),
+            contract_id: contract.as_ref().map(|c| c.id),
+            // A planned visit of a flagged contract is flagged from the start.
+            vendor_document_flag: request.planned_due.is_some()
+                && contract.as_ref().is_some_and(|c| c.vendor_document_flag),
             confidential: category.confidential,
             chargeable: category.chargeable,
             due_at: request.due_at,
@@ -103,7 +133,7 @@ impl Tickets {
             ..Ticket::default()
         };
         ticket.insert(&state.db).await?;
-        if let Some(assignee) = request.assignee {
+        if let Some(assignee) = assignee {
             // The first assignment, as the system. The transition has its
             // own transaction, so a refusal takes the new ticket back.
             if let Err(error) =
@@ -158,6 +188,35 @@ impl Tickets {
 }
 
 impl Tickets {
+    /// The open tickets of the category `category_key` about `subject`,
+    /// oldest first: any state except `resolved`, `closed` and `cancelled`.
+    /// None for an unknown category.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn open_of(
+        state: &AppState,
+        subject: &Subject,
+        category_key: &str,
+    ) -> Result<Vec<TicketRef>> {
+        let Some(category) = Category::by_key(&state.db, category_key).await? else {
+            return Ok(Vec::new());
+        };
+        let found = Ticket::query()
+            .where_(Ticket::SUBJECT_TYPE.eq(subject.subject_type.as_str()))
+            .where_(Ticket::SUBJECT_ID.eq(subject.subject_id))
+            .where_(Ticket::CATEGORY_ID.eq(category.id))
+            .order_by(Ticket::ID)
+            .get(&state.db)
+            .await?;
+        Ok(found
+            .into_iter()
+            .filter(|ticket| ticket.is_open())
+            .map(|ticket| ticket.reference())
+            .collect())
+    }
+
     /// Resolves ticket `id` for the record that opened it, with `note` as the
     /// resolution. `false` when the ticket is unknown or already resolved,
     /// closed or cancelled.
@@ -216,6 +275,15 @@ impl TaskCreator for Tickets {
         source_key: &'a str,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(Tickets::find_open(state, source_key))
+    }
+
+    fn open_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: &'a Subject,
+        category_key: &'a str,
+    ) -> TicketFuture<'a, Vec<TicketRef>> {
+        Box::pin(Tickets::open_of(state, subject, category_key))
     }
 
     fn resolve_from_source<'a>(
@@ -379,6 +447,46 @@ mod tests {
             .unwrap()
             .expect("ticketing is on");
         assert_eq!(opened.number, "TKT-2026-0001");
+    }
+
+    #[renox::test]
+    async fn the_open_tickets_of_a_category_about_a_subject_are_listed() {
+        let app = app().await;
+        let state = app.state();
+        let lease = Subject::new("property.lease", 12);
+        let first = Tickets::open(state, OpenTicket::new(lease.clone(), "general", "Case one"))
+            .await
+            .unwrap();
+        let second = Tickets::open(state, OpenTicket::new(lease.clone(), "general", "Case two"))
+            .await
+            .unwrap();
+        let other = Subject::new("property.lease", 13);
+        Tickets::open(state, OpenTicket::new(other, "task", "Elsewhere"))
+            .await
+            .unwrap();
+        Tickets::open(state, OpenTicket::new(lease.clone(), "task", "A task"))
+            .await
+            .unwrap();
+
+        let open = task_creator(state)
+            .open_of(state, &lease, "general")
+            .await
+            .unwrap();
+        assert_eq!(open, vec![first.clone(), second.clone()]);
+        // A closed ticket is not listed; an unknown category has none.
+        assert!(
+            Tickets::resolve_from_source(state, first.id, "Done")
+                .await
+                .unwrap()
+        );
+        let open = Tickets::open_of(state, &lease, "general").await.unwrap();
+        assert_eq!(open, vec![second]);
+        assert!(
+            Tickets::open_of(state, &lease, "nope")
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[renox::test]

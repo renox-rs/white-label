@@ -17,6 +17,7 @@
 //! | `POST /document-kinds/{key}/blocks` | `wl_documents.blocks.store` | `document_kinds.manage` |
 //! | `POST /document-kinds/{key}/blocks/{guarded}/mode` | `wl_documents.blocks.mode` | `document_kinds.manage` |
 //! | `POST /document-kinds/{key}/override-mode` | `wl_documents.kinds.override_mode` | `document_kinds.manage` |
+//! | `POST /document-kinds/{key}/enabled` | `wl_documents.kinds.enabled` | `document_kinds.manage` (form field `enabled`: `1` turns the kind on, anything else off) |
 //! | `DELETE /document-kinds/{key}/blocks/{guarded}` | `wl_documents.blocks.destroy` | `document_kinds.manage` |
 //!
 //! The edit form shows the number and expiry date of a document of a
@@ -107,6 +108,8 @@ pub fn routes() -> Routes {
                 .name("wl_documents.blocks.mode")
                 .post("/document-kinds/{key}/override-mode", update_override_mode)
                 .name("wl_documents.kinds.override_mode")
+                .post("/document-kinds/{key}/enabled", update_enabled)
+                .name("wl_documents.kinds.enabled")
                 .delete("/document-kinds/{key}/blocks/{guarded}", destroy_block)
                 .name("wl_documents.blocks.destroy")
                 .require_permission(permissions::KINDS_MANAGE),
@@ -744,6 +747,8 @@ pub struct KindRow {
     pub subject_types: String,
     /// Whether it is a legal block.
     pub legal_block: bool,
+    /// Whether new documents of the kind may be attached.
+    pub enabled: bool,
 }
 
 /// What the kinds list needs.
@@ -764,6 +769,7 @@ async fn kinds_index(State(db): State<Db>, lang: Lang) -> Result<View> {
             name: kind.name(&lang.locale).to_owned(),
             subject_types: kind.subject_types.0.join(", "),
             legal_block: kind.legal_block,
+            enabled: kind.enabled,
         })
         .collect();
     Ok(View::typed(KindsPage {
@@ -822,6 +828,10 @@ pub(crate) struct KindPage {
     name: String,
     subject_types: String,
     legal_block: bool,
+    /// Whether new documents of the kind may be attached.
+    enabled: bool,
+    /// `(value, label)` pairs for the status select: `1` on, `0` off.
+    enabled_options: Vec<(String, String)>,
     override_label: String,
     /// The kind's override mode, selected in the mode form.
     override_mode: String,
@@ -892,6 +902,11 @@ async fn kind_page(State(db): State<Db>, lang: Lang, Path(key): Path<String>) ->
         tx: texts::all(&lang),
         subject_types: kind.subject_types.0.join(", "),
         legal_block: kind.legal_block,
+        enabled: kind.enabled,
+        enabled_options: vec![
+            ("1".to_owned(), text(&lang, "kinds.on")),
+            ("0".to_owned(), text(&lang, "kinds.off")),
+        ],
         override_label: text(&lang, override_key),
         override_mode: override_value(kind.override_mode).to_owned(),
         override_modes: [OverrideMode::Never, OverrideMode::WithApproval]
@@ -1042,6 +1057,32 @@ async fn update_override_mode(
             .into_response()),
         Err(refusal) => Err(refused(&lang, "mode", &refusal, &form)),
     }
+}
+
+/// The turn-on/off form.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct EnabledForm {
+    /// `1` turns the kind on; anything else turns it off.
+    #[serde(default)]
+    pub enabled: String,
+}
+
+/// `POST /document-kinds/{key}/enabled`: turns the kind on or off and
+/// reloads the page. Documents it has stay and their reminders continue.
+async fn update_enabled(
+    State(db): State<Db>,
+    lang: Lang,
+    Path(key): Path<String>,
+    Valid(form): Valid<EnabledForm>,
+) -> Result<Response> {
+    let on = form.enabled == "1";
+    kinds::set_enabled(&db, &key, on).await?;
+    let text_key = if on {
+        "kinds.turned_on"
+    } else {
+        "kinds.turned_off"
+    };
+    Ok((Toast::success(text(&lang, text_key)), renox::HxRefresh).into_response())
 }
 
 /// `DELETE /document-kinds/{key}/blocks/{guarded}`: removes the entry and

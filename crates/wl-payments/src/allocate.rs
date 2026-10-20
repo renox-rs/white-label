@@ -30,6 +30,9 @@ pub(crate) fn payment_problem(payment: &Payment, unallocated: i64, amount: i64) 
     if !payment.status.is_received() {
         return Some("Only a received payment can be allocated.".to_owned());
     }
+    if payment.purpose == wl_kernel::drawings::PURPOSE {
+        return Some("An owner drawings payment cannot be allocated to a document.".to_owned());
+    }
     if payment.direction != Direction::In {
         return Some("Only an incoming payment can be allocated to an invoice.".to_owned());
     }
@@ -115,6 +118,8 @@ pub(crate) async fn allocate_to_deposit_in(
         )
         .await?;
     deposit.held_amount = held;
+    // A top-up is paid once the deposit holds its new amount.
+    crate::deposit_adjust::settle_top_ups_in(&mut *tx, deposit.id, held, deposit.amount).await?;
     Ok(allocation)
 }
 

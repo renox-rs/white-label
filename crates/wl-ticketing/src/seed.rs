@@ -1,8 +1,13 @@
 //! The idempotent seeder with the §7 defaults (#146 A4, A6): the SLA policy
 //! `standard`, the hold reasons Parts, Access, Waiting on requester and
 //! Approval, and the categories `general` and `task`
-//! (the kernel's [`TASK_CATEGORY`], for staff tasks other modules open). With
-//! `invoicing` enabled, [`install_with`] adds `billing_dispute` too (#67 A6).
+//! (the kernel's [`TASK_CATEGORY`], for staff tasks other modules open). The
+//! platform categories other modules open tickets in for their negative flows
+//! are added when that module is on ([`PLATFORM_CATEGORIES`], #67 A6, #156):
+//! `billing_dispute` with `invoicing`, `labour_case` with `hr` and
+//! `delivery_claim` with `delivery`. They have fixed keys; a client renames
+//! them ([`crate::categories`]) but cannot delete or turn them off, and a
+//! category stays when its module is turned off later.
 //!
 //! [`install`] adds the rows the database lacks and keeps every row that is
 //! there, so a client's edits survive a re-run. The targets of a policy are
@@ -10,7 +15,7 @@
 
 use renox::prelude::*;
 
-use crate::config::{Category, HoldReason, SlaPolicy, SlaTarget};
+use crate::config::{Category, CustomField, FieldKind, HoldReason, SlaPolicy, SlaTarget};
 use crate::priority::Priority;
 
 /// The key of the default SLA policy.
@@ -28,8 +33,127 @@ pub const CATEGORIES: [(&str, &str); 2] = [(GENERAL_CATEGORY, "General"), (TASK_
 /// The key of the category of invoice disputes, seeded when invoicing is on.
 pub const BILLING_DISPUTE_CATEGORY: &str = "billing_dispute";
 
-/// The categories seeded when `invoicing` is enabled, as (key, English name).
-pub const INVOICING_CATEGORIES: [(&str, &str); 1] = [(BILLING_DISPUTE_CATEGORY, "Billing dispute")];
+/// The key of the category of labour cases, seeded when `hr` is on.
+pub const LABOUR_CASE_CATEGORY: &str = "labour_case";
+
+/// The key of the category of delivery claims, seeded when `delivery` is on.
+pub const DELIVERY_CLAIM_CATEGORY: &str = "delivery_claim";
+
+/// The role whose holders look after labour cases.
+pub const HR_ROLE: &str = "hr";
+
+/// The role whose holders look after billing disputes when the invoice has
+/// no owner (issued by the system, or the owner is gone): the holders of
+/// `invoices.issue` in the invoice's scope. `wl-invoicing` resolves the user.
+pub const RECEIVABLES_ROLE: &str = "receivables";
+
+/// A platform category: what the module that opens it needs of it.
+#[derive(Debug, Clone, Copy)]
+pub struct PlatformCategory {
+    /// The fixed key the opening module uses.
+    pub key: &'static str,
+    /// The module (`client.toml` name) whose being on seeds it.
+    pub module: &'static str,
+    /// The English name.
+    pub name_en: &'static str,
+    /// The Arabic name.
+    pub name_ar: &'static str,
+    /// Whether only `tickets.confidential.view` holders and the requester
+    /// see its tickets (`WRK.ACL.03`).
+    pub confidential: bool,
+    /// The role whose holders look after its tickets.
+    pub assignee_role: Option<&'static str>,
+}
+
+/// The platform categories opened by other modules (§7). Priority and SLA
+/// are the category defaults (Normal, `standard`) until the vertical sets
+/// them. None needs the requester's sign-off.
+pub const PLATFORM_CATEGORIES: [PlatformCategory; 3] = [
+    PlatformCategory {
+        key: BILLING_DISPUTE_CATEGORY,
+        module: "invoicing",
+        name_en: "Billing dispute",
+        name_ar: "نزاع على فاتورة",
+        confidential: false,
+        assignee_role: Some(RECEIVABLES_ROLE),
+    },
+    PlatformCategory {
+        key: LABOUR_CASE_CATEGORY,
+        module: "hr",
+        name_en: "Labour case",
+        name_ar: "قضية عمالية",
+        confidential: true,
+        assignee_role: Some(HR_ROLE),
+    },
+    PlatformCategory {
+        key: DELIVERY_CLAIM_CATEGORY,
+        module: "delivery",
+        name_en: "Delivery claim",
+        name_ar: "مطالبة توصيل",
+        confidential: false,
+        assignee_role: None,
+    },
+];
+
+/// The custom fields of a labour case: the forum (MoHRE or a court), the
+/// reference, and the hearing and reply dates.
+pub fn labour_case_fields() -> Vec<CustomField> {
+    let field = |key: &str, en: &str, ar: &str, kind: FieldKind, choices: &[&str]| CustomField {
+        key: key.to_owned(),
+        label_en: en.to_owned(),
+        label_ar: ar.to_owned(),
+        kind,
+        required: false,
+        choices: choices.iter().map(|c| (*c).to_owned()).collect(),
+    };
+    vec![
+        field(
+            "forum",
+            "Forum",
+            "الجهة",
+            FieldKind::Choice,
+            &["mohre", "court"],
+        ),
+        field("reference", "Reference", "المرجع", FieldKind::Text, &[]),
+        field(
+            "hearing_date",
+            "Hearing date",
+            "تاريخ الجلسة",
+            FieldKind::Date,
+            &[],
+        ),
+        field(
+            "reply_date",
+            "Reply date",
+            "تاريخ الرد",
+            FieldKind::Date,
+            &[],
+        ),
+    ]
+}
+
+/// The modules whose being on adds their platform categories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Enabled {
+    /// `invoicing` is on.
+    pub invoicing: bool,
+    /// `hr` is on.
+    pub hr: bool,
+    /// `delivery` is on.
+    pub delivery: bool,
+}
+
+impl Enabled {
+    /// Whether the module `name` is one of these and on.
+    pub fn has(&self, name: &str) -> bool {
+        match name {
+            "invoicing" => self.invoicing,
+            "hr" => self.hr,
+            "delivery" => self.delivery,
+            _ => false,
+        }
+    }
+}
 
 /// One SLA working hour, in minutes.
 const HOUR: i64 = 60;
@@ -82,6 +206,19 @@ pub async fn install(db: &Db) -> Result<Installed> {
 /// Like [`install`]; with `invoicing` the categories of invoicing are added
 /// too. A category stays when invoicing is turned off later.
 pub async fn install_with(db: &Db, invoicing: bool) -> Result<Installed> {
+    install_for(
+        db,
+        Enabled {
+            invoicing,
+            ..Enabled::default()
+        },
+    )
+    .await
+}
+
+/// Like [`install`]; the platform categories of each module that is `on`
+/// are added too.
+pub async fn install_for(db: &Db, on: Enabled) -> Result<Installed> {
     let mut tx = db.begin().await?;
     let mut installed = Installed::default();
 
@@ -131,12 +268,7 @@ pub async fn install_with(db: &Db, invoicing: bool) -> Result<Installed> {
         }
     }
 
-    let invoicing_categories: &[(&str, &str)] = if invoicing {
-        &INVOICING_CATEGORIES
-    } else {
-        &[]
-    };
-    for &(key, name) in CATEGORIES.iter().chain(invoicing_categories) {
+    for (key, name) in CATEGORIES {
         if Category::by_key(&mut tx, key).await?.is_none() {
             Category::create(
                 &mut tx,
@@ -147,6 +279,35 @@ pub async fn install_with(db: &Db, invoicing: bool) -> Result<Installed> {
                     sla_policy_id: Some(policy.id),
                     requires_signoff: false,
                     active: true,
+                    platform: key == TASK_CATEGORY,
+                    ..Category::default()
+                },
+            )
+            .await?;
+            installed.categories += 1;
+        }
+    }
+    for platform in PLATFORM_CATEGORIES.iter().filter(|c| on.has(c.module)) {
+        if Category::by_key(&mut tx, platform.key).await?.is_none() {
+            let fields = if platform.key == LABOUR_CASE_CATEGORY {
+                labour_case_fields()
+            } else {
+                Vec::new()
+            };
+            Category::create(
+                &mut tx,
+                Category {
+                    key: platform.key.to_owned(),
+                    name_en: platform.name_en.to_owned(),
+                    name_ar: platform.name_ar.to_owned(),
+                    default_priority: Priority::Normal,
+                    sla_policy_id: Some(policy.id),
+                    requires_signoff: false,
+                    confidential: platform.confidential,
+                    active: true,
+                    platform: true,
+                    default_assignee_role: platform.assignee_role.map(str::to_owned),
+                    custom_fields: renox::db::Json(fields),
                     ..Category::default()
                 },
             )

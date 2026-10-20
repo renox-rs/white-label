@@ -1,0 +1,11 @@
+{#- wl-kernel: the late-entry fields of a record's entry form (wl-kernel
+    §5.13, PLT.ACL.10). The form gives `late_entry_fields`
+    (wl_kernel::late_entries::web::fields_for) and includes it inside its
+    <form> with <rx-include template="wl-kernel/late_entry_fields.html"/>.
+    It shows nothing when the entry is not late. Replace it with
+    resources/views/wl-kernel/late_entry_fields.html in the app. -#}
+<template rx-if="late_entry_fields">
+  <rx-alert kind="warning" :message="late_entry_fields.labels.notice"/>
+  <rx-textarea name="late_reason" :label="late_entry_fields.labels.reason" :hint="late_entry_fields.labels.reason_hint" id="late-entry-reason" required/>
+  <rx-input name="outage_reference" :label="late_entry_fields.labels.outage" :hint="late_entry_fields.labels.outage_hint" id="late-entry-outage"/>
+</template>

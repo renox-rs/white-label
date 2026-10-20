@@ -13,6 +13,7 @@ use wl_kernel::{PartyCreated, PartyKind, PartyStatus};
 
 use crate::contacts::{ContactPoint, second_primary};
 use crate::details::{CompanyDetails, PersonDetails};
+use crate::einvoice::clean;
 use crate::party::{Channel, Language, Party};
 use crate::roles::PartyRole;
 use crate::texts;
@@ -88,6 +89,7 @@ pub async fn create(state: &AppState, new: NewParty) -> Result<Party> {
     if let Some(mut company) = new.company {
         company.id = 0;
         company.party_id = party.id;
+        company.einvoice_recipient_id = clean(company.einvoice_recipient_id.as_deref());
         company.insert(&mut tx).await?;
     }
     for mut role in new.roles {

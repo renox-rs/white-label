@@ -1,0 +1,11 @@
+{#- wl-payments: the "settle part" action on a bounced cheque's page, a
+    sheet with the method, the amount paid (below the open amount) and the
+    reference of a transfer or card payment. Replace it with
+    resources/views/wl-payments/_settle_sheet.html in the app. -#}
+<rx-action-sheet :id="'settle-cheque-' ~ cheque.id" :label="tx['cheques.settle.action']" :action="route('wl_payments.cheques.settle', cheque.id)"
+                 :title="tx['cheques.settle.title']" :description="tx['cheques.settle.description']" :submit-label="tx['cheques.settle.submit']"
+                 icon="banknote">
+  <rx-select name="method" :label="tx['cheques.settle.method']" :options="settle_methods" :id="'settle-method-' ~ cheque.id" required/>
+  <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['fields.amount_hint']" :id="'settle-amount-' ~ cheque.id" required/>
+  <rx-input name="reference" :label="tx['fields.reference']" :hint="tx['cheques.settle.reference_hint']" :id="'settle-reference-' ~ cheque.id"/>
+</rx-action-sheet>

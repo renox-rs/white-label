@@ -1,0 +1,11 @@
+{#- wl-payments: the "forfeit" action on a deposit being settled, a sheet with
+    the reason and the second user who approves. It waits for the deductions
+    dispute: the forfeiture must be published to the party and its window
+    over. Replace it with resources/views/wl-payments/_forfeit_sheet.html in
+    the app. -#}
+<rx-action-sheet :id="'forfeit-deposit-' ~ deposit.id" :label="tx['deposits.forfeit.action']" :action="route('wl_payments.deposits.forfeit', deposit.id)"
+                 :title="tx['deposits.forfeit.title']" :description="tx['deposits.forfeit.description']" :submit-label="tx['deposits.forfeit.submit']"
+                 icon="ban" variant="danger" danger>
+  <rx-textarea name="reason" :label="tx['deposits.forfeit.reason']" :id="'forfeit-reason-' ~ deposit.id" required/>
+  <rx-select name="approver" :label="tx['deposits.forfeit.approver']" :options="approvers" :id="'forfeit-approver-' ~ deposit.id" required/>
+</rx-action-sheet>

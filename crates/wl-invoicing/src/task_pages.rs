@@ -7,7 +7,8 @@
 //! | `POST /invoices/tasks/{id}/done` | `wl_invoicing.task_done` | `receivables.view` |
 //!
 //! The list is a `renox::grid` of the open [`InvoicingTask`]s, oldest first.
-//! A row opens its invoice or supplier bill (through `GET /invoices/tasks/{id}`, which only
+//! A row opens its invoice, supplier bill or, for a stale bank balance, the cash
+//! forecast (through `GET /invoices/tasks/{id}`, which only
 //! redirects, since a grid link knows nothing but the row's id), and "Mark
 //! done" closes the task. No route unallocates anything. The template is
 //! compiled in and can be replaced by the app
@@ -49,6 +50,9 @@ pub fn grid(lang: &Lang) -> Grid {
         TaskKind::ReversalAfterWriteOff,
         TaskKind::ReversalRefused,
         TaskKind::BillReversalRefused,
+        TaskKind::StatementBalanceStale,
+        TaskKind::EinvoiceRejected,
+        TaskKind::EinvoiceStuck,
     ]
     .iter()
     .map(|kind| {
@@ -85,6 +89,9 @@ pub fn grid(lang: &Lang) -> Grid {
                     ("reversal_after_write_off", "warning"),
                     ("reversal_refused", "danger"),
                     ("bill_reversal_refused", "danger"),
+                    ("statement_balance_stale", "warning"),
+                    ("einvoice_rejected", "danger"),
+                    ("einvoice_stuck", "warning"),
                 ])
                 .mobile(),
         )
@@ -128,6 +135,15 @@ async fn index(lang: Lang, request: GridRequest) -> Result<View> {
 
 /// `GET /invoices/tasks/{id}`: to the task's invoice or supplier bill.
 async fn open(Found(task): Found<InvoicingTask>) -> Result<Response> {
+    if task.kind == TaskKind::StatementBalanceStale {
+        return Ok(Redirect::route("wl_invoicing.cash_forecast", &[])?.into_response());
+    }
+    if matches!(
+        task.kind,
+        TaskKind::EinvoiceRejected | TaskKind::EinvoiceStuck
+    ) {
+        return Ok(Redirect::route("wl_invoicing.einvoices", &[])?.into_response());
+    }
     if let Some(bill_id) = task.bill_id {
         return Ok(Redirect::route("wl_invoicing.supplier_bill", &[&bill_id])?.into_response());
     }

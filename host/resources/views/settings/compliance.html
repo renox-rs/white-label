@@ -1,0 +1,14 @@
+<rx-page layout="layouts/app.html" title="{{ t('settings.compliance.title') }}">
+  <rx-stack>
+    <app-page-title icon="shield-check" title="{{ t('settings.compliance.title') }}" subtitle="{{ t('settings.compliance.subtitle') }}"/>
+    <rx-table :rows="rows" as="row" :key="row.number" caption="{{ t('settings.compliance.title') }}" card>
+      <rx-column label="{{ t('settings.compliance.number') }}">{{ row.number }}</rx-column>
+      <rx-column label="{{ t('settings.compliance.group') }}" hide-narrow>{{ row.group }}</rx-column>
+      <rx-column label="{{ t('settings.compliance.setting') }}">{{ row.setting }}</rx-column>
+      <rx-column label="{{ t('settings.compliance.value') }}">{{ row.value }}</rx-column>
+      <rx-column label="{{ t('settings.compliance.source') }}" hide-narrow>{{ row.source }}</rx-column>
+      <rx-column label="{{ t('settings.compliance.reference') }}" hide-narrow>{{ row.reference }}</rx-column>
+      <rx-column label="{{ t('settings.compliance.open') }}" hide-narrow>{{ row.open }}</rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>

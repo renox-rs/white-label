@@ -1,0 +1,56 @@
+{#- wl-sales: the acquisition report: per source, campaign, channel, brand,
+    branch or month the leads, conversion, new customers, cost, cost per lead,
+    CAC and ROAS ("—" when undefined), within the user's scope, with a CSV
+    export. Replace it with resources/views/wl-sales/acquisition_report.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['report.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['report.title']" :subtitle="tx['report.subtitle']">
+      <rx-link-button :href="route('wl_sales.acquisition_report.csv') ~ '?' ~ csv_query" :label="tx['report.csv']" variant="secondary" icon="download"/>
+    </rx-page-header>
+    <rx-form method="GET" action="{{ route('wl_sales.acquisition_report') }}">
+      <rx-row>
+        <rx-select name="group" :label="tx['report.group']" :options="groups" :selected="group" id="report-group"/>
+        <rx-select name="source" :label="tx['report.source']" :options="sources" :selected="source" id="report-source"/>
+        <rx-input name="campaign" :label="tx['report.campaign']" :value="campaign" id="report-campaign"/>
+        <rx-select name="channel" :label="tx['report.channel']" :options="channels" :selected="channel" id="report-channel"/>
+        <rx-input name="brand" :label="tx['report.brand']" :value="brand" id="report-brand"/>
+        <rx-input name="branch" :label="tx['report.branch']" :hint="tx['report.branch_hint']" :value="branch" id="report-branch"/>
+        <rx-select name="entity" :label="tx['report.entity']" :options="entities" :selected="entity" id="report-entity"/>
+        <rx-input name="month" type="month" :label="tx['report.month']" :value="month" id="report-month"/>
+        <rx-button type="submit" :label="tx['report.show']"/>
+      </rx-row>
+    </rx-form>
+    <rx-simple-table :head="head" :caption="tx['report.title']">
+      <tr rx-for="row in rows">
+        <td>{{ row.label }}</td>
+        <td>{{ row.cells.leads }}</td>
+        <td>{{ row.cells.won }}</td>
+        <td>{{ row.cells.conversion }}</td>
+        <td>{{ row.cells.customers }}</td>
+        <td>{{ row.cells.value }}</td>
+        <td>{{ row.cells.cost }}</td>
+        <td>{{ row.cells.cost_linked }}</td>
+        <td>{{ row.cells.cost_manual }}</td>
+        <td>{{ row.cells.cost_per_lead }}</td>
+        <td>{{ row.cells.cac }}</td>
+        <td>{{ row.cells.roas }}</td>
+      </tr>
+      <tr>
+        <td>{{ tx['report.total'] }}</td>
+        <td>{{ total.leads }}</td>
+        <td>{{ total.won }}</td>
+        <td>{{ total.conversion }}</td>
+        <td>{{ total.customers }}</td>
+        <td>{{ total.value }}</td>
+        <td>{{ total.cost }}</td>
+        <td>{{ total.cost_linked }}</td>
+        <td>{{ total.cost_manual }}</td>
+        <td>{{ total.cost_per_lead }}</td>
+        <td>{{ total.cac }}</td>
+        <td>{{ total.roas }}</td>
+      </tr>
+    </rx-simple-table>
+    <rx-empty rx-if="not rows" :title="tx['report.empty']" icon="chart-bar"/>
+  </rx-stack>
+</rx-page>

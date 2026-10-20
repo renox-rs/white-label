@@ -1,0 +1,17 @@
+{#- wl-hr: the employees, with their status and the progress of the onboarding
+    in progress. Replace it with resources/views/wl-hr/employees.html in the
+    app. -#}
+<rx-page layout="layouts/app.html" :title="tx['employees.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['employees.title']" :subtitle="tx['employees.subtitle']"/>
+    <rx-table :rows="employees" as="employee" :key="employee.id" :caption="tx['employees.title']" card>
+      <rx-column :label="tx['employees.name']"><a href="{{ route('wl_hr.employee', employee.id) }}">{{ employee.name }}</a></rx-column>
+      <rx-column :label="tx['employees.number']" hide-narrow>{{ employee.number }}</rx-column>
+      <rx-column :label="tx['employees.job_role']">{{ employee.job_role }}</rx-column>
+      <rx-column :label="tx['employees.hire_date']" hide-narrow>{{ employee.hire_date }}</rx-column>
+      <rx-column :label="tx['employees.progress']" hide-narrow>{{ employee.progress }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="employee.status_kind" :text="employee.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['employees.empty']" icon="users"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

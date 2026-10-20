@@ -3,11 +3,11 @@
 //! with [`wl_kernel::invoicing::provide_invoicer`].
 
 use renox::prelude::*;
-use renox::state_machine::TransitionError;
+use renox::state_machine::{Outcome, TransitionError};
 use wl_kernel::invoicing::{
     CreditLine, CreditNoteId, CreditNoteSummary, DisputeRequest, DraftLine, InvoiceDraft,
     InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer, ReopenReason, Reopened,
-    Unallocate,
+    Unallocate, WriteOffAnswer,
 };
 use wl_kernel::{LegalEntity, PartyId};
 
@@ -28,6 +28,19 @@ impl Invoicer for Invoices {
         draft: InvoiceDraft,
     ) -> InvoiceFuture<'a, Option<InvoiceId>> {
         Box::pin(async move { create_draft(db, draft).await.map(|i| Some(i.invoice_id())) })
+    }
+
+    fn update_draft<'a>(
+        &'a self,
+        db: &'a Db,
+        id: InvoiceId,
+        draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, bool> {
+        Box::pin(async move { replace_draft(db, id, draft).await })
+    }
+
+    fn discard_draft<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, bool> {
+        Box::pin(async move { discard_draft(db, id).await })
     }
 
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
@@ -95,6 +108,49 @@ impl Invoicer for Invoices {
         request: DisputeRequest,
     ) -> InvoiceFuture<'a, i64> {
         Box::pin(async move { crate::dispute::raise(state, request).await })
+    }
+
+    fn write_off<'a>(
+        &'a self,
+        state: &'a AppState,
+        by: &'a AuthUser,
+        id: InvoiceId,
+        reason_code: &'a str,
+        reason_text: Option<&'a str>,
+    ) -> InvoiceFuture<'a, WriteOffAnswer> {
+        Box::pin(async move {
+            let invoice = Invoice::find_or_404(&state.db, id.0).await?;
+            let outcome =
+                crate::write_off::write_off(state, by, &invoice, reason_code, reason_text)
+                    .await
+                    .map_err(TransitionError::into_error)?;
+            Ok(match outcome {
+                Outcome::Done(_) => WriteOffAnswer::WrittenOff,
+                Outcome::Pending(pending) => WriteOffAnswer::Pending {
+                    request: pending
+                        .data
+                        .get(wl_kernel::approvals::submit::REQUEST_KEY)
+                        .and_then(renox::serde_json::Value::as_i64)
+                        .unwrap_or_default(),
+                },
+            })
+        })
+    }
+
+    fn issue<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: InvoiceId,
+        by: Option<&'a AuthUser>,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async move {
+            let invoice = Invoice::find_or_404(&state.db, id.0).await?;
+            let result = match by {
+                Some(user) => crate::issue::issue(state, user, &invoice).await,
+                None => crate::issue::issue_by_system(state, &invoice).await,
+            };
+            result.map_err(TransitionError::into_error)
+        })
     }
 
     fn credit_in_full<'a>(
@@ -263,6 +319,87 @@ pub async fn create_draft(db: &Db, draft: InvoiceDraft) -> Result<Invoice> {
     }
     tx.commit().await?;
     Ok(invoice)
+}
+
+/// Deletes the `draft` invoice `id` and its lines ([`Invoicer::discard_draft`],
+/// spec `discard`): a draft has no number and was never sent. Returns `false`
+/// and changes nothing for an invoice that is not a draft or does not exist.
+pub async fn discard_draft(db: &Db, id: InvoiceId) -> Result<bool> {
+    let Some(invoice) = Invoice::find(db, id.0).await? else {
+        return Ok(false);
+    };
+    if invoice.status != InvoiceStatus::Draft {
+        return Ok(false);
+    }
+    let mut tx = db.begin().await?;
+    renox::db::sql("DELETE FROM wl_invoicing_invoice_lines WHERE invoice_id = ?")
+        .bind(id.0)
+        .execute(&mut tx)
+        .await?;
+    // Not the status column of the machine: a draft is gone, not moved.
+    let gone =
+        renox::db::sql("DELETE FROM wl_invoicing_invoices WHERE id = ? AND status = 'draft'")
+            .bind(id.0)
+            .execute(&mut tx)
+            .await?;
+    tx.commit().await?;
+    Ok(gone > 0)
+}
+
+/// Replaces the lines of the `draft` invoice `id` with those of `draft` and
+/// recomputes its totals in one transaction ([`Invoicer::update_draft`]). The
+/// party, source, entity and dates stay. Returns `false` and changes nothing
+/// when the invoice is no longer a draft. Refused (422) for a line as
+/// [`create_draft`] refuses; `NotFound` for an unknown invoice.
+pub async fn replace_draft(db: &Db, id: InvoiceId, draft: InvoiceDraft) -> Result<bool> {
+    if let Some(problem) = draft
+        .lines
+        .iter()
+        .enumerate()
+        .find_map(|(i, line)| line_problem(i + 1, line))
+    {
+        return Err(refused(problem));
+    }
+    let invoice = Invoice::find_or_404(db, id.0).await?;
+    if invoice.status != InvoiceStatus::Draft {
+        return Ok(false);
+    }
+    let rate = invoice.aed_rate();
+    let mut lines: Vec<InvoiceLine> = draft
+        .lines
+        .iter()
+        .zip(1..)
+        .map(|(line, position)| InvoiceLine::from_draft(invoice.id, position, line, rate))
+        .collect();
+    let amounts: Vec<_> = lines.iter().map(InvoiceLine::amounts).collect();
+    let mut totals = invoice.clone();
+    totals.set_totals(&VatTotals::of(&amounts));
+
+    let mut tx = db.begin().await?;
+    InvoiceLine::query()
+        .where_(InvoiceLine::INVOICE_ID.eq(invoice.id))
+        .delete(&mut tx)
+        .await?;
+    for line in &mut lines {
+        line.insert(&mut tx).await?;
+    }
+    Invoice::query()
+        .where_(Invoice::ID.eq(invoice.id))
+        .where_(Invoice::STATUS.eq(InvoiceStatus::Draft))
+        .update(
+            &mut tx,
+            &[
+                ("net_total", &totals.net_total),
+                ("vat_total", &totals.vat_total),
+                ("gross_total", &totals.gross_total),
+                ("vat_total_aed", &totals.vat_total_aed),
+                ("balance", &totals.balance),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// The lines of invoice `invoice_id`, in order.

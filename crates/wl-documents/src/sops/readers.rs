@@ -199,7 +199,7 @@ mod tests {
     fn an_all_staff_reader_drops_role_and_scope() {
         let all = SopReaderRef {
             all_staff: true,
-            ..role("x", Some(("sites", "1")))
+            ..role("x", Some(("property.site", "1")))
         };
         let n = normalize(&all).unwrap();
         assert!(n.all_staff && n.role.is_empty() && n.scope_type.is_empty());
@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn a_role_reader_needs_a_role_and_a_whole_scope() {
         assert!(normalize(&role(" ", None)).is_err());
-        assert!(normalize(&role("a", Some(("sites", "")))).is_err());
+        assert!(normalize(&role("a", Some(("property.site", "")))).is_err());
         assert!(normalize(&role("a", Some(("", "1")))).is_err());
         assert_eq!(
             normalize(&role(" worker ", None)).unwrap(),
@@ -218,13 +218,13 @@ mod tests {
 
     #[test]
     fn a_reader_matches_its_role_in_its_scope() {
-        let site1 = Scope::new("sites", 1);
-        let site2 = Scope::new("sites", 2);
+        let site1 = Scope::new("property.site", 1);
+        let site2 = Scope::new("property.site", 2);
         let everywhere = role("worker", None);
         assert!(matches(&everywhere, "worker", &site1));
         assert!(matches(&everywhere, "worker", &Scope::global()));
         assert!(!matches(&everywhere, "driver", &site1));
-        let scoped = role("worker", Some(("sites", "1")));
+        let scoped = role("worker", Some(("property.site", "1")));
         assert!(matches(&scoped, "worker", &site1));
         assert!(!matches(&scoped, "worker", &site2));
         assert!(!matches(&scoped, "worker", &Scope::global()));

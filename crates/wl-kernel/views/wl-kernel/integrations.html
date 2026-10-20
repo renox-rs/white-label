@@ -1,0 +1,17 @@
+{#- wl-kernel: the integration connections (wl-kernel §4.5): health, last
+    success and queued calls. Replace it with
+    resources/views/wl-kernel/integrations.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-stack>
+    <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']"/>
+    <rx-table :rows="connections" as="connection" :key="connection.key" :caption="tx['title']" card>
+      <rx-column :label="tx['key']"><a href="{{ connection.url }}">{{ connection.key }}</a></rx-column>
+      <rx-column :label="tx['module']" hide-narrow>{{ connection.module }}</rx-column>
+      <rx-column :label="tx['status']"><rx-badge :text="connection.status_label" :kind="connection.status_kind"/></rx-column>
+      <rx-column :label="tx['failed_since']" hide-narrow>{{ connection.failed_since }}</rx-column>
+      <rx-column :label="tx['last_success']" hide-narrow>{{ connection.last_success }}</rx-column>
+      <rx-column :label="tx['queued']" align="num">{{ connection.queued }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['empty']" icon="plug"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

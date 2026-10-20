@@ -5,11 +5,16 @@
 //! | `GET /refunds` | `wl_payments.refunds.index` | `payments.view` |
 //! | `GET /refunds/{id}` | `wl_payments.refunds.show` | `payments.view` |
 //! | `POST /refunds/{id}/fail` | `wl_payments.refunds.fail` | `refunds.pay` |
+//! | `POST /refunds/{id}/retry` | `wl_payments.refunds.retry` | `refunds.pay` |
+//! | `POST /refunds/{id}/change-method` | `wl_payments.refunds.change_method` | `refunds.pay` (fields `method`, `details`) |
+//! | `POST /refunds/{id}/cancel` | `wl_payments.refunds.cancel` | `refunds.approve` (field `reason`) |
 //! | `POST /refunds/{id}/transitions/{name}` | `wl_payments.refunds.transitions.*` | `payments.view` and the transition's permission |
 //!
-//! `fail` has its own route because it takes a kind and a reason; the
-//! kernel's transition route serves `<rx-transition-actions>` for `approve`
-//! and `reject`. A refused guard answers 422 under the field.
+//! `fail` has its own route because it takes a kind and a reason, and so do
+//! `retry`, `change_method` and `cancel` of a failed refund (they do more
+//! than move the status: a gateway call, the party's notice, the accountant's
+//! task); the kernel's transition route serves `<rx-transition-actions>` for
+//! `approve` and `reject`. A refused guard answers 422 under the field.
 
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
@@ -28,6 +33,9 @@ use crate::refund::{Refund, RefundStatus, fail};
 use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
 use crate::refund_fail::FAIL;
 use crate::refund_machine::PAY;
+use crate::refund_recover::{
+    self, CANCEL, CHANGE_METHOD, CHANGE_METHOD_FOR_APPROVAL, CHANGE_METHODS, RETRY,
+};
 use crate::texts;
 
 /// The kinds a user may give, by code.
@@ -59,7 +67,17 @@ pub fn routes() -> Routes {
             Routes::new()
                 .post("/refunds/{id}/fail", store_fail)
                 .name("wl_payments.refunds.fail")
+                .post("/refunds/{id}/retry", store_retry)
+                .name("wl_payments.refunds.retry")
+                .post("/refunds/{id}/change-method", store_change_method)
+                .name("wl_payments.refunds.change_method")
                 .require_permission(permissions::REFUNDS_PAY),
+        )
+        .merge(
+            Routes::new()
+                .post("/refunds/{id}/cancel", store_cancel)
+                .name("wl_payments.refunds.cancel")
+                .require_permission(permissions::REFUNDS_APPROVE),
         )
 }
 
@@ -248,6 +266,16 @@ pub(crate) struct ShowPage {
     can_fail: bool,
     /// The kinds a user may give, `(code, label)`.
     kinds: Vec<(String, String)>,
+    /// Whether "Retry" is offered: failed, and retries are left.
+    can_retry: bool,
+    /// Whether "Change method" is offered: failed.
+    can_change: bool,
+    /// Whether "Cancel" is offered: failed, for an approver.
+    can_cancel: bool,
+    /// The methods a failed refund can be paid by instead, `(code, label)`.
+    change_methods: Vec<(String, String)>,
+    /// How many times the refund was retried, and the most.
+    retries: String,
 }
 
 /// `GET /refunds/{id}`: the card, the link to the source, the attempts, the
@@ -273,8 +301,21 @@ async fn show(
         .available(&user, &db)
         .await?
         .into_iter()
-        .filter(|a| a.name != FAIL && a.name != PAY)
+        .filter(|a| {
+            ![
+                FAIL,
+                PAY,
+                RETRY,
+                CHANGE_METHOD,
+                CHANGE_METHOD_FOR_APPROVAL,
+                CANCEL,
+            ]
+            .contains(&a.name.as_str())
+        })
         .collect();
+    let failed = refund.status == RefundStatus::Failed;
+    let retries = refund_recover::retries_of(&db, refund.id).await?;
+    let max = crate::config_of(&state).refund_max_retries;
     let can_fail = matches!(refund.status, RefundStatus::Approved | RefundStatus::Paid)
         && user.has_permission(permissions::REFUNDS_PAY);
     let source_label = format!(
@@ -300,6 +341,18 @@ async fn show(
         actions,
         can_fail,
         kinds: options(&t, "refunds.kind", &manual_kind_codes()),
+        can_retry: failed && retries < max && user.has_permission(permissions::REFUNDS_PAY),
+        can_change: failed && user.has_permission(permissions::REFUNDS_PAY),
+        can_cancel: failed && user.has_permission(permissions::REFUNDS_APPROVE),
+        change_methods: options(
+            &t,
+            "method",
+            &CHANGE_METHODS
+                .iter()
+                .map(|m| m.as_str())
+                .collect::<Vec<_>>(),
+        ),
+        retries: format!("{retries} / {max}"),
         refund,
     }))
 }
@@ -345,9 +398,120 @@ async fn store_fail(
     }
 }
 
+/// `POST /refunds/{id}/retry`: retries the failed refund with the same method
+/// and details; a gateway refund goes to the gateway again at once.
+async fn store_retry(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(refund): Found<Refund>,
+) -> Result<Response> {
+    refund_recover::retry(&state, &user, &refund)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_payments.refunds.retry.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The change-method sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ChangeMethodForm {
+    /// The method code: `gateway`, `transfer`, `cheque` or `cash`.
+    #[validate(max = 32)]
+    pub method: Option<String>,
+    /// The new bank details of a transfer, or the name on a cheque that is
+    /// not the party's.
+    #[validate(max = 500)]
+    pub details: Option<String>,
+}
+
+/// The method with code `code`, if a failed refund can be paid by it.
+fn change_method_of(code: &str) -> Option<PaymentMethod> {
+    CHANGE_METHODS
+        .iter()
+        .copied()
+        .find(|method| method.as_str() == code.trim())
+}
+
+/// `POST /refunds/{id}/change-method`: pays the failed refund another way.
+/// New bank details or another payee send it back to `requested` for a new
+/// approval; a refusal answers 422 under its field.
+async fn store_change_method(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(refund): Found<Refund>,
+    Valid(form): Valid<ChangeMethodForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let Some(method) = filled(&form.method).and_then(change_method_of) else {
+        return Err(invalid(
+            "method",
+            t("refunds.change.method_required"),
+            &form,
+        ));
+    };
+    match refund_recover::change_method(&state, &user, &refund, method, form.details.as_deref())
+        .await
+    {
+        Ok(_) => Ok((Toast::success(t("refunds.change.done")), renox::HxRefresh).into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if message.contains("bank details") || message.contains("payee") {
+                "details"
+            } else {
+                "method"
+            };
+            Err(invalid(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The cancel sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct CancelForm {
+    /// Why the refund is given up.
+    #[validate(max = 2000)]
+    pub reason: Option<String>,
+}
+
+/// `POST /refunds/{id}/cancel`: cancels the failed refund for a reason; the
+/// amount stays on the party's credit balance.
+async fn store_cancel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(refund): Found<Refund>,
+    Valid(form): Valid<CancelForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let reason = form.reason.clone().unwrap_or_default();
+    match refund_recover::cancel(&state, &user, &refund, &reason).await {
+        Ok(_) => Ok((Toast::success(t("refunds.cancel.done")), renox::HxRefresh).into_response()),
+        Err(TransitionError::ReasonRequired) => {
+            Err(invalid("reason", t("refunds.cancel.required"), &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failed_refund_can_be_paid_by_four_methods() {
+        for code in ["gateway", "transfer", "cheque", "cash"] {
+            assert!(change_method_of(code).is_some(), "{code}");
+        }
+        assert_eq!(change_method_of(" cash "), Some(PaymentMethod::Cash));
+        for code in ["card", "wallet", "set_off", ""] {
+            assert_eq!(change_method_of(code), None, "{code}");
+        }
+    }
 
     fn english_text(key: &str) -> String {
         texts::english(&format!("wl_payments.{key}")).to_owned()

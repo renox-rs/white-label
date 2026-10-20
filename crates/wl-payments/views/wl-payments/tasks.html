@@ -5,7 +5,7 @@
   <rx-stack>
     <rx-page-header :title="tx['tasks.title']" :back="route('wl_payments.index')" :back-label="tx['title']"/>
     <rx-table :rows="tasks" as="task" :key="task.id" card>
-      <rx-column :label="tx['tasks.task']">{{ task.text }}</rx-column>
+      <rx-column :label="tx['tasks.task']">{{ task.text }} <a rx-if="task.refund_id" href="{{ route('wl_payments.refunds.show', task.refund_id) }}">{{ tx['tasks.open_refund'] }}</a> <a rx-if="task.cheque_id" href="{{ route('wl_payments.cheques.show', task.cheque_id) }}">{{ tx['tasks.open_cheque'] }}</a></rx-column>
       <rx-column :label="tx['fields.party']" hide-narrow>{{ task.party }}</rx-column>
       <rx-column :label="tx['fields.amount']" hide-narrow>{{ task.amount }}</rx-column>
       <rx-column :label="tx['fields.status']" hide-narrow>{{ task.status }}</rx-column>

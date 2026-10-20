@@ -6,7 +6,9 @@
 //! 3 days before and 1, 7 and 14 days after). [`run`] looks at every
 //! `issued`, `partially_paid` or `overdue` invoice with a balance that is
 //! not `disputed` (nor inside the grace period after an upheld dispute,
-//! [`Invoice::chasing_paused`]), and sends it the latest step whose day has come, unless
+//! [`Invoice::chasing_paused`]) and whose source is not held by its vertical
+//! (a legal case on a lease, [`wl_kernel::chase_holds`]; after the hold the
+//! steps reached meanwhile are not sent), and sends it the latest step whose day has come, unless
 //! that step (or a later one) is already in its [`ReminderLog`]: at most one
 //! reminder per invoice per run (§5.3 step 2). `draft`, `paid`,
 //! `written_off` and `credited` invoices are never picked.
@@ -17,10 +19,11 @@
 //! registered in `register` ([`register_types`]). The daily task [`TASK`]
 //! calls [`run`] for today in Asia/Dubai.
 
-use renox::chrono::{Days, NaiveDate};
+use renox::chrono::{Days, Duration, NaiveDate};
 use renox::prelude::*;
 use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
+use wl_kernel::chase_holds::{self, ChaseHold};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::InvoiceStatus;
 use wl_kernel::notify::{
@@ -215,13 +218,29 @@ pub async fn run(state: &AppState, on: NaiveDate) -> Result<usize> {
         if invoice.chasing_paused(on) {
             continue;
         }
-        let logged: Vec<i32> = ReminderLog::query()
+        // A vertical holds chasing for its own records (a legal case on a
+        // lease): nothing is sent while it lasts, and the steps whose day was
+        // reached meanwhile are not sent after it.
+        let hold = chase_holds::hold(&state.db, &invoice.source()).await?;
+        if hold.is_held() {
+            continue;
+        }
+        let mut logged: Vec<i32> = ReminderLog::query()
             .where_(ReminderLog::INVOICE_ID.eq(invoice.id))
             .get(&state.db)
             .await?
             .iter()
             .filter_map(|log| i32::try_from(log.step).ok())
             .collect();
+        if let ChaseHold::Resumed { on: ended } = hold
+            && let Some(missed) = steps
+                .iter()
+                .copied()
+                .filter(|&step| due + Duration::days(i64::from(step)) <= ended)
+                .max()
+        {
+            logged.push(missed);
+        }
         let Some(step) = due_step(&steps, due, on, &logged) else {
             continue;
         };

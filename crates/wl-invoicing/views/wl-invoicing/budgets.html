@@ -1,0 +1,10 @@
+{#- wl-invoicing: the company budgets list, a renox::grid (filters by legal
+    entity and status), for the entities of the user's scope. Replace it with
+    resources/views/wl-invoicing/budgets.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['budget.title']">
+  <rx-page-header :title="tx['budget.title']">
+    <rx-link-button :href="route('wl_invoicing.budget_categories')" :label="tx['budget.category.title']" variant="secondary" icon="list"/>
+    <rx-link-button rx-if="can_manage" :href="route('wl_invoicing.budget_new')" :label="tx['budget.new.title']" icon="plus"/>
+  </rx-page-header>
+  <rx-grid :page="budgets"/>
+</rx-page>

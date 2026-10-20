@@ -4,7 +4,7 @@
   <rx-stack>
     <rx-page-header :title="tx['kinds.title']" :subtitle="tx['kinds.subtitle']"/>
     <rx-table :rows="kinds" as="kind" :key="kind.key" :caption="tx['kinds.title']" card>
-      <rx-column :label="tx['fields.name']"><a href="{{ route('wl_documents.kind', kind.key) }}">{{ kind.name }}</a> <rx-badge rx-if="kind.legal_block" kind="warning" :text="tx['fields.legal_block']"/></rx-column>
+      <rx-column :label="tx['fields.name']"><a href="{{ route('wl_documents.kind', kind.key) }}">{{ kind.name }}</a> <rx-badge rx-if="kind.legal_block" kind="warning" :text="tx['fields.legal_block']"/> <rx-badge rx-if="not kind.enabled" kind="info" :text="tx['kinds.off']"/></rx-column>
       <rx-column :label="tx['fields.key']" hide-narrow>{{ kind.key }}</rx-column>
       <rx-column :label="tx['fields.subject_types']">{{ kind.subject_types }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['kinds.empty']" :message="tx['kinds.empty_hint']" icon="folder"/></rx-slot>

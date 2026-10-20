@@ -1,0 +1,90 @@
+{#- wl-payments: a cheque's page: its status, the deposit, clear and bounce
+    actions, the card, the documents it pays, its bank returns, its follow-up
+    tasks and the history. Replace it with
+    resources/views/wl-payments/cheque.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="party_name" :back="route('wl_payments.cheques.index')" :back-label="tx['cheques.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-confirm rx-if="can_deposit" :id="'deposit-cheque-' ~ cheque.id" :label="tx['cheques.deposit.action']" :action="route('wl_payments.cheques.deposit', cheque.id)" method="POST"
+                  :title="tx['cheques.deposit.title']" :message="tx['cheques.deposit.message']" :confirm-label="tx['cheques.deposit.action']" icon="landmark"/>
+      <rx-confirm rx-if="can_clear" :id="'clear-cheque-' ~ cheque.id" :label="tx['cheques.clear.action']" :action="route('wl_payments.cheques.clear', cheque.id)" method="POST"
+                  :title="tx['cheques.clear.title']" :message="tx['cheques.clear.message']" :confirm-label="tx['cheques.clear.action']" icon="check"/>
+      <template rx-if="can_bounce"><rx-include template="wl-payments/_bounce_sheet.html"/></template>
+      <template rx-if="can_represent"><rx-include template="wl-payments/_represent_sheet.html"/></template>
+      <template rx-if="can_refer"><rx-include template="wl-payments/_refer_sheet.html"/></template>
+      <template rx-if="can_settle"><rx-include template="wl-payments/_settle_sheet.html"/></template>
+      <template rx-if="can_replace"><rx-include template="wl-payments/_replacement_sheet.html"/></template>
+      <template rx-if="can_write_off"><rx-include template="wl-payments/_write_off_sheet.html"/></template>
+      <rx-confirm rx-if="can_replace" :id="'replace-cheque-' ~ cheque.id" :label="tx['cheques.replace.action']" :action="route('wl_payments.cheques.replace', cheque.id)" method="POST"
+                  :title="tx['cheques.replace.title']" :message="tx['cheques.replace.message']" :confirm-label="tx['cheques.replace.action']" icon="replace"/>
+    </rx-page-header>
+    <rx-card :title="tx['cheques.sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['cheques.number']" :value="cheque.number" copyable/>
+        <rx-entry :label="tx['cheques.bank']" :value="cheque.bank"/>
+        <rx-entry :label="tx['fields.direction']" :value="direction_label"/>
+        <rx-entry :label="tx['fields.party']" :value="party_name"/>
+        <rx-entry :label="tx['cheques.date']" :value="cheque.cheque_date" format="date"/>
+        <rx-entry :label="tx['fields.amount']" :value="amounts['amount']"/>
+        <rx-entry :label="tx['cheques.presentations']" :value="cheque.presentations"/>
+        <rx-entry :label="tx['cheques.deposit_date']" :value="cheque.deposit_date" format="date"/>
+        <rx-entry :label="tx['cheques.honoured']" :value="amounts['honoured']"/>
+        <rx-entry :label="tx['cheques.settled']" :value="amounts['settled']"/>
+        <rx-entry :label="tx['cheques.open']" :value="amounts['open']"/>
+        <rx-entry :label="tx['cheques.fees']" :value="amounts['fees']"/>
+        <rx-entry :label="tx['cheques.custody_note']" rx-if="cheque.custody_note" :value="cheque.custody_note" span="2"/>
+        <rx-entry :label="tx['cheques.case']" rx-if="case_label" :value="case_label"/>
+        <rx-entry :label="tx['cheques.case_owner']" rx-if="case_owner_name" :value="case_owner_name"/>
+        <rx-entry :label="tx['cheques.case_reference']" rx-if="cheque.case_reference" :value="cheque.case_reference" copyable/>
+        <rx-entry :label="tx['cheques.referred_on']" rx-if="cheque.referred_on" :value="cheque.referred_on" format="date"/>
+        <rx-entry :label="tx['cheques.agreement']" :value="agreement_label" :placeholder="tx['cheques.none']"/>
+        <rx-entry :label="tx['cheques.field']" rx-if="cheque.field_collected" :value="tx['cheques.field_yes']"/>
+        <rx-entry :label="tx['fields.created_at']" :value="cheque.created_at" format="datetime"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="linked" as="document" :key="document.label" :caption="tx['cheques.sections.links']" card>
+      <rx-column :label="tx['cheques.linked']">
+        <a rx-if="document.link" href="{{ document.link }}">{{ document.label }}</a>
+        <span rx-else>{{ document.label }}</span>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cheques.no_links']" icon="file-text"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="replacements" :rows="replacements" as="replacement" :key="replacement.id" :caption="tx['cheques.sections.replacements']" card>
+      <rx-column :label="tx['cheques.replacement.kind']">{{ replacement.kind }}</rx-column>
+      <rx-column :label="tx['cheques.replacement.what']"><a href="{{ replacement.link }}">{{ replacement.label }}</a></rx-column>
+      <rx-column :label="tx['cheques.replacement.covers']">{{ replacement.amount }}</rx-column>
+    </rx-table>
+    <rx-table rx-if="write_offs" :rows="write_offs" as="request" :key="request.id" :caption="tx['cheques.sections.write_offs']" card>
+      <rx-column :label="tx['cheques.write_off.invoice']"><a href="{{ request.link }}">{{ request.label }}</a></rx-column>
+      <rx-column :label="tx['fields.amount']">{{ request.amount }}</rx-column>
+      <rx-column :label="tx['fields.status']">
+        <rx-badge :kind="request.status_kind" :text="request.status"/>
+      </rx-column>
+      <rx-column :label="tx['cheques.write_off.failure']" hide-narrow>{{ request.failure }}</rx-column>
+    </rx-table>
+    <rx-table :rows="returns" as="bounce" :key="bounce.id" :caption="tx['cheques.sections.returns']" card>
+      <rx-column :label="tx['cheques.return.presentation']">{{ bounce.presentation }}</rx-column>
+      <rx-column :label="tx['cheques.bounce.reason']">{{ bounce.reason }}</rx-column>
+      <rx-column :label="tx['cheques.bounce.certificate']" hide-narrow>{{ bounce.certificate }}</rx-column>
+      <rx-column :label="tx['cheques.honoured']" hide-narrow>{{ bounce.honoured }}</rx-column>
+      <rx-column :label="tx['cheques.fees']" hide-narrow>{{ bounce.fee }}</rx-column>
+      <rx-column :label="tx['cheques.return.on']" hide-narrow>{{ bounce.returned_on }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cheques.no_returns']" icon="undo-2"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="tasks" as="task" :key="task.id" :caption="tx['cheques.sections.tasks']" card>
+      <rx-column :label="tx['tasks.task']">{{ task.text }}</rx-column>
+      <rx-column :label="tx['fields.status']" hide-narrow>
+        <rx-badge rx-if="task.open" kind="warning" :text="task.status"/>
+        <rx-badge rx-else kind="success" :text="task.status"/>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_tasks']" icon="list-checks"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

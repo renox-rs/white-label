@@ -24,9 +24,12 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::negative_flow::{invoicing_for, payments_for};
 pub use app::roles;
 
+use wl_invoicing::WlInvoicing;
 use wl_kernel::{ClientConfig, ConfigError};
+use wl_notify::WlNotify;
 
 /// The variable naming the client's `client.toml`.
 pub const CLIENT_CONFIG: &str = "CLIENT_CONFIG";
@@ -65,16 +68,76 @@ pub fn app() -> renox::App {
 
 /// The application for one client.
 pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
+    app_for_tuned(config, Tuning::default())
+}
+
+/// What a client sets on the shared modules besides the host's values, in
+/// code: the e-invoicing go-live date of each legal entity and its ASP
+/// adapter (`WlInvoicing::einvoicing`, `WlInvoicing::asp_adapter`; BL-PRP-26
+/// item 6), or the channel providers of the notifications
+/// (`WlNotify::provider`). Each closure runs on the module with the host's
+/// values already set, and only when the module is enabled.
+#[derive(Default)]
+pub struct Tuning {
+    invoicing: Option<Box<dyn FnOnce(WlInvoicing) -> WlInvoicing>>,
+    notify: Option<Box<dyn FnOnce(WlNotify) -> WlNotify>>,
+}
+
+impl Tuning {
+    /// Changes the invoicing module.
+    pub fn invoicing(mut self, tune: impl FnOnce(WlInvoicing) -> WlInvoicing + 'static) -> Self {
+        self.invoicing = Some(Box::new(tune));
+        self
+    }
+
+    /// Changes the notification module.
+    pub fn notify(mut self, tune: impl FnOnce(WlNotify) -> WlNotify + 'static) -> Self {
+        self.notify = Some(Box::new(tune));
+        self
+    }
+}
+
+/// [`app_for`] with the shared modules changed by `tuning`.
+pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App, ConfigError> {
+    let mut tuning = tuning;
     let client_app = config.client.app.clone();
     let vertical = vertical(&client_app)?;
     let manifest = config.manifest()?;
+    let entities: Vec<String> = config
+        .legal_entities
+        .iter()
+        .map(|e| e.code.clone())
+        .collect();
+    let owner_role = config.owner_role().to_owned();
+    // What a block does to a lease and to a service contract (BL-PRP-26).
+    app::negative_flow::register_block_effects(&client_app);
+    app::negative_flow::register_approvals(&client_app);
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
     let mut app = wl_kernel::apply(base(), config)?;
     for module in manifest.enabled() {
-        app = enable(app, module, &client_app)?;
+        app = enable(
+            app,
+            module,
+            &client_app,
+            &entities,
+            &owner_role,
+            &mut tuning,
+        )?;
     }
-    Ok(app.module(vertical))
+    // The Property client's categories, checklists and SOPs go in after the
+    // modules' own seeds (BL-PRP-27).
+    if client_app == "property" {
+        app = app.module(app::property_seed::PropertySeed);
+    }
+    // The page that shows the shared modules' settings of this client.
+    Ok(app
+        .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
+        .module(app::compliance_settings::ComplianceSettings::new(
+            &client_app,
+            &owner_role,
+        ))
+        .module(vertical))
 }
 
 /// The vertical app named in `[client] app`.
@@ -87,29 +150,41 @@ fn vertical(name: &str) -> Result<property::Property, ConfigError> {
     }
 }
 
-/// The invoicing module with the settings of the client's app: `property`
-/// also holds a supplier bill for the same contract, period and amount
-/// (`PRP.ACL.22`).
-fn invoicing_for(client_app: &str) -> wl_invoicing::WlInvoicing {
-    use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
-    let module = wl_invoicing::WlInvoicing::new();
-    match client_app {
-        "property" => module.duplicate_keys(&[SupplierInvoiceNumber, ContractPeriodAmount]),
-        _ => module,
-    }
-}
-
 /// Mounts one enabled `wl-*` module; `client_app` is `[client] app`.
-fn enable(app: renox::App, module: &str, client_app: &str) -> Result<renox::App, ConfigError> {
+fn enable(
+    app: renox::App,
+    module: &str,
+    client_app: &str,
+    entities: &[String],
+    owner_role: &str,
+    tuning: &mut Tuning,
+) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
     match module {
         "parties" => Ok(app.module(wl_parties::WlParties)),
-        "documents" => Ok(app.module(wl_documents::WlDocuments)),
-        "notify" => Ok(app.module(wl_notify::WlNotify::new())),
-        "invoicing" => Ok(app.module(invoicing_for(client_app))),
-        "ticketing" => Ok(app.module(wl_ticketing::WlTicketing::new())),
-        "payments" => Ok(app.module(wl_payments::WlPayments::new())),
-        "sales" => Ok(app.module(wl_sales::WlSales::new())),
+        "documents" => {
+            app::property_seed::register_documents(client_app);
+            Ok(app.module(wl_documents::WlDocuments))
+        }
+        "notify" => {
+            let module = WlNotify::new();
+            Ok(app.module(match tuning.notify.take() {
+                Some(tune) => tune(module),
+                None => module,
+            }))
+        }
+        "invoicing" => {
+            let module = app::negative_flow::invoicing_for(client_app, entities);
+            Ok(app.module(match tuning.invoicing.take() {
+                Some(tune) => tune(module),
+                None => module,
+            }))
+        }
+        "ticketing" => Ok(app.module(app::property_seed::ticketing_for(client_app))),
+        "payments" => Ok(app.module(app::negative_flow::payments_for(client_app))),
+        "sales" => Ok(app.module(app::property_seed::sales_for(client_app))),
+        "hr" => Ok(app.module(app::property_seed::hr_for(client_app, owner_role))),
+        "portal" => Ok(app.module(wl_portal::WlPortal)),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
         ))),
@@ -166,22 +241,4 @@ fn base() -> renox::App {
         .seeder(app::seed::run)
         // The seeded people on the login page, in local only (src/app/demo.rs).
         .share("demo_logins", app::demo::for_view)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
-
-    #[test]
-    fn the_property_app_adds_the_contract_period_amount_key() {
-        assert_eq!(
-            invoicing_for("property").config().duplicate_keys,
-            [SupplierInvoiceNumber, ContractPeriodAmount]
-        );
-        assert_eq!(
-            invoicing_for("other").config().duplicate_keys,
-            [SupplierInvoiceNumber]
-        );
-    }
 }

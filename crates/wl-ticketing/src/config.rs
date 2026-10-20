@@ -2,7 +2,7 @@
 //! reasons and categories (wl-ticketing §3, §7). The seeder ([`crate::seed`])
 //! stores the defaults; a manager changes them afterwards.
 
-use renox::db::{DateTime, Executor};
+use renox::db::{DateTime, Executor, Json};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -117,6 +117,17 @@ impl HoldReason {
     }
 }
 
+/// When a category makes the invoice draft of a chargeable ticket (§4.1).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum InvoiceOn {
+    /// At `resolve` (the default).
+    #[default]
+    Resolve,
+    /// At close: `confirm`, `close` or the auto-close. At `resolve` the
+    /// requester only sees the amount.
+    Close,
+}
+
 /// A ticket category.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(table = "wl_ticketing_categories", unique(key))]
@@ -140,12 +151,60 @@ pub struct Category {
     pub confidential: bool,
     /// Whether its tickets can carry charges.
     pub chargeable: bool,
+    /// When its chargeable tickets are invoiced: at `resolve` or at close.
+    pub invoice_on: InvoiceOn,
     /// Whether new tickets can use it.
     pub active: bool,
+    /// Whether a covered subject that is not compliant for it gets a
+    /// compliance flag (01: fire and life safety, lifts), set by the vertical.
+    pub compliance_critical: bool,
+    /// Whether the coordinator's task when a service contract ends offers only
+    /// "reassign" for the category's open visits (`WRK.RUL.18`; 01: the
+    /// compliance-critical categories, which cannot be cancelled).
+    pub contract_end_reassign_only: bool,
+    /// Whether the platform owns it (the categories other modules open
+    /// tickets in): the client may rename it, not delete it or turn it off.
+    pub platform: bool,
+    /// The role whose holders look after its tickets, e.g. `hr`.
+    pub default_assignee_role: Option<String>,
+    /// The custom fields of its tickets.
+    pub custom_fields: Json<Vec<CustomField>>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
     pub updated_at: Option<DateTime>,
+}
+
+/// What kind of value a custom field takes.
+#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FieldKind {
+    /// Free text.
+    #[default]
+    Text,
+    /// A date.
+    Date,
+    /// One of the field's choices.
+    Choice,
+}
+
+/// One custom field of a category's tickets (wl-ticketing §3 *custom fields
+/// schema*). The schema is stored with the category; the values come with
+/// the kernel's custom fields.
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+pub struct CustomField {
+    /// The key, e.g. `forum`.
+    pub key: String,
+    /// The English label.
+    pub label_en: String,
+    /// The Arabic label.
+    pub label_ar: String,
+    /// What it takes.
+    pub kind: FieldKind,
+    /// Whether a ticket needs it filled.
+    pub required: bool,
+    /// The choices of a `choice` field.
+    pub choices: Vec<String>,
 }
 
 impl Category {

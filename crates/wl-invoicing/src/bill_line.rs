@@ -22,12 +22,18 @@ pub struct BillLineDraft {
     pub unit_price: i64,
     /// The VAT treatment.
     pub vat_category: VatCategory,
-    /// The day the service was done, if known.
+    /// The day the service was done, if known; the first day of a period.
     pub service_date: Option<NaiveDate>,
+    /// The last day of the period the line charges for, if it is one. A
+    /// period line counts against a contract's end by this day.
+    pub service_end_date: Option<NaiveDate>,
     /// The cost object the line is coded to, if any.
     pub cost_object: Option<Subject>,
     /// The purchase order line the goods were ordered on, if any.
     pub po_line: Option<Subject>,
+    /// The cost code, which budget vs actual maps to a budget category
+    /// (`FIN.BUD.01`).
+    pub cost_code: Option<String>,
 }
 
 impl BillLineDraft {
@@ -39,9 +45,17 @@ impl BillLineDraft {
             unit_price,
             vat_category,
             service_date: None,
+            service_end_date: None,
             cost_object: None,
             po_line: None,
+            cost_code: None,
         }
+    }
+
+    /// Coded to a cost code (`FIN.BUD.01`); blank clears it.
+    pub fn cost_code(mut self, code: &str) -> Self {
+        self.cost_code = Some(code.trim().to_lowercase()).filter(|c| !c.is_empty());
+        self
     }
 
     /// With a quantity in thousandths.
@@ -53,6 +67,12 @@ impl BillLineDraft {
     /// With the day the service was done.
     pub fn service_date(mut self, date: NaiveDate) -> Self {
         self.service_date = Some(date);
+        self
+    }
+
+    /// For work over a period: the last day (the service date is the first).
+    pub fn service_end_date(mut self, date: NaiveDate) -> Self {
+        self.service_end_date = Some(date);
         self
     }
 
@@ -115,8 +135,10 @@ pub struct BillLine {
     pub net_amount_aed: Option<i64>,
     /// Net plus VAT.
     pub gross_amount: i64,
-    /// The day the service was done, if known.
+    /// The day the service was done, if known; the first day of a period.
     pub service_date: Option<NaiveDate>,
+    /// The last day of the period the line charges for, if it is one.
+    pub service_end_date: Option<NaiveDate>,
     /// The type of the cost object the line is coded to, if any.
     pub cost_type: Option<String>,
     /// The id of the cost object the line is coded to, if any.
@@ -125,6 +147,8 @@ pub struct BillLine {
     pub po_line_type: Option<String>,
     /// The id of the purchase order line the goods were ordered on.
     pub po_line_id: Option<i64>,
+    /// The cost code, which budget vs actual maps to a budget category.
+    pub cost_code: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -132,6 +156,12 @@ pub struct BillLine {
 }
 
 impl BillLine {
+    /// The day the work counts on against a contract: the last day of a
+    /// period line, else its service date.
+    pub fn counted_day(&self) -> Option<NaiveDate> {
+        self.service_end_date.or(self.service_date)
+    }
+
     /// The line at `position` of bill `bill_id` for `draft`, its amounts
     /// computed at `rate_micro` to AED when known.
     pub fn from_draft(
@@ -148,10 +178,12 @@ impl BillLine {
             unit_price: draft.unit_price,
             vat_category: draft.vat_category,
             service_date: draft.service_date,
+            service_end_date: draft.service_end_date,
             cost_type: draft.cost_object.as_ref().map(|c| c.subject_type.clone()),
             cost_id: draft.cost_object.as_ref().map(|c| c.subject_id),
             po_line_type: draft.po_line.as_ref().map(|c| c.subject_type.clone()),
             po_line_id: draft.po_line.as_ref().map(|c| c.subject_id),
+            cost_code: draft.cost_code.clone(),
             ..Default::default()
         };
         let amounts = line.compute(rate_micro);

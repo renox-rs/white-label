@@ -165,7 +165,7 @@ async fn the_pages_create_list_show_and_guard_an_sop() {
         .htmx()
         .post(
             &format!("/documents/sops/{}/readers", sop.id),
-            &[("readers", "site_worker@sites:1\nall")],
+            &[("readers", "site_worker@property.site:1\nall")],
         )
         .await
         .assert_ok();
@@ -175,7 +175,7 @@ async fn the_pages_create_list_show_and_guard_an_sop() {
         .htmx()
         .post(
             &format!("/documents/sops/{}/readers", sop.id),
-            &[("readers", "site_worker@sites")],
+            &[("readers", "site_worker@property.site")],
         )
         .await
         .assert_status(422);
@@ -193,7 +193,7 @@ async fn the_pages_create_list_show_and_guard_an_sop() {
         .await
         .assert_ok()
         .assert_see("All staff")
-        .assert_see("site_worker (sites #1)")
+        .assert_see("site_worker (property.site #1)")
         .assert_dont_see("edit-readers")
         .assert_dont_see("upload-version");
 

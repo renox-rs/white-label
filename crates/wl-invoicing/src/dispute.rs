@@ -18,8 +18,10 @@
 //!    the second of two raises at once is refused and rolled back.
 //! 4. After the commit: the `billing_dispute` ticket ([`TaskCreator`]),
 //!    assigned to the invoice owner when that user still holds
-//!    `invoices.issue`, else unassigned with a notice to every holder of
-//!    `invoices.issue` in the invoice's scope; the party's
+//!    `invoices.issue`, else (issued by the system, or the owner is gone) to
+//!    the receivables role: the first holder of `invoices.issue` in the
+//!    invoice's scope, with a notice to every holder; unassigned only when
+//!    nobody holds it; the party's
 //!    acknowledgement; and `InvoiceDisputed`.
 //!
 //! The ticket is opened after the commit, not inside the transaction: the
@@ -429,10 +431,9 @@ async fn after_commit(
         .collect();
     let number = invoice.number.clone().unwrap_or_default();
     let (owner_role, owners) = owner::recipients(&state.db, invoice).await?;
-    let owner = match (owner_role, owners.first()) {
-        (OwnerRole::Owner, Some(user)) => Some(user.id),
-        _ => None,
-    };
+    // The owner, else the first holder of the receivables role (the lowest
+    // user id; the ticket has one assignee, every holder gets the notice).
+    let owner = owners.first().map(|user| user.id);
     let mut open = OpenTicket::new(
         invoice.subject(),
         TICKET_CATEGORY,
@@ -460,7 +461,7 @@ async fn after_commit(
     }
 
     let notifier = notify::notifier(state);
-    if owner.is_none() {
+    if owner_role == OwnerRole::Receivables {
         let ids: Vec<i64> = owners.iter().map(|user| user.id).collect();
         if !ids.is_empty() {
             let mut notice = NotifyRequest::new(UNASSIGNED, invoice.subject()).data(data(

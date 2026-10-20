@@ -1,0 +1,11 @@
+{#- wl-portal: the page of a signed link whose action is allowed. The module
+    that issued the link continues from here. Replace it with
+    resources/views/wl-portal/link.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['link.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['link.title']"/>
+    <rx-card>
+      <p>{{ tx['link.continue'] }}</p>
+    </rx-card>
+  </rx-stack>
+</rx-page>

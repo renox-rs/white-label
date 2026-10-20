@@ -5,6 +5,7 @@
 
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use renox::auth::permissions::Scope;
@@ -20,7 +21,7 @@ use wl_documents::{
 };
 use wl_kernel::documents::{
     BlockCondition, BlockEntry, BlockMode, BlockSubjects, DocumentAccepted, DocumentFuture,
-    FutureWork, OverrideMode, PlannedRecord, ReminderSchedule, SopReaderRef,
+    FutureWork, OverrideMode, PlannedRecord, ReminderSchedule, SopAcknowledged, SopReaderRef,
     register_block_subjects, register_future_work, register_reminder_schedule, today,
 };
 use wl_kernel::notify::{
@@ -28,6 +29,9 @@ use wl_kernel::notify::{
 };
 use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+};
+use wl_kernel::workforce::{
+    EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
 };
 use wl_kernel::{ClientConfig, Subject};
 
@@ -165,7 +169,7 @@ impl BlockSubjects for Deployments {
 /// The site of every deployment (#50): who may approve an override of its
 /// block is decided here.
 pub fn site() -> Scope {
-    Scope::new("sites", 1)
+    Scope::new("property.site", 1)
 }
 
 /// `run.dispatch`: the driver for a licence, the vehicle for insurance.
@@ -751,6 +755,82 @@ impl TaskCreator for Tasks {
     }
 }
 
+// ---- The staff the SOP acknowledgements (#53) read.
+
+/// The staff of the app under test: what `wl-hr` would answer, kept in a
+/// table the tests fill. The profiles that are `listed` are everyone.
+#[derive(Clone, Default)]
+pub struct Staffing(Arc<Mutex<BTreeMap<i64, StaffProfile>>>);
+
+impl Staffing {
+    /// Adds or replaces the employee of `profile`.
+    pub fn add(&self, profile: StaffProfile) {
+        self.table().insert(profile.employee.0, profile);
+    }
+
+    /// Changes the profile of `employee`.
+    pub fn change(&self, employee: i64, change: impl FnOnce(&mut StaffProfile)) {
+        let mut table = self.table();
+        change(table.get_mut(&employee).expect("a known employee"));
+    }
+
+    fn table(&self) -> std::sync::MutexGuard<'_, BTreeMap<i64, StaffProfile>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl Workforce for Staffing {
+    fn all_staff<'a>(&'a self, _db: &'a Db) -> WorkforceFuture<'a, Vec<EmployeeId>> {
+        Box::pin(async move {
+            Ok(self
+                .table()
+                .values()
+                .filter(|p| p.listed)
+                .map(|p| p.employee)
+                .collect())
+        })
+    }
+
+    fn staff<'a>(
+        &'a self,
+        _state: &'a AppState,
+        employee: EmployeeId,
+    ) -> WorkforceFuture<'a, Option<StaffProfile>> {
+        Box::pin(async move { Ok(self.table().get(&employee.0).cloned()) })
+    }
+
+    fn employee_of_user<'a>(
+        &'a self,
+        _db: &'a Db,
+        user_id: i64,
+    ) -> WorkforceFuture<'a, Option<EmployeeId>> {
+        Box::pin(async move {
+            Ok(self
+                .table()
+                .values()
+                .find(|p| p.user_id == Some(user_id))
+                .map(|p| p.employee))
+        })
+    }
+}
+
+/// A site worker (role `site_worker` at site 1) with `id` and, perhaps, an
+/// account. Everything else is the usual: listed, not on leave, no manager.
+pub fn site_worker(id: i64, user: Option<i64>) -> StaffProfile {
+    StaffProfile {
+        employee: EmployeeId(id),
+        party: wl_kernel::PartyId(1000 + id),
+        user_id: user,
+        role: "site_worker".to_owned(),
+        scopes: vec![Subject::new("property.site", 1)],
+        legal_entity_id: None,
+        listed: true,
+        on_leave: false,
+        returns_on: None,
+        managers: Vec::new(),
+    }
+}
+
 /// What the app under test boots with.
 #[derive(Clone)]
 pub struct Options {
@@ -794,6 +874,10 @@ pub struct Booted {
     pub notices: Recording,
     /// The planned work and the reminder schedule of the app.
     pub plan: Plan,
+    /// The staff `Workforce` answers with (#53).
+    pub staff: Staffing,
+    /// The `SopAcknowledged` seen by the live listener.
+    acknowledged_seen: Arc<Mutex<Vec<SopAcknowledged>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
 }
@@ -802,6 +886,14 @@ impl Booted {
     /// The `DocumentAccepted` events the live listener saw, oldest first.
     pub fn accepted_events(&self) -> Vec<DocumentAccepted> {
         self.accepted_seen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// The `SopAcknowledged` events the live listener saw, oldest first.
+    pub fn acknowledged_events(&self) -> Vec<SopAcknowledged> {
+        self.acknowledged_seen
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
@@ -935,6 +1027,7 @@ struct Harness {
     notices: Recording,
     plan: Plan,
     tasks: Tasks,
+    staff: Staffing,
     options: Options,
 }
 
@@ -1310,6 +1403,7 @@ impl Module for Harness {
             app.provide(Arc::new(config));
         }
         app.provide(self.plan.clone());
+        provide_workforce(app, self.staff.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -1374,7 +1468,10 @@ pub async fn boot_options(options: Options) -> Booted {
     let notices = Recording::default();
     let plan = Plan::default();
     let tasks = Tasks::default();
+    let staff = Staffing::default();
     let accepted_seen: Arc<Mutex<Vec<DocumentAccepted>>> = Arc::default();
+    let acknowledged_seen: Arc<Mutex<Vec<SopAcknowledged>>> = Arc::default();
+    let acknowledged = acknowledged_seen.clone();
     let seen = accepted_seen.clone();
     let fake_events = options.fake_events;
     let options_kernel = options.kernel;
@@ -1387,7 +1484,18 @@ pub async fn boot_options(options: Options) -> Booted {
             notices: notices.clone(),
             plan: plan.clone(),
             tasks: tasks.clone(),
+            staff: staff.clone(),
             options,
+        })
+        .listen(move |event: SopAcknowledged, _state: AppState| {
+            let acknowledged = acknowledged.clone();
+            async move {
+                acknowledged
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push(event);
+                Ok(())
+            }
         })
         .listen(move |event: DocumentAccepted, _state: AppState| {
             let seen = seen.clone();
@@ -1423,6 +1531,8 @@ pub async fn boot_options(options: Options) -> Booted {
         accepted_seen,
         notices,
         plan,
+        staff,
+        acknowledged_seen,
         _views: views,
     }
 }

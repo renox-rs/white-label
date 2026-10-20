@@ -1,0 +1,10 @@
+{#- wl-payments: the "write off" action on a bounced cheque's page, a sheet
+    with the reason (required). It asks wl-invoicing to write off the open
+    balance of every invoice the cheque pays; the cheque is written off once
+    they are. Replace it with resources/views/wl-payments/_write_off_sheet.html
+    in the app. -#}
+<rx-action-sheet :id="'write-off-cheque-' ~ cheque.id" :label="tx['cheques.write_off.action']" :action="route('wl_payments.cheques.write_off', cheque.id)"
+                 :title="tx['cheques.write_off.title']" :description="tx['cheques.write_off.description']" :submit-label="tx['cheques.write_off.submit']"
+                 icon="file-x" variant="danger" danger>
+  <rx-textarea name="reason" :label="tx['cheques.write_off.reason']" :id="'write-off-reason-' ~ cheque.id" required/>
+</rx-action-sheet>

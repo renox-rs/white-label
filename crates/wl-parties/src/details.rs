@@ -42,6 +42,11 @@ pub struct CompanyDetails {
     pub vat_registered: bool,
     /// The tax registration number (15 digits).
     pub trn: Option<String>,
+    /// The e-invoicing recipient identifier (Peppol participant ID, scheme +
+    /// identifier), stored trimmed and as entered; no format check until the
+    /// ASP's format is confirmed. `wl-invoicing` needs it before it issues
+    /// an invoice to a recipient in e-invoicing scope.
+    pub einvoice_recipient_id: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

@@ -2,13 +2,18 @@
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
-//! | `GET /tickets` | `wl_ticketing.index` | `tickets.view` |
-//! | `GET /tickets/{id}` | `wl_ticketing.show` | `tickets.view` |
+//! | `GET /tickets` | `wl_ticketing.index` | `tickets.view` (a confidential ticket only for `tickets.confidential.view` and its requester) |
+//! | `GET /tickets/{id}` | `wl_ticketing.show` | `tickets.view` (a confidential ticket: 404 without `tickets.confidential.view`, unless the requester; each view is audited) |
 //! | `GET /tickets/new` | `wl_ticketing.create` | `tickets.create` |
 //! | `POST /tickets` | `wl_ticketing.store` | `tickets.create` |
+//! | `POST /tickets/{id}/charges` | `wl_ticketing.charge_add` | `tickets.view` and the assignee before resolve, or `tickets.assign` (fields `description`, `quantity`, `unit_price` in AED, `vat_category`) |
+//! | `DELETE /tickets/{id}/charges/{line}` | `wl_ticketing.charge_remove` | the same |
 //! | `POST /tickets/{id}/assign` | `wl_ticketing.assign` | `tickets.assign` |
 //! | `POST /tickets/{id}/hold` | `wl_ticketing.hold` | `tickets.view` and the assignee |
-//! | `POST /tickets/{id}/cancel` | `wl_ticketing.cancel` | `tickets.assign` |
+//! | `POST /tickets/{id}/cancel` | `wl_ticketing.cancel` | `tickets.assign` (fields `charge` = `1`, `charge_reason`, `description`, `unit_price` charge the requester for the work done; refused for a compliance-critical planned visit) |
+//! | `POST /tickets/{id}/reschedule` | `wl_ticketing.reschedule` | `tickets.assign` (fields `date`, `reason`: a planned visit is moved, not skipped) |
+//! | `POST /tickets/{id}/service-report` | `wl_ticketing.service_report` | `tickets.view` and the assignee, or `tickets.assign` (field `reference`) |
+//! | `POST /tickets/{id}/new-time` | `wl_ticketing.new_time` | `tickets.assign` (field `visit_at`: a new visit time with the same vendor after a no-show) |
 //! | `POST /tickets/{id}/actions/{name}` | `wl_ticketing.action` | `tickets.view` and the action's own rule |
 //!
 //! Every POST calls the ticket services with the time of the request
@@ -30,28 +35,33 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::Subject;
 use wl_kernel::calendar::calendar;
+use wl_kernel::invoicing::VatCategory;
 use wl_kernel::notify::fill;
 use wl_kernel::parties::directory;
 use wl_kernel::tickets::{Assignee, OpenTicket, Requester, TicketChannel};
 
 use crate::assign::{AssignKind, AssignRequest, Assignment, assign, reasons_of};
+use crate::charge::{self, ChargeInput};
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, HoldReason};
+use crate::contract::{ServiceContract, ServiceContracts};
+use crate::no_show::{self, NoShow};
 use crate::open::Tickets;
 use crate::permissions;
 use crate::priority::Priority;
 use crate::texts;
 use crate::ticket::{Ticket, TicketStatus};
+use crate::visibility;
 use crate::work;
 
 /// The texts a template reads as `tx['fields.number']`.
-type Texts = BTreeMap<&'static str, String>;
+pub(crate) type Texts = BTreeMap<&'static str, String>;
 
 /// The package text `key` (without the `wl_ticketing.` prefix) in a language.
 type Text<'a> = &'a dyn Fn(&str) -> String;
 
 /// The package texts in `lang`.
-fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
+pub(crate) fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
     move |key: &str| texts::t(lang, &format!("wl_ticketing.{key}"))
 }
 
@@ -73,6 +83,12 @@ pub fn routes() -> Routes {
                 .name("wl_ticketing.hold")
                 .post("/tickets/{id}/actions/{name}", store_action)
                 .name("wl_ticketing.action")
+                .post("/tickets/{id}/charges", store_charge)
+                .name("wl_ticketing.charge_add")
+                .delete("/tickets/{id}/charges/{line}", destroy_charge)
+                .name("wl_ticketing.charge_remove")
+                .post("/tickets/{id}/service-report", store_report)
+                .name("wl_ticketing.service_report")
                 .require_permission(permissions::VIEW),
         )
         .merge(
@@ -81,6 +97,10 @@ pub fn routes() -> Routes {
                 .name("wl_ticketing.assign")
                 .post("/tickets/{id}/cancel", store_cancel)
                 .name("wl_ticketing.cancel")
+                .post("/tickets/{id}/reschedule", store_reschedule)
+                .name("wl_ticketing.reschedule")
+                .post("/tickets/{id}/new-time", store_new_time)
+                .name("wl_ticketing.new_time")
                 .require_permission(permissions::ASSIGN),
         )
 }
@@ -96,7 +116,7 @@ fn status_kind(status: TicketStatus) -> &'static str {
 }
 
 /// `(value, label)` pairs for a select, labelled with `prefix.value`.
-fn options<'a>(
+pub(crate) fn options<'a>(
     t: Text<'_>,
     prefix: &str,
     values: impl IntoIterator<Item = &'a str>,
@@ -198,7 +218,9 @@ pub(crate) struct IndexPage {
 
 /// `GET /tickets`: the grid.
 async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
-    let tickets = grid(&lang).page(Ticket::query(), &request).await?;
+    let tickets = grid(&lang)
+        .page(visibility::visible_to(Ticket::query(), &user), &request)
+        .await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         can_create: user.has_permission(permissions::CREATE),
@@ -254,14 +276,14 @@ pub struct TicketForm {
 }
 
 /// A validation error on `field`, with the form's input filled in again.
-fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
+pub(crate) fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
     let mut errors = Errors::new();
     errors.add(field, message);
     Error::Validation(ValidationError::new(errors).with_input(form))
 }
 
 /// The party with `code`, if the directory finds it.
-async fn party_by_code(state: &AppState, code: &str) -> Result<Option<PartyId>> {
+pub(crate) async fn party_by_code(state: &AppState, code: &str) -> Result<Option<PartyId>> {
     Ok(directory(state)
         .find_by_code(&state.db, code.trim())
         .await?
@@ -389,10 +411,98 @@ pub(crate) struct ShowPage {
     assignments: Vec<AssignmentRow>,
     comments: Vec<CommentRow>,
     timeline: Vec<Value>,
+    /// Whether the ticket is chargeable, so the charge section shows.
+    chargeable: bool,
+    /// The charge lines, in order.
+    charges: Vec<ChargeRow>,
+    /// The total with VAT, `AED 350.00`; the amount the requester is shown.
+    charge_total: String,
+    /// Whether the add and remove actions show.
+    can_charge: bool,
+    /// The VAT categories, `(value, label)`.
+    vat_options: Vec<(String, String)>,
+    /// The draft invoice made for the ticket, when there is one.
+    invoice_id: Option<i64>,
+    /// The code of the vendor the ticket's service contract proposes, which
+    /// the assign sheet starts with (an unassigned ticket only).
+    proposed_party_code: String,
+    /// The service contract the ticket is handled under, when it has one.
+    contract: Option<ContractLink>,
+    /// The vendor no-show the coordinator has not answered yet, as a line.
+    no_show: Option<String>,
+    /// Whether "New time" is offered: there is such a no-show.
+    can_new_time: bool,
+    /// The reassignment reason the assign sheet starts on.
+    reason_selected: String,
+}
+
+/// The contract a ticket is handled under, as the ticket page links to it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ContractLink {
+    id: i64,
+    number: String,
+}
+
+/// One charge line as the ticket page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ChargeRow {
+    id: i64,
+    description: String,
+    /// `1` or `2.5`.
+    quantity: String,
+    /// `AED 333.33`, before VAT.
+    unit_price: String,
+    /// The VAT category's label.
+    vat: String,
+    /// The line with VAT.
+    total: String,
+}
+
+/// A quantity in thousandths as text: `1`, `2.5`, `0.125`.
+fn quantity_text(milli: i64) -> String {
+    let (whole, part) = (milli / 1000, milli % 1000);
+    if part == 0 {
+        whole.to_string()
+    } else {
+        format!("{whole}.{part:03}")
+            .trim_end_matches('0')
+            .to_owned()
+    }
+}
+
+/// `text` as a number scaled by 10^`decimals` (`333.33` at 2 is 33333):
+/// digits with at most `decimals` after the point; `None` for anything else.
+fn parse_scaled(text: &str, decimals: usize) -> Option<i64> {
+    let text = text.trim();
+    let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    if whole.is_empty() && fraction.is_empty()
+        || !digits(whole)
+        || !digits(fraction)
+        || fraction.len() > decimals
+    {
+        return None;
+    }
+    let mut padded = fraction.to_owned();
+    while padded.len() < decimals {
+        padded.push('0');
+    }
+    let scale = 10_i64.checked_pow(u32::try_from(decimals).ok()?)?;
+    let whole: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
+    let fraction: i64 = if padded.is_empty() {
+        0
+    } else {
+        padded.parse().ok()?
+    };
+    whole.checked_mul(scale)?.checked_add(fraction)
 }
 
 /// An instant as Asia/Dubai wall-clock time.
-fn when(state: &AppState, at: Option<DateTime>) -> Option<String> {
+pub(crate) fn when(state: &AppState, at: Option<DateTime>) -> Option<String> {
     at.map(|at| {
         calendar(state)
             .local(at)
@@ -402,7 +512,7 @@ fn when(state: &AppState, at: Option<DateTime>) -> Option<String> {
 }
 
 /// The name of an assignee: the user's name or the party's display name.
-async fn assignee_name(state: &AppState, assignee: Assignee) -> Result<String> {
+pub(crate) async fn assignee_name(state: &AppState, assignee: Assignee) -> Result<String> {
     Ok(match assignee {
         Assignee::User { id } => User::find(&state.db, id)
             .await?
@@ -587,6 +697,8 @@ async fn show(
     lang: Lang,
     Found(ticket): Found<Ticket>,
 ) -> Result<View> {
+    visibility::ensure_visible(&ticket, &user)?;
+    visibility::audit_view(&state.db, &user, &ticket).await?;
     let t = texts_in(&lang);
     let db = state.db.clone();
     let category = Category::find(&db, ticket.category_id).await?;
@@ -651,7 +763,78 @@ async fn show(
     };
     let history = state_machine::history(&db, Ticket::TABLE, ticket.id).await?;
     let timeline = state_machine::timeline(&history, Some(&state_machine::info_of::<Ticket>()));
+    let charge_lines = charge::lines_of(&db, ticket.id).await?;
+    let charge_total = charge::money(charge::total(&charge_lines));
+    let charges = charge_lines
+        .iter()
+        .map(|line| ChargeRow {
+            id: line.id,
+            description: line.description.clone(),
+            quantity: quantity_text(line.quantity_milli),
+            unit_price: charge::money(line.unit_price),
+            vat: t(&format!("vat.{}", line.vat_category.as_str())),
+            total: charge::money(line.gross()),
+        })
+        .collect();
+    let proposed_party_code = match (offered.assign, ticket.assignee()) {
+        (true, None) => {
+            match ServiceContracts::proposed_vendor(&state, &ticket, wl_kernel::documents::today())
+                .await?
+            {
+                Some(vendor) => directory(&state)
+                    .find(&db, vendor)
+                    .await?
+                    .map(|party| party.code)
+                    .unwrap_or_default(),
+                None => String::new(),
+            }
+        }
+        _ => String::new(),
+    };
+    let contract = match ticket.contract_id {
+        Some(id) => ServiceContract::find(&db, id).await?.map(|c| ContractLink {
+            id: c.id,
+            number: c.number,
+        }),
+        None => None,
+    };
+    let no_show_row = if offered.assign {
+        NoShow::current_for(&db, &ticket).await?
+    } else {
+        None
+    };
+    let no_show = match &no_show_row {
+        Some(row) => {
+            let vendor = assignee_name(&state, Assignee::Party { id: row.vendor() }).await?;
+            let scheduled = when(&state, Some(row.scheduled_at)).unwrap_or_default();
+            Some(fill(
+                &t("no_show.banner"),
+                &json!({ "vendor": vendor, "scheduled": scheduled }),
+            ))
+        }
+        None => None,
+    };
+    let reason_selected = if no_show_row.is_some() {
+        "vendor_no_show".to_owned()
+    } else if ticket.vendor_document_flag {
+        crate::vendor_flags::REASSIGN_REASON.to_owned()
+    } else {
+        String::new()
+    };
+    let can_charge = ticket.chargeable && charge::may_change(&ticket, &user);
+    let vat_options = options(&t, "vat", VatCategory::ALL.iter().map(VatCategory::as_str));
     Ok(View::typed(ShowPage {
+        chargeable: ticket.chargeable,
+        charges,
+        charge_total,
+        can_charge,
+        vat_options,
+        invoice_id: ticket.invoice_id,
+        proposed_party_code,
+        contract,
+        can_new_time: no_show_row.is_some(),
+        no_show,
+        reason_selected,
         tx: texts::all(&lang),
         title: ticket.number.clone(),
         status_label: t(&format!("status.{}", ticket.status.as_str())),
@@ -698,6 +881,8 @@ pub struct AssignForm {
 fn assign_field(message: &str) -> &'static str {
     if message.starts_with("Nothing changed") {
         "visit_at"
+    } else if message.contains("on hold") {
+        "party_code"
     } else if message.contains("explanation") {
         "reason_text"
     } else if message.contains("reason") {
@@ -721,6 +906,7 @@ async fn store_assign(
     Found(ticket): Found<Ticket>,
     Valid(form): Valid<AssignForm>,
 ) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
     let t = texts_in(&lang);
     let party = form.party_code.as_deref().filter(|c| !c.trim().is_empty());
     let assignee = match (form.assignee_user_id, party) {
@@ -752,6 +938,35 @@ async fn store_assign(
     }
 }
 
+/// The new-time sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct NewTimeForm {
+    /// The new visit time, Asia/Dubai wall-clock time.
+    pub visit_at: NaiveDateTime,
+}
+
+/// `POST /tickets/{id}/new-time`: sets a new visit time with the same vendor
+/// after a no-show; the requester is told the new time.
+async fn store_new_time(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(ticket): Found<Ticket>,
+    Valid(form): Valid<NewTimeForm>,
+) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
+    let at = calendar(&state).from_local(form.visit_at);
+    match no_show::new_time(&state, &user, &ticket, at).await {
+        Ok(()) => Ok((
+            Toast::success(texts::t(&lang, "wl_ticketing.no_show.new_time_done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid("visit_at", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
 /// The hold sheet's form.
 #[derive(Deserialize, Serialize, Validate, Debug)]
 pub struct HoldForm {
@@ -768,6 +983,7 @@ async fn store_hold(
     Found(ticket): Found<Ticket>,
     Valid(form): Valid<HoldForm>,
 ) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
     match work::hold(&state, &user, &ticket, &form.hold_reason, renox::db::now()).await {
         Ok(()) => Ok((
             Toast::success(texts::t(&lang, "wl_ticketing.hold.done")),
@@ -785,9 +1001,22 @@ pub struct CancelForm {
     /// Why the ticket is cancelled.
     #[validate(required, max = 500)]
     pub reason: String,
+    /// `1` to charge the requester for the work already done (`PRP.ACL.15`).
+    pub charge: Option<String>,
+    /// Why the requester is charged.
+    #[validate(max = 500)]
+    pub charge_reason: Option<String>,
+    /// The charge line's text.
+    #[validate(max = 200)]
+    pub description: Option<String>,
+    /// The charge line's price in AED before VAT, e.g. `200`.
+    #[validate(max = 20)]
+    pub unit_price: Option<String>,
 }
 
-/// `POST /tickets/{id}/cancel`: cancels the ticket for the reason.
+/// `POST /tickets/{id}/cancel`: cancels the ticket for the reason, charging
+/// the requester for the work done when the coordinator ticked it, with a
+/// reason and a charge line.
 async fn store_cancel(
     State(state): State<AppState>,
     user: AuthUser,
@@ -795,15 +1024,173 @@ async fn store_cancel(
     Found(ticket): Found<Ticket>,
     Valid(form): Valid<CancelForm>,
 ) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
     let t = texts_in(&lang);
-    match work::cancel(&state, &user, &ticket, form.reason.trim()).await {
-        Ok(()) => Ok((Toast::success(t("cancel_ticket.done")), renox::HxRefresh).into_response()),
+    let charging = form.charge.as_deref().map(str::trim) == Some("1");
+    let charge_on_cancel = if charging {
+        let Some(unit_price) = form.unit_price.as_deref().and_then(|p| parse_scaled(p, 2)) else {
+            return Err(invalid("unit_price", t("charge.bad_price_text"), &form));
+        };
+        Some(crate::job_cancel::ChargeOnCancel {
+            reason: form.charge_reason.clone().unwrap_or_default(),
+            lines: vec![ChargeInput {
+                description: form.description.clone().unwrap_or_default(),
+                quantity_milli: 1000,
+                unit_price,
+                vat_category: VatCategory::Standard,
+            }],
+        })
+    } else {
+        None
+    };
+    match crate::job_cancel::cancel_job(
+        &state,
+        &user,
+        &ticket,
+        form.reason.trim(),
+        charge_on_cancel,
+    )
+    .await
+    {
+        Ok(_) => Ok((Toast::success(t("cancel_ticket.done")), renox::HxRefresh).into_response()),
         Err(TransitionError::ReasonRequired) => {
             Err(invalid("reason", t("cancel_ticket.required"), &form))
         }
         Err(TransitionError::Guard(message)) => Err(invalid("reason", message, &form)),
         Err(other) => Err(other.into_error()),
     }
+}
+
+/// The reschedule sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct RescheduleForm {
+    /// The new planned due date, `YYYY-MM-DD`.
+    #[validate(required, max = 10)]
+    pub date: String,
+    /// Why the visit is moved.
+    #[validate(required, max = 500)]
+    pub reason: String,
+}
+
+/// `POST /tickets/{id}/reschedule`: moves the due date of a planned visit,
+/// with a reason (`PRP.ACL.15`: rescheduled, not skipped).
+async fn store_reschedule(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(ticket): Found<Ticket>,
+    Valid(form): Valid<RescheduleForm>,
+) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
+    let t = texts_in(&lang);
+    let Ok(date) = form.date.trim().parse::<renox::chrono::NaiveDate>() else {
+        return Err(invalid("date", t("visit.bad_date"), &form));
+    };
+    crate::job_cancel::reschedule(&state, &user, ticket.id, date, &form.reason).await?;
+    Ok((
+        Toast::success(t("visit.rescheduled_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The service report form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ReportForm {
+    /// The reference of the vendor's service report.
+    #[validate(required, max = 200)]
+    pub reference: String,
+}
+
+/// `POST /tickets/{id}/service-report`: attaches the reference of the
+/// vendor's service report to a planned visit.
+async fn store_report(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(ticket): Found<Ticket>,
+    Valid(form): Valid<ReportForm>,
+) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
+    crate::job_cancel::attach_service_report(&state, &user, ticket.id, &form.reference).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_ticketing.visit.report_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The add-charge form: the price in AED and the quantity as typed.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ChargeForm {
+    /// What is billed.
+    #[validate(required, max = 200)]
+    pub description: String,
+    /// The quantity, e.g. `1` or `2.5`; 1 when left empty.
+    #[validate(max = 20)]
+    pub quantity: Option<String>,
+    /// The price of one unit in AED before VAT, e.g. `333.33`.
+    #[validate(required, max = 20)]
+    pub unit_price: String,
+    /// The VAT category.
+    #[serde(default)]
+    pub vat_category: VatCategory,
+}
+
+/// `POST /tickets/{id}/charges`: adds a charge line and reloads. A price or
+/// quantity that is not a number is a 422 under its field; so is a ticket
+/// that is not chargeable. The service checks who may.
+async fn store_charge(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(ticket): Found<Ticket>,
+    Valid(form): Valid<ChargeForm>,
+) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
+    let t = texts_in(&lang);
+    let Some(unit_price) = parse_scaled(&form.unit_price, 2) else {
+        return Err(invalid("unit_price", t("charge.bad_price_text"), &form));
+    };
+    let quantity_milli = match form
+        .quantity
+        .as_deref()
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
+    {
+        None => 1000,
+        Some(text) => match parse_scaled(text, 3) {
+            Some(milli) => milli,
+            None => return Err(invalid("quantity", t("charge.bad_quantity_text"), &form)),
+        },
+    };
+    let input = ChargeInput {
+        description: form.description.clone(),
+        quantity_milli,
+        unit_price,
+        vat_category: form.vat_category,
+    };
+    charge::add_line(&state, &user, ticket.id, input).await?;
+    Ok((Toast::success(t("charge.added")), renox::HxRefresh).into_response())
+}
+
+/// `DELETE /tickets/{id}/charges/{line}`: removes a charge line and goes
+/// back to the page.
+async fn destroy_charge(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: Back,
+    Path((id, line)): Path<(i64, i64)>,
+) -> Result<Response> {
+    let ticket = Ticket::find_or_404(&state.db, id).await?;
+    visibility::ensure_visible(&ticket, &user)?;
+    charge::remove_line(&state, &user, id, line).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_ticketing.charge.removed")),
+        back,
+    )
+        .into_response())
 }
 
 /// `POST /tickets/{id}/actions/{name}`: start, resume, resolve, confirm,
@@ -816,6 +1203,7 @@ async fn store_action(
     Path((id, name)): Path<(i64, String)>,
 ) -> Result<Response> {
     let ticket = Ticket::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    visibility::ensure_visible(&ticket, &user)?;
     let at = renox::db::now();
     let done = match name.as_str() {
         "start" => work::start(&state, &user, &ticket, at).await,
@@ -890,6 +1278,23 @@ mod tests {
     }
 
     #[test]
+    fn prices_and_quantities_are_read_as_scaled_numbers() {
+        assert_eq!(parse_scaled("333.33", 2), Some(33_333));
+        assert_eq!(parse_scaled(" 350 ", 2), Some(35_000));
+        assert_eq!(parse_scaled("0.5", 2), Some(50));
+        assert_eq!(parse_scaled(".5", 3), Some(500));
+        assert_eq!(parse_scaled("2.5", 3), Some(2_500));
+        assert_eq!(parse_scaled("1.234", 2), None);
+        assert_eq!(parse_scaled("", 2), None);
+        assert_eq!(parse_scaled("-1", 2), None);
+        assert_eq!(parse_scaled("1,5", 2), None);
+        assert_eq!(parse_scaled("abc", 2), None);
+        assert_eq!(quantity_text(1_000), "1");
+        assert_eq!(quantity_text(2_500), "2.5");
+        assert_eq!(quantity_text(125), "0.125");
+    }
+
+    #[test]
     fn refusals_are_shown_under_their_field() {
         assert_eq!(
             assign_field("A reassignment needs a reason."),
@@ -907,6 +1312,7 @@ mod tests {
             assign_field("The vendor is not active, so it cannot be assigned."),
             "party_code"
         );
+        assert_eq!(assign_field("This party is on hold"), "party_code");
         assert_eq!(
             assign_field("The assignee is not a user."),
             "assignee_user_id"

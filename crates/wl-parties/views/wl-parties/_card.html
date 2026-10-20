@@ -20,6 +20,7 @@
     <template rx-if="company">
       <rx-entry :label="tx['fields.trn']" :value="company.trn" copyable/>
       <rx-entry :label="tx['fields.vat_registered']" :value="company.vat_registered" format="bool"/>
+      <rx-entry :label="tx['fields.einvoice_recipient_id']" :value="company.einvoice_recipient_id" copyable/>
       <rx-entry :label="tx['fields.legal_form']" :value="company.legal_form"/>
       <rx-entry :label="tx['fields.trade_licence_no']" :value="company.trade_licence_no"/>
       <rx-entry :label="tx['fields.licence_authority']" :value="company.licence_authority"/>

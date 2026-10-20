@@ -29,6 +29,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -203,6 +204,22 @@ pub struct OpenTicket {
     /// A key the opener can find the ticket by while it is open
     /// ([`TaskCreator::find_open`]), e.g. `notify.give_up:…`.
     pub source_key: Option<String>,
+    /// The party an invoice for a chargeable ticket is addressed to, when
+    /// the requester is a user (a portal user pays through their party);
+    /// without it the requester's party is billed.
+    #[serde(default)]
+    pub bill_party: Option<PartyId>,
+    /// The due date of the maintenance plan occurrence that opens the
+    /// ticket, for a planned visit (from `MaintenanceDue`): not the visit's
+    /// appointment and not an SLA due time. `WRK.RUL.14` reads it.
+    #[serde(default)]
+    pub planned_due: Option<NaiveDate>,
+    /// The service contract the ticket is handled under, for a planned visit
+    /// of a contract's maintenance plan (`MaintenanceDue`). Without it
+    /// `wl-ticketing` looks for the contract covering the subject and the
+    /// category.
+    #[serde(default)]
+    pub contract: Option<ServiceContractId>,
 }
 
 impl OpenTicket {
@@ -220,6 +237,9 @@ impl OpenTicket {
             assignee: None,
             due_at: None,
             source_key: None,
+            bill_party: None,
+            planned_due: None,
+            contract: None,
         }
     }
 
@@ -272,6 +292,26 @@ impl OpenTicket {
     /// Findable by `key` while open.
     pub fn source_key(mut self, key: &str) -> Self {
         self.source_key = Some(key.to_owned());
+        self
+    }
+
+    /// A planned visit whose maintenance plan occurrence is due on `date`.
+    pub fn planned_due(mut self, date: NaiveDate) -> Self {
+        self.planned_due = Some(date);
+        self
+    }
+
+    /// Handled under the service contract `contract` (a planned visit of its
+    /// maintenance plan).
+    pub fn under_contract(mut self, contract: ServiceContractId) -> Self {
+        self.contract = Some(contract);
+        self
+    }
+
+    /// Invoiced to `party` when the ticket is chargeable (see
+    /// [`OpenTicket::bill_party`]).
+    pub fn bill_to(mut self, party: PartyId) -> Self {
+        self.bill_party = Some(party);
         self
     }
 }
@@ -327,6 +367,19 @@ pub trait TaskCreator: Send + Sync + 'static {
         _source_key: &'a str,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// The open tickets of the category `category_key` about `subject`
+    /// (open in any state except `resolved`, `closed` and `cancelled`),
+    /// oldest first: 01 Property lists the *legal case* tickets of a lease a
+    /// flag can be linked to. The default finds none.
+    fn open_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+        _category_key: &'a str,
+    ) -> TicketFuture<'a, Vec<TicketRef>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 
     /// Resolves `ticket` on behalf of the record that opened it, with `note`
@@ -395,6 +448,293 @@ pub fn task_creator(state: &AppState) -> Arc<dyn TaskCreator> {
         None => Arc::new(NoTickets),
     }
 }
+
+/// Why a covered subject is not compliant (wl-ticketing §3 *Compliance
+/// flag*).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ComplianceFlagReason {
+    /// A compliance contract ended with no replacement.
+    #[default]
+    NoContract,
+    /// A planned visit was not resolved N days after its planned due date
+    /// (`WRK.RUL.14`).
+    VisitMissed,
+    /// The vendor's required approval expired.
+    VendorDocumentExpired,
+}
+
+/// A compliance flag was raised on a covered subject.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComplianceFlagRaised {
+    /// The building, building system or asset.
+    pub subject: Subject,
+    /// The key of the compliance-critical category.
+    pub category: String,
+    /// Why, as [`ComplianceFlagReason::as_str`] writes it.
+    pub reason: String,
+    /// The service contract, when the flag is about one.
+    pub contract: Option<i64>,
+}
+
+impl Event for ComplianceFlagRaised {}
+
+/// A compliance flag was cleared; the same payload as
+/// [`ComplianceFlagRaised`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComplianceFlagCleared {
+    /// The building, building system or asset.
+    pub subject: Subject,
+    /// The key of the compliance-critical category.
+    pub category: String,
+    /// Why it had been raised.
+    pub reason: String,
+    /// The service contract, when the flag was about one.
+    pub contract: Option<i64>,
+}
+
+impl Event for ComplianceFlagCleared {}
+
+/// The subject type of a service contract, for [`Subject`] references.
+pub const SERVICE_CONTRACT_SUBJECT_TYPE: &str = "ticketing.service_contract";
+
+/// Service contract numbers: `AMC-2026-0007`, across the deployment, reset
+/// yearly; gaps allowed (take them with [`Series::next_allowing_gaps`] on the
+/// Asia/Dubai date).
+pub const SERVICE_CONTRACT_SERIES: Series = Series {
+    key: "service_contract",
+    pattern: "{prefix}-{yyyy}-{0000}",
+    prefix: "AMC",
+    reset: Reset::Yearly,
+    gapless: false,
+    per_entity: false,
+};
+
+/// The id of a service contract.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct ServiceContractId(pub i64);
+
+impl ServiceContractId {
+    /// The contract as a [`Subject`]: `ticketing.service_contract:7`.
+    pub fn subject(self) -> Subject {
+        Subject::new(SERVICE_CONTRACT_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for ServiceContractId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for ServiceContractId {
+    fn from(id: i64) -> Self {
+        ServiceContractId(id)
+    }
+}
+
+/// Whether a service contract covers work done on a day (wl-ticketing §6
+/// `ServiceContracts::coverage`, wl-invoicing §5.4 step 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ContractCover {
+    /// The day is up to the contract's end date, or its termination date
+    /// when it was terminated, or a later version of the contract that
+    /// covers the day.
+    Covered,
+    /// The day is after the end: `ends_on` is the last day the contract (and
+    /// its renewals) covered.
+    AfterEnd {
+        /// The contract's end date, or its termination date when terminated.
+        ends_on: NaiveDate,
+    },
+    /// The contract is unknown, or ticketing is off: nothing can be said.
+    Unknown,
+}
+
+/// What other modules ask of the service contracts. `wl-ticketing` provides
+/// it; without that module, [`service_contract_coverage`] gives
+/// [`NoServiceContractCoverage`], which knows no contract.
+pub trait ServiceContractCoverage: Send + Sync + 'static {
+    /// Whether `contract` covers work done on `on` (Asia/Dubai calendar day):
+    /// up to its end date, or its termination date when `terminated`. A day
+    /// after that end is still covered when a renewal of the contract (a
+    /// newer version) covers it. The default knows no contract.
+    fn covers<'a>(
+        &'a self,
+        _db: &'a Db,
+        _contract: ServiceContractId,
+        _on: NaiveDate,
+    ) -> TicketFuture<'a, ContractCover> {
+        Box::pin(async { Ok(ContractCover::Unknown) })
+    }
+}
+
+/// The service contract coverage when the `ticketing` module is off: every
+/// contract is [`ContractCover::Unknown`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoServiceContractCoverage;
+
+impl ServiceContractCoverage for NoServiceContractCoverage {}
+
+/// Makes `coverage` the app's [`ServiceContractCoverage`]; `wl-ticketing`
+/// calls it in `register`.
+pub fn provide_service_contract_coverage(
+    app: &mut Registry,
+    coverage: impl ServiceContractCoverage,
+) {
+    let coverage: Arc<dyn ServiceContractCoverage> = Arc::new(coverage);
+    app.provide(coverage);
+}
+
+/// The app's [`ServiceContractCoverage`], or [`NoServiceContractCoverage`]
+/// when none is provided.
+pub fn service_contract_coverage(state: &AppState) -> Arc<dyn ServiceContractCoverage> {
+    match state.provided::<Arc<dyn ServiceContractCoverage>>() {
+        Some(coverage) => Arc::clone(&coverage),
+        None => Arc::new(NoServiceContractCoverage),
+    }
+}
+
+/// The id of a checklist run (`WRK.CHK.01`).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct ChecklistRunId(pub i64);
+
+impl fmt::Display for ChecklistRunId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// How a checklist run ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChecklistOutcome {
+    /// Every required item passed.
+    Passed,
+    /// An item failed; the run can be started again.
+    Failed,
+}
+
+/// A checklist run completed (`WRK.CHK.01`, wl-ticketing §6).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChecklistCompleted {
+    /// The run.
+    pub run: ChecklistRunId,
+    /// The record the run was started on, e.g. an onboarding step.
+    pub subject: Subject,
+    /// How it ended.
+    pub outcome: ChecklistOutcome,
+    /// The titles of the items that failed, empty for a passed run.
+    pub failed_items: Vec<String>,
+}
+
+impl Event for ChecklistCompleted {}
+
+/// Checklist runs for other modules (wl-ticketing §6). `wl-ticketing`
+/// provides it with [`provide_checklists`]; without that module,
+/// [`checklists`] gives [`NoChecklists`], which starts nothing.
+pub trait Checklists: Send + Sync + 'static {
+    /// Starts a run of the checklist template `template` on `subject`.
+    /// `None` when ticketing is off or has no such template. The default
+    /// starts nothing.
+    fn start<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _template: &'a str,
+        _subject: Subject,
+    ) -> TicketFuture<'a, Option<ChecklistRunId>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Voids the run `run` in progress with `reason` (the record it was
+    /// started on was cancelled). Returns `false` when it did nothing. The
+    /// default does nothing.
+    fn void<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _run: ChecklistRunId,
+        _reason: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// The checklists when the `ticketing` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoChecklists;
+
+impl Checklists for NoChecklists {}
+
+/// Makes `checklists` the app's [`Checklists`]; `wl-ticketing` calls it in
+/// `register`.
+pub fn provide_checklists(app: &mut Registry, checklists: impl Checklists) {
+    let checklists: Arc<dyn Checklists> = Arc::new(checklists);
+    app.provide(checklists);
+}
+
+/// The app's [`Checklists`], or [`NoChecklists`] when none is provided.
+pub fn checklists(state: &AppState) -> Arc<dyn Checklists> {
+    match state.provided::<Arc<dyn Checklists>>() {
+        Some(checklists) => Arc::clone(&checklists),
+        None => Arc::new(NoChecklists),
+    }
+}
+
+/// A service contract became `active` (`activate`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServiceContractActivated {
+    /// The contract.
+    pub contract: ServiceContractId,
+    /// The vendor party.
+    pub vendor: PartyId,
+    /// The covered subjects, once each.
+    pub subjects: Vec<Subject>,
+    /// The start date.
+    pub start: NaiveDate,
+    /// The end date.
+    pub end: NaiveDate,
+}
+
+impl Event for ServiceContractActivated {}
+
+/// A service contract ended without renewal and `WRK.RUL.18` handled its
+/// open visits: at `expire`, or on the termination date of a `terminate`
+/// (at once when that is today).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServiceContractEnded {
+    /// The contract.
+    pub contract: ServiceContractId,
+    /// How it ended: `expired` or `terminated` (`renewed` is the renewal's).
+    pub outcome: String,
+    /// The new version, when it was renewed.
+    pub new_version: Option<ServiceContractId>,
+    /// The planned visits cancelled because they were due after the end date.
+    pub visits_cancelled: Vec<TicketId>,
+    /// The open visits left to the coordinator to reassign or cancel.
+    pub visits_left: Vec<TicketId>,
+}
+
+impl Event for ServiceContractEnded {}
+
+/// A vendor did not start a ticket in time (`WRK.RUL.19`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VendorNoShow {
+    /// The ticket.
+    pub ticket: TicketId,
+    /// The vendor party.
+    pub vendor: PartyId,
+    /// The contract the ticket is handled under, when it has one.
+    pub contract: Option<ServiceContractId>,
+    /// The visit time (or response due time) the vendor missed.
+    pub scheduled_at: DateTime,
+}
+
+impl Event for VendorNoShow {}
 
 /// A ticket was assigned (`assign`): a first assignment, or a reassignment
 /// to someone else.
@@ -485,6 +825,57 @@ mod tests {
         assert_eq!(ticket.assignee, None);
         assert_eq!(ticket.due_at, None);
         assert_eq!(ticket.source_key, None);
+        assert_eq!(ticket.bill_party, None);
+    }
+
+    #[test]
+    fn a_planned_visit_carries_its_planned_due_date() {
+        let due = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
+        let visit = OpenTicket::new(
+            Subject::new("property.system", 4),
+            "fire_safety",
+            "Fire alarm",
+        )
+        .planned_due(due);
+        assert_eq!(visit.planned_due, Some(due));
+        assert_eq!(
+            OpenTicket::new(Subject::new("property.system", 4), "general", "x").planned_due,
+            None
+        );
+        let json = renox::serde_json::to_value(&visit).unwrap();
+        assert_eq!(json["planned_due"], "2026-11-01");
+    }
+
+    #[test]
+    fn flag_reasons_are_stored_in_snake_case() {
+        let names: Vec<_> = ComplianceFlagReason::ALL
+            .iter()
+            .map(|r| r.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["no_contract", "visit_missed", "vendor_document_expired"]
+        );
+        let raised = ComplianceFlagRaised {
+            subject: Subject::new("property.system", 4),
+            category: "fire_safety".into(),
+            reason: ComplianceFlagReason::VisitMissed.as_str().into(),
+            contract: None,
+        };
+        let json = renox::serde_json::to_value(&raised).unwrap();
+        assert_eq!(json["reason"], "visit_missed");
+        assert!(json["contract"].is_null());
+    }
+
+    #[test]
+    fn a_portal_requester_is_billed_through_their_party() {
+        let ticket = OpenTicket::new(Subject::new("property.unit", 1), "repair", "AC")
+            .requester_user(4)
+            .bill_to(PartyId(9));
+        assert_eq!(ticket.requester, Some(Requester::User { id: 4 }));
+        assert_eq!(ticket.bill_party, Some(PartyId(9)));
+        let json = renox::serde_json::to_value(&ticket).unwrap();
+        assert_eq!(json["bill_party"], 9);
     }
 
     #[test]
@@ -602,5 +993,46 @@ mod tests {
             json,
             r#"{"ticket":1,"resolution_minutes":540,"within_sla":true}"#
         );
+    }
+
+    #[test]
+    fn a_service_contract_is_a_subject_with_its_own_number_series() {
+        let contract = ServiceContractId(7);
+        assert_eq!(
+            contract.subject().to_string(),
+            "ticketing.service_contract:7"
+        );
+        assert_eq!(ServiceContractId::from(7), contract);
+        assert_eq!(SERVICE_CONTRACT_SERIES.prefix, "AMC");
+        assert_eq!(SERVICE_CONTRACT_SERIES.reset, Reset::Yearly);
+        let visit = OpenTicket::new(Subject::new("property.system", 4), "fire_safety", "Visit")
+            .under_contract(contract);
+        assert_eq!(visit.contract, Some(contract));
+        assert_eq!(visit.planned_due, None);
+    }
+
+    #[test]
+    fn the_contract_and_no_show_events_carry_their_payload() {
+        let ended = ServiceContractEnded {
+            contract: ServiceContractId(7),
+            outcome: "expired".into(),
+            new_version: None,
+            visits_cancelled: vec![TicketId(3), TicketId(4)],
+            visits_left: vec![TicketId(1), TicketId(2)],
+        };
+        let json = renox::serde_json::to_value(&ended).unwrap();
+        assert_eq!(json["visits_cancelled"], json!([3, 4]));
+        assert_eq!(json["visits_left"], json!([1, 2]));
+        assert!(json["new_version"].is_null());
+        let at = "2026-11-03T08:00:00Z".parse::<DateTime>().unwrap();
+        let no_show = VendorNoShow {
+            ticket: TicketId(42),
+            vendor: PartyId(5),
+            contract: Some(ServiceContractId(3)),
+            scheduled_at: at,
+        };
+        let json = renox::serde_json::to_value(&no_show).unwrap();
+        assert_eq!(json["vendor"], 5);
+        assert_eq!(json["contract"], 3);
     }
 }

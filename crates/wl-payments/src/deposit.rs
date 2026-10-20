@@ -6,8 +6,11 @@
 //! with `deposits.manage`), [`start_settlement`] (`deposits.manage`, or the
 //! system when the source agreement ended) and [`refund`]
 //! (`deposits.refund`), which requests a Refund with the deposit as source
-//! for the held amount. `forfeit`, `transfer`, `adjust` and the deductions
-//! come with the issues that follow, into the same `machine()`.
+//! for the held amount. [`forfeit`] keeps a deposit being settled and
+//! [`transfer`] hands a held one to a new holder; both and `refund` wait for the
+//! deductions published to the party and disputed by it
+//! ([`crate::deposit_deductions`]). A held deposit's amount is changed by
+//! [`crate::deposit_adjust`].
 //!
 //! The money of a received payment allocated to a deposit
 //! ([`crate::allocate`]) leaves the party's credit. The deposit stays
@@ -18,13 +21,18 @@
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::payments::{DepositId, PaymentId, PaymentMethod};
+use wl_kernel::block_guard::{self, ActionKind, GuardOutcome};
+use wl_kernel::documents::today;
+use wl_kernel::payments::{DepositId, PaymentId, PaymentMethod, RecordPayment};
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
 use crate::allocate::{allocate_to_deposit_in, deposit_problem};
 use crate::credit;
+use crate::deposit_adjust::DepositAdjustment;
+use crate::deposit_deductions::gate_of;
 use crate::deposit_machine::{
-    REFUND, RefundDepositInput, START_SETTLEMENT, START_SETTLEMENT_BY_SYSTEM,
+    FORFEIT, ForfeitInput, REFUND, RefundDepositInput, START_SETTLEMENT,
+    START_SETTLEMENT_BY_SYSTEM, TRANSFER, TransferInput, refund_problem,
 };
 use crate::payment::Payment;
 use crate::permissions;
@@ -108,6 +116,19 @@ pub struct Deposit {
     pub refund_method: Option<PaymentMethod>,
     /// The refund `refund` requested.
     pub refund_id: Option<i64>,
+    /// Whether a legal case on the source agreement keeps the deductions
+    /// dispute flag until a staff member records its decision.
+    pub dispute_legal_case: bool,
+    /// Why `forfeit` kept the deposit.
+    pub forfeit_reason: Option<String>,
+    /// The second user who approved the forfeiture.
+    pub forfeit_approved_by: Option<i64>,
+    /// The new holder a transferred deposit was handed to.
+    pub transferred_to: Option<i64>,
+    /// The reference of the new holder's receipt.
+    pub transfer_receipt: Option<String>,
+    /// The outgoing payment to the new holder.
+    pub transfer_payment_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: DepositStatus,
     /// When the row was created.
@@ -292,30 +313,290 @@ pub async fn start_settlement(
     reload(state, deposit).await
 }
 
+/// What [`refund_or_ask`] did.
+#[derive(Debug, Clone)]
+pub enum RefundOutcome {
+    /// The deposit is `refunded` and its Refund was requested.
+    Refunded(Deposit),
+    /// The party is blocked (`PTY.ACL.03`): no refund was made; an exception
+    /// was requested from the approver the block guard names, and the
+    /// deposit stays as it is.
+    ExceptionRequested(wl_kernel::ApprovalRequest),
+}
+
+/// Whether money may go out to the party of `deposit`: the neutral refusal
+/// text when the party is blocked (`PTY.ACL.03`), asked as the system so a
+/// restricted reason never shows.
+async fn money_out_refusal(state: &AppState, deposit: &Deposit) -> Result<Option<String>> {
+    let mut tx = state.db.begin().await?;
+    let outcome = block_guard::guard(state)
+        .check_in(
+            &mut tx,
+            None,
+            PartyId(deposit.party_id),
+            ActionKind::MoneyOut,
+        )
+        .await?;
+    // Only a question: nothing was written.
+    drop(tx);
+    Ok(match outcome {
+        GuardOutcome::Allowed => None,
+        GuardOutcome::Blocked(refusal) => Some(refusal.message_en()),
+    })
+}
+
+/// The input of a refund of `deposit` by `method`, with what the deductions
+/// say now.
+async fn refund_input_of(
+    state: &AppState,
+    deposit: &Deposit,
+    method: Option<PaymentMethod>,
+) -> Result<RefundDepositInput> {
+    Ok(RefundDepositInput {
+        method,
+        gate: Some(gate_of(state, deposit).await?),
+        part_refund_open: DepositAdjustment::part_refund_open(&state.db, deposit.id).await?,
+    })
+}
+
 /// `user` refunds `deposit` by `method` (`transfer` or `cheque`): the
 /// deposit becomes `refunded` and, in the same transaction, a Refund is
 /// requested with the deposit as source, for the held amount. The refund
 /// then follows the Refund flow (approval `FIN.ACL.04`, pay, fail).
 ///
+/// Money out to a blocked party waits for unblock or an approved exception
+/// (`PTY.ACL.03`): this refuses it, with the neutral text; the page asks for
+/// the exception with [`refund_or_ask`].
+///
 /// # Errors
 ///
 /// `Forbidden` without `deposits.refund`; `NotFrom` unless
 /// `settlement_pending`; `Guard` (422) without a method of transfer or
-/// cheque, for a deposit that holds nothing or already has a refund.
+/// cheque, for a deposit that holds nothing or already has a refund, while a
+/// deductions dispute is open, for a blocked party, and (with the dispute
+/// setting on) before the deductions are published and their dispute window
+/// has passed.
 pub async fn refund(
     state: &AppState,
     user: &AuthUser,
     deposit: &Deposit,
     method: Option<PaymentMethod>,
 ) -> std::result::Result<Deposit, TransitionError> {
-    let input = RefundDepositInput { method };
+    let deposit = reload(state, deposit).await?;
+    if let Some(message) = money_out_refusal(state, &deposit).await? {
+        return Err(TransitionError::Guard(message));
+    }
+    let input = refund_input_of(state, &deposit, method).await?;
     let _outcome = deposit
         .transition(REFUND)
         .by(user)
         .input(&input)
         .run(state)
         .await?;
-    reload(state, deposit).await
+    reload(state, &deposit).await
+}
+
+/// Like [`refund`], but a blocked party's refund becomes an exception request
+/// for the approver the block guard names (the compliance role): the request
+/// carries the refund as its payload, no refund is made and the deposit stays
+/// `settlement_pending`. At the final approval the kernel runs
+/// `refund_approved`, which checks the same guards again.
+///
+/// # Errors
+///
+/// As [`refund`], except that a blocked party is not an error.
+pub async fn refund_or_ask(
+    state: &AppState,
+    user: &AuthUser,
+    deposit: &Deposit,
+    method: Option<PaymentMethod>,
+) -> std::result::Result<RefundOutcome, TransitionError> {
+    let deposit = reload(state, deposit).await?;
+    if money_out_refusal(state, &deposit).await?.is_none() {
+        return refund(state, user, &deposit, method)
+            .await
+            .map(RefundOutcome::Refunded);
+    }
+    // The guards are checked now, so a refund that could not run is not asked.
+    let input = refund_input_of(state, &deposit, method).await?;
+    if deposit.status != DepositStatus::SettlementPending {
+        return Err(TransitionError::NotFrom(deposit.status.as_str().to_owned()));
+    }
+    if let Some(problem) = refund_problem(&deposit, &input) {
+        return Err(TransitionError::Guard(problem));
+    }
+    let payload = renox::serde_json::to_value(&input)
+        .map_err(|error| TransitionError::Failed(Error::from(renox::anyhow::anyhow!(error))))?;
+    let mut tx = state.db.begin().await?;
+    let request = block_guard::request_exception_in(
+        state,
+        &mut tx,
+        user,
+        &deposit.subject(),
+        REFUND,
+        payload,
+    )
+    .await?;
+    tx.commit().await?;
+    wl_kernel::approvals::announce_request(state, &request).await?;
+    Ok(RefundOutcome::ExceptionRequested(request))
+}
+
+/// What a user gives to forfeit a deposit.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ForfeitRequest {
+    /// Why the deposit is kept; required.
+    pub reason: String,
+    /// The second user who approves the forfeiture: another user who may
+    /// refund deposits (`deposits.refund`).
+    pub approver: Option<i64>,
+    /// Whether the vertical already vetted the approver (01 Property: a
+    /// property manager, who does not hold `deposits.refund`); the approver
+    /// must still be another user.
+    pub approver_vetted: bool,
+}
+
+/// `user` forfeits `deposit`: the party keeps no claim on it (`forfeited`,
+/// terminal). Like `refund`, it waits for the deductions: no deductions
+/// dispute may be open, and with the dispute setting on the forfeiture must
+/// have been published to the party ([`crate::deposit_deductions::publish`]
+/// with a reason) and the dispute window of that version must have passed.
+///
+/// The approval is that of a second user who holds `deposits.refund`
+/// (`request.approver`); the vertical's limits (e.g. `PRP.ACL.05`) are its own.
+///
+/// # Errors
+///
+/// `Forbidden` without `deposits.refund`; `NotFrom` unless
+/// `settlement_pending`; `Guard` (422) without a reason, without an approver
+/// who is another user holding `deposits.refund`, while a dispute is open, and
+/// before the forfeiture is published and its window has passed.
+pub async fn forfeit(
+    state: &AppState,
+    user: &AuthUser,
+    deposit: &Deposit,
+    request: &ForfeitRequest,
+) -> std::result::Result<Deposit, TransitionError> {
+    let deposit = reload(state, deposit).await?;
+    let approver_ok = match request.approver {
+        Some(id) if id != user.id && request.approver_vetted => true,
+        Some(id) if id != user.id => {
+            renox::auth::permissions::users_with_permission(&state.db, permissions::DEPOSITS_REFUND)
+                .await?
+                .iter()
+                .any(|u| u.id == id)
+        }
+        _ => false,
+    };
+    let input = ForfeitInput {
+        reason: request.reason.trim().to_owned(),
+        approver: request.approver,
+        approver_ok,
+        gate: Some(gate_of(state, &deposit).await?),
+    };
+    let _outcome = deposit
+        .transition(FORFEIT)
+        .by(user)
+        .reason(input.reason.clone())
+        .input(&input)
+        .run(state)
+        .await?;
+    reload(state, &deposit).await
+}
+
+/// What a user gives to hand a deposit to another holder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferRequest {
+    /// The new holder, a party (the new manager or owner).
+    pub new_holder: PartyId,
+    /// The reference of the new holder's receipt (the document attached in
+    /// wl-documents); required.
+    pub receipt: String,
+}
+
+/// `user` hands the `held` `deposit` to another holder, against the new
+/// holder's receipt, when the source agreement passes to it before it ends
+/// (e.g. 01 management agreement `end` or `transfer_unit`). The deposit
+/// becomes `transferred` (terminal) and the liability leaves the client; in the
+/// same transaction the money passed on, the held amount, is recorded as an
+/// outgoing payment to the new holder (by transfer, with the receipt as its
+/// reference); it is not a refund. After the commit the party is told who now
+/// holds the deposit (not while it is blocked: that is a message, the transfer
+/// itself is not money out to the party) and `DepositSettled` (transferred) is
+/// emitted.
+///
+/// # Errors
+///
+/// `Forbidden` without `deposits.manage`; `NotFrom` unless `held` (a deposit
+/// in `settlement_pending` completes its settlement first); `Guard` (422)
+/// without a receipt, for a new holder that does not exist or is the
+/// deposit's own party, for a deposit that holds nothing, or when the payment
+/// is refused (the transfer method is not enabled).
+pub async fn transfer(
+    state: &AppState,
+    user: &AuthUser,
+    deposit: &Deposit,
+    request: &TransferRequest,
+) -> std::result::Result<Deposit, TransitionError> {
+    let deposit = reload(state, deposit).await?;
+    let holder_found = wl_kernel::parties::directory(state)
+        .find(&state.db, request.new_holder)
+        .await?
+        .is_some();
+    let receipt = request.receipt.trim().to_owned();
+    let input = TransferInput {
+        receipt: receipt.clone(),
+        new_holder: request.new_holder.0,
+        holder_ok: holder_found && request.new_holder != deposit.party(),
+        part_refund_open: DepositAdjustment::part_refund_open(&state.db, deposit.id).await?,
+    };
+    let mut payment_request = RecordPayment::new(
+        request.new_holder,
+        deposit.legal_entity_id,
+        PaymentMethod::Transfer,
+        deposit.held_amount,
+    )
+    .outgoing()
+    .currency(&deposit.currency)
+    .date(today())
+    .method_details(renox::serde_json::json!({
+        "deposit": deposit.id,
+        "receipt": receipt,
+    }));
+    if !receipt.is_empty() {
+        payment_request = payment_request.reference(&receipt);
+    }
+    let (payment, record_input) =
+        crate::record::prepare(state, &payment_request, Some(user.id)).await?;
+    let mut tx = state.db.begin().await?;
+    let outcome = deposit
+        .transition(TRANSFER)
+        .by(user)
+        .input(&input)
+        .run_in(&mut tx)
+        .await?;
+    let (payment, recorded) =
+        crate::record::record_in(&mut tx, None, payment, &record_input).await?;
+    // Not the status column, so outside the machine's guard.
+    Deposit::query()
+        .where_(Deposit::ID.eq(deposit.id))
+        .update(
+            &mut tx,
+            &[
+                ("transferred_to", &Some(request.new_holder.0)),
+                ("transfer_receipt", &Some(receipt)),
+                ("transfer_payment_id", &Some(payment.id)),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    tx.commit().await?;
+    outcome.emit(state).await.map_err(TransitionError::Failed)?;
+    recorded
+        .emit(state)
+        .await
+        .map_err(TransitionError::Failed)?;
+    reload(state, &deposit).await
 }
 
 async fn reload(

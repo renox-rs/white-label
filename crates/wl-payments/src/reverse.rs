@@ -37,6 +37,15 @@ pub const REVERSE: &str = "reverse";
 /// The `reverse_by_system` transition's name.
 pub const REVERSE_BY_SYSTEM: &str = "reverse_by_system";
 
+/// The transition the kernel runs when the approval of a `reverse` is given
+/// (a vertical's approval policy for [`ACTION`], e.g. 01 Property:
+/// `PLT.ACL.09`, `PRP.ACL.16`).
+pub const REVERSE_APPROVED: &str = "reverse_approved";
+
+/// The approval policies' action key of `reverse`. No policy is registered
+/// by this module: without one a user's reversal runs at once.
+pub const ACTION: &str = "payments.reverse";
+
 /// The message of a refused reversal while a dispute is open.
 pub const DISPUTE_MESSAGE: &str = "This payment has an open dispute; use the chargeback flow";
 
@@ -162,6 +171,11 @@ pub(crate) fn transitions() -> Vec<Transition<Payment>> {
                 .tone("danger")
                 .system(),
         ),
+        with_rules(
+            Transition::new(REVERSE_APPROVED)
+                .label("Reverse (approved)")
+                .system(),
+        ),
     ]
 }
 
@@ -212,7 +226,12 @@ pub async fn reverse(
     if let Some(reason) = reason {
         builder = builder.reason(reason_text(reason, note));
     }
-    let _outcome = builder.input(&input).run(state).await?;
+    let outcome = builder.input(&input).run(state).await?;
+    // A vertical's policy may have deferred the reversal as an approval
+    // request: tell the approvers; the payment stays `received` until then.
+    wl_kernel::approvals::announce(state, &outcome)
+        .await
+        .map_err(TransitionError::Failed)?;
     Payment::find_or_404(&state.db, payment.id)
         .await
         .map_err(TransitionError::Failed)

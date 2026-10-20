@@ -1,0 +1,13 @@
+{#- wl-payments: the "answer the dispute" action on a deposit with a disputed
+    deduction, a sheet with the answer, its evidence and the revised lines
+    (line id | new amount). With no revised line the deductions are upheld and
+    the dispute window does not restart; with one, a new version is published
+    and the window starts again. Replace it with
+    resources/views/wl-payments/_answer_sheet.html in the app. -#}
+<rx-action-sheet :id="'answer-dispute-' ~ deposit.id" :label="tx['deposits.answer.action']" :action="route('wl_payments.deposits.answer', deposit.id)"
+                 :title="tx['deposits.answer.title']" :description="tx['deposits.answer.description']" :submit-label="tx['deposits.answer.submit']"
+                 icon="message-square">
+  <rx-textarea name="response" :label="tx['deposits.answer.response']" :id="'answer-response-' ~ deposit.id" required/>
+  <rx-input name="evidence" :label="tx['deposits.answer.evidence']" :hint="tx['deposits.answer.evidence_hint']" :id="'answer-evidence-' ~ deposit.id" required/>
+  <rx-textarea name="changes" :label="tx['deposits.answer.changes']" :hint="tx['deposits.answer.changes_hint']" :id="'answer-changes-' ~ deposit.id"/>
+</rx-action-sheet>

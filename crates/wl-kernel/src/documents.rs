@@ -57,6 +57,15 @@ pub fn dubai_date(at: DateTime) -> NaiveDate {
     at.with_timezone(&dubai).date_naive()
 }
 
+/// `at` as `2026-11-03 09:15` in Asia/Dubai: how times are shown in alerts,
+/// digests and cards.
+pub fn dubai_text(at: DateTime) -> String {
+    let dubai = FixedOffset::east_opt(DUBAI_OFFSET_SECONDS).expect("UTC+4 is a valid offset");
+    at.with_timezone(&dubai)
+        .format("%Y-%m-%d %H:%M")
+        .to_string()
+}
+
 /// Today in Asia/Dubai, from [`renox::db::now`] (so a test that travels
 /// moves it too): the default `on_date` of the guard.
 pub fn today() -> NaiveDate {
@@ -1125,6 +1134,89 @@ pub struct SopReaderRef {
     pub scope_id: String,
 }
 
+/// A member of staff as the SOP acknowledgements see them: the employee, the
+/// job role or trade, and the scopes they work in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SopStaff {
+    /// The employee, e.g. `hr.employee:7`.
+    pub employee: Subject,
+    /// The job role or trade key.
+    pub role: String,
+    /// The scopes the employee works in.
+    pub scopes: Vec<Subject>,
+}
+
+/// An employee acknowledged the current version of an SOP (`DOC.RUL.04`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SopAcknowledged {
+    /// The SOP.
+    pub sop: SopId,
+    /// The employee.
+    pub employee: Subject,
+    /// The staff user who recorded it in person, when the employee did not
+    /// do it in their own session.
+    pub witness: Option<i64>,
+}
+
+impl Event for SopAcknowledged {}
+
+/// The future the [`SopAcknowledgements`] methods return.
+pub type SopFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// What the onboarding asks of the SOP acknowledgements (wl-documents §6).
+/// `wl-documents` provides it with [`provide_sop_acknowledgements`]; without
+/// it, [`sop_acknowledgements`] gives [`NoSopAcknowledgements`]: no SOP is
+/// pending for anyone.
+pub trait SopAcknowledgements: Send + Sync + 'static {
+    /// The SOPs whose current version `who` has not acknowledged and whose
+    /// required readers list the role and scope of `who`. The default has
+    /// none.
+    fn pending_for<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _who: &'a SopStaff,
+    ) -> SopFuture<'a, Vec<SopId>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Records the acknowledgement of every pending SOP of `who` in person,
+    /// with the drawn `signature`, `witness` being the staff user. Returns
+    /// the SOPs acknowledged. The default records nothing.
+    fn acknowledge_in_person<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _who: &'a SopStaff,
+        _signature: &'a str,
+        _witness: i64,
+    ) -> SopFuture<'a, Vec<SopId>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The SOP acknowledgements when the `documents` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSopAcknowledgements;
+
+impl SopAcknowledgements for NoSopAcknowledgements {}
+
+/// Makes `acknowledgements` the app's [`SopAcknowledgements`].
+pub fn provide_sop_acknowledgements(
+    app: &mut Registry,
+    acknowledgements: impl SopAcknowledgements,
+) {
+    let acknowledgements: Arc<dyn SopAcknowledgements> = Arc::new(acknowledgements);
+    app.provide(acknowledgements);
+}
+
+/// The app's [`SopAcknowledgements`], or [`NoSopAcknowledgements`] when none
+/// is provided.
+pub fn sop_acknowledgements(state: &AppState) -> Arc<dyn SopAcknowledgements> {
+    match state.provided::<Arc<dyn SopAcknowledgements>>() {
+        Some(acknowledgements) => Arc::clone(&acknowledgements),
+        None => Arc::new(NoSopAcknowledgements),
+    }
+}
+
 /// An SOP version was accepted and is now the SOP's current version
 /// (`accept_sop`). Acknowledgements (#53) and onboarding listen to it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1152,8 +1244,7 @@ pub struct SopWithdrawn {
     pub document: DocumentId,
     /// The running number of that version.
     pub version: i64,
-    /// Acknowledgements cancelled by the withdrawal; empty until #53 cancels
-    /// them on this event.
+    /// The pending acknowledgements the withdrawal cancelled.
     pub cancelled_acknowledgements: Vec<i64>,
 }
 

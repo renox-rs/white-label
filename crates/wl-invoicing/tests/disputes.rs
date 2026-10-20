@@ -435,8 +435,9 @@ async fn a_party_disputes_only_when_the_portal_allows_it_and_only_its_own() {
     assert_eq!(t.disputed.all()[0].raised_by, own);
 }
 
-/// AC13: an owner who no longer holds `invoices.issue` gets no ticket: it is
-/// opened unassigned and every holder of the permission is told. With
+/// AC13: an owner who no longer holds `invoices.issue` does not get the
+/// ticket: it goes to the receivables role (the first holder of the
+/// permission) and every holder is told. With
 /// ticketing off the dispute is flagged without a ticket and resolving works.
 #[renox::test]
 async fn without_an_owner_the_ticket_is_unassigned_and_without_ticketing_there_is_none() {
@@ -457,7 +458,7 @@ async fn without_an_owner_the_ticket_is_unassigned_and_without_ticketing_there_i
         .unwrap();
     assert_eq!(stored(&t, id).await.ticket_id, Some(1));
     let opened = t.tickets.opened();
-    assert_eq!(opened[0].assignee, None);
+    assert_eq!(opened[0].assignee, Some(Assignee::user(b.id)));
     let unassigned = t.notices.of_type(UNASSIGNED);
     assert_eq!(unassigned.len(), 1);
     let to: Vec<i64> = unassigned[0]
@@ -494,4 +495,63 @@ async fn without_an_owner_the_ticket_is_unassigned_and_without_ticketing_there_i
     let after = t.reload(&plain).await;
     assert!(!after.disputed);
     assert_eq!(stored(&t, id).await.outcome, Some(DisputeOutcome::Upheld));
+}
+
+/// #156 point 5: an invoice the system issued (no owner) opens the dispute
+/// ticket assigned to the receivables role, the lowest-id holder of
+/// `invoices.issue` in the invoice's scope, and every holder is told.
+#[renox::test]
+async fn a_system_issued_invoice_is_assigned_to_the_receivables_role() {
+    let t = boot().await;
+    let amal = t.user_a().await;
+    let bilal = t.user_b().await;
+    let invoice = t.issued(&LINES, None, &amal).await;
+    Invoice::query()
+        .where_(Invoice::ID.eq(invoice.id))
+        .update(t.db(), &[("owner_id", &None::<i64>)])
+        .await
+        .unwrap();
+    assert_eq!(t.reload(&invoice).await.owner_id, None);
+
+    dispute::raise(t.state(), request(&invoice, by(&amal)).amount(1_000))
+        .await
+        .unwrap();
+    let first = amal.id.min(bilal.id);
+    assert_eq!(
+        t.tickets.opened()[0].assignee,
+        Some(Assignee::user(first)),
+        "assigned, not left unassigned"
+    );
+    let told: Vec<i64> = t.notices.of_type(UNASSIGNED)[0]
+        .recipients
+        .iter()
+        .filter_map(|r| match r {
+            NotifyRecipient::User { id } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    assert!(told.contains(&amal.id) && told.contains(&bilal.id));
+}
+
+/// #156 point 5: an owner who has been removed (the user is gone) is
+/// replaced by the receivables role; one who still holds the permission
+/// keeps the ticket.
+#[renox::test]
+async fn a_removed_owner_hands_the_ticket_to_the_receivables_role() {
+    let t = boot().await;
+    let mut nadia = t.clerk("Nadia").await;
+    let b = t.user_b().await;
+    let invoice = t.issued(&LINES, None, &nadia).await;
+    assert_eq!(invoice.owner_id, Some(nadia.id));
+    nadia.delete(t.db()).await.unwrap();
+
+    dispute::raise(t.state(), request(&invoice, by(&b)).amount(1_000))
+        .await
+        .unwrap();
+    assert_eq!(
+        t.tickets.opened()[0].assignee,
+        Some(Assignee::user(b.id)),
+        "the only holder left"
+    );
+    assert_eq!(t.notices.of_type(UNASSIGNED).len(), 1);
 }

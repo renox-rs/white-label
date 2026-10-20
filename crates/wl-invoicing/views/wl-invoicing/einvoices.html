@@ -1,0 +1,37 @@
+{#- wl-invoicing: the e-invoice board: the transmissions per legal entity and
+    state, the queue banner while the ASP does not answer, and, for
+    einvoices.manage, the Resubmit action of a rejected one. Replace it with
+    resources/views/wl-invoicing/einvoices.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['einvoice.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['einvoice.title']" :subtitle="tx['einvoice.subtitle']"/>
+    <rx-alert rx-if="banner" kind="warning" :message="banner"/>
+    <rx-form method="GET" action="{{ route('wl_invoicing.einvoices') }}">
+      <rx-row>
+        <rx-select name="entity" :label="tx['einvoice.entity']" :options="entities" :selected="entity" id="einvoice-entity"/>
+        <rx-select name="status" :label="tx['einvoice.status']" :options="statuses" :selected="status" id="einvoice-status"/>
+        <rx-button type="submit" :label="tx['einvoice.filter']"/>
+      </rx-row>
+    </rx-form>
+    <rx-table :rows="rows" as="item" :key="item.id" :caption="tx['einvoice.title']" card>
+      <rx-column :label="tx['einvoice.document']"><a href="{{ item.link }}">{{ item.document }}</a></rx-column>
+      <rx-column :label="tx['einvoice.entity']" hide-narrow>{{ item.entity }}</rx-column>
+      <rx-column :label="tx['einvoice.recipient']" hide-narrow>{{ item.recipient }}</rx-column>
+      <rx-column :label="tx['einvoice.attempt']" hide-narrow>{{ item.attempt }}</rx-column>
+      <rx-column :label="tx['einvoice.status']">
+        <rx-badge :kind="item.status_kind" :text="item.status"/>
+      </rx-column>
+      <rx-column :label="tx['einvoice.reference']" hide-narrow>{{ item.reference }}</rx-column>
+      <rx-column :label="tx['einvoice.problem']" hide-narrow>{{ item.problem }}</rx-column>
+      <rx-column label="">
+        <template rx-if="item.can_resubmit">
+          <rx-action-sheet :id="'resubmit-' ~ item.id" :label="tx['einvoice.resubmit']" :action="route('wl_invoicing.einvoice_resubmit', item.id)"
+                           :title="tx['einvoice.resubmit_title']" :description="tx['einvoice.resubmit_description']" :submit-label="tx['einvoice.resubmit']" icon="refresh-cw">
+            <rx-checkbox name="confirm" :label="tx['einvoice.confirm']" :id="'resubmit-confirm-' ~ item.id" required/>
+          </rx-action-sheet>
+        </template>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['einvoice.empty']" :message="tx['einvoice.empty_hint']" icon="send"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

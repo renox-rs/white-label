@@ -1,0 +1,61 @@
+{#- property: a building with its units, their status and availability, the
+    transitions the user may run on a unit, the form that adds a unit and
+    the one that drafts a lease on an available unit. Replace it with
+    resources/views/property/building.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="building.name">
+  <rx-stack>
+    <rx-page-header :title="building.name" :subtitle="building.code" :back="route('property.index')" :back-label="tx['portfolio.title']">
+      <template rx-if="can_manage">
+        <rx-action-sheet id="add-unit" :label="tx['units.add']" :action="route('property.unit_create', building.id)"
+                         :title="tx['units.add']" :submit-label="tx['units.add']" variant="primary" icon="plus">
+          <rx-input name="number" :label="tx['units.number']" id="add-unit-number" required/>
+          <rx-select name="unit_type" :label="tx['units.type_label']" :options="unit_types" :selected="'apartment'" id="add-unit-type"/>
+          <rx-select name="usage" :label="tx['units.usage_label']" :options="usages" :selected="'residential'" id="add-unit-usage"/>
+          <rx-input name="area" :label="tx['units.area']" id="add-unit-area"/>
+          <rx-input name="bedrooms" :label="tx['units.bedrooms']" id="add-unit-bedrooms"/>
+          <rx-input name="asking_rent" :label="tx['units.asking_rent']" id="add-unit-rent"/>
+          <rx-textarea name="notes" :label="tx['units.notes']" id="add-unit-notes"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['buildings.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['buildings.emirate']" :value="building.emirate"/>
+        <rx-entry :label="tx['buildings.community']" :value="building.community" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['buildings.plot_number']" :value="building.plot_number" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['buildings.premise_number']" :value="building.premise_number" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="units" as="unit" :key="unit.id" :caption="tx['units.title']" card>
+      <rx-column :label="tx['units.number']">{{ unit.number }}</rx-column>
+      <rx-column :label="tx['units.type_label']" hide-narrow>{{ unit.unit_type }} · {{ unit.usage }}</rx-column>
+      <rx-column :label="tx['units.area']" align="num" hide-narrow>{{ unit.area }}</rx-column>
+      <rx-column :label="tx['units.bedrooms']" align="num" hide-narrow>{{ unit.bedrooms }}</rx-column>
+      <rx-column :label="tx['units.asking_rent']" align="num" hide-narrow>{{ unit.asking_rent }}</rx-column>
+      <rx-column :label="tx['units.tenant']" hide-narrow>
+        <template rx-if="unit.lease_id"><a href="{{ route('property.lease', unit.lease_id) }}">{{ unit.tenant }}</a></template>
+      </rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="unit.status_kind" :text="unit.status"/></rx-column>
+      <rx-row-actions>
+        <rx-confirm rx-for="action in unit.actions" :id="'unit-' ~ unit.id ~ '-' ~ action.name" :label="action.label"
+                    :action="'/property/units/' ~ unit.id ~ '/transitions/' ~ action.name" method="POST"
+                    :title="action.label" :message="unit.number" :confirm-label="action.label" :cancel-label="tx['button_cancel']"/>
+        <template rx-if="unit.can_lease">
+          <rx-action-sheet :id="'new-lease-' ~ unit.id" :label="tx['leases.new']" :action="route('property.lease_create', unit.id)"
+                           :title="tx['leases.new']" :description="unit.number" :submit-label="tx['leases.new']" icon="file-plus">
+            <rx-input name="tenant" :label="tx['leases.tenant_number']" :id="'new-lease-tenant-' ~ unit.id" required/>
+            <rx-input name="start_date" type="date" :label="tx['leases.start_date']" :value="today" :id="'new-lease-start-' ~ unit.id" required/>
+            <rx-input name="end_date" type="date" :label="tx['leases.end_date']" :id="'new-lease-end-' ~ unit.id" required/>
+            <rx-input name="annual_rent" :label="tx['leases.annual_rent']" :id="'new-lease-rent-' ~ unit.id" required/>
+            <rx-input name="deposit" :label="tx['leases.deposit']" :id="'new-lease-deposit-' ~ unit.id"/>
+            <rx-input name="instalments" :label="tx['leases.instalments']" value="4" :id="'new-lease-instalments-' ~ unit.id" required/>
+            <rx-input name="first_due" type="date" :label="tx['leases.first_due']" :id="'new-lease-first-' ~ unit.id"/>
+            <rx-input name="notice_days" :label="tx['leases.notice_days']" :hint="tx['leases.notice_days_hint']" :id="'new-lease-notice-' ~ unit.id"/>
+            <rx-textarea name="terms" :label="tx['leases.terms']" :id="'new-lease-terms-' ~ unit.id"/>
+          </rx-action-sheet>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['units.empty']" icon="door-open"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

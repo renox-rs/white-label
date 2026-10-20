@@ -37,6 +37,10 @@ pub enum SupplierBillStatus {
 /// The reason code of a held bill that may duplicate an earlier one.
 pub const POSSIBLE_DUPLICATE: &str = "possible_duplicate";
 
+/// The reason code of a held bill with a line for work after the end of its
+/// service contract.
+pub const WORK_AFTER_CONTRACT_END: &str = "work_after_contract_end";
+
 /// A supplier bill. Money is `i64` fils of [`SupplierBill::currency`].
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(
@@ -96,6 +100,9 @@ pub struct SupplierBill {
     pub void_reason: Option<String>,
     /// The earlier bill a held bill may duplicate.
     pub duplicate_of: Option<i64>,
+    /// Whether the bill is held for a line of work after the end of its
+    /// service contract (`FIN.ACL.03`: not approved by its creator).
+    pub after_end_hold: bool,
     /// Counts the changes of the row.
     pub lock_version: i64,
     /// The lifecycle state.
@@ -266,6 +273,13 @@ async fn build(
     let currency = draft.currency.trim().to_ascii_uppercase();
     if let Some(message) = problem(draft, &currency) {
         return Err(refused(message));
+    }
+    // An owner drawing is never operating cost: no cost object (`FIN.ACL.21`).
+    let mapped = crate::budget_actual::Mapped::load(db).await?;
+    for (i, line) in draft.lines.iter().enumerate() {
+        if line.cost_object.is_some() && mapped.is_drawings_code(line.cost_code.as_deref()) {
+            return Err(crate::drawings::cost_object_refusal(i + 1));
+        }
     }
     let legal_entity_id = match draft.legal_entity_id {
         Some(id) => LegalEntity::find_or_404(db, id).await?.id,

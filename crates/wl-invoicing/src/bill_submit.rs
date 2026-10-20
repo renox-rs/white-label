@@ -6,7 +6,16 @@
 //! two targets, so [`submit`] picks one: with no PO or contract matching
 //! built, a bill that is not held goes to `matched`; a bill the duplicate
 //! check finds goes to `exception` with a `possible_duplicate`
-//! [`BillException`] row linking the earlier bill, and `duplicate_of` set.
+//! [`BillException`] row linking the earlier bill, and `duplicate_of` set. A
+//! bill against a service contract is also matched on the service dates of
+//! its lines (`FIN.ACL.03`, issue #87): the kernel's
+//! [`ServiceContractCoverage`](wl_kernel::tickets::ServiceContractCoverage)
+//! says for each dated line whether the contract covers the day; a line
+//! after the contract's end (or termination) date holds the bill with a
+//! `work_after_contract_end` row that names those lines, and `after_end_hold`
+//! is set. Both reasons can hold one bill, each with its own row. When
+//! ticketing is off the coverage is unknown and no line is late. A period
+//! line counts by its last day, which is its service date.
 //! Each has a system twin (`submit_system`, `submit_held_system`) for callers
 //! with no signed-in user.
 //!
@@ -20,17 +29,23 @@
 //! held, `submit_held` only when held). A bare POST without the input is
 //! refused.
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::{Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
+use wl_kernel::tickets::{
+    ContractCover, SERVICE_CONTRACT_SUBJECT_TYPE, ServiceContractId, service_contract_coverage,
+};
 
 use crate::bill_line::BillLine;
 use crate::credit_notes::{By, run_of};
 use crate::duplicates::{self, BillException, DuplicateMatch};
 use crate::permissions;
-use crate::supplier_bill::{POSSIBLE_DUPLICATE, SupplierBill, SupplierBillStatus};
+use crate::supplier_bill::{
+    POSSIBLE_DUPLICATE, SupplierBill, SupplierBillStatus, WORK_AFTER_CONTRACT_END,
+};
 use crate::texts::english;
 
 /// The transition to `matched`.
@@ -41,6 +56,28 @@ pub const SUBMIT_HELD: &str = "submit_held";
 pub const SUBMIT_SYSTEM: &str = "submit_system";
 /// The system twin of [`SUBMIT_HELD`].
 pub const SUBMIT_HELD_SYSTEM: &str = "submit_held_system";
+
+/// A line of a contract bill for work after the contract's end.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LateLine {
+    /// The line's position on the bill, from 1.
+    pub position: i64,
+    /// The day of the work.
+    pub service_date: NaiveDate,
+    /// The last day the contract covered.
+    pub ends_on: NaiveDate,
+}
+
+impl LateLine {
+    /// The line as the exception detail names it, e.g.
+    /// `line 2: 2026-10-05 (contract ended 2026-09-30)`.
+    pub fn describe(&self) -> String {
+        format!(
+            "line {}: {} (contract ended {})",
+            self.position, self.service_date, self.ends_on
+        )
+    }
+}
 
 /// What a submit run carries to its guards and effect, gathered by
 /// [`submit`].
@@ -56,6 +93,17 @@ pub(crate) struct SubmitInput {
     pub undated_lines: usize,
     /// The earlier bill this one may duplicate, if any.
     pub duplicate: Option<DuplicateMatch>,
+    /// The lines for work after the end of the bill's service contract.
+    #[serde(default)]
+    pub after_end: Vec<LateLine>,
+}
+
+impl SubmitInput {
+    /// Whether the bill is held: a possible duplicate or work after the
+    /// contract end.
+    fn held(&self) -> bool {
+        self.duplicate.is_some() || !self.after_end.is_empty()
+    }
 }
 
 /// The run's input, if it is a [`SubmitInput`].
@@ -171,13 +219,13 @@ fn rules(transition: Transition<SupplierBill>, held: bool) -> Transition<Supplie
                 Box::pin(async move {
                     if held {
                         check(
-                            |i| i.duplicate.is_some(),
+                            SubmitInput::held,
                             ctx,
                             "wl_invoicing.supplier_bill.problem.held",
                         )
                     } else {
                         check(
-                            |i| i.duplicate.is_none(),
+                            |i| !i.held(),
                             ctx,
                             "wl_invoicing.supplier_bill.problem.not_held",
                         )
@@ -187,36 +235,98 @@ fn rules(transition: Transition<SupplierBill>, held: bool) -> Transition<Supplie
         )
         .effect(move |bill: &SupplierBill, ctx, tx| {
             let bill_id = bill.id;
-            let duplicate = input(ctx).and_then(|i| i.duplicate);
+            let run = input(ctx).unwrap_or_default();
             Box::pin(async move {
                 if !held {
                     return Ok(());
                 }
-                let earlier = duplicate.ok_or_else(|| {
-                    Error::from(renox::anyhow::anyhow!("a held submit without its match"))
-                })?;
-                BillException {
-                    bill_id,
-                    reason_code: POSSIBLE_DUPLICATE.to_owned(),
-                    related_bill_id: Some(earlier.bill_id),
-                    ..Default::default()
+                if !run.held() {
+                    return Err(Error::from(renox::anyhow::anyhow!(
+                        "a held submit without its match"
+                    )));
                 }
-                .insert(&mut *tx)
-                .await?;
-                // Not the status column, so outside the machine's guard.
-                SupplierBill::query()
-                    .where_(SupplierBill::ID.eq(bill_id))
-                    .update(
-                        &mut *tx,
-                        &[
-                            ("duplicate_of", &Some(earlier.bill_id)),
-                            ("updated_at", &renox::db::now()),
-                        ],
-                    )
+                if let Some(earlier) = &run.duplicate {
+                    BillException {
+                        bill_id,
+                        reason_code: POSSIBLE_DUPLICATE.to_owned(),
+                        related_bill_id: Some(earlier.bill_id),
+                        ..Default::default()
+                    }
+                    .insert(&mut *tx)
                     .await?;
+                    // Not the status column, so outside the machine's guard.
+                    SupplierBill::query()
+                        .where_(SupplierBill::ID.eq(bill_id))
+                        .update(
+                            &mut *tx,
+                            &[
+                                ("duplicate_of", &Some(earlier.bill_id)),
+                                ("updated_at", &renox::db::now()),
+                            ],
+                        )
+                        .await?;
+                }
+                if !run.after_end.is_empty() {
+                    let detail = run
+                        .after_end
+                        .iter()
+                        .map(LateLine::describe)
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    BillException {
+                        bill_id,
+                        reason_code: WORK_AFTER_CONTRACT_END.to_owned(),
+                        detail: Some(detail),
+                        ..Default::default()
+                    }
+                    .insert(&mut *tx)
+                    .await?;
+                    SupplierBill::query()
+                        .where_(SupplierBill::ID.eq(bill_id))
+                        .update(
+                            &mut *tx,
+                            &[("after_end_hold", &true), ("updated_at", &renox::db::now())],
+                        )
+                        .await?;
+                }
                 Ok(())
             })
         })
+}
+
+/// The lines of a bill against a service contract that are dated after the
+/// day the contract covers up to (the contract's end date, or its
+/// termination date), by the kernel's coverage. A contract the coverage does
+/// not know, or any other kind of contract, has none.
+async fn late_lines(
+    state: &AppState,
+    bill: &SupplierBill,
+    lines: &[BillLine],
+) -> Result<Vec<LateLine>> {
+    let Some(contract) = bill.contract() else {
+        return Ok(Vec::new());
+    };
+    if contract.subject_type != SERVICE_CONTRACT_SUBJECT_TYPE {
+        return Ok(Vec::new());
+    }
+    let coverage = service_contract_coverage(state);
+    let mut late = Vec::new();
+    for line in lines {
+        let Some(day) = line.counted_day() else {
+            continue;
+        };
+        let cover = coverage
+            .covers(&state.db, ServiceContractId(contract.subject_id), day)
+            .await?;
+        if let ContractCover::AfterEnd { ends_on } = cover {
+            late.push(LateLine {
+                position: line.position,
+                service_date: day,
+                ends_on,
+            });
+        }
+    }
+    Ok(late)
 }
 
 /// What the guards need that does not depend on the lock: the supplier, the
@@ -230,6 +340,7 @@ async fn gather(state: &AppState, bill: &SupplierBill) -> Result<SubmitInput> {
         Some(id) => LegalEntity::find(&state.db, id).await?,
         None => None,
     };
+    let after_end = late_lines(state, bill, &lines).await?;
     Ok(SubmitInput {
         supplier_found: supplier.is_some(),
         lines: lines.len(),
@@ -239,13 +350,15 @@ async fn gather(state: &AppState, bill: &SupplierBill) -> Result<SubmitInput> {
             .filter(|l: &&BillLine| l.service_date.is_none())
             .count(),
         duplicate: None,
+        after_end,
     })
 }
 
 /// Submits draft bill `id`, as a user (`supplier_bills.create`) or the
 /// system, in one transaction: the supplier is locked, the duplicate check
 /// runs, and the bill goes to `matched` or, when held, to `exception` with a
-/// `possible_duplicate` row. Returns the bill as it is after the commit.
+/// `possible_duplicate` row and, for work after the contract end, a
+/// `work_after_contract_end` row. Returns the bill as it is after the commit.
 ///
 /// # Errors
 ///
@@ -271,7 +384,7 @@ pub async fn submit(
     } else {
         None
     };
-    let held = gathered.duplicate.is_some();
+    let held = gathered.held();
     let (user_name, system_name) = if held {
         (SUBMIT_HELD, SUBMIT_HELD_SYSTEM)
     } else {
@@ -283,6 +396,13 @@ pub async fn submit(
         .await?;
     tx.commit().await?;
     outcome.emit(state).await.map_err(TransitionError::Failed)?;
+    // A bill with an owner drawing asks for the approval of the drawing, by
+    // the user who submits it (`FIN.ACL.21`).
+    if let Some(requester) = by.id() {
+        crate::drawings::request_for_bill(state, id, requester)
+            .await
+            .map_err(TransitionError::Failed)?;
+    }
     Ok(SupplierBill::find_or_404(&state.db, id).await?)
 }
 
@@ -300,6 +420,7 @@ mod tests {
             entity_active: true,
             undated_lines: 0,
             duplicate: None,
+            after_end: Vec::new(),
         }
     }
 
@@ -354,6 +475,24 @@ mod tests {
             refusal(SUBMIT_HELD, &bill(), &run(&ready()))
                 .await
                 .is_some()
+        );
+    }
+
+    #[renox::test]
+    async fn work_after_the_contract_end_holds_the_bill_too() {
+        let late = SubmitInput {
+            after_end: vec![LateLine {
+                position: 2,
+                service_date: NaiveDate::from_ymd_opt(2026, 10, 5).unwrap(),
+                ends_on: NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(),
+            }],
+            ..ready()
+        };
+        assert_eq!(refusal(SUBMIT_HELD, &bill(), &run(&late)).await, None);
+        assert!(refusal(SUBMIT, &bill(), &run(&late)).await.is_some());
+        assert_eq!(
+            late.after_end[0].describe(),
+            "line 2: 2026-10-05 (contract ended 2026-09-30)"
         );
     }
 

@@ -3,24 +3,37 @@
 
 pub mod approvals;
 pub mod automation;
+pub mod bank_statements;
 pub mod block_effects;
 pub mod block_guard;
 pub mod branding;
 pub mod broadcast;
+pub mod budgets;
 pub mod calendar;
+pub mod cash_forecast;
+pub mod chase_holds;
+pub mod cheques;
+pub mod compliance;
 pub mod config;
 pub mod consents;
 pub mod delivery;
+pub mod deposits;
+pub mod digest;
 pub mod documents;
+pub mod drawings;
+pub mod einvoice;
 pub mod entities;
 pub mod held_funds;
+pub mod integrations;
 pub mod invoicing;
+pub mod late_entries;
 pub mod machines;
 pub mod manifest;
 pub mod notify;
 pub mod numbering;
 pub mod parties;
 pub mod payments;
+pub mod role_tasks;
 pub mod sales;
 pub mod scopes;
 pub mod screening_guard;
@@ -29,6 +42,7 @@ pub mod subject;
 mod texts;
 pub mod tickets;
 pub mod voids;
+pub mod workforce;
 
 use std::sync::Arc;
 
@@ -42,6 +56,7 @@ pub use approvals::{
     ApprovalRequest, ApprovalRequested, ApprovalStatus, PolicyDefault, Require, Required,
 };
 pub use automation::{AutomationFailed, RuleRun, RuleRunSpec, RuleRunStatus, RunOutcome, run_rule};
+pub use bank_statements::{BankBalance, BankStatements, NoBankStatements};
 pub use block_effects::{
     AgreementKind, AgreementRef, AgreementSource, BlockEffect, BlockEffectOverride,
     BlockEffectRule, Decision, RuleSource,
@@ -54,33 +69,72 @@ pub use broadcast::{
     BROADCAST_SUBJECT_TYPE, BroadcastCancelReason, BroadcastCancelled, BroadcastCompleted,
     BroadcastId, BroadcastRequest, BroadcastRequesters, NoRequesters, RequesterCheck,
 };
+pub use budgets::{
+    BudgetFuture, COMPANY_BUDGET_SUBJECT_TYPE, CompanyBudgetApproved, CompanyBudgetId,
+    CompanyBudgetVarianceReached, CompanyBudgets, NoCompanyBudgets,
+};
 pub use calendar::BusinessCalendar;
+pub use cash_forecast::{
+    CashForecastBelowThreshold, CashForecastSource, ForecastFuture, ForecastLine,
+    cash_forecast_sources, register_cash_forecast_source,
+};
+pub use cheques::{
+    BounceFeeCharge, BounceFees, CHARGE_SUBJECT_TYPE, CHEQUE_SUBJECT_TYPE, ChargeInvoicer,
+    ChequeBounceResolved, ChequeBounced, ChequeDocument, ChequeId, ChequeOutcome,
+    ChequeReferredToLegal, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, NoBounceFees,
+    NoChargeInvoicer, NoCheques, OpenCheque, RegisterCheque, ReturnCheques, ReturnedCheques,
+    ScheduledCheque,
+};
+pub use compliance::{ComplianceAlert, ComplianceRule, CriticalRule, Planned};
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use consents::{Consents, NoConsents};
 pub use delivery::{
     DELIVERY_SUBJECT_TYPE, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost,
     DeliveryReversed, ReviewOutcome,
 };
+pub use deposits::{
+    AdjustDeposit, CancelSettlement, DeductionKind, DeductionLineView, DepositAdjusted,
+    DepositDeductions, DepositDeductionsDisputed, DepositDeductionsPublished,
+    DepositDisputeAnswered, DepositOutcome, DepositSettled, DepositTopUps, Deposits, DisputeAnswer,
+    DisputeDeductions, HeldDeposit, NoDepositDeductions, NoDepositTopUps, NoDeposits,
+    PublishedDeductions, SettlementStarted, TopUpCharge,
+};
 pub use documents::{
     BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, BlockSubjects, BlockedGroup,
     CheckOutcome, DocumentAccepted, DocumentExpired, DocumentGuard, DocumentId, DocumentRejected,
     DocumentSuperseded, DocumentUploaded, FlagFailure, FlagReason, InvalidReason, NoDocuments,
-    OverrideMode, PendingRenewal, PlannedError, PlannedItem, PlannedWarning, PlannedWarningLine,
-    RecordFlag, SopId, SopPublished, SopReaderRef, SopReadersChanged, SopWithdrawn, Validity,
+    NoSopAcknowledgements, OverrideMode, PendingRenewal, PlannedError, PlannedItem, PlannedWarning,
+    PlannedWarningLine, RecordFlag, SopAcknowledged, SopAcknowledgements, SopId, SopPublished,
+    SopReaderRef, SopReadersChanged, SopStaff, SopWithdrawn, Validity,
+    provide_sop_acknowledgements, sop_acknowledgements,
+};
+pub use drawings::{
+    DRAWING_REQUEST_SUBJECT_TYPE, DrawingCategory, DrawingPayment, DrawingPaymentSource,
+    DrawingRequest, DrawingStart, NoOwnerDrawings, OwnerDrawingDecided, OwnerDrawings,
+    drawing_payment_sources, owner_drawings, provide_owner_drawings, register_drawing_payments,
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
+pub use integrations::{
+    ConnectionStatus, Delivery, Inbound, IntegrationConnection, IntegrationDef,
+    IntegrationStatusChanged, Match, Outbound, QueuedCall,
+};
 pub use invoicing::{
     BillBalance, BillReopenReason, CostObjectAmount, CostPoster, CostReversal, CreditLine,
     CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus, CreditNoteSummary,
     DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue,
     InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer, LandedCostLine,
     LandedCosts, NoCostPoster, NoInvoicer, NoLandedCosts, NoSupplierBills, NoSupplierDebitNotes,
-    PayBill, ReverseCost, SupplierBillApproved, SupplierBillId, SupplierBillLine,
+    PayBill, PostCost, ReverseCost, SupplierBillApproved, SupplierBillId, SupplierBillLine,
     SupplierBillLineId, SupplierBillReopened, SupplierBillStatus, SupplierBillVoided,
     SupplierBills, SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
     SupplierDebitNoteSettled, SupplierDebitNoteStatus, SupplierDebitNoteSummary,
     SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine, UnallocateBill, VatCategory,
+    WriteOffAnswer,
+};
+pub use late_entries::{
+    ApprovalWhy, Assessment, FiredRun, LateEntry, LateEntryDef, LateEntryLimits, LateEntryRecorded,
+    LateEntryStatus, Limits, NewRecord, Period,
 };
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;
@@ -90,29 +144,50 @@ pub use notify::{
 };
 pub use numbering::{Reset, Series};
 pub use parties::{
-    BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory,
-    PartyId, PartyKind, PartyRestored, PartyStatus, PartySummary, PartyUnblocked,
-    ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed, ScreeningStatus,
+    BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartiesMerged, PartyBlocked, PartyCreated,
+    PartyDirectory, PartyId, PartyKind, PartyRestored, PartyStatus, PartySummary, PartyUnblocked,
+    PartyUpdated, ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed,
+    ScreeningStatus,
 };
 pub use payments::{
-    AllocationTarget, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,
-    PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed, PaymentSource, PaymentStatus,
-    PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
+    AllocationTarget, BankPayment, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments,
+    PaymentId, PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed, PaymentSource,
+    PaymentStatus, PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
     RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
+    UnpaidRefund,
 };
-pub use sales::{CampaignActivated, CampaignEnded, CampaignId};
+pub use sales::{
+    Attribute, AttributionTarget, CampaignActivated, CampaignAttribution, CampaignEnded,
+    CampaignId, CustomerAcquired, CustomerAcquisitionChanged, FirstSale, LEAD_SUBJECT_TYPE,
+    LeadConversion, LeadCreated, LeadId, LeadLost, LeadWinReverted, LeadWon, NoCampaignAttribution,
+    NoLeadConversion, campaign_attribution, lead_conversion, provide_campaign_attribution,
+    provide_lead_conversion,
+};
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
 pub use tickets::{
-    Assignee, NoTickets, OpenTicket, Requester, TASK_CATEGORY, TaskComment, TaskCreator,
-    TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef, ticket_path,
+    Assignee, ChecklistCompleted, ChecklistOutcome, ChecklistRunId, Checklists,
+    ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, ContractCover, NoChecklists,
+    NoServiceContractCoverage, NoTickets, OpenTicket, Requester, SERVICE_CONTRACT_SERIES,
+    SERVICE_CONTRACT_SUBJECT_TYPE, ServiceContractActivated, ServiceContractCoverage,
+    ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment, TaskCreator,
+    TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef, VendorNoShow, checklists,
+    provide_checklists, provide_service_contract_coverage, service_contract_coverage, ticket_path,
 };
 pub use voids::{
     Effect, EffectKind, RecordVoided, Reverse, ReverseError, VoidRecord, Voidable, VoidableBuilder,
 };
 
 /// The kernel's permissions (wl-kernel §6).
+pub use workforce::{
+    EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
+    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoWorkforce, ONBOARDING_SUBJECT_TYPE,
+    OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile, Workforce,
+    provide_workforce, workforce,
+};
+
+/// The permission names the kernel declares.
 pub mod permissions {
     /// See legal entities and scope–entity links.
     pub const LEGAL_ENTITIES_VIEW: &str = "legal_entities.view";
@@ -126,6 +201,12 @@ pub mod permissions {
     pub const AUTOMATIONS_RETRY: &str = "automations.retry";
     /// Void a record entered in error (a module may declare its own alias).
     pub const RECORDS_VOID: &str = "records.void";
+    /// Approve a late entry beyond N hours or in a closed period (`PLT.ACL.10`).
+    pub const LATE_ENTRIES_APPROVE: &str = "late_entries.approve";
+    /// See the integration connections: their health, last error and queue.
+    pub const INTEGRATIONS_VIEW: &str = "integrations.view";
+    /// Disable and enable an integration connection.
+    pub const INTEGRATIONS_MANAGE: &str = "integrations.manage";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -150,6 +231,30 @@ const VIEWS: &[(&str, &str)] = &[
     (
         voids::web::ACTION_TEMPLATE,
         include_str!("../views/wl-kernel/void_action.html"),
+    ),
+    (
+        integrations::web::BANNER_TEMPLATE,
+        include_str!("../views/wl-kernel/integration_banner.html"),
+    ),
+    (
+        "wl-kernel/integrations.html",
+        include_str!("../views/wl-kernel/integrations.html"),
+    ),
+    (
+        "wl-kernel/integration.html",
+        include_str!("../views/wl-kernel/integration.html"),
+    ),
+    (
+        "wl-kernel/compliance_alerts.html",
+        include_str!("../views/wl-kernel/compliance_alerts.html"),
+    ),
+    (
+        late_entries::web::FIELDS_TEMPLATE,
+        include_str!("../views/wl-kernel/late_entry_fields.html"),
+    ),
+    (
+        late_entries::web::CARD_TEMPLATE,
+        include_str!("../views/wl-kernel/late_entry_card.html"),
     ),
 ];
 
@@ -205,6 +310,8 @@ impl Module for WlKernel {
             // The approval card's buttons; who may decide is checked per request.
             .merge(approvals::web::routes())
             .merge(voids::web::routes())
+            .merge(integrations::web::routes())
+            .merge(compliance::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -217,10 +324,17 @@ impl Module for WlKernel {
             .provide(Arc::clone(&self.calendar))
             .model::<LegalEntity>()
             .model::<ScopeEntity>()
-            .view_data::<LegalEntitiesPage>();
+            .view_data::<LegalEntitiesPage>()
+            .view_data::<integrations::web::IntegrationsPage>()
+            .view_data::<integrations::web::IntegrationPage>()
+            .view_data::<compliance::web::ComplianceAlertsPage>();
         approvals::register(app);
         automation::register(app);
         voids::register_models(app);
+        late_entries::register_models(app);
+        integrations::register_models(app);
+        compliance::register_models(app);
+        digest::register(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(
@@ -243,6 +357,10 @@ impl Module for WlKernel {
                     println!("{created} legal entities created.");
                     let policies = approvals::install(&state.db).await?;
                     println!("{policies} approval policies created.");
+                    let connections = integrations::install(&state.db).await?;
+                    println!("{connections} integration connections created.");
+                    let rules = compliance::install(&state.db).await?;
+                    println!("{rules} compliance-critical rules stored.");
                     Ok(())
                 }
             },
@@ -252,7 +370,9 @@ impl Module for WlKernel {
             let config = Arc::clone(&config);
             async move {
                 entities::install(&state.db, &config).await?;
-                approvals::install(&state.db).await.map(|_| ())
+                approvals::install(&state.db).await?;
+                integrations::install(&state.db).await?;
+                compliance::install(&state.db).await.map(|_| ())
             }
         });
         app.templates(|env| {

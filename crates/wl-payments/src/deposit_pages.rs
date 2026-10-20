@@ -4,22 +4,39 @@
 //! |---|---|---|
 //! | `GET /deposits` | `wl_payments.deposits.index` | `deposits.view` |
 //! | `GET /deposits/{id}` | `wl_payments.deposits.show` | `deposits.view` |
+//! | `POST /deposits/{id}/deductions` | `wl_payments.deposits.deductions` | `deposits.manage` (fields `lines`, `forfeiture_reason`) |
+//! | `POST /deposits/{id}/answer` | `wl_payments.deposits.answer` | `deposits.manage` (fields `response`, `evidence`, `changes`) |
+//! | `POST /deposits/{id}/legal_case/open` and `/close` | `wl_payments.deposits.legal_case_open` and `_close` | `deposits.manage` |
+//! | `POST /deposits/{id}/adjust` | `wl_payments.deposits.adjust` | `deposits.manage` (fields `new_amount`, `source_version`, `effective_on`) |
+//! | `POST /deposits/{id}/transfer` | `wl_payments.deposits.transfer` | `deposits.manage` (fields `new_holder`, `receipt`) |
+//! | `POST /deposits/{id}/refund` | `wl_payments.deposits.refund` | `deposits.refund` (field `method`) |
+//! | `POST /deposits/{id}/forfeit` | `wl_payments.deposits.forfeit` | `deposits.refund` (fields `reason`, `approver`) |
 //!
 //! A `refunded` deposit whose refund `failed` shows a "Refund failed" badge
 //! with a link to the refund; the badge is read from the refund, so the
 //! deposit stays `refunded`.
 
+use renox::auth::permissions::users_with_permission;
+use renox::chrono::NaiveDate;
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::serde_json::Value;
-use renox::state_machine::{self};
-use serde::Serialize;
+use renox::state_machine::{self, TransitionError};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use wl_kernel::deposits::DeductionKind;
 use wl_kernel::payments::PaymentMethod;
 
-use crate::deposit::{Deposit, DepositStatus};
+use crate::deposit::{Deposit, DepositStatus, ForfeitRequest, TransferRequest};
+use crate::deposit_adjust::{
+    self, AdjustRequest, AdjustmentKind, AdjustmentStatus, DepositAdjustment,
+};
+use crate::deposit_deductions::{
+    self, AnswerRequest, DepositDeduction, DepositDispute, DisputeStatus, LineChange, NewLine,
+    PublishRequest,
+};
 use crate::followup::money_text;
-use crate::pages::{Text, Texts, options, party_name, texts_in};
+use crate::pages::{Text, Texts, filled, invalid, options, parse_amount, party_name, texts_in};
 use crate::permissions;
 use crate::texts;
 
@@ -32,14 +49,41 @@ const STATUSES: [DepositStatus; 5] = [
     DepositStatus::Transferred,
 ];
 
-/// The module's deposit routes, behind `deposits.view`.
+/// The module's deposit routes, each behind its permission.
 pub fn routes() -> Routes {
     Routes::new()
-        .get("/deposits", index)
-        .name("wl_payments.deposits.index")
-        .get("/deposits/{id}", show)
-        .name("wl_payments.deposits.show")
-        .require_permission(permissions::DEPOSITS_VIEW)
+        .merge(
+            Routes::new()
+                .get("/deposits", index)
+                .name("wl_payments.deposits.index")
+                .get("/deposits/{id}", show)
+                .name("wl_payments.deposits.show")
+                .require_permission(permissions::DEPOSITS_VIEW),
+        )
+        .merge(
+            Routes::new()
+                .post("/deposits/{id}/deductions", store_deductions)
+                .name("wl_payments.deposits.deductions")
+                .post("/deposits/{id}/answer", store_answer)
+                .name("wl_payments.deposits.answer")
+                .post("/deposits/{id}/adjust", store_adjust)
+                .name("wl_payments.deposits.adjust")
+                .post("/deposits/{id}/transfer", store_transfer)
+                .name("wl_payments.deposits.transfer")
+                .post("/deposits/{id}/legal_case/open", store_legal_case_open)
+                .name("wl_payments.deposits.legal_case_open")
+                .post("/deposits/{id}/legal_case/close", store_legal_case_close)
+                .name("wl_payments.deposits.legal_case_close")
+                .require_permission(permissions::DEPOSITS_MANAGE),
+        )
+        .merge(
+            Routes::new()
+                .post("/deposits/{id}/refund", store_refund)
+                .name("wl_payments.deposits.refund")
+                .post("/deposits/{id}/forfeit", store_forfeit)
+                .name("wl_payments.deposits.forfeit")
+                .require_permission(permissions::DEPOSITS_REFUND),
+        )
 }
 
 /// The badge colour of a status.
@@ -153,17 +197,222 @@ pub(crate) struct ShowPage {
     refund_label: String,
     refund_link: Option<String>,
     timeline: Vec<Value>,
+    /// The published versions of the deductions, newest first.
+    versions: Vec<VersionRow>,
+    /// The disputes of the party, oldest first.
+    disputes: Vec<DisputeRow>,
+    /// Whether the deductions dispute flag is set: a dispute is open or a
+    /// legal case holds it.
+    dispute_flag: bool,
+    /// Whether "Publish deductions" is offered.
+    can_publish: bool,
+    /// Whether "Answer the dispute" is offered.
+    can_answer: bool,
+    /// Whether the legal case buttons are offered, and which one.
+    can_legal_case: bool,
+    /// Whether "Adjust" and "Transfer" are offered: a held deposit.
+    can_adjust: bool,
+    can_transfer: bool,
+    /// The adjustments of the amount, oldest first.
+    adjustments: Vec<AdjustmentRow>,
+    /// The party the deposit was transferred to, as text.
+    new_holder_name: String,
+    /// Whether "Refund" and "Forfeit" are offered.
+    can_refund: bool,
+    can_forfeit: bool,
+    /// Why they wait, as text; empty when they do not.
+    waiting_reason: String,
+    /// The methods a deposit is refunded by, `(code, label)`.
+    refund_methods: Vec<(String, String)>,
+    /// The users who may approve a forfeiture, `(id, name)`.
+    approvers: Vec<(String, String)>,
+}
+
+/// One adjustment of the amount of a held deposit.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct AdjustmentRow {
+    id: i64,
+    version: i32,
+    change: String,
+    effective_on: String,
+    kind: String,
+    difference: String,
+    status: String,
+    status_kind: &'static str,
+    link: String,
+    link_label: String,
+}
+
+/// The adjustment rows of `deposit`.
+async fn adjustment_rows(db: &Db, t: Text<'_>, deposit: &Deposit) -> Result<Vec<AdjustmentRow>> {
+    let mut rows = Vec::new();
+    for adjustment in DepositAdjustment::of_deposit(db, deposit.id).await? {
+        let (link, link_label) = match (adjustment.refund_id, adjustment.charge()) {
+            (Some(refund), _) => (
+                format!("/refunds/{refund}"),
+                format!("{} #{refund}", t("refunds.heading")),
+            ),
+            (None, Some(charge)) => (String::new(), charge.to_string()),
+            _ => (String::new(), String::new()),
+        };
+        rows.push(AdjustmentRow {
+            id: adjustment.id,
+            version: adjustment.source_version,
+            change: deposit_adjust::change_text(&deposit.currency, &adjustment),
+            effective_on: adjustment.effective_on.format("%Y-%m-%d").to_string(),
+            kind: t(match adjustment.kind {
+                AdjustmentKind::TopUp => "deposits.adjust.kind.top_up",
+                AdjustmentKind::PartRefund => "deposits.adjust.kind.part_refund",
+            }),
+            difference: money_text(&deposit.currency, adjustment.difference),
+            status: t(&format!(
+                "deposits.adjust.status.{}",
+                adjustment.status.as_str()
+            )),
+            status_kind: match adjustment.status {
+                AdjustmentStatus::Open => "warning",
+                AdjustmentStatus::Settled => "success",
+                AdjustmentStatus::Closed => "info",
+            },
+            link,
+            link_label,
+        });
+    }
+    Ok(rows)
+}
+
+/// One line of a published version.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct LineRow {
+    id: i64,
+    description: String,
+    amount: String,
+    evidence: String,
+    disputed: bool,
+}
+
+/// One published version of the deductions.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct VersionRow {
+    version: i32,
+    kind: String,
+    reason: String,
+    published_on: String,
+    window_ends_on: String,
+    total: String,
+    latest: bool,
+    lines: Vec<LineRow>,
+}
+
+/// One dispute of a line.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct DisputeRow {
+    id: i64,
+    line: String,
+    comment: String,
+    raised_on: String,
+    status: String,
+    status_kind: &'static str,
+    response: String,
+}
+
+/// The rows of the versions of `deposit`, newest first.
+async fn version_rows(
+    db: &Db,
+    t: Text<'_>,
+    deposit: &Deposit,
+    open_lines: &[i64],
+) -> Result<Vec<VersionRow>> {
+    let versions = DepositDeduction::of_deposit(db, deposit.id).await?;
+    let newest = versions.last().map(|v| v.version);
+    let mut rows = Vec::new();
+    for version in versions.iter().rev() {
+        let lines = version
+            .lines(db)
+            .await?
+            .iter()
+            .map(|line| LineRow {
+                id: line.id,
+                description: line.description.clone(),
+                amount: money_text(&deposit.currency, line.amount),
+                evidence: line.evidence.clone(),
+                disputed: open_lines.contains(&line.id),
+            })
+            .collect();
+        rows.push(VersionRow {
+            version: version.version,
+            kind: t(match version.kind {
+                DeductionKind::Deductions => "deposits.deductions.kind.deductions",
+                DeductionKind::Forfeiture => "deposits.deductions.kind.forfeiture",
+            }),
+            reason: version.reason.clone().unwrap_or_default(),
+            published_on: version.published_on.format("%Y-%m-%d").to_string(),
+            window_ends_on: version
+                .window_ends_on
+                .map(|d| d.format("%Y-%m-%d").to_string())
+                .unwrap_or_default(),
+            total: money_text(&deposit.currency, version.total),
+            latest: Some(version.version) == newest,
+            lines,
+        });
+    }
+    Ok(rows)
+}
+
+/// The rows of the disputes of `deposit`.
+async fn dispute_rows(db: &Db, t: Text<'_>, deposit: &Deposit) -> Result<Vec<DisputeRow>> {
+    let mut rows = Vec::new();
+    for dispute in DepositDispute::of_deposit(db, deposit.id).await? {
+        let line = deposit_deductions::DeductionLine::find(db, dispute.line_id)
+            .await?
+            .map_or_else(|| format!("#{}", dispute.line_id), |l| l.description);
+        rows.push(DisputeRow {
+            id: dispute.id,
+            line,
+            comment: dispute.comment.clone(),
+            raised_on: dispute.raised_on.format("%Y-%m-%d").to_string(),
+            status: t(&format!(
+                "deposits.dispute.status.{}",
+                dispute.status.as_str()
+            )),
+            status_kind: match dispute.status {
+                DisputeStatus::Open => "warning",
+                DisputeStatus::Revised => "info",
+                DisputeStatus::Upheld => "success",
+            },
+            response: dispute.response.clone().unwrap_or_default(),
+        });
+    }
+    Ok(rows)
 }
 
 /// `GET /deposits/{id}`: the card, the "Refund failed" badge with its link
 /// and the history.
 async fn show(
     State(state): State<AppState>,
+    user: AuthUser,
     lang: Lang,
     Found(deposit): Found<Deposit>,
 ) -> Result<View> {
     let t = texts_in(&lang);
     let db = state.db.clone();
+    let open = DepositDispute::open_of_deposit(&db, deposit.id).await?;
+    let open_lines: Vec<i64> = open.iter().map(|d| d.line_id).collect();
+    let pending = deposit.status == DepositStatus::SettlementPending;
+    let manage = user.has_permission(permissions::DEPOSITS_MANAGE);
+    let refunding = user.has_permission(permissions::DEPOSITS_REFUND);
+    let gate = deposit_deductions::gate_of(&state, &deposit).await?;
+    let waiting_reason = if pending {
+        deposit_deductions::gate_problem(&gate, false).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let approvers: Vec<(String, String)> = users_with_permission(&db, permissions::DEPOSITS_REFUND)
+        .await?
+        .into_iter()
+        .filter(|u| u.id != user.id)
+        .map(|u| (u.id.to_string(), u.name))
+        .collect();
     let refund = deposit.linked_refund(&db).await?;
     let refund_failed = deposit.refund_failed(&db).await?;
     let history = state_machine::history(&db, Deposit::TABLE, deposit.id).await?;
@@ -201,8 +450,408 @@ async fn show(
             .unwrap_or_default(),
         refund_link: refund.as_ref().map(|r| format!("/refunds/{}", r.id)),
         timeline,
+        versions: version_rows(&db, &t, &deposit, &open_lines).await?,
+        disputes: dispute_rows(&db, &t, &deposit).await?,
+        dispute_flag: !open.is_empty() || deposit.dispute_legal_case,
+        can_publish: manage && pending && open.is_empty(),
+        can_answer: manage && pending && !open.is_empty(),
+        can_legal_case: manage && pending,
+        can_adjust: manage && deposit.status == DepositStatus::Held,
+        adjustments: adjustment_rows(&db, &t, &deposit).await?,
+        can_transfer: manage && deposit.status == DepositStatus::Held,
+        new_holder_name: match deposit.transferred_to {
+            Some(holder) => party_name(&state, wl_kernel::PartyId(holder)).await?,
+            None => String::new(),
+        },
+        can_refund: refunding && pending && deposit.refund_id.is_none(),
+        can_forfeit: refunding && pending,
+        waiting_reason,
+        refund_methods: options(&t, "method", &["transfer", "cheque"]),
+        approvers,
         deposit,
     }))
+}
+
+/// The deductions sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct DeductionsForm {
+    /// One deduction per line: `description | amount | evidence`, the amount
+    /// in dirhams like `2500.00`.
+    #[validate(max = 8000)]
+    pub lines: Option<String>,
+    /// Set to publish a forfeiture instead, with its reason; with no lines it
+    /// is one line for the whole deposit.
+    #[validate(max = 2000)]
+    pub forfeiture_reason: Option<String>,
+}
+
+/// The lines in `text`, one `description | amount | evidence` per row; or the
+/// message about the first row that is wrong.
+pub(crate) fn parse_lines(text: &str) -> std::result::Result<Vec<NewLine>, String> {
+    let mut lines = Vec::new();
+    for (i, row) in text.lines().enumerate() {
+        if row.trim().is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = row.split('|').map(str::trim).collect();
+        let [description, amount, evidence] = parts.as_slice() else {
+            return Err(format!(
+                "Line {}: write it as description | amount | evidence.",
+                i + 1
+            ));
+        };
+        let Some(amount) = parse_amount(amount) else {
+            return Err(format!(
+                "Line {}: the amount is not a number above 0.",
+                i + 1
+            ));
+        };
+        lines.push(NewLine {
+            description: (*description).to_owned(),
+            amount,
+            evidence: (*evidence).to_owned(),
+            billable: false,
+        });
+    }
+    Ok(lines)
+}
+
+/// `POST /deposits/{id}/deductions`: publishes the next version of the
+/// deductions (or the forfeiture) to the party and reloads the page.
+async fn store_deductions(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+    Valid(form): Valid<DeductionsForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let lines = parse_lines(filled(&form.lines).unwrap_or_default())
+        .map_err(|message| invalid("lines", message, &form))?;
+    let request = PublishRequest {
+        lines,
+        forfeiture_reason: filled(&form.forfeiture_reason).map(str::to_owned),
+    };
+    match deposit_deductions::publish(&state, &user, &deposit, &request).await {
+        Ok(_) => Ok((
+            Toast::success(t("deposits.deductions.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid("lines", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The answer sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct AnswerForm {
+    /// The answer to the party.
+    #[validate(max = 4000)]
+    pub response: Option<String>,
+    /// The evidence reference.
+    #[validate(max = 2000)]
+    pub evidence: Option<String>,
+    /// One revised line per row: `line id | new amount`, in dirhams (0
+    /// removes the line). Empty: the deductions are upheld.
+    #[validate(max = 2000)]
+    pub changes: Option<String>,
+}
+
+/// The changes in `text`, one `line id | new amount` per row.
+pub(crate) fn parse_changes(text: &str) -> std::result::Result<Vec<LineChange>, String> {
+    let mut changes = Vec::new();
+    for (i, row) in text.lines().enumerate() {
+        if row.trim().is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = row.split('|').map(str::trim).collect();
+        let [id, amount] = parts.as_slice() else {
+            return Err(format!("Row {}: write it as line id | new amount.", i + 1));
+        };
+        let Ok(line_id) = id.parse::<i64>() else {
+            return Err(format!("Row {}: the line id is not a number.", i + 1));
+        };
+        let fils = if amount
+            .trim_matches(|c| c == '0' || c == '.' || c == ',')
+            .is_empty()
+        {
+            Some(0)
+        } else {
+            parse_amount(amount)
+        };
+        let Some(amount) = fils else {
+            return Err(format!("Row {}: the amount is not a number.", i + 1));
+        };
+        changes.push(LineChange {
+            line_id,
+            amount,
+            ..Default::default()
+        });
+    }
+    Ok(changes)
+}
+
+/// `POST /deposits/{id}/answer`: answers the open disputes (revising the
+/// changed lines into a new version, upholding the rest) and reloads the page.
+async fn store_answer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+    Valid(form): Valid<AnswerForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let changes = parse_changes(filled(&form.changes).unwrap_or_default())
+        .map_err(|message| invalid("changes", message, &form))?;
+    let request = AnswerRequest {
+        response: filled(&form.response).unwrap_or_default().to_owned(),
+        evidence: filled(&form.evidence).unwrap_or_default().to_owned(),
+        changes,
+    };
+    match deposit_deductions::answer(&state, &user, &deposit, &request).await {
+        Ok(_) => Ok((Toast::success(t("deposits.answer.done")), renox::HxRefresh).into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if message.contains("evidence") {
+                "evidence"
+            } else if message.contains("line") || message.contains("amount") {
+                "changes"
+            } else {
+                "response"
+            };
+            Err(invalid(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// Records that a legal case is open on the source agreement (`open`), or
+/// that its decision is recorded.
+async fn legal_case(
+    state: &AppState,
+    user: &AuthUser,
+    lang: &Lang,
+    deposit: &Deposit,
+    open: bool,
+) -> Result<Response> {
+    deposit_deductions::set_legal_case(state, user, deposit, open)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(lang, "wl_payments.deposits.legal_case.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /deposits/{id}/legal_case/open`: a legal case is open on the source
+/// agreement; the dispute flag stays until its decision is recorded.
+async fn store_legal_case_open(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+) -> Result<Response> {
+    legal_case(&state, &user, &lang, &deposit, true).await
+}
+
+/// `POST /deposits/{id}/legal_case/close`: the decision of the legal case is
+/// recorded.
+async fn store_legal_case_close(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+) -> Result<Response> {
+    legal_case(&state, &user, &lang, &deposit, false).await
+}
+
+/// The adjust sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct AdjustForm {
+    /// The new amount the source requires, in dirhams like `6000.00`.
+    #[validate(max = 32)]
+    pub new_amount: Option<String>,
+    /// The version of the source (lease amendment or renewal) that changed it.
+    pub source_version: Option<i32>,
+    /// The day the change takes effect.
+    pub effective_on: Option<NaiveDate>,
+}
+
+/// `POST /deposits/{id}/adjust`: adjusts the held deposit to the new amount
+/// its source requires: a top-up charge for an increase, a part refund for a
+/// decrease. A refused guard (an adjustment still open) answers 422 under its
+/// field.
+async fn store_adjust(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+    Valid(form): Valid<AdjustForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let Some(new_amount) = filled(&form.new_amount).and_then(parse_amount) else {
+        return Err(invalid(
+            "new_amount",
+            t("deposits.adjust.amount_required"),
+            &form,
+        ));
+    };
+    let Some(source_version) = form.source_version.filter(|v| *v > 0) else {
+        return Err(invalid(
+            "source_version",
+            t("deposits.adjust.version_required"),
+            &form,
+        ));
+    };
+    let Some(effective_on) = form.effective_on else {
+        return Err(invalid(
+            "effective_on",
+            t("deposits.adjust.date_required"),
+            &form,
+        ));
+    };
+    let request = AdjustRequest {
+        new_amount,
+        source_version,
+        effective_on,
+    };
+    match deposit_adjust::adjust(&state, Some(&user), None, &deposit, &request).await {
+        Ok(Some(_)) => {
+            Ok((Toast::success(t("deposits.adjust.done")), renox::HxRefresh).into_response())
+        }
+        Ok(None) => Ok((Toast::info(t("deposits.adjust.same")), renox::HxRefresh).into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid("new_amount", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The transfer sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct TransferForm {
+    /// The code of the new holder's party, like `P-00007`.
+    #[validate(max = 64)]
+    pub new_holder: Option<String>,
+    /// The reference of the new holder's receipt.
+    #[validate(max = 200)]
+    pub receipt: Option<String>,
+}
+
+/// `POST /deposits/{id}/transfer`: hands the held deposit to another holder
+/// against the new holder's receipt. A refused guard (no receipt, an unknown
+/// party) answers 422 under its field.
+async fn store_transfer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+    Valid(form): Valid<TransferForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let code = filled(&form.new_holder).unwrap_or_default();
+    let Some(holder) = wl_kernel::parties::directory(&state)
+        .find_by_code(&state.db, code)
+        .await?
+    else {
+        return Err(invalid("new_holder", t("unknown_party"), &form));
+    };
+    let request = TransferRequest {
+        new_holder: holder.id,
+        receipt: filled(&form.receipt).unwrap_or_default().to_owned(),
+    };
+    match crate::deposit::transfer(&state, &user, &deposit, &request).await {
+        Ok(_) => Ok((
+            Toast::success(t("deposits.transfer.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if message.contains("receipt") {
+                "receipt"
+            } else {
+                "new_holder"
+            };
+            Err(invalid(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The refund form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct RefundForm {
+    /// `transfer` or `cheque`.
+    #[validate(max = 32)]
+    pub method: Option<String>,
+}
+
+/// `POST /deposits/{id}/refund`: refunds the deposit by transfer or cheque. A
+/// refused guard (a dispute open, the window not over) answers 422.
+async fn store_refund(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+    Valid(form): Valid<RefundForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let method = filled(&form.method).and_then(|code| {
+        [PaymentMethod::Transfer, PaymentMethod::Cheque]
+            .into_iter()
+            .find(|m| m.as_str() == code)
+    });
+    match crate::deposit::refund_or_ask(&state, &user, &deposit, method).await {
+        Ok(crate::deposit::RefundOutcome::Refunded(_)) => {
+            Ok((Toast::success(t("deposits.refund.done")), renox::HxRefresh).into_response())
+        }
+        Ok(crate::deposit::RefundOutcome::ExceptionRequested(_)) => Ok((
+            Toast::success(t("deposits.refund.exception_requested")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid("method", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The forfeit form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ForfeitForm {
+    /// Why the deposit is kept.
+    #[validate(max = 2000)]
+    pub reason: Option<String>,
+    /// The second user who approves it.
+    pub approver: Option<i64>,
+}
+
+/// `POST /deposits/{id}/forfeit`: forfeits the deposit. A refused guard (no
+/// reason or approver, a dispute open, the forfeiture not published or its
+/// window not over) answers 422.
+async fn store_forfeit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+    Valid(form): Valid<ForfeitForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let request = ForfeitRequest {
+        reason: filled(&form.reason).unwrap_or_default().to_owned(),
+        approver: form.approver,
+        approver_vetted: false,
+    };
+    match crate::deposit::forfeit(&state, &user, &deposit, &request).await {
+        Ok(_) => Ok((Toast::success(t("deposits.forfeit.done")), renox::HxRefresh).into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if message.contains("approval") {
+                "approver"
+            } else {
+                "reason"
+            };
+            Err(invalid(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
 }
 
 #[cfg(test)]
@@ -236,6 +885,44 @@ mod tests {
         for status in STATUSES {
             let key = format!("deposits.status.{}", status.as_str());
             assert_ne!(english_text(&key), format!("wl_payments.{key}"), "{key}");
+        }
+    }
+
+    #[test]
+    fn deduction_lines_are_read_one_per_row() {
+        let lines =
+            parse_lines("Repainting | 2,500.00 | photos-1\n\nCleaning|300|photos-2\n").expect("ok");
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].description, "Repainting");
+        assert_eq!(lines[0].amount, 250_000);
+        assert_eq!(lines[1].evidence, "photos-2");
+        assert!(parse_lines("Repainting | 2500").is_err());
+        assert!(parse_lines("Repainting | lots | photos").is_err());
+        assert!(parse_lines("Repainting | 0 | photos").is_err());
+        assert!(parse_lines("").expect("ok").is_empty());
+    }
+
+    #[test]
+    fn changes_are_read_as_line_id_and_new_amount() {
+        let changes = parse_changes("12 | 800\n13 | 0").expect("ok");
+        assert_eq!(changes.len(), 2);
+        assert_eq!((changes[0].line_id, changes[0].amount), (12, 80_000));
+        assert_eq!((changes[1].line_id, changes[1].amount), (13, 0));
+        assert!(parse_changes("x | 800").is_err());
+        assert!(parse_changes("12").is_err());
+        assert!(parse_changes("12 | lots").is_err());
+    }
+
+    #[test]
+    fn the_texts_of_the_deductions_exist() {
+        for key in [
+            "deposits.dispute.status.open",
+            "deposits.dispute.status.revised",
+            "deposits.dispute.status.upheld",
+            "deposits.deductions.kind.deductions",
+            "deposits.deductions.kind.forfeiture",
+        ] {
+            assert_ne!(english_text(key), format!("wl_payments.{key}"), "{key}");
         }
     }
 }

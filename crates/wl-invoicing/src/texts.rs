@@ -82,6 +82,23 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.supplier_bill.fields.void_reason",
         "Void reason",
     ),
+    ("wl_invoicing.supplier_bill.fields.cost_code", "Cost code"),
+    (
+        "wl_invoicing.supplier_bill.fields.service_end_date",
+        "Service end date",
+    ),
+    (
+        "wl_invoicing.supplier_bill.form.service_end_hint",
+        "For work over a period: its last day. A period counts against the contract end by this day.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.period",
+        "The end of a period cannot be before its service date, which must be entered.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.form.cost_code_hint",
+        "Budget vs actual files the line under the category that collects this code.",
+    ),
     ("wl_invoicing.supplier_bill.status.draft", "Draft"),
     ("wl_invoicing.supplier_bill.status.matched", "Matched"),
     ("wl_invoicing.supplier_bill.status.exception", "Exception"),
@@ -95,6 +112,10 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_invoicing.supplier_bill.exception.possible_duplicate",
         "Possible duplicate",
+    ),
+    (
+        "wl_invoicing.supplier_bill.exception.work_after_contract_end",
+        "Work after contract end",
     ),
     (
         "wl_invoicing.supplier_bill.problem.supplier",
@@ -118,11 +139,11 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.supplier_bill.problem.not_held",
-        "The bill may be a duplicate; it is held, not matched.",
+        "The bill is held, as a possible duplicate or for work after the contract end; it is not matched.",
     ),
     (
         "wl_invoicing.supplier_bill.problem.held",
-        "The bill is not held as a possible duplicate.",
+        "The bill is not held.",
     ),
     (
         "wl_invoicing.supplier_bill.problem.approve_reason",
@@ -130,7 +151,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.supplier_bill.problem.creator",
-        "A possible duplicate cannot be approved by the user who entered it.",
+        "A bill held as a possible duplicate or for work after the contract end cannot be approved by the user who entered it.",
     ),
     (
         "wl_invoicing.supplier_bill.problem.void_reason",
@@ -682,7 +703,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.dispute.unassigned.body",
-        "{{ party_name }} disputed invoice {{ number }} for {{ amount }} (reason: {{ reason }}). The invoice owner is not available, so the ticket is unassigned. Please take it: {{ link }}",
+        "{{ party_name }} disputed invoice {{ number }} for {{ amount }} (reason: {{ reason }}). The invoice owner is not available, so the ticket went to the receivables role. Please take it: {{ link }}",
     ),
     (
         "wl_invoicing.dispute.resolved.subject",
@@ -837,6 +858,96 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_invoicing.task.bill_reversal_refused",
         "Reversal of {{ amount }} refused: {{ reason }}",
+    ),
+    (
+        "wl_invoicing.task.statement_balance_stale",
+        "The balance of bank account {{ account }} of {{ entity }} is missing or old (latest: {{ as_of }}, limit {{ days }} days). Import a statement or enter a balance.",
+    ),
+    ("wl_invoicing.einvoice.title", "E-invoices"),
+    (
+        "wl_invoicing.einvoice.subtitle",
+        "The invoices and credit notes sent to the accredited service provider, per legal entity and state. A rejection changes nothing already issued.",
+    ),
+    (
+        "wl_invoicing.einvoice.banner",
+        "{{ count }} e-invoice transmissions are waiting for the service provider. They are tried again until they are sent, in order.",
+    ),
+    ("wl_invoicing.einvoice.entity", "Legal entity"),
+    ("wl_invoicing.einvoice.all_entities", "All entities"),
+    ("wl_invoicing.einvoice.all_statuses", "All states"),
+    ("wl_invoicing.einvoice.status", "State"),
+    ("wl_invoicing.einvoice.filter", "Show"),
+    ("wl_invoicing.einvoice.document", "Document"),
+    ("wl_invoicing.einvoice.recipient", "Recipient identifier"),
+    ("wl_invoicing.einvoice.attempt", "Attempt"),
+    ("wl_invoicing.einvoice.reference", "ASP reference"),
+    ("wl_invoicing.einvoice.problem", "Error"),
+    ("wl_invoicing.einvoice.empty", "No e-invoice transmissions"),
+    (
+        "wl_invoicing.einvoice.empty_hint",
+        "From an entity's go-live date, every invoice and credit note to a recipient in scope is sent to its service provider.",
+    ),
+    ("wl_invoicing.einvoice.status.queued", "Queued"),
+    ("wl_invoicing.einvoice.status.submitted", "Submitted"),
+    ("wl_invoicing.einvoice.status.accepted", "Accepted"),
+    ("wl_invoicing.einvoice.status.rejected", "Rejected"),
+    ("wl_invoicing.einvoice.status.superseded", "Superseded"),
+    ("wl_invoicing.einvoice.resubmit", "Resubmit"),
+    (
+        "wl_invoicing.einvoice.resubmit_title",
+        "Resubmit this e-invoice",
+    ),
+    (
+        "wl_invoicing.einvoice.resubmit_description",
+        "The payload is built again from the same document, with the recipient identifier and the party data read again. Use it only when the cause is outside the document; a cause in the document is corrected with a credit note with the reason e-invoice correction and a new invoice.",
+    ),
+    (
+        "wl_invoicing.einvoice.confirm",
+        "The cause is outside the issued document and has been fixed",
+    ),
+    (
+        "wl_invoicing.einvoice.resubmitted",
+        "The e-invoice is queued again.",
+    ),
+    (
+        "wl_invoicing.einvoice.replaces_saved",
+        "The invoice it replaces is saved. The superseded transmission is linked to this invoice when it is issued.",
+    ),
+    (
+        "wl_invoicing.einvoice.replaces_unknown",
+        "No invoice has that number.",
+    ),
+    (
+        "wl_invoicing.einvoice.task.rejected",
+        "The service provider rejected {{ number }} ({{ codes }}): {{ messages }} Fix the cause outside the document and resubmit it, or credit the invoice with the reason e-invoice correction and issue a new one.",
+    ),
+    (
+        "wl_invoicing.einvoice.task.stuck",
+        "{{ number }} has not been sent to the service provider {{ hours }} hours after it was issued ({{ error }}).",
+    ),
+    (
+        "wl_invoicing.einvoice.task_notice.subject",
+        "E-invoice {{ number }} needs follow-up",
+    ),
+    (
+        "wl_invoicing.einvoice.task_notice.body",
+        "{{ message }} See the e-invoices: {{ link }}",
+    ),
+    (
+        "wl_invoicing.einvoice.outage.subject",
+        "The e-invoice service provider of {{ entity }} does not answer",
+    ),
+    (
+        "wl_invoicing.einvoice.outage.body",
+        "No e-invoice of {{ entity }} has been sent for {{ hours }} hours: the service provider seems unreachable. The transmissions stay queued and are tried again. See the e-invoices: {{ link }}",
+    ),
+    (
+        "wl_invoicing.tasks.kind.einvoice_rejected",
+        "E-invoice rejected",
+    ),
+    (
+        "wl_invoicing.tasks.kind.einvoice_stuck",
+        "E-invoice not sent",
     ),
     ("wl_invoicing.allocations.removed", "Removed"),
     ("wl_invoicing.allocations.removed_at", "Removed on"),
@@ -997,7 +1108,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.supplier_bill.submit.held",
-        "Supplier bill submitted and held: it may duplicate an earlier bill.",
+        "Supplier bill submitted and held: see the reasons on the bill.",
     ),
     ("wl_invoicing.supplier_bill.discard.action", "Delete"),
     (
@@ -1117,6 +1228,731 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_invoicing.debit_note.errors.over_bill_line",
         "A line is above what is left on its bill line.",
+    ),
+    ("wl_invoicing.budget.title", "Company budgets"),
+    ("wl_invoicing.budget.empty", "No company budgets yet"),
+    (
+        "wl_invoicing.budget.empty_hint",
+        "The accountant prepares the budget of an entity for its fiscal year and submits it for approval.",
+    ),
+    ("wl_invoicing.budget.fields.entity", "Entity"),
+    ("wl_invoicing.budget.fields.year", "Fiscal year"),
+    ("wl_invoicing.budget.fields.version", "Version"),
+    ("wl_invoicing.budget.fields.name", "Name"),
+    ("wl_invoicing.budget.fields.status", "Status"),
+    ("wl_invoicing.budget.fields.start", "Started as"),
+    ("wl_invoicing.budget.fields.prepared_by", "Prepared by"),
+    ("wl_invoicing.budget.fields.submitted_by", "Submitted by"),
+    ("wl_invoicing.budget.fields.approved_by", "Approved by"),
+    ("wl_invoicing.budget.fields.approved_at", "Approved on"),
+    (
+        "wl_invoicing.budget.fields.revision_reason",
+        "Revision reason",
+    ),
+    (
+        "wl_invoicing.budget.fields.return_reason",
+        "Returned because",
+    ),
+    (
+        "wl_invoicing.budget.fields.discard_reason",
+        "Discarded because",
+    ),
+    ("wl_invoicing.budget.status.draft", "Draft"),
+    ("wl_invoicing.budget.status.submitted", "Submitted"),
+    ("wl_invoicing.budget.status.approved", "Approved"),
+    ("wl_invoicing.budget.status.superseded", "Superseded"),
+    ("wl_invoicing.budget.status.discarded", "Discarded"),
+    ("wl_invoicing.budget.start.empty", "Empty"),
+    (
+        "wl_invoicing.budget.start.last_budget",
+        "A copy of last year's budget",
+    ),
+    (
+        "wl_invoicing.budget.start.last_actual",
+        "Last year's actual",
+    ),
+    (
+        "wl_invoicing.budget.start.revision",
+        "A revision of the approved budget",
+    ),
+    ("wl_invoicing.budget.sections.summary", "Budget"),
+    (
+        "wl_invoicing.budget.sections.lines",
+        "Amounts per category and month (AED, without VAT)",
+    ),
+    ("wl_invoicing.budget.lines.category", "Category"),
+    ("wl_invoicing.budget.lines.total", "Total"),
+    ("wl_invoicing.budget.lines.locked", "locked"),
+    ("wl_invoicing.budget.lines.empty", "No amounts yet"),
+    ("wl_invoicing.budget.new.title", "New budget"),
+    ("wl_invoicing.budget.new.done", "The draft budget was made."),
+    (
+        "wl_invoicing.budget.new.year_hint",
+        "Named by the calendar year of its first month.",
+    ),
+    (
+        "wl_invoicing.budget.new.start_hint",
+        "Chosen once. An entity and year with an approved budget get a revision that copies it.",
+    ),
+    (
+        "wl_invoicing.budget.new.reason_hint",
+        "Needed to submit a revision.",
+    ),
+    ("wl_invoicing.budget.new.cancel", "Cancel"),
+    ("wl_invoicing.budget.new.save", "Make the draft"),
+    ("wl_invoicing.budget.set.action", "Set an amount"),
+    ("wl_invoicing.budget.set.title", "Set an amount"),
+    (
+        "wl_invoicing.budget.set.description",
+        "The same amount for a category in each month of the range.",
+    ),
+    ("wl_invoicing.budget.set.submit", "Set"),
+    ("wl_invoicing.budget.set.category", "Category"),
+    ("wl_invoicing.budget.set.from", "From month"),
+    ("wl_invoicing.budget.set.to", "To month"),
+    (
+        "wl_invoicing.budget.set.to_hint",
+        "Leave empty for the one month.",
+    ),
+    ("wl_invoicing.budget.set.same_month", "Only the first month"),
+    ("wl_invoicing.budget.set.amount", "Amount per month"),
+    (
+        "wl_invoicing.budget.set.amount_hint",
+        "AED without VAT, like 20000.00.",
+    ),
+    ("wl_invoicing.budget.set.note", "Note"),
+    ("wl_invoicing.budget.set.done", "The amounts were set."),
+    ("wl_invoicing.budget.clear.action", "Remove a line"),
+    ("wl_invoicing.budget.clear.title", "Remove a line"),
+    (
+        "wl_invoicing.budget.clear.description",
+        "Takes one category and month out of the draft.",
+    ),
+    ("wl_invoicing.budget.clear.submit", "Remove"),
+    ("wl_invoicing.budget.clear.month", "Month"),
+    ("wl_invoicing.budget.clear.done", "The line was removed."),
+    ("wl_invoicing.budget.import.action", "Import CSV"),
+    ("wl_invoicing.budget.import.title", "Import amounts"),
+    (
+        "wl_invoicing.budget.import.description",
+        "Paste rows of category code, month and amount. The Excel import of the platform is not built yet: save the workbook as CSV.",
+    ),
+    ("wl_invoicing.budget.import.submit", "Import"),
+    ("wl_invoicing.budget.import.csv", "Rows"),
+    (
+        "wl_invoicing.budget.import.hint",
+        "category,month,amount,note: for example marketing,2027-03,10000.00. A first line that starts with category is the header.",
+    ),
+    ("wl_invoicing.budget.import.dry_run", "Check only"),
+    (
+        "wl_invoicing.budget.import.dry_run_hint",
+        "Reads and checks every row and stores nothing. Untick it to store the lines; a file with a rejected row stores nothing.",
+    ),
+    (
+        "wl_invoicing.budget.import.empty",
+        "Paste the rows to import.",
+    ),
+    ("wl_invoicing.budget.import.row", "Row"),
+    (
+        "wl_invoicing.budget.import.dry_run_ok",
+        "{{ rows }} rows are valid. Nothing was stored.",
+    ),
+    (
+        "wl_invoicing.budget.import.done",
+        "{{ rows }} rows were stored.",
+    ),
+    (
+        "wl_invoicing.budget.import.unknown_category",
+        "There is no category {{ value }}.",
+    ),
+    (
+        "wl_invoicing.budget.import.inactive_category",
+        "The category {{ value }} is not active.",
+    ),
+    (
+        "wl_invoicing.budget.import.bad_month",
+        "{{ value }} is not a month like 2027-03.",
+    ),
+    (
+        "wl_invoicing.budget.import.month_outside",
+        "{{ value }} is not in the fiscal year of this budget.",
+    ),
+    (
+        "wl_invoicing.budget.import.bad_amount",
+        "{{ value }} is not an amount like 150.00.",
+    ),
+    (
+        "wl_invoicing.budget.import.locked",
+        "The line of {{ value }} is locked.",
+    ),
+    (
+        "wl_invoicing.budget.import.repeated",
+        "Rows {{ first }} and {{ second }} repeat the same category and month.",
+    ),
+    ("wl_invoicing.budget.reason.action", "Revision reason"),
+    ("wl_invoicing.budget.reason.title", "Revision reason"),
+    (
+        "wl_invoicing.budget.reason.description",
+        "Why this version changes the approved budget.",
+    ),
+    ("wl_invoicing.budget.reason.submit", "Save"),
+    ("wl_invoicing.budget.reason.done", "The reason was saved."),
+    ("wl_invoicing.budget.submit.action", "Submit for approval"),
+    (
+        "wl_invoicing.budget.submit.confirm_title",
+        "Submit this budget?",
+    ),
+    (
+        "wl_invoicing.budget.submit.confirm_message",
+        "The holders of budgets.approve are asked to approve it. It cannot be changed while it waits.",
+    ),
+    (
+        "wl_invoicing.budget.submit.done",
+        "The budget was submitted for approval.",
+    ),
+    ("wl_invoicing.budget.discard.action", "Discard"),
+    ("wl_invoicing.budget.discard.title", "Discard this draft?"),
+    (
+        "wl_invoicing.budget.discard.description",
+        "The entity and year are free for a new version. An approved version stays in force.",
+    ),
+    ("wl_invoicing.budget.discard.reason", "Reason"),
+    ("wl_invoicing.budget.discard.submit", "Discard the draft"),
+    (
+        "wl_invoicing.budget.discard.reason_required",
+        "Give a reason to discard the draft.",
+    ),
+    (
+        "wl_invoicing.budget.discard.done",
+        "The draft was discarded.",
+    ),
+    (
+        "wl_invoicing.budget.errors.entity",
+        "Choose an entity from the list.",
+    ),
+    (
+        "wl_invoicing.budget.errors.year",
+        "Enter the fiscal year like 2027.",
+    ),
+    (
+        "wl_invoicing.budget.errors.category",
+        "Choose a category from the list.",
+    ),
+    (
+        "wl_invoicing.budget.errors.month",
+        "Choose a month of the fiscal year.",
+    ),
+    (
+        "wl_invoicing.budget.errors.range",
+        "The last month cannot be before the first.",
+    ),
+    (
+        "wl_invoicing.budget.errors.amount",
+        "Enter an amount like 150.00.",
+    ),
+    (
+        "wl_invoicing.budget.errors.kind",
+        "Choose a kind from the list.",
+    ),
+    (
+        "wl_invoicing.budget.errors.party",
+        "Enter the id of the party.",
+    ),
+    (
+        "wl_invoicing.budget.problem.no_lines",
+        "A budget needs at least one line.",
+    ),
+    (
+        "wl_invoicing.budget.problem.bad_lines",
+        "A line has an inactive category or a month outside the fiscal year.",
+    ),
+    (
+        "wl_invoicing.budget.problem.revision_reason",
+        "A revision needs a reason.",
+    ),
+    (
+        "wl_invoicing.budget.problem.submitter_unknown",
+        "Only a signed-in user can submit a budget.",
+    ),
+    (
+        "wl_invoicing.budget.problem.no_approval_policy",
+        "No approval policy is in force for company budgets.",
+    ),
+    (
+        "wl_invoicing.budget.problem.year",
+        "The fiscal year must be between 2000 and 2100.",
+    ),
+    (
+        "wl_invoicing.budget.problem.entity",
+        "The legal entity is not found or not active.",
+    ),
+    (
+        "wl_invoicing.budget.problem.open_version",
+        "{{ entity }} already has a draft or submitted budget for {{ year }}. Return, approve or discard it first.",
+    ),
+    (
+        "wl_invoicing.budget.problem.no_last_budget",
+        "There is no approved budget for {{ year }} to copy.",
+    ),
+    (
+        "wl_invoicing.budget.problem.not_editable",
+        "Only the lines of a draft budget can be changed.",
+    ),
+    (
+        "wl_invoicing.budget.problem.month_outside",
+        "{{ month }} is not in the fiscal year of this budget.",
+    ),
+    (
+        "wl_invoicing.budget.problem.negative",
+        "An amount cannot be negative.",
+    ),
+    (
+        "wl_invoicing.budget.problem.category",
+        "The category is not found or not active.",
+    ),
+    (
+        "wl_invoicing.budget.problem.locked",
+        "The {{ month }} line of {{ category }} is locked: the month had ended when this version was made.",
+    ),
+    ("wl_invoicing.budget.category.title", "Budget categories"),
+    ("wl_invoicing.budget.category.new_title", "New category"),
+    (
+        "wl_invoicing.budget.category.edit_title",
+        "Change the category",
+    ),
+    ("wl_invoicing.budget.category.code", "Code"),
+    ("wl_invoicing.budget.category.name_en", "Name in English"),
+    ("wl_invoicing.budget.category.name_ar", "Name in Arabic"),
+    ("wl_invoicing.budget.category.kind", "Kind"),
+    (
+        "wl_invoicing.budget.category.kind_hint",
+        "The kind cannot change once the category has a budget line or an actual.",
+    ),
+    ("wl_invoicing.budget.category.parent", "Parent"),
+    (
+        "wl_invoicing.budget.category.parent_hint",
+        "The code of the category this one is a part of.",
+    ),
+    ("wl_invoicing.budget.category.owner_role", "Owner role"),
+    (
+        "wl_invoicing.budget.category.owner_role_hint",
+        "Told when the actual reaches the budget; none: the finance manager only.",
+    ),
+    ("wl_invoicing.budget.category.owner_party", "Owner party"),
+    (
+        "wl_invoicing.budget.category.owner_party_hint",
+        "Owner drawings only: the id of the owner or partner whose drawings it records.",
+    ),
+    ("wl_invoicing.budget.category.keys", "Collects"),
+    (
+        "wl_invoicing.budget.category.keys_hint",
+        "One key per line as kind: value, with the kinds charge_type, item_group, cost_code, expense_category, payroll and ledger_account. A key belongs to one category.",
+    ),
+    ("wl_invoicing.budget.category.active", "Active"),
+    ("wl_invoicing.budget.category.on", "Active"),
+    ("wl_invoicing.budget.category.off", "Inactive"),
+    ("wl_invoicing.budget.category.edit", "Change"),
+    (
+        "wl_invoicing.budget.category.empty",
+        "No budget categories yet",
+    ),
+    ("wl_invoicing.budget.category.save", "Save the category"),
+    (
+        "wl_invoicing.budget.category.saved",
+        "The category was saved.",
+    ),
+    (
+        "wl_invoicing.budget.category.problem.blank",
+        "Give the category a code and a name.",
+    ),
+    (
+        "wl_invoicing.budget.category.problem.code_used",
+        "The code {{ code }} is used by another category.",
+    ),
+    (
+        "wl_invoicing.budget.category.problem.owner_party",
+        "An owner drawings category needs the owner party whose drawings it records.",
+    ),
+    (
+        "wl_invoicing.budget.category.problem.kind_locked",
+        "The kind cannot change: the category has a budget line or an actual. Make a new category instead.",
+    ),
+    (
+        "wl_invoicing.budget.category.problem.parent",
+        "There is no other category with the code {{ code }} to be the parent.",
+    ),
+    (
+        "wl_invoicing.budget.category.problem.key_kind",
+        "{{ key }} cannot be mapped to a category of kind {{ kind }}.",
+    ),
+    (
+        "wl_invoicing.budget.category.problem.mapping_used",
+        "{{ key }} is already mapped to {{ category }}; a mapping key belongs to one category.",
+    ),
+    (
+        "wl_invoicing.budget.category.problem.mapping_line",
+        "Cannot read {{ line }}: write one key per line as kind: value, for example cost_code: fuel.",
+    ),
+    ("wl_invoicing.budget.kind.income", "Income"),
+    ("wl_invoicing.budget.kind.expense", "Expense"),
+    ("wl_invoicing.budget.kind.owner_drawings", "Owner drawings"),
+    (
+        "wl_invoicing.budget_reminder.subject",
+        "Budget needed for {{ entity }}, fiscal year {{ year }}",
+    ),
+    (
+        "wl_invoicing.budget_reminder.body",
+        "{{ entity }} has no approved company budget for fiscal year {{ year }}, which {{ when }}. Prepare the budget and submit it for approval: {{ link }}",
+    ),
+    ("wl_invoicing.cash.title", "Cash-flow forecast"),
+    (
+        "wl_invoicing.cash.subtitle",
+        "What is expected to come in and go out, week by week, from the documents recorded so far. Read only; amounts in whole AED.",
+    ),
+    ("wl_invoicing.cash.entity", "Legal entity"),
+    ("wl_invoicing.cash.all_entities", "All entities"),
+    ("wl_invoicing.cash.show", "Show"),
+    ("wl_invoicing.cash.week", "Week"),
+    ("wl_invoicing.cash.row.opening", "Opening balance"),
+    ("wl_invoicing.cash.row.receipts", "Expected receipts"),
+    ("wl_invoicing.cash.row.payments", "Expected payments"),
+    ("wl_invoicing.cash.row.balance", "Projected balance"),
+    ("wl_invoicing.cash.row.memo", "not counted"),
+    ("wl_invoicing.cash.memo.disputed", "Disputed amounts"),
+    ("wl_invoicing.cash.memo.bounced_cheque", "Bounced cheques"),
+    (
+        "wl_invoicing.cash.memo.blocked_party",
+        "Receivables of blocked parties",
+    ),
+    (
+        "wl_invoicing.cash.memo.duplicate_bill",
+        "Bills held as possible duplicates",
+    ),
+    ("wl_invoicing.cash.kind.invoice", "Invoice"),
+    ("wl_invoicing.cash.kind.cheque_in", "Cheque received"),
+    ("wl_invoicing.cash.kind.bill", "Supplier bill"),
+    ("wl_invoicing.cash.kind.cheque_out", "Cheque issued"),
+    ("wl_invoicing.cash.kind.refund", "Refund"),
+    ("wl_invoicing.cash.kind.vat", "VAT payable"),
+    ("wl_invoicing.cash.kind.source", "Other"),
+    ("wl_invoicing.cash.kind.budget_fill", "Budget fill"),
+    ("wl_invoicing.cash.row.fill", "Budget fill"),
+    ("wl_invoicing.cash.after", "After week"),
+    (
+        "wl_invoicing.cash.later_hint",
+        "These receipts are expected after the last week because of the days-late adjustment. They are not counted in the grid.",
+    ),
+    ("wl_invoicing.cash.drawings", "Owner drawings"),
+    (
+        "wl_invoicing.cash.warning.no_balance",
+        "no balance known: counted as zero",
+    ),
+    (
+        "wl_invoicing.cash.warning.stale",
+        "the balance is old, as of",
+    ),
+    (
+        "wl_invoicing.cash.warning.unpriced",
+        "left out: no exchange rate for its currency",
+    ),
+    (
+        "wl_invoicing.cash.warning.vat_past_due",
+        "VAT for the period past due: check that it is paid",
+    ),
+    (
+        "wl_invoicing.cash.warning.no_budget",
+        "no approved budget for the months",
+    ),
+    ("wl_invoicing.cash.accounts", "Bank accounts"),
+    ("wl_invoicing.cash.account", "Bank account"),
+    ("wl_invoicing.cash.balance_of", "Balance"),
+    ("wl_invoicing.cash.as_of", "As of"),
+    ("wl_invoicing.cash.source", "Source"),
+    ("wl_invoicing.cash.movements", "Payments since"),
+    ("wl_invoicing.cash.opening", "Opening"),
+    ("wl_invoicing.cash.source.statement", "Bank statement"),
+    ("wl_invoicing.cash.source.manual", "Entered by hand"),
+    ("wl_invoicing.cash.source.none", "None"),
+    ("wl_invoicing.cash.no_accounts", "No bank account known"),
+    (
+        "wl_invoicing.cash.no_accounts_hint",
+        "Enter an opening cash balance, or upload a bank statement with its closing balance.",
+    ),
+    (
+        "wl_invoicing.cash.balances.add",
+        "Enter an opening cash balance",
+    ),
+    ("wl_invoicing.cash.balances.amount", "Balance"),
+    (
+        "wl_invoicing.cash.balances.amount_hint",
+        "In dirhams, like 60000.00; below 0 for an overdraft. It is the balance at the end of the day.",
+    ),
+    ("wl_invoicing.cash.balances.note", "Note"),
+    ("wl_invoicing.cash.balances.save", "Save"),
+    (
+        "wl_invoicing.cash.balances.history",
+        "Opening cash balances",
+    ),
+    ("wl_invoicing.cash.balances.status", "Status"),
+    ("wl_invoicing.cash.balances.voided", "Voided"),
+    ("wl_invoicing.cash.balances.void", "Void"),
+    ("wl_invoicing.cash.balances.void_title", "Void this balance"),
+    ("wl_invoicing.cash.balances.void_reason", "Reason"),
+    (
+        "wl_invoicing.cash.balances.reason_required",
+        "Give the reason for voiding.",
+    ),
+    (
+        "wl_invoicing.cash.balances.bad_entity",
+        "Choose a legal entity.",
+    ),
+    (
+        "wl_invoicing.cash.balances.bad_amount",
+        "Enter the balance in dirhams, like 60000.00.",
+    ),
+    (
+        "wl_invoicing.cash.balances.bad_date",
+        "Give the bank account and a day that is not in the future.",
+    ),
+    (
+        "wl_invoicing.cash.balances.entered_toast",
+        "Balance entered.",
+    ),
+    ("wl_invoicing.cash.balances.voided_toast", "Balance voided."),
+    ("wl_invoicing.cash.cell.line", "Line"),
+    ("wl_invoicing.cash.cell.kind", "Kind"),
+    ("wl_invoicing.cash.cell.party", "Party"),
+    ("wl_invoicing.cash.cell.date", "Expected"),
+    ("wl_invoicing.cash.cell.amount", "Amount"),
+    ("wl_invoicing.cash.cell.flags", "Notes"),
+    ("wl_invoicing.cash.cell.total", "Total"),
+    ("wl_invoicing.cash.cell.empty", "Nothing in this cell"),
+    (
+        "wl_invoicing.cash.cell.empty_hint",
+        "No document is expected in this week.",
+    ),
+    ("wl_invoicing.cash.flag.not_approved", "not yet approved"),
+    ("wl_invoicing.cash.flag.estimate", "estimate"),
+    ("wl_invoicing.cash.flag.not_counted", "not counted"),
+    ("wl_invoicing.budget.report.title", "Budget vs actual"),
+    (
+        "wl_invoicing.budget.report.subtitle",
+        "AED without recoverable VAT. Owner drawings are never part of the operating result.",
+    ),
+    ("wl_invoicing.budget.report.entity", "Entity"),
+    ("wl_invoicing.budget.report.all_entities", "All entities"),
+    ("wl_invoicing.budget.report.month", "Month"),
+    ("wl_invoicing.budget.report.ytd", "Year to date"),
+    ("wl_invoicing.budget.report.show", "Show"),
+    (
+        "wl_invoicing.budget.report.no_budget",
+        "No approved budget for the year:",
+    ),
+    ("wl_invoicing.budget.report.category", "Category"),
+    ("wl_invoicing.budget.report.budget", "Budget"),
+    ("wl_invoicing.budget.report.actual", "Actual"),
+    ("wl_invoicing.budget.report.variance", "Variance"),
+    ("wl_invoicing.budget.report.percent", "Variance %"),
+    ("wl_invoicing.budget.report.flag", "Status"),
+    ("wl_invoicing.budget.report.unfavourable", "Unfavourable"),
+    ("wl_invoicing.budget.report.income", "Income"),
+    ("wl_invoicing.budget.report.income_total", "Total income"),
+    ("wl_invoicing.budget.report.expense", "Expense"),
+    ("wl_invoicing.budget.report.expense_total", "Total expense"),
+    ("wl_invoicing.budget.report.operating", "Operating result"),
+    ("wl_invoicing.budget.report.drawings", "Owner drawings"),
+    (
+        "wl_invoicing.budget.report.drawings_total",
+        "Total owner drawings",
+    ),
+    (
+        "wl_invoicing.budget.report.after_drawings",
+        "Result after drawings",
+    ),
+    ("wl_invoicing.budget.report.uncategorised", "Uncategorised"),
+    (
+        "wl_invoicing.budget.report.mapping_changed",
+        "The actual follows the mapping of today; it was last changed on",
+    ),
+    (
+        "wl_invoicing.budget.report.drawings_lines",
+        "Owner drawings lines",
+    ),
+    ("wl_invoicing.budget.report.description", "Description"),
+    ("wl_invoicing.budget.report.payee", "Payee"),
+    ("wl_invoicing.budget.report.amount", "Amount"),
+    ("wl_invoicing.budget.report.self_approved", "Self-approved"),
+    ("wl_invoicing.budget.report.open", "Open"),
+    ("wl_invoicing.drawings.title", "Owner drawings"),
+    (
+        "wl_invoicing.drawings.total",
+        "Drawing, with the VAT that is not recovered",
+    ),
+    ("wl_invoicing.drawings.status", "Approval of the drawing"),
+    ("wl_invoicing.drawings.status.none", "Not asked for yet"),
+    ("wl_invoicing.drawings.status.draft", "Draft"),
+    (
+        "wl_invoicing.drawings.status.requested",
+        "Waiting for a holder of drawings.approve",
+    ),
+    ("wl_invoicing.drawings.status.approved", "Approved"),
+    ("wl_invoicing.drawings.status.rejected", "Not approved"),
+    (
+        "wl_invoicing.drawings.status.self_approved",
+        "Approved by the sole owner (self-approved)",
+    ),
+    (
+        "wl_invoicing.drawings.rejected_because",
+        "Not approved because",
+    ),
+    (
+        "wl_invoicing.drawings.open_item",
+        "How drawings are treated for VAT and corporate tax waits for the accountant's answer (open item A-16). Meanwhile the input VAT on a drawing is not recovered and is shown as blocked in the VAT summary. The bill is approved only after the drawing is approved.",
+    ),
+    (
+        "wl_invoicing.drawings.hidden",
+        "Owner drawing (shown to holders of drawings.approve)",
+    ),
+    ("wl_invoicing.drawings.request.action", "Ask for approval"),
+    (
+        "wl_invoicing.drawings.request.title",
+        "Ask for the approval of the drawing?",
+    ),
+    (
+        "wl_invoicing.drawings.request.message",
+        "The holders of drawings.approve, other than you, are asked to approve it.",
+    ),
+    ("wl_invoicing.drawings.recode.action", "Recode a line"),
+    ("wl_invoicing.drawings.recode.title", "Recode a line"),
+    (
+        "wl_invoicing.drawings.recode.description",
+        "Codes a line of this bill to another cost code. The change is logged and shown to whoever approves the bill.",
+    ),
+    ("wl_invoicing.drawings.recode.submit", "Recode"),
+    ("wl_invoicing.drawings.recode.line", "Line"),
+    ("wl_invoicing.drawings.recode.code", "Cost code"),
+    (
+        "wl_invoicing.drawings.recode.hint",
+        "For example other, or marketing.",
+    ),
+    ("wl_invoicing.drawings.recode.from", "Was"),
+    ("wl_invoicing.drawings.recode.to", "Now"),
+    ("wl_invoicing.drawings.recode.by", "Recoded by"),
+    ("wl_invoicing.drawings.recodings", "Recoded lines"),
+    (
+        "wl_invoicing.drawings.requested",
+        "The approval was asked for.",
+    ),
+    (
+        "wl_invoicing.drawings.none",
+        "The bill has no owner drawing.",
+    ),
+    ("wl_invoicing.drawings.recoded", "The line was recoded."),
+    (
+        "wl_invoicing.drawings.errors.line",
+        "Choose a line from the list.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.requester_unknown",
+        "Only a signed-in user can ask for the approval of a drawing.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.no_approval_policy",
+        "No approval policy is in force for owner drawings.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.waiting",
+        "The bill has an owner drawing that waits for the approval of a holder of drawings.approve.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.rejected",
+        "The owner drawing was not approved: {{ reason }}. Recode or remove the line, or ask again.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.needed",
+        "The bill has an owner drawing that needs the approval of a holder of drawings.approve first.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.bill_state",
+        "The drawing of a bill can be asked for or recoded only before the bill is approved.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.not_found",
+        "The drawing is not found.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.amount_changed",
+        "The drawing changed while it waited; ask for its approval again.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.code_blank",
+        "Give the cost code.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.cost_object",
+        "A line coded to owner drawings cannot have a cost object.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.line_cost_object",
+        "Line {{ line }} is coded to owner drawings, which are never posted to a cost object.",
+    ),
+    (
+        "wl_invoicing.drawing_self_approved.subject",
+        "Owner drawing recorded without a second approver",
+    ),
+    (
+        "wl_invoicing.drawing_self_approved.body",
+        "The sole owner recorded the drawing on supplier bill {{ bill }} ({{ amount }}) without a second approver. See the bill: {{ link }}",
+    ),
+    (
+        "wl_invoicing.drawing_payment_self_approved.subject",
+        "Owner drawing paid without a second approver",
+    ),
+    (
+        "wl_invoicing.drawing_payment_self_approved.body",
+        "The sole owner asked for an owner drawing of {{ amount }} ({{ category }}) without a second approver, and it is recorded. See the payments: {{ link }}",
+    ),
+    ("wl_invoicing.drawings.payment", "Owner drawing paid"),
+    ("wl_invoicing.drawings.repayment", "Owner drawing repaid"),
+    (
+        "wl_invoicing.drawings.problem.category",
+        "The category is not an owner drawings category.",
+    ),
+    (
+        "wl_invoicing.drawing_corrected.subject",
+        "A bill with an approved owner drawing was voided",
+    ),
+    (
+        "wl_invoicing.drawing_corrected.body",
+        "Supplier bill {{ bill }} ({{ amount }}) had an approved owner drawing and was voided: {{ reason }}. See the bill: {{ link }}",
+    ),
+    (
+        "wl_invoicing.vat.blocked_drawings",
+        "Input VAT blocked on owner drawings",
+    ),
+    (
+        "wl_invoicing.vat.blocked_drawings_note",
+        "Not recovered until the accountant answers the open item on drawings (A-16).",
+    ),
+    (
+        "wl_invoicing.cash_alert.subject",
+        "Cash forecast: {{ entity }} falls below {{ threshold }} in week {{ week }}",
+    ),
+    (
+        "wl_invoicing.cash_alert.body",
+        "The projected balance of {{ entity }} is {{ balance }} at the end of week {{ week }} ({{ from }} to {{ to }}), below the threshold of {{ threshold }}. Largest payments that week: {{ payments }}. {{ warnings }} See the forecast: {{ link }}",
+    ),
+    (
+        "wl_invoicing.tasks.kind.statement_balance_stale",
+        "Bank balance needed",
+    ),
+    (
+        "wl_invoicing.budget_variance.subject",
+        "{{ category }} reached its budget in {{ month }} ({{ entity }})",
+    ),
+    (
+        "wl_invoicing.budget_variance.body",
+        "In {{ month }} {{ entity }} has {{ actual }} of actual in {{ category }} against a budget of {{ budget }} ({{ percent }} used). See the report: {{ link }}",
     ),
 ];
 

@@ -16,6 +16,7 @@ use renox::db::{DateTime, sql};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use serde::Deserialize;
+use wl_kernel::invoicing::{InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceSummary, Invoicer};
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::tickets::{Assignee, OpenTicket, TicketAssigned, TicketClosed};
@@ -56,6 +57,19 @@ pub const DUSTY: PartyId = PartyId(6);
 /// The code of Dusty Ducts.
 pub const DUSTY_CODE: &str = "P-00006";
 
+/// The vendor "SafeFire LLC" (active): fire and life safety.
+pub const SAFEFIRE: PartyId = PartyId(7);
+/// The code of SafeFire.
+pub const SAFEFIRE_CODE: &str = "P-00007";
+/// The vendor "BlueFire" (active): another fire and life safety vendor.
+pub const BLUEFIRE: PartyId = PartyId(8);
+/// The code of BlueFire.
+pub const BLUEFIRE_CODE: &str = "P-00008";
+
+pub mod blocks;
+pub mod contracts;
+pub mod documents;
+
 /// The parties the tickets are assigned to.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TestDirectory;
@@ -64,6 +78,8 @@ fn summary(party: PartyId) -> Option<PartySummary> {
     let (code, name, status) = match party {
         COOLAIR => (COOLAIR_CODE, "CoolAir", PartyStatus::Active),
         DUSTY => (DUSTY_CODE, "Dusty Ducts", PartyStatus::Blocked),
+        SAFEFIRE => (SAFEFIRE_CODE, "SafeFire LLC", PartyStatus::Active),
+        BLUEFIRE => (BLUEFIRE_CODE, "BlueFire", PartyStatus::Active),
         _ => return None,
     };
     Some(PartySummary {
@@ -87,7 +103,7 @@ impl PartyDirectory for TestDirectory {
         code: &'a str,
     ) -> PartyFuture<'a, Option<PartySummary>> {
         Box::pin(async move {
-            Ok([COOLAIR, DUSTY]
+            Ok([COOLAIR, DUSTY, SAFEFIRE, BLUEFIRE]
                 .into_iter()
                 .filter_map(summary)
                 .find(|party| party.code == code))
@@ -110,9 +126,14 @@ impl PartyDirectory for TestDirectory {
 
 /// A notifier that records every request and queues nothing.
 #[derive(Clone, Default)]
-pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>, Arc<Mutex<Option<String>>>);
 
 impl Recording {
+    /// From now on a request of `type_key` fails (`None`: none does).
+    pub fn fail_on(&self, type_key: Option<&str>) {
+        *self.1.lock().unwrap() = type_key.map(str::to_owned);
+    }
+
     /// Every request so far, oldest first.
     pub fn all(&self) -> Vec<NotifyRequest> {
         self.0.lock().unwrap().clone()
@@ -141,8 +162,110 @@ impl Notifier for Recording {
         _state: &'a AppState,
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
+        if self.1.lock().unwrap().as_deref() == Some(request.type_key.as_str()) {
+            return Box::pin(async {
+                Err(Error::Status(
+                    StatusCode::BAD_GATEWAY,
+                    "the notifier is down".to_owned(),
+                ))
+            });
+        }
         self.0.lock().unwrap().push(request);
         Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// One draft the recording invoicer was asked for.
+#[derive(Debug, Clone)]
+pub struct Drafted {
+    /// The id it answered with.
+    pub id: i64,
+    /// What it was asked for, with the lines as replaced.
+    pub draft: InvoiceDraft,
+    /// Whether the test issued it (then it is not rewritten).
+    pub issued: bool,
+}
+
+/// An invoicer that keeps the drafts it is given and replaces the lines of a
+/// draft that is not issued.
+#[derive(Clone, Default)]
+pub struct Invoices(Arc<Mutex<Vec<Drafted>>>);
+
+impl Invoices {
+    /// Every draft so far, oldest first.
+    pub fn all(&self) -> Vec<Drafted> {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// Marks draft `id` as issued.
+    pub fn issue(&self, id: i64) {
+        for drafted in self.0.lock().unwrap().iter_mut() {
+            if drafted.id == id {
+                drafted.issued = true;
+            }
+        }
+    }
+}
+
+impl Invoicer for Invoices {
+    fn draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, Option<InvoiceId>> {
+        let mut all = self.0.lock().unwrap();
+        let id = 100 + i64::try_from(all.len()).unwrap();
+        all.push(Drafted {
+            id,
+            draft,
+            issued: false,
+        });
+        Box::pin(async move { Ok(Some(InvoiceId(id))) })
+    }
+
+    fn update_draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        id: InvoiceId,
+        draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, bool> {
+        let mut all = self.0.lock().unwrap();
+        let changed = match all.iter_mut().find(|d| d.id == id.0 && !d.issued) {
+            Some(found) => {
+                found.draft.lines = draft.lines;
+                true
+            }
+            None => false,
+        };
+        Box::pin(async move { Ok(changed) })
+    }
+
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: InvoiceId,
+    ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: InvoiceId,
+        _source: Subject,
+        _amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn issue<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: InvoiceId,
+        _by: Option<&'a AuthUser>,
+    ) -> InvoiceFuture<'a, ()> {
+        Invoices::issue(self, id.0);
+        Box::pin(async { Ok(()) })
     }
 }
 
@@ -151,7 +274,8 @@ impl Notifier for Recording {
 pub struct Recorded<E>(Arc<Mutex<Vec<E>>>);
 
 impl<E: Clone> Recorded<E> {
-    fn new() -> Self {
+    /// Nothing recorded yet.
+    pub fn new() -> Self {
         Recorded(Arc::new(Mutex::new(Vec::new())))
     }
 
@@ -161,7 +285,8 @@ impl<E: Clone> Recorded<E> {
     }
 }
 
-fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
+/// `app` listening for `E`, recorded into `into`.
+pub fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
     let into = into.clone();
     app.listen(move |event: E, _state: AppState| {
         let into = into.clone();
@@ -292,6 +417,8 @@ pub struct Booted {
     pub assigned: Recorded<TicketAssigned>,
     /// `TicketClosed`.
     pub closed: Recorded<TicketClosed>,
+    /// The drafts the app's invoicer was asked for.
+    pub invoices: Invoices,
 }
 
 /// `2026-11-03 09:00` as the form field `2026-11-03T09:00:00`.
@@ -415,6 +542,22 @@ pub async fn boot() -> Booted {
 
 /// `module` booted in an app with auth and the kernel, seeded.
 pub async fn boot_with(module: WlTicketing) -> Booted {
+    boot_client(CLIENT, module).await
+}
+
+/// `module` booted for the client `client` (its `[modules]` decide which
+/// platform categories the seeder adds), seeded as `db:seed` seeds.
+pub async fn boot_client(client: &str, module: WlTicketing) -> Booted {
+    boot_app(client, module, |app| app).await
+}
+
+/// [`boot_client`], with `customize` adding to the app (a recorder for an
+/// event) before the kernel applies.
+pub async fn boot_app(
+    client: &str,
+    module: WlTicketing,
+    customize: impl FnOnce(App) -> App,
+) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -425,16 +568,21 @@ pub async fn boot_with(module: WlTicketing) -> Booted {
     let notices = Recording::default();
     let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
+    let invoices = Invoices::default();
+    let invoicer: Arc<dyn Invoicer> = Arc::new(invoices.clone());
     let app = App::new()
         .module(Auth::new())
+        .module(renox::audit::Audit)
         .module(Permissions)
         .module(module)
         .module(Harness)
         .provide(directory)
-        .provide(notifier);
+        .provide(notifier)
+        .provide(invoicer);
     let app = record(app, &assigned);
     let app = record(app, &closed);
-    let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let app = customize(app);
+    let config = ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
@@ -445,22 +593,37 @@ pub async fn boot_with(module: WlTicketing) -> Booted {
     // The ticket list reads the names of vendor parties from wl-parties'
     // table, which this app does not have (the crate does not depend on
     // wl-parties): a stand-in with the two vendors of `TestDirectory`.
-    sql(
-        r#"CREATE TABLE "wl_parties_parties" (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL)"#,
-    )
-    .execute(app.db())
-    .await
-    .expect("the stand-in table");
-    sql(r#"INSERT INTO "wl_parties_parties" (id, display_name) VALUES (5, 'CoolAir'), (6, 'Dusty Ducts')"#)
+    // (Not when the real wl-parties is part of the app: it has the table.)
+    let real_parties = sql("SELECT name FROM sqlite_master WHERE name = 'wl_parties_parties'")
+        .scalar_optional::<String>(app.db())
+        .await
+        .expect("the table check");
+    if real_parties.is_none() {
+        sql(
+            r#"CREATE TABLE "wl_parties_parties" (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL)"#,
+        )
         .execute(app.db())
         .await
-        .expect("the stand-in rows");
-    seed::install(app.db()).await.expect("the defaults seed");
+        .expect("the stand-in table");
+        sql(r#"INSERT INTO "wl_parties_parties" (id, display_name) VALUES (5, 'CoolAir'), (6, 'Dusty Ducts'), (7, 'SafeFire LLC'), (8, 'BlueFire')"#)
+            .execute(app.db())
+            .await
+            .expect("the stand-in rows");
+    }
+    if client == CLIENT {
+        seed::install(app.db()).await.expect("the defaults seed");
+    } else {
+        app.kernel()
+            .call("ticketing:install", Vec::<String>::new())
+            .await
+            .expect("ticketing:install runs");
+    }
     Booted {
         app,
         _views: views,
         notices,
         assigned,
         closed,
+        invoices,
     }
 }

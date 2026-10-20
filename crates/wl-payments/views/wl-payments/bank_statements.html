@@ -1,0 +1,35 @@
+{#- wl-payments: the bank statement uploads and the form that records one,
+    with the closing balance when the file carries none. Replace it with
+    resources/views/wl-payments/bank_statements.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['bank_statements.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['bank_statements.title']" :subtitle="tx['bank_statements.description']"/>
+    <rx-table :rows="rows" as="import" :key="import.id" card>
+      <rx-column :label="tx['fields.entity']" hide-narrow>{{ import.entity }}</rx-column>
+      <rx-column :label="tx['bank_statements.bank_account']">{{ import.bank_account }}</rx-column>
+      <rx-column :label="tx['bank_statements.file_name']" hide-narrow><a href="{{ route('wl_payments.bank_statements.show', import.id) }}">{{ import.file_name }}</a> ({{ import.format }})</rx-column>
+      <rx-column :label="tx['bank_statements.period']">{{ import.period }}</rx-column>
+      <rx-column :label="tx['bank_statements.closing_balance']">{{ import.closing_balance }}</rx-column>
+      <rx-column :label="tx['fields.status']" hide-narrow>{{ import.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['bank_statements.empty']" :message="tx['bank_statements.empty_hint']" icon="file-spreadsheet"/></rx-slot>
+    </rx-table>
+    <rx-form route="wl_payments.bank_statements.store" novalidate>
+      <rx-card :title="tx['bank_statements.upload']">
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-select name="legal_entity_id" :label="tx['fields.entity']" :options="entities" required/>
+          <rx-input name="bank_account" :label="tx['bank_statements.bank_account']" required/>
+          <rx-input name="file_name" :label="tx['bank_statements.file_name']" required/>
+          <rx-select name="format" :label="tx['bank_statements.format']" :options="formats" :selected="'csv'" required/>
+          <rx-input name="period_start" type="date" :label="tx['bank_statements.period_start']" required/>
+          <rx-input name="period_end" type="date" :label="tx['bank_statements.period_end']" required/>
+          <rx-input name="closing_balance" :label="tx['bank_statements.closing_balance']" :hint="tx['bank_statements.closing_balance_hint']"/>
+          <rx-textarea name="content" :label="tx['bank_statements.content']" :hint="tx['bank_statements.content_hint']"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['bank_statements.record']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

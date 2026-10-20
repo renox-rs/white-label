@@ -212,7 +212,7 @@ async fn changing_readers_emits_the_difference_for_an_active_sop_only() {
     let sop = new_sop(&t, &mona, "SOP-HSE-01").await;
 
     // Draft: stored, nothing emitted.
-    set_readers(&t, &mona, sop.id, "site_worker@sites:1;driver")
+    set_readers(&t, &mona, sop.id, "site_worker@property.site:1;driver")
         .await
         .assert_ok();
     t.app.assert_not_emitted::<SopReadersChanged>();
@@ -222,13 +222,18 @@ async fn changing_readers_emits_the_difference_for_an_active_sop_only() {
     publish(&t, &rita, &sop).await;
 
     // The same readers (in another order, with a duplicate): nothing.
-    set_readers(&t, &mona, sop.id, "driver; site_worker@sites:1;driver")
-        .await
-        .assert_ok();
+    set_readers(
+        &t,
+        &mona,
+        sop.id,
+        "driver; site_worker@property.site:1;driver",
+    )
+    .await
+    .assert_ok();
     t.app.assert_not_emitted::<SopReadersChanged>();
 
     // Removing "driver" and adding "all": one event.
-    set_readers(&t, &mona, sop.id, "site_worker@sites:1;all")
+    set_readers(&t, &mona, sop.id, "site_worker@property.site:1;all")
         .await
         .assert_ok();
     let all = SopReaderRef {
@@ -245,18 +250,18 @@ async fn changing_readers_emits_the_difference_for_an_active_sop_only() {
     assert_eq!(t.app.emitted::<SopReadersChanged>().len(), 1);
 
     // A changed scope is removed plus added.
-    set_readers(&t, &mona, sop.id, "site_worker@sites:2;all")
+    set_readers(&t, &mona, sop.id, "site_worker@property.site:2;all")
         .await
         .assert_ok();
     let events = t.app.emitted::<SopReadersChanged>();
     assert_eq!(events.len(), 2);
     assert_eq!(
         events[1].removed,
-        vec![reader("site_worker", Some(("sites", "1")))]
+        vec![reader("site_worker", Some(("property.site", "1")))]
     );
     assert_eq!(
         events[1].added,
-        vec![reader("site_worker", Some(("sites", "2")))]
+        vec![reader("site_worker", Some(("property.site", "2")))]
     );
     assert_eq!(
         Sops::readers(t.db(), sop.id).await.unwrap().len(),
@@ -265,10 +270,10 @@ async fn changing_readers_emits_the_difference_for_an_active_sop_only() {
     );
 
     // A bad reader is refused and changes nothing.
-    set_readers(&t, &mona, sop.id, "@sites:1")
+    set_readers(&t, &mona, sop.id, "@property.site:1")
         .await
         .assert_status(422);
-    set_readers(&t, &mona, sop.id, "worker@sites")
+    set_readers(&t, &mona, sop.id, "worker@property.site")
         .await
         .assert_status(422);
     assert_eq!(Sops::readers(t.db(), sop.id).await.unwrap().len(), 2);
@@ -292,14 +297,14 @@ async fn changing_readers_emits_the_difference_for_an_active_sop_only() {
 async fn required_for_lists_the_active_sops_of_a_role_in_a_scope() {
     let t = boot().await;
     let mona = manager(&t).await;
-    let site1 = Scope::new("sites", 1);
-    let site2 = Scope::new("sites", 2);
+    let site1 = Scope::new("property.site", 1);
+    let site2 = Scope::new("property.site", 2);
 
     let height = new_sop(&t, &mona, "SOP-HSE-01").await;
     let fire = new_sop(&t, &mona, "SOP-HSE-02").await;
     let everyone = new_sop(&t, &mona, "SOP-HR-01").await;
     let draft = new_sop(&t, &mona, "SOP-HSE-03").await;
-    set_readers(&t, &mona, height.id, "site_worker@sites:1")
+    set_readers(&t, &mona, height.id, "site_worker@property.site:1")
         .await
         .assert_ok();
     set_readers(&t, &mona, fire.id, "site_worker")

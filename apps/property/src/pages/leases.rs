@@ -1,0 +1,2041 @@
+//! The lease pages: the list, a lease with its terms, payment plan, cheques,
+//! versions and history, and the actions on it (01 Property §4.1, §7.1).
+//!
+//! | Route | Name | Needs |
+//! |---|---|---|
+//! | `GET /property/leases` | `property.leases` | `leases.view` in a building |
+//! | `GET /property/leases/{id}` | `property.lease` | `leases.view` in the building |
+//! | `POST /property/units/{id}/leases` | `property.lease_create` | `leases.create` in the building |
+//! | `POST /property/leases/{id}/versions` | `property.lease_version` | `leases.create` in the building |
+//! | `POST /property/leases/{id}/submit` | `property.lease_submit` | `leases.create` in the building |
+//! | `POST /property/leases/{id}/activate` | `property.lease_activate` | `leases.activate` in the building |
+//! | `POST /property/leases/{id}/cancel` | `property.lease_cancel` | `leases.cancel` in the building |
+//! | `POST /property/leases/{id}/extend` | `property.lease_extend` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/terms-answer` | `property.lease_terms_answer` | `leases.create` in the building |
+//! | `POST /property/leases/{id}/renewal-decision` | `property.lease_renewal_decision` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/changed-terms-notice` | `property.lease_changed_terms_notice` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/notice` | `property.lease_notice` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/planned-move-out` | `property.lease_planned_move_out` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/withdraw-notice` | `property.lease_withdraw_notice` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/legal-cases` | `property.lease_legal_case` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/legal-cases/clear` | `property.lease_legal_case_clear` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/move-out-inspection` | `property.lease_inspection` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/terminate` | `property.lease_terminate` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/arrears-demand` | `property.lease_arrears_demand` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/payment-plan` | `property.lease_payment_plan` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/force-terminate` | `property.lease_force_terminate` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/ejari-cancellation` | `property.lease_ejari_cancellation` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/apply-deposit` | `property.lease_apply_deposit` | `deposits.refund` in the building |
+//! | `POST /property/leases/{id}/write-off` | `property.lease_write_off` | `leases.view` in the building (and `invoices.write_off`) |
+//! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
+//! | `POST /property/leases/{id}/ejari` | `property.lease_ejari` | `leases.activate` in the building |
+//! | `POST /property/leases/{id}/cheques` | `property.lease_cheques` | `leases.create` in the building |
+//!
+//! The actions answer with a toast and a refresh, as the sheets post them by
+//! htmx; a refusal answers 422 with its reason.
+
+use renox::chrono::NaiveDate;
+use renox::prelude::*;
+use renox::serde_json::Value;
+use renox::state_machine::{self, StateMachine, TransitionError};
+use serde::{Deserialize, Serialize};
+use wl_kernel::approvals::{self, ApprovalCard};
+use wl_kernel::cheques::ChequeSummary;
+use wl_kernel::invoicing::{InvoiceId, invoicer};
+use wl_kernel::parties::directory;
+
+use super::{Texts, buildings_with, lease_kind, text};
+use crate::arrears::{self, ArrearsDemand, NewPlan, PaymentPlan};
+use crate::building::Building;
+use crate::cancellation::{self, CancelRequest};
+use crate::charge::{ChargeStatus, LeaseCharge, RENT};
+use crate::chase;
+use crate::cheques::{ChequeEntry, of_version, register_cheques};
+use crate::deposit_forfeit::{self, ApplyRequest, DepositSettlement};
+use crate::force::{self, ForceReason, ForceRequest};
+use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
+use crate::lease_machine::{ACTIVATE, CANCEL, SUBMIT};
+use crate::leases::{self, EjariInput, NewLease, NewVersion};
+use crate::legal_case::{self, CaseOutcome, CaseType, LegalCase, NewCase};
+use crate::notice::{self, NewNotice, NoticeParty, NoticeReason};
+use crate::parse::{parse_aed, parse_date};
+use crate::permissions::{self, DEPOSITS_REFUND};
+use crate::renew;
+use crate::renewal;
+use crate::termination::{self, Inspection, Termination};
+use crate::terms;
+use crate::texts;
+use crate::unit::Unit;
+use crate::withdraw;
+use crate::write_off::{self as write_off_mod, Consent};
+
+/// The routes of the pages.
+pub fn routes() -> Routes {
+    Routes::new()
+        .get("/property/leases", index)
+        .name("property.leases")
+        .get("/property/leases/{id}", show)
+        .name("property.lease")
+        .post("/property/units/{id}/leases", create)
+        .name("property.lease_create")
+        .post("/property/leases/{id}/versions", create_version)
+        .name("property.lease_version")
+        .post("/property/leases/{id}/submit", submit)
+        .name("property.lease_submit")
+        .post("/property/leases/{id}/activate", activate)
+        .name("property.lease_activate")
+        .post("/property/leases/{id}/cancel", cancel)
+        .name("property.lease_cancel")
+        .post("/property/leases/{id}/extend", extend)
+        .name("property.lease_extend")
+        .post("/property/leases/{id}/terms-answer", terms_answer)
+        .name("property.lease_terms_answer")
+        .post("/property/leases/{id}/renewal-decision", renewal_decision)
+        .name("property.lease_renewal_decision")
+        .post(
+            "/property/leases/{id}/changed-terms-notice",
+            changed_terms_notice,
+        )
+        .name("property.lease_changed_terms_notice")
+        .post("/property/leases/{id}/notice", record_notice)
+        .name("property.lease_notice")
+        .post("/property/leases/{id}/planned-move-out", planned_move_out)
+        .name("property.lease_planned_move_out")
+        .post("/property/leases/{id}/withdraw-notice", withdraw_notice)
+        .name("property.lease_withdraw_notice")
+        .post("/property/leases/{id}/legal-cases", set_legal_case)
+        .name("property.lease_legal_case")
+        .post("/property/leases/{id}/legal-cases/clear", clear_legal_case)
+        .name("property.lease_legal_case_clear")
+        .post(
+            "/property/leases/{id}/move-out-inspection",
+            move_out_inspection,
+        )
+        .name("property.lease_inspection")
+        .post("/property/leases/{id}/terminate", terminate)
+        .name("property.lease_terminate")
+        .post("/property/leases/{id}/arrears-demand", send_arrears_demand)
+        .name("property.lease_arrears_demand")
+        .post("/property/leases/{id}/payment-plan", payment_plan)
+        .name("property.lease_payment_plan")
+        .post("/property/leases/{id}/force-terminate", force_terminate)
+        .name("property.lease_force_terminate")
+        .post(
+            "/property/leases/{id}/ejari-cancellation",
+            ejari_cancellation,
+        )
+        .name("property.lease_ejari_cancellation")
+        .post("/property/leases/{id}/apply-deposit", apply_deposit)
+        .name("property.lease_apply_deposit")
+        .post("/property/leases/{id}/write-off", write_off)
+        .name("property.lease_write_off")
+        .post("/property/leases/{id}/waive-deposit", waive_deposit)
+        .name("property.lease_waive_deposit")
+        .post("/property/leases/{id}/ejari", ejari)
+        .name("property.lease_ejari")
+        .post("/property/leases/{id}/cheques", cheques)
+        .name("property.lease_cheques")
+        .require_auth()
+}
+
+/// The name of party `id`, else `#id`.
+async fn party_name(state: &AppState, lang: &Lang, id: i64) -> String {
+    directory(state)
+        .display_name(&state.db, wl_kernel::PartyId(id), &lang.locale)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("#{id}"))
+}
+
+/// The name of the unit, `TWR-A / 1204`, else `#id`.
+async fn unit_label(state: &AppState, unit_id: i64) -> String {
+    let Ok(Some(unit)) = Unit::find(&state.db, unit_id).await else {
+        return format!("#{unit_id}");
+    };
+    match Building::find(&state.db, unit.building_id).await {
+        Ok(Some(building)) => format!("{} / {}", building.code, unit.number),
+        _ => unit.number,
+    }
+}
+
+/// One lease of the list.
+#[derive(Serialize, Debug, Clone)]
+pub struct LeaseRow {
+    /// The primary key.
+    pub id: i64,
+    /// The lease number with its version.
+    pub number: String,
+    /// The unit.
+    pub unit: String,
+    /// The tenant's name.
+    pub tenant: String,
+    /// The term, `2027-01-01 to 2027-12-31`.
+    pub term: String,
+    /// The annual rent.
+    pub annual_rent: String,
+    /// The status in the page's language.
+    pub status: String,
+    /// The badge kind.
+    pub status_kind: &'static str,
+    /// Renewal, amendment or empty for the first version.
+    pub kind: String,
+}
+
+/// What the list needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "property/leases.html")]
+pub(crate) struct IndexPage {
+    tx: Texts,
+    leases: Vec<LeaseRow>,
+}
+
+/// The text of a version kind; empty for the first version.
+pub(crate) fn kind_text(lang: &Lang, kind: VersionKind) -> String {
+    match kind {
+        VersionKind::New => String::new(),
+        other => text(lang, &format!("leases.kind.{}", other.as_str())),
+    }
+}
+
+/// `GET /property/leases`.
+async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+    let scopes = buildings_with(&user, permissions::LEASES_VIEW)?;
+    let query = scopes.apply(Lease::query().order_by_desc(Lease::ID), &["building_id"]);
+    let mut rows = Vec::new();
+    for lease in query.get(&state.db).await? {
+        rows.push(LeaseRow {
+            id: lease.id,
+            number: lease.number_with_version(),
+            unit: unit_label(&state, lease.unit_id).await,
+            tenant: party_name(&state, &lang, lease.tenant_party_id).await,
+            term: format!("{} → {}", lease.start_date, lease.end_date),
+            annual_rent: crate::money_text(lease.annual_rent),
+            status: text(&lang, &format!("leases.status.{}", lease.status.as_str())),
+            status_kind: lease_kind(lease.status),
+            kind: kind_text(&lang, lease.version_kind),
+        });
+    }
+    Ok(View::typed(IndexPage {
+        tx: texts::all(&lang),
+        leases: rows,
+    }))
+}
+
+/// A charge of the payment plan.
+#[derive(Serialize, Debug, Clone)]
+pub struct ChargeRow {
+    /// The charge's position in the plan.
+    pub number: i32,
+    /// What it is for.
+    pub description: String,
+    /// The due date.
+    pub due_date: String,
+    /// The amount before VAT.
+    pub amount: String,
+    /// The VAT treatment.
+    pub vat: String,
+    /// The status in the page's language.
+    pub status: String,
+    /// The badge kind.
+    pub status_kind: &'static str,
+    /// The invoice made for it.
+    pub invoice_id: Option<i64>,
+}
+
+/// A cheque received with the lease.
+#[derive(Serialize, Debug, Clone)]
+pub struct ChequeRow {
+    /// The cheque number.
+    pub number: String,
+    /// The bank.
+    pub bank: String,
+    /// The date on it.
+    pub date: String,
+    /// The amount.
+    pub amount: String,
+    /// The status in the page's language.
+    pub status: String,
+}
+
+/// A period the old version invoiced before a renewal started.
+#[derive(Serialize, Debug, Clone)]
+pub struct DifferenceRow {
+    /// The first day of the period.
+    pub period: String,
+    /// What was invoiced.
+    pub invoiced: String,
+    /// What the renewal charges for it.
+    pub renewal: String,
+    /// The difference, with its sign.
+    pub difference: String,
+}
+
+/// A legal case flag of the lease.
+#[derive(Serialize, Debug, Clone)]
+pub struct CaseRow {
+    /// What it is about, in the page's language.
+    pub kind: String,
+    /// The Rental Dispute Centre or court reference.
+    pub reference: String,
+    /// Open, or the outcome it was cleared with.
+    pub status: String,
+    /// The badge kind of the status.
+    pub status_kind: &'static str,
+    /// The linked ticket.
+    pub ticket: String,
+    /// The day it was set.
+    pub opened_on: String,
+    /// The day it was cleared.
+    pub cleared_on: String,
+}
+
+/// The settlement statement of a deposit applied to the deductions.
+#[derive(Serialize, Debug, Clone)]
+pub struct SettlementRow {
+    /// The deposit.
+    pub held: String,
+    /// The unpaid rent.
+    pub rent_due: String,
+    /// The damage lines.
+    pub damages: String,
+    /// The total deductions: the unpaid rent and the damage lines.
+    pub total: String,
+    /// The part applied to the rent invoices.
+    pub to_rent: String,
+    /// The part kept for the damages.
+    pub to_damages: String,
+    /// The damages invoiced to the tenant.
+    pub excess: String,
+    /// The damages invoice.
+    pub invoice: String,
+    /// The day.
+    pub applied_on: String,
+}
+
+/// A formal payment demand of the lease.
+#[derive(Serialize, Debug, Clone)]
+pub struct DemandRow {
+    /// Waiting to be sent, sent, or closed, in the page's language.
+    pub status: String,
+    /// The badge kind of the status.
+    pub status_kind: &'static str,
+    /// The day it was made.
+    pub created_on: String,
+    /// The invoices listed, with their open amounts.
+    pub invoices: String,
+    /// Whether delivery is proven and when.
+    pub delivery: String,
+}
+
+/// A version of the lease.
+#[derive(Serialize, Debug, Clone)]
+pub struct VersionRow {
+    /// The version's id.
+    pub id: i64,
+    /// `v2`.
+    pub label: String,
+    /// Renewal, amendment or empty.
+    pub kind: String,
+    /// The term.
+    pub term: String,
+    /// The status in the page's language.
+    pub status: String,
+    /// Whether it is the version the page shows.
+    pub current: bool,
+}
+
+/// The lease as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub struct LeaseView {
+    /// The primary key.
+    pub id: i64,
+    /// The number with its version.
+    pub number: String,
+    /// The unit.
+    pub unit: String,
+    /// The unit's id.
+    pub unit_id: i64,
+    /// The building's id.
+    pub building_id: i64,
+    /// The tenant's name.
+    pub tenant: String,
+    /// Renewal, amendment or empty.
+    pub kind: String,
+    /// The first day of the term.
+    pub start_date: String,
+    /// The last day.
+    pub end_date: String,
+    /// The annual rent.
+    pub annual_rent: String,
+    /// The deposit, or a note that it is waived.
+    pub deposit: String,
+    /// The VAT treatment of the rent.
+    pub vat: String,
+    /// The days of notice the contract needs.
+    pub notice_days: i64,
+    /// The day an amendment applies from.
+    pub effective_date: String,
+    /// The clauses.
+    pub terms: String,
+    /// The Ejari or Tawtheeq number.
+    pub ejari_number: String,
+    /// The day it expires.
+    pub ejari_expires_on: String,
+    /// Why it was cancelled.
+    pub cancel_reason: String,
+    /// The part of the deposit forfeited on cancellation.
+    pub cancel_forfeit: String,
+    /// The clause of the forfeit.
+    pub cancel_forfeit_clause: String,
+    /// The follow-up date the property manager extended to.
+    pub follow_up_until: String,
+    /// The last day a notice of changed terms can be delivered (`PRP.RUL.09`);
+    /// empty unless the lease is in force.
+    pub notice_deadline: String,
+    /// The renewal decision in the page's language.
+    pub renewal_decision: String,
+    /// Whether the notice of changed terms was sent and delivered.
+    pub notice_of_changes: String,
+    /// "Current terms only" once the marker is set, else empty.
+    pub current_terms_only: String,
+    /// The end of the statutory renewal period the tenant holds over for
+    /// (`PRP.RUL.03`); empty unless the lease expired.
+    pub holding_over_until: String,
+    /// Whether a draft renewal or amendment changes terms against the
+    /// tenant (`PRP.ACL.17`); empty for other versions.
+    pub terms_change: String,
+    /// Whether the tenant's signed acceptance is attached, when one is
+    /// needed; else empty.
+    pub acceptance: String,
+    /// Why the submitter answered that the changes are not against the
+    /// tenant.
+    pub terms_answer_reason: String,
+    /// The date of the notice to end the lease.
+    pub notice_date: String,
+    /// Who gave it, in the page's language.
+    pub notice_party: String,
+    /// Why, in the page's language.
+    pub notice_reason: String,
+    /// The landlord's ground.
+    pub notice_ground: String,
+    /// The planned move-out date.
+    pub planned_move_out: String,
+    /// For a landlord's notice: "Notice not delivered", or the day it was
+    /// delivered; empty for a tenant's.
+    pub notice_delivery: String,
+    /// The day the move-out inspection was completed.
+    pub inspection_done_on: String,
+    /// The day all the keys were returned.
+    pub keys_returned_on: String,
+    /// The day the tenant moved out.
+    pub actual_move_out: String,
+    /// The day rent stays due until, when the contract says so.
+    pub rent_due_until: String,
+    /// The net amount credited at termination.
+    pub termination_credit: String,
+    /// The day the Ejari registration was cancelled.
+    pub ejari_cancelled_on: String,
+    /// Why the lease was ended by force, in the page's language.
+    pub force_reason: String,
+    /// The legal basis stated for repossessing an abandoned unit.
+    pub force_basis: String,
+}
+
+/// What a lease page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "property/lease.html")]
+pub(crate) struct ShowPage {
+    tx: Texts,
+    lease: LeaseView,
+    status: String,
+    status_kind: &'static str,
+    charges: Vec<ChargeRow>,
+    cheques: Vec<ChequeRow>,
+    versions: Vec<VersionRow>,
+    differences: Vec<DifferenceRow>,
+    legal_cases: Vec<CaseRow>,
+    legal_open: bool,
+    settlement: Vec<SettlementRow>,
+    can_apply_deposit: bool,
+    can_write_off: bool,
+    write_off_invoices: Vec<[String; 2]>,
+    demands: Vec<DemandRow>,
+    send_demands: Vec<[String; 2]>,
+    plan_until: String,
+    case_tickets: Vec<[String; 2]>,
+    open_cases: Vec<[String; 2]>,
+    approvals: Vec<ApprovalCard>,
+    timeline: Vec<Value>,
+    pending: bool,
+    can_submit: bool,
+    can_activate: bool,
+    can_cancel: bool,
+    can_extend: bool,
+    can_decide: bool,
+    can_send_notice: bool,
+    can_answer_terms: bool,
+    can_waive: bool,
+    can_ejari: bool,
+    can_version: bool,
+    can_cheques: bool,
+    can_notice: bool,
+    can_change_planned: bool,
+    can_withdraw: bool,
+    can_case: bool,
+    can_clear_case: bool,
+    can_inspect: bool,
+    can_terminate: bool,
+    can_ejari_cancel: bool,
+    can_force: bool,
+    can_send_demand: bool,
+    can_plan: bool,
+    today: String,
+}
+
+/// Whether `actions` offers the transition `name`.
+fn offers(actions: &[state_machine::Available], name: &str) -> bool {
+    actions.iter().any(|a| a.name == name)
+}
+
+/// The label of the VAT category of a charge.
+fn vat_text(lang: &Lang, category: wl_kernel::VatCategory) -> String {
+    text(lang, &format!("vat.{}", category.as_str()))
+}
+
+/// Dirhams with their sign: `+AED 1,000.00`, `-AED 50.00`, `AED 0.00`.
+fn signed_money(fils: i64) -> String {
+    if fils > 0 {
+        format!("+{}", crate::money_text(fils))
+    } else {
+        crate::money_text(fils)
+    }
+}
+
+/// `GET /property/leases/{id}`.
+async fn show(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    let lease = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let scope = lease.scope();
+    if !user.has_permission_in(permissions::LEASES_VIEW, &scope) {
+        return Err(Error::Forbidden);
+    }
+    let actions = lease.available(&user, &state.db).await?;
+    let subject = lease.subject();
+    let pending = !approvals::pending_for(&state.db, &subject)
+        .await?
+        .is_empty();
+    let approval_cards = approvals::cards_for(&state.db, &subject, &user, &lang).await?;
+    let history = state_machine::history(&state.db, Lease::TABLE, lease.id).await?;
+    let mut timeline = state_machine::timeline(&history, Some(&state_machine::info_of::<Lease>()));
+    timeline.extend(approvals::timeline_for(&state.db, &subject, &lang).await?);
+    timeline.sort_by(|a, b| a["time"].as_str().cmp(&b["time"].as_str()));
+
+    let charges = lease
+        .charges(&state.db)
+        .await?
+        .into_iter()
+        .map(|c| ChargeRow {
+            number: c.position,
+            description: c.description.clone(),
+            due_date: c.due_date.to_string(),
+            amount: crate::money_text(c.amount),
+            vat: vat_text(&lang, c.vat_category),
+            status: text(&lang, &format!("charges.status.{}", c.status.as_str())),
+            status_kind: match c.status {
+                ChargeStatus::Invoiced => "success",
+                ChargeStatus::Scheduled => "info",
+                ChargeStatus::Planned | ChargeStatus::Cancelled => "info",
+            },
+            invoice_id: c.invoice_id,
+        })
+        .collect();
+    let cheque_rows = of_version(&state, &lease)
+        .await?
+        .into_iter()
+        .map(|c: ChequeSummary| ChequeRow {
+            number: c.number,
+            bank: c.bank,
+            date: c.date.to_string(),
+            amount: crate::money_text(c.amount),
+            status: text(&lang, &format!("cheques.status.{}", c.status.as_str())),
+        })
+        .collect();
+    let versions = Lease::versions_of(&state.db, lease.root_id)
+        .await?
+        .into_iter()
+        .map(|v| VersionRow {
+            id: v.id,
+            label: format!("v{}", v.version),
+            kind: kind_text(&lang, v.version_kind),
+            term: format!("{} → {}", v.start_date, v.end_date),
+            status: text(&lang, &format!("leases.status.{}", v.status.as_str())),
+            current: v.id == lease.id,
+        })
+        .collect();
+
+    let differences = renew::differences(&state.db, &lease)
+        .await?
+        .into_iter()
+        .map(|d| DifferenceRow {
+            period: d.period.to_string(),
+            invoiced: crate::money_text(d.invoiced),
+            renewal: crate::money_text(d.renewal),
+            difference: signed_money(d.difference()),
+        })
+        .collect();
+
+    let cases = LegalCase::of_root(&state.db, lease.root_id).await?;
+    let legal_open = cases.iter().any(LegalCase::is_open);
+    let legal_cases: Vec<CaseRow> = cases
+        .iter()
+        .map(|case| CaseRow {
+            kind: text(&lang, &format!("legal.type_{}", case.case_type.as_str())),
+            reference: case.reference.clone().unwrap_or_default(),
+            status: match case.outcome {
+                Some(outcome) if !case.is_open() => {
+                    text(&lang, &format!("legal.outcome_{}", outcome.as_str()))
+                }
+                _ => text(&lang, "legal.status_open"),
+            },
+            status_kind: if case.is_open() { "warning" } else { "info" },
+            ticket: case.ticket_number.clone().unwrap_or_default(),
+            opened_on: case.opened_on.to_string(),
+            cleared_on: case.cleared_on.map(|d| d.to_string()).unwrap_or_default(),
+        })
+        .collect();
+    let mut case_tickets = vec![["new".to_owned(), text(&lang, "legal.ticket_new")]];
+    for (ticket_id, number) in legal_case::free_tickets(&state, &lease).await? {
+        case_tickets.push([ticket_id.to_string(), number]);
+    }
+    let open_cases: Vec<[String; 2]> = cases
+        .iter()
+        .filter(|case| case.is_open())
+        .map(|case| {
+            let kind = text(&lang, &format!("legal.type_{}", case.case_type.as_str()));
+            let label = match case.reference.as_deref() {
+                Some(reference) if !reference.is_empty() => format!("{kind} · {reference}"),
+                _ => kind,
+            };
+            [case.id.to_string(), label]
+        })
+        .collect();
+
+    let mut demands = Vec::new();
+    let mut send_demands: Vec<[String; 2]> = Vec::new();
+    for demand in ArrearsDemand::of_root(&state.db, lease.root_id).await? {
+        let rows = demand.invoices(&state.db).await?;
+        let delivery = match arrears::delivered_on(&state, &demand).await? {
+            Some(day) => texts::t_with(&lang, "property.arrears.delivered", &[("day", &day)]),
+            None if demand.is_sent() => text(&lang, "arrears.not_delivered"),
+            None => String::new(),
+        };
+        let (status, status_kind) = if demand.is_open() {
+            send_demands.push([
+                demand.id.to_string(),
+                format!("#{} · {}", demand.id, demand.created_on),
+            ]);
+            (text(&lang, "arrears.demand_open"), "warning")
+        } else if let Some(sent) = demand.sent_on {
+            (
+                texts::t_with(&lang, "property.arrears.demand_sent_on", &[("day", &sent)]),
+                "info",
+            )
+        } else {
+            (text(&lang, "arrears.demand_closed"), "info")
+        };
+        demands.push(DemandRow {
+            status,
+            status_kind,
+            created_on: demand.created_on.to_string(),
+            invoices: rows
+                .iter()
+                .map(|r| {
+                    format!(
+                        "{} ({})",
+                        r.number
+                            .clone()
+                            .unwrap_or_else(|| format!("#{}", r.invoice_id)),
+                        crate::money_text(r.open_amount)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+            delivery,
+        });
+    }
+    let send_demands_empty = send_demands.is_empty();
+    let plan_until = PaymentPlan::latest_of(&state.db, lease.root_id)
+        .await?
+        .map(|day| day.to_string())
+        .unwrap_or_default();
+
+    let running = LeaseStatus::RUNNING.contains(&lease.status);
+    let delivered = if running {
+        renewal::delivered_on(&state, &lease).await?
+    } else {
+        lease.notice_of_changes_delivered_on
+    };
+    let notice_of_changes = match (delivered, lease.notice_of_changes_sent_on) {
+        (Some(day), _) => texts::t_with(
+            &lang,
+            "property.renewal.notice_delivered",
+            &[("delivered", &day)],
+        ),
+        (None, Some(sent)) => texts::t_with(
+            &lang,
+            "property.renewal.notice_undelivered",
+            &[("sent", &sent)],
+        ),
+        (None, None) => text(&lang, "renewal.notice_not_sent"),
+    };
+    let assessment = if lease.status == LeaseStatus::Draft {
+        terms::assess(&state, &lease).await?
+    } else {
+        None
+    };
+    let terms_change = match &assessment {
+        None => String::new(),
+        Some(a) if !a.against_tenant => text(&lang, "terms.not_against"),
+        Some(a) if a.changes.automatic() => text(&lang, "terms.against_found"),
+        Some(_) => text(&lang, "terms.against_asked"),
+    };
+    let acceptance = match &assessment {
+        Some(a) if a.against_tenant && a.accepted => text(&lang, "terms.acceptance_attached"),
+        Some(a) if a.against_tenant => text(&lang, "terms.acceptance_missing"),
+        _ => String::new(),
+    };
+    let can_answer_terms = user.has_permission_in(permissions::LEASES_CREATE, &scope)
+        && assessment
+            .as_ref()
+            .is_some_and(|a| a.changes.other && !a.changes.automatic());
+    let manages = user.has_permission_in(permissions::LEASES_MANAGE, &scope);
+    let in_window = matches!(lease.status, LeaseStatus::Active | LeaseStatus::RenewalDue);
+    let creates = user.has_permission_in(permissions::LEASES_CREATE, &scope);
+    let activates = user.has_permission_in(permissions::LEASES_ACTIVATE, &scope);
+    let in_progress = LeaseStatus::IN_PROGRESS.contains(&lease.status);
+    let can_version = creates
+        && LeaseStatus::AMENDABLE.contains(&lease.status)
+        && Lease::follow_ups_in_progress(&state.db, lease.root_id)
+            .await?
+            .is_empty();
+    let deposit = if lease.deposit_waived {
+        text(&lang, "leases.deposit_waived")
+    } else {
+        crate::money_text(lease.deposit_amount)
+    };
+    let landlord_notice = lease.notice_party.as_deref() == Some(NoticeParty::Landlord.as_str());
+    let notice_delivery = if lease.status == LeaseStatus::NoticeGiven && landlord_notice {
+        match notice::delivered_on(&state, &lease).await? {
+            Some(day) => texts::t_with(&lang, "property.notice.delivered_on", &[("day", &day)]),
+            None => text(&lang, "notice.not_delivered"),
+        }
+    } else {
+        String::new()
+    };
+    // The planned date of a landlord's notice follows its proof of delivery.
+    let planned = if landlord_notice && lease.planned_move_out.is_none() {
+        None
+    } else {
+        lease.planned_move_out
+    };
+    let view = LeaseView {
+        id: lease.id,
+        number: lease.number_with_version(),
+        unit: unit_label(&state, lease.unit_id).await,
+        unit_id: lease.unit_id,
+        building_id: lease.building_id,
+        tenant: party_name(&state, &lang, lease.tenant_party_id).await,
+        kind: kind_text(&lang, lease.version_kind),
+        start_date: lease.start_date.to_string(),
+        end_date: lease.end_date.to_string(),
+        annual_rent: crate::money_text(lease.annual_rent),
+        deposit,
+        vat: vat_text(&lang, lease.vat_category),
+        notice_days: lease.notice_days(),
+        effective_date: lease
+            .effective_date
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        terms: lease.terms.clone().unwrap_or_default(),
+        ejari_number: lease.ejari_number.clone().unwrap_or_default(),
+        ejari_expires_on: lease
+            .ejari_expires_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        cancel_reason: lease.cancel_reason.clone().unwrap_or_default(),
+        cancel_forfeit: if lease.cancel_forfeit > 0 {
+            crate::money_text(lease.cancel_forfeit)
+        } else {
+            String::new()
+        },
+        cancel_forfeit_clause: lease.cancel_forfeit_clause.clone().unwrap_or_default(),
+        follow_up_until: lease
+            .follow_up_until
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        notice_deadline: if running {
+            renewal::notice_deadline(&lease).to_string()
+        } else {
+            String::new()
+        },
+        renewal_decision: text(
+            &lang,
+            &format!("renewal.decision_{}", lease.renewal_decision.as_str()),
+        ),
+        notice_of_changes,
+        current_terms_only: if lease.current_terms_only {
+            text(&lang, "renewal.current_terms_only_yes")
+        } else {
+            String::new()
+        },
+        holding_over_until: lease
+            .holding_over_until
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        terms_change,
+        acceptance,
+        terms_answer_reason: if lease.terms_answered_no {
+            lease.terms_answer_reason.clone().unwrap_or_default()
+        } else {
+            String::new()
+        },
+        notice_date: lease.notice_date.map(|d| d.to_string()).unwrap_or_default(),
+        notice_party: lease
+            .notice_party
+            .as_deref()
+            .map(|p| text(&lang, &format!("notice.party_{p}")))
+            .unwrap_or_default(),
+        notice_reason: lease
+            .notice_reason
+            .as_deref()
+            .map(|r| text(&lang, &format!("notice.reason_{r}")))
+            .unwrap_or_default(),
+        notice_ground: lease.notice_ground.clone().unwrap_or_default(),
+        planned_move_out: planned.map(|d| d.to_string()).unwrap_or_default(),
+        notice_delivery,
+        inspection_done_on: lease
+            .inspection_done_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        keys_returned_on: lease
+            .keys_returned_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        actual_move_out: lease
+            .actual_move_out
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        rent_due_until: lease
+            .rent_due_until
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        termination_credit: if lease.termination_credit > 0 {
+            crate::money_text(lease.termination_credit)
+        } else {
+            String::new()
+        },
+        ejari_cancelled_on: lease
+            .ejari_cancelled_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        force_reason: lease
+            .force_reason
+            .as_deref()
+            .map(|reason| text(&lang, &format!("force.reason_{reason}")))
+            .unwrap_or_default(),
+        force_basis: lease.force_basis.clone().unwrap_or_default(),
+    };
+    let write_off_invoices: Vec<[String; 2]> =
+        deposit_forfeit::unpaid_invoices(&state, lease.root_id)
+            .await?
+            .into_iter()
+            .map(|u| {
+                [
+                    u.id.to_string(),
+                    format!(
+                        "{} · {} · {}",
+                        u.number.unwrap_or_else(|| format!("#{}", u.id)),
+                        u.due,
+                        crate::money_text(u.open)
+                    ),
+                ]
+            })
+            .collect();
+    let settled_by_deposit = DepositSettlement::of_root(&state.db, lease.root_id).await?;
+    let mut settlement: Vec<SettlementRow> = Vec::new();
+    if let Some(s) = &settled_by_deposit {
+        // The damages invoice is drafted when the deposit is applied and issued
+        // by invoicing later: its number is read from there once it has one.
+        let mut number = s.excess_invoice_number.clone();
+        if number.is_none()
+            && let Some(id) = s.excess_invoice_id
+        {
+            number = invoicer(&state)
+                .find(&state.db, InvoiceId(id))
+                .await?
+                .and_then(|found| found.number);
+        }
+        settlement.push(SettlementRow {
+            held: crate::money_text(s.held),
+            rent_due: crate::money_text(s.rent_due),
+            damages: crate::money_text(s.damages),
+            total: crate::money_text(s.total_deductions()),
+            to_rent: crate::money_text(s.to_rent),
+            to_damages: crate::money_text(s.to_damages),
+            excess: crate::money_text(s.excess),
+            invoice: number
+                .or_else(|| s.excess_invoice_id.map(|id| format!("#{id}")))
+                .unwrap_or_default(),
+            applied_on: s.applied_on.to_string(),
+        });
+    }
+    Ok(View::typed(ShowPage {
+        tx: texts::all(&lang),
+        lease: view,
+        status: text(&lang, &format!("leases.status.{}", lease.status.as_str())),
+        status_kind: lease_kind(lease.status),
+        charges,
+        cheques: cheque_rows,
+        versions,
+        differences,
+        legal_cases,
+        legal_open,
+        settlement,
+        can_apply_deposit: user.has_permission_in(DEPOSITS_REFUND, &scope)
+            && lease.status == LeaseStatus::Terminated
+            && settled_by_deposit.is_none(),
+        can_write_off: user.has_permission_in(permissions::INVOICES_WRITE_OFF, &scope)
+            && !write_off_invoices.is_empty(),
+        write_off_invoices,
+        demands,
+        send_demands,
+        plan_until,
+        case_tickets,
+        open_cases,
+        approvals: approval_cards,
+        timeline,
+        pending,
+        can_submit: offers(&actions, SUBMIT),
+        can_activate: offers(&actions, ACTIVATE) && !pending,
+        can_cancel: offers(&actions, CANCEL) && !pending,
+        can_extend: lease.status == LeaseStatus::PendingSignature
+            && user.has_permission_in(permissions::LEASES_MANAGE, &scope),
+        can_answer_terms,
+        can_decide: manages && in_window,
+        can_send_notice: manages
+            && in_window
+            && lease.renewal_decision == RenewalDecision::ChangedTerms
+            && delivered.is_none(),
+        can_waive: activates
+            && in_progress
+            && !lease.is_follow_up()
+            && !lease.deposit_waived
+            && lease.deposit_amount > 0,
+        can_ejari: activates && LeaseStatus::RUNNING.contains(&lease.status),
+        can_version,
+        can_notice: manages
+            && matches!(
+                lease.status,
+                LeaseStatus::Active | LeaseStatus::RenewalDue | LeaseStatus::Expired
+            ),
+        can_change_planned: manages
+            && lease.status == LeaseStatus::NoticeGiven
+            && lease.notice_party.as_deref() == Some(NoticeParty::Tenant.as_str()),
+        can_withdraw: manages && lease.status == LeaseStatus::NoticeGiven,
+        can_case: manages
+            && !matches!(
+                lease.status,
+                LeaseStatus::Draft | LeaseStatus::PendingSignature | LeaseStatus::Cancelled
+            ),
+        can_clear_case: manages && legal_open,
+        can_inspect: manages && lease.status == LeaseStatus::NoticeGiven,
+        can_terminate: manages
+            && lease.status == LeaseStatus::NoticeGiven
+            && lease.inspection_done_on.is_some()
+            && lease.keys_returned_on.is_some(),
+        can_ejari_cancel: manages
+            && lease.status == LeaseStatus::Terminated
+            && lease.ejari_number.is_some()
+            && lease.ejari_cancelled_on.is_none(),
+        can_force: manages && !pending && LeaseStatus::RUNNING.contains(&lease.status),
+        can_send_demand: manages && !send_demands_empty,
+        can_plan: manages
+            && !matches!(
+                lease.status,
+                LeaseStatus::Draft | LeaseStatus::PendingSignature | LeaseStatus::Cancelled
+            ),
+        can_cheques: creates
+            && !matches!(
+                lease.status,
+                LeaseStatus::Cancelled
+                    | LeaseStatus::Terminated
+                    | LeaseStatus::Renewed
+                    | LeaseStatus::Amended
+            ),
+        today: wl_kernel::documents::today().to_string(),
+    }))
+}
+
+/// The form of a new lease.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct LeaseForm {
+    /// The tenant's party number.
+    #[serde(default)]
+    pub tenant: String,
+    /// The first day of the term.
+    #[serde(default)]
+    pub start_date: String,
+    /// The last day of the term.
+    #[serde(default)]
+    pub end_date: String,
+    /// The annual rent in dirhams.
+    #[serde(default)]
+    pub annual_rent: String,
+    /// The deposit in dirhams.
+    #[serde(default)]
+    pub deposit: String,
+    /// The number of rent instalments.
+    #[serde(default)]
+    pub instalments: String,
+    /// The due date of the first instalment.
+    #[serde(default)]
+    pub first_due: String,
+    /// The contract's notice period in days.
+    #[serde(default)]
+    pub notice_days: String,
+    /// The clauses.
+    #[serde(default)]
+    pub terms: String,
+}
+
+/// A required date, a 422 naming the field when it is blank or malformed.
+fn required_date(value: &str, field: &str) -> Result<NaiveDate> {
+    parse_date(value).ok_or_else(|| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("{field}: YYYY-MM-DD"),
+        )
+    })
+}
+
+/// A required amount in dirhams.
+fn required_amount(value: &str, field: &str) -> Result<i64> {
+    parse_aed(value).ok_or_else(|| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("{field}: AED 0.00"),
+        )
+    })
+}
+
+/// An optional amount: blank is 0.
+fn optional_amount(value: &str, field: &str) -> Result<i64> {
+    if value.trim().is_empty() {
+        return Ok(0);
+    }
+    required_amount(value, field)
+}
+
+/// A whole number, a 422 naming the field when it is not one.
+fn whole<T: std::str::FromStr>(value: &str, field: &str) -> Result<T> {
+    value.trim().parse().map_err(|_| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("{field}: 1, 2, 3 ..."),
+        )
+    })
+}
+
+/// `POST /property/units/{id}/leases`.
+async fn create(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(unit_id): Path<i64>,
+    Form(form): Form<LeaseForm>,
+) -> Result<Response> {
+    let unit = Unit::find(&state.db, unit_id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    if !user.has_permission_in(permissions::LEASES_CREATE, &unit.scope()) {
+        return Err(Error::Forbidden);
+    }
+    let mut new = NewLease::new(
+        unit_id,
+        wl_kernel::PartyId(whole::<i64>(&form.tenant, "tenant")?),
+        required_date(&form.start_date, "start_date")?,
+        required_date(&form.end_date, "end_date")?,
+        required_amount(&form.annual_rent, "annual_rent")?,
+        whole::<u32>(&form.instalments, "instalments")?,
+    )
+    .deposit(optional_amount(&form.deposit, "deposit")?);
+    if !form.first_due.trim().is_empty() {
+        new = new.first_due(required_date(&form.first_due, "first_due")?);
+    }
+    if !form.notice_days.trim().is_empty() {
+        new.contract_notice_days = Some(whole::<i32>(&form.notice_days, "notice_days")?);
+    }
+    new.terms = Some(form.terms);
+    let lease = leases::create_draft(&state, Some(user.id), new).await?;
+    Ok((
+        Toast::success(text(&lang, "leases.created")),
+        renox::HxRedirect(format!("/property/leases/{}", lease.id)),
+    )
+        .into_response())
+}
+
+/// The form of a renewal or an amendment.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct VersionForm {
+    /// `renewal` or `amendment`.
+    #[serde(default)]
+    pub kind: String,
+    /// The first day of the term.
+    #[serde(default)]
+    pub start_date: String,
+    /// The last day of the term.
+    #[serde(default)]
+    pub end_date: String,
+    /// The annual rent in dirhams.
+    #[serde(default)]
+    pub annual_rent: String,
+    /// The deposit in dirhams.
+    #[serde(default)]
+    pub deposit: String,
+    /// The number of rent instalments.
+    #[serde(default)]
+    pub instalments: String,
+    /// The day an amendment applies from.
+    #[serde(default)]
+    pub effective_date: String,
+}
+
+/// `POST /property/leases/{id}/versions`.
+async fn create_version(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<VersionForm>,
+) -> Result<Response> {
+    let previous = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    if !user.has_permission_in(permissions::LEASES_CREATE, &previous.scope()) {
+        return Err(Error::Forbidden);
+    }
+    let kind: VersionKind = form
+        .kind
+        .trim()
+        .parse()
+        .map_err(|_| Error::BadRequest("kind".to_owned()))?;
+    let effective = if form.effective_date.trim().is_empty() {
+        None
+    } else {
+        Some(required_date(&form.effective_date, "effective_date")?)
+    };
+    let new = NewVersion {
+        kind,
+        start_date: required_date(&form.start_date, "start_date")?,
+        end_date: required_date(&form.end_date, "end_date")?,
+        annual_rent: required_amount(&form.annual_rent, "annual_rent")?,
+        deposit_amount: optional_amount(&form.deposit, "deposit")?,
+        instalments: whole::<u32>(&form.instalments, "instalments")?,
+        first_due: None,
+        effective_date: effective,
+        terms: None,
+    };
+    let lease = leases::create_version(&state, Some(user.id), id, new).await?;
+    Ok((
+        Toast::success(text(&lang, "leases.version_created")),
+        renox::HxRedirect(format!("/property/leases/{}", lease.id)),
+    )
+        .into_response())
+}
+
+/// `POST /property/leases/{id}/submit`.
+async fn submit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    leases::submit(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(text(&lang, "leases.submitted")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /property/leases/{id}/activate`.
+async fn activate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let lease = leases::activate(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    // A renewal that does not charge what the old version invoiced for a
+    // period it covers: the manager is shown, and adjusts by hand.
+    let differences = renew::differences(&state.db, &lease).await?;
+    let toast = if renew::any_difference(&differences) {
+        Toast::warning(text(&lang, "renew.differences_toast"))
+    } else {
+        Toast::success(text(&lang, "leases.activated"))
+    };
+    Ok((toast, renox::HxRefresh).into_response())
+}
+
+/// The form of a cancellation.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CancelForm {
+    /// Why the prospect backs out.
+    #[serde(default)]
+    pub reason: String,
+    /// The part of the deposit forfeited, in dirhams.
+    #[serde(default)]
+    pub forfeit: String,
+    /// The clause of the terms that allows it.
+    #[serde(default)]
+    pub clause: String,
+}
+
+/// `POST /property/leases/{id}/cancel`: cancels at once when nothing was
+/// received, else sends the cancellation to a property manager.
+async fn cancel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<CancelForm>,
+) -> Result<Response> {
+    let outcome = cancellation::request(
+        &state,
+        &user,
+        id,
+        CancelRequest {
+            reason: form.reason,
+            forfeit: optional_amount(&form.forfeit, "forfeit")?,
+            clause: Some(form.clause).filter(|c| !c.trim().is_empty()),
+        },
+    )
+    .await
+    .map_err(TransitionError::into_error)?;
+    let key = if outcome.is_pending() {
+        "cancel.sent"
+    } else {
+        "cancel.done"
+    };
+    Ok((Toast::success(text(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// The form that extends the follow-up of a lease waiting for its signature.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ExtendForm {
+    /// The date the follow-up is extended to.
+    #[serde(default)]
+    pub until: String,
+}
+
+/// `POST /property/leases/{id}/extend` (`PRP.RUL.12`).
+async fn extend(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ExtendForm>,
+) -> Result<Response> {
+    let until = required_date(&form.until, "until")?;
+    chase::extend(&state, &user, id, until).await?;
+    Ok((
+        Toast::success(text(&lang, "chase.extended_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form of the answer to "changes terms against the tenant?".
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TermsAnswerForm {
+    /// `yes` or `no`.
+    #[serde(default)]
+    pub against: String,
+    /// Why not, for a no.
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// `POST /property/leases/{id}/terms-answer` (`PRP.ACL.17`).
+async fn terms_answer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TermsAnswerForm>,
+) -> Result<Response> {
+    let against = match form.against.trim() {
+        "yes" => true,
+        "no" => false,
+        _ => return Err(Error::BadRequest("against".to_owned())),
+    };
+    terms::answer(&state, &user, id, against, Some(form.reason)).await?;
+    Ok((
+        Toast::success(text(&lang, "terms.answered")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form of the renewal decision.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DecisionForm {
+    /// `undecided`, `same_terms`, `changed_terms` or `not_renewing`.
+    #[serde(default)]
+    pub decision: String,
+}
+
+/// `POST /property/leases/{id}/renewal-decision` (`PRP.RUL.01`).
+async fn renewal_decision(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<DecisionForm>,
+) -> Result<Response> {
+    let decision: RenewalDecision = form
+        .decision
+        .trim()
+        .parse()
+        .map_err(|_| Error::BadRequest("decision".to_owned()))?;
+    renewal::set_decision(&state, &user, id, decision).await?;
+    Ok((
+        Toast::success(text(&lang, "renewal.decided")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /property/leases/{id}/changed-terms-notice` (`PRP.RUL.09`).
+async fn changed_terms_notice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    renewal::send_changed_terms(&state, &user, id).await?;
+    Ok((
+        Toast::success(text(&lang, "renewal.notice_sent")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /property/leases/{id}/waive-deposit`.
+async fn waive_deposit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    leases::waive_deposit(&state, &user, id).await?;
+    Ok((
+        Toast::success(text(&lang, "leases.deposit_waived_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that records a notice to end the lease.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct NoticeForm {
+    /// The date of the notice.
+    #[serde(default)]
+    pub date: String,
+    /// `tenant` or `landlord`.
+    #[serde(default)]
+    pub party: String,
+    /// `end_of_term`, `early_termination`, `landlords_ground` or `non_payment`.
+    #[serde(default)]
+    pub reason: String,
+    /// The landlord's ground.
+    #[serde(default)]
+    pub ground: String,
+    /// The planned move-out date of a tenant's notice.
+    #[serde(default)]
+    pub planned_move_out: String,
+    /// The early termination penalty in dirhams.
+    #[serde(default)]
+    pub penalty: String,
+}
+
+/// `POST /property/leases/{id}/notice` (`record_notice`).
+async fn record_notice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<NoticeForm>,
+) -> Result<Response> {
+    let party = NoticeParty::parse(&form.party).ok_or_else(|| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::english("property.notice.party_required", &[]),
+        )
+    })?;
+    let reason = NoticeReason::parse(&form.reason).ok_or_else(|| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::english("property.notice.reason_required", &[]),
+        )
+    })?;
+    let planned = if form.planned_move_out.trim().is_empty() {
+        None
+    } else {
+        Some(required_date(&form.planned_move_out, "planned_move_out")?)
+    };
+    let new = NewNotice {
+        date: required_date(&form.date, "date")?,
+        party,
+        reason,
+        ground: Some(form.ground).filter(|g| !g.trim().is_empty()),
+        planned_move_out: planned,
+        penalty: optional_amount(&form.penalty, "penalty")?,
+    };
+    notice::record(&state, &user, id, new)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(text(&lang, "notice.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that changes the planned move-out date.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct PlannedForm {
+    /// The new planned move-out date.
+    #[serde(default)]
+    pub planned_move_out: String,
+}
+
+/// `POST /property/leases/{id}/planned-move-out`.
+async fn planned_move_out(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<PlannedForm>,
+) -> Result<Response> {
+    let date = required_date(&form.planned_move_out, "planned_move_out")?;
+    notice::change_planned_move_out(&state, &user, id, date).await?;
+    Ok((
+        Toast::success(text(&lang, "notice.planned_changed")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /property/leases/{id}/withdraw-notice` (`PRP.ACL.20`).
+async fn withdraw_notice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    withdraw::withdraw(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(text(&lang, "withdraw.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that sets a legal case flag.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CaseForm {
+    /// `arrears`, `eviction`, `deposit_dispute` or `other`.
+    #[serde(default)]
+    pub case_type: String,
+    /// The Rental Dispute Centre or court reference.
+    #[serde(default)]
+    pub reference: String,
+    /// `new`, or the id of an open *legal case* ticket of the lease.
+    #[serde(default)]
+    pub ticket: String,
+}
+
+/// `POST /property/leases/{id}/legal-cases`.
+async fn set_legal_case(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<CaseForm>,
+) -> Result<Response> {
+    let case_type: CaseType = form
+        .case_type
+        .trim()
+        .parse()
+        .map_err(|_| Error::BadRequest("case_type".to_owned()))?;
+    let mut new = NewCase::new(case_type);
+    if !form.reference.trim().is_empty() {
+        new = new.reference(&form.reference);
+    }
+    let ticket = form.ticket.trim();
+    if !ticket.is_empty() && ticket != "new" {
+        new = new.existing_ticket(whole::<i64>(ticket, "ticket")?);
+    }
+    legal_case::set_case(&state, &user, id, new).await?;
+    Ok((
+        Toast::success(text(&lang, "legal.set_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that clears a legal case flag.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ClearCaseForm {
+    /// The flag.
+    #[serde(default)]
+    pub case: String,
+    /// `paid`, `settled` or `judgment`.
+    #[serde(default)]
+    pub outcome: String,
+    /// A note on the outcome.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /property/leases/{id}/legal-cases/clear`.
+async fn clear_legal_case(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ClearCaseForm>,
+) -> Result<Response> {
+    let lease = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let case_id = whole::<i64>(&form.case, "case")?;
+    let case = LegalCase::find(&state.db, case_id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    if case.root_id != lease.root_id {
+        return Err(Error::NotFound);
+    }
+    let outcome: CaseOutcome = form.outcome.trim().parse().map_err(|_| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::english("property.legal.outcome_required", &[]),
+        )
+    })?;
+    let note = Some(form.note).filter(|n| !n.trim().is_empty());
+    legal_case::clear_case(&state, Some(&user), case_id, outcome, note).await?;
+    Ok((
+        Toast::success(text(&lang, "legal.clear_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that records the move-out inspection.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct InspectionForm {
+    /// The day the inspection was completed.
+    #[serde(default)]
+    pub done_on: String,
+    /// The day all the keys were returned.
+    #[serde(default)]
+    pub keys_returned_on: String,
+    /// `yes` when the inspection found defects that need work.
+    #[serde(default)]
+    pub defects: String,
+}
+
+/// An optional date: blank is `None`.
+fn optional_date(value: &str, field: &str) -> Result<Option<NaiveDate>> {
+    if value.trim().is_empty() {
+        return Ok(None);
+    }
+    required_date(value, field).map(Some)
+}
+
+/// `POST /property/leases/{id}/move-out-inspection`.
+async fn move_out_inspection(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<InspectionForm>,
+) -> Result<Response> {
+    let inspection = Inspection {
+        done_on: optional_date(&form.done_on, "done_on")?,
+        keys_returned_on: optional_date(&form.keys_returned_on, "keys_returned_on")?,
+        defects: form.defects.trim() == "yes",
+    };
+    termination::record_inspection(&state, &user, id, inspection).await?;
+    Ok((
+        Toast::success(text(&lang, "inspection.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that terminates a lease.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TerminateForm {
+    /// The day the keys were returned.
+    #[serde(default)]
+    pub move_out: String,
+    /// The day rent stays due until, when the contract says so.
+    #[serde(default)]
+    pub rent_due_until: String,
+    /// `refund` or `keep`: what becomes of the credit that is left.
+    #[serde(default)]
+    pub credit: String,
+}
+
+/// `POST /property/leases/{id}/terminate`.
+async fn terminate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TerminateForm>,
+) -> Result<Response> {
+    let termination = Termination {
+        move_out: required_date(&form.move_out, "move_out")?,
+        rent_due_until: optional_date(&form.rent_due_until, "rent_due_until")?,
+        keep_credit: form.credit.trim() == "keep",
+    };
+    termination::terminate(&state, &user, id, termination)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(text(&lang, "terminate.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that sends a formal payment demand.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DemandForm {
+    /// The demand's id.
+    #[serde(default)]
+    pub demand: String,
+}
+
+/// `POST /property/leases/{id}/arrears-demand`: sends the formal payment
+/// demand to the tenant as a statutory notice.
+async fn send_arrears_demand(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<DemandForm>,
+) -> Result<Response> {
+    let demand = whole::<i64>(&form.demand, "demand")?;
+    arrears::send_demand(&state, &user, id, demand).await?;
+    Ok((
+        Toast::success(text(&lang, "arrears.sent_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that records a payment plan.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct PlanForm {
+    /// The agreed dates.
+    #[serde(default)]
+    pub note: String,
+    /// The latest agreed date.
+    #[serde(default)]
+    pub latest: String,
+}
+
+/// `POST /property/leases/{id}/payment-plan`: records the agreed dates as a
+/// note on the lease.
+async fn payment_plan(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<PlanForm>,
+) -> Result<Response> {
+    let plan = NewPlan {
+        note: form.note,
+        latest_on: required_date(&form.latest, "latest")?,
+    };
+    arrears::record_plan(&state, &user, id, plan).await?;
+    Ok((
+        Toast::success(text(&lang, "arrears.plan_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that requests a forced termination.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ForceForm {
+    /// `abandoned` or `eviction_executed`.
+    #[serde(default)]
+    pub reason: String,
+    /// The abandonment inspection date or the execution date.
+    #[serde(default)]
+    pub move_out: String,
+    /// The legal basis for repossessing an abandoned unit.
+    #[serde(default)]
+    pub basis: String,
+    /// `yes` when the inspection found defects.
+    #[serde(default)]
+    pub defects: String,
+    /// The ids of the cheques to keep as evidence, separated by commas.
+    #[serde(default)]
+    pub keep: String,
+    /// The ids of the cheques to return, separated by commas.
+    #[serde(default)]
+    pub hand_back: String,
+}
+
+/// The cheque ids in `value`, separated by commas or spaces.
+fn cheque_ids(value: &str, field: &str) -> Result<Vec<i64>> {
+    value
+        .split([',', ' ', ';'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| whole::<i64>(part, field))
+        .collect()
+}
+
+/// `POST /property/leases/{id}/force-terminate`: the property manager
+/// requests the forced termination; it waits for a holder of
+/// `leases.force_terminate`.
+async fn force_terminate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ForceForm>,
+) -> Result<Response> {
+    let reason = ForceReason::parse(&form.reason).ok_or_else(|| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            text(&lang, "force.reason_required"),
+        )
+    })?;
+    let mut request = ForceRequest::new(reason, required_date(&form.move_out, "move_out")?);
+    request.basis = Some(form.basis).filter(|b| !b.trim().is_empty());
+    request.defects = form.defects.trim() == "yes";
+    request.keep = cheque_ids(&form.keep, "keep")?;
+    request.hand_back = cheque_ids(&form.hand_back, "hand_back")?;
+    let outcome = force::request(&state, &user, id, request)
+        .await
+        .map_err(TransitionError::into_error)?;
+    let key = if outcome.is_pending() {
+        "force.sent"
+    } else {
+        "force.done"
+    };
+    Ok((Toast::success(text(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// The form that records the Ejari cancellation.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct EjariCancelForm {
+    /// The day the registration was cancelled.
+    #[serde(default)]
+    pub cancelled_on: String,
+}
+
+/// `POST /property/leases/{id}/ejari-cancellation` (`PRP.RUL.13`).
+async fn ejari_cancellation(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<EjariCancelForm>,
+) -> Result<Response> {
+    let day = required_date(&form.cancelled_on, "cancelled_on")?;
+    termination::record_ejari_cancellation(&state, &user, id, day).await?;
+    Ok((
+        Toast::success(text(&lang, "ejari.cancelled_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form of the Ejari registration.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct EjariForm {
+    /// The registration number.
+    #[serde(default)]
+    pub number: String,
+    /// The day it was registered.
+    #[serde(default)]
+    pub registered_on: String,
+    /// The day it expires.
+    #[serde(default)]
+    pub expires_on: String,
+}
+
+/// The form that applies the deposit to the deductions.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ApplyDepositForm {
+    /// The property manager who approves.
+    #[serde(default)]
+    pub approver: String,
+    /// Finance or the owner, above AED 5,000.
+    #[serde(default)]
+    pub second_approver: String,
+}
+
+/// `POST /property/leases/{id}/apply-deposit`: forfeits the deposit with the
+/// reason *applied to deductions* and invoices the damages it does not cover.
+async fn apply_deposit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ApplyDepositForm>,
+) -> Result<Response> {
+    let mut request = ApplyRequest::new(whole::<i64>(&form.approver, "approver")?);
+    if !form.second_approver.trim().is_empty() {
+        request = request.second(whole::<i64>(&form.second_approver, "second_approver")?);
+    }
+    deposit_forfeit::apply(&state, &user, id, request).await?;
+    Ok((
+        Toast::success(text(&lang, "deposit_forfeit.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that asks to write off an invoice.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct WriteOffForm {
+    /// The invoice.
+    #[serde(default)]
+    pub invoice: String,
+    /// The reason code.
+    #[serde(default)]
+    pub reason_code: String,
+    /// The explanation.
+    #[serde(default)]
+    pub reason_text: String,
+    /// What the owner agreed.
+    #[serde(default)]
+    pub consent_note: String,
+    /// The owner's contact who gave it.
+    #[serde(default)]
+    pub consent_by: String,
+    /// The day it was given.
+    #[serde(default)]
+    pub consent_on: String,
+}
+
+/// `POST /property/leases/{id}/write-off`: asks to write off the open balance
+/// of an invoice of the lease; for a managed unit with the owner's consent.
+async fn write_off(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<WriteOffForm>,
+) -> Result<Response> {
+    let invoice = whole::<i64>(&form.invoice, "invoice")?;
+    let consent = if form.consent_note.trim().is_empty()
+        && form.consent_by.trim().is_empty()
+        && form.consent_on.trim().is_empty()
+    {
+        None
+    } else {
+        Some(Consent {
+            note: form.consent_note.clone(),
+            given_by: form.consent_by.clone(),
+            given_on: required_date(&form.consent_on, "consent_on")?,
+        })
+    };
+    let reason_text = Some(form.reason_text.as_str()).filter(|t| !t.trim().is_empty());
+    let answer = write_off_mod::request(
+        &state,
+        &user,
+        id,
+        invoice,
+        form.reason_code.trim(),
+        reason_text,
+        consent,
+    )
+    .await?;
+    let done = match answer {
+        wl_kernel::invoicing::WriteOffAnswer::WrittenOff => "write_off.done",
+        wl_kernel::invoicing::WriteOffAnswer::Pending { .. } => "write_off.requested",
+    };
+    Ok((Toast::success(text(&lang, done)), renox::HxRefresh).into_response())
+}
+
+/// `POST /property/leases/{id}/ejari`.
+async fn ejari(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<EjariForm>,
+) -> Result<Response> {
+    let expires_on = if form.expires_on.trim().is_empty() {
+        None
+    } else {
+        Some(required_date(&form.expires_on, "expires_on")?)
+    };
+    leases::record_ejari(
+        &state,
+        &user,
+        id,
+        EjariInput {
+            number: form.number,
+            registered_on: required_date(&form.registered_on, "registered_on")?,
+            expires_on,
+        },
+    )
+    .await?;
+    Ok((
+        Toast::success(text(&lang, "ejari.recorded_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that records the post-dated cheques.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ChequesForm {
+    /// The bank the cheques are drawn on.
+    #[serde(default)]
+    pub bank: String,
+    /// One cheque a line: `number | YYYY-MM-DD | amount | instalment`.
+    #[serde(default)]
+    pub cheques: String,
+}
+
+/// The cheques of `text`, one `number | date | amount | instalment` per line
+/// (the instalment, from 1, is optional), linked to the rent charges of
+/// `charges` by their order.
+pub fn parse_cheque_lines(
+    text: &str,
+    charges: &[LeaseCharge],
+) -> std::result::Result<Vec<ChequeEntry>, String> {
+    let rent: Vec<&LeaseCharge> = charges
+        .iter()
+        .filter(|c| c.charge_type == RENT && c.status != ChargeStatus::Cancelled)
+        .collect();
+    let mut entries = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let n = index + 1;
+        let parts: Vec<&str> = line.split('|').map(str::trim).collect();
+        if parts.len() < 3 {
+            return Err(format!(
+                "Line {n}: number | YYYY-MM-DD | amount | instalment"
+            ));
+        }
+        let date =
+            parse_date(parts[1]).ok_or_else(|| format!("Line {n}: the date is YYYY-MM-DD"))?;
+        let amount =
+            parse_aed(parts[2]).ok_or_else(|| format!("Line {n}: the amount is AED 0.00"))?;
+        let charge_id = match parts.get(3).filter(|p| !p.is_empty()) {
+            None => None,
+            Some(position) => {
+                let position: usize = position
+                    .parse()
+                    .map_err(|_| format!("Line {n}: the instalment is 1, 2, 3 ..."))?;
+                let charge = rent
+                    .get(position.wrapping_sub(1))
+                    .ok_or_else(|| format!("Line {n}: there is no instalment {position}"))?;
+                Some(charge.id)
+            }
+        };
+        entries.push(ChequeEntry::new(parts[0], date, amount, charge_id));
+    }
+    Ok(entries)
+}
+
+/// `POST /property/leases/{id}/cheques`.
+async fn cheques(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ChequesForm>,
+) -> Result<Response> {
+    let lease = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    if !user.has_permission_in(permissions::LEASES_CREATE, &lease.scope()) {
+        return Err(Error::Forbidden);
+    }
+    let charges = lease.charges(&state.db).await?;
+    let entries = parse_cheque_lines(&form.cheques, &charges)
+        .map_err(|message| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message))?;
+    register_cheques(&state, Some(user.id), &lease, &form.bank, entries).await?;
+    Ok((
+        Toast::success(text(&lang, "cheques.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn charge(id: i64, status: ChargeStatus) -> LeaseCharge {
+        LeaseCharge {
+            id,
+            charge_type: RENT.to_owned(),
+            status,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn cheque_lines_are_linked_to_the_rent_charges_in_order() {
+        let charges = [
+            charge(10, ChargeStatus::Cancelled),
+            charge(11, ChargeStatus::Planned),
+            charge(12, ChargeStatus::Planned),
+        ];
+        let text = "101 | 2027-01-01 | 25,000.00 | 1\n\n102 | 2027-04-01 | 25000 | 2\n103 | 2027-07-01 | 25000";
+        let entries = parse_cheque_lines(text, &charges).unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].charge_id, Some(11));
+        assert_eq!(entries[1].charge_id, Some(12));
+        assert_eq!(entries[2].charge_id, None);
+        assert_eq!(entries[0].amount, 2_500_000);
+        assert_eq!(entries[0].number, "101");
+    }
+
+    #[test]
+    fn a_bad_line_names_its_number() {
+        let charges = [charge(11, ChargeStatus::Planned)];
+        for (text, line) in [
+            ("101 | 2027-01-01", "Line 1"),
+            ("101 | 01/01/2027 | 100", "Line 1"),
+            ("\n101 | 2027-01-01 | abc", "Line 2"),
+            ("101 | 2027-01-01 | 100 | 5", "Line 1"),
+        ] {
+            let error = parse_cheque_lines(text, &charges).unwrap_err();
+            assert!(error.starts_with(line), "{error}");
+        }
+    }
+}

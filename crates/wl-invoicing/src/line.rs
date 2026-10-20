@@ -44,6 +44,9 @@ pub struct InvoiceLine {
     pub origin_type: Option<String>,
     /// The id of the record the line bills, if any.
     pub origin_id: Option<i64>,
+    /// The charge type code, which budget vs actual maps to a budget
+    /// category (`FIN.BUD.01`).
+    pub charge_type: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -69,6 +72,7 @@ impl InvoiceLine {
             vat_category: draft.vat_category,
             origin_type: draft.origin.as_ref().map(|o| o.subject_type.clone()),
             origin_id: draft.origin.as_ref().map(|o| o.subject_id),
+            charge_type: draft.charge_type.as_deref().map(str::to_lowercase),
             ..Default::default()
         };
         line.set_amounts(&line.compute(rate_micro));

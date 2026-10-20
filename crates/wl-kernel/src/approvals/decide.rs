@@ -218,6 +218,8 @@ impl Approval {
                     run.emit(state).await?;
                     // A `void` that ran also emits `RecordVoided`.
                     voids::approval::announce_approved(state, &self.request).await?;
+                    // A late entry that was approved also emits `LateEntryRecorded`.
+                    crate::late_entries::announce_approved(state, &self.request).await?;
                 }
                 state.emit(decided.clone()).await?;
                 notify::approved(state, &self.request).await?;

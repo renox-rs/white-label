@@ -11,8 +11,9 @@
 
 use std::collections::HashMap;
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use wl_kernel::payments::{Direction, PaymentStatus, PaymentSummary};
+use wl_kernel::payments::{BankPayment, Direction, PaymentStatus, PaymentSummary};
 use wl_kernel::{PartyId, Subject};
 
 use crate::allocation::Allocation;
@@ -57,6 +58,40 @@ pub async fn summary(db: &Db, payment: &Payment) -> Result<PaymentSummary> {
     Ok(payment.summary(allocated(db, payment.id).await?))
 }
 
+/// The `received` payments of `legal_entity_id` in `bank_account` dated
+/// strictly after `after`, oldest first. The payment's own date decides, not
+/// when it was recorded: a balance is as of the end of its day. A payment
+/// without a bank account (a set-off) never matches.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn payments_after(
+    db: &Db,
+    legal_entity_id: i64,
+    bank_account: &str,
+    after: NaiveDate,
+) -> Result<Vec<BankPayment>> {
+    let payments = Payment::query()
+        .where_(Payment::LEGAL_ENTITY_ID.eq(legal_entity_id))
+        .where_(Payment::BANK_ACCOUNT.eq(bank_account))
+        .where_(Payment::STATUS.eq(PaymentStatus::Received))
+        .where_(Payment::PAYMENT_DATE.gt(after))
+        .order_by(Payment::PAYMENT_DATE)
+        .order_by(Payment::ID)
+        .get(db)
+        .await?;
+    let sums = allocated_by_payment(db, &payments).await?;
+    Ok(payments
+        .iter()
+        .map(|payment| BankPayment {
+            payment: payment.summary(sums.get(&payment.id).copied().unwrap_or(0)),
+            bank_account: bank_account.to_owned(),
+            reference: payment.reference.clone(),
+        })
+        .collect())
+}
+
 /// The sum of the refunds of `party` in `currency` in `statuses`, in fils;
 /// only those of `source` when given.
 async fn refund_sum(
@@ -89,6 +124,8 @@ pub async fn credit_balance(db: &Db, party: PartyId, currency: &str) -> Result<i
         .where_(Payment::CURRENCY.eq(currency.trim().to_ascii_uppercase()))
         .where_(Payment::DIRECTION.eq(Direction::In))
         .where_(Payment::STATUS.eq(PaymentStatus::Received))
+        // A repayment by the owner is no credit of the owner party.
+        .where_(Payment::PURPOSE.ne(wl_kernel::drawings::PURPOSE))
         .get(db)
         .await?;
     let sums = allocated_by_payment(db, &payments).await?;
@@ -191,6 +228,29 @@ pub async fn covers(db: &Db, refund: &Refund) -> Result<bool> {
     )
     .await?;
     Ok(refund.amount <= unallocated(db, &payment).await? - paid)
+}
+
+/// Whether the source of the failed `refund` has room to claim its amount
+/// again when the refund goes back to `approved` or `requested` (`retry`,
+/// `change_method`): a refund out of a payment or the party's credit must
+/// fit in what is refundable after the refunds that claim it now. A source
+/// another module owns is vouched for by its owner.
+pub async fn room_for(db: &Db, refund: &Refund) -> Result<bool> {
+    match refund.source_kind.as_str() {
+        "payment" => {
+            let Some(payment_id) = refund.source_payment() else {
+                return Ok(false);
+            };
+            let Some(payment) = Payment::find(db, payment_id.0).await? else {
+                return Ok(false);
+            };
+            Ok(refund.amount <= refundable_payment(db, &payment).await?)
+        }
+        "party_credit" => {
+            Ok(refund.amount <= refundable_credit(db, refund.party(), &refund.currency).await?)
+        }
+        _ => Ok(true),
+    }
 }
 
 /// The payments made in advance for `prepaid`, oldest first.

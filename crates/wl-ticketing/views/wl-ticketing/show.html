@@ -12,6 +12,10 @@
         <rx-confirm :id="'ticket-' ~ item.name ~ '-' ~ ticket.id" :label="item.label" :action="'/tickets/' ~ ticket.id ~ '/actions/' ~ item.name" method="POST"
                     :title="tx['action.confirm_title']" :message="item.label" :confirm-label="item.label"/>
       </template>
+      <rx-action-sheet rx-if="can_new_time" :id="'new-time-' ~ ticket.id" :label="tx['no_show.new_time']" :action="route('wl_ticketing.new_time', ticket.id)"
+                       :title="tx['no_show.new_time_title']" :description="tx['no_show.new_time_description']" :submit-label="tx['no_show.new_time']" icon="clock">
+        <rx-input name="visit_at" type="datetime-local" :label="tx['fields.visit_at']" :id="'new-time-visit-' ~ ticket.id" required/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_hold" :id="'hold-ticket-' ~ ticket.id" :label="tx['hold.action']" :action="route('wl_ticketing.hold', ticket.id)"
                        :title="tx['hold.title']" :description="tx['hold.description']" :submit-label="tx['hold.submit']" icon="pause">
         <rx-select name="hold_reason" :label="tx['hold.reason']" :options="hold_reasons" :id="'hold-reason-' ~ ticket.id" required/>
@@ -22,6 +26,8 @@
         <rx-textarea name="reason" :label="tx['cancel_ticket.reason']" :id="'cancel-reason-' ~ ticket.id" required/>
       </rx-action-sheet>
     </rx-page-header>
+    <rx-alert rx-if="ticket.vendor_document_flag" kind="warning" :title="tx['contract.vendor_document']" :message="tx['contract.vendor_document_visit']"/>
+    <rx-alert rx-if="no_show" kind="warning" :title="tx['no_show.title']" :message="no_show"/>
     <rx-card :title="tx['sections.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['fields.number']" :value="ticket.number" copyable/>
@@ -30,6 +36,7 @@
         <rx-entry :label="tx['fields.priority']" :value="card.priority"/>
         <rx-entry :label="tx['fields.channel']" :value="card.channel"/>
         <rx-entry :label="tx['fields.requester']" :value="card.requester" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.contract']" rx-if="contract" :value="contract.number" :url="route('wl_ticketing.contract', contract.id)"/>
         <rx-entry :label="tx['fields.assignee']" :value="card.assignee" :placeholder="tx['none']"/>
         <rx-entry :label="tx['fields.visit_at']" :value="card.visit" :placeholder="tx['none']"/>
         <rx-entry :label="tx['fields.due_at']" rx-if="card.due" :value="card.due"/>
@@ -48,6 +55,7 @@
         <rx-entry :label="tx['fields.created_at']" :value="card.created"/>
       </rx-infolist>
     </rx-card>
+    <rx-include template="wl-ticketing/_charges.html"/>
     <rx-include template="wl-ticketing/_assignments.html"/>
     <rx-include template="wl-ticketing/_comments.html"/>
     <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>

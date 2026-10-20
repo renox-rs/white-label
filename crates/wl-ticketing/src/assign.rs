@@ -371,8 +371,10 @@ fn refused(message: impl Into<String>) -> TransitionError {
 }
 
 /// Checks the assignee: a staff user that exists, or a vendor party that
-/// the party directory finds and that is `active` (a blocked one is refused
-/// until #37 brings `BlockGuard`).
+/// the party directory finds and that is `active`. Assigning work to a vendor
+/// counts as starting new business with it, so the kernel's block guard is
+/// asked too (`PTY.ACL.03`): a blocked vendor is refused with the neutral text
+/// "This party is on hold", whoever asks ([`crate::vendor_block`]).
 pub(crate) async fn check_assignee(
     state: &AppState,
     assignee: Assignee,
@@ -383,15 +385,22 @@ pub(crate) async fn check_assignee(
                 return Err(refused("The assignee is not a user."));
             }
         }
-        Assignee::Party { id } => match directory(state).status(&state.db, id).await? {
-            Some(PartyStatus::Active) => {}
-            Some(_) => {
+        Assignee::Party { id } => {
+            let status = directory(state).status(&state.db, id).await?;
+            let Some(status) = status else {
+                return Err(refused("The vendor is not a known party."));
+            };
+            if matches!(status, PartyStatus::Active | PartyStatus::Blocked)
+                && let Some(message) = crate::vendor_block::refusal(state, id).await?
+            {
+                return Err(refused(message));
+            }
+            if status != PartyStatus::Active {
                 return Err(refused(
                     "The vendor is not active, so it cannot be assigned.",
                 ));
             }
-            None => return Err(refused("The vendor is not a known party.")),
-        },
+        }
     }
     Ok(())
 }

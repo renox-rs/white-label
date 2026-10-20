@@ -712,6 +712,7 @@ Other exits:
 | `SalaryFile` | Build a SIF file from a list of payments (payroll run or final settlement) | payroll, settlements |
 | `PayrollCalendar` | Payroll cut-off date and WPS due date per legal entity and period (cut-off day D of `HRM.RUL.02`) | wl-attendance (provisional hours at the cut-off, `HRM.RUL.15` timing); wl-invoicing (`FIN.CFL.01`: payroll payments on the WPS due date, with the run's net total and employer cost per period, from approved or estimated runs; each run's paid date; failed lines of a partly rejected run; unpaid final settlements with their legal deadline) |
 | `Workforce::employees_in(role, scope)` | Employees (`onboarding`, `active`, `on_leave`, `notice`) with a job role or trade in a scope | wl-documents (SOP required readers, `DOC.RUL.04`) |
+| `Workforce::all_staff` / `staff(employee)` / `employee_of_user(user)` | The employees `employees_in` lists; one employee's role, scopes, account, legal entity, manager (HR when none) and leave (the return date while `on_leave`); the employee of a user | wl-documents (SOP acknowledgements, staff inbox, `DOC.RUL.04`) |
 
 **Consumes**
 

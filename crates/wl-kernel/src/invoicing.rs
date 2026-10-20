@@ -303,6 +303,11 @@ pub struct DraftLine {
     pub vat_category: VatCategory,
     /// The record the line bills (a charge, a usage record, a job card…).
     pub origin: Option<Subject>,
+    /// The code of the charge type the line bills, if any: the key through
+    /// which budget vs actual maps the line to a budget category
+    /// (`FIN.BUD.01`). Lines without one are reported as *Uncategorised*.
+    #[serde(default)]
+    pub charge_type: Option<String>,
 }
 
 impl DraftLine {
@@ -315,7 +320,14 @@ impl DraftLine {
             discount: 0,
             vat_category,
             origin: None,
+            charge_type: None,
         }
+    }
+
+    /// With this charge type code (`FIN.BUD.01`).
+    pub fn charge_type(mut self, code: &str) -> Self {
+        self.charge_type = Some(code.trim().to_owned()).filter(|c| !c.is_empty());
+        self
     }
 
     /// With this quantity, in thousandths.
@@ -335,6 +347,38 @@ impl DraftLine {
         self.origin = Some(origin);
         self
     }
+
+    /// The net of the line in fils: quantity × unit price rounded half-up
+    /// to fils, minus the discount.
+    pub fn net(&self) -> i64 {
+        div_half_up(
+            i128::from(self.quantity_milli) * i128::from(self.unit_price),
+            1_000,
+        ) - self.discount
+    }
+
+    /// The VAT of the line in fils: the net × the category's rate, rounded
+    /// half-up to fils (as `wl-invoicing` computes a line).
+    pub fn vat(&self) -> i64 {
+        div_half_up(
+            i128::from(self.net()) * i128::from(self.vat_category.rate_bp()),
+            10_000,
+        )
+    }
+
+    /// The line with VAT, in fils: [`net`](Self::net) + [`vat`](Self::vat).
+    /// A module that shows an amount before it drafts an invoice (a ticket's
+    /// charge) adds these up, so the figure is the one the draft will carry.
+    pub fn gross(&self) -> i64 {
+        self.net() + self.vat()
+    }
+}
+
+/// `num ÷ den` rounded half-up (half away from zero when negative).
+fn div_half_up(num: i128, den: i128) -> i64 {
+    let magnitude = (2 * num.abs() + den) / (2 * den);
+    let rounded = if num < 0 { -magnitude } else { magnitude };
+    i64::try_from(rounded).unwrap_or(if num < 0 { i64::MIN } else { i64::MAX })
 }
 
 /// A draft invoice another module asks for: [`Invoicer::draft`].
@@ -640,6 +684,22 @@ pub struct Reopened {
     pub skipped: bool,
 }
 
+/// What [`Invoicer::write_off`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteOffAnswer {
+    /// The invoice is `written_off` (no approval was needed);
+    /// [`InvoiceWrittenOff`] was emitted.
+    WrittenOff,
+    /// The amount is above the approval limit: the approval request waits
+    /// and the invoice stays as it is. [`InvoiceWrittenOff`] follows when the
+    /// last approver says yes; a request that ends any other way gives
+    /// `ApprovalDecided` for the invoice.
+    Pending {
+        /// The approval request.
+        request: i64,
+    },
+}
+
 /// Drafts, reads and allocates invoices for other modules. `wl-invoicing`
 /// provides it; without that module, [`invoicer`] gives [`NoInvoicer`].
 pub trait Invoicer: Send + Sync + 'static {
@@ -647,6 +707,29 @@ pub trait Invoicer: Send + Sync + 'static {
     /// when invoicing is off.
     fn draft<'a>(&'a self, db: &'a Db, draft: InvoiceDraft)
     -> InvoiceFuture<'a, Option<InvoiceId>>;
+
+    /// Replaces the lines of the `draft` invoice `id` with those of `draft`
+    /// and recomputes its totals; the party, source and dates stay. Returns
+    /// whether it did: `false` when the invoice is no longer a draft (it was
+    /// issued), so an issued invoice is never rewritten, and by default
+    /// (invoicing is off). A module that drafts one invoice per record calls
+    /// it instead of drafting a second.
+    fn update_draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: InvoiceId,
+        _draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Discards the `draft` invoice `id`: it is deleted, since a draft has no
+    /// number and was never sent. Returns whether it did: `false` when the
+    /// invoice is not a draft (an issued invoice is credited, never deleted)
+    /// or does not exist, and by default (invoicing is off).
+    fn discard_draft<'a>(&'a self, _db: &'a Db, _id: InvoiceId) -> InvoiceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 
     /// The invoice with this id.
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>>;
@@ -727,6 +810,23 @@ pub trait Invoicer: Send + Sync + 'static {
         })
     }
 
+    /// Issues the `draft` invoice `id` through its `issue` transition: the
+    /// permission, the guards (lines, active entity, VAT registration,
+    /// billed party, exchange rate, e-invoicing) and the gapless number are
+    /// those of the invoice's own `issue`. `by` is the user, who needs
+    /// `invoices.issue`; `None` is the system, which may issue only an
+    /// invoice whose source the invoicing module is set to issue
+    /// automatically (off by default: drafts are reviewed first). The default
+    /// refuses (422): invoicing is not enabled.
+    fn issue<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: InvoiceId,
+        _by: Option<&'a AuthUser>,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async move { Err(issuing_off(id)) })
+    }
+
     /// Credits an invoice in full: drafts and issues a credit note for every
     /// line, applies it and makes the invoice `credited`. Refused while
     /// anything is allocated to the invoice, or for a blank `reason`. `by` is
@@ -786,6 +886,29 @@ pub trait Invoicer: Send + Sync + 'static {
         Box::pin(async { Ok(0) })
     }
 
+    /// Writes off the whole open balance of invoice `id` as a bad debt for
+    /// `by` (wl-invoicing `write_off`: the user needs `invoices.write_off`,
+    /// and `FIN.ACL.15` turns a write-off above the limit into an approval
+    /// request). `reason_code` is one of the configured codes (`other` needs
+    /// a `reason_text`). Refused (422) for a disputed invoice, one without a
+    /// balance, or one in a state that cannot be written off. The default
+    /// refuses (422): invoicing is not enabled.
+    fn write_off<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: &'a AuthUser,
+        id: InvoiceId,
+        _reason_code: &'a str,
+        _reason_text: Option<&'a str>,
+    ) -> InvoiceFuture<'a, WriteOffAnswer> {
+        Box::pin(async move {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("invoice {id} cannot be written off: invoicing is not enabled"),
+            ))
+        })
+    }
+
     /// Takes `amount` fils of a credit note's remaining balance for `refund`
     /// (a refund subject) on its numbered `attempt`. Idempotent per refund
     /// and attempt; refused when the remaining is too low. The default
@@ -805,6 +928,14 @@ pub trait Invoicer: Send + Sync + 'static {
             ))
         })
     }
+}
+
+/// The 422 of issuing an invoice while invoicing is off.
+fn issuing_off(id: InvoiceId) -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        format!("invoice {id} cannot be issued: invoicing is not enabled"),
+    )
 }
 
 /// The 422 of crediting an invoice while invoicing is off.
@@ -890,6 +1021,10 @@ pub struct InvoiceIssued {
     pub source: Subject,
     /// The total with VAT, in fils of the invoice's currency.
     pub total: i64,
+    /// The total without VAT, in fils of the invoice's currency.
+    pub net_total: i64,
+    /// The issue date.
+    pub issue_date: NaiveDate,
     /// The due date.
     pub due_date: NaiveDate,
 }
@@ -996,6 +1131,8 @@ pub struct CreditNoteIssued {
     pub party: PartyId,
     /// The total with VAT, in fils of the invoice's currency.
     pub amount: i64,
+    /// The total without VAT, in fils of the invoice's currency.
+    pub net_amount: i64,
     /// Why it was issued.
     pub reason: String,
 }
@@ -1814,11 +1951,61 @@ impl ReverseCost {
     }
 }
 
+/// A request to post cost on a cost object (`CostPoster::post`, called
+/// through [`post_cost`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PostCost {
+    /// The record that causes it, e.g. the supplier bill.
+    pub source: Subject,
+    /// The idempotency key, e.g. `invoicing.supplier_bill_line:<id>`. A key
+    /// that was already used changes nothing.
+    pub key: String,
+    /// The cost object (e.g. a project or a job) that carries the cost.
+    pub cost_object: Subject,
+    /// The cost, in fils of AED.
+    pub amount_aed: i64,
+    /// The cost code the cost is coded to, if any. A code mapped to a budget
+    /// category of kind `owner_drawings` is never posted (`FIN.ACL.21`).
+    pub cost_code: Option<String>,
+}
+
+impl PostCost {
+    /// `amount_aed` fils caused by `source`, under the idempotency `key`, to
+    /// post on `cost_object`.
+    pub fn new(
+        source: Subject,
+        key: impl Into<String>,
+        cost_object: Subject,
+        amount_aed: i64,
+    ) -> Self {
+        Self {
+            source,
+            key: key.into(),
+            cost_object,
+            amount_aed,
+            cost_code: None,
+        }
+    }
+
+    /// Coded to `code`.
+    pub fn cost_code(mut self, code: &str) -> Self {
+        self.cost_code = Some(code.trim().to_lowercase()).filter(|c| !c.is_empty());
+        self
+    }
+}
+
 /// Posts and reverses cost on cost objects. The owner of the cost entries
 /// provides it with [`provide_cost_poster`]; `wl-invoicing` calls it and
 /// stores no cost entries itself. Without a provider, [`cost_poster`] gives
-/// [`NoCostPoster`].
+/// [`NoCostPoster`]. Callers post through [`post_cost`], which refuses owner
+/// drawings before the poster is asked.
 pub trait CostPoster: Send + Sync + 'static {
+    /// Posts cost on a cost object. The default does nothing and succeeds:
+    /// no module keeps cost entries.
+    fn post<'a>(&'a self, _state: &'a AppState, _request: PostCost) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
     /// Takes cost back from its cost objects. The default does nothing and
     /// succeeds: no module keeps cost entries.
     fn reverse<'a>(
@@ -1854,6 +2041,31 @@ pub fn provide_cost_poster(app: &mut Registry, poster: impl CostPoster) {
     app.provide(poster);
 }
 
+/// Posts `request` through the app's [`CostPoster`], after checking that its
+/// cost code is not owner drawings (`FIN.ACL.21`: drawings are never
+/// operating cost and post no cost to a cost object, from any caller).
+///
+/// # Errors
+///
+/// 422 when the cost code is mapped to a budget category of kind
+/// `owner_drawings`; whatever the poster answers otherwise.
+pub async fn post_cost(state: &AppState, request: PostCost) -> Result<()> {
+    if let Some(code) = request.cost_code.as_deref() {
+        let drawings = crate::budgets::company_budgets(state)
+            .is_owner_drawings_code(&state.db, code)
+            .await?;
+        if drawings {
+            return Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "owner drawings are never posted to a cost object: the cost code `{code}` is owner drawings"
+                ),
+            ));
+        }
+    }
+    cost_poster(state).post(state, request).await
+}
+
 /// The app's [`CostPoster`], or [`NoCostPoster`] when none is provided.
 pub fn cost_poster(state: &AppState) -> Arc<dyn CostPoster> {
     match state.provided::<Arc<dyn CostPoster>>() {
@@ -1865,6 +2077,24 @@ pub fn cost_poster(state: &AppState) -> Arc<dyn CostPoster> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_draft_line_has_its_net_vat_and_gross_in_fils() {
+        // AED 333.33 at 5%: VAT 16.6665 rounds half-up to 16.67.
+        let line = DraftLine::new("Replace AC capacitor", 33_333, VatCategory::Standard);
+        assert_eq!(
+            (line.net(), line.vat(), line.gross()),
+            (33_333, 1_667, 35_000)
+        );
+        // 2.5 hours at AED 80.00 less AED 10.00, exempt.
+        let line = DraftLine::new("Labour", 8_000, VatCategory::Exempt)
+            .quantity_milli(2_500)
+            .discount(1_000);
+        assert_eq!((line.net(), line.vat(), line.gross()), (19_000, 0, 19_000));
+        // Half-up at the fil: 0.5 fils of VAT rounds to 1.
+        let line = DraftLine::new("Fee", 10, VatCategory::Standard);
+        assert_eq!((line.net(), line.vat()), (10, 1));
+    }
 
     #[test]
     fn a_supplier_debit_note_id_is_a_subject_and_a_plain_number() {
@@ -2511,6 +2741,17 @@ mod tests {
     }
 
     #[test]
+    fn the_issue_fallback_is_a_422() {
+        match issuing_off(InvoiceId(5)) {
+            Error::Status(code, message) => {
+                assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+                assert!(message.contains("invoice 5"), "{message}");
+            }
+            other => panic!("unexpected error {other:?}"),
+        }
+    }
+
+    #[test]
     fn the_fallback_refuses_an_allocation_with_422() {
         match invoicing_off(InvoiceId(5)) {
             Error::Status(code, message) => {
@@ -2578,6 +2819,7 @@ mod tests {
             invoice: InvoiceId(1),
             party: PartyId(2),
             amount: 21_000,
+            net_amount: 20_000,
             reason: "price error".into(),
         };
         let json = renox::serde_json::to_value(&issued).unwrap();

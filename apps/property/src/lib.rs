@@ -1,42 +1,144 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
-mod model;
+pub mod agreement;
+pub mod agreement_lifecycle;
+pub mod amend;
+pub mod arrears;
+pub mod building;
+pub mod cancellation;
+pub mod cash_forecast;
+pub mod charge;
+pub mod charge_type;
+pub mod chase;
+pub mod cheques;
+pub mod compliance;
+mod db;
+pub mod deposit_forfeit;
+pub mod deposit_watch;
+pub mod documents;
+pub mod enquiry;
+pub mod events;
+pub mod force;
+pub mod holding;
+pub mod invoicing;
+pub mod lease;
+mod lease_checks;
+mod lease_events;
+pub mod lease_machine;
+pub mod leases;
+pub mod legal_case;
+pub mod notice;
+pub mod notices;
+pub mod pages;
+pub mod parse;
+pub mod permissions;
+pub mod renew;
+pub mod renewal;
+pub mod seed;
+pub mod statement;
+pub mod statement_dispute;
+pub mod statement_events;
+pub mod statement_machine;
+pub mod statement_payout;
+mod tasks;
+pub mod termination;
+pub mod terms;
 mod texts;
+pub mod ticket_update;
+pub mod unit;
+pub mod unit_machine;
+pub mod unit_transfer;
+pub mod withdraw;
+pub mod write_off;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
-use serde::Serialize;
 
-pub use model::Entry;
+pub use building::{Building, Floor, NewBuilding, create_building, ensure_floor};
+pub use cancellation::CancelWait;
+pub use charge::{ChargeStatus, LeaseCharge};
+pub use charge_type::ChargeType;
+pub use events::{
+    LeaseActivated, LeaseAmended, LeaseCancelled, LeaseForceTerminated, LeaseNoticeWithdrawn,
+    LeaseTerminated,
+};
+pub use lease::{CreditChoice, Lease, LeaseStatus, RenewalDecision, VersionKind};
+pub use leases::{DraftEdit, EjariInput, NewLease, NewVersion};
+pub use legal_case::{CaseOutcome, CaseStatus, CaseType, LegalCase};
+pub use unit::{NewUnit, Unit, UnitStatus, UnitType, UnitUse, create_unit};
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory (`resources/views/property/index.html`).
-const VIEWS: &[(&str, &str)] = &[(
-    "property/index.html",
-    include_str!("../views/property/index.html"),
-)];
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "property/index.html",
+        include_str!("../views/property/index.html"),
+    ),
+    (
+        "property/building.html",
+        include_str!("../views/property/building.html"),
+    ),
+    (
+        "property/leases.html",
+        include_str!("../views/property/leases.html"),
+    ),
+    (
+        "property/lease.html",
+        include_str!("../views/property/lease.html"),
+    ),
+    (
+        "property/statements.html",
+        include_str!("../views/property/statements.html"),
+    ),
+    (
+        "property/statement.html",
+        include_str!("../views/property/statement.html"),
+    ),
+    (
+        "property/compliance.html",
+        include_str!("../views/property/compliance.html"),
+    ),
+    (
+        "property/enquiries.html",
+        include_str!("../views/property/enquiries.html"),
+    ),
+    (
+        "property/agreements.html",
+        include_str!("../views/property/agreements.html"),
+    ),
+    (
+        "property/agreement.html",
+        include_str!("../views/property/agreement.html"),
+    ),
+];
+
+/// Dirhams as text from fils: `AED 25,000.00`.
+pub fn money_text(fils: i64) -> String {
+    let sign = if fils < 0 { "-" } else { "" };
+    let magnitude = fils.unsigned_abs();
+    let whole = (magnitude / 100).to_string();
+    let mut grouped = String::new();
+    for (index, digit) in whole.chars().enumerate() {
+        if index > 0 && (whole.len() - index).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    format!("{sign}AED {grouped}.{:02}", magnitude % 100)
+}
 
 /// The Property module. Add it to the app with `.module(property::Property)`.
 pub struct Property;
-
-/// What the page needs; `view:check` compares it with the template.
-#[derive(Serialize, ViewData)]
-#[view(template = "property/index.html")]
-struct IndexPage {
-    heading: String,
-    empty: String,
-    entries: Vec<Entry>,
-}
 
 impl Module for Property {
     fn name(&self) -> &'static str {
         "property"
     }
 
-    // Public on purpose: add `.require_auth()` to protect the page.
     fn routes(&self) -> Routes {
-        Routes::new().get("/property", index).name("property.index")
+        pages::routes()
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -44,7 +146,16 @@ impl Module for Property {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.model::<Entry>().view_data::<IndexPage>();
+        app.view_data::<pages::portfolio::IndexPage>()
+            .view_data::<pages::portfolio::BuildingPage>()
+            .view_data::<pages::leases::IndexPage>()
+            .view_data::<pages::leases::ShowPage>()
+            .view_data::<pages::statements::IndexPage>()
+            .view_data::<pages::statements::ShowPage>()
+            .view_data::<pages::compliance::IndexPage>()
+            .view_data::<pages::enquiries::IndexPage>()
+            .view_data::<pages::agreements::IndexPage>()
+            .view_data::<pages::agreements::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -54,14 +165,147 @@ impl Module for Property {
                 }
             }
         });
+        app.model::<Building>()
+            .model::<Floor>()
+            .model::<Unit>()
+            .model::<Lease>()
+            .model::<LeaseCharge>()
+            .model::<ChargeType>()
+            .model::<LegalCase>()
+            .model::<CancelWait>()
+            .model::<arrears::ArrearsDemand>()
+            .model::<arrears::DemandInvoice>()
+            .model::<arrears::PaymentPlan>()
+            .model::<deposit_watch::DepositWatch>()
+            .model::<deposit_forfeit::DepositSettlement>()
+            .model::<agreement::ManagementAgreement>()
+            .model::<agreement::AgreementUnit>()
+            .model::<agreement_lifecycle::HandoverItem>()
+            .model::<unit_transfer::UnitTransfer>()
+            .model::<compliance::BuildingFlag>()
+            .model::<enquiry::Enquiry>()
+            .model::<ticket_update::TicketUpdate>()
+            .model::<statement::OwnerStatement>()
+            .model::<statement::StatementLine>()
+            .model::<statement_dispute::StatementDispute>()
+            .model::<write_off::WriteOffConsent>();
+        unit_machine::register();
+        lease_machine::register();
+        documents::register();
+        lease_events::register(app);
+        legal_case::register(app);
+        // A deposit that grew is raised as a charge of the lease (BL-PRP-08).
+        wl_kernel::deposits::provide_deposit_top_ups(app, amend::LeaseTopUps);
+        cancellation::register(app);
+        cash_forecast::register();
+        invoicing::schedule(app);
+        notices::register_types();
+        chase::schedule(app);
+        renewal::schedule(app);
+        termination::schedule(app);
+        arrears::schedule(app);
+        deposit_watch::schedule(app);
+        agreement::register();
+        statement_machine::register();
+        statement_events::register(app);
+        statement::schedule(app);
+        write_off::register(app);
+        compliance::register(app);
+        seed::register_critical_rules();
+        ticket_update::register();
+        // A building is the scope roles are assigned in.
+        wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
+            let id = id.to_owned();
+            Box::pin(async move {
+                let Ok(id) = id.parse::<i64>() else {
+                    return Ok(None);
+                };
+                Ok(Building::find(db, id).await?.map(|b| b.name_en))
+            })
+        });
+        // A ticket about a building or one of its units is looked after by
+        // the people of that building: the scope of a building is itself, the
+        // scope of a unit is its building (the coordinators of the vendor's
+        // buildings are told, `DOC.RUL.01`, `WRK.RUL.14`).
+        wl_kernel::scopes::register(building::BUILDING_SUBJECT_TYPE, |_db, id| {
+            Box::pin(async move { Ok(Building::scope_of(id)) })
+        });
+        wl_kernel::scopes::register(unit::UNIT_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                Ok(match Unit::find(db, id).await? {
+                    Some(unit) => Building::scope_of(unit.building_id),
+                    None => renox::auth::permissions::Scope::global(),
+                })
+            })
+        });
+        // A formal payment demand is about a lease: its notice that gave up
+        // is a task for the property manager of the lease's building.
+        wl_kernel::scopes::register(arrears::DEMAND_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                Ok(match arrears::ArrearsDemand::find(db, id).await? {
+                    Some(demand) => match Lease::find(db, demand.lease_id).await? {
+                        Some(lease) => lease.scope(),
+                        None => renox::auth::permissions::Scope::global(),
+                    },
+                    None => renox::auth::permissions::Scope::global(),
+                })
+            })
+        });
+        // In the app group of the staff sidebar; the labels are the app's
+        // `nav.property` and `nav.leases` texts.
+        app.nav(
+            "app",
+            NavLink::route("property.index", "nav.property")
+                .icon("building-2")
+                .group("nav.app")
+                .order(10)
+                .permission(permissions::UNITS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("property.leases", "nav.leases")
+                .icon("file-text")
+                .group("nav.app")
+                .order(11)
+                .permission(permissions::LEASES_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("property.statements", "nav.statements")
+                .icon("receipt")
+                .group("nav.app")
+                .order(12)
+                .permission(permissions::OWNER_STATEMENTS_PREPARE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("property.enquiries", "nav.enquiries")
+                .icon("inbox")
+                .group("nav.app")
+                .order(14)
+                .permission(permissions::UNITS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("property.agreements", "nav.agreements")
+                .icon("file-signature")
+                .group("nav.app")
+                .order(13)
+                .permission(permissions::AGREEMENTS_MANAGE),
+        );
     }
 }
 
-async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let entries = Entry::query().latest().get(&db).await?;
-    Ok(View::typed(IndexPage {
-        heading: texts::t(&lang, "property.title"),
-        empty: texts::t(&lang, "property.empty"),
-        entries,
-    }))
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn money_reads_as_dirhams_with_grouped_thousands() {
+        assert_eq!(money_text(2_500_000), "AED 25,000.00");
+        assert_eq!(money_text(5), "AED 0.05");
+        assert_eq!(money_text(-123_456_789), "-AED 1,234,567.89");
+        assert_eq!(money_text(100_000_000), "AED 1,000,000.00");
+        assert_eq!(money_text(0), "AED 0.00");
+    }
 }
