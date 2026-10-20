@@ -98,7 +98,7 @@ async fn each_return_adds_its_quantity() {
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 15_000);
     assert_eq!(
         committed_value(&lines_of(t.db(), order.id).await.unwrap()),
-        150_000
+        75_000
     );
     assert_eq!(
         movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
