@@ -219,8 +219,9 @@ fn keep_reason(transition: Transition<Engagement>) -> Transition<Engagement> {
 }
 
 /// `decline`: onboarding → declined, with a reason of
-/// [`reasons::DECLINE_REASONS`]. The neutral template to the client comes
-/// with BL-ACC-02.
+/// [`reasons::DECLINE_REASONS`]; *other* needs a text. The service
+/// ([`crate::engagements::decline_with`]) tells the client with the chosen
+/// neutral template and disables the client's portal users after the commit.
 fn decline() -> Transition<Engagement> {
     let t = Transition::new(DECLINE)
         .label("Decline")
@@ -230,6 +231,27 @@ fn decline() -> Transition<Engagement> {
         .from([EngagementStatus::Onboarding])
         .to(EngagementStatus::Declined);
     keep_reason(reason_in(t, &reasons::DECLINE_REASONS))
+        .guard("note_for_other", |_e: &Engagement, ctx| {
+            let missing = ctx.reason().map(str::trim) == Some(reasons::OTHER)
+                && !input_of(ctx)
+                    .note
+                    .is_some_and(|note| !note.trim().is_empty());
+            Box::pin(async move {
+                if missing {
+                    Err(english("accounting.problems.decline_note", &[]))
+                } else {
+                    Ok(())
+                }
+            })
+        })
+        .effect(|e: &Engagement, ctx, tx| {
+            let id = e.id;
+            let note = input_of(ctx)
+                .note
+                .map(|n| n.trim().to_owned())
+                .filter(|n| !n.is_empty());
+            Box::pin(async move { set_engagement(&mut *tx, id, &[("decline_note", &note)]).await })
+        })
 }
 
 /// The system's `decline` when the CDD file is rejected at onboarding (with
@@ -515,6 +537,10 @@ mod tests {
                     true
                 ),
             ]
+        );
+        assert_eq!(
+            machine.find(DECLINE).unwrap().guard_names(),
+            ["neutral_reason", "note_for_other"]
         );
         let activate = machine.find(ACTIVATE).unwrap();
         assert_eq!(activate.guard_names(), ["ready"]);

@@ -14,8 +14,10 @@ use wl_kernel::approvals::{self, submit::REQUEST_KEY};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{InvoiceSummary, invoicer};
 use wl_kernel::parties::{PartyStatus, directory};
+use wl_kernel::portal::portal_users;
 
 use crate::activation;
+use crate::client_notices::{self, NeutralTemplate};
 use crate::db::{refused, set_engagement};
 use crate::engagement::{Engagement, EngagementStatus, NewEngagement};
 use crate::engagement_machine::{
@@ -24,7 +26,7 @@ use crate::engagement_machine::{
 use crate::permissions;
 use crate::reasons::{self, NOT_ACCEPTED};
 use crate::texts::english;
-use crate::{deadline_notices, ending, request_lists, suspension};
+use crate::{deadline_notices, ending, letters, request_lists, suspension};
 
 /// The engagement `id`, or 404.
 async fn load(state: &AppState, id: i64) -> Result<Engagement> {
@@ -100,6 +102,7 @@ pub async fn record_letter_signed(
     )
     .await?;
     tx.commit().await?;
+    letters::mark_signed_by_staff(state, by, id, on).await?;
     load(state, id).await
 }
 
@@ -118,32 +121,108 @@ pub async fn activate(state: &AppState, by: &AuthUser, id: i64) -> Result<Engage
 }
 
 /// `by` declines engagement `id` with the neutral `reason` (one of
-/// [`reasons::DECLINE_REASONS`]).
+/// [`reasons::DECLINE_REASONS`]), telling the client nothing; see
+/// [`decline_with`].
 ///
 /// # Errors
 ///
 /// As the transition: `Forbidden`, a 422 for another reason or state.
 pub async fn decline(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Result<Engagement> {
+    decline_with(state, by, id, reason, None, None).await
+}
+
+/// `by` declines engagement `id` with the neutral `reason` (one of
+/// [`reasons::DECLINE_REASONS`]; *other* needs `note`), and tells the client
+/// with the neutral `template` when one is chosen. After the commit the
+/// client company's portal users lose their grants for it
+/// ([`disable_client_users`]).
+///
+/// *CDD rejected* ([`reasons::NOT_ACCEPTED`]) is restricted: it shows as
+/// **Declined** to everyone, and its one template ([`NeutralTemplate::Unable`])
+/// never says why. Decision: the template must be the one of the reason's
+/// group ([`NeutralTemplate::for_decline`]); `None` tells the client
+/// nothing.
+///
+/// # Errors
+///
+/// As the transition: `Forbidden`, a 422 for another reason, state or
+/// template.
+pub async fn decline_with(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    reason: &str,
+    note: Option<&str>,
+    template: Option<NeutralTemplate>,
+) -> Result<Engagement> {
     let engagement = load(state, id).await?;
+    if let Some(template) = template
+        && template != NeutralTemplate::for_decline(reason)
+    {
+        return Err(refused(english(
+            "accounting.client_notices.wrong_template",
+            &[],
+        )));
+    }
+    let input = EngagementInput {
+        restricted: reason.trim() == NOT_ACCEPTED,
+        note: note.map(str::to_owned),
+        ..EngagementInput::on(today())
+    };
     let _outcome = engagement
         .transition(DECLINE)
         .by(by)
         .reason(reason.trim())
-        .input(&EngagementInput::on(today()))
+        .input(&input)
         .run(state)
         .await
         .map_err(TransitionError::into_error)?;
-    load(state, id).await
+    let declined = load(state, id).await?;
+    if let Some(template) = template {
+        client_notices::send_template(state, &declined, template, by.id).await?;
+    }
+    disable_client_users(state, declined.client()).await?;
+    Ok(declined)
+}
+
+/// The client company's portal users lose their grants for it, unless the
+/// client is still served by another engagement (`onboarding`, `active` or
+/// `suspended`). Grants for other companies of the users are not touched.
+/// Answers how many grants were ended.
+///
+/// # Errors
+///
+/// The database's and the portal's errors.
+pub async fn disable_client_users(state: &AppState, client: PartyId) -> Result<usize> {
+    let still_served = Engagement::of_client(&state.db, client)
+        .await?
+        .iter()
+        .any(|e| {
+            matches!(
+                e.status,
+                EngagementStatus::Onboarding
+                    | EngagementStatus::Active
+                    | EngagementStatus::Suspended
+            )
+        });
+    if still_served {
+        return Ok(0);
+    }
+    portal_users(state)
+        .close_access(state, client, "engagement declined")
+        .await
 }
 
 /// The system declines the `onboarding` engagements of `client` whose CDD
 /// file was rejected, with [`NOT_ACCEPTED`] and no automatic message (the
-/// MLRO decides what the client is told).
+/// MLRO decides what the client is told); the client's portal users are
+/// disabled ([`disable_client_users`]).
 ///
 /// # Errors
 ///
 /// The database's and the transition's errors.
 pub async fn decline_not_accepted(state: &AppState, client: PartyId) -> Result {
+    let mut declined = false;
     for engagement in Engagement::of_client(&state.db, client).await? {
         if engagement.status != EngagementStatus::Onboarding {
             continue;
@@ -160,6 +239,10 @@ pub async fn decline_not_accepted(state: &AppState, client: PartyId) -> Result {
             .run(state)
             .await
             .map_err(TransitionError::into_error)?;
+        declined = true;
+    }
+    if declined {
+        disable_client_users(state, client).await?;
     }
     Ok(())
 }

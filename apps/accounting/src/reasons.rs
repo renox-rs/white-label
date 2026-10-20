@@ -44,8 +44,9 @@ pub const SUSPEND_REASONS: [&str; 3] = [NON_PAYMENT, CLIENT_REQUEST, OTHER];
 pub const SYSTEM_SUSPEND_REASONS: [&str; 2] = [ON_HOLD, NON_PAYMENT];
 /// The reasons for `end`.
 pub const END_REASONS: [&str; 4] = [CLIENT_REQUEST, NON_PAYMENT, RELATIONSHIP_ENDED, OTHER];
-/// The reasons for `decline`.
-pub const DECLINE_REASONS: [&str; 3] = [LETTER_NOT_SIGNED, CLIENT_WITHDREW, NOT_ACCEPTED];
+/// The reasons for `decline`: the last is *CDD rejected*, which every
+/// viewer but the MLRO reads as **Declined**; *other* comes with a text.
+pub const DECLINE_REASONS: [&str; 4] = [LETTER_NOT_SIGNED, CLIENT_WITHDREW, NOT_ACCEPTED, OTHER];
 
 /// The reasons for cancelling a return (§7.1 *Return* `cancel`).
 pub const RETURN_CANCEL_REASONS: [&str; 3] = [ENGAGEMENT_ENDED, CLIENT_FILES_ITSELF, NOT_REQUIRED];

@@ -16,6 +16,7 @@ pub mod engagement_machine;
 pub mod engagements;
 mod events;
 pub mod kyc_updates;
+pub mod letters;
 pub mod pages;
 pub mod permissions;
 pub mod portal;
@@ -40,6 +41,7 @@ use renox::prelude::*;
 
 pub use cdd::{CddFile, CddParty, CddStatus, RiskRating, ScreenedRole};
 pub use engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
+pub use letters::EngagementLetter;
 pub use tax_profile::{TaxProfile, VatPeriod};
 pub use tax_return::{Return, ReturnSignature, ReturnStatus, ReturnType};
 pub use wip::{WipWriteOff, WriteOffStatus};
@@ -74,6 +76,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "accounting/portal_return.html",
         include_str!("../views/accounting/portal_return.html"),
+    ),
+    (
+        "accounting/portal_letter.html",
+        include_str!("../views/accounting/portal_letter.html"),
     ),
 ];
 
@@ -116,7 +122,8 @@ impl Module for Accounting {
             .view_data::<pages::deadline_notices::NoticePage>()
             .view_data::<pages::returns::IndexPage>()
             .view_data::<pages::returns::ShowPage>()
-            .view_data::<pages::portal_returns::PortalReturnPage>();
+            .view_data::<pages::portal_returns::PortalReturnPage>()
+            .view_data::<pages::letters::PortalLetterPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -133,6 +140,7 @@ impl Module for Accounting {
             .model::<client_notices::ClientNotice>()
             .model::<deadline_notices::DeadlineNotice>()
             .model::<request_lists::RequestList>()
+            .model::<letters::EngagementLetter>()
             .model::<Return>()
             .model::<ReturnSignature>()
             .model::<WipWriteOff>();
@@ -159,6 +167,9 @@ impl Module for Accounting {
         // `ACC.RUL.02` and `POR.RUL.01`: the request lists of the periods,
         // skipped while an engagement is suspended (BL-ACC-03, BL-ACC-05).
         request_lists::register(app);
+        // `ACC.RUL.11`: the unsigned engagement letter is chased and, at 30
+        // days, the manager decides (BL-ACC-02).
+        letters::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.engagements` text.
         app.nav(

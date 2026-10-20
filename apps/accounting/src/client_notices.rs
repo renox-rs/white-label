@@ -25,6 +25,11 @@ pub const ON_HOLD_NOTICE: &str = "accounting.engagement_on_hold";
 /// The notification type of the neutral "ended" template.
 pub const ENDED_NOTICE: &str = "accounting.engagement_ended";
 
+/// The notification type of the neutral "not proceeding" template.
+pub const DECLINED_NOTICE: &str = "accounting.engagement_declined";
+/// The notification type of the neutral "unable to proceed" template.
+pub const UNABLE_NOTICE: &str = "accounting.engagement_unable";
+
 /// The module that sends the notices.
 const MODULE: &str = "accounting";
 
@@ -37,6 +42,14 @@ pub enum NeutralTemplate {
     OnHold,
     /// "Our engagement has ended": for an ended engagement.
     Ended,
+    /// "We are not able to proceed with the proposed engagement": for a
+    /// declined engagement whose reason is not *CDD rejected* (the letter was
+    /// not signed, the client withdrew, another reason).
+    Declined,
+    /// "We are unable to proceed with an engagement at this time": for a
+    /// declined engagement whose reason is *CDD rejected*; it never says
+    /// why.
+    Unable,
 }
 
 impl NeutralTemplate {
@@ -45,6 +58,8 @@ impl NeutralTemplate {
         match self {
             NeutralTemplate::OnHold => ON_HOLD_NOTICE,
             NeutralTemplate::Ended => ENDED_NOTICE,
+            NeutralTemplate::Declined => DECLINED_NOTICE,
+            NeutralTemplate::Unable => UNABLE_NOTICE,
         }
     }
 
@@ -54,7 +69,22 @@ impl NeutralTemplate {
             (self, status),
             (NeutralTemplate::OnHold, EngagementStatus::Suspended)
                 | (NeutralTemplate::Ended, EngagementStatus::Ended)
+                | (
+                    NeutralTemplate::Declined | NeutralTemplate::Unable,
+                    EngagementStatus::Declined
+                )
         )
+    }
+
+    /// The template of a decline for `reason` (`DECLINE_REASONS`): the one
+    /// template of the reason's group. *CDD rejected* has its own, which
+    /// never mentions due diligence.
+    pub fn for_decline(reason: &str) -> NeutralTemplate {
+        if reason.trim() == crate::reasons::NOT_ACCEPTED {
+            NeutralTemplate::Unable
+        } else {
+            NeutralTemplate::Declined
+        }
     }
 
     /// The template named `text` (`on_hold`, `ended`).
@@ -135,6 +165,18 @@ pub(crate) fn register_types() {
         "ارتباطكم معلّق مؤقتًا، يرجى التواصل مع الشريك المسؤول عنكم.",
     ));
     notify::register_type(neutral_type(
+        DECLINED_NOTICE,
+        "declined",
+        "ارتباطكم {{ number }}",
+        "لا يمكننا المضي في الارتباط المقترح، يرجى التواصل مع الشريك المسؤول عنكم.",
+    ));
+    notify::register_type(neutral_type(
+        UNABLE_NOTICE,
+        "unable",
+        "ارتباطكم {{ number }}",
+        "لا يمكننا المضي في ارتباط في الوقت الحالي.",
+    ));
+    notify::register_type(neutral_type(
         ENDED_NOTICE,
         "ended",
         "ارتباطكم {{ number }}",
@@ -153,7 +195,7 @@ pub(crate) fn register_types() {
 ///
 /// `Forbidden` without `parties.block_reason.view`; a 422 when the template
 /// does not fit the engagement's status (on hold for `suspended`, ended for
-/// `ended`); the notifier's errors.
+/// `ended`, declined or unable for `declined`); the notifier's errors.
 pub async fn send(
     state: &AppState,
     by: &AuthUser,
@@ -164,6 +206,23 @@ pub async fn send(
         return Err(Error::Forbidden);
     }
     let engagement = Engagement::find_or_404(&state.db, id).await?;
+    send_template(state, &engagement, template, by.id).await
+}
+
+/// Records and queues the neutral `template` for the client of
+/// `engagement`, as user `by`; the permission is the caller's to check
+/// (the MLRO's [`send`], or the manager who declines).
+///
+/// # Errors
+///
+/// A 422 when the template does not fit the engagement's status; the
+/// notifier's errors.
+pub(crate) async fn send_template(
+    state: &AppState,
+    engagement: &Engagement,
+    template: NeutralTemplate,
+    by: i64,
+) -> Result<ClientNotice> {
     if !template.fits(engagement.status) {
         return Err(refused(english(
             "accounting.client_notices.wrong_template",
@@ -173,7 +232,7 @@ pub async fn send(
     let mut notice = ClientNotice {
         engagement_id: engagement.id,
         template,
-        sent_by: by.id,
+        sent_by: by,
         sent_at: now(),
         ..ClientNotice::default()
     };
@@ -196,6 +255,17 @@ mod tests {
         assert!(!NeutralTemplate::OnHold.fits(EngagementStatus::Ended));
         assert!(NeutralTemplate::Ended.fits(EngagementStatus::Ended));
         assert!(!NeutralTemplate::Ended.fits(EngagementStatus::Active));
+        assert!(NeutralTemplate::Declined.fits(EngagementStatus::Declined));
+        assert!(NeutralTemplate::Unable.fits(EngagementStatus::Declined));
+        assert!(!NeutralTemplate::Unable.fits(EngagementStatus::Ended));
+        assert_eq!(
+            NeutralTemplate::for_decline("not_accepted"),
+            NeutralTemplate::Unable
+        );
+        assert_eq!(
+            NeutralTemplate::for_decline("letter_not_signed"),
+            NeutralTemplate::Declined
+        );
         assert_eq!(
             NeutralTemplate::parse("ended"),
             Some(NeutralTemplate::Ended)
@@ -209,9 +279,20 @@ mod tests {
         for key in [
             "accounting.client_notices.on_hold_body",
             "accounting.client_notices.ended_body",
+            "accounting.client_notices.declined_body",
+            "accounting.client_notices.unable_body",
         ] {
             let body = english(key, &[]).to_lowercase();
-            for word in ["sanction", "block", "aml", "screening", "match"] {
+            for word in [
+                "sanction",
+                "block",
+                "aml",
+                "screening",
+                "match",
+                "diligence",
+                "cdd",
+                "kyc",
+            ] {
                 assert!(!body.contains(word), "{key}: {body}");
             }
         }

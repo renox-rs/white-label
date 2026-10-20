@@ -183,7 +183,8 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.reasons.other", "Other"),
     ("accounting.reasons.letter_not_signed", "Letter not signed"),
     ("accounting.reasons.client_withdrew", "Client withdrew"),
-    ("accounting.reasons.not_accepted", "Not accepted"),
+    ("accounting.reasons.not_accepted", "Declined"),
+    ("accounting.reasons.not_accepted_option", "CDD rejected"),
     // Activation.
     (
         "accounting.activation.refused",
@@ -960,6 +961,95 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "accounting.wip.problem.engagement",
         "Time is written off on an active or suspended engagement.",
+    ),
+    // The engagement letter (`ACC.RUL.11`, BL-ACC-02).
+    ("accounting.letters.title", "Engagement letter"),
+    ("accounting.letters.version", "Version"),
+    ("accounting.letters.sent_on_label", "Sent on"),
+    ("accounting.letters.empty", "No letter sent yet"),
+    ("accounting.letters.waiting", "Waiting for a signature"),
+    ("accounting.letters.replaced", "Replaced by a newer version"),
+    ("accounting.letters.signed_on", "Signed on :date"),
+    ("accounting.letters.send", "Send letter for acceptance"),
+    (
+        "accounting.letters.send_message",
+        "The client approver signs the letter in the portal. A letter sent before is replaced and the count of days starts again.",
+    ),
+    (
+        "accounting.letters.sent",
+        "The letter is sent for acceptance.",
+    ),
+    ("accounting.letters.sign", "Sign the letter"),
+    (
+        "accounting.letters.sign_message",
+        "Signing records your name, the time and your IP address.",
+    ),
+    ("accounting.letters.signed", "The letter is signed."),
+    (
+        "accounting.letters.problem.signed",
+        "The engagement letter is signed already.",
+    ),
+    (
+        "accounting.letters.problem.no_letter",
+        "No engagement letter is waiting for a signature.",
+    ),
+    (
+        "accounting.letters.reminder_subject",
+        "Your engagement letter {{ number }}",
+    ),
+    (
+        "accounting.letters.reminder_body",
+        "Please sign your engagement letter in the portal. It was sent on {{ sent_on }}.",
+    ),
+    (
+        "accounting.letters.chase_title",
+        "Chase or decline :number: engagement letter not signed",
+    ),
+    (
+        "accounting.letters.chase_description",
+        ":number: version :version of the engagement letter was sent on :sent and is not signed after :days days. Chase the client, or decline the engagement with the reason Letter not signed.\n:link",
+    ),
+    (
+        "accounting.letters.chase_closed_signed",
+        "The engagement letter is signed.",
+    ),
+    (
+        "accounting.letters.chase_closed_resent",
+        "A new version of the letter was sent.",
+    ),
+    ("accounting.engagements.decline_note", "Text (for Other)"),
+    ("accounting.engagements.decline_template", "Tell the client"),
+    (
+        "accounting.engagements.decline_no_template",
+        "Nothing for now",
+    ),
+    (
+        "accounting.problems.decline_note",
+        "Write what the reason is for Other.",
+    ),
+    (
+        "accounting.client_notices.declined_option",
+        "Not proceeding (letter, withdrawal, other)",
+    ),
+    (
+        "accounting.client_notices.unable_option",
+        "Unable to proceed (CDD rejected)",
+    ),
+    (
+        "accounting.client_notices.declined_subject",
+        "Your engagement {{ number }}",
+    ),
+    (
+        "accounting.client_notices.declined_body",
+        "We are not able to proceed with the proposed engagement. Please contact your partner if you would like to discuss it.",
+    ),
+    (
+        "accounting.client_notices.unable_subject",
+        "Your engagement {{ number }}",
+    ),
+    (
+        "accounting.client_notices.unable_body",
+        "We are unable to proceed with an engagement at this time.",
     ),
 ];
 

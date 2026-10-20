@@ -88,6 +88,8 @@ pub struct Engagement {
     /// The manager's note of why it last resumed (what changed, or the
     /// client's instruction).
     pub resume_note: Option<String>,
+    /// The text given with the decline reason *other*.
+    pub decline_note: Option<String>,
     /// The day it was activated.
     pub activated_on: Option<NaiveDate>,
     /// The day it ended.

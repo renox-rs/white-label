@@ -8,6 +8,7 @@ use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers};
 
+use crate::access::PortalAccess;
 use crate::grants::{AccessGrant, GrantStatus};
 
 /// The grants' [`PortalUsers`], provided by [`crate::WlPortal`].
@@ -56,6 +57,35 @@ impl PortalUsers for GrantUsers {
         Box::pin(async move {
             let grant = crate::access::PortalAccess::active_grant(db, user, party, on).await?;
             Ok(grant.as_ref().and_then(user_of))
+        })
+    }
+
+    fn close_access<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+        reason: &'a str,
+    ) -> PortalFuture<'a, usize> {
+        Box::pin(async move {
+            let grants = AccessGrant::query()
+                .where_(AccessGrant::PARTY_ID.eq(party.0))
+                .order_by(AccessGrant::ID)
+                .get(&state.db)
+                .await?;
+            let mut ended = 0;
+            for grant in grants {
+                match grant.status {
+                    GrantStatus::Invited => {
+                        PortalAccess::expire(state, grant.id).await?;
+                    }
+                    GrantStatus::Active | GrantStatus::ReadOnly | GrantStatus::Suspended => {
+                        PortalAccess::close(state, None, grant.id, Some(reason)).await?;
+                    }
+                    GrantStatus::Closed | GrantStatus::Expired | GrantStatus::Revoked => continue,
+                }
+                ended += 1;
+            }
+            Ok(ended)
         })
     }
 }

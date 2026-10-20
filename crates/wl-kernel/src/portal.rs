@@ -80,6 +80,21 @@ pub trait PortalUsers: Send + Sync + 'static {
     ) -> PortalFuture<'a, Option<PortalUser>> {
         Box::pin(async { Ok(None) })
     }
+
+    /// Takes away every portal grant for `party` that still gives access
+    /// (an invitation not accepted is expired, an `active`, `read_only` or
+    /// `suspended` grant is closed), with `reason`; answers how many grants
+    /// were ended. Grants for other parties are not touched, so a user who
+    /// acts for several companies keeps those. The default has none (04
+    /// `decline`: "client users disabled").
+    fn close_access<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _party: PartyId,
+        _reason: &'a str,
+    ) -> PortalFuture<'a, usize> {
+        Box::pin(async { Ok(0) })
+    }
 }
 
 /// The portal users when the `portal` module is off: nobody acts for any

@@ -43,6 +43,7 @@ use crate::ending;
 use crate::engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
 use crate::engagement_machine::{DECLINE, END, SUSPEND};
 use crate::engagements;
+use crate::letters::EngagementLetter;
 use crate::permissions;
 use crate::reasons;
 use crate::tax_profile::TaxProfile;
@@ -383,6 +384,9 @@ pub(crate) struct ShowPage {
     cdd_status: String,
     today: String,
     can_letter: bool,
+    can_send_letter: bool,
+    letters: Vec<LetterRow>,
+    decline_templates: Vec<[String; 2]>,
     can_activate: bool,
     can_decline: bool,
     can_suspend: bool,
@@ -413,6 +417,17 @@ pub(crate) struct ShowPage {
     write_offs: Vec<WriteOffRow>,
 }
 
+/// One version of the engagement letter (`ACC.RUL.11`).
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct LetterRow {
+    /// The version.
+    pub version: i64,
+    /// The day it was sent.
+    pub sent_on: String,
+    /// Waiting, signed or replaced.
+    pub state: String,
+}
+
 /// One write-off of unbilled time of the engagement (`ACC.ACL.09`).
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct WriteOffRow {
@@ -428,8 +443,51 @@ pub struct WriteOffRow {
 fn reason_options(lang: &Lang, transition: &str) -> Vec<[String; 2]> {
     engagements::user_reasons(transition)
         .iter()
-        .map(|code| [(*code).to_owned(), reasons::label(lang, code)])
+        .map(|code| {
+            // *CDD rejected* reads **Declined** everywhere; the form says
+            // what it picks.
+            let label = if transition == DECLINE && *code == reasons::NOT_ACCEPTED {
+                text(lang, "reasons.not_accepted_option")
+            } else {
+                reasons::label(lang, code)
+            };
+            [(*code).to_owned(), label]
+        })
         .collect()
+}
+
+/// The neutral templates a decline may tell the client with, after "none".
+fn decline_templates(lang: &Lang) -> Vec<[String; 2]> {
+    let mut options = vec![[String::new(), text(lang, "engagements.decline_no_template")]];
+    for template in [NeutralTemplate::Declined, NeutralTemplate::Unable] {
+        options.push([
+            template.as_str().to_owned(),
+            text(
+                lang,
+                &format!("client_notices.{}_option", template.as_str()),
+            ),
+        ]);
+    }
+    options
+}
+
+/// The letters of engagement `id` as rows.
+async fn letter_rows(state: &AppState, lang: &Lang, id: i64) -> Result<Vec<LetterRow>> {
+    Ok(EngagementLetter::of_engagement(&state.db, id)
+        .await?
+        .iter()
+        .map(|letter| LetterRow {
+            version: letter.version,
+            sent_on: letter.sent_on.to_string(),
+            state: if let Some(day) = letter.signed_on {
+                texts::t_with(lang, "accounting.letters.signed_on", &[("date", &day)])
+            } else if letter.superseded_on.is_some() {
+                text(lang, "letters.replaced")
+            } else {
+                text(lang, "letters.waiting")
+            },
+        })
+        .collect())
 }
 
 /// `GET /accounting/engagements/{id}`.
@@ -619,6 +677,9 @@ async fn show(
             .unwrap_or_default(),
         today: on.to_string(),
         can_letter: manage && onboarding && !found.letter_signed,
+        can_send_letter: manage && onboarding && !found.letter_signed,
+        letters: letter_rows(&state, &lang, found.id).await?,
+        decline_templates: decline_templates(&lang),
         can_activate: manage && onboarding,
         can_decline: manage && onboarding,
         can_suspend: manage && found.status == EngagementStatus::Active,
@@ -782,15 +843,38 @@ pub struct ReasonForm {
     pub reason: String,
 }
 
+/// The form of a decline.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DeclineForm {
+    /// The neutral reason code.
+    #[serde(default)]
+    pub reason: String,
+    /// The text of the reason *other*.
+    #[serde(default)]
+    pub note: String,
+    /// The neutral template that tells the client; empty for none.
+    #[serde(default)]
+    pub template: String,
+}
+
 /// `POST /accounting/engagements/{id}/decline`.
 async fn decline(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Path(id): Path<i64>,
-    Form(form): Form<ReasonForm>,
+    Form(form): Form<DeclineForm>,
 ) -> Result<Response> {
-    engagements::decline(&state, &user, id, &form.reason).await?;
+    let template = if form.template.trim().is_empty() {
+        None
+    } else {
+        Some(
+            NeutralTemplate::parse(&form.template)
+                .ok_or_else(|| invalid("template: declined, unable"))?,
+        )
+    };
+    let note = (!form.note.trim().is_empty()).then_some(form.note.as_str());
+    engagements::decline_with(&state, &user, id, &form.reason, note, template).await?;
     Ok((
         Toast::success(text(&lang, "engagements.declined")),
         renox::HxRefresh,

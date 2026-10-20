@@ -15,6 +15,10 @@
           <rx-input name="signed_on" type="date" :label="tx['engagements.signed_on']" :value="today" :id="'engagement-letter-on-' ~ engagement.id" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_send_letter">
+        <rx-confirm :id="'engagement-letter-send-' ~ engagement.id" :label="tx['letters.send']" :action="route('accounting.engagement_letter_send', engagement.id)" method="POST"
+                    :title="tx['letters.send']" :message="tx['letters.send_message']" :confirm-label="tx['letters.send']" :cancel-label="tx['button_cancel']" icon="send"/>
+      </template>
       <template rx-if="can_activate">
         <rx-confirm :id="'engagement-activate-' ~ engagement.id" :label="tx['engagements.activate']" :action="route('accounting.engagement_activate', engagement.id)" method="POST"
                     :title="tx['engagements.activate']" :message="tx['engagements.activate_message']" :confirm-label="tx['engagements.activate']" :cancel-label="tx['button_cancel']" icon="check"/>
@@ -23,6 +27,8 @@
         <rx-action-sheet :id="'engagement-decline-' ~ engagement.id" :label="tx['engagements.decline']" :action="route('accounting.engagement_decline', engagement.id)"
                          :title="tx['engagements.decline']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.decline']" icon="x">
           <rx-select name="reason" :label="tx['engagements.reason']" :options="decline_reasons" :selected="''" :id="'engagement-decline-reason-' ~ engagement.id"/>
+          <rx-textarea name="note" :label="tx['engagements.decline_note']" :id="'engagement-decline-note-' ~ engagement.id"/>
+          <rx-select name="template" :label="tx['engagements.decline_template']" :options="decline_templates" :selected="''" :id="'engagement-decline-template-' ~ engagement.id"/>
         </rx-action-sheet>
       </template>
       <template rx-if="can_suspend">
@@ -125,6 +131,12 @@
         <a href="{{ route('accounting.cdd_file', cdd_id) }}">{{ tx['engagements.open_cdd'] }}</a>
       </template>
     </rx-card>
+    <rx-table :rows="letters" as="row" :key="row.version" :caption="tx['letters.title']" card>
+      <rx-column :label="tx['letters.version']">{{ row.version }}</rx-column>
+      <rx-column :label="tx['letters.sent_on_label']">{{ row.sent_on }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.state }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['letters.empty']" icon="file-text"/></rx-slot>
+    </rx-table>
     <rx-table :rows="notices" as="row" :key="row.at ~ row.template" :caption="tx['client_notices.title']" card>
       <rx-column :label="tx['history.at']">{{ row.at }}</rx-column>
       <rx-column :label="tx['client_notices.template']">{{ row.template }}</rx-column>
