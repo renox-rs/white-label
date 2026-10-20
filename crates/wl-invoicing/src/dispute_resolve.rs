@@ -13,7 +13,9 @@
 //!   #71: a `full` note when it equals the gross total of an invoice with
 //!   nothing allocated, else a partial one spread over the disputed lines
 //!   ([`dispute_credit::split`]). A line billed from a timesheet is refused
-//!   until wl-attendance can check the adjustment timesheet. The draft is
+//!   unless the resolve names an adjustment timesheet that gave a credit note
+//!   against the invoice ([`crate::usage_adjustment`]): the dispute then links
+//!   to that credit note and makes no second one. The draft is
 //!   checked against the `invoicing.dispute_credit` policy (`FIN.ACL.07`):
 //!   no request needed, and the note is issued at once; otherwise the
 //!   request is pending, the dispute keeps the draft and the request, and
@@ -45,12 +47,15 @@ use crate::credit_notes::{
     By, Outcomes, credited_by_line, discard, insert_in, issue_in, issue_input, prepare,
 };
 use crate::dispute::{Dispute, dispute_type, holds};
-use crate::dispute_credit::{ACTION, Payload, SplitLine, finish_in, split, timesheet_guard};
+use crate::dispute_credit::{
+    ACTION, Payload, SplitLine, finish_in, settle_in, split, timesheet_guard,
+};
 use crate::invoice::Invoice;
 use crate::invoicer::lines_of;
 use crate::line::InvoiceLine;
 use crate::permissions;
 use crate::texts::english;
+use crate::usage_adjustment;
 use crate::vat::remaining_credit;
 
 /// The notification type that tells the party its dispute was resolved.
@@ -66,7 +71,7 @@ pub struct ResolveInput {
     /// For `credited`: the agreed gross amount, in fils.
     pub agreed_amount: Option<i64>,
     /// For `credited` on a timesheet line: the approved adjustment timesheet
-    /// (checked once wl-attendance can, #86).
+    /// (its credit note, if it gave one against the invoice, is the resolution).
     pub adjustment_timesheet: Option<Subject>,
 }
 
@@ -288,6 +293,14 @@ async fn credit(
     note: &str,
     user: i64,
 ) -> Result<Resolution> {
+    // The credit note an approved adjustment timesheet already gave against
+    // this invoice is the resolution (§5.2 step 5, §5.10 step 4).
+    if let Some(sheet) = &input.adjustment_timesheet
+        && let Some(note_id) =
+            usage_adjustment::credit_note_of(&state.db, sheet, invoice.id).await?
+    {
+        return link_adjustment_credit(state, invoice, dispute, input, note, user, note_id).await;
+    }
     let agreed = input
         .agreed_amount
         .filter(|amount| *amount > 0)
@@ -400,6 +413,56 @@ async fn credit(
             })
         }
     }
+}
+
+/// `credited` with the credit note that an approved adjustment timesheet
+/// gave against the invoice (`credit_note_id`): the dispute links to it, no
+/// second credit is made, and the `FIN.ACL.07` limit does not apply, since
+/// the hours were approved as an adjustment. An agreed amount, when given,
+/// must be that note's total.
+async fn link_adjustment_credit(
+    state: &AppState,
+    invoice: &Invoice,
+    dispute: &Dispute,
+    input: &ResolveInput,
+    note: &str,
+    user: i64,
+    credit_note_id: i64,
+) -> Result<Resolution> {
+    let credit = CreditNote::find_or_404(&state.db, credit_note_id).await?;
+    if input
+        .agreed_amount
+        .is_some_and(|amount| amount != credit.gross_total)
+    {
+        return Err(refused(format!(
+            "The credit note of the adjustment timesheet is {} fils with VAT.",
+            credit.gross_total
+        )));
+    }
+    discard_old_draft(state, dispute).await?;
+    let mut tx = state.db.begin().await?;
+    let held = renox::db::sql(format!(
+        "UPDATE {} SET resolution_note = ?, agreed_amount = ?, approval_request_id = NULL, \
+         updated_at = ? WHERE id = ? AND outcome IS NULL",
+        Dispute::TABLE
+    ))
+    .bind(note)
+    .bind(credit.gross_total)
+    .bind(renox::db::now())
+    .bind(dispute.id)
+    .execute(&mut tx)
+    .await?;
+    if held == 0 {
+        return Err(refused("The dispute was already resolved."));
+    }
+    settle_in(&mut tx, invoice.id, dispute.id, credit.id, Some(user)).await?;
+    tx.commit().await?;
+    announce(state, dispute.id).await?;
+    Ok(Resolution {
+        dispute: dispute.id,
+        credit_note: Some(credit.id),
+        pending_request: None,
+    })
 }
 
 /// Emits `InvoiceDisputeResolved` for the now resolved dispute `dispute_id`,

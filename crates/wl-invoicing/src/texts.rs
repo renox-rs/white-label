@@ -872,6 +872,26 @@ const TEXTS: &[(&str, &str)] = &[
         "Record the supplier's tax credit note for debit note {{ number }} ({{ amount }}) so that it can be settled.",
     ),
     (
+        "wl_invoicing.task.adjustment_credit_refused",
+        "Adjustment {{ adjustment }} takes back {{ amount }} on invoice {{ number }}, which can no longer be credited by that much: {{ reason }} Agree the correction with the client.",
+    ),
+    (
+        "wl_invoicing.tasks.kind.adjustment_credit_refused",
+        "Adjustment credit refused",
+    ),
+    (
+        "wl_invoicing.usage_adjustment.credit_reason",
+        "Hours corrected by adjustment timesheet {{ adjustment }} ({{ origin }}) of {{ adjusts }}: {{ hours }} h",
+    ),
+    (
+        "wl_invoicing.usage_adjustment.extra_line",
+        "{{ description }}: {{ hours }} h more, adjustment timesheet {{ adjustment }} of {{ adjusts }}",
+    ),
+    (
+        "wl_invoicing.dispute.adjustment_not_applied",
+        "The adjustment timesheet {{ adjustment }} gave no credit note against this invoice.",
+    ),
+    (
         "wl_invoicing.tasks.kind.record_tax_credit_note",
         "Record the tax credit note",
     ),

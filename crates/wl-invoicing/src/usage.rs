@@ -100,9 +100,15 @@ impl UsageRecord {
     /// The invoice line of this record, as a draft line: the hours at the
     /// record's own price, billing the source (or the adjustment).
     pub fn draft_line(&self) -> DraftLine {
+        self.draft_line_for(self.quantity_milli)
+    }
+
+    /// The line of `quantity_milli` thousandths of an hour at this record's
+    /// own price, the one the original line was priced with.
+    pub fn draft_line_for(&self, quantity_milli: i64) -> DraftLine {
         let origin = self.adjustment().unwrap_or_else(|| self.source());
         DraftLine::new(&self.description, self.unit_price, self.vat_category)
-            .quantity_milli(self.quantity_milli)
+            .quantity_milli(quantity_milli)
             .origin(origin)
     }
 }

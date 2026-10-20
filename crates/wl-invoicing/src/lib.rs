@@ -885,6 +885,8 @@ impl Module for WlInvoicing {
         app.provide(self.config.clone());
         // `InvoiceIssued`, `InvoicePaid` and `InvoiceOverdue` after a commit.
         events::register(app);
+        // Hours corrected after billing (§5.2 step 5).
+        usage_adjustment::register(app);
         // The customer notice and `InvoiceWrittenOff` after a write-off.
         write_off::register(app);
         // `db:seed`: the demo invoices, as drafts.

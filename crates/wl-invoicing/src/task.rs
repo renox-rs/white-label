@@ -63,6 +63,10 @@ pub enum TaskKind {
     /// An issued supplier debit note waits for the supplier's tax credit
     /// note (§5.13 step 4): record it so the note can settle.
     RecordTaxCreditNote,
+    /// The credit of an approved adjustment timesheet is above what the
+    /// original invoice can still be credited by (§5.2 step 5): the
+    /// coordinator settles it with the client.
+    AdjustmentCreditRefused,
 }
 
 impl TaskKind {
@@ -76,7 +80,7 @@ impl TaskKind {
     }
 
     /// The key of the task's message text.
-    fn text_key(self) -> &'static str {
+    pub(crate) fn text_key(self) -> &'static str {
         match self {
             TaskKind::ReversalAfterWriteOff => "wl_invoicing.task.reversal_after_write_off",
             TaskKind::ReversalRefused => "wl_invoicing.task.reversal_refused",
@@ -85,6 +89,7 @@ impl TaskKind {
             TaskKind::EinvoiceRejected => "wl_invoicing.einvoice.task.rejected",
             TaskKind::EinvoiceStuck => "wl_invoicing.einvoice.task.stuck",
             TaskKind::RecordTaxCreditNote => "wl_invoicing.task.record_tax_credit_note",
+            TaskKind::AdjustmentCreditRefused => "wl_invoicing.task.adjustment_credit_refused",
         }
     }
 }

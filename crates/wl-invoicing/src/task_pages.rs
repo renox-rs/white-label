@@ -54,6 +54,7 @@ pub fn grid(lang: &Lang) -> Grid {
         TaskKind::EinvoiceRejected,
         TaskKind::EinvoiceStuck,
         TaskKind::RecordTaxCreditNote,
+        TaskKind::AdjustmentCreditRefused,
     ]
     .iter()
     .map(|kind| {
