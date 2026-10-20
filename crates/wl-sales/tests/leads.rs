@@ -389,3 +389,44 @@ async fn sal20_voiding_the_conversion_record_reverts_the_win() {
         "lead_win_reverted"
     );
 }
+
+/// AC1 through the web form route: the link `/enquiries?c=SPRING26` posts the
+/// form, needs no login, and the lead has the source *paid ads* and C1.
+#[renox::test]
+async fn sal20_the_web_form_route_reads_the_campaign_code_of_the_link() {
+    let (t, events) = boot_events().await;
+    let campaign = c1(&t, "active").await;
+    t.app
+        .post(
+            "/enquiries?c=spring26",
+            &[("name", "Omar"), ("interest", "Villa")],
+        )
+        .await
+        .assert_status(303);
+    let leads = Lead::query().get(t.db()).await.unwrap();
+    assert_eq!(leads.len(), 1);
+    assert_eq!(leads[0].campaign_id, Some(campaign.id));
+    assert_eq!(source_code(&t, &leads[0]).await, "paid_ads");
+    assert_eq!(leads[0].status, LeadStatus::New);
+    assert_eq!(events.created.lock().unwrap().len(), 1);
+
+    // No code: the lead has the source *website* and no campaign.
+    t.app
+        .post("/enquiries", &[("name", "Sara")])
+        .await
+        .assert_status(303);
+    let plain = Lead::query()
+        .where_(Lead::CAMPAIGN_ID.is_null())
+        .get(t.db())
+        .await
+        .unwrap();
+    assert_eq!(plain.len(), 1);
+    assert_eq!(source_code(&t, &plain[0]).await, "website");
+
+    // A form without a name is refused and creates nothing.
+    t.app
+        .post("/enquiries?c=SPRING26", &[("name", " ")])
+        .await
+        .assert_status(422);
+    assert_eq!(Lead::query().count(t.db()).await.unwrap(), 2);
+}

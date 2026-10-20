@@ -378,15 +378,14 @@ pub async fn capture(
             .first(&state.db)
             .await?;
         if let Some(lead) = open {
+            let note =
+                crate::texts::english("wl_sales.leads.web_form_note", &[("code", &campaign.code)]);
             LeadNote::create(
                 &state.db,
                 LeadNote {
                     lead_id: lead.id,
                     kind: "web_form".to_owned(),
-                    note: crate::texts::english(
-                        "wl_sales.leads.web_form_note",
-                        &[("code", &campaign.code)],
-                    ),
+                    note,
                     ..LeadNote::default()
                 },
             )

@@ -2,6 +2,7 @@
 
 pub mod acquisition;
 pub mod campaigns;
+pub mod enquiry;
 pub mod lead_sources;
 pub mod leads;
 pub mod report;
@@ -13,6 +14,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .merge(acquisition::routes())
         .merge(campaigns::routes())
+        .merge(enquiry::routes())
         .merge(lead_sources::routes())
         .merge(leads::routes())
         .merge(report::routes())
