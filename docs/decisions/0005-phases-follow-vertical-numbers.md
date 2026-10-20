@@ -37,4 +37,5 @@ rollout, so the phase names and the vertical numbers disagreed.
   BL-HRM-05, listening to `EmployeeOnboardingCancelled`, so nothing in Build 1 needs BL-HRM-03,
   -05 or -24 any more, which moved to Launch 09, and BL-HRM-04 moved to Launch 02. Build 1 has
   105 issues. On 2026-10-20, 22 issues were added for the work the closed F1 issues deferred
-  (#458–#479), so Build 1 has 127 issues.)
+  (#458–#479), so Build 1 has 127 issues. BL-HRM-07 (absconding report, Launch 02) was split: its payroll
+  hold, settlement draft and cancellation case are the new Launch 09 issue BL-HRM-30 (#480).)

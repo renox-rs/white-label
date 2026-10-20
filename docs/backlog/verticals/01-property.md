@@ -2572,6 +2572,11 @@ is requested by the leasing agent or accountant and approved by a property manag
 deposit can be forfeited when a prospect backs out before signing is `⚠ open: lawyer (L-22)`.
 
 #### Edge cases decided
+- **Two transitions on main:** the spec's single `release` is built as `release` (a user with
+  `units.reserve`) and `release_by_system` (the lease `cancel`), as `vacate` is split by target
+  (`apps/property/src/unit_machine.rs`). `reserve` is declared and refuses until booking deposits exist
+  (`PRP.LEA.02`, Later). This issue adds the booking deposit behaviour to both release
+  transitions; it does not build `reserve`.
 - **Booking deposit is money received:** a lease `cancel` for the prospect holding the
   reservation needs the `PRP.ACL.18` approval (BL-PRP-01), even for a full refund; the unit is
   released and the booking deposit refunded or part forfeited at final approval.

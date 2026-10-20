@@ -20,10 +20,10 @@ supports 05-N8-a, 10-N8-c and 04-N8-d. BL-HRM-26 to 29 add staff onboarding chec
 | BL-HRM-04 | Approve non-standard exits by a second user (`HRM.ACL.07`) | high | s | Launch 02 | Base: wl-hr Employee lifecycle; Epic wl-kernel: approval requests |
 | BL-HRM-05 | Cancel onboarding (`cancel_onboarding`) | high | m | Launch 09 | BL-HRM-03; BL-HRM-04; BL-HRM-24 |
 | BL-HRM-06 | Withdraw a notice by agreement (`withdraw_notice`) | medium | s | Launch 09 | BL-HRM-04; BL-HRM-24 |
-| BL-HRM-07 | Report an employee as absconded (`report_absconding`) | high | m | Launch 02 | BL-HRM-04; Epic wl-attendance: attendance records; Vertical 09: absence case |
-| BL-HRM-08 | Reinstate an absconded employee (`reinstate`) | high | s | Launch 09 | BL-HRM-04; BL-HRM-07; BL-HRM-18; BL-HRM-24 |
+| BL-HRM-07 | Report an employee as absconded (`report_absconding`) | high | m | Launch 02 | BL-HRM-04; Epic wl-attendance: attendance records; Epic wl-ticketing: absence case tickets |
+| BL-HRM-08 | Reinstate an absconded employee (`reinstate`) | high | s | Launch 09 | BL-HRM-04; BL-HRM-07; BL-HRM-18; BL-HRM-24; BL-HRM-30 |
 | BL-HRM-09 | Record an employee's death (`record_death`) | high | m | Launch 09 | BL-HRM-04 |
-| BL-HRM-10 | Exit an absconded or deceased employee | high | s | Launch 09 | BL-HRM-07; BL-HRM-09 |
+| BL-HRM-10 | Exit an absconded or deceased employee | high | s | Launch 09 | BL-HRM-07; BL-HRM-09; BL-HRM-30 |
 | BL-HRM-11 | Return a payroll run to draft (`return`) | high | s | Launch 09 | Base: wl-hr Payroll run lifecycle |
 | BL-HRM-12 | Record a rejected WPS file and resubmit | high | m | Launch 09 | Base: wl-hr Payroll run lifecycle |
 | BL-HRM-13 | Record a partly failed WPS file and regenerate | high | m | Launch 09 | BL-HRM-12; BL-HRM-18; BL-HRM-20; BL-HRM-21 |
@@ -43,6 +43,7 @@ supports 05-N8-a, 10-N8-c and 04-N8-d. BL-HRM-26 to 29 add staff onboarding chec
 | BL-HRM-27 | Complete and waive onboarding steps (`HRM.ACL.10`) | medium | m | Build 1 | BL-HRM-26; BL-DOC-08; BL-DOC-09; Epic wl-ticketing: checklist runs |
 | BL-HRM-28 | Remind and escalate overdue onboarding steps (`HRM.RUL.17`) | medium | s | Build 1 | BL-HRM-26 |
 | BL-HRM-29 | Block employee activation until a blocking onboarding is complete | medium | s | Build 1 | BL-HRM-26; BL-HRM-27 |
+| BL-HRM-30 | Hold pay, draft the settlement and open the cancellation case when an employee is reported absconded | high | m | Launch 09 | BL-HRM-07; Base: wl-hr Payroll run lifecycle; Base: wl-hr Final settlement lifecycle; Base: wl-hr Visa case lifecycle |
 
 ---
 
@@ -533,22 +534,23 @@ Approval mechanics (BL-HRM-04).
 ### BL-HRM-07 — wl-hr: report an employee as absconded (`report_absconding`)
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** BL-HRM-04 · Epic wl-attendance: attendance records (last attended day) · Vertical 09: absence case (`MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-10, BL-CON-15, BL-CON-18, BL-LOG-13, BL-MPW-13, BL-MPW-17
+**Depends on:** BL-HRM-04 · Epic wl-attendance: attendance records (last attended day) · Epic wl-ticketing: the *absence* ticket the vertical's rule opens (02 `CON.RUL.08`, 09 `MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-10, BL-HRM-30, BL-CON-15, BL-CON-18, BL-LOG-13, BL-MPW-13, BL-MPW-17
 **Review items:** X-15, 09-N12-c
 
 #### Goal
 After more than 7 consecutive days of absence with the worker unreachable and a MoHRE absence
-report filed, HR moves the employee to `absconded`. Pay not yet sent is held outside WPS,
-deployments end,
-portal and attendance are disabled, the final settlement is drafted and a cancellation case
-opens.
+report filed, HR moves the employee to `absconded`. This issue builds the transition, its
+guards, approval, the closing of portal and attendance, and `EmployeeAbsconded`, which ends
+deployments and crew membership. Holding pay outside WPS, drafting the final settlement and
+opening the cancellation case need payroll, settlement and visa cases (phase F9) and are
+provided by BL-HRM-30 (Launch 09).
 
 #### Surfaces
 - **Back office:** HR records contact attempts and the MoHRE report number and date on the
   employee and requests **Report absconding**; the MD approves it.
-- **System:** on approval open payroll lines are held with *absence report*, portal and
-  attendance are disabled, a settlement is drafted, a cancellation case opens and
-  `EmployeeAbsconded` is emitted.
+- **System:** on approval portal and attendance are disabled and `EmployeeAbsconded` is
+  emitted. The payroll hold, the settlement draft and the cancellation case are provided by
+  BL-HRM-30.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Employee: MoHRE absence report), §4 *Employee*, §5.4
@@ -556,9 +558,11 @@ opens.
 - `docs/OPEN-ITEMS.md` L-24
 
 #### Terms
-- **Absence case:** a 09 ticket opened by `MPW.RUL.09` after N consecutive calendar days
-  without attendance or leave; while open, payroll lines are held.
-- **Held line:** a payroll line left out of the SIF, with a reason.
+- **Absence case:** a ticket of category *absence* for HR, opened by the vertical's rule after
+  N consecutive days without attendance or leave (02: `CON.RUL.08`, BL-CON-15; 09:
+  `MPW.RUL.09`, BL-MPW-17). The guard only asks that one is open for the employee. The 09
+  case also holds the next salary; that is 09's part (BL-MPW-17).
+- **Held line:** a payroll line left out of the SIF, with a reason (BL-HRM-30).
 - **Contact attempt:** a record on the employee (date, method, by whom, outcome) made by HR
   while the worker is absent.
 - **Absconding step template:** the *absconding* variant of the *cancellation* visa step
@@ -582,6 +586,11 @@ opens.
 Setting: Absence days before `report_absconding` is allowed = 7 consecutive days.
 §10: what may lawfully be withheld is `⚠ open: lawyer (L-24)`.
 
+**Split (decided 2026-10-20).** The spec row above is built in two issues. Here (Launch 02): the
+guards, approval, *portal and attendance disabled*, *deployments ended* (through the event) and
+the event. In BL-HRM-30 (Launch 09): *payroll lines held*, *final settlement drafted* and the
+*cancellation* visa case. Launch 02 has no payroll run, settlement or visa case to act on.
+
 #### Edge cases decided
 - **"More than N consecutive days":** strictly more than 7 calendar days since the last
   attendance or approved leave day (ER: "more than 7"), Asia/Dubai. The age of the absence
@@ -590,41 +599,39 @@ Setting: Absence days before `report_absconding` is allowed = 7 consecutive days
   equivalent), on two different days after the last attended day.
 - **From `notice`:** the existing draft settlement is kept and its reason changed to
   `absconding`; no second settlement is drafted.
-- **Open payroll lines:** lines in runs not yet `submitted`. A line already in a sent SIF (run
-  `submitted`) cannot be recalled and is left; if the bank pays it, it stays paid; if the bank
-  fails it (`record_partial`), it is held with reason *absence report*, not regenerated.
-- **Deployments ended:** via the event; apps end them.
-- **Settlement amounts:** drafted as for any exit; L-24 decides withholding later; do not invent
-  forfeiture.
+- **Open payroll lines, settlement amounts:** provided by BL-HRM-30 (lines in runs not yet
+  `submitted` only; a line in a sent SIF is left; L-24 decides withholding, do not invent
+  forfeiture).
+- **Deployments ended, crew membership ended:** via the event; apps end them (02: the worker
+  leaves the crew).
 
 #### Must not
-- Must not pay held lines through WPS while the report is valid.
 - Must not run without the report number and date.
 
 #### Done when
-- [ ] Given E `active` with an absence case opened after the last attendance on 2026-11-01 and
-      today 2026-11-09, contact attempts on 2026-11-04 and 2026-11-06 (no answer), with report
-      "MOHRE-777" dated 2026-11-09, when approved, E is
-      `absconded`, E's line in the `calculated` November run is held with *absence report*,
-      portal and attendance are disabled, a draft settlement and a *cancellation* case exist, and
-      `EmployeeAbsconded` is emitted.
+- [ ] Given E `active` with an *absence* ticket open after the last attendance on 2026-11-01
+      and today 2026-11-09, contact attempts on 2026-11-04 and 2026-11-06 (no answer), with
+      report "MOHRE-777" dated 2026-11-09, when approved, E is `absconded`, portal and
+      attendance are disabled, and `EmployeeAbsconded` is emitted with the report number and
+      date.
 - [ ] On 2026-11-08 (7 days) the request is refused.
 - [ ] With only one contact attempt recorded (2026-11-05), it is refused.
 - [ ] Given the absence case opened on 2026-11-09 (late) and last attendance 2026-11-01, on
       2026-11-09 the request is allowed (case open, 8 days).
-- [ ] Given E's line in a November run already `submitted`, it stays in the sent SIF; when the
-      bank fails it, it is held with *absence report* and `regenerate` leaves it out.
 - [ ] Without the report number, it is refused.
+- [ ] Without an open *absence* ticket for E, it is refused.
 
 #### Out of scope
-`reinstate` (BL-HRM-08); exit (BL-HRM-10).
+`reinstate` (BL-HRM-08); exit (BL-HRM-10). Provided by BL-HRM-30 (Launch 09): the payroll hold
+(*absence report*, including a line in a sent SIF that the bank fails), the final settlement
+draft and the *cancellation* visa case.
 
 ---
 
 ### BL-HRM-08 — wl-hr: reinstate an absconded employee (`reinstate`)
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
-**Depends on:** BL-HRM-04 · BL-HRM-07 · BL-HRM-18 · BL-HRM-24 · **Blocks:** BL-MPW-13
+**Depends on:** BL-HRM-04 · BL-HRM-07 · BL-HRM-18 · BL-HRM-24 · BL-HRM-30 · **Blocks:** BL-MPW-13
 **Review items:** X-15, 09-N12-c
 
 #### Goal
@@ -769,7 +776,7 @@ Exit (BL-HRM-10).
 ### BL-HRM-10 — wl-hr: exit an absconded or deceased employee
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 09 · **Size:** s
-**Depends on:** BL-HRM-07 · BL-HRM-09 · **Blocks:** None
+**Depends on:** BL-HRM-07 · BL-HRM-09 · BL-HRM-30 · **Blocks:** None
 **Review items:** X-15, 09-N12-c
 
 #### Goal
@@ -2290,3 +2297,76 @@ the same onboarding do not block. portal account created (where the vertical has
 
 #### Out of scope
 The statutory items (base Employee lifecycle).
+
+---
+
+### BL-HRM-30 — wl-hr: hold pay, draft the settlement and open the cancellation case when an employee is reported absconded
+
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** BL-HRM-07 · Base: wl-hr Payroll run lifecycle · Base: wl-hr Final settlement lifecycle · Base: wl-hr Visa case lifecycle · **Blocks:** BL-HRM-08, BL-HRM-10
+**Review items:** X-15, 09-N12-c
+
+#### Goal
+BL-HRM-07 moves the employee to `absconded` and emits `EmployeeAbsconded`. This issue adds the
+effects of the spec row that need payroll, final settlement and visa cases, which exist from
+phase F9 (decision 0005): the pay not yet sent is held outside WPS, the final settlement is
+drafted and the *cancellation* visa case opens.
+
+#### Surfaces
+- **Back office:** the payroll officer sees the employee's lines in runs not yet `submitted` held
+  with *absence report*; HR sees a draft final settlement with reason *absconding* and a
+  *cancellation* case from the *absconding* variant of the step template.
+- **System:** the effects run in the `report_absconding` transition, after the BL-HRM-07
+  guards pass.
+
+#### Files to read
+- `docs/modules/wl-hr.md` §4 *Employee* (`report_absconding`), §5.4 "Absconding", §8 (visa
+  step templates), §10 *Absconding*
+- `docs/OPEN-ITEMS.md` L-24
+
+#### Terms
+- **Held line:** a payroll line left out of the SIF, with a reason.
+- **Absconding step template:** the *absconding* variant of the *cancellation* visa step
+  template (`VisaStepTemplate`, spec §8): it starts from the MoHRE absence report and needs no
+  worker signature.
+
+#### Spec excerpt (authoritative for this issue)
+
+The effects of `report_absconding` (spec §4 *Employee*, built in two issues: guards, approval,
+portal and attendance, deployments and the event are BL-HRM-07):
+
+payroll lines in runs not yet `submitted` held with reason *absence report* (outside WPS while
+the report is valid, MR 340/2026 Art. 4 ✔ [S2]; a line in a file already sent stays, and if the
+bank fails it, it is held); final settlement drafted (or, from `notice`, the existing one gets
+reason *absconding* and no second one is drafted); *cancellation* visa case opened from the
+*absconding* variant of the cancellation step template (§8).
+
+§10: what may lawfully be withheld is `⚠ open: lawyer (L-24)`.
+
+#### Edge cases decided
+- **Open payroll lines:** lines in runs not yet `submitted`. A line already in a sent SIF (run
+  `submitted`) cannot be recalled and is left; if the bank pays it, it stays paid; if the bank
+  fails it (`record_partial`), it is held with reason *absence report*, not regenerated.
+- **From `notice`:** the existing draft settlement is kept and its reason changed to
+  `absconding`; no second settlement is drafted.
+- **Settlement amounts:** drafted as for any exit; L-24 decides withholding later; do not invent
+  forfeiture.
+- **Release:** held lines are released by `reinstate` through `HRM.RUL.12` (BL-HRM-08), not here.
+
+#### Must not
+- Must not pay held lines through WPS while the report is valid.
+- Must not run when the BL-HRM-07 guards refuse.
+
+#### Done when
+- [ ] Given E `active` reported absconded (the BL-HRM-07 case), E's line in the `calculated`
+      November run is held with *absence report*, a draft settlement with reason *absconding*
+      exists, and a *cancellation* case from the *absconding* template is open.
+- [ ] Given E in `notice` with a draft settlement, the settlement keeps its id and gets reason
+      *absconding*; no second settlement exists.
+- [ ] Given E's line in a November run already `submitted`, it stays in the sent SIF; when the
+      bank fails it, it is held with *absence report* and `regenerate` leaves it out.
+- [ ] When BL-HRM-07 refuses the request, no line is held and no settlement or case is created.
+
+#### Out of scope
+The guards, approval, portal and attendance, deployments and the event (BL-HRM-07);
+`reinstate` (BL-HRM-08); exit (BL-HRM-10).

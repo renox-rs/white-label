@@ -231,6 +231,7 @@
 | BL-HRM-27 | [#217](https://github.com/renox-rs/white-label/issues/217) |
 | BL-HRM-28 | [#218](https://github.com/renox-rs/white-label/issues/218) |
 | BL-HRM-29 | [#219](https://github.com/renox-rs/white-label/issues/219) |
+| BL-HRM-30 | [#480](https://github.com/renox-rs/white-label/issues/480) |
 | BL-STK-01 | [#220](https://github.com/renox-rs/white-label/issues/220) |
 | BL-STK-02 | [#221](https://github.com/renox-rs/white-label/issues/221) |
 | BL-STK-03 | [#222](https://github.com/renox-rs/white-label/issues/222) |

@@ -1719,6 +1719,7 @@ The 03 reversal and its task (BL-LOG-10); salary deductions (Epic wl-hr).
 **Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-payments Payment lifecycle · BL-PAY-01 (`reverse`) · BL-PTY-04 (`BlockGuard`) · **Blocks:** BL-CON-03, BL-CON-06, BL-CON-17
 **Review items:** 02 MEDIUM (certificate deductions)
+**Progress:** the payment method `set_off` already exists in the kernel (`PaymentMethod::SetOff`, `crates/wl-kernel/src/payments.rs`, from #94 part 2/8) and the methods setting accepts it; `record` refuses it (`crates/wl-payments/tests/record.rs`). Open: the set-off flow itself (allocation to the invoice and the supplier bill, `reverse`, the block guard, the exception approval).
 
 #### Goal
 When a party is both our customer and our supplier and the two sides agree to settle against

@@ -507,6 +507,7 @@ Flagging and resolving (BL-INV-04).
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-INV-04 · Epic wl-delivery: delivery `under_review`, `reverse_delivery`, `lost` · **Blocks:** BL-LOG-09
 **Review items:** X-11, 03-N11-a
+**Progress:** part 1 of 5 is on main: the kernel delivery contract and the dispute request source (28de883). The flag, resolve and task flows are not built yet.
 
 #### Goal
 When a recipient denies a delivery, wl-delivery puts it under review. wl-invoicing must flag
@@ -1146,6 +1147,7 @@ The payment reversal (BL-PAY-01); the debit note cancellation itself (BL-INV-14)
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-invoicing Supplier bill lifecycle · Epic wl-inventory: return to supplier (`SupplierReturnDispatched`) · **Blocks:** BL-INV-14, BL-CON-17, BL-MFG-08
 **Review items:** X-08, 02-N10-a, 06-N10-b, 07-N10-a
+**Progress:** parts 1 and 2 of 7 are on main: kernel contracts for supplier debit notes and cost posting (b9207b7); entities, lines and the machine with manual drafts, edits, discard and the quantity and net caps (f6fcaf1, test `supplier_debit_note_drafts.rs`). Open: drafting from a dispatched return, issue with number, bill balance, cost and VAT reversal, notices, approval of a manual note, the debit balance on a paid bill, re-pricing a draft when the bill is approved.
 
 #### Goal
 When goods are returned to a supplier, or a price difference or short delivery is found after
@@ -1229,7 +1231,7 @@ note required to settle — required; number format `DN-{ENTITY}-{YYYY}-{0000}`.
       `SupplierDebitNoteIssued` is emitted.
 - [ ] Given the bill `paid`, issue opens a supplier debit balance of AED 315.00 and the bill stays `paid`.
 - [ ] A manual debit note by user A is approved only by user B.
-- [ ] A debit note for 8 units after an earlier one for 3 (bill of 10) is refused.
+- [x] A debit note for 8 units after an earlier one for 3 (bill of 10) is refused.
 - [ ] A return dispatched before the bill waits as a draft priced at the PO price (AED 95.00 a unit)
       and, when the bill at AED 100.00 a unit is approved, links to it and is re-priced to AED 100.00.
 
@@ -1243,6 +1245,7 @@ Settle and cancel (BL-INV-14); return to supplier in wl-inventory; receiving the
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-INV-13 · BL-INV-12 · **Blocks:** BL-AUT-11
 **Review items:** X-08
+**Progress:** part 1 of 6 is on main: the kernel contract for settling and cancelling supplier debit notes (2bbc617, test `crates/wl-kernel/tests/package.rs`). Nothing of the settle, cancel and set-off flows is built yet.
 
 #### Goal
 An issued debit note is settled when the supplier's tax credit note is recorded and the amount is
@@ -1345,6 +1348,7 @@ Drafting and issuing (BL-INV-13); return cancellation in wl-inventory.
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-invoicing Supplier bill lifecycle · Epic wl-inventory: landed cost allocation and `adjust` · **Blocks:** None.
 **Review items:** X-10, 08 MEDIUM "landed cost adjustment"
+**Progress:** part 1 of 5 is on main: the kernel contract for landed costs and the bill approval payload (90764f2). The posting of landed-cost lines on bill approval is not built yet.
 
 #### Goal
 A freight, duty or clearing line on a supplier bill can be coded to a wl-inventory landed cost.
