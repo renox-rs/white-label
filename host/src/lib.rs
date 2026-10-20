@@ -73,12 +73,12 @@ pub fn refuse_in_production(command: Option<&str>, app_env: Option<&str>) -> Res
     let production = app_env.is_some_and(|env| env.trim().to_lowercase().starts_with("prod"));
     match command {
         Some(command) if production && DEMO_COMMANDS.contains(&command) => Err(format!(
-            "{command} is refused when APP_ENV is production: it would {} \
-             Add people with `users:invite`; to start over, restore a backup.",
+            "{command} is refused when APP_ENV is production: {}",
             if command == "migrate:fresh" {
-                "drop every table of the live database."
+                "it would drop every table of the live database. To start over, restore a backup."
             } else {
-                "put the demo company and its logins (admin@example.com / password123) in the live database."
+                "it would put the demo company and its logins (admin@example.com / password123) \
+                 in the live database. Add people with `users:invite`."
             }
         )),
         _ => Ok(()),
