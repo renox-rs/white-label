@@ -572,6 +572,13 @@ pub async fn after_report(state: &AppState, id: i64) -> Result {
 
 /// Tells each partner that the MLRO needs to discuss the client; the notice
 /// names the client and nothing of the case.
+///
+/// Decision: "the engagement's partner" is every holder of the partner role.
+/// An engagement has no partner field of its own (it has a manager), the
+/// firm's partners share the client list, and the notice says nothing a
+/// partner must not know, so no partner is left out and none is picked by
+/// guess. The same holds for the exit task (`exits`), which goes to the first
+/// holder of the role and is visible to all.
 async fn tell_partners(state: &AppState, case: &AmlCase, client_name: &str) -> Result {
     let engagements = Engagement::of_client(&state.db, case.client()).await?;
     let subject = engagements

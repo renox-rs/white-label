@@ -360,3 +360,34 @@ async fn a_file_not_approved_gets_the_task_without_a_transition() {
         assert_eq!(tasks[0].assignee_user_id, Some(mlro.id));
     }
 }
+
+/// Decision (#335): the engagement has no partner of its own, so "the
+/// engagement's partner" is every holder of the partner role: each is told,
+/// a manager or an accountant is not.
+#[renox::test]
+async fn every_partner_is_told_that_the_mlro_needs_to_talk() {
+    let t = boot_real().await;
+    let (mlro, manager) = (t.mlro().await, t.manager().await);
+    let (first, second) = (t.partner().await, t.user_with("Pat", "partner").await);
+    let client = t.client().await;
+    t.cdd_approved(&client, &mlro).await;
+    let engagement = t
+        .engagement_in(&client, EngagementStatus::Active, None)
+        .await;
+    let case = under_review(&t, &manager, &mlro, &engagement).await;
+    report(&t, &mlro, &case).await.assert_ok();
+
+    let mut told: Vec<_> = t
+        .notices
+        .of_type(PARTNER_NOTICE)
+        .iter()
+        .flat_map(|n| n.recipients.clone())
+        .collect();
+    told.sort_by_key(|r| format!("{r:?}"));
+    let mut expected = vec![
+        NotifyRecipient::User { id: first.id },
+        NotifyRecipient::User { id: second.id },
+    ];
+    expected.sort_by_key(|r| format!("{r:?}"));
+    assert_eq!(told, expected);
+}
