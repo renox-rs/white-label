@@ -15,3 +15,5 @@ wl-kernel = { path = "../wl-kernel" }
 
 [dev-dependencies]
 tempfile = "3"
+# The real payments module in the drawings and cash-flow integration tests.
+wl-payments = { path = "../wl-payments" }
