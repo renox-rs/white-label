@@ -395,6 +395,47 @@ async fn an_unreachable_asp_is_retried_on_the_schedule_until_it_is_sent() {
     assert_eq!(health.status, ConnectionStatus::Up);
 }
 
+/// After the first 24 hours the retry schedule is every 6 hours: +30 h, +36 h,
+/// +42 h, +48 h, each measured from the issue; nothing is tried between them.
+#[renox::test]
+async fn after_the_first_day_an_unreachable_asp_is_retried_every_six_hours() {
+    let asp = FakeAsp::new();
+    asp.unreachable(true);
+    let t = booted(&asp, "2027-01-05", 6).await;
+    let clerk = t.user_a().await;
+    t.issue(&draft_for(&t, BLUE_DUNES).await, &clerk).await;
+    let after = |t: &EInvoiceTransmission| (t.next_try_at.unwrap() - t.queued_at).num_minutes();
+
+    // The first day: +5 m, +30 m, +2 h, +6 h, +12 h, +18 h, +24 h.
+    for minute in [6, 31, 121, 361, 721, 1_081, 1_441] {
+        at(&t, minute);
+        run(&t).await;
+    }
+    let row = transmissions(&t).await.remove(0);
+    assert_eq!(row.tries, 8);
+    assert_eq!(after(&row), 1_800, "next try at +30 h");
+
+    // Then every 6 hours: tried at each step, not in between.
+    let mut tries = row.tries;
+    for hours in [30_u32, 36, 42, 48] {
+        let step = hours * 60;
+        at(&t, step - 30);
+        run(&t).await;
+        assert_eq!(transmissions(&t).await[0].tries, tries, "before +{hours} h");
+        at(&t, step + 1);
+        run(&t).await;
+        let row = transmissions(&t).await.remove(0);
+        tries += 1;
+        assert_eq!(row.tries, tries, "at +{hours} h");
+        assert_eq!(row.status, TransmissionStatus::Queued);
+        assert_eq!(after(&row), i64::from(step + 360), "after +{hours} h");
+        at(&t, step + 120);
+        run(&t).await;
+        assert_eq!(transmissions(&t).await[0].tries, tries, "between steps");
+    }
+    assert_eq!(asp.submitted().len(), 0);
+}
+
 /// An entity with a go-live date and no adapter: the invoice is issued, its
 /// transmission waits `queued`, and nothing is lost.
 #[renox::test]
