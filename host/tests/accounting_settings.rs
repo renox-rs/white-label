@@ -162,3 +162,19 @@ async fn the_notification_types_have_the_reactions_of_the_04_groups() {
         assert_eq!(row.staff_role.as_deref(), Some(BILLING), "{}", row.key);
     }
 }
+
+/// The demo client lists the UAE public holidays: the 20 business days of a
+/// voluntary disclosure found on Thursday 2026-11-05 skip the National Day
+/// holidays of 2026-12-02 and 2026-12-03 and end on 2026-12-07, where
+/// without them they would end on 2026-12-03.
+#[renox::test]
+async fn the_voluntary_disclosure_deadline_skips_the_public_holidays_of_the_client() {
+    let app = accounting_booted().await;
+    let due = accounting::corrections::disclosure_due(app.state(), date("2026-11-05"));
+    assert_eq!(due, date("2026-12-07"));
+    let listed: Vec<NaiveDate> = wl_kernel::calendar::calendar(app.state())
+        .holidays()
+        .collect();
+    assert!(listed.contains(&date("2026-12-02")));
+    assert!(listed.contains(&date("2026-12-03")));
+}
