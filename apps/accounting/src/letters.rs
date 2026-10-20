@@ -42,6 +42,7 @@ use wl_kernel::notify::{
 };
 use wl_kernel::portal::portal_users;
 use wl_kernel::role_tasks::{self, RoleTask};
+use wl_kernel::sales::lead_conversion;
 use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, TicketId, task_creator};
 
 use crate::db::{refused, set_engagement};
@@ -283,6 +284,7 @@ pub async fn sign(
         &english("accounting.letters.chase_closed_signed", &[]),
     )
     .await?;
+    win_lead(state, &engagement).await?;
     Ok(letter)
 }
 
@@ -316,6 +318,22 @@ pub async fn mark_signed_by_staff(
         &english("accounting.letters.chase_closed_signed", &[]),
     )
     .await
+}
+
+/// The client signed the engagement letter of `engagement` (`SAL.CRM.02`):
+/// the open lead of the client party is won with the engagement as its
+/// conversion, which carries the lead's source and campaign to the party
+/// (wl-sales' acquisition). Nothing happens without the sales module or an
+/// open lead.
+///
+/// # Errors
+///
+/// The sales module's errors.
+pub async fn win_lead(state: &AppState, engagement: &Engagement) -> Result {
+    lead_conversion(state)
+        .win_for_party(state, engagement.client(), engagement.subject())
+        .await?;
+    Ok(())
 }
 
 /// Completes the chase task of `letter` if one is open.

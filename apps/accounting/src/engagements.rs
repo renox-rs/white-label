@@ -106,6 +106,7 @@ pub async fn record_letter_signed(
     .await?;
     tx.commit().await?;
     letters::mark_signed_by_staff(state, by, id, on).await?;
+    letters::win_lead(state, &engagement).await?;
     load(state, id).await
 }
 
