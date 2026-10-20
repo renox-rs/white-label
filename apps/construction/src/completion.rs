@@ -35,6 +35,7 @@ use renox::state_machine::{StateMachine, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 
+use crate::final_account::{Settled, closing_warnings};
 use crate::project::{CLOSE, COMPLETE, Project};
 use crate::retention::{RetentionPart, make_part_due_in};
 use crate::texts::english;
@@ -183,19 +184,24 @@ pub async fn complete(
 ///
 /// `Forbidden` without `projects.manage` in the project, `NotFrom` unless the
 /// project is `practical_completion`, `Guard` (422) while the defects
-/// liability period runs. Nothing is written then.
+/// liability period runs. Nothing is written then. What is still open
+/// (retention parts, guarantees, a site store count) only warns: it comes back
+/// as the warnings of the closing screen.
 pub async fn close(
     state: &AppState,
     user: &AuthUser,
     id: i64,
-) -> std::result::Result<Project, TransitionError> {
+) -> std::result::Result<Settled, TransitionError> {
     let project = Project::find(&state.db, id)
         .await?
         .ok_or(TransitionError::Failed(Error::NotFound))?;
     let _outcome = project.transition(CLOSE).by(user).run(state).await?;
     release::announce_due(state, id).await?;
     expiry::release_tasks(state, id).await?;
-    Ok(Project::find_or_404(&state.db, id).await?)
+    // Read as committed: the warnings keep their own lifecycles.
+    let warnings = closing_warnings(state, id).await?;
+    let project = Project::find_or_404(&state.db, id).await?;
+    Ok(Settled { project, warnings })
 }
 
 #[cfg(test)]

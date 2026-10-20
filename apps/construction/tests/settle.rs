@@ -220,6 +220,59 @@ async fn open_counts_retention_and_guarantees_only_warn() {
     assert_eq!(after.guarantees, 1);
 }
 
+/// Done when 6 (second half): closing a completed project whose site store
+/// has an open count only warns; the project closes and the answer carries the
+/// stock count warning.
+#[renox::test]
+async fn closing_a_completed_project_with_an_open_count_only_warns() {
+    let t = boot().await;
+    let a = t.project_manager("Amal").await;
+    let project = t
+        .project(ProjectStatus::PracticalCompletion, Some(&a))
+        .await;
+    let ends = Some(date(2028, 6, 15));
+    Project::query()
+        .where_(Project::ID.eq(project.id))
+        .update(t.db(), &[("defects_liability_ends_on", &ends)])
+        .await
+        .unwrap();
+    let store = t.store(&project, "SITE-STORE").await;
+    stock_count::open_for(t.db(), store.id, "project closing", &project.subject())
+        .await
+        .unwrap();
+    assert_eq!(
+        closing_warnings(t.state(), project.id)
+            .await
+            .unwrap()
+            .stock_counts,
+        1
+    );
+
+    let path = format!("/construction/projects/{}/close", project.id);
+    let answer = t
+        .on(date(2028, 6, 16), async { t.post(&a, &path, &[]).await })
+        .await;
+    answer.assert_ok();
+    let shown = t
+        .app
+        .session_get::<renox::serde_json::Value>("_toasts")
+        .map(|toasts| toasts.to_string())
+        .unwrap_or_default();
+    assert!(
+        shown.contains("stock count"),
+        "the close warns about the open count: {shown}"
+    );
+    assert_eq!(t.reload(&project).await.status, ProjectStatus::Closed);
+    // The count is still open: it only warned.
+    assert_eq!(
+        closing_warnings(t.state(), project.id)
+            .await
+            .unwrap()
+            .stock_counts,
+        1
+    );
+}
+
 /// A goods receipt at the store of `project`.
 async fn receipt_at(t: &Booted, project: &Project) {
     let store = t.store(project, "SITE-STORE").await;

@@ -710,12 +710,13 @@ async fn close_project(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    completion::close(&state, &user, id).await.map_err(answer)?;
-    Ok((
-        Toast::success(t(&lang, "construction.close.done")),
-        renox::HxRefresh,
-    )
-        .into_response())
+    let closed = completion::close(&state, &user, id).await.map_err(answer)?;
+    let toast = if closed.warnings.is_empty() {
+        Toast::success(t(&lang, "construction.close.done"))
+    } else {
+        Toast::warning(closed.warnings.texts().join(" "))
+    };
+    Ok((toast, renox::HxRefresh).into_response())
 }
 
 /// `POST /construction/retentions/{id}/bond`: `guarantee_id`, the retention
