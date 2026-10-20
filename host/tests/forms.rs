@@ -169,7 +169,7 @@ async fn a_refused_submit_carries_its_message_for_the_modal() {
     // The error page names its message in `data-error-detail`, which
     // public/forms.js shows as an alert in the modal that was submitted.
     assert!(
-        html.contains("data-error-detail=\"Emirates ID missing"),
+        html.contains("data-error-detail=\"The tenant needs a valid Emirates ID, passport and residence visa on file."),
         "the page carries the refusal"
     );
     // The script that does it is loaded by the layout.
