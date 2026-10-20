@@ -229,3 +229,55 @@ impl Booted {
         assert_eq!(self.return_status(ret).await, ReturnStatus::ClientApproval);
     }
 }
+
+impl Booted {
+    /// An `active` engagement of `client` (a fixture) with a retainer of
+    /// `fee` fils a month.
+    pub async fn engagement_billed(&self, client: &Client, fee: i64) -> Engagement {
+        let engagement = self.active_engagement(client).await;
+        Engagement::query()
+            .where_(Engagement::ID.eq(engagement.id))
+            .update(self.db(), &[("retainer_fee", &fee)])
+            .await
+            .unwrap();
+        self.reload(&engagement).await
+    }
+
+    /// `engagement` billed as a fixed fee without a retainer (a fixture): no
+    /// pro rata document is made when it ends.
+    pub async fn engagement_fixed_fee(&self, engagement: &Engagement) -> Engagement {
+        Engagement::query()
+            .where_(Engagement::ID.eq(engagement.id))
+            .update(
+                self.db(),
+                &[
+                    ("fee_basis", &accounting::FeeBasis::Fixed),
+                    ("retainer_fee", &0i64),
+                ],
+            )
+            .await
+            .unwrap();
+        self.reload(engagement).await
+    }
+
+    /// A deadline task of `engagement` of `task_type`, titled `title`, due
+    /// on `due`, as the calendar makes it.
+    pub async fn calendar_task(
+        &self,
+        engagement: &Engagement,
+        task_type: &str,
+        title: &str,
+        due: NaiveDate,
+    ) -> DeadlineTaskId {
+        deadline_tasks(self.state())
+            .create(
+                self.state(),
+                NewDeadlineTask::new(engagement.subject(), task_type, title, due)
+                    .party(engagement.client())
+                    .reviewer_role(MANAGER),
+            )
+            .await
+            .unwrap()
+            .expect("ticketing is on")
+    }
+}

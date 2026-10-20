@@ -617,13 +617,16 @@ impl Invoicer for InvoiceBook {
     }
 }
 
+/// A write-off made on the time module: agreement, amount, reason, who.
+pub type WriteOffRecord = (Subject, i64, String, Option<i64>);
+
 /// The unbilled time (WIP) of the engagements and the write-offs made, as
 /// wl-attendance would answer.
 #[derive(Clone, Default)]
 pub struct WipBook {
     unbilled: Arc<Mutex<Vec<(Subject, i64)>>>,
     billed: Arc<Mutex<Vec<(Subject, i64)>>>,
-    written_off: Arc<Mutex<Vec<(Subject, i64, String, Option<i64>)>>>,
+    written_off: Arc<Mutex<Vec<WriteOffRecord>>>,
 }
 
 impl WipBook {
@@ -652,7 +655,7 @@ impl WipBook {
     }
 
     /// Every write-off: agreement, amount, reason, who.
-    pub fn written_off(&self) -> Vec<(Subject, i64, String, Option<i64>)> {
+    pub fn written_off(&self) -> Vec<WriteOffRecord> {
         self.written_off.lock().unwrap().clone()
     }
 }
@@ -779,6 +782,7 @@ pub fn register_portal_section() {
 }
 
 mod returns;
+#[allow(unused_imports)]
 pub use returns::Crew;
 
 // ---- the roles -------------------------------------------------------------
