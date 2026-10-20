@@ -175,7 +175,13 @@ async fn a_pending_ipa_is_replaced_explicitly_and_the_client_is_told() {
     assert_eq!(replacing.replaces_id, Some(five));
     assert_eq!(replacing.submitted_on, Some(date(2027, 2, 26)));
     assert_eq!(t.reload_ipa(five).await.status, IpaStatus::Superseded);
-    assert_eq!(t.notices.of_type("construction.ipa_superseded").len(), 1);
+    let told = t.notices.of_type("construction.ipa_superseded");
+    assert_eq!(told.len(), 1);
+    // The client's contact is the one told.
+    assert!(told[0].recipients.iter().any(|r| matches!(
+        r,
+        wl_kernel::notify::NotifyRecipient::Contact { of, .. } if *of == support::CLIENT_PARTY
+    )));
 }
 
 /// Only the most recent pending IPA can be replaced and nothing else is
