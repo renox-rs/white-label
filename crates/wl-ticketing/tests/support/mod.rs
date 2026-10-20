@@ -22,8 +22,8 @@ use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, Pa
 use wl_kernel::tickets::{Assignee, OpenTicket, TicketAssigned, TicketClosed};
 use wl_kernel::{BusinessCalendar, ClientConfig, PartyId, Subject};
 use wl_ticketing::{
-    AssignRequest, Assignment, Priority, Ticket, Tickets, WlTicketing, assign, permissions as perm,
-    seed, work,
+    AssignRequest, Assignment, DeadlineTask, Priority, Ticket, Tickets, WlTicketing, assign,
+    deadlines, permissions as perm, seed, work,
 };
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -307,6 +307,11 @@ pub fn dubai(date: &str, hour: u32, minute: u32) -> DateTime {
     BusinessCalendar::default().from_local(local)
 }
 
+/// The date `2026-11-03`.
+pub fn day(date: &str) -> NaiveDate {
+    date.parse().expect("a date")
+}
+
 /// What the harness routes take: the time of the action (Asia/Dubai
 /// wall-clock time) and the parts of the action.
 #[derive(Deserialize)]
@@ -328,6 +333,8 @@ struct ActForm {
     hold_reason: Option<String>,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    evidence: Option<String>,
 }
 
 fn instant(local: NaiveDateTime) -> DateTime {
@@ -390,6 +397,36 @@ async fn act(
     }
 }
 
+/// Runs `action` on deadline task `id` as the logged-in user, on the
+/// Asia/Dubai date of `at`.
+async fn act_task(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path((id, action)): Path<(i64, String)>,
+    Form(form): Form<ActForm>,
+) -> Result<String> {
+    let task = DeadlineTask::find_or_404(&state.db, id).await?;
+    let today = wl_kernel::documents::dubai_date(instant(form.at));
+    let reason = form.reason.as_deref();
+    let done = match action.as_str() {
+        "start" => deadlines::start(&state, &user, &task).await,
+        "wait" => deadlines::wait(&state, &user, &task, reason).await,
+        "unblock" => deadlines::unblock(&state, &user, &task).await,
+        "submit_review" => deadlines::submit_review(&state, &user, &task).await,
+        "send_back" => deadlines::send_back(&state, &user, &task, reason).await,
+        "complete" => {
+            deadlines::complete(&state, &user, &task, form.evidence.as_deref(), today).await
+        }
+        "close_missed" => deadlines::close_missed(&state, &user, &task, reason).await,
+        "waive" => deadlines::waive(&state, &user, &task, reason, today).await,
+        _ => return Err(Error::NotFound),
+    };
+    match done {
+        Ok(()) => Ok("done".to_owned()),
+        Err(error) => Err(error.into_error()),
+    }
+}
+
 /// The test-only routes.
 struct Harness;
 
@@ -402,6 +439,7 @@ impl Module for Harness {
         Routes::new()
             .post("/test/tickets/{id}/assign", act_assign)
             .post("/test/tickets/{id}/do/{action}", act)
+            .post("/test/deadlines/{id}/do/{action}", act_task)
     }
 }
 
@@ -492,6 +530,47 @@ impl Booted {
     /// The assignment rows of `ticket`, oldest first.
     pub async fn history(&self, ticket: &Ticket) -> Vec<Assignment> {
         Assignment::history(self.db(), ticket.id).await.unwrap()
+    }
+
+    /// The deadline task `id`, as stored now.
+    pub async fn task(&self, id: i64) -> DeadlineTask {
+        DeadlineTask::find_or_404(self.db(), id).await.unwrap()
+    }
+
+    /// `by` runs `action` (`start`, `wait`, `unblock`, `submit_review`,
+    /// `send_back`, `complete`, `close_missed` or `waive`) on deadline task
+    /// `id` at `at` (`2026-11-03 09:00`, Asia/Dubai), with `pairs` (`reason`,
+    /// `evidence`).
+    pub async fn task_act(
+        &self,
+        by: &User,
+        id: i64,
+        action: &str,
+        at: &str,
+        pairs: &[(&str, &str)],
+    ) -> renox::testing::TestResponse {
+        let at = local(at);
+        let mut fields = vec![("at", at.as_str())];
+        fields.extend_from_slice(pairs);
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/test/deadlines/{id}/do/{action}"), &fields)
+            .await
+    }
+
+    /// A user holding `grants` through the role `role` (defined here), e.g.
+    /// the manager role the module is told about.
+    pub async fn user_in_role(&self, name: &str, role: &str, grants: &[&str]) -> User {
+        let email = format!("{}@example.com", name.to_lowercase());
+        let user = User::register(self.db(), name, &email, "password123")
+            .await
+            .unwrap();
+        permissions::define_role(self.db(), role, grants)
+            .await
+            .unwrap();
+        user.assign_role(self.db(), role).await.unwrap();
+        user
     }
 
     /// `by` assigns `ticket` at `at` (`2026-11-03 09:00`, Asia/Dubai) as

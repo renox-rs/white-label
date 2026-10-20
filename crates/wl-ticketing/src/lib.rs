@@ -12,6 +12,9 @@ pub mod contract;
 pub mod contract_end;
 mod contract_machine;
 pub mod contract_pages;
+pub mod deadline;
+pub mod deadline_machine;
+pub mod deadlines;
 pub mod flag_pages;
 pub mod flags;
 pub mod job_cancel;
@@ -43,6 +46,8 @@ pub use charge::{ChargeInput, ChargeLine};
 pub use comments::{Comment, CommentVisibility};
 pub use config::{Category, CustomField, FieldKind, HoldReason, InvoiceOn, SlaPolicy, SlaTarget};
 pub use contract::{ContractStatus, Coverage, NewContract, ServiceContract, ServiceContracts};
+pub use deadline::{DeadlineTask, TaskSource};
+pub use deadlines::Deadlines;
 pub use flags::ComplianceFlag;
 pub use no_show::NoShow;
 pub use open::Tickets;
@@ -118,6 +123,15 @@ pub mod permissions {
     pub const SERVICE_CONTRACTS_MANAGE: &str = "service_contracts.manage";
     /// See and manage maintenance plans.
     pub const MAINTENANCE_PLANS_MANAGE: &str = "maintenance_plans.manage";
+    /// See deadline tasks (§4.4).
+    pub const TASKS_VIEW: &str = "tasks.view";
+    /// Work deadline tasks: start, wait, unblock, submit for review and
+    /// complete one without a reviewer.
+    pub const TASKS_WORK: &str = "tasks.work";
+    /// Review deadline tasks: send back or complete one in review.
+    pub const TASKS_REVIEW: &str = "tasks.review";
+    /// Configure deadline tasks, waive them and close them as missed.
+    pub const TASKS_MANAGE: &str = "tasks.manage";
 }
 
 /// The ticketing module. The host adds it with
@@ -130,6 +144,7 @@ pub struct WlTicketing {
     auto_close_days: Option<i64>,
     no_show_hours: Option<i64>,
     visit_check: visit_check::Settings,
+    deadlines: deadlines::Settings,
 }
 
 impl WlTicketing {
@@ -188,6 +203,35 @@ impl WlTicketing {
     /// 01: the property manager).
     pub fn compliance_manager_role(mut self, role: &str) -> Self {
         self.visit_check.manager_role = role.to_owned();
+        self
+    }
+
+    /// Sets whether a started deadline task (`in_progress` or `waiting`) may
+    /// be waived (§7 *waive a started task*: on unless set; 04: off, a
+    /// started task that no longer applies is listed for the manager).
+    pub fn waive_started_tasks(mut self, allowed: bool) -> Self {
+        self.deadlines.waive_started = allowed;
+        self
+    }
+
+    /// Sets the role told of overdue deadline tasks and given the lists on
+    /// release and on the end of an agreement (the company administrators
+    /// unless set; 04: the manager).
+    pub fn task_manager_role(mut self, role: &str) -> Self {
+        self.deadlines.manager_role = role.to_owned();
+        self
+    }
+
+    /// Sets the days before a deadline task's due date its owner (and, for a
+    /// task that needs client input, the client) is reminded (none unless
+    /// set; 04 `ACC.RUL.01`: 30, 14, 7 and 3).
+    ///
+    /// # Panics
+    ///
+    /// For a negative day: a programming error.
+    pub fn task_reminder_days(mut self, days: &[i64]) -> Self {
+        assert!(days.iter().all(|d| *d >= 0), "reminder days are not negative");
+        self.deadlines.reminder_days = days.to_vec();
         self
     }
 
@@ -293,11 +337,14 @@ impl Module for WlTicketing {
             .model::<ServiceContract>()
             .model::<Coverage>()
             .model::<MaintenancePlan>()
-            .model::<NoShow>();
+            .model::<NoShow>()
+            .model::<DeadlineTask>()
+            .model::<TaskSource>();
         // `rnx state:diagram Ticket` and the admin panel find the machine.
         renox::state_machine::register::<Ticket>();
         renox::state_machine::register::<ServiceContract>();
         renox::state_machine::register::<MaintenancePlan>();
+        renox::state_machine::register::<DeadlineTask>();
         // `TicketClosed` after a `confirm` or `close` commits.
         work::register_events(app);
         // The invoice draft of a chargeable ticket, after `resolve` or at
@@ -344,6 +391,12 @@ impl Module for WlTicketing {
             self.no_show_hours.unwrap_or(no_show::DEFAULT_HOURS),
         ));
         no_show::register(app);
+        // Deadline tasks (§4.4): the next occurrence, events and notices after
+        // each transition, `WRK.RUL.05` and `WRK.RUL.06`, and the kernel's
+        // `DeadlineTasks` for the verticals.
+        app.provide(self.deadlines.clone());
+        deadlines::register(app);
+        wl_kernel::deadlines::provide_deadline_tasks(app, Deadlines);
         // The seeded defaults keep the client's changes.
         app.command(
             "ticketing:install",

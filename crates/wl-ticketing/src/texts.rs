@@ -601,6 +601,113 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.visit.charged",
         "The requester is charged for the work done: :reason",
     ),
+    (
+        "wl_ticketing.task.problem.input",
+        "The action was not prepared by the task service.",
+    ),
+    (
+        "wl_ticketing.task.problem.wait_reason",
+        "Give a reason, or link the open item the task waits for.",
+    ),
+    (
+        "wl_ticketing.task.problem.no_reviewer",
+        "This task has no reviewer: complete it instead.",
+    ),
+    (
+        "wl_ticketing.task.problem.evidence",
+        "Attach the evidence this task needs before completing it.",
+    ),
+    (
+        "wl_ticketing.task.problem.needs_review",
+        "This task is completed by its reviewer: submit it for review.",
+    ),
+    (
+        "wl_ticketing.task.problem.not_due",
+        "The due date has not passed.",
+    ),
+    (
+        "wl_ticketing.task.problem.started",
+        "A started task is not waived here: it is listed for the manager.",
+    ),
+    (
+        "wl_ticketing.task.problem.blank",
+        "A task needs a title and a type.",
+    ),
+    (
+        "wl_ticketing.task.problem.lead_days",
+        "The lead time cannot be negative.",
+    ),
+    ("wl_ticketing.task.problem.reason", "Give a reason."),
+    (
+        "wl_ticketing.task.overdue_line",
+        ":title (overdue since :since)",
+    ),
+    ("wl_ticketing.task.open_line", ":title (:status)"),
+    (
+        "wl_ticketing.task.released_title",
+        "Tasks that went overdue while held",
+    ),
+    (
+        "wl_ticketing.task.ended_title",
+        "Open tasks of an ended agreement",
+    ),
+    ("wl_ticketing.task.held", "Held"),
+    (
+        "wl_ticketing.notice.task_overdue.subject",
+        "Task {{ title }} is overdue",
+    ),
+    (
+        "wl_ticketing.notice.task_overdue.body",
+        "{{ title }} was due on {{ due_date }} and is not completed. It can still be completed; it is flagged late.",
+    ),
+    (
+        "wl_ticketing.notice.task_waived.subject",
+        "Task {{ title }} is no longer required",
+    ),
+    (
+        "wl_ticketing.notice.task_waived.body",
+        "{{ title }}, due on {{ due_date }}, was waived. The work recorded so far is kept.",
+    ),
+    (
+        "wl_ticketing.notice.task_reminder.subject",
+        "Task {{ title }} is due on {{ due_date }}",
+    ),
+    (
+        "wl_ticketing.notice.task_reminder.body",
+        "{{ title }} starts on {{ start_date }} and is due on {{ due_date }}.",
+    ),
+    (
+        "wl_ticketing.notice.task_client_reminder.subject",
+        "We need your input for {{ title }}",
+    ),
+    (
+        "wl_ticketing.notice.task_client_reminder.body",
+        "{{ title }} is due on {{ due_date }}. Please send us what we asked for.",
+    ),
+    (
+        "wl_ticketing.notice.task_waiting.subject",
+        "{{ title }} is waiting for you",
+    ),
+    (
+        "wl_ticketing.notice.task_waiting.body",
+        "We cannot go on with {{ title }}, due on {{ due_date }}, until we hear from you.",
+    ),
+    (
+        "wl_ticketing.notice.task_unblocked.subject",
+        "Task {{ title }} can go on",
+    ),
+    (
+        "wl_ticketing.notice.task_unblocked.body",
+        "What {{ title }} waited for is answered; it is in progress again.",
+    ),
+    (
+        "wl_ticketing.notice.task_review.subject",
+        "Task {{ title }} is ready for review",
+    ),
+    (
+        "wl_ticketing.notice.task_review.body",
+        "{{ title }}, due on {{ due_date }}, is prepared and waits for your review.",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

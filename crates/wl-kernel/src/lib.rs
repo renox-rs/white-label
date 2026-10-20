@@ -16,6 +16,7 @@ pub mod cheques;
 pub mod compliance;
 pub mod config;
 pub mod consents;
+pub mod deadlines;
 pub mod delivery;
 pub mod deposits;
 pub mod digest;
@@ -89,6 +90,11 @@ pub use cheques::{
 pub use compliance::{ComplianceAlert, ComplianceRule, CriticalRule, Planned};
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use consents::{Consents, NoConsents};
+pub use deadlines::{
+    DEADLINE_TASK_SUBJECT_TYPE, DeadlineTaskId, DeadlineTaskStatus, DeadlineTaskSummary,
+    DeadlineTasks, EndedTasks, NewDeadlineTask, NoDeadlineTasks, ReleasedTasks, TaskCompleted,
+    TaskOverdue, TaskRecurrence, WaiveTask,
+};
 pub use delivery::{
     DELIVERY_SUBJECT_TYPE, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost,
     DeliveryReversed, ReviewOutcome,

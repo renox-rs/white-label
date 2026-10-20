@@ -143,6 +143,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             tickets::SERVICE_CONTRACTS_VIEW,
             tickets::SERVICE_CONTRACTS_MANAGE,
             tickets::MAINTENANCE_PLANS_MANAGE,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            tickets::TASKS_REVIEW,
+            tickets::TASKS_MANAGE,
             payments::VIEW,
             payments::RECORD,
             payments::REVERSE,
@@ -276,6 +280,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::EINVOICES_MANAGE,
             invoices::SUBSCRIPTIONS_VIEW,
             invoices::SUBSCRIPTIONS_MANAGE,
+            // The accountant works the deadline tasks (04 compliance
+            // calendar, wl-ticketing §4.4).
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
             payments::VIEW,
             payments::RECORD,
             payments::REVERSE,
