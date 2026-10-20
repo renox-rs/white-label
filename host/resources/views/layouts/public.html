@@ -29,7 +29,7 @@
     {'href': route('login'), 'label': t('nav.log_in'), 'icon': 'log-in'},
     {'href': route('register'), 'label': t('nav.register'), 'icon': 'circle-user'},
   ]"/>
-  <rx-navbar brand="{{ app.name }}" href="{{ route('home') }}" mark width="wide" :tabs="tabs" tabs-label="{{ t('nav.sections') }}">
+  <rx-navbar brand="{{ brand }}" href="{{ route('home') }}" mark width="wide" :tabs="tabs" tabs-label="{{ t('nav.sections') }}">
     <rx-nav-links>
       <rx-nav-link route="home" label="{{ t('nav.home') }}" :active="route_is('home')"/>
       <rx-nav-link rx-if="auth.check" route="dashboard" label="{{ t('nav.dashboard') }}"/>
@@ -56,7 +56,7 @@
     <rx-outlet name="content"/>
   </main>
   <footer class="rx-container rx-container--wide app-footer">
-    <p class="app-footer__brand"><span class="rx-brand-mark" aria-hidden="true">{{ (app.name | string)[:1] | upper }}</span>{{ app.name }}</p>
+    <p class="app-footer__brand"><span class="rx-brand-mark" aria-hidden="true">{{ (brand | string)[:1] | upper }}</span>{{ brand }}</p>
     <p>{{ t('footer.made_with') }}</p>
   </footer>
   <rx-toasts/>

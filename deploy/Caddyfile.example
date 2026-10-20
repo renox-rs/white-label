@@ -14,7 +14,7 @@ demo.palmgrove.example {
 		max_size 12MB
 	}
 
-	reverse_proxy 127.0.0.1:3101 {
+	reverse_proxy 127.0.0.1:3100 {
 		# Caddy asks /health every few seconds; during a restart the socket
 		# keeps connections waiting (up to 10 s) instead of failing them.
 		health_uri /health

@@ -9,7 +9,7 @@
 #   /etc/systemd/system/white-label@acme.socket.d/listen.conf
 #   [Socket]
 #   ListenStream=
-#   ListenStream=127.0.0.1:3101
+#   ListenStream=127.0.0.1:3100
 # The port must equal APP_HOST:APP_PORT in /etc/white-label/<client>/env and the
 # port in the client's Caddy block.
 [Unit]

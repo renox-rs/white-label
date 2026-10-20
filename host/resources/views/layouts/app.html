@@ -46,7 +46,7 @@
       `register`), and the sidebar draws only what the person may open, in
       groups, with the current page marked. A guest (an error page) gets the
       one hand-written link. -#}
-  <rx-sidebar menu="app" brand="{{ app.name }}" href="{{ route('home') }}">
+  <rx-sidebar menu="app" brand="{{ brand }}" href="{{ route('home') }}">
     <rx-sidebar-link rx-if="not auth.check" route="home" label="{{ t('nav.home') }}" icon="house"/>
   </rx-sidebar>
   <div class="rx-shell__main">

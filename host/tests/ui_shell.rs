@@ -79,3 +79,31 @@ async fn every_sidebar_link_has_an_icon() {
     }
     assert!(links > 30, "the admin sidebar lists {links} links");
 }
+
+/// The brand is the client's name (`[client] name` of client.toml), not the
+/// framework's, in the sidebar and on the public pages.
+#[renox::test]
+async fn the_brand_is_the_clients_name() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let admin = admin(&app).await;
+    app.acting_as(&admin);
+    let page = app.get("/dashboard").await;
+    page.assert_ok();
+    let html = page.text();
+    assert!(html.contains("Palm Grove Properties LLC"), "no client name");
+    assert!(!html.contains(">Renox<"), "the framework's name is shown");
+    // The mark is the name's first letter.
+    assert!(html.contains("rx-brand-mark"));
+    let guest = TestApp::new(host::app()).await;
+    guest
+        .get("/")
+        .await
+        .assert_ok()
+        .assert_see("Palm Grove Properties LLC");
+    guest
+        .get("/login")
+        .await
+        .assert_ok()
+        .assert_see("Palm Grove Properties LLC");
+}

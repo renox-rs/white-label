@@ -114,7 +114,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::negative_flow::register_approvals(&client_app);
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
+    let name = config.client.name.clone();
     let mut app = wl_kernel::apply(base(), config)?;
+    app = with_brand(app, &name);
     for module in manifest.enabled() {
         app = enable(
             app,
@@ -138,6 +140,28 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
             &owner_role,
         ))
         .module(vertical))
+}
+
+/// The client's name is the app's name: `{{ brand }}` in the layouts (the
+/// sidebar, the public pages, the sign-in pages, the error pages), and the
+/// configuration's `name` for what Renox itself titles with it (the sign-in
+/// pages' `<title>`, the mails' sender name, the social cards). `APP_NAME` is
+/// not read for it: the name belongs to the client's `client.toml`.
+fn with_brand(app: renox::App, name: &str) -> renox::App {
+    let shared = name.to_owned();
+    let app = app.share("brand", move |_| {
+        let name = shared.clone();
+        async move { Ok(name) }
+    });
+    // The tests' own configuration replaces this one, which is why the
+    // layouts read `brand` and not `app.name`.
+    match renox::Config::load() {
+        Ok(mut config) => {
+            config.name = name.to_owned();
+            app.config(config)
+        }
+        Err(_) => app,
+    }
 }
 
 /// The vertical app named in `[client] app`.
