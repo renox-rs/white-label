@@ -88,7 +88,10 @@ fn text_lines(note: &Note) -> Vec<(i64, String)> {
         ));
     }
     lines.push((11, String::new()));
-    lines.push((11, "Received by (driver signature): ________________".to_owned()));
+    lines.push((
+        11,
+        "Received by (driver signature): ________________".to_owned(),
+    ));
     lines
 }
 
@@ -111,7 +114,10 @@ pub fn render(note: &Note) -> String {
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R \
          /Resources << /Font << /F1 5 0 R >> >> >>"
             .to_owned(),
-        format!("<< /Length {} >>\nstream\n{content}endstream", content.len()),
+        format!(
+            "<< /Length {} >>\nstream\n{content}endstream",
+            content.len()
+        ),
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
     ];
     let mut pdf = String::from("%PDF-1.4\n");
@@ -121,7 +127,10 @@ pub fn render(note: &Note) -> String {
         pdf.push_str(&format!("{number} 0 obj\n{body}\nendobj\n"));
     }
     let xref = pdf.len();
-    pdf.push_str(&format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1));
+    pdf.push_str(&format!(
+        "xref\n0 {}\n0000000000 65535 f \n",
+        objects.len() + 1
+    ));
     for offset in offsets {
         pdf.push_str(&format!("{offset:010} 00000 n \n"));
     }
@@ -171,7 +180,10 @@ mod tests {
         let entries: Vec<&str> = table.lines().skip(2).take(5).collect();
         for (number, entry) in (1..).zip(entries) {
             let offset: usize = entry[..10].parse().unwrap();
-            assert!(pdf[offset..].starts_with(&format!("{number} 0 obj")), "{number}");
+            assert!(
+                pdf[offset..].starts_with(&format!("{number} 0 obj")),
+                "{number}"
+            );
         }
         let start: usize = pdf
             .split("startxref\n")

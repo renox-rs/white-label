@@ -422,10 +422,16 @@ mod tests {
     fn an_amount_above_either_balance_or_not_above_zero_is_refused() {
         let open = invoice(10_500_000);
         let above_bill = problem(&request(600_000), &open, &bill(525_000)).expect("refused");
-        assert!(above_bill.contains("supplier bill's open balance"), "{above_bill}");
-        let above_invoice = problem(&request(600_000), &invoice(500_000), &bill(900_000))
-            .expect("refused");
-        assert!(above_invoice.contains("invoice's open balance"), "{above_invoice}");
+        assert!(
+            above_bill.contains("supplier bill's open balance"),
+            "{above_bill}"
+        );
+        let above_invoice =
+            problem(&request(600_000), &invoice(500_000), &bill(900_000)).expect("refused");
+        assert!(
+            above_invoice.contains("invoice's open balance"),
+            "{above_invoice}"
+        );
         for amount in [0, -5] {
             assert!(problem(&request(amount), &open, &bill(525_000)).is_some());
         }
@@ -451,9 +457,7 @@ mod tests {
         );
         let mut usd = bill(525_000);
         usd.currency = "USD".into();
-        assert!(
-            problem(&request(100), &open, &usd).is_some_and(|m| m.contains("USD"))
-        );
+        assert!(problem(&request(100), &open, &usd).is_some_and(|m| m.contains("USD")));
         let mut lower = bill(525_000);
         lower.currency = "aed".into();
         assert_eq!(problem(&request(100), &open, &lower), None);
@@ -469,15 +473,19 @@ mod tests {
         ] {
             let mut closed = invoice(10_500_000);
             closed.status = status;
-            assert!(problem(&request(100), &closed, &bill(525_000)).is_some(), "{status:?}");
+            assert!(
+                problem(&request(100), &closed, &bill(525_000)).is_some(),
+                "{status:?}"
+            );
         }
-        for status in [
-            InvoiceStatus::PartiallyPaid,
-            InvoiceStatus::Overdue,
-        ] {
+        for status in [InvoiceStatus::PartiallyPaid, InvoiceStatus::Overdue] {
             let mut open = invoice(10_500_000);
             open.status = status;
-            assert_eq!(problem(&request(100), &open, &bill(525_000)), None, "{status:?}");
+            assert_eq!(
+                problem(&request(100), &open, &bill(525_000)),
+                None,
+                "{status:?}"
+            );
         }
         for status in [
             SupplierBillStatus::Draft,
@@ -511,7 +519,10 @@ mod tests {
             method_details: Json(built.method_details),
             ..Default::default()
         };
-        assert_eq!(targets_of(&payment), Some((InvoiceId(4), SupplierBillId(9))));
+        assert_eq!(
+            targets_of(&payment),
+            Some((InvoiceId(4), SupplierBillId(9)))
+        );
         assert_eq!(targets_of(&Payment::default()), None);
         let named = SetOffRequest {
             reference: Some(" Agreed 3 Nov ".into()),

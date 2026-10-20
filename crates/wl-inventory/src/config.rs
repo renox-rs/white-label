@@ -80,7 +80,11 @@ mod tests {
         assert_eq!(config.over_receipt_tolerance_bps, 500);
         assert_eq!(config.rejection_reasons.len(), 7);
         assert_eq!(config.return_approval_fils, 500_000);
-        assert!(config.reason("temperature").is_some_and(|r| !r.evidence_required));
+        assert!(
+            config
+                .reason("temperature")
+                .is_some_and(|r| !r.evidence_required)
+        );
         assert!(config.reason("spoiled").is_none());
     }
 }

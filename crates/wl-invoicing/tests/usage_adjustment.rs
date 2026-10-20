@@ -114,13 +114,20 @@ async fn fewer_hours_give_a_credit_note_against_the_invoice() {
         (note.net_total, note.vat_total, note.gross_total),
         (32_000, 1_600, 33_600)
     );
-    assert!(note.reason.contains("attendance.timesheet:9"), "{}", note.reason);
+    assert!(
+        note.reason.contains("attendance.timesheet:9"),
+        "{}",
+        note.reason
+    );
     assert!(note.reason.contains("client_dispute"), "{}", note.reason);
     assert!(note.reason.contains("8 h"), "{}", note.reason);
     // The credit is used on the invoice; its lines and totals are as issued.
     let after = t.reload(&invoice).await;
     assert_eq!(after.net_total, 640_000);
-    assert_eq!(lines_of(t.db(), invoice.id).await.unwrap()[0].quantity_milli, 160_000);
+    assert_eq!(
+        lines_of(t.db(), invoice.id).await.unwrap()[0].quantity_milli,
+        160_000
+    );
     assert_eq!(after.balance, invoice.gross_total - 33_600);
     let rows = usage_adjustment::of_adjustment(t.db(), &adjustment())
         .await
@@ -171,7 +178,11 @@ async fn extra_hours_are_an_extra_line_on_the_next_invoice() {
     let lines = lines_of(t.db(), drafts[0].id).await.unwrap();
     assert_eq!(lines.len(), 1);
     assert_eq!(
-        (lines[0].quantity_milli, lines[0].unit_price, lines[0].net_amount),
+        (
+            lines[0].quantity_milli,
+            lines[0].unit_price,
+            lines[0].net_amount
+        ),
         (6_000, 4_000, 24_000)
     );
     assert!(
@@ -207,7 +218,12 @@ async fn extra_hours_can_be_a_separate_invoice() {
     assert_eq!(lines[0].net_amount, 24_000);
     assert!(lines[0].description.contains("attendance.timesheet:9"));
     // The next usage invoice has no such line: nothing is left to bill.
-    assert!(usage::unbilled(t.db(), BLUE_DUNES).await.unwrap().is_empty());
+    assert!(
+        usage::unbilled(t.db(), BLUE_DUNES)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(usage::bill(t.db(), BLUE_DUNES).await.unwrap().is_empty());
     // And later usage is billed without it.
     let later = usage::record(
@@ -300,10 +316,12 @@ async fn payroll_only_and_unbilled_timesheets_are_ignored() {
             .unwrap()
             .is_empty()
     );
-    assert!(usage_adjustment::of_adjustment(t.db(), &adjustment())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        usage_adjustment::of_adjustment(t.db(), &adjustment())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(reload(&t, &record).await.quantity_milli, 160_000);
 }
 
@@ -338,7 +356,11 @@ async fn a_credit_above_the_remaining_credit_gives_the_coordinator_a_task() {
     assert_eq!(task.status, TaskStatus::Open);
     assert_eq!(task.invoice_id, Some(invoice.id));
     assert_eq!(task.amount, 32_000);
-    assert!(task.message.contains("attendance.timesheet:9"), "{}", task.message);
+    assert!(
+        task.message.contains("attendance.timesheet:9"),
+        "{}",
+        task.message
+    );
     let rows = usage_adjustment::of_adjustment(t.db(), &adjustment())
         .await
         .unwrap();

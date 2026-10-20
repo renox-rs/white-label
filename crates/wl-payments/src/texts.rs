@@ -323,7 +323,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The id of an open invoice of the same party, as in /invoices/{id}.",
     ),
     ("wl_payments.fields.set_off_invoice", "Set-off: invoice id"),
-    ("wl_payments.fields.set_off_bill", "Set-off: supplier bill id"),
+    (
+        "wl_payments.fields.set_off_bill",
+        "Set-off: supplier bill id",
+    ),
     (
         "wl_payments.fields.set_off_hint",
         "For the method set-off only: the party's open invoice and its approved supplier bill, both settled for the amount.",

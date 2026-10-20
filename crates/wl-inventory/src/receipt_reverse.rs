@@ -64,9 +64,13 @@ pub struct ReverseInput {
 impl ReverseInput {
     /// The first problem, in the order the guards run.
     pub fn first_problem(&self) -> Option<&str> {
-        [&self.returns_problem, &self.billed_problem, &self.stock_problem]
-            .into_iter()
-            .find_map(|problem| problem.as_deref())
+        [
+            &self.returns_problem,
+            &self.billed_problem,
+            &self.stock_problem,
+        ]
+        .into_iter()
+        .find_map(|problem| problem.as_deref())
     }
 }
 
@@ -196,14 +200,17 @@ pub(crate) fn transition() -> Transition<GoodsReceipt> {
     let transition = Transition::new(REVERSE)
         .label("Reverse")
         .tone("danger")
-        .permission_in(permissions::GOODS_RECEIPTS_REVERSE, |receipt: &GoodsReceipt| {
-            receipt.scope()
-        })
+        .permission_in(
+            permissions::GOODS_RECEIPTS_REVERSE,
+            |receipt: &GoodsReceipt| receipt.scope(),
+        )
         .from([GoodsReceiptStatus::Posted])
         .to(GoodsReceiptStatus::Reversed);
     let transition = with_problem(transition, "no_return_left", |i| i.returns_problem.clone());
     let transition = with_problem(transition, "not_billed", |i| i.billed_problem.clone());
-    let transition = with_problem(transition, "stock_still_available", |i| i.stock_problem.clone());
+    let transition = with_problem(transition, "stock_still_available", |i| {
+        i.stock_problem.clone()
+    });
     transition.effect(|receipt: &GoodsReceipt, ctx, tx| {
         let receipt = receipt.clone();
         let by = input(ctx).and_then(|input| input.by);
@@ -248,7 +255,10 @@ async fn reverse_in(tx: &mut Transaction, receipt: GoodsReceipt, by: Option<i64>
         );
         Item::query()
             .where_(Item::ID.eq(item.id))
-            .update(&mut *tx, &[("average_cost", &average), ("updated_at", &now)])
+            .update(
+                &mut *tx,
+                &[("average_cost", &average), ("updated_at", &now)],
+            )
             .await?;
         // The order's outstanding quantity goes back up by the accepted
         // quantity only.
@@ -301,7 +311,10 @@ pub async fn reverse(
 ) -> std::result::Result<GoodsReceipt, TransitionError> {
     let receipt = GoodsReceipt::find_or_404(&state.db, receipt_id).await?;
     if receipt.status != GoodsReceiptStatus::Posted {
-        return Err(TransitionError::Guard(said("wl_inventory.reverse.not_posted", &[])));
+        return Err(TransitionError::Guard(said(
+            "wl_inventory.reverse.not_posted",
+            &[],
+        )));
     }
     // Reads in a transaction of its own, rolled back: nothing is held while
     // the transition opens its own.

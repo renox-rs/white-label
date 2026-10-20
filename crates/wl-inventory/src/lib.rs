@@ -37,8 +37,7 @@ pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
 pub use supplier_return::{
-    RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine,
-    WantedOutcome,
+    RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome,
 };
 
 /// The module's permissions (wl-inventory §6).
@@ -198,11 +197,19 @@ mod tests {
             .rejection_reason("temperature", true)
             .rejection_reason("counterfeit", false);
         assert_eq!(module.config().over_receipt_tolerance_bps, 1_000);
-        assert!(module
-            .config()
-            .reason("temperature")
-            .is_some_and(|r| r.evidence_required));
+        assert!(
+            module
+                .config()
+                .reason("temperature")
+                .is_some_and(|r| r.evidence_required)
+        );
         assert_eq!(module.config().rejection_reasons.len(), 8);
-        assert_eq!(WlInventory::new().over_receipt_tolerance_bps(-5).config().over_receipt_tolerance_bps, 0);
+        assert_eq!(
+            WlInventory::new()
+                .over_receipt_tolerance_bps(-5)
+                .config()
+                .over_receipt_tolerance_bps,
+            0
+        );
     }
 }

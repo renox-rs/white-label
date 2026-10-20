@@ -96,16 +96,13 @@ async fn boot_with(module: WlPayments) -> Real {
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
-    let directory: Arc<dyn wl_kernel::parties::PartyDirectory> =
-        Arc::new(TestDirectory::default());
+    let directory: Arc<dyn wl_kernel::parties::PartyDirectory> = Arc::new(TestDirectory::default());
     let notifier: Arc<dyn wl_kernel::notify::Notifier> = Arc::new(Recording::default());
     let blocked = Blocked::default();
     let guard: Arc<dyn BlockGuard> = Arc::new(blocked.clone());
     // What wl-parties registers: an exception is decided by the compliance role.
     wl_kernel::PolicyDefault::new(BLOCK_EXCEPTION_ACTION)
-        .with_step(
-            approvals::Step::one_of(["compliance"]).requiring(BLOCK_EXCEPTION_ACTION),
-        )
+        .with_step(approvals::Step::one_of(["compliance"]).requiring(BLOCK_EXCEPTION_ACTION))
         .register();
     let app = App::new()
         .module(Auth::new())
@@ -190,9 +187,8 @@ async fn entity(t: &Real) -> LegalEntity {
 
 /// INV-0410: an issued invoice of Blue Dunes, AED 105,000.00.
 async fn issued_invoice(t: &Real, by: &User) -> Invoice {
-    let draft = InvoiceDraft::new(BLUE_DUNES, Subject::new("property.lease", 9)).line(
-        DraftLine::new("IPA 14", INVOICE_NET, VatCategory::Standard),
-    );
+    let draft = InvoiceDraft::new(BLUE_DUNES, Subject::new("property.lease", 9))
+        .line(DraftLine::new("IPA 14", INVOICE_NET, VatCategory::Standard));
     let id = invoicer(t.app.state())
         .draft(t.app.db(), draft)
         .await
@@ -233,7 +229,9 @@ async fn bill(t: &Real, approved: bool) -> SupplierBill {
             .await
             .unwrap()
     } else {
-        SupplierBill::find_or_404(t.app.db(), bill.id).await.unwrap()
+        SupplierBill::find_or_404(t.app.db(), bill.id)
+            .await
+            .unwrap()
     }
 }
 
@@ -266,15 +264,24 @@ async fn post_set_off(
 }
 
 async fn reload_invoice(t: &Real, invoice: &Invoice) -> Invoice {
-    Invoice::find(t.app.db(), invoice.id).await.unwrap().unwrap()
+    Invoice::find(t.app.db(), invoice.id)
+        .await
+        .unwrap()
+        .unwrap()
 }
 
 async fn reload_bill(t: &Real, bill: &SupplierBill) -> SupplierBill {
-    SupplierBill::find_or_404(t.app.db(), bill.id).await.unwrap()
+    SupplierBill::find_or_404(t.app.db(), bill.id)
+        .await
+        .unwrap()
 }
 
 async fn payments(t: &Real) -> Vec<Payment> {
-    Payment::query().order_by(Payment::ID).get(t.app.db()).await.unwrap()
+    Payment::query()
+        .order_by(Payment::ID)
+        .get(t.app.db())
+        .await
+        .unwrap()
 }
 
 /// Done when 1: INV-0410 (AED 105,000 open) and SB-77 (AED 5,250), a set-off
@@ -397,7 +404,12 @@ async fn a_set_off_without_its_documents_is_refused() {
     let refused = payment_recorder(t.app.state())
         .record(
             t.app.state(),
-            RecordPayment::new(BLUE_DUNES, entity.parse().unwrap(), PaymentMethod::SetOff, 500),
+            RecordPayment::new(
+                BLUE_DUNES,
+                entity.parse().unwrap(),
+                PaymentMethod::SetOff,
+                500,
+            ),
             None,
         )
         .await;
@@ -472,7 +484,10 @@ async fn a_blocked_party_waits_for_an_approved_exception() {
     let refused = approvals::approve(t.app.state(), requests[0].id, &amal, "").await;
     assert!(matches!(refused, Err(Error::Forbidden)), "{refused:?}");
     assert_eq!(
-        Payment::find_or_404(t.app.db(), held[0].id).await.unwrap().status,
+        Payment::find_or_404(t.app.db(), held[0].id)
+            .await
+            .unwrap()
+            .status,
         PaymentStatus::Pending
     );
 
@@ -535,7 +550,11 @@ async fn the_method_is_offered_only_when_the_setting_is_on() {
     off.app.acting_as(&amal);
     let page = off.app.get("/payments/new").await;
     page.assert_ok();
-    assert!(!page.text().contains(r#"value="set_off""#), "{}", page.text());
+    assert!(
+        !page.text().contains(r#"value="set_off""#),
+        "{}",
+        page.text()
+    );
     let invoice = issued_invoice(&off, &amal).await;
     let sb = bill(&off, true).await;
     post_set_off(&off, &amal, &invoice, &sb, "5250.00")
@@ -548,5 +567,9 @@ async fn the_method_is_offered_only_when_the_setting_is_on() {
     on.app.acting_as(&amal);
     let page = on.app.get("/payments/new").await;
     page.assert_ok();
-    assert!(page.text().contains(r#"value="set_off""#), "{}", page.text());
+    assert!(
+        page.text().contains(r#"value="set_off""#),
+        "{}",
+        page.text()
+    );
 }

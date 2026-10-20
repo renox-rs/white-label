@@ -165,7 +165,13 @@ pub struct PurchaseOrderLine {
 
 impl PurchaseOrderLine {
     /// A line of `quantity_milli` of `item_id` at `unit_price`.
-    pub fn new(purchase_order_id: i64, position: i64, item_id: i64, quantity_milli: i64, unit_price: i64) -> Self {
+    pub fn new(
+        purchase_order_id: i64,
+        position: i64,
+        item_id: i64,
+        quantity_milli: i64,
+        unit_price: i64,
+    ) -> Self {
         PurchaseOrderLine {
             purchase_order_id,
             position,
@@ -475,7 +481,10 @@ mod tests {
     fn the_committed_value_is_what_is_outstanding_at_the_orders_prices() {
         let mut first = PurchaseOrderLine::new(1, 1, 2, 50_000, 5_000);
         let second = PurchaseOrderLine::new(1, 2, 3, 10_000, 100);
-        assert_eq!(committed_value(&[first.clone(), second.clone()]), 250_000 + 1_000);
+        assert_eq!(
+            committed_value(&[first.clone(), second.clone()]),
+            250_000 + 1_000
+        );
         first.accepted_qty_milli = 50_000;
         assert_eq!(committed_value(&[first.clone(), second]), 1_000);
         // 10 come back for replacement: 10 x AED 50.
@@ -505,7 +514,10 @@ mod tests {
             machine.find(RECEIVE).unwrap().to_state(),
             Some("partially_received")
         );
-        assert_eq!(machine.find(RECEIVE_IN_FULL).unwrap().to_state(), Some("received"));
+        assert_eq!(
+            machine.find(RECEIVE_IN_FULL).unwrap().to_state(),
+            Some("received")
+        );
         assert_eq!(machine.initial_states(), ["draft"]);
     }
 }

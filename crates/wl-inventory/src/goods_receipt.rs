@@ -12,8 +12,8 @@
 //! ([`update_line`]), and posted by a holder of `goods_receipts.post` at the
 //! location.
 
-use renox::chrono::NaiveDate;
 use renox::auth::permissions::Scope;
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::inventory::GOODS_RECEIPT_SUBJECT_TYPE;
@@ -284,7 +284,12 @@ pub async fn create_draft(db: &Db, by: Option<i64>, draft: DraftReceipt) -> Resu
 }
 
 /// The stored line for `draft` on `po_line`.
-fn line_of(receipt_id: i64, position: i64, po_line: &PurchaseOrderLine, draft: &DraftLine) -> GoodsReceiptLine {
+fn line_of(
+    receipt_id: i64,
+    position: i64,
+    po_line: &PurchaseOrderLine,
+    draft: &DraftLine,
+) -> GoodsReceiptLine {
     GoodsReceiptLine {
         goods_receipt_id: receipt_id,
         position,
@@ -318,7 +323,12 @@ fn clean(text: &Option<String>) -> Option<String> {
 /// # Errors
 ///
 /// 404 for an unknown line; 422 when the receipt is no longer a `draft`.
-pub async fn update_line(db: &Db, receipt_id: i64, line_id: i64, draft: &DraftLine) -> Result<GoodsReceiptLine> {
+pub async fn update_line(
+    db: &Db,
+    receipt_id: i64,
+    line_id: i64,
+    draft: &DraftLine,
+) -> Result<GoodsReceiptLine> {
     let receipt = GoodsReceipt::find_or_404(db, receipt_id).await?;
     if receipt.status != GoodsReceiptStatus::Draft {
         return Err(refused(said("wl_inventory.receipt.not_draft", &[])));
@@ -374,7 +384,10 @@ mod tests {
             ..DraftLine::on(0, 100_000, 100_000)
         };
         let line = line_of(5, 1, &PurchaseOrderLine { id: 4, ..po_line }, &draft);
-        assert_eq!((line.item_id, line.unit_cost, line.po_line_id), (9, 1_200, Some(4)));
+        assert_eq!(
+            (line.item_id, line.unit_cost, line.po_line_id),
+            (9, 1_200, Some(4))
+        );
         assert_eq!(line.lot_number, None);
         assert_eq!(line.evidence.as_deref(), Some("9 C"));
     }

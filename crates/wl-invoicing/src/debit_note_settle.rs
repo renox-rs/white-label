@@ -42,7 +42,9 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::{Outcome, TransitionError};
 use wl_kernel::Subject;
-use wl_kernel::invoicing::{BillReopenReason, SupplierBillId, SupplierDebitNoteStatus, UnallocateBill};
+use wl_kernel::invoicing::{
+    BillReopenReason, SupplierBillId, SupplierDebitNoteStatus, UnallocateBill,
+};
 use wl_kernel::notify::fill;
 
 use crate::allocate::amount_text;
@@ -86,7 +88,10 @@ pub fn task_key(note: &SupplierDebitNote) -> String {
 /// # Errors
 ///
 /// The database's errors.
-pub(crate) async fn open_tax_credit_task(state: &AppState, note: &SupplierDebitNote) -> Result<bool> {
+pub(crate) async fn open_tax_credit_task(
+    state: &AppState,
+    note: &SupplierDebitNote,
+) -> Result<bool> {
     if !crate::config_of(state).tax_credit_note_required {
         return Ok(false);
     }
@@ -127,7 +132,8 @@ async fn close_tax_credit_task(db: &Db, note: &SupplierDebitNote, by: Option<i64
         task.status = TaskStatus::Done;
         task.done_by = by;
         task.done_at = Some(renox::db::now());
-        task.save_only(db, &["status", "done_by", "done_at"]).await?;
+        task.save_only(db, &["status", "done_by", "done_at"])
+            .await?;
     }
     Ok(())
 }
@@ -205,7 +211,9 @@ async fn emit_all(
 async fn issued_note(db: &Db, id: i64) -> Result<SupplierDebitNote> {
     let note = SupplierDebitNote::find_or_404(db, id).await?;
     if note.status != SupplierDebitNoteStatus::Issued {
-        return Err(refused(english("wl_invoicing.debit_note.errors.settle_state")));
+        return Err(refused(english(
+            "wl_invoicing.debit_note.errors.settle_state",
+        )));
     }
     Ok(note)
 }
@@ -383,7 +391,9 @@ pub async fn refund(
     }
     let note = issued_note(&state.db, id).await?;
     if amount <= 0 || amount > note.debit_balance {
-        return Err(refused(english("wl_invoicing.debit_note.errors.set_off_amount")));
+        return Err(refused(english(
+            "wl_invoicing.debit_note.errors.set_off_amount",
+        )));
     }
     let required = crate::config_of(state).tax_credit_note_required;
     let by = By::System(None);

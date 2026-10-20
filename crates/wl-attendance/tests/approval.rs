@@ -23,7 +23,12 @@ fn deployment() -> Subject {
 
 /// A locked timesheet of `employee` for `context` with 8 h normal on 2
 /// November against the cost code, approved by `kind`.
-async fn locked(t: &Booted, employee: EmployeeId, context: &Subject, kind: ApproverKind) -> Timesheet {
+async fn locked(
+    t: &Booted,
+    employee: EmployeeId,
+    context: &Subject,
+    kind: ApproverKind,
+) -> Timesheet {
     let mut new = Timesheet::regular(employee, nov(2), nov(8)).in_context(context);
     new.paid_by = Some("hr.payroll_run:7".into());
     new.approver_kind = kind;
@@ -69,11 +74,16 @@ async fn submitted_adjustment(t: &Booted, creator: &User, original: &Timesheet) 
         .await
         .assert_ok();
     let adjustment = original.adjusted_by(t.db()).await.unwrap().pop().unwrap();
-    let keeper = t.user_with(&format!("Keeper{}", adjustment.id), "timekeeper").await;
+    let keeper = t
+        .user_with(&format!("Keeper{}", adjustment.id), "timekeeper")
+        .await;
     t.app.acting_as(&keeper);
     t.app
         .htmx()
-        .post(&format!("/timesheets/{}/submit", adjustment.id), &[("x", "y")])
+        .post(
+            &format!("/timesheets/{}/submit", adjustment.id),
+            &[("x", "y")],
+        )
         .await
         .assert_ok();
     let sheet = t.reload_sheet(&adjustment).await;
@@ -81,7 +91,13 @@ async fn submitted_adjustment(t: &Booted, creator: &User, original: &Timesheet) 
     sheet
 }
 
-async fn post(t: &Booted, user: &User, sheet: &Timesheet, action: &str, form: &[(&str, &str)]) -> TestResponse {
+async fn post(
+    t: &Booted,
+    user: &User,
+    sheet: &Timesheet,
+    action: &str,
+    form: &[(&str, &str)],
+) -> TestResponse {
     t.app.acting_as(user);
     t.app
         .htmx()
@@ -105,12 +121,16 @@ async fn att08_the_creator_cannot_approve_and_another_approver_posts_the_negativ
     let j = submitted_adjustment(&t, &a_user, &original).await;
     assert_eq!(j.created_by, Some(a_user.id));
 
-    post(&t, &a_user, &j, "approve", &[("x", "y")]).await.assert_status(422);
+    post(&t, &a_user, &j, "approve", &[("x", "y")])
+        .await
+        .assert_status(422);
     assert_eq!(t.reload_sheet(&j).await.status, TimesheetStatus::Submitted);
     assert!(t.posted.all().is_empty());
     assert!(t.approved.all().is_empty());
 
-    post(&t, &b_user, &j, "approve", &[("x", "y")]).await.assert_ok();
+    post(&t, &b_user, &j, "approve", &[("x", "y")])
+        .await
+        .assert_ok();
     let approved = t.reload_sheet(&j).await;
     assert_eq!(approved.status, TimesheetStatus::Approved);
     assert_eq!(approved.approval_basis, Some(ApprovalBasis::Approved));
@@ -120,7 +140,10 @@ async fn att08_the_creator_cannot_approve_and_another_approver_posts_the_negativ
     let posts = t.posted.all();
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0].amount_aed, -20_000);
-    assert_eq!(posts[0].cost_object, Subject::new("construction.cost_code", 3));
+    assert_eq!(
+        posts[0].cost_object,
+        Subject::new("construction.cost_code", 3)
+    );
     assert_eq!(posts[0].source, j.subject());
 
     let events = t.approved.all();
@@ -128,7 +151,10 @@ async fn att08_the_creator_cannot_approve_and_another_approver_posts_the_negativ
     let event = &events[0];
     assert_eq!(event.kind, "adjustment");
     assert_eq!(event.adjusts, Some(original.subject()));
-    assert_eq!(event.origin.as_deref(), Some(AdjustmentOrigin::AttendanceError.as_str()));
+    assert_eq!(
+        event.origin.as_deref(),
+        Some(AdjustmentOrigin::AttendanceError.as_str())
+    );
     assert_eq!(event.affects.as_deref(), Some(Affects::Both.as_str()));
     assert_eq!(event.timesheet, j.subject());
     assert_eq!(event.owner, worker);
@@ -139,7 +165,10 @@ async fn att08_the_creator_cannot_approve_and_another_approver_posts_the_negativ
     assert_eq!(event.totals[0].minutes, -480);
 
     // The original is untouched by the approval of its adjustment.
-    assert_eq!(t.reload_sheet(&original).await.status, TimesheetStatus::Locked);
+    assert_eq!(
+        t.reload_sheet(&original).await.status,
+        TimesheetStatus::Locked
+    );
 }
 
 /// An approval is posted once: a second approval is refused and the cost is
@@ -151,8 +180,12 @@ async fn att08_an_approved_adjustment_is_not_approved_again() {
     let b_user = t.user_with("Bilal", "approver").await;
     let original = locked(&t, t.employee(1, &[]), &project(5), ApproverKind::Internal).await;
     let j = submitted_adjustment(&t, &a_user, &original).await;
-    post(&t, &b_user, &j, "approve", &[("x", "y")]).await.assert_ok();
-    post(&t, &b_user, &j, "approve", &[("x", "y")]).await.assert_status(422);
+    post(&t, &b_user, &j, "approve", &[("x", "y")])
+        .await
+        .assert_ok();
+    post(&t, &b_user, &j, "approve", &[("x", "y")])
+        .await
+        .assert_status(422);
     assert_eq!(t.posted.all().len(), 1);
     assert_eq!(t.approved.all().len(), 1);
 }
@@ -165,9 +198,21 @@ async fn att08_a_user_without_the_permission_or_the_role_is_forbidden() {
     let nobody = t.user_with("Nadia", "timekeeper").await;
     let original = locked(&t, t.employee(1, &[]), &project(5), ApproverKind::Internal).await;
     let j = submitted_adjustment(&t, &a_user, &original).await;
-    post(&t, &nobody, &j, "approve", &[("x", "y")]).await.assert_status(403);
-    post(&t, &nobody, &j, "reject", &[("reason", "no")]).await.assert_status(403);
-    post(&t, &nobody, &j, "approve-on-behalf", &[("document_id", "5")]).await.assert_status(403);
+    post(&t, &nobody, &j, "approve", &[("x", "y")])
+        .await
+        .assert_status(403);
+    post(&t, &nobody, &j, "reject", &[("reason", "no")])
+        .await
+        .assert_status(403);
+    post(
+        &t,
+        &nobody,
+        &j,
+        "approve-on-behalf",
+        &[("document_id", "5")],
+    )
+    .await
+    .assert_status(403);
     assert_eq!(t.reload_sheet(&j).await.status, TimesheetStatus::Submitted);
 }
 
@@ -180,14 +225,30 @@ async fn att08_an_externally_approved_original_needs_the_client_or_a_signed_shee
     let a_user = t.user_with("Amal", "adjuster").await;
     let b_user = t.user_with("Bilal", "approver").await;
     let c_user = t.user_with("Carla", "account_manager").await;
-    let original = locked(&t, t.employee(1, &[]), &deployment(), ApproverKind::External).await;
+    let original = locked(
+        &t,
+        t.employee(1, &[]),
+        &deployment(),
+        ApproverKind::External,
+    )
+    .await;
     let j = submitted_adjustment(&t, &a_user, &original).await;
     assert_eq!(j.approver_kind, ApproverKind::External);
 
     // The internal approver is refused.
-    post(&t, &b_user, &j, "approve", &[("x", "y")]).await.assert_status(422);
+    post(&t, &b_user, &j, "approve", &[("x", "y")])
+        .await
+        .assert_status(422);
     // Without the signed sheet, nor does the account manager succeed.
-    post(&t, &c_user, &j, "approve-on-behalf", &[("approver_name", "Omar")]).await.assert_status(422);
+    post(
+        &t,
+        &c_user,
+        &j,
+        "approve-on-behalf",
+        &[("approver_name", "Omar")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(t.reload_sheet(&j).await.status, TimesheetStatus::Submitted);
 
     post(
@@ -195,7 +256,11 @@ async fn att08_an_externally_approved_original_needs_the_client_or_a_signed_shee
         &c_user,
         &j,
         "approve-on-behalf",
-        &[("document_id", "41"), ("approver_name", "Omar Client"), ("signed_on", "2026-11-09")],
+        &[
+            ("document_id", "41"),
+            ("approver_name", "Omar Client"),
+            ("signed_on", "2026-11-09"),
+        ],
     )
     .await
     .assert_ok();
@@ -223,19 +288,34 @@ async fn att08_the_creator_with_approve_on_behalf_is_still_refused() {
     let t = boot().await;
     let a_user = t.user_with("Amal", "adjuster").await;
     a_user.assign_role(t.db(), "account_manager").await.unwrap();
-    let original = locked(&t, t.employee(1, &[]), &deployment(), ApproverKind::External).await;
+    let original = locked(
+        &t,
+        t.employee(1, &[]),
+        &deployment(),
+        ApproverKind::External,
+    )
+    .await;
     let j = submitted_adjustment(&t, &a_user, &original).await;
     post(
         &t,
         &a_user,
         &j,
         "approve-on-behalf",
-        &[("document_id", "41"), ("approver_name", "Omar"), ("signed_on", "2026-11-09")],
+        &[
+            ("document_id", "41"),
+            ("approver_name", "Omar"),
+            ("signed_on", "2026-11-09"),
+        ],
     )
     .await
     .assert_status(422);
     assert_eq!(t.reload_sheet(&j).await.status, TimesheetStatus::Submitted);
-    assert!(ApprovalEvidence::of_timesheet(t.db(), j.id).await.unwrap().is_empty());
+    assert!(
+        ApprovalEvidence::of_timesheet(t.db(), j.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// The client's approver (a user holding the timesheet's approver role)
@@ -247,9 +327,17 @@ async fn att08_the_client_approver_approves_and_on_behalf_is_for_external_only()
     let a_user = t.user_with("Amal", "adjuster").await;
     let client = t.user_with("Omar", "client_approver").await;
     let c_user = t.user_with("Carla", "account_manager").await;
-    let external = locked(&t, t.employee(1, &[]), &deployment(), ApproverKind::External).await;
+    let external = locked(
+        &t,
+        t.employee(1, &[]),
+        &deployment(),
+        ApproverKind::External,
+    )
+    .await;
     let j = submitted_adjustment(&t, &a_user, &external).await;
-    post(&t, &client, &j, "approve", &[("x", "y")]).await.assert_ok();
+    post(&t, &client, &j, "approve", &[("x", "y")])
+        .await
+        .assert_ok();
     let approved = t.reload_sheet(&j).await;
     assert_eq!(approved.status, TimesheetStatus::Approved);
     assert_eq!(approved.approval_basis, Some(ApprovalBasis::Approved));
@@ -263,7 +351,11 @@ async fn att08_the_client_approver_approves_and_on_behalf_is_for_external_only()
         &c_user,
         &k,
         "approve-on-behalf",
-        &[("document_id", "41"), ("approver_name", "Omar"), ("signed_on", "2026-11-09")],
+        &[
+            ("document_id", "41"),
+            ("approver_name", "Omar"),
+            ("signed_on", "2026-11-09"),
+        ],
     )
     .await
     .assert_status(422);
@@ -281,12 +373,20 @@ async fn att08_reject_returns_the_adjustment_to_open_with_the_reason() {
     let j = submitted_adjustment(&t, &a_user, &original).await;
     assert!(j.submitted_by.is_some());
 
-    post(&t, &b_user, &j, "reject", &[("reason", "")]).await.assert_status(422);
+    post(&t, &b_user, &j, "reject", &[("reason", "")])
+        .await
+        .assert_status(422);
     assert_eq!(t.reload_sheet(&j).await.status, TimesheetStatus::Submitted);
 
-    post(&t, &b_user, &j, "reject", &[("reason", "hours do not match the roster")])
-        .await
-        .assert_ok();
+    post(
+        &t,
+        &b_user,
+        &j,
+        "reject",
+        &[("reason", "hours do not match the roster")],
+    )
+    .await
+    .assert_ok();
     let sheet = t.reload_sheet(&j).await;
     assert_eq!(sheet.status, TimesheetStatus::Open);
     let history = t.sheet_history(&sheet).await;

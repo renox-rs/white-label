@@ -30,10 +30,10 @@ use std::collections::BTreeMap;
 use renox::prelude::*;
 use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::attendance::TimesheetApproved;
 use wl_kernel::invoicing::{CreditLine, InvoiceStatus};
 use wl_kernel::notify::fill;
-use wl_kernel::Subject;
 
 use crate::allocate::amount_text;
 use crate::config::AdjustmentPlus;
@@ -173,11 +173,7 @@ pub async fn of_adjustment(db: &Db, adjustment: &Subject) -> Result<Vec<UsageAdj
 
 /// The credit note `adjustment` gave against invoice `invoice_id`, if any:
 /// what a dispute resolved `credited` with that adjustment links to.
-pub async fn credit_note_of(
-    db: &Db,
-    adjustment: &Subject,
-    invoice_id: i64,
-) -> Result<Option<i64>> {
+pub async fn credit_note_of(db: &Db, adjustment: &Subject, invoice_id: i64) -> Result<Option<i64>> {
     Ok(of_adjustment(db, adjustment)
         .await?
         .into_iter()
@@ -479,7 +475,11 @@ mod tests {
 
     #[test]
     fn entries_of_one_category_are_netted() {
-        let sums = netted(&event(&[("normal", -600), ("normal", 120), ("overtime", 60)]));
+        let sums = netted(&event(&[
+            ("normal", -600),
+            ("normal", 120),
+            ("overtime", 60),
+        ]));
         assert_eq!(sums.get("normal"), Some(&-480));
         assert_eq!(sums.get("overtime"), Some(&60));
     }

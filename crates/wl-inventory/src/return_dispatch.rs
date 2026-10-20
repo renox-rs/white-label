@@ -40,7 +40,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{Machine, Outcome, StateMachine, Transition, TransitionCtx, TransitionError};
+use renox::state_machine::{
+    Machine, Outcome, StateMachine, Transition, TransitionCtx, TransitionError,
+};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::documents::dubai_date;
@@ -212,7 +214,10 @@ async fn stock_problem(
     lines: &[SupplierReturnLine],
 ) -> Result<Option<String>> {
     let mut claimed: BTreeMap<(i64, Option<i64>), i64> = BTreeMap::new();
-    for line in lines.iter().filter(|line| line.origin == ReturnOrigin::FromStock) {
+    for line in lines
+        .iter()
+        .filter(|line| line.origin == ReturnOrigin::FromStock)
+    {
         let position = line.position.to_string();
         let Some(location_id) = ret.location_id else {
             return Ok(Some(said(
@@ -350,7 +355,10 @@ pub(crate) fn add_to(machine: Machine<SupplierReturn>) -> Machine<SupplierReturn
 async fn dispatch_in(tx: &mut Transaction, ret: SupplierReturn, run: &DispatchInput) -> Result {
     // Stock may have moved since the guards looked.
     let found = gather(tx, &ret, None, run.by).await?;
-    let stock_or_order = found.stock_problem.as_ref().or(found.order_problem.as_ref());
+    let stock_or_order = found
+        .stock_problem
+        .as_ref()
+        .or(found.order_problem.as_ref());
     if let Some(problem) = stock_or_order {
         return Err(refused(problem.clone()));
     }
@@ -516,7 +524,10 @@ pub async fn dispatch(
 ) -> std::result::Result<DispatchOutcome, TransitionError> {
     let ret = SupplierReturn::find_or_404(&state.db, return_id).await?;
     if ret.status != ReturnStatus::Draft {
-        return Err(TransitionError::Guard(said("wl_inventory.return.not_draft", &[])));
+        return Err(TransitionError::Guard(said(
+            "wl_inventory.return.not_draft",
+            &[],
+        )));
     }
     // Reads in a transaction of its own, rolled back: nothing is held while
     // the transition opens its own.
@@ -526,7 +537,12 @@ pub async fn dispatch(
     if let Some(problem) = found.first_problem() {
         return Err(TransitionError::Guard(problem.to_owned()));
     }
-    let outcome = ret.transition(DISPATCH).by(user).input(&found).run(state).await?;
+    let outcome = ret
+        .transition(DISPATCH)
+        .by(user)
+        .input(&found)
+        .run(state)
+        .await?;
     approvals::announce(state, &outcome).await?;
     match outcome {
         Outcome::Done(_) => {
@@ -569,7 +585,10 @@ mod tests {
     fn the_value_is_quantity_times_cost_per_line() {
         // 120 units at AED 50.00 is AED 6,000.00; 2.5 at AED 1.00 is 2.50.
         assert_eq!(value_of_lines(&[line(1, 120_000, 5_000)]), 600_000);
-        assert_eq!(value_of_lines(&[line(1, 120_000, 5_000), line(2, 2_500, 100)]), 600_250);
+        assert_eq!(
+            value_of_lines(&[line(1, 120_000, 5_000), line(2, 2_500, 100)]),
+            600_250
+        );
         assert_eq!(value_of_lines(&[]), 0);
     }
 

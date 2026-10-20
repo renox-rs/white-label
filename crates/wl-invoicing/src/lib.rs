@@ -875,10 +875,7 @@ impl Module for WlInvoicing {
         // and the debit notes other modules draft and read through the kernel.
         debit_note_events::register_types();
         debit_note_events::register(app);
-        wl_kernel::invoicing::provide_supplier_debit_notes(
-            app,
-            debit_note_contract::DebitNotes,
-        );
+        wl_kernel::invoicing::provide_supplier_debit_notes(app, debit_note_contract::DebitNotes);
         // The kernel runs `write_off_approved` by name; `FIN.ACL.15`.
         policy::register(&self.config);
         // The settings the services read (`config_of`).

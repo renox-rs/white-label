@@ -16,7 +16,14 @@ use wl_inventory::{
 use support::{Booted, boot};
 
 /// 100 kg of chicken at AED 12.00 a kg, ordered for the store.
-async fn chicken(t: &Booted) -> (wl_inventory::Item, wl_inventory::Location, PurchaseOrder, PurchaseOrderLine) {
+async fn chicken(
+    t: &Booted,
+) -> (
+    wl_inventory::Item,
+    wl_inventory::Location,
+    PurchaseOrder,
+    PurchaseOrderLine,
+) {
     let item = t.item("CHICKEN").await;
     let store = t.location("STORE-1", None).await;
     let (order, line) = t.order(&store, &item, 100_000, 1_200).await;
@@ -62,7 +69,9 @@ async fn a_receipt_whose_return_has_left_cannot_be_reversed() {
     let t = boot().await;
     let (item, store, order, line) = chicken(&t).await;
     let receipt = posted_80(&t, &store, &order, &line, RejectedHandling::RefusedAtDoor).await;
-    let returns = supplier_return::of_source(t.db(), &receipt.subject()).await.unwrap();
+    let returns = supplier_return::of_source(t.db(), &receipt.subject())
+        .await
+        .unwrap();
     assert_eq!(returns.len(), 1);
     force_return_status(&t, returns[0].id, ReturnStatus::Dispatched).await;
     let manager = t.reverser("Maha").await;
@@ -73,8 +82,17 @@ async fn a_receipt_whose_return_has_left_cannot_be_reversed() {
         .assert_see("has left with the supplier");
 
     assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Posted);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 80_000);
-    assert_eq!(movement::of_source(t.db(), &receipt.subject()).await.unwrap().len(), 1);
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        80_000
+    );
+    assert_eq!(
+        movement::of_source(t.db(), &receipt.subject())
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 20_000);
 
     // A credited return has left as well.
@@ -90,27 +108,44 @@ async fn a_receipt_whose_return_has_left_cannot_be_reversed() {
 async fn reversing_takes_the_stock_back_and_cancels_the_draft_return() {
     let t = boot().await;
     let (item, store, order, line) = chicken(&t).await;
-    let receipt = posted_80(&t, &store, &order, &line, RejectedHandling::KeptForCollection).await;
+    let receipt = posted_80(
+        &t,
+        &store,
+        &order,
+        &line,
+        RejectedHandling::KeptForCollection,
+    )
+    .await;
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 20_000);
     let manager = t.reverser("Maha").await;
 
     t.reverse_as(&manager, &receipt).await.assert_ok();
 
-    assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Reversed);
+    assert_eq!(
+        t.reload(&receipt).await.status,
+        GoodsReceiptStatus::Reversed
+    );
     // -80 kg out of the store, from the receipt, as a reversing movement.
-    let moves = movement::of_source(t.db(), &receipt.subject()).await.unwrap();
+    let moves = movement::of_source(t.db(), &receipt.subject())
+        .await
+        .unwrap();
     assert_eq!(moves.len(), 2);
     let out: &StockMovement = &moves[1];
     assert_eq!(out.movement_type, MovementType::Adjust);
     assert_eq!((out.quantity_milli, out.value), (80_000, 96_000));
     assert_eq!(out.from_location_id, Some(store.id));
     assert_eq!(out.user_id, Some(manager.id));
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 0);
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        0
+    );
     // The order expects all 100 again.
     assert_eq!(t.line_now(&line).await.accepted_qty_milli, 0);
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 100_000);
     // The draft return is withdrawn.
-    let returns = supplier_return::of_source(t.db(), &receipt.subject()).await.unwrap();
+    let returns = supplier_return::of_source(t.db(), &receipt.subject())
+        .await
+        .unwrap();
     assert_eq!(returns.len(), 1);
     assert_eq!(returns[0].status, ReturnStatus::Cancelled);
 
@@ -124,7 +159,14 @@ async fn reversing_takes_the_stock_back_and_cancels_the_draft_return() {
 async fn a_receipt_whose_stock_was_used_is_refused_all_or_nothing() {
     let t = boot().await;
     let (item, store, order, line) = chicken(&t).await;
-    let receipt = posted_80(&t, &store, &order, &line, RejectedHandling::KeptForCollection).await;
+    let receipt = posted_80(
+        &t,
+        &store,
+        &order,
+        &line,
+        RejectedHandling::KeptForCollection,
+    )
+    .await;
     let job = wl_kernel::Subject::new("construction.project", 4);
     let mut issued = StockMovement::leaving(
         MovementType::Issue,
@@ -149,10 +191,21 @@ async fn a_receipt_whose_stock_was_used_is_refused_all_or_nothing() {
         .assert_see("10 missing");
 
     assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Posted);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 70_000);
-    assert_eq!(movement::of_source(t.db(), &receipt.subject()).await.unwrap().len(), 1);
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        70_000
+    );
+    assert_eq!(
+        movement::of_source(t.db(), &receipt.subject())
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     assert_eq!(t.line_now(&line).await.accepted_qty_milli, 80_000);
-    let returns = supplier_return::of_source(t.db(), &receipt.subject()).await.unwrap();
+    let returns = supplier_return::of_source(t.db(), &receipt.subject())
+        .await
+        .unwrap();
     assert_eq!(returns[0].status, ReturnStatus::Draft);
 }
 
@@ -162,7 +215,14 @@ async fn a_receipt_whose_stock_was_used_is_refused_all_or_nothing() {
 async fn stock_moved_to_another_location_is_not_there() {
     let t = boot().await;
     let (item, store, order, line) = chicken(&t).await;
-    let receipt = posted_80(&t, &store, &order, &line, RejectedHandling::KeptForCollection).await;
+    let receipt = posted_80(
+        &t,
+        &store,
+        &order,
+        &line,
+        RejectedHandling::KeptForCollection,
+    )
+    .await;
     let other = t.location("STORE-2", None).await;
     let transfer = wl_kernel::Subject::new("inventory.transfer", 1);
     let mut out = StockMovement::leaving(
@@ -198,7 +258,11 @@ async fn a_lot_on_hold_blocks_the_reversal() {
     let amal = t.storekeeper("Amal").await;
     let expiry = renox::chrono::NaiveDate::from_ymd_opt(2030, 1, 31).unwrap();
     let receipt = t
-        .receipt(&order, &store, vec![DraftLine::on(line.id, 50_000, 50_000).lot("L-1", expiry)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(line.id, 50_000, 50_000).lot("L-1", expiry)],
+        )
         .await;
     t.post_as(&amal, &receipt).await.assert_ok();
     let manager = t.reverser("Maha").await;
@@ -220,9 +284,17 @@ async fn a_lot_on_hold_blocks_the_reversal() {
         .await
         .unwrap();
     t.reverse_as(&manager, &receipt).await.assert_ok();
-    assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Reversed);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 0);
-    let moves = movement::of_source(t.db(), &receipt.subject()).await.unwrap();
+    assert_eq!(
+        t.reload(&receipt).await.status,
+        GoodsReceiptStatus::Reversed
+    );
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        0
+    );
+    let moves = movement::of_source(t.db(), &receipt.subject())
+        .await
+        .unwrap();
     assert!(moves.iter().all(|m| m.lot_id.is_some()));
 }
 
@@ -231,7 +303,14 @@ async fn a_lot_on_hold_blocks_the_reversal() {
 async fn a_receipt_of_a_closed_order_is_billed_and_stays() {
     let t = boot().await;
     let (_, store, order, line) = chicken(&t).await;
-    let receipt = posted_80(&t, &store, &order, &line, RejectedHandling::KeptForCollection).await;
+    let receipt = posted_80(
+        &t,
+        &store,
+        &order,
+        &line,
+        RejectedHandling::KeptForCollection,
+    )
+    .await;
     PurchaseOrder::query()
         .where_(PurchaseOrder::ID.eq(order.id))
         .update(t.db(), &[("status", &PurchaseOrderStatus::Closed)])
@@ -250,7 +329,14 @@ async fn a_receipt_of_a_closed_order_is_billed_and_stays() {
 async fn only_a_holder_of_the_permission_reverses_a_posted_receipt() {
     let t = boot().await;
     let (_, store, order, line) = chicken(&t).await;
-    let receipt = posted_80(&t, &store, &order, &line, RejectedHandling::KeptForCollection).await;
+    let receipt = posted_80(
+        &t,
+        &store,
+        &order,
+        &line,
+        RejectedHandling::KeptForCollection,
+    )
+    .await;
     let bea = t.storekeeper("Bea").await;
     t.reverse_as(&bea, &receipt).await.assert_status(403);
     assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Posted);

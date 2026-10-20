@@ -310,7 +310,10 @@ pub async fn create_from_stock(db: &Db, by: Option<i64>, new: NewReturn) -> Resu
 }
 
 /// The lines of return `supplier_return_id`, in order, read in `tx`.
-pub async fn lines_in(tx: &mut Transaction, supplier_return_id: i64) -> Result<Vec<SupplierReturnLine>> {
+pub async fn lines_in(
+    tx: &mut Transaction,
+    supplier_return_id: i64,
+) -> Result<Vec<SupplierReturnLine>> {
     SupplierReturnLine::query()
         .where_(SupplierReturnLine::SUPPLIER_RETURN_ID.eq(supplier_return_id))
         .order_by(SupplierReturnLine::POSITION)
@@ -392,7 +395,10 @@ mod tests {
     #[test]
     fn the_handling_and_the_outcome_are_stored_in_snake_case() {
         assert_eq!(RejectedHandling::RefusedAtDoor.as_str(), "refused_at_door");
-        assert_eq!(RejectedHandling::KeptForCollection.as_str(), "kept_for_collection");
+        assert_eq!(
+            RejectedHandling::KeptForCollection.as_str(),
+            "kept_for_collection"
+        );
         assert_eq!(WantedOutcome::default().as_str(), "replace");
         assert_eq!(ReturnOrigin::default().as_str(), "rejected_at_receipt");
     }

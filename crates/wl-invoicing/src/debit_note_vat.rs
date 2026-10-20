@@ -54,7 +54,9 @@ pub async fn reduction(
         .await?;
     Ok(notes
         .iter()
-        .filter(|n| counted_on(n, config.debit_note_vat_timing).is_some_and(|d| d >= from && d <= to))
+        .filter(|n| {
+            counted_on(n, config.debit_note_vat_timing).is_some_and(|d| d >= from && d <= to)
+        })
         .map(|n| n.vat_total_aed.unwrap_or(0))
         .sum())
 }
@@ -93,7 +95,10 @@ mod tests {
 
     #[test]
     fn a_draft_and_a_cancelled_note_count_nowhere() {
-        for status in [SupplierDebitNoteStatus::Draft, SupplierDebitNoteStatus::Cancelled] {
+        for status in [
+            SupplierDebitNoteStatus::Draft,
+            SupplierDebitNoteStatus::Cancelled,
+        ] {
             assert_eq!(counted_on(&note(status), InputVatTiming::OnIssue), None);
         }
         let settled = note(SupplierDebitNoteStatus::Settled);

@@ -536,7 +536,9 @@ mod tests {
     #[renox::test]
     async fn a_landed_cost_that_is_unknown_or_of_another_entity_is_refused() {
         let wrong = SubmitInput {
-            landed_cost_problem: Some("Line 2: inventory.landed_cost:9: no such landed cost".into()),
+            landed_cost_problem: Some(
+                "Line 2: inventory.landed_cost:9: no such landed cost".into(),
+            ),
             ..ready()
         };
         let refused = refusal(SUBMIT, &bill(), &run(&wrong)).await.unwrap();

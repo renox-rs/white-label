@@ -203,7 +203,10 @@ mod tests {
         assert_eq!(summary.supplier, wl_kernel::PartyId(4));
         assert_eq!(summary.legal_entity_id, Some(1));
         assert_eq!(summary.status, KernelStatus::Approved);
-        assert_eq!((summary.currency.as_str(), summary.balance), ("AED", 525_000));
+        assert_eq!(
+            (summary.currency.as_str(), summary.balance),
+            ("AED", 525_000)
+        );
     }
 
     #[test]

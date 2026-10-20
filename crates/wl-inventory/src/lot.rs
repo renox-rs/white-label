@@ -112,7 +112,14 @@ mod tests {
         let machine = Lot::machine();
         assert_eq!(machine.initial_states(), ["quarantine", "released"]);
         let names: Vec<_> = machine.states().iter().map(|s| s.name.as_str()).collect();
-        for state in ["quarantine", "released", "on_hold", "expired", "rejected", "depleted"] {
+        for state in [
+            "quarantine",
+            "released",
+            "on_hold",
+            "expired",
+            "rejected",
+            "depleted",
+        ] {
             assert!(names.contains(&state), "{state}");
         }
         let rejected = machine.states().iter().find(|s| s.name == "rejected");

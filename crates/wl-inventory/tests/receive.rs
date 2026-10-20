@@ -17,7 +17,14 @@ use wl_kernel::inventory::purchase_match;
 use support::{Booted, boot};
 
 /// 100 kg of chicken at AED 12.00 a kg, ordered for the store.
-async fn chicken(t: &Booted) -> (wl_inventory::Item, wl_inventory::Location, wl_inventory::PurchaseOrder, PurchaseOrderLine) {
+async fn chicken(
+    t: &Booted,
+) -> (
+    wl_inventory::Item,
+    wl_inventory::Location,
+    wl_inventory::PurchaseOrder,
+    PurchaseOrderLine,
+) {
     let item = t.item("CHICKEN").await;
     let store = t.location("STORE-1", None).await;
     let (order, line) = t.order(&store, &item, 100_000, 1_200).await;
@@ -55,27 +62,44 @@ async fn accepted_goods_enter_stock_and_rejected_ones_go_back_to_the_supplier() 
 
     let posted = t.reload(&receipt).await;
     assert_eq!(posted.status, GoodsReceiptStatus::Posted);
-    assert!(posted.number.as_deref().is_some_and(|n| n.starts_with("GRN-")));
+    assert!(
+        posted
+            .number
+            .as_deref()
+            .is_some_and(|n| n.starts_with("GRN-"))
+    );
     assert_eq!(posted.posted_by, Some(amal.id));
 
     // Only the accepted quantity is stock; nothing moved for the rest.
-    let moves = movement::of_source(t.db(), &posted.subject()).await.unwrap();
+    let moves = movement::of_source(t.db(), &posted.subject())
+        .await
+        .unwrap();
     assert_eq!(moves.len(), 1);
     assert_eq!(moves[0].movement_type, MovementType::Receive);
     assert_eq!((moves[0].quantity_milli, moves[0].value), (80_000, 96_000));
     assert_eq!(moves[0].to_location_id, Some(store.id));
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 80_000);
-    let costed = wl_inventory::Item::find_or_404(t.db(), item.id).await.unwrap();
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        80_000
+    );
+    let costed = wl_inventory::Item::find_or_404(t.db(), item.id)
+        .await
+        .unwrap();
     assert_eq!(costed.average_cost, 1_200);
 
     // The order counts the accepted quantity; 20 kg stay outstanding.
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::PartiallyReceived);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::PartiallyReceived
+    );
     let line = t.line_now(&po_line).await;
     assert_eq!(line.accepted_qty_milli, 80_000);
     assert_eq!(line.outstanding_milli(), 20_000);
 
     // A Return to supplier for the 20 kg refused at the door.
-    let returns = supplier_return::of_source(t.db(), &posted.subject()).await.unwrap();
+    let returns = supplier_return::of_source(t.db(), &posted.subject())
+        .await
+        .unwrap();
     assert_eq!(returns.len(), 1);
     let ret = &returns[0];
     assert_eq!(ret.handling, RejectedHandling::RefusedAtDoor);
@@ -102,7 +126,10 @@ async fn accepted_goods_enter_stock_and_rejected_ones_go_back_to_the_supplier() 
     assert_eq!(events.len(), 1);
     let line = &events[0].lines[0];
     assert_eq!(line.received_qty_milli, 100_000);
-    assert_eq!((line.accepted_qty_milli, line.rejected_qty_milli), (80_000, 20_000));
+    assert_eq!(
+        (line.accepted_qty_milli, line.rejected_qty_milli),
+        (80_000, 20_000)
+    );
     assert_eq!(line.reason.as_deref(), Some("temperature"));
     assert_eq!(events[0].value, 96_000);
     assert_eq!(events[0].purchase_order, Some(order.subject()));
@@ -119,8 +146,10 @@ async fn the_bill_match_sees_the_accepted_quantity_only() {
         .receipt(
             &order,
             &store,
-            vec![DraftLine::on(po_line.id, 100_000, 80_000)
-                .rejected_for("quality", RejectedHandling::KeptForCollection)],
+            vec![
+                DraftLine::on(po_line.id, 100_000, 80_000)
+                    .rejected_for("quality", RejectedHandling::KeptForCollection),
+            ],
         )
         .await;
     t.post_as(&amal, &receipt).await.assert_ok();
@@ -156,9 +185,20 @@ async fn a_rejected_quantity_without_a_reason_is_refused() {
         .assert_see("give a reason");
 
     assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Draft);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 0);
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Issued);
-    assert!(supplier_return::of_source(t.db(), &receipt.subject()).await.unwrap().is_empty());
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        0
+    );
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::Issued
+    );
+    assert!(
+        supplier_return::of_source(t.db(), &receipt.subject())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(t.received.all().is_empty());
 
     // Counted again with a reason, the same receipt posts.
@@ -200,15 +240,25 @@ async fn an_over_receipt_above_the_tolerance_waits_for_a_second_person() {
     let a = t.storekeeper("Amal").await;
     let b = t.procurement("Bilal").await;
     let receipt = t
-        .receipt(&order, &store, vec![DraftLine::on(po_line.id, 106_000, 106_000)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(po_line.id, 106_000, 106_000)],
+        )
         .await;
 
     t.post_as(&a, &receipt).await.assert_ok();
 
     assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Draft);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 0);
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        0
+    );
     assert!(t.received.all().is_empty());
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Issued);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::Issued
+    );
     let requests = ApprovalRequest::pending_about(t.db(), &receipt.subject())
         .await
         .unwrap();
@@ -231,7 +281,10 @@ async fn an_over_receipt_above_the_tolerance_waits_for_a_second_person() {
     assert_eq!(posted.status, GoodsReceiptStatus::Posted);
     assert_eq!(posted.posted_by, Some(a.id));
     assert!(posted.number.is_some());
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 106_000);
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        106_000
+    );
     let order_now = t.order_now(&order).await;
     assert_eq!(order_now.status, PurchaseOrderStatus::Received);
     assert_eq!(t.line_now(&po_line).await.accepted_qty_milli, 106_000);
@@ -250,7 +303,11 @@ async fn the_poster_cannot_approve_their_own_over_receipt() {
     let pia = t.storekeeper("Pia").await;
     pia.assign_role(t.db(), "procurement").await.unwrap();
     let receipt = t
-        .receipt(&order, &store, vec![DraftLine::on(po_line.id, 110_000, 110_000)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(po_line.id, 110_000, 110_000)],
+        )
         .await;
     t.post_as(&pia, &receipt).await.assert_ok();
     let requests = ApprovalRequest::pending_about(t.db(), &receipt.subject())
@@ -270,7 +327,11 @@ async fn a_rejected_over_receipt_stays_a_draft() {
     let a = t.storekeeper("Amal").await;
     let b = t.procurement("Bilal").await;
     let receipt = t
-        .receipt(&order, &store, vec![DraftLine::on(po_line.id, 120_000, 120_000)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(po_line.id, 120_000, 120_000)],
+        )
         .await;
     t.post_as(&a, &receipt).await.assert_ok();
     let requests = ApprovalRequest::pending_about(t.db(), &receipt.subject())
@@ -280,7 +341,10 @@ async fn a_rejected_over_receipt_stays_a_draft() {
         .await
         .unwrap();
     assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Draft);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 0);
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        0
+    );
     // Corrected to the order, it posts without approval.
     let stored = lines_of(t.db(), receipt.id).await.unwrap();
     wl_inventory::goods_receipt::update_line(
@@ -302,7 +366,11 @@ async fn an_over_receipt_within_the_tolerance_needs_no_approval() {
     let (item, store, order, po_line) = chicken(&t).await;
     let a = t.storekeeper("Amal").await;
     let receipt = t
-        .receipt(&order, &store, vec![DraftLine::on(po_line.id, 105_000, 105_000)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(po_line.id, 105_000, 105_000)],
+        )
         .await;
     t.post_as(&a, &receipt).await.assert_ok();
     assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Posted);
@@ -312,8 +380,14 @@ async fn an_over_receipt_within_the_tolerance_needs_no_approval() {
             .unwrap()
             .is_empty()
     );
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 105_000);
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Received);
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        105_000
+    );
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::Received
+    );
 }
 
 /// Rejected quantity does not count towards the tolerance: 120 received, 100
@@ -327,8 +401,10 @@ async fn rejected_quantity_does_not_count_towards_the_tolerance() {
         .receipt(
             &order,
             &store,
-            vec![DraftLine::on(po_line.id, 120_000, 100_000)
-                .rejected_for("excess", RejectedHandling::KeptForCollection)],
+            vec![
+                DraftLine::on(po_line.id, 120_000, 100_000)
+                    .rejected_for("excess", RejectedHandling::KeptForCollection),
+            ],
         )
         .await;
     t.post_as(&a, &receipt).await.assert_ok();
@@ -350,22 +426,33 @@ async fn goods_kept_for_collection_wait_on_a_draft_return() {
         .receipt(
             &order,
             &store,
-            vec![DraftLine::on(po_line.id, 100_000, 80_000)
-                .rejected_for("quality", RejectedHandling::KeptForCollection)
-                .credit()],
+            vec![
+                DraftLine::on(po_line.id, 100_000, 80_000)
+                    .rejected_for("quality", RejectedHandling::KeptForCollection)
+                    .credit(),
+            ],
         )
         .await;
     t.post_as(&a, &receipt).await.assert_ok();
-    let returns = supplier_return::of_source(t.db(), &receipt.subject()).await.unwrap();
+    let returns = supplier_return::of_source(t.db(), &receipt.subject())
+        .await
+        .unwrap();
     assert_eq!(returns.len(), 1);
     assert_eq!(returns[0].handling, RejectedHandling::KeptForCollection);
     assert_eq!(returns[0].status, ReturnStatus::Draft);
     assert_eq!(returns[0].collection_proof, None);
-    let lines = supplier_return::lines_of(t.db(), returns[0].id).await.unwrap();
+    let lines = supplier_return::lines_of(t.db(), returns[0].id)
+        .await
+        .unwrap();
     assert_eq!(lines[0].quantity_milli, 20_000);
     assert_eq!(lines[0].wanted_outcome, wl_inventory::WantedOutcome::Credit);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 80_000);
-    let moves = movement::of_source(t.db(), &receipt.subject()).await.unwrap();
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        80_000
+    );
+    let moves = movement::of_source(t.db(), &receipt.subject())
+        .await
+        .unwrap();
     assert_eq!(moves.iter().map(|m| m.quantity_milli).sum::<i64>(), 80_000);
 }
 
@@ -392,17 +479,40 @@ async fn mixed_rejected_lines_make_two_returns() {
         )
         .await;
     t.post_as(&a, &receipt).await.assert_ok();
-    let returns = supplier_return::of_source(t.db(), &receipt.subject()).await.unwrap();
+    let returns = supplier_return::of_source(t.db(), &receipt.subject())
+        .await
+        .unwrap();
     assert_eq!(returns.len(), 2);
-    let door = returns.iter().find(|r| r.handling == RejectedHandling::RefusedAtDoor).unwrap();
-    let kept = returns.iter().find(|r| r.handling == RejectedHandling::KeptForCollection).unwrap();
+    let door = returns
+        .iter()
+        .find(|r| r.handling == RejectedHandling::RefusedAtDoor)
+        .unwrap();
+    let kept = returns
+        .iter()
+        .find(|r| r.handling == RejectedHandling::KeptForCollection)
+        .unwrap();
     assert!(door.collection_proof.is_some() && kept.collection_proof.is_none());
-    assert_eq!(supplier_return::lines_of(t.db(), door.id).await.unwrap()[0].quantity_milli, 10_000);
-    assert_eq!(supplier_return::lines_of(t.db(), kept.id).await.unwrap()[0].quantity_milli, 5_000);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 90_000);
-    assert_eq!(movement::on_hand(t.db(), rice.id, store.id).await.unwrap(), 45_000);
+    assert_eq!(
+        supplier_return::lines_of(t.db(), door.id).await.unwrap()[0].quantity_milli,
+        10_000
+    );
+    assert_eq!(
+        supplier_return::lines_of(t.db(), kept.id).await.unwrap()[0].quantity_milli,
+        5_000
+    );
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        90_000
+    );
+    assert_eq!(
+        movement::on_hand(t.db(), rice.id, store.id).await.unwrap(),
+        45_000
+    );
     // Each line adds to its own order line: the order is partly received.
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::PartiallyReceived);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::PartiallyReceived
+    );
 }
 
 /// All rejected is allowed: no movement, the order is unchanged, the return
@@ -416,18 +526,34 @@ async fn a_receipt_with_everything_rejected_moves_no_stock() {
         .receipt(
             &order,
             &store,
-            vec![DraftLine::on(po_line.id, 100_000, 0)
-                .rejected_for("wrong_item", RejectedHandling::RefusedAtDoor)],
+            vec![
+                DraftLine::on(po_line.id, 100_000, 0)
+                    .rejected_for("wrong_item", RejectedHandling::RefusedAtDoor),
+            ],
         )
         .await;
     t.post_as(&a, &receipt).await.assert_ok();
     assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Posted);
-    assert!(movement::of_source(t.db(), &receipt.subject()).await.unwrap().is_empty());
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 0);
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Issued);
+    assert!(
+        movement::of_source(t.db(), &receipt.subject())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        0
+    );
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::Issued
+    );
     assert_eq!(t.line_now(&po_line).await.accepted_qty_milli, 0);
     assert_eq!(
-        supplier_return::of_source(t.db(), &receipt.subject()).await.unwrap().len(),
+        supplier_return::of_source(t.db(), &receipt.subject())
+            .await
+            .unwrap()
+            .len(),
         1
     );
     let events = t.received.all();
@@ -446,7 +572,11 @@ async fn a_lot_tracked_line_needs_its_lot_and_makes_it() {
     let (order, po_line) = t.order(&store, &milk, 100_000, 500).await;
     let a = t.storekeeper("Amal").await;
     let bare = t
-        .receipt(&order, &store, vec![DraftLine::on(po_line.id, 100_000, 100_000)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(po_line.id, 100_000, 100_000)],
+        )
         .await;
     t.post_as(&a, &bare)
         .await
@@ -509,17 +639,30 @@ async fn the_average_cost_follows_the_receipts() {
     let (first_order, first_line) = t.order(&store, &item, 100_000, 1_000).await;
     let a = t.storekeeper("Amal").await;
     let first = t
-        .receipt(&first_order, &store, vec![DraftLine::on(first_line.id, 100_000, 100_000)])
+        .receipt(
+            &first_order,
+            &store,
+            vec![DraftLine::on(first_line.id, 100_000, 100_000)],
+        )
         .await;
     t.post_as(&a, &first).await.assert_ok();
     let (second_order, second_line) = t.order(&store, &item, 100_000, 1_200).await;
     let second = t
-        .receipt(&second_order, &store, vec![DraftLine::on(second_line.id, 100_000, 100_000)])
+        .receipt(
+            &second_order,
+            &store,
+            vec![DraftLine::on(second_line.id, 100_000, 100_000)],
+        )
         .await;
     t.post_as(&a, &second).await.assert_ok();
-    let after = wl_inventory::Item::find_or_404(t.db(), item.id).await.unwrap();
+    let after = wl_inventory::Item::find_or_404(t.db(), item.id)
+        .await
+        .unwrap();
     assert_eq!(after.average_cost, 1_100);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 200_000);
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        200_000
+    );
 }
 
 /// A receipt is posted by a holder of `goods_receipts.post` at the receiving
@@ -533,7 +676,11 @@ async fn only_a_storekeeper_of_the_location_posts_and_only_once() {
     let item = t.item("STEEL").await;
     let (order, po_line) = t.order(&store, &item, 10_000, 3_000).await;
     let receipt = t
-        .receipt(&order, &store, vec![DraftLine::on(po_line.id, 10_000, 10_000)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(po_line.id, 10_000, 10_000)],
+        )
         .await;
     let outsider = t.storekeeper_in("Omar", &other).await;
     t.post_as(&outsider, &receipt).await.assert_status(403);
@@ -545,7 +692,10 @@ async fn only_a_storekeeper_of_the_location_posts_and_only_once() {
     t.post_as(&local, &receipt).await.assert_ok();
     assert_eq!(t.reload(&receipt).await.status, GoodsReceiptStatus::Posted);
     t.post_as(&local, &receipt).await.assert_status(422);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 10_000);
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        10_000
+    );
 }
 
 /// An order that is not open for receiving refuses the receipt.
@@ -560,7 +710,11 @@ async fn a_receipt_against_a_draft_order_is_refused() {
     po_line.save(t.db()).await.unwrap();
     let a = t.storekeeper("Amal").await;
     let receipt = t
-        .receipt(&order, &store, vec![DraftLine::on(po_line.id, 10_000, 10_000)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(po_line.id, 10_000, 10_000)],
+        )
         .await;
     t.post_as(&a, &receipt)
         .await
@@ -585,5 +739,8 @@ async fn a_draft_names_lines_of_its_order() {
         },
     )
     .await;
-    assert!(matches!(refused, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    assert!(matches!(
+        refused,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
 }

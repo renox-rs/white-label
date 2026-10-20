@@ -102,29 +102,33 @@ async fn emit_dispatched(state: &AppState, id: i64) -> Result {
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: Transitioned<GoodsReceipt>, state: AppState| async move {
-        if ![POST, POST_APPROVED].contains(&event.transition.as_str()) {
-            return Ok(());
-        }
-        // The committed rows.
-        let receipt = GoodsReceipt::find_or_404(&state.db, event.key).await?;
-        let lines = lines_of(&state.db, receipt.id).await?;
-        state.emit(received_event(&receipt, &lines)).await?;
-        // The goods refused at the door left with the driver as the receipt
-        // posted: the system dispatched their return.
-        for ret in of_source(&state.db, &receipt.subject()).await? {
-            if ret.status == ReturnStatus::Dispatched {
-                emit_dispatched(&state, ret.id).await?;
+    app.listen(
+        |event: Transitioned<GoodsReceipt>, state: AppState| async move {
+            if ![POST, POST_APPROVED].contains(&event.transition.as_str()) {
+                return Ok(());
             }
-        }
-        Ok(())
-    });
-    app.listen(|event: Transitioned<SupplierReturn>, state: AppState| async move {
-        if ![DISPATCH, DISPATCH_APPROVED].contains(&event.transition.as_str()) {
-            return Ok(());
-        }
-        emit_dispatched(&state, event.key).await
-    });
+            // The committed rows.
+            let receipt = GoodsReceipt::find_or_404(&state.db, event.key).await?;
+            let lines = lines_of(&state.db, receipt.id).await?;
+            state.emit(received_event(&receipt, &lines)).await?;
+            // The goods refused at the door left with the driver as the receipt
+            // posted: the system dispatched their return.
+            for ret in of_source(&state.db, &receipt.subject()).await? {
+                if ret.status == ReturnStatus::Dispatched {
+                    emit_dispatched(&state, ret.id).await?;
+                }
+            }
+            Ok(())
+        },
+    );
+    app.listen(
+        |event: Transitioned<SupplierReturn>, state: AppState| async move {
+            if ![DISPATCH, DISPATCH_APPROVED].contains(&event.transition.as_str()) {
+                return Ok(());
+            }
+            emit_dispatched(&state, event.key).await
+        },
+    );
 }
 
 #[cfg(test)]
@@ -157,11 +161,17 @@ mod tests {
             ..line.clone()
         };
         let event = dispatched_event(&ret, &[line, other], &BTreeMap::from([(11, 5_000)]));
-        assert_eq!(event.supplier_return.to_string(), "inventory.supplier_return:4");
+        assert_eq!(
+            event.supplier_return.to_string(),
+            "inventory.supplier_return:4"
+        );
         assert_eq!(event.source.to_string(), "inventory.goods_receipt:5");
         assert_eq!(event.lines[0].po_price, 5_000);
         assert_eq!(event.lines[0].wanted_outcome, ReturnOutcome::Credit);
-        assert_eq!(event.lines[0].lot.as_ref().unwrap().to_string(), "inventory.lot:2");
+        assert_eq!(
+            event.lines[0].lot.as_ref().unwrap().to_string(),
+            "inventory.lot:2"
+        );
         // No order line: the line's own cost.
         assert_eq!(event.lines[1].po_price, 4_800);
         assert_eq!(event.lines[1].wanted_outcome, ReturnOutcome::Replace);
@@ -196,7 +206,10 @@ mod tests {
         };
         let event = received_event(&receipt, &[line, clean]);
         assert_eq!(event.receipt.to_string(), "inventory.goods_receipt:5");
-        assert_eq!(event.purchase_order.unwrap().to_string(), "inventory.purchase_order:3");
+        assert_eq!(
+            event.purchase_order.unwrap().to_string(),
+            "inventory.purchase_order:3"
+        );
         assert_eq!(event.lines[0].accepted_qty_milli, 80_000);
         assert_eq!(event.lines[0].rejected_qty_milli, 20_000);
         assert_eq!(event.lines[0].reason.as_deref(), Some("temperature"));

@@ -22,11 +22,11 @@ use wl_kernel::attendance::{
     AttendanceFlagged, AttendanceRecorded, CostRateResolver, LabourFuture, TimesheetApproved,
     provide_cost_rates,
 };
-use wl_kernel::invoicing::{CostPoster, PostCost, SupplierBillFuture, provide_cost_poster};
 use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, Validity,
     provide_guard,
 };
+use wl_kernel::invoicing::{CostPoster, PostCost, SupplierBillFuture, provide_cost_poster};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
@@ -214,7 +214,9 @@ impl CostRateResolver for TradeRates {
         _state: &'a AppState,
         context: Option<&'a Subject>,
     ) -> LabourFuture<'a, bool> {
-        Box::pin(async move { Ok(context.is_some_and(|c| c.subject_type == "construction.project")) })
+        Box::pin(
+            async move { Ok(context.is_some_and(|c| c.subject_type == "construction.project")) },
+        )
     }
 
     fn hourly_rate<'a>(
@@ -922,7 +924,11 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     permissions::define_role(
         app.db(),
         "approver",
-        &[perm::VIEW, perm::TIMESHEETS_SUBMIT, perm::TIMESHEETS_APPROVE],
+        &[
+            perm::VIEW,
+            perm::TIMESHEETS_SUBMIT,
+            perm::TIMESHEETS_APPROVE,
+        ],
     )
     .await
     .unwrap();

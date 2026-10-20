@@ -30,14 +30,13 @@
 use renox::auth::permissions::{Scope, users_with_role_in};
 use renox::prelude::*;
 use renox::serde_json::json;
+use wl_kernel::LegalEntity;
 use wl_kernel::PartyId;
 use wl_kernel::invoicing::{
-    SupplierBillFuture, SupplierDebitNoteId, SupplierDebitNoteStatus,
-    SupplierDebitNoteSummary, SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine,
-    VatCategory,
+    SupplierBillFuture, SupplierDebitNoteId, SupplierDebitNoteStatus, SupplierDebitNoteSummary,
+    SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine, VatCategory,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
-use wl_kernel::LegalEntity;
 
 use crate::allocate::amount_text;
 use crate::bill_line::BillLine;
@@ -304,9 +303,7 @@ pub async fn link_waiting(db: &Db, bill: &SupplierBill) -> Result<usize> {
         }
         let mut fresh = lines_at_bill(&wanted, &bill_lines, bill.aed_rate());
         note.bill_id = Some(bill.id);
-        note.legal_entity_id = bill
-            .legal_entity_id
-            .unwrap_or(note.legal_entity_id);
+        note.legal_entity_id = bill.legal_entity_id.unwrap_or(note.legal_entity_id);
         note.currency = bill.currency.clone();
         note.exchange_rate_micro = bill.exchange_rate_micro;
         note.set_totals(&totals_of_lines(&fresh));
@@ -346,7 +343,11 @@ impl SupplierDebitNotes for DebitNotes {
         db: &'a Db,
         id: SupplierDebitNoteId,
     ) -> SupplierBillFuture<'a, Option<SupplierDebitNoteSummary>> {
-        Box::pin(async move { Ok(SupplierDebitNote::find(db, id.0).await?.map(|n| n.summary())) })
+        Box::pin(async move {
+            Ok(SupplierDebitNote::find(db, id.0)
+                .await?
+                .map(|n| n.summary()))
+        })
     }
 
     fn debit_balance<'a>(
@@ -380,10 +381,15 @@ impl SupplierDebitNotes for DebitNotes {
         by: Option<i64>,
     ) -> SupplierBillFuture<'a, ()> {
         Box::pin(async move {
-            crate::debit_note_settle::cancel(state, crate::credit_notes::By::System(by), id.0, reason)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.into_error())
+            crate::debit_note_settle::cancel(
+                state,
+                crate::credit_notes::By::System(by),
+                id.0,
+                reason,
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| e.into_error())
         })
     }
 }

@@ -50,7 +50,11 @@ pub enum NegativeStockPolicy {
 
 /// A place that holds stock.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_inventory_locations", unique(code), index(scope_type, scope_id))]
+#[model(
+    table = "wl_inventory_locations",
+    unique(code),
+    index(scope_type, scope_id)
+)]
 pub struct Location {
     /// The primary key.
     pub id: i64,
@@ -130,7 +134,8 @@ mod tests {
         assert_eq!(free.code, "S1");
         assert_eq!(free.scope(), Scope::global());
         assert_eq!(free.scope_subject(), None);
-        let site = Location::new("S2", "Site store").in_scope(&Subject::new("construction.project", 4));
+        let site =
+            Location::new("S2", "Site store").in_scope(&Subject::new("construction.project", 4));
         assert_eq!(site.scope(), Scope::new("construction.project", 4));
         assert_eq!(
             site.scope_subject(),

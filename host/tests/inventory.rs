@@ -45,6 +45,9 @@ fn the_roles_hold_the_inventory_permissions() {
     // one above AED 5,000.
     assert!(holds(PROCUREMENT, inventory::SUPPLIER_RETURNS_MANAGE));
     assert!(!holds(STOREKEEPER, inventory::SUPPLIER_RETURNS_MANAGE));
-    assert!(holds(ADMIN, inventory::GOODS_RECEIPTS_POST) && holds(ADMIN, inventory::PURCHASE_ORDERS_ISSUE));
+    assert!(
+        holds(ADMIN, inventory::GOODS_RECEIPTS_POST)
+            && holds(ADMIN, inventory::PURCHASE_ORDERS_ISSUE)
+    );
     assert!(!holds(MEMBER, inventory::GOODS_RECEIPTS_POST));
 }

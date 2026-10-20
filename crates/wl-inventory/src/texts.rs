@@ -62,18 +62,12 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.receipt.evidence_needed",
         "Line {{ position }}: a rejection for `{{ reason }}` needs a reading or a photo.",
     ),
-    (
-        "wl_inventory.receipt.line_saved",
-        "Line saved.",
-    ),
+    ("wl_inventory.receipt.line_saved", "Line saved."),
     (
         "wl_inventory.receipt.over_receipt",
         "The accepted quantity is above the order by more than the tolerance; the receipt waits for approval.",
     ),
-    (
-        "wl_inventory.receipt.posted",
-        "Goods receipt posted.",
-    ),
+    ("wl_inventory.receipt.posted", "Goods receipt posted."),
     (
         "wl_inventory.receipt.waiting",
         "The receipt is above the tolerance of the order and waits for approval.",
@@ -120,18 +114,9 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.reverse.held",
         "Line {{ position }}: lot {{ lot }} of {{ item }} is not free ({{ status }}). Correct it with a stock adjustment or a return to supplier.",
     ),
-    (
-        "wl_inventory.reverse.reason",
-        "Goods receipt reversed",
-    ),
-    (
-        "wl_inventory.reverse.return_cancelled",
-        "receipt reversed",
-    ),
-    (
-        "wl_inventory.receipt.reversed",
-        "Goods receipt reversed.",
-    ),
+    ("wl_inventory.reverse.reason", "Goods receipt reversed"),
+    ("wl_inventory.reverse.return_cancelled", "receipt reversed"),
+    ("wl_inventory.receipt.reversed", "Goods receipt reversed."),
     // Refusals of `dispatch` on a Return to supplier.
     (
         "wl_inventory.return.not_draft",

@@ -29,9 +29,7 @@ use wl_kernel::payments::{Direction, PAYMENT_SUBJECT_TYPE, PaymentReceived, Paym
 
 use crate::allocation::Allocation;
 use crate::payment::Payment;
-use crate::record::{
-    RECORD, RECORD_BY_SYSTEM, RECORD_SET_OFF, RECORD_SET_OFF_APPROVED,
-};
+use crate::record::{RECORD, RECORD_BY_SYSTEM, RECORD_SET_OFF, RECORD_SET_OFF_APPROVED};
 use crate::reverse::{self, REVERSE, REVERSE_APPROVED, REVERSE_BY_SYSTEM};
 
 /// The event a committed transition of `payment` (as it is now) gives, if
@@ -39,7 +37,13 @@ use crate::reverse::{self, REVERSE, REVERSE_APPROVED, REVERSE_BY_SYSTEM};
 fn received_event(transition: &str, payment: &Payment) -> Option<PaymentReceived> {
     // Money out (a refund's voucher) is not a payment received; an owner
     // drawing is (`record` gives `PaymentReceived`, wl-payments §4).
-    ([RECORD, RECORD_BY_SYSTEM, RECORD_SET_OFF, RECORD_SET_OFF_APPROVED].contains(&transition)
+    ([
+        RECORD,
+        RECORD_BY_SYSTEM,
+        RECORD_SET_OFF,
+        RECORD_SET_OFF_APPROVED,
+    ]
+    .contains(&transition)
         && (payment.direction == Direction::In || payment.purpose == PURPOSE))
         .then(|| PaymentReceived {
             payment: payment.payment_id(),
@@ -134,8 +138,13 @@ pub(crate) fn register(app: &mut Registry) {
     });
     app.listen(|event: Transitioned<Payment>, state: AppState| async move {
         let name = event.transition.as_str();
-        let recorded =
-            [RECORD, RECORD_BY_SYSTEM, RECORD_SET_OFF, RECORD_SET_OFF_APPROVED].contains(&name);
+        let recorded = [
+            RECORD,
+            RECORD_BY_SYSTEM,
+            RECORD_SET_OFF,
+            RECORD_SET_OFF_APPROVED,
+        ]
+        .contains(&name);
         let reversed = [REVERSE, REVERSE_BY_SYSTEM, REVERSE_APPROVED].contains(&name);
         if !recorded && !reversed {
             return Ok(());

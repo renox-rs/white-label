@@ -62,6 +62,9 @@ mod tests {
         let matched = match_line(&line);
         assert_eq!(matched.po_line, 11);
         assert_eq!(matched.item.to_string(), "inventory.item:9");
-        assert_eq!((matched.ordered_qty_milli, matched.accepted_qty_milli), (100_000, 80_000));
+        assert_eq!(
+            (matched.ordered_qty_milli, matched.accepted_qty_milli),
+            (100_000, 80_000)
+        );
     }
 }

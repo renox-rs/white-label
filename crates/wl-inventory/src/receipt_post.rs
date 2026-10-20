@@ -43,7 +43,9 @@ use std::collections::BTreeMap;
 
 use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{Machine, Outcome, StateMachine, Transition, TransitionCtx, TransitionError};
+use renox::state_machine::{
+    Machine, Outcome, StateMachine, Transition, TransitionCtx, TransitionError,
+};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::documents::today;
@@ -211,8 +213,12 @@ fn source_problem(loaded: &Loaded<'_>) -> Option<String> {
 fn quantities_problem(loaded: &Loaded<'_>) -> Option<String> {
     for line in loaded.lines {
         let position = line.position.to_string();
-        if line.received_qty_milli < 0 || line.accepted_qty_milli < 0 || line.rejected_qty_milli < 0 {
-            return Some(said("wl_inventory.receipt.negative", &[("position", &position)]));
+        if line.received_qty_milli < 0 || line.accepted_qty_milli < 0 || line.rejected_qty_milli < 0
+        {
+            return Some(said(
+                "wl_inventory.receipt.negative",
+                &[("position", &position)],
+            ));
         }
         if line.accepted_qty_milli + line.rejected_qty_milli != line.received_qty_milli {
             return Some(said(
@@ -225,7 +231,11 @@ fn quantities_problem(loaded: &Loaded<'_>) -> Option<String> {
 }
 
 fn rejections_problem(loaded: &Loaded<'_>) -> Option<String> {
-    for line in loaded.lines.iter().filter(|line| line.rejected_qty_milli > 0) {
+    for line in loaded
+        .lines
+        .iter()
+        .filter(|line| line.rejected_qty_milli > 0)
+    {
         let position = line.position.to_string();
         let Some(code) = line
             .rejection_reason
@@ -233,7 +243,10 @@ fn rejections_problem(loaded: &Loaded<'_>) -> Option<String> {
             .map(str::trim)
             .filter(|reason| !reason.is_empty())
         else {
-            return Some(said("wl_inventory.receipt.reason_needed", &[("position", &position)]));
+            return Some(said(
+                "wl_inventory.receipt.reason_needed",
+                &[("position", &position)],
+            ));
         };
         let Some(reason) = loaded.config.reason(code) else {
             return Some(said(
@@ -262,7 +275,11 @@ fn rejections_problem(loaded: &Loaded<'_>) -> Option<String> {
 }
 
 fn lots_problem(loaded: &Loaded<'_>) -> Option<String> {
-    for line in loaded.lines.iter().filter(|line| line.accepted_qty_milli > 0) {
+    for line in loaded
+        .lines
+        .iter()
+        .filter(|line| line.accepted_qty_milli > 0)
+    {
         let Some(item) = loaded.items.get(&line.item_id) else {
             return Some(said(
                 "wl_inventory.receipt.unknown_item",
@@ -276,7 +293,10 @@ fn lots_problem(loaded: &Loaded<'_>) -> Option<String> {
         if item.lot_tracked && (!has_lot || line.expiry_date.is_none()) {
             return Some(said(
                 "wl_inventory.receipt.lot_needed",
-                &[("position", &line.position.to_string()), ("item", &item.code)],
+                &[
+                    ("position", &line.position.to_string()),
+                    ("item", &item.code),
+                ],
             ));
         }
     }
@@ -331,9 +351,15 @@ fn rules(transition: Transition<GoodsReceipt>, approved: bool) -> Transition<Goo
         .from([GoodsReceiptStatus::Draft])
         .to(GoodsReceiptStatus::Posted);
     let transition = with_problem(transition, "has_lines", |i| i.lines_problem.clone());
-    let transition = with_problem(transition, "source_is_an_open_order", |i| i.source_problem.clone());
-    let transition = with_problem(transition, "quantities_balance", |i| i.quantities_problem.clone());
-    let transition = with_problem(transition, "rejections_explained", |i| i.rejections_problem.clone());
+    let transition = with_problem(transition, "source_is_an_open_order", |i| {
+        i.source_problem.clone()
+    });
+    let transition = with_problem(transition, "quantities_balance", |i| {
+        i.quantities_problem.clone()
+    });
+    let transition = with_problem(transition, "rejections_explained", |i| {
+        i.rejections_problem.clone()
+    });
     let transition = with_problem(transition, "lots_and_expiry", |i| i.lots_problem.clone());
     transition.effect(move |receipt: &GoodsReceipt, ctx, tx| {
         let receipt = receipt.clone();
@@ -350,9 +376,10 @@ pub(crate) fn transitions() -> Vec<Transition<GoodsReceipt>> {
             Transition::new(POST)
                 .label("Post")
                 .tone("primary")
-                .permission_in(permissions::GOODS_RECEIPTS_POST, |receipt: &GoodsReceipt| {
-                    receipt.scope()
-                }),
+                .permission_in(
+                    permissions::GOODS_RECEIPTS_POST,
+                    |receipt: &GoodsReceipt| receipt.scope(),
+                ),
             false,
         ),
         rules(
@@ -434,7 +461,8 @@ async fn make_return(
     let number = SUPPLIER_RETURN_SERIES
         .next(&mut *tx, None, None, today())
         .await?;
-    let proof = (handling == RejectedHandling::RefusedAtDoor).then(|| receipt.subject().to_string());
+    let proof =
+        (handling == RejectedHandling::RefusedAtDoor).then(|| receipt.subject().to_string());
     let source = receipt.subject();
     let mut ret = SupplierReturn {
         number: Some(number),
@@ -524,7 +552,10 @@ async fn post_in(
         );
         Item::query()
             .where_(Item::ID.eq(item.id))
-            .update(&mut *tx, &[("average_cost", &average), ("updated_at", &now)])
+            .update(
+                &mut *tx,
+                &[("average_cost", &average), ("updated_at", &now)],
+            )
             .await?;
         if lot_id.is_some() {
             GoodsReceiptLine::query()
@@ -541,7 +572,10 @@ async fn post_in(
     }
 
     // Rejected goods never enter stock: they go back to the supplier.
-    for handling in [RejectedHandling::RefusedAtDoor, RejectedHandling::KeptForCollection] {
+    for handling in [
+        RejectedHandling::RefusedAtDoor,
+        RejectedHandling::KeptForCollection,
+    ] {
         let group = rejected_with(&lines, handling);
         if group.is_empty() {
             continue;
@@ -621,7 +655,11 @@ async fn receive_on_order(
 /// # Errors
 ///
 /// A database error.
-pub async fn prepare(state: &AppState, receipt: &GoodsReceipt, by: Option<i64>) -> Result<PostInput> {
+pub async fn prepare(
+    state: &AppState,
+    receipt: &GoodsReceipt,
+    by: Option<i64>,
+) -> Result<PostInput> {
     let lines = crate::goods_receipt::lines_of(&state.db, receipt.id).await?;
     let mut items = BTreeMap::new();
     for line in &lines {
@@ -675,13 +713,21 @@ pub async fn post(
 ) -> std::result::Result<PostOutcome, TransitionError> {
     let receipt = GoodsReceipt::find_or_404(&state.db, receipt_id).await?;
     if receipt.status != GoodsReceiptStatus::Draft {
-        return Err(TransitionError::Guard(said("wl_inventory.receipt.not_draft", &[])));
+        return Err(TransitionError::Guard(said(
+            "wl_inventory.receipt.not_draft",
+            &[],
+        )));
     }
     let input = prepare(state, &receipt, Some(user.id)).await?;
     if let Some(problem) = input.first_problem() {
         return Err(TransitionError::Guard(problem.to_owned()));
     }
-    let outcome = receipt.transition(POST).by(user).input(&input).run(state).await?;
+    let outcome = receipt
+        .transition(POST)
+        .by(user)
+        .input(&input)
+        .run(state)
+        .await?;
     approvals::announce(state, &outcome).await?;
     match outcome {
         Outcome::Done(_) => Ok(PostOutcome::Posted(
@@ -734,7 +780,13 @@ mod tests {
         }
     }
 
-    fn line(position: i64, po_line: i64, item_id: i64, received: i64, accepted: i64) -> GoodsReceiptLine {
+    fn line(
+        position: i64,
+        po_line: i64,
+        item_id: i64,
+        received: i64,
+        accepted: i64,
+    ) -> GoodsReceiptLine {
         GoodsReceiptLine {
             id: position,
             position,
@@ -776,7 +828,11 @@ mod tests {
         let mut bad = line(1, 1, 2, 100_000, 80_000);
         bad.rejected_qty_milli = 10_000;
         let input = input_of(vec![bad], false);
-        assert!(input.quantities_problem.is_some_and(|m| m.contains("accepted plus rejected")));
+        assert!(
+            input
+                .quantities_problem
+                .is_some_and(|m| m.contains("accepted plus rejected"))
+        );
         let mut negative = line(1, 1, 2, 100_000, 100_000);
         negative.accepted_qty_milli = -1;
         assert!(input_of(vec![negative], false).quantities_problem.is_some());
@@ -786,17 +842,32 @@ mod tests {
     fn a_rejected_quantity_needs_its_reason_handling_and_evidence() {
         let mut rejected = line(1, 1, 2, 100_000, 80_000);
         let input = input_of(vec![rejected.clone()], false);
-        assert!(input.rejections_problem.is_some_and(|m| m.contains("reason")));
+        assert!(
+            input
+                .rejections_problem
+                .is_some_and(|m| m.contains("reason"))
+        );
         rejected.rejection_reason = Some("spoiled".into());
         rejected.rejected_handling = Some(RejectedHandling::RefusedAtDoor);
         let input = input_of(vec![rejected.clone()], false);
-        assert!(input.rejections_problem.is_some_and(|m| m.contains("not a rejection reason")));
+        assert!(
+            input
+                .rejections_problem
+                .is_some_and(|m| m.contains("not a rejection reason"))
+        );
         rejected.rejection_reason = Some("temperature".into());
         rejected.rejected_handling = None;
         let input = input_of(vec![rejected.clone()], false);
-        assert!(input.rejections_problem.is_some_and(|m| m.contains("refused at the door")));
+        assert!(
+            input
+                .rejections_problem
+                .is_some_and(|m| m.contains("refused at the door"))
+        );
         rejected.rejected_handling = Some(RejectedHandling::KeptForCollection);
-        assert_eq!(input_of(vec![rejected.clone()], false).rejections_problem, None);
+        assert_eq!(
+            input_of(vec![rejected.clone()], false).rejections_problem,
+            None
+        );
         // A vertical may require a reading for a reason.
         let mut config = InventoryConfig::default();
         config
@@ -817,10 +888,17 @@ mod tests {
             order_lines: &order_lines,
             config: &config,
         };
-        assert!(check(&loaded).rejections_problem.is_some_and(|m| m.contains("reading or a photo")));
+        assert!(
+            check(&loaded)
+                .rejections_problem
+                .is_some_and(|m| m.contains("reading or a photo"))
+        );
         rejected.evidence = Some("9 C".into());
         let lines = vec![rejected];
-        let loaded = Loaded { lines: &lines, ..loaded };
+        let loaded = Loaded {
+            lines: &lines,
+            ..loaded
+        };
         assert_eq!(check(&loaded).rejections_problem, None);
     }
 

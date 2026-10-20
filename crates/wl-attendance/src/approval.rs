@@ -148,7 +148,9 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
             .effect(|sheet: &Timesheet, ctx, tx| {
                 let sheet = sheet.clone();
                 let by = ctx.actor().map(|user| user.id);
-                Box::pin(async move { approve_in(tx, &sheet, by, ApprovalBasis::Approved, None).await })
+                Box::pin(
+                    async move { approve_in(tx, &sheet, by, ApprovalBasis::Approved, None).await },
+                )
             }),
         Transition::new(APPROVE_ON_BEHALF)
             .label("Approve on behalf")

@@ -22,11 +22,11 @@ use wl_kernel::invoicing::{
     SupplierBillId, SupplierBillLineId, SupplierBillReopened, SupplierBillVoided, post_cost,
 };
 
+use crate::bill_line::BillLine;
 use crate::bill_machine::{APPROVE, APPROVE_SYSTEM, VOID, VOID_SYSTEM};
 use crate::bill_submit::{SUBMIT_HELD, SUBMIT_HELD_SYSTEM};
 use crate::bill_unallocate::REOPEN_TARGETS;
 use crate::payables::kernel_status;
-use crate::bill_line::BillLine;
 use crate::supplier_bill::{self, SupplierBill};
 
 /// `SupplierBillApproved` for `bill`, as it is after the approval.

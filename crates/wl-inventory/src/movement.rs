@@ -261,7 +261,8 @@ mod tests {
     #[test]
     fn a_receive_arrives_at_one_location_from_its_source() {
         let source = Subject::new("inventory.goods_receipt", 5);
-        let movement = StockMovement::receive(9, Some(2), 3, 80_000, 1_200, 96_000, &source, Some(7));
+        let movement =
+            StockMovement::receive(9, Some(2), 3, 80_000, 1_200, 96_000, &source, Some(7));
         assert_eq!(movement.movement_type, MovementType::Receive);
         assert_eq!(movement.to_location_id, Some(3));
         assert_eq!(movement.from_location_id, None);

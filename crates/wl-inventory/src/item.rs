@@ -91,8 +91,8 @@ pub fn weighted_average(on_hand_milli: i64, average: i64, quantity_milli: i64, p
     if total <= 0 {
         return price;
     }
-    let value =
-        i128::from(on_hand_milli) * i128::from(average) + i128::from(quantity_milli) * i128::from(price);
+    let value = i128::from(on_hand_milli) * i128::from(average)
+        + i128::from(quantity_milli) * i128::from(price);
     i64::try_from((2 * value + total) / (2 * total)).unwrap_or(price)
 }
 
@@ -101,13 +101,18 @@ pub fn weighted_average(on_hand_milli: i64, average: i64, quantity_milli: i64, p
 /// `on_hand_milli` were on hand at `average`: the value left over the
 /// quantity left, rounded half up. When nothing (or less) is left the
 /// average stays, as the next receipt takes its own price.
-pub fn average_after_removal(on_hand_milli: i64, average: i64, quantity_milli: i64, price: i64) -> i64 {
+pub fn average_after_removal(
+    on_hand_milli: i64,
+    average: i64,
+    quantity_milli: i64,
+    price: i64,
+) -> i64 {
     let left = i128::from(on_hand_milli) - i128::from(quantity_milli);
     if left <= 0 {
         return average;
     }
-    let value =
-        i128::from(on_hand_milli) * i128::from(average) - i128::from(quantity_milli) * i128::from(price);
+    let value = i128::from(on_hand_milli) * i128::from(average)
+        - i128::from(quantity_milli) * i128::from(price);
     i64::try_from(((2 * value + left) / (2 * left)).max(0)).unwrap_or(average)
 }
 
@@ -138,10 +143,16 @@ mod tests {
     #[test]
     fn an_item_is_a_subject_and_starts_without_cost() {
         let item = Item::new(" CHK ", " Chicken ", "kg").lot_tracked();
-        assert_eq!((item.code.as_str(), item.name_en.as_str()), ("CHK", "Chicken"));
+        assert_eq!(
+            (item.code.as_str(), item.name_en.as_str()),
+            ("CHK", "Chicken")
+        );
         assert!(item.lot_tracked);
         assert_eq!(item.average_cost, 0);
-        assert_eq!(Item { id: 9, ..item }.subject().to_string(), "inventory.item:9");
+        assert_eq!(
+            Item { id: 9, ..item }.subject().to_string(),
+            "inventory.item:9"
+        );
     }
 
     #[test]

@@ -13,9 +13,9 @@ use wl_invoicing::cash_forecast_load::payable;
 use wl_invoicing::credit_notes::By;
 use wl_invoicing::supplier_bill::{self, BillDraft};
 use wl_invoicing::{BillLineDraft, SupplierBill, SupplierBillStatus};
+use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{LandedCostLine, SupplierBillLineId, VatCategory};
-use wl_kernel::Subject;
 
 use support::{BLUE_DUNES, boot_with_landed};
 
@@ -61,14 +61,20 @@ async fn inv15_a_landed_cost_line_posts_no_cost_but_its_vat_counts() {
         .line(goods)
         .line(freight);
     draft.legal_entity_id = Some(entity.id);
-    let bill = supplier_bill::create(t.db(), &draft, Some(A)).await.unwrap();
+    let bill = supplier_bill::create(t.db(), &draft, Some(A))
+        .await
+        .unwrap();
     let lines = supplier_bill::lines_of(t.db(), bill.id).await.unwrap();
     assert_eq!(lines[1].landed_cost(), Some(lc_12()));
     assert_eq!(lines[1].cost_object(), None);
-    submit(t.state(), By::System(Some(A)), bill.id).await.unwrap();
+    submit(t.state(), By::System(Some(A)), bill.id)
+        .await
+        .unwrap();
     assert!(ledger.postings().is_empty());
 
-    let approved = approve(t.state(), By::System(Some(B)), bill.id, "").await.unwrap();
+    let approved = approve(t.state(), By::System(Some(B)), bill.id, "")
+        .await
+        .unwrap();
     assert_eq!(approved.status, SupplierBillStatus::Approved);
 
     // Cost of the goods only.
@@ -77,7 +83,10 @@ async fn inv15_a_landed_cost_line_posts_no_cost_but_its_vat_counts() {
     assert_eq!(posts[0].amount_aed, 500_000);
     assert_eq!(posts[0].cost_object, unit());
     assert_eq!(posts[0].source, bill.subject());
-    assert_eq!(posts[0].key, format!("invoicing.supplier_bill_line:{}", lines[0].id));
+    assert_eq!(
+        posts[0].key,
+        format!("invoicing.supplier_bill_line:{}", lines[0].id)
+    );
     assert!(posts.iter().all(|p| p.amount_aed != 40_000));
 
     // Input VAT of AED 270.00 (250.00 + 20.00) for the bill's period.
@@ -85,7 +94,9 @@ async fn inv15_a_landed_cost_line_posts_no_cost_but_its_vat_counts() {
     assert_eq!(stored.vat_total, 27_000);
     let config = t.config();
     assert_eq!(
-        payable(t.db(), &config, entity.id, day(-30), day(30)).await.unwrap(),
+        payable(t.db(), &config, entity.id, day(-30), day(30))
+            .await
+            .unwrap(),
         -27_000
     );
 
@@ -131,11 +142,12 @@ async fn inv15_the_landed_cost_must_exist_and_belong_to_the_receiving_entity() {
     let own = t.entity("PGP").await;
     let other = t.entity("PGFZ").await;
     desk.add(lc_12(), other.id);
-    let mut draft = BillDraft::new(BLUE_DUNES, "INV-9", day(0)).line(
-        BillLineDraft::new("Freight", 40_000, VatCategory::Standard).landed_cost(lc_12()),
-    );
+    let mut draft = BillDraft::new(BLUE_DUNES, "INV-9", day(0))
+        .line(BillLineDraft::new("Freight", 40_000, VatCategory::Standard).landed_cost(lc_12()));
     draft.legal_entity_id = Some(own.id);
-    let bill = supplier_bill::create(t.db(), &draft, Some(A)).await.unwrap();
+    let bill = supplier_bill::create(t.db(), &draft, Some(A))
+        .await
+        .unwrap();
     let message = submit(t.state(), By::System(Some(A)), bill.id)
         .await
         .map(|_| ())
@@ -156,7 +168,9 @@ async fn inv15_the_landed_cost_must_exist_and_belong_to_the_receiving_entity() {
             .landed_cost(Subject::new("inventory.landed_cost", 99)),
     );
     draft.legal_entity_id = Some(own.id);
-    let bill = supplier_bill::create(t.db(), &draft, Some(A)).await.unwrap();
+    let bill = supplier_bill::create(t.db(), &draft, Some(A))
+        .await
+        .unwrap();
     let refused = submit(t.state(), By::System(Some(A)), bill.id).await;
     assert!(refused.is_err());
     assert!(ledger.postings().is_empty());
@@ -168,8 +182,12 @@ async fn inv15_the_landed_cost_must_exist_and_belong_to_the_receiving_entity() {
             .landed_cost(Subject::new("inventory.landed_cost", 13)),
     );
     draft.legal_entity_id = Some(own.id);
-    let bill = supplier_bill::create(t.db(), &draft, Some(A)).await.unwrap();
-    let matched = submit(t.state(), By::System(Some(A)), bill.id).await.unwrap();
+    let bill = supplier_bill::create(t.db(), &draft, Some(A))
+        .await
+        .unwrap();
+    let matched = submit(t.state(), By::System(Some(A)), bill.id)
+        .await
+        .unwrap();
     assert_eq!(matched.status, SupplierBillStatus::Matched);
 }
 
@@ -178,9 +196,14 @@ async fn inv15_the_landed_cost_must_exist_and_belong_to_the_receiving_entity() {
 #[renox::test]
 async fn inv15_without_landed_costs_a_coded_line_is_refused() {
     let t = support::boot().await;
-    let draft = BillDraft::new(BLUE_DUNES, "INV-9", day(0)).line(
-        BillLineDraft::new("Freight", 40_000, VatCategory::Standard).landed_cost(lc_12()),
+    let draft = BillDraft::new(BLUE_DUNES, "INV-9", day(0))
+        .line(BillLineDraft::new("Freight", 40_000, VatCategory::Standard).landed_cost(lc_12()));
+    let bill = supplier_bill::create(t.db(), &draft, Some(A))
+        .await
+        .unwrap();
+    assert!(
+        submit(t.state(), By::System(Some(A)), bill.id)
+            .await
+            .is_err()
     );
-    let bill = supplier_bill::create(t.db(), &draft, Some(A)).await.unwrap();
-    assert!(submit(t.state(), By::System(Some(A)), bill.id).await.is_err());
 }

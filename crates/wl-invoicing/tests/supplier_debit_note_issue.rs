@@ -112,7 +112,9 @@ fn refused<T>(result: std::result::Result<T, TransitionError>) -> Option<String>
 }
 
 async fn reload(t: &Booted, note: &SupplierDebitNote) -> SupplierDebitNote {
-    SupplierDebitNote::find_or_404(t.db(), note.id).await.unwrap()
+    SupplierDebitNote::find_or_404(t.db(), note.id)
+        .await
+        .unwrap()
 }
 
 async fn bill_now(t: &Booted, bill: &SupplierBill) -> SupplierBill {
@@ -129,10 +131,7 @@ async fn inv13_a_dispatched_return_is_drafted_at_the_bills_prices_once() {
     let (bill, bill_line) = approved_bill(&t).await;
 
     // The event is the way wl-inventory tells.
-    t.state()
-        .emit(dispatched(12, 3_000, 9_500))
-        .await
-        .unwrap();
+    t.state().emit(dispatched(12, 3_000, 9_500)).await.unwrap();
     let notes = SupplierDebitNote::query().get(t.db()).await.unwrap();
     assert_eq!(notes.len(), 1);
     let note = &notes[0];
@@ -160,22 +159,24 @@ async fn inv13_a_dispatched_return_is_drafted_at_the_bills_prices_once() {
 
     let told = t.notices.of_type(DRAFTED);
     assert_eq!(told.len(), 1);
-    assert!(told[0]
-        .recipients
-        .iter()
-        .any(|r| matches!(r, NotifyRecipient::User { id } if *id == accountant.id)));
+    assert!(
+        told[0]
+            .recipients
+            .iter()
+            .any(|r| matches!(r, NotifyRecipient::User { id } if *id == accountant.id))
+    );
 
     // One draft per return, also through the contract.
-    t.state()
-        .emit(dispatched(12, 3_000, 9_500))
-        .await
-        .unwrap();
+    t.state().emit(dispatched(12, 3_000, 9_500)).await.unwrap();
     let again = supplier_debit_notes(t.state())
         .draft_for_return(t.state(), dispatched(12, 3_000, 9_500))
         .await
         .unwrap();
     assert_eq!(again.0, note.id);
-    assert_eq!(SupplierDebitNote::query().get(t.db()).await.unwrap().len(), 1);
+    assert_eq!(
+        SupplierDebitNote::query().get(t.db()).await.unwrap().len(),
+        1
+    );
     assert_eq!(t.notices.of_type(DRAFTED).len(), 1);
     // The bill is not touched by a draft.
     assert_eq!(bill_now(&t, &bill).await.balance, 105_000);
@@ -188,17 +189,28 @@ async fn inv13_a_dispatched_return_is_drafted_at_the_bills_prices_once() {
 async fn inv13_issue_reduces_the_bill_reverses_cost_and_input_vat() {
     let (t, ledger): (Booted, CostLedger) = boot_with_costs().await;
     let (bill, _) = approved_bill(&t).await;
-    t.state()
-        .emit(dispatched(12, 3_000, 9_500))
+    t.state().emit(dispatched(12, 3_000, 9_500)).await.unwrap();
+    let draft = SupplierDebitNote::query()
+        .first(t.db())
         .await
+        .unwrap()
         .unwrap();
-    let draft = SupplierDebitNote::query().first(t.db()).await.unwrap().unwrap();
     let entity = bill.legal_entity_id.unwrap();
     let config = t.config();
     let (from, to) = (day(-1), day(1));
-    assert_eq!(debit_note_vat::reduction(t.db(), &config, entity, from, to).await.unwrap(), 0);
+    assert_eq!(
+        debit_note_vat::reduction(t.db(), &config, entity, from, to)
+            .await
+            .unwrap(),
+        0
+    );
     // Before: the bill's input VAT of AED 50.00 alone.
-    assert_eq!(payable(t.db(), &config, entity, day(-30), day(30)).await.unwrap(), -5_000);
+    assert_eq!(
+        payable(t.db(), &config, entity, day(-30), day(30))
+            .await
+            .unwrap(),
+        -5_000
+    );
 
     let issued = debit_notes::issue(t.state(), By::System(Some(B)), draft.id)
         .await
@@ -232,16 +244,28 @@ async fn inv13_issue_reduces_the_bill_reverses_cost_and_input_vat() {
     assert_eq!(reversals[0].lines[0].amount_aed, 30_000);
 
     // Input VAT falls by AED 15.00.
-    assert_eq!(debit_note_vat::reduction(t.db(), &config, entity, from, to).await.unwrap(), 1_500);
-    assert_eq!(payable(t.db(), &config, entity, day(-30), day(30)).await.unwrap(), -3_500);
+    assert_eq!(
+        debit_note_vat::reduction(t.db(), &config, entity, from, to)
+            .await
+            .unwrap(),
+        1_500
+    );
+    assert_eq!(
+        payable(t.db(), &config, entity, day(-30), day(30))
+            .await
+            .unwrap(),
+        -3_500
+    );
 
     // The supplier is told, and the event is emitted.
     let told = t.notices.of_type(ISSUED);
     assert_eq!(told.len(), 1);
-    assert!(told[0]
-        .recipients
-        .iter()
-        .any(|r| matches!(r, NotifyRecipient::Party { id } if *id == BLUE_DUNES)));
+    assert!(
+        told[0]
+            .recipients
+            .iter()
+            .any(|r| matches!(r, NotifyRecipient::Party { id } if *id == BLUE_DUNES))
+    );
     assert_eq!(told[0].data["number"], number.as_str());
     let events = t.debit_issued.all();
     assert_eq!(events.len(), 1);
@@ -266,15 +290,22 @@ async fn inv13_issue_reduces_the_bill_reverses_cost_and_input_vat() {
 async fn inv13_a_paid_bill_gets_a_debit_balance_and_stays_paid() {
     let t = boot().await;
     let (bill, _) = approved_bill(&t).await;
-    pay(t.state(), &bill, &Subject::new("payments.payment", 9), 105_000, None)
-        .await
-        .unwrap();
+    pay(
+        t.state(),
+        &bill,
+        &Subject::new("payments.payment", 9),
+        105_000,
+        None,
+    )
+    .await
+    .unwrap();
     assert_eq!(bill_now(&t, &bill).await.status, SupplierBillStatus::Paid);
-    t.state()
-        .emit(dispatched(12, 3_000, 9_500))
+    t.state().emit(dispatched(12, 3_000, 9_500)).await.unwrap();
+    let draft = SupplierDebitNote::query()
+        .first(t.db())
         .await
+        .unwrap()
         .unwrap();
-    let draft = SupplierDebitNote::query().first(t.db()).await.unwrap().unwrap();
     let issued = debit_notes::issue(t.state(), By::System(Some(B)), draft.id)
         .await
         .unwrap();
@@ -282,11 +313,13 @@ async fn inv13_a_paid_bill_gets_a_debit_balance_and_stays_paid() {
     let after = bill_now(&t, &bill).await;
     assert_eq!(after.status, SupplierBillStatus::Paid);
     assert_eq!((after.allocated_total, after.balance), (105_000, 0));
-    assert!(BillAllocation::of_bill(t.db(), bill.id)
-        .await
-        .unwrap()
-        .iter()
-        .all(|a| a.source() != issued.subject()));
+    assert!(
+        BillAllocation::of_bill(t.db(), bill.id)
+            .await
+            .unwrap()
+            .iter()
+            .all(|a| a.source() != issued.subject())
+    );
     // The kernel contract reads the balance the supplier owes.
     let owed = supplier_debit_notes(t.state())
         .debit_balance(t.db(), BLUE_DUNES, bill.legal_entity_id.unwrap(), "AED")
@@ -300,18 +333,28 @@ async fn inv13_the_part_above_the_open_balance_of_a_partly_paid_bill_is_the_debi
     let t = boot().await;
     let (bill, _) = approved_bill(&t).await;
     // AED 1,050.00 less AED 100.00 paid: AED 10.00 is open.
-    pay(t.state(), &bill, &Subject::new("payments.payment", 9), 104_000, None)
+    pay(
+        t.state(),
+        &bill,
+        &Subject::new("payments.payment", 9),
+        104_000,
+        None,
+    )
+    .await
+    .unwrap();
+    t.state().emit(dispatched(12, 3_000, 9_500)).await.unwrap();
+    let draft = SupplierDebitNote::query()
+        .first(t.db())
         .await
+        .unwrap()
         .unwrap();
-    t.state()
-        .emit(dispatched(12, 3_000, 9_500))
-        .await
-        .unwrap();
-    let draft = SupplierDebitNote::query().first(t.db()).await.unwrap().unwrap();
     let issued = debit_notes::issue(t.state(), By::System(Some(B)), draft.id)
         .await
         .unwrap();
-    assert_eq!((issued.applied_to_bill, issued.debit_balance), (1_000, 30_500));
+    assert_eq!(
+        (issued.applied_to_bill, issued.debit_balance),
+        (1_000, 30_500)
+    );
     let after = bill_now(&t, &bill).await;
     assert_eq!(after.status, SupplierBillStatus::Paid);
     assert_eq!(after.balance, 0);
@@ -335,7 +378,10 @@ async fn inv13_a_manual_note_is_issued_by_another_person_than_its_creator() {
     .unwrap();
     let message = refused(debit_notes::issue(t.state(), By::System(Some(A)), note.id).await);
     assert!(message.unwrap().contains("FIN.ACL.17"));
-    assert_eq!(reload(&t, &note).await.status, SupplierDebitNoteStatus::Draft);
+    assert_eq!(
+        reload(&t, &note).await.status,
+        SupplierDebitNoteStatus::Draft
+    );
     assert_eq!(reload(&t, &note).await.number, None);
     assert_eq!(bill_now(&t, &bill).await.balance, 105_000);
 
@@ -354,22 +400,50 @@ async fn inv13_quantities_are_limited_by_the_bill_less_earlier_notes() {
     let t = boot().await;
     let (bill, line) = approved_bill(&t).await;
     let line_of = |quantity_milli| [DebitLine::new(line.id, quantity_milli, 10_000)];
-    let first = debit_notes::draft_manual(t.db(), &bill, "short_delivery", "", &line_of(3_000), Some(A))
-        .await
-        .unwrap();
+    let first = debit_notes::draft_manual(
+        t.db(),
+        &bill,
+        "short_delivery",
+        "",
+        &line_of(3_000),
+        Some(A),
+    )
+    .await
+    .unwrap();
     // Two drafts, each within the bill on its own.
-    let second = debit_notes::draft_manual(t.db(), &bill, "short_delivery", "", &line_of(8_000), Some(A))
-        .await
-        .unwrap();
+    let second = debit_notes::draft_manual(
+        t.db(),
+        &bill,
+        "short_delivery",
+        "",
+        &line_of(8_000),
+        Some(A),
+    )
+    .await
+    .unwrap();
     debit_notes::issue(t.state(), By::System(Some(B)), first.id)
         .await
         .unwrap();
     // 3 issued + 8 is above 10: refused at the issue, and at a new draft.
     let message = refused(debit_notes::issue(t.state(), By::System(Some(B)), second.id).await);
     assert!(message.unwrap().contains("bill line"));
-    assert_eq!(reload(&t, &second).await.status, SupplierDebitNoteStatus::Draft);
-    let late = debit_notes::draft_manual(t.db(), &bill, "short_delivery", "", &line_of(8_000), Some(A)).await;
-    assert!(matches!(late, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    assert_eq!(
+        reload(&t, &second).await.status,
+        SupplierDebitNoteStatus::Draft
+    );
+    let late = debit_notes::draft_manual(
+        t.db(),
+        &bill,
+        "short_delivery",
+        "",
+        &line_of(8_000),
+        Some(A),
+    )
+    .await;
+    assert!(matches!(
+        late,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
     // The bill only fell by the first note.
     assert_eq!(bill_now(&t, &bill).await.balance, 105_000 - 31_500);
 }
@@ -381,11 +455,12 @@ async fn inv13_quantities_are_limited_by_the_bill_less_earlier_notes() {
 #[renox::test]
 async fn inv13_a_return_before_the_bill_waits_and_is_repriced_when_the_bill_is_approved() {
     let t = boot().await;
-    t.state()
-        .emit(dispatched(12, 3_000, 9_500))
+    t.state().emit(dispatched(12, 3_000, 9_500)).await.unwrap();
+    let waiting = SupplierDebitNote::query()
+        .first(t.db())
         .await
+        .unwrap()
         .unwrap();
-    let waiting = SupplierDebitNote::query().first(t.db()).await.unwrap().unwrap();
     assert_eq!(waiting.bill_id, None);
     assert_eq!(waiting.origin, DebitNoteOrigin::Return);
     assert_eq!(waiting.net_total, 28_500);
@@ -421,18 +496,25 @@ async fn inv13_a_return_before_the_bill_waits_and_is_repriced_when_the_bill_is_a
 #[renox::test]
 async fn inv13_a_bill_of_another_supplier_does_not_link_a_waiting_draft() {
     let t = boot().await;
-    t.state()
-        .emit(dispatched(12, 3_000, 9_500))
-        .await
-        .unwrap();
+    t.state().emit(dispatched(12, 3_000, 9_500)).await.unwrap();
     let line = BillLineDraft::new("Pump", 10_000, VatCategory::Standard)
         .quantity_milli(10_000)
         .po_line(po_line());
     let draft = BillDraft::new(support::QUIET_SANDS, "INV-1", day(0)).line(line);
-    let bill = supplier_bill::create(t.db(), &draft, Some(A)).await.unwrap();
-    submit(t.state(), By::System(Some(A)), bill.id).await.unwrap();
-    approve(t.state(), By::System(Some(B)), bill.id, "").await.unwrap();
-    let waiting = SupplierDebitNote::query().first(t.db()).await.unwrap().unwrap();
+    let bill = supplier_bill::create(t.db(), &draft, Some(A))
+        .await
+        .unwrap();
+    submit(t.state(), By::System(Some(A)), bill.id)
+        .await
+        .unwrap();
+    approve(t.state(), By::System(Some(B)), bill.id, "")
+        .await
+        .unwrap();
+    let waiting = SupplierDebitNote::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(waiting.bill_id, None);
 }
 
@@ -455,18 +537,26 @@ async fn inv13_issue_is_refused_in_a_locked_vat_period() {
     let entity = LegalEntity::find_or_404(t.db(), bill.legal_entity_id.unwrap())
         .await
         .unwrap();
-    ensure_open(t.db(), &t.config(), &entity, today()).await.unwrap();
+    ensure_open(t.db(), &t.config(), &entity, today())
+        .await
+        .unwrap();
     let summary = VatSummary::containing(t.db(), &t.config(), &entity, today())
         .await
         .unwrap()
         .unwrap();
-    renox::db::sql(format!("UPDATE {} SET status = 'locked' WHERE id = ?", VatSummary::TABLE))
-        .bind(summary.id)
-        .execute(t.db())
-        .await
-        .unwrap();
+    renox::db::sql(format!(
+        "UPDATE {} SET status = 'locked' WHERE id = ?",
+        VatSummary::TABLE
+    ))
+    .bind(summary.id)
+    .execute(t.db())
+    .await
+    .unwrap();
     let message = refused(debit_notes::issue(t.state(), By::System(Some(B)), note.id).await);
     assert!(message.unwrap().contains("VAT period"));
-    assert_eq!(reload(&t, &note).await.status, SupplierDebitNoteStatus::Draft);
+    assert_eq!(
+        reload(&t, &note).await.status,
+        SupplierDebitNoteStatus::Draft
+    );
     assert_eq!(bill_now(&t, &bill).await.balance, 105_000);
 }

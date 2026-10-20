@@ -114,9 +114,13 @@ mod tests {
     #[test]
     fn a_movement_keeps_its_target() {
         let bill = Subject::new("invoicing.supplier_bill", 4);
-        let row = DebitNoteMovement::new(2, DebitMovementKind::SetOff, Some(&bill), 31_500, Some(5));
+        let row =
+            DebitNoteMovement::new(2, DebitMovementKind::SetOff, Some(&bill), 31_500, Some(5));
         assert_eq!(row.target(), Some(bill));
-        assert_eq!((row.debit_note_id, row.amount, row.created_by), (2, 31_500, Some(5)));
+        assert_eq!(
+            (row.debit_note_id, row.amount, row.created_by),
+            (2, 31_500, Some(5))
+        );
         let none = DebitNoteMovement::new(2, DebitMovementKind::Difference, None, 1_500, None);
         assert_eq!(none.target(), None);
     }

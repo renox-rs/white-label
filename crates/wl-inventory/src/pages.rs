@@ -65,19 +65,25 @@ pub fn parse_quantity(text: &str) -> Option<i64> {
     if !digits(whole) || !digits(fraction) || fraction.len() > 3 {
         return None;
     }
-    let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().ok()? };
+    let whole: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
     let fraction: i64 = format!("{fraction:0<3}").parse().ok()?;
     whole.checked_mul(1_000)?.checked_add(fraction)
 }
 
 /// Whether the user may post at the receipt's location.
 async fn may_post(state: &AppState, user: &AuthUser, receipt: &GoodsReceipt) -> Result<bool> {
-    Ok(
-        users_with_permission_in(&state.db, permissions::GOODS_RECEIPTS_POST, &receipt.scope())
-            .await?
-            .iter()
-            .any(|holder| holder.id == user.id),
+    Ok(users_with_permission_in(
+        &state.db,
+        permissions::GOODS_RECEIPTS_POST,
+        &receipt.scope(),
     )
+    .await?
+    .iter()
+    .any(|holder| holder.id == user.id))
 }
 
 /// What the storekeeper enters for one line.
@@ -121,7 +127,9 @@ fn refused(message: impl Into<String>) -> Error {
 fn quantity(field: &Option<String>, name: &str) -> Result<i64> {
     match field.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(0),
-        Some(value) => parse_quantity(value).ok_or_else(|| refused(format!("{name}: not a quantity"))),
+        Some(value) => {
+            parse_quantity(value).ok_or_else(|| refused(format!("{name}: not a quantity")))
+        }
     }
 }
 
@@ -131,7 +139,12 @@ impl LineForm {
         let received = quantity(&self.received, "received")?;
         let accepted = quantity(&self.accepted, "accepted")?;
         let rejected = quantity(&self.rejected, "rejected")?;
-        let handling = match self.handling.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        let handling = match self
+            .handling
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
             None => None,
             Some(value) => Some(
                 RejectedHandling::ALL
@@ -141,7 +154,12 @@ impl LineForm {
                     .ok_or_else(|| refused("handling: refused_at_door or kept_for_collection"))?,
             ),
         };
-        let wanted = match self.outcome.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        let wanted = match self
+            .outcome
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
             None => WantedOutcome::Replace,
             Some(value) => WantedOutcome::ALL
                 .iter()
@@ -149,7 +167,12 @@ impl LineForm {
                 .find(|o| o.as_str() == value)
                 .ok_or_else(|| refused("outcome: replace or credit"))?,
         };
-        let expiry = match self.expiry.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        let expiry = match self
+            .expiry
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
             None => None,
             Some(value) => Some(
                 NaiveDate::parse_from_str(value, "%Y-%m-%d")
@@ -238,9 +261,12 @@ async fn reverse_receipt(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     let receipt = GoodsReceipt::find_or_404(&state.db, id).await?;
-    let holders =
-        users_with_permission_in(&state.db, permissions::GOODS_RECEIPTS_REVERSE, &receipt.scope())
-            .await?;
+    let holders = users_with_permission_in(
+        &state.db,
+        permissions::GOODS_RECEIPTS_REVERSE,
+        &receipt.scope(),
+    )
+    .await?;
     if !holders.iter().any(|holder| holder.id == user.id) {
         return Err(Error::Forbidden);
     }
@@ -339,10 +365,17 @@ mod tests {
         };
         let draft = form.draft().unwrap();
         assert_eq!(
-            (draft.received_qty_milli, draft.accepted_qty_milli, draft.rejected_qty_milli),
+            (
+                draft.received_qty_milli,
+                draft.accepted_qty_milli,
+                draft.rejected_qty_milli
+            ),
             (100_000, 80_000, 20_000)
         );
-        assert_eq!(draft.rejected_handling, Some(RejectedHandling::RefusedAtDoor));
+        assert_eq!(
+            draft.rejected_handling,
+            Some(RejectedHandling::RefusedAtDoor)
+        );
         assert_eq!(draft.wanted_outcome, WantedOutcome::Replace);
         let bad = LineForm {
             handling: Some("thrown_away".into()),

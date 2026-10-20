@@ -149,19 +149,25 @@ fn settle_rules(transition: Transition<SupplierDebitNote>) -> Transition<Supplie
     transition
         .from([SupplierDebitNoteStatus::Issued])
         .to(SupplierDebitNoteStatus::Settled)
-        .guard("tax_credit_note_recorded", |note: &SupplierDebitNote, ctx| {
-            let recorded = note.has_tax_credit_note();
-            let input = ctx.input_as::<SettleInput>().ok();
-            Box::pin(async move {
-                match input {
-                    Some(input) if !input.tax_credit_note_required || recorded => Ok(()),
-                    Some(_) => {
-                        Err(english("wl_invoicing.debit_note.errors.no_tax_credit_note").to_owned())
+        .guard(
+            "tax_credit_note_recorded",
+            |note: &SupplierDebitNote, ctx| {
+                let recorded = note.has_tax_credit_note();
+                let input = ctx.input_as::<SettleInput>().ok();
+                Box::pin(async move {
+                    match input {
+                        Some(input) if !input.tax_credit_note_required || recorded => Ok(()),
+                        Some(_) => {
+                            Err(english("wl_invoicing.debit_note.errors.no_tax_credit_note")
+                                .to_owned())
+                        }
+                        None => {
+                            Err(english("wl_invoicing.debit_note.errors.not_checked").to_owned())
+                        }
                     }
-                    None => Err(english("wl_invoicing.debit_note.errors.not_checked").to_owned()),
-                }
-            })
-        })
+                })
+            },
+        )
         .guard("fully_applied", |note: &SupplierDebitNote, ctx| {
             let open = note.debit_balance;
             let input = ctx.input_as::<SettleInput>().ok();
@@ -179,10 +185,13 @@ fn settle_rules(transition: Transition<SupplierDebitNote>) -> Transition<Supplie
                         if reason_given {
                             Ok(())
                         } else {
-                            Err(english("wl_invoicing.debit_note.errors.difference_reason").to_owned())
+                            Err(english("wl_invoicing.debit_note.errors.difference_reason")
+                                .to_owned())
                         }
                     }
-                    _ => Err(english("wl_invoicing.debit_note.errors.not_fully_applied").to_owned()),
+                    _ => {
+                        Err(english("wl_invoicing.debit_note.errors.not_fully_applied").to_owned())
+                    }
                 }
             })
         })
@@ -247,7 +256,10 @@ pub(crate) fn cancel_transitions() -> [Transition<SupplierDebitNote>; 2] {
 /// What both cancel transitions share.
 fn cancel_rules(transition: Transition<SupplierDebitNote>) -> Transition<SupplierDebitNote> {
     transition
-        .from([SupplierDebitNoteStatus::Draft, SupplierDebitNoteStatus::Issued])
+        .from([
+            SupplierDebitNoteStatus::Draft,
+            SupplierDebitNoteStatus::Issued,
+        ])
         .to(SupplierDebitNoteStatus::Cancelled)
         .reason_required()
         .guard("nothing_refunded", |_note: &SupplierDebitNote, ctx| {
@@ -357,7 +369,9 @@ fn issue_rules(transition: Transition<SupplierDebitNote>) -> Transition<Supplier
         })
         .guard("second_person", |note: &SupplierDebitNote, ctx| {
             // `FIN.ACL.17`: a manual note is never issued by its creator.
-            let creator = note.created_by.filter(|_| note.origin == DebitNoteOrigin::Manual);
+            let creator = note
+                .created_by
+                .filter(|_| note.origin == DebitNoteOrigin::Manual);
             let actor = actor_id(ctx);
             Box::pin(async move {
                 match (creator, actor) {
@@ -512,7 +526,11 @@ mod tests {
     async fn refusal(note: &SupplierDebitNote, ctx: &TransitionCtx) -> Option<String> {
         let machine = SupplierDebitNote::machine();
         let issue = machine.find(ISSUE).unwrap();
-        issue.check_guards(note, ctx).await.err().map(|e| e.to_string())
+        issue
+            .check_guards(note, ctx)
+            .await
+            .err()
+            .map(|e| e.to_string())
     }
 
     #[renox::test]
@@ -539,19 +557,40 @@ mod tests {
             bill_debitable: false,
             ..ready()
         };
-        assert!(refusal(&linked, &ctx(&wrong_bill)).await.unwrap().contains("bill"));
-        let no_lines = IssueInput { lines: 0, ..ready() };
-        assert!(refusal(&linked, &ctx(&no_lines)).await.unwrap().contains("line"));
+        assert!(
+            refusal(&linked, &ctx(&wrong_bill))
+                .await
+                .unwrap()
+                .contains("bill")
+        );
+        let no_lines = IssueInput {
+            lines: 0,
+            ..ready()
+        };
+        assert!(
+            refusal(&linked, &ctx(&no_lines))
+                .await
+                .unwrap()
+                .contains("line")
+        );
         let over = IssueInput {
             caps_problem: Some("too much".into()),
             ..ready()
         };
-        assert_eq!(refusal(&linked, &ctx(&over)).await.as_deref(), Some("too much"));
+        assert_eq!(
+            refusal(&linked, &ctx(&over)).await.as_deref(),
+            Some("too much")
+        );
         let locked = IssueInput {
             period_locked: true,
             ..ready()
         };
-        assert!(refusal(&linked, &ctx(&locked)).await.unwrap().contains("VAT period"));
+        assert!(
+            refusal(&linked, &ctx(&locked))
+                .await
+                .unwrap()
+                .contains("VAT period")
+        );
         // Without the gathered input nothing is issued.
         assert!(refusal(&linked, &TransitionCtx::new(None)).await.is_some());
     }

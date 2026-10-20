@@ -26,7 +26,9 @@ use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, Noti
 
 use crate::allocate::amount_text;
 use crate::bill_machine::{APPROVE, APPROVE_SYSTEM};
-use crate::debit_note_machine::{CANCEL, CANCEL_SYSTEM, ISSUE, ISSUE_SYSTEM, SETTLE, SETTLE_SYSTEM};
+use crate::debit_note_machine::{
+    CANCEL, CANCEL_SYSTEM, ISSUE, ISSUE_SYSTEM, SETTLE, SETTLE_SYSTEM,
+};
 use crate::debit_notes::lines_of;
 use crate::supplier_bill::SupplierBill;
 use crate::supplier_debit_note::SupplierDebitNote;
@@ -199,11 +201,13 @@ pub(crate) fn register(app: &mut Registry) {
             Ok(())
         },
     );
-    app.listen(|event: SupplierReturnDispatched, state: AppState| async move {
-        crate::debit_note_contract::draft_for_return(&state, event)
-            .await
-            .map(|_| ())
-    });
+    app.listen(
+        |event: SupplierReturnDispatched, state: AppState| async move {
+            crate::debit_note_contract::draft_for_return(&state, event)
+                .await
+                .map(|_| ())
+        },
+    );
 }
 
 #[cfg(test)]

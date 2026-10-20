@@ -15,7 +15,12 @@ use support::{Booted, boot};
 /// A `received` order of 50 units at AED 50.00, all accepted and in stock.
 async fn received(
     t: &Booted,
-) -> (wl_inventory::Item, wl_inventory::Location, PurchaseOrder, wl_inventory::PurchaseOrderLine) {
+) -> (
+    wl_inventory::Item,
+    wl_inventory::Location,
+    PurchaseOrder,
+    wl_inventory::PurchaseOrderLine,
+) {
     let item = t.item("PIPE").await;
     let store = t.location("STORE-1", None).await;
     let (order, mut line) = t.order(&store, &item, 50_000, 5_000).await;
@@ -41,7 +46,10 @@ async fn set_status(t: &Booted, order: &PurchaseOrder, status: PurchaseOrderStat
 async fn a_replacement_return_reopens_a_received_order() {
     let t = boot().await;
     let (item, store, order, line) = received(&t).await;
-    assert_eq!(committed_value(&lines_of(t.db(), order.id).await.unwrap()), 0);
+    assert_eq!(
+        committed_value(&lines_of(t.db(), order.id).await.unwrap()),
+        0
+    );
     let ret = t
         .stock_return(
             &store,
@@ -50,12 +58,20 @@ async fn a_replacement_return_reopens_a_received_order() {
         .await;
     let clerk = t.procurement("Cara").await;
 
-    t.dispatch_as(&clerk, &ret, "courier", "C-1").await.assert_ok();
+    t.dispatch_as(&clerk, &ret, "courier", "C-1")
+        .await
+        .assert_ok();
 
     assert_eq!(t.return_now(&ret).await.status, ReturnStatus::Dispatched);
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::PartiallyReceived);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::PartiallyReceived
+    );
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 10_000);
-    assert_eq!(committed_value(&lines_of(t.db(), order.id).await.unwrap()), 50_000);
+    assert_eq!(
+        committed_value(&lines_of(t.db(), order.id).await.unwrap()),
+        50_000
+    );
 }
 
 /// Several returns each add their quantity; the order stays open.
@@ -71,12 +87,23 @@ async fn each_return_adds_its_quantity() {
                 vec![NewReturnLine::of(item.id, qty, "damaged").replacing_on(line.id)],
             )
             .await;
-        t.dispatch_as(&clerk, &ret, "courier", reference).await.assert_ok();
+        t.dispatch_as(&clerk, &ret, "courier", reference)
+            .await
+            .assert_ok();
     }
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::PartiallyReceived);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::PartiallyReceived
+    );
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 15_000);
-    assert_eq!(committed_value(&lines_of(t.db(), order.id).await.unwrap()), 150_000);
-    assert_eq!(movement::on_hand(t.db(), item.id, store.id).await.unwrap(), 35_000);
+    assert_eq!(
+        committed_value(&lines_of(t.db(), order.id).await.unwrap()),
+        150_000
+    );
+    assert_eq!(
+        movement::on_hand(t.db(), item.id, store.id).await.unwrap(),
+        35_000
+    );
 }
 
 /// A return dispatched twice restores once: the second try is refused.
@@ -85,11 +112,18 @@ async fn a_return_line_restores_once() {
     let t = boot().await;
     let (item, store, _, line) = received(&t).await;
     let ret = t
-        .stock_return(&store, vec![NewReturnLine::of(item.id, 10_000, "damaged").replacing_on(line.id)])
+        .stock_return(
+            &store,
+            vec![NewReturnLine::of(item.id, 10_000, "damaged").replacing_on(line.id)],
+        )
         .await;
     let clerk = t.procurement("Cara").await;
-    t.dispatch_as(&clerk, &ret, "courier", "C-1").await.assert_ok();
-    t.dispatch_as(&clerk, &ret, "courier", "C-1").await.assert_status(422);
+    t.dispatch_as(&clerk, &ret, "courier", "C-1")
+        .await
+        .assert_ok();
+    t.dispatch_as(&clerk, &ret, "courier", "C-1")
+        .await
+        .assert_status(422);
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 10_000);
 }
 
@@ -103,21 +137,34 @@ async fn a_closed_order_is_not_reopened() {
     let clerk = t.procurement("Cara").await;
 
     let replace = t
-        .stock_return(&store, vec![NewReturnLine::of(item.id, 10_000, "damaged").replacing_on(line.id)])
+        .stock_return(
+            &store,
+            vec![NewReturnLine::of(item.id, 10_000, "damaged").replacing_on(line.id)],
+        )
         .await;
-    t.dispatch_as(&clerk, &replace, "courier", "C-1").await.assert_status(422);
+    t.dispatch_as(&clerk, &replace, "courier", "C-1")
+        .await
+        .assert_status(422);
 
     let mut credit = NewReturnLine::of(item.id, 10_000, "damaged").credit();
     credit.po_line_id = Some(line.id);
     let credited = t.stock_return(&store, vec![credit]).await;
-    t.dispatch_as(&clerk, &credited, "courier", "C-2").await.assert_ok();
+    t.dispatch_as(&clerk, &credited, "courier", "C-2")
+        .await
+        .assert_ok();
 
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Closed);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::Closed
+    );
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 0);
     let mut tx = t.db().begin().await.unwrap();
     assert!(!reopen_in(&mut tx, order.id).await.unwrap());
     tx.rollback().await.unwrap();
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Closed);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::Closed
+    );
 }
 
 /// An order that is not `received` stays as it is.
@@ -127,11 +174,19 @@ async fn an_order_still_open_is_left_alone() {
     let (item, store, order, line) = received(&t).await;
     set_status(&t, &order, PurchaseOrderStatus::PartiallyReceived).await;
     let ret = t
-        .stock_return(&store, vec![NewReturnLine::of(item.id, 10_000, "damaged").replacing_on(line.id)])
+        .stock_return(
+            &store,
+            vec![NewReturnLine::of(item.id, 10_000, "damaged").replacing_on(line.id)],
+        )
         .await;
     let clerk = t.procurement("Cara").await;
-    t.dispatch_as(&clerk, &ret, "courier", "C-1").await.assert_ok();
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::PartiallyReceived);
+    t.dispatch_as(&clerk, &ret, "courier", "C-1")
+        .await
+        .assert_ok();
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::PartiallyReceived
+    );
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 10_000);
 }
 
@@ -144,12 +199,22 @@ async fn reversing_the_completing_receipt_reopens_the_order() {
     let (order, line) = t.order(&store, &item, 100_000, 1_200).await;
     let amal = t.storekeeper("Amal").await;
     let receipt = t
-        .receipt(&order, &store, vec![DraftLine::on(line.id, 100_000, 100_000)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(line.id, 100_000, 100_000)],
+        )
         .await;
     t.post_as(&amal, &receipt).await.assert_ok();
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Received);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::Received
+    );
     let manager = t.reverser("Maha").await;
     t.reverse_as(&manager, &receipt).await.assert_ok();
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::PartiallyReceived);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::PartiallyReceived
+    );
     assert_eq!(t.line_now(&line).await.outstanding_milli(), 100_000);
 }

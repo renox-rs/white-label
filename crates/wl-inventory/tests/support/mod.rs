@@ -12,9 +12,9 @@ use renox::auth::{Permissions, permissions};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
-use wl_inventory::permissions as perm;
 use wl_inventory::item::value_of;
 use wl_inventory::movement::StockMovement;
+use wl_inventory::permissions as perm;
 use wl_inventory::supplier_return::{NewReturn, NewReturnLine};
 use wl_inventory::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, Item, Location, Lot, LotStatus,
@@ -280,7 +280,9 @@ impl Booted {
             ..Lot::default()
         };
         let mut tx = self.db().begin().await.unwrap();
-        lot.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+        lot.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
         lot
     }
@@ -307,12 +309,16 @@ impl Booted {
 
     /// The return as stored now.
     pub async fn return_now(&self, ret: &SupplierReturn) -> SupplierReturn {
-        SupplierReturn::find_or_404(self.db(), ret.id).await.unwrap()
+        SupplierReturn::find_or_404(self.db(), ret.id)
+            .await
+            .unwrap()
     }
 
     /// The receipt as stored now.
     pub async fn reload(&self, receipt: &GoodsReceipt) -> GoodsReceipt {
-        GoodsReceipt::find_or_404(self.db(), receipt.id).await.unwrap()
+        GoodsReceipt::find_or_404(self.db(), receipt.id)
+            .await
+            .unwrap()
     }
 
     /// The lines of the receipt as stored now.
@@ -324,12 +330,16 @@ impl Booted {
 
     /// The order as stored now.
     pub async fn order_now(&self, order: &PurchaseOrder) -> PurchaseOrder {
-        PurchaseOrder::find_or_404(self.db(), order.id).await.unwrap()
+        PurchaseOrder::find_or_404(self.db(), order.id)
+            .await
+            .unwrap()
     }
 
     /// The order's line as stored now.
     pub async fn line_now(&self, line: &PurchaseOrderLine) -> PurchaseOrderLine {
-        PurchaseOrderLine::find_or_404(self.db(), line.id).await.unwrap()
+        PurchaseOrderLine::find_or_404(self.db(), line.id)
+            .await
+            .unwrap()
     }
 }
 
@@ -370,8 +380,8 @@ pub async fn boot_with(module: WlInventory) -> Booted {
         "procurement",
         &[perm::PURCHASE_ORDERS_ISSUE, perm::SUPPLIER_RETURNS_MANAGE],
     )
-        .await
-        .unwrap();
+    .await
+    .unwrap();
     Booted {
         app,
         received: Recorded(received),
