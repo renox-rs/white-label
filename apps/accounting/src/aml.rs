@@ -54,6 +54,21 @@ pub enum AmlKind {
     Sanctions,
 }
 
+/// What the MLRO decides about the client's engagements after a report
+/// (§7.1 *AML case* `report`).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum AmlDecision {
+    /// Nothing changes.
+    #[default]
+    Continue,
+    /// The engagements are suspended with the neutral reason *on hold* and
+    /// the client company is blocked with the restricted reason
+    /// `aml_concern`.
+    Suspend,
+    /// The CDD file is exited ([`crate::cdd_files::exit`]).
+    Exit,
+}
+
 /// An AML case about a client company.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(
@@ -88,6 +103,14 @@ pub struct AmlCase {
     pub goaml_date: Option<NaiveDate>,
     /// The MLRO who recorded the report.
     pub reported_by: Option<i64>,
+    /// What the MLRO decided about the engagements after the report.
+    pub engagement_decision: Option<AmlDecision>,
+    /// The MLRO's note with the decision.
+    pub decision_note: Option<String>,
+    /// The MLRO who recorded it.
+    pub decided_by: Option<i64>,
+    /// The day it was recorded.
+    pub decided_on: Option<NaiveDate>,
     /// The lifecycle state; changed only by a transition.
     pub status: AmlStatus,
     /// When the row was created.
@@ -204,6 +227,8 @@ mod tests {
         assert!(AmlStatus::Open.is_open() && AmlStatus::UnderReview.is_open());
         assert!(!AmlStatus::Reported.is_open() && !AmlStatus::ClosedNoAction.is_open());
         assert_eq!(AmlKind::Sanctions.as_str(), "sanctions");
+        let decisions: Vec<_> = AmlDecision::ALL.iter().map(|d| d.as_str()).collect();
+        assert_eq!(decisions, ["continue", "suspend", "exit"]);
     }
 
     #[test]

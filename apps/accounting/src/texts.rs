@@ -1183,6 +1183,58 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.exits.task_closed",
         "Every engagement of the client has ended.",
     ),
+    // The report and the engagement decision (BL-ACC-11).
+    ("accounting.aml.review_title", "Review CDD after report"),
+    (
+        "accounting.aml.review_description",
+        "Review the CDD file of :client after the report. :link",
+    ),
+    (
+        "accounting.aml.decision_title",
+        "Record the engagement decision",
+    ),
+    (
+        "accounting.aml.decision_description",
+        ":client: record whether the engagements continue, are suspended or end. :link",
+    ),
+    ("accounting.aml.decision_done", "The decision is recorded."),
+    ("accounting.aml.partner_subject", "Please contact the MLRO"),
+    (
+        "accounting.aml.partner_body",
+        "The MLRO needs to discuss client {{ client }} with you.",
+    ),
+    ("accounting.aml.decide", "Record the engagement decision"),
+    (
+        "accounting.aml.decide_description",
+        "Continue changes nothing. Suspend blocks the client and puts its engagements on hold, with no word to the client. Exit ends the relationship through the CDD file.",
+    ),
+    ("accounting.aml.decision", "Decision"),
+    ("accounting.aml.decision.continue", "Continue"),
+    ("accounting.aml.decision.suspend", "Suspend"),
+    ("accounting.aml.decision.exit", "Exit the client"),
+    ("accounting.aml.decision_note", "Note"),
+    (
+        "accounting.aml.decision_recorded",
+        "The decision is recorded.",
+    ),
+    ("accounting.aml.decided_on", "Decided on"),
+    (
+        "accounting.aml.suspend_note",
+        "Suspended after the report of case :number",
+    ),
+    ("accounting.aml.exit_reason", "Report filed (:number)"),
+    (
+        "accounting.aml.problem.not_reported",
+        "The decision is recorded once the report is.",
+    ),
+    (
+        "accounting.aml.problem.decided",
+        "The engagement decision is recorded already.",
+    ),
+    (
+        "accounting.aml.problem.no_exit_file",
+        "The client has no CDD file that can be exited.",
+    ),
 ];
 
 /// Whether the app has a text for `key`.

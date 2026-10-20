@@ -8,6 +8,7 @@
 //! | `POST /accounting/aml-cases/{id}/review` | `accounting.aml_case_review` | `aml.manage` |
 //! | `POST /accounting/aml-cases/{id}/close` | `accounting.aml_case_close` | `aml.manage` |
 //! | `POST /accounting/aml-cases/{id}/report` | `accounting.aml_case_report` | `aml.manage` |
+//! | `POST /accounting/aml-cases/{id}/decision` | `accounting.aml_case_decision` | `aml.manage` |
 //! | `POST /accounting/engagements/{id}/aml-concern` | `accounting.engagement_aml_concern` | `aml.raise` |
 //!
 //! A user without `aml.manage` gets a 404, never a 403: the pages do not say
@@ -20,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::dubai_text;
 
 use super::{Texts, invalid, party_name, text, user_name};
-use crate::aml::{AmlCase, AmlStatus};
+use crate::aml::{AmlCase, AmlDecision, AmlStatus};
 use crate::aml_cases;
 use crate::engagement::Engagement;
 use crate::permissions;
@@ -39,6 +40,8 @@ pub fn routes() -> Routes {
         .name("accounting.aml_case_close")
         .post("/accounting/aml-cases/{id}/report", report)
         .name("accounting.aml_case_report")
+        .post("/accounting/aml-cases/{id}/decision", decide)
+        .name("accounting.aml_case_decision")
         .post("/accounting/engagements/{id}/aml-concern", raise)
         .name("accounting.engagement_aml_concern")
         .require_auth()
@@ -158,6 +161,9 @@ pub(crate) struct ShowPage {
     can_review: bool,
     can_close: bool,
     can_report: bool,
+    can_decide: bool,
+    decision: String,
+    decision_options: Vec<[String; 2]>,
     today: String,
 }
 
@@ -248,6 +254,27 @@ async fn show(
         can_review: case.status == AmlStatus::Open,
         can_close: case.status == AmlStatus::UnderReview,
         can_report: case.status == AmlStatus::UnderReview,
+        can_decide: case.status == AmlStatus::Reported && case.engagement_decision.is_none(),
+        decision: case
+            .engagement_decision
+            .map(|d| {
+                let label = text(&lang, &format!("aml.decision.{}", d.as_str()));
+                match (case.decided_on, case.decision_note.as_deref()) {
+                    (Some(day), Some(note)) => format!("{label} ({day}): {note}"),
+                    (Some(day), None) => format!("{label} ({day})"),
+                    _ => label,
+                }
+            })
+            .unwrap_or_default(),
+        decision_options: AmlDecision::ALL
+            .iter()
+            .map(|d| {
+                [
+                    d.as_str().to_owned(),
+                    text(&lang, &format!("aml.decision.{}", d.as_str())),
+                ]
+            })
+            .collect(),
         today: wl_kernel::documents::today().to_string(),
     }))
 }
@@ -319,6 +346,38 @@ async fn report(
     aml_cases::report(&state, &user, id, &form.reference, date).await?;
     Ok((
         Toast::success(text(&lang, "aml.reported")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that records the engagement decision.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DecisionForm {
+    /// `continue`, `suspend` or `exit`.
+    #[serde(default)]
+    pub decision: String,
+    /// The MLRO's note.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /accounting/aml-cases/{id}/decision`.
+async fn decide(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<DecisionForm>,
+) -> Result<Response> {
+    let decision = AmlDecision::ALL
+        .iter()
+        .copied()
+        .find(|d| d.as_str() == form.decision.trim())
+        .ok_or_else(|| invalid("decision: continue, suspend, exit"))?;
+    aml_cases::decide(&state, &user, id, decision, &form.note).await?;
+    Ok((
+        Toast::success(text(&lang, "aml.decision_recorded")),
         renox::HxRefresh,
     )
         .into_response())

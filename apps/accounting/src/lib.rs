@@ -43,7 +43,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
-pub use aml::{AmlCase, AmlKind, AmlMatch, AmlStatus};
+pub use aml::{AmlCase, AmlDecision, AmlKind, AmlMatch, AmlStatus};
 pub use cdd::{CddFile, CddParty, CddStatus, RiskRating, ScreenedRole};
 pub use engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
 pub use letters::EngagementLetter;

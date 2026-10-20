@@ -21,6 +21,9 @@
 //! - `ScreeningMatchConfirmed`: `ACC.RUL.12` checks the client company is
 //!   blocked, opens the AML case or adds to the open one and notifies the
 //!   MLRO ([`crate::aml_cases::on_match_confirmed`], BL-ACC-10).
+//! - AML case `report`: the CDD file is flagged for review, the compliance
+//!   officer, the partners and the MLRO get their tasks and notice
+//!   ([`crate::aml_cases::after_report`], BL-ACC-11).
 //! - Return transitions: the notices, the preparer's task and the linked
 //!   deadline task ([`crate::return_effects`]); `TaskOverdue` tells the
 //!   preparer's task to start the overdue linked task.
@@ -39,6 +42,8 @@ use wl_kernel::deadlines::TaskOverdue;
 use wl_kernel::documents::today;
 use wl_kernel::{PartyBlocked, ScreeningMatchConfirmed};
 
+use crate::aml::AmlCase;
+use crate::aml_machine::REPORT;
 use crate::cdd::CddFile;
 use crate::cdd_machine::{EXIT, REJECT};
 use crate::engagement::Engagement;
@@ -106,6 +111,12 @@ pub(crate) fn register(app: &mut Registry) {
         // review) gives the partner the task to end it.
         exits::after(&state, &file).await?;
         Ok(())
+    });
+    app.listen(|event: Transitioned<AmlCase>, state: AppState| async move {
+        if event.transition != REPORT {
+            return Ok(());
+        }
+        aml_cases::after_report(&state, event.key).await
     });
     app.listen(|event: Transitioned<Return>, state: AppState| async move {
         return_effects::after(&state, &event).await

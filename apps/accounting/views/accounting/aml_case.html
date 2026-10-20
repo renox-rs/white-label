@@ -23,6 +23,13 @@
           <rx-input name="date" type="date" :label="tx['aml.goaml_date']" :value="today" :id="'aml-report-date-' ~ id" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_decide">
+        <rx-action-sheet :id="'aml-decide-' ~ id" :label="tx['aml.decide']" :action="route('accounting.aml_case_decision', id)"
+                         :title="tx['aml.decide']" :description="tx['aml.decide_description']" :submit-label="tx['aml.decide']" icon="scale">
+          <rx-select name="decision" :label="tx['aml.decision']" :options="decision_options" :selected="'continue'" :id="'aml-decide-decision-' ~ id"/>
+          <rx-textarea name="note" :label="tx['aml.decision_note']" :id="'aml-decide-note-' ~ id"/>
+        </rx-action-sheet>
+      </template>
     </rx-page-header>
     <rx-alert rx-if="block_note" kind="warning" :message="block_note"/>
     <rx-card :title="tx['aml.details']">
@@ -33,6 +40,7 @@
         <rx-entry :label="tx['aml.facts']" :value="facts"/>
         <rx-entry rx-if="goaml_reference" :label="tx['aml.goaml_reference']" :value="goaml_reference"/>
         <rx-entry rx-if="goaml_date" :label="tx['aml.goaml_date']" :value="goaml_date"/>
+        <rx-entry rx-if="decision" :label="tx['aml.decision']" :value="decision"/>
         <rx-entry rx-if="closing_reason" :label="tx['aml.closing_reason']" :value="closing_reason"/>
       </rx-infolist>
     </rx-card>

@@ -24,7 +24,7 @@
 //! never 403, to a user without `aml.manage`, so a case's existence is not
 //! revealed (`ACC.ACL.05`).
 
-use renox::auth::permissions::users_with_permission;
+use renox::auth::permissions::{users_with_permission, users_with_role};
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError};
@@ -36,15 +36,18 @@ use wl_kernel::compliance::CriticalRule;
 use wl_kernel::documents::today;
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier};
 use wl_kernel::parties::{ScreeningMatchConfirmed, directory};
+use wl_kernel::role_tasks::{self, RoleTask};
 use wl_kernel::screening_guard::{ConfirmedMatch, MatchTaskKind, screening_guard};
+use wl_kernel::tickets::task_creator;
 
-use crate::aml::{AmlCase, AmlKind, AmlMatch, AmlStatus};
+use crate::aml::{AmlCase, AmlDecision, AmlKind, AmlMatch, AmlStatus};
 use crate::aml_machine::{AmlInput, CLOSE, OPEN, REPORT, REVIEW};
-use crate::cdd::{CddFile, CddParty, ScreenedRole};
-use crate::db::refused;
+use crate::cdd::{CddFile, CddParty, CddStatus, ScreenedRole};
+use crate::db::{refused, set_aml_case};
 use crate::engagement::Engagement;
-use crate::permissions::{self, PARTNER_ROLE};
+use crate::permissions::{self, MLRO_ROLE, PARTNER_ROLE};
 use crate::texts::english;
+use crate::{cdd_files, engagements, reasons};
 
 /// The rule.
 pub const RULE: &str = "ACC.RUL.12";
@@ -52,6 +55,25 @@ pub const RULE: &str = "ACC.RUL.12";
 pub const SANCTIONS: &str = "sanctions";
 /// The notification to the MLRO and deputy: a case needs them.
 pub const CASE_NOTICE: &str = "accounting.aml_case";
+/// The notification to the partner after a report: the MLRO needs to talk,
+/// and nothing more.
+pub const PARTNER_NOTICE: &str = "accounting.mlro_discuss";
+/// The restricted block reason of a *suspend* decision (wl-parties).
+pub const AML_CONCERN: &str = "aml_concern";
+/// The working days the MLRO has to record the engagement decision.
+pub const DECISION_WORKING_DAYS: u32 = 1;
+
+/// The source key of the compliance officer's task to review the CDD file
+/// after the report of `case`.
+pub fn review_key(case: &AmlCase) -> String {
+    format!("accounting.aml_review_cdd:{}", case.id)
+}
+
+/// The source key of the MLRO's task to record the engagement decision
+/// after the report of `case`.
+pub fn decision_key(case: &AmlCase) -> String {
+    format!("accounting.aml_decision:{}", case.id)
+}
 
 /// `NotFound` unless `user` holds `aml.manage` (ACC.ACL.05).
 fn require_mlro(user: &AuthUser) -> Result {
@@ -434,14 +456,201 @@ async fn add_match(
     notify_mlro(state, &case).await
 }
 
-/// The notification type of the MLRO's notice: it names the case only.
+/// After the commit of `report` on case `id` (BL-ACC-11):
+///
+/// - the client's `approved` CDD file goes to `review_due` (`flag_review`);
+///   a file in another state, or none, is left as it is;
+/// - the compliance officer gets the task "Review CDD after report", in
+///   either case;
+/// - the partners are told only that the MLRO needs to discuss the client;
+///   they get no access to the case (`ACC.ACL.05`);
+/// - the MLRO gets a task, due in one working day, to record the engagement
+///   decision ([`decide`]).
+///
+/// Idempotent: a task still open under its key is not opened twice, and a
+/// file no longer `approved` is not flagged again.
+///
+/// # Errors
+///
+/// The database's, the transition's and the task service's errors.
+pub async fn after_report(state: &AppState, id: i64) -> Result {
+    let case = AmlCase::find_or_404(&state.db, id).await?;
+    let client = case.client();
+    let file = CddFile::current(&state.db, client).await?;
+    if let Some(file) = &file
+        && file.status == CddStatus::Approved
+    {
+        cdd_files::flag_review(state, file.id, today()).await?;
+    }
+    let client_name = name_of(state, client).await;
+    let review_link = file.as_ref().map_or_else(
+        || "/accounting/engagements".to_owned(),
+        |f| format!("/accounting/cdd/{}", f.id),
+    );
+    let subject = file
+        .as_ref()
+        .map_or_else(|| client.subject(), CddFile::subject);
+    let title = english("accounting.aml.review_title", &[]);
+    let description = english(
+        "accounting.aml.review_description",
+        &[("client", &client_name), ("link", &review_link)],
+    );
+    role_tasks::open(
+        state,
+        RoleTask::new(subject, MLRO_ROLE, &title, &review_key(&case)).description(&description),
+    )
+    .await?;
+
+    tell_partners(state, &case, &client_name).await?;
+
+    let title = english("accounting.aml.decision_title", &[]);
+    let description = english(
+        "accounting.aml.decision_description",
+        &[
+            ("client", &client_name),
+            ("link", &format!("/accounting/aml-cases/{}", case.id)),
+        ],
+    );
+    let due = calendar(state).add_working_days(renox::db::now(), DECISION_WORKING_DAYS);
+    role_tasks::open(
+        state,
+        RoleTask::new(case.subject(), MLRO_ROLE, &title, &decision_key(&case))
+            .description(&description)
+            .due_at(due),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Tells each partner that the MLRO needs to discuss the client; the notice
+/// names the client and nothing of the case.
+async fn tell_partners(state: &AppState, case: &AmlCase, client_name: &str) -> Result {
+    let engagements = Engagement::of_client(&state.db, case.client()).await?;
+    let subject = engagements
+        .first()
+        .map_or_else(|| case.client().subject(), Engagement::subject);
+    let link = engagements.first().map_or_else(
+        || "/accounting/engagements".to_owned(),
+        |e| format!("/accounting/engagements/{}", e.id),
+    );
+    for user in users_with_role(&state.db, PARTNER_ROLE).await? {
+        let request = NotifyRequest::new(PARTNER_NOTICE, subject.clone())
+            .to_user(user.id)
+            .data(json!({ "client": client_name, "link": link }));
+        notifier(state).notify(state, request).await?;
+    }
+    Ok(())
+}
+
+/// `by` (the MLRO) records what happens to the client's engagements after
+/// the report of case `id`: *continue* changes nothing; *suspend* blocks the
+/// client company with the restricted reason `aml_concern` and suspends its
+/// engagements with the neutral reason *on hold*, without a word to the
+/// client; *exit* exits the client's CDD file ([`cdd_files::exit`]), which
+/// gives the partner the task to end the engagements. Neither happens
+/// without this recorded decision. `note` is kept with it; for *exit* it
+/// goes on the CDD file's exit reason, for *suspend* on the Block record.
+///
+/// # Errors
+///
+/// `NotFound` without `aml.manage`; a 422 unless the case is `reported` with
+/// no decision yet, or when *exit* finds no CDD file that can be exited; the
+/// effects' errors (nothing is recorded then).
+pub async fn decide(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    decision: AmlDecision,
+    note: &str,
+) -> Result<AmlCase> {
+    let case = visible(state, by, id).await?;
+    if case.status != AmlStatus::Reported {
+        return Err(refused(english("accounting.aml.problem.not_reported", &[])));
+    }
+    if case.engagement_decision.is_some() {
+        return Err(refused(english("accounting.aml.problem.decided", &[])));
+    }
+    let note = note.trim();
+    let client = case.client();
+    match decision {
+        AmlDecision::Continue => {}
+        AmlDecision::Suspend => {
+            let text = if note.is_empty() {
+                english("accounting.aml.suspend_note", &[("number", &case.number())])
+            } else {
+                note.to_owned()
+            };
+            block_guard(state)
+                .block_by_system(
+                    state,
+                    client,
+                    SystemBlock::new(AML_CONCERN, &text).ran_by(by.id),
+                )
+                .await?;
+            // An already blocked client is suspended all the same.
+            engagements::suspend_for_block(state, client, reasons::ON_HOLD).await?;
+        }
+        AmlDecision::Exit => {
+            let file = CddFile::current(&state.db, client)
+                .await?
+                .filter(|f| {
+                    matches!(
+                        f.status,
+                        CddStatus::Approved | CddStatus::ReviewDue | CddStatus::InProgress
+                    )
+                })
+                .ok_or_else(|| refused(english("accounting.aml.problem.no_exit_file", &[])))?;
+            let reason = if note.is_empty() {
+                english("accounting.aml.exit_reason", &[("number", &case.number())])
+            } else {
+                note.to_owned()
+            };
+            cdd_files::exit(state, by, file.id, &reason).await?;
+        }
+    }
+    let mut tx = state.db.begin().await?;
+    set_aml_case(
+        &mut tx,
+        id,
+        &[
+            ("engagement_decision", &Some(decision)),
+            (
+                "decision_note",
+                &(!note.is_empty()).then(|| note.to_owned()),
+            ),
+            ("decided_by", &Some(by.id)),
+            ("decided_on", &Some(today())),
+        ],
+    )
+    .await?;
+    tx.commit().await?;
+    let creator = task_creator(state);
+    if let Some(open) = creator.find_open(state, &decision_key(&case)).await? {
+        let done = english("accounting.aml.decision_done", &[]);
+        creator.complete(state, open.id, &done).await?;
+    }
+    AmlCase::find_or_404(&state.db, id).await
+}
+
+/// The notification types: the MLRO's notice names the case only; the
+/// partner's says the MLRO needs to talk, with no detail.
 pub fn notification_types() -> Vec<NotificationTypeDef> {
     let subject = english("accounting.aml.notice_subject", &[]);
     let body = english("accounting.aml.notice_body", &[]);
+    let partner_subject = english("accounting.aml.partner_subject", &[]);
+    let partner_body = english("accounting.aml.partner_body", &[]);
     vec![
         NotificationTypeDef::new(CASE_NOTICE, "accounting")
             .group("compliance")
             .template(NotifyChannel::Email, "en", Some(&subject), &body),
+        NotificationTypeDef::new(PARTNER_NOTICE, "accounting")
+            .group("compliance")
+            .template(
+                NotifyChannel::Email,
+                "en",
+                Some(&partner_subject),
+                &partner_body,
+            ),
     ]
 }
 
