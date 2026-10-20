@@ -1,0 +1,27 @@
+# /etc/systemd/system/litestream@.service
+#
+# Continuous replication of one client's database to the backup VPS (MinIO).
+# RPO is about one minute (sync-interval in litestream.yml).
+# Needs the Litestream binary at /usr/local/bin/litestream (deploy/README.md).
+[Unit]
+Description=Litestream replication for client %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Same OS user as the app: it needs read/write on app.db, app.db-wal and -shm.
+User=wl-%i
+Group=wl-%i
+EnvironmentFile=/etc/white-label/%i/litestream.env
+ExecStart=/usr/local/bin/litestream replicate -config /etc/white-label/%i/litestream.yml
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/white-label/%i
+
+[Install]
+WantedBy=multi-user.target

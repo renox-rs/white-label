@@ -1,6 +1,6 @@
 # Access Control
 
-> Status: draft for review · Last updated: 2026-10-16
+> Status: draft for review · Last updated: 2026-10-20 (§10 added)
 
 Every business actor in every vertical is controlled by the same model: **RBAC for what a
 person may do, ABAC for where, when, and on which records**. This document defines the model
@@ -248,3 +248,47 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 | `STK.ACL.05` | Stock held for a listed reason (default recall) is released only by a second holder of `lots.release` | wl-inventory | — | module |
 | `STK.ACL.06` | A landed cost adjustment or return to supplier above a value needs approval by someone other than its creator | wl-inventory | — | module |
 | `STK.ACL.07` | Changing an item's preferred supplier needs approval by a second person | wl-inventory | — | module |
+
+## 10. Lists for a user who holds a permission in some scopes (built in F1)
+
+A route guard (`require_permission`) counts global roles only, so a building-scoped role
+(`property_manager.bay`) got `403` on every module-wide list while the sidebar still showed
+the link. The rule now (layer 3 of §3, for lists, §4): the list routes are guarded by
+`wl_kernel::scopes::anywhere(permission)` (the permission globally **or in at least one
+scope**; `403` only when it is held nowhere), and the handler narrows what it shows with
+`wl_kernel::scopes::reach(db, user, permission)`: *everything* for a global holder, else the
+records of the scopes where a role grants the permission today (dates honoured). A module
+says which records lie in a scope with `register_members` (the vertical: units, leases,
+agreements; `register_derived_members` for what is reached through others: invoices,
+payments, deposits, credit notes, parties). The sidebar links use the same test
+(`NavLink::permission` is "anywhere"), so a link shows exactly when its page opens
+(`host/tests/scoped_lists.rs` opens every sidebar link of a scoped manager).
+
+| List | In a scope when | Not in any scope |
+|---|---|---|
+| Invoices, credit notes (`/invoices`, `/credit-notes`) | the invoice was billed for the building (its scope unit); a credit note follows its invoice | invoices without a building: company-wide holders only |
+| Payments (`/payments`) | allocated to an invoice of the building, prepaid for a lease of it, or the payment of a deposit held for it | a payment on account with no allocation: company-wide holders only |
+| Refunds | the refunded payment, credit note or deposit is in the building | |
+| Deposits, cheques | the lease (the agreement it was taken or received for) is in the building | |
+| Tickets, compliance flags | the ticket's or flag's subject is the building, one of its units or leases | tickets about a vendor or a party: company-wide holders only |
+| Document flags | the flagged record (lease) or the flag's document subject is in the building | |
+| Parties | the tenant of a lease in the building, or the owner of an agreement with a unit there | a prospect, a vendor, a company with no lease: company-wide holders only |
+| Management agreements | one of its units is in the building (a draft with no unit yet: company-wide only); a manager of the building may add its units to the agreement and give notice; **creating** one is company-wide | |
+| Enquiries | about a unit of the building, or naming no unit (a prospect's first call belongs to no building, and holds no tenant or financial data) | |
+| SOPs | company-wide documents: a scoped holder reads the active and withdrawn ones, never a draft | |
+| Documents of a record (`/documents/of/...`) | the record is in the building (a lease) or a member of it (a tenant) | |
+
+**Known gaps** (the pages open and are right for reading; these actions stay behind a global
+permission, so a scoped manager sees the record and cannot change it there):
+
+- the transitions and actions of the module pages: invoice transitions, ticket assign/hold/
+  charges/service report, creating a ticket, payment and refund transitions, deposit
+  deductions and refunds, cheque actions. The Property pages (lease, deposit, cheques of a
+  lease, units) check the lease's building (`has_permission_in`) and are the scoped way to
+  act. A scoped manager who must also work these pages needs the role globally or a custom
+  role;
+- roles given in a **legal-entity** scope are not applied to these lists (the budget and
+  cash-flow pages do use them); only the building is;
+- owner drawings and the payment follow-up tasks are company-level: a scoped holder gets
+  `403` on a drawing and the tasks list is by role;
+- `/documents/review` and the document kinds are company-wide (the reviewer role is global).

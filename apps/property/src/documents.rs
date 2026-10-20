@@ -25,7 +25,8 @@ use std::sync::{Mutex, PoisonError};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::documents::{
-    BlockEntry, BlockSubjects, DocumentFuture, guarded_transition_as, register_block_subjects,
+    BlockEntry, BlockRefusal, BlockSubjects, DocumentFuture, guarded_transition_as,
+    register_block_subjects,
 };
 use wl_kernel::parties::{PartyKind, directory};
 use wl_kernel::{PartyId, Subject, documents::today};
@@ -33,6 +34,7 @@ use wl_kernel::{PartyId, Subject, documents::today};
 use crate::agreement::ManagementAgreement;
 use crate::building::{BUILDING_SUBJECT_TYPE, Building};
 use crate::lease::Lease;
+use crate::texts;
 
 /// The guarded transition `submit`.
 pub const SUBMIT: &str = "lease.submit";
@@ -227,7 +229,113 @@ where
     if let Some(error) = failed.into_inner().unwrap_or_else(PoisonError::into_inner) {
         return Err(error);
     }
+    // The transition did not run: the guard refused. Say it in words (what
+    // the tenant needs on file); the guard's own line, with the renewing role
+    // and the override mode, goes to the log.
+    if let Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, machine)) = &result
+        && let Ok(Err(refusal)) = wl_kernel::documents::guard(state)
+            .check_as(state, transition_name, record_id, today(), actor)
+            .await
+    {
+        eprintln!("documents: {transition_name} on lease {record_id} refused: {machine}");
+        return Err(TransitionError::Failed(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            human_refusal(&refusal),
+        )));
+    }
     result.map_err(TransitionError::Failed)
+}
+
+/// Who a document subject is, for the sentence of a refusal.
+fn who(subject: &Subject) -> &'static str {
+    match subject.subject_type.as_str() {
+        wl_kernel::parties::PARTY_SUBJECT_TYPE => "tenant",
+        crate::lease::LEASE_SUBJECT_TYPE => "lease",
+        crate::agreement::AGREEMENT_SUBJECT_TYPE => "agreement",
+        BUILDING_SUBJECT_TYPE => "building",
+        _ => "record",
+    }
+}
+
+/// The name of a kind in a sentence: lower case, unless it is a proper name
+/// or an acronym (`Emirates ID`, `TRN certificate`).
+fn in_sentence(name: &str) -> String {
+    if name.chars().skip(1).any(char::is_uppercase) {
+        return name.to_owned();
+    }
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// `a, b and c`.
+fn list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [only] => only.clone(),
+        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
+}
+
+/// A refusal of a guarded lease transition as a person reads it: what the
+/// tenant (or the lease) needs on file, and what is wrong with a document
+/// that is there ("Residence visa expired on 2026-11-30"). The guard's own
+/// line, with the role that renews and the override mode, is for the logs.
+pub fn human_refusal(refusal: &BlockRefusal) -> String {
+    let mut subjects: Vec<&Subject> = Vec::new();
+    for failure in &refusal.failures {
+        if !subjects.contains(&&failure.subject) {
+            subjects.push(&failure.subject);
+        }
+    }
+    let mut sentences: Vec<String> = Vec::new();
+    for subject in subjects {
+        let mut names: Vec<String> = Vec::new();
+        let mut problems: Vec<String> = Vec::new();
+        for failure in refusal.failures.iter().filter(|f| &f.subject == subject) {
+            // "Residence visa expired on 2026-11-30; renew: ...": the part
+            // before the first semicolon says what is wrong.
+            let problem = failure.message.split("; ").next().unwrap_or_default();
+            let name = [" missing", " rejected", " not accepted yet"]
+                .iter()
+                .find_map(|tail| problem.strip_suffix(tail))
+                .or_else(|| problem.split_once(" expired on ").map(|(name, _)| name))
+                .unwrap_or(problem);
+            names.push(in_sentence(name));
+            if problem != format!("{name} missing") {
+                problems.push(problem.to_owned());
+            }
+        }
+        sentences.push(texts::english(
+            "property.documents.needs",
+            &[
+                (
+                    "who",
+                    &texts::english(&format!("property.documents.who_{}", who(subject)), &[]),
+                ),
+                ("what", &list(&names)),
+            ],
+        ));
+        sentences.extend(problems.into_iter().map(|p| format!("{p}.")));
+    }
+    sentences.push(texts::english("property.documents.then", &[]));
+    sentences.join(" ")
+}
+
+/// What `guarded` (a lease transition) still waits for on lease `record_id`:
+/// the refusal the guard would give now, or `None` when the documents are in
+/// order. Nothing is claimed or recorded.
+pub(crate) async fn missing(
+    state: &AppState,
+    guarded: &str,
+    record_id: i64,
+) -> Result<Option<BlockRefusal>> {
+    Ok(wl_kernel::documents::guard(state)
+        .check_as(state, guarded, record_id, today(), None)
+        .await?
+        .err())
 }
 
 /// Registers the providers.
@@ -250,6 +358,76 @@ mod tests {
             assert!(entity == "lease" || entity == "agreement");
             assert!(!transition.is_empty());
         }
+    }
+
+    fn failure(subject: Subject, message: &str) -> wl_kernel::documents::BlockFailure {
+        use wl_kernel::documents::{BlockMode, InvalidReason, OverrideMode, Validity};
+        wl_kernel::documents::BlockFailure {
+            entry: BlockEntry {
+                kind: "k".into(),
+                guarded: SUBMIT.into(),
+                mode: BlockMode::Block,
+                override_mode: OverrideMode::WithApproval,
+                condition: None,
+                locked: false,
+            },
+            subject,
+            validity: Validity::Invalid {
+                reason: InvalidReason::Missing,
+                document: None,
+                expired_on: None,
+                pending: None,
+            },
+            message: message.into(),
+        }
+    }
+
+    #[test]
+    fn a_refusal_is_said_in_words_and_keeps_the_guard_line_out_of_them() {
+        let tenant = Subject::new(wl_kernel::parties::PARTY_SUBJECT_TYPE, 12);
+        let refusal = BlockRefusal {
+            guarded: SUBMIT.into(),
+            record_id: 5,
+            failures: vec![
+                failure(
+                    tenant.clone(),
+                    "Emirates ID missing; renew: property_manager; override: with approval",
+                ),
+                failure(
+                    tenant.clone(),
+                    "Passport not accepted yet; override: with approval",
+                ),
+                failure(
+                    tenant,
+                    "Residence visa expired on 2026-11-30; renew: PRO; override: not allowed",
+                ),
+            ],
+        };
+        let said = human_refusal(&refusal);
+        assert!(
+            said.starts_with(
+                "The tenant needs a valid Emirates ID, passport and residence visa on file. \
+                 Passport not accepted yet. Residence visa expired on 2026-11-30."
+            ),
+            "{said}"
+        );
+        assert!(
+            !said.contains("override") && !said.contains("renew:"),
+            "{said}"
+        );
+
+        let lease = BlockRefusal {
+            guarded: ACTIVATE.into(),
+            record_id: 5,
+            failures: vec![failure(
+                Subject::new(crate::lease::LEASE_SUBJECT_TYPE, 5),
+                "Signed tenancy contract missing; override: not allowed",
+            )],
+        };
+        assert!(
+            human_refusal(&lease)
+                .starts_with("The lease needs a valid signed tenancy contract on file.")
+        );
     }
 
     #[test]

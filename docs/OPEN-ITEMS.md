@@ -1,6 +1,6 @@
 # Open Items Register
 
-> Status: draft · Last updated: 2026-10-18
+> Status: draft · Last updated: 2026-10-20
 
 Every fact the documents could not settle from public sources (`⚠ open: <owner>`) and every
 business decision still to take (`⚠ decide`), in one place. The marker in the source document
@@ -12,7 +12,7 @@ here as `~~question~~ Answered (date): ...`.
 
 | Gate | Meaning |
 |---|---|
-| **Build 1** | Changes the data model or a rule in the first build (F1 Property, F2 Construction and the modules they use); answer before coding those parts |
+| **Build 1** | Changes the data model or a rule in the first build (phase F1: 01 Property and the modules it uses, decision 0005); answer before coding those parts |
 | **Client 1** | Needed for the contract, data processing agreement or security pack before the first production client of any vertical |
 | **Launch NN** | Needed before selling vertical NN (or before selling it outside Dubai, where noted) |
 | **Onboarding** | Collected per client during onboarding; the app already has a setting or a manual path |
@@ -24,14 +24,14 @@ here as `~~question~~ Answered (date): ...`.
 | Owner | Items | Build 1 | Client 1 | Outreach | Launch | Onboarding | Later |
 |---|---|---|---|---|---|---|---|
 | Owner decision (`D`) | 5 (all decided) | — | 0 | — | — | — | — |
-| Lawyer (`L`) | 39 | 2 | 5 | 1 | 29 | 1 | 1 |
+| Lawyer (`L`) | 39 | 1 | 5 | 1 | 30 | 1 | 1 |
 | Accountant (`A`) | 16 | — | — | — | 15 | 1 | — |
 | Authority (`AU`) | 25 | — | — | — | 21 | 2 | 2 |
 | Client (`C`) | 3 | — | — | — | 1 | 2 | — |
 | Onboarding (`O`) | 4 | — | 2 | — | — | 2 | — |
-| **Total open** | **87** | **2** | **7** | **1** | **66** | **8** | **3** |
+| **Total open** | **87** | **1** | **7** | **1** | **67** | **8** | **3** |
 
-**Before Build 1:** L-05 and L-10. **Before outreach at scale:** L-18. **Before Client 1:**
+**Before Build 1:** L-10. **Before Launch 02 (attendance):** L-05. **Before outreach at scale:** L-18. **Before Client 1:**
 L-01, L-02, L-03, L-11, L-13, O-01, O-02. The owner decisions D-01 to D-05 were taken on 2026-10-15.
 The items added from the negative-flow pass (L-19 to L-37, A-04 to A-14, AU-20 to AU-25, C-03)
 and from the SME gaps (L-38, L-39, A-15, A-16)
@@ -58,7 +58,7 @@ The prices themselves are filled in [PRICING.md](PRICING.md) by the owner.
 | L-02 | What is the breach notification deadline under PDPL Art. 9 ("immediately upon becoming aware")? | [SECURITY.md](SECURITY.md) §7 | all | Client 1 |
 | L-03 | How long may login and security logs be kept? | [wl-portal](modules/wl-portal.md) §10 | all | Client 1 |
 | L-04 | Do health regulators use a consent age other than 18 for patients and their data? | [wl-portal](modules/wl-portal.md), [wl-parties](modules/wl-parties.md) §10 | 05, 10 | Launch 05 |
-| L-05 | Is a plain check-in photo, reviewed by a supervisor, biometric (sensitive) data under the PDPL? | [wl-attendance](modules/wl-attendance.md) §10 | 02, 03, 09 | **Build 1** |
+| L-05 | Is a plain check-in photo, reviewed by a supervisor, biometric (sensitive) data under the PDPL? | [wl-attendance](modules/wl-attendance.md) §10 | 02, 03, 09 | Launch 02 |
 | L-06 | Does Cabinet Resolution 66 of 2023 add rules for marketing messages beyond consent and opt-out? | [wl-notify](modules/wl-notify.md) §10 | 05, 06, 08, 10 | Launch 05 |
 | L-07 | Do feedback requests after a service count as direct marketing? | [wl-ticketing](modules/wl-ticketing.md) §10 | all with `WRK.FBK.01` | Launch 05 |
 | L-08 | Is an expiry term on prepaid services, packages or vouchers enforceable? | [wl-sales](modules/wl-sales.md) §10 | 05, 08, 10 | Launch 05 |
@@ -165,17 +165,17 @@ The prices themselves are filled in [PRICING.md](PRICING.md) by the owner.
 ## 7a. Renox follow-ups
 
 Not owner, lawyer or authority questions: what Renox 1.2.0 left to us
-([ARCHITECTURE.md](ARCHITECTURE.md) §4a-1). Updated 2026-10-18.
+([ARCHITECTURE.md](ARCHITECTURE.md) §4a-1). Updated 2026-10-20.
 
 | ID | Item | Where | Gate |
 |---|---|---|---|
 | T-01 | HEIC/AVIF are not decoded by `Images`; write an `UploadStep` that calls a converter (R16) | [wl-documents](modules/wl-documents.md) | Launch 01 |
 | T-02 | Rule for two devices editing one record offline (R25 gives order and clock skew only) | [wl-delivery](modules/wl-delivery.md), [wl-attendance](modules/wl-attendance.md), [wl-sales](modules/wl-sales.md) | Later |
 | T-03 | Telr and Checkout.com gateways through the `Gateway` trait (R17) | [wl-payments](modules/wl-payments.md) | on demand |
-| T-04 | Choose a map tile provider and licence; set `BLOCKS_MAP_TILES` and `BLOCKS_MAP_ATTRIBUTION` (R20) | apps | Launch 09 |
-| T-05 | Allow camera and geolocation with `App::permissions_policy` (R5) | apps | Build 1 |
+| T-04 | Choose a map tile provider and licence; set `BLOCKS_MAP_TILES` and `BLOCKS_MAP_ATTRIBUTION` (R20) for geofenced attendance (F2) | apps | Launch 02 |
+| T-05 | Allow camera and geolocation with `App::permissions_policy` (R5) for attendance check-in (F2); F1 does not use them | apps | Launch 02 |
 | T-06 | Record N-Genius chargebacks and dispute fees by hand (no disputes API in renox-billing) | [wl-payments](modules/wl-payments.md) §5.2a | Launch 05 |
-| T-07 | Kernel registry of transitions by name and the `back_to_<state>` convention (Renox engine has fixed targets) | [wl-kernel](modules/wl-kernel.md) §4.1 | Build 1 |
+| T-07 | ~~Kernel registry of transitions by name and the `back_to_<state>` convention (Renox engine has fixed targets)~~ Resolved (2026-10-20): built in F1 in `crates/wl-kernel/src/machines.rs` (`SubjectMachine`, `BACK_TO_PREFIX`, `APPROVED_SUFFIX`) | [wl-kernel](modules/wl-kernel.md) §4.1 | Build 1 |
 
 ## 8. Question packs
 

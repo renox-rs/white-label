@@ -11,8 +11,10 @@ pub mod cash_forecast;
 pub mod charge;
 pub mod charge_type;
 pub mod chase;
+pub mod cheque_charges;
 pub mod cheques;
 pub mod compliance;
+pub mod dashboard;
 mod db;
 pub mod deposit_forfeit;
 pub mod deposit_watch;
@@ -35,6 +37,7 @@ pub mod parse;
 pub mod permissions;
 pub mod renew;
 pub mod renewal;
+pub mod scope_members;
 pub mod seed;
 pub mod statement;
 pub mod statement_dispute;
@@ -198,6 +201,9 @@ impl Module for Property {
         wl_kernel::deposits::provide_deposit_top_ups(app, amend::LeaseTopUps);
         cancellation::register(app);
         cash_forecast::register();
+        // The bounce fee charges and the invoice of a charge a cheque write-off
+        // needs (wl-payments §4 *Cheque*).
+        cheque_charges::register(app);
         invoicing::schedule(app);
         notices::register_types();
         chase::schedule(app);
@@ -223,6 +229,45 @@ impl Module for Property {
                 Ok(Building::find(db, id).await?.map(|b| b.name_en))
             })
         });
+        // The records' names where documents are listed.
+        wl_kernel::documents::register_subject_label(lease::LEASE_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                Ok(match Lease::find(db, id).await? {
+                    Some(lease) => {
+                        let unit = match Unit::find(db, lease.unit_id).await? {
+                            Some(unit) => {
+                                let building = Building::find(db, unit.building_id)
+                                    .await?
+                                    .map(|b| b.code)
+                                    .unwrap_or_default();
+                                format!("{building} / {}", unit.number)
+                            }
+                            None => String::new(),
+                        };
+                        Some(format!("{} · {unit}", lease.number_with_version()))
+                    }
+                    None => None,
+                })
+            })
+        });
+        wl_kernel::documents::register_subject_label(charge::CHARGE_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                Ok(match LeaseCharge::find(db, id).await? {
+                    Some(charge) => {
+                        let lease = Lease::find(db, charge.lease_id).await?;
+                        Some(match lease {
+                            Some(lease) => {
+                                format!("{} · {}", charge.description, lease.number_with_version())
+                            }
+                            None => charge.description,
+                        })
+                    }
+                    None => None,
+                })
+            })
+        });
+        // And from the buildings to what is in them, for the lists.
+        scope_members::register();
         // A ticket about a building or one of its units is looked after by
         // the people of that building: the scope of a building is itself, the
         // scope of a unit is its building (the coordinators of the vendor's
@@ -288,7 +333,7 @@ impl Module for Property {
         app.nav(
             "app",
             NavLink::route("property.agreements", "nav.agreements")
-                .icon("file-signature")
+                .icon("file")
                 .group("nav.app")
                 .order(13)
                 .permission(permissions::AGREEMENTS_MANAGE),

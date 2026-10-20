@@ -359,7 +359,7 @@ impl Module for WlKernel {
         app.nav(
             "app",
             NavLink::route("wl_kernel.legal_entities", "nav.legal_entities")
-                .icon("landmark")
+                .icon("building-2")
                 .group("nav.admin")
                 .order(30)
                 .permission(permissions::LEGAL_ENTITIES_VIEW),

@@ -12,7 +12,7 @@ use wl_kernel::bank_statements::bank_statements;
 use wl_kernel::cash_forecast::cash_forecast_sources;
 use wl_kernel::cheques::{OpenCheque, cheques as cheque_contract};
 use wl_kernel::documents::dubai_date;
-use wl_kernel::invoicing::{CreditNoteStatus, InvoiceStatus};
+use wl_kernel::invoicing::{CreditNoteStatus, InvoiceId, InvoiceStatus};
 use wl_kernel::parties::{PartyStatus, directory};
 use wl_kernel::payments::{Direction, payment_recorder};
 use wl_kernel::{LegalEntity, PartyId, Subject};
@@ -34,6 +34,7 @@ use crate::dispute::Dispute;
 use crate::drawings;
 use crate::duplicates::BillException;
 use crate::invoice::Invoice;
+use crate::line::InvoiceLine;
 use crate::supplier_bill::{POSSIBLE_DUPLICATE, SupplierBill, SupplierBillStatus};
 use crate::vat::{aed_rate, to_aed};
 use crate::vat_period::{TaxPeriod, containing};
@@ -72,18 +73,31 @@ fn in_aed(amount: i64, currency: &str, rate_micro: Option<i64>) -> Option<i64> {
     aed_rate(currency, rate_micro).map(|rate| to_aed(amount, rate))
 }
 
-fn cheque_input(open: &OpenCheque) -> ChequeInput {
+/// The cheque `open` as the forecast reads it. A document it pays that a
+/// line of a counted invoice bills (`billed`: a lease charge already
+/// invoiced, linked as `property.lease_charge:<id>`) stands for that invoice,
+/// so the invoice counts only what the cheque leaves (§5.14 step 5: "a charge
+/// already invoiced counts through its invoice; the part of an invoice
+/// covered by a linked cheque counts through the cheque").
+fn cheque_input(open: &OpenCheque, billed: &BTreeMap<Subject, Subject>) -> ChequeInput {
+    let mut documents: Vec<(Subject, i64)> = Vec::new();
+    for link in &open.documents {
+        let document = billed
+            .get(&link.document)
+            .cloned()
+            .unwrap_or_else(|| link.document.clone());
+        match documents.iter_mut().find(|(d, _)| *d == document) {
+            Some((_, part)) => *part += link.amount,
+            None => documents.push((document, link.amount)),
+        }
+    }
     ChequeInput {
         subject: open.cheque.id.subject(),
         label: open.cheque.number.clone(),
         party: open.cheque.party,
         date: open.cheque.date,
         open_amount: open.cheque.open_amount,
-        documents: open
-            .documents
-            .iter()
-            .map(|d| (d.document.clone(), d.amount))
-            .collect(),
+        documents,
     }
 }
 
@@ -222,6 +236,24 @@ async fn load_entity(
         .order_by(Invoice::ID)
         .get(db)
         .await?;
+    // The records the lines of these invoices bill (a lease charge), each to
+    // its invoice: a cheque linked to such a record pays the invoice.
+    let mut billed: BTreeMap<Subject, Subject> = BTreeMap::new();
+    let invoice_ids: Vec<i64> = invoices.iter().map(|i| i.id).collect();
+    if !invoice_ids.is_empty() {
+        for line in InvoiceLine::query()
+            .where_(InvoiceLine::INVOICE_ID.is_in(invoice_ids))
+            .order_by(InvoiceLine::ID)
+            .get(db)
+            .await?
+        {
+            if let Some(origin) = line.origin() {
+                billed
+                    .entry(origin)
+                    .or_insert_with(|| InvoiceId(line.invoice_id).subject());
+            }
+        }
+    }
     let directory = directory(state);
     for invoice in invoices {
         let subject = invoice.subject();
@@ -330,19 +362,19 @@ async fn load_entity(
         .not_cleared(state, entity.id, Direction::In)
         .await?
         .iter()
-        .map(cheque_input)
+        .map(|open| cheque_input(open, &billed))
         .collect();
     input.cheques_out = book
         .not_cleared(state, entity.id, Direction::Out)
         .await?
         .iter()
-        .map(cheque_input)
+        .map(|open| cheque_input(open, &billed))
         .collect();
     input.bounced = book
         .bounced(state, entity.id)
         .await?
         .iter()
-        .map(cheque_input)
+        .map(|open| cheque_input(open, &billed))
         .collect();
     input.refunds = recorder.refunds_unpaid(db, entity.id).await?;
 

@@ -44,7 +44,7 @@ use wl_kernel::cheques::ChequeSummary;
 use wl_kernel::invoicing::{InvoiceId, invoicer};
 use wl_kernel::parties::directory;
 
-use super::{Texts, buildings_with, lease_kind, text};
+use super::{Texts, buildings_with, field_error, lease_kind, text};
 use crate::arrears::{self, ArrearsDemand, NewPlan, PaymentPlan};
 use crate::building::Building;
 use crate::cancellation::{self, CancelRequest};
@@ -76,6 +76,8 @@ pub fn routes() -> Routes {
         .name("property.leases")
         .get("/property/leases/{id}", show)
         .name("property.lease")
+        .get("/property/parties/options", party_options)
+        .name("property.party_options")
         .post("/property/units/{id}/leases", create)
         .name("property.lease_create")
         .post("/property/leases/{id}/versions", create_version)
@@ -131,6 +133,8 @@ pub fn routes() -> Routes {
         .name("property.lease_write_off")
         .post("/property/leases/{id}/waive-deposit", waive_deposit)
         .name("property.lease_waive_deposit")
+        .post("/property/leases/{id}/deposit", receive_deposit)
+        .name("property.lease_deposit")
         .post("/property/leases/{id}/ejari", ejari)
         .name("property.lease_ejari")
         .post("/property/leases/{id}/cheques", cheques)
@@ -476,6 +480,8 @@ pub(crate) struct ShowPage {
     can_send_notice: bool,
     can_answer_terms: bool,
     can_waive: bool,
+    can_receive_deposit: bool,
+    deposit_amount_text: String,
     can_ejari: bool,
     can_version: bool,
     can_cheques: bool,
@@ -490,6 +496,15 @@ pub(crate) struct ShowPage {
     can_force: bool,
     can_send_demand: bool,
     can_plan: bool,
+    /// What the next step waits for on file, in words; empty when nothing.
+    documents_note: String,
+    /// The tenant's documents page, and the lease's; empty when the
+    /// documents module is off.
+    documents_lease_url: String,
+    /// Where the note sends the reader, and the button's words: the tenant's
+    /// documents for a submit, the lease's own for an activation.
+    documents_note_url: String,
+    documents_note_open: String,
     today: String,
 }
 
@@ -894,6 +909,55 @@ async fn show(
             applied_on: s.applied_on.to_string(),
         });
     }
+    // The documents the next step needs: submitting wants the tenant's, the
+    // activation the signed contract.
+    let deposit_held = wl_kernel::deposits::deposits(&state)
+        .held_for(&state.db, &lease.agreement())
+        .await?
+        .map_or(0, |deposit| deposit.held);
+    let documents_on = state
+        .provided::<std::sync::Arc<dyn wl_kernel::documents::DocumentGuard>>()
+        .is_some();
+    let next_guarded = match lease.status {
+        LeaseStatus::Draft => Some(crate::documents::SUBMIT),
+        LeaseStatus::PendingSignature => Some(crate::documents::ACTIVATE),
+        LeaseStatus::Active | LeaseStatus::Renewed if lease.ejari_number.is_none() => {
+            Some(crate::documents::RECORD_EJARI)
+        }
+        _ => None,
+    };
+    let documents_note = match next_guarded {
+        Some(guarded) if documents_on => crate::documents::missing(&state, guarded, lease.id)
+            .await?
+            .map(|refusal| crate::documents::human_refusal(&refusal))
+            .unwrap_or_default(),
+        _ => String::new(),
+    };
+    let documents_lease_url = if documents_on {
+        format!(
+            "/documents/of/{}/{}",
+            crate::lease::LEASE_SUBJECT_TYPE,
+            lease.id
+        )
+    } else {
+        String::new()
+    };
+    let (documents_note_url, documents_note_open) =
+        if next_guarded == Some(crate::documents::SUBMIT) {
+            (
+                format!(
+                    "/documents/of/{}/{}",
+                    wl_kernel::parties::PARTY_SUBJECT_TYPE,
+                    lease.tenant_party_id
+                ),
+                text(&lang, "documents.panel_open_tenant"),
+            )
+        } else {
+            (
+                documents_lease_url.clone(),
+                text(&lang, "documents.panel_open_lease"),
+            )
+        };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         lease: view,
@@ -920,6 +984,10 @@ async fn show(
         approvals: approval_cards,
         timeline,
         pending,
+        documents_note,
+        documents_lease_url,
+        documents_note_url,
+        documents_note_open,
         can_submit: offers(&actions, SUBMIT),
         can_activate: offers(&actions, ACTIVATE) && !pending,
         can_cancel: offers(&actions, CANCEL) && !pending,
@@ -936,6 +1004,13 @@ async fn show(
             && !lease.is_follow_up()
             && !lease.deposit_waived
             && lease.deposit_amount > 0,
+        can_receive_deposit: user.has_permission_in(permissions::DEPOSITS_MANAGE, &scope)
+            && in_progress
+            && !lease.is_follow_up()
+            && !lease.deposit_waived
+            && lease.deposit_amount > 0
+            && deposit_held == 0,
+        deposit_amount_text: crate::money_text(lease.deposit_amount),
         can_ejari: activates && LeaseStatus::RUNNING.contains(&lease.status),
         can_version,
         can_notice: manages
@@ -1015,22 +1090,14 @@ pub struct LeaseForm {
 
 /// A required date, a 422 naming the field when it is blank or malformed.
 fn required_date(value: &str, field: &str) -> Result<NaiveDate> {
-    parse_date(value).ok_or_else(|| {
-        Error::Status(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("{field}: YYYY-MM-DD"),
-        )
-    })
+    parse_date(value)
+        .ok_or_else(|| field_error(field, texts::english("property.form.date_invalid", &[])))
 }
 
 /// A required amount in dirhams.
 fn required_amount(value: &str, field: &str) -> Result<i64> {
-    parse_aed(value).ok_or_else(|| {
-        Error::Status(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("{field}: AED 0.00"),
-        )
-    })
+    parse_aed(value)
+        .ok_or_else(|| field_error(field, texts::english("property.form.amount_invalid", &[])))
 }
 
 /// An optional amount: blank is 0.
@@ -1043,12 +1110,54 @@ fn optional_amount(value: &str, field: &str) -> Result<i64> {
 
 /// A whole number, a 422 naming the field when it is not one.
 fn whole<T: std::str::FromStr>(value: &str, field: &str) -> Result<T> {
-    value.trim().parse().map_err(|_| {
-        Error::Status(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("{field}: 1, 2, 3 ..."),
-        )
-    })
+    value
+        .trim()
+        .parse()
+        .map_err(|_| field_error(field, texts::english("property.form.number_invalid", &[])))
+}
+
+/// The party a lease form names in its tenant field (see [`super::party_of`]).
+async fn tenant_of(state: &AppState, value: &str) -> Result<wl_kernel::PartyId> {
+    super::party_of(state, value, "tenant").await
+}
+
+/// `GET /property/parties/options`: the parties a lease form's picker offers
+/// as the person types (`?q=`), or the labels of the values it already holds
+/// (`?values=`), as `number · name`. For those who may draft a lease in some
+/// building.
+async fn party_options(
+    State(state): State<AppState>,
+    user: AuthUser,
+    query: renox::select::OptionQuery,
+) -> Result<Json<Vec<renox::select::SelectOption>>> {
+    // The lease forms and the agreement form pick a party here.
+    if user
+        .scopes_with::<Building>(permissions::LEASES_CREATE)
+        .is_empty()
+        && !user.has_permission(permissions::AGREEMENTS_MANAGE)
+    {
+        return Err(Error::Forbidden);
+    }
+    let directory = directory(&state);
+    let mut parties = Vec::new();
+    if query.is_lookup() {
+        for id in query.values_as::<i64>() {
+            parties.extend(directory.find(&state.db, wl_kernel::PartyId(id)).await?);
+        }
+    } else {
+        parties = directory.search(&state.db, &query.q, 20).await?;
+    }
+    Ok(Json(
+        parties
+            .into_iter()
+            .map(|party| {
+                renox::select::SelectOption::new(
+                    party.id.0,
+                    format!("{} · {}", party.code, party.display_name),
+                )
+            })
+            .collect(),
+    ))
 }
 
 /// `POST /property/units/{id}/leases`.
@@ -1067,7 +1176,7 @@ async fn create(
     }
     let mut new = NewLease::new(
         unit_id,
-        wl_kernel::PartyId(whole::<i64>(&form.tenant, "tenant")?),
+        tenant_of(&state, &form.tenant).await?,
         required_date(&form.start_date, "start_date")?,
         required_date(&form.end_date, "end_date")?,
         required_amount(&form.annual_rent, "annual_rent")?,
@@ -1348,6 +1457,46 @@ async fn waive_deposit(
     leases::waive_deposit(&state, &user, id).await?;
     Ok((
         Toast::success(text(&lang, "leases.deposit_waived_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that records the deposit received.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DepositForm {
+    /// `transfer`, `cash` or `card`.
+    #[serde(default)]
+    pub method: String,
+    /// The transfer or receipt number.
+    #[serde(default)]
+    pub reference: String,
+}
+
+/// `POST /property/leases/{id}/deposit`: the tenant paid the deposit; the
+/// lease holds it.
+async fn receive_deposit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<DepositForm>,
+) -> Result<Response> {
+    use wl_kernel::payments::PaymentMethod;
+    let method = match form.method.trim() {
+        "cash" => PaymentMethod::Cash,
+        "card" => PaymentMethod::Card,
+        "transfer" | "" => PaymentMethod::Transfer,
+        _ => {
+            return Err(field_error(
+                "method",
+                text(&lang, "leases.deposit_method_unknown"),
+            ));
+        }
+    };
+    leases::receive_deposit(&state, &user, id, method, &form.reference).await?;
+    Ok((
+        Toast::success(text(&lang, "leases.deposit_received_done")),
         renox::HxRefresh,
     )
         .into_response())

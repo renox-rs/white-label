@@ -105,9 +105,52 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.leases.new", "New lease"),
     ("property.leases.created", "Lease drafted."),
     ("property.leases.number", "Lease"),
+    (
+        "property.documents.needs",
+        ":who needs a valid :what on file.",
+    ),
+    ("property.documents.who_tenant", "The tenant"),
+    ("property.documents.who_lease", "The lease"),
+    (
+        "property.documents.who_agreement",
+        "The management agreement",
+    ),
+    ("property.documents.who_building", "The building"),
+    ("property.documents.who_record", "The record"),
+    (
+        "property.documents.then",
+        "Add what is missing under Documents, have it accepted, then try again.",
+    ),
+    ("property.documents.panel_title", "Documents needed"),
+    ("property.documents.lease_button", "Documents"),
+    (
+        "property.documents.panel_open_tenant",
+        "Open the tenant's documents",
+    ),
+    (
+        "property.documents.panel_open_lease",
+        "Open the lease's documents",
+    ),
     ("property.leases.unit", "Unit"),
     ("property.leases.tenant", "Tenant"),
     ("property.leases.tenant_number", "Tenant (party number)"),
+    (
+        "property.leases.tenant_placeholder",
+        "Search by name or party number (P-00012)",
+    ),
+    (
+        "property.leases.tenant_unknown",
+        "No party has this number. Enter the number of a party (P-00012) or pick one from the list.",
+    ),
+    (
+        "property.form.date_invalid",
+        "Enter the date as YYYY-MM-DD.",
+    ),
+    (
+        "property.form.amount_invalid",
+        "Enter the amount in dirhams, like 12000 or 12000.50.",
+    ),
+    ("property.form.number_invalid", "Enter a whole number."),
     ("property.leases.term", "Term"),
     ("property.leases.start_date", "Start date"),
     ("property.leases.end_date", "End date"),
@@ -115,6 +158,38 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.leases.deposit", "Security deposit (AED)"),
     ("property.leases.deposit_waived", "Waived"),
     ("property.leases.deposit_waived_done", "Deposit waived."),
+    (
+        "property.leases.deposit_received_done",
+        "Deposit recorded; the lease holds it.",
+    ),
+    (
+        "property.leases.receive_deposit",
+        "Record the deposit received",
+    ),
+    (
+        "property.leases.receive_deposit_description",
+        "The tenant has paid the deposit. This records the payment and the lease holds it. Amount:",
+    ),
+    ("property.leases.deposit_method", "Paid by"),
+    ("property.leases.deposit_method_transfer", "Bank transfer"),
+    ("property.leases.deposit_method_cash", "Cash"),
+    ("property.leases.deposit_method_card", "Card"),
+    (
+        "property.leases.deposit_reference",
+        "Transfer or receipt number",
+    ),
+    (
+        "property.leases.deposit_method_unknown",
+        "Choose a bank transfer, cash or card.",
+    ),
+    (
+        "property.leases.deposit_not_due",
+        "This lease asks for no deposit now: it is waived, nothing is due, or it is not a new lease waiting to start.",
+    ),
+    (
+        "property.leases.deposit_held_already",
+        "The lease holds a deposit already.",
+    ),
     ("property.leases.instalments", "Rent instalments"),
     ("property.leases.first_due", "First instalment due"),
     ("property.leases.notice_days", "Notice period (days)"),
@@ -1028,6 +1103,10 @@ const TEXTS: &[(&str, &str)] = &[
         ":amount of the payments taken off the credited invoices stays as the tenant's credit.",
     ),
     ("property.amend.top_up_line", "Deposit top-up · :lease"),
+    (
+        "property.cheques.bounce_fee_line",
+        "Returned cheque fee · :lease",
+    ),
     // Forcing the end of a lease (BL-PRP-12).
     ("property.force.action", "Force terminate"),
     ("property.force.submit", "Request approval"),
@@ -1516,6 +1595,7 @@ const TEXTS: &[(&str, &str)] = &[
         "property.forecast.owner_payout",
         "Owner payout, statement :statement",
     ),
+    ("property.forecast.lease_charge", ":charge, lease :lease"),
     ("property.payout.settled_how", "Settled by"),
     ("property.payout.how_payout", "Payout"),
     ("property.payout.how_carried_forward", "Carried forward"),

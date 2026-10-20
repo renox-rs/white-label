@@ -515,3 +515,50 @@ async fn the_board_lists_the_transmissions_for_those_who_may_see_them() {
         Some(TransmissionStatus::Submitted)
     );
 }
+
+/// BL-PTY-10 (#43) with the real lookup: wl-invoicing answers the kernel
+/// `RecipientLookup` through the ASP adapter set for the entity. With the
+/// connection `asp.pgp` up, a TRN the ASP knows gives its identifier, an
+/// unknown one "not found"; an ASP that does not answer is a failed call
+/// reported to the connection's health.
+#[renox::test]
+async fn the_lookup_of_a_recipient_identifier_asks_the_entitys_asp() {
+    use wl_kernel::einvoice::{Lookup, lookup, recipient_lookup};
+    let asp = FakeAsp::new();
+    let t = booted(&asp, "2027-01-05", 6).await;
+    asp.knows("100123456700003", "0235:100123456700003");
+    let entity = wl_kernel::LegalEntity::query()
+        .where_(wl_kernel::LegalEntity::CODE.eq("PGP"))
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        recipient_lookup(t.state()).connection(&entity).as_deref(),
+        Some("asp.pgp")
+    );
+    wl_kernel::integrations::report_success(t.state(), "asp.pgp")
+        .await
+        .unwrap();
+
+    let found = t
+        .app
+        .at_travelled_time(lookup(t.state(), &entity, "100123456700003"))
+        .await
+        .unwrap();
+    assert_eq!(found, Lookup::Found("0235:100123456700003".into()));
+    let unknown = t
+        .app
+        .at_travelled_time(lookup(t.state(), &entity, "100999999900003"))
+        .await
+        .unwrap();
+    assert_eq!(unknown, Lookup::NotFound);
+
+    asp.unreachable(true);
+    let failed = t
+        .app
+        .at_travelled_time(lookup(t.state(), &entity, "100123456700003"))
+        .await
+        .unwrap();
+    assert!(matches!(failed, Lookup::Failed(_)), "{failed:?}");
+}

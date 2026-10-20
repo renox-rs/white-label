@@ -734,6 +734,19 @@ pub trait Invoicer: Send + Sync + 'static {
     /// The invoice with this id.
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>>;
 
+    /// The invoices, oldest first, with a line that bills `origin` (the
+    /// record a [`DraftLine::origin`] names, e.g. a lease charge
+    /// `property.lease_charge:12`); drafts are left out. A payment for such a
+    /// record (a cheque linked to the charge) is allocated to them. The
+    /// default has none: invoicing is not enabled.
+    fn billing<'a>(
+        &'a self,
+        _db: &'a Db,
+        _origin: &'a Subject,
+    ) -> InvoiceFuture<'a, Vec<InvoiceId>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// Allocates `amount` fils from `source` (a payment or a credit note) to
     /// invoice `id`, through its `allocate` transition. Refused for an amount
     /// ≤ 0 or above the balance, or an invoice that does not accept

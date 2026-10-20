@@ -3,7 +3,9 @@
 //! wl-payments §4 *Expense claim*): a claim with a line in the *Owner
 //! drawings* category waits for the drawings approval, which is wl-invoicing's
 //! real approval; the decision reaches the claim through the kernel event. The
-//! users act through the claim routes.
+//! users act through the claim routes. Also budget vs actual (issue #89,
+//! wl-invoicing §5.15 step 2): the lines of an approved claim are read from
+//! wl-payments through the kernel `ActualCostSource`.
 
 mod support;
 
@@ -11,6 +13,7 @@ use renox::auth::{Permissions, permissions};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::testing::TestApp;
+use wl_invoicing::budget_report::{self, Report, ReportQuery};
 use wl_invoicing::{
     BudgetCategory, DrawingApproval, DrawingStatus, WlInvoicing, permissions as perm,
 };
@@ -396,4 +399,96 @@ async fn the_sole_owners_expense_line_is_approved_at_once_and_flagged() {
         .await
         .assert_status(303);
     assert_eq!(now(&t, &claim).await.status, ClaimStatus::Approved);
+
+    // Issue #89: in budget vs actual the drawings line of the claim carries
+    // the self-approved flag, like a self-approved bill or payment drawing
+    // (`FIN.ACL.23`); its fuel line is expense and is not flagged.
+    let report = march(&t, &e4).await;
+    let drawing = report
+        .drawings_items
+        .iter()
+        .find(|i| i.source == claim.subject())
+        .expect("the claim's drawing");
+    assert_eq!(drawing.amount, 200_000);
+    assert!(drawing.self_approved);
+    assert_eq!(report.expense_total().1, 10_000);
+}
+
+/// The budget vs actual of March for `entity`.
+async fn march(t: &Real, entity: &LegalEntity) -> Report {
+    let config = t
+        .app
+        .state()
+        .provided::<wl_invoicing::InvoicingConfig>()
+        .unwrap();
+    budget_report::build(
+        t.app.db(),
+        &config,
+        &ReportQuery {
+            entities: vec![entity.id],
+            month: day(3, 1),
+            ytd: false,
+            drawings_lines: true,
+            uncategorised: "Uncategorised".into(),
+        },
+    )
+    .await
+    .unwrap()
+}
+
+/// The actual of the expense row `code` in `report`.
+async fn actual_of(t: &Real, report: &Report, code: &str) -> i64 {
+    let id = BudgetCategory::by_code(t.app.db(), code)
+        .await
+        .unwrap()
+        .expect("the category")
+        .id;
+    report
+        .expense
+        .iter()
+        .chain(report.drawings.iter())
+        .find(|r| r.category_id == Some(id))
+        .map_or(0, |r| r.actual)
+}
+
+/// Issue #89: claim lines count in budget vs actual once the claim is
+/// approved, by expense date and expense category. The fuel line of AED
+/// 105.00 (VAT 5.00, recovered) is AED 100.00 of *Transport and fuel* in
+/// March; the line of AED 2,000 in *Owner drawings* is on the drawings line
+/// with its VAT (blocked) and not in expense. A submitted claim counts nothing.
+#[renox::test]
+async fn an_approved_claims_lines_count_in_the_budget_actual() {
+    let t = boot().await;
+    let pgp = entity(&t, "PGP").await;
+    let a = user(&t, "Amal", &[pay::EXPENSES_VIEW, pay::EXPENSES_SUBMIT]).await;
+    let b = user(&t, "Bilal", &[perm::DRAWINGS_APPROVE]).await;
+    let c = user(&t, "Chadi", &[pay::EXPENSES_VIEW, pay::EXPENSES_APPROVE]).await;
+
+    let claim = post_claim(&t, &a, &pgp, "2000.00", "owner_drawings").await;
+    act(&t, &a, &claim, "submit", &[]).await.assert_status(303);
+    let waiting = march(&t, &pgp).await;
+    assert_eq!(actual_of(&t, &waiting, "transport_fuel").await, 0);
+    assert_eq!(waiting.drawings_total().1, 0);
+
+    let request = drawing_of(&t, &claim).await[0]
+        .approval_request_id
+        .expect("an approval request");
+    approvals::approve(t.app.state(), request, &b, "")
+        .await
+        .unwrap()
+        .expect("the approval runs");
+    act(&t, &c, &claim, "approve", &[]).await.assert_status(303);
+    assert_eq!(now(&t, &claim).await.status, ClaimStatus::Approved);
+
+    let report = march(&t, &pgp).await;
+    assert_eq!(actual_of(&t, &report, "transport_fuel").await, 10_000);
+    assert_eq!(report.expense_total().1, 10_000);
+    assert_eq!(actual_of(&t, &report, "owner_drawings").await, 200_000);
+    assert_eq!(report.drawings_total().1, 200_000);
+    assert!(
+        report
+            .drawings_items
+            .iter()
+            .any(|i| i.source == claim.subject() && i.amount == 200_000 && !i.self_approved)
+    );
 }

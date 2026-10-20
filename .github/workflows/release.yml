@@ -1,0 +1,82 @@
+name: Release build
+
+# Builds the host binary and the container image on a version tag or by hand.
+# It pushes nothing: the binary is uploaded as a workflow artifact and the image
+# stays on the runner after a smoke test. Installing it on a VPS: deploy/README.md.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  binary:
+    name: release binary
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        # Remove large preinstalled toolchains this workspace does not use.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: docker/setup-buildx-action@v3
+      # Built inside the Dockerfile's build stage (Debian 12), so the binary runs
+      # on Debian 12+ and Ubuntu 22.04+ servers, not only on this runner.
+      - name: Build host (release, locked)
+        run: docker buildx build -f deploy/Dockerfile --target binary --output type=local,dest=dist .
+      - name: Check the binary runs
+        run: |
+          file dist/host
+          ./dist/host help | head -5
+          sha256sum dist/host | tee dist/host.sha256
+      - name: Name it after the version
+        run: |
+          name="host-${GITHUB_REF_NAME//\//-}-linux-x86_64"
+          mkdir out
+          cp dist/host "out/${name}"
+          sha256sum "out/${name}" > "out/${name}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: host-linux-x86_64
+          path: out/
+          if-no-files-found: error
+
+  image:
+    name: container image smoke test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image (not pushed)
+        run: docker buildx build -f deploy/Dockerfile --load -t white-label-host:ci .
+      - name: Boot it in production mode with the demo client
+        run: |
+          docker run -d --name wl -p 127.0.0.1:3100:3000 \
+            -e APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" \
+            -e APP_URL=https://demo.palmgrove.example \
+            -e TRUSTED_HOSTS=demo.palmgrove.example \
+            -v "$PWD/clients/demo-properties/client.toml:/etc/white-label/client.toml:ro" \
+            white-label-host:ci
+          for i in $(seq 30); do
+            curl -fsS http://127.0.0.1:3100/health && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3100/health
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: demo.palmgrove.example' http://127.0.0.1:3100/login)
+          test "$code" = 200
+          docker inspect --format '{{.State.Health.Status}}' wl
+      - name: Container log
+        if: always()
+        run: docker logs wl || true

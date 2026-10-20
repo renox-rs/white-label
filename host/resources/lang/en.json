@@ -22,6 +22,12 @@
     "refunds": "Refunds",
     "deposits": "Deposits",
     "cheques": "Cheques",
+    "enquiries": "Enquiries",
+    "supplier_bills": "Supplier bills",
+    "expense_claims": "Expense claims",
+    "compliance_flags": "Compliance flags",
+    "broadcasts": "Broadcasts",
+    "ticket_categories": "Ticket categories",
     "bank_statements": "Bank statements",
     "campaigns": "Campaigns",
     "employees": "Employees",
@@ -55,71 +61,8 @@
     "admin": "Admin",
     "app": "App",
     "log_in": "Log in",
-    "register": "Register",
     "log_out": "Log out",
     "sections": "Sections"
-  },
-  "footer": {
-    "made_with": "Made with Renox."
-  },
-  "home": {
-    "eyebrow": "Made with the Renox starter kit",
-    "title": "Your new app,",
-    "accent": "ready to grow.",
-    "lead": "Sign-up with email verification, roles, a dashboard and an activity log are in place. Every page is a template you own: change it and refresh.",
-    "start": "Create an account",
-    "log_in": "Log in",
-    "open_dashboard": "Go to the dashboard",
-    "edit": "Edit resources/views/home/index.html and refresh: templates reload without a rebuild.",
-    "figures": {
-      "label": "This app in figures",
-      "people": "people signed up",
-      "roles": "roles, with permissions",
-      "binary": "binary to deploy"
-    },
-    "features": {
-      "title": "Everything a new app needs,",
-      "accent": "already working",
-      "lead": "The parts every app writes first, tested and on the UI kit.",
-      "more": "Read the docs",
-      "accounts": {
-        "title": "Accounts",
-        "text": "Sign-up, login, password reset, email verification and an account page where people manage their devices."
-      },
-      "roles": {
-        "title": "Roles and permissions",
-        "text": "Admins manage people and read the activity log; members have their own account."
-      },
-      "dashboard": {
-        "title": "A dashboard",
-        "text": "Figures over a period and a chart, with no chart library."
-      },
-      "activity": {
-        "title": "An activity log",
-        "text": "Logins, account changes and role changes, recorded and searchable."
-      },
-      "notifications": {
-        "title": "Notifications",
-        "text": "A bell with new ones arriving live, and a page for the rest."
-      }
-    },
-    "steps": {
-      "title": "Make it",
-      "accent": "yours",
-      "lead": "Three steps from this page to your own app on a server.",
-      "edit": {
-        "title": "Change this page",
-        "text": "Its template and the patterns it uses are files of this app."
-      },
-      "module": {
-        "title": "Add a feature",
-        "text": "A module with its pages, model, migration and tests."
-      },
-      "ship": {
-        "title": "Ship one binary",
-        "text": "Templates and files are built in; copy it to a server and run it."
-      }
-    }
   },
   "patterns": {
     "art": {
@@ -135,7 +78,7 @@
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Welcome back,",
-    "lead": "What happened in your app, and what you did lately.",
+    "lead": "Where the portfolio stands today, and what waits for you.",
     "account": "Your account",
     "users": "Manage users",
     "needs_action": {
@@ -143,22 +86,27 @@
       "awaiting_one": "1 approval waiting for you",
       "awaiting_many": ":count approvals waiting for you"
     },
-    "stats": {
-      "signups": "New sign-ups",
-      "users": "Users",
-      "unread": "Unread notifications"
+    "tiles": {
+      "units_available": "Units available",
+      "units_leased": "Units leased",
+      "leases_expiring": "Leases ending in 90 days",
+      "cheques_due": "Cheques due for deposit",
+      "cheques_bounced": "Bounced cheques",
+      "invoices_overdue": "Overdue invoices",
+      "invoices_one": "1 invoice",
+      "invoices_many": ":count invoices",
+      "tickets_open": "Open tickets",
+      "my_tasks": "My tasks",
+      "compliance_flags": "Buildings flagged"
     },
-    "chart": {
-      "title": "Sign-ups",
-      "description": "New accounts per day in this period"
+    "expiring": {
+      "title": "Leases ending soon",
+      "description": "The next to end, within 90 days",
+      "ends": "Ends :date (in :days days)"
     },
-    "summary": {
-      "title": "At a glance",
-      "description": "People in this period and in all",
-      "this_period": "Signed up in this period",
-      "before": "In the period before",
-      "verified": "Verified their email",
-      "total": "People in all"
+    "tasks": {
+      "title": "My tasks",
+      "description": "Open tickets assigned to you"
     },
     "activity": {
       "title": "Your recent activity",
@@ -169,7 +117,7 @@
   },
   "users": {
     "title": "Users",
-    "subtitle": "Everyone who signed up, and their roles.",
+    "subtitle": "Everyone with an account, and their roles. Add people here: they get a mail to choose a password.",
     "figures": {
       "label": "People in figures",
       "people": "people",
@@ -180,6 +128,11 @@
     "roles_of": "Roles of :name",
     "roles_hint": "Admin: users and the activity log. Member: their own account.",
     "no_role": "No role",
+    "add": "Add a user",
+    "add_description": "They get a mail with a link to choose a password. With no role ticked they are a member.",
+    "add_submit": "Add and send the link",
+    "name": "Name",
+    "email": "Email address",
     "cancel": "Cancel",
     "save": "Save"
   },

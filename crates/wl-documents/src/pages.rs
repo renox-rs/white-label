@@ -90,12 +90,12 @@ pub fn routes() -> Routes {
                 .name("wl_documents.correction.store")
                 .require_permission(permissions::UPLOAD),
         )
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/documents/flags", flags_index)
-                .name("wl_documents.flags")
-                .require_permission(permissions::VIEW),
-        )
+                .name("wl_documents.flags"),
+            permissions::VIEW,
+        ))
         .merge(
             Routes::new()
                 .get("/document-kinds", kinds_index)
@@ -117,7 +117,7 @@ pub fn routes() -> Routes {
 }
 
 /// The package text `key` (without the `wl_documents.` prefix) in `lang`.
-fn text(lang: &Lang, key: &str) -> String {
+pub(crate) fn text(lang: &Lang, key: &str) -> String {
     texts::t(lang, &format!("wl_documents.{key}"))
 }
 
@@ -162,8 +162,11 @@ pub struct QueueRow {
     pub id: i64,
     /// The kind's name in the page's language.
     pub kind: String,
-    /// The record it is attached to, e.g. `employee #12`.
+    /// The record it is attached to, by name (`P-00012 · Tara Nasser`), else
+    /// `employee #12`.
     pub subject: String,
+    /// The page of that record's documents.
+    pub subject_url: String,
     /// The document's title.
     pub title: String,
     /// Its number, if any.
@@ -194,7 +197,12 @@ pub(crate) struct ReviewQueuePage {
 }
 
 /// The queue rows of `documents`, in their order.
-async fn queue_rows(db: &Db, lang: &Lang, documents: Vec<Document>) -> Result<Vec<QueueRow>> {
+async fn queue_rows(
+    state: &AppState,
+    lang: &Lang,
+    documents: Vec<Document>,
+) -> Result<Vec<QueueRow>> {
+    let db = &state.db;
     let kinds: HashMap<i64, DocumentKind> = DocumentKind::query()
         .get(db)
         .await?
@@ -256,7 +264,16 @@ async fn queue_rows(db: &Db, lang: &Lang, documents: Vec<Document>) -> Result<Ve
         rows.push(QueueRow {
             id: document.id,
             kind,
-            subject: format!("{} #{}", document.subject_type, document.subject_id),
+            subject: crate::subject_pages::label_of(
+                state,
+                &wl_kernel::Subject::new(&document.subject_type, document.subject_id),
+            )
+            .await
+            .0,
+            subject_url: format!(
+                "/documents/of/{}/{}",
+                document.subject_type, document.subject_id
+            ),
             file_name: files.get(&(document.id, document.current_version)).cloned(),
             title: document.title,
             number: document.number,
@@ -273,11 +290,11 @@ async fn queue_rows(db: &Db, lang: &Lang, documents: Vec<Document>) -> Result<Ve
 
 /// `GET /documents/review`: the documents waiting for review, priority
 /// first, with the accept and reject actions.
-async fn review_queue_page(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let documents = review_queue(&db).await?;
+async fn review_queue_page(State(state): State<AppState>, lang: Lang) -> Result<View> {
+    let documents = review_queue(&state.db).await?;
     Ok(View::typed(ReviewQueuePage {
         tx: texts::all(&lang),
-        documents: queue_rows(&db, &lang, documents).await?,
+        documents: queue_rows(&state, &lang, documents).await?,
     }))
 }
 
@@ -292,14 +309,14 @@ async fn file(State(state): State<AppState>, Found(document): Found<Document>) -
 }
 
 /// A 422 with `message` under `field`, keeping what was typed.
-fn invalid(field: &str, message: String, input: &impl Serialize) -> Error {
+pub(crate) fn invalid(field: &str, message: String, input: &impl Serialize) -> Error {
     let mut errors = Errors::new();
     errors.add(field, message);
     ValidationError::new(errors).with_input(input).into()
 }
 
 /// A date field as typed: blank is none, anything else must be `YYYY-MM-DD`.
-fn parse_date(value: &str) -> Option<Option<NaiveDate>> {
+pub(crate) fn parse_date(value: &str) -> Option<Option<NaiveDate>> {
     let value = value.trim();
     if value.is_empty() {
         return Some(None);
@@ -308,7 +325,7 @@ fn parse_date(value: &str) -> Option<Option<NaiveDate>> {
 }
 
 /// A text field as typed: none when blank.
-fn blank_to_none(value: Option<&str>) -> Option<String> {
+pub(crate) fn blank_to_none(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -316,7 +333,7 @@ fn blank_to_none(value: Option<&str>) -> Option<String> {
 }
 
 /// A date shown in an input, or empty.
-fn date_value(date: Option<NaiveDate>) -> String {
+pub(crate) fn date_value(date: Option<NaiveDate>) -> String {
     date.map(|d| d.format("%Y-%m-%d").to_string())
         .unwrap_or_default()
 }
@@ -684,17 +701,43 @@ async fn flags_index(
     lang: Lang,
     request: GridRequest,
 ) -> Result<View> {
-    let mut record_types: Vec<String> = DocumentFlag::query()
-        .get(&db)
-        .await?
-        .into_iter()
-        .map(|flag| flag.record_type)
-        .collect();
+    // The flags on the records of the user's scope (the lease, the party's
+    // document of a lease in their buildings).
+    let reach = wl_kernel::scopes::reach(&db, &user, permissions::VIEW).await?;
+    let mut in_reach: Vec<i64> = Vec::new();
+    let mut every = DocumentFlag::query().get(&db).await?;
+    if !reach.is_all() {
+        let mut kept = Vec::new();
+        for flag in every {
+            if reach
+                .contains_entity(&db, &flag.record_type, flag.record_id)
+                .await?
+                || reach
+                    .contains(
+                        &db,
+                        &wl_kernel::Subject::new(&flag.subject_type, flag.subject_id),
+                    )
+                    .await?
+            {
+                in_reach.push(flag.id);
+                kept.push(flag);
+            }
+        }
+        every = kept;
+    }
+    let mut record_types: Vec<String> = every.into_iter().map(|flag| flag.record_type).collect();
     record_types.sort();
     record_types.dedup();
     let can_review = user.has_permission(permissions::REVIEW);
     let grid = flags_grid(&lang, record_types, can_review);
-    let flags = grid.page(DocumentFlag::query(), &request).await?;
+    let query = if reach.is_all() {
+        DocumentFlag::query()
+    } else if in_reach.is_empty() {
+        DocumentFlag::query().none()
+    } else {
+        DocumentFlag::query().where_in("id", in_reach)
+    };
+    let flags = grid.page(query, &request).await?;
     Ok(View::typed(FlagsPage {
         tx: texts::all(&lang),
         flags,

@@ -1,0 +1,37 @@
+{#- wl-documents: the documents of one record (a tenant, a lease) and the
+    form that adds one. An added document waits for review. Replace it with
+    resources/views/wl-documents/subject.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['subject.title'] ~ ' · ' ~ label">
+  <rx-stack>
+    <rx-page-header :title="tx['subject.title']" :subtitle="label ~ ' — ' ~ tx['subject.subtitle']" :back="back" :back-label="label">
+    </rx-page-header>
+    <rx-form rx-if="can_upload" :action="action" enctype="multipart/form-data" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-select name="kind" :label="tx['fields.kind']" :options="kinds" id="subject-upload-kind" required/>
+          <rx-input name="title" :label="tx['fields.title']" id="subject-upload-title"/>
+          <rx-input name="number" :label="tx['fields.number']" id="subject-upload-number"/>
+          <rx-input name="issue_date" type="date" :label="tx['fields.issue_date']" id="subject-upload-issue"/>
+          <rx-input name="expiry_date" type="date" :label="tx['fields.expiry_date']" id="subject-upload-expiry"/>
+          <rx-input name="authority" :label="tx['fields.authority']" id="subject-upload-authority"/>
+          <rx-file name="files" :label="tx['fields.file']" id="subject-upload-file" required/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['subject.add_submit']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+    <rx-table :rows="documents" as="document" :key="document.id" :caption="tx['subject.title']" card>
+      <rx-column :label="tx['fields.kind']">{{ document.kind }}</rx-column>
+      <rx-column :label="tx['fields.title']" hide-narrow>{{ document.title }}</rx-column>
+      <rx-column :label="tx['fields.number']" hide-narrow>{{ document.number or tx['none'] }}</rx-column>
+      <rx-column :label="tx['fields.expiry_date']">{{ document.expiry_date or tx['none'] }}</rx-column>
+      <rx-column :label="tx['subject.status']"><rx-badge :kind="document.status_kind" :text="document.status"/> <span rx-if="document.rejection_reason" class="rx-subtitle">{{ document.rejection_reason }}</span></rx-column>
+      <rx-row-actions>
+        <rx-icon-button rx-if="document.file_name" icon="external" :label="tx['review.file'] ~ ': ' ~ document.file_name" :href="route('wl_documents.file', document.id)" new-tab/>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['subject.empty']" :message="tx['subject.empty_hint']" icon="file"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

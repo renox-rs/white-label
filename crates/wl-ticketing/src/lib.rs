@@ -379,7 +379,7 @@ impl Module for WlTicketing {
         app.nav(
             "app",
             NavLink::route("wl_ticketing.index", "nav.tickets")
-                .icon("ticket")
+                .icon("clipboard-list")
                 .group("nav.app")
                 .order(50)
                 .permission(permissions::VIEW),
@@ -395,7 +395,7 @@ impl Module for WlTicketing {
         app.nav(
             "app",
             NavLink::route("wl_ticketing.compliance_flags", "nav.compliance_flags")
-                .icon("shield-alert")
+                .icon("triangle-alert")
                 .group("nav.app")
                 .order(56)
                 .permission(permissions::VIEW),

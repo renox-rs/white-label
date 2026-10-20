@@ -715,6 +715,10 @@ gateways.
 | `RefundFailed` | refund `fail` | refund, party, amount, source (type and id: payment, credit note, deposit, party or payer credit balance, order, booking), method, failure reason, attempt |
 | `ChequeBounced` | cheque `bounce` | cheque, party, credit group, amount, honoured amount, open amount, bank return reason, presentation number, linked documents; wl-sales puts the customer account on credit hold (`SAL.CRD.01`) |
 | `ChequeBounceResolved` | cheque `clear` after a re-presentation, `replace`, `write_off` | cheque, party, outcome (cleared, replaced, written off), other bounced cheques of the party still open; wl-sales lifts the hold for cleared or replaced when none is left |
+| `ChequeReferredToLegal` | bounced received cheque `refer_to_legal` | cheque, party (drawer), agreement (if any), open amount, currency, case owner; the vertical sets the legal case flag on the agreement (01: arrears flag on the lease) |
+| `DepositDeductionsPublished` | deductions (or a forfeiture) published to the party (§5.4) | deposit, source, party, version, kind (deductions, forfeiture), total, published on, last day of the dispute window (if disputes are on) |
+| `DepositDeductionsDisputed` | the party disputes lines of the latest published version | deposit, source, party, version, line ids, raised on; `refund` and `forfeit` wait |
+| `DepositDisputeAnswered` | staff answer disputed lines | deposit, source, party, version disputed, answer (revised, upheld), new version (when revised), whether a line is still disputed |
 | `DepositAdjusted` | deposit `adjust` | deposit, source version, old and new amount, top-up charge or part refund |
 | `DepositSettled` | deposit `refund`, `forfeit` or `transfer` | deposit, source, outcome (refunded, forfeited, transferred), deductions, refund amount, new holder (transfer) |
 | `CashShortage` | handover `short` | holder, responsible person, period, till session (if any), difference, missing cheques, source (later shortage) |

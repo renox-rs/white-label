@@ -546,7 +546,7 @@ impl Module for WlParties {
         app.nav(
             "app",
             NavLink::route("wl_parties.review_tasks", "nav.review_tasks")
-                .icon("list-checks")
+                .icon("clipboard-list")
                 .group("nav.app")
                 .order(32),
         );
@@ -554,7 +554,7 @@ impl Module for WlParties {
         app.nav(
             "app",
             NavLink::route("wl_parties.screening_tasks", "nav.screening_tasks")
-                .icon("shield-alert")
+                .icon("triangle-alert")
                 .group("nav.app")
                 .order(33)
                 .permission(permissions::BLOCK_REASON_VIEW),
@@ -563,19 +563,29 @@ impl Module for WlParties {
         app.nav(
             "app",
             NavLink::route("wl_parties.compliance_tasks", "nav.compliance_tasks")
-                .icon("snowflake")
+                .icon("lock")
                 .group("nav.app")
                 .order(34)
                 .permission(permissions::BLOCK_REASON_VIEW),
         );
         // The sanctions lists and the latest screenings (#40 A11). The page
-        // checks its three permissions itself.
+        // checks its three permissions itself, and so does the link: it was
+        // shown to everyone, and a person with none of them met a 403.
         app.nav(
             "app",
             NavLink::route("wl_parties.screening", "nav.screening")
                 .icon("shield-check")
                 .group("nav.app")
-                .order(35),
+                .order(35)
+                .when(|user| {
+                    [
+                        permissions::SCREENING_RUN,
+                        permissions::SCREENING_REVIEW,
+                        permissions::BLOCK_REASON_VIEW,
+                    ]
+                    .into_iter()
+                    .any(|permission| user.has_permission(permission))
+                }),
         );
         app.templates(|env| {
             for (name, source) in VIEWS {

@@ -61,14 +61,14 @@ fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
 /// The module's credit note routes, each behind its permission.
 pub fn routes() -> Routes {
     Routes::new()
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/credit-notes", index)
                 .name("wl_invoicing.credit_notes")
                 .get("/credit-notes/{id}", show)
-                .name("wl_invoicing.credit_note")
-                .require_permission(permissions::VIEW),
-        )
+                .name("wl_invoicing.credit_note"),
+            permissions::VIEW,
+        ))
         .merge(
             Routes::new()
                 .post("/credit-notes/{id}/issue", store_issue)
@@ -173,8 +173,23 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /credit-notes`: the grid.
-async fn index(lang: Lang, request: GridRequest) -> Result<View> {
-    let credit_notes = grid(&lang).page(CreditNote::query(), &request).await?;
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
+    // The credit notes of the invoices in the user's scope.
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    let query = reach
+        .apply_ids(
+            &state.db,
+            CreditNote::query(),
+            "invoice_id",
+            wl_kernel::invoicing::INVOICE_SUBJECT_TYPE,
+        )
+        .await?;
+    let credit_notes = grid(&lang).page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         credit_notes,
@@ -301,6 +316,12 @@ async fn show(
     lang: Lang,
     Found(note): Found<CreditNote>,
 ) -> Result<View> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    let invoice =
+        wl_kernel::Subject::new(wl_kernel::invoicing::INVOICE_SUBJECT_TYPE, note.invoice_id);
+    if !reach.contains(&state.db, &invoice).await? {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let db = state.db.clone();
     let money = |fils: i64| amount_text(&note.currency, fils);

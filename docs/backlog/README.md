@@ -1,6 +1,6 @@
 # Backlog — Negative Flows
 
-> Status: draft · Last updated: 2026-10-18 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-20 · Spec version: same commit as this file
 
 GitHub issues for building the negative flows fixed in the
 [negative-flow review](../reviews/2026-10-15-negative-flows.md). They were **created on GitHub
@@ -94,6 +94,10 @@ issues are created on GitHub, the IDs stay in the title prefix so links can be r
 
 A module issue takes the earliest milestone of any vertical that needs it.
 
+**Built early.** An issue built before its milestone keeps the milestone (it says which vertical
+first needs it). Built early in Build 1: the sanctions screening issues BL-PTY-05 to BL-PTY-09
+(#38–#42, Launch 04) and the marketing broadcast BL-NTF-07 (#61, Launch 05).
+
 Milestones and [OPEN-ITEMS](../OPEN-ITEMS.md) gates are different things. A milestone says
 when an issue is built; a gate says when an open question must be answered. An issue labelled
 `blocked:open-item` whose item has the gate **Launch NN** is built in its milestone with the
@@ -163,6 +167,9 @@ What a reader might expect here but belongs to another issue (with its ID).
 ## 6. Issues on GitHub
 
 Created on 2026-10-16: 24 epics (#1–#24) and 429 issues (#25–#453), each issue a sub-issue of
-its epic, with the labels and milestones of §3. Links between issues use the GitHub numbers.
+its epic, with the labels and milestones of §3. Added on 2026-10-20: 22 Build 1 issues (#458–#479)
+for the work the closed F1 issues deferred, and BL-HRM-30 (#480, Launch 09) for the effects of
+`report_absconding` that need payroll, so the backlog has 452 issues. Links between issues
+use the GitHub numbers.
 The mapping from backlog ID to issue is in [github-issues.md](github-issues.md). When a backlog
 file changes, update the matching GitHub issue too.

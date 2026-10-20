@@ -1,11 +1,8 @@
-//! The public front page (`resources/views/home/index.html`, in
-//! `layouts/public.html`), made of the app's page patterns
-//! (`resources/views/components/`). Signed-in people go on to `/dashboard`.
+//! `/`: the app has no public front page of its own. Signed-in people go to
+//! the dashboard, everyone else to the sign-in page (users are added by an
+//! admin; there is no sign-up).
 
-use renox::nav::NavLink;
 use renox::prelude::*;
-
-use super::roles::ROLES;
 
 pub struct Home;
 
@@ -14,29 +11,15 @@ impl Module for Home {
         "home"
     }
 
-    /// The sidebar link back to the front page, for signed-in people (a
-    /// guest gets a hand-written one in the layout).
-    fn register(&self, app: &mut Registry) {
-        app.nav(
-            "app",
-            NavLink::route("home", "nav.home")
-                .icon("house")
-                .group("nav.app")
-                .order(20)
-                .when(|_| true),
-        );
-    }
-
     fn routes(&self) -> Routes {
         Routes::new().get("/", index).name("home")
     }
 }
 
-/// The page, with the figures its strip shows.
-async fn index(State(db): State<Db>) -> Result<View> {
-    let people = User::query().count(&db).await?;
-    Ok(view(
-        "home/index.html",
-        context! { people, roles => ROLES.len() },
-    ))
+async fn index(user: Option<AuthUser>) -> Redirect {
+    Redirect::to(if user.is_some() {
+        "/dashboard"
+    } else {
+        "/login"
+    })
 }

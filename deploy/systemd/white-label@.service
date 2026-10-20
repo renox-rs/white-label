@@ -1,0 +1,61 @@
+# /etc/systemd/system/white-label@.service
+#
+# One instance per client: `systemctl enable --now white-label@acme.socket`.
+# The instance name (%i) is the client's short name and picks everything:
+#   OS user          wl-%i
+#   binary           /opt/white-label/clients/%i/host   (symlink to a release)
+#   data             /var/lib/white-label/%i/           (app.db, uploads in app/)
+#   configuration    /etc/white-label/%i/{env,client.toml,litestream.yml,litestream.env}
+# Install and rollout steps: deploy/README.md.
+[Unit]
+Description=White-label app for client %i
+After=network.target
+# The listening socket (white-label@%i.socket) is held by systemd, so a
+# restart makes new connections wait instead of refusing them.
+Requires=white-label@%i.socket
+
+[Service]
+User=wl-%i
+Group=wl-%i
+WorkingDirectory=/var/lib/white-label/%i
+EnvironmentFile=/etc/white-label/%i/env
+# litestream.env holds the replica's keys; the restore step below needs them.
+EnvironmentFile=/etc/white-label/%i/litestream.env
+
+# 1. A new host (or a wiped disk) has no database: restore it from the replica.
+#    No-op when app.db exists or when no replica exists yet (first install).
+#    A real error (replica unreachable) fails the start; it must not boot an
+#    empty database that Litestream would then replicate over the good one.
+ExecStartPre=/usr/local/bin/litestream restore -config /etc/white-label/%i/litestream.yml -if-db-not-exists -if-replica-exists /var/lib/white-label/%i/app.db
+# 2. Pending migrations, as one batch, before the app takes the socket.
+ExecStartPre=/opt/white-label/clients/%i/host migrate
+ExecStart=/opt/white-label/clients/%i/host
+
+Restart=on-failure
+RestartSec=2
+# Renox finishes running jobs on SIGTERM (up to 30 s).
+KillSignal=SIGTERM
+TimeoutStopSec=40
+# A migration on a large database can take a while to start.
+TimeoutStartSec=120
+
+# Limits and sandboxing (OPERATIONS.md section 2).
+MemoryMax=512M
+CPUQuota=100%
+TasksMax=256
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/white-label/%i
+
+[Install]
+WantedBy=multi-user.target
