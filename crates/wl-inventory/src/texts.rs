@@ -380,6 +380,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.landed.waiting",
         "The adjustment is above the value and waits for approval; nothing is posted until then.",
     ),
+    (
+        "wl_inventory.landed.drafted_subject",
+        "Landed cost {{ number }}: a bill of {{ amount }} AED waits to be posted",
+    ),
+    (
+        "wl_inventory.landed.drafted_body",
+        "Bill {{ bill }} was approved for the allocated landed cost {{ number }}. A draft adjustment of {{ amount }} AED was made for you to check and post: {{ link }}",
+    ),
     ("wl_inventory.landed.allocated", "Landed cost allocated."),
     (
         "wl_inventory.landed.drafted",

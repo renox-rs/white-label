@@ -8,6 +8,7 @@ pub mod goods_receipt;
 pub mod item;
 pub mod landed_adjust;
 pub mod landed_cost;
+pub mod landed_draft;
 pub mod location;
 pub mod lot;
 pub mod match_source;
@@ -245,6 +246,9 @@ impl Module for WlInventory {
             |tx, request| Box::pin(po_revise::recheck(tx, request)),
         );
         po_revise::register_types();
+        // A late bill coded to a landed cost drafts an adjustment and tells
+        // the purchaser.
+        landed_draft::register_types();
         // Posting an adjustment of a landed cost above the value needs a
         // second holder of `landed_costs.post` (`STK.ACL.06`).
         wl_kernel::SubjectMachine::of::<LandedCost>(wl_kernel::inventory::LANDED_COST_SUBJECT_TYPE)

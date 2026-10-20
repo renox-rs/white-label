@@ -290,6 +290,11 @@ pub(crate) fn register(app: &mut Registry) {
         },
     );
     app.listen(
+        |event: wl_kernel::invoicing::SupplierBillApproved, state: AppState| async move {
+            crate::landed_draft::on_bill_approved(&state, &event).await
+        },
+    );
+    app.listen(
         |event: SupplierDebitNoteIssued, state: AppState| async move {
             crate::return_credit::on_debit_note_issued(&state, &event).await
         },

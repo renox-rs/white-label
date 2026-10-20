@@ -30,6 +30,7 @@ use wl_kernel::inventory::{
 };
 use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
+    SupplierBillLine, SupplierBillLineId, SupplierBillStatus, SupplierBills,
     SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
@@ -262,6 +263,44 @@ impl PeriodLocks for PeriodDesk {
     }
 }
 
+/// The supplier bill lines wl-invoicing would know, set by the test.
+#[derive(Clone, Default)]
+pub struct BillDesk(Arc<Mutex<Vec<SupplierBillLine>>>);
+
+impl BillDesk {
+    /// Line `line` of bill `bill` (invoice number `number`) of `amount_aed`
+    /// fils, described as `description`.
+    pub fn add(&self, bill: i64, line: i64, number: &str, description: &str, amount_aed: i64) {
+        self.0.lock().unwrap().push(SupplierBillLine {
+            bill: SupplierBillId(bill),
+            line: SupplierBillLineId(line),
+            bill_number: number.to_owned(),
+            supplier: SUPPLIER,
+            legal_entity_id: None,
+            description: description.to_owned(),
+            amount_aed,
+            bill_status: SupplierBillStatus::Approved,
+        });
+    }
+}
+
+impl SupplierBills for BillDesk {
+    fn line<'a>(
+        &'a self,
+        _db: &'a Db,
+        id: SupplierBillLineId,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillLine>> {
+        let found = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|l| l.line == id)
+            .cloned();
+        Box::pin(async move { Ok(found) })
+    }
+}
+
 /// Records the events and stands in for ticketing and cost entries.
 struct Fakes {
     revised: Arc<Mutex<Vec<PurchaseOrderRevised>>>,
@@ -269,6 +308,7 @@ struct Fakes {
     adjusted: Arc<Mutex<Vec<LandedCostAdjusted>>>,
     blocked: Blocked,
     locks: Option<PeriodDesk>,
+    bills: Option<BillDesk>,
     received: Arc<Mutex<Vec<GoodsReceived>>>,
     dispatched: Arc<Mutex<Vec<SupplierReturnDispatched>>>,
     credited: Arc<Mutex<Vec<SupplierReturnCredited>>>,
@@ -286,6 +326,9 @@ impl Module for Fakes {
         record(app, &self.revised);
         record(app, &self.allocated);
         record(app, &self.adjusted);
+        if let Some(bills) = &self.bills {
+            wl_kernel::invoicing::provide_supplier_bills(app, bills.clone());
+        }
         if let Some(locks) = &self.locks {
             wl_kernel::invoicing::provide_period_locks(app, locks.clone());
         }
@@ -315,6 +358,8 @@ pub struct Booted {
     pub adjusted: Recorded<LandedCostAdjusted>,
     /// The dates in a filed period.
     pub locks: PeriodDesk,
+    /// The supplier bill lines the test sets.
+    pub bills: BillDesk,
     /// The suppliers the block guard refuses.
     pub blocked: Blocked,
     /// `SupplierReturnCredited`.
@@ -809,6 +854,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     let allocated = Arc::new(Mutex::new(Vec::new()));
     let adjusted = Arc::new(Mutex::new(Vec::new()));
     let locks = PeriodDesk::default();
+    let bills = BillDesk::default();
     let blocked = Blocked::default();
     let credited = Arc::new(Mutex::new(Vec::new()));
     let tickets = TicketDesk::default();
@@ -830,6 +876,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         adjusted: adjusted.clone(),
         blocked: blocked.clone(),
         locks: (!with_invoicing).then(|| locks.clone()),
+        bills: (!with_invoicing).then(|| bills.clone()),
         received: received.clone(),
         dispatched: dispatched.clone(),
         credited: credited.clone(),
@@ -877,6 +924,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         allocated: Recorded(allocated),
         adjusted: Recorded(adjusted),
         locks,
+        bills,
         blocked,
         credited: Recorded(credited),
         tickets,
