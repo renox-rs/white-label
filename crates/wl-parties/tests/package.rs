@@ -125,12 +125,18 @@ async fn created_parties_get_codes_and_are_found_through_the_kernel() {
     let found = directory(state).search(t.db(), "noor", 10).await.unwrap();
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].id, al_noor.party_id());
-    let by_number = directory(state).search(t.db(), "P-00001", 10).await.unwrap();
+    let by_number = directory(state)
+        .search(t.db(), "P-00001", 10)
+        .await
+        .unwrap();
     assert_eq!(by_number.len(), 1);
     assert_eq!(by_number[0].id, priya.party_id());
     let all = directory(state).search(t.db(), " ", 10).await.unwrap();
     assert_eq!(all.len(), 2);
-    assert_eq!(directory(state).search(t.db(), "", 1).await.unwrap().len(), 1);
+    assert_eq!(
+        directory(state).search(t.db(), "", 1).await.unwrap().len(),
+        1
+    );
     assert!(
         directory(state)
             .search(t.db(), "nobody", 10)
