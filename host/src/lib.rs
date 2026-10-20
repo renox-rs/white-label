@@ -91,6 +91,7 @@ pub fn app_for_tuned(
     let owner_role = config.owner_role().to_owned();
     // What a block does to a lease and to a service contract (BL-PRP-26).
     app::negative_flow::register_block_effects(&client_app);
+    app::negative_flow::register_approvals(&client_app);
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
     let mut app = wl_kernel::apply(base(), config)?;

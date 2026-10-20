@@ -846,6 +846,13 @@ async fn store_reverse(
     )
     .await
     {
+        // A policy of the vertical may have put the reversal behind an
+        // approval: the payment is still `received`.
+        Ok(payment) if payment.status == PaymentStatus::Received => Ok((
+            Toast::success(texts::t(&lang, "wl_payments.reverse.pending")),
+            renox::HxRefresh,
+        )
+            .into_response()),
         Ok(_) => Ok((
             Toast::success(texts::t(&lang, "wl_payments.reverse.done")),
             renox::HxRefresh,

@@ -426,6 +426,10 @@ impl Module for WlPayments {
                 |deposit: &Deposit| Some(wl_kernel::PartyId(deposit.party_id)),
             )
             .register();
+        // A vertical may put the reversal of a payment behind an approval
+        // (`payments.reverse`); the kernel runs `reverse_approved` by name.
+        wl_kernel::SubjectMachine::of::<Payment>(wl_kernel::payments::PAYMENT_SUBJECT_TYPE)
+            .register();
         app.model::<Payment>();
         app.model::<Allocation>();
         app.model::<Refund>();

@@ -23,6 +23,7 @@ use renox::prelude::*;
 use serde::Serialize;
 use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
 use wl_invoicing::WlInvoicing;
+use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::block_effects::{BlockEffect, BlockEffectOverride, effect_for};
 use wl_payments::WlPayments;
 
@@ -40,6 +41,8 @@ pub const CHEQUE_PRESENTATIONS: i64 = 2;
 pub const BOUNCE_REMIND_DAYS: i64 = 3;
 /// Days after a bounce when the accountant and the property manager decide.
 pub const BOUNCE_DECIDE_DAYS: i64 = 14;
+/// Hours a payment reversal request may wait before it can expire.
+pub const PAYMENT_REVERSAL_EXPIRY_HOURS: i64 = 168;
 /// The projected balance below which `FIN.RUL.23` alerts, in fils (AED 50,000).
 pub const CASH_THRESHOLD: i64 = 5_000_000;
 
@@ -100,6 +103,22 @@ pub fn register_block_effects(client_app: &str) {
     BlockEffectOverride::kind("service_contract")
         .effect(BlockEffect::Review)
         .decider(PROPERTY_MANAGER)
+        .register();
+}
+
+/// Registers the Property client's approval policies. The reversal of a payment
+/// (the `void` of a payment entered in error, and the reversal of a confirmed
+/// bank match) is a request that a property manager, or the company admin, who
+/// did not ask approves; the allocations are removed and the invoices reopen
+/// at the approval (`PLT.ACL.09`, `PRP.ACL.16`, items 14 and 15). Another
+/// client keeps the module's direct reversal.
+pub fn register_approvals(client_app: &str) {
+    if client_app != "property" {
+        return;
+    }
+    PolicyDefault::new(wl_payments::reverse::ACTION)
+        .step([PROPERTY_MANAGER, ADMIN])
+        .expiry_hours(Some(PAYMENT_REVERSAL_EXPIRY_HOURS))
         .register();
 }
 
@@ -329,15 +348,17 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
             "14",
             "Payments",
             "Payment void",
-            "with a reason, approved by another user".to_owned(),
-            module,
+            "with a reason, approved by a property manager or the company admin who did not ask; the allocations are reversed"
+                .to_owned(),
+            "approval policy payments.reverse",
         ),
         make(
             "15",
             "Payments",
             "Reversing a confirmed bank match",
-            "a property manager only".to_owned(),
-            "Property permission PRP.ACL.16",
+            "reversed only when a property manager (or the company admin) approves; the invoices reopen"
+                .to_owned(),
+            "approval policy payments.reverse (PRP.ACL.16)",
         ),
         make(
             "16",
@@ -570,6 +591,44 @@ mod tests {
     fn another_client_keeps_the_module_defaults() {
         assert!(!invoicing_for("other", &entities()).config().portal_disputes);
         assert!(!payments_for("other").config().deductions_dispute);
+    }
+
+    #[test]
+    fn the_auto_issue_row_shows_the_sources_the_client_sets() {
+        let rows = rows("property", &entities());
+        let row = rows.iter().find(|r| r.number == "7a").expect("item 7a");
+        assert_eq!(row.setting, "Drafts issued automatically");
+        assert_eq!(
+            row.value,
+            "on for ticketing.ticket, property.lease; reviewed for the others"
+        );
+        assert_eq!(row.source, "WlInvoicing::auto_issue_source");
+        // A client that sets none reviews every draft.
+        let other = rows_for_other_client();
+        assert_eq!(other, "off: every draft is reviewed");
+    }
+
+    /// The value of row 7a for a client the host has no values for.
+    fn rows_for_other_client() -> String {
+        rows("other", &entities())
+            .into_iter()
+            .find(|r| r.number == "7a")
+            .map(|r| r.value)
+            .expect("item 7a")
+    }
+
+    #[test]
+    fn the_party_blocked_rows_read_the_registered_effects() {
+        register_block_effects("property");
+        let rows = rows("property", &entities());
+        let value = |number: &str| {
+            rows.iter()
+                .find(|r| r.number == number)
+                .map(|r| r.value.clone())
+                .expect("a row")
+        };
+        assert_eq!(value("21"), "continue; decided by property_manager");
+        assert_eq!(value("22"), "review; decided by property_manager");
     }
 
     #[test]

@@ -418,6 +418,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.reverse.note", "Note"),
     ("wl_payments.reverse.submit", "Reverse payment"),
     ("wl_payments.reverse.done", "Payment reversed."),
+    (
+        "wl_payments.reverse.pending",
+        "The reversal waits for approval by another user.",
+    ),
     ("wl_payments.reverse.reason_required", "Give a reason."),
     ("wl_payments.sections.written_off", "Written-off invoices"),
     ("wl_payments.fields.invoice", "Invoice"),

@@ -32,6 +32,25 @@ async fn an_admin_sees_the_money_settings_of_the_property_client() {
         .assert_see("PGP AED 50,000.00");
 }
 
+/// The page shows what is in force: the invoice sources the Invoicer issues
+/// at once, the chargeable category, the block effects of leases and service
+/// contracts, and who approves a payment reversal.
+#[renox::test]
+async fn the_page_shows_the_auto_issue_sources_and_the_registered_effects() {
+    let app = TestApp::new(host::app()).await;
+    let admin = person(&app, "admin@example.com", ADMIN).await;
+    app.acting_as(&admin);
+    app.get("/settings/negative-flow")
+        .await
+        .assert_ok()
+        .assert_see("Drafts issued automatically")
+        .assert_see("on for ticketing.ticket, property.lease; reviewed for the others")
+        .assert_see("category tenant_repair")
+        .assert_see("continue; decided by property_manager")
+        .assert_see("review; decided by property_manager")
+        .assert_see("approval policy payments.reverse");
+}
+
 #[renox::test]
 async fn a_member_does_not_see_the_money_settings() {
     let app = TestApp::new(host::app()).await;
