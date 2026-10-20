@@ -17,17 +17,19 @@ use wl_inventory::movement::StockMovement;
 use wl_inventory::permissions as perm;
 use wl_inventory::supplier_return::{NewReturn, NewReturnLine};
 use wl_inventory::{
-    DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, Item, Location, Lot, LotStatus,
-    PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus, SupplierReturn, WlInventory,
+    DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, Item, LandedCost,
+    LandedCostAdjustment, Location, Lot, LotStatus, PurchaseOrder, PurchaseOrderLine,
+    PurchaseOrderStatus, SupplierReturn, WlInventory,
 };
 use wl_kernel::block_guard::{
     ActionKind, BlockFuture, BlockGuard, BlockRefusal, GuardOutcome, provide_block_guard,
 };
 use wl_kernel::inventory::{
-    GoodsReceived, PurchaseOrderRevised, SupplierReturnCredited, SupplierReturnDispatched,
+    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, PurchaseOrderRevised,
+    SupplierReturnCredited, SupplierReturnDispatched,
 };
 use wl_kernel::invoicing::{
-    CostPoster, DebitedLine, PostCost, SupplierBillFuture, SupplierBillId,
+    CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
     SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
@@ -206,8 +208,67 @@ impl CostPoster for CostDesk {
     }
 }
 
+/// A block guard that refuses the extension of an order to the suppliers set
+/// as blocked.
+#[derive(Clone, Default)]
+pub struct Blocked(Arc<Mutex<Vec<PartyId>>>);
+
+impl Blocked {
+    /// `party` is blocked from now on.
+    pub fn block(&self, party: PartyId) {
+        self.0.lock().unwrap().push(party);
+    }
+}
+
+impl BlockGuard for Blocked {
+    fn check_in<'a>(
+        &'a self,
+        _tx: &'a mut renox::db::Transaction,
+        _viewer: Option<&'a User>,
+        party: PartyId,
+        kind: ActionKind,
+    ) -> BlockFuture<'a, GuardOutcome> {
+        let blocked = kind.is_guarded() && self.0.lock().unwrap().contains(&party);
+        Box::pin(async move {
+            Ok(if blocked {
+                GuardOutcome::Blocked(BlockRefusal::neutral(party, kind, "finance_manager"))
+            } else {
+                GuardOutcome::Allowed
+            })
+        })
+    }
+}
+
+/// The dates in a filed accounting period, as wl-invoicing would answer.
+#[derive(Clone, Default)]
+pub struct PeriodDesk(Arc<Mutex<Vec<renox::chrono::NaiveDate>>>);
+
+impl PeriodDesk {
+    /// `date` is in a filed period from now on.
+    pub fn lock(&self, date: renox::chrono::NaiveDate) {
+        self.0.lock().unwrap().push(date);
+    }
+}
+
+impl PeriodLocks for PeriodDesk {
+    fn is_locked<'a>(
+        &'a self,
+        _db: &'a Db,
+        _entity: i64,
+        date: renox::chrono::NaiveDate,
+    ) -> SupplierBillFuture<'a, bool> {
+        let locked = self.0.lock().unwrap().contains(&date);
+        Box::pin(async move { Ok(locked) })
+    }
+}
+
 /// Records the events and stands in for ticketing and cost entries.
 struct Fakes {
+    revised: Arc<Mutex<Vec<PurchaseOrderRevised>>>,
+    allocated: Arc<Mutex<Vec<LandedCostAllocated>>>,
+    adjusted: Arc<Mutex<Vec<LandedCostAdjusted>>>,
+    blocked: Blocked,
+    locks: Option<PeriodDesk>,
     received: Arc<Mutex<Vec<GoodsReceived>>>,
     dispatched: Arc<Mutex<Vec<SupplierReturnDispatched>>>,
     credited: Arc<Mutex<Vec<SupplierReturnCredited>>>,
@@ -223,6 +284,11 @@ impl Module for Fakes {
 
     fn register(&self, app: &mut Registry) {
         record(app, &self.revised);
+        record(app, &self.allocated);
+        record(app, &self.adjusted);
+        if let Some(locks) = &self.locks {
+            wl_kernel::invoicing::provide_period_locks(app, locks.clone());
+        }
         provide_block_guard(app, self.blocked.clone());
         record(app, &self.received);
         record(app, &self.dispatched);
@@ -243,6 +309,12 @@ pub struct Booted {
     pub dispatched: Recorded<SupplierReturnDispatched>,
     /// Every `PurchaseOrderRevised`.
     pub revised: Recorded<PurchaseOrderRevised>,
+    /// Every `LandedCostAllocated`.
+    pub allocated: Recorded<LandedCostAllocated>,
+    /// Every `LandedCostAdjusted`.
+    pub adjusted: Recorded<LandedCostAdjusted>,
+    /// The dates in a filed period.
+    pub locks: PeriodDesk,
     /// The suppliers the block guard refuses.
     pub blocked: Blocked,
     /// `SupplierReturnCredited`.
@@ -438,6 +510,67 @@ impl Booted {
             .htmx()
             .post(&format!("/purchase-orders/{}/revise", order.id), &form)
             .await
+    }
+
+    /// `POST /landed-costs/{id}/allocate` as `by`, with the weights given as
+    /// `(receipt line, weight)`.
+    pub async fn allocate_as(
+        &self,
+        by: &User,
+        landed: &LandedCost,
+        weights: &[(i64, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        let keys: Vec<String> = weights
+            .iter()
+            .map(|(line, _)| format!("weight_{line}"))
+            .collect();
+        let form: Vec<(&str, &str)> = keys
+            .iter()
+            .zip(weights)
+            .map(|(key, (_, weight))| (key.as_str(), *weight))
+            .collect();
+        self.app
+            .htmx()
+            .post(&format!("/landed-costs/{}/allocate", landed.id), &form)
+            .await
+    }
+
+    /// `POST /landed-costs/{id}/adjustments/{adjustment}/post` as `by`.
+    pub async fn post_adjustment_as(
+        &self,
+        by: &User,
+        landed: &LandedCost,
+        adjustment: &LandedCostAdjustment,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                &format!(
+                    "/landed-costs/{}/adjustments/{}/post",
+                    landed.id, adjustment.id
+                ),
+                &[],
+            )
+            .await
+    }
+
+    /// The landed cost as stored now.
+    pub async fn landed_now(&self, landed: &LandedCost) -> LandedCost {
+        LandedCost::find_or_404(self.db(), landed.id).await.unwrap()
+    }
+
+    /// The adjustment as stored now.
+    pub async fn adjustment_now(&self, adjustment: &LandedCostAdjustment) -> LandedCostAdjustment {
+        LandedCostAdjustment::find_or_404(self.db(), adjustment.id)
+            .await
+            .unwrap()
+    }
+
+    /// The item as stored now.
+    pub async fn item_now(&self, item: &Item) -> Item {
+        Item::find_or_404(self.db(), item.id).await.unwrap()
     }
 
     /// `POST /supplier-returns/{id}/dispatch` as `by`, with a collection
@@ -673,6 +806,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     let received = Arc::new(Mutex::new(Vec::new()));
     let dispatched = Arc::new(Mutex::new(Vec::new()));
     let revised = Arc::new(Mutex::new(Vec::new()));
+    let allocated = Arc::new(Mutex::new(Vec::new()));
+    let adjusted = Arc::new(Mutex::new(Vec::new()));
+    let locks = PeriodDesk::default();
     let blocked = Blocked::default();
     let credited = Arc::new(Mutex::new(Vec::new()));
     let tickets = TicketDesk::default();
@@ -689,6 +825,11 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         app
     };
     let app = app.module(Fakes {
+        revised: revised.clone(),
+        allocated: allocated.clone(),
+        adjusted: adjusted.clone(),
+        blocked: blocked.clone(),
+        locks: (!with_invoicing).then(|| locks.clone()),
         received: received.clone(),
         dispatched: dispatched.clone(),
         credited: credited.clone(),
@@ -720,7 +861,11 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     permissions::define_role(
         app.db(),
         "procurement",
-        &[perm::PURCHASE_ORDERS_ISSUE, perm::SUPPLIER_RETURNS_MANAGE],
+        &[
+            perm::PURCHASE_ORDERS_ISSUE,
+            perm::SUPPLIER_RETURNS_MANAGE,
+            perm::LANDED_COSTS_POST,
+        ],
     )
     .await
     .unwrap();
@@ -729,6 +874,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         received: Recorded(received),
         dispatched: Recorded(dispatched),
         revised: Recorded(revised),
+        allocated: Recorded(allocated),
+        adjusted: Recorded(adjusted),
+        locks,
         blocked,
         credited: Recorded(credited),
         tickets,
