@@ -410,3 +410,63 @@ async fn a_new_mlro_sop_version_asks_the_readers_to_acknowledge_again_within_sev
     assert_eq!(asked.status, AckStatus::Pending);
     assert_eq!(asked.due_date, at(today(), 7));
 }
+
+/// `DOC.RUL.04` for the 04 SOPs: an acknowledgement still pending after its
+/// 7 days is reminded to the reader on the first run after the due date and
+/// every 3 days, and 7 days after the due date the reader's manager and the
+/// holders of the SOP's owner role (the MLRO) are told, once.
+#[renox::test]
+async fn an_overdue_sop_acknowledgement_is_reminded_every_three_days_and_escalated_once() {
+    use wl_documents::acknowledgements::run::run;
+
+    const REMINDER: &str = "documents.sop_ack_reminder";
+    const ESCALATED: &str = "documents.sop_ack_escalated";
+
+    let app = accounting_booted().await;
+    let owner = person(&app, "Mariam", host::roles::COMPLIANCE).await;
+    owner.assign_role(app.db(), ADMIN).await.unwrap();
+    let manager = person(&app, "Mona", ENGAGEMENT_MANAGER).await;
+    let (employee, specialist, _) = hired_specialist(&app, "Tariq").await;
+    let sop = Sop::query()
+        .where_(Sop::CODE.eq("SOP-ACC-AML-CDD"))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("seeded");
+    let version = publish_version(&app, &owner, &sop).await;
+    let ack = Acknowledgements::of_version(app.db(), sop.id, version.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|a| a.employee_id == employee.id)
+        .expect("asked");
+    let due = ack.due_date;
+    assert_eq!(due, at(today(), 7));
+
+    // Nothing on the due date; the first reminder the day after.
+    run(app.state(), due).await.unwrap();
+    assert!(messages_to(&app, REMINDER, &specialist).await.is_empty());
+    run(app.state(), at(due, 1)).await.unwrap();
+    assert_eq!(messages_to(&app, REMINDER, &specialist).await.len(), 1);
+    // The next two days: nothing; on the third day again.
+    run(app.state(), at(due, 2)).await.unwrap();
+    run(app.state(), at(due, 3)).await.unwrap();
+    assert_eq!(messages_to(&app, REMINDER, &specialist).await.len(), 1);
+    run(app.state(), at(due, 4)).await.unwrap();
+    assert_eq!(messages_to(&app, REMINDER, &specialist).await.len(), 2);
+    assert!(messages_to(&app, ESCALATED, &manager).await.is_empty());
+
+    // Seven days after the due date the manager and the MLRO are told, once.
+    run(app.state(), at(due, 7)).await.unwrap();
+    assert_eq!(messages_to(&app, ESCALATED, &manager).await.len(), 1);
+    assert_eq!(messages_to(&app, ESCALATED, &owner).await.len(), 1);
+    run(app.state(), at(due, 8)).await.unwrap();
+    run(app.state(), at(due, 12)).await.unwrap();
+    assert_eq!(messages_to(&app, ESCALATED, &manager).await.len(), 1);
+    assert_eq!(messages_to(&app, ESCALATED, &owner).await.len(), 1);
+    let after = SopAcknowledgement::find(app.db(), ack.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.escalated_on, Some(at(due, 7)));
+}
