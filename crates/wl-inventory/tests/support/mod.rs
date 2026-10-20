@@ -29,8 +29,9 @@ use wl_kernel::documents::{
     NoDocuments, RecordFlag, Validity,
 };
 use wl_kernel::inventory::{
-    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, PurchaseOrderRevised,
-    SupplierReturnCredited, SupplierReturnDispatched, SupplierScoreBelowThreshold,
+    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, PreferredSupplierChanged,
+    PurchaseOrderRevised, SupplierReturnCredited, SupplierReturnDispatched,
+    SupplierScoreBelowThreshold,
 };
 use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
@@ -520,6 +521,7 @@ struct Fakes {
     certificates: Certificates,
     incidents: SupplierIncidents,
     below: Arc<Mutex<Vec<SupplierScoreBelowThreshold>>>,
+    changed: Arc<Mutex<Vec<PreferredSupplierChanged>>>,
     locks: Option<PeriodDesk>,
     bills: Option<BillDesk>,
     received: Arc<Mutex<Vec<GoodsReceived>>>,
@@ -538,6 +540,7 @@ impl Module for Fakes {
     fn register(&self, app: &mut Registry) {
         record(app, &self.revised);
         record(app, &self.below);
+        record(app, &self.changed);
         record(app, &self.allocated);
         record(app, &self.adjusted);
         if let Some(bills) = &self.bills {
@@ -584,6 +587,8 @@ pub struct Booted {
     pub incidents: SupplierIncidents,
     /// Every `SupplierScoreBelowThreshold`.
     pub below: Recorded<SupplierScoreBelowThreshold>,
+    /// Every `PreferredSupplierChanged`.
+    pub changed: Recorded<PreferredSupplierChanged>,
     /// `SupplierReturnCredited`.
     pub credited: Recorded<SupplierReturnCredited>,
     /// The tickets opened for tasks.
@@ -1130,6 +1135,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     let certificates = Certificates::default();
     let incidents = SupplierIncidents::default();
     let below = Arc::new(Mutex::new(Vec::new()));
+    let changed = Arc::new(Mutex::new(Vec::new()));
     let credited = Arc::new(Mutex::new(Vec::new()));
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
@@ -1152,6 +1158,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         certificates: certificates.clone(),
         incidents: incidents.clone(),
         below: below.clone(),
+        changed: changed.clone(),
         locks: (!with_invoicing).then(|| locks.clone()),
         bills: (!with_invoicing).then(|| bills.clone()),
         received: received.clone(),
@@ -1215,7 +1222,11 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     permissions::define_role(
         app.db(),
         "procurement_manager",
-        &[perm::PURCHASE_ORDERS_ISSUE],
+        &[
+            perm::PURCHASE_ORDERS_ISSUE,
+            perm::ITEM_SUPPLIERS_MANAGE,
+            perm::ITEM_SUPPLIERS_APPROVE,
+        ],
     )
     .await
     .unwrap();
@@ -1235,6 +1246,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         certificates,
         incidents,
         below: Recorded(below),
+        changed: Recorded(changed),
         credited: Recorded(credited),
         tickets,
         costs,

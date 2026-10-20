@@ -1,7 +1,7 @@
 //! The host mounts wl-inventory when `client.toml` enables `inventory`
 //! (wl-kernel §5.1, wl-inventory §6, issue #220).
 
-use host::roles::{self, ADMIN, MEMBER, PROCUREMENT, STOREKEEPER};
+use host::roles::{self, ADMIN, MEMBER, PROCUREMENT, PROCUREMENT_MANAGER, STOREKEEPER};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_inventory::{Item, Location, permissions as inventory};
@@ -49,6 +49,15 @@ fn the_roles_hold_the_inventory_permissions() {
     // does not.
     assert!(holds(PROCUREMENT, inventory::LANDED_COSTS_POST));
     assert!(!holds(STOREKEEPER, inventory::LANDED_COSTS_POST));
+    // Procurement lists the suppliers of an item; only the manager approves
+    // a change of the preferred one (`STK.ACL.07`).
+    assert!(holds(PROCUREMENT, inventory::ITEM_SUPPLIERS_MANAGE));
+    assert!(!holds(PROCUREMENT, inventory::ITEM_SUPPLIERS_APPROVE));
+    assert!(holds(
+        PROCUREMENT_MANAGER,
+        inventory::ITEM_SUPPLIERS_APPROVE
+    ));
+    assert!(!holds(STOREKEEPER, inventory::ITEM_SUPPLIERS_MANAGE));
     assert!(
         holds(ADMIN, inventory::GOODS_RECEIPTS_POST)
             && holds(ADMIN, inventory::PURCHASE_ORDERS_ISSUE)
