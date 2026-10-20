@@ -41,13 +41,27 @@ async fn the_parties_page_needs_parties_view() {
 
 #[test]
 fn only_compliance_sees_restricted_block_reasons() {
-    let holds = |role: &str| {
-        roles::ROLES
-            .iter()
-            .find(|(name, _)| *name == role)
-            .is_some_and(|(_, grants)| grants.contains(&wl_parties::permissions::BLOCK_REASON_VIEW))
-    };
-    assert!(holds(COMPLIANCE));
-    assert!(!holds(ADMIN));
-    assert!(!holds(MEMBER));
+    let holds = |grants: &[&str]| grants.contains(&wl_parties::permissions::BLOCK_REASON_VIEW);
+    // Every role of the host, so a role added later cannot slip in.
+    for (name, grants) in roles::ROLES {
+        assert_eq!(
+            holds(grants),
+            *name == COMPLIANCE,
+            "{name}: only the compliance role sees restricted block reasons"
+        );
+    }
+    let names: Vec<&str> = roles::ROLES.iter().map(|(name, _)| *name).collect();
+    for role in [
+        COMPLIANCE,
+        ADMIN,
+        MEMBER,
+        roles::PARTNER,
+        roles::ENGAGEMENT_MANAGER,
+        roles::BILLING,
+        roles::TAX_SPECIALIST,
+        roles::ACCOUNTANT,
+        roles::HR,
+    ] {
+        assert!(names.contains(&role), "{role} is a host role");
+    }
 }
