@@ -13,11 +13,14 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
 use wl_inventory::permissions as perm;
+use wl_inventory::item::value_of;
+use wl_inventory::movement::StockMovement;
+use wl_inventory::supplier_return::{NewReturn, NewReturnLine};
 use wl_inventory::{
-    DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, Item, Location, PurchaseOrder,
-    PurchaseOrderLine, PurchaseOrderStatus, WlInventory,
+    DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, Item, Location, Lot, LotStatus,
+    PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus, SupplierReturn, WlInventory,
 };
-use wl_kernel::inventory::GoodsReceived;
+use wl_kernel::inventory::{GoodsReceived, SupplierReturnDispatched};
 use wl_kernel::{PartyId, Subject};
 
 /// A client with the inventory module on.
@@ -64,6 +67,7 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
 /// Records the events.
 struct Fakes {
     received: Arc<Mutex<Vec<GoodsReceived>>>,
+    dispatched: Arc<Mutex<Vec<SupplierReturnDispatched>>>,
 }
 
 impl Module for Fakes {
@@ -73,6 +77,7 @@ impl Module for Fakes {
 
     fn register(&self, app: &mut Registry) {
         record(app, &self.received);
+        record(app, &self.dispatched);
     }
 }
 
@@ -82,6 +87,8 @@ pub struct Booted {
     pub app: TestApp,
     /// `GoodsReceived`.
     pub received: Recorded<GoodsReceived>,
+    /// `SupplierReturnDispatched`.
+    pub dispatched: Recorded<SupplierReturnDispatched>,
 }
 
 impl Booted {
@@ -221,6 +228,88 @@ impl Booted {
             .await
     }
 
+    /// `POST /supplier-returns/{id}/dispatch` as `by`, with a collection
+    /// proof of `kind` (`driver_signature`, `courier`, `goods_receipt`).
+    pub async fn dispatch_as(
+        &self,
+        by: &User,
+        ret: &SupplierReturn,
+        kind: &str,
+        reference: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                &format!("/supplier-returns/{}/dispatch", ret.id),
+                &[("proof_kind", kind), ("proof_ref", reference)],
+            )
+            .await
+    }
+
+    /// `quantity_milli` of `item` in `location` (and `lot`) at `unit_cost`
+    /// fils a unit, as a `receive` movement of an earlier receipt.
+    pub async fn stock_in(
+        &self,
+        item: &Item,
+        location: &Location,
+        lot: Option<&Lot>,
+        quantity_milli: i64,
+        unit_cost: i64,
+    ) {
+        let source = Subject::new("inventory.goods_receipt", 900);
+        let mut moved = StockMovement::receive(
+            item.id,
+            lot.map(|l| l.id),
+            location.id,
+            quantity_milli,
+            unit_cost,
+            value_of(quantity_milli, unit_cost),
+            &source,
+            None,
+        );
+        moved.save(self.db()).await.unwrap();
+    }
+
+    /// A lot `number` of `item` in `status`.
+    pub async fn lot(&self, item: &Item, number: &str, status: LotStatus) -> Lot {
+        let mut lot = Lot {
+            item_id: item.id,
+            number: number.to_owned(),
+            status,
+            ..Lot::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        lot.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+        tx.commit().await.unwrap();
+        lot
+    }
+
+    /// A draft return of `lines` taken from stock at `location`.
+    pub async fn stock_return(
+        &self,
+        location: &Location,
+        lines: Vec<NewReturnLine>,
+    ) -> SupplierReturn {
+        wl_inventory::supplier_return::create_from_stock(
+            self.db(),
+            None,
+            NewReturn {
+                supplier: SUPPLIER,
+                source: Subject::new("inventory.stock_hold", 1),
+                location_id: location.id,
+                lines,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// The return as stored now.
+    pub async fn return_now(&self, ret: &SupplierReturn) -> SupplierReturn {
+        SupplierReturn::find_or_404(self.db(), ret.id).await.unwrap()
+    }
+
     /// The receipt as stored now.
     pub async fn reload(&self, receipt: &GoodsReceipt) -> GoodsReceipt {
         GoodsReceipt::find_or_404(self.db(), receipt.id).await.unwrap()
@@ -253,6 +342,7 @@ pub async fn boot() -> Booted {
 /// storekeeper and of procurement defined.
 pub async fn boot_with(module: WlInventory) -> Booted {
     let received = Arc::new(Mutex::new(Vec::new()));
+    let dispatched = Arc::new(Mutex::new(Vec::new()));
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -260,6 +350,7 @@ pub async fn boot_with(module: WlInventory) -> Booted {
         .module(module)
         .module(Fakes {
             received: received.clone(),
+            dispatched: dispatched.clone(),
         });
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -274,11 +365,16 @@ pub async fn boot_with(module: WlInventory) -> Booted {
     permissions::define_role(app.db(), "stores_manager", &[perm::GOODS_RECEIPTS_REVERSE])
         .await
         .unwrap();
-    permissions::define_role(app.db(), "procurement", &[perm::PURCHASE_ORDERS_ISSUE])
+    permissions::define_role(
+        app.db(),
+        "procurement",
+        &[perm::PURCHASE_ORDERS_ISSUE, perm::SUPPLIER_RETURNS_MANAGE],
+    )
         .await
         .unwrap();
     Booted {
         app,
         received: Recorded(received),
+        dispatched: Recorded(dispatched),
     }
 }

@@ -79,7 +79,8 @@ async fn accepted_goods_enter_stock_and_rejected_ones_go_back_to_the_supplier() 
     assert_eq!(returns.len(), 1);
     let ret = &returns[0];
     assert_eq!(ret.handling, RejectedHandling::RefusedAtDoor);
-    assert_eq!(ret.status, ReturnStatus::Draft);
+    // The system dispatched it as the receipt posted (BL-STK-03).
+    assert_eq!(ret.status, ReturnStatus::Dispatched);
     assert_eq!(ret.supplier_party_id, support::SUPPLIER.0);
     assert!(ret.number.as_deref().is_some_and(|n| n.starts_with("RTS-")));
     assert_eq!(
