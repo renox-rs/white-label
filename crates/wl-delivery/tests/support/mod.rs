@@ -23,7 +23,7 @@ use wl_kernel::workforce::Workforce;
 use wl_kernel::{
     ClientConfig, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered, DeliveryItem,
     DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryLost, DeliveryOutForDelivery,
-    DeliveryRequest, PodMethod, RunDispatched, Subject,
+    DeliveryRefusedReceived, DeliveryRequest, PodMethod, RunClosed, RunDispatched, Subject,
 };
 use wl_kernel::tickets::TaskCreator;
 
@@ -121,6 +121,10 @@ pub struct World {
     pub lost: Recorded<DeliveryLost>,
     /// `DeliveryFound`.
     pub found: Recorded<DeliveryFound>,
+    /// `DeliveryRefusedReceived`.
+    pub refused_received: Recorded<DeliveryRefusedReceived>,
+    /// `RunClosed`.
+    pub run_closed: Recorded<RunClosed>,
     /// The tickets the module opened, resolved and commented on.
     pub tickets: TicketDesk,
     /// Asks for a loss: holds `deliveries.reverse` and manages deliveries.
@@ -174,6 +178,19 @@ impl World {
             .set(&self.driver_subject(), documents::LICENCE, until);
         self.docs
             .set(&self.driver_subject(), documents::RIDER_PERMIT, until);
+        self.docs
+            .set(&self.vehicle_subject(), documents::MULKIYA, until);
+        self.docs
+            .set(&self.vehicle_subject(), documents::INSURANCE, until);
+    }
+
+    /// Every document of the user `user_id` as a driver and of the van is
+    /// valid through `until`.
+    pub fn valid_documents_for(&self, user_id: i64, until: &str) {
+        let until = Some(date(until));
+        let subject = employee_of(user_id).subject();
+        self.docs.set(&subject, documents::LICENCE, until);
+        self.docs.set(&subject, documents::RIDER_PERMIT, until);
         self.docs
             .set(&self.vehicle_subject(), documents::MULKIYA, until);
         self.docs
@@ -432,6 +449,8 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
     let dispute_closed = Recorded::new();
     let lost = Recorded::new();
     let found = Recorded::new();
+    let refused_received = Recorded::new();
+    let run_closed = Recorded::new();
     let tickets = TicketDesk::default();
     let roster = Roster::default();
     let guard: Arc<dyn DocumentGuard> = Arc::new(docs.clone());
@@ -454,6 +473,8 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
     let app = record(app, &dispute_closed);
     let app = record(app, &lost);
     let app = record(app, &found);
+    let app = record(app, &refused_received);
+    let app = record(app, &run_closed);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -514,6 +535,8 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
         dispute_closed,
         lost,
         found,
+        refused_received,
+        run_closed,
         tickets,
         ops_a,
         ops_b,
@@ -536,4 +559,9 @@ pub async fn chief_driver(w: &World) -> User {
         &[perm::RUNS_DRIVE, perm::COMPLETE, perm::REVERSE, perm::MANAGE, perm::VIEW],
     )
     .await
+}
+
+/// A user holding exactly `grants`.
+pub async fn user_with(w: &World, name: &str, grants: &[&str]) -> User {
+    make_user(w.db(), name, grants).await
 }
