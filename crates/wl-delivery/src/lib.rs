@@ -5,6 +5,7 @@ pub mod day_list;
 pub mod delivery;
 mod delivery_machine;
 pub mod doc_guard;
+pub mod lost;
 pub mod pages;
 pub mod plan;
 pub mod proof;
@@ -122,6 +123,13 @@ impl WlDelivery {
         self.settings.set_cod_tolerance(fils);
         self
     }
+
+    /// Sets the days a delivery may go untraced before `WRK.RUL.17` marks
+    /// it lost (§7: 7).
+    pub fn untraced_days(mut self, days: i64) -> Self {
+        self.settings.set_untraced_days(days);
+        self
+    }
 }
 
 impl Module for WlDelivery {
@@ -197,6 +205,9 @@ impl Module for WlDelivery {
         // `delivery.assign` and `run.dispatch` are guardable transitions of
         // the document kinds' `blocks` (#157).
         doc_guard::register();
+        // `mark_lost`'s approval (`WRK.ACL.10`), the claim ticket and
+        // `DeliveryLost` after a loss, and the rule `WRK.RUL.17` at 02:00.
+        lost::register(app);
         // The seeded defaults keep the client's changes.
         app.command(
             "delivery:install",

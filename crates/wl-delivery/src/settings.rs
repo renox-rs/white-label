@@ -17,6 +17,9 @@ use wl_kernel::delivery::PodMethod;
 /// photo and signature, both needed (§7).
 pub const DEFAULT_METHODS: [PodMethod; 2] = [PodMethod::Photo, PodMethod::Signature];
 
+/// The days untraced before a delivery is marked lost (`WRK.RUL.17`, §7).
+pub const DEFAULT_UNTRACED_DAYS: i64 = 7;
+
 /// The settings. `Default` is the §7 defaults.
 #[derive(Debug, Clone)]
 pub struct DeliverySettings {
@@ -27,6 +30,9 @@ pub struct DeliverySettings {
     proof: BTreeMap<String, (Vec<PodMethod>, bool)>,
     /// The cash difference accepted without a reason, in fils (§7: 0).
     cod_tolerance: i64,
+    /// The days a delivery may go untraced before `WRK.RUL.17` marks it lost
+    /// (§7: 7).
+    untraced_days: i64,
 }
 
 impl Default for DeliverySettings {
@@ -35,6 +41,7 @@ impl Default for DeliverySettings {
             partial: BTreeMap::new(),
             proof: BTreeMap::new(),
             cod_tolerance: 0,
+            untraced_days: DEFAULT_UNTRACED_DAYS,
         }
     }
 }
@@ -55,6 +62,16 @@ impl DeliverySettings {
     /// Sets the cash difference accepted without a reason, in fils.
     pub fn set_cod_tolerance(&mut self, fils: i64) {
         self.cod_tolerance = fils.max(0);
+    }
+
+    /// Sets the days a delivery may go untraced before it is marked lost.
+    pub fn set_untraced_days(&mut self, days: i64) {
+        self.untraced_days = days.max(1);
+    }
+
+    /// The days a delivery may go untraced before it is marked lost.
+    pub fn untraced_days(&self) -> i64 {
+        self.untraced_days
     }
 
     /// Whether a delivery for `source_type` may be partly accepted.
@@ -96,6 +113,7 @@ mod tests {
             (vec![PodMethod::Photo, PodMethod::Signature], false)
         );
         assert_eq!(settings.cod_tolerance(), 0);
+        assert_eq!(settings.untraced_days(), 7);
     }
 
     #[test]

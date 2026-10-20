@@ -92,6 +92,8 @@ fn lost(lines: &[i64], ticket: Option<i64>) -> DeliveryLost {
         source: order(),
         was_under_review: true,
         ticket: ticket.map(TicketId),
+        liability: "none".to_owned(),
+        run: None,
         lines: lines.iter().map(|n| line(*n)).collect(),
     }
 }

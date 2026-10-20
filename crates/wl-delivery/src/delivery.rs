@@ -130,6 +130,14 @@ pub struct Delivery {
     pub review_note: Option<String>,
     /// When the review was opened.
     pub reviewed_at: Option<DateTime>,
+    /// Why it was marked lost.
+    pub lost_reason: Option<String>,
+    /// Who bears the loss: `driver`, `business`, `client` or `none`.
+    pub lost_liability: Option<String>,
+    /// When it was marked lost.
+    pub lost_at: Option<DateTime>,
+    /// The claim ticket opened when it was lost; `None` when ticketing is off.
+    pub claim_ticket_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: DeliveryStatus,
     /// When the row was created.

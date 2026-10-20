@@ -539,11 +539,33 @@ pub struct DeliveryLost {
     pub was_under_review: bool,
     /// The review ticket, when it was under review and ticketing is on.
     pub ticket: Option<TicketId>,
+    /// Who bears the loss: `driver`, `business`, `client` or `none` (the
+    /// system sets `none`).
+    pub liability: String,
+    /// The run the delivery was last on, if it was on one.
+    pub run: Option<RunId>,
     /// The source line references of the delivery's lines.
     pub lines: Vec<Subject>,
 }
 
 impl Event for DeliveryLost {}
+
+/// A lost delivery was found at a depot (`found`): it is `attempted` again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryFound {
+    /// The delivery.
+    pub delivery: DeliveryId,
+    /// The record the delivery was requested for.
+    pub source: Subject,
+    /// The depot where the goods were scanned or confirmed.
+    pub depot: String,
+    /// The claim ticket opened when it was lost, if there is one.
+    pub claim_ticket: Option<TicketId>,
+    /// The source line references of the delivery's lines.
+    pub lines: Vec<Subject>,
+}
+
+impl Event for DeliveryFound {}
 
 #[cfg(test)]
 mod tests {
@@ -582,6 +604,8 @@ mod tests {
             source: line.clone(),
             was_under_review: true,
             ticket: Some(TicketId(11)),
+            liability: "none".to_owned(),
+            run: Some(RunId(3)),
             lines: vec![line.clone()],
         };
         let value = to_value(&lost).unwrap();

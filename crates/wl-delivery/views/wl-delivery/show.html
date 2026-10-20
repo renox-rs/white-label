@@ -22,7 +22,23 @@
         <rx-select name="outcome" :label="tx['actions.close_review_outcome']" :options="review_outcomes" :selected="'upheld'" :id="'close-review-outcome-' ~ delivery.id" required/>
         <rx-textarea name="note" :label="tx['actions.close_review_note']" :id="'close-review-note-' ~ delivery.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_mark_lost" :id="'mark-lost-' ~ delivery.id" :label="tx['actions.mark_lost']" :action="route('wl_delivery.mark_lost', delivery.id)"
+                       :title="tx['actions.mark_lost_title']" :description="tx['actions.mark_lost_description']" :submit-label="tx['actions.mark_lost']" icon="package-x" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['actions.mark_lost_reason']" :id="'mark-lost-reason-' ~ delivery.id" required/>
+        <rx-select name="liability" :label="tx['actions.mark_lost_liability']" :options="liabilities" :selected="'none'" :id="'mark-lost-liability-' ~ delivery.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_find" :id="'found-' ~ delivery.id" :label="tx['actions.found']" :action="route('wl_delivery.found', delivery.id)"
+                       :title="tx['actions.found_title']" :description="tx['actions.found_description']" :submit-label="tx['actions.found']" icon="package-check">
+        <rx-input name="depot" :label="tx['actions.found_depot']" :id="'found-depot-' ~ delivery.id" required/>
+      </rx-action-sheet>
     </rx-page-header>
+    <rx-card rx-if="lost" :title="tx['lost.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['lost.reason']" :value="lost.reason"/>
+        <rx-entry :label="tx['lost.liability']" :value="lost.liability"/>
+        <rx-entry :label="tx['lost.claim']" :value="lost.claim" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
     <rx-card rx-if="review" :title="tx['review.title']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['review.reason']" :value="review.reason"/>

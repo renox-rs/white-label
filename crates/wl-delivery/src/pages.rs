@@ -9,6 +9,9 @@
 //! | `POST /deliveries/{id}/unassign` | `wl_delivery.unassign` | `deliveries.dispatch` |
 //! | `POST /deliveries/{id}/open-review` | `wl_delivery.open_review` | `deliveries.manage` (field `reason`) |
 //! | `POST /deliveries/{id}/close-review` | `wl_delivery.close_review` | `deliveries.manage` (fields `outcome`, `note`) |
+//! | `POST /deliveries/{id}/found` | `wl_delivery.found` | `deliveries.manage` (field `depot`) |
+//! | `POST /deliveries/{id}/trace` | `wl_delivery.trace` | `deliveries.manage` (fields `kind`: `scan`, `note` or `depot_receipt`; `note`, `depot`) |
+//! | `POST /deliveries/{id}/mark-lost` | `wl_delivery.mark_lost` | `deliveries.reverse` (fields `reason`, `liability`) |
 //! | `GET /runs` | `wl_delivery.runs` | `runs.view` |
 //! | `GET /runs/{id}` | `wl_delivery.run` | `runs.view` |
 //! | `POST /runs` | `wl_delivery.runs_store` | `runs.dispatch` (fields `run_date`, `driver_user_id`, `vehicle_type`, `vehicle_asset_id`, `depot`) |
@@ -39,6 +42,7 @@ use wl_kernel::documents::{dubai_text, today};
 
 use crate::day_list::{StopView, stop_of, stops_of};
 use crate::delivery::{Attempt, Delivery, DeliveryStatus};
+use crate::lost;
 use crate::permissions;
 use crate::plan::{self, NewRun};
 use crate::proof::{self, DeliverForm, LineEntry, aed, milli_text};
@@ -82,7 +86,17 @@ pub fn routes() -> Routes {
                 .name("wl_delivery.open_review")
                 .post("/deliveries/{id}/close-review", store_close_review)
                 .name("wl_delivery.close_review")
+                .post("/deliveries/{id}/found", store_found)
+                .name("wl_delivery.found")
+                .post("/deliveries/{id}/trace", store_trace)
+                .name("wl_delivery.trace")
                 .require_permission(permissions::MANAGE),
+        )
+        .merge(
+            Routes::new()
+                .post("/deliveries/{id}/mark-lost", store_mark_lost)
+                .name("wl_delivery.mark_lost")
+                .require_permission(permissions::REVERSE),
         )
         .merge(
             Routes::new()
@@ -315,6 +329,14 @@ pub(crate) struct ReviewRow {
     note: Option<String>,
 }
 
+/// The loss as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct LostRow {
+    reason: String,
+    liability: String,
+    claim: Option<String>,
+}
+
 /// What the delivery page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-delivery/show.html")]
@@ -332,6 +354,12 @@ pub(crate) struct ShowPage {
     can_unassign: bool,
     can_open_review: bool,
     can_close_review: bool,
+    can_mark_lost: bool,
+    can_find: bool,
+    /// The loss of a delivery that is or was lost.
+    lost: Option<LostRow>,
+    /// `(value, label)` of who can bear a loss.
+    liabilities: Vec<(String, String)>,
     /// The review of a delivery that is or was under review.
     review: Option<ReviewRow>,
     /// `(value, label)` of the outcomes a review closes with.
@@ -430,6 +458,26 @@ async fn show(
         note: delivery.review_note.clone(),
     });
     let review_outcomes = vec![("upheld".to_owned(), t("outcome.upheld"))];
+    let driver_of_run = run.as_ref().is_some_and(|r| r.driver_user_id == user.id);
+    let can_mark_lost = user.has_permission(permissions::REVERSE)
+        && !driver_of_run
+        && matches!(
+            delivery.status,
+            DeliveryStatus::OutForDelivery | DeliveryStatus::Attempted | DeliveryStatus::UnderReview
+        );
+    let can_find = manager && delivery.status == DeliveryStatus::Lost;
+    let lost = delivery.lost_reason.as_ref().map(|reason| LostRow {
+        reason: reason.clone(),
+        liability: t(&format!(
+            "liability.{}",
+            delivery.lost_liability.as_deref().unwrap_or("none")
+        )),
+        claim: delivery.claim_ticket_id.map(|id| id.to_string()),
+    });
+    let liabilities = crate::lost::LIABILITIES
+        .iter()
+        .map(|key| ((*key).to_owned(), t(&format!("liability.{key}"))))
+        .collect();
     let planned_runs = if can_assign {
         Run::query()
             .where_(Run::STATUS.eq(RunStatus::Planned))
@@ -473,6 +521,10 @@ async fn show(
         can_unassign,
         can_open_review,
         can_close_review,
+        can_mark_lost,
+        can_find,
+        lost,
+        liabilities,
         review,
         review_outcomes,
         planned_runs,
@@ -584,6 +636,98 @@ async fn store_close_review(
         .map_err(TransitionError::into_error)?;
     Ok((
         Toast::success(texts::t(&lang, "wl_delivery.actions.review_closed")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that asks to mark a delivery lost.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct MarkLostForm {
+    /// Why the delivery is lost.
+    #[serde(default)]
+    pub reason: String,
+    /// Who bears the loss: `driver`, `business`, `client` or `none`.
+    #[serde(default)]
+    pub liability: String,
+}
+
+/// `POST /deliveries/{id}/mark-lost`: asks to mark the delivery lost. With
+/// the policy `delivery.mark_lost` the request waits for a second holder of
+/// `deliveries.reverse`; the answer says so. A refusal answers 422.
+async fn store_mark_lost(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<MarkLostForm>,
+) -> Result<Response> {
+    let asked = lost::mark_lost(&state, &user, &delivery, &form.reason, &form.liability)
+        .await
+        .map_err(TransitionError::into_error)?;
+    let key = match asked {
+        lost::LostRequest::Lost => "wl_delivery.actions.mark_lost_done",
+        lost::LostRequest::Requested(_) => "wl_delivery.actions.mark_lost_requested",
+    };
+    Ok((Toast::success(texts::t(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// The form that records that a lost delivery was found.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct FoundForm {
+    /// The depot where the goods were scanned or confirmed.
+    #[serde(default)]
+    pub depot: String,
+}
+
+/// `POST /deliveries/{id}/found`: the goods of a lost delivery were found
+/// at a depot; it goes back to `attempted`.
+async fn store_found(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<FoundForm>,
+) -> Result<Response> {
+    lost::found(&state, &user, &delivery, &form.depot)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.actions.found_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that records a scan, a note or a depot receipt.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct TraceForm {
+    /// `scan`, `note` or `depot_receipt`.
+    #[serde(default)]
+    pub kind: String,
+    /// The note.
+    #[serde(default)]
+    pub note: String,
+    /// The depot of a scan or a receipt.
+    #[serde(default)]
+    pub depot: String,
+}
+
+/// `POST /deliveries/{id}/trace`: records that the goods were traced (a scan
+/// at a depot, a note, a depot receipt); the untraced clock of the lost rule
+/// restarts, and a manual loss waiting for approval fails.
+async fn store_trace(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<TraceForm>,
+) -> Result<Response> {
+    crate::trace::record(&state, &user, &delivery, form.kind.trim(), &form.note, &form.depot)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.actions.traced")),
         renox::HxRefresh,
     )
         .into_response())

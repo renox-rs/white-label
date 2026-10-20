@@ -7,13 +7,15 @@
 //!         out_for_delivery --fail--> attempted
 //!         pending | assigned --cancel--> cancelled (terminal)
 //! delivered --open_review--> under_review --close_review--> delivered
+//! out_for_delivery | attempted | under_review --mark_lost--> lost --found--> attempted
 //! ```
 //!
 //! Every state of §4.1 is declared with its tone so the diagram is whole;
-//! the transitions out of `attempted` and `lost` come with their issues
-//! (BL-DLV-03 to BL-DLV-07). `assign`, `unassign`, `dispatch` and `cancel`
-//! are in [`crate::plan`], `deliver` and `fail` in [`crate::proof`],
-//! `open_review` and `close_review` in [`crate::review`]. `Delivery` is
+//! the transitions out of `attempted` come with their issues (BL-DLV-03,
+//! BL-DLV-07). `assign`, `unassign`, `dispatch` and `cancel` are in
+//! [`crate::plan`], `deliver` and `fail` in [`crate::proof`],
+//! `open_review` and `close_review` in [`crate::review`], `mark_lost` (and its
+//! approved and system twins) and `found` in [`crate::lost`]. `Delivery` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
 use renox::state_machine::{Machine, StateMachine};
@@ -58,6 +60,7 @@ impl StateMachine for Delivery {
             .into_iter()
             .chain(crate::proof::transitions())
             .chain(crate::review::transitions())
+            .chain(crate::lost::transitions())
             .fold(machine, Machine::transition)
     }
 }
@@ -106,6 +109,25 @@ mod tests {
             ("open_review", vec!["delivered"], "under_review", false),
             ("open_review_system", vec!["delivered"], "under_review", true),
             ("close_review", vec!["under_review"], "delivered", false),
+            (
+                "mark_lost",
+                vec!["out_for_delivery", "attempted", "under_review"],
+                "lost",
+                false,
+            ),
+            (
+                "mark_lost_approved",
+                vec!["out_for_delivery", "attempted", "under_review"],
+                "lost",
+                true,
+            ),
+            (
+                "mark_lost_system",
+                vec!["out_for_delivery", "attempted", "under_review"],
+                "lost",
+                true,
+            ),
+            ("found", vec!["lost"], "attempted", false),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to, system) in expected {

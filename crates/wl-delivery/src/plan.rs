@@ -177,6 +177,14 @@ fn dispatch_transition() -> Transition<Delivery> {
         .from([DeliveryStatus::Assigned])
         .to(DeliveryStatus::OutForDelivery)
         .system()
+        // The goods left: the untraced clock of `WRK.RUL.17` starts here.
+        .effect(|delivery: &Delivery, _ctx, tx| {
+            let id = delivery.id;
+            Box::pin(async move {
+                crate::trace::insert_in(&mut *tx, id, crate::trace::DISPATCH, "", "", renox::db::now(), None)
+                    .await
+            })
+        })
 }
 
 /// What makes a run.

@@ -611,7 +611,7 @@ async fn saved_proof_text(db: &Db, delivery: &Delivery) -> String {
 }
 
 /// The number the next visit of `delivery` gets.
-async fn next_attempt_number(db: &Db, delivery: &Delivery) -> Result<i64> {
+pub(crate) async fn next_attempt_number(db: &Db, delivery: &Delivery) -> Result<i64> {
     let made = Attempt::query()
         .where_(Attempt::DELIVERY_ID.eq(delivery.id))
         .count(db)

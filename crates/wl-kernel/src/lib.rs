@@ -90,7 +90,8 @@ pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use consents::{Consents, NoConsents};
 pub use delivery::{
     DELIVERY_SUBJECT_TYPE, DeliveredLine, DeliveryAssigned, DeliveryAttemptFailed,
-    DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed, DeliveryFuture, DeliveryId,
+    DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryFuture,
+    DeliveryId,
     DeliveryItem, DeliveryLost, DeliveryOutForDelivery, DeliveryRequest, DeliveryRequester,
     DeliveryReversed, NoDeliveries, PodMethod, RUN_SUBJECT_TYPE, ReviewOutcome, RunDispatched,
     RunId, provide_requester,
