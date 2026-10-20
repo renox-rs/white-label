@@ -143,6 +143,56 @@ pub struct EmployeeDeceased {
 
 impl Event for EmployeeDeceased {}
 
+/// A vertical opened an absence case for an employee (`MPW.RUL.09`,
+/// `CON.RUL.08`): N consecutive days without attendance or approved leave.
+/// `wl-hr` keeps it, because `report_absconding` needs an open case and
+/// counts the days from `last_present_on`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AbsenceCaseOpened {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The case, e.g. `ticketing.ticket:12`.
+    pub case: Subject,
+    /// The day the case was opened.
+    pub opened_on: NaiveDate,
+    /// The last day with attendance or approved leave (day 0 of the
+    /// absence), as the vertical counted it from the attendance records.
+    pub last_present_on: NaiveDate,
+}
+
+impl Event for AbsenceCaseOpened {}
+
+/// A vertical closed the absence case of an employee, e.g. the worker
+/// returned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AbsenceCaseClosed {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The case.
+    pub case: Subject,
+    /// The day it was closed.
+    pub closed_on: NaiveDate,
+    /// Why.
+    pub reason: String,
+}
+
+impl Event for AbsenceCaseClosed {}
+
+/// An employee was reported as absconded (`report_absconding`, approved under
+/// `HRM.ACL.07`): the apps end the deployments, the portal and attendance are
+/// off, the open pay is held.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeAbsconded {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The MoHRE absence report number.
+    pub report_number: String,
+    /// The MoHRE absence report date.
+    pub report_date: NaiveDate,
+}
+
+impl Event for EmployeeAbsconded {}
+
 /// A scope assignment or the job role of an employee was added, changed or
 /// ended. It does not start an onboarding by itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

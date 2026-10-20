@@ -53,6 +53,53 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.employees.type.temporary", "Temporary"),
     ("wl_hr.employees.type.freelance", "Freelance"),
     // Non-standard exits (`HRM.ACL.07`).
+    // The absence of an employee and `report_absconding` (#197).
+    ("wl_hr.absence.title", "Absence"),
+    ("wl_hr.absence.attempts", "Attempts to reach the worker"),
+    ("wl_hr.absence.record", "Record a contact attempt"),
+    ("wl_hr.absence.submit", "Record"),
+    ("wl_hr.absence.recorded", "Contact attempt recorded."),
+    ("wl_hr.absence.none", "No attempts recorded"),
+    ("wl_hr.absence.date", "Date"),
+    ("wl_hr.absence.method", "Method (phone, SMS, visit)"),
+    ("wl_hr.absence.outcome", "Outcome"),
+    ("wl_hr.absence.note", "Note"),
+    ("wl_hr.absence.by", "By"),
+    ("wl_hr.absence.outcome.no_answer", "No answer"),
+    ("wl_hr.absence.outcome.unreachable", "Unreachable"),
+    ("wl_hr.absence.outcome.reached", "Reached"),
+    (
+        "wl_hr.absence.method_required",
+        "Say how you tried to reach the worker.",
+    ),
+    (
+        "wl_hr.absence.future_date",
+        "The attempt cannot be dated after today.",
+    ),
+    (
+        "wl_hr.absence.not_absent",
+        "Attempts are recorded for an employee who is working or absconded.",
+    ),
+    (
+        "wl_hr.absconding.no_case",
+        "No absence case is open for this employee.",
+    ),
+    (
+        "wl_hr.absconding.too_early",
+        "More than :days days must have passed since the last day with attendance or approved leave (:last); :passed so far.",
+    ),
+    (
+        "wl_hr.absconding.not_unreachable",
+        "The worker counts as unreachable after :attempts failed contact attempts on different days of the absence.",
+    ),
+    (
+        "wl_hr.payroll.reason_required",
+        "Each failed line needs the reason from the bank's result file.",
+    ),
+    (
+        "wl_hr.payroll.failed_lines_left",
+        "Fix each failed line or move it out of the run (held) first.",
+    ),
     ("wl_hr.exits.title", "Non-standard exit"),
     ("wl_hr.exits.request", "Request an exit action"),
     ("wl_hr.exits.submit", "Send for approval"),
@@ -65,15 +112,33 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.exits.report_number", "MoHRE absence report number"),
     ("wl_hr.exits.report_date", "Report date"),
     ("wl_hr.exits.report_file", "Report file (document number)"),
-    ("wl_hr.exits.agreement", "Written agreement (document number or reference)"),
-    ("wl_hr.exits.reference", "Withdrawal or cancellation reference"),
-    ("wl_hr.exits.death_document", "Death certificate (document number or reference)"),
-    ("wl_hr.exits.authority_notice", "Authority notice (document number or reference)"),
+    (
+        "wl_hr.exits.agreement",
+        "Written agreement (document number or reference)",
+    ),
+    (
+        "wl_hr.exits.reference",
+        "Withdrawal or cancellation reference",
+    ),
+    (
+        "wl_hr.exits.death_document",
+        "Death certificate (document number or reference)",
+    ),
+    (
+        "wl_hr.exits.authority_notice",
+        "Authority notice (document number or reference)",
+    ),
     ("wl_hr.exits.death_date", "Date of death"),
     ("wl_hr.exits.return_date", "Date the worker returned"),
-    ("wl_hr.exits.transition.cancel_onboarding", "Cancel onboarding"),
+    (
+        "wl_hr.exits.transition.cancel_onboarding",
+        "Cancel onboarding",
+    ),
     ("wl_hr.exits.transition.withdraw_notice", "Withdraw notice"),
-    ("wl_hr.exits.transition.report_absconding", "Report absconding"),
+    (
+        "wl_hr.exits.transition.report_absconding",
+        "Report absconding",
+    ),
     ("wl_hr.exits.transition.reinstate", "Reinstate"),
     ("wl_hr.exits.transition.record_death", "Record death"),
     ("wl_hr.exits.reason_required", "Give the reason."),

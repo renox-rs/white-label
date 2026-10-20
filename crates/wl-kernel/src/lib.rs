@@ -179,15 +179,16 @@ pub use voids::{
     Effect, EffectKind, RecordVoided, Reverse, ReverseError, VoidRecord, Voidable, VoidableBuilder,
 };
 
+pub use workforce::{
+    AbsenceCaseClosed, AbsenceCaseOpened, AffectedWork, EmployeeAbsconded, QualificationExpired,
+    QualificationExpiring, QualificationId, Qualifications,
+};
 /// The kernel's permissions (wl-kernel §6).
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
     EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoQualifications, NoWorkforce,
     ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile,
     Workforce, provide_qualifications, provide_workforce, qualifications, workforce,
-};
-pub use workforce::{
-    AffectedWork, QualificationExpired, QualificationExpiring, QualificationId, Qualifications,
 };
 
 /// The permission names the kernel declares.

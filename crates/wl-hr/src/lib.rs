@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod absence;
 pub mod activation;
 pub mod assignees;
 pub mod config;
@@ -26,18 +27,19 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use absence::{AbsenceCase, AbsenceReport, ContactAttempt, ContactOutcome};
 pub use config::HrConfig;
 pub use employee::{
     Employee, EmployeeScope, EmployeeStatus, EmploymentType, NewEmployee, change_job_role,
     correct_hire_date, set_scope,
 };
 pub use leave::{LeaveRequest, LeaveStatus};
-pub use qualification::{NewQualification, Qualification, Quals};
-pub use qualification_expiry::QualificationExpiry;
 pub use onboarding::{
     AppliedTemplate, Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest,
     StartTrigger, StepAssignee, StepStatus,
 };
+pub use qualification::{NewQualification, Qualification, Quals};
+pub use qualification_expiry::QualificationExpiry;
 pub use steps::{DoneInput, InPerson, StepRefused};
 pub use template::{
     OnboardingTemplate, StepInput, StepKind, TemplateInput, TemplateRefused, TemplateStep,
@@ -76,6 +78,10 @@ pub mod permissions {
     /// Manage templates, start a manual onboarding, waive and reopen steps;
     /// its holders are the `hr` owner of steps.
     pub const ONBOARDING_MANAGE: &str = "onboarding.manage";
+    /// Prepare a final settlement, and cancel it when it is not needed.
+    pub const SETTLEMENTS_PREPARE: &str = "settlements.prepare";
+    /// Manage visa cases, and cancel one.
+    pub const VISAS_MANAGE: &str = "visas.manage";
     /// Approve the non-standard exits `cancel_onboarding`, `withdraw_notice`,
     /// `report_absconding`, `reinstate` and `record_death` (`HRM.ACL.07`,
     /// default: the MD).
@@ -106,6 +112,12 @@ impl WlHr {
     /// it.
     pub fn owner_role(mut self, role: &str) -> Self {
         self.config.owner_role = role.to_owned();
+        self
+    }
+
+    /// Absence days before `report_absconding` is allowed (default 7).
+    pub fn absence_days(mut self, days: i64) -> Self {
+        self.config.absence_days = days;
         self
     }
 
@@ -152,6 +164,9 @@ impl Module for WlHr {
         app.model::<LeaveRequest>();
         app.model::<Qualification>();
         app.model::<QualificationExpiry>();
+        app.model::<AbsenceCase>();
+        app.model::<ContactAttempt>();
+        app.model::<AbsenceReport>();
         app.provide(self.config.clone());
         employee_machine::register(app);
         renox::state_machine::register::<Onboarding>();
@@ -198,6 +213,7 @@ mod tests {
         let module = WlHr::new();
         assert_eq!(module.config().manager_role, "manager");
         assert_eq!(module.config().owner_role, "owner");
+        assert_eq!(module.config().absence_days, 7);
     }
 
     #[test]

@@ -7,6 +7,7 @@
 //! | `GET /hr/employees/{id}` | `wl_hr.employee` | `employees.view` |
 //! | `POST /hr/employees/{id}/transitions/{name}` | `wl_hr.employee_transitions.*` | `employees.view` and the transition's permission |
 //! | `POST /hr/employees/{id}/exits` | `wl_hr.exit_request` | `employees.manage` in the employee's scope |
+//! | `POST /hr/employees/{id}/contact-attempts` | `wl_hr.contact_attempt` | `employees.manage` in the employee's scope |
 //! | `POST /hr/employees/{id}/onboardings` | `wl_hr.onboarding_start` | `onboarding.manage` in the employee's scope |
 //! | `POST /hr/onboardings/{id}/cancel` | `wl_hr.onboarding_cancel` | `onboarding.manage` in the employee's scope |
 //! | `POST /hr/steps/{id}/done` | `wl_hr.step_done` | an assignee of the step |
@@ -29,6 +30,7 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 
+use crate::absence::{self, AbsenceReport, ContactAttempt, ContactOutcome};
 use crate::employee::{Employee, EmployeeStatus};
 use crate::exits::{
     self, ExitDocument, ExitInput, KIND_AGREEMENT, KIND_AUTHORITY_NOTICE, KIND_DEATH_CERTIFICATE,
@@ -67,6 +69,8 @@ pub fn routes() -> Routes {
                 .name("wl_hr.onboarding_start")
                 .post("/hr/employees/{id}/exits", request_exit)
                 .name("wl_hr.exit_request")
+                .post("/hr/employees/{id}/contact-attempts", record_attempt)
+                .name("wl_hr.contact_attempt")
                 .post("/hr/onboardings/{id}/cancel", cancel_manual)
                 .name("wl_hr.onboarding_cancel")
                 .post("/hr/steps/{id}/in-person", in_person)
@@ -277,10 +281,30 @@ pub struct PendingExitView {
     pub reason: String,
 }
 
+/// One attempt to reach the worker, as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub struct AttemptView {
+    /// The day.
+    pub date: String,
+    /// How.
+    pub method: String,
+    /// How it ended, in the page's language.
+    pub outcome: String,
+    /// Who tried.
+    pub by: String,
+    /// A note.
+    pub note: String,
+}
+
 /// The employee page.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-hr/employee.html")]
 pub(crate) struct ShowPage {
+    attempts: Vec<AttemptView>,
+    report: String,
+    can_record_attempt: bool,
+    outcomes: Vec<(String, String)>,
+    outcome_selected: String,
     pending_exit: Option<PendingExitView>,
     exit_actions: Vec<(String, String)>,
     exit_selected: String,
@@ -478,7 +502,55 @@ async fn show(
     let can_request_exit = pending_exit.is_none()
         && !exit_actions.is_empty()
         && exits::holds_manage(&state, user.id, &employee).await?;
+    let mut attempts = Vec::new();
+    for attempt in ContactAttempt::of_employee(&state.db, id).await? {
+        attempts.push(AttemptView {
+            date: attempt.attempted_on.to_string(),
+            method: attempt.method.clone(),
+            outcome: text(
+                &lang,
+                &format!("absence.outcome.{}", attempt.outcome.as_str()),
+            ),
+            by: match attempt.by_user_id {
+                Some(by) => user_name(&state.db, by).await,
+                None => String::new(),
+            },
+            note: attempt.note.clone().unwrap_or_default(),
+        });
+    }
+    let report = match AbsenceReport::valid_for(&state.db, id).await? {
+        Some(report) => format!("{} · {}", report.report_number, report.report_date),
+        None => String::new(),
+    };
+    let outcomes: Vec<(String, String)> = [
+        ContactOutcome::NoAnswer,
+        ContactOutcome::Unreachable,
+        ContactOutcome::Reached,
+    ]
+    .into_iter()
+    .map(|o| {
+        (
+            o.as_str().to_owned(),
+            text(&lang, &format!("absence.outcome.{}", o.as_str())),
+        )
+    })
+    .collect();
+    let can_record_attempt = matches!(
+        employee.status,
+        EmployeeStatus::Active
+            | EmployeeStatus::OnLeave
+            | EmployeeStatus::Notice
+            | EmployeeStatus::Absconded
+    ) && exits::holds_manage(&state, user.id, &employee).await?;
     Ok(View::typed(ShowPage {
+        attempts,
+        report,
+        can_record_attempt,
+        outcome_selected: outcomes
+            .first()
+            .map(|(key, _)| key.clone())
+            .unwrap_or_default(),
+        outcomes,
         pending_exit,
         exit_selected: exit_actions
             .first()
@@ -664,6 +736,67 @@ async fn request_exit(
         .await?
         .map_err(exits::ExitRefused::into_error)?;
     Ok((Toast::success(text(&lang, "exits.sent")), renox::HxRefresh).into_response())
+}
+
+/// The form that records an attempt to reach an absent worker.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct AttemptForm {
+    /// The day, today when blank.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub attempted_on: String,
+    /// How: phone, SMS, visit.
+    #[validate(max = 100)]
+    #[serde(default)]
+    pub method: String,
+    /// `no_answer`, `unreachable` or `reached`.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub outcome: String,
+    /// A note.
+    #[validate(max = 1000)]
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /hr/employees/{id}/contact-attempts`: HR records an attempt to reach
+/// the worker.
+async fn record_attempt(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<AttemptForm>,
+) -> Result<Response> {
+    let employee = Employee::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    if !exits::holds_manage(&state, user.id, &employee).await? {
+        return Err(Error::Forbidden);
+    }
+    let day = date_field("attempted_on", &form.attempted_on)?.unwrap_or_else(today);
+    let outcome = match form.outcome.trim() {
+        "" | "no_answer" => ContactOutcome::NoAnswer,
+        "unreachable" => ContactOutcome::Unreachable,
+        "reached" => ContactOutcome::Reached,
+        _ => return Err(Error::BadRequest("outcome".to_owned())),
+    };
+    absence::record_contact_attempt(
+        &state,
+        user.id,
+        id,
+        day,
+        &form.method,
+        outcome,
+        Some(&form.note),
+    )
+    .await?
+    .map_err(absence::AttemptRefused::into_error)?;
+    Ok((
+        Toast::success(text(&lang, "absence.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// A reason.

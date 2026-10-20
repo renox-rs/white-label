@@ -11,6 +11,10 @@ pub const DEFAULT_MANAGER_ROLE: &str = "manager";
 /// the permission (wl-hr §3 *Onboarding*).
 pub const DEFAULT_OWNER_ROLE: &str = "owner";
 
+/// Absence days before `report_absconding` is allowed (wl-hr §7): more than
+/// this many consecutive calendar days (ER Art. 28).
+pub const DEFAULT_ABSENCE_DAYS: i64 = 7;
+
 /// The settings of the HR module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HrConfig {
@@ -18,6 +22,8 @@ pub struct HrConfig {
     pub manager_role: String,
     /// The owner role.
     pub owner_role: String,
+    /// Absence days before `report_absconding` is allowed.
+    pub absence_days: i64,
 }
 
 impl Default for HrConfig {
@@ -25,6 +31,7 @@ impl Default for HrConfig {
         Self {
             manager_role: DEFAULT_MANAGER_ROLE.to_owned(),
             owner_role: DEFAULT_OWNER_ROLE.to_owned(),
+            absence_days: DEFAULT_ABSENCE_DAYS,
         }
     }
 }
