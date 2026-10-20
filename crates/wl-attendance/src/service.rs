@@ -149,6 +149,25 @@ pub(crate) fn ensure_in_window(state: &AppState, date: NaiveDate) -> Result {
     Ok(())
 }
 
+/// Refuses a day after the last working day of the location's context (a
+/// terminated project, `CON.ACL.15`): the app's
+/// [`ContextClosure`](wl_kernel::attendance::ContextClosure) says which.
+async fn ensure_open_day(state: &AppState, location: &WorkLocation, date: NaiveDate) -> Result {
+    let Some(context) = location.scope() else {
+        return Ok(());
+    };
+    let last = wl_kernel::attendance::context_closure(state)
+        .last_working_day(state, &context)
+        .await?;
+    match last {
+        Some(last) if date > last => Err(refuse(english(
+            "wl_attendance.record.after_last_day",
+            &[("date", &last)],
+        ))),
+        _ => Ok(()),
+    }
+}
+
 /// Refuses a self check-in while the employee is checked in on `date` at the
 /// same location (a duplicate) or at another one.
 async fn ensure_not_checked_in(
@@ -230,6 +249,7 @@ pub async fn record(state: &AppState, input: NewRecord) -> Result<AttendanceReco
     let date = dubai_date(input.check_in);
     ensure_at_work(state, input.employee).await?;
     ensure_in_window(state, date)?;
+    ensure_open_day(state, &location, date).await?;
     if input.check_out.is_some_and(|out| out <= input.check_in) {
         return Err(refuse(english("wl_attendance.record.times", &[])));
     }

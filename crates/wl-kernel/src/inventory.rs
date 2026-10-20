@@ -27,6 +27,12 @@ use crate::subject::Subject;
 /// The subject type of an item.
 pub const ITEM_SUBJECT_TYPE: &str = "inventory.item";
 
+/// The subject type of a purchase request.
+pub const PURCHASE_REQUEST_SUBJECT_TYPE: &str = "inventory.purchase_request";
+
+/// The subject type of a stock count.
+pub const STOCK_COUNT_SUBJECT_TYPE: &str = "inventory.stock_count";
+
 /// The subject type of a stock location.
 pub const LOCATION_SUBJECT_TYPE: &str = "inventory.location";
 
@@ -308,6 +314,96 @@ pub fn purchase_match(state: &AppState) -> Arc<dyn PurchaseMatchSource> {
     match state.provided::<Arc<dyn PurchaseMatchSource>>() {
         Some(source) => Arc::clone(&source),
         None => Arc::new(NoPurchaseMatch),
+    }
+}
+
+/// A purchase order that is still open, as a vertical lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenOrder {
+    /// The order, `inventory.purchase_order:3`.
+    pub order: Subject,
+    /// The number, `PO-2026-0001`.
+    pub number: Option<String>,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// Whether any quantity was accepted on it: such an order is
+    /// short-closed, an untouched one is cancelled.
+    pub received: bool,
+}
+
+/// The future a [`ScopeStock`] method returns.
+pub type ScopeFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// What a vertical does with the purchasing and the stock of one scope (a
+/// construction project, wl-inventory §3 *Location* scope link) when the
+/// scope stops: lists its open orders, cancels its open purchase requests
+/// and opens the count of its stores (02 Construction §7.1 *Project*
+/// `terminate`). `wl-inventory` provides it with [`provide_scope_stock`];
+/// without that module [`scope_stock`] gives [`NoScopeStock`], which has
+/// nothing to list, cancel or count.
+pub trait ScopeStock: Send + Sync + 'static {
+    /// The purchase orders delivering to a location in `scope` that can still
+    /// receive goods (`issued` or `partially_received`), oldest first.
+    fn open_orders<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _scope: &'a Subject,
+    ) -> ScopeFuture<'a, Vec<OpenOrder>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Cancels, with `reason`, the purchase requests of a location in `scope`
+    /// that are `draft`, `submitted` or `approved` and have no purchase order
+    /// issued. Returns them.
+    fn cancel_open_requests<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _scope: &'a Subject,
+        _reason: &'a str,
+    ) -> ScopeFuture<'a, Vec<Subject>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Opens a stock count (`STK.CNT.01`) of every location in `scope` that
+    /// has no count open, with `reason`. Returns the counts opened now.
+    fn open_stock_counts<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _scope: &'a Subject,
+        _reason: &'a str,
+    ) -> ScopeFuture<'a, Vec<Subject>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The stock counts of the locations in `scope` that are not `approved`
+    /// or `cancelled` yet.
+    fn open_counts<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _scope: &'a Subject,
+    ) -> ScopeFuture<'a, Vec<Subject>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The scope stock when `inventory` is off: nothing to list, cancel or count.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoScopeStock;
+
+impl ScopeStock for NoScopeStock {}
+
+/// Makes `stock` the app's [`ScopeStock`]; `wl-inventory` calls it in
+/// `register`.
+pub fn provide_scope_stock(app: &mut Registry, stock: impl ScopeStock) {
+    let stock: Arc<dyn ScopeStock> = Arc::new(stock);
+    app.provide(stock);
+}
+
+/// The app's [`ScopeStock`], or [`NoScopeStock`] when none is provided.
+pub fn scope_stock(state: &AppState) -> Arc<dyn ScopeStock> {
+    match state.provided::<Arc<dyn ScopeStock>>() {
+        Some(stock) => Arc::clone(&stock),
+        None => Arc::new(NoScopeStock),
     }
 }
 

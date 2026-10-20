@@ -1230,6 +1230,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     )
     .await
     .unwrap();
+    permissions::define_role(app.db(), "stock_manager", &[perm::STOCK_APPROVE])
+        .await
+        .unwrap();
     permissions::define_role(app.db(), "party_blocker", &["parties.block"])
         .await
         .unwrap();

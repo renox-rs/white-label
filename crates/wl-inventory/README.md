@@ -50,3 +50,4 @@ wl_inventory::WlInventory::new()
 
 The module owns `src/texts.rs`, the English texts (`wl_inventory.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.
+| Stopping a scope (`scope_stock`, the kernel's `ScopeStock`): the open purchase orders delivering to the locations of a project (`issued`, `partially_received`, with whether goods were accepted), the system `auto_cancel` of the purchase requests of those locations that are `draft`, `submitted` or `approved` (an `ordered` one stays), and one stock count (`open`, cancelled with `stock.approve`) for each location without an unfinished count. Only the parts of the *Purchase request* and *Stock count* machines these need are built (their lines, `submit`, `approve`, `order`... come with their issues) | §3, §4 *Purchase request*, *Stock count*, `STK.CNT.01` | `purchase_request`, `stock_count`, `scope_stock` |

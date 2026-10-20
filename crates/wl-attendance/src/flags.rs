@@ -44,6 +44,9 @@ pub enum FlagType {
     PermitInvalid,
     /// Overlaps another record of the employee.
     Overlap,
+    /// Recorded for a day after the last working day of its context (a
+    /// terminated project): the reviewer accepts or adjusts it.
+    AfterLastDay,
 }
 
 impl FlagType {
@@ -51,7 +54,10 @@ impl FlagType {
     pub fn holds_for_review(self) -> bool {
         matches!(
             self,
-            FlagType::OvertimeCap | FlagType::PermitInvalid | FlagType::Overlap
+            FlagType::OvertimeCap
+                | FlagType::PermitInvalid
+                | FlagType::Overlap
+                | FlagType::AfterLastDay
         )
     }
 }

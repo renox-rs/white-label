@@ -408,6 +408,19 @@ pub trait TaskCreator: Send + Sync + 'static {
         Box::pin(async { Ok(false) })
     }
 
+    /// Cancels `ticket` on behalf of the record that opened it or that it is
+    /// about (a project that was terminated), with `reason`. Returns `false`
+    /// when it did nothing, e.g. the ticket is already resolved, closed or
+    /// cancelled. The default does nothing and returns `false`.
+    fn cancel_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _ticket: TicketId,
+        _reason: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// Adds `comment` to `ticket`. The default does nothing.
     fn comment<'a>(
         &'a self,

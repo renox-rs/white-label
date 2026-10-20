@@ -187,6 +187,87 @@ pub fn cost_rates(state: &AppState) -> std::sync::Arc<dyn CostRateResolver> {
     }
 }
 
+/// Says that a context (a project, a deployment...) stops accepting
+/// attendance after a day (wl-attendance §4 `record`, 02 Construction §7.1
+/// *Project* `terminate`). The app provides it with
+/// [`provide_context_closure`]; `wl-attendance` asks it before saving a
+/// record at a work location in the context. Without one, [`context_closure`]
+/// gives [`NoContextClosure`]: every day is open.
+pub trait ContextClosure: Send + Sync + 'static {
+    /// The last day attendance is accepted in `context`, in Asia/Dubai; a
+    /// record of a later day is refused. `None` when the context accepts
+    /// attendance on any day. The default is none.
+    fn last_working_day<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: &'a Subject,
+    ) -> LabourFuture<'a, Option<NaiveDate>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The closure when none is provided: no context closes.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoContextClosure;
+
+impl ContextClosure for NoContextClosure {}
+
+/// Makes `closure` the app's [`ContextClosure`].
+pub fn provide_context_closure(app: &mut Registry, closure: impl ContextClosure) {
+    let closure: std::sync::Arc<dyn ContextClosure> = std::sync::Arc::new(closure);
+    app.provide(closure);
+}
+
+/// The app's [`ContextClosure`], or [`NoContextClosure`] when none is
+/// provided.
+pub fn context_closure(state: &AppState) -> std::sync::Arc<dyn ContextClosure> {
+    match state.provided::<std::sync::Arc<dyn ContextClosure>>() {
+        Some(closure) => std::sync::Arc::clone(&closure),
+        None => std::sync::Arc::new(NoContextClosure),
+    }
+}
+
+/// Lets a vertical send attendance to review. `wl-attendance` provides it
+/// with [`provide_attendance_review`]; without it, [`attendance_review`]
+/// gives [`NoAttendanceReview`] and nothing is flagged.
+pub trait AttendanceReview: Send + Sync + 'static {
+    /// Flags, for the reviewer, the attendance recorded after `after` at the
+    /// work locations in `context`, with `note` (the records stay as they are
+    /// and stay costed until accepted or adjusted). Returns the records
+    /// flagged now; a record flagged before is not listed again. The default
+    /// flags nothing.
+    fn flag_after<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: &'a Subject,
+        _after: NaiveDate,
+        _note: &'a str,
+    ) -> LabourFuture<'a, Vec<AttendanceRecordId>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The review when none is provided: nothing is flagged.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoAttendanceReview;
+
+impl AttendanceReview for NoAttendanceReview {}
+
+/// Makes `review` the app's [`AttendanceReview`].
+pub fn provide_attendance_review(app: &mut Registry, review: impl AttendanceReview) {
+    let review: std::sync::Arc<dyn AttendanceReview> = std::sync::Arc::new(review);
+    app.provide(review);
+}
+
+/// The app's [`AttendanceReview`], or [`NoAttendanceReview`] when none is
+/// provided.
+pub fn attendance_review(state: &AppState) -> std::sync::Arc<dyn AttendanceReview> {
+    match state.provided::<std::sync::Arc<dyn AttendanceReview>>() {
+        Some(review) => std::sync::Arc::clone(&review),
+        None => std::sync::Arc::new(NoAttendanceReview),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

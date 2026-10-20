@@ -19,12 +19,15 @@ pub mod po_issue;
 pub mod preferred_change;
 pub mod po_revise;
 pub mod purchase_order;
+pub mod purchase_request;
 pub mod receipt_post;
 pub mod receipt_reverse;
 pub mod reorder;
 pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
+pub mod scope_stock;
+pub mod stock_count;
 mod supplier_pages;
 pub mod supplier_return;
 pub mod supplier_review;
@@ -51,11 +54,13 @@ pub use movement::{MovementType, StockMovement};
 pub use po_issue::{IssueOutcome, issue};
 pub use po_revise::{PurchaseOrderRevision, ReviseInput, ReviseOutcome, revise};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
+pub use purchase_request::{PurchaseRequest, PurchaseRequestStatus};
 pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
 pub use reorder::{ReorderSuggestion, SuggestionStatus};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
+pub use stock_count::{StockCount, StockCountStatus};
 pub use supplier_return::{
     RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome,
 };
@@ -90,6 +95,10 @@ pub mod permissions {
     /// Approve or reject a change of an item's preferred supplier; never the
     /// requester (`STK.ACL.07`).
     pub const ITEM_SUPPLIERS_APPROVE: &str = "item_suppliers.approve";
+    /// Cancel and approve purchase requests (wl-inventory §6).
+    pub const PURCHASE_REQUESTS_APPROVE: &str = "purchase_requests.approve";
+    /// Approve and cancel stock counts (`STK.CNT.01`).
+    pub const STOCK_APPROVE: &str = "stock.approve";
     /// See the supplier score and its percentages (`STK.SUP.01`).
     pub const SUPPLIER_SCORES_VIEW: &str = "supplier_scores.view";
     /// Allocate, adjust and cancel landed costs, and approve an adjustment
@@ -233,6 +242,8 @@ impl Module for WlInventory {
         app.model::<PurchaseOrder>();
         app.model::<PurchaseOrderLine>();
         app.model::<PurchaseOrderRevision>();
+        app.model::<PurchaseRequest>();
+        app.model::<StockCount>();
         app.model::<LandedCost>();
         app.model::<landed_cost::LandedCostReceipt>();
         app.model::<landed_cost::CostLine>();
@@ -247,6 +258,8 @@ impl Module for WlInventory {
         app.model::<SupplierReturnLine>();
         app.provide(self.config.clone());
         renox::state_machine::register::<PurchaseOrder>();
+        renox::state_machine::register::<PurchaseRequest>();
+        renox::state_machine::register::<StockCount>();
         renox::state_machine::register::<GoodsReceipt>();
         renox::state_machine::register::<Lot>();
         renox::state_machine::register::<SupplierReturn>();
@@ -337,6 +350,9 @@ impl Module for WlInventory {
             .register();
         // The supplier bill match reads the accepted quantity (§6).
         wl_kernel::inventory::provide_purchase_match(app, PurchaseMatch);
+        // A vertical that stops a scope lists its open orders, cancels its
+        // open purchase requests and opens the count of its stores.
+        wl_kernel::inventory::provide_scope_stock(app, scope_stock::InventoryScopeStock);
         events::register(app);
         // `STK.RUL.08`: the notice type and the daily chase of the returns
         // that stay `dispatched`.

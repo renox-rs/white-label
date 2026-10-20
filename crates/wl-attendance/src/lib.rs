@@ -3,6 +3,7 @@
 
 pub mod access;
 pub mod adjustment;
+pub mod after_last_day;
 pub mod approval;
 pub mod checks;
 pub mod config;
@@ -148,6 +149,7 @@ impl Module for WlAttendance {
         app.model::<approval::ApprovalEvidence>();
         app.provide(self.config.clone());
         overtime::provide_entry_hours(app, entry::TimesheetEntryHours);
+        wl_kernel::attendance::provide_attendance_review(app, after_last_day::Reviewer);
         renox::state_machine::register::<AttendanceRecord>();
         renox::state_machine::register::<Timesheet>();
         notices::register_types();

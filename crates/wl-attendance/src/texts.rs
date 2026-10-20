@@ -17,6 +17,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Attendance can be marked for today or up to :days day(s) back. :date is outside that window.",
     ),
     (
+        "wl_attendance.record.after_last_day",
+        "Attendance is not accepted after :date, the last working day of this site.",
+    ),
+    (
         "wl_attendance.record.in_future",
         "Attendance cannot be marked for a day that has not come: :date.",
     ),
@@ -69,6 +73,10 @@ const TEXTS: &[(&str, &str)] = &[
         "No valid permit, visa or qualification",
     ),
     ("wl_attendance.flags.overlap", "Overlaps another record"),
+    (
+        "wl_attendance.flags.after_last_day",
+        "Recorded after the last working day",
+    ),
     // Notes of the flags.
     (
         "wl_attendance.overlap.note",
