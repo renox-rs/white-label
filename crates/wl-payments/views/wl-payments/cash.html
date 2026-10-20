@@ -1,0 +1,7 @@
+{#- wl-payments: the cash handovers list, a renox::grid (holder, period,
+    expected, counted, difference, status; filter by status and kind).
+    Replace it with resources/views/wl-payments/cash.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['cash.title']">
+  <rx-page-header :title="tx['cash.title']" :subtitle="tx['cash.description']"/>
+  <rx-grid :page="handovers"/>
+</rx-page>
