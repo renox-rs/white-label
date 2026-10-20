@@ -60,7 +60,7 @@ CREATE TABLE "accounting_tax_profiles" (
     client_party_id INTEGER NOT NULL,
     trn TEXT,
     vat_registered BOOLEAN NOT NULL DEFAULT FALSE,
-    vat_period TEXT NOT NULL DEFAULT 'none',
+    vat_period TEXT NOT NULL DEFAULT 'not_registered',
     vat_first_period_end TEXT,
     financial_year_end TEXT,
     ct_registration_no TEXT,

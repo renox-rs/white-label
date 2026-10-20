@@ -25,7 +25,7 @@ pub const TAX_PROFILE_SUBJECT_TYPE: &str = "accounting.tax_profile";
 pub enum VatPeriod {
     /// Not VAT registered.
     #[default]
-    None,
+    NotRegistered,
     /// Every month.
     Monthly,
     /// Every quarter, on the client's stagger.
@@ -36,7 +36,7 @@ impl VatPeriod {
     /// The months in one period; 0 for none.
     pub fn months(self) -> u32 {
         match self {
-            VatPeriod::None => 0,
+            VatPeriod::NotRegistered => 0,
             VatPeriod::Monthly => 1,
             VatPeriod::Quarterly => 3,
         }
@@ -145,7 +145,9 @@ impl TaxProfile {
             if !trn_ok {
                 missing.push(english("accounting.tax_profile.trn", &[]));
             }
-            if self.vat_period == VatPeriod::None || self.vat_first_period_end.is_none() {
+            if self.vat_period == VatPeriod::NotRegistered
+                || self.vat_first_period_end.is_none()
+            {
                 missing.push(english("accounting.tax_profile.vat_period", &[]));
             }
         }
@@ -206,9 +208,9 @@ mod tests {
 
     #[test]
     fn vat_periods_count_months() {
-        assert_eq!(VatPeriod::None.months(), 0);
+        assert_eq!(VatPeriod::NotRegistered.months(), 0);
         assert_eq!(VatPeriod::Monthly.months(), 1);
         assert_eq!(VatPeriod::Quarterly.months(), 3);
-        assert_eq!(VatPeriod::default().as_str(), "none");
+        assert_eq!(VatPeriod::default().as_str(), "not_registered");
     }
 }
