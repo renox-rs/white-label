@@ -15,6 +15,13 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
+  # The workspace has hundreds of integration-test binaries, each linking the
+  # whole app; with debug info and symbols they filled the runner's disk
+  # (linker "Bus error" at 0 MB free). Build them lean: no incremental data,
+  # no debug info, no symbols.
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_DEV_STRIP: symbols
 
 jobs:
   test:
@@ -22,6 +29,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Free disk space
+        # Remove large preinstalled toolchains this workspace does not use.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
