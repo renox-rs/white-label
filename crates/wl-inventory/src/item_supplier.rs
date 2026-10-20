@@ -504,6 +504,24 @@ pub struct LastPrice {
 ///
 /// A database error.
 pub async fn last_price(db: &Db, item_id: i64, supplier: i64) -> Result<Option<LastPrice>> {
+    last_price_before(db, item_id, supplier, None, None).await
+}
+
+/// [`last_price`] as it stood before `before`, leaving out the order
+/// `except_order` and its receipts: the price a new order line is compared
+/// with by the supplier score. With `before`, only receipts posted before
+/// it and orders issued before it count.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn last_price_before(
+    db: &Db,
+    item_id: i64,
+    supplier: i64,
+    before: Option<DateTime>,
+    except_order: Option<i64>,
+) -> Result<Option<LastPrice>> {
     let mut receipts = GoodsReceipt::query()
         .where_(GoodsReceipt::SUPPLIER_PARTY_ID.eq(supplier))
         .where_(GoodsReceipt::STATUS.eq(GoodsReceiptStatus::Posted))
@@ -514,6 +532,11 @@ pub async fn last_price(db: &Db, item_id: i64, supplier: i64) -> Result<Option<L
         let Some(order_id) = receipt.purchase_order_id else {
             continue;
         };
+        if except_order == Some(order_id)
+            || before.is_some_and(|before| receipt.posted_at.is_none_or(|at| at >= before))
+        {
+            continue;
+        }
         let lines = GoodsReceiptLine::query()
             .where_(GoodsReceiptLine::GOODS_RECEIPT_ID.eq(receipt.id))
             .where_(GoodsReceiptLine::ITEM_ID.eq(item_id))
@@ -543,6 +566,11 @@ pub async fn last_price(db: &Db, item_id: i64, supplier: i64) -> Result<Option<L
         .await?;
     orders.sort_by_key(|order| order.id);
     for order in orders.iter().rev() {
+        if except_order == Some(order.id)
+            || before.is_some_and(|before| order.issued_at.is_none_or(|at| at >= before))
+        {
+            continue;
+        }
         let lines = PurchaseOrderLine::query()
             .where_(PurchaseOrderLine::PURCHASE_ORDER_ID.eq(order.id))
             .where_(PurchaseOrderLine::ITEM_ID.eq(item_id))

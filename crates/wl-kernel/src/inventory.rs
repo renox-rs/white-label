@@ -16,6 +16,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -307,6 +308,66 @@ pub fn purchase_match(state: &AppState) -> Arc<dyn PurchaseMatchSource> {
     match state.provided::<Arc<dyn PurchaseMatchSource>>() {
         Some(source) => Arc::clone(&source),
         None => Arc::new(NoPurchaseMatch),
+    }
+}
+
+/// One quality incident of a supplier, as the scorecard counts it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierIncident {
+    /// The record that reported it, `manufacturing.ncr:12`.
+    pub reference: Subject,
+    /// The supplier whose goods caused it.
+    pub supplier: PartyId,
+    /// The day it happened (Asia/Dubai).
+    pub on: NaiveDate,
+}
+
+/// Quality incidents per supplier and date for the supplier scorecard
+/// (wl-inventory §8 `SupplierIncidentSource`). A vertical provides it with
+/// [`provide_supplier_incidents`]: 07 reports the NCRs on incoming lots. Only
+/// incidents whose cause is the supplier and that are not voided are
+/// answered, so a later void or change of cause drops an incident out of the
+/// next answer.
+pub trait SupplierIncidentSource: Send + Sync + 'static {
+    /// The incidents of `supplier` on days from `from` to `to`, both
+    /// included.
+    fn incidents<'a>(
+        &'a self,
+        db: &'a Db,
+        supplier: PartyId,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> MatchFuture<'a, Vec<SupplierIncident>>;
+}
+
+/// The source when no vertical provides one: no incidents.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSupplierIncidents;
+
+impl SupplierIncidentSource for NoSupplierIncidents {
+    fn incidents<'a>(
+        &'a self,
+        _db: &'a Db,
+        _supplier: PartyId,
+        _from: NaiveDate,
+        _to: NaiveDate,
+    ) -> MatchFuture<'a, Vec<SupplierIncident>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// Makes `source` the app's [`SupplierIncidentSource`].
+pub fn provide_supplier_incidents(app: &mut Registry, source: impl SupplierIncidentSource) {
+    let source: Arc<dyn SupplierIncidentSource> = Arc::new(source);
+    app.provide(source);
+}
+
+/// The app's [`SupplierIncidentSource`], or [`NoSupplierIncidents`] when none
+/// is provided.
+pub fn supplier_incidents(state: &AppState) -> Arc<dyn SupplierIncidentSource> {
+    match state.provided::<Arc<dyn SupplierIncidentSource>>() {
+        Some(source) => Arc::clone(&source),
+        None => Arc::new(NoSupplierIncidents),
     }
 }
 

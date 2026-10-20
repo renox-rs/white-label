@@ -73,6 +73,12 @@ pub struct GoodsReceipt {
     pub posted_by: Option<i64>,
     /// When it was posted.
     pub posted_at: Option<DateTime>,
+    /// When the goods arrived, when that is not the posting: the business
+    /// time of a late entry, or the moment posting was asked for (the supplier
+    /// score counts the day the goods arrived, not the day an approval came).
+    pub arrived_at: Option<DateTime>,
+    /// Whether the receipt was entered late, after an outage.
+    pub late_entry: bool,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -463,6 +469,37 @@ pub async fn lines_of(db: &Db, receipt_id: i64) -> Result<Vec<GoodsReceiptLine>>
         .order_by(GoodsReceiptLine::POSITION)
         .get(db)
         .await
+}
+
+/// Records the day the goods of the draft receipt `receipt_id` arrived when
+/// it is not the day of the posting: the business time of an entry made late
+/// after an outage (`late` sets the late-entry flag). The supplier score
+/// counts this day (wl-inventory §3).
+///
+/// # Errors
+///
+/// 422 unless the receipt is a draft.
+pub async fn record_arrival(
+    db: &Db,
+    receipt_id: i64,
+    arrived_at: DateTime,
+    late: bool,
+) -> Result<()> {
+    let receipt = GoodsReceipt::find_or_404(db, receipt_id).await?;
+    if receipt.status != GoodsReceiptStatus::Draft {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            said("wl_inventory.receipt.not_draft", &[]),
+        ));
+    }
+    GoodsReceipt::query()
+        .where_(GoodsReceipt::ID.eq(receipt_id))
+        .update(
+            db,
+            &[("arrived_at", &Some(arrived_at)), ("late_entry", &late)],
+        )
+        .await?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -25,6 +25,7 @@ pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
 pub mod supplier_return;
+pub mod supplier_score;
 mod supplier_pages;
 mod texts;
 
@@ -33,7 +34,7 @@ use std::sync::Arc;
 use renox::db::Migration;
 use renox::prelude::*;
 
-pub use config::{InventoryConfig, RejectionReason};
+pub use config::{InventoryConfig, RejectionReason, ScoreSettings};
 pub use goods_receipt::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus,
 };
@@ -51,6 +52,7 @@ pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
 pub use reorder::{ReorderSuggestion, SuggestionStatus};
+pub use supplier_score::{Figures, ScoreBand, SupplierScore, SupplierScoreNote};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
 pub use supplier_return::{
@@ -82,6 +84,8 @@ pub mod permissions {
     pub const ITEM_SUPPLIERS_MANAGE: &str = "item_suppliers.manage";
     /// See the cost side of stock: last prices and values (`stock.cost.view`).
     pub const STOCK_COST_VIEW: &str = "stock.cost.view";
+    /// See the supplier score and its percentages (`STK.SUP.01`).
+    pub const SUPPLIER_SCORES_VIEW: &str = "supplier_scores.view";
     /// Allocate, adjust and cancel landed costs, and approve an adjustment
     /// above the value (`STK.ACL.06`).
     pub const LANDED_COSTS_POST: &str = "landed_costs.post";
@@ -151,6 +155,13 @@ impl WlInventory {
         self
     }
 
+    /// The settings of the supplier score: weights, caps, grace days, window,
+    /// minimum receipts and the threshold (defaults in [`ScoreSettings`]).
+    pub fn supplier_score(mut self, settings: ScoreSettings) -> Self {
+        self.config.score = settings;
+        self
+    }
+
     /// Adds a rejection reason, or changes whether an existing one needs a
     /// reading or a photo (06: `temperature`).
     pub fn rejection_reason(mut self, code: &str, evidence_required: bool) -> Self {
@@ -198,6 +209,9 @@ impl Module for WlInventory {
         app.model::<ItemSupplier>();
         app.model::<PreferredSupplierRequest>();
         app.model::<ReorderSuggestion>();
+        app.model::<supplier_score::SupplierDebitNoteRecord>();
+        app.model::<SupplierScore>();
+        app.model::<SupplierScoreNote>();
         app.model::<PurchaseOrder>();
         app.model::<PurchaseOrderLine>();
         app.model::<PurchaseOrderRevision>();
@@ -312,6 +326,19 @@ impl Module for WlInventory {
         // merged supplier.
         reorder::register_types();
         reorder::schedule(app);
+        // The supplier score: debit notes are kept as they are issued, the
+        // snapshots are built daily at 06:00 and catch up a missed day 1.
+        supplier_score::schedule(app);
+        app.listen(
+            |event: wl_kernel::invoicing::SupplierDebitNoteIssued, state: AppState| async move {
+                supplier_score::on_debit_note_issued(&state, &event).await
+            },
+        );
+        app.listen(
+            |event: wl_kernel::invoicing::SupplierDebitNoteCancelled, state: AppState| async move {
+                supplier_score::on_debit_note_cancelled(&state, &event).await
+            },
+        );
         app.listen(|event: wl_kernel::PartiesMerged, state: AppState| async move {
             item_supplier::on_merged(&state, &event).await
         });

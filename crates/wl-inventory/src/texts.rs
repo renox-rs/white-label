@@ -505,6 +505,12 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.reorder.body",
         "Today's run found {{ count }} item(s) at or below their reorder point. Open the suggestions to choose the supplier and order.",
     ),
+    // The supplier score.
+    (
+        "wl_inventory.score.note_needed",
+        "Write the review note.",
+    ),
+    ("wl_inventory.score.noted", "Review note added."),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

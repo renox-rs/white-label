@@ -863,6 +863,18 @@ pub async fn post(
             &[],
         )));
     }
+    // The goods arrived when posting was asked for, even if an approval
+    // comes days later (the supplier score counts this day).
+    let receipt = if receipt.arrived_at.is_none() {
+        let arrived = Some(renox::db::now());
+        GoodsReceipt::query()
+            .where_(GoodsReceipt::ID.eq(receipt.id))
+            .update(&state.db, &[("arrived_at", &arrived)])
+            .await?;
+        GoodsReceipt::find_or_404(&state.db, receipt.id).await?
+    } else {
+        receipt
+    };
     let input = prepare(state, &receipt, Some(user.id)).await?;
     if let Some(problem) = input.first_problem() {
         return Err(TransitionError::Guard(problem.to_owned()));

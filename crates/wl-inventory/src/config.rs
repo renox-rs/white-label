@@ -30,6 +30,45 @@ pub const DEFAULT_ORDER_LIMITS_FILS: &[i64] = &[1_000_000, 5_000_000];
 /// by default (§7, `STK.RUL.08`).
 pub const DEFAULT_RETURN_CHASE_DAYS: i64 = 30;
 
+/// The settings of the supplier score (§3, §7): the weights of the four
+/// components, their caps, and the window and thresholds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScoreSettings {
+    /// W1 to W4: on time, rejected value, incidents, price (40, 30, 15, 15).
+    pub weights: [i64; 4],
+    /// R: the rejected value, in basis points, that takes the whole
+    /// component away (10%).
+    pub rejected_cap_bp: i64,
+    /// I: the incidents that take the whole component away (3).
+    pub incident_cap: i64,
+    /// P: the price increase, in basis points, that takes the whole component
+    /// away (10%).
+    pub price_cap_bp: i64,
+    /// Days after the expected date a receipt is still on time (1).
+    pub grace_days: i64,
+    /// W: the calendar months a snapshot covers (3).
+    pub window_months: u32,
+    /// N: fewer receipts than this in the window leave no score (3).
+    pub min_receipts: i64,
+    /// T: a score under it is `below_threshold` (70, `STK.RUL.09`).
+    pub threshold: i64,
+}
+
+impl Default for ScoreSettings {
+    fn default() -> Self {
+        ScoreSettings {
+            weights: [40, 30, 15, 15],
+            rejected_cap_bp: 1_000,
+            incident_cap: 3,
+            price_cap_bp: 1_000,
+            grace_days: 1,
+            window_months: 3,
+            min_receipts: 3,
+            threshold: 70,
+        }
+    }
+}
+
 /// The rejection reasons by default (§7).
 pub const DEFAULT_REASONS: &[&str] = &[
     "temperature",
@@ -76,6 +115,8 @@ pub struct InventoryConfig {
     /// (`STK.ACL.03`): a new total above the first needs one approval, above
     /// the second two, and so on.
     pub order_limits_fils: Vec<i64>,
+    /// The supplier score settings.
+    pub score: ScoreSettings,
 }
 
 impl InventoryConfig {
@@ -94,6 +135,7 @@ impl Default for InventoryConfig {
             return_chase_days: DEFAULT_RETURN_CHASE_DAYS,
             landed_cost_approval_fils: DEFAULT_LANDED_COST_APPROVAL_FILS,
             order_limits_fils: DEFAULT_ORDER_LIMITS_FILS.to_vec(),
+            score: ScoreSettings::default(),
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {
@@ -125,5 +167,8 @@ mod tests {
                 .is_some_and(|r| !r.evidence_required)
         );
         assert!(config.reason("spoiled").is_none());
+        assert_eq!(config.score.weights, [40, 30, 15, 15]);
+        assert_eq!(config.score.threshold, 70);
+        assert_eq!(config.score.min_receipts, 3);
     }
 }

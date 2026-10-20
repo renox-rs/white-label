@@ -100,6 +100,10 @@ pub struct PurchaseOrder {
     /// The PDF document of the revision in force, "Revision N" from the
     /// second revision on.
     pub document: Option<String>,
+    /// When the order was issued.
+    pub issued_at: Option<DateTime>,
+    /// When the revision in force was issued: the issue, or the last revision.
+    pub revision_issued_at: Option<DateTime>,
     /// The lifecycle state; changed only by a transition.
     pub status: PurchaseOrderStatus,
     /// The user who created it.

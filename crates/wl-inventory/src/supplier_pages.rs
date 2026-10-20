@@ -8,9 +8,12 @@
 //! | `POST /item-suppliers/{id}/deactivate` | `wl_inventory.item_supplier_deactivate` | `item_suppliers.manage` |
 //! | `GET /reorder-suggestions/{id}` | `wl_inventory.reorder_show` | as the suppliers |
 //! | `POST /reorder-suggestions/{id}/switch` | `wl_inventory.reorder_switch` | `purchase_orders.issue` |
+//! | `GET /suppliers/{party}/score` | `wl_inventory.supplier_score` | `supplier_scores.view` |
+//! | `POST /supplier-scores/{id}/notes` | `wl_inventory.supplier_score_note` | `purchase_orders.issue` |
 //!
-//! The last price is part of the answers only for a holder of
-//! `stock.cost.view`; a blocked supplier shows as `on_hold` without a reason.
+//! The last price, and the values behind a supplier score, are part of the
+//! answers only for a holder of `stock.cost.view`; a blocked supplier shows
+//! as `on_hold` without a reason.
 
 use std::collections::BTreeMap;
 
@@ -24,6 +27,7 @@ use crate::item_supplier::{
 use crate::pages::parse_quantity;
 use crate::permissions;
 use crate::reorder::{Alternative, ReorderSuggestion};
+use crate::supplier_score::{Figures, SupplierScore};
 use crate::texts;
 
 /// The routes.
@@ -39,6 +43,10 @@ pub(crate) fn routes() -> Routes {
         .name("wl_inventory.reorder_show")
         .post("/reorder-suggestions/{id}/switch", switch_suggestion)
         .name("wl_inventory.reorder_switch")
+        .get("/suppliers/{party}/score", show_score)
+        .name("wl_inventory.supplier_score")
+        .post("/supplier-scores/{id}/notes", add_score_note)
+        .name("wl_inventory.supplier_score_note")
         .require_auth()
 }
 
@@ -272,6 +280,109 @@ async fn switch_suggestion(
     crate::reorder::switch(&state, &user, id, supplier, reason).await?;
     Ok((
         Toast::success(text(&lang, "reorder.switched_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The numbers of a window as the back office reads them.
+#[derive(Debug, Serialize)]
+struct ScoreView {
+    id: Option<i64>,
+    snapshot_date: Option<renox::chrono::NaiveDate>,
+    from: renox::chrono::NaiveDate,
+    to: renox::chrono::NaiveDate,
+    receipts: i64,
+    on_time: i64,
+    on_time_bp: Option<i64>,
+    rejected_bp: Option<i64>,
+    incidents: i64,
+    debit_notes: i64,
+    price_variance_bp: Option<i64>,
+    score: Option<i64>,
+    band: &'static str,
+    received_value: Option<i64>,
+    rejected_value: Option<i64>,
+    debit_note_value: Option<i64>,
+    notes: Vec<String>,
+}
+
+fn score_view(
+    figures: &Figures,
+    id: Option<i64>,
+    snapshot_date: Option<renox::chrono::NaiveDate>,
+    costs: bool,
+    notes: Vec<String>,
+) -> ScoreView {
+    ScoreView {
+        id,
+        snapshot_date,
+        from: figures.from,
+        to: figures.to,
+        receipts: figures.receipts,
+        on_time: figures.on_time,
+        on_time_bp: figures.on_time_bp,
+        rejected_bp: figures.rejected_bp,
+        incidents: figures.incidents,
+        debit_notes: figures.debit_notes,
+        price_variance_bp: figures.price_variance_bp,
+        score: figures.score,
+        band: figures.band.as_str(),
+        received_value: costs.then_some(figures.received_value),
+        rejected_value: costs.then_some(figures.rejected_value),
+        debit_note_value: costs.then_some(figures.debit_note_value),
+        notes,
+    }
+}
+
+/// `GET /suppliers/{party}/score`: the live view and the snapshots, newest
+/// first. The values need `stock.cost.view`.
+async fn show_score(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(party): Path<i64>,
+) -> Result<Response> {
+    item_supplier::require(&state, &user, permissions::SUPPLIER_SCORES_VIEW).await?;
+    let costs = holds(&state, &user, permissions::STOCK_COST_VIEW).await?;
+    let live = crate::supplier_score::live(&state, party).await?;
+    let mut snapshots = SupplierScore::query()
+        .where_(SupplierScore::SUPPLIER_PARTY_ID.eq(party))
+        .get(&state.db)
+        .await?;
+    snapshots.sort_by_key(|snapshot| std::cmp::Reverse(snapshot.snapshot_date));
+    let mut kept = Vec::new();
+    for snapshot in &snapshots {
+        let notes = crate::supplier_score::notes_of(&state.db, snapshot.id)
+            .await?
+            .into_iter()
+            .map(|note| note.note)
+            .collect();
+        kept.push(score_view(
+            &snapshot.figures(),
+            Some(snapshot.id),
+            Some(snapshot.snapshot_date),
+            costs,
+            notes,
+        ));
+    }
+    json_response(&renox::serde_json::json!({
+        "live": score_view(&live, None, None, costs, Vec::new()),
+        "snapshots": kept,
+    }))
+}
+
+/// `POST /supplier-scores/{id}/notes`: `note`.
+async fn add_score_note(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let note = form.get("note").map(String::as_str).unwrap_or_default();
+    crate::supplier_score::add_note(&state, &user, id, note).await?;
+    Ok((
+        Toast::success(text(&lang, "score.noted")),
         renox::HxRefresh,
     )
         .into_response())

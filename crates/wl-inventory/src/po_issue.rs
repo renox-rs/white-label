@@ -140,6 +140,8 @@ async fn issue_in(tx: &mut Transaction, order: PurchaseOrder) -> Result {
             &[
                 ("number", &Some(number)),
                 ("document", &Some(document)),
+                ("issued_at", &Some(now)),
+                ("revision_issued_at", &Some(now)),
                 ("updated_at", &now),
             ],
         )

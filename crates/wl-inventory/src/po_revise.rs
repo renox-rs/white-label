@@ -558,6 +558,7 @@ async fn revise_in(tx: &mut Transaction, order: PurchaseOrder, run: &ReviseInput
                 ("expected_date", &expected),
                 ("date_requested_by", &requested_by),
                 ("document", &Some(document)),
+                ("revision_issued_at", &Some(now)),
                 ("updated_at", &now),
             ],
         )
