@@ -22,3 +22,4 @@ What is here so far:
 | Work locations (name, scope, outdoor flag, the qualifications the context requires) | §3 | `location` |
 | The attendance record and its machine (`flag`); `record` with the late-entry window (`HRM.ACL.01`), self check-in, check-out | §3, §4 | `record`, `machine` |
 | Overlap across locations and projects: self check-in refused, supervisor marking and imports flagged `overlap`; the crew list shows who is marked elsewhere | §4, §5.5 | `overlap` |
+| Actions: supervisor marking, the employee's own check-in and check-out, checked against the permission in the scope of the location | §5.1, §5.2, §6 | `pages`, `access` |

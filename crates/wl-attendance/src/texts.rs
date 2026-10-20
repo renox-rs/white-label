@@ -75,7 +75,6 @@ const TEXTS: &[(&str, &str)] = &[
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
-#[allow(dead_code)]
 pub(crate) fn t(lang: &Lang, key: &str) -> String {
     let found = lang.t(key, &[]);
     if found != key {

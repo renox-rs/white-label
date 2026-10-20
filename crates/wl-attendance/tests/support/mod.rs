@@ -115,17 +115,28 @@ pub fn users_of(request: &NotifyRequest) -> Vec<i64> {
 
 /// The employees of HR, as the workforce of the kernel answers for them.
 #[derive(Clone, Default)]
-pub struct Staff(Arc<Mutex<BTreeMap<i64, StaffProfile>>>);
+pub struct Staff {
+    profiles: Arc<Mutex<BTreeMap<i64, StaffProfile>>>,
+    accounts: Arc<Mutex<BTreeMap<i64, i64>>>,
+}
 
 impl Staff {
     /// Puts `profile` among the staff.
     pub fn set(&self, profile: StaffProfile) {
-        self.0.lock().unwrap().insert(profile.employee.0, profile);
+        self.profiles
+            .lock()
+            .unwrap()
+            .insert(profile.employee.0, profile);
     }
 
     /// Changes the profile of `employee`.
     pub fn change(&self, employee: EmployeeId, change: impl FnOnce(&mut StaffProfile)) {
-        change(self.0.lock().unwrap().get_mut(&employee.0).unwrap());
+        change(self.profiles.lock().unwrap().get_mut(&employee.0).unwrap());
+    }
+
+    /// The account `user` is `employee`'s.
+    pub fn account(&self, user: i64, employee: EmployeeId) {
+        self.accounts.lock().unwrap().insert(user, employee.0);
     }
 }
 
@@ -135,7 +146,23 @@ impl Workforce for Staff {
         _state: &'a AppState,
         employee: EmployeeId,
     ) -> WorkforceFuture<'a, Option<StaffProfile>> {
-        Box::pin(async move { Ok(self.0.lock().unwrap().get(&employee.0).cloned()) })
+        Box::pin(async move { Ok(self.profiles.lock().unwrap().get(&employee.0).cloned()) })
+    }
+
+    fn employee_of_user<'a>(
+        &'a self,
+        _db: &'a Db,
+        user_id: i64,
+    ) -> WorkforceFuture<'a, Option<EmployeeId>> {
+        Box::pin(async move {
+            Ok(self
+                .accounts
+                .lock()
+                .unwrap()
+                .get(&user_id)
+                .copied()
+                .map(EmployeeId))
+        })
     }
 }
 

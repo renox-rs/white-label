@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod access;
 pub mod checks;
 pub mod config;
 pub mod flags;
@@ -8,6 +9,7 @@ pub mod location;
 pub mod lock;
 mod notices;
 pub mod overlap;
+pub mod pages;
 pub mod record;
 pub mod service;
 mod texts;
@@ -80,6 +82,10 @@ impl WlAttendance {
 impl Module for WlAttendance {
     fn name(&self) -> &'static str {
         "wl-attendance"
+    }
+
+    fn routes(&self) -> Routes {
+        pages::routes()
     }
 
     fn migrations(&self) -> &'static [Migration] {
