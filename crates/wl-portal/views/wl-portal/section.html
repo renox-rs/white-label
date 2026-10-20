@@ -1,0 +1,14 @@
+{#- wl-portal: one read-only section of the portal (a lease, invoices,
+    statements, requests): each row with the status its module stored. The
+    portal never adds a block status here (PTY.ACL.02). Replace it with
+    resources/views/wl-portal/section.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title"/>
+    <rx-table :rows="rows" as="row" :key="row.label" :caption="title" card>
+      <rx-column :label="tx['section.item']">{{ row.label }}</rx-column>
+      <rx-column :label="tx['section.status']">{{ row.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['section.empty']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

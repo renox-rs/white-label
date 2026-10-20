@@ -3517,6 +3517,7 @@ dependencies = [
  "serde",
  "tempfile",
  "wl-kernel",
+ "wl-parties",
 ]
 
 [[package]]

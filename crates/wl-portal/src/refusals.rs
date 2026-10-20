@@ -113,9 +113,13 @@ pub fn routes() -> Routes {
 async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
     let mut entries = Vec::new();
     for entry in RefusalLog::latest(&state.db, 500).await? {
-        let user = User::find(&state.db, entry.user_id)
-            .await?
-            .map_or_else(|| format!("#{}", entry.user_id), |u| u.name);
+        let user = if entry.user_id == crate::guard::LINK_USER {
+            texts::t(&lang, "wl_portal.refusals.link_user")
+        } else {
+            User::find(&state.db, entry.user_id)
+                .await?
+                .map_or_else(|| format!("#{}", entry.user_id), |u| u.name)
+        };
         let party = wl_kernel::parties::directory(&state)
             .display_name(&state.db, PartyId(entry.party_id), &lang.locale)
             .await

@@ -24,6 +24,10 @@ use wl_kernel::documents::today;
 use crate::access::PortalAccess;
 use crate::refusals::RefusalLog;
 
+/// The user id a refusal is logged with when it came from a signed link,
+/// which has no logged-in user.
+pub const LINK_USER: i64 = 0;
+
 /// What a portal user may try to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PortalAction {
@@ -156,6 +160,17 @@ impl PortalGuard {
         {
             return Ok(Err(Refused::NoAccess));
         }
+        Self::block_check(state, user, acting_for, action).await
+    }
+
+    /// Asks the block about `action` for `acting_for`; a refusal is logged
+    /// for `user` ([`LINK_USER`] for a signed link).
+    async fn block_check(
+        state: &AppState,
+        user: i64,
+        acting_for: PartyId,
+        action: PortalAction,
+    ) -> Result<std::result::Result<(), Refused>> {
         let Some(kind) = action.guarded_kind() else {
             return Ok(Ok(()));
         };
@@ -171,6 +186,26 @@ impl PortalGuard {
                 tx.commit().await?;
                 Ok(Err(Refused::Blocked))
             }
+        }
+    }
+
+    /// [`require`](PortalGuard::require) for a signed link, which has no
+    /// logged-in user: the signature is the credential, so only the block is
+    /// asked. Paying an invoice is allowed; an action that starts new
+    /// business or moves money out is a 422 with the neutral text, logged
+    /// with the user [`LINK_USER`].
+    pub async fn require_link(
+        state: &AppState,
+        lang: &Lang,
+        acting_for: PartyId,
+        action: PortalAction,
+    ) -> Result {
+        match Self::block_check(state, LINK_USER, acting_for, action).await? {
+            Ok(()) => Ok(()),
+            Err(_) => Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                crate::texts::neutral(lang),
+            )),
         }
     }
 

@@ -221,6 +221,9 @@ async fn grant_action(
 
 /// Provides the fakes and the test routes.
 struct Harness {
+    /// Whether the fake block guard is provided (else the app has the real
+    /// one of wl-parties).
+    fake_guard: bool,
     blocks: Blocks,
     done: Done,
     notices: Recording,
@@ -232,7 +235,9 @@ impl Module for Harness {
     }
 
     fn register(&self, app: &mut Registry) {
-        provide_block_guard(app, self.blocks.clone());
+        if self.fake_guard {
+            provide_block_guard(app, self.blocks.clone());
+        }
         provide_notifier(app, self.notices.clone());
         app.provide(self.done.clone());
     }
@@ -345,12 +350,67 @@ pub async fn boot() -> Booted {
         .module(Permissions)
         .module(WlPortal)
         .module(Harness {
+            fake_guard: true,
             blocks: blocks.clone(),
             done: done.clone(),
             notices: notices.clone(),
         });
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
+    Booted {
+        app,
+        blocks,
+        done,
+        notices,
+        _views: views,
+    }
+}
+
+/// A client with parties on.
+const CLIENT: &str = r#"
+[client]
+name = "Palm Grove Properties LLC"
+app = "property"
+
+[modules]
+enabled = ["parties"]
+
+[[legal_entities]]
+code = "PGP"
+name_en = "Palm Grove Properties LLC"
+default = true
+"#;
+
+/// `WlPortal` booted with the real `wl-parties` (its block guard, its demo
+/// parties seeded) and the test routes. `Booted::blocks` is not used.
+pub async fn boot_real() -> Booted {
+    let views = tempfile::tempdir().expect("a temporary views directory");
+    let path = views.path().join("layouts/app.html");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, LAYOUT).unwrap();
+    let (blocks, done, notices) = (Blocks::default(), Done::default(), Recording::default());
+    let app = App::new()
+        .module(Auth::new())
+        .module(Permissions)
+        .module(wl_parties::WlParties::new())
+        .module(WlPortal)
+        .module(Harness {
+            fake_guard: false,
+            blocks: blocks.clone(),
+            done: done.clone(),
+            notices: notices.clone(),
+        });
+    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let app = wl_kernel::apply(app, config).expect("the kernel applies");
+    let dir = views.path().to_path_buf();
+    let app = TestApp::with_config(app, |c| c.views_path = dir).await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .expect("wl:install runs");
+    wl_parties::seed::run(app.state())
+        .await
+        .expect("the demo parties seed");
     Booted {
         app,
         blocks,

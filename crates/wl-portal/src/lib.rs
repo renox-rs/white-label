@@ -5,7 +5,9 @@ pub mod access;
 pub mod events;
 pub mod grants;
 pub mod guard;
+pub mod links;
 pub mod refusals;
+pub mod sections;
 mod texts;
 
 use renox::db::Migration;
@@ -17,8 +19,10 @@ pub use events::{
     PortalAccessActivated, PortalAccessClosed, PortalAccessReadOnly, PortalAccessSuspended,
 };
 pub use grants::{AccessGrant, GrantStatus};
-pub use guard::{PortalAction, PortalGuard, Refused};
+pub use guard::{LINK_USER, PortalAction, PortalGuard, Refused};
+pub use links::{SignedLinkUsed, SignedLinks};
 pub use refusals::RefusalLog;
+pub use sections::{PortalSection, SectionFuture, SectionRow, register_section};
 pub use texts::neutral;
 
 /// The module's permissions (wl-portal §6).
@@ -36,10 +40,20 @@ pub mod permissions {
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
-const VIEWS: &[(&str, &str)] = &[(
-    "wl-portal/refusal_log.html",
-    include_str!("../views/wl-portal/refusal_log.html"),
-)];
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-portal/refusal_log.html",
+        include_str!("../views/wl-portal/refusal_log.html"),
+    ),
+    (
+        "wl-portal/section.html",
+        include_str!("../views/wl-portal/section.html"),
+    ),
+    (
+        "wl-portal/link.html",
+        include_str!("../views/wl-portal/link.html"),
+    ),
+];
 
 /// The portal module. The host adds it with `.module(wl_portal::WlPortal)`
 /// when `client.toml` enables `portal`.
@@ -52,6 +66,8 @@ impl Module for WlPortal {
 
     fn routes(&self) -> Routes {
         refusals::routes()
+            .merge(sections::routes())
+            .merge(links::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -63,6 +79,8 @@ impl Module for WlPortal {
         app.model::<RefusalLog>();
         renox::state_machine::register::<AccessGrant>();
         app.view_data::<refusals::RefusalLogPage>();
+        app.view_data::<sections::SectionPage>();
+        app.view_data::<links::LinkPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
