@@ -18,10 +18,12 @@
 //! A line whose key finds no category is *Uncategorised*, so the totals
 //! always agree with the documents. The actual is computed when asked, with
 //! the mapping of the day. Foreign amounts are taken at the rate stored on
-//! the document; a line whose rate is unknown is left out. Expense claim lines
-//! (wl-payments `Expenses`) and paid payroll runs (wl-hr) come from modules
-//! this build does not have yet; their mapping keys are stored and counted
-//! when they exist.
+//! the document; a line whose rate is unknown is left out. The lines of
+//! approved expense claims (wl-payments, by expense date, mapped through the
+//! expense category) and the employer cost of paid payroll runs (wl-hr, by
+//! period, key `payroll`) are read through the kernel's actual cost sources:
+//! wl-payments registers the claims; wl-hr has no payroll runs in this build,
+//! so the payroll key is stored and counted once a source provides it.
 //! The payments with purpose *owner drawings* (wl-payments) are read through
 //! the kernel's drawing payment sources: a drawing adds its amount, a repayment
 //! by the owner takes it off, in the month of the payment date.
@@ -457,16 +459,18 @@ async fn other_module_items(
             let found = mapped
                 .find(kind, Some(&cost.key))
                 .filter(|(_, kind)| *kind != BudgetKind::Income);
+            let kind = found.map_or(BudgetKind::Expense, |(_, k)| k);
             items.push(ActualItem {
                 legal_entity_id: cost.legal_entity_id,
                 month: month_start(cost.date),
-                kind: found.map_or(BudgetKind::Expense, |(_, k)| k),
+                kind,
                 category_id: found.map(|(id, _)| id),
                 amount: cost.amount,
                 label: cost.label,
                 source: cost.source,
                 party_id: None,
-                self_approved: false,
+                // A self-approved drawing shows the flag (`FIN.ACL.23`).
+                self_approved: cost.self_approved && kind == BudgetKind::OwnerDrawings,
             });
         }
     }

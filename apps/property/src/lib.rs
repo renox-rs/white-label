@@ -11,6 +11,7 @@ pub mod cash_forecast;
 pub mod charge;
 pub mod charge_type;
 pub mod chase;
+pub mod cheque_charges;
 pub mod cheques;
 pub mod compliance;
 mod db;
@@ -198,6 +199,9 @@ impl Module for Property {
         wl_kernel::deposits::provide_deposit_top_ups(app, amend::LeaseTopUps);
         cancellation::register(app);
         cash_forecast::register();
+        // The bounce fee charges and the invoice of a charge a cheque write-off
+        // needs (wl-payments §4 *Cheque*).
+        cheque_charges::register(app);
         invoicing::schedule(app);
         notices::register_types();
         chase::schedule(app);

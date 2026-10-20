@@ -46,6 +46,8 @@ template. BL-SAL-26 and the negative paths in BL-SAL-19 to BL-SAL-25 come from t
 | BL-SAL-24 | Expire points, adjust by hand with approval and report the points liability (`SAL.RUL.08`, `SAL.ACL.07`) | medium | m | Launch 05 | BL-SAL-22; BL-SAL-23; Base: wl-kernel approvals; Base: wl-notify `notify` |
 | BL-SAL-25 | Define customer segments and send retention campaigns through wl-notify | medium | m | Launch 05 | BL-SAL-19; BL-SAL-21; BL-SAL-22; BL-NTF-07; BL-NTF-08; BL-NTF-09 |
 | BL-SAL-26 | Keep loyalty points through account closure, party merge and block, and programme changes | medium | m | Launch 05 | BL-SAL-22; BL-SAL-24; Base: wl-parties `PartiesMerged`, `PartyBlocked`, `BlockEffects` |
+| BL-SAL-27 | Count a vertical's own enquiries as campaign leads through a kernel lead-capture contract | medium | s | Build 1 | BL-SAL-20; BL-SAL-21 |
+| BL-SAL-28 | Keep marketing channels as a configurable list seeded per vertical | medium | s | Build 1 | BL-SAL-19 |
 
 ---
 
@@ -1328,7 +1330,7 @@ Duplicate external numbers per channel (BL-SAL-01); 07 settings and portal uploa
 ### BL-SAL-19 — wl-sales: run campaigns with a budget and cost entries
 
 **Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-kernel state machines and approvals · Base: wl-invoicing supplier bills · **Blocks:** BL-SAL-20, BL-SAL-21, BL-SAL-25, BL-NTF-07, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Depends on:** Base: wl-kernel state machines and approvals · Base: wl-invoicing supplier bills · **Blocks:** BL-SAL-20, BL-SAL-21, BL-SAL-25, BL-NTF-07, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27, BL-SAL-28
 **Review items:** G1 (SME problem map 1, 2, 4)
 
 #### Goal
@@ -1491,7 +1493,7 @@ Attribution of leads and parties (BL-SAL-20); reports (BL-SAL-21); retention sen
 ### BL-SAL-20 — wl-sales: record the source and campaign of leads and parties and link the first sale
 
 **Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-SAL-19 · Base: wl-sales Lead lifecycle · Base: wl-invoicing Invoice lifecycle (`InvoiceIssued`) · Base: wl-parties merge (`PartiesMerged`) · Base: wl-kernel `void` (§5.12) · **Blocks:** BL-SAL-21, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Depends on:** BL-SAL-19 · Base: wl-sales Lead lifecycle · Base: wl-invoicing Invoice lifecycle (`InvoiceIssued`) · Base: wl-parties merge (`PartiesMerged`) · Base: wl-kernel `void` (§5.12) · **Blocks:** BL-SAL-21, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27, BL-SAL-27
 **Review items:** G1 (SME problem map 1, 2, 4)
 
 #### Goal
@@ -1656,7 +1658,7 @@ epics); 01 enquiry fields (`PRP.LEA.01`, 01 epic).
 ### BL-SAL-21 — wl-sales: report leads, conversion, cost per lead, CAC and ROAS
 
 **Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-SAL-19 · BL-SAL-20 · **Blocks:** BL-SAL-25, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Depends on:** BL-SAL-19 · BL-SAL-20 · **Blocks:** BL-SAL-25, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27, BL-SAL-27
 **Review items:** G1 (SME problem map 1, 2, 4)
 
 #### Goal
@@ -2397,3 +2399,134 @@ Earn lots are consumed oldest expiry first by `redeem` and `expire`.
 Accounting treatment of forfeited and expired points (`⚠ open: accountant (A-15)`); the
 lawyer's answer on terms changes (open question); party merge and block themselves
 (wl-parties).
+
+---
+
+### BL-SAL-27 — wl-sales: count a vertical's own enquiries as campaign leads through a kernel lead-capture contract
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-SAL-20; BL-SAL-21 · **Blocks:** None.
+**Review items:** G1 (SME problem map 1, 2, 4); follow-up of BL-PRP-27, Done-when point 9 (a)
+
+#### Goal
+01 has no wl-sales leads: its enquiries (`PRP.LEA.01`) stay in apps/property and carry the source and
+the campaign. The acquisition report counts wl-sales leads only, so a 01 campaign shows no enquiries,
+and cost per lead is "—". This issue adds a kernel contract through which a vertical reports its own
+lead records (counted, won, lost as duplicate or spam) per campaign and source, and wl-sales counts them
+in the report as leads. 01 implements it for its enquiries.
+
+#### Surfaces
+- **Back office:** the campaign report of a 01 campaign shows *Enquiries* (the 01 label for leads), won,
+  conversion and cost per lead from the enquiries.
+- **System:** apps/property registers its enquiries as a lead provider; wl-sales reads every registered
+  provider when it computes the report.
+
+#### Files to read
+- `docs/modules/wl-sales.md` §2 (note under the table: 01 keeps its enquiries and uses `SAL.CRM.02` on
+  top), §4.1 *Vertical mapping* (01 row), §5.8 (points 3 and 5)
+- `docs/verticals/01-property.md` §5 `PRP.LEA.01`, §7.2 *Lead sources used*
+- `crates/wl-kernel/src/sales.rs`, `apps/property/src/enquiry.rs`, `crates/wl-sales/src/campaign.rs`
+
+#### Terms
+- **Lead provider:** a vertical's implementation of the kernel trait `LeadRecords`: for a period, its
+  lead records with source, campaign, created date, won date and whether they are excluded (duplicate,
+  spam or invalid).
+- **Won:** for 01, the enquiry converted and its tenant's first lease activated.
+
+#### Spec excerpt (authoritative for this issue)
+wl-sales §2: "01 keeps its enquiries and viewings (`PRP.LEA.01`, apps/property) and uses `SAL.CRM.02` on
+top: source and campaign on the enquiry and on the tenant or buyer party."
+
+| Vertical | Conversion event that runs `win` | Notes |
+|---|---|---|
+| 01 Property | lease activated | No `SAL.CRM.01`: enquiries stay `PRP.LEA.01` in apps/property and carry source and campaign (`SAL.CRM.02`); the activated lease is the first sale of the tenant's party acquisition |
+
+§5.8 point 5: "The acquisition report shows, per source, campaign, marketing channel, brand, branch and
+period: leads, leads won, conversion rate (won ÷ leads), new customers …, cost, cost per lead (cost ÷
+leads), customer acquisition cost (cost ÷ new customers) and return on ad spend (converted value ÷ cost)
+… leads and customers in the period they were created or won. A ratio with a zero divisor shows "—"."
+
+#### Edge cases decided
+- **Both kinds present:** a vertical with wl-sales leads and a provider has both counted; 01 has only the
+  provider.
+- **Excluded enquiries:** an enquiry closed as duplicate or spam is left out, as leads are.
+- **Late response:** the campaign on an enquiry is set at capture (the enquiry form's campaign code or
+  staff choice); the late-response days rule applies at capture as for leads.
+- **Label:** the vertical names its leads (*Enquiries* in 01); the numbers are the same columns.
+- **Dependency direction:** apps/property depends on the kernel contract only, not on wl-sales.
+
+#### Must not
+- Copy enquiries into wl-sales lead rows.
+- Count an enquiry twice when it converts.
+
+#### Done when
+- [ ] Given campaign "Bayut October" with cost AED 3,000 and 12 enquiries in October 2026 (one marked
+      duplicate), the report shows 11 enquiries and cost per lead AED 272.73.
+- [ ] 2 of them converted with leases activated in October: won 2, conversion 18.2%.
+- [ ] A campaign without enquiries shows 0 and cost per lead "—".
+- [ ] With apps/property off, the report shows wl-sales leads only.
+
+#### Out of scope
+The enquiry and viewing pipeline (`PRP.LEA.01` base); campaign channels (BL-SAL-28).
+
+---
+
+### BL-SAL-28 — wl-sales: keep marketing channels as a configurable list seeded per vertical
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-SAL-19 · **Blocks:** BL-CON-18
+**Review items:** G1 (SME problem map 1, 2, 4); follow-up of BL-PRP-27, Done-when point 9 (b)
+
+#### Goal
+Each vertical names its own campaign channels: 01 listing portals, social media, search ads, email,
+signboards and brokers; 02 tender invitations, exhibitions, LinkedIn, email and company profile
+mailings. wl-sales has a fixed `MarketingChannel` enum, so a 01 campaign on a listing portal is recorded
+as *other online* and 02 cannot seed its list. This issue turns the marketing channel into a table, like
+lead sources, seeded with the module's list and extended or renamed per vertical.
+
+#### Surfaces
+- **Back office:** the sales settings list the marketing channels (key, name EN/AR, active); the campaign
+  form offers the active ones; the report groups by them.
+- **System:** wl-sales seeds the module's list; the vertical seed adds its own and deactivates the ones it
+  does not use; existing campaigns are migrated to the matching rows.
+
+#### Files to read
+- `docs/modules/wl-sales.md` §3 *Campaign* (marketing channel), §5.8 point 5, §7 (lead sources setting,
+  the model for this one)
+- `docs/verticals/01-property.md` §7.2 *Campaign channels*; `docs/verticals/02-construction.md` §7.2
+  *Campaign channels*
+- `crates/wl-sales/src/campaign.rs` (`MarketingChannel`), `lead_source.rs` (the table to copy)
+
+#### Terms
+- **Marketing channel:** where a campaign runs (not the order *Channel* of wl-sales).
+
+#### Spec excerpt (authoritative for this issue)
+wl-sales §3 *Campaign*: "marketing channel (Google, Meta, TikTok, other online, print, radio or outdoor,
+event, email, SMS, WhatsApp, partner, other; not the order *Channel*)".
+
+| Setting (01 §7.2) | 01 value |
+|---|---|
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | listing portals, social media, search ads, email, signboards, brokers; converted value: the first lease's contract value; … |
+
+#### Edge cases decided
+- **Spec gap:** the module lists fixed channels while every vertical lists its own. Decided: the module's
+  list is the seed; a vertical adds channels and deactivates others; keys are stable, names editable.
+- **01 seed:** `listing_portals`, `social_media`, `search_ads`, `email`, `signboards`, `brokers` added;
+  the module's others deactivated, not deleted.
+- **Migration:** existing campaigns keep their channel (the enum key becomes the row key).
+- **A channel in use:** cannot be deleted, only deactivated; deactivated channels stay on old campaigns
+  and in reports.
+
+#### Must not
+- Hard-code a vertical's channels in wl-sales.
+- Change the channel of an existing campaign during migration.
+
+#### Done when
+- [ ] With the 01 seed, the campaign form offers the six 01 channels; a campaign on *listing portals*
+      reports under *Listing portals*, not *Other online*.
+- [ ] A campaign created before the change with channel `meta` still shows *Meta* after the migration.
+- [ ] Deleting a channel used by a campaign is refused; deactivating it hides it from new campaigns only.
+- [ ] The 02 seed (when 02 is enabled) can add *tender invitations* without code in wl-sales.
+
+#### Out of scope
+The 02 values themselves (BL-CON-18); lead sources (existing table, BL-SAL-20).

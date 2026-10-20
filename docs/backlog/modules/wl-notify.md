@@ -25,6 +25,7 @@ the gap review (GR-G4).
 | BL-NTF-07 | Send a marketing broadcast to a segment, with approval above a size (`NTF.ACL.03`) | medium | m | Launch 05 | BL-SAL-19; Base: wl-notify Message lifecycle; Base: wl-parties consents; Base: wl-kernel approvals |
 | BL-NTF-08 | Apply the marketing send window and frequency cap (`NTF.RUL.02`) | medium | s | Launch 05 | BL-NTF-07 |
 | BL-NTF-09 | Expire unapproved broadcasts, drop stale marketing messages and stop a broadcast (`NTF.RUL.03`) | medium | s | Launch 05 | BL-NTF-07; BL-NTF-08 |
+| BL-NTF-10 | Send stored documents as e-mail attachments through the kernel notifier | high | s | Build 1 | Base: wl-notify Message lifecycle |
 
 ---
 
@@ -680,6 +681,7 @@ of other types and broadcasts started by staff (Later).
 **Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-NTF-07 · Base: wl-notify Message lifecycle (`defer`, `suppress`) · **Blocks:** BL-NTF-09, BL-SAL-25, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 32)
+**Progress:** parts 1 to 4 of 5 are on main: send window rules, quiet hours and the module clock (5c726b4); send-window settings and page (8a7ff70, test `send_window_page.rs`); defer and release (ed9e72a, test `send_deferral.rs`); frequency cap under a party lock (4b1bc68, test `cap_send.rs`); test fixes e3d1155, 864d513. Open: part 5 of 5, the consolidated acceptance checks (AC1 to AC10) as their own test files.
 
 #### Goal
 Marketing messages go out only between 07:00 and 21:00 Asia/Dubai (the TDRA hours for
@@ -741,14 +743,14 @@ marketing messages in 7 days, however many campaigns run.
 - Must not count a suppressed message towards the cap.
 
 #### Done when
-- [ ] A marketing SMS queued at 22:15 is deferred and sent at 07:00 the next day.
-- [ ] Given recipient R with 2 marketing messages sent in the last 7 days, a third is suppressed
+- [x] A marketing SMS queued at 22:15 is deferred and sent at 07:00 the next day.
+- [x] Given recipient R with 2 marketing messages sent in the last 7 days, a third is suppressed
       with reason *frequency cap*.
-- [ ] Setting the SMS window to 06:00–22:00 is refused; 09:00–20:00 is accepted.
-- [ ] Given recipient R with 1 marketing message in the last 7 days, two broadcasts release a
+- [x] Setting the SMS window to 06:00–22:00 is refused; 09:00–20:00 is accepted.
+- [x] Given recipient R with 1 marketing message in the last 7 days, two broadcasts release a
       message to R at the same moment: one is sent, the other is suppressed *frequency cap*.
-- [ ] Setting the email window to 06:00–23:00 is accepted.
-- [ ] A normal-urgency booking reminder (category *reminder*) to a customer, queued at 22:15, is
+- [x] Setting the email window to 06:00–23:00 is accepted.
+- [x] A normal-urgency booking reminder (category *reminder*) to a customer, queued at 22:15, is
       deferred by quiet hours and sent at 08:00 (not 07:00); it is never suppressed *frequency
       cap* and does not count towards the cap.
 
@@ -842,3 +844,62 @@ state stays, stopped by and at are recorded, and `BroadcastStopped` tells the re
 #### Out of scope
 The broadcast itself (BL-NTF-07); send window and frequency cap (BL-NTF-08); the campaign
 view in wl-sales (BL-SAL-25).
+
+---
+
+### BL-NTF-10 — wl-notify: send stored documents as e-mail attachments through the kernel notifier
+
+**Labels:** `module:wl-notify` `area:negative-flow` `priority:high` `size:s` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** Base: wl-notify Message lifecycle · **Blocks:** BL-PRP-31, BL-PAY-30
+**Review items:** 01 MEDIUM "owner statement lifecycle and disputes" (review §6); follow-up of BL-PRP-19, Done-when point 3
+
+#### Goal
+A notification sometimes has to carry a document: the owner statement PDF, a signed contract, a handover
+receipt. The kernel `NotifyRequest` and the wl-notify message have no attachments, so a module could only
+queue a mail itself and bypass opt-outs, quiet hours, suppression and the message log. This issue adds
+attachments to the request (references to stored documents) and sends them with the e-mail channel.
+
+#### Surfaces
+- **System:** `NotifyRequest` takes attachment references; wl-notify attaches the files to e-mails, logs
+  them on the message and leaves other channels unchanged.
+
+#### Files to read
+- `docs/modules/wl-notify.md` §3 *Message*, §4.1, §5.1, §9 (row "Email with templates and attachments")
+- `crates/wl-kernel/src/notify.rs` (`NotifyRequest`), `crates/wl-notify/src/send.rs`, `message.rs`
+
+#### Terms
+- **Attachment reference:** a document id from `DocumentStore` and the file name to show.
+- **Channel:** e-mail, SMS, WhatsApp, in-app.
+
+#### Spec excerpt (authoritative for this issue)
+| Entity | Description | Important fields |
+|---|---|---|
+| Message | One message to one recipient on one channel | type, subject (`Subject` it is about), recipient, channel, language, rendered content, provider, provider message id, cost (if reported), status, scheduled for, attempts |
+
+| Need | Renox provides | Gap |
+|---|---|---|
+| Email with templates and attachments | mail, `rx-mail-*` tags | Arabic RTL email layout → R1 |
+
+#### Edge cases decided
+- **Message field:** the message stores its attachment references; the file is read at send time, so a
+  deferred message (quiet hours) sends the stored version.
+- **Size:** total over 10 MB: the e-mail carries a signed download link instead (wl-portal
+  `SignedLinks`, 30 days), and the message says so.
+- **SMS and WhatsApp:** no attachment; the template may include a signed link.
+- **Opt-out, suppression and give-up:** unchanged; a message that gives up runs its reaction as usual.
+- **Document not readable at send time:** the message `fail`s with reason *attachment missing*.
+
+#### Must not
+- Send any mail outside the message pipeline.
+- Attach a document the recipient's party may not see (the caller passes only documents of the subject).
+
+#### Done when
+- [ ] Given a stored PDF of 180 KB, a request of type `owner_statement.published` with it as attachment
+      sends one e-mail with the file named "Owner statement 2026-10.pdf", and the message log lists it.
+- [ ] The same request in quiet hours sends the attachment at the end of quiet hours.
+- [ ] An attachment of 12 MB is replaced by a signed link.
+- [ ] An opted-out recipient gets nothing, as without an attachment.
+- [ ] An SMS for the same type carries no file.
+
+#### Out of scope
+Generating the document (BL-DOC-11); the Arabic RTL e-mail layout (R1).

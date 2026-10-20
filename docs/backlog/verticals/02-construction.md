@@ -30,7 +30,7 @@ absconding, write-off, cheques). Review items: D-04, D-05, 02-N1-a, 02-N2-a, 02-
 | BL-CON-15 | Open an absence case for a worker who stops coming (`CON.RUL.08`) | medium | s | Launch 02 | Base: wl-attendance Attendance record lifecycle; BL-HRM-07; BL-TKT-11 |
 | BL-CON-16 | Hold a PO to an unregistered subcontractor on a Dubai project (`CON.ACL.13`) | medium | s | Launch 02 | Base: wl-inventory Purchase order lifecycle; BL-KRN-01 |
 | BL-CON-17 | 02: configure shared negative-flow settings — money and procurement | high | m | Launch 02 | BL-INV-01; BL-INV-04; BL-INV-10; BL-INV-13; BL-PAY-09; BL-PAY-24; BL-STK-01; BL-STK-03; BL-STK-07; BL-STK-08; BL-STK-27; BL-CON-03; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26; BL-STK-28; BL-STK-29; BL-STK-30; BL-STK-31 |
-| BL-CON-18 | 02: configure shared negative-flow settings — labour and compliance | high | m | Launch 02 | BL-ATT-01 to BL-ATT-08; BL-HRM-01; BL-HRM-04; BL-HRM-07; BL-DOC-02; BL-DOC-04; BL-KRN-04; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-CON-18 | 02: configure shared negative-flow settings — labour and compliance | high | m | Launch 02 | BL-ATT-01 to BL-ATT-08; BL-HRM-01; BL-HRM-04; BL-HRM-07; BL-DOC-02; BL-DOC-04; BL-KRN-04; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10; BL-SAL-28 |
 | BL-CON-19 | Make the client portal read-only after the final account | medium | s | Later | BL-CON-02; Base: wl-portal client portal (`POR.SLF.01`, Later in 02) |
 
 ---
@@ -1190,19 +1190,22 @@ Variation kinds (BL-CON-12).
 ### BL-CON-15 — 02 Construction: open an absence case for a worker who stops coming (`CON.RUL.08`)
 
 **Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
-**Depends on:** Base: wl-attendance Attendance record lifecycle · BL-HRM-07 · BL-TKT-11 · **Blocks:** None.
+**Depends on:** Base: wl-attendance Attendance record lifecycle · BL-HRM-07 · BL-TKT-11 (category settings and the vertical seeding path; it does not seed *absence*) · **Blocks:** None.
 **Review items:** 02 MEDIUM "worker absconding" (review §6)
 
 #### Goal
 A crew worker with no attendance and no approved leave for 3 consecutive working days gets an
 absence case ticket for HR, and the supervisor is told. At 7 days HR is reminded that an absconding
-report may be requested (approved by the MD in wl-hr).
+report may be requested (approved by the MD in wl-hr). 02 seeds the *absence* ticket category
+itself: no module issue provides it (BL-TKT-11 seeds only `billing_dispute`, `labour_case` and
+`delivery_claim`, and `general` and `task`).
 
 #### Surfaces
 - **Back office:** HR gets an *absence* case ticket after 3 working days with no attendance
   and no leave, and a reminder at 7 days that `report_absconding` may be requested; the
   supervisor is notified.
-- **System:** `CON.RUL.08` runs daily at 02:00, counts only working days of the crew's site
+- **System:** the 02 seed adds the ticket category `absence` (EN "Absence", assignee role HR);
+  `CON.RUL.08` runs daily at 02:00, counts only working days of the crew's site
   while the project runs, and stops counting when attendance is recorded again.
 
 #### Files to read
@@ -1211,7 +1214,9 @@ report may be requested (approved by the MD in wl-hr).
 
 #### Terms
 - **Working day:** a day the worker's site works (site calendar), excluding public holidays.
-- **Absence case:** a ticket of category *absence* for HR.
+- **Absence case:** a ticket of category *absence* for HR. The category is seeded by this issue
+  (key `absence`; a client may rename it); BL-HRM-07 asks for an open
+  ticket of this category.
 
 #### Spec excerpt (authoritative for this issue)
 
@@ -1232,6 +1237,10 @@ in wl-hr".
 - **Run time:** daily at 02:00 Asia/Dubai for the previous days (§7.2 intro), so late
   entries made within the late-entry window are seen.
 - **Absconding:** this rule never runs `report_absconding`; HR requests it (BL-HRM-07).
+  Holding payroll lines, the final settlement and the cancellation case after approval belong
+  to wl-hr (BL-HRM-30, Launch 09), not to 02.
+- **Category:** seeded idempotently by the 02 starter data, like BL-AUT-06 does for its own
+  categories; a client's rename survives a re-run.
 
 #### Must not
 - Must not report a worker as absconded automatically.
@@ -1244,6 +1253,8 @@ in wl-hr".
       days; Sunday 2027-03-07 not counted), HR is reminded on 2027-03-09.
 - [ ] W with approved leave on those days gets no case.
 - [ ] W marked present on 2027-03-05 stops the count; no reminder at 7 days.
+- [ ] A fresh 02 deployment has the ticket category `absence` assigned to the HR role; seeding
+      twice creates one row; renaming it works and the rename survives a re-seed.
 
 #### Out of scope
 `report_absconding` and its effects (BL-HRM-07).
@@ -1392,9 +1403,9 @@ supplier scorecard moved here from BL-CON-18 on 2026-10-16, with the procurement
 | **Payments** | | | |
 | 22 | Payment method *set-off* (BL-PAY-24) | on (back- and contra-charges set off against an IPA invoice, BL-CON-06) | §7 intro; §7.1 *IPA* `invoice` |
 | **Cash-flow forecast and budget** | | | |
-| 23 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 200,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; certified IPAs by due date; retention releases on their expected release date (a `CashForecastSource` of 02); payroll by the WPS due date; due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| 23 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 200,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; certified IPAs by due date; retention releases on their expected release date (a `CashForecastSource` of 02); no payroll line (payroll by the WPS due date is added with wl-hr payroll in Launch 09: it needs the payroll provider of phase F9, which Launch 02 does not have); due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
 | 24 | Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | company budget (overheads: office, yard, plant, staff) per legal entity and fiscal year, by month; categories owned by the accountant and mapped to cost codes; approved by the MD; project budgets stay in job costing; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
-| 25 | Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, project cost and profit; every drawing approved, whatever its amount (`FIN.ACL.21` limit AED 0), by the MD, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
+| 25 | Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, project cost and profit; every drawing approved, whatever its amount (`FIN.ACL.21` limit AED 0), by the MD, never by the requester (`FIN.ACL.21`); setting `drawings_self_approve` (`FIN.ACL.23`) **off**, because its default is on and the sole holder of `drawings.approve` could then record their own drawing | §5; §7.2 settings; wl-invoicing §7 |
 | **Supplier scorecard** | | | |
 | 26 | Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score on a 0–100 scale over a 3-month window (grace 1 day, at least 3 receipts, module weights); below 70 `STK.RUL.09` gives the procurement officer a review task and tells the project manager; preferred and alternative suppliers per item offered on purchase requests and reorder suggestions; making another supplier an item's preferred one needs a second person (`STK.ACL.07`: on) | §5; §7.2 settings |
 
@@ -1452,7 +1463,9 @@ supplier scorecard moved here from BL-CON-18 on 2026-10-16, with the procurement
       needs approval by the MD; an expense with category *owner drawings* is left out of operating
       cost and profit reports, and the user who records it cannot approve it (`FIN.ACL.21`); an
       expense line reaching 100% of its month's budget line warns the category's owner role and
-      the accountant once (`FIN.RUL.24`).
+      the accountant once (`FIN.RUL.24`). In a fresh 02 deployment `drawings_self_approve`
+      (`FIN.ACL.23`) is off: the only holder of `drawings.approve` cannot approve their own
+      drawing, and no *self-approved* flag is set.
 - [ ] **Supplier scorecard (item 26):** a supplier whose monthly snapshot scores 69 of 100 over
       the 3-month window gives the procurement officer one review task and tells the project
       manager (`STK.RUL.09`); 70 creates none; a supplier with fewer than 3 receipts gets no
@@ -1461,13 +1474,15 @@ supplier scorecard moved here from BL-CON-18 on 2026-10-16, with the procurement
 
 #### Out of scope
 The mechanisms themselves (module epics in Depends on); labour and compliance (BL-CON-18).
+Payroll in the cash-flow forecast (by the WPS due date): provided by wl-hr payroll in Launch 09
+(phase F9; a `CashForecastSource` of wl-hr, not yet an issue).
 
 ---
 
 ### BL-CON-18 — 02 Construction: configure shared negative-flow settings — labour and compliance
 
 **Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** BL-ATT-01 · BL-ATT-02 · BL-ATT-03 · BL-ATT-04 · BL-ATT-05 · BL-ATT-06 · BL-ATT-07 · BL-ATT-08 · BL-HRM-01 · BL-HRM-04 · BL-HRM-07 · BL-DOC-02 · BL-DOC-04 · BL-KRN-04 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
+**Depends on:** BL-ATT-01 · BL-ATT-02 · BL-ATT-03 · BL-ATT-04 · BL-ATT-05 · BL-ATT-06 · BL-ATT-07 · BL-ATT-08 · BL-HRM-01 · BL-HRM-04 · BL-HRM-07 · BL-DOC-02 · BL-DOC-04 · BL-KRN-04 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · BL-SAL-28 · **Blocks:** None.
 **Review items:** X-13, X-15, X-16, X-19, 02-N5-d, 02-N8-a
 
 #### Goal
@@ -1529,9 +1544,9 @@ scorecard (`STK.SUP.01`) is seeded in BL-CON-17.
 | **Late entry** | | | |
 | 14 | Attendance by the supervisor (`HRM.ACL.01`) | today or 1 day back; later only by the project manager with the late-entry flag and a reason (`PLT.ACL.10`) | §3.3 `HRM.ACL.01`; §4.2 row "Attendance entered after the late-entry window" |
 | **Sales, finance, staff and registrations** | | | |
-| 15 | Lead sources used (`SAL.CRM.02`) | referral, website, event, partner (consultants and main contractors), other; tenders and enquiries from main contractors are leads (`SAL.CRM.01`); no source requires a campaign | §5; §7.2 settings |
-| 16 | Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | tender invitations, exhibitions, LinkedIn, email, company profile mailings; converted value: the first accepted quotation; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
-| 17 | Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (site induction, PPE issue, visa and ID documents), supervisor, storekeeper, procurement officer and QS, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created in `onboarding` (none for a record created directly `active`, e.g. by a data import); checklist steps use `WRK.CHK.01`; tasks to HR / PRO, the project manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds the assignees of an overdue step on the first run after its due date, then every 2 days, and tells HR / PRO and the line manager after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.2 settings |
+| 15 | Lead sources used (`SAL.CRM.02`) | referral, website, event, partner (consultants and main contractors), other; the module's other seeded sources (walk_in, social, paid_ads, aggregator) are deactivated in the 02 seed; tenders and enquiries from main contractors are leads (`SAL.CRM.01`); no source requires a campaign | §5; §7.2 settings |
+| 16 | Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | tender invitations, exhibitions, LinkedIn, email, company profile mailings, seeded as rows of the configurable channel list of BL-SAL-28 (the module's fixed channels are deactivated); converted value: the value of the party's first sale as wl-sales receives it (`record_first_sale`, BL-SAL-20), which in 02 is the accepted quotation or tender (`FIN.QUO.01`): wl-sales holds no quotation, so the report of that sale comes from the module that accepts quotations (wl-invoicing), and no issue builds that report yet; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
+| 17 | Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (site induction, PPE issue, visa and ID documents), supervisor, storekeeper, procurement officer and QS, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created in `onboarding` (none for a record created directly `active`, e.g. by a data import); checklist steps use `WRK.CHK.01`; tasks to HR / PRO, the project manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds the assignees of an overdue step on the first run after its due date, then every 2 days, and tells HR / PRO and the line manager after 5 days (wl-hr's defaults, R = 2 and E = 5, which are constants in wl-hr today, `reminders.rs`; nothing to seed, and 02 must not override them until wl-hr makes them settings); completion blocks nothing (role activation not blocked) | §5; §7.2 settings |
 | 18 | SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: HSE officer (safety SOPs, method statements) and project manager (site SOPs); required readers: supervisors and the workers of the project's crews; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the reader's manager and the SOP's owner role (the SOP owner named above) after 7 days overdue; acknowledged only by the reader, in person with a drawn signature and a staff witness for workers without a session (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
 | 19 | Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *ISO certificate* (subject: legal entity; responsible role HSE officer); *Trademark registration* and *Other certification* (legal entity; MD); `DOC.RUL.01` at 180, 90 and 30 days for trademarks and 90, 30 and 7 days for the others; no `blocks` | §5; §7.2 settings |
 
@@ -1565,15 +1580,18 @@ scorecard (`STK.SUP.01`) is seeded in BL-CON-17.
 - [ ] **Absconding (item 13):** for worker W with an open absence case, HR user H requests
       `report_absconding`; an approval request goes to the MD and nothing changes for W until it
       is approved; H cannot approve it; a project manager cannot request it; when the MD approves,
-      W leaves the crew and W's payroll lines are held.
+      W leaves the crew. The payroll hold, the draft settlement and the cancellation case follow
+      from BL-HRM-30 in Launch 09, not here.
 - [ ] **Remind only (item 9):** a performance bond expiring in 30 days and the client's
       contractor registration expiring in 30 days remind their responsible roles (`DOC.RUL.01`);
       on the day after either expires, no transition is refused or flagged because of it.
 - [ ] **Late entry:** a supervisor entering attendance for 3 days ago is refused; the project
       manager enters it with a reason and a late-entry flag.
 - [ ] **Lead sources:** a new lead or party offers the sources referral, website, event, partner
-      and other; a campaign with channel *tender invitations*, a budget and cost entries reports
-      leads, conversion, cost per lead, CAC and ROAS; a cost entry over the budget waits for a
+      and other (walk_in, social, paid_ads and aggregator are not offered); a campaign with
+      channel *tender invitations* (a row of the BL-SAL-28 list), a budget and cost entries
+      reports leads, cost per lead, and, once a first sale is reported for a party, conversion,
+      CAC and ROAS; a cost entry over the budget waits for a
       manager (`SAL.ACL.07`).
 - [ ] **Onboarding and SOPs:** hiring a worker creates the worker checklist with tasks to HR / PRO,
       the project manager and the employee, and the role is active before it is complete; a step
@@ -1588,7 +1606,9 @@ scorecard (`STK.SUP.01`) is seeded in BL-CON-17.
 
 #### Out of scope
 The mechanisms themselves (module epics in Depends on); the absence case (BL-CON-15); the supplier
-scorecard (BL-CON-17).
+scorecard (BL-CON-17). The payroll hold after an absconding report: provided by BL-HRM-30
+(Launch 09). Reporting an accepted quotation to wl-sales as the first sale: provided by the
+module that accepts quotations (wl-invoicing, `FIN.QUO.01`); no issue exists yet.
 
 ---
 

@@ -561,6 +561,7 @@ impl wl_kernel::budgets::ActualCostSource for Payroll {
                         amount: 8_000_000,
                         label: "Payroll March".to_owned(),
                         source: wl_kernel::Subject::new("hr.payroll_run", 7),
+                        self_approved: false,
                     });
                 }
             }

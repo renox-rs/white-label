@@ -646,7 +646,7 @@ The MVP is online only. When a site loses internet or power, staff keep working 
 | `Approvals` | `require(action, subject, payload)` → `Allowed` or `Pending(request)` |
 | `Automations` | Rule registration by modules; trigger hooks; run log |
 | `Sensitive` | Masking, reveal with logging, field-visibility checks for `FLD` rules |
-| `Capabilities` | Registry of capability traits (`Invoicer`, `PaymentRecorder`, `Notifier`, `DocumentStore`, `TaskCreator`, …) and their no-op fallbacks when a module is disabled |
+| `Capabilities` | Registry of capability traits (`Invoicer`, `PaymentRecorder`, `Notifier`, `DocumentGuard`, `TaskCreator`, …) and their no-op fallbacks when a module is disabled |
 | `Dashboards` | Tile registration and per-role default dashboards |
 | `ApiClients` | Party-bound API tokens, scope and rate limit |
 | `LegalEntities` | Entity for a scope; issuer snapshot at issue time; entity filter for reports |
@@ -659,11 +659,31 @@ The MVP is online only. When a site loses internet or power, staff keep working 
 | `LateEntry` | Opt-in late-entry flag, reason and approval on a business-time field ([§5.13](#513-late-entry-after-an-outage)) |
 | `Integrations` | Connection registration, health state, queue and retry, banner, manual fallback text, late sync and reconciliation tasks ([§5.14](#514-integration-down)) |
 
+**Contracts between modules (added in F1).** The kernel also defines the traits one module
+provides and others call, each with a no-op fallback when the providing module is off. The
+full list, with the module path of each, is in
+[crates/wl-kernel/README.md](../../crates/wl-kernel/README.md):
+
+| Contract | Provided by | Purpose |
+|---|---|---|
+| `PartyDirectory`, `BlockGuard`, `ScreeningGuard` | wl-parties | Parties, refusing agreements and money out to a blocked party, the stale-list screening warning |
+| `Invoicer`, `SupplierBills`, `CompanyBudgets`, `OwnerDrawings` | wl-invoicing | Invoices and credit notes, supplier bills, company budgets, owner drawings |
+| `PaymentRecorder`, `Cheques`, `Deposits`, `DepositDeductions`, `BankStatements` | wl-payments | Receipts and refunds, cheques, deposits and their deductions, bank balances |
+| `Workforce` | wl-hr | Employees of a role in a scope, staff profiles |
+| `TaskCreator`, `ServiceContractCoverage` | wl-ticketing | Tickets and tasks (also `role_tasks`), service-contract cover |
+| `DocumentGuard`, `SopAcknowledgements`, `BlockSubjects` | wl-documents | Document blocks per transition, SOP acknowledgements |
+| `Notifier` | wl-notify | Notices and broadcasts |
+| `CampaignAttribution`, `LeadConversion` | wl-sales | Campaign attribution and lead conversion |
+| `DepositTopUps` | apps/property (the owner of the charges) | The top-up charge of a deposit that grew |
+| `CashForecastSource`, `ActualCostSource`, `DrawingPaymentSource`, `ChaseHolds`, `HeldFundsSource` | registries any module adds to | Cash-flow forecast lines, budget vs actual, drawings payments, chase holds during a legal case, funds held for a party |
+| `SubjectMachine` registry, `digest`, `role_tasks` | kernel | Transitions by name ([§4.1](#41-approval-request), WORKFLOW §3.4), the daily digest of voids and late entries, tasks for a role |
+| `SupplierDebitNotes` (wl-invoicing), `Checklists` (wl-ticketing), `Segments` (wl-sales), `Consents` (wl-parties), `BounceFees` (wl-invoicing), `ChargeInvoicer` (the charge owner), `LandedCosts` and `CostPoster` (inventory, job costing), `RecipientLookup` (the ASP adapter), `BroadcastRequesters` (the module that asks for a broadcast) | defined; no module provides them yet in F1, so the no-op fallback applies | Debit notes, checklist runs, broadcast audiences and consent, bounce fees, invoicing a charge before a cheque write-off, landed cost and cost posting, the e-invoicing recipient ID, broadcast requesters |
+
 **Consumes:** Renox auth, permissions, audit, queue, scheduler, events, charts, tokens,
 import, search, grid export and renox-oauth; Renox R2 (settings store), R3 (PDF export),
 R9 (brand tokens), R11 (webhooks), R12 (state machines), R13 (sequences), R14 (custom fields),
 R22 (Arabic search), R23 (Excel import, dry run, rollback) and R24 (Entra ID and Workspace
-sign-in). `DocumentStore` (wl-documents) for note attachments and export files;
+sign-in). wl-documents (through the kernel `documents` contract) for note attachments and export files;
 `Notifier` (wl-notify) for mentions and scheduled reports.
 
 **Events emitted**

@@ -1,9 +1,10 @@
 # 0002 — Document all ten verticals before writing any code
 
-- **Status:** accepted
+- **Status:** accepted; build order superseded by [0005](0005-phases-follow-vertical-numbers.md)
 - **Date:** 2026-10-14
 - **Amends:** [0001](0001-first-two-verticals.md). Its build order (Property, then Manpower)
-  still applies once development starts.
+  applied when development started; [0005](0005-phases-follow-vertical-numbers.md) replaced it
+  (phases follow the vertical numbers, Manpower is F9).
 
 ## Context
 

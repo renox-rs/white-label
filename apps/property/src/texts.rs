@@ -1028,6 +1028,10 @@ const TEXTS: &[(&str, &str)] = &[
         ":amount of the payments taken off the credited invoices stays as the tenant's credit.",
     ),
     ("property.amend.top_up_line", "Deposit top-up · :lease"),
+    (
+        "property.cheques.bounce_fee_line",
+        "Returned cheque fee · :lease",
+    ),
     // Forcing the end of a lease (BL-PRP-12).
     ("property.force.action", "Force terminate"),
     ("property.force.submit", "Request approval"),
@@ -1516,6 +1520,7 @@ const TEXTS: &[(&str, &str)] = &[
         "property.forecast.owner_payout",
         "Owner payout, statement :statement",
     ),
+    ("property.forecast.lease_charge", ":charge, lease :lease"),
     ("property.payout.settled_how", "Settled by"),
     ("property.payout.how_payout", "Payout"),
     ("property.payout.how_carried_forward", "Carried forward"),

@@ -46,7 +46,7 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{ApprovalDecided, ApprovalEnd};
-use wl_kernel::cheques::{CHARGE_SUBJECT_TYPE, ChequeOutcome, ChequeStatus, charge_invoicer};
+use wl_kernel::cheques::{ChequeOutcome, ChequeStatus, charge_invoicer};
 use wl_kernel::invoicing::{
     INVOICE_SUBJECT_TYPE, InvoiceId, InvoiceSummary, InvoiceWrittenOff, WriteOffAnswer, invoicer,
 };
@@ -294,7 +294,7 @@ async fn linked_invoices(
     for link in cheque.links(&state.db).await? {
         if link.subject_type == INVOICE_SUBJECT_TYPE {
             invoices.push(InvoiceId(link.subject_id));
-        } else if link.subject_type == CHARGE_SUBJECT_TYPE {
+        } else if charge_invoicer(state).owns(&link.subject()) {
             let charge = link.subject();
             let invoiced = charge_invoicer(state)
                 .invoice(state, &charge)

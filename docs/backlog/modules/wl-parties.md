@@ -22,6 +22,7 @@ identifier needed by X-04.
 | BL-PTY-08 | Warn or block onboarding while a sanctions list is stale | medium | s | Launch 04 | BL-PTY-07 |
 | BL-PTY-09 | Upload an official sanctions list by hand when the download fails | high | s | Launch 04 | BL-PTY-07 |
 | BL-PTY-10 | Record a company's e-invoicing recipient identifier | medium | s | Build 1 | BL-KRN-05; Base: wl-parties Party lifecycle |
+| BL-PTY-11 | Look up the e-invoicing identifier from the company create form | medium | s | Build 1 | BL-PTY-10; BL-KRN-05 |
 
 ---
 
@@ -337,7 +338,7 @@ service contracts (BL-TKT-08); money out (BL-PTY-04).
 ### BL-PTY-04 — wl-parties: refuse new agreements and money out to a blocked party unless an exception is approved
 
 **Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-PTY-01, BL-KRN-01 · Base: wl-kernel Approval request lifecycle · **Blocks:** BL-PTY-06, BL-POR-01, BL-TKT-08, BL-ACC-01, BL-ACC-06, BL-ACC-23, BL-CON-03, BL-EDU-04, BL-LOG-19, BL-LOG-26, BL-PAY-24, BL-PRP-15, BL-PRP-20, BL-PRP-26, BL-STK-27
+**Depends on:** BL-PTY-01, BL-KRN-01 · Base: wl-kernel Approval request lifecycle · **Blocks:** BL-PTY-06, BL-POR-01, BL-TKT-08, BL-ACC-01, BL-ACC-06, BL-ACC-23, BL-CON-03, BL-EDU-04, BL-LOG-19, BL-LOG-26, BL-PAY-24, BL-PRP-15, BL-PRP-20, BL-PRP-26, BL-STK-27, BL-PAY-28
 **Review items:** X-18, 04-N8-a
 
 #### Goal
@@ -857,7 +858,7 @@ Freshness and alerts (BL-PTY-07).
 ### BL-PTY-10 — wl-parties: record a company's e-invoicing recipient identifier
 
 **Labels:** `module:wl-parties` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** BL-KRN-05 · Base: wl-parties Party lifecycle · **Blocks:** None.
+**Depends on:** BL-KRN-05 · Base: wl-parties Party lifecycle · **Blocks:** BL-PTY-11
 **Review items:** X-04, 09-N7-a
 
 #### Goal
@@ -923,3 +924,60 @@ recipient identifier).
 
 #### Out of scope
 The issue guard and resubmission (`Epic wl-invoicing: e-invoice transmission lifecycle`).
+
+---
+
+### BL-PTY-11 — wl-parties: look up the e-invoicing identifier from the company create form
+
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-PTY-10; BL-KRN-05 · **Blocks:** None.
+**Review items:** X-04; follow-up of BL-PTY-10, Done-when point 5
+
+#### Goal
+When staff create a company they type its TRN and should be able to look up its e-invoicing recipient
+identifier from the ASP in the same form, before the party is saved. Today *Look up* sits on the separate
+page `/parties/{id}/einvoice`, reached from a saved company, and works only on the saved TRN. This issue
+puts *Look up* in the company create and edit forms, using the TRN typed in the form, with the same
+disabled state and banner while the ASP connection is `down`.
+
+#### Surfaces
+- **Back office:** the company form shows *Recipient identifier* with a *Look up* button next to it; the
+  button sends the TRN typed in the form; the result fills the field, saved only with the form; while the
+  connection is `down` the button is disabled with its reason and the kernel banner shows the manual
+  fallback.
+
+#### Files to read
+- `docs/modules/wl-parties.md` §3 *Party* (e-invoicing recipient identifier), §5 (e-invoicing lookup)
+- `docs/modules/wl-kernel.md` §5.14 (integration down, manual fallback)
+- `crates/wl-parties/src/einvoice.rs` (`lookup` takes a TRN), `pages.rs` (company form)
+
+#### Terms
+- **Recipient identifier:** the company's address in the e-invoicing network (e.g. `0235:1234567890`).
+- **ASP:** the accredited service provider that transmits e-invoices; its connection has a health state.
+
+#### Spec excerpt (authoritative for this issue)
+BL-PTY-10 Done when (the unticked point): "With the ASP connection `down`, the lookup is disabled and the
+user can still enter the identifier by hand." BL-PTY-10: "*Look up* fills the field and nothing is saved
+until the user confirms."
+
+#### Edge cases decided
+- **TRN missing or not 15 digits:** *Look up* is disabled with "Enter the TRN first".
+- **Lookup result while the user edited the field:** the result replaces the field only if it is still
+  empty; otherwise it is shown as a suggestion to accept.
+- **The separate page:** stays for saved companies (same behaviour).
+- **No JavaScript:** the button posts the form to a lookup action that re-renders the form with the
+  values kept and nothing saved.
+
+#### Must not
+- Save the party or call the ASP while the connection is `down`.
+- Lose what the user typed in the form after a lookup.
+
+#### Done when
+- [ ] Given the create form with TRN 100123456700003 typed and the ASP returning `0235:100123456700003`,
+      *Look up* fills the field; no party exists until *Save*.
+- [ ] With the connection `down`, the button in the form is disabled with its reason, the banner shows,
+      no ASP call is made and saving with an identifier typed by hand works.
+- [ ] With no TRN typed, the button is disabled.
+
+#### Out of scope
+The lookup and the identifier field themselves (BL-PTY-10); the transmission (BL-INV-09).

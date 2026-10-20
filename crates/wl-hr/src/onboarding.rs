@@ -18,10 +18,10 @@
 //! date. The onboarding cancels with the exit of the employee
 //! ([`cancel_for`]).
 //!
-//! The dependency BL-HRM-05 (`cancel_onboarding`) is not built yet: the
-//! onboarding listens to the kernel's `EmployeeOnboardingCancelled`, which
-//! that transition will emit, and the check that a cancelled employee's
-//! onboarding is the one the transition names is added with it (F2).
+//! BL-HRM-05 (`cancel_onboarding`, #195, milestone Launch 09) is not built
+//! yet: the onboarding listens to the kernel's `EmployeeOnboardingCancelled`,
+//! which that transition will emit, and the check that a cancelled
+//! employee's onboarding is the one the transition names is added with it.
 
 use renox::chrono::{Days, NaiveDate};
 use renox::db::{DateTime, now};

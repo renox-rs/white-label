@@ -48,6 +48,7 @@ forecast (G2, `FIN.CFL.01`: BL-INV-28 to 30).
 | BL-INV-28 | Project the cash position by week from open documents | high | m | Build 1 | BL-PAY-25; Base: Invoice, Charge, Subscription, Supplier bill, Payer bill, VAT summary lifecycles; wl-hr `PayrollCalendar`, Payroll run, Final settlement |
 | BL-INV-29 | Add budget fill and days-late adjustment to the cash-flow forecast | medium | s | Build 1 | BL-INV-28, BL-INV-25, BL-INV-26 |
 | BL-INV-30 | Warn when the projected balance falls below the threshold (`FIN.RUL.23`) | high | s | Build 1 | BL-INV-28, BL-INV-29 |
+| BL-INV-31 | Show the party's invoices and statement of account in the portal, with the dispute button | high | s | Build 1 | BL-POR-02; BL-INV-04; BL-POR-01 |
 
 ---
 
@@ -349,7 +350,7 @@ Write-off (BL-INV-01); relief proposal (BL-INV-02); payment reversal (BL-INV-07)
 ### BL-INV-04 — wl-invoicing: flag and resolve an invoice dispute
 
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-invoicing Invoice lifecycle · Epic wl-ticketing: billing dispute ticket (`WRK.TKT.01`) · **Blocks:** BL-INV-05, BL-INV-06, BL-INV-19, BL-ACC-22, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-06, BL-CON-08, BL-CON-17, BL-EDU-18, BL-INV-23, BL-LOG-26, BL-MFG-13, BL-MFG-14, BL-MPW-01, BL-MPW-21, BL-PRP-13, BL-PRP-14, BL-PRP-26
+**Depends on:** Base: wl-invoicing Invoice lifecycle · Epic wl-ticketing: billing dispute ticket (`WRK.TKT.01`) · **Blocks:** BL-INV-05, BL-INV-06, BL-INV-19, BL-ACC-22, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-06, BL-CON-08, BL-CON-17, BL-EDU-18, BL-INV-23, BL-LOG-26, BL-MFG-13, BL-MFG-14, BL-MPW-01, BL-MPW-21, BL-PRP-13, BL-PRP-14, BL-PRP-26, BL-INV-31, BL-TKT-12
 **Review items:** X-02, 09-N4-a, 01-N4-c (invoice side)
 
 #### Goal
@@ -506,6 +507,7 @@ Flagging and resolving (BL-INV-04).
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-INV-04 · Epic wl-delivery: delivery `under_review`, `reverse_delivery`, `lost` · **Blocks:** BL-LOG-09
 **Review items:** X-11, 03-N11-a
+**Progress:** part 1 of 5 is on main: the kernel delivery contract and the dispute request source (28de883). The flag, resolve and task flows are not built yet.
 
 #### Goal
 When a recipient denies a delivery, wl-delivery puts it under review. wl-invoicing must flag
@@ -597,7 +599,7 @@ Manual dispute and resolution (BL-INV-04); the delivery review itself (Epic wl-d
 ### BL-INV-07 — wl-invoicing: reopen an invoice when a payment is reversed (`unallocate`)
 
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-invoicing Invoice lifecycle · BL-PAY-01 · **Blocks:** BL-INV-19, BL-PAY-04, BL-EDU-06, BL-PRP-08
+**Depends on:** Base: wl-invoicing Invoice lifecycle · BL-PAY-01 · **Blocks:** BL-INV-19, BL-PAY-04, BL-EDU-06, BL-PRP-08, BL-PAY-29
 **Review items:** X-03
 
 #### Goal
@@ -1075,7 +1077,7 @@ The 3-way match itself (base).
 ### BL-INV-12 — wl-invoicing: reopen a supplier bill when an outgoing payment is reversed
 
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** Base: wl-invoicing Supplier bill lifecycle · BL-PAY-01 · **Blocks:** BL-INV-14
+**Depends on:** Base: wl-invoicing Supplier bill lifecycle · BL-PAY-01 · **Blocks:** BL-INV-14, BL-PAY-28
 **Review items:** X-03
 
 #### Goal
@@ -1145,6 +1147,7 @@ The payment reversal (BL-PAY-01); the debit note cancellation itself (BL-INV-14)
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-invoicing Supplier bill lifecycle · Epic wl-inventory: return to supplier (`SupplierReturnDispatched`) · **Blocks:** BL-INV-14, BL-CON-17, BL-MFG-08
 **Review items:** X-08, 02-N10-a, 06-N10-b, 07-N10-a
+**Progress:** parts 1 and 2 of 7 are on main: kernel contracts for supplier debit notes and cost posting (b9207b7); entities, lines and the machine with manual drafts, edits, discard and the quantity and net caps (f6fcaf1, test `supplier_debit_note_drafts.rs`). Open: drafting from a dispatched return, issue with number, bill balance, cost and VAT reversal, notices, approval of a manual note, the debit balance on a paid bill, re-pricing a draft when the bill is approved.
 
 #### Goal
 When goods are returned to a supplier, or a price difference or short delivery is found after
@@ -1228,7 +1231,7 @@ note required to settle — required; number format `DN-{ENTITY}-{YYYY}-{0000}`.
       `SupplierDebitNoteIssued` is emitted.
 - [ ] Given the bill `paid`, issue opens a supplier debit balance of AED 315.00 and the bill stays `paid`.
 - [ ] A manual debit note by user A is approved only by user B.
-- [ ] A debit note for 8 units after an earlier one for 3 (bill of 10) is refused.
+- [x] A debit note for 8 units after an earlier one for 3 (bill of 10) is refused.
 - [ ] A return dispatched before the bill waits as a draft priced at the PO price (AED 95.00 a unit)
       and, when the bill at AED 100.00 a unit is approved, links to it and is re-priced to AED 100.00.
 
@@ -1242,6 +1245,7 @@ Settle and cancel (BL-INV-14); return to supplier in wl-inventory; receiving the
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-INV-13 · BL-INV-12 · **Blocks:** BL-AUT-11
 **Review items:** X-08
+**Progress:** part 1 of 6 is on main: the kernel contract for settling and cancelling supplier debit notes (2bbc617, test `crates/wl-kernel/tests/package.rs`). Nothing of the settle, cancel and set-off flows is built yet.
 
 #### Goal
 An issued debit note is settled when the supplier's tax credit note is recorded and the amount is
@@ -1344,6 +1348,7 @@ Drafting and issuing (BL-INV-13); return cancellation in wl-inventory.
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-invoicing Supplier bill lifecycle · Epic wl-inventory: landed cost allocation and `adjust` · **Blocks:** None.
 **Review items:** X-10, 08 MEDIUM "landed cost adjustment"
+**Progress:** part 1 of 5 is on main: the kernel contract for landed costs and the bill approval payload (90764f2). The posting of landed-cost lines on bill approval is not built yet.
 
 #### Goal
 A freight, duty or clearing line on a supplier bill can be coded to a wl-inventory landed cost.
@@ -1989,7 +1994,7 @@ Creating adjustment timesheets (Epic wl-attendance); payroll effects (Epic wl-hr
 ### BL-INV-24 — wl-invoicing: match a vendor contract bill only for work done before the contract end
 
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** Base: wl-invoicing Supplier bill lifecycle · BL-INV-11 (`exception` hold) · BL-TKT-04 (contract end) · **Blocks:** BL-PRP-26
+**Depends on:** Base: wl-invoicing Supplier bill lifecycle · BL-INV-11 (`exception` hold) · BL-TKT-04 (contract end) · **Blocks:** BL-PRP-26, BL-PRP-34
 **Review items:** D-13
 
 #### Goal
@@ -2911,3 +2916,77 @@ asks the accountant for a statement when a bank account's balance is missing or 
 
 #### Out of scope
 The projection (BL-INV-28, BL-INV-29).
+
+---
+
+### BL-INV-31 — wl-invoicing: show the party's invoices and statement of account in the portal, with the dispute button
+
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-POR-02; BL-INV-04; BL-POR-01 · **Blocks:** None.
+**Review items:** X-02, 01-N4-c (invoice side); follow-up of BL-PRP-26, Done-when point 1 and BL-POR-01, Done-when point 1
+
+#### Goal
+A tenant sees their invoices and their statement of account in the portal, downloads each tax invoice,
+and disputes an issued invoice there when the vertical allows it (01: on). wl-invoicing registers the
+*Invoices* portal section; the dispute from the portal runs the same `dispute` transition as staff,
+with `DisputeBy` portal. Paying online is shown only when online payment is enabled (off in F1).
+
+#### Surfaces
+- **Portal:** *Invoices* lists the party's issued, partially paid, overdue, paid, disputed and written-off
+  invoices with number, date, due date, amount, balance and status; *Statement of account* lists
+  invoices, credit notes and payments with a running balance for a chosen period; *Dispute* on an
+  issued, partially paid or overdue invoice asks for a reason, the amount and optionally the lines.
+- **System:** the dispute opens or links the billing dispute ticket as for staff and the party gets the
+  acknowledgement.
+
+#### Files to read
+- `docs/modules/wl-invoicing.md` §4 *Invoice* (`dispute`), §5.10, §5.3 point 3 (statements of account
+  in the portal), §7 (disputes setting)
+- `docs/modules/wl-portal.md` §6 (portal permissions `portal.invoices.view` / `portal.invoices.pay`;
+  blocked parties: paying still works)
+- `docs/verticals/01-property.md` §7.1 *Invoice* (*Dispute flag*), §4.1 row "The tenant disputes an
+  invoice"; `crates/wl-invoicing/src/dispute_pages.rs`, `config.rs` (`portal_disputes`)
+
+#### Terms
+- **Statement of account:** the party's invoices, credit notes and payments in a period with the
+  opening and closing balance.
+- **`DisputeBy::Portal`:** a dispute raised by the party's portal user.
+
+#### Spec excerpt (authoritative for this issue)
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `dispute` | issued, partially_paid, overdue | (same, `disputed` set) | `invoices.dispute`, the party in the portal when allowed, or system (…) | reason given; disputed amount ≤ balance; disputed lines optional …; not already `disputed` | `disputed` set; a ticket is linked or opened (wl-ticketing `WRK.TKT.01`, category billing dispute) and assigned to the invoice owner; `FIN.RUL.01` reminders paused; …; party gets an acknowledgement; event `InvoiceDisputed` |
+
+| Setting | Default |
+|---|---|
+| Disputes: party may dispute in the portal; escalation (`FIN.RUL.15`); grace before reminders resume after `upheld` | off; 14 days; 7 days |
+
+01 §7.1 *Invoice*: "tenants may dispute an invoice in the portal (setting on in 01) or through staff".
+wl-invoicing §5.3 point 3: "Statements of account per party are available on demand and in the portal."
+
+#### Edge cases decided
+- **Drafts and void documents:** never shown.
+- **Setting off:** the *Dispute* button is not shown; a POST is refused.
+- **Party blocked:** the list, the statement and the dispute work (a dispute is not new business or money
+  out); no block text (BL-POR-01).
+- **Read-only grant (`POR.ACL.01`):** list and statement show; *Dispute* is refused (BL-POR-03).
+- **Tax invoice PDF:** the download serves the invoice's stored PDF when it exists; generating tax
+  invoice PDFs is the base Invoice lifecycle.
+- **Finance contact:** sees *Invoices* (`portal.invoices.view`), as the primary contact.
+
+#### Must not
+- Show another party's invoice, or an internal note of the billing dispute ticket.
+- Let the portal set the dispute outcome (staff only).
+
+#### Done when
+- [ ] Given tenant "Al Noor Trading LLC" with INV-ACME-2026-0310 issued for AED 4,500, Sara sees it in
+      *Invoices* with balance AED 4,500 and status *Issued*.
+- [ ] She disputes AED 1,500 with reason "parking charged twice": the invoice is `disputed`, a billing
+      dispute ticket is opened, reminders stop and she gets the acknowledgement.
+- [ ] With the setting off, no *Dispute* button shows and a POST is refused.
+- [ ] *Statement of account* for October 2026 shows opening balance AED 0, the invoice, a payment of AED 3,000
+      and closing balance AED 1,500.
+- [ ] With the party blocked, she can still dispute and sees no block text.
+
+#### Out of scope
+The dispute flow itself (BL-INV-04, BL-INV-05); online payment from the portal (`FIN.PAY.02`, Later in 01).

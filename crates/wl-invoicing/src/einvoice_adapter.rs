@@ -26,8 +26,12 @@ use std::sync::{Arc, Mutex};
 
 use renox::prelude::*;
 use renox::serde_json::Value;
+use wl_kernel::einvoice::{Answer, LookupFuture, RecipientLookup};
 use wl_kernel::parties::PartyKind;
 use wl_kernel::{LegalEntity, Subject};
+
+use crate::config::InvoicingConfig;
+use crate::einvoice_send::connection_key;
 
 /// The future an adapter or scope method returns.
 pub type AspFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
@@ -94,6 +98,71 @@ pub trait EInvoiceAdapter: Send + Sync + 'static {
     /// Asks what the ASP made of the document with `reference`. An `Err` is
     /// an ASP that could not be reached.
     fn poll<'a>(&'a self, state: &'a AppState, reference: &'a str) -> AspFuture<'a, AspAnswer>;
+
+    /// Asks the ASP for the recipient identifier of the company with the
+    /// 15-digit `trn` (wl-parties §5, the *Look up* of a company's
+    /// e-invoicing identifier). An `Err` is an ASP that could not be reached.
+    /// The default, for an ASP without a directory, knows none.
+    fn lookup<'a>(&'a self, _state: &'a AppState, _trn: &'a str) -> AspFuture<'a, Answer> {
+        Box::pin(async { Ok(Answer::NotFound) })
+    }
+}
+
+/// The kernel `RecipientLookup` of the app: the ASP adapter set for each
+/// entity (§7 e-invoicing settings) answers the lookups of that entity,
+/// through the entity's connection `asp.<code>`, whose health the kernel
+/// reports and which must be `up` for a lookup to be made.
+#[derive(Clone)]
+pub(crate) struct AdapterLookup {
+    /// The entity codes with the name of their adapter.
+    pub adapters: Vec<(String, String)>,
+}
+
+impl AdapterLookup {
+    /// The adapters of `config`, by entity code.
+    pub fn of(config: &InvoicingConfig) -> Self {
+        AdapterLookup {
+            adapters: config
+                .einvoice
+                .iter()
+                .filter_map(|e| {
+                    e.adapter
+                        .as_ref()
+                        .map(|a| (e.entity_code.trim().to_lowercase(), a.clone()))
+                })
+                .collect(),
+        }
+    }
+
+    fn adapter_name(&self, entity: &LegalEntity) -> Option<&str> {
+        let code = entity.code.trim().to_lowercase();
+        self.adapters
+            .iter()
+            .find(|(c, _)| *c == code)
+            .map(|(_, a)| a.as_str())
+    }
+}
+
+impl RecipientLookup for AdapterLookup {
+    fn connection(&self, entity: &LegalEntity) -> Option<String> {
+        self.adapter_name(entity)
+            .map(|_| connection_key(&entity.code))
+    }
+
+    fn lookup<'a>(
+        &'a self,
+        state: &'a AppState,
+        entity: &'a LegalEntity,
+        trn: &'a str,
+    ) -> LookupFuture<'a, Answer> {
+        Box::pin(async move {
+            let adapter = self.adapter_name(entity).and_then(|n| adapter_of(state, n));
+            match adapter {
+                Some(adapter) => adapter.lookup(state, trn).await,
+                None => Ok(Answer::NotFound),
+            }
+        })
+    }
 }
 
 /// Which documents are in the e-invoicing mandate.
@@ -164,6 +233,7 @@ pub struct FakeAsp(Arc<Mutex<FakeState>>);
 struct FakeState {
     unreachable: bool,
     answer: Option<AspAnswer>,
+    directory: Vec<(String, String)>,
     submitted: Vec<Submission>,
     polled: Vec<String>,
 }
@@ -177,6 +247,16 @@ impl FakeAsp {
     /// Whether the ASP cannot be reached: `submit` and `poll` fail.
     pub fn unreachable(&self, down: bool) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).unreachable = down;
+    }
+
+    /// The ASP's directory knows `id` as the identifier of the company with
+    /// `trn`.
+    pub fn knows(&self, trn: &str, id: &str) {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .directory
+            .push((trn.to_owned(), id.to_owned()));
     }
 
     /// What `poll` answers from now on.
@@ -235,6 +315,23 @@ impl EInvoiceAdapter for FakeAsp {
             }
             fake.polled.push(reference.to_owned());
             Ok(fake.answer.clone().unwrap_or(AspAnswer::Pending))
+        })
+    }
+
+    fn lookup<'a>(&'a self, _state: &'a AppState, trn: &'a str) -> AspFuture<'a, Answer> {
+        Box::pin(async move {
+            let fake = self.0.lock().unwrap_or_else(|e| e.into_inner());
+            if fake.unreachable {
+                return Err(Error::Status(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "The ASP does not answer.".to_owned(),
+                ));
+            }
+            Ok(fake
+                .directory
+                .iter()
+                .find(|(known, _)| known == trn)
+                .map_or(Answer::NotFound, |(_, id)| Answer::Found(id.clone())))
         })
     }
 }

@@ -105,7 +105,7 @@ fn status_kind(status: PaymentStatus) -> &'static str {
         PaymentStatus::Received => "success",
         PaymentStatus::Pending => "info",
         PaymentStatus::Failed => "error",
-        PaymentStatus::ChargedBack => "warning",
+        PaymentStatus::ChargedBack => "error",
         PaymentStatus::Reversed => "neutral",
     }
 }
@@ -190,7 +190,7 @@ fn grid_with(t: Text<'_>) -> Grid {
                 ("pending", "info"),
                 ("received", "success"),
                 ("failed", "danger"),
-                ("charged_back", "warning"),
+                ("charged_back", "danger"),
                 ("reversed", "neutral"),
             ])
             .mobile(),

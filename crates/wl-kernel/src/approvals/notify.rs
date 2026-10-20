@@ -1,9 +1,10 @@
 //! Who decides a request, and the notices the kernel sends about it
 //! (wl-kernel §4.1 effects).
 //!
-//! wl-notify is not built yet, so the kernel sends Renox notifications to
-//! users directly, on the database channel (the in-app bell), after the
-//! commit. Approvers are the holders of one of the current step's roles, or
+//! The kernel sends these Renox notifications to users itself, on the
+//! database channel (the in-app bell), after the commit: they are in-app
+//! notices to staff, they work whether or not `wl-notify` is enabled, and the
+//! kernel does not depend on that module. Approvers are the holders of one of the current step's roles, or
 //! of its permission, in the subject's scope (from its registered machine),
 //! or globally when neither a machine nor a resolver gives a scope
 //! ([`crate::scopes`]).
