@@ -7,10 +7,12 @@
 mod support;
 
 use renox::db::DateTime;
+use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_kernel::PartyId;
 use wl_kernel::tickets::{OpenTicket, ServiceContractId};
 use wl_ticketing::no_show::{self, NOTIFICATION_TYPE};
-use wl_ticketing::{NoShow, ServiceContract, Ticket, TicketStatus, Tickets};
+use wl_ticketing::{Category, NoShow, ServiceContract, Ticket, TicketStatus, Tickets};
 
 use support::contracts::{World, tower_a_cleaning, tower_a_fire_alarm, world};
 use support::{COOLAIR, dubai, local};
@@ -326,6 +328,31 @@ async fn tkt05_the_contract_page_counts_the_no_shows_per_vendor() {
         .assert_ok()
         .assert_see("Vendor no-shows")
         .assert_see("CoolAir");
+    let row = no_show_row(&w, &contract).await;
+    assert!(
+        row.contains(r#"<td>CoolAir</td><td class="rx-num">1</td>"#),
+        "one no-show for CoolAir: {row}"
+    );
+    assert!(row.contains("03 Nov 2026 10:00"), "{row}");
+
+    // A second ticket of the same vendor raises the count to 2.
+    vendor_ticket(
+        &w,
+        "plumbing",
+        tower_a_cleaning(),
+        None,
+        Some("2026-11-03 13:00"),
+    )
+    .await;
+    no_show::run(w.t.state(), dubai("2026-11-03", 15, 0))
+        .await
+        .unwrap();
+    let row = no_show_row(&w, &contract).await;
+    assert!(
+        row.contains(r#"<td>CoolAir</td><td class="rx-num">2</td>"#),
+        "two no-shows for CoolAir: {row}"
+    );
+    assert!(row.contains("03 Nov 2026 13:00"), "{row}");
 }
 
 /// AC5: a ticket started at 11:30 records nothing.
@@ -420,4 +447,146 @@ async fn tkt05_an_ad_hoc_vendor_has_no_contract_and_staff_are_never_recorded() {
         .await
         .unwrap();
     assert_eq!(w.no_shows.all().len(), 1, "only the vendor's");
+}
+
+/// The contract page's HTML.
+async fn no_show_row(w: &World, contract: &ServiceContract) -> String {
+    w.t.app.acting_as(&w.coordinator);
+    w.t.app
+        .get(&format!("/service-contracts/{}", contract.id))
+        .await
+        .assert_ok()
+        .text()
+}
+
+/// AC2: the new-time notice goes to the tenant who asked, not to the
+/// coordinator who set the time.
+#[renox::test]
+async fn tkt05_the_new_time_notice_is_addressed_to_the_requester() {
+    let w = world().await;
+    let tenant = w.t.user("Tina", &[wl_ticketing::permissions::CREATE]).await;
+    let ticket = vendor_ticket(
+        &w,
+        "plumbing",
+        tower_a_cleaning(),
+        Some(&tenant),
+        Some("2026-11-03 10:00"),
+    )
+    .await;
+    no_show::run(w.t.state(), dubai("2026-11-03", 12, 0))
+        .await
+        .unwrap();
+    w.t.app.acting_as(&w.coordinator);
+    w.t.app
+        .htmx()
+        .post(
+            &format!("/tickets/{}/new-time", ticket.id),
+            &[("visit_at", "2026-11-03T15:00:00")],
+        )
+        .await
+        .assert_ok();
+    let told = w.t.notices.of_type("ticketing.visit_rescheduled");
+    assert_eq!(told.len(), 1);
+    assert_eq!(told[0].data["visit"], "03 Nov 2026 15:00");
+    let to: Vec<_> = told[0].recipients.clone();
+    assert_eq!(
+        to,
+        [wl_kernel::notify::NotifyRecipient::User { id: tenant.id }]
+    );
+}
+
+/// A ticket `on_hold` is not `assigned` any more: the rule records nothing
+/// for it, however late it is.
+#[renox::test]
+async fn tkt05_a_ticket_on_hold_is_not_a_no_show() {
+    let w = world().await;
+    let mut ticket = Ticket {
+        number: "TKT-2026-9600".into(),
+        subject_type: tower_a_cleaning().subject_type,
+        subject_id: tower_a_cleaning().subject_id,
+        category_id: Category::by_key(w.t.db(), "plumbing")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        title: "Held visit".into(),
+        assignee_party_id: Some(COOLAIR.0),
+        visit_at: Some(dubai("2026-11-03", 10, 0)),
+        status: TicketStatus::OnHold,
+        ..Ticket::default()
+    };
+    let mut tx = w.t.db().begin().await.unwrap();
+    ticket
+        .insert_in_state(&mut tx, TicketStatus::OnHold, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(w.t.reload(&ticket).await.status, TicketStatus::OnHold);
+    let report = no_show::run(w.t.state(), dubai("2026-11-03", 13, 0))
+        .await
+        .unwrap();
+    assert_eq!(report.recorded, 0);
+    assert!(w.no_shows.all().is_empty());
+    assert!(w.t.notices.of_type(NOTIFICATION_TYPE).is_empty());
+}
+
+/// BL-KRN-04: a start entered late, with a business time before the trigger
+/// (11:30), is judged by that time: no no-show is recorded when the rule runs
+/// afterwards. A start whose business time is after the trigger, entered once
+/// the no-show was recorded, does not take the record back.
+#[renox::test]
+async fn tkt05_a_late_entered_start_is_judged_by_its_business_time() {
+    let w = world().await;
+    let early = vendor_ticket(
+        &w,
+        "plumbing",
+        tower_a_cleaning(),
+        None,
+        Some("2026-11-03 10:00"),
+    )
+    .await;
+    // Entered long after the visit day, business time 11:30.
+    w.t.run(&w.coordinator, &early, "start", "2026-11-03 11:30", &[])
+        .await
+        .assert_ok();
+    let started = w.t.reload(&early).await;
+    assert_eq!(started.status, TicketStatus::InProgress);
+    assert_eq!(
+        no_show::run(w.t.state(), dubai("2026-11-04", 9, 0))
+            .await
+            .unwrap()
+            .recorded,
+        0
+    );
+
+    let late = vendor_ticket(
+        &w,
+        "plumbing",
+        tower_a_cleaning(),
+        None,
+        Some("2026-11-03 10:00"),
+    )
+    .await;
+    assert_eq!(
+        no_show::run(w.t.state(), dubai("2026-11-03", 12, 0))
+            .await
+            .unwrap()
+            .recorded,
+        1,
+        "the second ticket was still assigned at 12:00"
+    );
+    w.t.run(&w.coordinator, &late, "start", "2026-11-03 12:30", &[])
+        .await
+        .assert_ok();
+    assert_eq!(
+        NoShow::query()
+            .where_(NoShow::TICKET_ID.eq(late.id))
+            .get(w.t.db())
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "the record stays"
+    );
+    assert_eq!(w.no_shows.all().len(), 1);
 }
