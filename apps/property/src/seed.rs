@@ -938,9 +938,16 @@ mod tests {
             [
                 "move_out_inspection",
                 "legal_case",
-                "owner_statement_dispute"
+                "owner_statement_dispute",
+                "tenant_repair"
             ]
         );
+        let chargeable: Vec<&str> = CATEGORIES
+            .iter()
+            .filter(|c| c.chargeable)
+            .map(|c| c.key)
+            .collect();
+        assert_eq!(chargeable, ["tenant_repair"]);
     }
 
     #[test]
