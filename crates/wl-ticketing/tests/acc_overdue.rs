@@ -46,12 +46,18 @@ async fn ran(db: &Db, rule: &str) -> bool {
     .is_some()
 }
 
-/// wl-ticketing as the 04 host sets it.
+/// wl-ticketing as the 04 host sets it, with the 04 reasons for
+/// `close_missed` (§7.1 *Task*).
 fn as_04() -> WlTicketing {
     WlTicketing::new()
         .overdue_rule_id(ACC_RUL_04)
         .task_manager_role(MANAGER)
         .task_overdue_role(PARTNER)
+        .waive_started_tasks(false)
+        .missed_reason("client_no_documents", "Client did not provide documents")
+        .missed_reason("client_filed_itself", "Client filed itself")
+        .missed_reason("engagement_ended", "Engagement ended")
+        .missed_reason_with_text("other", "Other")
 }
 
 /// A quarterly VAT return of E-12 due on `due`, owned by `owner`, needing
@@ -177,17 +183,41 @@ async fn bl_acc_13_an_overdue_task_is_completed_late_or_closed_missed_with_a_rea
     assert!(summary.late);
     assert!(completed.all()[0].late);
 
-    // DW3: closed as missed only with a reason; the next occurrence follows.
-    t.task_act(&manager, missed.0, "close_missed", "2026-12-02 11:00", &[])
+    // DW3: closed as missed only with a reason from the 04 list (a free
+    // text, an unknown code or "other" without its text is refused); the
+    // next occurrence follows.
+    for refused in [
+        vec![],
+        vec![("reason", "Client filed itself")],
+        vec![("reason_code", "forgot")],
+        vec![("reason_code", "other")],
+    ] {
+        t.task_act(
+            &manager,
+            missed.0,
+            "close_missed",
+            "2026-12-02 11:00",
+            &refused,
+        )
         .await
         .assert_status(422);
+    }
     assert_eq!(t.task(missed.0).await.status, DeadlineTaskStatus::Overdue);
+    // The form offers the list.
+    t.app.acting_as(&manager);
+    t.app
+        .get(&format!("/deadline-tasks/{}", missed.0))
+        .await
+        .assert_ok()
+        .assert_see("Close as missed")
+        .assert_see("Client did not provide documents")
+        .assert_see("Late");
     t.task_act(
         &manager,
         missed.0,
         "close_missed",
         "2026-12-02 11:00",
-        &[("reason", "Client filed itself")],
+        &[("reason_code", "client_filed_itself")],
     )
     .await
     .assert_ok();

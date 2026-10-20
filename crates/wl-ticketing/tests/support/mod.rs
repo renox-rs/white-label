@@ -3,7 +3,8 @@
 //! depend on wl-parties), a notifier that records what it is asked for, the
 //! kernel events recorded, and a test-only module whose routes act as the
 //! logged-in user at a time the test chooses (a test cannot build an
-//! `AuthUser`, and the real routes take the time of the request).
+//! `AuthUser`, and the real routes take the time of the request). Deadline
+//! tasks are acted on through their real routes with the clock moved.
 
 #![allow(dead_code)]
 
@@ -23,7 +24,7 @@ use wl_kernel::tickets::{Assignee, OpenTicket, TicketAssigned, TicketClosed};
 use wl_kernel::{BusinessCalendar, ClientConfig, PartyId, Subject};
 use wl_ticketing::{
     AssignRequest, Assignment, DeadlineTask, Priority, Ticket, Tickets, WlTicketing, assign,
-    deadlines, permissions as perm, seed, work,
+    permissions as perm, seed, work,
 };
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -397,36 +398,6 @@ async fn act(
     }
 }
 
-/// Runs `action` on deadline task `id` as the logged-in user, on the
-/// Asia/Dubai date of `at`.
-async fn act_task(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path((id, action)): Path<(i64, String)>,
-    Form(form): Form<ActForm>,
-) -> Result<String> {
-    let task = DeadlineTask::find_or_404(&state.db, id).await?;
-    let today = wl_kernel::documents::dubai_date(instant(form.at));
-    let reason = form.reason.as_deref();
-    let done = match action.as_str() {
-        "start" => deadlines::start(&state, &user, &task).await,
-        "wait" => deadlines::wait(&state, &user, &task, reason).await,
-        "unblock" => deadlines::unblock(&state, &user, &task).await,
-        "submit_review" => deadlines::submit_review(&state, &user, &task).await,
-        "send_back" => deadlines::send_back(&state, &user, &task, reason).await,
-        "complete" => {
-            deadlines::complete(&state, &user, &task, form.evidence.as_deref(), today).await
-        }
-        "close_missed" => deadlines::close_missed(&state, &user, &task, reason).await,
-        "waive" => deadlines::waive(&state, &user, &task, reason, today).await,
-        _ => return Err(Error::NotFound),
-    };
-    match done {
-        Ok(()) => Ok("done".to_owned()),
-        Err(error) => Err(error.into_error()),
-    }
-}
-
 /// The test-only routes.
 struct Harness;
 
@@ -439,7 +410,6 @@ impl Module for Harness {
         Routes::new()
             .post("/test/tickets/{id}/assign", act_assign)
             .post("/test/tickets/{id}/do/{action}", act)
-            .post("/test/deadlines/{id}/do/{action}", act_task)
     }
 }
 
@@ -539,8 +509,9 @@ impl Booted {
 
     /// `by` runs `action` (`start`, `wait`, `unblock`, `submit_review`,
     /// `send_back`, `complete`, `close_missed` or `waive`) on deadline task
-    /// `id` at `at` (`2026-11-03 09:00`, Asia/Dubai), with `pairs` (`reason`,
-    /// `evidence`).
+    /// `id` through the real route `POST /deadline-tasks/{id}/actions/{name}`,
+    /// with the clock moved to `at` (`2026-11-03 09:00`, Asia/Dubai) for the
+    /// request, with `pairs` (`reason`, `reason_code`, `evidence`).
     pub async fn task_act(
         &self,
         by: &User,
@@ -549,14 +520,26 @@ impl Booted {
         at: &str,
         pairs: &[(&str, &str)],
     ) -> renox::testing::TestResponse {
-        let at = local(at);
-        let mut fields = vec![("at", at.as_str())];
-        fields.extend_from_slice(pairs);
+        let at = NaiveDateTime::parse_from_str(at, "%Y-%m-%d %H:%M").expect("a date and time");
+        self.travel_to(instant(at));
         self.app.acting_as(by);
-        self.app
+        let response = self
+            .app
             .htmx()
-            .post(&format!("/test/deadlines/{id}/do/{action}"), &fields)
-            .await
+            .post(&format!("/deadline-tasks/{id}/actions/{action}"), pairs)
+            .await;
+        self.app.travel_back();
+        response
+    }
+
+    /// Moves the clock to `at` (forward from the real present) for what the
+    /// app does next.
+    pub fn travel_to(&self, at: DateTime) {
+        self.app.travel_back();
+        let ahead = (at - renox::db::now()).num_seconds();
+        assert!(ahead > 0, "the time {at} is in the future");
+        self.app
+            .travel(std::time::Duration::from_secs(ahead.unsigned_abs()));
     }
 
     /// A user holding `grants` through the role `role` (defined here), e.g.

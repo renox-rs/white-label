@@ -14,6 +14,7 @@ mod contract_machine;
 pub mod contract_pages;
 pub mod deadline;
 pub mod deadline_machine;
+pub mod deadline_pages;
 pub mod deadlines;
 pub mod flag_pages;
 pub mod flags;
@@ -99,6 +100,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-ticketing/_comments.html",
         include_str!("../views/wl-ticketing/_comments.html"),
+    ),
+    (
+        "wl-ticketing/deadline_tasks.html",
+        include_str!("../views/wl-ticketing/deadline_tasks.html"),
+    ),
+    (
+        "wl-ticketing/deadline_task.html",
+        include_str!("../views/wl-ticketing/deadline_task.html"),
     ),
 ];
 
@@ -262,6 +271,35 @@ impl WlTicketing {
         self
     }
 
+    /// Adds the reason `code` to the list `close_missed` takes from (§4.4;
+    /// any reason text while the list is empty; 04 §7.1: its four reasons);
+    /// `name` is its English name, stored as the task's reason. Adding a
+    /// code that exists replaces it.
+    pub fn missed_reason(mut self, code: &str, name: &str) -> Self {
+        self.add_missed_reason(code, name, false);
+        self
+    }
+
+    /// Like [`missed_reason`](Self::missed_reason), but closing with this
+    /// reason needs a text, stored as "name: text" (*other*).
+    pub fn missed_reason_with_text(mut self, code: &str, name: &str) -> Self {
+        self.add_missed_reason(code, name, true);
+        self
+    }
+
+    fn add_missed_reason(&mut self, code: &str, name: &str, needs_text: bool) {
+        let reason = deadlines::MissedReason {
+            code: code.trim().to_owned(),
+            name: name.trim().to_owned(),
+            needs_text,
+        };
+        let reasons = &mut self.deadlines.missed_reasons;
+        match reasons.iter_mut().find(|r| r.code == reason.code) {
+            Some(found) => *found = reason,
+            None => reasons.push(reason),
+        }
+    }
+
     /// Adds the reassignment reason `code` (a vertical's own, besides the
     /// five §7 defaults); `name` is its English name. Adding a code that
     /// exists replaces it.
@@ -304,6 +342,7 @@ impl Module for WlTicketing {
             .merge(category_pages::routes())
             .merge(flag_pages::routes())
             .merge(contract_pages::routes())
+            .merge(deadline_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -316,7 +355,9 @@ impl Module for WlTicketing {
             .view_data::<pages::ShowPage>()
             .view_data::<category_pages::CategoriesPage>()
             .view_data::<flag_pages::FlagsPage>()
-            .view_data::<contract_pages::ContractPage>();
+            .view_data::<contract_pages::ContractPage>()
+            .view_data::<deadline_pages::TasksPage>()
+            .view_data::<deadline_pages::TaskPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -351,6 +392,14 @@ impl Module for WlTicketing {
                 .group("nav.app")
                 .order(56)
                 .permission(permissions::VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_ticketing.deadline_tasks", "nav.deadline_tasks")
+                .icon("calendar-check")
+                .group("nav.app")
+                .order(57)
+                .permission(permissions::TASKS_VIEW),
         );
         app.model::<SlaPolicy>()
             .model::<SlaTarget>()

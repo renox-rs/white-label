@@ -124,6 +124,22 @@ pub(crate) struct Settings {
     /// The roles told of an overdue task besides its owners and the manager
     /// role, in the source's scope (none unless set; 04: the partner).
     pub overdue_roles: Vec<String>,
+    /// The reasons `close_missed` takes, in the order the form lists them
+    /// (empty unless set: any reason text; 04: its §7.1 list).
+    pub missed_reasons: Vec<MissedReason>,
+}
+
+/// A reason a vertical allows for `close_missed`
+/// ([`WlTicketing::missed_reason`](crate::WlTicketing::missed_reason)).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissedReason {
+    /// The key the form sends (`client_filed_itself`).
+    pub code: String,
+    /// The English name, stored as the task's reason ("Client filed itself").
+    pub name: String,
+    /// Whether a text must come with it (*other*); the reason stored is then
+    /// "name: text".
+    pub needs_text: bool,
 }
 
 impl Default for Settings {
@@ -134,8 +150,40 @@ impl Default for Settings {
             reminder_days: Vec::new(),
             overdue_rule: OVERDUE_RULE.to_owned(),
             overdue_roles: Vec::new(),
+            missed_reasons: Vec::new(),
         }
     }
+}
+
+/// The reasons `close_missed` takes here, in the form's order; empty when
+/// any reason text is taken.
+pub fn missed_reasons(state: &AppState) -> Vec<MissedReason> {
+    settings(state).missed_reasons
+}
+
+/// The reason stored for `close_missed` with the form's `code` and `text`:
+/// without a list, the text; with one, the reason's name (with the text for
+/// a reason that needs one). `Ok(None)` when no reason was given;
+/// `Err(message)` for a code not in the list.
+fn missed_reason_text(
+    reasons: &[MissedReason],
+    code: Option<&str>,
+    text: Option<&str>,
+) -> std::result::Result<Option<String>, String> {
+    let text = text.map(str::trim).filter(|t| !t.is_empty());
+    if reasons.is_empty() {
+        return Ok(text.map(str::to_owned));
+    }
+    let Some(code) = code.map(str::trim).filter(|c| !c.is_empty()) else {
+        return Ok(None);
+    };
+    let Some(reason) = reasons.iter().find(|r| r.code == code) else {
+        return Err(english("wl_ticketing.task.problem.missed_reason").to_owned());
+    };
+    if !reason.needs_text {
+        return Ok(Some(reason.name.clone()));
+    }
+    Ok(text.map(|text| format!("{}: {text}", reason.name)))
 }
 
 /// The settings of this app.
@@ -395,20 +443,25 @@ pub async fn complete(
     Ok(())
 }
 
-/// `close_missed` by `user`, with `reason`.
+/// `close_missed` by `user`, with the reason `code` of the client's list
+/// ([`missed_reasons`]) and `text`; without a list, `text` is the reason.
 ///
 /// # Errors
 ///
-/// `Forbidden` without `tasks.manage`; `ReasonRequired` without a reason;
-/// `NotFrom` unless `overdue`.
+/// `Forbidden` without `tasks.manage`; `ReasonRequired` without a reason
+/// (or without the text a reason needs); `Guard` for a code not in the
+/// list; `NotFrom` unless `overdue`.
 pub async fn close_missed(
     state: &AppState,
     user: &AuthUser,
     task: &DeadlineTask,
-    reason: Option<&str>,
+    code: Option<&str>,
+    text: Option<&str>,
 ) -> std::result::Result<(), TransitionError> {
+    let reason = missed_reason_text(&settings(state).missed_reasons, code, text)
+        .map_err(TransitionError::Guard)?;
     let mut run = task.transition(CLOSE_MISSED).by(user);
-    if let Some(reason) = reason {
+    if let Some(reason) = reason.as_deref() {
         run = run.reason(reason);
     }
     let _outcome = run.run(state).await?;
@@ -1054,6 +1107,39 @@ mod tests {
         assert!(settings.reminder_days.is_empty());
         assert_eq!(settings.overdue_rule, OVERDUE_RULE);
         assert!(settings.overdue_roles.is_empty());
+        assert!(settings.missed_reasons.is_empty());
+    }
+
+    #[test]
+    fn a_missed_reason_comes_from_the_list_when_there_is_one() {
+        let reasons = [
+            MissedReason {
+                code: "client_filed_itself".into(),
+                name: "Client filed itself".into(),
+                needs_text: false,
+            },
+            MissedReason {
+                code: "other".into(),
+                name: "Other".into(),
+                needs_text: true,
+            },
+        ];
+        assert_eq!(
+            missed_reason_text(&[], None, Some(" Late books ")),
+            Ok(Some("Late books".to_owned()))
+        );
+        assert_eq!(missed_reason_text(&[], None, Some("  ")), Ok(None));
+        assert_eq!(
+            missed_reason_text(&reasons, Some("client_filed_itself"), None),
+            Ok(Some("Client filed itself".to_owned()))
+        );
+        assert_eq!(
+            missed_reason_text(&reasons, Some("other"), Some("Old agent filed")),
+            Ok(Some("Other: Old agent filed".to_owned()))
+        );
+        assert_eq!(missed_reason_text(&reasons, Some("other"), None), Ok(None));
+        assert_eq!(missed_reason_text(&reasons, None, Some("Forgot")), Ok(None));
+        assert!(missed_reason_text(&reasons, Some("forgot"), None).is_err());
     }
 
     fn overdue_task() -> DeadlineTask {
