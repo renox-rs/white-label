@@ -403,6 +403,42 @@ impl Booted {
         user
     }
 
+    /// An employee in `status`, hired on 2 Nov at branch B, inserted as a
+    /// fixture (the machine would not take it there).
+    pub async fn employee_in(&self, party: i64, status: wl_hr::EmployeeStatus) -> Employee {
+        let mut employee = Employee {
+            party_id: party,
+            job_role: "driver".into(),
+            job_title: "Driver".into(),
+            hire_date: nov(2),
+            status,
+            ..Employee::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        employee
+            .insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        wl_hr::EmployeeScope::create(
+            &mut tx,
+            wl_hr::EmployeeScope {
+                employee_id: employee.id,
+                scope_type: branch().subject_type.clone(),
+                scope_id: branch().subject_id.to_string(),
+                ..wl_hr::EmployeeScope::default()
+            },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        employee
+    }
+
+    /// `employee`, as stored now.
+    pub async fn employee(&self, employee: &Employee) -> Employee {
+        Employee::find_or_404(self.db(), employee.id).await.unwrap()
+    }
+
     /// Ravi K., a driver hired on 2 Nov at branch B, with an account.
     pub async fn ravi(&self) -> (Employee, User) {
         let account = self.user("Ravi").await;
@@ -485,6 +521,7 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
+        .module(renox::audit::Audit)
         .module(module)
         .module(fakes);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
@@ -514,6 +551,26 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
     permissions::define_role(app.db(), "manager", &[perm::EMPLOYEES_VIEW])
         .await
         .unwrap();
+    // The MD approves the non-standard exits (`HRM.ACL.07`) and may also ask
+    // for them as HR.
+    permissions::define_role(
+        app.db(),
+        "md",
+        &[perm::EMPLOYEES_VIEW, perm::EMPLOYEES_EXIT_APPROVE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(
+        app.db(),
+        "hr_md",
+        &[
+            perm::EMPLOYEES_VIEW,
+            perm::EMPLOYEES_MANAGE,
+            perm::EMPLOYEES_EXIT_APPROVE,
+        ],
+    )
+    .await
+    .unwrap();
     if induction {
         wl_hr::seed::install(app.db()).await.unwrap().total();
     }
