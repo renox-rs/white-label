@@ -14,3 +14,5 @@ wl-kernel = { path = "../wl-kernel" }
 
 [dev-dependencies]
 tempfile = "3"
+# The real invoicing module, to follow a dispatched return into its debit note.
+wl-invoicing = { path = "../wl-invoicing" }

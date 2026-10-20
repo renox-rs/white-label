@@ -208,10 +208,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.return.bad_kept_goods",
         "The kept goods are received again or discarded.",
     ),
-    (
-        "wl_inventory.return.reason_needed",
-        "Give a reason.",
-    ),
+    ("wl_inventory.return.reason_needed", "Give a reason."),
     // `credit` on a Return to supplier.
     (
         "wl_inventory.return.credit_dispatched_only",
@@ -246,10 +243,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.chase.body",
         "Return {{ number }} to the supplier was dispatched on {{ dispatched }} and is neither credited nor replaced after {{ days }} days. Procurement chases the supplier; finance, expect the credit.",
     ),
-    (
-        "wl_inventory.chase.resolved",
-        "The return was credited.",
-    ),
+    ("wl_inventory.chase.resolved", "The return was credited."),
     (
         "wl_inventory.chase.task_title",
         "Chase the supplier for return {{ number }}",

@@ -44,6 +44,21 @@ name_en = "Gulf Build Contracting LLC"
 default = true
 "#;
 
+/// A client with the inventory and invoicing modules on.
+const CLIENT_WITH_INVOICING: &str = r#"
+[client]
+name = "Gulf Build Contracting LLC"
+app = "property"
+
+[modules]
+enabled = ["parties", "inventory", "invoicing"]
+
+[[legal_entities]]
+code = "GBC"
+name_en = "Gulf Build Contracting LLC"
+default = true
+"#;
+
 /// The supplier of the orders.
 pub const SUPPLIER: PartyId = PartyId(7);
 
@@ -606,6 +621,16 @@ pub async fn boot() -> Booted {
 /// `module` booted in an app with auth and the kernel, the roles of a
 /// storekeeper and of procurement defined.
 pub async fn boot_with(module: WlInventory) -> Booted {
+    boot_modules(module, false).await
+}
+
+/// wl-inventory and the real wl-invoicing booted together, to follow an
+/// event from one module into the other.
+pub async fn boot_with_invoicing() -> Booted {
+    boot_modules(WlInventory::new(), true).await
+}
+
+async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     let received = Arc::new(Mutex::new(Vec::new()));
     let dispatched = Arc::new(Mutex::new(Vec::new()));
     let credited = Arc::new(Mutex::new(Vec::new()));
@@ -616,16 +641,26 @@ pub async fn boot_with(module: WlInventory) -> Booted {
         .module(Auth::new())
         .module(Permissions)
         .module(renox::audit::Audit)
-        .module(module)
-        .module(Fakes {
-            received: received.clone(),
-            dispatched: dispatched.clone(),
-            credited: credited.clone(),
-            tickets: tickets.clone(),
-            costs: costs.clone(),
-            notices: notices.clone(),
-        });
-    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+        .module(module);
+    let app = if with_invoicing {
+        app.module(wl_invoicing::WlInvoicing::new())
+    } else {
+        app
+    };
+    let app = app.module(Fakes {
+        received: received.clone(),
+        dispatched: dispatched.clone(),
+        credited: credited.clone(),
+        tickets: tickets.clone(),
+        costs: costs.clone(),
+        notices: notices.clone(),
+    });
+    let client = if with_invoicing {
+        CLIENT_WITH_INVOICING
+    } else {
+        CLIENT
+    };
+    let config = wl_kernel::ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let app = TestApp::new(app).await;
     app.kernel()

@@ -32,6 +32,9 @@ pub const LOCATION_SUBJECT_TYPE: &str = "inventory.location";
 /// The subject type of a purchase order.
 pub const PURCHASE_ORDER_SUBJECT_TYPE: &str = "inventory.purchase_order";
 
+/// The subject type of a purchase order line.
+pub const PURCHASE_ORDER_LINE_SUBJECT_TYPE: &str = "inventory.purchase_order_line";
+
 /// The subject type of a goods receipt.
 pub const GOODS_RECEIPT_SUBJECT_TYPE: &str = "inventory.goods_receipt";
 

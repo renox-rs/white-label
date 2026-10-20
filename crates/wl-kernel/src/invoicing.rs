@@ -31,6 +31,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::inventory::SupplierReturnDispatched;
 use crate::numbering::{Reset, Series};
 use crate::parties::PartyId;
 use crate::subject::Subject;
@@ -1826,40 +1827,6 @@ pub struct SupplierDebitNoteCancelled {
 
 impl Event for SupplierDebitNoteCancelled {}
 
-/// One returned line of a [`SupplierReturnDispatched`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SupplierReturnLine {
-    /// The returned item.
-    pub item: Subject,
-    /// The stock lot, if tracked.
-    pub lot: Option<Subject>,
-    /// The returned quantity in thousandths.
-    pub qty_milli: i64,
-    /// The purchase order line the goods came in on.
-    pub po_line: Subject,
-    /// The unit price on the purchase order, in fils of its currency.
-    pub po_price: i64,
-    /// Why it goes back (a reason key, as text).
-    pub reason: String,
-}
-
-/// Goods were dispatched back to a supplier (`FIN.RUL.17` drafts a debit
-/// note from it). Defined here by whichever of wl-invoicing and
-/// wl-inventory landed first; the other reuses it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SupplierReturnDispatched {
-    /// The return's id in its owner's table.
-    pub return_id: i64,
-    /// The supplier the goods go back to.
-    pub supplier: PartyId,
-    /// The return as a [`Subject`]; one debit note draft exists per source.
-    pub source: Subject,
-    /// The returned lines.
-    pub lines: Vec<SupplierReturnLine>,
-}
-
-impl Event for SupplierReturnDispatched {}
-
 /// The 422 of a debit note action while invoicing is off.
 fn debit_notes_off() -> Error {
     Error::Status(
@@ -2213,24 +2180,6 @@ mod tests {
             renox::serde_json::from_str::<SupplierDebitNoteIssued>(&json).unwrap(),
             issued
         );
-        let dispatched = SupplierReturnDispatched {
-            return_id: 2,
-            supplier: PartyId(4),
-            source: Subject::new("inventory.supplier_return", 2),
-            lines: vec![SupplierReturnLine {
-                item: Subject::new("inventory.item", 9),
-                lot: None,
-                qty_milli: 3_000,
-                po_line: Subject::new("procurement.po_line", 11),
-                po_price: 9_500,
-                reason: "damaged".into(),
-            }],
-        };
-        let json = renox::serde_json::to_string(&dispatched).unwrap();
-        assert_eq!(
-            renox::serde_json::from_str::<SupplierReturnDispatched>(&json).unwrap(),
-            dispatched
-        );
     }
 
     #[test]
@@ -2281,9 +2230,9 @@ mod tests {
         let state = app.state();
         let notes = supplier_debit_notes(state);
         let event = SupplierReturnDispatched {
-            return_id: 1,
+            supplier_return: Subject::new("inventory.supplier_return", 1),
             supplier: PartyId(4),
-            source: Subject::new("inventory.supplier_return", 1),
+            source: Subject::new("inventory.goods_receipt", 1),
             lines: Vec::new(),
         };
         assert!(matches!(

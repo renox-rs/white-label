@@ -23,10 +23,11 @@ use wl_invoicing::{
     SupplierBillStatus, SupplierDebitNote,
 };
 use wl_kernel::documents::today;
-use wl_kernel::invoicing::{
-    SupplierDebitNoteStatus, SupplierReturnDispatched, SupplierReturnLine, VatCategory,
-    supplier_debit_notes,
+use wl_kernel::inventory::{
+    PURCHASE_ORDER_LINE_SUBJECT_TYPE, ReturnOutcome, SupplierReturnDispatched,
+    SupplierReturnDispatchedLine,
 };
+use wl_kernel::invoicing::{SupplierDebitNoteStatus, VatCategory, supplier_debit_notes};
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::{LegalEntity, Subject};
 
@@ -48,7 +49,7 @@ fn day(n: i64) -> NaiveDate {
 }
 
 fn po_line() -> Subject {
-    Subject::new("procurement.po_line", 31)
+    Subject::new(PURCHASE_ORDER_LINE_SUBJECT_TYPE, 31)
 }
 
 fn unit() -> Subject {
@@ -87,15 +88,16 @@ async fn approved_bill(t: &Booted) -> (SupplierBill, BillLine) {
 /// 3 units back to the supplier, bought at `po_price` fils.
 fn dispatched(return_id: i64, qty_milli: i64, po_price: i64) -> SupplierReturnDispatched {
     SupplierReturnDispatched {
-        return_id,
+        supplier_return: Subject::new("inventory.supplier_return", return_id),
         supplier: BLUE_DUNES,
         source: Subject::new("inventory.supplier_return", return_id),
-        lines: vec![SupplierReturnLine {
+        lines: vec![SupplierReturnDispatchedLine {
             item: Subject::new("inventory.item", 5),
             lot: None,
-            qty_milli,
-            po_line: po_line(),
+            quantity_milli: qty_milli,
+            po_line: Some(po_line().subject_id),
             po_price,
+            wanted_outcome: ReturnOutcome::Credit,
             reason: "damaged".to_owned(),
         }],
     }

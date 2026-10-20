@@ -18,9 +18,10 @@ use std::collections::BTreeMap;
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::Transitioned;
+use wl_kernel::inventory::SupplierReturnDispatched;
 use wl_kernel::invoicing::{
     DebitedLine, ReverseCost, SupplierBillId, SupplierDebitNoteCancelled, SupplierDebitNoteIssued,
-    SupplierDebitNoteSettled, SupplierReturnDispatched, cost_poster,
+    SupplierDebitNoteSettled, cost_poster,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 
@@ -217,6 +218,10 @@ pub(crate) fn register(app: &mut Registry) {
     );
     app.listen(
         |event: SupplierReturnDispatched, state: AppState| async move {
+            // Only a line asking for a credit gets a debit note.
+            if crate::debit_note_contract::credit_lines(&event).is_empty() {
+                return Ok(());
+            }
             crate::debit_note_contract::draft_for_return(&state, event)
                 .await
                 .map(|_| ())

@@ -32,9 +32,13 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use wl_kernel::LegalEntity;
 use wl_kernel::PartyId;
+use wl_kernel::inventory::{
+    PURCHASE_ORDER_LINE_SUBJECT_TYPE, ReturnOutcome, SupplierReturnDispatched,
+    SupplierReturnDispatchedLine,
+};
 use wl_kernel::invoicing::{
     SupplierBillFuture, SupplierDebitNoteId, SupplierDebitNoteStatus, SupplierDebitNoteSummary,
-    SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine, VatCategory,
+    SupplierDebitNotes, VatCategory,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 
@@ -73,11 +77,29 @@ fn refused(message: impl Into<String>) -> Error {
 /// A returned line: the PO line it came in on and the quantity.
 type Wanted = (wl_kernel::Subject, i64);
 
-/// The returned lines of `event` as PO line and quantity.
-fn wanted_of(returned: &[SupplierReturnLine]) -> Vec<Wanted> {
+/// The lines of `event` that ask for a credit: a line that asks for a
+/// replacement gets new goods, not a debit note.
+pub fn credit_lines(event: &SupplierReturnDispatched) -> Vec<&SupplierReturnDispatchedLine> {
+    event
+        .lines
+        .iter()
+        .filter(|line| line.wanted_outcome == ReturnOutcome::Credit)
+        .collect()
+}
+
+/// The order line of `line` as a [`wl_kernel::Subject`], if it names one.
+fn po_line_of(line: &SupplierReturnDispatchedLine) -> Option<wl_kernel::Subject> {
+    line.po_line
+        .map(|id| wl_kernel::Subject::new(PURCHASE_ORDER_LINE_SUBJECT_TYPE, id))
+}
+
+/// The returned lines as PO line and quantity. A line without an order line
+/// cannot be matched to a bill line; it is left out here, so the draft finds
+/// no covering bill and is priced at the PO.
+fn wanted_of(returned: &[&SupplierReturnDispatchedLine]) -> Vec<Wanted> {
     returned
         .iter()
-        .map(|r| (r.po_line.clone(), r.qty_milli))
+        .filter_map(|r| Some((po_line_of(r)?, r.quantity_milli)))
         .collect()
 }
 
@@ -132,17 +154,18 @@ fn lines_at_bill(
 
 /// The lines of the draft for `returned` at the PO price, for a note that
 /// waits for its bill.
-fn lines_at_po(returned: &[SupplierReturnLine]) -> Vec<DebitNoteLine> {
+fn lines_at_po(returned: &[&SupplierReturnDispatchedLine]) -> Vec<DebitNoteLine> {
     returned
         .iter()
         .zip(1..)
         .map(|(r, position)| {
+            let po_line = po_line_of(r);
             let mut line = DebitNoteLine {
                 position,
-                po_line_type: Some(r.po_line.subject_type.clone()),
-                po_line_id: Some(r.po_line.subject_id),
+                po_line_type: po_line.as_ref().map(|p| p.subject_type.clone()),
+                po_line_id: po_line.map(|p| p.subject_id),
                 description: r.item.to_string(),
-                quantity_milli: r.qty_milli,
+                quantity_milli: r.quantity_milli,
                 unit_price: r.po_price,
                 vat_category: VatCategory::Standard,
                 priced_at: PricedAt::Po,
@@ -159,7 +182,7 @@ fn lines_at_po(returned: &[SupplierReturnLine]) -> Vec<DebitNoteLine> {
 ///
 /// # Errors
 ///
-/// 422 for a return with no lines or a line of 0 or less.
+/// 422 for a return with no line asking for a credit or a line of 0 or less.
 pub async fn draft_for_return(
     state: &AppState,
     event: SupplierReturnDispatched,
@@ -173,7 +196,8 @@ pub async fn draft_for_return(
     if let Some(note) = existing {
         return Ok((note, false));
     }
-    if event.lines.is_empty() || event.lines.iter().any(|l| l.qty_milli <= 0) {
+    let returned = credit_lines(&event);
+    if returned.is_empty() || returned.iter().any(|l| l.quantity_milli <= 0) {
         return Err(refused(english("wl_invoicing.debit_note.errors.lines")));
     }
     let bills = SupplierBill::query()
@@ -182,15 +206,14 @@ pub async fn draft_for_return(
         .order_by(SupplierBill::ID)
         .get(db)
         .await?;
-    let wanted = wanted_of(&event.lines);
+    let wanted = wanted_of(&returned);
     let found = covering_bill(db, bills, &wanted).await?;
     let mut note = SupplierDebitNote {
         party_id: event.supplier.0,
         origin: DebitNoteOrigin::Return,
         source_type: Some(event.source.subject_type.clone()),
         source_id: Some(event.source.subject_id),
-        reason: event
-            .lines
+        reason: returned
             .iter()
             .map(|l| l.reason.trim())
             .filter(|r| !r.is_empty())
@@ -213,7 +236,7 @@ pub async fn draft_for_return(
         None => {
             note.legal_entity_id = LegalEntity::default_entity(db).await?.id;
             note.currency = "AED".to_owned();
-            lines_at_po(&event.lines)
+            lines_at_po(&returned)
         }
     };
     note.set_totals(&totals_of_lines(&lines));
