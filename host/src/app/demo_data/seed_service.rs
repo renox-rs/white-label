@@ -2,19 +2,19 @@
 //! vendors' and buildings' papers, the contracts, the planned visits and the
 //! tickets.
 
-use renox::chrono::{Duration, NaiveDate};
+use renox::chrono::Duration;
 use renox::prelude::*;
-use wl_kernel::documents::today;
+use super::real_today as today;
 use wl_kernel::tickets::{Assignee, OpenTicket, Requester, TicketChannel};
 use wl_kernel::{PartyId, Subject};
 use wl_ticketing::{
     Category, ContractStatus, NewContract, Priority, ServiceContract, ServiceContracts, SlaPolicy,
-    Ticket, TicketStatus, Tickets,
+    Tickets,
 };
 
 use super::people::login_of;
 use super::roles::{ADMIN, COORDINATOR, TECHNICIAN};
-use super::seed_leases::text;
+use super::seed_leases::{text, upto};
 use super::service::{
     CONTRACTS, ContractPlan, ContractStanding, Standing, TICKETS, TicketPlan, Worker,
 };
@@ -34,7 +34,7 @@ const TRADES: &[(&str, &str, &str)] = &[
 impl Seed<'_> {
     /// The service side of the demo.
     pub(crate) async fn service(&mut self) -> Result {
-        self.trades().await?;
+        at!(self, day(-520), { self.trades().await })?;
         self.vendor_papers().await?;
         let contracts = self.contracts().await?;
         self.planned_visits(&contracts).await?;
@@ -74,15 +74,17 @@ impl Seed<'_> {
     /// two of them close to their end.
     async fn vendor_papers(&mut self) -> Result {
         let fire = self.party("Safeguard Fire Systems LLC").clone();
-        self.document(
-            Subject::new(wl_kernel::parties::PARTY_SUBJECT_TYPE, fire.id),
-            "civil_defence_approval",
-            "Civil Defence approval",
-            Some("DEMO-CD-0000351".to_owned()),
-            Some(day(25)),
-            Some(day(-340)),
-        )
-        .await?;
+        at!(self, day(-340), {
+            self.document(
+                Subject::new(wl_kernel::parties::PARTY_SUBJECT_TYPE, fire.id),
+                "civil_defence_approval",
+                "Civil Defence approval",
+                Some("DEMO-CD-0000351".to_owned()),
+                Some(day(25)),
+                Some(day(-340)),
+            )
+            .await
+        })?;
         for (code, safety, lift) in [
             ("JVT-A", 210, Some(140)),
             ("JVT-B", 12, Some(60)),
@@ -93,97 +95,123 @@ impl Seed<'_> {
         ] {
             let building = self.building(code).clone();
             let subject = Subject::new(property::building::BUILDING_SUBJECT_TYPE, building.id);
-            self.document(
-                subject.clone(),
-                "building_safety_certificate",
-                "Building safety certificate",
-                Some(format!("DEMO-BSC-{:05}", building.id * 113)),
-                Some(day(safety)),
-                Some(day(safety - 365)),
-            )
-            .await?;
-            if let Some(lift) = lift {
+            at!(self, day(safety - 365), {
                 self.document(
-                    subject,
-                    "lift_certificate",
-                    "Lift certificate",
-                    Some(format!("DEMO-LFT-{:05}", building.id * 71)),
-                    Some(day(lift)),
-                    Some(day(lift - 365)),
+                    subject.clone(),
+                    "building_safety_certificate",
+                    "Building safety certificate",
+                    Some(format!("DEMO-BSC-{:05}", building.id * 113)),
+                    Some(day(safety)),
+                    Some(day(safety - 365)),
                 )
-                .await?;
+                .await
+            })?;
+            if let Some(lift) = lift {
+                at!(self, day(lift - 365), {
+                    self.document(
+                        subject,
+                        "lift_certificate",
+                        "Lift certificate",
+                        Some(format!("DEMO-LFT-{:05}", building.id * 71)),
+                        Some(day(lift)),
+                        Some(day(lift - 365)),
+                    )
+                    .await
+                })?;
             }
         }
         Ok(())
     }
 
-    /// The contracts, each taken to its standing; their ids by title.
+    /// The contracts, each taken to its standing on the days it got there;
+    /// their ids.
     async fn contracts(&mut self) -> Result<Vec<(&'static ContractPlan, i64)>> {
         let admin = login_of(ADMIN).email;
         let mut made = Vec::new();
         for plan in CONTRACTS {
             let vendor = PartyId(self.party(plan.vendor).id);
-            let contract = ServiceContracts::create_draft(
-                &self.state,
-                NewContract {
-                    vendor,
-                    title: plan.title.to_owned(),
-                    start_date: day(plan.start),
-                    end_date: day(plan.end),
-                    renewal_notice_days: 60,
-                    sla_policy_id: None,
-                },
-            )
-            .await?;
-            for code in plan.buildings {
-                let building = self.building(code).id;
-                ServiceContracts::add_coverage(
-                    self.db(),
-                    &contract,
-                    Subject::new(property::building::BUILDING_SUBJECT_TYPE, building),
-                    plan.category,
+            // A contract is drawn up the week before it starts; one that has
+            // not started was drawn up this week.
+            let drawn = upto(day(plan.start - 7)).min(today() - Duration::days(2));
+            let contract = at!(self, drawn, {
+                let contract = ServiceContracts::create_draft(
+                    &self.state,
+                    NewContract {
+                        vendor,
+                        title: plan.title.to_owned(),
+                        start_date: day(plan.start),
+                        end_date: day(plan.end),
+                        renewal_notice_days: 60,
+                        sla_policy_id: None,
+                    },
                 )
                 .await?;
-            }
+                for code in plan.buildings {
+                    let building = self.building(code).id;
+                    ServiceContracts::add_coverage(
+                        self.db(),
+                        &contract,
+                        Subject::new(property::building::BUILDING_SUBJECT_TYPE, building),
+                        plan.category,
+                    )
+                    .await?;
+                }
+                Ok::<_, renox::Error>(contract)
+            })?;
             self.report.add("service contracts", 1);
             made.push((plan, contract.id));
             if plan.standing == ContractStanding::Draft {
                 continue;
             }
-            self.driver
-                .post(
-                    admin,
-                    &format!("/service-contracts/{}/activate", contract.id),
-                    &[],
-                )
-                .await?;
-            let active = ServiceContract::find_or_404(self.db(), contract.id).await?;
+            at!(self, upto(day(plan.start)), {
+                self.driver
+                    .post(
+                        admin,
+                        &format!("/service-contracts/{}/activate", contract.id),
+                        &[],
+                    )
+                    .await
+            })?;
+            let notice = day(plan.end - 60);
             match plan.standing {
                 ContractStanding::Expiring => {
-                    ServiceContracts::flag_expiring(&self.state, &active, today())
-                        .await
-                        .map_err(renox::state_machine::TransitionError::into_error)?;
+                    at!(self, upto(notice), {
+                        let active = ServiceContract::find_or_404(self.db(), contract.id).await?;
+                        ServiceContracts::flag_expiring(&self.state, &active, upto(notice))
+                            .await
+                            .map_err(renox::state_machine::TransitionError::into_error)
+                    })?;
                 }
                 ContractStanding::Expired => {
-                    ServiceContracts::flag_expiring(&self.state, &active, today())
-                        .await
-                        .map_err(renox::state_machine::TransitionError::into_error)?;
-                    let expiring = ServiceContract::find_or_404(self.db(), contract.id).await?;
-                    ServiceContracts::expire(&self.state, &expiring, today())
-                        .await
-                        .map_err(renox::state_machine::TransitionError::into_error)?;
+                    at!(self, upto(notice), {
+                        let active = ServiceContract::find_or_404(self.db(), contract.id).await?;
+                        ServiceContracts::flag_expiring(&self.state, &active, upto(notice))
+                            .await
+                            .map_err(renox::state_machine::TransitionError::into_error)
+                    })?;
+                    let after = day(plan.end + 1);
+                    at!(self, upto(after), {
+                        let expiring = ServiceContract::find_or_404(self.db(), contract.id).await?;
+                        ServiceContracts::expire(&self.state, &expiring, upto(after))
+                            .await
+                            .map(|_| ())
+                            .map_err(renox::state_machine::TransitionError::into_error)
+                    })?;
                 }
                 ContractStanding::Terminated => {
-                    self.driver
-                        .post(
-                            admin,
-                            &format!("/service-contracts/{}/terminate", contract.id),
-                            &[
-                                ("reason", "The vendor missed three monthly visits"),
-                                ("termination_date", text(today()).as_str()),
-                            ],
-                        )
-                        .await?;
+                    let ended = today() - Duration::days(30);
+                    at!(self, ended, {
+                        self.driver
+                            .post(
+                                admin,
+                                &format!("/service-contracts/{}/terminate", contract.id),
+                                &[
+                                    ("reason", "The vendor missed three monthly visits"),
+                                    ("termination_date", text(ended).as_str()),
+                                ],
+                            )
+                            .await
+                    })?;
                 }
                 _ => {}
             }
@@ -207,12 +235,13 @@ impl Seed<'_> {
                 let building = self.building(code).id;
                 let subject = Subject::new(property::building::BUILDING_SUBJECT_TYPE, building);
                 // Two done quarters, the next one coming, and (for the first
-                // building) the last one missed.
+                // building of the fire contract) the last one missed.
                 for (quarter, due) in [(1, -190), (2, -95), (3, 14), (4, -6)] {
                     if quarter == 4 && !(index == 0 && plan.category == "fire_life_safety") {
                         continue;
                     }
                     let due_on = day(due);
+                    let opened_on = upto(due_on - Duration::days(14)).max(day(plan.start));
                     let mut request = OpenTicket::new(
                         subject.clone(),
                         plan.category,
@@ -221,31 +250,32 @@ impl Seed<'_> {
                     .planned_due(due_on)
                     .assign_to(Assignee::party(vendor));
                     request.contract = Some(wl_kernel::tickets::ServiceContractId(*id));
-                    let opened = Tickets::open_at(
-                        &self.state,
-                        request,
-                        renox::db::now() - Duration::days((-due).max(0)),
-                    )
-                    .await?;
+                    let opened = at!(self, opened_on, {
+                        Tickets::open_at(&self.state, request, renox::db::now()).await
+                    })?;
                     self.report.add("planned visits", 1);
                     if due < -50 {
                         let ticket = format!("/tickets/{}", opened.id.0);
-                        self.driver
-                            .post(
-                                coordinator,
-                                &format!("{ticket}/service-report"),
-                                &[("reference", &format!("SR-DEMO-{}-{quarter}", opened.id.0))],
-                            )
-                            .await?;
-                        self.driver
-                            .post(coordinator, &format!("{ticket}/actions/start"), &[])
-                            .await?;
-                        self.driver
-                            .post(coordinator, &format!("{ticket}/actions/resolve"), &[])
-                            .await?;
-                        self.driver
-                            .post(coordinator, &format!("{ticket}/actions/close"), &[])
-                            .await?;
+                        at!(self, due_on, {
+                            self.driver
+                                .post(
+                                    coordinator,
+                                    &format!("{ticket}/service-report"),
+                                    &[("reference", &format!("SR-DEMO-{}-{quarter}", opened.id.0))],
+                                )
+                                .await?;
+                            self.driver
+                                .post(coordinator, &format!("{ticket}/actions/start"), &[])
+                                .await?;
+                            self.driver
+                                .post(coordinator, &format!("{ticket}/actions/resolve"), &[])
+                                .await
+                        })?;
+                        at!(self, due_on + Duration::days(1), {
+                            self.driver
+                                .post(coordinator, &format!("{ticket}/actions/close"), &[])
+                                .await
+                        })?;
                     }
                 }
             }
@@ -274,12 +304,13 @@ impl Seed<'_> {
                 self.building(plan.place.0).id,
             ),
         };
-        let mut request =
-            OpenTicket::new(subject, plan.category, plan.title).channel(if plan.tenant.is_some() {
+        let mut request = OpenTicket::new(subject, plan.category, plan.title).channel(
+            if plan.tenant.is_some() {
                 TicketChannel::Portal
             } else {
                 TicketChannel::Staff
-            });
+            },
+        );
         if let Some(tenant) = plan.tenant {
             request = request
                 .requester(Requester::Party {
@@ -301,74 +332,92 @@ impl Seed<'_> {
         if let Some(assignee) = assignee {
             request = request.assign_to(assignee);
         }
-        let at = renox::db::now() - Duration::days(plan.age);
-        let opened = Tickets::open_at(&self.state, request, at).await?;
+        let opened_on = day(-plan.age);
+        let opened = at!(self, opened_on, {
+            Tickets::open_at(&self.state, request, renox::db::now()).await
+        })?;
         self.report.add("tickets", 1);
         let path = format!("/tickets/{}", opened.id.0);
         let action = |name: &str| format!("{path}/actions/{name}");
+        // The days it went on: the work starts the next day, is done a day
+        // later and signed off the day after (none past today).
+        let later = |days: i64| upto(opened_on + Duration::days(days));
         match plan.standing {
             Standing::Open | Standing::Assigned => {}
             Standing::Done => {
-                Tickets::complete(
-                    &self.state,
-                    opened.id,
-                    "Work done and signed off by the building",
-                )
-                .await?;
+                at!(self, later(2), {
+                    Tickets::complete(
+                        &self.state,
+                        opened.id,
+                        "Work done and signed off by the building",
+                    )
+                    .await
+                    .map(|_| ())
+                })?;
             }
             Standing::InProgress => {
-                self.driver.post(worker_user, &action("start"), &[]).await?;
+                at!(self, later(1), {
+                    self.driver.post(worker_user, &action("start"), &[]).await
+                })?;
             }
             Standing::OnHold(reason) => {
-                self.driver.post(worker_user, &action("start"), &[]).await?;
-                self.driver
-                    .post(
-                        worker_user,
-                        &format!("{path}/hold"),
-                        &[("hold_reason", reason)],
-                    )
-                    .await?;
+                at!(self, later(1), {
+                    self.driver.post(worker_user, &action("start"), &[]).await
+                })?;
+                at!(self, later(2), {
+                    self.driver
+                        .post(worker_user, &format!("{path}/hold"), &[("hold_reason", reason)])
+                        .await
+                })?;
             }
             Standing::Resolved => {
-                self.driver.post(worker_user, &action("start"), &[]).await?;
-                self.driver
-                    .post(worker_user, &action("resolve"), &[])
-                    .await?;
+                at!(self, later(1), {
+                    self.driver.post(worker_user, &action("start"), &[]).await
+                })?;
+                at!(self, later(2), {
+                    self.driver.post(worker_user, &action("resolve"), &[]).await
+                })?;
             }
             Standing::Closed => {
-                self.driver.post(worker_user, &action("start"), &[]).await?;
-                self.driver
-                    .post(worker_user, &action("resolve"), &[])
-                    .await?;
-                self.driver.post(coordinator, &action("close"), &[]).await?;
+                at!(self, later(1), {
+                    self.driver.post(worker_user, &action("start"), &[]).await
+                })?;
+                at!(self, later(2), {
+                    self.driver.post(worker_user, &action("resolve"), &[]).await
+                })?;
+                at!(self, later(3), {
+                    self.driver.post(coordinator, &action("close"), &[]).await
+                })?;
             }
             Standing::Charged => {
-                self.driver
-                    .post(
-                        coordinator,
-                        &format!("{path}/charges"),
-                        &[
-                            ("description", "Replacement part and labour"),
-                            ("quantity", "1"),
-                            ("unit_price", &format!("{}.00", 180 + plan.age * 5)),
-                            ("vat_category", "standard"),
-                        ],
-                    )
-                    .await?;
-                self.driver.post(worker_user, &action("start"), &[]).await?;
-                self.driver
-                    .post(worker_user, &action("resolve"), &[])
-                    .await?;
-                self.driver.post(coordinator, &action("close"), &[]).await?;
+                at!(self, later(1), {
+                    self.driver
+                        .post(
+                            coordinator,
+                            &format!("{path}/charges"),
+                            &[
+                                ("description", "Replacement part and labour"),
+                                ("quantity", "1"),
+                                ("unit_price", &format!("{}.00", 180 + plan.age * 5)),
+                                ("vat_category", "standard"),
+                            ],
+                        )
+                        .await?;
+                    self.driver.post(worker_user, &action("start"), &[]).await
+                })?;
+                at!(self, later(2), {
+                    self.driver.post(worker_user, &action("resolve"), &[]).await
+                })?;
+                at!(self, later(3), {
+                    self.driver.post(coordinator, &action("close"), &[]).await
+                })?;
             }
             Standing::Cancelled(reason) => {
-                self.driver
-                    .post(
-                        coordinator,
-                        &format!("{path}/cancel"),
-                        &[("reason", reason)],
-                    )
-                    .await?;
+                at!(self, later(1), {
+                    self.driver
+                        .post(coordinator, &format!("{path}/cancel"), &[("reason", reason)])
+                        .await
+                })?;
             }
         }
         Ok(())
@@ -377,8 +426,8 @@ impl Seed<'_> {
     /// The daily rules of the service side: planned visits that were not done
     /// within the grace days raise the compliance flag of their building.
     async fn compliance_rules(&mut self) -> Result {
-        wl_ticketing::visit_check::run(&self.state, today()).await?;
-        let _ = (NaiveDate::MIN, text, Ticket::default, TicketStatus::Open);
+        let now = today();
+        at!(self, now, { wl_ticketing::visit_check::run(&self.state, now).await })?;
         Ok(())
     }
 }

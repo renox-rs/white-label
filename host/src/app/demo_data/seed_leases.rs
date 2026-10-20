@@ -1,15 +1,16 @@
 //! Making the leases: the draft, the documents, the signature, the deposit,
 //! the activation, the Ejari registration, the money, and then what became of
-//! the lease, each step as the demo user who does it.
+//! the lease. Each step is taken as the demo user who does it, on the day it
+//! happened: the clock of the step is set to that day ([`super::clock`]).
 
-use renox::chrono::{Duration, Months, NaiveDate};
+use renox::chrono::{Datelike, Duration, Months, NaiveDate};
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::approvals::ApprovalRequest;
-use wl_kernel::documents::today;
 
 use super::leases::{Fate, PLANS, Plan, Quirk};
 use super::people::{login_of, manager_of};
+use super::real_today as today;
 use super::roles::{ACCOUNTANT, LEASING_AGENT};
 use super::seed_documents::party_number;
 use super::{Seed, day};
@@ -22,6 +23,11 @@ pub(crate) fn text(date: NaiveDate) -> String {
 /// Days from today to `date`.
 fn offset(date: NaiveDate) -> i64 {
     (date - today()).num_days()
+}
+
+/// The earlier of `date` and today: a step cannot happen in the future.
+pub(crate) fn upto(date: NaiveDate) -> NaiveDate {
+    date.min(today())
 }
 
 impl Seed<'_> {
@@ -47,16 +53,64 @@ impl Seed<'_> {
         if plan.rent > 0 {
             plan.rent
         } else {
-            self.unit(plan.unit.0, plan.unit.1).asking_rent.unwrap_or(0) / 100
+            self.unit(plan.unit.0, plan.unit.1)
+                .asking_rent
+                .unwrap_or(0)
+                / 100
         }
     }
 
     /// Makes the lease of `plan` and takes it as far as its fate says.
     pub(crate) async fn lease(&mut self, plan: &Plan) -> Result<i64> {
-        self.papers(plan.tenant, plan.papers).await?;
+        let (start, _) = Self::term(plan);
+        let future = start > today();
+        // A lease that has not started was prepared in the last days; one that
+        // has was prepared two weeks before it started.
+        let created = if future { today() - Duration::days(6) } else { start - Duration::days(14) };
+        let submitted = if future { today() - Duration::days(4) } else { start - Duration::days(8) };
+        let agent = login_of(LEASING_AGENT).email;
+        let id = at!(self, created, {
+            self.papers(plan.tenant, plan.papers).await?;
+            self.create_lease(plan).await
+        })?;
+        self.leases.insert(plan.key, id);
+        self.report.add("lease versions", 1);
+        if plan.fate == Fate::Draft {
+            return Ok(id);
+        }
+        at!(self, submitted, {
+            self.driver
+                .post(agent, &format!("/property/leases/{id}/submit"), &[])
+                .await
+        })?;
+        match plan.fate {
+            Fate::Pending => return Ok(id),
+            Fate::Cancelled => {
+                at!(self, today() - Duration::days(2), {
+                    self.driver
+                        .post(
+                            agent,
+                            &format!("/property/leases/{id}/cancel"),
+                            &[("reason", "The prospect withdrew before signing")],
+                        )
+                        .await
+                })?;
+                return Ok(id);
+            }
+            Fate::CancelAsked | Fate::CancelApproved => {
+                self.cancel_with_money(plan, id).await?;
+                return Ok(id);
+            }
+            _ => {}
+        }
+        self.activate(plan, id).await?;
+        self.life(plan, id).await?;
+        Ok(id)
+    }
+
+    async fn create_lease(&mut self, plan: &Plan) -> Result<i64> {
         let unit = self.unit(plan.unit.0, plan.unit.1).clone();
         let tenant = self.party(plan.tenant).clone();
-        let agent = login_of(LEASING_AGENT).email;
         let (start, end) = Self::term(plan);
         let first = text(start);
         let last = text(end);
@@ -66,7 +120,7 @@ impl Seed<'_> {
         let reply = self
             .driver
             .post(
-                agent,
+                login_of(LEASING_AGENT).email,
                 &format!("/property/units/{}/leases", unit.id),
                 &[
                     ("tenant", tenant.code.as_str()),
@@ -80,67 +134,45 @@ impl Seed<'_> {
                 ],
             )
             .await?;
-        let id = reply
+        reply
             .redirected_id()
-            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no lease id for {}", plan.key))?;
-        self.leases.insert(plan.key, id);
-        self.report.add("lease versions", 1);
-        if plan.fate == Fate::Draft {
-            return Ok(id);
-        }
-        self.driver
-            .post(agent, &format!("/property/leases/{id}/submit"), &[])
-            .await?;
-        match plan.fate {
-            Fate::Pending => return Ok(id),
-            Fate::Cancelled => {
-                self.driver
-                    .post(
-                        agent,
-                        &format!("/property/leases/{id}/cancel"),
-                        &[("reason", "The prospect withdrew before signing")],
-                    )
-                    .await?;
-                return Ok(id);
-            }
-            Fate::CancelAsked | Fate::CancelApproved => {
-                self.cancel_with_money(plan, id).await?;
-                return Ok(id);
-            }
-            _ => {}
-        }
-        self.activate(plan, id).await?;
-        self.after_activation(plan, id).await?;
-        Ok(id)
+            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no lease id for {}", plan.key).into())
     }
 
-    /// The deposit, the signed contract, the activation and the Ejari
-    /// registration of the submitted lease `id`.
+    /// The deposit, the signed contract, the activation, the Ejari
+    /// registration and the cheques of the submitted lease `id`.
     async fn activate(&mut self, plan: &Plan, id: i64) -> Result {
         let manager = manager_of(plan.unit.0);
         let (start, end) = Self::term(plan);
-        if !self.is_follow_up(id).await? {
-            self.deposit(plan, id).await?;
+        let follow_up = self.is_follow_up(id).await?;
+        let future = start > today();
+        let paid = if future { today() - Duration::days(3) } else { start - Duration::days(5) };
+        let signed = if future { today() - Duration::days(2) } else { start - Duration::days(4) };
+        if !follow_up {
+            at!(self, paid, { self.deposit(plan, id, paid).await })?;
         }
-        self.document(
-            Subject::new("property.lease", id),
-            "signed_tenancy_contract",
-            "Signed tenancy contract",
-            None,
-            None,
-            Some(start),
-        )
-        .await?;
-        self.driver
-            .post(manager, &format!("/property/leases/{id}/activate"), &[])
-            .await?;
-        // The certificate of a lease that has ended is expired, and the
-        // document guard refuses to record a registration with an expired
-        // one: those leases keep the registration they had in their day.
-        if end < today() {
-            return Ok(());
-        }
-        self.ejari(plan, id, manager, start, end).await
+        at!(self, signed, {
+            self.document(
+                Subject::new("property.lease", id),
+                "signed_tenancy_contract",
+                "Signed tenancy contract",
+                None,
+                None,
+                Some(signed),
+            )
+            .await
+        })?;
+        at!(self, upto(start), {
+            self.driver
+                .post(manager, &format!("/property/leases/{id}/activate"), &[])
+                .await
+        })?;
+        let registered = upto(start + Duration::days(2));
+        at!(self, registered, {
+            self.ejari(plan, id, manager, registered, end).await
+        })?;
+        // The post-dated cheques come with the signed lease.
+        at!(self, upto(start), { self.cheques_of(plan, id).await })
     }
 
     /// Whether lease `id` is a renewal or an amendment (its deposit is the
@@ -151,16 +183,15 @@ impl Seed<'_> {
             .is_follow_up())
     }
 
-    /// The money of the active lease `id` and what became of it.
-    async fn after_activation(&mut self, plan: &Plan, id: i64) -> Result {
+    /// The life of the active lease `id`: its instalments invoiced and paid on
+    /// their days, and what became of it.
+    async fn life(&mut self, plan: &Plan, id: i64) -> Result {
         let (_, end) = Self::term(plan);
-        let money_until = match plan.fate {
+        let until = match plan.fate {
             Fate::Terminated { move_out, .. } => day(move_out),
             _ => today().min(end),
         };
-        self.invoice_through(money_until).await?;
-        self.cheques_of(plan, id).await?;
-        self.bank_run(plan, id).await?;
+        self.money(plan, id, until).await?;
         self.invoice_quirk(plan, id).await?;
         self.fate(plan, id).await
     }
@@ -170,38 +201,44 @@ impl Seed<'_> {
         let manager = manager_of(plan.unit.0);
         let agent = login_of(LEASING_AGENT).email;
         let path = format!("/property/leases/{id}");
+        let (_, end) = Self::term(plan);
         match plan.fate {
             Fate::Window | Fate::Expired => {
-                self.rules().await?;
+                self.window(plan, id).await?;
             }
             Fate::Decided(decision) => {
-                self.rules().await?;
-                self.driver
-                    .post(
-                        manager,
-                        &format!("{path}/renewal-decision"),
-                        &[("decision", decision)],
-                    )
-                    .await?;
-                if decision == "changed_terms" {
+                self.window(plan, id).await?;
+                at!(self, today() - Duration::days(3), {
                     self.driver
-                        .post(manager, &format!("{path}/changed-terms-notice"), &[])
+                        .post(
+                            manager,
+                            &format!("{path}/renewal-decision"),
+                            &[("decision", decision)],
+                        )
                         .await?;
-                }
+                    if decision == "changed_terms" {
+                        self.driver
+                            .post(manager, &format!("{path}/changed-terms-notice"), &[])
+                            .await?;
+                    }
+                    Ok::<(), renox::Error>(())
+                })?;
             }
             Fate::RenewalSent => {
-                self.rules().await?;
-                self.driver
-                    .post(
-                        manager,
-                        &format!("{path}/renewal-decision"),
-                        &[("decision", "same_terms")],
-                    )
-                    .await?;
-                let renewal = self.version(plan, id, "renewal", None).await?;
-                self.driver
-                    .post(agent, &format!("/property/leases/{renewal}/submit"), &[])
-                    .await?;
+                self.window(plan, id).await?;
+                at!(self, today() - Duration::days(5), {
+                    self.driver
+                        .post(
+                            manager,
+                            &format!("{path}/renewal-decision"),
+                            &[("decision", "same_terms")],
+                        )
+                        .await?;
+                    let renewal = self.version(plan, id, "renewal", None).await?;
+                    self.driver
+                        .post(agent, &format!("/property/leases/{renewal}/submit"), &[])
+                        .await
+                })?;
             }
             Fate::Notice {
                 by_tenant,
@@ -209,7 +246,8 @@ impl Seed<'_> {
                 penalty,
             } => {
                 let planned = text(day(move_out));
-                let date = text(today() - Duration::days(9));
+                let given = today() - Duration::days(9);
+                let date = text(given);
                 let penalty = penalty.to_string();
                 let mut form = vec![("date", date.as_str())];
                 if by_tenant {
@@ -229,9 +267,11 @@ impl Seed<'_> {
                     form.push(("reason", "landlords_ground"));
                     form.push(("ground", "The owner needs the unit for a family member"));
                 }
-                self.driver
-                    .post(manager, &format!("{path}/notice"), &form)
-                    .await?;
+                at!(self, given, {
+                    self.driver
+                        .post(manager, &format!("{path}/notice"), &form)
+                        .await
+                })?;
             }
             Fate::Terminated {
                 notice,
@@ -241,27 +281,59 @@ impl Seed<'_> {
                 self.terminate(plan, id, notice, move_out, defects).await?;
             }
             Fate::Renewed => {
-                self.rules().await?;
-                let renewal = self.version(plan, id, "renewal", None).await?;
-                self.activate_version(plan, renewal, true).await?;
+                // The window opens, the manager decides, the renewal is
+                // prepared, signed and starts the day after this one ends.
+                let flag_day = end - Duration::days(110);
+                at!(self, flag_day, {
+                    property::renewal::run(&self.state, flag_day).await.map(|_| ())
+                })?;
+                let renewal = at!(self, end - Duration::days(70), {
+                    self.driver
+                        .post(
+                            manager,
+                            &format!("{path}/renewal-decision"),
+                            &[("decision", "same_terms")],
+                        )
+                        .await?;
+                    self.version(plan, id, "renewal", None).await
+                })?;
+                self.activate_version(plan, renewal, true, end - Duration::days(3))
+                    .await?;
             }
             Fate::Amended { effective, rent } => {
-                let amended = self
-                    .version(plan, id, "amendment", Some((day(effective), rent)))
-                    .await?;
-                self.activate_version(plan, amended, false).await?;
+                let given = today() - Duration::days(2);
+                let amended = at!(self, given, {
+                    self.version(plan, id, "amendment", Some((day(effective), rent)))
+                        .await
+                })?;
+                self.activate_version(plan, amended, false, given).await?;
             }
             _ => {}
         }
         Ok(())
     }
 
-    /// The daily rules of the lease module, for today: the renewal window,
-    /// leases that ended, and the billing of the periods they hold over.
-    pub(crate) async fn rules(&mut self) -> Result {
-        let flagged = property::renewal::run(&self.state, today()).await?;
-        let _ = flagged;
-        self.invoice_through(today()).await
+    /// The renewal window of an active lease: the daily rule opens it on its
+    /// day, and flags the lease that ended as expired the day after it ended.
+    async fn window(&mut self, plan: &Plan, _id: i64) -> Result {
+        let (start, end) = Self::term(plan);
+        let opens = (end - Duration::days(120)).max(start + Duration::days(1));
+        let opened = upto(opens);
+        at!(self, opened, {
+            property::renewal::run(&self.state, opened).await.map(|_| ())
+        })?;
+        if end < today() {
+            let after = end + Duration::days(1);
+            at!(self, after, {
+                property::renewal::run(&self.state, after).await.map(|_| ())
+            })?;
+            // The holding-over periods are billed.
+            let now = today();
+            at!(self, now, {
+                self.bill_through(now).await
+            })?;
+        }
+        Ok(())
     }
 
     /// Prepares the next version of lease `id` (kind `renewal`: the next 12
@@ -317,40 +389,71 @@ impl Seed<'_> {
         Ok(next)
     }
 
-    /// Submits the version `id` of `plan` and activates it; its money follows.
-    async fn activate_version(&mut self, plan: &Plan, id: i64, renewal: bool) -> Result {
+    /// Submits the version `id` of `plan` and activates it on `signed`; its
+    /// life follows.
+    async fn activate_version(
+        &mut self,
+        plan: &Plan,
+        id: i64,
+        renewal: bool,
+        signed: NaiveDate,
+    ) -> Result {
         let agent = login_of(LEASING_AGENT).email;
-        if !renewal {
-            // An amendment's plan covers the whole term, the lease it replaces
-            // only what is still to come, so the check for changed terms asks
-            // the submitter; the rent went down and nothing else changed.
-            self.driver
-                .post(
-                    agent,
-                    &format!("/property/leases/{id}/terms-answer"),
-                    &[
-                        ("against", "no"),
-                        ("reason", "Rent reduced by agreement; no other term changed"),
-                    ],
-                )
-                .await?;
-        }
-        self.driver
-            .post(agent, &format!("/property/leases/{id}/submit"), &[])
-            .await?;
+        let manager = manager_of(plan.unit.0);
         let (_, end) = Self::term(plan);
+        at!(self, signed, {
+            if !renewal {
+                // An amendment's plan covers the whole term, the lease it
+                // replaces only what is still to come, so the check for
+                // changed terms asks the submitter; the rent went down and
+                // nothing else changed.
+                self.driver
+                    .post(
+                        agent,
+                        &format!("/property/leases/{id}/terms-answer"),
+                        &[
+                            ("against", "no"),
+                            ("reason", "Rent reduced by agreement; no other term changed"),
+                        ],
+                    )
+                    .await?;
+            }
+            self.driver
+                .post(agent, &format!("/property/leases/{id}/submit"), &[])
+                .await?;
+            self.document(
+                Subject::new("property.lease", id),
+                "signed_tenancy_contract",
+                "Signed tenancy contract",
+                None,
+                None,
+                Some(signed),
+            )
+            .await?;
+            self.driver
+                .post(manager, &format!("/property/leases/{id}/activate"), &[])
+                .await
+        })?;
         let mut next = *plan;
         next.fate = Fate::Active;
         next.quirk = Quirk::None;
         if renewal {
             next.start = offset(end + Duration::days(1));
         }
-        self.activate(&next, id).await?;
-        // The version's own money; boxed, since a lease's fate leads here.
-        Box::pin(self.after_activation(&next, id)).await
+        let (start, finish) = Self::term(&next);
+        let registered = upto(start + Duration::days(2));
+        if registered >= signed {
+            at!(self, registered, {
+                self.ejari(&next, id, manager, registered, finish).await
+            })?;
+        }
+        at!(self, upto(start.max(signed)), { self.cheques_of(&next, id).await })?;
+        // The version's own life; boxed, since a lease's fate leads here.
+        Box::pin(self.life(&next, id)).await
     }
 
-    /// Notice, inspection, keys and termination of lease `id`.
+    /// Notice, inspection, keys and termination of lease `id`, each on its
+    /// day.
     async fn terminate(
         &mut self,
         plan: &Plan,
@@ -363,36 +466,40 @@ impl Seed<'_> {
         let path = format!("/property/leases/{id}");
         let notice_date = text(day(notice));
         let planned = text(day(move_out));
-        self.driver
-            .post(
-                manager,
-                &format!("{path}/notice"),
-                &[
-                    ("date", notice_date.as_str()),
-                    ("party", "tenant"),
-                    ("reason", "end_of_term"),
-                    ("planned_move_out", planned.as_str()),
-                ],
-            )
-            .await?;
-        self.driver
-            .post(
-                manager,
-                &format!("{path}/move-out-inspection"),
-                &[
-                    ("done_on", planned.as_str()),
-                    ("keys_returned_on", planned.as_str()),
-                    ("defects", if defects { "yes" } else { "no" }),
-                ],
-            )
-            .await?;
-        self.driver
-            .post(
-                manager,
-                &format!("{path}/terminate"),
-                &[("move_out", planned.as_str()), ("credit", "refund")],
-            )
-            .await?;
+        at!(self, day(notice), {
+            self.driver
+                .post(
+                    manager,
+                    &format!("{path}/notice"),
+                    &[
+                        ("date", notice_date.as_str()),
+                        ("party", "tenant"),
+                        ("reason", "end_of_term"),
+                        ("planned_move_out", planned.as_str()),
+                    ],
+                )
+                .await
+        })?;
+        at!(self, day(move_out), {
+            self.driver
+                .post(
+                    manager,
+                    &format!("{path}/move-out-inspection"),
+                    &[
+                        ("done_on", planned.as_str()),
+                        ("keys_returned_on", planned.as_str()),
+                        ("defects", if defects { "yes" } else { "no" }),
+                    ],
+                )
+                .await?;
+            self.driver
+                .post(
+                    manager,
+                    &format!("{path}/terminate"),
+                    &[("move_out", planned.as_str()), ("credit", "refund")],
+                )
+                .await
+        })?;
         Ok(())
     }
 
@@ -402,15 +509,20 @@ impl Seed<'_> {
     async fn cancel_with_money(&mut self, plan: &Plan, id: i64) -> Result {
         let agent = login_of(LEASING_AGENT).email;
         let manager = manager_of(plan.unit.0);
-        self.deposit(plan, id).await?;
-        self.cheques_of(plan, id).await?;
-        self.driver
-            .post(
-                agent,
-                &format!("/property/leases/{id}/cancel"),
-                &[("reason", "The prospect found a place closer to work")],
-            )
-            .await?;
+        let paid = today() - Duration::days(3);
+        at!(self, paid, {
+            self.deposit(plan, id, paid).await?;
+            self.cheques_of(plan, id).await
+        })?;
+        at!(self, today() - Duration::days(2), {
+            self.driver
+                .post(
+                    agent,
+                    &format!("/property/leases/{id}/cancel"),
+                    &[("reason", "The prospect found a place closer to work")],
+                )
+                .await
+        })?;
         if plan.fate == Fate::CancelApproved {
             let request = ApprovalRequest::query()
                 .where_(ApprovalRequest::SUBJECT_TYPE.eq("property.lease"))
@@ -418,15 +530,17 @@ impl Seed<'_> {
                 .first(self.db())
                 .await?
                 .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no cancellation request"))?;
-            self.driver
-                .post(manager, &format!("/approvals/{}/approve", request.id), &[])
-                .await?;
+            at!(self, today() - Duration::days(1), {
+                self.driver
+                    .post(manager, &format!("/approvals/{}/approve", request.id), &[])
+                    .await
+            })?;
         }
         Ok(())
     }
 
-    /// The deposit of the lease: received and held when it has one.
-    async fn deposit(&mut self, plan: &Plan, id: i64) -> Result {
+    /// The deposit of the lease: received on `date` and held when it has one.
+    async fn deposit(&mut self, plan: &Plan, id: i64, date: NaiveDate) -> Result {
         if plan.deposit <= 0 {
             return Ok(());
         }
@@ -437,7 +551,7 @@ impl Seed<'_> {
         let entity_id = entity.to_string();
         let lease = id.to_string();
         let reference = format!("DEP-{}-{}", party_number(&party.code), id);
-        let date = text(day(plan.start - 3).min(today()));
+        let date = text(date);
         self.driver
             .post(
                 login_of(ACCOUNTANT).email,
@@ -467,17 +581,17 @@ impl Seed<'_> {
         .id)
     }
 
-    /// The Ejari or Tawtheeq registration of an active lease.
+    /// The Ejari or Tawtheeq registration of an active lease, `on` the day it
+    /// was registered.
     async fn ejari(
         &mut self,
         plan: &Plan,
         id: i64,
         manager: &str,
-        start: NaiveDate,
+        on: NaiveDate,
         end: NaiveDate,
     ) -> Result {
         let number = format!("DEMO-EJ-{:07}", 4_000 + id * 7);
-        let registered = start + Duration::days(2);
         self.document(
             Subject::new("property.lease", id),
             "ejari_certificate",
@@ -488,7 +602,7 @@ impl Seed<'_> {
             },
             Some(number.clone()),
             Some(end),
-            Some(registered),
+            Some(on),
         )
         .await?;
         self.driver
@@ -497,11 +611,12 @@ impl Seed<'_> {
                 &format!("/property/leases/{id}/ejari"),
                 &[
                     ("number", number.as_str()),
-                    ("registered_on", text(registered).as_str()),
+                    ("registered_on", text(on).as_str()),
                     ("expires_on", text(end).as_str()),
                 ],
             )
             .await?;
+        let _ = Datelike::year(&on);
         Ok(())
     }
 }

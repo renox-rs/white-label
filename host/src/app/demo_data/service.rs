@@ -48,12 +48,8 @@ pub const CONTRACTS: &[ContractPlan] = &[
     ContractPlan {
         vendor: "Safeguard Fire Systems LLC",
         title: "Fire and life safety annual maintenance",
-        // Starts today: the vendor's Civil Defence approval, accepted today,
-        // must be valid on the start date (`WRK.ACL.11`), and a document only
-        // counts on a day before the day it was accepted if it was accepted
-        // by then.
-        start: 0,
-        end: 365,
+        start: -200,
+        end: 165,
         category: "fire_life_safety",
         buildings: &["JVT-A", "JVT-B", "BBY", "AQZ", "ADR", "SHJ"],
         standing: ContractStanding::Active,

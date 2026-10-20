@@ -14,6 +14,7 @@ use super::people::login_of;
 use super::roles::{
     ACCOUNTANT, ADMIN, COORDINATOR, HR, LEASING_AGENT, PROPERTY_MANAGER, RECEIVABLES, TECHNICIAN,
 };
+use super::seed_leases::upto;
 use super::{Seed, day};
 
 /// One member of staff: the login's role, the Arabic name, the job role the
@@ -178,17 +179,18 @@ impl Seed<'_> {
             if !member.onboarding {
                 new = new.status(EmployeeStatus::Active);
             }
-            let employee = create(&self.state, new).await?;
+            let hired = upto(day(member.hired));
+            let employee = at!(self, hired, { create(&self.state, new).await })?;
             self.report.add("employees", 1);
             if member.onboarding {
-                self.start_steps(&employee, hr).await?;
+                self.start_steps(&employee, hr, hired).await?;
             }
         }
         Ok(())
     }
 
     /// HR does the steps it owns of a new hire's onboarding that are due.
-    async fn start_steps(&mut self, employee: &Employee, hr: &str) -> Result {
+    async fn start_steps(&mut self, employee: &Employee, hr: &str, hired: renox::chrono::NaiveDate) -> Result {
         let onboarding = wl_hr::Onboarding::query()
             .where_(wl_hr::Onboarding::EMPLOYEE_ID.eq(employee.id))
             .first(self.db())
@@ -203,13 +205,15 @@ impl Seed<'_> {
             .get(self.db())
             .await?;
         for step in steps.into_iter().take(1) {
-            self.driver
-                .post(
-                    hr,
-                    &format!("/hr/steps/{}/done", step.id),
-                    &[("note", "Done on the first day")],
-                )
-                .await?;
+            at!(self, upto(hired + renox::chrono::Duration::days(1)), {
+                self.driver
+                    .post(
+                        hr,
+                        &format!("/hr/steps/{}/done", step.id),
+                        &[("note", "Done on the first day")],
+                    )
+                    .await
+            })?;
         }
         Ok(())
     }

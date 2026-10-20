@@ -1,25 +1,26 @@
 //! The money of a lease: the instalments invoiced on their due dates and
 //! issued by receivables, the post-dated cheques received with the lease,
-//! deposited on their dates by the accountant and cleared or bounced, and the
-//! payments by transfer that settle what a bounced cheque left.
+//! deposited by the accountant a day after their dates and cleared or
+//! bounced, and the payments by transfer that settle what a bounced cheque
+//! left. Every step runs on its day.
 
 use property::{ChargeStatus, LeaseCharge};
-use renox::chrono::NaiveDate;
+use renox::chrono::{Duration, NaiveDate};
 use renox::prelude::*;
 use wl_invoicing::Invoice;
-use wl_kernel::PartyId;
 use wl_kernel::approvals::ApprovalRequest;
-use wl_kernel::documents::today;
 use wl_kernel::invoicing::{InvoiceId, InvoiceStatus};
 use wl_kernel::payments::{AllocationTarget, PaymentMethod, RecordPayment, payment_recorder};
+use wl_kernel::PartyId;
 use wl_payments::Cheque;
 
-use super::Seed;
 use super::leases::{Plan, Quirk};
 use super::people::login_of;
+use super::real_today as today;
 use super::roles::{ACCOUNTANT, RECEIVABLES};
 use super::seed_documents::party_number;
-use super::seed_leases::text;
+use super::seed_leases::{text, upto};
+use super::Seed;
 
 /// The banks the demo cheques are drawn on (fictional).
 const BANKS: [&str; 4] = [
@@ -56,8 +57,8 @@ fn rent_of(charges: Vec<LeaseCharge>) -> Vec<LeaseCharge> {
 
 impl Seed<'_> {
     /// Drafts the invoices of the charges due through `day` and has receivables
-    /// issue the drafts of leases.
-    pub(crate) async fn invoice_through(&mut self, day: NaiveDate) -> Result {
+    /// issue the drafts of leases (run on `day`).
+    pub(crate) async fn bill_through(&mut self, day: NaiveDate) -> Result {
         let report = property::invoicing::run(&self.state, day).await?;
         self.report.add("lease invoices drafted", report.invoiced);
         self.issue_drafts().await
@@ -124,8 +125,8 @@ impl Seed<'_> {
         Ok(payment.id.0)
     }
 
-    /// Records a payment by transfer from the tenant of `plan` on `date` and
-    /// allocates `amount` fils of it to invoice `invoice`; the payment's id.
+    /// Records a payment from the tenant of `plan` on `date` and allocates
+    /// `amount` fils of it to invoice `invoice`; the payment's id.
     pub(crate) async fn pay_invoice(
         &mut self,
         plan: &Plan,
@@ -136,11 +137,7 @@ impl Seed<'_> {
     ) -> Result<i64> {
         let reference = format!(
             "{}-{}-{}",
-            if method == PaymentMethod::Cash {
-                "CASH"
-            } else {
-                "TRF"
-            },
+            if method == PaymentMethod::Cash { "CASH" } else { "TRF" },
             party_number(&self.party(plan.tenant).code),
             invoice
         );
@@ -159,31 +156,34 @@ impl Seed<'_> {
         Ok(payment)
     }
 
-    /// Registers the cheques of the lease `id` of `plan` with the property
-    /// manager of its building: one for each rent instalment but the ones paid
-    /// another way.
-    pub(crate) async fn cheques_of(&mut self, plan: &Plan, id: i64) -> Result {
-        let rent = self.rent_charges(id).await?;
-        let by_transfer = |index: usize| {
-            matches!(plan.quirk, Quirk::FirstByTransfer | Quirk::PartPaid) && index == 0
-                || matches!(plan.quirk, Quirk::PartPaid) && index == 1
-        };
-        let past = rent.iter().filter(|c| c.due_date <= today()).count();
+    /// Whether the instalment `index` (from 0) of `plan` has a cheque.
+    fn has_cheque(plan: &Plan, index: usize, past: usize) -> bool {
+        let by_transfer = matches!(plan.quirk, Quirk::FirstByTransfer | Quirk::PartPaid) && index == 0
+            || matches!(plan.quirk, Quirk::PartPaid) && index == 1;
         let unpaid = match plan.quirk {
             Quirk::Unpaid(n) => n,
             _ => 0,
         };
+        let unpaid_one = unpaid > 0 && index < past && index >= past.saturating_sub(unpaid);
+        // The invoice a quirk acts on is not paid by cheque.
+        let acted_on = matches!(
+            plan.quirk,
+            Quirk::Disputed(k) | Quirk::Credited(k) | Quirk::WrittenOff(k) if k == index + 1
+        );
+        !(by_transfer || unpaid_one || acted_on)
+    }
+
+    /// Registers the cheques of the lease `id` of `plan` with the property
+    /// manager of its building: one for each rent instalment but the ones
+    /// paid another way.
+    pub(crate) async fn cheques_of(&mut self, plan: &Plan, id: i64) -> Result {
+        let rent = self.rent_charges(id).await?;
+        let past = rent.iter().filter(|c| c.due_date <= today()).count();
         let party_n = party_number(&self.party(plan.tenant).code);
         let bank = BANKS[party_n as usize % BANKS.len()];
         let mut lines = Vec::new();
         for (index, charge) in rent.iter().enumerate() {
-            let unpaid_one = index < past && index >= past.saturating_sub(unpaid) && unpaid > 0;
-            // The invoice a quirk acts on is not paid by cheque.
-            let acted_on = matches!(
-                plan.quirk,
-                Quirk::Disputed(k) | Quirk::Credited(k) | Quirk::WrittenOff(k) if k == index + 1
-            );
-            if by_transfer(index) || unpaid_one || acted_on {
+            if !Self::has_cheque(plan, index, past) {
                 continue;
             }
             lines.push(format!(
@@ -209,42 +209,54 @@ impl Seed<'_> {
         Ok(())
     }
 
-    /// The bank: transfers on their dates, and the cheques dated by today
-    /// deposited on their dates by the accountant, then cleared, or bounced as
-    /// the quirk of the lease says.
-    pub(crate) async fn bank_run(&mut self, plan: &Plan, id: i64) -> Result {
-        let rent = self.rent_charges(id).await?;
+    /// The instalments of lease `id` that fell due through `until`: each is
+    /// invoiced and issued on its due date, and paid the way the lease's
+    /// quirk says: by transfer, or by the cheque the accountant deposits the
+    /// day after its date and clears (or bounces) two days later.
+    pub(crate) async fn money(&mut self, plan: &Plan, id: i64, until: NaiveDate) -> Result {
         let accountant = login_of(ACCOUNTANT).email;
-        for (index, charge) in rent.iter().enumerate() {
+        let count = self.rent_charges(id).await?.len();
+        let past = self
+            .rent_charges(id)
+            .await?
+            .iter()
+            .filter(|c| c.due_date <= today())
+            .count();
+        for index in 0..count {
             let k = index + 1;
-            if charge.due_date > today() {
+            let charge = self.rent_charges(id).await?[index].clone();
+            let due = charge.due_date;
+            if due > until {
                 continue;
             }
+            at!(self, due, { self.bill_through(due).await })?;
+            let charge = self.rent_charges(id).await?[index].clone();
             let invoice = charge.invoice_id;
             match (plan.quirk, index, invoice) {
                 (Quirk::FirstByTransfer | Quirk::PartPaid, 0, Some(invoice)) => {
-                    self.pay_invoice(
-                        plan,
-                        invoice,
-                        gross_of(charge),
-                        charge.due_date,
-                        PaymentMethod::Transfer,
-                    )
-                    .await?;
+                    at!(self, upto(due), {
+                        self.pay_invoice(plan, invoice, gross_of(&charge), due, PaymentMethod::Transfer)
+                            .await
+                    })?;
                     continue;
                 }
                 (Quirk::PartPaid, 1, Some(invoice)) => {
-                    self.pay_invoice(
-                        plan,
-                        invoice,
-                        gross_of(charge) / 2,
-                        charge.due_date,
-                        PaymentMethod::Cash,
-                    )
-                    .await?;
+                    at!(self, upto(due), {
+                        self.pay_invoice(
+                            plan,
+                            invoice,
+                            gross_of(&charge) / 2,
+                            due,
+                            PaymentMethod::Cash,
+                        )
+                        .await
+                    })?;
                     continue;
                 }
                 _ => {}
+            }
+            if !Self::has_cheque(plan, index, past) {
+                continue;
             }
             let Some(cheque) = Cheque::query()
                 .where_(Cheque::NUMBER.eq(cheque_number(id, index).as_str()))
@@ -254,71 +266,85 @@ impl Seed<'_> {
                 continue;
             };
             let path = format!("/cheques/{}", cheque.id);
-            self.driver
-                .post(
-                    accountant,
-                    &format!("{path}/deposit"),
-                    &[("deposit_date", &text(charge.due_date))],
-                )
-                .await?;
+            let deposit_day = upto(due + Duration::days(1));
+            let result_day = upto(due + Duration::days(3));
+            at!(self, deposit_day, {
+                self.driver
+                    .post(accountant, &format!("{path}/deposit"), &[])
+                    .await
+            })?;
             let certificate = format!("RTN-DEMO-{:05}", cheque.id * 17);
             match plan.quirk {
                 Quirk::Bounced(n) if n == k => {
-                    self.bounce(accountant, &path, &certificate).await?;
+                    at!(self, result_day, { self.bounce(accountant, &path, &certificate).await })?;
                 }
                 Quirk::BouncedReplaced(n) if n == k => {
-                    self.bounce(accountant, &path, &certificate).await?;
-                    let payment = self
-                        .record_payment(
-                            plan,
-                            cheque.amount,
-                            today(),
-                            PaymentMethod::Transfer,
-                            format!("TRF-REPL-{}", cheque.id),
-                        )
-                        .await?;
-                    self.driver
-                        .post(
-                            accountant,
-                            &format!("{path}/replacements"),
-                            &[("kind", "payment"), ("ref_id", &payment.to_string())],
-                        )
-                        .await?;
-                    self.driver
-                        .post(accountant, &format!("{path}/replace"), &[])
-                        .await?;
+                    at!(self, result_day, { self.bounce(accountant, &path, &certificate).await })?;
+                    let paid = upto(due + Duration::days(9));
+                    at!(self, paid, {
+                        let payment = self
+                            .record_payment(
+                                plan,
+                                cheque.amount,
+                                paid,
+                                PaymentMethod::Transfer,
+                                format!("TRF-REPL-{}", cheque.id),
+                            )
+                            .await?;
+                        self.driver
+                            .post(
+                                accountant,
+                                &format!("{path}/replacements"),
+                                &[("kind", "payment"), ("ref_id", &payment.to_string())],
+                            )
+                            .await?;
+                        self.driver
+                            .post(accountant, &format!("{path}/replace"), &[])
+                            .await
+                    })?;
                 }
                 Quirk::BouncedCleared(n) if n == k => {
-                    self.bounce(accountant, &path, &certificate).await?;
-                    self.driver
-                        .post(
-                            accountant,
-                            &format!("{path}/represent"),
-                            &[
-                                ("date", &text(today())),
-                                ("funds_confirmed", "true"),
-                                ("note", "Tenant confirmed funds by phone, call logged"),
-                            ],
-                        )
-                        .await?;
-                    self.driver
-                        .post(accountant, &format!("{path}/clear"), &[])
-                        .await?;
+                    at!(self, result_day, { self.bounce(accountant, &path, &certificate).await })?;
+                    let again = upto(due + Duration::days(8));
+                    at!(self, again, {
+                        self.driver
+                            .post(
+                                accountant,
+                                &format!("{path}/represent"),
+                                &[
+                                    ("date", &text(again)),
+                                    ("funds_confirmed", "true"),
+                                    ("note", "Tenant confirmed funds by phone, call logged"),
+                                ],
+                            )
+                            .await
+                    })?;
+                    let cleared = upto(due + Duration::days(10));
+                    at!(self, cleared, {
+                        self.driver
+                            .post(accountant, &format!("{path}/clear"), &[])
+                            .await
+                    })?;
                 }
                 Quirk::BouncedLegal(n) if n == k => {
-                    self.bounce(accountant, &path, &certificate).await?;
-                    self.driver
-                        .post(
-                            accountant,
-                            &format!("{path}/refer"),
-                            &[("case_type", "civil_execution")],
-                        )
-                        .await?;
+                    at!(self, result_day, { self.bounce(accountant, &path, &certificate).await })?;
+                    let referred = upto(due + Duration::days(18));
+                    at!(self, referred, {
+                        self.driver
+                            .post(
+                                accountant,
+                                &format!("{path}/refer"),
+                                &[("case_type", "civil_execution")],
+                            )
+                            .await
+                    })?;
                 }
                 _ => {
-                    self.driver
-                        .post(accountant, &format!("{path}/clear"), &[])
-                        .await?;
+                    at!(self, result_day, {
+                        self.driver
+                            .post(accountant, &format!("{path}/clear"), &[])
+                            .await
+                    })?;
                 }
             }
         }
@@ -341,59 +367,69 @@ impl Seed<'_> {
         let Some(invoice) = charge.invoice_id else {
             return Ok(());
         };
+        let due = charge.due_date;
         let receivables = login_of(RECEIVABLES).email;
         match kind {
             "dispute" => {
-                self.driver
-                    .post(
-                        receivables,
-                        &format!("/invoices/{invoice}/dispute"),
-                        &[
-                            (
-                                "reason",
-                                "The tenant says the instalment was paid in cash to the building office",
-                            ),
-                            ("amount", aed(gross_of(charge)).as_str()),
-                        ],
-                    )
-                    .await?;
+                at!(self, upto(due + Duration::days(12)), {
+                    self.driver
+                        .post(
+                            receivables,
+                            &format!("/invoices/{invoice}/dispute"),
+                            &[
+                                (
+                                    "reason",
+                                    "The tenant says the instalment was paid in cash to the building office",
+                                ),
+                                ("amount", aed(gross_of(charge)).as_str()),
+                            ],
+                        )
+                        .await
+                })?;
             }
             "credit" => {
-                self.driver
-                    .post(
-                        receivables,
-                        &format!("/invoices/{invoice}/credit"),
-                        &[("reason", "Issued twice for the same instalment")],
-                    )
-                    .await?;
+                at!(self, upto(due + Duration::days(9)), {
+                    self.driver
+                        .post(
+                            receivables,
+                            &format!("/invoices/{invoice}/credit"),
+                            &[("reason", "Issued twice for the same instalment")],
+                        )
+                        .await
+                })?;
             }
             _ => {
                 // The page asks for `invoices.write_off` and `leases.view`; no
                 // other role than the company admin holds both.
                 let admin = login_of(super::roles::ADMIN).email;
-                self.driver
-                    .post(
-                        admin,
-                        &format!("/property/leases/{id}/write-off"),
-                        &[
-                            ("invoice", invoice.to_string().as_str()),
-                            ("reason_code", "insolvent"),
-                        ],
-                    )
-                    .await?;
+                let asked = upto(due + Duration::days(75));
+                at!(self, asked, {
+                    self.driver
+                        .post(
+                            admin,
+                            &format!("/property/leases/{id}/write-off"),
+                            &[
+                                ("invoice", invoice.to_string().as_str()),
+                                ("reason_code", "insolvent"),
+                            ],
+                        )
+                        .await
+                })?;
                 let request = ApprovalRequest::query()
                     .where_(ApprovalRequest::SUBJECT_TYPE.eq("invoicing.invoice"))
                     .where_(ApprovalRequest::SUBJECT_ID.eq(invoice))
                     .first(self.db())
                     .await?;
                 if let Some(request) = request {
-                    self.driver
-                        .post(
-                            super::people::manager_of(plan.unit.0),
-                            &format!("/approvals/{}/approve", request.id),
-                            &[],
-                        )
-                        .await?;
+                    at!(self, upto(asked + Duration::days(4)), {
+                        self.driver
+                            .post(
+                                super::people::manager_of(plan.unit.0),
+                                &format!("/approvals/{}/approve", request.id),
+                                &[],
+                            )
+                            .await
+                    })?;
                 }
             }
         }
@@ -414,14 +450,5 @@ impl Seed<'_> {
             .await?;
         self.report.add("cheques bounced", 1);
         Ok(())
-    }
-
-    /// The cheque with this number.
-    pub(crate) async fn cheque(&self, number: &str) -> Result<Cheque> {
-        Cheque::query()
-            .where_(Cheque::NUMBER.eq(number))
-            .first(self.db())
-            .await?
-            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no cheque {number}").into())
     }
 }

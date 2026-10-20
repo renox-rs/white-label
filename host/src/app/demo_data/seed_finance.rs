@@ -6,7 +6,7 @@ use renox::chrono::Duration;
 use renox::prelude::*;
 use wl_invoicing::SupplierBill;
 use wl_invoicing::supplier_bill::SupplierBillStatus;
-use wl_kernel::documents::today;
+use super::real_today as today;
 use wl_kernel::payments::{PaymentMethod, RecordPayment, payment_recorder};
 use wl_kernel::{LegalEntity, PartyId, Subject};
 use wl_payments::BankStatementImport;
@@ -14,7 +14,7 @@ use wl_payments::BankStatementImport;
 use super::finance::{BILLS, BUDGET, BillFate, BillPlan, STATEMENTS, StatementPlan};
 use super::people::login_of;
 use super::roles::{ACCOUNTANT, ADMIN, FINANCE_MANAGER, OWNER};
-use super::seed_leases::text;
+use super::seed_leases::{text, upto};
 use super::seed_money::aed;
 use super::{Seed, day};
 
@@ -51,19 +51,21 @@ impl Seed<'_> {
             ("PGFZ", "Emirates Demo Bank AE00 0000 0000 0000 0005 678", "318450.00"),
         ] {
             let entity = self.entity_id(code).await?.to_string();
-            self.driver
-                .post(
-                    accountant,
-                    "/cash-balances",
-                    &[
-                        ("legal_entity_id", entity.as_str()),
-                        ("bank_account", account),
-                        ("amount", amount),
-                        ("as_of", text(today()).as_str()),
-                        ("note", "Balance from the bank statement"),
-                    ],
-                )
-                .await?;
+            at!(self, today(), {
+                self.driver
+                    .post(
+                        accountant,
+                        "/cash-balances",
+                        &[
+                            ("legal_entity_id", entity.as_str()),
+                            ("bank_account", account),
+                            ("amount", amount),
+                            ("as_of", text(today()).as_str()),
+                            ("note", "Balance from the bank statement"),
+                        ],
+                    )
+                    .await
+            })?;
         }
         Ok(())
     }
@@ -90,39 +92,49 @@ impl Seed<'_> {
             form.push((format!("line_{n}_vat"), (*vat).into()));
         }
         let pairs: Vec<(&str, &str)> = form.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let reply = self.driver.post(accountant, "/supplier-bills", &pairs).await?;
+        let entered = day(-plan.age);
+        let reply = at!(self, entered, {
+            self.driver.post(accountant, "/supplier-bills", &pairs).await
+        })?;
         let id = reply
             .redirected_id()
             .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no bill id"))?;
         self.report.add("supplier bills", 1);
         let path = format!("/supplier-bills/{id}");
+        let later = |days: i64| upto(entered + Duration::days(days));
         match plan.fate {
             BillFate::Draft => return Ok(()),
             BillFate::Voided => {
-                self.driver
-                    .post(
-                        accountant,
-                        &format!("{path}/transitions/void"),
-                        &[("reason", "Entered against the wrong building")],
-                    )
-                    .await?;
+                at!(self, later(1), {
+                    self.driver
+                        .post(
+                            accountant,
+                            &format!("{path}/transitions/void"),
+                            &[("reason", "Entered against the wrong building")],
+                        )
+                        .await
+                })?;
                 return Ok(());
             }
             _ => {}
         }
-        self.driver
-            .post(accountant, &format!("{path}/submit"), &[])
-            .await?;
+        at!(self, later(1), {
+            self.driver
+                .post(accountant, &format!("{path}/submit"), &[])
+                .await
+        })?;
         if matches!(plan.fate, BillFate::Matched | BillFate::Duplicate) {
             return Ok(());
         }
-        self.driver
-            .post(
-                admin,
-                &format!("{path}/transitions/approve"),
-                &[("reason", "Checked against the contract and the visit report")],
-            )
-            .await?;
+        at!(self, later(4), {
+            self.driver
+                .post(
+                    admin,
+                    &format!("{path}/transitions/approve"),
+                    &[("reason", "Checked against the contract and the visit report")],
+                )
+                .await
+        })?;
         if matches!(plan.fate, BillFate::Approved) {
             return Ok(());
         }
@@ -133,6 +145,7 @@ impl Seed<'_> {
             bill.balance / 2
         };
         let by = self.user_id(accountant).await?;
+        let paid_on = later(25);
         let request = RecordPayment::new(
             PartyId(supplier.id),
             bill.legal_entity_id.unwrap_or_default(),
@@ -140,21 +153,23 @@ impl Seed<'_> {
             amount,
         )
         .outgoing()
-        .date((day(-plan.age + 25)).min(today()))
+        .date(paid_on)
         .reference(&format!("PAY-{}", plan.number.trim()));
-        let payment = payment_recorder(&self.state)
-            .record(&self.state, request, Some(by))
+        at!(self, paid_on, {
+            let payment = payment_recorder(&self.state)
+                .record(&self.state, request, Some(by))
+                .await
+                .map_err(|e| renox::anyhow::anyhow!("demo seed: the bill payment: {e:?}"))?;
+            wl_invoicing::bill_pay::pay(
+                &self.state,
+                &bill,
+                &Subject::new("payments.payment", payment.id.0),
+                amount,
+                Some(by),
+            )
             .await
-            .map_err(|e| renox::anyhow::anyhow!("demo seed: the bill payment: {e:?}"))?;
-        wl_invoicing::bill_pay::pay(
-            &self.state,
-            &bill,
-            &Subject::new("payments.payment", payment.id.0),
-            amount,
-            Some(by),
-        )
-        .await
-        .map_err(renox::state_machine::TransitionError::into_error)?;
+            .map_err(renox::state_machine::TransitionError::into_error)
+        })?;
         let _ = SupplierBillStatus::Paid;
         Ok(())
     }
@@ -168,48 +183,79 @@ impl Seed<'_> {
         let year = today().format("%Y").to_string().parse::<i32>().unwrap_or(2026);
         let pgp = self.entity_id("PGP").await?.to_string();
         let pgfz = self.entity_id("PGFZ").await?.to_string();
-        // The company budget of this year, approved; then revised.
-        let first = self
-            .budget(accountant, &pgp, year, "Company budget", "empty", true)
-            .await?;
-        self.submit_and_approve(accountant, finance, first).await?;
-        let revision = self
-            .budget(accountant, &pgp, year, "Company budget, revised", "last_budget", false)
-            .await?;
-        self.driver
-            .post(
-                accountant,
-                &format!("/budgets/{revision}/lines"),
-                &[
-                    ("category_id", &self.category_id("marketing").await?.to_string()),
-                    ("from", &format!("{year}-10")),
-                    ("to", &format!("{year}-12")),
-                    ("amount", "16500"),
-                    ("note", "Q4 launch campaign"),
-                ],
-            )
-            .await?;
-        self.submit_and_approve(accountant, finance, revision).await?;
+        // The company budget of this year, drawn up in December and approved
+        // by the finance manager; then revised in the autumn.
+        let first = at!(self, day(-320), {
+            self.budget(accountant, &pgp, year, "Company budget", "empty", true)
+                .await
+        })?;
+        at!(self, day(-318), {
+            self.submit_and_approve(accountant, finance, first).await
+        })?;
+        let marketing = self.category_id("marketing").await?.to_string();
+        let revision = at!(self, day(-40), {
+            let revision = self
+                .budget(accountant, &pgp, year, "Company budget, revised", "last_budget", false)
+                .await?;
+            self.driver
+                .post(
+                    accountant,
+                    &format!("/budgets/{revision}/lines"),
+                    &[
+                        ("category_id", marketing.as_str()),
+                        ("from", format!("{year}-10").as_str()),
+                        ("to", format!("{year}-12").as_str()),
+                        ("amount", "16500"),
+                        ("note", "Q4 launch campaign"),
+                    ],
+                )
+                .await?;
+            Ok::<i64, renox::Error>(revision)
+        })?;
+        at!(self, day(-38), {
+            self.submit_and_approve(accountant, finance, revision).await
+        })?;
         // The facilities company: waiting for approval.
-        let waiting = self
-            .budget(accountant, &pgfz, year, "Facilities budget", "empty", true)
-            .await?;
-        self.driver
-            .post(accountant, &format!("/budgets/{waiting}/submit"), &[])
-            .await?;
+        at!(self, day(-20), {
+            let waiting = self
+                .budget(accountant, &pgfz, year, "Facilities budget", "empty", true)
+                .await?;
+            self.driver
+                .post(accountant, &format!("/budgets/{waiting}/submit"), &[])
+                .await
+        })?;
         // Next year, in the making, and one given up.
-        self.budget(accountant, &pgp, year + 1, "Company budget, next year", "last_budget", false)
-            .await?;
-        let given_up = self
-            .budget(accountant, &pgfz, year + 1, "Facilities budget, first idea", "empty", true)
-            .await?;
-        self.driver
-            .post(
+        at!(self, day(-10), {
+            self.budget(
                 accountant,
-                &format!("/budgets/{given_up}/discard"),
-                &[("reason", "Replaced by the company plan for the year")],
+                &pgp,
+                year + 1,
+                "Company budget, next year",
+                "last_budget",
+                false,
             )
-            .await?;
+            .await
+        })?;
+        let given_up = at!(self, day(-60), {
+            self.budget(
+                accountant,
+                &pgfz,
+                year + 1,
+                "Facilities budget, first idea",
+                "empty",
+                true,
+            )
+            .await
+        })?;
+        at!(self, day(-55), {
+            self.driver
+                .post(
+                    accountant,
+                    &format!("/budgets/{given_up}/discard"),
+                    &[("reason", "Replaced by the company plan for the year")],
+                )
+                .await
+        })?;
         Ok(())
     }
 
@@ -321,21 +367,23 @@ impl Seed<'_> {
         ];
         for (title, category, age, amount, fate) in claims {
             let date = text(day(-age));
-            self.driver
-                .post(
-                    accountant,
-                    "/expense-claims",
-                    &[
-                        ("legal_entity_id", pgp.as_str()),
-                        ("title", title),
-                        ("line_1_category", category),
-                        ("line_1_date", date.as_str()),
-                        ("line_1_amount", amount),
-                        ("line_1_merchant", "Demo vendor"),
-                        ("line_1_description", title),
-                    ],
-                )
-                .await?;
+            at!(self, day(-age), {
+                self.driver
+                    .post(
+                        accountant,
+                        "/expense-claims",
+                        &[
+                            ("legal_entity_id", pgp.as_str()),
+                            ("title", title),
+                            ("line_1_category", category),
+                            ("line_1_date", date.as_str()),
+                            ("line_1_amount", amount),
+                            ("line_1_merchant", "Demo vendor"),
+                            ("line_1_description", title),
+                        ],
+                    )
+                    .await
+            })?;
             self.report.add("expense claims", 1);
             let claim = wl_payments::expense_claim::ExpenseClaim::query()
                 .order_by_desc(wl_payments::expense_claim::ExpenseClaim::ID)
@@ -346,23 +394,30 @@ impl Seed<'_> {
             if fate == "draft" {
                 continue;
             }
-            self.driver
-                .post(accountant, &format!("{path}/submit"), &[])
-                .await?;
+            at!(self, upto(day(-age + 1)), {
+                self.driver
+                    .post(accountant, &format!("{path}/submit"), &[])
+                    .await
+            })?;
+            let decided = upto(day(-age + 4));
             match fate {
                 "approve" => {
-                    self.driver
-                        .post(finance, &format!("{path}/approve"), &[])
-                        .await?;
+                    at!(self, decided, {
+                        self.driver
+                            .post(finance, &format!("{path}/approve"), &[])
+                            .await
+                    })?;
                 }
                 "reject" => {
-                    self.driver
-                        .post(
-                            finance,
-                            &format!("{path}/reject"),
-                            &[("reason", "No receipt attached")],
-                        )
-                        .await?;
+                    at!(self, decided, {
+                        self.driver
+                            .post(
+                                finance,
+                                &format!("{path}/reject"),
+                                &[("reason", "No receipt attached")],
+                            )
+                            .await
+                    })?;
                 }
                 _ => {}
             }
@@ -383,22 +438,25 @@ impl Seed<'_> {
         };
         let closing = format!("{}.00", plan.closing);
         let before = BankStatementImport::query().count(self.db()).await?;
-        self.driver
-            .post(
-                accountant,
-                "/bank-statements",
-                &[
-                    ("legal_entity_id", entity.as_str()),
-                    ("bank_account", plan.account),
-                    ("file_name", plan.file),
-                    ("format", plan.format),
-                    ("period_start", text(from).as_str()),
-                    ("period_end", text(to).as_str()),
-                    ("closing_balance", closing.as_str()),
-                    ("content", content.as_str()),
-                ],
-            )
-            .await?;
+        let uploaded = upto(to + Duration::days(1));
+        at!(self, uploaded, {
+            self.driver
+                .post(
+                    accountant,
+                    "/bank-statements",
+                    &[
+                        ("legal_entity_id", entity.as_str()),
+                        ("bank_account", plan.account),
+                        ("file_name", plan.file),
+                        ("format", plan.format),
+                        ("period_start", text(from).as_str()),
+                        ("period_end", text(to).as_str()),
+                        ("closing_balance", closing.as_str()),
+                        ("content", content.as_str()),
+                    ],
+                )
+                .await
+        })?;
         let import = BankStatementImport::query()
             .order_by_desc(BankStatementImport::ID)
             .first(self.db())
@@ -407,9 +465,12 @@ impl Seed<'_> {
             .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no statement import"))?;
         self.report.add("bank statements", 1);
         let path = format!("/bank-statements/{}", import.id);
-        self.driver
-            .try_post(accountant, &format!("{path}/parse"), &[])
-            .await?;
+        at!(self, uploaded, {
+            self.driver
+                .try_post(accountant, &format!("{path}/parse"), &[])
+                .await
+        })?;
+        let worked = upto(uploaded + Duration::days(2));
         match plan.end {
             "completed" | "reverted" => {
                 let lines = wl_payments::bank_statement_line::BankStatementLine::query()
@@ -417,24 +478,30 @@ impl Seed<'_> {
                     .get(self.db())
                     .await?;
                 if plan.end == "completed" {
-                    for line in lines {
-                        if line.status == wl_payments::bank_statement_line::LineStatus::Unmatched {
-                            self.driver
-                                .post(
-                                    accountant,
-                                    &format!("/bank-statement-lines/{}/ignore", line.id),
-                                    &[("reason", "Bank charge or transfer between own accounts")],
-                                )
-                                .await?;
+                    at!(self, worked, {
+                        for line in lines {
+                            if line.status
+                                == wl_payments::bank_statement_line::LineStatus::Unmatched
+                            {
+                                self.driver
+                                    .post(
+                                        accountant,
+                                        &format!("/bank-statement-lines/{}/ignore", line.id),
+                                        &[("reason", "Bank charge or transfer between own accounts")],
+                                    )
+                                    .await?;
+                            }
                         }
-                    }
-                    self.driver
-                        .post(accountant, &format!("{path}/complete"), &[])
-                        .await?;
+                        self.driver
+                            .post(accountant, &format!("{path}/complete"), &[])
+                            .await
+                    })?;
                 } else {
-                    self.driver
-                        .post(accountant, &format!("{path}/revert"), &[])
-                        .await?;
+                    at!(self, worked, {
+                        self.driver
+                            .post(accountant, &format!("{path}/revert"), &[])
+                            .await
+                    })?;
                 }
             }
             _ => {}
@@ -488,42 +555,50 @@ impl Seed<'_> {
         Ok(rows.join("\n"))
     }
 
-    /// The VAT summaries of the past quarters, taken through the review.
+    /// The VAT summaries of the past quarters, taken through the review: each
+    /// summary opens with its period, is prepared once the period is over,
+    /// reviewed and locked.
     async fn vat_periods(&mut self) -> Result {
         let accountant = login_of(ACCOUNTANT).email;
         let admin = login_of(ADMIN).email;
-        let mut made = Vec::new();
-        for ago in [330, 240, 150, 60] {
-            wl_invoicing::vat_summary::run(&self.state, day(-ago)).await?;
+        for ago in [420, 330, 240, 150, 60, 0] {
+            at!(self, day(-ago), {
+                wl_invoicing::vat_summary::run(&self.state, day(-ago)).await
+            })?;
         }
         let summaries = wl_invoicing::vat_summary::VatSummary::query()
             .order_by(wl_invoicing::vat_summary::VatSummary::PERIOD_START)
             .get(self.db())
             .await?;
-        for summary in summaries {
-            if summary.period_end >= today() {
-                continue;
-            }
-            made.push(summary.id);
-        }
-        let count = made.len();
-        for (index, id) in made.into_iter().enumerate() {
-            let path = format!("/vat-summaries/{id}/transitions");
-            self.driver
-                .post(accountant, &format!("{path}/prepare"), &[])
-                .await?;
+        let past: Vec<_> = summaries
+            .into_iter()
+            .filter(|summary| summary.period_end < today())
+            .collect();
+        let count = past.len();
+        for (index, summary) in past.into_iter().enumerate() {
+            let path = format!("/vat-summaries/{}/transitions", summary.id);
+            let prepared = upto(summary.period_end + Duration::days(8));
+            at!(self, prepared, {
+                self.driver
+                    .post(accountant, &format!("{path}/prepare"), &[])
+                    .await
+            })?;
             if index + 1 == count {
                 continue;
             }
-            self.driver
-                .post(admin, &format!("{path}/review"), &[])
-                .await?;
+            at!(self, upto(prepared + Duration::days(2)), {
+                self.driver
+                    .post(admin, &format!("{path}/review"), &[])
+                    .await
+            })?;
             if index + 2 == count {
                 continue;
             }
-            self.driver
-                .post(accountant, &format!("{path}/lock"), &[])
-                .await?;
+            at!(self, upto(prepared + Duration::days(5)), {
+                self.driver
+                    .post(accountant, &format!("{path}/lock"), &[])
+                    .await
+            })?;
         }
         Ok(())
     }

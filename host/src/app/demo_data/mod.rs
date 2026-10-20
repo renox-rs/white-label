@@ -21,6 +21,17 @@
 //! - **Idempotent.** The seed is done once the demo admin exists, and seeding
 //!   again changes nothing.
 
+/// Runs `body` (a block that may use `?` and `.await`) as if it were `day`.
+/// The day is worked out first, from the real today.
+macro_rules! at {
+    ($seed:ident, $day:expr, $body:expr) => {{
+        let clock = $seed.clock.clone();
+        let when = $day;
+        clock.at(when, async { $body }).await
+    }};
+}
+
+mod clock;
 mod driver;
 mod hooks;
 mod leases;
@@ -75,12 +86,26 @@ impl Report {
     }
 }
 
-/// `days` from today (negative: before).
+/// The real today, which the seed's dates are relative to. Inside a step
+/// that runs at a day in the past, `today()` is that day, so the seed keeps
+/// its own.
+static REAL_TODAY: std::sync::Mutex<Option<NaiveDate>> = std::sync::Mutex::new(None);
+
+/// The real today.
+pub fn real_today() -> NaiveDate {
+    REAL_TODAY
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(today)
+}
+
+/// `days` from the real today (negative: before).
 pub fn day(days: i64) -> NaiveDate {
+    let base = real_today();
     if days >= 0 {
-        today() + Days::new(days as u64)
+        base + Days::new(days as u64)
     } else {
-        today() - Days::new(days.unsigned_abs())
+        base - Days::new(days.unsigned_abs())
     }
 }
 
@@ -106,6 +131,7 @@ pub(crate) struct Seed<'a> {
     pub papered: std::collections::BTreeSet<String>,
     pub leases: BTreeMap<&'static str, i64>,
     pub held_back: std::collections::BTreeSet<i64>,
+    pub clock: std::sync::Arc<clock::Clock>,
 }
 
 impl Seed<'_> {
@@ -128,6 +154,9 @@ pub async fn seed(kernel: &Kernel) -> Result<Report> {
             ..Report::default()
         });
     }
+    *REAL_TODAY
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(today());
     let mut seed = Seed {
         kernel,
         state: state.clone(),
@@ -139,6 +168,7 @@ pub async fn seed(kernel: &Kernel) -> Result<Report> {
         papered: Default::default(),
         leases: BTreeMap::new(),
         held_back: Default::default(),
+        clock: std::sync::Arc::new(clock::Clock::new().await),
     };
     seed.run().await?;
     Ok(seed.report)
@@ -147,10 +177,13 @@ pub async fn seed(kernel: &Kernel) -> Result<Report> {
 impl Seed<'_> {
     async fn run(&mut self) -> Result {
         roles::define(self.db()).await?;
-        self.parties().await?;
-        self.charge_types().await?;
-        self.portfolio().await?;
-        self.logins().await?;
+        // The company is set up some 17 months ago.
+        at!(self, day(-520), {
+            self.charge_types().await?;
+            self.parties().await?;
+            self.portfolio().await?;
+            self.logins().await
+        })?;
         self.leases().await?;
         self.owners().await?;
         self.service().await?;
