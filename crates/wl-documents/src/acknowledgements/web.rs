@@ -393,12 +393,12 @@ pub async fn report(
         let mut witnesses: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for ack in all.iter().filter(|a| a.document_id == document) {
             report.version = format!("v{}", ack.version_no);
-            if !names.contains_key(&ack.employee_id) {
+            if let std::collections::btree_map::Entry::Vacant(slot) = names.entry(ack.employee_id) {
                 let name = match Acknowledgements::profile(state, ack.employee_id).await? {
                     Some(profile) => name_of(state, lang, profile.party, ack.employee_id).await,
                     None => format!("#{}", ack.employee_id),
                 };
-                names.insert(ack.employee_id, name);
+                slot.insert(name);
             }
             let reader = names[&ack.employee_id].clone();
             match ack.status {

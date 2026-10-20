@@ -30,6 +30,7 @@ pub const METHOD_DRAWN: &str = "drawn";
 
 /// One reader's confirmation that they read one SOP version.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[allow(clippy::duplicated_attributes)] // each `index(..)` is a separate index; `status` repeats by design
 #[model(
     table = "wl_documents_sop_acknowledgements",
     state_machine,

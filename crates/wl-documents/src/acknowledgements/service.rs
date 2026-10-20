@@ -682,7 +682,7 @@ async fn run_acknowledge(
                 .await?;
         }
     }
-    Ok(SopAcknowledgement::find_or_404(&state.db, ack.id).await?)
+    SopAcknowledgement::find_or_404(&state.db, ack.id).await
 }
 
 /// Runs `replace` or `cancel` on `ack` with `reason`.
@@ -733,7 +733,7 @@ mod tests {
     fn a_reader_lists_the_role_in_the_scope_or_everywhere() {
         let site1 = Subject::new("property.site", 1);
         let readers = [reader("site_worker", Some(("property.site", "1")))];
-        assert!(lists(&readers, "site_worker", &[site1.clone()]));
+        assert!(lists(&readers, "site_worker", std::slice::from_ref(&site1)));
         assert!(!lists(
             &readers,
             "site_worker",
