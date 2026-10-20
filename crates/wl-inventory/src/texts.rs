@@ -252,6 +252,69 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.chase.task",
         "Return {{ number }} has been dispatched for {{ days }} days without a credit or a replacement. Ask the supplier for the debit note or the replacement.",
     ),
+    // Revising an issued purchase order.
+    (
+        "wl_inventory.revise.not_open",
+        "Only an issued or partially received purchase order can be revised ({{ status }}).",
+    ),
+    (
+        "wl_inventory.revise.reason_needed",
+        "Give a reason for the revision.",
+    ),
+    (
+        "wl_inventory.revise.currency",
+        "The currency of a purchase order cannot change: cancel it and make a new order.",
+    ),
+    (
+        "wl_inventory.revise.unknown_line",
+        "Line {{ line }} is not a line of this purchase order.",
+    ),
+    (
+        "wl_inventory.revise.negative",
+        "Line {{ position }}: the quantity and the price cannot be negative.",
+    ),
+    (
+        "wl_inventory.revise.below_accepted",
+        "Line {{ position }}: {{ accepted }} are already accepted, so the quantity cannot go below that.",
+    ),
+    (
+        "wl_inventory.revise.date_asker",
+        "Say who asked for the later expected date: us or the supplier.",
+    ),
+    ("wl_inventory.revise.nothing", "Nothing was changed."),
+    (
+        "wl_inventory.revise.pending",
+        "A revision of this order already waits for approval.",
+    ),
+    (
+        "wl_inventory.revise.moved",
+        "The order was revised again while this revision waited; ask again.",
+    ),
+    (
+        "wl_inventory.revise.bad_input",
+        "The revision is not complete.",
+    ),
+    ("wl_inventory.revise.revised", "Purchase order revised."),
+    (
+        "wl_inventory.revise.waiting",
+        "The new total is above a limit and waits for approval; the current revision stays in force.",
+    ),
+    (
+        "wl_inventory.revise.bad_number",
+        "Enter the quantity and the price of a line as numbers.",
+    ),
+    (
+        "wl_inventory.revise.bad_date",
+        "Enter the expected date like 2027-01-31.",
+    ),
+    (
+        "wl_inventory.revise.subject",
+        "Purchase order {{ number }}, revision {{ revision }}",
+    ),
+    (
+        "wl_inventory.revise.body",
+        "Purchase order {{ number }} was revised. Revision {{ revision }} is in force: the total is now {{ total }} {{ currency }}. Reason: {{ reason }}. The document: {{ link }}",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

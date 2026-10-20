@@ -97,13 +97,20 @@ fn text_lines(note: &Note) -> Vec<(i64, String)> {
 
 /// The PDF document of `note`.
 pub fn render(note: &Note) -> String {
+    document(&text_lines(note))
+}
+
+/// A one-page PDF document of `lines`, each a font size and its text,
+/// top to bottom; shared with the purchase order document.
+pub(crate) fn document(lines: &[(i64, String)]) -> String {
     let mut content = String::new();
     let mut y = 800;
-    for (size, line) in text_lines(note) {
+    for (size, line) in lines {
+        let (size, line) = (*size, line.as_str());
         if !line.is_empty() {
             content.push_str(&format!(
                 "BT /F1 {size} Tf 50 {y} Td ({}) Tj ET\n",
-                pdf_text(&line)
+                pdf_text(line)
             ));
         }
         y -= size + 8;

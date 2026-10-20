@@ -85,6 +85,47 @@ pub struct GoodsReceived {
 
 impl Event for GoodsReceived {}
 
+/// One line a revision of a purchase order changed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PurchaseOrderRevisedLine {
+    /// The purchase order line.
+    pub po_line: i64,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The quantity before, in thousandths of the base unit.
+    pub old_quantity_milli: i64,
+    /// The quantity after.
+    pub new_quantity_milli: i64,
+    /// The price of one base unit before, in fils.
+    pub old_unit_price: i64,
+    /// The price of one base unit after.
+    pub new_unit_price: i64,
+}
+
+/// A purchase order was revised (wl-inventory §6 `PurchaseOrderRevised`): the
+/// new revision is in force, the committed cost follows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PurchaseOrderRevised {
+    /// The order, `inventory.purchase_order:3`.
+    pub purchase_order: Subject,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The revision now in force (2 for the first revision).
+    pub revision: i64,
+    /// The currency of the order; the totals are in its minor units.
+    pub currency: String,
+    /// The lines whose quantity or price changed.
+    pub lines: Vec<PurchaseOrderRevisedLine>,
+    /// The total of the earlier revision, excluding VAT.
+    pub old_total: i64,
+    /// The total of the new revision, excluding VAT.
+    pub new_total: i64,
+    /// Why it was revised.
+    pub reason: String,
+}
+
+impl Event for PurchaseOrderRevised {}
+
 /// What the user wants for goods sent back to a supplier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -251,6 +292,32 @@ mod tests {
         assert_eq!(
             renox::serde_json::from_str::<SupplierReturnDispatched>(&json).unwrap(),
             dispatched
+        );
+    }
+
+    #[test]
+    fn the_revised_event_round_trips_through_json() {
+        let revised = PurchaseOrderRevised {
+            purchase_order: Subject::new(PURCHASE_ORDER_SUBJECT_TYPE, 3),
+            supplier: PartyId(7),
+            revision: 2,
+            currency: "AED".into(),
+            lines: vec![PurchaseOrderRevisedLine {
+                po_line: 11,
+                item: Subject::new(ITEM_SUBJECT_TYPE, 9),
+                old_quantity_milli: 10_000,
+                new_quantity_milli: 10_000,
+                old_unit_price: 90_000,
+                new_unit_price: 120_000,
+            }],
+            old_total: 900_000,
+            new_total: 1_200_000,
+            reason: "price rise".into(),
+        };
+        let json = renox::serde_json::to_string(&revised).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<PurchaseOrderRevised>(&json).unwrap(),
+            revised
         );
     }
 

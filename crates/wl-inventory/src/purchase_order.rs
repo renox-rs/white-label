@@ -94,6 +94,12 @@ pub struct PurchaseOrder {
     pub revision: i64,
     /// The day the goods are expected.
     pub expected_date: Option<NaiveDate>,
+    /// Who asked for the expected date of the revision in force when a
+    /// revision set a later one: `us` or `supplier`.
+    pub date_requested_by: Option<String>,
+    /// The PDF document of the revision in force, "Revision N" from the
+    /// second revision on.
+    pub document: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: PurchaseOrderStatus,
     /// The user who created it.
@@ -218,6 +224,27 @@ pub async fn reopen_in(tx: &mut Transaction, order_id: i64) -> Result<bool> {
         .await
         .map_err(TransitionError::into_error)?;
     Ok(true)
+}
+
+/// The lines of order `purchase_order_id`, in order, read in `tx`.
+pub async fn lines_in(
+    tx: &mut Transaction,
+    purchase_order_id: i64,
+) -> Result<Vec<PurchaseOrderLine>> {
+    PurchaseOrderLine::query()
+        .where_(PurchaseOrderLine::PURCHASE_ORDER_ID.eq(purchase_order_id))
+        .order_by(PurchaseOrderLine::POSITION)
+        .get(&mut *tx)
+        .await
+}
+
+/// The total of the lines, excluding VAT, in minor units of the currency:
+/// ordered quantity times price per line (not what is outstanding).
+pub fn total_of(lines: &[PurchaseOrderLine]) -> i64 {
+    lines
+        .iter()
+        .map(|line| value_of(line.quantity_milli, line.unit_price))
+        .sum()
 }
 
 /// The lines of order `purchase_order_id`, in order.
@@ -367,7 +394,7 @@ impl StateMachine for PurchaseOrder {
 
     fn machine() -> Machine<Self> {
         use PurchaseOrderStatus::{Cancelled, Closed, Draft, Issued, PartiallyReceived, Received};
-        Machine::new()
+        let machine = Machine::new()
             .initial([Draft])
             .state(Draft)
             .tone("neutral")
@@ -399,7 +426,8 @@ impl StateMachine for PurchaseOrder {
                     .system()
                     .from([Received])
                     .to(PartiallyReceived),
-            )
+            );
+        crate::po_revise::add_to(machine)
     }
 }
 

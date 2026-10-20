@@ -20,7 +20,8 @@ use renox::state_machine::Transitioned;
 use wl_kernel::Subject;
 use wl_kernel::inventory::{
     GoodsReceived, GoodsReceivedLine, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE,
-    ReturnOutcome, SupplierReturnCredited, SupplierReturnDispatched, SupplierReturnDispatchedLine,
+    PurchaseOrderRevised, PurchaseOrderRevisedLine, ReturnOutcome, SupplierReturnCredited,
+    SupplierReturnDispatched, SupplierReturnDispatchedLine,
 };
 use wl_kernel::invoicing::{
     PostCost, SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued, post_cost,
@@ -28,7 +29,8 @@ use wl_kernel::invoicing::{
 
 use crate::goods_receipt::{GoodsReceipt, GoodsReceiptLine, lines_of};
 use crate::item::value_of;
-use crate::purchase_order::PurchaseOrderLine;
+use crate::po_revise::{self, PurchaseOrderRevision, RevisionLine};
+use crate::purchase_order::{PurchaseOrder, PurchaseOrderLine, lines_of as order_lines_of};
 use crate::receipt_post::{POST, POST_APPROVED};
 use crate::return_credit::{CREDIT, CREDIT_APPROVED, CREDIT_COVERED};
 use crate::return_dispatch::{DISPATCH, DISPATCH_APPROVED};
@@ -146,6 +148,83 @@ async fn emit_credited(state: &AppState, id: i64) -> Result {
         .await
 }
 
+/// The event of order `order` now at revision `revision` after `earlier`,
+/// the revision it replaced, with the lines whose quantity or price changed.
+pub fn revised_event(
+    order: &PurchaseOrder,
+    earlier: &PurchaseOrderRevision,
+    lines: &[PurchaseOrderLine],
+) -> PurchaseOrderRevised {
+    let before: BTreeMap<i64, RevisionLine> = earlier
+        .lines()
+        .into_iter()
+        .map(|line| (line.po_line_id, line))
+        .collect();
+    let changed = lines
+        .iter()
+        .filter_map(|line| {
+            let old = before.get(&line.id)?;
+            if old.quantity_milli == line.quantity_milli && old.unit_price == line.unit_price {
+                return None;
+            }
+            Some(PurchaseOrderRevisedLine {
+                po_line: line.id,
+                item: Subject::new(ITEM_SUBJECT_TYPE, line.item_id),
+                old_quantity_milli: old.quantity_milli,
+                new_quantity_milli: line.quantity_milli,
+                old_unit_price: old.unit_price,
+                new_unit_price: line.unit_price,
+            })
+        })
+        .collect();
+    PurchaseOrderRevised {
+        purchase_order: order.subject(),
+        supplier: order.supplier(),
+        revision: order.revision,
+        currency: order.currency.clone(),
+        lines: changed,
+        old_total: earlier.total,
+        new_total: crate::purchase_order::total_of(lines),
+        reason: earlier.reason.clone(),
+    }
+}
+
+/// Emits [`PurchaseOrderRevised`] for order `id` and sends the supplier the
+/// revised document, read as committed.
+async fn emit_revised(state: &AppState, id: i64) -> Result {
+    let order = PurchaseOrder::find_or_404(&state.db, id).await?;
+    let Some(earlier) = PurchaseOrderRevision::query()
+        .where_(PurchaseOrderRevision::PURCHASE_ORDER_ID.eq(order.id))
+        .where_(PurchaseOrderRevision::REVISION.eq(order.revision - 1))
+        .first(&state.db)
+        .await?
+    else {
+        return Ok(());
+    };
+    let lines = order_lines_of(&state.db, order.id).await?;
+    let event = revised_event(&order, &earlier, &lines);
+    let number = order.number.clone().unwrap_or_default();
+    let request = wl_kernel::notify::NotifyRequest::new(po_revise::NOTICE, order.subject())
+        .subject_label(&number)
+        .to_party(order.supplier())
+        .data(renox::serde_json::json!({
+            "number": number,
+            "revision": order.revision.to_string(),
+            "total": po_revise::money_text(event.new_total),
+            "currency": order.currency,
+            "reason": earlier.reason,
+            "link": format!(
+                "/purchase-orders/{}/revisions/{}/document",
+                order.id, order.revision
+            ),
+        }));
+    state.emit(event).await?;
+    wl_kernel::notify::notifier(state)
+        .notify(state, request)
+        .await?;
+    Ok(())
+}
+
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(
@@ -175,6 +254,15 @@ pub(crate) fn register(app: &mut Registry) {
                 }
             }
             Ok(())
+        },
+    );
+    app.listen(
+        |event: Transitioned<PurchaseOrder>, state: AppState| async move {
+            if po_revise::TRANSITIONS.contains(&event.transition.as_str()) {
+                emit_revised(&state, event.key).await
+            } else {
+                Ok(())
+            }
         },
     );
     app.listen(

@@ -11,6 +11,7 @@ pub mod lot;
 pub mod match_source;
 pub mod movement;
 pub mod pages;
+pub mod po_revise;
 pub mod purchase_order;
 pub mod receipt_post;
 pub mod receipt_reverse;
@@ -34,6 +35,7 @@ pub use location::{Location, LocationType, NegativeStockPolicy};
 pub use lot::{Lot, LotStatus};
 pub use match_source::PurchaseMatch;
 pub use movement::{MovementType, StockMovement};
+pub use po_revise::{PurchaseOrderRevision, ReviseInput, ReviseOutcome, revise};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
@@ -110,6 +112,19 @@ impl WlInventory {
         self
     }
 
+    /// The value limits of a purchase order, in fils, as `STK.ACL.03` has
+    /// them (default 1000000 and 5000000, AED 10,000 and 50,000; 06: one
+    /// limit of 500000): a revision that raises the total above the first
+    /// needs one approval, above the second two, and so on. Sorted, and a
+    /// limit of 0 or less is dropped.
+    pub fn order_limits_fils(mut self, limits: &[i64]) -> Self {
+        let mut limits: Vec<i64> = limits.iter().copied().filter(|l| *l > 0).collect();
+        limits.sort_unstable();
+        limits.dedup();
+        self.config.order_limits_fils = limits;
+        self
+    }
+
     /// Adds a rejection reason, or changes whether an existing one needs a
     /// reading or a photo (06: `temperature`).
     pub fn rejection_reason(mut self, code: &str, evidence_required: bool) -> Self {
@@ -156,6 +171,7 @@ impl Module for WlInventory {
         app.model::<Location>();
         app.model::<PurchaseOrder>();
         app.model::<PurchaseOrderLine>();
+        app.model::<PurchaseOrderRevision>();
         app.model::<Lot>();
         app.model::<StockMovement>();
         app.model::<GoodsReceipt>();
@@ -185,6 +201,28 @@ impl Module for WlInventory {
         .action(return_credit::CREDIT, return_credit::CREDIT_ACTION)
         .scope(|_ret: &SupplierReturn| renox::auth::permissions::Scope::global())
         .register();
+        // A revision that raises an order's total above a limit needs an
+        // approval per limit the new total is above (`STK.ACL.03`); the
+        // strictest policy that matches decides the steps.
+        wl_kernel::SubjectMachine::of::<PurchaseOrder>(
+            wl_kernel::inventory::PURCHASE_ORDER_SUBJECT_TYPE,
+        )
+        .action(po_revise::REVISE, po_revise::ACTION)
+        .action(po_revise::REVISE_PART, po_revise::ACTION)
+        .scope(|_order: &PurchaseOrder| renox::auth::permissions::Scope::global())
+        .register();
+        for (index, limit) in self.config.order_limits_fils.iter().enumerate() {
+            let mut policy = wl_kernel::PolicyDefault::new(po_revise::ACTION).amount_above(*limit);
+            for _ in 0..=index {
+                policy = policy.step_permission(permissions::PURCHASE_ORDERS_ISSUE);
+            }
+            policy.register();
+        }
+        wl_kernel::approvals::register_final_check(
+            wl_kernel::inventory::PURCHASE_ORDER_SUBJECT_TYPE,
+            |tx, request| Box::pin(po_revise::recheck(tx, request)),
+        );
+        po_revise::register_types();
         wl_kernel::PolicyDefault::new(return_dispatch::ACTION)
             .amount_above(self.config.return_approval_fils)
             .step_permission(permissions::SUPPLIER_RETURNS_MANAGE)
