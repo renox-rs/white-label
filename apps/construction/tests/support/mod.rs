@@ -11,7 +11,10 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use construction::permissions as perm;
-use construction::{Construction, Ipa, IpaStatus, Project, ProjectStatus, ProjectTerminated};
+use construction::{
+    Construction, DeductionKind, DeductionStatus, Ipa, IpaDeduction, IpaStatus, Project,
+    ProjectStatus, ProjectTerminated,
+};
 use renox::auth::{Permissions, permissions};
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
@@ -25,8 +28,9 @@ use wl_kernel::block_guard::{
     provide_block_guard,
 };
 use wl_kernel::invoicing::{
-    InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
-    provide_invoicer,
+    BillRequest, CreditLine, CreditNoteId, DisputeRequest, InvoiceDraft, InvoiceFuture, InvoiceId,
+    InvoiceStatus, InvoiceSummary, Invoicer, SupplierBillFuture, SupplierBillId, SupplierBillLine,
+    SupplierBillLineId, SupplierBills, provide_invoicer, provide_supplier_bills,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
 use wl_kernel::tickets::{
@@ -303,16 +307,40 @@ impl Workforce for Staff {
     }
 }
 
-/// The invoices of wl-invoicing, as the vertical reads them.
+/// What the fake invoicing was asked for and holds.
+#[derive(Default)]
+struct InvoiceBook {
+    summaries: BTreeMap<i64, InvoiceSummary>,
+    drafts: Vec<(i64, InvoiceDraft)>,
+    issued: Vec<i64>,
+    credits: Vec<CreditAsked>,
+    disputes: Vec<DisputeRequest>,
+    next: i64,
+}
+
+/// A credit note the vertical asked for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreditAsked {
+    /// The invoice credited.
+    pub invoice: InvoiceId,
+    /// The lines credited.
+    pub lines: Vec<CreditLine>,
+    /// Why.
+    pub reason: String,
+}
+
+/// The invoices of wl-invoicing, as the vertical reads them and asks for
+/// them.
 #[derive(Clone, Default)]
-pub struct Invoices(Arc<Mutex<BTreeMap<i64, InvoiceSummary>>>);
+pub struct Invoices(Arc<Mutex<InvoiceBook>>);
 
 impl Invoices {
     /// An invoice in `status`; returns its id.
     pub fn put(&self, status: InvoiceStatus) -> i64 {
-        let mut all = self.0.lock().unwrap();
-        let id = i64::try_from(all.len()).unwrap() + 1;
-        all.insert(
+        let mut book = self.0.lock().unwrap();
+        book.next += 1;
+        let id = book.next;
+        book.summaries.insert(
             id,
             InvoiceSummary {
                 id: InvoiceId(id),
@@ -330,19 +358,66 @@ impl Invoices {
         );
         id
     }
+
+    /// The invoice as it is held now.
+    pub fn get(&self, id: i64) -> InvoiceSummary {
+        self.0.lock().unwrap().summaries[&id].clone()
+    }
+
+    /// The drafts the vertical made, with their ids.
+    pub fn drafts(&self) -> Vec<(i64, InvoiceDraft)> {
+        self.0.lock().unwrap().drafts.clone()
+    }
+
+    /// The ids of the invoices issued.
+    pub fn issued(&self) -> Vec<i64> {
+        self.0.lock().unwrap().issued.clone()
+    }
+
+    /// The credit notes asked for.
+    pub fn credits(&self) -> Vec<CreditAsked> {
+        self.0.lock().unwrap().credits.clone()
+    }
+
+    /// The disputes raised.
+    pub fn disputes(&self) -> Vec<DisputeRequest> {
+        self.0.lock().unwrap().disputes.clone()
+    }
 }
 
 impl Invoicer for Invoices {
     fn draft<'a>(
         &'a self,
         _db: &'a Db,
-        _draft: InvoiceDraft,
+        draft: InvoiceDraft,
     ) -> InvoiceFuture<'a, Option<InvoiceId>> {
-        Box::pin(async { Ok(None) })
+        let mut book = self.0.lock().unwrap();
+        book.next += 1;
+        let id = book.next;
+        let gross: i64 = draft.lines.iter().map(|line| line.gross()).sum();
+        book.summaries.insert(
+            id,
+            InvoiceSummary {
+                id: InvoiceId(id),
+                number: None,
+                status: InvoiceStatus::Draft,
+                party: draft.party,
+                legal_entity_id: draft.legal_entity_id,
+                currency: draft.currency.clone(),
+                gross_total: gross,
+                balance: gross,
+                due_date: None,
+                disputed: false,
+                chasing_paused_until: None,
+            },
+        );
+        book.drafts.push((id, draft));
+        Box::pin(async move { Ok(Some(InvoiceId(id))) })
     }
 
     fn find<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
-        Box::pin(async move { Ok(self.0.lock().unwrap().get(&id.0).cloned()) })
+        let found = self.0.lock().unwrap().summaries.get(&id.0).cloned();
+        Box::pin(async move { Ok(found) })
     }
 
     fn allocate<'a>(
@@ -353,6 +428,85 @@ impl Invoicer for Invoices {
         _amount: i64,
     ) -> InvoiceFuture<'a, ()> {
         Box::pin(async { Ok(()) })
+    }
+
+    fn issue<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: InvoiceId,
+        _by: Option<&'a AuthUser>,
+    ) -> InvoiceFuture<'a, ()> {
+        let mut book = self.0.lock().unwrap();
+        if let Some(summary) = book.summaries.get_mut(&id.0) {
+            summary.status = InvoiceStatus::Issued;
+            summary.number = Some(format!("INV-2027-{:04}", id.0));
+        }
+        book.issued.push(id.0);
+        Box::pin(async { Ok(()) })
+    }
+
+    fn credit_partly<'a>(
+        &'a self,
+        _state: &'a AppState,
+        invoice: InvoiceId,
+        lines: Vec<CreditLine>,
+        reason: String,
+        _by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        let mut book = self.0.lock().unwrap();
+        book.credits.push(CreditAsked {
+            invoice,
+            lines,
+            reason,
+        });
+        let id = i64::try_from(book.credits.len()).unwrap();
+        Box::pin(async move { Ok(CreditNoteId(id)) })
+    }
+
+    fn dispute<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: DisputeRequest,
+    ) -> InvoiceFuture<'a, i64> {
+        let mut book = self.0.lock().unwrap();
+        if let Some(summary) = book.summaries.get_mut(&request.invoice.0) {
+            summary.disputed = true;
+        }
+        book.disputes.push(request);
+        let id = i64::try_from(book.disputes.len()).unwrap();
+        Box::pin(async move { Ok(id) })
+    }
+}
+
+/// The supplier bills the vertical asked wl-invoicing to record.
+#[derive(Clone, Default)]
+pub struct Bills(Arc<Mutex<Vec<BillRequest>>>);
+
+impl Bills {
+    /// The bills asked for, oldest first; the first has the id 1.
+    pub fn requests(&self) -> Vec<BillRequest> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl SupplierBills for Bills {
+    fn line<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: SupplierBillLineId,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillLine>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn create_submitted<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: BillRequest,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillId>> {
+        let mut asked = self.0.lock().unwrap();
+        asked.push(request);
+        let id = i64::try_from(asked.len()).unwrap();
+        Box::pin(async move { Ok(Some(SupplierBillId(id))) })
     }
 }
 
@@ -403,6 +557,7 @@ struct Fakes {
     tasks: Tasks,
     notices: Recording,
     invoices: Invoices,
+    bills: Bills,
     terminated: Arc<Mutex<Vec<ProjectTerminated>>>,
 }
 
@@ -416,6 +571,7 @@ impl Module for Fakes {
         provide_task_creator(app, self.tasks.clone());
         provide_notifier(app, self.notices.clone());
         provide_invoicer(app, self.invoices.clone());
+        provide_supplier_bills(app, self.bills.clone());
         provide_block_guard(app, self.blocked.clone());
         record(app, &self.terminated);
     }
@@ -433,6 +589,8 @@ pub struct Booted {
     pub notices: Recording,
     /// The invoices of wl-invoicing.
     pub invoices: Invoices,
+    /// The supplier bills asked for.
+    pub bills: Bills,
     /// The parties wl-parties blocks.
     pub blocked: Blocked,
     /// `ProjectTerminated`.
@@ -472,6 +630,11 @@ impl Booted {
     /// A quantity surveyor.
     pub async fn qs(&self, name: &str) -> User {
         self.user_with(name, perm::QS_ROLE).await
+    }
+
+    /// The accountant, who issues invoices.
+    pub async fn accountant(&self, name: &str) -> User {
+        self.user_with(name, perm::ACCOUNTANT_ROLE).await
     }
 
     /// The MD.
@@ -532,6 +695,33 @@ impl Booted {
             .unwrap();
         tx.commit().await.unwrap();
         ipa
+    }
+
+    /// A deduction line of `ipa` in `status`, inserted as a fixture.
+    pub async fn deduction(
+        &self,
+        ipa: &Ipa,
+        kind: DeductionKind,
+        reference: &str,
+        amount: i64,
+        status: DeductionStatus,
+    ) -> IpaDeduction {
+        let mut line = IpaDeduction {
+            project_id: ipa.project_id,
+            ipa_id: ipa.id,
+            kind,
+            reference: reference.to_owned(),
+            amount,
+            status,
+            recorded_by: 1,
+            ..IpaDeduction::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        line.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        line
     }
 
     /// The IPA as it is stored now.
@@ -647,6 +837,7 @@ pub async fn boot() -> Booted {
     let tasks = Tasks::default();
     let notices = Recording::default();
     let invoices = Invoices::default();
+    let bills = Bills::default();
     let blocked = Blocked::default();
     let terminated = Arc::new(Mutex::new(Vec::new()));
     let fakes = Fakes {
@@ -655,6 +846,7 @@ pub async fn boot() -> Booted {
         tasks: tasks.clone(),
         notices: notices.clone(),
         invoices: invoices.clone(),
+        bills: bills.clone(),
         terminated: terminated.clone(),
     };
     let app = App::new()
@@ -700,6 +892,10 @@ pub async fn boot() -> Booted {
     )
     .await
     .unwrap();
+    // The accountant issues the invoice of a certified IPA.
+    permissions::define_role(app.db(), perm::ACCOUNTANT_ROLE, &[perm::INVOICES_ISSUE])
+        .await
+        .unwrap();
     permissions::define_role(
         app.db(),
         "md",
@@ -720,6 +916,7 @@ pub async fn boot() -> Booted {
         tasks,
         notices,
         invoices,
+        bills,
         blocked,
         terminated: Recorded(terminated),
         clock_days: std::sync::atomic::AtomicI64::new(0),
