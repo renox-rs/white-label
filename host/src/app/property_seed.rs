@@ -28,13 +28,15 @@ use renox::prelude::*;
 use wl_documents::registrations::{OTHER, TRADEMARK, VerticalSettings, register_vertical};
 use wl_documents::{KindSeed, Sensitivity, Sop, SopReader, register_kind};
 use wl_hr::{OnboardingTemplate, StepInput, TemplateInput};
+use wl_invoicing::BudgetCategory;
 use wl_kernel::Manifest;
 use wl_kernel::documents::{BlockCondition, BlockMode};
 use wl_sales::{LeadSource, WlSales};
+use wl_ticketing::config::InvoiceOn;
 use wl_ticketing::{Category, Priority, SlaPolicy, WlTicketing};
 
 use super::property_work;
-use super::roles::PROPERTY_MANAGER;
+use super::roles::{ACCOUNTANT, PROPERTY_MANAGER};
 
 /// The client app these values are for.
 const PROPERTY: &str = "property";
@@ -162,12 +164,14 @@ pub struct Installed {
     pub checklists: usize,
     /// SOPs created.
     pub sops: usize,
+    /// Budget categories given the accountant as owner role.
+    pub budget_categories: usize,
 }
 
 impl Installed {
     /// Everything created or changed.
     pub fn total(&self) -> usize {
-        self.categories + self.sources_off + self.checklists + self.sops
+        self.categories + self.sources_off + self.checklists + self.sops + self.budget_categories
     }
 }
 
@@ -192,6 +196,9 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     }
     if on("documents") {
         installed.sops = install_sops(&state.db).await?;
+    }
+    if on("invoicing") {
+        installed.budget_categories = install_budget_categories(&state.db).await?;
     }
     Ok(installed)
 }
@@ -222,6 +229,14 @@ async fn install_categories(db: &Db) -> Result<usize> {
                 active: true,
                 compliance_critical: spec.critical,
                 contract_end_reassign_only: spec.critical,
+                // A chargeable job is invoiced to the tenant when the ticket
+                // closes, not when it is resolved (BL-PRP-26 item 7).
+                chargeable: spec.chargeable,
+                invoice_on: if spec.chargeable {
+                    InvoiceOn::Close
+                } else {
+                    InvoiceOn::default()
+                },
                 ..Category::default()
             },
         )
@@ -229,6 +244,24 @@ async fn install_categories(db: &Db) -> Result<usize> {
         created += 1;
     }
     Ok(created)
+}
+
+/// The budget categories of 01 (`FIN.BUD.01`, BL-PRP-26 item 26): the
+/// accountant owns every category that has no owner role yet, so `FIN.RUL.24`
+/// warns the accountant of the line (the module's own owner roles, such as the
+/// marketing manager of *marketing*, are kept). The mapping to the client's
+/// export accounts (`FIN.EXT.01`) is the client's: it depends on the chart of
+/// accounts of its accounting tool.
+async fn install_budget_categories(db: &Db) -> Result<usize> {
+    let mut changed = 0;
+    for mut category in BudgetCategory::listed(db, true).await? {
+        if category.owner_role.is_none() && !category.is_drawings() {
+            category.owner_role = Some(ACCOUNTANT.to_owned());
+            category.save(db).await?;
+            changed += 1;
+        }
+    }
+    Ok(changed)
 }
 
 /// Turns off the lead sources 01 does not use (the module's *aggregator*).
@@ -387,12 +420,82 @@ mod tests {
         assert!(seed.blocks.iter().all(|b| b.mode == BlockMode::Block));
     }
 
-    #[test]
-    fn the_ticketing_settings_are_the_property_values() {
-        let module = ticketing_for("property");
-        let _ = module;
-        assert_eq!(seed::NO_SHOW_HOURS, 2);
-        assert_eq!(seed::VISIT_MISSED_DAYS, 3);
+    /// The ticketing values are read by running the rules of the module under
+    /// the Property client: a lifts visit is reported as missed on the third
+    /// day after its due date and not on the second (`WRK.RUL.14`, it raises
+    /// the compliance flag `visit_missed`), and a vendor that has not started
+    /// is a no-show at two hours and not at one hour and 59 minutes
+    /// (`WRK.RUL.19`). The module has no getters: only its behaviour shows
+    /// that the values are in force.
+    #[renox::test]
+    async fn the_ticketing_settings_are_the_property_values() {
+        use renox::chrono::{Days, Duration};
+        use renox::testing::TestApp;
+        use wl_kernel::documents::today;
+        use wl_kernel::tickets::{Assignee, OpenTicket};
+        use wl_kernel::{PartyKind, Subject};
+        use wl_ticketing::flags::ComplianceFlag;
+        use wl_ticketing::{NoShow, Ticket, Tickets, no_show, visit_check};
+
+        let app = TestApp::new(crate::app()).await;
+        app.kernel()
+            .call("wl:install", Vec::<String>::new())
+            .await
+            .unwrap();
+        app.kernel().seed().await.unwrap();
+        let vendor = wl_parties::create(
+            app.state(),
+            wl_parties::NewParty {
+                kind: PartyKind::Company,
+                legal_name_en: "LiftCo LLC".into(),
+                company: Some(wl_parties::CompanyDetails::default()),
+                source: "back_office".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .party_id();
+        let building = Subject::new("property.building_system", 4);
+        let due = today();
+        let visit = Tickets::open_at(
+            app.state(),
+            OpenTicket::new(building.clone(), seed::LIFTS, "Quarterly service")
+                .planned_due(due)
+                .assign_to(Assignee::party(vendor)),
+            renox::db::now(),
+        )
+        .await
+        .unwrap();
+
+        // Two days after the due date: not missed yet. Three: missed.
+        let second_day = due + Days::new(seed::VISIT_MISSED_DAYS as u64 - 1);
+        visit_check::run(app.state(), second_day).await.unwrap();
+        assert!(ComplianceFlag::open(app.db()).await.unwrap().is_empty());
+        let third_day = due + Days::new(seed::VISIT_MISSED_DAYS as u64);
+        visit_check::run(app.state(), third_day).await.unwrap();
+        let flags = ComplianceFlag::open(app.db()).await.unwrap();
+        assert_eq!(flags.len(), 1);
+        assert_eq!(flags[0].subject(), building);
+
+        // The same ticket with a visit time: a no-show two hours after it.
+        let at = renox::db::now();
+        Ticket::where_eq("id", visit.id.0)
+            .update(app.db(), &[("visit_at", &Some(at))])
+            .await
+            .unwrap();
+        let early = at + Duration::hours(seed::NO_SHOW_HOURS) - Duration::minutes(1);
+        assert_eq!(no_show::run(app.state(), early).await.unwrap().recorded, 0);
+        let on_time = at + Duration::hours(seed::NO_SHOW_HOURS);
+        assert_eq!(
+            no_show::run(app.state(), on_time).await.unwrap().recorded,
+            1
+        );
+        assert_eq!(
+            NoShow::query().count(app.db()).await.unwrap(),
+            1,
+            "recorded once"
+        );
     }
 
     #[test]

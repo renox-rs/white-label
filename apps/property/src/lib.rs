@@ -7,6 +7,7 @@ pub mod amend;
 pub mod arrears;
 pub mod building;
 pub mod cancellation;
+pub mod cash_forecast;
 pub mod charge;
 pub mod charge_type;
 pub mod chase;
@@ -196,6 +197,7 @@ impl Module for Property {
         // A deposit that grew is raised as a charge of the lease (BL-PRP-08).
         wl_kernel::deposits::provide_deposit_top_ups(app, amend::LeaseTopUps);
         cancellation::register(app);
+        cash_forecast::register();
         invoicing::schedule(app);
         notices::register_types();
         chase::schedule(app);

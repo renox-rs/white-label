@@ -16,12 +16,14 @@
 //! each entity (`WlInvoicing::einvoicing`, 1 January 2027 for revenue of AED 50
 //! million or more, 1 July 2027 for the others) and the ASP adapter.
 
+use renox::auth::permissions::Scope;
 use renox::chrono::Weekday;
 use renox::nav::NavLink;
 use renox::prelude::*;
 use serde::Serialize;
 use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
 use wl_invoicing::WlInvoicing;
+use wl_kernel::block_effects::{BlockEffect, BlockEffectOverride, effect_for};
 use wl_payments::WlPayments;
 
 use super::roles::{ACCOUNTANT, ADMIN, PROPERTY_MANAGER, SETTINGS_VIEW};
@@ -63,6 +65,9 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
                 .cash_days_late(true)
                 .cash_disputed_counted(false)
                 .cash_alert_roles(&[ADMIN, ACCOUNTANT])
+                // `FIN.RUL.24` warns the category's owner role and the
+                // accountant when a month's actual reaches its line.
+                .budget_variance_role(ACCOUNTANT)
                 // A cancelled job charged to the tenant is issued at once:
                 // there is no confirmation step (BL-PRP-24).
                 .auto_issue_source("ticketing.ticket")
@@ -76,6 +81,26 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         }
         _ => module,
     }
+}
+
+/// Registers the Property client's block effects (items 21 and 22,
+/// `PTY.ACL.03`): blocking a tenant leaves its leases running and the property
+/// manager decides (`continue`); blocking a vendor puts its service contracts
+/// in review for the property manager (`review`), not for the facility manager
+/// that wl-ticketing names. The registry is the kernel's; a client other than
+/// Property keeps the defaults of the modules.
+pub fn register_block_effects(client_app: &str) {
+    if client_app != "property" {
+        return;
+    }
+    BlockEffectOverride::kind("lease")
+        .effect(BlockEffect::Continue)
+        .decider(PROPERTY_MANAGER)
+        .register();
+    BlockEffectOverride::kind("service_contract")
+        .effect(BlockEffect::Review)
+        .decider(PROPERTY_MANAGER)
+        .register();
 }
 
 /// The payments module with the Property client's settings: the tenant may
@@ -124,6 +149,15 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
     let host = "set by the host for this client";
     let module = "default of the module";
     let category = "ticket category (the Property seed)";
+    let lease_rule = effect_for("lease", &Scope::global());
+    let contract_rule = effect_for("service_contract", &Scope::global());
+    let decider = |rule: &wl_kernel::block_effects::BlockEffectRule| {
+        format!(
+            "{}; decided by {}",
+            rule.effect,
+            rule.decider_role.as_deref().unwrap_or("nobody")
+        )
+    };
     let make = |number: &str, group: &str, setting: &str, value: String, source: &str| Row {
         number: number.to_owned(),
         group: group.to_owned(),
@@ -208,15 +242,25 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
             "7",
             "Invoices",
             "Chargeable ticket invoiced on",
-            "close (confirm or close), not resolve".to_owned(),
+            format!(
+                "close (confirm or close), not resolve; category {}",
+                property::seed::TENANT_REPAIR
+            ),
             category,
         ),
         make(
             "7a",
             "Invoices",
             "Drafts issued automatically",
-            "on for the ticket source, reviewed for the others".to_owned(),
-            "wl-invoicing source setting",
+            if invoicing.auto_issue_sources.is_empty() {
+                "off: every draft is reviewed".to_owned()
+            } else {
+                format!(
+                    "on for {}; reviewed for the others",
+                    invoicing.auto_issue_sources.join(", ")
+                )
+            },
+            "WlInvoicing::auto_issue_source",
         ),
         make(
             "8",
@@ -336,14 +380,14 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
             "21",
             "Party blocked",
             "Block effect on leases",
-            "continue; decided by the property manager".to_owned(),
+            decider(&lease_rule),
             "block effect kinds",
         ),
         make(
             "22",
             "Party blocked",
             "Block effect on service contracts",
-            "review; decided by the property manager".to_owned(),
+            decider(&contract_rule),
             "block effect kinds",
         ),
         make(

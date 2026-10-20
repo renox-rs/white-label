@@ -16,7 +16,10 @@
 //! only sees the amount at `resolve`, as a comment. **One draft per ticket**:
 //! the draft's id is kept on the ticket, and a later `resolve` (after a
 //! `reopen`) or a change of the lines replaces the lines of that draft
-//! ([`Invoicer::update_draft`]) instead of drafting a second one; an issued
+//! ([`Invoicer::update_draft`]) instead of drafting a second one; the draft
+//! made at close is issued at once by the system when the invoicing module is
+//! set to issue the ticket source automatically (`auto_issue_source`; 01
+//! Property sets it, BL-PRP-26 item 7a). An issued
 //! invoice is never rewritten. The party billed is the one the ticket names
 //! when it is opened (`OpenTicket::bill_to`, for a requester who is a user),
 //! else the requester's party; a ticket without one gets no draft and an
@@ -351,8 +354,21 @@ pub(crate) fn register_events(app: &mut Registry) {
             .await?
             .map_or(InvoiceOn::Resolve, |category| category.invoice_on);
         match (resolving, invoice_on) {
-            (true, InvoiceOn::Resolve) | (false, InvoiceOn::Close) => {
+            (true, InvoiceOn::Resolve) => {
+                // Drafted only: the lines may still change after a `reopen`.
                 ensure_draft(&state, ticket.id).await?;
+            }
+            (false, InvoiceOn::Close) => {
+                if let Some(id) = ensure_draft(&state, ticket.id).await? {
+                    // "Issued at once" once the ticket is closed: the system
+                    // issues the draft when the invoicing module is set to
+                    // issue the ticket source automatically (01 Property turns
+                    // it on, `FIN.INV.01`, BL-PRP-26 item 7a). Otherwise, or
+                    // when a guard of `issue` refuses (e.g. no billing
+                    // identity), the draft stays for a user to review and
+                    // issue.
+                    let _ = invoicer(&state).issue(&state, InvoiceId(id), None).await;
+                }
             }
             (true, InvoiceOn::Close) => tell_amount(&state, &ticket).await?,
             (false, InvoiceOn::Resolve) => {}

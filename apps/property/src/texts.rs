@@ -1512,6 +1512,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The invoice to the owner waits for approval.",
     ),
     ("property.payout.invoiced", "The owner is invoiced."),
+    (
+        "property.forecast.owner_payout",
+        "Owner payout, statement :statement",
+    ),
     ("property.payout.settled_how", "Settled by"),
     ("property.payout.how_payout", "Payout"),
     ("property.payout.how_carried_forward", "Carried forward"),

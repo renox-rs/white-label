@@ -125,6 +125,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::BUDGETS_MANAGE,
             invoices::BUDGETS_APPROVE,
             invoices::BUDGET_CATEGORIES_MANAGE,
+            // The company admin approves every owner drawing, never the
+            // requester (`FIN.ACL.21`).
+            invoices::DRAWINGS_APPROVE,
             invoices::CASHFLOW_VIEW,
             invoices::CASHFLOW_MANAGE,
             invoices::EINVOICES_VIEW,

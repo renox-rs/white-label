@@ -16,6 +16,9 @@ use wl_kernel::compliance::CriticalRule;
 
 /// The key of the category *fire and life safety* (compliance-critical).
 pub const FIRE_LIFE_SAFETY: &str = "fire_life_safety";
+/// The key of the category of a repair charged to the tenant (chargeable,
+/// invoiced when the ticket closes).
+pub const TENANT_REPAIR: &str = "tenant_repair";
 /// The key of the category *lifts* (compliance-critical).
 pub const LIFTS: &str = "lifts";
 /// The compliance-critical ticket categories (`WRK.RUL.14`, `WRK.RUL.18`).
@@ -493,40 +496,56 @@ pub struct CategorySpec {
     /// its tickets start at high priority and its visits cannot be cancelled
     /// at the end of a contract, only reassigned.
     pub critical: bool,
+    /// Chargeable to the tenant: its tickets get charge lines and are invoiced
+    /// to the tenant when they close (`confirm` or `close`), not at `resolve`
+    /// (`BL-PRP-26` item 7).
+    pub chargeable: bool,
 }
 
 /// The ticket categories 01 seeds. `billing_dispute` is the platform's own
 /// (wl-ticketing seeds it with invoicing) and is not repeated.
-pub const CATEGORIES: [CategorySpec; 5] = [
+pub const CATEGORIES: [CategorySpec; 6] = [
     CategorySpec {
         key: FIRE_LIFE_SAFETY,
         name_en: "Fire and life safety",
         name_ar: "الحماية من الحريق وسلامة الأرواح",
         critical: true,
+        chargeable: false,
     },
     CategorySpec {
         key: LIFTS,
         name_en: "Lifts",
         name_ar: "المصاعد",
         critical: true,
+        chargeable: false,
     },
     CategorySpec {
         key: crate::notice::MOVE_OUT_CATEGORY,
         name_en: "Move-out inspection",
         name_ar: "فحص الإخلاء",
         critical: false,
+        chargeable: false,
     },
     CategorySpec {
         key: crate::legal_case::LEGAL_CASE_CATEGORY,
         name_en: "Legal case",
         name_ar: "قضية قانونية",
         critical: false,
+        chargeable: false,
     },
     CategorySpec {
         key: crate::statement_dispute::DISPUTE_CATEGORY,
         name_en: "Owner statement dispute",
         name_ar: "نزاع على كشف حساب المالك",
         critical: false,
+        chargeable: false,
+    },
+    CategorySpec {
+        key: TENANT_REPAIR,
+        name_en: "Repair charged to the tenant",
+        name_ar: "إصلاح على حساب المستأجر",
+        critical: false,
+        chargeable: true,
     },
 ];
 
