@@ -47,6 +47,14 @@ impl Invoicer for Invoices {
         Box::pin(async move { Ok(Invoice::find(db, id.0).await?.map(|i| i.summary())) })
     }
 
+    fn billing<'a>(
+        &'a self,
+        db: &'a Db,
+        origin: &'a wl_kernel::Subject,
+    ) -> InvoiceFuture<'a, Vec<InvoiceId>> {
+        Box::pin(async move { billing(db, origin).await })
+    }
+
     fn allocate<'a>(
         &'a self,
         state: &'a AppState,
@@ -417,6 +425,29 @@ pub async fn totals_of(db: &Db, invoice_id: i64) -> Result<VatTotals> {
     let lines = lines_of(db, invoice_id).await?;
     let amounts: Vec<_> = lines.iter().map(InvoiceLine::amounts).collect();
     Ok(VatTotals::of(&amounts))
+}
+
+/// The invoices other than drafts with a line that bills `origin`, oldest
+/// first ([`Invoicer::billing`]).
+pub async fn billing(db: &Db, origin: &wl_kernel::Subject) -> Result<Vec<InvoiceId>> {
+    let lines = InvoiceLine::query()
+        .where_(InvoiceLine::ORIGIN_TYPE.eq(origin.subject_type.clone()))
+        .where_(InvoiceLine::ORIGIN_ID.eq(origin.subject_id))
+        .order_by(InvoiceLine::INVOICE_ID)
+        .get(db)
+        .await?;
+    let mut ids: Vec<i64> = lines.iter().map(|l| l.invoice_id).collect();
+    ids.dedup();
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let invoices = Invoice::query()
+        .where_(Invoice::ID.is_in(ids))
+        .where_(Invoice::STATUS.ne(InvoiceStatus::Draft))
+        .order_by(Invoice::ID)
+        .get(db)
+        .await?;
+    Ok(invoices.iter().map(Invoice::invoice_id).collect())
 }
 
 #[cfg(test)]

@@ -7,15 +7,19 @@
 //! cheque permissions are not `payments.record`); [`payment_for`] builds the
 //! request and [`record_in`] records it. The allocation follows the commit
 //! ([`allocate_to_links`]): the invoices and supplier bills the cheque pays,
-//! oldest first, each up to its open balance. A link the module cannot pay (a
-//! charge not yet invoiced) is skipped, and what is left unallocated stays on
-//! the payment as the party's credit for the accountant to allocate.
+//! oldest first, each up to its open balance. A linked record another module
+//! bills (a lease charge, `property.lease_charge:<id>`) is paid through the
+//! invoices that bill it ([`Invoicer::billing`](wl_kernel::invoicing::Invoicer::billing)):
+//! the cheque was given for that charge, so its money settles the charge's
+//! invoice. A link the module cannot pay (a charge not yet invoiced) is
+//! skipped, and what is left unallocated stays on the payment as the party's
+//! credit for the accountant to allocate.
 
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::Outcome;
 use wl_kernel::documents::today;
-use wl_kernel::invoicing::{PayBill, invoicer, supplier_bills};
+use wl_kernel::invoicing::{InvoiceId, PayBill, invoicer, supplier_bills};
 use wl_kernel::payments::{
     AllocationTarget, Direction, PaymentMethod, PaymentSource, RecordPayment,
 };
@@ -118,19 +122,16 @@ pub(crate) async fn allocate_to_links(
         let subject = link.subject();
         match AllocationTarget::from_subject(&subject) {
             Some(AllocationTarget::Invoice(id)) if payment.direction == Direction::In => {
-                let Some(invoice) = invoicer(state).find(&state.db, id).await? else {
-                    continue;
-                };
-                let part = left.min(invoice.balance);
-                if part <= 0 {
-                    continue;
-                }
-                let target = AllocationTarget::Invoice(id);
-                if allocate::allocate(state, payment.payment_id(), target, part, by)
-                    .await
-                    .is_ok()
-                {
-                    left -= part;
+                left -= to_invoice(state, payment, id, left, by).await?;
+            }
+            None if payment.direction == Direction::In => {
+                // A record another module bills (a lease charge): the
+                // invoices that bill it, oldest first. None yet: skipped.
+                for id in invoicer(state).billing(&state.db, &subject).await? {
+                    if left <= 0 {
+                        break;
+                    }
+                    left -= to_invoice(state, payment, id, left, by).await?;
                 }
             }
             Some(AllocationTarget::SupplierBill(id)) if payment.direction == Direction::Out => {
@@ -148,6 +149,30 @@ pub(crate) async fn allocate_to_links(
         }
     }
     Ok(amount - left)
+}
+
+/// Allocates up to `left` fils of `payment` to invoice `id`, by user `by`,
+/// within its open balance; returns how much was allocated (0 when the
+/// invoice is not found, has no balance or refuses).
+async fn to_invoice(
+    state: &AppState,
+    payment: &Payment,
+    id: InvoiceId,
+    left: i64,
+    by: Option<i64>,
+) -> Result<i64> {
+    let Some(invoice) = invoicer(state).find(&state.db, id).await? else {
+        return Ok(0);
+    };
+    let part = left.min(invoice.balance);
+    if part <= 0 {
+        return Ok(0);
+    }
+    let target = AllocationTarget::Invoice(id);
+    let allocated = allocate::allocate(state, payment.payment_id(), target, part, by)
+        .await
+        .is_ok();
+    Ok(if allocated { part } else { 0 })
 }
 
 #[cfg(test)]
