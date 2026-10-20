@@ -5,7 +5,7 @@
 //!
 //! It started from Renox's starter kit (`rnx new --starter`):
 //!
-//! - sign-up, login, password reset, email verification and the account
+//! - login, password reset, email verification and the account
 //!   pages (`Auth`), with the notification bell;
 //! - roles and permissions (`Permissions`): `admin` manages users and reads
 //!   the activity log, `member` is everyone else (`app::roles`);
@@ -261,11 +261,9 @@ fn base() -> renox::App {
                 .notifications() // the bell and /notifications
                 .magic_link() // "Email me a login link" on the login page: no password needed
                 .redirect_to("/dashboard")
-                // Everyone who signs up is a member.
-                .on_registered(|user, _form, state| async move {
-                    roles::define(&state.db).await?;
-                    user.assign_role(&state.db, roles::MEMBER).await
-                }),
+                // No public sign-up: an admin adds the people (`/users`,
+                // `users:invite`), the first one is made with the command.
+                .without_registration(),
         )
         .module(Permissions)
         .module(Audit)
@@ -273,6 +271,11 @@ fn base() -> renox::App {
         .module(app::dashboard::Dashboard)
         .module(app::users::Users)
         .module(app::activity::Activity)
+        .command(
+            "users:invite",
+            "Add a user and mail them the link to choose a password",
+            app::roles::invite,
+        )
         .command(
             "users:admin",
             "Give the user with this email the admin role",

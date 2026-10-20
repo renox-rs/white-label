@@ -1,0 +1,5 @@
+Hello {{ name }},
+
+You have been added to {{ brand }}. Choose a password to sign in. The link works for one hour; after that, use "Forgot your password?" on the sign-in page.
+
+{{ link }}

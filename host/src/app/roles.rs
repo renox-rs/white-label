@@ -382,8 +382,8 @@ pub async fn define(db: &Db) -> Result {
     Ok(())
 }
 
-/// `users:admin <email>`: the first admin of a new server, after they
-/// signed up.
+/// `users:admin <email>`: gives an existing user (see `users:invite`) the
+/// admin role.
 pub async fn make_admin(args: Args, state: AppState) -> Result {
     let Some(email) = args.positional().first().copied() else {
         return Err(anyhow!("usage: users:admin <email>").into());
@@ -394,5 +394,40 @@ pub async fn make_admin(args: Args, state: AppState) -> Result {
     define(&state.db).await?;
     user.assign_role(&state.db, ADMIN).await?;
     println!("{} is an admin.", user.email);
+    Ok(())
+}
+
+/// `users:invite <email> <name> [--role=admin,hr]`: adds a user (there is no
+/// public sign-up), mails them the link to choose a password and prints it,
+/// which is how the first admin of a new server gets in.
+pub async fn invite(args: Args, state: AppState) -> Result {
+    let positional = args.positional();
+    let (Some(email), Some(name)) = (positional.first().copied(), positional.get(1).copied())
+    else {
+        return Err(anyhow!("usage: users:invite <email> <name> [--role=admin,hr]").into());
+    };
+    let roles: Vec<&str> = args
+        .value("--role")
+        .map(|list| {
+            list.split(',')
+                .map(str::trim)
+                .filter(|r| !r.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(bad) = roles
+        .iter()
+        .find(|r| !ROLES.iter().any(|(name, _)| name == *r))
+    {
+        return Err(anyhow!("there is no role called {bad}").into());
+    }
+    let invitation = super::users::invite(&state, name, email, &roles).await?;
+    println!("{} is added.", invitation.user.email);
+    if invitation.mailed {
+        println!("The link to choose a password was mailed. It works for an hour:");
+    } else {
+        println!("The mail could not be sent. Give them this link (it works for an hour):");
+    }
+    println!("{}", invitation.link);
     Ok(())
 }

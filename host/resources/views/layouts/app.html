@@ -24,7 +24,7 @@
     an `rx-pane`) scrolls on its own, and an `rx-fill` element takes the
     height left, so the panels cover the screen. Tablets and phones scroll
     the page; there the links move to the kit's tab bar at the bottom of the
-    screen (`tabs`). The home page uses layouts/public.html. -#}
+    screen (`tabs`). -#}
 <body class="rx-page">
   {#- A guest sees this layout only on an error page. -#}
   <rx-let name="tabs" :value="(
@@ -38,7 +38,6 @@
   ) if auth.check else [
     {'href': route('home'), 'label': t('nav.home'), 'icon': 'house'},
     {'href': route('login'), 'label': t('nav.log_in'), 'icon': 'log-in'},
-    {'href': route('register'), 'label': t('nav.register'), 'icon': 'circle-user'},
   ]"/>
   <rx-shell fill>
   {#- The links come from the modules: each one adds its own to the "app"
@@ -75,7 +74,6 @@
       </template>
       <template rx-else>
         <rx-link-button route="login" label="{{ t('nav.log_in') }}" variant="plain" size="small"/>
-        <rx-link-button route="register" label="{{ t('nav.register') }}" variant="primary" size="small"/>
       </template>
     </rx-navbar>
     <main class="rx-shell__content" id="main">
