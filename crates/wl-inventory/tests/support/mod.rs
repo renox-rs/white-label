@@ -20,7 +20,12 @@ use wl_inventory::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, Item, Location, Lot, LotStatus,
     PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus, SupplierReturn, WlInventory,
 };
-use wl_kernel::inventory::{GoodsReceived, SupplierReturnCredited, SupplierReturnDispatched};
+use wl_kernel::block_guard::{
+    ActionKind, BlockFuture, BlockGuard, BlockRefusal, GuardOutcome, provide_block_guard,
+};
+use wl_kernel::inventory::{
+    GoodsReceived, PurchaseOrderRevised, SupplierReturnCredited, SupplierReturnDispatched,
+};
 use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PostCost, SupplierBillFuture, SupplierBillId,
     SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
@@ -217,6 +222,8 @@ impl Module for Fakes {
     }
 
     fn register(&self, app: &mut Registry) {
+        record(app, &self.revised);
+        provide_block_guard(app, self.blocked.clone());
         record(app, &self.received);
         record(app, &self.dispatched);
         record(app, &self.credited);
@@ -234,6 +241,10 @@ pub struct Booted {
     pub received: Recorded<GoodsReceived>,
     /// `SupplierReturnDispatched`.
     pub dispatched: Recorded<SupplierReturnDispatched>,
+    /// Every `PurchaseOrderRevised`.
+    pub revised: Recorded<PurchaseOrderRevised>,
+    /// The suppliers the block guard refuses.
+    pub blocked: Blocked,
     /// `SupplierReturnCredited`.
     pub credited: Recorded<SupplierReturnCredited>,
     /// The tickets opened for tasks.
@@ -398,6 +409,34 @@ impl Booted {
         self.app
             .htmx()
             .post(&format!("/goods-receipts/{}/reverse", receipt.id), &[])
+            .await
+    }
+
+    /// `POST /purchase-orders/{id}/revise` as `by`: each `(line, quantity,
+    /// price)` is the order line, the quantity in the base unit and the price
+    /// in AED, like `("1200.00")`; `extra` is more form fields.
+    pub async fn revise_as(
+        &self,
+        by: &User,
+        order: &PurchaseOrder,
+        reason: &str,
+        lines: &[(&PurchaseOrderLine, &str, &str)],
+        extra: &[(&str, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        let mut keys = Vec::new();
+        for (line, _, _) in lines {
+            keys.push((format!("qty_{}", line.id), format!("price_{}", line.id)));
+        }
+        let mut form: Vec<(&str, &str)> = vec![("reason", reason)];
+        for ((_, quantity, price), (quantity_key, price_key)) in lines.iter().zip(&keys) {
+            form.push((quantity_key.as_str(), quantity));
+            form.push((price_key.as_str(), price));
+        }
+        form.extend_from_slice(extra);
+        self.app
+            .htmx()
+            .post(&format!("/purchase-orders/{}/revise", order.id), &form)
             .await
     }
 
@@ -633,6 +672,8 @@ pub async fn boot_with_invoicing() -> Booted {
 async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     let received = Arc::new(Mutex::new(Vec::new()));
     let dispatched = Arc::new(Mutex::new(Vec::new()));
+    let revised = Arc::new(Mutex::new(Vec::new()));
+    let blocked = Blocked::default();
     let credited = Arc::new(Mutex::new(Vec::new()));
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
@@ -687,6 +728,8 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         app,
         received: Recorded(received),
         dispatched: Recorded(dispatched),
+        revised: Recorded(revised),
+        blocked,
         credited: Recorded(credited),
         tickets,
         costs,
