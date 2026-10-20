@@ -270,6 +270,10 @@ async fn link_to_open_dispute(
     let Some(dispute) = Dispute::find(&state.db, id).await?.filter(Dispute::is_open) else {
         return Ok(());
     };
+    // The same delivery again (an event received twice): nothing to add.
+    if dispute.source() == Some(event.delivery.subject()) {
+        return Ok(());
+    }
     let Some(ticket) = dispute.ticket_id else {
         return Ok(());
     };
