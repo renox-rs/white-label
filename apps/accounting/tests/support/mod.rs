@@ -531,10 +531,7 @@ impl Subscriptions for SubscriptionBook {
         agreement: &'a Subject,
         pause: PauseSubscription,
     ) -> SubscriptionFuture<'a, Vec<SubscriptionSummary>> {
-        self.pauses
-            .lock()
-            .unwrap()
-            .push((agreement.clone(), pause));
+        self.pauses.lock().unwrap().push((agreement.clone(), pause));
         Box::pin(async { Ok(Vec::new()) })
     }
 
@@ -579,7 +576,11 @@ impl InvoiceBook {
 }
 
 impl Invoicer for InvoiceBook {
-    fn draft<'a>(&'a self, _db: &'a Db, _draft: InvoiceDraft) -> InvoiceFuture<'a, Option<InvoiceId>> {
+    fn draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        _draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, Option<InvoiceId>> {
         Box::pin(async { Ok(None) })
     }
 
@@ -691,6 +692,12 @@ const PARTIES_BLOCK: &str = wl_parties::permissions::BLOCK;
 const DOCUMENTS_VIEW: &str = wl_documents::permissions::VIEW;
 const DOCUMENTS_REVIEW: &str = wl_documents::permissions::REVIEW;
 const BLOCK_OVERRIDE: &str = wl_documents::permissions::BLOCK_OVERRIDE;
+const TICKETS_VIEW: &str = wl_ticketing::permissions::VIEW;
+const TICKETS_WORK: &str = wl_ticketing::permissions::WORK;
+const TASKS_VIEW: &str = wl_ticketing::permissions::TASKS_VIEW;
+const TASKS_WORK: &str = wl_ticketing::permissions::TASKS_WORK;
+const TASKS_REVIEW: &str = wl_ticketing::permissions::TASKS_REVIEW;
+const TASKS_MANAGE: &str = wl_ticketing::permissions::TASKS_MANAGE;
 
 async fn define_roles(db: &Db) {
     let roles: &[(&str, &[&str])] = &[
@@ -716,6 +723,12 @@ async fn define_roles(db: &Db) {
                 perm::TAX_PROFILES_MANAGE,
                 PARTIES_VIEW,
                 DOCUMENTS_VIEW,
+                // As the host gives the 04 manager (A2).
+                TICKETS_VIEW,
+                TASKS_VIEW,
+                TASKS_WORK,
+                TASKS_REVIEW,
+                TASKS_MANAGE,
             ],
         ),
         (
@@ -739,6 +752,11 @@ async fn define_roles(db: &Db) {
                 PARTIES_BLOCK,
                 DOCUMENTS_VIEW,
                 BLOCK_OVERRIDE,
+                // As the host gives the MLRO: the CDD update task.
+                TICKETS_VIEW,
+                TICKETS_WORK,
+                TASKS_VIEW,
+                TASKS_WORK,
             ],
         ),
         (REVIEWER, &[DOCUMENTS_VIEW, DOCUMENTS_REVIEW]),
@@ -821,6 +839,18 @@ pub async fn boot_real() -> Booted {
     boot_with(true).await
 }
 
+/// `module` with the 04 reasons for `close_missed`, as the host sets them.
+fn missed_reasons(mut module: wl_ticketing::WlTicketing) -> wl_ticketing::WlTicketing {
+    for (code, name, needs_text) in accounting::tasks::missed_reason_names() {
+        module = if needs_text {
+            module.missed_reason_with_text(code, &name)
+        } else {
+            module.missed_reason(code, &name)
+        };
+    }
+    module
+}
+
 async fn boot_with(real: bool) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
@@ -850,12 +880,13 @@ async fn boot_with(real: bool) -> Booted {
         .module(wl_portal::WlPortal);
     if real {
         app = app
-            .module(
+            .module(missed_reasons(
                 wl_ticketing::WlTicketing::new()
                     .overdue_rule_id(accounting::tasks::OVERDUE_RULE)
                     .task_manager_role(MANAGER)
-                    .task_overdue_role(PARTNER),
-            )
+                    .task_overdue_role(PARTNER)
+                    .waive_started_tasks(false),
+            ))
             .module(wl_invoicing::WlInvoicing::new());
     }
     let app = app.module(Accounting).module(fakes);

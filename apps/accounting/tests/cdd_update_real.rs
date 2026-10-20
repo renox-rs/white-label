@@ -3,7 +3,9 @@
 //! days after the expiry, with the engagement's manager told; the engagement
 //! stays `active`; the renewal completes the task; a second `DocumentExpired`
 //! for the same document opens nothing. With the real wl-documents (its
-//! nightly expiry run emits the event) and wl-parties.
+//! nightly expiry run emits the event) and wl-parties; the first check runs
+//! again with the real wl-ticketing as the task store, where the MLRO opens
+//! the task and the renewal completes it.
 
 mod support;
 
@@ -18,7 +20,7 @@ use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::tickets::Assignee;
 use wl_kernel::{PartyId, Subject};
 
-use support::{Booted, Client, boot, d, dubai};
+use support::{Booted, Client, boot, boot_real, d, dubai};
 
 /// The prefix of the CDD update tasks' keys.
 const KEY: &str = "accounting.cdd_update:";
@@ -154,4 +156,75 @@ async fn bl_acc_12_a_ubo_passport_gives_a_task_per_served_client_only() {
     );
     assert_eq!(t.status(&suspended).await, EngagementStatus::Suspended);
     assert_eq!(t.status(&onboarding).await, EngagementStatus::Onboarding);
+}
+
+/// The open and closed staff tasks of real wl-ticketing with the key `key`.
+async fn tickets_with(t: &Booted, key: &str) -> Vec<wl_ticketing::Ticket> {
+    wl_ticketing::Ticket::query()
+        .where_(wl_ticketing::Ticket::SOURCE_KEY.eq(key))
+        .get(t.db())
+        .await
+        .unwrap()
+}
+
+/// DW1-DW3 with the real wl-ticketing: the task is a ticket assigned to the
+/// MLRO, due 2026-11-24, about the CDD file; the MLRO opens it; a second
+/// event opens no second one; the accepted renewal completes it through
+/// `TaskCreator::complete`.
+#[renox::test]
+async fn bl_acc_12_with_real_ticketing_the_mlro_opens_the_task_and_the_renewal_completes_it() {
+    let t = boot_real().await;
+    let mlro = t.mlro().await;
+    let manager = t.manager().await;
+    let reviewer = t.reviewer().await;
+    let client: Client = t.client().await;
+    let file = t.cdd_approved(&client, &mlro).await;
+    let engagement = t
+        .engagement_in(&client, EngagementStatus::Active, None)
+        .await;
+    managed_by(&t, &engagement, &manager).await;
+    t.kyc(&reviewer, client.company, TRADE_LICENCE, d(11, 10))
+        .await;
+
+    t.run(wl_documents::expiry::run::run(t.state(), d(11, 11)))
+        .await
+        .unwrap();
+
+    let key = source_key(client.company, client.company, TRADE_LICENCE);
+    let tickets = tickets_with(&t, &key).await;
+    assert_eq!(tickets.len(), 1, "{tickets:?}");
+    let ticket = &tickets[0];
+    assert!(ticket.is_open());
+    assert_eq!(ticket.assignee_user_id, Some(mlro.id));
+    assert_eq!(ticket.due_at, Some(dubai(24, 9, 0)), "due 2026-11-24");
+    let current: CddFile = t.cdd(&file).await;
+    assert_eq!(
+        (ticket.subject_type.as_str(), ticket.subject_id),
+        (
+            current.subject().subject_type.as_str(),
+            current.subject().subject_id
+        )
+    );
+    assert_eq!(t.status(&engagement).await, EngagementStatus::Active);
+    t.app.acting_as(&mlro);
+    t.app
+        .get(&format!("/tickets/{}", ticket.id))
+        .await
+        .assert_ok()
+        .assert_see(&ticket.number);
+
+    expired_again(&t, client.company, TRADE_LICENCE, d(11, 10)).await;
+    assert_eq!(tickets_with(&t, &key).await.len(), 1, "no second task");
+
+    t.kyc(
+        &reviewer,
+        client.company,
+        TRADE_LICENCE,
+        NaiveDate::from_ymd_opt(2027, 11, 10).unwrap(),
+    )
+    .await;
+    let tickets = tickets_with(&t, &key).await;
+    assert_eq!(tickets.len(), 1);
+    assert!(!tickets[0].is_open(), "the renewal completes the task");
+    assert_eq!(t.status(&engagement).await, EngagementStatus::Active);
 }
