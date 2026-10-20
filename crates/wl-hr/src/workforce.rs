@@ -9,6 +9,7 @@ use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::workforce::{EmployeeId, LeaveCalendar, StaffProfile, Workforce, WorkforceFuture};
 
+use crate::absence::AbsenceReport;
 use crate::assignees;
 use crate::employee::{Employee, EmployeeScope, EmployeeStatus};
 use crate::leave::{LeaveRequest, LeaveStatus};
@@ -126,6 +127,25 @@ impl Workforce for Staff {
                 returns_on,
                 managers,
             }))
+        })
+    }
+
+    fn access_disabled<'a>(&'a self, db: &'a Db, user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            let employees = Employee::query()
+                .where_(Employee::USER_ID.eq(user_id))
+                .get(db)
+                .await?;
+            for employee in employees {
+                if employee.status == EmployeeStatus::Absconded {
+                    return Ok(true);
+                }
+                let report = AbsenceReport::valid_for(db, employee.id).await?;
+                if report.is_some_and(|report| report.access_disabled_at.is_some()) {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         })
     }
 

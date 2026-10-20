@@ -154,9 +154,10 @@ impl PortalGuard {
         acting_for: PartyId,
         action: PortalAction,
     ) -> Result<std::result::Result<(), Refused>> {
-        if PortalAccess::active_grant(&state.db, user, acting_for, today())
-            .await?
-            .is_none()
+        if PortalAccess::disabled(state, user).await?
+            || PortalAccess::active_grant(&state.db, user, acting_for, today())
+                .await?
+                .is_none()
         {
             return Ok(Err(Refused::NoAccess));
         }

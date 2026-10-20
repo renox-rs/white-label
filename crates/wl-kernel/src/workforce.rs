@@ -281,6 +281,13 @@ pub trait Workforce: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// Whether the account of user `user_id` belongs to an employee whose
+    /// portal access is switched off: one reported as absconded (`HRM.RUL.14`).
+    /// The default switches nobody off.
+    fn access_disabled<'a>(&'a self, _db: &'a Db, _user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// The employee whose account is the user `user_id`, if any. The default
     /// knows nobody.
     fn employee_of_user<'a>(

@@ -157,8 +157,30 @@ async fn hrm07_an_approved_report_holds_the_pay_drafts_the_settlement_and_opens_
     let other = w.t.employee_in(61, EmployeeStatus::Active).await;
     let (run, lines) = november(&w.t, PayrollRunStatus::Calculated, &[&w.e, &other]).await;
 
+    // The employee has an account (here Hana's, borrowed for the test).
+    let account = Some(w.hr.id);
+    Employee::query()
+        .where_(Employee::ID.eq(w.e.id))
+        .update(w.t.db(), &[("user_id", &account)])
+        .await
+        .unwrap();
+    assert!(
+        !workforce(w.t.state())
+            .access_disabled(w.t.db(), w.hr.id)
+            .await
+            .unwrap(),
+        "the portal works until the report is approved"
+    );
+
     report_and_approve(&w).await;
 
+    // The portal is switched off for the account.
+    assert!(
+        workforce(w.t.state())
+            .access_disabled(w.t.db(), w.hr.id)
+            .await
+            .unwrap()
+    );
     assert_eq!(w.t.employee(&w.e).await.status, EmployeeStatus::Absconded);
     let held = line(&w.t, &lines[0]).await;
     assert_eq!(held.status, LineStatus::Held);

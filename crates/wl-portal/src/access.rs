@@ -20,6 +20,7 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
+use wl_kernel::workforce::workforce;
 
 use crate::events::{
     PortalAccessActivated, PortalAccessClosed, PortalAccessReadOnly, PortalAccessSuspended,
@@ -78,6 +79,13 @@ impl PortalAccess {
             .order_by(AccessGrant::ID)
             .get(db)
             .await
+    }
+
+    /// Whether the portal is switched off for `user` because their account
+    /// belongs to an employee reported as absconded (`HRM.RUL.14`): no grant
+    /// of theirs works while it lasts. Without `wl-hr` nobody is switched off.
+    pub async fn disabled(state: &AppState, user: i64) -> Result<bool> {
+        workforce(state).access_disabled(&state.db, user).await
     }
 
     /// The `active` grant of `user` for the party `acting_for` on `day`, if
