@@ -97,6 +97,9 @@ pub struct Real {
     /// wl-payments answers the payment recorder, the deposits and the deposit
     /// deductions (receipts, refunds, deposit settlement and its window).
     pub payments: bool,
+    /// wl-documents answers whether the tenant's acceptance of changed terms
+    /// is attached (the rest of the document guard stays the fake).
+    pub documents: bool,
 }
 
 impl Real {
@@ -104,16 +107,25 @@ impl Real {
     pub const MONEY: Real = Real {
         invoicing: true,
         payments: true,
+        documents: false,
     };
     /// Payments only: refunds, deposits and their dispute window.
     pub const PAYMENTS: Real = Real {
         invoicing: false,
         payments: true,
+        documents: false,
     };
     /// Invoicing only: invoices, overdue and reminders.
     pub const INVOICING: Real = Real {
         invoicing: true,
         payments: false,
+        documents: false,
+    };
+    /// The documents module: the tenant's acceptance is a real document.
+    pub const DOCUMENTS: Real = Real {
+        invoicing: false,
+        payments: false,
+        documents: true,
     };
 
     /// The `modules.enabled` list of the client.
@@ -127,6 +139,9 @@ impl Real {
         }
         if self.payments {
             list.push("\"payments\"");
+        }
+        if self.documents {
+            list.push("\"documents\"");
         }
         list.join(", ")
     }
@@ -244,6 +259,8 @@ impl PartyDirectory for Parties {
 pub struct Docs {
     entries: Arc<Mutex<Vec<BlockEntry>>>,
     accepted: Arc<Mutex<Vec<(String, String)>>>,
+    /// The kinds whose validity wl-documents answers.
+    real_kinds: Arc<Mutex<Vec<String>>>,
 }
 
 impl Docs {
@@ -275,6 +292,15 @@ impl Docs {
             .push((subject.to_string(), kind.to_owned()));
     }
 
+    /// The validity of documents of `kind` is the real module's.
+    pub fn use_real_for(&self, kind: &str) {
+        self.real_kinds.lock().unwrap().push(kind.to_owned());
+    }
+
+    fn is_real(&self, kind: &str) -> bool {
+        self.real_kinds.lock().unwrap().iter().any(|k| k == kind)
+    }
+
     fn has(&self, subject: &Subject, kind: &str) -> bool {
         self.accepted
             .lock()
@@ -304,12 +330,15 @@ impl DocumentGuard for Docs {
 
     fn is_valid<'a>(
         &'a self,
-        _db: &'a Db,
+        db: &'a Db,
         subject: &'a Subject,
         kind: &'a str,
-        _on_date: NaiveDate,
+        on_date: NaiveDate,
     ) -> DocumentFuture<'a, Validity> {
         Box::pin(async move {
+            if self.is_real(kind) {
+                return wl_documents::guard::is_valid(db, subject, kind, on_date).await;
+            }
             Ok(if self.has(subject, kind) {
                 Validity::Valid {
                     document: None,
@@ -2258,6 +2287,11 @@ pub async fn boot_with(real: Real) -> Booted {
     if real.invoicing {
         app = app.module(wl_invoicing::WlInvoicing::new());
     }
+    if real.documents {
+        app = app
+            .module(renox::audit::Audit)
+            .module(wl_documents::WlDocuments);
+    }
     if real.payments {
         // The vertical turns the deductions dispute on: 14 days, 7 to answer.
         app = app.module(wl_payments::WlPayments::new().deductions_dispute(14, 7));
@@ -2327,6 +2361,9 @@ pub async fn boot_with(real: Real) -> Booted {
     permissions::define_role(app.db(), wl_kernel::COMPANY_ADMIN_ROLE, &admin)
         .await
         .unwrap();
+    if real.documents {
+        docs_handle_real(&handles.1);
+    }
     let (parties, docs, notices, tasks, cheques, deposits, invoices, refunds, blocks, staff) =
         handles;
     parties.add(TENANT.0, "Tariq Hassan", PartyKind::Person);
@@ -2351,6 +2388,11 @@ pub async fn boot_with(real: Real) -> Booted {
         amended: logs.4,
         forced: logs.5,
     }
+}
+
+/// The tenant acceptance of changed terms is answered by wl-documents.
+fn docs_handle_real(docs: &Docs) {
+    docs.use_real_for(property::terms::TENANT_ACCEPTANCE_KIND);
 }
 
 /// The scope of a building, for assertions.
@@ -2424,6 +2466,63 @@ impl Booted {
         )
         .await
         .assert_ok();
+    }
+
+    /// The tenant's signed acceptance of changed terms is uploaded to the
+    /// version `lease` as a real `tenant_acceptance` document and accepted on
+    /// the review queue (`PRP.ACL.17`). (Needs [`Real::documents`].)
+    pub async fn attach_acceptance(&self, lease: &Lease) -> wl_documents::Document {
+        wl_documents::kinds::install_seeds(
+            self.db(),
+            &[wl_documents::KindSeed::new(
+                property::terms::TENANT_ACCEPTANCE_KIND,
+                "Tenant acceptance of changed terms",
+            )
+            .subject_type("property.lease")],
+        )
+        .await
+        .expect("the kind installs");
+        let reviewer = self
+            .user_with_grants(
+                "Rita",
+                &[
+                    wl_documents::permissions::VIEW,
+                    wl_documents::permissions::REVIEW,
+                ],
+            )
+            .await;
+        let new = wl_documents::documents::NewDocument::new(
+            lease.subject(),
+            property::terms::TENANT_ACCEPTANCE_KIND,
+            Upload::new(
+                "acceptance.pdf",
+                "application/pdf",
+                b"%PDF-1.7 signed acceptance".to_vec(),
+            ),
+        );
+        let document = wl_documents::Documents::attach(self.state(), None, new)
+            .await
+            .unwrap()
+            .expect("the document is attached");
+        self.app.acting_as(&reviewer);
+        self.app
+            .htmx()
+            .post(&format!("/documents/{}/accept", document.id), &[])
+            .await
+            .assert_ok();
+        wl_documents::Document::find(self.db(), document.id)
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    /// A user holding exactly `grants` through a role of their own.
+    pub async fn user_with_grants(&self, name: &str, grants: &[&str]) -> User {
+        let role = format!("role_{}", name.to_lowercase());
+        permissions::define_role(self.db(), &role, grants)
+            .await
+            .unwrap();
+        self.user_with(name, &role).await
     }
 
     /// Runs the system transition `name` on `lease`.

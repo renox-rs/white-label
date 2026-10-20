@@ -9,7 +9,7 @@ use property::leases::NewVersion;
 use property::{ChargeStatus, Lease, LeaseStatus, UnitStatus, VersionKind};
 use renox::prelude::*;
 
-use support::{AGENT, MANAGER, aed, boot, day};
+use support::{AGENT, MANAGER, Real, aed, boot_with, day};
 
 /// A renewal for the year after the active term ends, at `rent`.
 fn renewal(rent: i64, deposit: i64) -> NewVersion {
@@ -26,7 +26,7 @@ struct Scene {
 }
 
 async fn scene() -> Scene {
-    let t = boot().await;
+    let t = boot_with(Real::DOCUMENTS).await;
     let building = t.building().await;
     let unit = t.unit(&building, "1204").await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
@@ -66,7 +66,7 @@ async fn bl_prp_05_a_renewal_passes_the_unit_guard_and_a_new_lease_does_not() {
     assert_eq!(v2.tenant_party_id, s.v1.tenant_party_id);
     assert_eq!(v2.unit_id, s.unit.id);
     // The rent goes up: the tenant's signed acceptance is attached (`PRP.ACL.17`).
-    t.accept(&v2);
+    t.attach_acceptance(&v2).await;
     t.submit(&s.agent, &v2).await.assert_ok();
     assert_eq!(t.status(&v2).await, LeaseStatus::PendingSignature);
 
@@ -105,7 +105,7 @@ async fn bl_prp_05_activating_a_renewal_replaces_the_previous_version() {
     )
     .await
     .unwrap();
-    t.accept(&v2);
+    t.attach_acceptance(&v2).await;
     t.submit(&s.agent, &v2).await.assert_ok();
     t.activate(&s.manager, &v2).await.assert_ok();
 
@@ -142,7 +142,7 @@ async fn bl_prp_05_activating_a_renewal_replaces_the_previous_version() {
 /// unit is unchanged.
 #[renox::test]
 async fn bl_prp_05_activating_an_amendment_ends_the_previous_version_as_amended() {
-    let t = boot().await;
+    let t = boot_with(Real::DOCUMENTS).await;
     let building = t.building().await;
     let unit = t.unit(&building, "1204").await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
@@ -160,7 +160,7 @@ async fn bl_prp_05_activating_an_amendment_ends_the_previous_version_as_amended(
     assert_eq!(v2.version_kind, VersionKind::Amendment);
     assert_eq!(v2.effective_date, Some(day(0)));
     // An amendment against the tenant always needs the tenant's acceptance.
-    t.accept(&v2);
+    t.attach_acceptance(&v2).await;
     t.submit(&agent, &v2).await.assert_ok();
     t.activate(&manager, &v2).await.assert_ok();
 
@@ -179,7 +179,7 @@ async fn bl_prp_05_activating_an_amendment_ends_the_previous_version_as_amended(
 /// changes and not before the first day of this month.
 #[renox::test]
 async fn bl_prp_05_an_amendments_effective_date_is_checked() {
-    let t = boot().await;
+    let t = boot_with(Real::DOCUMENTS).await;
     let building = t.building().await;
     let unit = t.unit(&building, "1204").await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
@@ -218,7 +218,7 @@ async fn bl_prp_05_an_amendments_effective_date_is_checked() {
 /// amendment also accepts an active one.
 #[renox::test]
 async fn bl_prp_05_the_previous_version_must_be_in_a_state_renew_or_amend_accepts() {
-    let t = boot().await;
+    let t = boot_with(Real::DOCUMENTS).await;
     let building = t.building().await;
     let unit = t.unit(&building, "1204").await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
@@ -259,7 +259,7 @@ async fn bl_prp_05_only_one_renewal_or_amendment_is_in_progress_per_lease() {
         draft_twice,
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
     ));
-    t.accept(&first);
+    t.attach_acceptance(&first).await;
     t.submit(&s.agent, &first).await.assert_ok();
     let while_pending = property::leases::create_version(
         t.state(),
@@ -292,7 +292,7 @@ async fn bl_prp_05_a_previous_version_that_moved_refuses_the_activation() {
     )
     .await
     .unwrap();
-    t.accept(&v2);
+    t.attach_acceptance(&v2).await;
     t.submit(&s.agent, &v2).await.assert_ok();
     // The previous version ended meanwhile (a bulk update is the fixture).
     t.set(&s.v1, &[("status", &LeaseStatus::Terminated)]).await;
@@ -321,7 +321,7 @@ async fn bl_prp_05_a_changed_deposit_asks_the_deposit_to_adjust() {
     )
     .await
     .unwrap();
-    t.accept(&v2);
+    t.attach_acceptance(&v2).await;
     t.submit(&s.agent, &v2).await.assert_ok();
     t.activate(&s.manager, &v2).await.assert_ok();
     assert_eq!(t.status(&v2).await, LeaseStatus::Active);

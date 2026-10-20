@@ -12,7 +12,7 @@ use renox::prelude::*;
 use renox::state_machine;
 use wl_kernel::notify::NoticeStatus;
 
-use support::{AGENT, Booted, MANAGER, TENANT, aed, boot, d};
+use support::{AGENT, Booted, MANAGER, Real, TENANT, aed, boot_with, d};
 
 /// A date in 2028.
 fn y28(month: u32, day: u32) -> NaiveDate {
@@ -28,7 +28,7 @@ struct Scene {
 /// An `active` lease 2027-01-01 to 2027-12-31 at AED 100,000 in 4
 /// instalments, no deposit, that is `renewal_due` (2027-09-02).
 async fn scene() -> Scene {
-    let t = boot().await;
+    let t = boot_with(Real::DOCUMENTS).await;
     let building = t.building().await;
     let unit = t.unit(&building, "1204").await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
@@ -130,7 +130,7 @@ async fn bl_prp_04_a_late_notice_is_refused_until_the_acceptance_is_attached() {
         .assert_ok()
         .assert_see("Not attached");
 
-    s.t.accept(&v2);
+    s.t.attach_acceptance(&v2).await;
     s.t.submit(&s.agent, &v2).await.assert_ok();
     assert_eq!(s.t.status(&v2).await, LeaseStatus::PendingSignature);
 }
@@ -151,7 +151,7 @@ async fn bl_prp_04_a_notice_that_gave_up_is_not_counted() {
         },
     );
     // An acceptance attached to the lease being replaced is not this draft's.
-    s.t.accept(&s.v1);
+    s.t.attach_acceptance(&s.v1).await;
     let refused = s.t.submit(&s.agent, &v2).await;
     refused.assert_status(422);
     assert!(
@@ -322,7 +322,7 @@ async fn bl_prp_04_the_answer_is_for_a_draft_version_of_the_users_building() {
 /// `submit` succeeds.
 #[renox::test]
 async fn bl_prp_04_an_amendment_against_the_tenant_always_needs_the_acceptance() {
-    let t = boot().await;
+    let t = boot_with(Real::DOCUMENTS).await;
     let building = t.building().await;
     let unit = t.unit(&building, "1204").await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
@@ -359,7 +359,7 @@ async fn bl_prp_04_an_amendment_against_the_tenant_always_needs_the_acceptance()
     );
     assert_eq!(t.status(&v2).await, LeaseStatus::Draft);
 
-    t.accept(&v2);
+    t.attach_acceptance(&v2).await;
     t.submit(&agent, &v2).await.assert_ok();
     assert_eq!(t.status(&v2).await, LeaseStatus::PendingSignature);
 }
@@ -368,7 +368,7 @@ async fn bl_prp_04_an_amendment_against_the_tenant_always_needs_the_acceptance()
 /// neither notice nor acceptance.
 #[renox::test]
 async fn bl_prp_04_an_amendment_that_lowers_the_rent_needs_nothing() {
-    let t = boot().await;
+    let t = boot_with(Real::DOCUMENTS).await;
     let building = t.building().await;
     let unit = t.unit(&building, "1204").await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
