@@ -10,6 +10,7 @@
 //! | `POST /reorder-suggestions/{id}/switch` | `wl_inventory.reorder_switch` | `purchase_orders.issue` |
 //! | `GET /suppliers/{party}/score` | `wl_inventory.supplier_score` | `supplier_scores.view` |
 //! | `POST /supplier-scores/{id}/notes` | `wl_inventory.supplier_score_note` | `purchase_orders.issue` |
+//! | `POST /supplier-reviews/{id}/close` | `wl_inventory.supplier_review_close` | `purchase_orders.issue` |
 //!
 //! The last price, and the values behind a supplier score, are part of the
 //! answers only for a holder of `stock.cost.view`; a blocked supplier shows
@@ -47,6 +48,8 @@ pub(crate) fn routes() -> Routes {
         .name("wl_inventory.supplier_score")
         .post("/supplier-scores/{id}/notes", add_score_note)
         .name("wl_inventory.supplier_score_note")
+        .post("/supplier-reviews/{id}/close", close_review)
+        .name("wl_inventory.supplier_review_close")
         .require_auth()
 }
 
@@ -88,6 +91,7 @@ struct SupplierView {
     lead_time_days: i64,
     min_order_qty_milli: i64,
     on_hold: bool,
+    watched: bool,
     warnings: Vec<String>,
     last_price: Option<LastPrice>,
 }
@@ -121,6 +125,7 @@ async fn list_suppliers(
             lead_time_days: row.lead_time_days,
             min_order_qty_milli: row.min_order_qty_milli,
             on_hold: row.active && is_on_hold(&state, row.supplier_party_id).await?,
+            watched: crate::supplier_review::is_watched(&state, row.supplier_party_id).await?,
             warnings: warnings_of(&state, &row).await?,
             last_price: price,
         });
@@ -365,9 +370,12 @@ async fn show_score(
             notes,
         ));
     }
+    let review = crate::supplier_review::open_review(&state.db, party).await?;
     json_response(&renox::serde_json::json!({
         "live": score_view(&live, None, None, costs, Vec::new()),
         "snapshots": kept,
+        "watched": crate::supplier_review::is_watched(&state, party).await?,
+        "open_review": review.map(|review| review.id),
     }))
 }
 
@@ -386,4 +394,41 @@ async fn add_score_note(
         renox::HxRefresh,
     )
         .into_response())
+}
+
+/// `POST /supplier-reviews/{id}/close`: `decision` (`keep`, `watch`,
+/// `change_preferred` or `request_block`) and, for `change_preferred`,
+/// `items` (item ids, comma separated).
+async fn close_review(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    use crate::supplier_review::Decision;
+    let decision = match form.get("decision").map(|v| v.trim()) {
+        Some("keep") => Decision::Keep,
+        Some("watch") => Decision::Watch,
+        Some("request_block") => Decision::RequestBlock,
+        Some("change_preferred") => Decision::ChangePreferred {
+            items: form
+                .get("items")
+                .map(String::as_str)
+                .unwrap_or_default()
+                .split(',')
+                .filter_map(|item| item.trim().parse().ok())
+                .collect(),
+        },
+        _ => return Err(refused(text(&lang, "review.bad_decision"))),
+    };
+    match crate::supplier_review::close(&state, &user, id, decision).await {
+        Ok(_) => Ok((
+            Toast::success(text(&lang, "review.closed")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(renox::state_machine::TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
 }

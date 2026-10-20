@@ -343,19 +343,6 @@ fn json_of<T: Serialize>(value: &T) -> String {
     renox::serde_json::to_string(value).unwrap_or_else(|_| "[]".to_owned())
 }
 
-/// The users who hold the role `role` globally.
-async fn holders(db: &Db, role: &str) -> Result<Vec<i64>> {
-    Ok(renox::auth::permissions::users_with_role_in(
-        db,
-        role,
-        &renox::auth::permissions::Scope::global(),
-    )
-    .await?
-    .iter()
-    .map(|user| user.id)
-    .collect())
-}
-
 /// Runs `STK.RUL.04` for today: one open suggestion per item and location
 /// that is at or below its reorder point. Returns how many were written
 /// (made or updated).
@@ -468,7 +455,7 @@ async fn tell_purchasers(state: &AppState, made: &[ReorderSuggestion]) -> Result
     let Some(first) = made.first() else {
         return Ok(());
     };
-    let people = holders(&state.db, PROCUREMENT_ROLE).await?;
+    let people = crate::chase::holders(&state.db, PROCUREMENT_ROLE).await?;
     if people.is_empty() {
         return Ok(());
     }

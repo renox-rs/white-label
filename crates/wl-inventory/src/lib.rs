@@ -25,6 +25,7 @@ pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
 pub mod supplier_return;
+pub mod supplier_review;
 pub mod supplier_score;
 mod supplier_pages;
 mod texts;
@@ -52,6 +53,7 @@ pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
 pub use reorder::{ReorderSuggestion, SuggestionStatus};
+pub use supplier_review::{Decision, ReviewStatus, SupplierReview};
 pub use supplier_score::{Figures, ScoreBand, SupplierScore, SupplierScoreNote};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
@@ -212,6 +214,7 @@ impl Module for WlInventory {
         app.model::<supplier_score::SupplierDebitNoteRecord>();
         app.model::<SupplierScore>();
         app.model::<SupplierScoreNote>();
+        app.model::<SupplierReview>();
         app.model::<PurchaseOrder>();
         app.model::<PurchaseOrderLine>();
         app.model::<PurchaseOrderRevision>();
@@ -235,6 +238,7 @@ impl Module for WlInventory {
         renox::state_machine::register::<LandedCost>();
         renox::state_machine::register::<LandedCostAdjustment>();
         renox::state_machine::register::<ReorderSuggestion>();
+        renox::state_machine::register::<SupplierReview>();
         // An over-receipt above the tolerance sends `post` to approval by a
         // holder of `purchase_orders.issue` in the location's scope
         // (`STK.ACL.04`, `PLT.APR.01`); the kernel runs `post_approved`.
@@ -329,6 +333,8 @@ impl Module for WlInventory {
         // The supplier score: debit notes are kept as they are issued, the
         // snapshots are built daily at 06:00 and catch up a missed day 1.
         supplier_score::schedule(app);
+        // `STK.RUL.09`: the review task after a snapshot under the threshold.
+        supplier_review::register_types();
         app.listen(
             |event: wl_kernel::invoicing::SupplierDebitNoteIssued, state: AppState| async move {
                 supplier_score::on_debit_note_issued(&state, &event).await

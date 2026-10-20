@@ -511,6 +511,56 @@ const TEXTS: &[(&str, &str)] = &[
         "Write the review note.",
     ),
     ("wl_inventory.score.noted", "Review note added."),
+    // The review of a supplier under the threshold.
+    (
+        "wl_inventory.review.title",
+        "Review supplier {{ supplier }}: score under the threshold",
+    ),
+    (
+        "wl_inventory.review.breakdown",
+        "Score {{ score }} for {{ from }} to {{ to }} on {{ receipts }} receipts. On time {{ on_time }}, rejected value {{ rejected }}, incidents {{ incidents }}, price variance {{ price }}.",
+    ),
+    (
+        "wl_inventory.review.item",
+        "Preferred for {{ item }}; alternatives: {{ alternatives }}.",
+    ),
+    (
+        "wl_inventory.review.subject",
+        "Supplier {{ supplier }} scored {{ score }}",
+    ),
+    (
+        "wl_inventory.review.body",
+        "The monthly score of supplier {{ supplier }} is {{ score }}, under the threshold. Procurement has a review task to decide on.",
+    ),
+    (
+        "wl_inventory.review.not_open",
+        "This review is closed.",
+    ),
+    (
+        "wl_inventory.review.items_needed",
+        "Choose the items whose preferred supplier should change.",
+    ),
+    (
+        "wl_inventory.review.not_preferred",
+        "The supplier is not the preferred supplier of item {{ item }}.",
+    ),
+    (
+        "wl_inventory.review.bad_decision",
+        "Decide to keep, watch, change the preferred supplier or request a block.",
+    ),
+    ("wl_inventory.review.closed", "Review closed."),
+    (
+        "wl_inventory.review.resolved",
+        "Reviewed and decided.",
+    ),
+    (
+        "wl_inventory.review.block_title",
+        "Decide whether to block supplier {{ supplier }}",
+    ),
+    (
+        "wl_inventory.review.block_body",
+        "Procurement asks for a decision on blocking the supplier after review {{ review }}. Nothing is blocked until a holder of parties.block does it.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

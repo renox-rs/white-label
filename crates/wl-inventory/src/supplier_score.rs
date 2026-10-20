@@ -610,13 +610,17 @@ pub async fn snapshot_run(state: &AppState, on: NaiveDate) -> Result<Vec<Supplie
     Ok(made)
 }
 
-/// The daily run: the snapshots missing today. Returns how many were made.
+/// The daily run: the snapshots missing today, then the review of each one
+/// under the threshold (`STK.RUL.09`). Returns how many were made.
 ///
 /// # Errors
 ///
 /// A database error.
 pub async fn run(state: &AppState) -> Result<usize> {
-    Ok(snapshot_run(state, today()).await?.len())
+    let made = snapshot_run(state, today()).await?;
+    // `STK.RUL.09` runs after the snapshot run of the same day.
+    crate::supplier_review::on_snapshots(state, &made).await?;
+    Ok(made.len())
 }
 
 /// Registers the daily [`TASK`].

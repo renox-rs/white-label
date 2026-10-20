@@ -311,6 +311,33 @@ pub fn purchase_match(state: &AppState) -> Arc<dyn PurchaseMatchSource> {
     }
 }
 
+/// A supplier's monthly snapshot is under the threshold (wl-inventory §6
+/// `SupplierScoreBelowThreshold`, `STK.RUL.09`): procurement is asked to
+/// review the supplier. `not_enough_data` never fires it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierScoreBelowThreshold {
+    /// The supplier.
+    pub supplier: PartyId,
+    /// First day of the window the snapshot covers.
+    pub window_from: NaiveDate,
+    /// Last day of the window.
+    pub window_to: NaiveDate,
+    /// The score, 0 to 100.
+    pub score: i64,
+    /// The receipts counted.
+    pub receipts: i64,
+    /// The on-time share, in basis points.
+    pub on_time_bp: Option<i64>,
+    /// The rejected share of the value received, in basis points.
+    pub rejected_bp: Option<i64>,
+    /// The quality incidents.
+    pub incidents: i64,
+    /// The price variance, in basis points.
+    pub price_variance_bp: Option<i64>,
+}
+
+impl Event for SupplierScoreBelowThreshold {}
+
 /// One quality incident of a supplier, as the scorecard counts it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupplierIncident {

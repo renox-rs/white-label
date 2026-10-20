@@ -92,7 +92,7 @@ pub fn task_key(id: i64) -> String {
 }
 
 /// The ids of the users who hold `role` globally.
-async fn holders(db: &Db, role: &str) -> Result<Vec<i64>> {
+pub(crate) async fn holders(db: &Db, role: &str) -> Result<Vec<i64>> {
     Ok(renox::auth::permissions::users_with_role_in(
         db,
         role,
