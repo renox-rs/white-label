@@ -6,6 +6,7 @@
 //! | `GET /hr/employees` | `wl_hr.employees` | `employees.view` |
 //! | `GET /hr/employees/{id}` | `wl_hr.employee` | `employees.view` |
 //! | `POST /hr/employees/{id}/transitions/{name}` | `wl_hr.employee_transitions.*` | `employees.view` and the transition's permission |
+//! | `POST /hr/employees/{id}/exits` | `wl_hr.exit_request` | `employees.manage` in the employee's scope |
 //! | `POST /hr/employees/{id}/onboardings` | `wl_hr.onboarding_start` | `onboarding.manage` in the employee's scope |
 //! | `POST /hr/onboardings/{id}/cancel` | `wl_hr.onboarding_cancel` | `onboarding.manage` in the employee's scope |
 //! | `POST /hr/steps/{id}/done` | `wl_hr.step_done` | an assignee of the step |
@@ -29,6 +30,9 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 
 use crate::employee::{Employee, EmployeeStatus};
+use crate::exits::{
+    self, ExitDocument, ExitInput, KIND_AGREEMENT, KIND_AUTHORITY_NOTICE, KIND_DEATH_CERTIFICATE,
+};
 use crate::onboarding::{
     Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest, StartTrigger,
     StepStatus,
@@ -61,6 +65,8 @@ pub fn routes() -> Routes {
             Routes::new()
                 .post("/hr/employees/{id}/onboardings", start_manual)
                 .name("wl_hr.onboarding_start")
+                .post("/hr/employees/{id}/exits", request_exit)
+                .name("wl_hr.exit_request")
                 .post("/hr/onboardings/{id}/cancel", cancel_manual)
                 .name("wl_hr.onboarding_cancel")
                 .post("/hr/steps/{id}/in-person", in_person)
@@ -260,10 +266,25 @@ pub struct OnboardingView {
     pub steps: Vec<StepView>,
 }
 
+/// The non-standard exit request waiting for approval, as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub struct PendingExitView {
+    /// The action asked for, in the page's language.
+    pub action: String,
+    /// Who asked.
+    pub requested_by: String,
+    /// Why.
+    pub reason: String,
+}
+
 /// The employee page.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-hr/employee.html")]
 pub(crate) struct ShowPage {
+    pending_exit: Option<PendingExitView>,
+    exit_actions: Vec<(String, String)>,
+    exit_selected: String,
+    can_request_exit: bool,
     tx: Texts,
     employee: EmployeeRow,
     job_title: String,
@@ -434,7 +455,32 @@ async fn show(
         status_kind: employee_kind(employee.status),
         progress: progress_of(&state.db, employee.id).await?,
     };
+    let pending_exit = match exits::pending_for(&state.db, &employee).await? {
+        Some(request) => Some(PendingExitView {
+            action: text(&lang, &format!("exits.transition.{}", request.transition)),
+            requested_by: user_name(&state.db, request.requester_id).await,
+            reason: request.payload.0["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+        }),
+        None => None,
+    };
+    let exit_actions: Vec<(String, String)> = exits::available_actions(employee.status)
+        .into_iter()
+        .map(|name| (name.to_owned(), text(&lang, &format!("exits.transition.{name}"))))
+        .collect();
+    let can_request_exit = pending_exit.is_none()
+        && !exit_actions.is_empty()
+        && exits::holds_manage(&state, user.id, &employee).await?;
     Ok(View::typed(ShowPage {
+        pending_exit,
+        exit_selected: exit_actions
+            .first()
+            .map(|(name, _)| name.clone())
+            .unwrap_or_default(),
+        exit_actions,
+        can_request_exit,
         tx: texts::all(&lang),
         employee: row,
         job_title: employee.job_title.clone(),
@@ -508,6 +554,112 @@ async fn start_manual(
     .map_err(StartRefused::into_error)?;
     Ok((
         Toast::success(text(&lang, "onboarding.started")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that requests a non-standard exit (`HRM.ACL.07`).
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ExitForm {
+    /// The action, one of the five.
+    #[validate(max = 40)]
+    #[serde(default)]
+    pub transition: String,
+    /// Why.
+    #[validate(max = 1000)]
+    #[serde(default)]
+    pub reason: String,
+    /// The MoHRE absence report number.
+    #[validate(max = 100)]
+    #[serde(default)]
+    pub report_number: String,
+    /// The MoHRE absence report date.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub report_date: String,
+    /// The report file, a document number.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub report_file: String,
+    /// The other party's written agreement: a document number or reference.
+    #[validate(max = 100)]
+    #[serde(default)]
+    pub agreement: String,
+    /// The death certificate: a document number or reference.
+    #[validate(max = 100)]
+    #[serde(default)]
+    pub death_certificate: String,
+    /// The authority's notice: a document number or reference.
+    #[validate(max = 100)]
+    #[serde(default)]
+    pub authority_notice: String,
+    /// The reference of the withdrawal or cancellation of the report.
+    #[validate(max = 100)]
+    #[serde(default)]
+    pub reference: String,
+    /// The date of death.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub death_date: String,
+    /// The date the worker returned.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub return_date: String,
+}
+
+/// A date field: `None` when blank, a 400 when it is not a date.
+fn date_field(name: &str, value: &str) -> Result<Option<NaiveDate>> {
+    match value.trim() {
+        "" => Ok(None),
+        text => text
+            .parse::<NaiveDate>()
+            .map(Some)
+            .map_err(|_| Error::BadRequest(name.to_owned())),
+    }
+}
+
+/// A text that may be a stored document's number or just a reference.
+fn document_field(kind: &str, value: &str) -> Option<ExitDocument> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| ExitDocument {
+        kind: kind.to_owned(),
+        document: value.parse().ok(),
+        reference: Some(value.to_owned()),
+    })
+}
+
+/// `POST /hr/employees/{id}/exits`: HR requests a non-standard exit; the
+/// employee keeps its state until another user approves it.
+async fn request_exit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ExitForm>,
+) -> Result<Response> {
+    let input = ExitInput {
+        reason: form.reason.clone(),
+        documents: [
+            document_field(KIND_AGREEMENT, &form.agreement),
+            document_field(KIND_DEATH_CERTIFICATE, &form.death_certificate),
+            document_field(KIND_AUTHORITY_NOTICE, &form.authority_notice),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+        report_number: Some(form.report_number.trim().to_owned()).filter(|n| !n.is_empty()),
+        report_date: date_field("report_date", &form.report_date)?,
+        report_file: form.report_file.trim().parse().ok(),
+        death_date: date_field("death_date", &form.death_date)?,
+        return_date: date_field("return_date", &form.return_date)?,
+        withdrawal_reference: Some(form.reference.trim().to_owned()).filter(|r| !r.is_empty()),
+    };
+    exits::request(&state, &user, id, form.transition.trim(), input)
+        .await?
+        .map_err(exits::ExitRefused::into_error)?;
+    Ok((
+        Toast::success(text(&lang, "exits.sent")),
         renox::HxRefresh,
     )
         .into_response())

@@ -213,6 +213,20 @@ impl ExitRefused {
     }
 }
 
+/// The exits that can be requested for an employee in `status`, in the
+/// order of [`EXIT_TRANSITIONS`].
+pub fn available_actions(status: crate::employee::EmployeeStatus) -> Vec<&'static str> {
+    let machine = Employee::machine();
+    EXIT_TRANSITIONS
+        .into_iter()
+        .filter(|name| {
+            machine
+                .find(name)
+                .is_some_and(|t| t.from_states().iter().any(|s| s.to_string() == status.as_str()))
+        })
+        .collect()
+}
+
 /// The pending request about `employee` for one of the five exits, if any.
 pub async fn pending_for(db: &Db, employee: &Employee) -> Result<Option<ApprovalRequest>> {
     Ok(ApprovalRequest::pending_about(db, &employee.subject())
@@ -223,7 +237,7 @@ pub async fn pending_for(db: &Db, employee: &Employee) -> Result<Option<Approval
 
 /// Whether `user` holds `employees.manage` in one of the employee's scopes
 /// (globally, when it has none).
-async fn holds_manage(state: &AppState, user: i64, employee: &Employee) -> Result<bool> {
+pub(crate) async fn holds_manage(state: &AppState, user: i64, employee: &Employee) -> Result<bool> {
     let scopes = assignees::scopes_of(&state.db, &employee.scopes(&state.db).await?).await?;
     for scope in &scopes {
         if users_with_permission_in(&state.db, permissions::EMPLOYEES_MANAGE, scope)
@@ -260,10 +274,7 @@ pub async fn request(
     if !holds_manage(state, by.id, &employee).await? {
         return Err(Error::Forbidden);
     }
-    let leaves_state = Employee::machine()
-        .find(transition)
-        .is_some_and(|t| t.from_states().iter().any(|s| s.to_string() == employee.status.as_str()));
-    if !leaves_state {
+    if !available_actions(employee.status).contains(&transition) {
         return Ok(Err(ExitRefused::WrongState));
     }
     if let Some(message) = missing(transition, &input) {

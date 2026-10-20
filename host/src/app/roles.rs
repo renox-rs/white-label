@@ -167,6 +167,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LEADS_MANAGE,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
+            hr::EMPLOYEES_EXIT_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
             prp::UNITS_VIEW,
@@ -315,8 +316,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::BUDGETS_APPROVE,
             invoices::CASHFLOW_VIEW,
             invoices::DRAWINGS_APPROVE,
-            // The second person for `waive` and `reopen` (`HRM.ACL.10`).
+            // The second person for `waive` and `reopen` (`HRM.ACL.10`), and
+            // the MD who approves the non-standard exits (`HRM.ACL.07`).
             hr::EMPLOYEES_VIEW,
+            hr::EMPLOYEES_EXIT_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
         ],
