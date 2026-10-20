@@ -63,6 +63,15 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.overlap.note_locked",
         "Overlaps the locked record :record at :location (:from to :to).",
     ),
+    // The overtime cap (`HRM.RUL.13`).
+    (
+        "wl_attendance.overtime.note_day",
+        "The day has :total h of work against :normal h of normal hours plus :cap h of overtime allowed.",
+    ),
+    (
+        "wl_attendance.overtime.note_window",
+        "The overtime of the :days days up to :date is :overtime h against :cap h allowed.",
+    ),
     // Notifications.
     (
         "wl_attendance.notices.flagged_subject",
@@ -71,6 +80,14 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_attendance.notices.flagged_body",
         "The attendance of {{ employee }} at {{ location }} on {{ date }} (from {{ from }}) was flagged: {{ flag_text }}. {{ note }}",
+    ),
+    (
+        "wl_attendance.notices.over_cap_subject",
+        "Hours above the overtime cap: {{ employee }}",
+    ),
+    (
+        "wl_attendance.notices.over_cap_body",
+        "{{ employee }} is over the overtime cap on {{ date }}, and every record of the day is locked, so none could be flagged. {{ note }}",
     ),
 ];
 

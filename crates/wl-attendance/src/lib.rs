@@ -9,6 +9,7 @@ pub mod location;
 pub mod lock;
 mod notices;
 pub mod overlap;
+pub mod overtime;
 pub mod pages;
 pub mod record;
 pub mod service;
@@ -70,6 +71,15 @@ impl WlAttendance {
     /// The role whose holders are told of a midday break flag.
     pub fn hse_role(mut self, role: &str) -> Self {
         self.config.hse_role = role.to_owned();
+        self
+    }
+
+    /// The overtime `HRM.RUL.13` allows above the normal hours: `per_day`
+    /// hours a day (default 2) and `per_window` hours in any three weeks
+    /// (default 144).
+    pub fn overtime_cap(mut self, per_day: i64, per_window: i64) -> Self {
+        self.config.overtime_day_minutes = per_day * 60;
+        self.config.overtime_window_minutes = per_window * 60;
         self
     }
 

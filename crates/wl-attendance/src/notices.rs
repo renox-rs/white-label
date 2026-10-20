@@ -34,12 +34,23 @@ use crate::texts::english;
 /// The people are told that a record was flagged.
 pub const RECORD_FLAGGED: &str = "attendance.record_flagged";
 
+/// The supervisor is told that a day is over the overtime cap although every
+/// record of it is `locked`, so that nothing could be flagged (`HRM.RUL.13`).
+pub const OVER_CAP: &str = "attendance.over_cap";
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
     let subject = english("wl_attendance.notices.flagged_subject", &[]);
     let body = english("wl_attendance.notices.flagged_body", &[]);
     notify::register_type(
         NotificationTypeDef::new(RECORD_FLAGGED, "attendance")
+            .group("attendance")
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+    );
+    let subject = english("wl_attendance.notices.over_cap_subject", &[]);
+    let body = english("wl_attendance.notices.over_cap_body", &[]);
+    notify::register_type(
+        NotificationTypeDef::new(OVER_CAP, "attendance")
             .group("attendance")
             .template(NotifyChannel::Email, "en", Some(&subject), &body),
     );
@@ -120,6 +131,48 @@ pub(crate) async fn flag_added(state: &AppState, added: &Added) -> Result {
             "flag": added.flag.as_str(),
             "flag_text": flag_text(added.flag),
             "note": added.note,
+        }));
+    for user in users {
+        request = request.to_user(user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the supervisors of the `locked` records of a day that the day is over
+/// the overtime cap and that nothing could be flagged. Nobody is told when no
+/// supervisor is known.
+pub(crate) async fn over_cap_unflagged(
+    state: &AppState,
+    locked: &[AttendanceRecord],
+    note: &str,
+) -> Result {
+    let Some(first) = locked.first() else {
+        return Ok(());
+    };
+    let profile = workforce(state).staff(state, first.employee()).await?;
+    let mut users = BTreeSet::new();
+    for record in locked {
+        users.extend(supervisors(record, profile.as_ref()));
+    }
+    if users.is_empty() {
+        return Ok(());
+    }
+    let employee = match &profile {
+        Some(profile) => wl_kernel::parties::directory(state)
+            .display_name(&state.db, profile.party, "en")
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    }
+    .unwrap_or_else(|| format!("#{}", first.employee_id));
+    let mut request = NotifyRequest::new(OVER_CAP, first.record_id().subject())
+        .subject_label(&format!("{employee} {}", first.date))
+        .data(json!({
+            "employee": employee,
+            "date": first.date.to_string(),
+            "note": note,
         }));
     for user in users {
         request = request.to_user(user);
