@@ -275,6 +275,34 @@ impl Clinic {
         .await
     }
 
+    /// The billing coordinator: prepares the prior authorisations and holds
+    /// the role the rules send their tasks to.
+    pub async fn coordinator(&self) -> User {
+        let grants = [
+            wl_scheduling::permissions::VIEW,
+            clinics::permissions::VISITS_VIEW,
+            clinics::permissions::POLICIES_VIEW,
+            clinics::permissions::POLICIES_MANAGE,
+            clinics::permissions::AUTHORISATIONS_MANAGE,
+        ];
+        let email = "bea@example.com";
+        if let Some(found) = User::find_by_email(self.db(), email).await.unwrap() {
+            return found;
+        }
+        let user = self.user("Bea", &grants).await;
+        permissions::define_role(
+            self.db(),
+            clinics::permissions::BILLING_COORDINATOR_ROLE,
+            &grants,
+        )
+        .await
+        .unwrap();
+        user.assign_role(self.db(), clinics::permissions::BILLING_COORDINATOR_ROLE)
+            .await
+            .unwrap();
+        user
+    }
+
     /// Someone who may only look at the appointments.
     pub async fn viewer(&self) -> User {
         self.user("Vera", &[wl_scheduling::permissions::VIEW])

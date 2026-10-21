@@ -16,6 +16,11 @@ pub const POLICIES_VIEW: &str = "insurance_policies.view";
 /// (`CLN.ACL.15`: the receptionist's).
 pub const COVERAGE_RECORD: &str = "coverage.record";
 
+/// Prepare prior authorisations, send them to the payer, record the payer's
+/// answer and keep the payer's list of services that need one
+/// (`CLN.INS.03`: the billing coordinator's).
+pub const AUTHORISATIONS_MANAGE: &str = "insurance.manage";
+
 /// The owner / medical director: told when a practitioner licence expires
 /// (`CLN.RUL.01`) and alerted when a compliance-critical rule fails.
 pub const OWNER_ROLE: &str = "owner";
@@ -25,3 +30,7 @@ pub const CLINIC_MANAGER_ROLE: &str = "clinic_manager";
 /// The receptionist of a branch: books, checks in, records the coverage
 /// outcome.
 pub const RECEPTIONIST_ROLE: &str = "receptionist";
+/// The billing coordinator: prepares and follows the prior authorisations,
+/// and is asked to request a new one when one stops covering an appointment
+/// (`CLN.RUL.07`, `CLN.RUL.09`).
+pub const BILLING_COORDINATOR_ROLE: &str = "billing_coordinator";

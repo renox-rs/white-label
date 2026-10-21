@@ -1,0 +1,44 @@
+{#- clinics: the prior authorisations of the patients, newest first, with the
+    units left of each, the action that prepares one and the payer's list of
+    services that need one. Replace it with
+    resources/views/clinics/authorisations.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['authorisation.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['authorisation.title']" :subtitle="tx['authorisation.subtitle']">
+      <template rx-if="can_manage">
+        <rx-action-sheet id="authorisation-new" :label="tx['authorisation.new']" :action="route('clinics.authorisation_create')"
+                         :title="tx['authorisation.new']" :description="tx['authorisation.new_description']" :submit-label="tx['authorisation.new']" icon="plus">
+          <rx-select name="policy" :label="tx['coverage.policy']" :options="policy_options" :selected="policy_selected" id="authorisation-new-policy"/>
+          <rx-input name="services" :label="tx['authorisation.services']" id="authorisation-new-services" required/>
+          <rx-input name="units" type="number" :label="tx['authorisation.units_asked']" value="1" id="authorisation-new-units" required/>
+        </rx-action-sheet>
+        <rx-action-sheet id="authorisation-required" :label="tx['authorisation.required_new']" :action="route('clinics.prior_auth_service_add')"
+                         :title="tx['authorisation.required_new']" :description="tx['authorisation.required_description']" :submit-label="tx['authorisation.required_new']" icon="plus">
+          <rx-input name="payer" :label="tx['policies.payer_party']" id="authorisation-required-payer" required/>
+          <rx-input name="code" :label="tx['authorisation.required_code']" id="authorisation-required-code" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="authorisations" as="row" :key="row.id" :caption="tx['authorisation.title']" card>
+      <rx-column :label="tx['authorisation.number']"><a href="{{ route('clinics.authorisation', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['policies.patient']">{{ row.patient }}</rx-column>
+      <rx-column :label="tx['policies.payer']" hide-narrow>{{ row.payer }}</rx-column>
+      <rx-column :label="tx['authorisation.services']" hide-narrow>{{ row.services }}</rx-column>
+      <rx-column :label="tx['authorisation.units']">{{ row.units }}</rx-column>
+      <rx-column :label="tx['authorisation.valid_until']" hide-narrow>{{ row.valid_until }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['authorisation.empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="required" as="row" :key="row.id" :caption="tx['authorisation.required_title']" card>
+      <rx-column :label="tx['policies.payer']">{{ row.payer }}</rx-column>
+      <rx-column :label="tx['authorisation.required_code']">{{ row.code }}</rx-column>
+      <rx-column :label="tx['authorisation.required_remove']">
+        <template rx-if="can_manage">
+          <rx-confirm :id="'authorisation-required-remove-' ~ row.id" :label="tx['authorisation.required_remove']" :action="route('clinics.prior_auth_service_remove', row.id)" method="POST"
+                      :title="tx['authorisation.required_remove']" :message="tx['authorisation.required_remove_message']" :confirm-label="tx['authorisation.required_remove']" :cancel-label="tx['button_cancel']" icon="trash"/>
+        </template>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['authorisation.required_empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -172,6 +172,138 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.licences.body",
         "The {{ kind }} of {{ practitioner }} expired on {{ expires_on }}. New bookings for them at {{ branches }} are refused and cannot be overridden. Appointments affected: {{ count }}; they are in conflict for the front desk to reassign or reschedule. Nothing was cancelled.",
     ),
+    // The prior authorisations (CLN.INS.03).
+    ("clinics.authorisation.title", "Prior authorisations"),
+    (
+        "clinics.authorisation.subtitle",
+        "What the payers approved for named services, with the units left.",
+    ),
+    ("clinics.authorisation.new", "New authorisation"),
+    (
+        "clinics.authorisation.new_description",
+        "Prepare the request for the patient's policy: the service codes it should cover and the units asked for.",
+    ),
+    ("clinics.authorisation.number", "Number"),
+    ("clinics.authorisation.details", "Authorisation"),
+    ("clinics.authorisation.services", "Service codes, comma separated"),
+    ("clinics.authorisation.units", "Units left"),
+    ("clinics.authorisation.of", "of"),
+    ("clinics.authorisation.units_asked", "Units asked for"),
+    ("clinics.authorisation.units_approved", "Units approved"),
+    ("clinics.authorisation.units_consumed", "Units consumed"),
+    ("clinics.authorisation.units_left", "Units left"),
+    ("clinics.authorisation.reference", "Payer's reference"),
+    ("clinics.authorisation.valid_until", "Valid until"),
+    ("clinics.authorisation.denial_reason", "Reason the payer gave"),
+    ("clinics.authorisation.empty", "No prior authorisations yet"),
+    ("clinics.authorisation.created", "Authorisation prepared."),
+    ("clinics.authorisation.status.draft", "Draft"),
+    ("clinics.authorisation.status.requested", "Requested"),
+    ("clinics.authorisation.status.approved", "Approved"),
+    ("clinics.authorisation.status.partially_approved", "Partially approved"),
+    ("clinics.authorisation.status.denied", "Denied"),
+    ("clinics.authorisation.status.used", "Used"),
+    ("clinics.authorisation.status.expired", "Expired"),
+    ("clinics.authorisation.status.cancelled", "Cancelled"),
+    ("clinics.authorisation.request", "Send to the payer"),
+    (
+        "clinics.authorisation.request_description",
+        "Records that the request was sent, with the payer's reference if it gave one.",
+    ),
+    ("clinics.authorisation.requested", "Request recorded."),
+    ("clinics.authorisation.approve", "Approve"),
+    (
+        "clinics.authorisation.approve_description",
+        "The payer approved the units asked for: its reference and the last day it is valid.",
+    ),
+    ("clinics.authorisation.approved", "Authorisation approved."),
+    ("clinics.authorisation.approve_partially", "Approve partially"),
+    (
+        "clinics.authorisation.approve_partially_description",
+        "The payer approved fewer units than were asked for.",
+    ),
+    (
+        "clinics.authorisation.approved_partially",
+        "Authorisation partially approved.",
+    ),
+    ("clinics.authorisation.deny", "Deny"),
+    (
+        "clinics.authorisation.deny_description",
+        "The payer refused. The patient is told, without the reason, and may choose to pay for the service themselves.",
+    ),
+    ("clinics.authorisation.denied", "Authorisation denied."),
+    ("clinics.authorisation.cancel", "Cancel"),
+    (
+        "clinics.authorisation.cancel_message",
+        "The authorisation is no longer needed.",
+    ),
+    ("clinics.authorisation.cancelled", "Authorisation cancelled."),
+    (
+        "clinics.authorisation.required_title",
+        "Services that need a prior authorisation",
+    ),
+    ("clinics.authorisation.required_new", "Service that needs one"),
+    (
+        "clinics.authorisation.required_description",
+        "A service on the payer's list is checked in only with a valid authorisation that has units left, or as self-pay with consent.",
+    ),
+    ("clinics.authorisation.required_code", "Service code"),
+    ("clinics.authorisation.required_remove", "Remove"),
+    (
+        "clinics.authorisation.required_remove_message",
+        "The payer no longer asks for an authorisation for this service.",
+    ),
+    ("clinics.authorisation.required_empty", "No service needs an authorisation"),
+    ("clinics.authorisation.required_added", "Service added to the list."),
+    ("clinics.authorisation.required_removed", "Service removed from the list."),
+    (
+        "clinics.authorisation.problem.services",
+        "Name the services and the units before the request is sent.",
+    ),
+    (
+        "clinics.authorisation.problem.approval",
+        "The payer's reference and a last valid day that is not in the past are required.",
+    ),
+    (
+        "clinics.authorisation.problem.units",
+        "Partial approval needs at least one unit and fewer than were asked for.",
+    ),
+    (
+        "clinics.authorisation.problem.reason",
+        "The reason the payer gave is required.",
+    ),
+    (
+        "clinics.authorisation.problem.units_left",
+        "There are not that many units left on the authorisation.",
+    ),
+    (
+        "clinics.authorisation.problem.not_last",
+        "These are not the last units: the authorisation stays open.",
+    ),
+    (
+        "clinics.authorisation.problem.is_last",
+        "These are the last units: the authorisation is used.",
+    ),
+    (
+        "clinics.authorisation.problem.not_passed",
+        "The last valid day has not passed yet.",
+    ),
+    (
+        "clinics.authorisation.problem.units_asked",
+        "Ask for at least one unit.",
+    ),
+    (
+        "clinics.authorisation.problem.service_code",
+        "The service code is required.",
+    ),
+    (
+        "clinics.authorisation.denied_subject",
+        "Your insurer did not approve the authorisation",
+    ),
+    (
+        "clinics.authorisation.denied_body",
+        "Your insurer did not approve authorisation {{ number }}. You may choose to pay for the service yourself, or we can help you with another date. Please contact the clinic.",
+    ),
     // The insurance policies.
     ("clinics.policies.title", "Insurance policies"),
     (

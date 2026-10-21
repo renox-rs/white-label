@@ -3,6 +3,9 @@
 
 pub mod appointment;
 pub mod appointments;
+pub mod authorisation;
+pub mod authorisation_machine;
+pub mod authorisations;
 pub mod consent;
 pub mod coverage;
 mod db;
@@ -23,6 +26,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use appointment::Appointment;
+pub use authorisation::{AuthStatus, AuthorisationHold, PriorAuthService, PriorAuthorisation};
 pub use consent::{ConsentLine, SelfPayConsent};
 pub use coverage::{CoverageOutcome, PendingCheckIn};
 pub use licences::LicenceAlert;
@@ -47,6 +51,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "clinics/visit.html",
         include_str!("../views/clinics/visit.html"),
+    ),
+    (
+        "clinics/authorisations.html",
+        include_str!("../views/clinics/authorisations.html"),
+    ),
+    (
+        "clinics/authorisation.html",
+        include_str!("../views/clinics/authorisation.html"),
     ),
 ];
 
@@ -85,7 +97,9 @@ impl Module for Clinics {
         app.view_data::<pages::policies::IndexPage>()
             .view_data::<pages::appointments::IndexPage>()
             .view_data::<pages::appointments::ShowPage>()
-            .view_data::<pages::visits::ShowPage>();
+            .view_data::<pages::visits::ShowPage>()
+            .view_data::<pages::authorisations::IndexPage>()
+            .view_data::<pages::authorisations::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -101,7 +115,10 @@ impl Module for Clinics {
             .model::<EligibilityCheck>()
             .model::<LicenceAlert>()
             .model::<PendingCheckIn>()
-            .model::<SelfPayConsent>();
+            .model::<SelfPayConsent>()
+            .model::<PriorAuthorisation>()
+            .model::<PriorAuthService>()
+            .model::<AuthorisationHold>();
         visit_machine::register();
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
@@ -111,6 +128,9 @@ impl Module for Clinics {
         // `CLN.ACL.15`: an insured visit is checked in only with its coverage
         // outcome (BL-CLN-01).
         coverage::register(app);
+        // The prior authorisation, its notice to the patient and the daily
+        // expiry (BL-CLN-02, BL-CLN-03).
+        authorisations::register(app);
         // `CLN.RUL.01`: an expired licence or set of privileges is told to
         // the clinic manager of the branch and the owner (BL-CLN-12).
         licences::register(app);
@@ -123,6 +143,14 @@ impl Module for Clinics {
                 .group("nav.app")
                 .order(71)
                 .permission(permissions::VISITS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("clinics.authorisations", "nav.prior_authorisations")
+                .icon("file-text")
+                .group("nav.app")
+                .order(72)
+                .permission(permissions::POLICIES_VIEW),
         );
         app.nav(
             "app",

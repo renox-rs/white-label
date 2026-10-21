@@ -3,6 +3,7 @@
 //! signed-in user; each handler checks the permission of its action.
 
 pub mod appointments;
+pub mod authorisations;
 pub mod policies;
 pub mod visits;
 
@@ -23,6 +24,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .merge(policies::routes())
         .merge(appointments::routes())
+        .merge(authorisations::routes())
         .merge(visits::routes())
 }
 
