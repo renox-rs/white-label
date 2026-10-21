@@ -3503,8 +3503,10 @@ dependencies = [
  "renox",
  "serde",
  "tempfile",
+ "wl-attendance",
  "wl-kernel",
  "wl-payments",
+ "wl-ticketing",
 ]
 
 [[package]]

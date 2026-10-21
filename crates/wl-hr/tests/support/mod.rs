@@ -511,8 +511,20 @@ impl<E: Clone> Recorded<E> {
     }
 }
 
+/// The real modules that take the place of a fake in a booted app.
+#[derive(Clone, Copy, Default)]
+struct Real {
+    /// wl-payments records the payments HR makes.
+    payments: bool,
+    /// wl-attendance provides the `Timesheets`.
+    attendance: bool,
+    /// wl-ticketing provides the `TaskCreator`.
+    ticketing: bool,
+}
+
 /// Records the events and provides the fakes.
 struct Fakes {
+    real: Real,
     notices: Recording,
     checklists: ChecklistDesk,
     sops: SopDesk,
@@ -738,7 +750,9 @@ impl Module for Fakes {
         provide_checklists(app, self.checklists.clone());
         provide_sop_acknowledgements(app, self.sops.clone());
         provide_guard(app, self.docs.clone());
-        provide_timesheets(app, self.timesheets.clone());
+        if !self.real.attendance {
+            provide_timesheets(app, self.timesheets.clone());
+        }
         provide_cost_poster(app, self.costs.clone());
         provide_directory(app, self.parties.clone());
         record(app, &self.pay_changed);
@@ -754,7 +768,9 @@ impl Module for Fakes {
         record(app, &self.paid);
         record(app, &self.settlement_paid);
         record(app, &self.settlement_disputed);
-        provide_task_creator(app, self.tasks.clone());
+        if !self.real.ticketing {
+            provide_task_creator(app, self.tasks.clone());
+        }
         if let Some(calendar) = &self.calendar {
             app.provide(Arc::clone(calendar));
         }
@@ -1456,26 +1472,52 @@ pub async fn boot() -> Booted {
 /// [`boot`] with `module`, and the default induction template when
 /// `induction` is true.
 pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
-    boot_full(module, induction, false, None).await
+    boot_full(module, induction, Real::default(), None).await
 }
 
 /// [`boot`] with `calendar` as the app's payroll calendar.
 pub async fn boot_with_calendar(
     calendar: impl wl_kernel::payroll_calendar::PayrollCalendar,
 ) -> Booted {
-    boot_full(WlHr::new(), true, false, Some(Arc::new(calendar))).await
+    boot_full(WlHr::new(), true, Real::default(), Some(Arc::new(calendar))).await
 }
 
 /// [`boot`] with the real wl-payments module, to which the payments HR makes
 /// are recorded.
 pub async fn boot_with_payments() -> Booted {
-    boot_full(WlHr::new(), true, true, None).await
+    let real = Real {
+        payments: true,
+        ..Real::default()
+    };
+    boot_full(WlHr::new(), true, real, None).await
+}
+
+/// [`boot`] with the real wl-attendance module in place of the fake
+/// `Timesheets`: the hours payroll is given and the timesheets `submit` marks
+/// are wl-attendance's own.
+pub async fn boot_with_attendance() -> Booted {
+    let real = Real {
+        attendance: true,
+        ..Real::default()
+    };
+    boot_full(WlHr::new(), true, real, None).await
+}
+
+/// [`boot`] with the real wl-ticketing module in place of the fake
+/// `TaskCreator`: the labour case, the security task and the HR tasks are
+/// tickets of wl-ticketing, seeded as `db:seed` seeds for a client with HR.
+pub async fn boot_with_ticketing() -> Booted {
+    let real = Real {
+        ticketing: true,
+        ..Real::default()
+    };
+    boot_full(WlHr::new(), true, real, None).await
 }
 
 async fn boot_full(
     module: WlHr,
     induction: bool,
-    payments: bool,
+    real: Real,
     calendar: Option<Arc<dyn wl_kernel::payroll_calendar::PayrollCalendar>>,
 ) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
@@ -1483,6 +1525,7 @@ async fn boot_full(
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
     let fakes = Fakes {
+        real,
         notices: Recording::default(),
         checklists: ChecklistDesk::default(),
         sops: SopDesk::default(),
@@ -1540,19 +1583,37 @@ async fn boot_full(
         .module(renox::audit::Audit)
         .module(module)
         .module(fakes);
-    let app = if payments {
+    let app = if real.payments {
         app.module(wl_payments::WlPayments::new())
     } else {
         app
     };
-    let client = if payments {
-        CLIENT.replace(
-            r#"["parties", "hr"]"#,
-            r#"["parties", "hr", "invoicing", "payments"]"#,
-        )
+    let app = if real.attendance {
+        app.module(wl_attendance::WlAttendance::new())
     } else {
-        CLIENT.to_owned()
+        app
     };
+    let app = if real.ticketing {
+        app.module(wl_ticketing::WlTicketing::new())
+    } else {
+        app
+    };
+    let mut modules = vec!["parties", "hr"];
+    if real.payments {
+        modules.extend(["invoicing", "payments"]);
+    }
+    if real.attendance {
+        modules.push("attendance");
+    }
+    if real.ticketing {
+        modules.push("ticketing");
+    }
+    let listed = modules
+        .iter()
+        .map(|m| format!("\"{m}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let client = CLIENT.replace(r#"["parties", "hr"]"#, &format!("[{listed}]"));
     let config = wl_kernel::ClientConfig::parse(&client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1689,6 +1750,12 @@ async fn boot_full(
     .unwrap();
     if induction {
         wl_hr::seed::install(app.db()).await.unwrap().total();
+    }
+    if real.ticketing {
+        app.kernel()
+            .call("ticketing:install", Vec::<String>::new())
+            .await
+            .expect("ticketing:install runs");
     }
     Booted {
         app,
