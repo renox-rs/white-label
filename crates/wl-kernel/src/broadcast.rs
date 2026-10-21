@@ -11,7 +11,8 @@
 //! marketing request (`NTF.ACL.04`: nobody starts a broadcast outside a
 //! campaign).
 //!
-//! `wl-notify` emits [`BroadcastCompleted`] and [`BroadcastCancelled`], so the
+//! `wl-notify` emits [`BroadcastCompleted`], [`BroadcastCancelled`] and
+//! [`BroadcastStopped`], so the
 //! requester's module can listen. Neither carries a party name.
 
 use std::collections::BTreeMap;
@@ -231,6 +232,23 @@ pub struct BroadcastCancelled {
 }
 
 impl Event for BroadcastCancelled {}
+
+/// A broadcast was stopped: its messages not yet sent were suppressed with
+/// the reason `broadcast_stopped` (wl-notify §4.3 *Stop*). The broadcast keeps
+/// its state. Emitted once per stop.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BroadcastStopped {
+    /// The broadcast.
+    pub broadcast: BroadcastId,
+    /// Its requester.
+    pub requester: Subject,
+    /// The user who stopped it.
+    pub stopped_by: i64,
+    /// The messages suppressed by the stop.
+    pub suppressed: i64,
+}
+
+impl Event for BroadcastStopped {}
 
 /// The 422 of a broadcast request while the notify module is off.
 pub(crate) fn broadcasts_off() -> Error {

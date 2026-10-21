@@ -115,6 +115,10 @@ pub struct Broadcast {
     pub started_at: Option<DateTime>,
     /// When it completed.
     pub completed_at: Option<DateTime>,
+    /// The user who stopped it (`NTF.RUL.03`); the state stays.
+    pub stopped_by: Option<i64>,
+    /// When it was stopped.
+    pub stopped_at: Option<DateTime>,
     /// Bumped to take the broadcast lock when it starts.
     pub lock_version: i64,
     /// The lifecycle state; changed only by a transition.
