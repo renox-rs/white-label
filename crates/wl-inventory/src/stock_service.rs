@@ -27,14 +27,15 @@
 use renox::db::Transaction;
 use renox::prelude::*;
 use wl_kernel::Subject;
+use wl_kernel::documents::today;
 use wl_kernel::inventory::{
-    ConsumeRequest, Consumed, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, StockFuture, StockNegative,
-    StockService,
+    ConsumeRequest, Consumed, ConsumedLot, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE,
+    LOT_SUBJECT_TYPE, StockChoice, StockFuture, StockLot, StockNegative, StockService,
 };
 
 use crate::balance::{self, Candidate};
 use crate::item::{Item, quantity_text, value_of};
-use crate::location::Location;
+use crate::location::{Location, LocationType};
 use crate::lot::{Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
 use crate::pending_issue;
@@ -212,10 +213,26 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
     let location = Location::find_or_404(&state.db, request.location.subject_id).await?;
     let item = Item::find_or_404(&state.db, request.item.subject_id).await?;
     let mut tx = state.db.begin().await?;
-    let candidates = balance::candidates(&mut tx, &item, location.id).await?;
+    let mut candidates = balance::candidates(&mut tx, &item, location.id).await?;
+    // The lot the user picked or scanned goes first; the rest follows first
+    // expiry first. A lot that is not a candidate (held, not released,
+    // empty) is not taken.
+    if let Some(preferred) = request.lot.as_ref().map(|lot| lot.subject_id)
+        && let Some(position) = candidates
+            .iter()
+            .position(|candidate| candidate.lot_id == Some(preferred))
+    {
+        let first = candidates.remove(position);
+        candidates.insert(0, first);
+    }
     let (taken, short) = plan(&candidates, request.quantity_milli);
     let mut posted = 0;
+    let mut lots = Vec::new();
     for (lot_id, quantity) in taken {
+        lots.push(ConsumedLot {
+            lot: lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
+            quantity_milli: quantity,
+        });
         let mut moved = StockMovement::leaving(
             MovementType::Consume,
             item.id,
@@ -274,7 +291,75 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
         posted_milli: posted,
         short_milli: short,
         pending_issue: pending.map(|pending| pending.subject()),
+        lots,
     })
+}
+
+/// The store of scope `kind`/`id`: the location of that scope of the type
+/// store (else the first location of the scope that is not in transit,
+/// quarantine or scrap), oldest first.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn store_of(db: &Db, kind: &str, id: i64) -> Result<Option<Location>> {
+    let found = Location::query()
+        .where_(Location::SCOPE_TYPE.eq(Some(kind.to_owned())))
+        .where_(Location::SCOPE_ID.eq(Some(id)))
+        .order_by(Location::ID)
+        .get(db)
+        .await?;
+    let usable = |location: &&Location| {
+        !matches!(
+            location.location_type,
+            LocationType::InTransit | LocationType::Quarantine | LocationType::Scrap
+        )
+    };
+    Ok(found
+        .iter()
+        .find(|location| location.location_type == LocationType::Store)
+        .or_else(|| found.iter().find(usable))
+        .cloned())
+}
+
+/// What can be taken of the item `code` at `location_id` (see
+/// [`StockService::choices`]): a lot past its expiry date is left out.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn choices(db: &Db, code: &str, location_id: i64) -> Result<Option<StockChoice>> {
+    let Some(item) = Item::query()
+        .where_(Item::CODE.eq(code.trim()))
+        .first(db)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let mut lots = Vec::new();
+    if item.lot_tracked {
+        let day = today();
+        for candidate in balance::candidates(db, &item, location_id).await? {
+            let Some(lot_id) = candidate.lot_id else {
+                continue;
+            };
+            let lot = Lot::find_or_404(db, lot_id).await?;
+            if lot.expiry_date.is_some_and(|expiry| expiry < day) {
+                continue;
+            }
+            lots.push(StockLot {
+                lot: Subject::new(LOT_SUBJECT_TYPE, lot.id),
+                number: lot.number,
+                expiry_date: lot.expiry_date,
+                available_milli: candidate.available_milli,
+            });
+        }
+    }
+    Ok(Some(StockChoice {
+        item: item.subject(),
+        lot_tracked: item.lot_tracked,
+        lots,
+    }))
 }
 
 /// The module's [`StockService`].
@@ -288,6 +373,28 @@ impl StockService for InventoryStock {
         request: ConsumeRequest,
     ) -> StockFuture<'a, Consumed> {
         Box::pin(async move { consume(state, request).await })
+    }
+
+    fn store_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        scope_kind: &'a str,
+        scope_id: i64,
+    ) -> StockFuture<'a, Option<Subject>> {
+        Box::pin(async move {
+            Ok(store_of(&state.db, scope_kind, scope_id)
+                .await?
+                .map(|location| location.subject()))
+        })
+    }
+
+    fn choices<'a>(
+        &'a self,
+        state: &'a AppState,
+        code: &'a str,
+        location: &'a Subject,
+    ) -> StockFuture<'a, Option<StockChoice>> {
+        Box::pin(async move { choices(&state.db, code, location.subject_id).await })
     }
 
     fn source_cancelled<'a>(

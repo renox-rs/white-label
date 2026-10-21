@@ -20,7 +20,7 @@ use renox::state_machine::{StateMachine, TransitionError, TransitionRecord};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::scheduling::{
     CancelStage, CancelledBy, CheckInAnswer, Eligibility, EligibilityQuery, Initiator, WorkDone,
-    check_in_guard, resource_eligibility, work_done_status,
+    check_in_guard, complete_guard, resource_eligibility, work_done_status,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -827,6 +827,15 @@ pub async fn complete(
     let booking = Booking::find_or_404(&state.db, id).await?;
     let service = service_of(state, &booking).await?;
     let ids = booking.resource_ids(&state.db).await?;
+    // The vertical may want more before the service is over (05: every
+    // lot-tracked consumable of the visit has its lot, `STK.LOT.01`).
+    if booking.status.is_after_check_in()
+        && let CheckInAnswer::Refused(text) = complete_guard(state)
+            .check(state, booking.booking_id(), at)
+            .await?
+    {
+        return Err(Refusal::Invalid(text));
+    }
     let input = input_for(state, actor, at, &service);
     let done = run_simple(state, &booking, COMPLETE, &input, actor, None).await?;
     events::completed(state, &done, &service, ids).await?;

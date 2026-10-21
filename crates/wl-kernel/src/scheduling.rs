@@ -473,6 +473,44 @@ pub struct NoCheckInGuard;
 
 impl CheckInGuard for NoCheckInGuard {}
 
+/// May this booking be completed (wl-scheduling §4.1 `complete`)? The
+/// vertical answers from its record of the visit: 05 refuses the check-out of
+/// a visit with a lot-tracked consumable that has no lot (`STK.LOT.01`). The
+/// answer is a [`CheckInAnswer`]: allowed, or refused with a text safe to show
+/// to the staff. The default allows every completion.
+pub trait CompleteGuard: Send + Sync + 'static {
+    /// Whether `booking` may be completed at `at`.
+    fn check<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+        _at: DateTime,
+    ) -> SchedulingFuture<'a, CheckInAnswer> {
+        Box::pin(async { Ok(CheckInAnswer::Allowed) })
+    }
+}
+
+/// The guard when no vertical provides one: every completion is allowed.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCompleteGuard;
+
+impl CompleteGuard for NoCompleteGuard {}
+
+/// Makes `guard` the app's [`CompleteGuard`]; a vertical calls it in
+/// `register`.
+pub fn provide_complete_guard(app: &mut Registry, guard: impl CompleteGuard) {
+    let guard: Arc<dyn CompleteGuard> = Arc::new(guard);
+    app.provide(guard);
+}
+
+/// The app's [`CompleteGuard`], or [`NoCompleteGuard`].
+pub fn complete_guard(state: &AppState) -> Arc<dyn CompleteGuard> {
+    match state.provided::<Arc<dyn CompleteGuard>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoCompleteGuard),
+    }
+}
+
 /// Makes `guard` the app's [`CheckInGuard`]; a vertical calls it in
 /// `register`.
 pub fn provide_check_in_guard(app: &mut Registry, guard: impl CheckInGuard) {

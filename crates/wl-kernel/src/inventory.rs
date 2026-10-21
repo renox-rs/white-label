@@ -852,6 +852,11 @@ pub struct ConsumeRequest {
     /// *possible* ([`TraceMark::Possible`]).
     #[serde(default)]
     pub theoretical: bool,
+    /// The lot (`inventory.lot:4`) the user picked or scanned: it is taken
+    /// first, the rest of a larger quantity follows first expiry first out.
+    /// A lot that cannot be taken (held, not released, empty) is skipped.
+    #[serde(default)]
+    pub lot: Option<Subject>,
 }
 
 impl ConsumeRequest {
@@ -865,7 +870,14 @@ impl ConsumeRequest {
             cost_object: None,
             at: None,
             theoretical: false,
+            lot: None,
         }
+    }
+
+    /// Takes from `lot` first (the lot the user picked or scanned).
+    pub fn lot(mut self, lot: Subject) -> Self {
+        self.lot = Some(lot);
+        self
     }
 
     /// Derived from a recipe or bill of materials, not scanned.
@@ -887,6 +899,16 @@ impl ConsumeRequest {
     }
 }
 
+/// The part of a consumption that posted against one lot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsumedLot {
+    /// The lot, `inventory.lot:4`; `None` for an item that is not
+    /// lot-tracked.
+    pub lot: Option<Subject>,
+    /// The quantity taken from it, in thousandths.
+    pub quantity_milli: i64,
+}
+
 /// What a consumption did: the part that posted now, and the pending issue
 /// for the short part.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -897,6 +919,36 @@ pub struct Consumed {
     pub short_milli: i64,
     /// The pending issue, `inventory.pending_issue:5`, when part was short.
     pub pending_issue: Option<Subject>,
+    /// The lots the posted part came from, first expiry first.
+    #[serde(default)]
+    pub lots: Vec<ConsumedLot>,
+}
+
+/// A lot that can be taken from now (`STK.MOV.01`, `STK.LOT.01`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockLot {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// Its number, as printed on the pack.
+    pub number: String,
+    /// The last day it can be used.
+    pub expiry_date: Option<NaiveDate>,
+    /// What can be taken from it at the location, in thousandths: not held,
+    /// not reserved.
+    pub available_milli: i64,
+}
+
+/// What can be taken of an item at a location.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockChoice {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// Whether the item is tracked by lot.
+    pub lot_tracked: bool,
+    /// The lots that can be taken from, first expiry first: released, not
+    /// held, not expired, with a quantity. Empty for an item that is not
+    /// lot-tracked.
+    pub lots: Vec<StockLot>,
 }
 
 /// The stock service other modules call (wl-inventory §6 `StockService`).
@@ -911,6 +963,29 @@ pub trait StockService: Send + Sync + 'static {
         _request: ConsumeRequest,
     ) -> StockFuture<'a, Consumed> {
         Box::pin(async { Ok(Consumed::default()) })
+    }
+
+    /// The store of the scope `kind`/`id` (a branch): the location the scope
+    /// issues from, `inventory.location:2`. `None` when it has none.
+    fn store_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _scope_kind: &'a str,
+        _scope_id: i64,
+    ) -> StockFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// What can be taken of the item with `code` at `location`: whether it is
+    /// lot-tracked and, if so, its lots first expiry first (the lot an issue
+    /// screen proposes is the first). `None` when no such item exists.
+    fn choices<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _code: &'a str,
+        _location: &'a Subject,
+    ) -> StockFuture<'a, Option<StockChoice>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// The `source` that consumed (a visit, a sale) was cancelled before its
