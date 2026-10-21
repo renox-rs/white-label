@@ -10,7 +10,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use renox::auth::{Auth, Permissions, permissions};
@@ -180,9 +180,21 @@ impl SelfPayPrices for Prices {
 pub struct Guardians(
     Arc<Mutex<BTreeMap<i64, Vec<PartyId>>>>,
     Arc<Mutex<BTreeMap<i64, String>>>,
+    Arc<Mutex<BTreeSet<i64>>>,
 );
 
 impl Guardians {
+    /// The party `party` can be reached by e-mail at [`Guardians::email_of`]
+    /// (the real notifier tests).
+    pub fn reachable(&self, party: PartyId) {
+        self.2.lock().unwrap().insert(party.0);
+    }
+
+    /// The e-mail address of a party made [`reachable`](Guardians::reachable).
+    pub fn email_of(party: PartyId) -> String {
+        format!("party-{}@example.com", party.0)
+    }
+
     /// The party `party` is called `name`.
     pub fn name(&self, party: i64, name: &str) {
         self.1.lock().unwrap().insert(party, name.to_owned());
@@ -231,15 +243,25 @@ impl PartyDirectory for Guardians {
         _db: &'a Db,
         party: PartyId,
     ) -> PartyFuture<'a, Option<PartyContacts>> {
-        // Only the patient can be reached, by e-mail (the real notifier tests).
-        let found = (party == PATIENT).then(|| PartyContacts {
+        // Only the patient and the parties made reachable can be reached, by
+        // e-mail (the real notifier tests).
+        let address = if party == PATIENT {
+            Some(PATIENT_EMAIL.to_owned())
+        } else {
+            self.2
+                .lock()
+                .unwrap()
+                .contains(&party.0)
+                .then(|| Guardians::email_of(party))
+        };
+        let found = address.map(|address| PartyContacts {
             party,
             language: "en".to_owned(),
             preferred_channel: None,
             points: vec![PartyContactPoint {
-                id: 1,
+                id: if party == PATIENT { 1 } else { party.0 },
                 kind: ContactKind::Email,
-                address: PATIENT_EMAIL.to_owned(),
+                address,
                 primary: true,
                 verified: true,
                 valid: true,
@@ -337,9 +359,22 @@ pub const PATIENT_EMAIL: &str = "patient@example.com";
 
 /// The e-mails the real wl-notify handed to its provider, oldest first.
 #[derive(Clone, Default)]
-pub struct Outbox(Arc<Mutex<Vec<wl_notify::Outgoing>>>);
+pub struct Outbox(
+    Arc<Mutex<Vec<wl_notify::Outgoing>>>,
+    Arc<Mutex<BTreeMap<String, (String, String)>>>,
+);
 
 impl Outbox {
+    /// The provider refuses every e-mail to `address` for good (`code`,
+    /// `message`, a permanent error): the message is abandoned and, when no
+    /// other channel is left, the rule gives up.
+    pub fn refuse(&self, address: &str, code: &str, message: &str) {
+        self.1
+            .lock()
+            .unwrap()
+            .insert(address.to_owned(), (code.to_owned(), message.to_owned()));
+    }
+
     /// What was sent.
     pub fn sent(&self) -> Vec<wl_notify::Outgoing> {
         self.0.lock().unwrap().clone()
@@ -370,7 +405,13 @@ impl wl_notify::ChannelProvider for Outbox {
             sent.push(outgoing.clone());
             sent.len()
         };
-        Box::pin(async move { Ok(format!("email-{n}")) })
+        let refused = self.1.lock().unwrap().get(&outgoing.address).cloned();
+        Box::pin(async move {
+            match refused {
+                Some((code, message)) => Err(wl_notify::SendError::permanent(&code, message)),
+                None => Ok(format!("email-{n}")),
+            }
+        })
     }
 }
 

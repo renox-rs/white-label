@@ -14,12 +14,9 @@ use renox::prelude::*;
 use wl_inventory::{
     Lot, LotStatus, NoticeStatus, PendingIssue, PendingStatus, Recall, RecallLine, RecallStatus,
 };
-use wl_kernel::notify::{
-    GiveUpReaction, MessageGaveUp, MessageId, NotifyRecipient, NotifyRequest, Urgency,
-};
+use wl_kernel::notify::{NotifyRecipient, NotifyRequest};
 use wl_kernel::tickets::Assignee;
 use wl_kernel::{PartyId, Subject};
-use wl_notify::{GiveUpContext, StaffTask, open_give_up_task};
 
 use clinics::{ConsumableIssue, Visit};
 use clinics::permissions::{
@@ -28,7 +25,7 @@ use clinics::permissions::{
 use clinics::recall_notice::{NOTICE_TYPE, RecallNotice, RecallNoticeStatus};
 use support::desk::{Desk, desk_with_stock, desk_with_stock_and_notify};
 use support::stock::{Store, receive, store, used_filler};
-use support::{Messages, day, dubai};
+use support::Messages;
 
 const P1: PartyId = PartyId(70);
 const P2: PartyId = PartyId(71);
@@ -36,6 +33,8 @@ const P3: PartyId = PartyId(72);
 const P4: PartyId = PartyId(73);
 const GUARDIAN: PartyId = PartyId(74);
 const P5: PartyId = PartyId(75);
+static P2_EMAIL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| support::Guardians::email_of(P2));
 const REASON: &str = "Contamination found by the supplier";
 
 /// The names the pages show.
@@ -475,10 +474,12 @@ async fn desk_of(d: &Desk, name: &str, branch: &Subject) -> User {
     user
 }
 
-/// Done when 4: when a patient's notice gives up (`MessageGaveUp`), the line
-/// is not told again, wl-notify's give-up task goes to the front desk of the
-/// visit's branch only, due the next working day, and the front desk of that
-/// branch records the call, which marks the line sent.
+/// Done when 4: the real wl-notify sends the notices; when the mailbox of one
+/// patient refuses it for good the message is abandoned, the rule gives up
+/// (its own `MessageGaveUp`), the line is not told again, wl-notify's give-up
+/// task goes to the front desk of the visit's branch only, due the next
+/// working day, and the front desk of that branch records the call, which
+/// marks the line sent. The other patient's notice stays sent.
 #[renox::test]
 async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch() {
     let d = desk_with_stock_and_notify().await;
@@ -489,6 +490,9 @@ async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch(
     // The other branch's desk has the lower id and must not get the call.
     let elsewhere = desk_of(&d, "Zed", &support::other_branch()).await;
     let fay = desk_of(&d, "Fay", &support::branch()).await;
+    d.t.guardians.reachable(P1);
+    d.t.guardians.reachable(P2);
+    d.t.outbox.refuse(&P2_EMAIL, "550", "mailbox unknown");
     let recall = open_recall(&d, s.item.id, "L1").await;
     let mia = manager(&d).await;
     d.post(
@@ -506,48 +510,37 @@ async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch(
         .expect("P2's notice");
     assert_eq!(notice.visit_ids.0, vec![v2.id]);
 
-    // The message gives up: the event of wl-notify, and its reaction.
-    let gave_up_at = dubai(&day(1).to_string(), 10, 0);
-    let event = MessageGaveUp {
-        message: MessageId(1),
-        type_key: NOTICE_TYPE.to_owned(),
-        subject: notice.subject(),
-        subject_label: Some("Notice from the clinic".to_owned()),
-        recipient: NotifyRecipient::Party { id: P2 },
-        gave_up_at,
-        contact_point: None,
-        channels_tried: Vec::new(),
-        statutory: false,
-        reactions: vec![GiveUpReaction::StaffTask],
-        alternative_of: None,
-        contact_of: None,
-    };
-    d.t.state().emit(event).await.unwrap();
-    let context = GiveUpContext {
-        run_id: 1,
-        message: MessageId(1),
-        type_key: NOTICE_TYPE.to_owned(),
-        subject: notice.subject(),
-        subject_label: Some("Notice from the clinic".to_owned()),
-        recipient: NotifyRecipient::Party { id: P2 },
-        gave_up_at,
-        contact_point: None,
-        channels_tried: Vec::new(),
-        statutory: false,
-        staff_role: Some(RECEPTIONIST_ROLE.to_owned()),
-        urgency: Urgency::Urgent,
-        reactions: vec![GiveUpReaction::StaffTask],
-    };
-    open_give_up_task(
-        d.t.state(),
-        &context,
-        StaffTask {
-            role: Some(RECEPTIONIST_ROLE.to_owned()),
-            ..StaffTask::default()
-        },
-    )
-    .await
-    .unwrap();
+    // The notice reached P1; P2's mailbox refuses it for good: the real
+    // wl-notify run abandons the message, finds no other channel, gives up,
+    // and its own reaction opens the staff task.
+    let sent = d.t.outbox.sent();
+    assert_eq!(sent.len(), 0, "nothing left before the jobs run");
+    let mut guard = 0;
+    while d.t.app.run_jobs().await > 0 && guard < 20 {
+        guard += 1;
+    }
+    let sent = d.t.outbox.sent();
+    assert_eq!(sent.len(), 2, "one attempt per patient: {sent:?}");
+    let to_p1 = sent
+        .iter()
+        .find(|out| out.address == support::PATIENT_EMAIL)
+        .expect("P1's notice reached the provider");
+    assert!(to_p1.body.contains("Palm Grove Clinic LLC"), "{}", to_p1.body);
+    let told = RecallNotice::of_recall(d.t.db(), recall.id).await.unwrap();
+    assert!(
+        told.iter()
+            .find(|n| n.party_id == P1.0)
+            .is_some_and(|n| n.status == RecallNoticeStatus::Sent)
+    );
+    let abandoned = wl_notify::Message::query()
+        .where_(wl_notify::Message::TYPE_KEY.eq(NOTICE_TYPE))
+        .where_(wl_notify::Message::STATUS.eq(wl_notify::MessageStatus::Abandoned))
+        .get(d.t.db())
+        .await
+        .unwrap();
+    assert_eq!(abandoned.len(), 1, "only P2's message gave up");
+    assert_eq!(abandoned[0].address.as_deref(), Some(P2_EMAIL.as_str()));
+    let gave_up_at = abandoned[0].updated_at.expect("the give-up is stamped");
 
     let now = RecallNotice::find_or_404(d.t.db(), notice.id)
         .await
