@@ -4,6 +4,8 @@
 //! |---|---|---|
 //! | `GET /loyalty` | `wl_sales.loyalty` | `loyalty.view` |
 //! | `POST /loyalty/programme` | `wl_sales.loyalty_programme` | `loyalty.manage` |
+//! | `GET /loyalty/review` | `wl_sales.loyalty_review` | `loyalty.manage` |
+//! | `POST /loyalty/review/{id}/resolve` | `wl_sales.loyalty_review_resolve` | `loyalty.manage` |
 //! | `POST /loyalty/accounts` | `wl_sales.loyalty_enrol` | `loyalty.enrol` |
 //! | `POST /counter-sales/{id}/member` | `wl_sales.counter_sale_member` | `loyalty.enrol` |
 //! | `POST /sales-orders/{id}/member` | `wl_sales.sales_order_member` | `loyalty.enrol` |
@@ -21,6 +23,7 @@ use wl_kernel::PartyId;
 use crate::counter_sale::CounterSale;
 use crate::loyalty_account::{self, Enrolment, LoyaltyAccount};
 use crate::loyalty_attach::{self, MemberRef};
+use crate::loyalty_points::LoyaltyReview;
 use crate::loyalty_programme::{self, EarnKind, LoyaltyProgramme, NewProgramme};
 use crate::notices::aed;
 use crate::sales_order::SalesOrder;
@@ -43,6 +46,10 @@ pub fn routes() -> Routes {
             Routes::new()
                 .post("/loyalty/programme", create_programme)
                 .name("wl_sales.loyalty_programme")
+                .get("/loyalty/review", review)
+                .name("wl_sales.loyalty_review")
+                .post("/loyalty/review/{id}/resolve", resolve_review)
+                .name("wl_sales.loyalty_review_resolve")
                 .require_permission(permissions::LOYALTY_MANAGE),
         )
         .merge(
@@ -317,6 +324,81 @@ async fn attach_sales_order(
     Ok((
         Toast::success(text(&lang, "loyalty.attached")),
         Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
+}
+
+/// One account over the daily sales limit.
+#[derive(Serialize, Debug, Clone)]
+pub struct ReviewRow {
+    /// The primary key.
+    pub id: i64,
+    /// The member's code.
+    pub code: String,
+    /// The member's party id.
+    pub party: i64,
+    /// The day.
+    pub on_date: String,
+    /// The earning sales of that day so far.
+    pub sales_count: i64,
+}
+
+/// What the review page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-sales/loyalty_review.html")]
+pub(crate) struct ReviewPage {
+    tx: Texts,
+    reviews: Vec<ReviewRow>,
+}
+
+/// `GET /loyalty/review`: the accounts that earned on more sales in a day
+/// than the limit and that no manager has reviewed (`SAL.ACL.08`).
+async fn review(State(db): State<Db>, lang: Lang) -> Result<View> {
+    let open = LoyaltyReview::query()
+        .where_(LoyaltyReview::RESOLVED_AT.is_null())
+        .order_by_desc(LoyaltyReview::ID)
+        .get(&db)
+        .await?;
+    let mut reviews = Vec::new();
+    for item in open {
+        let Some(account) = LoyaltyAccount::find(&db, item.account_id).await? else {
+            continue;
+        };
+        reviews.push(ReviewRow {
+            id: item.id,
+            code: account.code.clone(),
+            party: account.party_id,
+            on_date: item.on_date.to_string(),
+            sales_count: item.sales_count,
+        });
+    }
+    Ok(View::typed(ReviewPage {
+        tx: texts::all(&lang),
+        reviews,
+    }))
+}
+
+/// `POST /loyalty/review/{id}/resolve`: a manager reviewed the account.
+async fn resolve_review(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let item = LoyaltyReview::find(&db, id).await?.ok_or(Error::NotFound)?;
+    LoyaltyReview::query()
+        .where_(LoyaltyReview::ID.eq(item.id))
+        .update(
+            &db,
+            &[
+                ("resolved_at", &Some(renox::db::now())),
+                ("resolved_by", &Some(user.id)),
+            ],
+        )
+        .await?;
+    Ok((
+        Toast::success(text(&lang, "loyalty.review.resolved")),
+        Redirect::route("wl_sales.loyalty_review", &[])?,
     )
         .into_response())
 }

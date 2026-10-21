@@ -889,6 +889,31 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.loyalty.problem.sale_completed",
         "The sale is completed or ended; a member is attached before it completes.",
     ),
+    ("wl_sales.notices.loyalty_reward_subject", "A reward is waiting for you"),
+    (
+        "wl_sales.notices.loyalty_reward_body",
+        "You reached the visits for a reward ({{ reward }}). Show your code {{ code }} before {{ valid_until }}.",
+    ),
+    ("wl_sales.notices.loyalty_reversed_subject", "Points were taken back"),
+    (
+        "wl_sales.notices.loyalty_reversed_body",
+        "{{ points }} points were taken back from your account {{ code }} because {{ why }}.",
+    ),
+    ("wl_sales.loyalty.why.return", "goods were returned"),
+    ("wl_sales.loyalty.why.credit_note", "a credit note was issued"),
+    ("wl_sales.loyalty.why.payment_reversed", "a payment was reversed"),
+    ("wl_sales.loyalty.why.written_off", "an invoice was written off"),
+    ("wl_sales.loyalty.why.fulfilment_reversed", "a delivery was reversed"),
+    ("wl_sales.loyalty.review.title", "Accounts to review"),
+    (
+        "wl_sales.loyalty.review.subtitle",
+        "Members who earned on more sales in a day than the limit. They earned; a manager looks at them.",
+    ),
+    ("wl_sales.loyalty.review.day", "Day"),
+    ("wl_sales.loyalty.review.sales", "Earning sales"),
+    ("wl_sales.loyalty.review.resolve", "Mark as reviewed"),
+    ("wl_sales.loyalty.review.resolved", "Account marked as reviewed."),
+    ("wl_sales.loyalty.review.empty", "Nothing to review"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

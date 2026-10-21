@@ -27,6 +27,10 @@ pub const DEFAULT_RETURN_WINDOW_DAYS: i64 = 14;
 /// and portal).
 pub const DEFAULT_ACCEPTANCE_CHANNELS: &[&str] = &["website", "portal"];
 
+/// The earning sales per member per day before the account is listed for
+/// the manager's review (§7, `SAL.ACL.08`).
+pub const DEFAULT_LOYALTY_DAILY_SALES_LIMIT: i64 = 5;
+
 /// The lost reasons a lead can be closed with (§7: the starter list, always
 /// with *duplicate* and *spam or invalid*).
 pub const DEFAULT_LOST_REASONS: &[&str] = &[
@@ -77,6 +81,9 @@ pub struct SalesConfig {
     pub return_window_days: i64,
     /// The order channels that need the seller to accept an order (§7).
     pub order_acceptance_channels: Vec<String>,
+    /// The earning sales per member per day before the account is listed for
+    /// review (`SAL.ACL.08`).
+    pub loyalty_daily_sales_limit: i64,
 }
 
 impl Default for SalesConfig {
@@ -102,6 +109,7 @@ impl Default for SalesConfig {
                 .iter()
                 .map(|c| (*c).to_owned())
                 .collect(),
+            loyalty_daily_sales_limit: DEFAULT_LOYALTY_DAILY_SALES_LIMIT,
         }
     }
 }

@@ -25,6 +25,7 @@ pub mod loyalty_account;
 pub mod loyalty_attach;
 pub mod loyalty_points;
 pub mod loyalty_programme;
+pub mod loyalty_rules;
 pub mod machine;
 pub mod notices;
 pub mod package;
@@ -141,6 +142,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-sales/loyalty.html",
         include_str!("../views/wl-sales/loyalty.html"),
+    ),
+    (
+        "wl-sales/loyalty_review.html",
+        include_str!("../views/wl-sales/loyalty_review.html"),
     ),
 ];
 
@@ -305,6 +310,14 @@ impl WlSales {
         self
     }
 
+    /// The earning sales per member per day before the account is listed
+    /// for the manager's review (§7, default 5).
+    pub fn loyalty_daily_sales_limit(mut self, limit: i64) -> Self {
+        assert!(limit >= 1, "the daily limit is at least one sale");
+        self.config.loyalty_daily_sales_limit = limit;
+        self
+    }
+
     /// The days after a sale within which goods can come back (§7, default
     /// 14).
     pub fn return_window_days(mut self, days: i64) -> Self {
@@ -345,7 +358,8 @@ impl Module for WlSales {
             .view_data::<pages::sales_orders::ShowPage>()
             .view_data::<pages::sales_returns::IndexPage>()
             .view_data::<pages::sales_returns::ShowPage>()
-            .view_data::<pages::loyalty::IndexPage>();
+            .view_data::<pages::loyalty::IndexPage>()
+            .view_data::<pages::loyalty::ReviewPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -397,6 +411,8 @@ impl Module for WlSales {
         sales_orders::register(app);
         // The sales return: its machine and the `ReturnResolved` event.
         sales_returns::register(app);
+        // Loyalty points: `SAL.RUL.07` earning and `SAL.RUL.09` reversals.
+        loyalty_rules::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);
