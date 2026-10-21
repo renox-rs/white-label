@@ -39,6 +39,7 @@ use serde::Serialize;
 use wl_kernel::PartyId;
 use wl_kernel::workforce::EmployeeId;
 
+use crate::absence;
 use crate::contract::{BillingCycle, ClientContract, ContractStatus};
 use crate::contracts::{self, NewContract};
 use crate::db::refused;
@@ -108,6 +109,12 @@ pub fn routes() -> Routes {
         .name("manpower.deployment_cancel")
         .post("/manpower/deployments/{id}/cover", cover_deployment)
         .name("manpower.deployment_cover")
+        .get("/manpower/absence", absence_index)
+        .name("manpower.absence")
+        .post("/manpower/absence/{id}/report", absence_report)
+        .name("manpower.absence_report")
+        .post("/manpower/absence/{id}/close", absence_close)
+        .name("manpower.absence_close")
         .require_auth()
 }
 
@@ -965,4 +972,59 @@ async fn cover_deployment(
     let to = date(&lang, &form, "to")?;
     crate::cover::open_by_hand(&state, &user, id, from, to).await?;
     Ok(back("/manpower/requests"))
+}
+
+/// An absence case as the list shows it (JSON).
+#[derive(Serialize)]
+struct AbsenceRow {
+    id: i64,
+    employee_id: i64,
+    ticket_id: Option<i64>,
+    last_present_on: NaiveDate,
+    opened_on: NaiveDate,
+    report_number: Option<String>,
+    report_date: Option<NaiveDate>,
+}
+
+/// `GET /manpower/absence`: the open absence cases, for HR (`absence.manage`).
+async fn absence_index(State(state): State<AppState>, user: AuthUser) -> Result<Response> {
+    let rows: Vec<AbsenceRow> = absence::open_cases(&state, &user)
+        .await?
+        .into_iter()
+        .map(|case| AbsenceRow {
+            id: case.id,
+            employee_id: case.employee_id,
+            ticket_id: case.ticket_id,
+            last_present_on: case.last_present_on,
+            opened_on: case.opened_on,
+            report_number: case.report_number,
+            report_date: case.report_date,
+        })
+        .collect();
+    Ok(Json(rows).into_response())
+}
+
+/// `POST /manpower/absence/{id}/report`: `number` and `date` of the MoHRE
+/// absence report.
+async fn absence_report(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let date = date(&lang, &form, "date")?.unwrap_or_else(today);
+    absence::record_report(&state, &user, id, &field(&form, "number"), date).await?;
+    Ok(back("/manpower/absence"))
+}
+
+/// `POST /manpower/absence/{id}/close`: `reason`.
+async fn absence_close(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    absence::close(&state, &user, id, &field(&form, "reason")).await?;
+    Ok(back("/manpower/absence"))
 }

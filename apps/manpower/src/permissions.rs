@@ -44,6 +44,10 @@ pub const DEPLOYMENTS_VIEW: &str = "deployments.view";
 /// manager's).
 pub const DEPLOYMENTS_MANAGE: &str = "deployments.manage";
 
+/// See, record the MoHRE report of and close the absence cases of workers (HR's,
+/// `MPW.RUL.09`). Not in [`ALL`]: that list is the account manager's.
+pub const ABSENCE_MANAGE: &str = "absence.manage";
+
 /// The role of the account manager, who owns the client accounts.
 pub const ACCOUNT_MANAGER_ROLE: &str = "account_manager";
 

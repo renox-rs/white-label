@@ -23,3 +23,8 @@ pub const DEFAULT_DOCUMENT_LOOK_AHEAD_DAYS: i64 = 30;
 /// cover is not found this many hours before the cover period starts (the
 /// replacement request's start date and shift start time).
 pub const DEFAULT_COVER_NOTICE_HOURS: i64 = 24;
+
+/// N of `MPW.RUL.09` (§7.2): a worker with an active deployment who has had no
+/// attendance and no approved leave for more than this many consecutive
+/// calendar days gets an absence case (ER Art. 28).
+pub const DEFAULT_ABSENCE_DAYS: i64 = 7;

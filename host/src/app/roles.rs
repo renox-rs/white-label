@@ -280,6 +280,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mpw::REQUESTS_MANAGE,
             mpw::DEPLOYMENTS_VIEW,
             mpw::DEPLOYMENTS_MANAGE,
+            mpw::ABSENCE_MANAGE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -658,6 +659,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
         &[
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
+            // The absence case of a worker who has not turned up
+            // (`MPW.RUL.09`, 09 Manpower).
+            mpw::ABSENCE_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
             // HR prepares payroll; the MD approves it (`HRM.ACL.04`).

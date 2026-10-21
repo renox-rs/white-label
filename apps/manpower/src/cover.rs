@@ -59,10 +59,12 @@ pub mod causes {
     pub const SUSPENSION: &str = "suspension";
     /// The client rejected the worker (BL-MPW-14).
     pub const REJECTION: &str = "rejection";
+    /// The worker has not turned up (`MPW.RUL.09`, BL-MPW-17).
+    pub const ABSENCE: &str = "absence";
     /// The account manager asked for it.
     pub const MANUAL: &str = "manual";
     /// Every cause.
-    pub const ALL: &[&str] = &[LEAVE, SUSPENSION, REJECTION, MANUAL];
+    pub const ALL: &[&str] = &[LEAVE, SUSPENSION, REJECTION, ABSENCE, MANUAL];
 }
 
 /// What a cover request is for.

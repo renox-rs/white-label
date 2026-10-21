@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod absence;
 mod access;
 mod attendance;
 pub mod bench;
@@ -66,6 +67,9 @@ pub const CONTRACT_END_TASK: &str = "manpower:contract-end-daily";
 /// told 60 and 30 days before a client contract's end date.
 pub const CONTRACT_EXPIRY_TASK: &str = "manpower:contract-expiry-daily";
 
+/// The name of the daily scheduled task of `MPW.RUL.09`: the absence cases.
+pub const ABSENCE_TASK: &str = "manpower:absence-daily";
+
 /// The Manpower module. Add it to the app with
 /// `.module(manpower::Manpower)`.
 pub struct Manpower;
@@ -129,7 +133,8 @@ impl Module for Manpower {
             .model::<documents::DeploymentDocumentFlag>()
             .model::<suspension::DeploymentSuspension>()
             .model::<ContractHold>()
-            .model::<expiry::ContractEndNotice>();
+            .model::<expiry::ContractEndNotice>()
+            .model::<absence::AbsenceCase>();
         contract::register();
         request::register();
         // `MPW.RUL.06`: an approved leave opens the cover requests the
@@ -181,6 +186,15 @@ impl Module for Manpower {
                 CONTRACT_EXPIRY_TASK,
                 |state: AppState| async move { expiry::daily(&state).await },
             )
+            .timezone("Asia/Dubai");
+        // `MPW.RUL.09`: a worker who has not turned up gets an absence case,
+        // daily at 02:00 Asia/Dubai.
+        absence::register();
+        absence::listen(app);
+        app.schedule()
+            .daily_at("02:00", ABSENCE_TASK, |state: AppState| async move {
+                absence::daily(&state).await
+            })
             .timezone("Asia/Dubai");
         // `MPW.RUL.13`: cover not found in time, within a quarter of an hour
         // of the hour.

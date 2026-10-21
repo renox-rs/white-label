@@ -564,6 +564,20 @@ pub trait Workforce: Send + Sync + 'static {
         Box::pin(async { Ok(false) })
     }
 
+    /// The days after `after` (the last day present) up to today on which HR
+    /// recorded a failed attempt to reach `employee` (no answer, unreachable),
+    /// oldest first, each day once. Two such days show that the worker cannot
+    /// be reached (`report_absconding`, ER Art. 28); the vertical's reminders
+    /// to HR stop once there are two (`MPW.RUL.09`). The default has none.
+    fn failed_contact_days<'a>(
+        &'a self,
+        _db: &'a Db,
+        _employee: EmployeeId,
+        _after: NaiveDate,
+    ) -> WorkforceFuture<'a, Vec<NaiveDate>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// The employee whose account is the user `user_id`, if any. The default
     /// knows nobody.
     fn employee_of_user<'a>(

@@ -9,7 +9,7 @@ use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::workforce::{EmployeeId, LeaveCalendar, StaffProfile, Workforce, WorkforceFuture};
 
-use crate::absence::AbsenceReport;
+use crate::absence::{AbsenceReport, ContactAttempt};
 use crate::assignees;
 use crate::employee::{Employee, EmployeeScope, EmployeeStatus};
 use crate::leave::{LeaveRequest, LeaveStatus};
@@ -163,6 +163,25 @@ impl Workforce for Staff {
             Ok(Employee::find(&state.db, employee.0)
                 .await?
                 .is_some_and(|row| row.status == EmployeeStatus::Active))
+        })
+    }
+
+    fn failed_contact_days<'a>(
+        &'a self,
+        db: &'a Db,
+        employee: EmployeeId,
+        after: NaiveDate,
+    ) -> WorkforceFuture<'a, Vec<NaiveDate>> {
+        Box::pin(async move {
+            let mut days: Vec<NaiveDate> = ContactAttempt::of_employee(db, employee.0)
+                .await?
+                .into_iter()
+                .filter(|attempt| attempt.outcome.failed() && attempt.attempted_on > after)
+                .map(|attempt| attempt.attempted_on)
+                .collect();
+            days.sort_unstable();
+            days.dedup();
+            Ok(days)
         })
     }
 

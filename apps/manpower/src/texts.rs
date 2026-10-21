@@ -497,6 +497,47 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.cover.missing_body",
         "We have not found cover yet: {{ missing }} of {{ headcount }} {{ role }} still to be found at {{ site }} from {{ from }}. We are still working on it.",
     ),
+    // The absence case (`MPW.RUL.09`, BL-MPW-17).
+    (
+        "manpower.absence.ticket_title",
+        "Absence: {{ worker }} at {{ site }}, {{ days }} days",
+    ),
+    (
+        "manpower.absence.ticket_body",
+        "{{ worker }} has not turned up at {{ site }} (deployment #{{ deployment }}) since {{ last }}: no attendance and no approved leave for {{ days }} days. Record the attempts to reach the worker (two failed attempts on different days) and the MoHRE absence report number. Then request report_absconding. If the worker returns, close this case with the reason.",
+    ),
+    (
+        "manpower.absence.client_title",
+        "{{ worker }} has not turned up",
+    ),
+    (
+        "manpower.absence.client_body",
+        "{{ worker }} has not turned up at {{ site }} since {{ since }}. We are looking into it.",
+    ),
+    (
+        "manpower.absence.reminder_title",
+        "Absence of {{ worker }}: {{ days }} days",
+    ),
+    (
+        "manpower.absence.reminder_body",
+        "{{ worker }} has been absent for {{ days }} days. Failed attempts to reach the worker on different days recorded: {{ done }} of {{ need }}. MoHRE absence report number: {{ number }}. Report absconding only when both are recorded.",
+    ),
+    ("manpower.absence.number_missing", "not recorded"),
+    ("manpower.absence.number_recorded", "recorded"),
+    (
+        "manpower.absence.report",
+        "Give the MoHRE absence report number and its date (not in the future).",
+    ),
+    (
+        "manpower.absence.report_comment",
+        "MoHRE absence report {{ number }} of {{ date }}.",
+    ),
+    (
+        "manpower.absence.reason",
+        "Give the reason the case is closed: the worker returned, was hospitalised...",
+    ),
+    ("manpower.absence.closed", "The absence case is closed."),
+    ("manpower.absence.reinstated", "worker reinstated"),
     // Ending for a reason that needs more (§7.1 `end`, BL-MPW-14).
     (
         "manpower.end.note_required",
