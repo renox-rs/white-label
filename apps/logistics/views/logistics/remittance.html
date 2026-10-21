@@ -15,6 +15,19 @@
                        :title="tx['remit_pay_title']" :description="tx['remit_pay_description']" :submit-label="tx['remit_pay']" icon="send">
         <rx-input name="payment_reference" :label="tx['remit_reference']" :id="'pay-reference-' ~ remittance.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_return" :id="'return-' ~ remittance.id" :label="tx['remit_return']" :action="route('logistics.remittance_return_payment', remittance.id)"
+                       :title="tx['remit_return_title']" :description="tx['remit_return_description']" :submit-label="tx['remit_return']" icon="undo">
+        <rx-input name="advice" :label="tx['remit_advice']" :id="'return-advice-' ~ remittance.id" required/>
+        <rx-input name="reason" :label="tx['reason']" :id="'return-reason-' ~ remittance.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_confirm_account" :id="'confirm-account-' ~ remittance.id" :label="tx['remit_confirm_account']" :action="route('logistics.remittance_confirm_account', remittance.id)"
+                       :title="tx['remit_confirm_account']" :description="tx['remit_confirm_account_description']" :submit-label="tx['remit_confirm_account']" icon="check">
+        <rx-input name="note" :label="tx['note']" :id="'confirm-account-note-' ~ remittance.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_repay" :id="'repay-' ~ remittance.id" :label="tx['remit_repay']" :action="route('logistics.remittance_repay', remittance.id)"
+                       :title="tx['remit_repay_title']" :description="tx['remit_repay_description']" :submit-label="tx['remit_repay']" icon="send">
+        <rx-input name="payment_reference" :label="tx['remit_reference']" :id="'repay-reference-' ~ remittance.id" required/>
+      </rx-action-sheet>
     </rx-page-header>
     <rx-card :title="tx['details']">
       <rx-infolist columns="2">
@@ -46,6 +59,12 @@
       <rx-column :label="tx['amount']" align="num">{{ offset.amount | money(currency='AED') }}</rx-column>
       <rx-column :label="tx['remit_payment']" hide-narrow>{{ offset.payment }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['remit_no_offsets']" icon="receipt"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="returns" :rows="returns" as="returned" :key="returned.advice" :caption="tx['remit_returns']" card>
+      <rx-column :label="tx['remit_advice']">{{ returned.advice }}</rx-column>
+      <rx-column :label="tx['reason']" hide-narrow>{{ returned.reason }}</rx-column>
+      <rx-column :label="tx['remit_account']" hide-narrow>{{ returned.bank_account }}</rx-column>
+      <rx-column :label="tx['remit_reference']" hide-narrow>{{ returned.payment_reference }}</rx-column>
     </rx-table>
     <rx-table :rows="adjustments" as="adjustment" :key="adjustment.id" :caption="tx['remit_adjustment_lines']" card>
       <rx-column :label="tx['amount']" align="num">{{ adjustment.amount | money(currency='AED') }}</rx-column>

@@ -761,6 +761,103 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.remittance.offset_reason.changed",
         "invoice changed",
     ),
+    // A returned transfer and the change of the remittance bank account
+    // (`LOG.ACL.13`, BL-LOG-17).
+    (
+        "logistics.account.confirm_subject",
+        "Please confirm the new bank account for your payments",
+    ),
+    (
+        "logistics.account.confirm_body",
+        "A request was made to pay your cash on delivery remittances to a new bank account ending {{ last4 }}. If you asked for it, confirm it with this link: {{ link }} If you did not, ignore this message: nothing changes without your confirmation.",
+    ),
+    (
+        "logistics.account.confirmed_page",
+        "Thank you. The new bank account is confirmed. It is used for your payments once our team has approved it too.",
+    ),
+    (
+        "logistics.account.own_request",
+        "You asked for this change: another user decides it.",
+    ),
+    (
+        "logistics.account.not_your_request",
+        "Only the user who asked for the change takes it back.",
+    ),
+    (
+        "logistics.account.invalid",
+        "Give the bank account as an IBAN, like AE07 0331 2345 6789 0123 456.",
+    ),
+    (
+        "logistics.account.same",
+        "That is the bank account on file already.",
+    ),
+    (
+        "logistics.account.already_pending",
+        "a bank account change is already pending",
+    ),
+    (
+        "logistics.account.no_contact",
+        "The client has no e-mail on record to confirm the account with: add one on its party record first.",
+    ),
+    (
+        "logistics.account.link_dead",
+        "This link no longer works.",
+    ),
+    (
+        "logistics.account.lapsed_title",
+        "Bank account change lapsed",
+    ),
+    (
+        "logistics.account.lapsed_body",
+        "The change of the remittance bank account to {{ account }} was not both approved and confirmed within 14 days, so it lapsed and the old account stays. Ask again if it is still needed.",
+    ),
+    (
+        "logistics.account.rejected_title",
+        "Bank account change rejected",
+    ),
+    (
+        "logistics.account.rejected_body",
+        "The change of the remittance bank account to {{ account }} was rejected and discarded. {{ note }}",
+    ),
+    (
+        "logistics.remittance.advice_needed",
+        "Attach the bank's return advice.",
+    ),
+    (
+        "logistics.remittance.new_reference_needed",
+        "Give a new payment reference: the earlier one was returned.",
+    ),
+    (
+        "logistics.remittance.account_unconfirmed",
+        "The transfer was returned from the bank account on file. Wait for the approved and confirmed new account, or record the client's confirmation that this one is correct.",
+    ),
+    (
+        "logistics.remittance.not_returned",
+        "Only a returned payment is repaid.",
+    ),
+    (
+        "logistics.remittance.returned_title",
+        "Your payment {{ number }} was returned by the bank",
+    ),
+    (
+        "logistics.remittance.returned_body",
+        "The bank returned our transfer of {{ amount }} for statement {{ number }}. The amount is owed to you again. Please confirm your bank account: tell us it is correct, or ask for a change in the portal.",
+    ),
+    (
+        "logistics.remittance.confirm_note_needed",
+        "Say how the client confirmed the account (who, when, how).",
+    ),
+    (
+        "logistics.remittance.return_note",
+        "The bank returned the transfer of {{ number }} (advice {{ advice }}).",
+    ),
+    ("logistics.remittance_payment_returned", "Payment marked as returned."),
+    ("logistics.remittance_repaid", "Remittance paid again."),
+    ("logistics.remittance_account_confirmed", "The client's confirmation is recorded."),
+    ("logistics.account_requested", "Bank account change requested."),
+    ("logistics.account_approved", "Bank account change approved."),
+    ("logistics.account_rejected", "Bank account change rejected."),
+    ("logistics.account_withdrawn", "Bank account change withdrawn."),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

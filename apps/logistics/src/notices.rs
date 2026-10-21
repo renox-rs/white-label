@@ -5,6 +5,7 @@
 
 use renox::auth::permissions::users_with_permission;
 use renox::prelude::*;
+use wl_kernel::{PartyId, Subject};
 use wl_kernel::notify::{
     self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
 };
@@ -64,8 +65,44 @@ pub fn remittance_reopened_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type of a notice to a staff user: a title and a body the
+/// caller words.
+pub const STAFF_NOTICE: &str = "logistics.staff_notice";
+
+/// The notification type: a title and a body the caller fills in.
+pub fn staff_notice_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(STAFF_NOTICE, "logistics")
+        .group("remittances")
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(template("logistics.notice.subject")),
+            template("logistics.notice.body"),
+        )
+}
+
+/// The notification type of the link that asks the client's known contact to
+/// confirm a new remittance bank account (`LOG.ACL.13`).
+pub const ACCOUNT_CONFIRM: &str = "logistics.account_confirm";
+
+/// The notification type: the link and the last digits of the new account.
+pub fn account_confirm_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(ACCOUNT_CONFIRM, "logistics")
+        .group("remittances")
+        .category(Category::Transactional)
+        .give_up(&[GiveUpReaction::None])
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(template("logistics.account.confirm_subject")),
+            template("logistics.account.confirm_body"),
+        )
+}
+
 /// Registers the notification types.
 pub(crate) fn register_types() {
+    notify::register_type(staff_notice_type());
+    notify::register_type(account_confirm_type());
     notify::register_type(client_notice_type());
     notify::register_type(remittance_drafted_type());
     notify::register_type(remittance_reopened_type());
@@ -154,6 +191,50 @@ pub(crate) async fn tell_accountants(
     if told {
         notify::notifier(state).notify(state, request).await?;
     }
+    Ok(())
+}
+
+/// Tells the staff user `user` with `title` and `body`, about `subject`
+/// (shown as `label`).
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub(crate) async fn tell_user(
+    state: &AppState,
+    subject: Subject,
+    label: &str,
+    user: i64,
+    title: &str,
+    body: &str,
+) -> Result {
+    let request = NotifyRequest::new(STAFF_NOTICE, subject)
+        .subject_label(label)
+        .to_user(user)
+        .data(renox::serde_json::json!({ "title": title, "body": body }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the client `party` with `title` and `body`, about `subject` (shown
+/// as `label`).
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub(crate) async fn tell_party(
+    state: &AppState,
+    subject: Subject,
+    label: &str,
+    party: PartyId,
+    title: &str,
+    body: &str,
+) -> Result {
+    let request = NotifyRequest::new(CLIENT_NOTICE, subject)
+        .subject_label(label)
+        .to_party(party)
+        .data(renox::serde_json::json!({ "title": title, "body": body }));
+    notify::notifier(state).notify(state, request).await?;
     Ok(())
 }
 

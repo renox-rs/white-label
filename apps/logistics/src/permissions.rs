@@ -40,8 +40,14 @@ pub const REMITTANCES_PREPARE: &str = "remittances.prepare";
 /// Approve a remittance and its adjustment lines, and take an approved one
 /// back to a draft (`LOG.ACL.07`, `LOG.ACL.12`); never the preparer's own.
 pub const REMITTANCES_APPROVE: &str = "remittances.approve";
-/// Pay an approved remittance to the client (`pay`, `PTY.ACL.03`).
+/// Pay an approved remittance to the client (`pay`, `PTY.ACL.03`), mark a
+/// paid one as returned by the bank (`return_payment`) and pay it again
+/// (`repay`).
 pub const REMITTANCES_PAY: &str = "remittances.pay";
+/// Ask to change the client's remittance bank account and take the request
+/// back (`LOG.ACL.13`): the accountant, and a client user of the company in
+/// the portal. A second user with `remittances.approve` approves it.
+pub const REMITTANCES_REQUEST_ACCOUNT: &str = "remittances.request_account";
 
 /// Every permission of the app.
 pub const ALL: &[&str] = &[
@@ -58,6 +64,7 @@ pub const ALL: &[&str] = &[
     REMITTANCES_PREPARE,
     REMITTANCES_APPROVE,
     REMITTANCES_PAY,
+    REMITTANCES_REQUEST_ACCOUNT,
 ];
 
 /// The operations manager runs a depot (§3.1). The host's

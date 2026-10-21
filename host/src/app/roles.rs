@@ -265,6 +265,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::REMITTANCES_PREPARE,
             log::REMITTANCES_APPROVE,
             log::REMITTANCES_PAY,
+            // A change of the remittance bank account is asked here and
+            // approved by a second user (`LOG.ACL.13`).
+            log::REMITTANCES_REQUEST_ACCOUNT,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -601,6 +604,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::REMITTANCES_PREPARE,
             log::REMITTANCES_APPROVE,
             log::REMITTANCES_PAY,
+            // A change of the remittance bank account is asked here and
+            // approved by a second user (`LOG.ACL.13`).
+            log::REMITTANCES_REQUEST_ACCOUNT,
             // The accountant works the deadline tasks (04 compliance
             // calendar, wl-ticketing §4.4).
             tickets::TASKS_VIEW,
@@ -853,6 +859,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_BOOK,
             log::SHIPMENTS_VOID,
             log::SHIPMENTS_CANCEL,
+            // The client asks to change its remittance bank account in the
+            // portal (`LOG.ACL.13`).
+            log::REMITTANCES_REQUEST_ACCOUNT,
         ],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),

@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod account;
 pub mod adjustment;
 pub mod billing;
 pub mod booking;
@@ -50,6 +51,7 @@ pub use shipment::{
     AddressChange, Charge, PARCEL_SUBJECT_TYPE, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment,
     ShipmentDelivered, ShipmentLost, ShipmentStatus, TrackingEvent,
 };
+pub use account::{AccountChange, AccountChangeStatus};
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
 pub use cash_watch::CashWatch;
 pub use cod::{CodLoss, CodRule};
@@ -57,7 +59,9 @@ pub use netting::Offset;
 pub use statement::Statement;
 pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
 pub use trace::TraceTask;
-pub use remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};
+pub use remittance::{
+    PaymentReturn, REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus,
+};
 pub use remittance_machine::RemittanceInput;
 pub use shipment_machine::ShipmentInput;
 
@@ -73,6 +77,7 @@ impl Module for Logistics {
     fn routes(&self) -> Routes {
         pages::routes()
             .merge(remittance_pages::routes())
+            .merge(account::routes())
             .merge(cod::routes())
             .merge(reversal_pages::routes())
             .merge(loss_pages::routes())
@@ -115,6 +120,8 @@ impl Module for Logistics {
             .model::<Remittance>()
             .model::<RemittanceLine>()
             .model::<AdjustmentLine>()
+            .model::<PaymentReturn>()
+            .model::<AccountChange>()
             .model::<Offset>()
             .model::<Statement>()
             .model::<CodLoss>()
@@ -128,6 +135,9 @@ impl Module for Logistics {
         // The remittance and its adjustment lines have machines of their own.
         renox::state_machine::register::<Remittance>();
         renox::state_machine::register::<AdjustmentLine>();
+        renox::state_machine::register::<AccountChange>();
+        // `LOG.ACL.13`: a change not both approved and confirmed lapses.
+        account::register(app);
         // `LOG.RUL.06`, weekly on Monday.
         remit::register(app);
         // `LOG.RUL.12`, daily at 02:00, and the approval of `LOG.ACL.14`.

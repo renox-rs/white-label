@@ -55,11 +55,14 @@ use wl_kernel::payments::{
 };
 
 use crate::adjustment::{AdjustmentLine, AdjustmentStatus, source};
+use crate::booking;
 use crate::netting::{self, Offset};
-use crate::notices::tell_accountants;
+use crate::notices::{tell_accountants, tell_party};
 use crate::permissions;
 use crate::remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};
-use crate::remittance_machine::{APPROVE, PAY, REOPEN, REOPEN_SYSTEM, RemittanceInput};
+use crate::remittance_machine::{
+    APPROVE, PAY, REOPEN, REOPEN_SYSTEM, REPAY, RETURN_PAYMENT, RemittanceInput,
+};
 use crate::reweigh::{self, ClientTerms};
 use crate::shipment::{Shipment, ShipmentStatus};
 use crate::statement;
@@ -804,6 +807,223 @@ pub async fn pay(
         .await;
     if let Err(error) = outcome {
         undo(state, user.id, &remittance, &recorded).await?;
+        return Err(error);
+    }
+    let paid = load(state, id).await?;
+    statement::publish(&state.db, &paid).await?;
+    Ok(paid)
+}
+
+/// `user` (`remittances.pay`) records that the bank returned the transfer of
+/// the paid remittance `id`, with the bank's return `advice` and the `reason`
+/// it gave: the voucher is reversed in the payments module as a bank return,
+/// the remittance is `payment_returned`, the amount is owed to the client
+/// again (the offsets stay allocated) and the client is told and asked to
+/// confirm its bank account. Each return keeps its advice
+/// ([`crate::remittance::PaymentReturn`]).
+///
+/// # Errors
+///
+/// `Forbidden` without `remittances.pay`; `NotFrom` unless it is paid;
+/// `Guard` (422) without the advice.
+pub async fn return_payment(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    advice: &str,
+    reason: &str,
+) -> std::result::Result<Remittance, TransitionError> {
+    let remittance = load(state, id).await?;
+    let advice = advice.trim().to_owned();
+    let input = RemittanceInput {
+        return_advice: Some(advice.clone()),
+        return_reason: Some(reason.trim().to_owned()),
+        ..RemittanceInput::default()
+    };
+    let ready = user.has_permission(permissions::REMITTANCES_PAY)
+        && remittance.status == RemittanceStatus::Paid
+        && !advice.is_empty();
+    if ready && let Some(payment) = remittance.payment_id {
+        let note = english(
+            "logistics.remittance.return_note",
+            &[("number", &remittance.number), ("advice", &advice)],
+        );
+        payments::payment_recorder(state)
+            .reverse(
+                state,
+                PaymentId(payment),
+                ReversalReason::BankReturn,
+                Some(note),
+                Some(user.id),
+            )
+            .await
+            .map_err(TransitionError::Failed)?;
+    }
+    let _outcome = remittance
+        .transition(RETURN_PAYMENT)
+        .by(user)
+        .input(&input)
+        .run(state)
+        .await?;
+    let returned = load(state, id).await?;
+    let title = english(
+        "logistics.remittance.returned_title",
+        &[("number", &returned.number)],
+    );
+    let body = english(
+        "logistics.remittance.returned_body",
+        &[
+            ("number", &returned.number),
+            ("amount", &crate::rates::aed(returned.net)),
+        ],
+    );
+    tell_party(
+        state,
+        returned.subject(),
+        &returned.number,
+        returned.client(),
+        &title,
+        &body,
+    )
+    .await?;
+    Ok(returned)
+}
+
+/// `user` (`remittances.pay`) records the client's confirmation that the bank
+/// account the transfer of the returned remittance `id` went to is correct
+/// (for example a temporary bank issue), with `note` on who confirmed it, when
+/// and how. A client user of the company may record it in the portal.
+///
+/// # Errors
+///
+/// `Forbidden` for anybody but a holder of `remittances.pay` and a client user
+/// of the company; `NotFrom` (422) unless the remittance is returned; `Guard`
+/// (422) without the note.
+pub async fn confirm_account(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    note: &str,
+) -> std::result::Result<Remittance, TransitionError> {
+    let remittance = load(state, id).await?;
+    let staff = user.has_permission(permissions::REMITTANCES_PAY);
+    if !staff && !booking::acts_for(state, user, remittance.client()).await? {
+        return Err(TransitionError::Forbidden);
+    }
+    if remittance.status != RemittanceStatus::PaymentReturned {
+        return Err(guard(english("logistics.remittance.not_returned", &[])));
+    }
+    if note.trim().is_empty() {
+        return Err(guard(english(
+            "logistics.remittance.confirm_note_needed",
+            &[],
+        )));
+    }
+    let at = Some(renox::db::now());
+    let by = Some(user.id);
+    let note = Some(note.trim().to_owned());
+    Remittance::query()
+        .where_(Remittance::ID.eq(id))
+        .update(
+            &state.db,
+            &[
+                ("account_confirmed_at", &at),
+                ("account_confirmed_by", &by),
+                ("account_confirmed_note", &note),
+            ],
+        )
+        .await?;
+    load(state, id).await
+}
+
+/// `user` (`remittances.pay`) pays the returned remittance `id` again with the
+/// new bank reference `reference`: to the client's remittance account as it
+/// is now. That account is the one the transfer was returned from only when
+/// the client's confirmation that it is correct is recorded; a changed account
+/// is the client's only after a second user approved it and the client
+/// confirmed it (`LOG.ACL.13`, [`crate::account`]). The offsets stay
+/// allocated; only the cash part is paid. The statement is published again
+/// with the new reference.
+///
+/// # Errors
+///
+/// `Forbidden` without `remittances.pay`; `NotFrom` unless it is returned;
+/// `Guard` (422) without a new reference, without an account on file, while
+/// the account is not changed and not confirmed, for a blocked client and
+/// for nothing to pay; the payments module's refusals.
+pub async fn repay(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    reference: &str,
+) -> std::result::Result<Remittance, TransitionError> {
+    let remittance = load(state, id).await?;
+    let terms = reweigh::terms(&state.db, remittance.client()).await?;
+    let account = terms
+        .bank_account
+        .clone()
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty());
+    let reference = reference.trim().to_owned();
+    let blocked = parties::directory(state)
+        .status(&state.db, remittance.client())
+        .await?
+        == Some(PartyStatus::Blocked);
+    let changed = account
+        .as_deref()
+        .is_some_and(|now| Some(now) != remittance.bank_account.as_deref());
+    let mut input = RemittanceInput {
+        payment_reference: Some(reference.clone()),
+        bank_account: account.clone(),
+        client_blocked: blocked,
+        account_changed: changed,
+        account_confirmed: remittance.account_confirmed_at.is_some(),
+        ..RemittanceInput::default()
+    };
+    let ready = user.has_permission(permissions::REMITTANCES_PAY)
+        && remittance.status == RemittanceStatus::PaymentReturned
+        && !reference.is_empty()
+        && Some(reference.as_str()) != remittance.payment_reference.as_deref()
+        && account.is_some()
+        && (input.account_changed || input.account_confirmed)
+        && !blocked
+        && remittance.net > 0;
+    if !ready {
+        // The transition says why: the permission, the state or the guard.
+        let _outcome = remittance
+            .transition(REPAY)
+            .by(user)
+            .input(&input)
+            .run(state)
+            .await?;
+        return load(state, id).await;
+    }
+    let entity = LegalEntity::default_entity(&state.db).await?;
+    let mut record = RecordPayment::new(
+        remittance.client(),
+        entity.id,
+        PaymentMethod::Transfer,
+        remittance.net,
+    )
+    .outgoing()
+    .reference(&reference);
+    if let Some(account) = &account {
+        record = record.bank_account(account);
+    }
+    let payment = payments::payment_recorder(state)
+        .record(state, record, Some(user.id))
+        .await
+        .map_err(TransitionError::Failed)?;
+    input.payment_id = Some(payment.id.0);
+    input.payment_number = payment.number.clone();
+    let outcome = remittance
+        .transition(REPAY)
+        .by(user)
+        .input(&input)
+        .run(state)
+        .await;
+    if let Err(error) = outcome {
+        undo(state, user.id, &remittance, &[payment.id.0]).await?;
         return Err(error);
     }
     let paid = load(state, id).await?;

@@ -4,10 +4,10 @@
 //! [`crate::remittance_machine`]; [`crate::remit`] builds the draft and
 //! [`crate::adjustment`] holds the adjustment lines.
 //!
-//! The base here is the lifecycle `draft`, `approve`, `reopen` and `pay`
-//! with the payout through the kernel's payments contract. `payment_returned`
-//! is declared; its transitions (`return_payment`, `repay`), the `dispute`
-//! flag and the offsets of open invoices come with their issues.
+//! The lifecycle is `draft`, `approve`, `reopen` and `pay` with the payout
+//! through the kernel's payments contract, the offsets of open invoices
+//! ([`crate::netting`]), `return_payment` and `repay` for a transfer the bank
+//! returned (BL-LOG-17) and the `disputed` flag (BL-LOG-18).
 
 use renox::db::DateTime;
 use renox::prelude::*;
@@ -99,6 +99,13 @@ pub struct Remittance {
     pub bank_account: Option<String>,
     /// Why `pay` sent it back to a draft, for the accountant (BL-LOG-16).
     pub message: Option<String>,
+    /// When the client's confirmation that the account the transfer was
+    /// returned from is correct was recorded (BL-LOG-17).
+    pub account_confirmed_at: Option<DateTime>,
+    /// The user who recorded it.
+    pub account_confirmed_by: Option<i64>,
+    /// How the client confirmed it.
+    pub account_confirmed_note: Option<String>,
     /// The client contests the statement (BL-LOG-18).
     pub disputed: bool,
     /// The ticket of the dispute.
@@ -157,6 +164,19 @@ impl Remittance {
             .await
     }
 
+    /// The returns of its transfer, oldest first.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn returns(&self, db: &Db) -> Result<Vec<PaymentReturn>> {
+        PaymentReturn::query()
+            .where_(PaymentReturn::REMITTANCE_ID.eq(self.id))
+            .order_by(PaymentReturn::ID)
+            .get(db)
+            .await
+    }
+
     /// The remittance of `client` that is still a draft, if there is one.
     ///
     /// # Errors
@@ -170,6 +190,36 @@ impl Remittance {
             .first(db)
             .await
     }
+}
+
+/// A transfer of a remittance that the bank returned: each return keeps its
+/// advice (BL-LOG-17).
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[model(table = "logistics_payment_returns", index(remittance_id))]
+pub struct PaymentReturn {
+    /// The primary key.
+    pub id: i64,
+    /// The remittance.
+    #[model(references = "logistics_remittances")]
+    pub remittance_id: i64,
+    /// The bank's return advice: its reference or document.
+    pub advice: String,
+    /// The reason the bank gave.
+    pub reason: String,
+    /// The account the transfer went to.
+    pub bank_account: Option<String>,
+    /// The reference of the returned transfer.
+    pub payment_reference: Option<String>,
+    /// The voucher of the returned transfer.
+    pub payment_number: Option<String>,
+    /// The user who recorded the return.
+    pub returned_by: Option<i64>,
+    /// When.
+    pub returned_at: DateTime,
+    /// When the row was created.
+    pub created_at: Option<DateTime>,
+    /// When the row was last changed.
+    pub updated_at: Option<DateTime>,
 }
 
 /// One shipment on a remittance.

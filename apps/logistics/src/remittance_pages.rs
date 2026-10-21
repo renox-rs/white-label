@@ -9,6 +9,13 @@
 //! | `POST /remittances/{id}/approve` | `logistics.remittance_approve` | `remittances.approve` |
 //! | `POST /remittances/{id}/reopen` | `logistics.remittance_reopen` | `remittances.approve` |
 //! | `POST /remittances/{id}/pay` | `logistics.remittance_pay` | `remittances.pay` |
+//! | `POST /remittances/{id}/return-payment` | `logistics.remittance_return_payment` | `remittances.pay` (fields `advice`, `reason`) |
+//! | `POST /remittances/{id}/repay` | `logistics.remittance_repay` | `remittances.pay` (field `payment_reference`) |
+//! | `POST /remittances/{id}/confirm-account` | `logistics.remittance_confirm_account` | `remittances.pay`, or a client user of the company (field `note`) |
+//! | `POST /remittances/accounts` | `logistics.account_request` | `remittances.request_account` (fields `client_party_id`, `account`) |
+//! | `POST /remittances/accounts/{id}/approve` | `logistics.account_approve` | `remittances.approve` |
+//! | `POST /remittances/accounts/{id}/reject` | `logistics.account_reject` | `remittances.approve` (field `note`) |
+//! | `POST /remittances/accounts/{id}/withdraw` | `logistics.account_withdraw` | `remittances.request_account` |
 //! | `GET /remittances/{id}/statement` | `logistics.remittance_statement` | `remittances.view`, or a client user of the company (JSON) |
 //! | `POST /remittances/adjustments` | `logistics.adjustment_add` | `remittances.prepare` |
 //! | `POST /remittances/adjustments/{id}/approve` | `logistics.adjustment_approve` | `remittances.approve` |
@@ -24,6 +31,7 @@ use renox::state_machine::TransitionError;
 use serde::Serialize;
 use wl_kernel::PartyId;
 
+use crate::account::{self, AccountChange, AccountChangeStatus};
 use crate::adjustment::{self, AdjustmentLine, AdjustmentStatus, NewAdjustment};
 use crate::booking;
 use crate::pages::{Fields, Texts, field, tx};
@@ -61,6 +69,20 @@ pub fn routes() -> Routes {
         .name("logistics.remittance_reopen")
         .post("/remittances/{id}/pay", pay)
         .name("logistics.remittance_pay")
+        .post("/remittances/{id}/return-payment", return_payment)
+        .name("logistics.remittance_return_payment")
+        .post("/remittances/{id}/repay", repay)
+        .name("logistics.remittance_repay")
+        .post("/remittances/{id}/confirm-account", confirm_account)
+        .name("logistics.remittance_confirm_account")
+        .post("/remittances/accounts", request_account)
+        .name("logistics.account_request")
+        .post("/remittances/accounts/{id}/approve", approve_account)
+        .name("logistics.account_approve")
+        .post("/remittances/accounts/{id}/reject", reject_account)
+        .name("logistics.account_reject")
+        .post("/remittances/accounts/{id}/withdraw", withdraw_account)
+        .name("logistics.account_withdraw")
         .get("/remittances/{id}/statement", statement_of)
         .name("logistics.remittance_statement")
         .post("/remittances/adjustments", add_adjustment)
@@ -121,14 +143,29 @@ pub(crate) struct Row {
     url: String,
 }
 
+/// A bank account change of the list.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ChangeRow {
+    id: i64,
+    client_party_id: i64,
+    account: String,
+    status: String,
+    status_kind: &'static str,
+    via: String,
+    can_decide: bool,
+    can_withdraw: bool,
+}
+
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "logistics/remittances.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
     remittances: Vec<Row>,
+    account_changes: Vec<ChangeRow>,
     can_build: bool,
     can_add_adjustment: bool,
+    can_request_account: bool,
 }
 
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
@@ -154,9 +191,36 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             url: format!("/remittances/{}", r.id),
         })
         .collect();
+    let open = AccountChange::query()
+        .where_(AccountChange::STATUS.is_in(AccountChangeStatus::OPEN))
+        .order_by_desc(AccountChange::ID)
+        .limit(50)
+        .get(&state.db)
+        .await?;
+    let account_changes = open
+        .iter()
+        .map(|change| ChangeRow {
+            id: change.id,
+            client_party_id: change.client_party_id,
+            account: change.account.clone(),
+            status: t(
+                &lang,
+                &format!("logistics.screen.account_status.{}", change.status.as_str()),
+            ),
+            status_kind: "warning",
+            via: change.via.clone(),
+            can_decide: user.has_permission(permissions::REMITTANCES_APPROVE)
+                && change.requested_by != user.id
+                && change.status != AccountChangeStatus::Approved,
+            can_withdraw: user.has_permission(permissions::REMITTANCES_REQUEST_ACCOUNT)
+                && change.requested_by == user.id,
+        })
+        .collect();
     Ok(View::typed(IndexPage {
         tx: tx(&lang),
         remittances,
+        account_changes,
+        can_request_account: user.has_permission(permissions::REMITTANCES_REQUEST_ACCOUNT),
         can_build: user.has_permission(permissions::REMITTANCES_PREPARE),
         can_add_adjustment: user.has_permission(permissions::REMITTANCES_PREPARE),
     })
@@ -198,6 +262,15 @@ pub(crate) struct OffsetRow {
     payment: String,
 }
 
+/// A return of the transfer, as the page lists it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ReturnRow {
+    advice: String,
+    reason: String,
+    bank_account: String,
+    payment_reference: String,
+}
+
 /// What the remittance's page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "logistics/remittance.html")]
@@ -208,6 +281,10 @@ pub(crate) struct ShowPage {
     status_kind: &'static str,
     lines: Vec<LineRow>,
     offsets: Vec<OffsetRow>,
+    returns: Vec<ReturnRow>,
+    can_return: bool,
+    can_repay: bool,
+    can_confirm_account: bool,
     adjustments: Vec<AdjustmentRow>,
     can_approve: bool,
     can_reopen: bool,
@@ -252,6 +329,17 @@ async fn show(
             payment: offset.payment_number.unwrap_or_default(),
         })
         .collect();
+    let returns = remittance
+        .returns(&state.db)
+        .await?
+        .into_iter()
+        .map(|returned| ReturnRow {
+            advice: returned.advice,
+            reason: returned.reason,
+            bank_account: returned.bank_account.unwrap_or_default(),
+            payment_reference: returned.payment_reference.unwrap_or_default(),
+        })
+        .collect();
     let adjustments = remittance
         .adjustments(&state.db)
         .await?
@@ -282,6 +370,13 @@ async fn show(
         status_kind: status_kind(remittance.status),
         lines,
         offsets,
+        returns,
+        can_return: remittance.status == RemittanceStatus::Paid
+            && user.has_permission(permissions::REMITTANCES_PAY),
+        can_repay: remittance.status == RemittanceStatus::PaymentReturned
+            && user.has_permission(permissions::REMITTANCES_PAY),
+        can_confirm_account: remittance.status == RemittanceStatus::PaymentReturned
+            && user.has_permission(permissions::REMITTANCES_PAY),
         adjustments,
         can_approve: draft
             && user.has_permission(permissions::REMITTANCES_APPROVE)
@@ -365,6 +460,109 @@ async fn pay(
         .await
         .map_err(answer)?;
     back_to(&lang, "logistics.remittance_paid", id)
+}
+
+/// `POST /remittances/{id}/return-payment`: `advice` (the bank's return
+/// advice) and `reason`.
+async fn return_payment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    remit::return_payment(&state, &user, id, &field(&form, "advice"), &field(&form, "reason"))
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.remittance_payment_returned", id)
+}
+
+/// `POST /remittances/{id}/repay`: `payment_reference`, the new bank
+/// reference.
+async fn repay(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    remit::repay(&state, &user, id, &field(&form, "payment_reference"))
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.remittance_repaid", id)
+}
+
+/// `POST /remittances/{id}/confirm-account`: `note`, how the client
+/// confirmed that the account is correct.
+async fn confirm_account(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    remit::confirm_account(&state, &user, id, &field(&form, "note"))
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.remittance_account_confirmed", id)
+}
+
+/// `POST /remittances/accounts`: `client_party_id` and `account`, the new
+/// IBAN.
+async fn request_account(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Form(form): Fields,
+) -> Result<Response> {
+    let client = field(&form, "client_party_id")
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| bad_input(&lang))?;
+    account::request(&state, &user, PartyId(client), &field(&form, "account"))
+        .await
+        .map_err(answer)?;
+    back_to_list(&lang, "logistics.account_requested")
+}
+
+/// `POST /remittances/accounts/{id}/approve`.
+async fn approve_account(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    account::approve_change(&state, &user, id)
+        .await
+        .map_err(answer)?;
+    back_to_list(&lang, "logistics.account_approved")
+}
+
+/// `POST /remittances/accounts/{id}/reject`: `note`.
+async fn reject_account(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    account::reject_change(&state, &user, id, &field(&form, "note"))
+        .await
+        .map_err(answer)?;
+    back_to_list(&lang, "logistics.account_rejected")
+}
+
+/// `POST /remittances/accounts/{id}/withdraw`.
+async fn withdraw_account(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    account::withdraw_change(&state, &user, id)
+        .await
+        .map_err(answer)?;
+    back_to_list(&lang, "logistics.account_withdrawn")
 }
 
 /// A whole number from a form; blank is none, anything else that is not a
