@@ -14,6 +14,7 @@ mod events;
 pub mod hold;
 pub mod loss;
 mod loss_pages;
+pub mod netting;
 pub mod notices;
 pub mod pages;
 pub mod partial;
@@ -33,6 +34,7 @@ mod screen_texts;
 pub mod seed;
 pub mod shipment;
 pub mod shipment_machine;
+pub mod statement;
 pub mod trace;
 mod texts;
 mod voiding;
@@ -51,6 +53,8 @@ pub use shipment::{
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
 pub use cash_watch::CashWatch;
 pub use cod::{CodLoss, CodRule};
+pub use netting::Offset;
+pub use statement::Statement;
 pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
 pub use trace::TraceTask;
 pub use remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};
@@ -111,6 +115,8 @@ impl Module for Logistics {
             .model::<Remittance>()
             .model::<RemittanceLine>()
             .model::<AdjustmentLine>()
+            .model::<Offset>()
+            .model::<Statement>()
             .model::<CodLoss>()
             .model::<Reversal>()
             .model::<TraceTask>()

@@ -101,9 +101,18 @@ fn approve() -> Transition<Remittance> {
             let actor = ctx.actor().map(|user| user.id);
             Box::pin(async move {
                 let at = Some(renox::db::now());
+                // An approval answers the message `pay` left (BL-LOG-16).
+                let message: Option<String> = None;
                 Remittance::query()
                     .where_(Remittance::ID.eq(id))
-                    .update(&mut *tx, &[("approved_by", &actor), ("approved_at", &at)])
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("approved_by", &actor),
+                            ("approved_at", &at),
+                            ("message", &message),
+                        ],
+                    )
                     .await?;
                 Ok(())
             })
@@ -179,7 +188,9 @@ fn pay() -> Transition<Remittance> {
             })
         })
         .guard("something_to_pay", |r: &Remittance, _ctx| {
-            let nothing = r.net <= 0;
+            // The offsets of open invoices are paid at `pay` too, so a net
+            // of 0 with offsets is payable (BL-LOG-16).
+            let nothing = r.net <= 0 && r.offset_total <= 0;
             Box::pin(async move {
                 if nothing {
                     Err(english("logistics.remittance.nothing_to_pay", &[]))

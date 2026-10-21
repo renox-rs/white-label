@@ -9,6 +9,7 @@
 //! | `POST /remittances/{id}/approve` | `logistics.remittance_approve` | `remittances.approve` |
 //! | `POST /remittances/{id}/reopen` | `logistics.remittance_reopen` | `remittances.approve` |
 //! | `POST /remittances/{id}/pay` | `logistics.remittance_pay` | `remittances.pay` |
+//! | `GET /remittances/{id}/statement` | `logistics.remittance_statement` | `remittances.view`, or a client user of the company (JSON) |
 //! | `POST /remittances/adjustments` | `logistics.adjustment_add` | `remittances.prepare` |
 //! | `POST /remittances/adjustments/{id}/approve` | `logistics.adjustment_approve` | `remittances.approve` |
 //! | `POST /remittances/adjustments/{id}/reject` | `logistics.adjustment_reject` | `remittances.approve` |
@@ -24,11 +25,13 @@ use serde::Serialize;
 use wl_kernel::PartyId;
 
 use crate::adjustment::{self, AdjustmentLine, AdjustmentStatus, NewAdjustment};
+use crate::booking;
 use crate::pages::{Fields, Texts, field, tx};
 use crate::permissions;
 use crate::remit;
 use crate::remittance::{Remittance, RemittanceStatus};
 use crate::shipment::Shipment;
+use crate::statement;
 use crate::texts::t;
 
 /// The templates, compiled in.
@@ -58,6 +61,8 @@ pub fn routes() -> Routes {
         .name("logistics.remittance_reopen")
         .post("/remittances/{id}/pay", pay)
         .name("logistics.remittance_pay")
+        .get("/remittances/{id}/statement", statement_of)
+        .name("logistics.remittance_statement")
         .post("/remittances/adjustments", add_adjustment)
         .name("logistics.adjustment_add")
         .post("/remittances/adjustments/{id}/approve", approve_adjustment)
@@ -184,6 +189,15 @@ pub(crate) struct AdjustmentRow {
     can_delete: bool,
 }
 
+/// An invoice offset of the page.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct OffsetRow {
+    invoice: String,
+    due_date: String,
+    amount: i64,
+    payment: String,
+}
+
 /// What the remittance's page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "logistics/remittance.html")]
@@ -193,6 +207,7 @@ pub(crate) struct ShowPage {
     status_label: String,
     status_kind: &'static str,
     lines: Vec<LineRow>,
+    offsets: Vec<OffsetRow>,
     adjustments: Vec<AdjustmentRow>,
     can_approve: bool,
     can_reopen: bool,
@@ -226,6 +241,17 @@ async fn show(
             amount: line.amount,
         });
     }
+    let offsets = remittance
+        .offsets(&state.db)
+        .await?
+        .into_iter()
+        .map(|offset| OffsetRow {
+            invoice: offset.invoice_number,
+            due_date: offset.due_date.map(|day| day.to_string()).unwrap_or_default(),
+            amount: offset.amount,
+            payment: offset.payment_number.unwrap_or_default(),
+        })
+        .collect();
     let adjustments = remittance
         .adjustments(&state.db)
         .await?
@@ -255,6 +281,7 @@ async fn show(
         status_label: status_word(&lang, remittance.status),
         status_kind: status_kind(remittance.status),
         lines,
+        offsets,
         adjustments,
         can_approve: draft
             && user.has_permission(permissions::REMITTANCES_APPROVE)
@@ -264,6 +291,25 @@ async fn show(
         remittance,
     })
     .into_response())
+}
+
+/// `GET /remittances/{id}/statement`: the latest published statement as JSON,
+/// for staff with `remittances.view` and for a client user of the company (the
+/// portal screen is `POR.SLF.01`); none until the remittance is paid.
+async fn statement_of(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let remittance = Remittance::find_or_404(&state.db, id).await?;
+    let staff = user.has_permission(permissions::REMITTANCES_VIEW);
+    if !staff && !booking::acts_for(&state, &user, remittance.client()).await? {
+        return Err(Error::Forbidden);
+    }
+    match statement::view(&state.db, &remittance).await? {
+        Some(found) => Ok(Json(found).into_response()),
+        None => Err(Error::NotFound),
+    }
 }
 
 /// `POST /remittances/build`: `client_party_id`.

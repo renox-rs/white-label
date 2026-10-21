@@ -24,11 +24,18 @@
 //! - **Rebuild.** A draft is rebuilt, never duplicated: its shipment lines
 //!   are recomputed, the open adjustment lines of the client are attached,
 //!   and the lines already attached stay with their approval.
+//! - **Offsets.** When the client's contract allows netting, the open,
+//!   undisputed invoices of the client are offset against the amount before
+//!   offsets, oldest due date first and capped so the net is not negative
+//!   ([`crate::netting`]).
 //! - **Actions** ([`approve`], [`reopen`], [`pay`]): `approve` needs a user
-//!   other than the preparer and every adjustment line approved; `pay` records
-//!   the payout through the kernel's payments contract (an outgoing transfer
-//!   to the client) and then runs the transition; a refused transition
-//!   reverses the payout.
+//!   other than the preparer and every adjustment line approved; `pay`
+//!   re-checks each offset (an invoice that changed sends the remittance back
+//!   to a draft with a message), records the payout through the kernel's
+//!   payments contract (an outgoing transfer to the client) and one payment
+//!   per offset allocated to its invoice, and then runs the transition and
+//!   publishes the statement; a refused transition reverses every payment it
+//!   recorded.
 
 use std::collections::BTreeSet;
 
@@ -41,15 +48,21 @@ use wl_kernel::PartyId;
 use wl_kernel::delivery::DeliveryId;
 use wl_kernel::documents::{DUBAI_OFFSET_SECONDS, today};
 use wl_kernel::parties::{self, PartyStatus};
-use wl_kernel::payments::{self, PaymentMethod, RecordPayment, ReversalReason};
+use wl_kernel::invoicing::{InvoiceId, InvoiceSummary};
+use wl_kernel::payments::{
+    self, AllocationTarget, PaymentId, PaymentMethod, PaymentSource, RecordPayment,
+    ReversalReason,
+};
 
 use crate::adjustment::{AdjustmentLine, AdjustmentStatus, source};
+use crate::netting::{self, Offset};
 use crate::notices::tell_accountants;
 use crate::permissions;
 use crate::remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};
-use crate::remittance_machine::{APPROVE, PAY, REOPEN, RemittanceInput};
+use crate::remittance_machine::{APPROVE, PAY, REOPEN, REOPEN_SYSTEM, RemittanceInput};
 use crate::reweigh::{self, ClientTerms};
 use crate::shipment::{Shipment, ShipmentStatus};
+use crate::statement;
 use crate::texts::english;
 
 /// The scheduled task of `LOG.RUL.06`.
@@ -169,6 +182,7 @@ struct Totals {
     cod_total: i64,
     fee_total: i64,
     adjustment_total: i64,
+    offset_total: i64,
     net: i64,
 }
 
@@ -178,8 +192,14 @@ struct Totals {
 /// attached to it (a pending or rejected one is not counted) and the net,
 /// never below 0. The rest of a negative net becomes an open, approved
 /// adjustment line for the next draft; the one the earlier settle made is
-/// replaced, so it is never carried twice.
-async fn settle(tx: &mut Transaction, remittance: &Remittance) -> Result<Totals> {
+/// replaced, so it is never carried twice. The open invoices `open` are
+/// offset against what is left, oldest due date first (none when the
+/// client's contract does not allow netting).
+async fn settle(
+    tx: &mut Transaction,
+    remittance: &Remittance,
+    open: &[InvoiceSummary],
+) -> Result<Totals> {
     AdjustmentLine::query()
         .where_(AdjustmentLine::CARRIED_FROM_ID.eq(remittance.id))
         .where_(AdjustmentLine::REMITTANCE_ID.is_null())
@@ -201,7 +221,10 @@ async fn settle(tx: &mut Transaction, remittance: &Remittance) -> Result<Totals>
         .filter(|line| line.counts())
         .map(|line| line.amount)
         .sum();
-    let (net, carried) = net_and_carried(lines_amount, adjustment_total);
+    let (before_offsets, carried) = net_and_carried(lines_amount, adjustment_total);
+    let taken = netting::plan(before_offsets, open);
+    let offset_total = netting::store(&mut *tx, remittance.id, &taken).await?;
+    let net = before_offsets - offset_total;
     if carried < 0 {
         let mut line = AdjustmentLine {
             client_party_id: remittance.client_party_id,
@@ -229,6 +252,7 @@ async fn settle(tx: &mut Transaction, remittance: &Remittance) -> Result<Totals>
                 ("cod_total", &cod_total),
                 ("fee_total", &fee_total),
                 ("adjustment_total", &adjustment_total),
+                ("offset_total", &offset_total),
                 ("net", &net),
                 ("carried_forward", &carried_forward),
             ],
@@ -238,6 +262,7 @@ async fn settle(tx: &mut Transaction, remittance: &Remittance) -> Result<Totals>
         cod_total,
         fee_total,
         adjustment_total,
+        offset_total,
         net,
     })
 }
@@ -254,8 +279,9 @@ pub async fn refresh_totals(state: &AppState, id: i64) -> Result<Remittance> {
     if remittance.status != RemittanceStatus::Draft {
         return Ok(remittance);
     }
+    let open = netting::open_invoices(state, remittance.client()).await?;
     let mut tx = state.db.begin().await?;
-    settle(&mut tx, &remittance).await?;
+    settle(&mut tx, &remittance, &open).await?;
     tx.commit().await?;
     Remittance::find_or_404(&state.db, id).await
 }
@@ -299,6 +325,7 @@ pub async fn draft_for(
         return Ok(None);
     }
     let terms = reweigh::terms(&state.db, client).await?;
+    let open = netting::open_invoices(state, client).await?;
     let number = match &existing {
         Some(_) => String::new(),
         None => {
@@ -327,6 +354,7 @@ pub async fn draft_for(
         remittance.cod_total,
         remittance.fee_total,
         remittance.adjustment_total,
+        remittance.offset_total,
         remittance.net,
     );
     // Recompute the shipment lines.
@@ -357,7 +385,7 @@ pub async fn draft_for(
             .update(&mut tx, &[("remittance_id", &draft_id)])
             .await?;
     }
-    let totals = settle(&mut tx, &remittance).await?;
+    let totals = settle(&mut tx, &remittance, &open).await?;
     // A user who builds it becomes its preparer; the weekly rule keeps it.
     let prepared_by = by.or(remittance.prepared_by);
     Remittance::query()
@@ -375,6 +403,7 @@ pub async fn draft_for(
                 totals.cod_total,
                 totals.fee_total,
                 totals.adjustment_total,
+                totals.offset_total,
                 totals.net,
             );
     if changed {
@@ -551,18 +580,141 @@ pub async fn reopen(
     load(state, id).await
 }
 
+/// The kind a payment of an offset carries in its method details: the
+/// payment is an incoming transfer of the client's own money that stayed with
+/// the courier (method *COD netting*; wl-payments has no method of that name,
+/// see the deferred list).
+pub const COD_NETTING: &str = "cod_netting";
+
+/// Sends the approved remittance back to a draft because the offsets in
+/// `changed` no longer hold: they come off, the draft is worked out again
+/// (another open invoice may take their place) and the accountant reads the
+/// message. Answers the message.
+async fn send_back(
+    state: &AppState,
+    remittance: &Remittance,
+    changed: &[(Offset, &'static str)],
+) -> std::result::Result<String, TransitionError> {
+    let mut parts = Vec::new();
+    for (offset, reason) in changed {
+        let why = english(&format!("logistics.remittance.offset_reason.{reason}"), &[]);
+        parts.push(english(
+            "logistics.remittance.offset_removed",
+            &[("number", &offset.invoice_number), ("reason", &why)],
+        ));
+    }
+    let message = parts.join("; ");
+    let _outcome = remittance
+        .transition(REOPEN_SYSTEM)
+        .by_system()
+        .run(state)
+        .await?;
+    let note = Some(message.clone());
+    Remittance::query()
+        .where_(Remittance::ID.eq(remittance.id))
+        .update(&state.db, &[("message", &note)])
+        .await?;
+    refresh_totals(state, remittance.id).await?;
+    Ok(message)
+}
+
+/// Reverses the payments `recorded` (ids), newest first, as entered in
+/// error: a payment that was recorded for a `pay` that did not go through.
+async fn undo(
+    state: &AppState,
+    user: i64,
+    remittance: &Remittance,
+    recorded: &[i64],
+) -> std::result::Result<(), TransitionError> {
+    let recorder = payments::payment_recorder(state);
+    for id in recorded.iter().rev() {
+        let note = english(
+            "logistics.remittance.payout_reversed",
+            &[("number", &remittance.number)],
+        );
+        recorder
+            .reverse(
+                state,
+                PaymentId(*id),
+                ReversalReason::EnteredInError,
+                Some(note),
+                Some(user),
+            )
+            .await
+            .map_err(TransitionError::Failed)?;
+    }
+    Ok(())
+}
+
+/// Records the payment of `offset` (an incoming payment of the client, method
+/// details *COD netting*, referenced by the remittance's number) and allocates
+/// it in full to its invoice; its id is stored on the offset. A refused
+/// allocation reverses the payment again.
+async fn record_offset(
+    state: &AppState,
+    user: i64,
+    remittance: &Remittance,
+    entity: i64,
+    offset: &Offset,
+) -> std::result::Result<i64, TransitionError> {
+    let recorder = payments::payment_recorder(state);
+    let record = RecordPayment::new(
+        remittance.client(),
+        entity,
+        PaymentMethod::Transfer,
+        offset.amount,
+    )
+    .reference(&remittance.number)
+    .source(PaymentSource::System)
+    .method_details(renox::serde_json::json!({
+        "kind": COD_NETTING,
+        "remittance": remittance.number,
+        "invoice": offset.invoice_number,
+    }));
+    let payment = recorder
+        .record(state, record, Some(user))
+        .await
+        .map_err(TransitionError::Failed)?;
+    let allocated = recorder
+        .allocate(
+            state,
+            payment.id,
+            AllocationTarget::Invoice(InvoiceId(offset.invoice_id)),
+            offset.amount,
+        )
+        .await;
+    if let Err(error) = allocated {
+        undo(state, user, remittance, &[payment.id.0]).await?;
+        return Err(TransitionError::Failed(error));
+    }
+    let payment_id = Some(payment.id.0);
+    let payment_number = payment.number.clone();
+    Offset::query()
+        .where_(Offset::ID.eq(offset.id))
+        .update(
+            &state.db,
+            &[("payment_id", &payment_id), ("payment_number", &payment_number)],
+        )
+        .await?;
+    Ok(payment.id.0)
+}
+
 /// `user` (`remittances.pay`) pays the approved remittance `id` with the
-/// bank reference `reference`: an outgoing transfer to the client's account
-/// is recorded through the kernel's payments contract, then the transition
-/// `pay` runs. A transition that is refused leaves no payout: nothing is
-/// recorded when a guard would fail, and a payout recorded for a transition
-/// that then fails is reversed.
+/// bank reference `reference`: each offset is re-checked, an outgoing
+/// transfer of the net to the client's account is recorded through the
+/// kernel's payments contract, then one payment per offset allocated to its
+/// invoice, then the transition `pay` runs and the statement is published. A
+/// transition that is refused leaves no payment: nothing is recorded when a
+/// guard would fail, and every payment recorded for a transition that then
+/// fails is reversed.
 ///
 /// # Errors
 ///
 /// `Forbidden` without `remittances.pay`; `NotFrom` unless it is approved;
 /// `Guard` (422) without a reference or a bank account on file, for a
-/// blocked client and for a net of 0; the payments module's refusals.
+/// blocked client, for nothing to pay and when an offset no longer holds
+/// (the remittance is then a draft again, with the message); the payments
+/// module's refusals.
 pub async fn pay(
     state: &AppState,
     user: &AuthUser,
@@ -570,6 +722,16 @@ pub async fn pay(
     reference: &str,
 ) -> std::result::Result<Remittance, TransitionError> {
     let remittance = load(state, id).await?;
+    if remittance.status == RemittanceStatus::Approved
+        && user.has_permission(permissions::REMITTANCES_PAY)
+    {
+        let changed = netting::changes(state, &remittance).await?;
+        if !changed.is_empty() {
+            let message = send_back(state, &remittance, &changed).await?;
+            return Err(guard(message));
+        }
+    }
+    let offsets = remittance.offsets(&state.db).await?;
     let terms = reweigh::terms(&state.db, remittance.client()).await?;
     let account = terms
         .bank_account
@@ -592,7 +754,7 @@ pub async fn pay(
         && !reference.is_empty()
         && account.is_some()
         && !blocked
-        && remittance.net > 0;
+        && (remittance.net > 0 || !offsets.is_empty());
     if !ready {
         // The transition says why: the permission, the state or the guard.
         let _outcome = remittance
@@ -604,24 +766,36 @@ pub async fn pay(
         return load(state, id).await;
     }
     let entity = LegalEntity::default_entity(&state.db).await?;
-    let mut record = RecordPayment::new(
-        remittance.client(),
-        entity.id,
-        PaymentMethod::Transfer,
-        remittance.net,
-    )
-    .outgoing()
-    .reference(&reference);
-    if let Some(account) = &account {
-        record = record.bank_account(account);
+    let mut recorded: Vec<i64> = Vec::new();
+    if remittance.net > 0 {
+        let mut record = RecordPayment::new(
+            remittance.client(),
+            entity.id,
+            PaymentMethod::Transfer,
+            remittance.net,
+        )
+        .outgoing()
+        .reference(&reference);
+        if let Some(account) = &account {
+            record = record.bank_account(account);
+        }
+        let payment = payments::payment_recorder(state)
+            .record(state, record, Some(user.id))
+            .await
+            .map_err(TransitionError::Failed)?;
+        recorded.push(payment.id.0);
+        input.payment_id = Some(payment.id.0);
+        input.payment_number = payment.number.clone();
     }
-    let recorder = payments::payment_recorder(state);
-    let payment = recorder
-        .record(state, record, Some(user.id))
-        .await
-        .map_err(TransitionError::Failed)?;
-    input.payment_id = Some(payment.id.0);
-    input.payment_number = payment.number.clone();
+    for offset in &offsets {
+        match record_offset(state, user.id, &remittance, entity.id, offset).await {
+            Ok(payment) => recorded.push(payment),
+            Err(error) => {
+                undo(state, user.id, &remittance, &recorded).await?;
+                return Err(error);
+            }
+        }
+    }
     let outcome = remittance
         .transition(PAY)
         .by(user)
@@ -629,20 +803,40 @@ pub async fn pay(
         .run(state)
         .await;
     if let Err(error) = outcome {
-        let note = english("logistics.remittance.payout_reversed", &[("number", &remittance.number)]);
-        recorder
-            .reverse(
-                state,
-                payment.id,
-                ReversalReason::EnteredInError,
-                Some(note),
-                Some(user.id),
-            )
-            .await
-            .map_err(TransitionError::Failed)?;
+        undo(state, user.id, &remittance, &recorded).await?;
         return Err(error);
     }
-    load(state, id).await
+    let paid = load(state, id).await?;
+    statement::publish(&state.db, &paid).await?;
+    Ok(paid)
+}
+
+/// Sets whether the contract of `client` allows netting open invoices
+/// against its COD (off unless set; BL-LOG-16).
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn set_netting_allowed(db: &Db, client: PartyId, allowed: bool) -> Result {
+    let found = ClientTerms::query()
+        .where_(ClientTerms::CLIENT_PARTY_ID.eq(client.0))
+        .first(db)
+        .await?;
+    match found {
+        Some(mut terms) => {
+            terms.netting_allowed = allowed;
+            terms.save(db).await?;
+        }
+        None => {
+            let mut terms = ClientTerms {
+                client_party_id: client.0,
+                netting_allowed: allowed,
+                ..ClientTerms::default()
+            };
+            terms.insert(db).await?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

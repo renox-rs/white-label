@@ -70,6 +70,9 @@ pub struct Remittance {
     pub fee_total: i64,
     /// The approved adjustment lines on it, signed, in fils.
     pub adjustment_total: i64,
+    /// The open invoices offset against the COD (COD netting), in fils
+    /// (BL-LOG-16).
+    pub offset_total: i64,
     /// What is paid out: never below 0, in fils.
     pub net: i64,
     /// What a negative net was set to 0 for and carried to the next draft,
@@ -94,6 +97,8 @@ pub struct Remittance {
     pub payment_number: Option<String>,
     /// The account it was paid to.
     pub bank_account: Option<String>,
+    /// Why `pay` sent it back to a draft, for the accountant (BL-LOG-16).
+    pub message: Option<String>,
     /// The client contests the statement (BL-LOG-18).
     pub disputed: bool,
     /// The ticket of the dispute.
@@ -128,6 +133,15 @@ impl Remittance {
             .order_by(RemittanceLine::ID)
             .get(db)
             .await
+    }
+
+    /// The offsets of open invoices on it, oldest due date first.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn offsets(&self, db: &Db) -> Result<Vec<crate::netting::Offset>> {
+        crate::netting::offsets_of(db, self.id).await
     }
 
     /// The adjustment lines on it, oldest first (every status).

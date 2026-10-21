@@ -69,6 +69,9 @@ pub struct ClientTerms {
     /// The bank account the client's remittances are paid to (BL-LOG-14;
     /// the control of a change is BL-LOG-17, `LOG.ACL.13`).
     pub bank_account: Option<String>,
+    /// Whether the client's contract allows netting open invoices against
+    /// its COD (BL-LOG-16); off unless set.
+    pub netting_allowed: bool,
     /// Where the client's refused parcels go back to (BL-LOG-07; a stand-in
     /// for the address on the client's party record).
     pub pickup_address: Option<String>,

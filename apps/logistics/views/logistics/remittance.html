@@ -23,7 +23,9 @@
         <rx-entry :label="tx['remit_cod']" :value="remittance.cod_total" format="money"/>
         <rx-entry :label="tx['remit_fees']" :value="remittance.fee_total" format="money"/>
         <rx-entry :label="tx['remit_adjustments']" :value="remittance.adjustment_total" format="money"/>
+        <rx-entry :label="tx['remit_offset_total']" rx-if="remittance.offset_total" :value="remittance.offset_total" format="money"/>
         <rx-entry :label="tx['remit_net']" :value="remittance.net" format="money"/>
+        <rx-entry :label="tx['remit_message']" rx-if="remittance.message" :value="remittance.message"/>
         <rx-entry :label="tx['remit_carried']" rx-if="remittance.carried_forward" :value="remittance.carried_forward" format="money"/>
         <rx-entry :label="tx['remit_payment']" rx-if="remittance.payment_number" :value="remittance.payment_number"/>
         <rx-entry :label="tx['remit_reference']" rx-if="remittance.payment_reference" :value="remittance.payment_reference"/>
@@ -37,6 +39,13 @@
       <rx-column :label="tx['remit_fee']" align="num" hide-narrow>{{ line.fee | money(currency='AED') }}</rx-column>
       <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['remit_no_lines']" icon="package"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="offsets" as="offset" :key="offset.invoice" :caption="tx['remit_offsets']" card>
+      <rx-column :label="tx['remit_offset_invoice']">{{ offset.invoice }}</rx-column>
+      <rx-column :label="tx['due']" hide-narrow>{{ offset.due_date }}</rx-column>
+      <rx-column :label="tx['amount']" align="num">{{ offset.amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_payment']" hide-narrow>{{ offset.payment }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['remit_no_offsets']" icon="receipt"/></rx-slot>
     </rx-table>
     <rx-table :rows="adjustments" as="adjustment" :key="adjustment.id" :caption="tx['remit_adjustment_lines']" card>
       <rx-column :label="tx['amount']" align="num">{{ adjustment.amount | money(currency='AED') }}</rx-column>

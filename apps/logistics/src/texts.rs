@@ -743,6 +743,24 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.credit.description.lost",
         "Shipment {{ number }} was on an issued invoice and is lost: credit its charge of {{ amount }}.",
     ),
+    // Netting open invoices against the COD (`LOG.COD.01`, BL-LOG-16).
+    (
+        "logistics.remittance.offset_removed",
+        "offset {{ number }} removed: {{ reason }}",
+    ),
+    (
+        "logistics.remittance.offset_reason.disputed",
+        "invoice disputed",
+    ),
+    ("logistics.remittance.offset_reason.paid", "invoice paid"),
+    (
+        "logistics.remittance.offset_reason.written_off",
+        "invoice written off",
+    ),
+    (
+        "logistics.remittance.offset_reason.changed",
+        "invoice changed",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
