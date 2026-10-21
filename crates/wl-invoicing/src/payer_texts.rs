@@ -111,6 +111,141 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.payer_bill.errors_table.message", "Message"),
     ("wl_invoicing.payer_bill.errors_table.date", "Date"),
     (
+        "wl_invoicing.payer_bill.waits_for_approval",
+        "Sent for approval: a second person must approve it before it is recorded.",
+    ),
+    ("wl_invoicing.payer_bill.fields.credit", "Payer credit balance"),
+    ("wl_invoicing.payer_bill.sections.remittances", "Remittances"),
+    ("wl_invoicing.payer_bill.sections.recoupments", "Recoupments"),
+    ("wl_invoicing.payer_bill.remit.action", "Record remittance"),
+    (
+        "wl_invoicing.payer_bill.remit.title",
+        "Record the payer's remittance advice",
+    ),
+    (
+        "wl_invoicing.payer_bill.remit.description",
+        "Enter what the payer paid and denied per line. An amount above what is open waits for a second person.",
+    ),
+    ("wl_invoicing.payer_bill.remit.submit", "Record remittance"),
+    ("wl_invoicing.payer_bill.remit.reference", "Advice reference"),
+    ("wl_invoicing.payer_bill.remit.date", "Advice date"),
+    (
+        "wl_invoicing.payer_bill.remit.date_hint",
+        "YYYY-MM-DD; today when blank.",
+    ),
+    ("wl_invoicing.payer_bill.remit.payment", "Payment (number)"),
+    (
+        "wl_invoicing.payer_bill.remit.payment_hint",
+        "The payment that carried the money, if it is recorded.",
+    ),
+    ("wl_invoicing.payer_bill.remit.paid", "paid"),
+    ("wl_invoicing.payer_bill.remit.denied", "Denied"),
+    ("wl_invoicing.payer_bill.remit.code", "Denial code"),
+    ("wl_invoicing.payer_bill.remit.reason", "Denial reason"),
+    ("wl_invoicing.payer_bill.remit.overpayment", "To credit balance"),
+    (
+        "wl_invoicing.payer_bill.remit.done",
+        "The remittance is recorded.",
+    ),
+    ("wl_invoicing.payer_bill.recoup.action", "Record recoupment"),
+    (
+        "wl_invoicing.payer_bill.recoup.title",
+        "The payer took money back",
+    ),
+    (
+        "wl_invoicing.payer_bill.recoup.description",
+        "Enter the amount taken back per line. A second person must approve it; the lines are then open again as denied.",
+    ),
+    ("wl_invoicing.payer_bill.recoup.submit", "Record recoupment"),
+    ("wl_invoicing.payer_bill.recoup.code", "Recoupment code"),
+    ("wl_invoicing.payer_bill.recoup.reason", "Payer's reason"),
+    (
+        "wl_invoicing.payer_bill.recoup.carrier",
+        "Carried by remittance",
+    ),
+    (
+        "wl_invoicing.payer_bill.recoup.carrier_date",
+        "Date of that remittance",
+    ),
+    ("wl_invoicing.payer_bill.recoup.amount", "Recouped"),
+    ("wl_invoicing.payer_bill.recoup.from_credit", "From credit balance"),
+    (
+        "wl_invoicing.payer_bill.recoup.deducted",
+        "Deducted from the remittance",
+    ),
+    (
+        "wl_invoicing.payer_bill.recoup.done",
+        "The recoupment is recorded.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.amount_format",
+        "Enter an amount like 400.00.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.date_format",
+        "Enter the date as YYYY-MM-DD.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.payment_format",
+        "The payment is a number.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.remit_reference",
+        "Give the payer's reference of the advice.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.remit_lines",
+        "The advice needs at least one line.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.remit_unmatched",
+        "A line of the advice is not a line of this payer bill.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.remit_twice",
+        "A line is on the advice twice.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.remit_amount",
+        "Each line needs an amount paid or denied above 0.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.remit_denied",
+        "A line cannot be denied for more than is open on it.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.remit_code",
+        "A denied amount needs the payer's code.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.remit_used",
+        "This advice reference is already recorded for the payer.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.remit_changed",
+        "The payer bill changed since the advice was entered; enter it again.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.recoup_code",
+        "Give the payer's recoupment code or reason.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.recoup_lines",
+        "Name the lines and the amounts taken back.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.recoup_amount",
+        "Each amount taken back must be above 0.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.recoup_above_paid",
+        "A line cannot be recouped for more than was paid on it.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.recoup_changed",
+        "The payer bill changed since the recoupment was entered; enter it again.",
+    ),
+    (
         "wl_invoicing.payer_bill.errors.agreement_inactive",
         "The payer agreement is not active.",
     ),

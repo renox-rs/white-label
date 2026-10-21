@@ -84,8 +84,12 @@ pub mod payer_bill;
 pub mod payer_bill_machine;
 mod payer_bill_pages;
 pub mod payer_contract;
+pub mod payer_credit;
 pub mod payer_issue;
+pub mod payer_policy;
+pub mod payer_recoupment;
 pub mod payer_rejection;
+pub mod payer_remittance;
 pub mod payer_split;
 pub mod payer_tax;
 mod payer_texts;
@@ -1013,6 +1017,10 @@ impl Module for WlInvoicing {
             .model::<PayerBill>()
             .model::<PayerBillLine>()
             .model::<payer_rejection::PayerSubmissionError>()
+            .model::<payer_remittance::PayerRemittance>()
+            .model::<payer_remittance::PayerAllocation>()
+            .model::<payer_recoupment::PayerRecoupment>()
+            .model::<payer_credit::PayerCreditMovement>()
             .view_data::<subscription_pages::IndexPage>()
             .view_data::<subscription_pages::ShowPage>()
             .view_data::<payer_bill_pages::IndexPage>()

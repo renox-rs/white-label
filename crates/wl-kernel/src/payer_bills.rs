@@ -319,13 +319,13 @@ pub struct RejectionDeadline {
 pub struct RemittanceLine {
     /// The payer bill line.
     pub line: i64,
-    /// What the payer paid on it.
+    /// What the payer paid on it, in all. What is above the line's open
+    /// amount (less what the payer denied) is an overpayment: the remittance
+    /// is held for a second person's approval and the excess goes to the
+    /// payer credit balance (`FIN.ACL.16`).
     pub paid: i64,
     /// What the payer denied on it.
     pub denied: i64,
-    /// What the payer paid above what was open on it (held for approval and
-    /// moved to the payer credit balance, `FIN.ACL.16`).
-    pub overpayment: i64,
     /// The payer's denial code, if it denied something.
     pub code: Option<String>,
     /// The payer's reason for the denial.
@@ -333,13 +333,12 @@ pub struct RemittanceLine {
 }
 
 impl RemittanceLine {
-    /// `paid` fils paid on `line`, nothing denied or over.
+    /// `paid` fils paid on `line`, nothing denied.
     pub fn paid(line: i64, paid: i64) -> Self {
         RemittanceLine {
             line,
             paid,
             denied: 0,
-            overpayment: 0,
             code: None,
             reason: None,
         }
@@ -353,11 +352,6 @@ impl RemittanceLine {
         self
     }
 
-    /// With `overpayment` fils paid above what was open.
-    pub fn overpaid(mut self, overpayment: i64) -> Self {
-        self.overpayment = overpayment;
-        self
-    }
 }
 
 /// The payer's remittance advice for one payer bill.
@@ -825,11 +819,11 @@ mod tests {
         let day = NaiveDate::from_ymd_opt(2026, 12, 10).unwrap();
         let remittance = Remittance::new(" ADV-9 ", day)
             .payment(5)
-            .line(RemittanceLine::paid(1, 40_000).overpaid(5_000))
+            .line(RemittanceLine::paid(1, 45_000))
             .line(RemittanceLine::paid(2, 0).denied(10_000, " R12 ", "not covered"));
         assert_eq!(remittance.reference, "ADV-9");
         assert_eq!(remittance.payment, Some(5));
-        assert_eq!(remittance.lines[0].overpayment, 5_000);
+        assert_eq!(remittance.lines[0].paid, 45_000);
         assert_eq!(remittance.lines[1].code.as_deref(), Some("R12"));
         let recoupment = Recoupment::new("R07")
             .line(1, 40_000)

@@ -7,6 +7,8 @@
 //! | `POST /payer-bills/{id}/issue` | `wl_invoicing.payer_bill_issue` | `payer_bills.issue` |
 //! | `POST /payer-bills/{id}/resubmit` | `wl_invoicing.payer_bill_resubmit` | `payer_bills.issue` |
 //! | `POST /payer-bills/{id}/submission-rejected` | `wl_invoicing.payer_bill_rejected` | `payer_bills.issue` |
+//! | `POST /payer-bills/{id}/remittance` | `wl_invoicing.payer_bill_remittance` | `payer_bills.reconcile` |
+//! | `POST /payer-bills/{id}/recoupment` | `wl_invoicing.payer_bill_recoupment` | `payer_bills.reconcile` |
 //! | `POST /payer-bills/{id}/transitions/{name}` | `wl_invoicing.payer_bill_transitions.*` | `payer_bills.view` and the transition's permission |
 //!
 //! The list shows each payer bill's number, payer, customer, source, state
@@ -25,14 +27,18 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
-use wl_kernel::payer_bills::PayerBillStatus;
+use wl_kernel::payer_bills::{PayerAnswer, PayerBillStatus, Recoupment, Remittance, RemittanceLine};
 
 use crate::allocate::amount_text;
 use crate::credit_notes::By;
 use crate::payer_agreement::PayerAgreement;
 use crate::payer_bill::{PayerBill, lines_of};
+use crate::bill_pages::{parse_date, parse_decimal};
+use crate::payer_credit;
 use crate::payer_issue;
+use crate::payer_recoupment::{self, PayerRecoupment};
 use crate::payer_rejection::{self, PayerSubmissionError};
+use crate::payer_remittance::{self, PayerRemittance};
 use crate::permissions;
 use crate::texts;
 
@@ -69,6 +75,14 @@ pub fn routes() -> Routes {
                 .post("/payer-bills/{id}/submission-rejected", rejected)
                 .name("wl_invoicing.payer_bill_rejected")
                 .require_permission(permissions::PAYER_BILLS_ISSUE),
+        )
+        .merge(
+            Routes::new()
+                .post("/payer-bills/{id}/remittance", remittance)
+                .name("wl_invoicing.payer_bill_remittance")
+                .post("/payer-bills/{id}/recoupment", recoupment)
+                .name("wl_invoicing.payer_bill_recoupment")
+                .require_permission(permissions::PAYER_BILLS_RECONCILE),
         )
 }
 
@@ -183,6 +197,29 @@ pub(crate) struct ErrorRow {
     date: String,
 }
 
+/// One remittance recorded on the bill.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct RemittanceRow {
+    id: i64,
+    reference: String,
+    date: String,
+    paid: String,
+    denied: String,
+    overpayment: String,
+}
+
+/// One recoupment recorded on the bill.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct RecoupmentRow {
+    id: i64,
+    code: String,
+    amount: String,
+    from_credit: String,
+    deducted: String,
+    carrier: String,
+    reversal: bool,
+}
+
 /// What a payer bill's page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-invoicing/payer_bill.html")]
@@ -205,9 +242,14 @@ pub(crate) struct ShowPage {
     open: String,
     lines: Vec<LineRow>,
     errors: Vec<ErrorRow>,
+    remittances: Vec<RemittanceRow>,
+    recoupments: Vec<RecoupmentRow>,
+    credit: String,
     can_issue: bool,
     can_resubmit: bool,
     can_reject: bool,
+    can_remit: bool,
+    can_recoup: bool,
 }
 
 /// `GET /payer-bills/{id}`: the bill's terms, lines and actions.
@@ -247,6 +289,45 @@ async fn show(
             date: day(Some(error.recorded_on)),
         })
         .collect();
+    let remittances = PayerRemittance::query()
+        .where_(PayerRemittance::PAYER_BILL_ID.eq(bill.id))
+        .order_by(PayerRemittance::ID)
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .map(|row| RemittanceRow {
+            id: row.id,
+            reference: row.reference,
+            date: day(Some(row.advice_date)),
+            paid: amount_text(&bill.currency, row.paid_total),
+            denied: amount_text(&bill.currency, row.denied_total),
+            overpayment: amount_text(&bill.currency, row.overpayment),
+        })
+        .collect();
+    let recoupments = PayerRecoupment::query()
+        .where_(PayerRecoupment::PAYER_BILL_ID.eq(bill.id))
+        .order_by(PayerRecoupment::ID)
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .map(|row| RecoupmentRow {
+            id: row.id,
+            code: row.code,
+            amount: amount_text(&bill.currency, row.amount),
+            from_credit: amount_text(&bill.currency, row.from_credit),
+            deducted: amount_text(&bill.currency, row.deducted),
+            carrier: row.carrier_reference.unwrap_or_default(),
+            reversal: row.reversal,
+        })
+        .collect();
+    let credit = payer_credit::balance(
+        &state.db,
+        bill.payer(),
+        bill.legal_entity_id,
+        &bill.currency,
+    )
+    .await?;
+    let can_reconcile = user.has_permission(permissions::PAYER_BILLS_RECONCILE);
     let can_issue = user.has_permission(permissions::PAYER_BILLS_ISSUE);
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -272,6 +353,15 @@ async fn show(
         open: amount_text(&bill.currency, bill.balance),
         lines,
         errors,
+        remittances,
+        recoupments,
+        credit: amount_text(&bill.currency, credit),
+        can_remit: can_reconcile && bill.status == PayerBillStatus::Issued,
+        can_recoup: can_reconcile
+            && matches!(
+                bill.status,
+                PayerBillStatus::Paid | PayerBillStatus::PartiallyPaid | PayerBillStatus::Closed
+            ),
         can_reject: can_issue && bill.status == PayerBillStatus::Issued,
         can_issue: can_issue && bill.status == PayerBillStatus::Draft,
         can_resubmit: can_issue
@@ -339,4 +429,102 @@ async fn rejected(
         .await
         .map(|(rejected, _)| rejected);
     answered(&lang, &bill, done, "payer_bill.reject.done")
+}
+
+/// The answer of an action that may wait for a second person: the toast of
+/// what happened and the bill's page, or the refusal as its status.
+fn answered_money(
+    lang: &Lang,
+    bill: &PayerBill,
+    done: std::result::Result<(PayerBill, PayerAnswer), TransitionError>,
+    key: &str,
+) -> Result<Response> {
+    let (_, answer) = done.map_err(TransitionError::into_error)?;
+    let toast = match answer {
+        PayerAnswer::Done => Toast::success(text(lang, key)),
+        PayerAnswer::Pending { .. } => Toast::info(text(lang, "payer_bill.waits_for_approval")),
+    };
+    Ok((toast, back(bill)?).into_response())
+}
+
+/// A 422 with the text of `key`.
+fn bad(lang: &Lang, key: &str) -> Error {
+    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, text(lang, key))
+}
+
+/// An amount typed as `400.00`; blank is 0.
+fn fils_of(lang: &Lang, typed: &str) -> Result<i64> {
+    if typed.trim().is_empty() {
+        return Ok(0);
+    }
+    parse_decimal(typed, 2).ok_or_else(|| bad(lang, "payer_bill.errors.amount_format"))
+}
+
+/// The day typed as `2026-12-10`; blank is today.
+fn date_of(lang: &Lang, typed: &str) -> Result<NaiveDate> {
+    if typed.trim().is_empty() {
+        return Ok(wl_kernel::documents::today());
+    }
+    parse_date(typed).ok_or_else(|| bad(lang, "payer_bill.errors.date_format"))
+}
+
+/// `POST /payer-bills/{id}/remittance`: records the payer's advice. The form
+/// has the `reference`, the `date`, the wl-payments `payment` if any and, per
+/// line, `line_<id>_paid`, `line_<id>_denied`, `line_<id>_code` and
+/// `line_<id>_reason`; a line with nothing paid or denied is left out.
+async fn remittance(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(bill): Found<PayerBill>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    let mut advice = Remittance::new(get("reference"), date_of(&lang, get("date"))?);
+    if !get("payment").is_empty() {
+        let payment = get("payment")
+            .parse::<i64>()
+            .map_err(|_| bad(&lang, "payer_bill.errors.payment_format"))?;
+        advice = advice.payment(payment);
+    }
+    for line in lines_of(&state.db, bill.id).await? {
+        let paid = fils_of(&lang, get(&format!("line_{}_paid", line.id)))?;
+        let denied = fils_of(&lang, get(&format!("line_{}_denied", line.id)))?;
+        if paid == 0 && denied == 0 {
+            continue;
+        }
+        advice = advice.line(RemittanceLine::paid(line.id, paid).denied(
+            denied,
+            get(&format!("line_{}_code", line.id)),
+            get(&format!("line_{}_reason", line.id)),
+        ));
+    }
+    let done = payer_remittance::record(&state, &user, bill.id, advice).await;
+    answered_money(&lang, &bill, done, "payer_bill.remit.done")
+}
+
+/// `POST /payer-bills/{id}/recoupment`: records what the payer took back.
+/// The form has the `code`, the `reason`, the `carrier_reference` and
+/// `carrier_date` of the later remittance that carried it and, per line,
+/// `line_<id>_recouped`.
+async fn recoupment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(bill): Found<PayerBill>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    let mut taken = Recoupment::new(get("code")).reason(get("reason"));
+    if !get("carrier_reference").is_empty() {
+        taken = taken.carried_by(get("carrier_reference"), date_of(&lang, get("carrier_date"))?);
+    }
+    for line in lines_of(&state.db, bill.id).await? {
+        let amount = fils_of(&lang, get(&format!("line_{}_recouped", line.id)))?;
+        if amount != 0 {
+            taken = taken.line(line.id, amount);
+        }
+    }
+    let done = payer_recoupment::record(&state, &user, bill.id, taken).await;
+    answered_money(&lang, &bill, done, "payer_bill.recoup.done")
 }

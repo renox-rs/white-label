@@ -716,7 +716,7 @@ pub(crate) struct FormPage {
 
 /// `value` with `scale` decimals as text, e.g. 1500 with scale 3 and keep 0
 /// is `1.5`; the fraction keeps at least `keep` digits.
-fn decimal_text(value: i64, scale: u32, keep: usize) -> String {
+pub(crate) fn decimal_text(value: i64, scale: u32, keep: usize) -> String {
     let factor = 10_i64.pow(scale);
     let sign = if value < 0 { "-" } else { "" };
     let value = value.unsigned_abs();
@@ -738,7 +738,7 @@ fn decimal_text(value: i64, scale: u32, keep: usize) -> String {
 
 /// `text` ("150", "1,500.5", "3.6725") as a whole number of 10^-`scale`
 /// units; `None` for anything else, a negative number or too many decimals.
-fn parse_decimal(text: &str, scale: u32) -> Option<i64> {
+pub(crate) fn parse_decimal(text: &str, scale: u32) -> Option<i64> {
     let text = text.trim().replace(',', "");
     let (whole, fraction) = text.split_once('.').unwrap_or((text.as_str(), ""));
     if whole.is_empty() && fraction.is_empty() {
@@ -760,7 +760,7 @@ fn parse_decimal(text: &str, scale: u32) -> Option<i64> {
 }
 
 /// `text` as a date (`2026-10-05`).
-fn parse_date(text: &str) -> Option<NaiveDate> {
+pub(crate) fn parse_date(text: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(text.trim(), "%Y-%m-%d").ok()
 }
 

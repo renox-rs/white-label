@@ -8,14 +8,16 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::Subject;
 use wl_kernel::payer_bills::{
-    NewPayerBill, PayerBillFuture, PayerBillId, PayerBillStatus, PayerBillSummary, PayerBills,
-    RejectionDeadline, SubmissionError,
+    NewPayerBill, PayerAnswer, PayerBillFuture, PayerBillId, PayerBillStatus, PayerBillSummary,
+    PayerBills, Recoupment, RejectionDeadline, Remittance, SubmissionError,
 };
 
 use crate::credit_notes::By;
 use crate::payer_bill::PayerBill;
 use crate::payer_issue;
+use crate::payer_recoupment;
 use crate::payer_rejection;
+use crate::payer_remittance;
 use crate::payer_split;
 
 /// The module's [`PayerBills`].
@@ -125,6 +127,36 @@ impl PayerBills for PayerBilling {
             payer_issue::resubmit(state, by_of(by), id.0, corrections)
                 .await
                 .map(|_| ())
+                .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn record_remittance<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: PayerBillId,
+        remittance: Remittance,
+        by: &'a AuthUser,
+    ) -> PayerBillFuture<'a, PayerAnswer> {
+        Box::pin(async move {
+            payer_remittance::record(state, by, id.0, remittance)
+                .await
+                .map(|(_, answer)| answer)
+                .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn record_recoupment<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: PayerBillId,
+        recoupment: Recoupment,
+        by: &'a AuthUser,
+    ) -> PayerBillFuture<'a, PayerAnswer> {
+        Box::pin(async move {
+            payer_recoupment::record(state, by, id.0, recoupment)
+                .await
+                .map(|(_, answer)| answer)
                 .map_err(TransitionError::into_error)
         })
     }

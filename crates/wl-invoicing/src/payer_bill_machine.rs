@@ -28,13 +28,18 @@ use wl_kernel::payer_bills::PayerBillStatus;
 
 use crate::payer_bill::{PayerBill, SUBJECT_TYPE};
 use crate::payer_issue;
+use crate::payer_policy;
+use crate::payer_recoupment;
 use crate::payer_rejection;
+use crate::payer_remittance;
 
 /// Every transition of the machine, in a stable order.
 fn all_transitions() -> Vec<Transition<PayerBill>> {
     let mut all = Vec::new();
     all.extend(payer_issue::transitions());
     all.extend(payer_rejection::transitions());
+    all.extend(payer_remittance::transitions());
+    all.extend(payer_recoupment::transitions());
     all
 }
 
@@ -70,16 +75,42 @@ impl StateMachine for PayerBill {
 /// Registers the machine as the subject `invoicing.payer_bill` and for
 /// `rnx state:diagram PayerBill`.
 pub(crate) fn register() {
-    SubjectMachine::of::<PayerBill>(SUBJECT_TYPE).register();
+    // The overpayment of a remittance and a recoupment share one approval
+    // action (`FIN.ACL.16`); a recoupment from a reversed payment is the
+    // system's and is not gated.
+    let mut machine = SubjectMachine::of::<PayerBill>(SUBJECT_TYPE);
+    for outcome in payer_remittance::OUTCOMES {
+        machine = machine.action(
+            &payer_remittance::transition_name(outcome, false),
+            payer_remittance::ACTION,
+        );
+    }
+    for outcome in payer_recoupment::OUTCOMES {
+        machine = machine.action(
+            &payer_recoupment::transition_name(outcome, false),
+            payer_remittance::ACTION,
+        );
+    }
+    machine.register();
     renox::state_machine::register::<PayerBill>();
+    payer_policy::money_policy().register();
+    wl_kernel::approvals::register_subject_link(SUBJECT_TYPE, |id| format!("/payer-bills/{id}"));
 }
 
 /// Registers the listener that follows every committed transition of a
 /// payer bill: the tax documents, the tasks, the notices and the events.
 pub(crate) fn register_events(app: &mut Registry) {
+    // A reversed payment takes back what it was applied to on a payer bill.
+    app.listen(
+        |event: wl_kernel::payments::PaymentReversed, state: AppState| async move {
+            payer_recoupment::on_payment_reversed(&state, &event).await
+        },
+    );
     app.listen(|event: Transitioned<PayerBill>, state: AppState| async move {
         payer_issue::on_transition(&state, &event).await?;
-        payer_rejection::on_transition(&state, &event).await
+        payer_rejection::on_transition(&state, &event).await?;
+        payer_remittance::on_transition(&state, &event).await?;
+        payer_recoupment::on_transition(&state, &event).await
     });
 }
 
