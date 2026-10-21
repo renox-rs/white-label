@@ -9,6 +9,8 @@
 //! | `POST /payer-bills/{id}/submission-rejected` | `wl_invoicing.payer_bill_rejected` | `payer_bills.issue` |
 //! | `POST /payer-bills/{id}/remittance` | `wl_invoicing.payer_bill_remittance` | `payer_bills.reconcile` |
 //! | `POST /payer-bills/{id}/recoupment` | `wl_invoicing.payer_bill_recoupment` | `payer_bills.reconcile` |
+//! | `POST /payer-bills/{id}/write-off` | `wl_invoicing.payer_bill_write_off` | `payer_bills.write_off` |
+//! | `POST /payer-bills/{id}/transfer` | `wl_invoicing.payer_bill_transfer` | `payer_bills.write_off` |
 //! | `POST /payer-bills/{id}/transitions/{name}` | `wl_invoicing.payer_bill_transitions.*` | `payer_bills.view` and the transition's permission |
 //!
 //! The list shows each payer bill's number, payer, customer, source, state
@@ -34,6 +36,7 @@ use crate::credit_notes::By;
 use crate::payer_agreement::PayerAgreement;
 use crate::payer_bill::{PayerBill, lines_of};
 use crate::bill_pages::{parse_date, parse_decimal};
+use crate::payer_closing;
 use crate::payer_credit;
 use crate::payer_issue;
 use crate::payer_recoupment::{self, PayerRecoupment};
@@ -75,6 +78,14 @@ pub fn routes() -> Routes {
                 .post("/payer-bills/{id}/submission-rejected", rejected)
                 .name("wl_invoicing.payer_bill_rejected")
                 .require_permission(permissions::PAYER_BILLS_ISSUE),
+        )
+        .merge(
+            Routes::new()
+                .post("/payer-bills/{id}/write-off", write_off)
+                .name("wl_invoicing.payer_bill_write_off")
+                .post("/payer-bills/{id}/transfer", transfer)
+                .name("wl_invoicing.payer_bill_transfer")
+                .require_permission(permissions::PAYER_BILLS_WRITE_OFF),
         )
         .merge(
             Routes::new()
@@ -250,6 +261,9 @@ pub(crate) struct ShowPage {
     can_reject: bool,
     can_remit: bool,
     can_recoup: bool,
+    can_close: bool,
+    can_void: bool,
+    void_action: String,
 }
 
 /// `GET /payer-bills/{id}`: the bill's terms, lines and actions.
@@ -356,6 +370,14 @@ async fn show(
         remittances,
         recoupments,
         credit: amount_text(&bill.currency, credit),
+        can_close: user.has_permission(permissions::PAYER_BILLS_WRITE_OFF)
+            && matches!(
+                bill.status,
+                PayerBillStatus::Draft | PayerBillStatus::PartiallyPaid | PayerBillStatus::Denied
+            )
+            && bill.balance > 0,
+        can_void: can_issue && bill.status == PayerBillStatus::Draft && !bill.has_remittance,
+        void_action: format!("/payer-bills/{}/transitions/void", bill.id),
         can_remit: can_reconcile && bill.status == PayerBillStatus::Issued,
         can_recoup: can_reconcile
             && matches!(
@@ -527,4 +549,32 @@ async fn recoupment(
     }
     let done = payer_recoupment::record(&state, &user, bill.id, taken).await;
     answered_money(&lang, &bill, done, "payer_bill.recoup.done")
+}
+
+/// `POST /payer-bills/{id}/write-off`: writes the open amount off with the
+/// `reason`; above the agreement's limit it waits for a second person.
+async fn write_off(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(bill): Found<PayerBill>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = form.get("reason").map_or("", |r| r.trim());
+    let done = payer_closing::write_off(&state, &user, bill.id, reason).await;
+    answered_money(&lang, &bill, done, "payer_bill.write_off.done")
+}
+
+/// `POST /payer-bills/{id}/transfer`: moves the open amount to the customer
+/// with the `reason`, where the payer agreement allows it.
+async fn transfer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(bill): Found<PayerBill>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = form.get("reason").map_or("", |r| r.trim());
+    let done = payer_closing::transfer_to_customer(&state, &user, bill.id, reason).await;
+    answered(&lang, &bill, done, "payer_bill.transfer.done")
 }

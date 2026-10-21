@@ -37,6 +37,18 @@
           <rx-input :name="'line_' ~ line.id ~ '_recouped'" :label="line.description ~ ': ' ~ tx['payer_bill.recoup.amount']" :hint="tx['payer_bill.lines.paid'] ~ ': ' ~ line.paid" :id="'recoup-amount-' ~ line.id"/>
         </rx-stack>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_close" :id="'write-off-payer-bill-' ~ bill.id" :label="tx['payer_bill.write_off.action']" :action="route('wl_invoicing.payer_bill_write_off', bill.id)"
+                       :title="tx['payer_bill.write_off.title']" :description="tx['payer_bill.write_off.description']" :submit-label="tx['payer_bill.write_off.submit']" variant="danger" icon="x">
+        <rx-textarea name="reason" :label="tx['payer_bill.close.reason']" :id="'write-off-payer-bill-reason-' ~ bill.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_close" :id="'transfer-payer-bill-' ~ bill.id" :label="tx['payer_bill.transfer.action']" :action="route('wl_invoicing.payer_bill_transfer', bill.id)"
+                       :title="tx['payer_bill.transfer.title']" :description="tx['payer_bill.transfer.description']" :submit-label="tx['payer_bill.transfer.submit']" icon="send">
+        <rx-textarea name="reason" :label="tx['payer_bill.close.reason']" :id="'transfer-payer-bill-reason-' ~ bill.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_void" :id="'void-payer-bill-' ~ bill.id" :label="tx['payer_bill.void.action']" :action="void_action"
+                       :title="tx['payer_bill.void.title']" :description="tx['payer_bill.void.description']" :submit-label="tx['payer_bill.void.submit']" variant="danger" icon="x">
+        <rx-textarea name="reason" :label="tx['payer_bill.void.reason']" :id="'void-payer-bill-reason-' ~ bill.id" required/>
+      </rx-action-sheet>
     </rx-page-header>
     <rx-card :title="tx['payer_bill.sections.summary']">
       <rx-infolist columns="2">

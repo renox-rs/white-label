@@ -246,6 +246,102 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "The payer bill changed since the recoupment was entered; enter it again.",
     ),
     (
+        "wl_invoicing.payer_bill_transferred.subject",
+        "An amount your insurer will not pay is now yours to pay",
+    ),
+    (
+        "wl_invoicing.payer_bill_transferred.body",
+        "Your insurer {{ payer }} will not pay {{ amount }} of claim {{ number }}. The amount is now yours to pay.",
+    ),
+    (
+        "wl_invoicing.payer_bill_voided.subject",
+        "A payer bill was voided",
+    ),
+    (
+        "wl_invoicing.payer_bill_voided.body",
+        "Payer bill {{ number }} for {{ source }} was voided. Split the source again to the right payer. See: {{ link }}",
+    ),
+    ("wl_invoicing.payer_bill.close.reason", "Reason"),
+    ("wl_invoicing.payer_bill.write_off.action", "Write off"),
+    (
+        "wl_invoicing.payer_bill.write_off.title",
+        "Write off the open amount",
+    ),
+    (
+        "wl_invoicing.payer_bill.write_off.description",
+        "The open amount is written off and credited against the tax invoice that carries it. Above the payer agreement's limit a second person must approve it.",
+    ),
+    ("wl_invoicing.payer_bill.write_off.submit", "Write off"),
+    (
+        "wl_invoicing.payer_bill.write_off.done",
+        "The open amount is written off.",
+    ),
+    ("wl_invoicing.payer_bill.transfer.action", "Move to the customer"),
+    (
+        "wl_invoicing.payer_bill.transfer.title",
+        "Move the open amount to the customer",
+    ),
+    (
+        "wl_invoicing.payer_bill.transfer.description",
+        "Only where the payer agreement allows billing the customer. The customer is told.",
+    ),
+    ("wl_invoicing.payer_bill.transfer.submit", "Move to the customer"),
+    (
+        "wl_invoicing.payer_bill.transfer.done",
+        "The open amount moved to the customer.",
+    ),
+    ("wl_invoicing.payer_bill.void.action", "Void"),
+    (
+        "wl_invoicing.payer_bill.void.title",
+        "Void this payer bill",
+    ),
+    (
+        "wl_invoicing.payer_bill.void.description",
+        "For a bill made in error: a duplicate, the wrong payer or policy. It keeps its number and the source can be split again.",
+    ),
+    ("wl_invoicing.payer_bill.void.submit", "Void"),
+    ("wl_invoicing.payer_bill.void.reason", "Reason (duplicate, wrong payer or policy)"),
+    (
+        "wl_invoicing.payer_bill.errors.customer_not_billable",
+        "The payer agreement does not allow billing the customer for these lines.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.close_reason",
+        "Give a reason.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.close_changed",
+        "The open amount changed; start again.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.close_nothing",
+        "Nothing is open on this payer bill.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.window_open",
+        "The payer's first-submission window is still open.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.accepts_late",
+        "The payer accepts late submissions: send the claim with a late reason instead.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.void_submitted",
+        "A payer bill that was submitted once cannot be voided.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.no_invoice_line",
+        "A line is not linked to a line of the tax invoice that carries it.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.invoice_not_creditable",
+        "The tax invoice that carries the lines cannot be credited in its state.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.customer_not_found",
+        "The customer was not found.",
+    ),
+    (
         "wl_invoicing.payer_bill.errors.agreement_inactive",
         "The payer agreement is not active.",
     ),

@@ -24,11 +24,15 @@
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};
 use wl_kernel::machines::SubjectMachine;
+use wl_kernel::voids;
 use wl_kernel::payer_bills::PayerBillStatus;
 
 use crate::payer_bill::{PayerBill, SUBJECT_TYPE};
+use crate::payer_closing;
 use crate::payer_issue;
+use crate::payer_notices;
 use crate::payer_policy;
+use crate::permissions;
 use crate::payer_recoupment;
 use crate::payer_rejection;
 use crate::payer_remittance;
@@ -40,6 +44,7 @@ fn all_transitions() -> Vec<Transition<PayerBill>> {
     all.extend(payer_rejection::transitions());
     all.extend(payer_remittance::transitions());
     all.extend(payer_recoupment::transitions());
+    all.extend(payer_closing::transitions());
     all
 }
 
@@ -91,9 +96,20 @@ pub(crate) fn register() {
             payer_remittance::ACTION,
         );
     }
+    machine = machine.action(payer_closing::WRITE_OFF, payer_closing::WRITE_OFF_ACTION);
     machine.register();
     renox::state_machine::register::<PayerBill>();
     payer_policy::money_policy().register();
+    payer_policy::write_off_policy().register();
+    // A payer bill created in error is voided through the kernel (`PLT.ACL.09`):
+    // never once a remittance was recorded. Declared after the machine, so
+    // the void policy takes its action key.
+    voids::Voidable::of::<PayerBill>(SUBJECT_TYPE)
+        .permission(permissions::PAYER_BILLS_ISSUE)
+        .number("payer_bill", |bill: &PayerBill| bill.number.clone())
+        .given_to_third_party(|bill: &PayerBill| bill.has_remittance)
+        .register();
+    payer_notices::register_types();
     wl_kernel::approvals::register_subject_link(SUBJECT_TYPE, |id| format!("/payer-bills/{id}"));
 }
 
@@ -110,7 +126,8 @@ pub(crate) fn register_events(app: &mut Registry) {
         payer_issue::on_transition(&state, &event).await?;
         payer_rejection::on_transition(&state, &event).await?;
         payer_remittance::on_transition(&state, &event).await?;
-        payer_recoupment::on_transition(&state, &event).await
+        payer_recoupment::on_transition(&state, &event).await?;
+        payer_closing::on_transition(&state, &event).await
     });
 }
 

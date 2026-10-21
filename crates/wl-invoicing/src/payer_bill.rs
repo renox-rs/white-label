@@ -19,10 +19,13 @@
 //!   transitions that change a line; nothing else writes them.
 
 use renox::chrono::NaiveDate;
+use renox::db::Json;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::invoicing::VatCategory;
-use wl_kernel::payer_bills::{PAYER_BILL_SUBJECT_TYPE, PayerBillId, PayerBillStatus, PayerBillSummary};
+use wl_kernel::payer_bills::{
+    PAYER_BILL_SUBJECT_TYPE, PayerBillId, PayerBillStatus, PayerBillSummary, RecoupedLine,
+};
 use wl_kernel::{PartyId, Subject};
 
 use crate::payer_agreement::VatRecipient;
@@ -99,6 +102,16 @@ pub struct PayerBill {
     pub tax_document_pending: bool,
     /// Why it was written off or moved to the customer.
     pub close_reason: Option<String>,
+    /// How it ended: `transferred`, `written_off` or `voided`.
+    pub close_outcome: Option<String>,
+    /// The amount that moved at the close, in fils.
+    pub close_amount: i64,
+    /// The lines and the amounts that moved at the close.
+    pub close_lines: Json<Vec<RecoupedLine>>,
+    /// The credit note the close made, once made.
+    pub close_credit_note_id: Option<i64>,
+    /// The tax invoice to the customer the close made, once made.
+    pub close_invoice_id: Option<i64>,
     /// When it was written off or moved.
     pub closed_at: Option<DateTime>,
     /// The user who wrote it off or moved it; `None` for the system.

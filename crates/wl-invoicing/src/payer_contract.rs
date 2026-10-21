@@ -14,6 +14,7 @@ use wl_kernel::payer_bills::{
 
 use crate::credit_notes::By;
 use crate::payer_bill::PayerBill;
+use crate::payer_closing;
 use crate::payer_issue;
 use crate::payer_recoupment;
 use crate::payer_rejection;
@@ -157,6 +158,50 @@ impl PayerBills for PayerBilling {
             payer_recoupment::record(state, by, id.0, recoupment)
                 .await
                 .map(|(_, answer)| answer)
+                .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn write_off<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: PayerBillId,
+        reason: &'a str,
+        by: &'a AuthUser,
+    ) -> PayerBillFuture<'a, PayerAnswer> {
+        Box::pin(async move {
+            payer_closing::write_off(state, by, id.0, reason)
+                .await
+                .map(|(_, answer)| answer)
+                .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn transfer_to_customer<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: PayerBillId,
+        reason: &'a str,
+        by: &'a AuthUser,
+    ) -> PayerBillFuture<'a, ()> {
+        Box::pin(async move {
+            payer_closing::transfer_to_customer(state, by, id.0, reason)
+                .await
+                .map(|_| ())
+                .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn void<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: PayerBillId,
+        reason: &'a str,
+        by: &'a AuthUser,
+    ) -> PayerBillFuture<'a, PayerAnswer> {
+        Box::pin(async move {
+            payer_closing::void(state, by, id.0, reason)
+                .await
                 .map_err(TransitionError::into_error)
         })
     }
