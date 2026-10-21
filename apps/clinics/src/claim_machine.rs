@@ -944,6 +944,10 @@ async fn write_money_in(tx: &mut Transaction, claim_id: i64, input: ClaimInput) 
 mod tests {
     use super::*;
 
+    /// A transition as the table below states it: name, from, to, whether
+    /// it is a system one, its permissions.
+    type Expected = (&'static str, &'static [&'static str], &'static str, bool, &'static [&'static str]);
+
     fn day(text: &str) -> NaiveDate {
         text.parse().expect("a date")
     }
@@ -978,7 +982,7 @@ mod tests {
             ]
         );
         assert_eq!(machine.transitions().len(), 13);
-        let expected: [(&str, &[&str], &str, bool, &[&str]); 13] = [
+        let expected: [Expected; 13] = [
             (
                 VALIDATE,
                 &["draft"],
