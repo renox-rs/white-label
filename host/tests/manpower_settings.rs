@@ -848,7 +848,8 @@ async fn the_onboarding_checklists_and_the_sop_library_are_seeded() {
 }
 
 /// AC13 (Registrations): a fresh 09 deployment lists *Trademark registration*
-/// and *Other certification* with the MD as responsible role.
+/// and *Other certification* with the MD as responsible role; a trademark
+/// expiring in 90 days is told to the MD by the nightly run.
 #[renox::test]
 async fn the_registration_kinds_are_on_with_the_md_as_responsible_role() {
     let app = boot_seeded().await;
@@ -860,8 +861,49 @@ async fn the_registration_kinds_are_on_with_the_md_as_responsible_role() {
         assert!(kind.enabled, "{key} is on");
         assert_eq!(kind.responsible_role.as_deref(), Some("admin"), "{key}");
     }
-    let (_kind, blocks) = blocks_of(&app, "trademark_registration").await;
+    let (trademark, blocks) = blocks_of(&app, "trademark_registration").await;
     assert!(blocks.is_empty());
+    assert_eq!(trademark.reminder_offsets.0, [180, 90, 30]);
+    let other = DocumentKind::by_key(app.db(), "other_certification")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(other.reminder_offsets.0, [90, 30, 7]);
+
+    // The nightly run: a trademark expiring in 90 days is told to the MD (the
+    // company admin); one expiring in 200 days and a certification in 100 are
+    // beyond their first reminder; a certification in 7 days is.
+    let md = person(&app, "Mazen", ADMIN).await;
+    let gms = support::entity(&app, "GMS").await;
+    for (kind, title, days) in [
+        (&trademark, "Gulf Manpower trademark", 90),
+        (&trademark, "Gulf Manpower logo", 200),
+        (&other, "Licence of the recruitment agency", 100),
+        (&other, "ISO 9001", 7),
+    ] {
+        wl_documents::Document::create(
+            app.db(),
+            wl_documents::Document {
+                subject_type: "kernel.legal_entity".into(),
+                subject_id: gms.id,
+                kind_id: kind.id,
+                title: title.into(),
+                expiry_date: Some(day(days)),
+                current_version: 1,
+                status: wl_documents::DocumentStatus::Accepted,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+    expiry::run(app.state(), today()).await.unwrap();
+    let told: Vec<i64> = support::messages_to(&app, "documents.expiring", &md)
+        .await
+        .iter()
+        .map(|m| m.data.0["days_left"].as_i64().expect("days left"))
+        .collect();
+    assert_eq!(told, [90, 7], "only the documents inside a reminder");
 }
 
 /// Edge case (Seeding is idempotent): running the install again changes
