@@ -815,6 +815,51 @@ async fn an_online_order_paid_with_500_points_and_rejected_gives_them_back_and_a
 }
 
 #[renox::test]
+async fn a_placed_order_keeps_its_points_even_if_its_hold_clock_was_left_running() {
+    let (t, shop, floor, m) = world(1000, &[]).await;
+    let order = draft_order(&t, &floor, &m, "website", "online", &[("tee", "9.52")]).await;
+    redeem_on_order(&t, &shop, &order, 500).await;
+    // While the order is a draft the hold has a clock of 30 minutes.
+    assert!(
+        redemptions(&t, &order.subject()).await[0]
+            .hold_until
+            .is_some()
+    );
+    t.app
+        .post(&format!("/sales-orders/{}/submit", order.id), &[("x", "")])
+        .await
+        .assert_status(303);
+    assert_eq!(
+        order_now(&t, &order).await.status,
+        SalesOrderStatus::AwaitingPayment
+    );
+    // Submitting clears the clock in the same request.
+    assert!(
+        redemptions(&t, &order.subject()).await[0]
+            .hold_until
+            .is_none()
+    );
+
+    // Had that second step failed, the clock would still be running: put it
+    // back and let the lapsed-holds task come by.
+    let soon = Some(renox::db::now() + Days::minutes(30));
+    Redemption::query()
+        .where_(Redemption::SALE_ID.eq(order.id))
+        .update(t.db(), &[("hold_until", &soon)])
+        .await
+        .unwrap();
+    t.app.travel(Duration::from_secs(40 * 60));
+    t.app.run_scheduled(redeem::HOLDS_TASK).await.unwrap();
+    let kept = &redemptions(&t, &order.subject()).await[0];
+    assert_eq!(kept.status, RedemptionStatus::Held);
+    assert!(kept.hold_until.is_none());
+    let all = lines(&t, &order.subject()).await;
+    assert_eq!(redemption_lines(&all).len(), 1);
+    assert_eq!(order_now(&t, &order).await.gross_total, 500);
+    assert_eq!(account(&t, &m).await.points_held, 500);
+}
+
+#[renox::test]
 async fn cancelling_one_of_two_equal_lines_of_a_confirmed_order_gives_back_250_of_500_points() {
     let (t, shop, floor, m) = world(1000, &[]).await;
     let order = draft_order(

@@ -73,7 +73,7 @@ use crate::redemption_machine::{APPLY, ApplyInput, CONFIRM, ConfirmInput, REFUSE
 use crate::sale_line::{
     KIND_ITEM, KIND_LOYALTY_REDEMPTION, NewLine, SaleLine, ratio_half_up, totals,
 };
-use crate::sales_order::SalesOrder;
+use crate::sales_order::{SalesOrder, SalesOrderStatus};
 use crate::sales_order_machine::{ACCEPT, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, SUBMIT};
 use crate::sales_return::SalesReturn;
 use crate::texts::english;
@@ -887,6 +887,20 @@ pub async fn release_lapsed(state: &AppState, at: DateTime) -> Result<usize> {
         .await?;
     for row in held {
         if row.hold_until.is_some_and(|until| until <= at) {
+            // Decision: an order that was placed keeps its hold until it
+            // resolves. If the request that placed it failed before
+            // [`order_placed`] cleared the clock, the stale clock must not
+            // drop the line of a placed order: it is cleared here instead.
+            if row.sale_type == SALES_ORDER_SUBJECT_TYPE {
+                let placed = SalesOrder::find(&state.db, row.sale_id)
+                    .await?
+                    .is_some_and(|o| o.status != SalesOrderStatus::Draft);
+                if placed {
+                    order_placed(state, &Subject::new(SALES_ORDER_SUBJECT_TYPE, row.sale_id))
+                        .await?;
+                    continue;
+                }
+            }
             release_row(state, &row, "hold_lapsed").await?;
             drop_line(&state.db, &row).await?;
             released += 1;
