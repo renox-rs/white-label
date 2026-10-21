@@ -1,10 +1,13 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+mod arrival;
+pub mod balance;
 pub mod chase;
 pub mod config;
 mod events;
 pub mod goods_receipt;
+pub mod hold_service;
 pub mod item;
 pub mod item_supplier;
 pub mod landed_adjust;
@@ -28,11 +31,14 @@ pub mod return_dispatch;
 pub mod return_note;
 pub mod scope_stock;
 pub mod stock_count;
+pub mod stock_hold;
+mod stock_pages;
 mod supplier_pages;
 pub mod supplier_return;
 pub mod supplier_review;
 pub mod supplier_score;
 mod texts;
+pub mod transfer;
 
 use std::sync::Arc;
 
@@ -61,11 +67,13 @@ pub use reorder::{ReorderSuggestion, SuggestionStatus};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
 pub use stock_count::{StockCount, StockCountStatus};
+pub use stock_hold::{HoldScope, HoldStatus, StockHold, StockHoldItem, StockHoldLine};
 pub use supplier_return::{
     RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome,
 };
 pub use supplier_review::{Decision, ReviewStatus, SupplierReview};
 pub use supplier_score::{Figures, ScoreBand, SupplierScore, SupplierScoreNote};
+pub use transfer::{Transfer, TransferLine, TransferStatus};
 
 /// The module's permissions (wl-inventory §6).
 pub mod permissions {
@@ -104,6 +112,16 @@ pub mod permissions {
     /// Allocate, adjust and cancel landed costs, and approve an adjustment
     /// above the value (`STK.ACL.06`).
     pub const LANDED_COSTS_POST: &str = "landed_costs.post";
+    /// Issue stock to a cost object in the scope of the location.
+    pub const STOCK_ISSUE: &str = "stock.issue";
+    /// Send and receive transfers between locations.
+    pub const STOCK_TRANSFER: &str = "stock.transfer";
+    /// Adjust stock, and clear a pending issue with a reason (`STK.ACL.02`).
+    pub const STOCK_ADJUST: &str = "stock.adjust";
+    /// Place a stock hold on whole lots or on the stock at a location.
+    pub const STOCK_HOLD: &str = "stock.hold";
+    /// Decide the lines of a stock hold, and be told when one is placed.
+    pub const LOTS_RELEASE: &str = "lots.release";
 }
 
 /// The inventory module. The host adds it with
@@ -223,6 +241,7 @@ impl Module for WlInventory {
         pages::routes()
             .merge(supplier_pages::routes())
             .merge(preferred_change::routes())
+            .merge(stock_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -252,6 +271,11 @@ impl Module for WlInventory {
         app.model::<LandedCostAdjustment>();
         app.model::<Lot>();
         app.model::<StockMovement>();
+        app.model::<Transfer>();
+        app.model::<TransferLine>();
+        app.model::<StockHold>();
+        app.model::<StockHoldLine>();
+        app.model::<StockHoldItem>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
         app.model::<SupplierReturn>();
@@ -262,6 +286,8 @@ impl Module for WlInventory {
         renox::state_machine::register::<StockCount>();
         renox::state_machine::register::<GoodsReceipt>();
         renox::state_machine::register::<Lot>();
+        renox::state_machine::register::<Transfer>();
+        renox::state_machine::register::<StockHold>();
         renox::state_machine::register::<SupplierReturn>();
         renox::state_machine::register::<LandedCost>();
         renox::state_machine::register::<LandedCostAdjustment>();
@@ -353,6 +379,10 @@ impl Module for WlInventory {
         // A vertical that stops a scope lists its open orders, cancels its
         // open purchase requests and opens the count of its stores.
         wl_kernel::inventory::provide_scope_stock(app, scope_stock::InventoryScopeStock);
+        // `StockHoldService`: a vertical automation places a hold on the
+        // stock at a location (06: an out-of-range reading).
+        wl_kernel::inventory::provide_stock_hold_service(app, hold_service::InventoryHolds);
+        hold_service::register_types();
         events::register(app);
         // `STK.RUL.08`: the notice type and the daily chase of the returns
         // that stay `dispatched`.

@@ -250,6 +250,8 @@ pub(crate) fn register(app: &mut Registry) {
             let receipt = GoodsReceipt::find_or_404(&state.db, event.key).await?;
             let lines = lines_of(&state.db, receipt.id).await?;
             state.emit(received_event(&receipt, &lines)).await?;
+            // What was accepted joins an open hold on the location.
+            crate::arrival::on_receipt(&state, &receipt, &lines).await?;
             // The goods refused at the door left with the driver as the receipt
             // posted: the system dispatched their return.
             for ret in of_source(&state.db, &receipt.subject()).await? {
@@ -268,6 +270,45 @@ pub(crate) fn register(app: &mut Registry) {
                 }
             }
             Ok(())
+        },
+    );
+    app.listen(
+        |event: Transitioned<crate::lot::Lot>, state: AppState| async move {
+            if event.transition != crate::lot::HOLD {
+                return Ok(());
+            }
+            let lot = crate::lot::Lot::find_or_404(&state.db, event.key).await?;
+            state
+                .emit(wl_kernel::inventory::LotHeld {
+                    lot: Subject::new(LOT_SUBJECT_TYPE, lot.id),
+                    item: Subject::new(ITEM_SUBJECT_TYPE, lot.item_id),
+                    reason: event.reason.clone().unwrap_or_default(),
+                    quantity_milli: crate::balance::lot_left(&state.db, lot.id).await?,
+                })
+                .await
+        },
+    );
+    app.listen(
+        |event: Transitioned<crate::transfer::Transfer>, state: AppState| async move {
+            if event.transition != crate::transfer::RECEIVE {
+                return Ok(());
+            }
+            let transfer = crate::transfer::Transfer::find_or_404(&state.db, event.key).await?;
+            crate::arrival::on_transfer(&state, &transfer).await
+        },
+    );
+    app.listen(
+        |event: Transitioned<crate::stock_hold::StockHold>, state: AppState| async move {
+            use crate::stock_hold::{ADD_LINES, ADD_LINES_BY_SYSTEM};
+            if ![ADD_LINES, ADD_LINES_BY_SYSTEM].contains(&event.transition.as_str()) {
+                return Ok(());
+            }
+            let added = event
+                .meta
+                .get("added")
+                .and_then(renox::serde_json::Value::as_u64)
+                .unwrap_or(0);
+            crate::hold_service::announce_added(&state, event.key, added as usize).await
         },
     );
     app.listen(

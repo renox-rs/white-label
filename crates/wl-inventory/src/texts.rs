@@ -629,6 +629,99 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.review.block_body",
         "Procurement asks for a decision on blocking the supplier after review {{ review }}. Nothing is blocked until a holder of parties.block does it.",
     ),
+    // Transfers between two locations.
+    (
+        "wl_inventory.transfer.same_location",
+        "A transfer needs two different locations.",
+    ),
+    (
+        "wl_inventory.transfer.no_lines",
+        "A transfer needs at least one line.",
+    ),
+    (
+        "wl_inventory.transfer.bad_line",
+        "Line {{ position }}: enter a quantity above zero.",
+    ),
+    (
+        "wl_inventory.transfer.lot_needed",
+        "Line {{ position }}: {{ item }} is lot-tracked; name the lot.",
+    ),
+    (
+        "wl_inventory.transfer.not_draft",
+        "Only a draft transfer can be sent.",
+    ),
+    (
+        "wl_inventory.transfer.not_released",
+        "Line {{ position }}: lot {{ lot }} is not released; only released lots can be transferred.",
+    ),
+    (
+        "wl_inventory.transfer.held",
+        "Line {{ position }}: {{ item }} has {{ held }} on hold at the source; held quantity cannot be transferred.",
+    ),
+    (
+        "wl_inventory.transfer.not_available",
+        "Line {{ position }}: only {{ available }} of {{ item }} is available at the source, {{ quantity }} is needed.",
+    ),
+    (
+        "wl_inventory.transfer.not_in_transit",
+        "The transfer is not on its way.",
+    ),
+    ("wl_inventory.transfer.sent", "Transfer sent."),
+    ("wl_inventory.transfer.received", "Transfer received."),
+    // Stock holds.
+    (
+        "wl_inventory.hold.bad_reason",
+        "The reason of a hold is recall, quality, temperature, complaint or other.",
+    ),
+    (
+        "wl_inventory.hold.no_scope",
+        "Name the lots or the location to hold.",
+    ),
+    (
+        "wl_inventory.hold.no_balance",
+        "There is no stock in that scope to hold.",
+    ),
+    (
+        "wl_inventory.hold.bad_form",
+        "Give a reason, a reference like ticketing.ticket:5 and either lots or one location.",
+    ),
+    ("wl_inventory.hold.placed", "Stock hold placed."),
+    (
+        "wl_inventory.hold.warning",
+        "{{ location }} is on {{ reason }} hold.",
+    ),
+    (
+        "wl_inventory.hold.go_on",
+        "Go on to receive anyway: the quantity joins the hold and stays unavailable.",
+    ),
+    (
+        "wl_inventory.hold.not_location_scope",
+        "Lines are added to an open hold on a location, at that location.",
+    ),
+    (
+        "wl_inventory.hold.item_not_in_scope",
+        "The item is not in the scope of the hold.",
+    ),
+    (
+        "wl_inventory.hold.no_quantity",
+        "Enter a quantity above zero.",
+    ),
+    (
+        "wl_inventory.hold.placed_subject",
+        "Stock hold {{ number }} placed ({{ reason }})",
+    ),
+    (
+        "wl_inventory.hold.placed_body",
+        "Stock hold {{ number }} was placed for {{ reason }} with {{ lines }} line(s). Each line needs a decision.",
+    ),
+    (
+        "wl_inventory.hold.lines_subject",
+        "Stock hold {{ number }}: new stock held",
+    ),
+    (
+        "wl_inventory.hold.lines_body",
+        "{{ added }} line(s) of stock moved into a held location and joined hold {{ number }} ({{ reason }}). They stay unavailable until decided.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",
