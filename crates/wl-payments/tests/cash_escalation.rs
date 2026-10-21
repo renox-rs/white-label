@@ -399,3 +399,31 @@ async fn the_hours_are_the_clients_settings() {
         }
     );
 }
+
+/// The rule is on the scheduler under its task name, every
+/// `EVERY_MINUTES` minutes (a decision: the 12 and 48 hour instants are met to
+/// within a quarter of an hour, not an hour): running the scheduled task
+/// escalates a handover whose period ended long ago, as `run` does.
+#[renox::test]
+async fn the_rule_is_scheduled_and_the_scheduled_task_escalates() {
+    let t = boot().await;
+    let mona = manager(&t, "Mona").await;
+    let boss = admin(&t, "Alia").await;
+    let driver = t.holder("Dani").await;
+    let handover = t.collect(&driver, "2020-01-01", 90_000, 1).await;
+    assert_eq!(cash_escalation::EVERY_MINUTES, 15);
+
+    t.app
+        .kernel()
+        .run_scheduled(cash_escalation::TASK)
+        .await
+        .expect("the task is registered and runs");
+
+    let tickets = t.cash_tickets.opened();
+    assert_eq!(tickets.len(), 1);
+    assert_eq!(tickets[0].assignee, Some(Assignee::user(mona.id)));
+    let after = t.reloaded(&handover).await;
+    assert!(after.task_at.is_some());
+    assert!(after.admin_notified_at.is_some(), "48 hours are long past");
+    assert!(told(&t.notices.recipients(CASH_TASK), &boss));
+}

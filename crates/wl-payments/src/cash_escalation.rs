@@ -2,7 +2,7 @@
 //! §6 `FIN.RUL.22`, §7, issue #114).
 //!
 //! A holder who does not come back at the end of the run, shift or day must not
-//! leave cash unaccounted for. [`run`] is the rule, hourly:
+//! leave cash unaccounted for. [`run`] is the rule, every [`EVERY_MINUTES`] minutes:
 //!
 //! - **N hours** after the end of the holder's period (12): a task for the
 //!   holder's manager to reach the holder (a ticket assigned to the manager,
@@ -40,6 +40,11 @@ pub const RULE: &str = "FIN.RUL.22";
 
 /// The task that runs the rule.
 pub const TASK: &str = "payments:cash-escalation";
+
+/// How often the rule runs, in minutes. The instants of the specification
+/// (12 and 48 hours after the end of the period) are met to within this
+/// many minutes; an hourly job would be up to an hour late.
+pub const EVERY_MINUTES: u64 = 15;
 
 /// What a run did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -144,11 +149,12 @@ pub async fn run(state: &AppState, now: DateTime) -> Result<Escalated> {
     Ok(done)
 }
 
-/// Registers the hourly rule and its command.
+/// Registers the rule on its schedule.
 pub(crate) fn register(app: &mut Registry) {
-    app.schedule().hourly(TASK, |state: AppState| async move {
-        run(&state, renox::db::now()).await.map(|_| ())
-    });
+    app.schedule()
+        .every_minutes(EVERY_MINUTES, TASK, |state: AppState| async move {
+            run(&state, renox::db::now()).await.map(|_| ())
+        });
 }
 
 #[cfg(test)]
