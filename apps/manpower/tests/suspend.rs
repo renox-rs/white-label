@@ -115,8 +115,16 @@ impl World {
             .unwrap()
     }
 
+    /// The notices to the client about the suspension: the one that tells it
+    /// the cover is not found yet (`MPW.RUL.13`, a same-day suspension) is
+    /// BL-MPW-16's and has its own tests.
     fn client_notices(&self) -> Vec<NotifyRequest> {
-        self.t.notices.of_type("manpower.client_notice")
+        self.t
+            .notices
+            .of_type("manpower.client_notice")
+            .into_iter()
+            .filter(|request| !text(request).contains("Cover not found yet"))
+            .collect()
     }
 
     /// The notices to staff about the suspension (the cover request has its

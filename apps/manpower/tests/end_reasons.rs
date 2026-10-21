@@ -131,7 +131,13 @@ async fn a_rejected_worker_is_ended_with_the_note_and_the_replacement_opens() {
 
     let bench = manpower::bench::of(w.t.state(), &[w.w]).await.unwrap();
     assert_eq!(bench, vec![w.w], "W is back on the bench");
-    assert_eq!(w.t.notices.of_type("manpower.client_notice").len(), 1);
+    // The client is told the worker leaves, and, as the replacement starts
+    // tomorrow at 07:00, less than 24 hours away, that cover is not found yet
+    // (`MPW.RUL.13`, BL-MPW-16).
+    let told = w.t.notices.of_type("manpower.client_notice");
+    assert_eq!(told.len(), 2, "{told:?}");
+    assert!(told[0].data.to_string().contains("leaves"));
+    assert!(told[1].data.to_string().contains("Cover not found yet"));
     assert_eq!(w.t.ended.all().len(), 1);
     assert_eq!(w.t.ended.all()[0].reason, "client_rejected");
 }

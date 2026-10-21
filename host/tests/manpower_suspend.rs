@@ -19,6 +19,20 @@ use wl_attendance::{AttendanceRecord, WorkLocation};
 use wl_documents::expiry;
 use wl_kernel::Subject;
 
+/// The client's notices about the suspension: the cover starts today, so the
+/// client is also told that cover is not found yet (`MPW.RUL.13`, BL-MPW-16),
+/// which has its own tests.
+async fn about_the_suspension(
+    app: &renox::testing::TestApp,
+    a: &manpower_support::Account,
+) -> Vec<wl_notify::Message> {
+    messages_to_party(app, "manpower.client_notice", a.client)
+        .await
+        .into_iter()
+        .filter(|m| !m.data.0.to_string().contains("Cover not found yet"))
+        .collect()
+}
+
 /// AC1, AC3, AC4 and the refused check-in: W's work permit and health
 /// insurance expired yesterday; the nightly run suspends D (active) today, D8
 /// (planned) is left alone, the second kind adds a reason and no second
@@ -98,7 +112,7 @@ async fn the_nightly_run_suspends_the_deployment_and_the_check_in_is_refused() {
     );
 
     // The client: neutral. The account manager: the kind.
-    let client = messages_to_party(&app, "manpower.client_notice", a.client).await;
+    let client = about_the_suspension(&app, &a).await;
     assert_eq!(client.len(), 1);
     let told = client[0].data.0.to_string();
     assert!(told.contains("temporarily unavailable"), "{told}");
@@ -131,10 +145,5 @@ async fn the_nightly_run_suspends_the_deployment_and_the_check_in_is_refused() {
         .await
         .unwrap();
     assert_eq!(reasons.len(), 2, "{reasons:?}");
-    assert_eq!(
-        messages_to_party(&app, "manpower.client_notice", a.client)
-            .await
-            .len(),
-        1
-    );
+    assert_eq!(about_the_suspension(&app, &a).await.len(), 1);
 }
