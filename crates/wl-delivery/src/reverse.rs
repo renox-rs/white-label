@@ -415,12 +415,19 @@ pub async fn approve(
 }
 
 /// 422 unless a refund to the payer can be asked: the payments module is on
-/// and the delivery has a recipient party to pay back.
+/// and the delivery has a recipient party to pay back, or the source module
+/// pays the refunds of a payer who is no party by hand
+/// ([`wl_kernel::delivery::ManualRefunds`]).
 fn ensure_refundable(state: &AppState, delivery: &Delivery) -> Result<()> {
-    let provided = state
-        .provided::<std::sync::Arc<dyn wl_kernel::payments::PaymentRecorder>>()
-        .is_some();
-    if !provided || delivery.recipient().is_none() {
+    let refundable = if delivery.recipient().is_some() {
+        state
+            .provided::<std::sync::Arc<dyn wl_kernel::payments::PaymentRecorder>>()
+            .is_some()
+    } else {
+        wl_kernel::delivery::manual_refunds(state)
+            .is_some_and(|refunds| refunds.accepts(&delivery.source()))
+    };
+    if !refundable {
         return Err(unprocessable(english("wl_delivery.reverse.cannot_refund")));
     }
     Ok(())
