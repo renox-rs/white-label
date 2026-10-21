@@ -18,6 +18,7 @@ use wl_delivery::{
     Deliveries, Delivery, DeliveryLine, NewRun, Run, VehicleType, WlDelivery, permissions as perm,
     seed,
 };
+use wl_kernel::custody::CashCustody;
 use wl_kernel::documents::{DocumentGuard, today};
 use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::Workforce;
@@ -28,10 +29,12 @@ use wl_kernel::{
     RunDispatched, Subject,
 };
 
+pub mod custody;
 pub mod documents;
 pub mod roster;
 pub mod tickets;
 
+use custody::FakeCustody;
 use documents::Documents;
 use roster::{Roster, employee_of};
 use tickets::TicketDesk;
@@ -128,6 +131,10 @@ pub struct World {
     pub run_closed: Recorded<RunClosed>,
     /// The tickets the module opened, resolved and commented on.
     pub tickets: TicketDesk,
+    /// The cash custody (provided only by [`boot_with_custody`]).
+    pub custody: FakeCustody,
+    /// Approves a cash difference (`deliveries.approve_cod_difference`).
+    pub approver: User,
     /// Asks for a loss: holds `deliveries.reverse` and manages deliveries.
     pub ops_a: User,
     /// Approves a loss: holds `deliveries.reverse` and manages deliveries.
@@ -311,6 +318,25 @@ impl World {
         after
     }
 
+    /// [`out_for_delivery`](Self::out_for_delivery) on a run of `driver`
+    /// (whose documents are made valid), returning the delivery and the run.
+    pub async fn out_for_delivery_by(&self, driver: &User, delivery: &Delivery) -> (Delivery, Run) {
+        self.valid_documents_for(driver.id, "2099-12-31");
+        let run = wl_delivery::plan::create_run(
+            self.state(),
+            NewRun::new(today(), driver.id).vehicle(VehicleType::Van, Some(VAN)),
+        )
+        .await
+        .expect("the run is planned");
+        self.assign(&self.dispatcher, delivery, &run)
+            .await
+            .assert_ok();
+        self.dispatch(&self.dispatcher, &run).await.assert_ok();
+        let after = self.reload(delivery).await;
+        assert_eq!(after.status.as_str(), "out_for_delivery");
+        (after, self.reload_run(&run).await)
+    }
+
     /// `by` posts the outcome *delivered* of `delivery` with `pairs`.
     pub async fn deliver(
         &self,
@@ -436,6 +462,21 @@ pub async fn boot() -> World {
 
 /// `module` booted with the document guard `docs`.
 pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
+    boot_inner(module, docs, false).await
+}
+
+/// wl-delivery booted with the 03 document blocks and a cash custody, as when
+/// the payments module is on.
+pub async fn boot_with_custody() -> World {
+    boot_inner(WlDelivery::new(), Documents::logistics(), true).await
+}
+
+/// `module` booted with a cash custody.
+pub async fn boot_custody_with(module: WlDelivery) -> World {
+    boot_inner(module, Documents::logistics(), true).await
+}
+
+async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> World {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -453,6 +494,7 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
     let refused_received = Recorded::new();
     let run_closed = Recorded::new();
     let tickets = TicketDesk::default();
+    let custody = FakeCustody::default();
     let roster = Roster::default();
     let guard: Arc<dyn DocumentGuard> = Arc::new(docs.clone());
     let workforce: Arc<dyn Workforce> = Arc::new(roster.clone());
@@ -465,6 +507,12 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
         .provide(guard)
         .provide(workforce)
         .provide(creator);
+    let app = if with_custody {
+        let held: Arc<dyn CashCustody> = Arc::new(custody.clone());
+        app.provide(held)
+    } else {
+        app
+    };
     let app = record(app, &assigned);
     let app = record(app, &out);
     let app = record(app, &delivered);
@@ -522,6 +570,12 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
     let ops_b = make_user(app.db(), "Basel", &ops_grants).await;
     let driver = make_user(app.db(), "Dev", &[perm::RUNS_DRIVE, perm::COMPLETE]).await;
     let other_driver = make_user(app.db(), "Omar", &[perm::RUNS_DRIVE, perm::COMPLETE]).await;
+    let approver = make_user(
+        app.db(),
+        "Amal",
+        &[perm::VIEW, perm::POD_VIEW, perm::APPROVE_COD_DIFFERENCE],
+    )
+    .await;
     World {
         app,
         _views: views,
@@ -539,6 +593,8 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
         refused_received,
         run_closed,
         tickets,
+        custody,
+        approver,
         ops_a,
         ops_b,
         dispatcher,
