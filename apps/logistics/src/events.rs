@@ -8,6 +8,11 @@
 //!   state the transition leaves is left alone (a delivery planned before the
 //!   shipment reached the hub is a gap of the planning, recorded in the
 //!   audit notes).
+//! - `DeliveryDisputed` and `DeliveryDisputeClosed` (outcome *upheld*) run
+//!   `open_review` and `close_review` as the system (BL-LOG-09); after
+//!   `open_review` commits, the client is told and the COD comes off its
+//!   remittance ([`crate::review`]). A second event finds the shipment in the
+//!   target state and does nothing.
 //! - `cancel`, `cancel_return` and `void` cancel the shipment's open
 //!   delivery; a delivery that cannot be cancelled (it is on a dispatched
 //!   run, or already attempted) is written to the tracking events. A voided
@@ -17,15 +22,16 @@
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::delivery::{
-    DeliveryAttemptFailed, DeliveryDelivered, DeliveryId, DeliveryOutForDelivery, DeliveryRequester,
+    DeliveryAttemptFailed, DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId,
+    DeliveryOutForDelivery, DeliveryRequester, ReviewOutcome,
 };
 use wl_kernel::{Subject, voids};
 
 use crate::notices::tell_client;
 use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentStatus, track};
 use crate::shipment_machine::{
-    CANCEL, CANCEL_RETURN, DELIVER, DISPATCH, FAIL_ATTEMPT, HOLD, HOLD_SYSTEM, PICK_UP,
-    RECEIVE_AT_HUB, RELEASE, RETURN, ShipmentInput,
+    CANCEL, CANCEL_RETURN, CLOSE_REVIEW, DELIVER, DISPATCH, FAIL_ATTEMPT, HOLD, HOLD_SYSTEM,
+    OPEN_REVIEW, PICK_UP, RECEIVE_AT_HUB, RELEASE, RETURN, ShipmentInput,
 };
 use crate::texts::english;
 
@@ -197,9 +203,45 @@ pub(crate) fn register(app: &mut Registry) {
         }
         Ok(())
     });
+    app.listen(|event: DeliveryDisputed, state: AppState| async move {
+        if let Some(shipment) = shipment_of(&state, &event.source).await? {
+            follow(
+                &state,
+                shipment,
+                ShipmentStatus::Delivered,
+                OPEN_REVIEW,
+                ShipmentInput {
+                    review_ticket: event.ticket.map(|ticket| ticket.0),
+                    ticketing_off: event.ticket.is_none(),
+                    ..ShipmentInput::default()
+                },
+            )
+            .await?;
+        }
+        Ok(())
+    });
+    app.listen(|event: DeliveryDisputeClosed, state: AppState| async move {
+        // The only outcome of the event is *upheld*; a reversal or a loss
+        // arrives as its own event (BL-LOG-10, BL-LOG-11).
+        let ReviewOutcome::Upheld = event.outcome;
+        if let Some(shipment) = shipment_of(&state, &event.source).await? {
+            follow(
+                &state,
+                shipment,
+                ShipmentStatus::UnderReview,
+                CLOSE_REVIEW,
+                ShipmentInput::default(),
+            )
+            .await?;
+        }
+        Ok(())
+    });
     app.listen(
         |event: Transitioned<Shipment>, state: AppState| async move {
             let name = event.transition.as_str();
+            if name == OPEN_REVIEW {
+                return crate::review::held(&state, event.key).await;
+            }
             if name == HOLD || name == HOLD_SYSTEM {
                 hold_delivery(&state, event.key, true).await?;
                 crate::hold::tell_of_hold(&state, event.key).await?;

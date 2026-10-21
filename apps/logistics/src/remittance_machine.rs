@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! draft --approve--> approved --reopen--> draft
+//! approved --reopen_system (a shipment on it goes under review)--> draft
 //! approved --pay--> paid
 //! paid --return_payment--> payment_returned --repay--> paid   (BL-LOG-17)
 //! ```
@@ -25,6 +26,10 @@ use crate::texts::english;
 pub const APPROVE: &str = "approve";
 /// `reopen`: approved → draft.
 pub const REOPEN: &str = "reopen";
+/// `reopen_system`: `reopen` run by the system, when a shipment on the
+/// approved remittance goes under review (BL-LOG-09; a transition is either
+/// a user's or the system's).
+pub const REOPEN_SYSTEM: &str = "reopen_system";
 /// `pay`: approved → paid.
 pub const PAY: &str = "pay";
 
@@ -105,12 +110,12 @@ fn approve() -> Transition<Remittance> {
         })
 }
 
-/// `reopen`: back to a draft, so a line can be added or the shipments rebuilt.
-fn reopen() -> Transition<Remittance> {
-    Transition::new(REOPEN)
+/// `reopen` (a user with `remittances.approve`) or `reopen_system` (the
+/// system): back to a draft, so a line can be added or the shipments rebuilt.
+fn reopen(name: &'static str, by_system: bool) -> Transition<Remittance> {
+    let transition = Transition::new(name)
         .label("Reopen")
         .tone("warning")
-        .permission(permissions::REMITTANCES_APPROVE)
         .from([RemittanceStatus::Approved])
         .to(RemittanceStatus::Draft)
         .effect(|r: &Remittance, _ctx, tx| {
@@ -124,7 +129,12 @@ fn reopen() -> Transition<Remittance> {
                     .await?;
                 Ok(())
             })
-        })
+        });
+    if by_system {
+        transition.system()
+    } else {
+        transition.permission(permissions::REMITTANCES_APPROVE)
+    }
 }
 
 /// `pay`: the payment reference is recorded, the client has a bank account
@@ -206,7 +216,12 @@ fn pay() -> Transition<Remittance> {
 
 /// Every transition of the machine.
 pub fn transitions() -> Vec<Transition<Remittance>> {
-    vec![approve(), reopen(), pay()]
+    vec![
+        approve(),
+        reopen(REOPEN, false),
+        reopen(REOPEN_SYSTEM, true),
+        pay(),
+    ]
 }
 
 impl StateMachine for Remittance {
@@ -237,7 +252,7 @@ mod tests {
     fn the_machine_declares_the_four_states_and_the_base_transitions() {
         let machine = Remittance::machine();
         assert_eq!(machine.states().len(), 4);
-        for name in [APPROVE, REOPEN, PAY] {
+        for name in [APPROVE, REOPEN, REOPEN_SYSTEM, PAY] {
             assert!(machine.find(name).is_ok(), "{name}");
         }
         assert_eq!(machine.find(PAY).unwrap().from_states(), ["approved"]);

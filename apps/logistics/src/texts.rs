@@ -271,6 +271,47 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.remittance_approved", "Remittance approved."),
     ("logistics.remittance_reopened", "Remittance back to a draft."),
     ("logistics.remittance_paid", "Remittance paid."),
+    // A delivery under review (`WRK.ACL.06`, BL-LOG-09).
+    (
+        "logistics.review.ticket_needed",
+        "Link the dispute ticket of the delivery first.",
+    ),
+    (
+        "logistics.review.title",
+        "Shipment {{ number }} is under review",
+    ),
+    (
+        "logistics.review.body",
+        "The delivery of shipment {{ number }} is disputed (ticket {{ ticket }}). Its cash on delivery and its billing wait until the review is closed.",
+    ),
+    (
+        "logistics.review.body_no_ticket",
+        "The delivery of shipment {{ number }} is disputed. Its cash on delivery and its billing wait until the review is closed.",
+    ),
+    (
+        "logistics.review.reason_needed",
+        "Give the reason of the dispute.",
+    ),
+    (
+        "logistics.review.not_delivered",
+        "Only a delivered shipment can be disputed.",
+    ),
+    (
+        "logistics.review.no_delivery",
+        "The shipment has no delivery to put under review.",
+    ),
+    (
+        "logistics.disputed",
+        "The delivery is under review; its cash on delivery and billing are held.",
+    ),
+    (
+        "logistics.remittance.reopened_subject",
+        "COD remittance {{ number }} was sent back to a draft",
+    ),
+    (
+        "logistics.remittance.reopened_body",
+        "Shipment {{ shipment }} on it is under review; its line was taken off and the draft rebuilt.",
+    ),
     // COD remittance (`LOG.RUL.06`, `LOG.ACL.07`, `LOG.ACL.12`; BL-LOG-14).
     (
         "logistics.remittance.notice_subject",

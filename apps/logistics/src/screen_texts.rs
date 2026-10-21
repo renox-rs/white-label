@@ -158,6 +158,16 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("logistics.screen.width", "Width (cm)"),
     ("logistics.screen.height", "Height (cm)"),
     ("logistics.screen.scale_photo", "Photo of the scale"),
+    ("logistics.screen.review", "Dispute the delivery"),
+    (
+        "logistics.screen.review_title",
+        "Put the delivery under review",
+    ),
+    (
+        "logistics.screen.review_description",
+        "Opens a dispute ticket. The cash on delivery and the billing wait until the review is closed.",
+    ),
+    ("logistics.screen.review_ticket", "Dispute ticket"),
     ("logistics.screen.dispute", "Dispute the surcharge"),
     (
         "logistics.screen.dispute_title",

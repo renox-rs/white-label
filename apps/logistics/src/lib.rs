@@ -16,6 +16,7 @@ pub mod remit;
 pub mod remittance;
 pub mod remittance_machine;
 mod remittance_pages;
+pub mod review;
 pub mod reweigh;
 pub mod scan;
 mod screen_texts;

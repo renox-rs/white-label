@@ -48,10 +48,57 @@ pub fn remittance_drafted_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type of the accountants' notice that an approved
+/// remittance went back to a draft because a shipment on it is under review.
+pub const REMITTANCE_REOPENED: &str = "logistics.remittance_reopened";
+
+/// The notification type: the remittance's number and the shipment.
+pub fn remittance_reopened_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(REMITTANCE_REOPENED, "logistics")
+        .group("remittances")
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(template("logistics.remittance.reopened_subject")),
+            template("logistics.remittance.reopened_body"),
+        )
+}
+
 /// Registers the notification types.
 pub(crate) fn register_types() {
     notify::register_type(client_notice_type());
     notify::register_type(remittance_drafted_type());
+    notify::register_type(remittance_reopened_type());
+}
+
+/// Tells the accountants (the holders of `remittances.prepare`) that the
+/// approved remittance `remittance` went back to a draft because
+/// `shipment` on it is under review.
+///
+/// # Errors
+///
+/// Database errors and the notifier's.
+pub(crate) async fn tell_reopened(
+    state: &AppState,
+    remittance: &Remittance,
+    shipment: &Shipment,
+) -> Result {
+    let mut request = NotifyRequest::new(REMITTANCE_REOPENED, remittance.subject())
+        .subject_label(&remittance.number)
+        .data(renox::serde_json::json!({
+            "number": remittance.number,
+            "shipment": shipment.number,
+            "link": format!("/remittances/{}", remittance.id),
+        }));
+    let mut told = false;
+    for user in users_with_permission(&state.db, permissions::REMITTANCES_PREPARE).await? {
+        request = request.to_user(user.id);
+        told = true;
+    }
+    if told {
+        notify::notifier(state).notify(state, request).await?;
+    }
+    Ok(())
 }
 
 /// Tells the accountants (the holders of `remittances.prepare`) that the

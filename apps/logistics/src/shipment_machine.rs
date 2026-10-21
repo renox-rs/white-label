@@ -11,13 +11,16 @@
 //! returning --return_delivered--> returned
 //! created | at_hub | attempted --hold--> on_hold --release--> at_hub
 //! attempted | on_hold --return--> returning
+//! delivered --open_review (system, DeliveryDisputed)--> under_review
+//! under_review --close_review (system, DeliveryDisputeClosed)--> delivered
 //! ```
 //!
 //! Every state of §7.1 is declared with its tone, so the diagram is whole;
 //! the transitions that come with later issues (`create_return`, `open_review`, `close_review`, `reverse_delivery`,
 //! `mark_lost`, `found`, `dispose`) are added to [`transitions`] by them.
 //! `dispatch`, `deliver` and `fail_attempt` are the system's: they run when
-//! the shipment's delivery in wl-delivery does ([`crate::events`]).
+//! the shipment's delivery in wl-delivery does ([`crate::events`]); so do
+//! `open_review` and `close_review` (no user runs them, `WRK.ACL.06`).
 //!
 //! Renox guards get no `AppState`, so the checks that need the database run
 //! in the services ([`crate::scan`], [`crate::cancel`]) and the guards read
@@ -64,6 +67,12 @@ pub const HOLD_SYSTEM: &str = "hold_system";
 pub const RELEASE: &str = "release";
 /// `return`: attempted, on_hold → returning.
 pub const RETURN: &str = "return";
+/// `open_review`: delivered → under_review, by the system with the
+/// delivery's dispute (`DeliveryDisputed`).
+pub const OPEN_REVIEW: &str = "open_review";
+/// `close_review`: under_review → delivered, by the system when the review
+/// is upheld (`DeliveryDisputeClosed`).
+pub const CLOSE_REVIEW: &str = "close_review";
 /// `void`: created → voided (the kernel's void pattern).
 pub const VOID: &str = voids::VOID;
 
@@ -109,6 +118,13 @@ pub struct ShipmentInput {
     /// Who absorbs the difference (`deliver`).
     #[serde(default)]
     pub absorbed_by: Option<String>,
+    /// The dispute ticket linked to the review (`open_review`).
+    #[serde(default)]
+    pub review_ticket: Option<i64>,
+    /// Whether ticketing is off, so the review has no ticket to link
+    /// (`open_review`).
+    #[serde(default)]
+    pub ticketing_off: bool,
 }
 
 /// The input of a run; the default without one (`available`).
@@ -576,6 +592,57 @@ fn return_delivered() -> Transition<Shipment> {
         })
 }
 
+/// `open_review` (`WRK.ACL.06`): the system, when wl-delivery puts the
+/// shipment's delivery under review. The dispute ticket is linked (or
+/// ticketing is off, so there is none). The ticket is kept on the shipment;
+/// the COD is left out of the remittances and the client is told after the
+/// commit ([`crate::review`]).
+fn open_review() -> Transition<Shipment> {
+    Transition::new(OPEN_REVIEW)
+        .label("Under review")
+        .system()
+        .from([ShipmentStatus::Delivered])
+        .to(ShipmentStatus::UnderReview)
+        .guard("dispute_ticket_linked", |_s: &Shipment, ctx| {
+            let input = input_of(ctx);
+            let linked = input.review_ticket.is_some() || input.ticketing_off;
+            Box::pin(async move {
+                if linked {
+                    Ok(())
+                } else {
+                    Err(english("logistics.review.ticket_needed", &[]))
+                }
+            })
+        })
+        .effect(|shipment: &Shipment, ctx, tx| {
+            let id = shipment.id;
+            let ticket = input_of(ctx).review_ticket;
+            Box::pin(async move {
+                Shipment::query()
+                    .where_(Shipment::ID.eq(id))
+                    .update(&mut *tx, &[("review_ticket_id", &ticket)])
+                    .await?;
+                let note = ticket.map(|t| format!("ticket {t}")).unwrap_or_default();
+                track(&mut *tx, id, "review_opened", &note, None).await
+            })
+        })
+}
+
+/// `close_review`: the system, when the review is upheld; the COD and the
+/// billing are released (the shipment is `delivered` again, so the next
+/// draft remittance and the next invoice take it).
+fn close_review() -> Transition<Shipment> {
+    Transition::new(CLOSE_REVIEW)
+        .label("Review upheld")
+        .system()
+        .from([ShipmentStatus::UnderReview])
+        .to(ShipmentStatus::Delivered)
+        .effect(|shipment: &Shipment, _ctx, tx| {
+            let id = shipment.id;
+            Box::pin(async move { track(&mut *tx, id, "review_closed", "upheld", None).await })
+        })
+}
+
 /// What `void` adds to the kernel's guards (BL-LOG-01): no parcel scanned
 /// (`PLT.ACL.09`: a safety check for a scan recorded without a state
 /// change), and a client user voids only the shipment they booked
@@ -623,6 +690,8 @@ pub fn transitions() -> Vec<Transition<Shipment>> {
         hold(HOLD_SYSTEM, true),
         release(),
         send_back(),
+        open_review(),
+        close_review(),
     ];
     all.extend(
         voids::transitions::<Shipment, _>(SUBJECT_TYPE, [Created])
@@ -700,6 +769,8 @@ mod tests {
             HOLD_SYSTEM,
             RELEASE,
             RETURN,
+            OPEN_REVIEW,
+            CLOSE_REVIEW,
             voids::VOID,
             voids::VOID_APPROVED,
         ] {
@@ -711,5 +782,7 @@ mod tests {
             ["picked_up", "at_hub", "attempted", "on_hold"]
         );
         assert!(machine.find(DISPATCH).unwrap().is_system());
+        assert!(machine.find(OPEN_REVIEW).unwrap().is_system());
+        assert!(machine.find(CLOSE_REVIEW).unwrap().is_system());
     }
 }

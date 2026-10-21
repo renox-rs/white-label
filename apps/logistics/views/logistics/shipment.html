@@ -72,6 +72,10 @@
         <rx-select name="outcome" :label="tx['outcome']" :id="'resolve-outcome-' ~ shipment.id" :selected="'confirm'"
                    :options="outcomes"/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_review" :id="'review-' ~ shipment.id" :label="tx['review']" :action="route('logistics.shipment_dispute', shipment.id)"
+                       :title="tx['review_title']" :description="tx['review_description']" :submit-label="tx['review']" icon="message-circle-warning" variant="danger">
+        <rx-textarea name="reason" :label="tx['reason']" :id="'review-reason-' ~ shipment.id" required/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_return" :id="'returned-' ~ shipment.id" :label="tx['returned']" :action="route('logistics.shipment_returned', shipment.id)"
                        :title="tx['returned']" :description="tx['returned_description']" :submit-label="tx['returned']" icon="check">
         <rx-input name="pod_reference" :label="tx['pod']" :id="'returned-pod-' ~ shipment.id" required/>
@@ -97,6 +101,7 @@
         <rx-entry :label="tx['hold_reason']" rx-if="hold_reason" :value="hold_reason"/>
         <rx-entry :label="tx['hold_instruction']" rx-if="hold_instruction" :value="hold_instruction" span="full"/>
         <rx-entry :label="tx['claim_ticket']" rx-if="claim_ticket" :value="claim_ticket"/>
+        <rx-entry :label="tx['review_ticket']" rx-if="review_ticket" :value="review_ticket"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="parcels" as="parcel" :key="parcel.barcode" :caption="tx['parcels']" card>

@@ -156,6 +156,9 @@ pub struct Shipment {
     /// Whether the COD is marked already remitted (BL-LOG-10): it is left
     /// out of every draft.
     pub cod_already_remitted: bool,
+    /// The ticket of the dispute that put the shipment under review
+    /// (BL-LOG-09); kept after the review closes.
+    pub review_ticket_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: ShipmentStatus,
     /// When the row was created.
@@ -235,15 +238,18 @@ impl Shipment {
     }
 
     /// The shipments of `client` a monthly invoice may bill: never a voided
-    /// one (`LOG.RUL.07`, BL-LOG-20 adds the held, lost and cancelled ones
-    /// and wires this to the usage billing run).
+    /// one, and none whose delivery is under review until the review is
+    /// closed (`LOG.RUL.07`, BL-LOG-09; BL-LOG-20 adds the held, lost and
+    /// cancelled ones and wires this to the usage billing run).
     ///
     /// # Errors
     ///
     /// Database errors.
     pub async fn billable(db: &Db, client: PartyId) -> Result<Vec<Shipment>> {
         wl_kernel::voids::exclude_voided(
-            Shipment::query().where_(Shipment::CLIENT_PARTY_ID.eq(client.0)),
+            Shipment::query()
+                .where_(Shipment::CLIENT_PARTY_ID.eq(client.0))
+                .where_(Shipment::STATUS.ne(ShipmentStatus::UnderReview)),
         )
         .order_by(Shipment::ID)
         .get(db)

@@ -24,6 +24,7 @@
 //! | `POST /shipments/{id}/reweigh` | `logistics.shipment_reweigh` | `shipments.scan` or `.manage` |
 //! | `POST /shipments/{id}/reweigh-dispute` | `logistics.shipment_reweigh_dispute` | `shipments.book` (own company) or `.manage` |
 //! | `POST /shipments/{id}/reweigh-dispute/resolve` | `logistics.shipment_reweigh_resolve` | `shipments.manage` |
+//! | `POST /shipments/{id}/dispute` | `logistics.shipment_dispute` | `shipments.manage` (field `reason`) |
 //!
 //! A successful action answers a redirect (303) with a toast. The import with
 //! `dry_run` answers the report as JSON and books nothing. A refused action
@@ -143,6 +144,8 @@ pub fn routes() -> Routes {
         .name("logistics.shipment_reweigh_dispute")
         .post("/shipments/{id}/reweigh-dispute/resolve", reweigh_resolve)
         .name("logistics.shipment_reweigh_resolve")
+        .post("/shipments/{id}/dispute", dispute_delivery)
+        .name("logistics.shipment_dispute")
         .require_auth()
 }
 
@@ -282,6 +285,8 @@ pub(crate) struct ShowPage {
     can_reweigh: bool,
     can_dispute: bool,
     can_resolve_dispute: bool,
+    can_review: bool,
+    review_ticket: String,
     charged_price: i64,
     outcomes: Vec<[String; 2]>,
     instruction: String,
@@ -413,6 +418,13 @@ async fn show(
             && !matches!(shipment.status, Created | Cancelled | Voided | Disposed),
         can_dispute,
         can_resolve_dispute: manages && surcharge.as_ref().is_some_and(|charge| charge.held),
+        can_review: manages
+            && shipment.status == ShipmentStatus::Delivered
+            && shipment.delivery_id.is_some(),
+        review_ticket: shipment
+            .review_ticket_id
+            .map(|ticket| ticket.to_string())
+            .unwrap_or_default(),
         charged_price: shipment.charged_price(),
         outcomes: vec![
             [
@@ -707,6 +719,22 @@ async fn reweigh_resolve(
         .await
         .map_err(answer)?;
     back_to(&lang, "logistics.reweigh_resolved", id)
+}
+
+/// `POST /shipments/{id}/dispute`: `reason`. The delivery goes under review
+/// in wl-delivery, which opens the dispute ticket; the shipment follows on the
+/// event.
+async fn dispute_delivery(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    crate::review::raise(&state, &user, id, &field(&form, "reason"))
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.disputed", id)
 }
 
 /// Whether a checkbox of the form is ticked.
