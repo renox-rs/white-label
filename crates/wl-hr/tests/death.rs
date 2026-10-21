@@ -15,9 +15,12 @@ use wl_hr::{
     PayrollRun, PayrollRunStatus, SettlementStatus, VisaCase, VisaCaseStatus, release,
 };
 use wl_kernel::approvals::{self, ApprovalRequest};
-use wl_kernel::notify::{self, NotifyRecipient, NotifyRequest};
+use wl_kernel::notify::{
+    self, NotificationTypeDef, NotifyChannel, NotifyRecipient, NotifyRequest, register_type,
+};
 use wl_kernel::workforce::workforce;
 use wl_kernel::{PartyId, Subject};
+use wl_notify::{Message, MessageStatus};
 
 use support::{Booted, nov};
 
@@ -70,7 +73,11 @@ struct World {
 }
 
 async fn world() -> World {
-    let t = support::boot().await;
+    world_on(support::boot().await).await
+}
+
+/// [`world`] on the app `t`.
+async fn world_on(t: Booted) -> World {
     let hr = t.user_with("Hana", "hr").await;
     let md = t.user_with("Basel", "md").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
@@ -195,6 +202,117 @@ async fn hrm09_ac2_a_payslip_notification_queued_for_the_employee_is_cancelled()
             .await
             .unwrap()
     );
+}
+
+/// AC1 with the real wl-ticketing: the three HR tasks of the death are three
+/// open tickets about E, one per kind (the source key `hr.death:<id>:<kind>`),
+/// assigned to the HR user.
+#[renox::test]
+async fn hrm09_ac1_the_three_hr_tasks_are_real_tickets_for_hr() {
+    let w = world_on(support::boot_with_ticketing().await).await;
+    w.die().await;
+
+    let tickets = w.t.tickets().await;
+    assert_eq!(tickets.len(), 3);
+    for kind in ["visa_cancellation", "insurance_claim", "repatriation"] {
+        let key = format!("hr.death:{}:{kind}", w.e.id);
+        let found: Vec<_> = tickets
+            .iter()
+            .filter(|(ticket, _)| ticket.source_key.as_deref() == Some(key.as_str()))
+            .collect();
+        assert_eq!(found.len(), 1, "{kind}");
+        let (ticket, _) = found[0];
+        assert!(ticket.is_open(), "{kind}");
+        assert_eq!(ticket.assignee_user_id, Some(w.hr.id), "{kind}");
+        assert_eq!(
+            Subject::new(&ticket.subject_type, ticket.subject_id),
+            w.e.subject(),
+            "{kind}"
+        );
+    }
+    assert_eq!(w.t.deceased.all().len(), 1);
+}
+
+/// The message `id` as wl-notify stores it.
+async fn stored(t: &Booted, id: notify::MessageId) -> Message {
+    Message::find(t.db(), id.0)
+        .await
+        .unwrap()
+        .expect("the message is stored")
+}
+
+/// AC2 with the real wl-notify: a payslip message queued for E (to the party
+/// and to the portal user) is cancelled when the death is approved (stored as
+/// *suppressed* with the reason), and a message asked for afterwards is
+/// suppressed at once and never sent.
+#[renox::test]
+async fn hrm09_ac2_with_the_real_notify_the_queued_payslip_is_stopped() {
+    register_type(NotificationTypeDef::new("hr.payslip", "hr").template(
+        NotifyChannel::Email,
+        "en",
+        Some("Your payslip"),
+        "Your payslip is ready.",
+    ));
+    let w = world_on(support::boot_with_notify().await).await;
+    w.t.parties.email(60, "ravi@example.com");
+    let account = w.t.user("Ravi").await;
+    renox::db::sql("UPDATE wl_hr_employees SET user_id = ? WHERE id = ?")
+        .bind(account.id)
+        .bind(w.e.id)
+        .execute(w.t.db())
+        .await
+        .unwrap();
+    let payslip = |recipient: NotifyRecipient| {
+        NotifyRequest::new("hr.payslip", Subject::new("hr.payroll_line", w.line.id)).to(recipient)
+    };
+    let to_party = notify::notifier(w.t.state())
+        .notify(
+            w.t.state(),
+            payslip(NotifyRecipient::Party { id: PartyId(60) }),
+        )
+        .await
+        .unwrap();
+    let to_user = notify::notifier(w.t.state())
+        .notify(
+            w.t.state(),
+            payslip(NotifyRecipient::User { id: account.id }),
+        )
+        .await
+        .unwrap();
+    for id in to_party.iter().chain(&to_user) {
+        let queued = stored(&w.t, *id).await;
+        assert!(
+            matches!(
+                queued.status,
+                MessageStatus::Queued | MessageStatus::Deferred
+            ),
+            "waiting: {:?} {:?}",
+            queued.status,
+            queued.suppress_reason
+        );
+    }
+
+    w.die().await;
+
+    for id in to_party.iter().chain(&to_user) {
+        let stopped = stored(&w.t, *id).await;
+        assert_eq!(stopped.status, MessageStatus::Suppressed);
+        assert_eq!(
+            stopped.suppress_reason.as_deref(),
+            Some("employee_deceased")
+        );
+    }
+    // Nothing new reaches E either.
+    let later = notify::notifier(w.t.state())
+        .notify(
+            w.t.state(),
+            payslip(NotifyRecipient::Party { id: PartyId(60) }),
+        )
+        .await
+        .unwrap();
+    let later = stored(&w.t, later[0]).await;
+    assert_eq!(later.status, MessageStatus::Suppressed);
+    assert_eq!(later.suppress_reason.as_deref(), Some("recipient_stopped"));
 }
 
 /// AC3: E's November line is marked *settled in the final settlement*; no

@@ -4,6 +4,14 @@
 //! is held outside WPS, the portal and attendance are off, the final
 //! settlement is drafted, a cancellation case opens and `EmployeeAbsconded`
 //! is emitted.
+//!
+//! BL-HRM-30 (#480) puts the effects (held pay, draft settlement, the
+//! *cancellation* case) behind the same checks; its positive Done-when points
+//! are covered here by `hrm07_an_approved_report_holds_the_pay_drafts_the_settlement_and_opens_the_case`,
+//! `hrm07_from_notice_the_existing_settlement_and_case_are_kept`,
+//! `hrm07_a_line_already_sent_stays_and_is_held_if_the_bank_fails_it` and
+//! `hrm07_a_held_line_is_left_out_of_a_new_sif_file` (each says so in its
+//! comment); the refusals are in `absconding_effects.rs`.
 
 mod support;
 
@@ -151,6 +159,9 @@ async fn report_and_approve(w: &World) {
 /// November run is held with *absence report*, the portal and attendance are
 /// disabled, a draft settlement and a *cancellation* case exist and
 /// `EmployeeAbsconded` is emitted.
+///
+/// BL-HRM-30 (#480) AC1: the held line, the draft settlement *absconding* and
+/// the case from the *absconding* template.
 #[renox::test]
 async fn hrm07_an_approved_report_holds_the_pay_drafts_the_settlement_and_opens_the_case() {
     let w = world().await;
@@ -373,6 +384,8 @@ async fn hrm07_it_needs_the_report_number_and_date() {
 /// A line in a run that was `submitted` stays in the sent SIF file; when the
 /// bank fails it, it is held with *absence report*, and `regenerate` leaves it
 /// out.
+///
+/// BL-HRM-30 (#480) AC3: a line in a submitted run stays in the sent SIF file.
 #[renox::test]
 async fn hrm07_a_line_already_sent_stays_and_is_held_if_the_bank_fails_it() {
     let w = world().await;
@@ -431,6 +444,8 @@ async fn hrm07_a_line_already_sent_stays_and_is_held_if_the_bank_fails_it() {
 
 /// A line held for the absence report is left out of the SIF file of
 /// `submit`.
+///
+/// BL-HRM-30 (#480) AC3: `regenerate` leaves the held line out.
 #[renox::test]
 async fn hrm07_a_held_line_is_left_out_of_a_new_sif_file() {
     let w = world().await;
@@ -447,6 +462,9 @@ async fn hrm07_a_held_line_is_left_out_of_a_new_sif_file() {
 /// From `notice`, the settlement the notice drafted gets the reason
 /// *absconding* and no second one is drafted; the open cancellation case is
 /// reused.
+///
+/// BL-HRM-30 (#480) AC2: the same settlement id with the reason *absconding*
+/// and no second one.
 #[renox::test]
 async fn hrm07_from_notice_the_existing_settlement_and_case_are_kept() {
     let t = support::boot().await;

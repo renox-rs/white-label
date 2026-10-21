@@ -90,6 +90,58 @@ async fn hrm03_ac1_a_rejected_renewal_gives_the_deadline_task_and_tells_the_md()
     assert_eq!(t.employee(&a).await.status, EmployeeStatus::Active);
 }
 
+/// AC1 with the real wl-ticketing: the follow-up task of the rejected
+/// renewal is a ticket about the employee, assigned to the HR user, due on
+/// 2026-12-01 (the visa expires 2026-12-31) and keyed by the case.
+#[renox::test]
+async fn hrm03_ac1_the_deadline_task_is_a_real_ticket_due_on_the_deadline() {
+    let t = support::boot_with_ticketing().await;
+    let pro = t.user_with("Pia", "pro").await;
+    let hr = t.user_with("Hana", "hr").await;
+    let a = t.employee_in(60, EmployeeStatus::Active).await;
+    let case = t
+        .visa_in(&a, "renewal", VisaCaseStatus::InProgress, |c| {
+            c.current_expiry = Some(day(2026, 12, 31));
+        })
+        .await;
+
+    reject(
+        &t,
+        &pro,
+        &case,
+        &[
+            ("reference", "GDRFA-123"),
+            ("reason", "Passport copy unreadable"),
+        ],
+    )
+    .await
+    .assert_status(303);
+
+    let tickets = t.tickets().await;
+    assert_eq!(tickets.len(), 1);
+    let (ticket, _) = &tickets[0];
+    assert!(
+        ticket
+            .source_key
+            .as_deref()
+            .is_some_and(|key| key.starts_with("hr.visa_rejected:")),
+        "{:?}",
+        ticket.source_key
+    );
+    assert_eq!(ticket.assignee_user_id, Some(hr.id));
+    assert_eq!(
+        wl_kernel::Subject::new(&ticket.subject_type, ticket.subject_id),
+        a.subject()
+    );
+    assert_eq!(
+        dubai_date(ticket.due_at.expect("a due time")),
+        day(2026, 12, 1)
+    );
+    assert!(ticket.title.contains("renewal refused"), "{}", ticket.title);
+    assert!(ticket.is_open());
+    assert_eq!(t.visa_rejected.all()[0].deadline, Some(day(2026, 12, 1)));
+}
+
 /// A visa that expires in less than 30 days: the task is due today.
 #[renox::test]
 async fn hrm03_a_deadline_that_has_passed_is_due_today() {
