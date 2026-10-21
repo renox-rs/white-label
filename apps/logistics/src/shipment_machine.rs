@@ -688,9 +688,15 @@ fn return_delivered() -> Transition<Shipment> {
             let reference = input_of(ctx).pod_reference.map(|r| r.trim().to_owned());
             let actor = ctx.actor().map(|user| user.id);
             Box::pin(async move {
+                // The month of this e-POD is the month its return charge is
+                // billed in (`LOG.RUL.07`, BL-LOG-20).
+                let at = Some(renox::db::now());
                 Shipment::query()
                     .where_(Shipment::ID.eq(id))
-                    .update(&mut *tx, &[("return_pod_ref", &reference)])
+                    .update(
+                        &mut *tx,
+                        &[("return_pod_ref", &reference), ("returned_at", &at)],
+                    )
                     .await?;
                 track(
                     &mut *tx,

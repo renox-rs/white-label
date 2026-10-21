@@ -185,6 +185,15 @@ their own issues.
   Monday draft is made and approved, but `pay` and `repay` wait for the
   unblock or for one exception that the company admin (never the requester)
   approves.
+- **The monthly invoice** (`billing`, `LOG.RUL.07`): on day 1 at 01:00 each
+  client gets one draft invoice, through the kernel's invoicer, of the previous
+  month: a delivery line for each delivered shipment (and for a returned one
+  that was attempted, and a disposed one the client caused), its re-weigh
+  surcharge, the return charge in the month of the e-POD, the disposal charge
+  and the cancellation fee. Shipments under review, lost, voided, reversed,
+  held or disposed for another cause are left out and picked up by the first
+  draft after they are billable again; a shipment and a charge line are billed
+  once, and running the rule twice leaves one draft (`BillingRun`).
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight

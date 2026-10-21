@@ -9,6 +9,30 @@ use crate::screen_texts::SCREEN_TEXTS;
 
 /// Every key the app uses besides the screens', with its English text.
 const TEXTS: &[(&str, &str)] = &[
+    // The monthly invoice (`LOG.RUL.07`, BL-LOG-20).
+    ("logistics.billing.delivery", "Delivery {{ number }}"),
+    (
+        "logistics.billing.reweigh",
+        "Re-weigh surcharge {{ number }}",
+    ),
+    ("logistics.billing.return", "Return charge {{ number }}"),
+    ("logistics.billing.disposal", "Disposal charge {{ number }}"),
+    (
+        "logistics.billing.cancellation",
+        "Cancellation fee {{ number }}",
+    ),
+    (
+        "logistics.billing.notice_title",
+        "Monthly draft invoice of client {{ client }} for {{ period }}",
+    ),
+    (
+        "logistics.billing.notice_body",
+        "The draft has {{ lines }} line(s) with a net total of {{ net }}.",
+    ),
+    (
+        "logistics.billing.notice_unpriced",
+        "{{ count }} return charge(s) are billed at AED 0: no return price for client {{ client }}.",
+    ),
     // Booking (`LOG.SHP.01`, BL-LOG-01).
     (
         "logistics.booking.recipient_needed",

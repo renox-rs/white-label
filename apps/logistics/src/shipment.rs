@@ -221,6 +221,9 @@ pub struct Shipment {
     pub disposal_dangerous: bool,
     /// When the shipment was disposed of.
     pub disposed_at: Option<DateTime>,
+    /// When it reached `returned` (BL-LOG-20: its return charge is billed in
+    /// the month of the e-POD).
+    pub returned_at: Option<DateTime>,
     /// The lifecycle state; changed only by a transition.
     pub status: ShipmentStatus,
     /// When the row was created.
@@ -325,9 +328,8 @@ impl Shipment {
     /// closed (`LOG.RUL.07`, BL-LOG-09), none that is lost (BL-LOG-11) and
     /// none whose delivery was reversed until it is made again (BL-LOG-10),
     /// and a disposed one only when the client caused the disposal
-    /// (BL-LOG-06);
-    /// BL-LOG-20 adds the held and cancelled ones and wires this to the usage
-    /// billing run.
+    /// (BL-LOG-06), none that is on hold and none cancelled before pickup
+    /// (BL-LOG-20). [`crate::billing`] picks from them what a month bills.
     ///
     /// # Errors
     ///
@@ -341,6 +343,11 @@ impl Shipment {
                 // delivery was reversed waits until it is delivered again
                 // (BL-LOG-10).
                 .where_(Shipment::STATUS.ne(ShipmentStatus::Lost))
+                // A held shipment is not billed until released (BL-LOG-20), and
+                // a cancelled one has no delivery to bill: its cancellation
+                // fee is a charge line of its own.
+                .where_(Shipment::STATUS.ne(ShipmentStatus::OnHold))
+                .where_(Shipment::STATUS.ne(ShipmentStatus::Cancelled))
                 .where_(Shipment::REVERSED.eq(false)),
         )
         .order_by(Shipment::ID)

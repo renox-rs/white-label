@@ -56,6 +56,7 @@ pub use shipment::{
 };
 pub use account::{AccountChange, AccountChangeStatus};
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
+pub use billing::{BillingRun, Monthly};
 pub use cash_watch::CashWatch;
 pub use cod::{CodLoss, CodRule};
 pub use dispute::StatementDispute;
@@ -136,7 +137,8 @@ impl Module for Logistics {
             .model::<CodLoss>()
             .model::<Reversal>()
             .model::<TraceTask>()
-            .model::<CashWatch>();
+            .model::<CashWatch>()
+            .model::<BillingRun>();
         // The shipment's rule on who absorbs a COD difference.
         wl_kernel::delivery::provide_cod_rule(app, CodRule);
         // A refund to a recipient who is no party is paid by hand.
@@ -152,6 +154,8 @@ impl Module for Logistics {
         account::register(app);
         // `LOG.RUL.06`, weekly on Monday.
         remit::register(app);
+        // `LOG.RUL.07`, monthly on day 1: the draft invoice of each client.
+        billing::register(app);
         // `LOG.RUL.12`, daily at 02:00, and the approval of `LOG.ACL.14`.
         trace::register(app);
         // `LOG.RUL.13`, every 15 minutes: a driver who does not hand over the
