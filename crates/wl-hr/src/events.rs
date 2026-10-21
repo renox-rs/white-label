@@ -17,13 +17,15 @@
 //! - `TimesheetApproved` (adjustments that affect payroll) and
 //!   `TimesheetReconciliationNeeded`: the hours that enter the next regular run
 //!   ([`crate::differences`]).
+//! - `AttendanceRecorded`: the first attended day of the employee, which the
+//!   approval of `cancel_onboarding` re-reads ([`crate::exit_effects`]).
 //! - `ChecklistCompleted`, `DocumentAccepted`, `SopPublished`,
 //!   `SopAcknowledged`, `SopWithdrawn`, `SopReadersChanged`: the steps of
 //!   [`crate::steps`].
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
-use wl_kernel::attendance::TimesheetApproved;
+use wl_kernel::attendance::{AttendanceRecorded, TimesheetApproved};
 use wl_kernel::documents::{
     DocumentAccepted, DocumentExpired, DocumentExpiring, SopAcknowledged, SopPublished,
     SopReadersChanged, SopWithdrawn,
@@ -71,6 +73,9 @@ pub(crate) fn register(app: &mut Registry) {
             payroll_events::on_transitioned(&state, &event).await
         },
     );
+    app.listen(|event: AttendanceRecorded, state: AppState| async move {
+        crate::exit_effects::on_attendance_recorded(&state, &event).await
+    });
     app.listen(|event: TimesheetApproved, state: AppState| async move {
         differences::on_approved(&state, &event).await
     });

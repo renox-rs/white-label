@@ -14,8 +14,11 @@
 //!   not needed* was recorded on the *new* case. When the employee has
 //!   attendance, a final settlement with the reason *onboarding cancelled* is
 //!   `paid` (or `closed`); without attendance none is needed. The attendance is
-//!   read at the request ([`crate::exits::ExitInput::has_attendance`]), because
-//!   the check at the approval has only the database. The effect sets the exit
+//!   read at the request ([`crate::exits::ExitInput::has_attendance`]) and, as
+//!   the check at the approval has only the database, kept up to date from
+//!   `AttendanceRecorded` in [`Employee::first_attended_on`]
+//!   ([`on_attendance_recorded`]): a check-in between the request and the
+//!   approval counts at the approval. The effect sets the exit
 //!   route and closes the portal account; fees and onboarding costs stay on the
 //!   employee as a cost object and nothing is recovered from the person (Art.
 //!   6(4)): no adjustment or receivable is made.
@@ -30,6 +33,8 @@
 use renox::chrono::NaiveDate;
 use renox::db::{Transaction, now};
 use renox::prelude::*;
+
+use wl_kernel::attendance::AttendanceRecorded;
 
 use crate::absence::AbsenceReport;
 use crate::employee::Employee;
@@ -103,7 +108,10 @@ async fn cancel_onboarding_problem(
             return Ok(Some(text("cancellation_required")));
         }
     }
-    if input.has_attendance == Some(true) {
+    let attended_since_request = Employee::find(&mut *tx, employee_id)
+        .await?
+        .is_some_and(|employee| employee.first_attended_on.is_some());
+    if input.has_attendance == Some(true) || attended_since_request {
         let settled = FinalSettlement::of_employee_in(&mut *tx, employee_id)
             .await?
             .iter()
@@ -137,6 +145,23 @@ async fn settlement_problem_in(tx: &mut Transaction, employee_id: i64) -> Result
         }
     }
     Ok(None)
+}
+
+/// `AttendanceRecorded`: remembers the first day the employee has an
+/// attendance record (from the hire date on), for the check of
+/// `cancel_onboarding` at its approval.
+pub async fn on_attendance_recorded(state: &AppState, event: &AttendanceRecorded) -> Result {
+    let Some(employee) = Employee::find(&state.db, event.employee.0).await? else {
+        return Ok(());
+    };
+    if employee.first_attended_on.is_some() || event.date < employee.hire_date {
+        return Ok(());
+    }
+    Employee::query()
+        .where_(Employee::ID.eq(employee.id))
+        .update(&state.db, &[("first_attended_on", &Some(event.date))])
+        .await?;
+    Ok(())
 }
 
 /// The effect of `cancel_onboarding`, `withdraw_notice` and `reinstate` in the

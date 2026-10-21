@@ -113,6 +113,9 @@ pub struct Employee {
     /// The authority's reference of the cancellation of the residence visa,
     /// recorded when no *cancellation* case was completed (`exit`).
     pub cancellation_reference: Option<String>,
+    /// The first day an attendance record was saved for the employee, from
+    /// `AttendanceRecorded` (`cancel_onboarding` re-reads it at the approval).
+    pub first_attended_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
