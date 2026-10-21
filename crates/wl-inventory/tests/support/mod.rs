@@ -29,9 +29,9 @@ use wl_kernel::documents::{
     NoDocuments, RecordFlag, Validity,
 };
 use wl_kernel::inventory::{
-    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, LotHeld, PreferredSupplierChanged,
-    PurchaseOrderRevised, StockHoldPlaced, StockNegative, SupplierReturnCredited,
-    SupplierReturnDispatched, SupplierScoreBelowThreshold,
+    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
+    PreferredSupplierChanged, PurchaseOrderRevised, StockHoldClosed, StockHoldPlaced,
+    StockNegative, SupplierReturnCredited, SupplierReturnDispatched, SupplierScoreBelowThreshold,
 };
 use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
@@ -534,6 +534,9 @@ struct Fakes {
     holds: Arc<Mutex<Vec<StockHoldPlaced>>>,
     lots_held: Arc<Mutex<Vec<LotHeld>>>,
     negative: Arc<Mutex<Vec<StockNegative>>>,
+    closed: Arc<Mutex<Vec<StockHoldClosed>>>,
+    released: Arc<Mutex<Vec<LotReleased>>>,
+    discarded: Arc<Mutex<Vec<LotDiscarded>>>,
 }
 
 impl Module for Fakes {
@@ -564,6 +567,9 @@ impl Module for Fakes {
         record(app, &self.holds);
         record(app, &self.lots_held);
         record(app, &self.negative);
+        record(app, &self.closed);
+        record(app, &self.released);
+        record(app, &self.discarded);
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
@@ -612,6 +618,12 @@ pub struct Booted {
     pub lots_held: Recorded<LotHeld>,
     /// Every `StockNegative`.
     pub negative: Recorded<StockNegative>,
+    /// Every `StockHoldClosed`.
+    pub closed: Recorded<StockHoldClosed>,
+    /// Every `LotReleased`.
+    pub released: Recorded<LotReleased>,
+    /// Every `LotDiscarded`.
+    pub discarded: Recorded<LotDiscarded>,
     /// The days the clock was moved forward.
     clock_days: std::sync::atomic::AtomicI64,
 }
@@ -768,6 +780,64 @@ impl Booted {
     pub async fn hold_as(&self, by: &User, form: &[(&str, &str)]) -> TestResponse {
         self.app.acting_as(by);
         self.app.htmx().post("/stock-holds", form).await
+    }
+
+    /// `POST /stock-hold-lines/{id}/{action}` as `by`; `action` is `release`,
+    /// `discard` or `return-to-supplier`.
+    pub async fn decide_as(
+        &self,
+        by: &User,
+        line: &wl_inventory::StockHoldLine,
+        action: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/stock-hold-lines/{}/{action}", line.id), &[])
+            .await
+    }
+
+    /// `POST /stock-holds/{id}/cancel` as `by` with `reason`.
+    pub async fn cancel_hold_as(
+        &self,
+        by: &User,
+        hold: &wl_inventory::StockHold,
+        reason: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                &format!("/stock-holds/{}/cancel", hold.id),
+                &[("reason", reason)],
+            )
+            .await
+    }
+
+    /// The holds placed, oldest first.
+    pub async fn all_holds(&self) -> Vec<wl_inventory::StockHold> {
+        wl_inventory::StockHold::query()
+            .order_by(wl_inventory::StockHold::ID)
+            .get(self.db())
+            .await
+            .unwrap()
+    }
+
+    /// The hold as stored now.
+    pub async fn hold_now(&self, hold: &wl_inventory::StockHold) -> wl_inventory::StockHold {
+        wl_inventory::StockHold::find_or_404(self.db(), hold.id)
+            .await
+            .unwrap()
+    }
+
+    /// The lines of `hold` as stored now, oldest first.
+    pub async fn hold_lines(
+        &self,
+        hold: &wl_inventory::StockHold,
+    ) -> Vec<wl_inventory::StockHoldLine> {
+        wl_inventory::stock_hold::lines_of(self.db(), hold.id)
+            .await
+            .unwrap()
     }
 
     /// `POST /stock-issues` as `by`: `quantity` in base units like `5`.
@@ -1351,6 +1421,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let holds = Arc::new(Mutex::new(Vec::new()));
     let lots_held = Arc::new(Mutex::new(Vec::new()));
     let negative = Arc::new(Mutex::new(Vec::new()));
+    let closed = Arc::new(Mutex::new(Vec::new()));
+    let released = Arc::new(Mutex::new(Vec::new()));
+    let discarded = Arc::new(Mutex::new(Vec::new()));
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1387,6 +1460,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         holds: holds.clone(),
         lots_held: lots_held.clone(),
         negative: negative.clone(),
+        closed: closed.clone(),
+        released: released.clone(),
+        discarded: discarded.clone(),
     });
     let client = if with_invoicing {
         CLIENT_WITH_INVOICING
@@ -1498,6 +1574,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         holds: Recorded(holds),
         lots_held: Recorded(lots_held),
         negative: Recorded(negative),
+        closed: Recorded(closed),
+        released: Recorded(released),
+        discarded: Recorded(discarded),
         clock_days: std::sync::atomic::AtomicI64::new(0),
     }
 }
