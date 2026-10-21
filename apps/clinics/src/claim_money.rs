@@ -277,7 +277,7 @@ pub async fn record_remittance(
             .and_then(|l| l.payer_bill_line_id)
             .ok_or_else(|| guard(english("clinics.claim.problem.no_line", &[])))?;
         let mut line = RemittanceLine::paid(bill_line, entry.paid);
-        if entry.denied > 0 || entry.code.is_some() {
+        if entry.denied > 0 {
             line = line.denied(
                 entry.denied,
                 entry.code.as_deref().unwrap_or(""),
