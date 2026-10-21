@@ -406,16 +406,24 @@ pub async fn on_denied(state: &AppState, id: i64) -> Result {
 pub struct Daily {
     /// The authorisations that expired.
     pub expired: Vec<i64>,
+    /// The authorisations whose look-ahead ran (`CLN.RUL.09`).
+    pub looked_ahead: Vec<i64>,
 }
 
-/// The daily run: the authorisations whose validity ended expire.
+/// The daily run: the authorisations whose validity ended expire (which
+/// flags the appointments that relied on them), then the look-ahead of
+/// `CLN.RUL.09` runs for the ones that end in three days.
 ///
 /// # Errors
 ///
 /// The database's and the machine's errors.
 pub async fn run_daily(state: &AppState, at: DateTime) -> Result<Daily> {
     let expired = expire_due(state, at).await?;
-    Ok(Daily { expired })
+    let looked_ahead = crate::prior_auth_rules::look_ahead(state, at).await?;
+    Ok(Daily {
+        expired,
+        looked_ahead,
+    })
 }
 
 /// The notification types of the authorisation.
@@ -454,7 +462,11 @@ pub(crate) fn register(app: &mut Registry) {
         "Expire the prior authorisations whose validity ended and flag the appointments that relied on them (CLN.RUL.09)",
         |_args, state: AppState| async move {
             let daily = run_daily(&state, renox::db::now()).await?;
-            println!("{} prior authorisations expired.", daily.expired.len());
+            println!(
+                "{} prior authorisations expired, {} looked ahead.",
+                daily.expired.len(),
+                daily.looked_ahead.len()
+            );
             Ok(())
         },
     );

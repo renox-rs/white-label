@@ -361,6 +361,21 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.flags.needed_task",
         "Request a prior authorisation for :service on :date",
     ),
+    (
+        "clinics.flags.cause_denied",
+        "was denied",
+    ),
+    ("clinics.flags.cause_used", "is used up"),
+    ("clinics.flags.cause_expired", "has ended"),
+    ("clinics.flags.cause_look_ahead", "ends in three days"),
+    (
+        "clinics.flags.stopped_detail",
+        "Prior authorisation :number :cause and no other covers this appointment.",
+    ),
+    (
+        "clinics.flags.stopped_task",
+        "Request a new prior authorisation: :number :cause",
+    ),
     // The insurance policies.
     ("clinics.policies.title", "Insurance policies"),
     (
