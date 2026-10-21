@@ -11,7 +11,9 @@ mod support;
 use renox::auth::permissions;
 use renox::auth::permissions::Scope;
 use renox::prelude::*;
-use wl_inventory::{NoticeStatus, PendingIssue, Recall, RecallLine, RecallStatus};
+use wl_inventory::{
+    Lot, LotStatus, NoticeStatus, PendingIssue, PendingStatus, Recall, RecallLine, RecallStatus,
+};
 use wl_kernel::notify::{
     GiveUpReaction, MessageGaveUp, MessageId, NotifyRecipient, NotifyRequest, Urgency,
 };
@@ -19,13 +21,13 @@ use wl_kernel::tickets::Assignee;
 use wl_kernel::{PartyId, Subject};
 use wl_notify::{GiveUpContext, StaffTask, open_give_up_task};
 
-use clinics::ConsumableIssue;
+use clinics::{ConsumableIssue, Visit};
 use clinics::permissions::{
     RECALLS_CALL, RECALLS_NOTIFY, RECALLS_TRACE, RECEPTIONIST_ROLE, VISITS_VIEW,
 };
 use clinics::recall_notice::{NOTICE_TYPE, RecallNotice, RecallNoticeStatus};
 use support::desk::{Desk, desk_with_stock, desk_with_stock_and_notify};
-use support::stock::{received_on, store, used_filler};
+use support::stock::{Store, receive, store, used_filler};
 use support::{Messages, day, dubai};
 
 const P1: PartyId = PartyId(70);
@@ -185,52 +187,63 @@ async fn a_receptionist_cannot_open_the_trace_list() {
     );
 }
 
+/// Moves the clock of the app `minutes` ahead: what follows is recorded
+/// after what went before, by the clock, not by a rewritten column.
+fn pass(d: &Desk, minutes: u64) {
+    d.t.app.travel(std::time::Duration::from_secs(minutes * 60));
+}
+
+/// The visit of `patient` that used `units` of filler from `lot`, checked out
+/// at the clock of the app.
+async fn used(d: &Desk, patient: PartyId, hour: u32, units: i64, lot: &str) -> Visit {
+    d.t.app
+        .at_travelled_time(used_filler(d, patient, 1, hour, units, lot))
+        .await
+}
+
+/// A receipt of `quantity` units of `lot` at the store, and the pending issues
+/// it covers posted, at the clock of the app.
+async fn arrives(d: &Desk, s: &Store, lot: &Lot, quantity: i64) {
+    d.t.app
+        .at_travelled_time(async {
+            receive(d, s, lot, quantity).await;
+            wl_inventory::pending_issue::post_on_arrival(
+                d.t.state(),
+                s.store.id,
+                &[s.item.id],
+                "receipt",
+            )
+            .await
+            .unwrap();
+        })
+        .await;
+}
+
 /// Done when 2: a pending issue of the item at the store, recorded and then
 /// posted with a lot assigned on arrival while the recalled lot was on hand,
 /// is listed "lot uncertain" for its patient; one posted before the lot ever
-/// arrived is not listed.
+/// arrived is not listed. The order is made by real receipts, pending issues
+/// and the clock, not by rewriting dates.
 #[renox::test]
 async fn a_pending_issue_inside_the_lot_window_is_listed_uncertain() {
     let d = desk_with_stock().await;
     name_patients(&d);
     // Nothing at the store: both visits become pending issues.
     let s = store(&d, 0, 0).await;
-    let earlier = used_filler(&d, P5, 1, 9, 1, "").await;
-    let inside = used_filler(&d, P3, 1, 10, 1, "").await;
+    let earlier = used(&d, P5, 9, 1, "").await;
+    let inside = used(&d, P3, 10, 1, "").await;
     for visit in [&earlier, &inside] {
         let rows = ConsumableIssue::of_visit(d.t.db(), visit.id).await.unwrap();
         assert!(rows.iter().all(ConsumableIssue::is_uncertain), "{rows:?}");
     }
     // L2 arrives first: it covers the oldest pending issue only (P5's). That
     // was before the recalled lot L1 existed at the store.
-    support::stock::receive(&d, &s, &s.l2, 1).await;
-    wl_inventory::pending_issue::post_on_arrival(d.t.state(), s.store.id, &[s.item.id], "receipt")
-        .await
-        .unwrap();
-    let long_ago = renox::db::now() - renox::chrono::TimeDelta::days(5);
-    for pending in PendingIssue::query().get(d.t.db()).await.unwrap() {
-        if pending.source_id == earlier.id {
-            PendingIssue::query()
-                .where_(PendingIssue::ID.eq(pending.id))
-                .update(
-                    d.t.db(),
-                    &[("recorded_at", &long_ago), ("closed_at", &Some(long_ago))],
-                )
-                .await
-                .unwrap();
-        }
-    }
-    // L1, the recalled lot, arrives a day ago and covers P3's.
-    support::stock::receive(&d, &s, &s.l1, 10).await;
-    received_on(
-        &d,
-        &s.l1,
-        renox::db::now() - renox::chrono::TimeDelta::days(1),
-    )
-    .await;
-    wl_inventory::pending_issue::post_on_arrival(d.t.state(), s.store.id, &[s.item.id], "receipt")
-        .await
-        .unwrap();
+    pass(&d, 1);
+    arrives(&d, &s, &s.l2, 1).await;
+    // L1, the recalled lot, arrives a minute later and covers P3's.
+    pass(&d, 1);
+    arrives(&d, &s, &s.l1, 10).await;
+    pass(&d, 1);
 
     let recall = open_recall(&d, s.item.id, "L1").await;
     let listed = lines(&d, &recall).await;
@@ -247,6 +260,102 @@ async fn a_pending_issue_inside_the_lot_window_is_listed_uncertain() {
         .assert_see("Noor Haddad")
         .assert_see("Lot uncertain");
     assert!(!page.text().contains("Sami Farouk"), "{}", page.text());
+}
+
+/// The pending issues of `visit`, all of them posted on arrival.
+async fn posted_on_arrival(d: &Desk, visit: &Visit) -> bool {
+    let pending: Vec<PendingIssue> = PendingIssue::query()
+        .where_(PendingIssue::SOURCE_ID.eq(visit.id))
+        .get(d.t.db())
+        .await
+        .unwrap();
+    !pending.is_empty()
+        && pending
+            .iter()
+            .all(|p| p.status == PendingStatus::Posted && p.assigned_on_arrival)
+}
+
+/// The end of the lot's window, by a hold: the recalled lot is held, and a
+/// pending issue recorded after the hold (the visit found nothing to take
+/// because the lot is held) and posted later with another lot is not listed,
+/// also when the trace runs again; the visit that took the lot before the
+/// hold is.
+#[renox::test]
+async fn a_pending_issue_recorded_after_the_hold_is_not_listed() {
+    let d = desk_with_stock().await;
+    name_patients(&d);
+    let s = store(&d, 0, 0).await;
+    pass(&d, 1);
+    arrives(&d, &s, &s.l1, 10).await;
+    pass(&d, 1);
+    let before = used(&d, P1, 9, 1, "L1").await;
+    pass(&d, 1);
+
+    // The recall holds L1: its window ends here.
+    let recall = open_recall(&d, s.item.id, "L1").await;
+    let held = Lot::find_or_404(d.t.db(), s.l1.id).await.unwrap();
+    assert_eq!(held.status, LotStatus::OnHold);
+    pass(&d, 1);
+
+    // After the hold nothing can be taken: the visit's issue is pending, and
+    // L2 covers it when it arrives.
+    let after = used(&d, P3, 10, 1, "").await;
+    let rows = ConsumableIssue::of_visit(d.t.db(), after.id).await.unwrap();
+    assert!(rows.iter().all(ConsumableIssue::is_uncertain), "{rows:?}");
+    pass(&d, 1);
+    arrives(&d, &s, &s.l2, 1).await;
+    assert!(posted_on_arrival(&d, &after).await);
+
+    let mia = manager(&d).await;
+    d.post(&mia, &format!("/recalls/{}/trace", recall.id), &[("x", "y")])
+        .await
+        .assert_ok();
+    let listed = lines(&d, &recall).await;
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert_eq!(listed[0].used_by(), Some(before.subject()));
+    assert_eq!(listed[0].kind.as_str(), "confirmed");
+    let page = d
+        .get(&mia, &format!("/clinics/recalls/{}", recall.id))
+        .await;
+    page.assert_ok().assert_see("Amal Rashid");
+    assert!(!page.text().contains("Noor Haddad"), "{}", page.text());
+}
+
+/// The end of the lot's window, by its balance: the recalled lot is used up
+/// (its last unit leaves), and a pending issue recorded after that, posted
+/// later with another lot, is not listed when the recall is opened; the visit
+/// that took the last unit is.
+#[renox::test]
+async fn a_pending_issue_recorded_after_the_balance_reached_zero_is_not_listed() {
+    let d = desk_with_stock().await;
+    name_patients(&d);
+    let s = store(&d, 0, 0).await;
+    pass(&d, 1);
+    arrives(&d, &s, &s.l1, 1).await;
+    pass(&d, 1);
+    let last = used(&d, P1, 9, 1, "L1").await;
+    pass(&d, 1);
+
+    // L1 is used up: the next visit finds nothing and is pending.
+    let after = used(&d, P3, 10, 1, "").await;
+    let rows = ConsumableIssue::of_visit(d.t.db(), after.id).await.unwrap();
+    assert!(rows.iter().all(ConsumableIssue::is_uncertain), "{rows:?}");
+    pass(&d, 1);
+    arrives(&d, &s, &s.l2, 1).await;
+    assert!(posted_on_arrival(&d, &after).await);
+    pass(&d, 1);
+
+    let recall = open_recall(&d, s.item.id, "L1").await;
+    let listed = lines(&d, &recall).await;
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert_eq!(listed[0].used_by(), Some(last.subject()));
+    assert_eq!(listed[0].kind.as_str(), "confirmed");
+    let mia = manager(&d).await;
+    let page = d
+        .get(&mia, &format!("/clinics/recalls/{}", recall.id))
+        .await;
+    page.assert_ok().assert_see("Amal Rashid");
+    assert!(!page.text().contains("Noor Haddad"), "{}", page.text());
 }
 
 /// Done when 3: a patient with two visits gets one notice listing both days,

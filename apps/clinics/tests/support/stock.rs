@@ -196,12 +196,3 @@ pub async fn used_filler(
     .expect("the visit is checked out");
     d.visit(visit.id).await
 }
-
-/// Moves the receipt of `lot` at the store to `at`.
-pub async fn received_on(d: &Desk, lot: &Lot, at: renox::db::DateTime) {
-    StockMovement::query()
-        .where_(StockMovement::LOT_ID.eq(Some(lot.id)))
-        .update(d.t.db(), &[("moved_at", &at)])
-        .await
-        .unwrap();
-}
