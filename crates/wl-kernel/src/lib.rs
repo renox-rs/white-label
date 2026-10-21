@@ -35,6 +35,7 @@ pub mod manifest;
 pub mod notify;
 pub mod numbering;
 pub mod parties;
+pub mod payer_bills;
 pub mod payments;
 pub mod portal;
 pub mod qualifications;
@@ -148,6 +149,12 @@ pub use late_entries::{
     LateEntryStatus, Limits, NewRecord, Period,
 };
 pub use machines::SubjectMachine;
+pub use payer_bills::{
+    NoPayerBills, PayerAnswer, PayerBillClosed, PayerBillFuture, PayerBillId, PayerBillIssued,
+    PayerBillOutcome, PayerBillStatus, PayerBillSubmissionRejected, PayerBillSummary, PayerBills,
+    PayerRecoupmentRecorded, PayerRemittanceRecorded, RecoupedLine, Recoupment, RejectionDeadline,
+    Remittance, RemittanceLine, SubmissionError,
+};
 pub use manifest::Manifest;
 pub use notify::{
     GiveUpReaction, MessageFailed, MessageGaveUp, MessageId, MessageSuppressed, NoNotifier,
