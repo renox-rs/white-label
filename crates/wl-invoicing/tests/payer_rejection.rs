@@ -341,3 +341,52 @@ async fn the_deadline_of_a_rejected_resubmission_counts_from_the_remittance() {
     let tasks = t.tickets.opened();
     assert!(tasks[0].description.contains("25 Dec 2026"));
 }
+
+/// The vertical's channel rejects through the kernel contract as the system
+/// (05 claim `reject_submission` in the integration, Later): the same
+/// transition runs, and the answer carries the deadline the task names.
+#[renox::test]
+async fn the_vertical_rejects_through_the_kernel_contract() {
+    let t = boot().await;
+    let cora = t.coordinator_cora().await;
+    let bill = issued_bill(&t, &cora).await;
+
+    let answer = payer_bills(t.state())
+        .submission_rejected(
+            t.state(),
+            PayerBillId(bill.id),
+            vec![wl_kernel::payer_bills::SubmissionError::new(
+                "E104",
+                "invalid member ID",
+            )],
+            None,
+        )
+        .await
+        .expect("the system records the rejection");
+    assert_eq!(
+        answer.deadline,
+        Some(today() + renox::chrono::Days::new(30)),
+        "the end of the first-submission window"
+    );
+    let rejected = t.reload_bill(&bill).await;
+    assert_eq!(rejected.status, PayerBillStatus::Draft);
+    assert_eq!(rejected.number, bill.number);
+    assert_eq!(t.payer.rejected.all().len(), 1);
+    assert_eq!(t.tickets.opened().len(), 1);
+
+    // It is found by its source and can be issued again by the system.
+    let found = payer_bills(t.state())
+        .of_source(t.db(), &bill.source())
+        .await
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].status, PayerBillStatus::Draft);
+    payer_bills(t.state())
+        .issue(t.state(), PayerBillId(bill.id), None)
+        .await
+        .expect("the system issues it again");
+    let again = t.reload_bill(&bill).await;
+    assert_eq!(again.status, PayerBillStatus::Issued);
+    assert_eq!(again.number, bill.number);
+    assert_eq!(again.resubmission_count, 0);
+}
