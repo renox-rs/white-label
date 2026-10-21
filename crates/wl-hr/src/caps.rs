@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn a_cap_is_rounded_down_to_a_fils() {
-        // 5 days of 1 000.01 / 30 = 166.67 -> 166 fils, not 167.
+        // 5 days of 1 000.01 / 30 = 166.6683 AED -> 16 666 fils (166.66), not 16 667.
         assert_eq!(cap_of(CapScope::Damage, 100_001), 16_666);
         assert_eq!(cap_of(CapScope::Fine, 999), 49);
     }
