@@ -155,6 +155,56 @@ async fn a_reversal_and_a_manual_lost_marking_are_approved_by_the_operations_man
     );
 }
 
+/// #310 AC3, #304: the request to mark a shipment lost from the hub
+/// (`logistics.mark_lost`) and the request to dispose of a held one
+/// (`logistics.dispose`) are approved by another holder of the approval
+/// permission: the operations manager or, where the depot has no other
+/// manager, the real company admin role; never the dispatcher who asks.
+#[renox::test]
+async fn the_hub_loss_and_the_disposal_are_approved_by_the_manager_or_the_real_admin() {
+    let app = logistics_booted().await;
+    for (action, permission) in [
+        (
+            logistics::trace::ACTION,
+            logistics::permissions::SHIPMENTS_APPROVE_LOSS,
+        ),
+        (
+            logistics::disposal::ACTION,
+            logistics::permissions::SHIPMENTS_APPROVE_DISPOSAL,
+        ),
+    ] {
+        let policy = approvers(&app, action).await;
+        assert!(policy.sod, "the requester never approves: {action}");
+        let step = &policy.steps.0[0];
+        assert_eq!(step.permission.as_deref(), Some(permission), "{action}");
+        assert!(holds(OPERATIONS_MANAGER, permission), "{action}");
+        assert!(holds(ADMIN, permission), "the company admin: {action}");
+        assert!(!holds(DISPATCHER, permission), "{action}");
+        assert!(!holds(DRIVER, permission), "{action}");
+    }
+}
+
+/// AC4 at the boundary: AED 50.00 is written off by the cashier, AED 50.01
+/// needs the approval of another holder of `cash.write_off`.
+#[renox::test]
+async fn a_shortage_of_aed_50_00_needs_no_approval_and_50_01_does() {
+    let app = logistics_booted().await;
+    let at = |amount: i64| {
+        let db = app.db();
+        async move {
+            ApprovalPolicy::for_action(
+                db,
+                wl_payments::cash_settle::ACTION,
+                &renox::serde_json::json!({ "amount": amount }),
+            )
+            .await
+            .unwrap()
+        }
+    };
+    assert!(at(5_000).await.is_none(), "AED 50.00 is within the limit");
+    assert!(at(5_001).await.is_some(), "AED 50.01 needs an approval");
+}
+
 /// AC4: a AED 40 shortage can be written off by the cashier, AED 60 needs an
 /// approval of another holder of `cash.write_off`; salary deduction is not
 /// offered.
