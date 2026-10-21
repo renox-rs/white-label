@@ -1145,6 +1145,9 @@ pub(crate) struct DepotView {
     can_receive: bool,
     /// Whether the cash is still to be counted.
     cash_open: bool,
+    /// Whether the cash is counted in the cash handovers of the payments
+    /// module (the driver's custody), not here.
+    via_custody: bool,
     open: bool,
 }
 
@@ -1208,13 +1211,29 @@ async fn run_show(
             })
             .collect();
         let expected = close::cash_expected(&state.db, &run).await?;
+        let via_custody = wl_kernel::custody::custody_provided(&state);
+        let handover = close::handover_of(&state, &run).await?;
+        let counted = match (&handover, via_custody) {
+            (Some(h), _) if h.status != wl_kernel::custody::HandoverStatus::Open => {
+                Some(aed(h.counted))
+            }
+            (_, true) => None,
+            (None, false) => run.cash_counted_amount.map(aed),
+            (Some(_), false) => None,
+        };
+        let cash_open = match (&handover, via_custody) {
+            (Some(h), _) => h.expected > 0 && h.status == wl_kernel::custody::HandoverStatus::Open,
+            (None, true) => false,
+            (None, false) => expected > 0 && run.cash_counted_at.is_none(),
+        };
         Some(DepotView {
             items,
-            cash_expected: aed(expected),
-            cash_counted: run.cash_counted_amount.map(aed),
+            cash_expected: aed(handover.as_ref().map_or(expected, |h| h.expected)),
+            cash_counted: counted,
             can_receive: user.has_permission(permissions::RUNS_DISPATCH)
                 && run.status == RunStatus::ReturnedToDepot,
-            cash_open: expected > 0 && run.cash_counted_at.is_none(),
+            cash_open,
+            via_custody,
             open: run.status == RunStatus::ReturnedToDepot,
         })
     } else {

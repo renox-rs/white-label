@@ -11,8 +11,12 @@
 //!   an undelivered delivery as a whole, a refused line by quantity (part
 //!   received and part missing is allowed, and the two add up to the refused
 //!   quantity). The cash the driver handed over is counted by someone else
-//!   with [`count_cash`] (until `wl-payments` keeps the driver's custody, the
-//!   count is a record of this module).
+//!   with `cash.count` in `wl-payments`: the driver's handover of the run is
+//!   in the cash custody (`FIN.CSH.01`, [`wl_kernel::custody`]), filled at
+//!   each `deliver`, and the run closes on `CashHandoverCounted` (counted or
+//!   short: a shortage does not block the close). Without the payments
+//!   module nothing is held, and [`count_cash`] keeps the amount counted as
+//!   a record of this module (#167); with it that record is refused.
 //! - [`try_close`] is the system's `close`: it runs when the cash is counted
 //!   (or no cash was collected) and every item is accounted for, and never
 //!   before. It records the received and missing refused quantities on the
@@ -30,7 +34,12 @@ use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::delivery::{DeliveryRefusedReceived, RefusedLineReceived, RunClosed};
+use wl_kernel::custody::{
+    CashHandoverCounted, HandoverStatus, HandoverSummary, custody, custody_provided,
+};
+use wl_kernel::delivery::{
+    DeliveryRefusedReceived, RUN_SUBJECT_TYPE, RefusedLineReceived, RunClosed,
+};
 use wl_kernel::tickets::{self, OpenTicket, TASK_CATEGORY};
 
 use crate::delivery::{Delivery, DeliveryLine, DeliveryStatus};
@@ -269,6 +278,22 @@ async fn record_close(tx: &mut Transaction, run_id: i64) -> Result<()> {
     Ok(())
 }
 
+/// Closes the run once the driver's handover of it is counted: a listener on
+/// the cash custody's `CashHandoverCounted` (counted or short).
+pub(crate) fn register(app: &mut Registry) {
+    app.listen(|event: CashHandoverCounted, state: AppState| async move {
+        match event.period {
+            Some(period) if period.subject_type == RUN_SUBJECT_TYPE => {
+                try_close(&state, period.subject_id)
+                    .await
+                    .map(|_| ())
+                    .map_err(TransitionError::into_error)
+            }
+            _ => Ok(()),
+        }
+    });
+}
+
 fn unprocessable(message: impl Into<String>) -> TransitionError {
     TransitionError::Guard(message.into())
 }
@@ -360,6 +385,35 @@ pub async fn cash_expected(db: &Db, run: &Run) -> Result<i64> {
     Ok(total)
 }
 
+/// The driver's handover of `run` in the cash custody, when a custody is
+/// provided and cash was collected on the run.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn handover_of(state: &AppState, run: &Run) -> Result<Option<HandoverSummary>> {
+    if !custody_provided(state) {
+        return Ok(None);
+    }
+    custody(state)
+        .handover_of(&state.db, run.driver_user_id, &run.subject())
+        .await
+}
+
+/// The cash the depot must count for `run` and whether it has been:
+/// with the cash custody the driver's handover of the run (counted or short
+/// is counted, `open` is not), else the amount `collected` and the record of
+/// [`count_cash`].
+async fn cash_to_count(state: &AppState, run: &Run, collected: i64) -> Result<(i64, bool)> {
+    if !custody_provided(state) {
+        return Ok((collected, run.cash_counted_at.is_some()));
+    }
+    Ok(match handover_of(state, run).await? {
+        Some(handover) => (handover.expected, handover.status != HandoverStatus::Open),
+        None => (0, true),
+    })
+}
+
 /// The driver brings `run` back to the depot.
 ///
 /// # Errors
@@ -388,6 +442,17 @@ pub async fn return_to_depot(
         .input(&input)
         .run(state)
         .await?;
+    // The driver's cash period ends now (or at its planned end, whichever is
+    // earlier): `wl-payments` starts its escalation clock.
+    custody(state)
+        .end_period(
+            state,
+            run.driver_user_id,
+            run.subject(),
+            renox::db::now(),
+        )
+        .await
+        .map_err(TransitionError::Failed)?;
     // A run with nothing to account for closes at once.
     try_close(state, run.id).await.map(|_| ())
 }
@@ -506,6 +571,11 @@ pub async fn count_cash(
     if amount < 0 {
         return Err(unprocessable("The cash counted cannot be negative."));
     }
+    if custody_provided(state) {
+        return Err(unprocessable(english(
+            "wl_delivery.close.counted_in_payments",
+        )));
+    }
     let counted = Some(amount);
     let by = Some(user.id);
     let at = Some(renox::db::now());
@@ -563,9 +633,12 @@ pub async fn try_close(
     let expected = cash_expected(&state.db, &run)
         .await
         .map_err(TransitionError::Failed)?;
+    let (to_count, counted) = cash_to_count(state, &run, expected)
+        .await
+        .map_err(TransitionError::Failed)?;
     let input = CloseInput {
-        cash_expected: expected,
-        cash_counted: run.cash_counted_at.is_some(),
+        cash_expected: to_count,
+        cash_counted: counted,
         open_items: i64::try_from(items.iter().filter(|i| !i.accounted).count())
             .unwrap_or(i64::MAX),
     };

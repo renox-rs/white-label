@@ -301,6 +301,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_delivery.method.otp", "OTP"),
     ("wl_delivery.partial.on", "On"),
     ("wl_delivery.partial.off", "Off: every line in full"),
+    (
+        "wl_delivery.close.counted_in_payments",
+        "The cash is counted in the cash handovers: count it there and the run closes by itself.",
+    ),
+    (
+        "wl_delivery.close.count_in_payments",
+        "The driver's cash of this run is counted in the cash handovers; the run closes when it is counted.",
+    ),
     ("wl_delivery.absorber.customer", "Customer"),
     ("wl_delivery.absorber.client", "Client"),
     ("wl_delivery.absorber.business", "Business"),

@@ -31,7 +31,8 @@
         <rx-entry :label="tx['close.cash_expected']" :value="depot.cash_expected"/>
         <rx-entry :label="tx['close.cash_counted']" :value="depot.cash_counted" :placeholder="tx['none']"/>
       </rx-infolist>
-      <rx-form rx-if="depot.can_receive and depot.cash_open" :action="route('wl_delivery.run_cash', run.id)" novalidate>
+      <p rx-if="depot.cash_open and depot.via_custody">{{ tx['close.count_in_payments'] }}</p>
+      <rx-form rx-if="depot.can_receive and depot.cash_open and not depot.via_custody" :action="route('wl_delivery.run_cash', run.id)" novalidate>
         <rx-form-errors/>
         <rx-input name="amount" :label="tx['close.cash_counted']" :id="'run-cash-' ~ run.id"/>
         <rx-button :label="tx['close.count']"/>

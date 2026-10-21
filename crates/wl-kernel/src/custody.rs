@@ -407,6 +407,12 @@ pub fn custody(state: &AppState) -> Arc<dyn CashCustody> {
     }
 }
 
+/// Whether a [`CashCustody`] is provided (the `payments` module is on):
+/// without one nothing is held, so a caller that waits for a count must not.
+pub fn custody_provided(state: &AppState) -> bool {
+    state.provided::<Arc<dyn CashCustody>>().is_some()
+}
+
 /// A salary deduction passed to wl-hr as an adjustment of type *cash
 /// shortage recovery* (`FIN.ACL.19`, `⚠ open: lawyer L-20`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

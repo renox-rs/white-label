@@ -246,6 +246,8 @@ impl Module for WlDelivery {
         // nobody answered, and the finish of a difference the kernel approved.
         cod::register(app);
         proof::register(app);
+        // A run closes when the driver's cash handover of it is counted.
+        close::register(app);
         // The seeded defaults keep the client's changes.
         app.command(
             "delivery:install",
