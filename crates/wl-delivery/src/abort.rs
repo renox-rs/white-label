@@ -302,14 +302,14 @@ pub async fn abort_run(
         .begin()
         .await
         .map_err(|e| TransitionError::Failed(e.into()))?;
-    let mut outcomes = vec![
-        run.transition(name)
-            .by(user)
-            .reason(history.clone())
-            .input(&input)
-            .run_in(&mut tx)
-            .await?,
-    ];
+    let run_outcome = run
+        .transition(name)
+        .by(user)
+        .reason(history.clone())
+        .input(&input)
+        .run_in(&mut tx)
+        .await?;
+    let mut outcomes = Vec::new();
     for (delivery, number) in open.iter().zip(&numbers) {
         outcomes.push(
             delivery
@@ -326,6 +326,10 @@ pub async fn abort_run(
     tx.commit()
         .await
         .map_err(|e| TransitionError::Failed(e.into()))?;
+    run_outcome
+        .emit(state)
+        .await
+        .map_err(TransitionError::Failed)?;
     for outcome in outcomes {
         outcome.emit(state).await.map_err(TransitionError::Failed)?;
     }

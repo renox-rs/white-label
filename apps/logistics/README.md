@@ -59,8 +59,8 @@ their own issues.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
-(`WeightBand`, `rates::band_price`) and the re-weigh terms (`ClientTerms`) are
-stand-ins in the same way.
+  (`WeightBand`, `rates::band_price`) and the re-weigh terms (`ClientTerms`) are
+  stand-ins in the same way.
 
 ## Routes
 

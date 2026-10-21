@@ -14,9 +14,11 @@ use wl_kernel::payments::{
 };
 use wl_kernel::{PartyId, Subject};
 
+type Refunds = Arc<Mutex<Vec<(RefundRequest, Option<i64>)>>>;
+
 /// The recording `PaymentRecorder`.
 #[derive(Clone, Default)]
-pub struct FakePayments(Arc<Mutex<Vec<(RefundRequest, Option<i64>)>>>);
+pub struct FakePayments(Refunds);
 
 fn off() -> Error {
     Error::Status(

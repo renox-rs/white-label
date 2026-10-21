@@ -674,7 +674,7 @@ mod tests {
             voids::VOID,
             voids::VOID_APPROVED,
         ] {
-            assert!(machine.find(name).is_some(), "{name}");
+            assert!(machine.find(name).is_ok(), "{name}");
         }
         let cancel_return = machine.find(CANCEL_RETURN).unwrap();
         assert_eq!(

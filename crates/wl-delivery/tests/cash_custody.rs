@@ -5,6 +5,7 @@
 
 mod support;
 
+use renox::prelude::Model;
 use wl_delivery::{Run, RunStatus};
 
 use support::{World, boot_with_custody};

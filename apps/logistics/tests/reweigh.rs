@@ -12,7 +12,6 @@ use logistics::billing;
 use logistics::reweigh::{self, Measurement};
 use logistics::shipment::charge_kind;
 use logistics::{Charge, Shipment, rates};
-use renox::prelude::*;
 use renox::testing::TestResponse;
 
 use support::{SOUQ, World, boot};
