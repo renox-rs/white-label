@@ -1116,6 +1116,22 @@ const TEXTS: &[(&str, &str)] = &[
         "Lot no longer available: the lot of :codes is on hold, expired or used up; pick another lot before the visit is checked out.",
     ),
     (
+        "clinics.lots.problem.open",
+        "The visit is not over yet: the stock is issued when it is checked out.",
+    ),
+    ("clinics.lots.issue_pending", "Stock issue"),
+    ("clinics.lots.issue_done", "Issued"),
+    (
+        "clinics.lots.issue_waiting",
+        "Pending: the stock was not issued",
+    ),
+    (
+        "clinics.lots.issue_unknown_store",
+        "Pending: the branch store or the item is not known to the stock",
+    ),
+    ("clinics.lots.issue_retry", "Issue the stock again"),
+    ("clinics.lots.issue_retried", "The stock issue was tried again."),
+    (
         "clinics.lots.problem.no_line",
         "This is not a consumable of the visit that needs a lot.",
     ),

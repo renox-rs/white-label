@@ -135,6 +135,12 @@ pub struct Visit {
     /// policy was named: the billing coordinator has to resolve the
     /// coverage (`CLN.ACL.14`).
     pub coverage_to_resolve: bool,
+    /// When the stock issue of the consumables stopped without issuing
+    /// everything (the stock refused, or the store or item is unknown); a
+    /// retry clears it (`STK.MOV.01`, BL-CLN-13).
+    pub issue_pending_at: Option<DateTime>,
+    /// Why the issue is pending: `stock: <the error>` or `unknown_store`.
+    pub issue_pending_reason: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: VisitStatus,
     /// When the row was created.

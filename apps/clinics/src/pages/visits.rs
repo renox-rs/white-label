@@ -12,6 +12,7 @@
 //! | `POST /clinics/visits/{id}/consent` | `clinics.visit_consent` | `coverage.record` |
 //! | `POST /clinics/visits/{id}/bill` | `clinics.visit_bill` | `charges.capture` or `charges.desk` |
 //! | `POST /clinics/visits/{id}/lots` | `clinics.visit_lot` | `charges.desk` or `charges.capture` |
+//! | `POST /clinics/visits/{id}/issue` | `clinics.visit_issue` | `charges.desk` or `charges.capture` (issues the stock again) |
 //! | `GET /clinics/visits/{id}?code=X` | `clinics.visit` | the issue screen: the lot proposed for consumable `X` |
 //!
 //! The page shows the cover the check-in recorded. When the eligibility turns
@@ -60,6 +61,8 @@ pub fn routes() -> Routes {
         .name("clinics.visit_consent")
         .post("/clinics/visits/{id}/bill", bill)
         .name("clinics.visit_bill")
+        .post("/clinics/visits/{id}/issue", retry_issue)
+        .name("clinics.visit_issue")
         .post("/clinics/visits/{id}/lots", set_lot)
         .name("clinics.visit_lot")
         .require_auth()
@@ -161,6 +164,8 @@ pub(crate) struct ShowPage {
     proposal: String,
     can_set_lot: bool,
     can_desk_only: bool,
+    stock_issue: String,
+    can_retry_issue: bool,
 }
 
 /// The query of the visit page: `code` asks which lot the issue screen
@@ -442,6 +447,15 @@ async fn show(
         proposal,
         can_set_lot: (can_capture || can_desk) && open,
         can_desk_only: can_desk && !can_capture && open,
+        stock_issue: match visit.issue_pending_reason.as_deref() {
+            None if open => none.clone(),
+            None => text(&lang, "lots.issue_done"),
+            Some(lots::UNKNOWN_STORE) => text(&lang, "lots.issue_unknown_store"),
+            Some(_) => text(&lang, "lots.issue_waiting"),
+        },
+        can_retry_issue: (can_capture || can_desk)
+            && visit.issue_pending_at.is_some()
+            && !visit.status.is_open(),
     }))
 }
 
@@ -682,4 +696,19 @@ async fn set_lot(
     let line = parse_id(&form.line).ok_or_else(|| invalid(&text(&lang, "lots.problem.no_line")))?;
     lots::assign(&state, id, line, Some(form.lot.as_str())).await?;
     done(&lang, "lots.assigned")
+}
+
+/// `POST /clinics/visits/{id}/issue`: issues the stock of a finished visit
+/// again after the first run stopped; nothing is issued twice.
+async fn retry_issue(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    if !user.has_permission(permissions::CHARGES_DESK) {
+        require(&user, permissions::CHARGES_CAPTURE)?;
+    }
+    lots::retry(&state, id).await?;
+    done(&lang, "lots.issue_retried")
 }

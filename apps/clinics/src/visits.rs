@@ -134,7 +134,7 @@ pub async fn on_completed(state: &AppState, event: &BookingCompleted) -> Result<
     if let Some(done) = &visit
         && done.status == VisitStatus::Completed
     {
-        lots::issue(state, done.id).await?;
+        lots::issue_or_flag(state, done.id).await?;
     }
     // The charge lines are priced, split and billed (`CLN.ENC.02`).
     if let Some(done) = &visit
@@ -167,7 +167,7 @@ pub async fn on_cancelled(state: &AppState, event: &BookingCancelled) -> Result<
     if let Some(stopped) = &visit
         && stopped.status == VisitStatus::Cancelled
     {
-        lots::issue(state, stopped.id).await?;
+        lots::issue_or_flag(state, stopped.id).await?;
     }
     // The work done is billed (BL-CLN-05): a walk-out as a normal visit, a
     // clinic stop only when the patient accepted it.

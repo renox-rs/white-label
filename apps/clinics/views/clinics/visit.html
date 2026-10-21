@@ -59,6 +59,10 @@
         <rx-input name="lot" :label="tx['lots.lot_field']" :id="'visit-lot-number-' ~ id"/>
       </rx-action-sheet>
     </template>
+    <template rx-if="can_retry_issue">
+      <rx-confirm :id="'visit-issue-' ~ id" :label="tx['lots.issue_retry']" :action="route('clinics.visit_issue', id)" method="POST"
+                  :title="tx['lots.issue_retry']" :message="stock_issue" :confirm-label="tx['lots.issue_retry']" :cancel-label="tx['button_cancel']" icon="refresh-cw"/>
+    </template>
     <template rx-if="can_bill">
       <rx-confirm :id="'visit-bill-' ~ id" :label="tx['charges.bill']" :action="route('clinics.visit_bill', id)" method="POST"
                   :title="tx['charges.bill']" :message="tx['charges.bill']" :confirm-label="tx['charges.bill']" :cancel-label="tx['button_cancel']" icon="receipt"/>
@@ -86,6 +90,7 @@
         <rx-entry :label="tx['charges.payer_bill']" :value="payer_bill"/>
         <rx-entry :label="tx['charges.deposit_applied']" :value="deposit_applied"/>
         <rx-entry :label="tx['charges.deposit_refunded']" :value="deposit_refunded"/>
+        <rx-entry :label="tx['lots.issue_pending']" :value="stock_issue"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="charges" as="row" :key="row.code ~ row.kind ~ row.units" :caption="tx['charges.title']" card>

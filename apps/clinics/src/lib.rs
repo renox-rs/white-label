@@ -228,6 +228,7 @@ impl Module for Clinics {
         licences::register(app);
         // A recalled lot traced to patients, the neutral notice and the call
         // task when it gives up (BL-CLN-14).
+        lots::register(app);
         recalls::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.insurance_policies` text.

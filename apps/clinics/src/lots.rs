@@ -291,13 +291,33 @@ impl CompleteGuard for LotGuard {
 /// The database's and the inventory's errors. A line whose issue failed is
 /// not marked issued and is issued by the next call.
 pub async fn issue(state: &AppState, visit_id: i64) -> Result<Vec<ConsumableIssue>> {
+    Ok(run(state, visit_id).await?.made)
+}
+
+/// What one run of [`issue`] did.
+#[derive(Debug, Default)]
+struct Run {
+    /// The rows it made.
+    made: Vec<ConsumableIssue>,
+    /// The lot-tracked lines it could not place because the branch has no
+    /// store or the store does not know the item any more.
+    unplaced: Vec<String>,
+}
+
+async fn run(state: &AppState, visit_id: i64) -> Result<Run> {
     let visit = Visit::find_or_404(&state.db, visit_id).await?;
     let mut made = Vec::new();
+    let mut unplaced = Vec::new();
     for line in ChargeLine::active_of(&state.db, visit.id).await? {
         if line.kind != ChargeKind::Consumable || line.issued_at.is_some() {
             continue;
         }
         let Some(stock) = stock_of(state, &visit, &line.code).await? else {
+            // A line that was lot-tracked when it was entered and has no store
+            // or item now is not a plain charge: the desk is told.
+            if line.lot_tracked {
+                unplaced.push(line.code.clone());
+            }
             continue;
         };
         // One run issues a line: the claim is undone when the stock fails.
@@ -373,5 +393,109 @@ pub async fn issue(state: &AppState, visit_id: i64) -> Result<Vec<ConsumableIssu
             made.push(row);
         }
     }
+    Ok(Run { made, unplaced })
+}
+
+/// The reason a visit's issue is pending when the store or the item is not
+/// known.
+pub const UNKNOWN_STORE: &str = "unknown_store";
+
+/// Issues the consumables of the visit that just ended without ever failing
+/// the booking's check-out or the bill: a run that stops on an error, or
+/// that cannot place a lot-tracked line, **flags** the visit
+/// (`issue_pending_at` and `issue_pending_reason`, shown to the desk) and
+/// [`retry`] or the daily [`retry_pending`] issues it later. A run that
+/// finishes clears the flag. Returns the rows made.
+///
+/// # Errors
+///
+/// The database's errors (not the stock's: those are kept on the visit).
+pub async fn issue_or_flag(state: &AppState, visit_id: i64) -> Result<Vec<ConsumableIssue>> {
+    let (made, reason) = match run(state, visit_id).await {
+        Ok(done) if done.unplaced.is_empty() => (done.made, None),
+        Ok(done) => (done.made, Some(UNKNOWN_STORE.to_owned())),
+        Err(error) => {
+            (Vec::new(), Some(format!("stock: {error}")))
+        }
+    };
+    let (at, why) = match &reason {
+        Some(reason) => (Some(now()), Some(reason.clone())),
+        None => (None, None),
+    };
+    Visit::query()
+        .where_(Visit::ID.eq(visit_id))
+        .update(
+            &state.db,
+            &[
+                ("issue_pending_at", &at),
+                ("issue_pending_reason", &why),
+                ("updated_at", &now()),
+            ],
+        )
+        .await?;
     Ok(made)
+}
+
+/// The desk's retry of the stock issue of a visit that is over
+/// (`POST /clinics/visits/{id}/issue`): idempotent, a line issued already is
+/// not issued again.
+///
+/// # Errors
+///
+/// A 422 for a visit that is still open.
+pub async fn retry(state: &AppState, visit_id: i64) -> Result<Vec<ConsumableIssue>> {
+    let visit = Visit::find_or_404(&state.db, visit_id).await?;
+    if visit.status.is_open() {
+        return Err(refused(english("clinics.lots.problem.open", &[])));
+    }
+    issue_or_flag(state, visit_id).await
+}
+
+/// The daily retry: every visit that is over and still flagged. Returns how
+/// many visits are clear afterwards.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn retry_pending(state: &AppState) -> Result<usize> {
+    let mut cleared = 0;
+    for visit in Visit::query()
+        .where_(Visit::ISSUE_PENDING_AT.is_not_null())
+        .get(&state.db)
+        .await?
+    {
+        if visit.status.is_open() {
+            continue;
+        }
+        issue_or_flag(state, visit.id).await?;
+        let after = Visit::find_or_404(&state.db, visit.id).await?;
+        if after.issue_pending_at.is_none() {
+            cleared += 1;
+        }
+    }
+    Ok(cleared)
+}
+
+/// The scheduled task, and the command, of the daily retry.
+pub const TASK: &str = "clinics:consumable_issues";
+
+/// When the daily retry runs (Asia/Dubai).
+pub const TASK_AT: &str = "03:00";
+
+/// Registers the daily retry of the stock issues that did not go through.
+pub(crate) fn register(app: &mut Registry) {
+    app.schedule()
+        .daily_at(TASK_AT, TASK, |state: AppState| async move {
+            retry_pending(&state).await.map(|_| ())
+        })
+        .timezone("Asia/Dubai");
+    app.command(
+        TASK,
+        "Issue again the consumables of finished visits whose stock issue did not go through (STK.MOV.01)",
+        |_args, state: AppState| async move {
+            let cleared = retry_pending(&state).await?;
+            println!("{cleared} visits are clear of a pending stock issue.");
+            Ok(())
+        },
+    );
 }
