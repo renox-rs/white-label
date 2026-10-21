@@ -169,7 +169,12 @@ mod tests {
                 "attempted",
                 true,
             ),
-            ("back_on_the_road", vec!["attempted"], "out_for_delivery", true),
+            (
+                "back_on_the_road",
+                vec!["attempted"],
+                "out_for_delivery",
+                true,
+            ),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to, system) in expected {

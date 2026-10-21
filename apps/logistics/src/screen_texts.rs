@@ -60,7 +60,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "logistics.screen.not_received_hint",
         "The parcels the client did not hand over. Parcels neither scanned nor listed count as not received.",
     ),
-    ("logistics.screen.failed_reason", "Reason if nothing was handed over"),
+    (
+        "logistics.screen.failed_reason",
+        "Reason if nothing was handed over",
+    ),
     (
         "logistics.screen.failed_reason_hint",
         "Client absent, nothing ready.",
@@ -77,23 +80,41 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("logistics.screen.company_liable", "The company is liable"),
     ("logistics.screen.hold_reason", "Held because"),
     ("logistics.screen.hold_reason.damaged", "Damaged"),
-    ("logistics.screen.hold_reason.address_issue", "Address issue"),
-    ("logistics.screen.hold_reason.client_instruction", "Client instruction"),
-    ("logistics.screen.hold_reason.reweigh_dispute", "Re-weigh dispute"),
+    (
+        "logistics.screen.hold_reason.address_issue",
+        "Address issue",
+    ),
+    (
+        "logistics.screen.hold_reason.client_instruction",
+        "Client instruction",
+    ),
+    (
+        "logistics.screen.hold_reason.reweigh_dispute",
+        "Re-weigh dispute",
+    ),
     ("logistics.screen.hold_instruction", "The client's answer"),
-    ("logistics.screen.hold_instruction_title", "Record the client's answer"),
+    (
+        "logistics.screen.hold_instruction_title",
+        "Record the client's answer",
+    ),
     (
         "logistics.screen.hold_instruction_description",
         "Deliver as is, return, or the instruction the client gave: who asked, when and how.",
     ),
     ("logistics.screen.correct_address", "Correct the address"),
-    ("logistics.screen.correct_address_title", "Correct the address"),
+    (
+        "logistics.screen.correct_address_title",
+        "Correct the address",
+    ),
     (
         "logistics.screen.correct_address_description",
         "Until the shipment is out for delivery. The change is audited and a new zone changes the price.",
     ),
     ("logistics.screen.confirm_address", "Confirm the address"),
-    ("logistics.screen.confirm_address_title", "Confirm the address"),
+    (
+        "logistics.screen.confirm_address_title",
+        "Confirm the address",
+    ),
     (
         "logistics.screen.confirm_address_description",
         "Give the corrected address, or leave it empty if it is right as it is.",
@@ -112,7 +133,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "It goes back to the hub. The confirmed address or the client's answer must be recorded.",
     ),
     ("logistics.screen.send_back", "Return"),
-    ("logistics.screen.send_back_title", "Return the shipment to the client"),
+    (
+        "logistics.screen.send_back_title",
+        "Return the shipment to the client",
+    ),
     (
         "logistics.screen.send_back_message",
         "The return charge of the rate card applies and the delivery is cancelled.",
@@ -121,7 +145,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("logistics.screen.charged_price", "Price charged"),
     ("logistics.screen.measured", "Measured at the hub (g)"),
     ("logistics.screen.reweigh", "Re-weigh"),
-    ("logistics.screen.reweigh_title", "Record the measured weight"),
+    (
+        "logistics.screen.reweigh_title",
+        "Record the measured weight",
+    ),
     (
         "logistics.screen.reweigh_description",
         "Weight in kg and the size in cm; the photo of the scale is needed when the weight is above the client's tolerance.",
@@ -132,13 +159,19 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("logistics.screen.height", "Height (cm)"),
     ("logistics.screen.scale_photo", "Photo of the scale"),
     ("logistics.screen.dispute", "Dispute the surcharge"),
-    ("logistics.screen.dispute_title", "Dispute the re-weigh surcharge"),
+    (
+        "logistics.screen.dispute_title",
+        "Dispute the re-weigh surcharge",
+    ),
     (
         "logistics.screen.dispute_description",
         "Opens a billing ticket. The surcharge stays off the draft invoice while it is open.",
     ),
     ("logistics.screen.resolve", "Resolve the dispute"),
-    ("logistics.screen.resolve_title", "Resolve the re-weigh dispute"),
+    (
+        "logistics.screen.resolve_title",
+        "Resolve the re-weigh dispute",
+    ),
     (
         "logistics.screen.resolve_description",
         "Confirm the surcharge for the next invoice, or remove it.",
@@ -178,7 +211,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("logistics.screen.status.created", "Created"),
     ("logistics.screen.status.picked_up", "Picked up"),
     ("logistics.screen.status.at_hub", "At the hub"),
-    ("logistics.screen.status.out_for_delivery", "Out for delivery"),
+    (
+        "logistics.screen.status.out_for_delivery",
+        "Out for delivery",
+    ),
     ("logistics.screen.status.attempted", "Attempted"),
     ("logistics.screen.status.on_hold", "On hold"),
     ("logistics.screen.status.returning", "Returning"),

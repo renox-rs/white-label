@@ -30,9 +30,7 @@ use wl_kernel::portal::portal_users;
 use wl_kernel::{PartyId, Subject};
 
 use crate::permissions;
-use crate::shipment::{
-    Parcel, SHIPMENT_SERIES, Shipment, ShipmentStatus, parcel_state, track,
-};
+use crate::shipment::{Parcel, SHIPMENT_SERIES, Shipment, ShipmentStatus, parcel_state, track};
 use crate::texts::english;
 
 /// What a booking carries.
@@ -236,11 +234,7 @@ pub async fn create(
 /// Asks wl-delivery for the delivery of `shipment`, when the module is on,
 /// and links it. A refused request is written to the tracking events and the
 /// shipment stays booked.
-async fn request_delivery(
-    state: &AppState,
-    shipment: &mut Shipment,
-    parcels: &[Parcel],
-) -> Result {
+async fn request_delivery(state: &AppState, shipment: &mut Shipment, parcels: &[Parcel]) -> Result {
     if state
         .provided::<std::sync::Arc<dyn DeliveryRequester>>()
         .is_none()
@@ -271,7 +265,14 @@ async fn request_delivery(
         }
         Err(error) => {
             let note = format!("{error:?}");
-            track(&state.db, shipment.id, "delivery_request_failed", &note, None).await?;
+            track(
+                &state.db,
+                shipment.id,
+                "delivery_request_failed",
+                &note,
+                None,
+            )
+            .await?;
         }
     }
     Ok(())
@@ -435,9 +436,7 @@ pub async fn import_csv(
                             Some(reference) => {
                                 match using_reference(&state.db, client, reference).await? {
                                     Some(shipment) => Some(shipment.number),
-                                    None => seen
-                                        .get(reference)
-                                        .map(|first| format!("row {first}")),
+                                    None => seen.get(reference).map(|first| format!("row {first}")),
                                 }
                             }
                             None => None,
@@ -464,7 +463,12 @@ pub async fn import_csv(
                 }
             };
         let reference = fields
-            .get(columns.get("client_reference").copied().unwrap_or(usize::MAX))
+            .get(
+                columns
+                    .get("client_reference")
+                    .copied()
+                    .unwrap_or(usize::MAX),
+            )
             .filter(|reference| !reference.is_empty())
             .cloned();
         match outcome {

@@ -631,9 +631,10 @@ async fn show(
     let mut cod_request = None;
     let mut can_decide_cod = false;
     if let Some(request) = cod::pending_request(&state.db, delivery.id, cod::ACTION).await? {
-        let evaluated = renox::serde_json::from_value::<proof::DeliverInput>(request.payload.0.clone())
-            .ok()
-            .and_then(|input| proof::evaluate(&input).ok());
+        let evaluated =
+            renox::serde_json::from_value::<proof::DeliverInput>(request.payload.0.clone())
+                .ok()
+                .and_then(|input| proof::evaluate(&input).ok());
         let requested_by = User::find(&state.db, request.requester_id)
             .await?
             .map_or_else(|| format!("#{}", request.requester_id), |u| u.name);
@@ -1943,10 +1944,12 @@ async fn store_deliver(
         proof::DeliverOutcome::Delivered => {
             Toast::success(texts::t(&lang, "wl_delivery.driver.delivered"))
         }
-        proof::DeliverOutcome::Requested(_) => Toast::success(
-            texts::t(&lang, "wl_delivery.cod.requested")
-                .replace("{minutes}", &settings(&state).cod_approval_minutes().to_string()),
-        ),
+        proof::DeliverOutcome::Requested(_) => {
+            Toast::success(texts::t(&lang, "wl_delivery.cod.requested").replace(
+                "{minutes}",
+                &settings(&state).cod_approval_minutes().to_string(),
+            ))
+        }
     };
     Ok((toast, Redirect::route("wl_delivery.driver", &[])?).into_response())
 }

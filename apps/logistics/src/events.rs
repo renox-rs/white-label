@@ -17,8 +17,7 @@
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::delivery::{
-    DeliveryAttemptFailed, DeliveryDelivered, DeliveryId, DeliveryOutForDelivery,
-    DeliveryRequester,
+    DeliveryAttemptFailed, DeliveryDelivered, DeliveryId, DeliveryOutForDelivery, DeliveryRequester,
 };
 use wl_kernel::{Subject, voids};
 
@@ -75,7 +74,14 @@ async fn cancel_delivery(state: &AppState, shipment: &Shipment, reason: &str) ->
         .await
     {
         let note = format!("{error:?}");
-        track(&state.db, shipment.id, "delivery_cancel_failed", &note, None).await?;
+        track(
+            &state.db,
+            shipment.id,
+            "delivery_cancel_failed",
+            &note,
+            None,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -161,49 +167,55 @@ pub(crate) fn register(app: &mut Registry) {
         }
         Ok(())
     });
-    app.listen(|event: Transitioned<Shipment>, state: AppState| async move {
-        let name = event.transition.as_str();
-        if name == HOLD || name == HOLD_SYSTEM {
-            crate::hold::tell_of_hold(&state, event.key).await?;
-            return crate::hold::open_claim(&state, event.key).await;
-        }
-        if name == PICK_UP || (name == RECEIVE_AT_HUB && event.from == "created") {
-            return tell_of_missing_parcels(&state, event.key).await;
-        }
-        let voided = name == voids::VOID || name == voids::VOID_APPROVED;
-        if name != CANCEL && name != CANCEL_RETURN && name != RETURN && !voided {
-            return Ok(());
-        }
-        let shipment = Shipment::find_or_404(&state.db, event.key).await?;
-        if voided {
-            let reason = event.reason.clone().unwrap_or_default();
-            track(&state.db, shipment.id, "voided", &reason, event.actor_id).await?;
-            cancel_delivery(&state, &shipment, &english("logistics.void.delivery_reason", &[]))
+    app.listen(
+        |event: Transitioned<Shipment>, state: AppState| async move {
+            let name = event.transition.as_str();
+            if name == HOLD || name == HOLD_SYSTEM {
+                crate::hold::tell_of_hold(&state, event.key).await?;
+                return crate::hold::open_claim(&state, event.key).await;
+            }
+            if name == PICK_UP || (name == RECEIVE_AT_HUB && event.from == "created") {
+                return tell_of_missing_parcels(&state, event.key).await;
+            }
+            let voided = name == voids::VOID || name == voids::VOID_APPROVED;
+            if name != CANCEL && name != CANCEL_RETURN && name != RETURN && !voided {
+                return Ok(());
+            }
+            let shipment = Shipment::find_or_404(&state.db, event.key).await?;
+            if voided {
+                let reason = event.reason.clone().unwrap_or_default();
+                track(&state.db, shipment.id, "voided", &reason, event.actor_id).await?;
+                cancel_delivery(
+                    &state,
+                    &shipment,
+                    &english("logistics.void.delivery_reason", &[]),
+                )
                 .await?;
-        } else if name == CANCEL {
-            cancel_delivery(
-                &state,
-                &shipment,
-                &english("logistics.cancel.delivery_reason", &[]),
-            )
-            .await?;
-        } else {
-            cancel_delivery(
-                &state,
-                &shipment,
-                &english("logistics.cancel.delivery_reason", &[]),
-            )
-            .await?;
-            let title = english(
-                "logistics.cancel.returning_title",
-                &[("number", &shipment.number)],
-            );
-            let body = english(
-                "logistics.cancel.returning_body",
-                &[("number", &shipment.number)],
-            );
-            tell_client(&state, &shipment, &title, &body).await?;
-        }
-        Ok(())
-    });
+            } else if name == CANCEL {
+                cancel_delivery(
+                    &state,
+                    &shipment,
+                    &english("logistics.cancel.delivery_reason", &[]),
+                )
+                .await?;
+            } else {
+                cancel_delivery(
+                    &state,
+                    &shipment,
+                    &english("logistics.cancel.delivery_reason", &[]),
+                )
+                .await?;
+                let title = english(
+                    "logistics.cancel.returning_title",
+                    &[("number", &shipment.number)],
+                );
+                let body = english(
+                    "logistics.cancel.returning_body",
+                    &[("number", &shipment.number)],
+                );
+                tell_client(&state, &shipment, &title, &body).await?;
+            }
+            Ok(())
+        },
+    );
 }

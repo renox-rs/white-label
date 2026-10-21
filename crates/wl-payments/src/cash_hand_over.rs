@@ -110,7 +110,11 @@ pub async fn hand_over(state: &AppState, event: &RunHandedOver) -> Result<Moved>
                 .map(|entry| HandoverId(entry.handover_id)),
         };
         return Ok(Moved {
-            moved: entries.iter().map(|entry| entry.amount.abs()).max().unwrap_or(0),
+            moved: entries
+                .iter()
+                .map(|entry| entry.amount.abs())
+                .max()
+                .unwrap_or(0),
             overage: overage_entries.iter().map(|entry| entry.amount).sum(),
             receiver,
             giver: giver_id,
@@ -140,12 +144,7 @@ pub async fn hand_over(state: &AppState, event: &RunHandedOver) -> Result<Moved>
         receiver = Some(
             collect(
                 state,
-                CashCollection::new(
-                    event.to_driver,
-                    event.to_period.clone(),
-                    moved,
-                    key.clone(),
-                ),
+                CashCollection::new(event.to_driver, event.to_period.clone(), moved, key.clone()),
             )
             .await?,
         );

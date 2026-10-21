@@ -15,8 +15,12 @@ use support::{SOUQ, World, boot};
 
 /// The client's bands: up to 10 kg AED 25, up to 15 kg AED 30.
 async fn bands(w: &World) {
-    rates::set_band(w.db(), SOUQ, "", 10_000, 2_500).await.unwrap();
-    rates::set_band(w.db(), SOUQ, "", 15_000, 3_000).await.unwrap();
+    rates::set_band(w.db(), SOUQ, "", 10_000, 2_500)
+        .await
+        .unwrap();
+    rates::set_band(w.db(), SOUQ, "", 15_000, 3_000)
+        .await
+        .unwrap();
 }
 
 /// Three parcels of 5 kg each, AED 150 to collect.
@@ -72,7 +76,10 @@ async fn scanning_two_of_three_parcels_reprices_the_shipment_and_tells_the_clien
     assert_eq!(after.price, 2_500);
     assert_eq!(after.booked_weight_grams, 15_000);
     assert_eq!(after.parcels_scanned, 2);
-    assert_eq!(states(&w, &shipment).await, ["scanned", "scanned", "not_received"]);
+    assert_eq!(
+        states(&w, &shipment).await,
+        ["scanned", "scanned", "not_received"]
+    );
     // The COD amount is not changed.
     assert_eq!(after.cod_amount, 15_000);
 
@@ -91,7 +98,11 @@ async fn scanning_two_of_three_parcels_reprices_the_shipment_and_tells_the_clien
     assert!(body.contains("AED 25.00"), "{body}");
     assert!(body.contains("not changed (AED 150.00)"), "{body}");
     let events = after.events(w.db()).await.unwrap();
-    assert!(events.iter().any(|e| e.kind == "picked_up" && e.note.contains("not received")));
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == "picked_up" && e.note.contains("not received"))
+    );
 }
 
 /// AC1 (a parcel left out of both lists is not received either), and the
@@ -111,7 +122,10 @@ async fn a_parcel_neither_scanned_nor_listed_is_not_received_and_a_full_pickup_i
     let after = w.reload(&shipment).await;
     assert_eq!(after.weight_grams, 5_000);
     assert_eq!(after.price, 2_500);
-    assert_eq!(states(&w, &shipment).await, ["scanned", "not_received", "not_received"]);
+    assert_eq!(
+        states(&w, &shipment).await,
+        ["scanned", "not_received", "not_received"]
+    );
 
     let whole = w.book_as(&w.noor, SOUQ, "ORD-2").await;
     let picked = w.pick_up(&whole).await;
@@ -128,9 +142,13 @@ async fn only_a_scanning_user_picks_up_and_missing_parcels_never_refuse_it() {
     let shipment = three_parcels(&w).await;
     let number = shipment.number.clone();
     let path = format!("/shipments/{}/pickup", shipment.id);
-    w.post(&w.noor, &path, &[("barcodes", format!("{number}-1").as_str())])
-        .await
-        .assert_forbidden();
+    w.post(
+        &w.noor,
+        &path,
+        &[("barcodes", format!("{number}-1").as_str())],
+    )
+    .await
+    .assert_forbidden();
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Created);
     // A parcel both scanned and marked is a mistake.
     w.post(
@@ -144,14 +162,22 @@ async fn only_a_scanning_user_picks_up_and_missing_parcels_never_refuse_it() {
     .await
     .assert_status(422);
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Created);
-    w.post(&w.driver, &path, &[("barcodes", format!("{number}-1").as_str())])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.driver,
+        &path,
+        &[("barcodes", format!("{number}-1").as_str())],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::PickedUp);
     // A shipment is picked up once.
-    w.post(&w.driver, &path, &[("barcodes", format!("{number}-2").as_str())])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.driver,
+        &path,
+        &[("barcodes", format!("{number}-2").as_str())],
+    )
+    .await
+    .assert_status(422);
 }
 
 /// AC2: given no parcel scanned, `pick_up` is refused, a *pickup failed*
@@ -169,7 +195,10 @@ async fn no_parcel_scanned_fails_the_pickup_with_an_event_and_the_shipment_stays
             &path,
             &[
                 ("barcodes", ""),
-                ("not_received", format!("{number}-1 {number}-2 {number}-3").as_str()),
+                (
+                    "not_received",
+                    format!("{number}-1 {number}-2 {number}-3").as_str(),
+                ),
                 ("reason", "client absent"),
             ],
         )
@@ -183,16 +212,23 @@ async fn no_parcel_scanned_fails_the_pickup_with_an_event_and_the_shipment_stays
     assert_eq!(after.weight_grams, 15_000);
     assert_eq!(states(&w, &shipment).await, ["booked", "booked", "booked"]);
     let events = after.events(w.db()).await.unwrap();
-    let failed: Vec<_> = events.iter().filter(|e| e.kind == "pickup_failed").collect();
+    let failed: Vec<_> = events
+        .iter()
+        .filter(|e| e.kind == "pickup_failed")
+        .collect();
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].note, "client absent");
     assert_eq!(failed[0].actor_user_id, Some(w.driver.id));
     assert!(w.notices.of_type("logistics.client_notice").is_empty());
 
     // It can be picked up again.
-    w.post(&w.driver, &path, &[("barcodes", format!("{number}-1").as_str())])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.driver,
+        &path,
+        &[("barcodes", format!("{number}-1").as_str())],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::PickedUp);
 }
 
@@ -250,7 +286,10 @@ async fn a_parcel_not_received_cannot_be_scanned_in_at_the_hub() {
     w.post(
         &w.hub,
         &hub,
-        &[("barcodes", ""), ("not_received", format!("{number}-1").as_str())],
+        &[
+            ("barcodes", ""),
+            ("not_received", format!("{number}-1").as_str()),
+        ],
     )
     .await
     .assert_status(422);
@@ -273,7 +312,11 @@ async fn a_drop_off_at_the_hub_follows_the_same_rule() {
     .await
     .assert_status(422);
     let events = w.reload(&shipment).await.events(w.db()).await.unwrap();
-    assert!(events.iter().any(|e| e.kind == "pickup_failed" && e.note == "nothing ready"));
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == "pickup_failed" && e.note == "nothing ready")
+    );
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Created);
 
     w.post(
@@ -290,6 +333,9 @@ async fn a_drop_off_at_the_hub_follows_the_same_rule() {
     assert_eq!(after.status, ShipmentStatus::AtHub);
     assert_eq!(after.weight_grams, 10_000);
     assert_eq!(after.price, 2_500);
-    assert_eq!(states(&w, &shipment).await, ["scanned", "scanned", "not_received"]);
+    assert_eq!(
+        states(&w, &shipment).await,
+        ["scanned", "scanned", "not_received"]
+    );
     assert_eq!(w.notices.of_type("logistics.client_notice").len(), 1);
 }

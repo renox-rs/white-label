@@ -27,9 +27,13 @@ async fn card(w: &World, tolerance: i64, divisor: Option<i64>) {
         (5_000, 3_200),
         (12_000, 4_500),
     ] {
-        rates::set_band(w.db(), SOUQ, "", up_to, amount).await.unwrap();
+        rates::set_band(w.db(), SOUQ, "", up_to, amount)
+            .await
+            .unwrap();
     }
-    reweigh::set_terms(w.db(), SOUQ, tolerance, divisor).await.unwrap();
+    reweigh::set_terms(w.db(), SOUQ, tolerance, divisor)
+        .await
+        .unwrap();
 }
 
 /// A shipment of one parcel booked at `grams`, scanned in at the hub.
@@ -122,7 +126,10 @@ async fn a_measurement_within_the_tolerance_does_not_reprice_or_tell_the_client(
     assert_eq!(after.measured_weight_grams, Some(2_400));
     assert!(surcharge(&w, &shipment).await.is_none());
     assert!(w.notices.of_type("logistics.client_notice").is_empty());
-    assert_eq!(reweigh::measurements(w.db(), &after).await.unwrap().len(), 1);
+    assert_eq!(
+        reweigh::measurements(w.db(), &after).await.unwrap().len(),
+        1
+    );
 }
 
 /// AC3: given the same shipment re-weighed at 4 kg and then at 3 kg (3 kg band
@@ -196,7 +203,12 @@ async fn a_measurement_after_the_invoice_waits_for_the_next_draft() {
     billing::mark_shipment_invoiced(w.db(), shipment.id, november)
         .await
         .unwrap();
-    assert!(billing::unbilled_surcharges(w.db(), SOUQ).await.unwrap().is_empty());
+    assert!(
+        billing::unbilled_surcharges(w.db(), SOUQ)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     measure(&w, &shipment, "4", "scale-1.jpg", ["", "", ""])
         .await
@@ -212,8 +224,15 @@ async fn a_measurement_after_the_invoice_waits_for_the_next_draft() {
     // The January draft takes it; a later measurement does not touch a line
     // that is on an invoice.
     let ids: Vec<i64> = draft.iter().map(|c| c.id).collect();
-    billing::mark_billed(w.db(), &ids, renox::db::now()).await.unwrap();
-    assert!(billing::unbilled_surcharges(w.db(), SOUQ).await.unwrap().is_empty());
+    billing::mark_billed(w.db(), &ids, renox::db::now())
+        .await
+        .unwrap();
+    assert!(
+        billing::unbilled_surcharges(w.db(), SOUQ)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     measure(&w, &shipment, "3", "scale-2.jpg", ["", "", ""])
         .await
         .assert_status(303);
@@ -232,7 +251,12 @@ async fn above_the_tolerance_without_a_photo_saving_is_refused() {
     let after = w.reload(&shipment).await;
     assert_eq!(after.charged_price(), 2_000);
     assert_eq!(after.measured_weight_grams, None);
-    assert!(reweigh::measurements(w.db(), &after).await.unwrap().is_empty());
+    assert!(
+        reweigh::measurements(w.db(), &after)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(surcharge(&w, &shipment).await.is_none());
     assert!(w.notices.of_type("logistics.client_notice").is_empty());
     // Nobody reprices without a recorded measurement, and a client user has
@@ -261,7 +285,13 @@ async fn an_open_ticket_holds_the_surcharge_out_of_the_draft_until_it_is_confirm
     measure(&w, &shipment, "4", "scale-1.jpg", ["", "", ""])
         .await
         .assert_status(303);
-    assert_eq!(billing::unbilled_surcharges(w.db(), SOUQ).await.unwrap().len(), 1);
+    assert_eq!(
+        billing::unbilled_surcharges(w.db(), SOUQ)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 
     let path = format!("/shipments/{}/reweigh-dispute", shipment.id);
     // Another client's user cannot dispute it.
@@ -279,7 +309,12 @@ async fn an_open_ticket_holds_the_surcharge_out_of_the_draft_until_it_is_confirm
     let held = surcharge(&w, &shipment).await.unwrap();
     assert!(held.held);
     assert_eq!(held.ticket_id, Some(1));
-    assert!(billing::unbilled_surcharges(w.db(), SOUQ).await.unwrap().is_empty());
+    assert!(
+        billing::unbilled_surcharges(w.db(), SOUQ)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     // The shipment itself is not held for it.
     assert_eq!(
         w.reload(&shipment).await.status,
@@ -334,6 +369,11 @@ async fn a_ticket_that_removes_the_surcharge_restores_the_booked_price() {
     assert_eq!(after.charged_price(), 2_000);
     assert_eq!(after.reweigh_price, None);
     assert!(surcharge(&w, &shipment).await.is_none());
-    assert!(billing::unbilled_surcharges(w.db(), SOUQ).await.unwrap().is_empty());
+    assert!(
+        billing::unbilled_surcharges(w.db(), SOUQ)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(w.tickets.resolved().len(), 1);
 }

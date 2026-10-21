@@ -47,10 +47,7 @@ const TEXTS: &[(&str, &str)] = &[
         "The first line must name the column recipient_name.",
     ),
     // Scanning (`LOG.HUB.01`).
-    (
-        "logistics.scan.parcel_needed",
-        "Scan at least one parcel.",
-    ),
+    ("logistics.scan.parcel_needed", "Scan at least one parcel."),
     ("logistics.scan.label_invalid", "label invalid"),
     (
         "logistics.scan.unknown_label",
@@ -145,10 +142,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.hold.instruction_needed",
         "Record the client's instruction first: who asked, when and how.",
     ),
-    (
-        "logistics.hold.not_on_hold",
-        "The shipment is not on hold.",
-    ),
+    ("logistics.hold.not_on_hold", "The shipment is not on hold."),
     (
         "logistics.hold.not_damaged",
         "Company liability is for a shipment held as damaged.",
@@ -157,10 +151,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.hold.not_address_hold",
         "The shipment is not held for an address issue.",
     ),
-    (
-        "logistics.hold.address_blank",
-        "Give the address.",
-    ),
+    ("logistics.hold.address_blank", "Give the address."),
     (
         "logistics.hold.address_locked",
         "The address can be corrected until the shipment is out for delivery.",
@@ -173,10 +164,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.hold.address_unchanged",
         "address unchanged, confirmed by the client",
     ),
-    (
-        "logistics.hold.title",
-        "Shipment {{ number }} is on hold",
-    ),
+    ("logistics.hold.title", "Shipment {{ number }} is on hold"),
     (
         "logistics.hold.body.damaged",
         "Shipment {{ number }} was damaged at the hub. Tell us what to do: deliver it as it is, return it to you, or dispose of it.",
@@ -214,10 +202,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.void.reason_required",
         "Give the reason: duplicate, or entered in error.",
     ),
-    (
-        "logistics.void.delivery_reason",
-        "shipment voided",
-    ),
+    ("logistics.void.delivery_reason", "shipment voided"),
     // Cancel and return (`LOG.ACL.09`, BL-LOG-02).
     (
         "logistics.cancel.picked_up",
@@ -235,10 +220,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.cancel.no_return_price",
         "no return price for client {{ client }}",
     ),
-    (
-        "logistics.cancel.delivery_reason",
-        "shipment cancelled",
-    ),
+    ("logistics.cancel.delivery_reason", "shipment cancelled"),
     (
         "logistics.cancel.returning_title",
         "Shipment {{ number }} is on its way back to you",
@@ -264,15 +246,24 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.cancelled", "Shipment cancelled."),
     ("logistics.voided", "Shipment voided."),
     ("logistics.instruction_recorded", "Instruction recorded."),
-    ("logistics.cancel_returned", "Shipment is going back to the client."),
+    (
+        "logistics.cancel_returned",
+        "Shipment is going back to the client.",
+    ),
     ("logistics.returned", "Shipment returned to the client."),
     ("logistics.held", "Shipment put on hold."),
     ("logistics.released", "Shipment released to the hub."),
     ("logistics.hold_instruction", "Instruction recorded."),
     ("logistics.address_corrected", "Address corrected."),
     ("logistics.address_confirmed", "Address confirmed."),
-    ("logistics.liable", "Company liability recorded; the claim ticket is linked."),
-    ("logistics.sent_back", "Shipment is going back to the client."),
+    (
+        "logistics.liable",
+        "Company liability recorded; the claim ticket is linked.",
+    ),
+    (
+        "logistics.sent_back",
+        "Shipment is going back to the client.",
+    ),
     ("logistics.reweighed", "Measurement recorded."),
     ("logistics.reweigh_disputed", "Surcharge disputed."),
     ("logistics.reweigh_resolved", "Dispute resolved."),
@@ -335,7 +326,10 @@ mod tests {
     #[test]
     fn a_text_is_filled_and_an_unknown_key_is_itself() {
         assert_eq!(
-            english("logistics.booking.reference_used", &[("number", &"SHP-0007")]),
+            english(
+                "logistics.booking.reference_used",
+                &[("number", &"SHP-0007")]
+            ),
             "client reference already used (SHP-0007)"
         );
         assert_eq!(english("logistics.nothing", &[]), "logistics.nothing");

@@ -12,8 +12,8 @@
 use logistics::seed::{self, DEMO_CLIENT};
 use renox::Environment;
 use renox::prelude::*;
-use wl_kernel::PartyKind;
 use wl_kernel::PartyId;
+use wl_kernel::PartyKind;
 
 use super::roles::{self, DISPATCHER, DRIVER, HUB_STAFF, OPERATIONS_MANAGER, SHIPPING_CLIENT};
 use super::seed::PASSWORD;
@@ -89,10 +89,9 @@ impl Module for LogisticsDemo {
 async fn run(state: AppState, forced: bool) -> Result {
     match state.config.env {
         Environment::Production => {
-            return Err(renox::anyhow::anyhow!(
-                "the demo company is never made in production"
-            )
-            .into());
+            return Err(
+                renox::anyhow::anyhow!("the demo company is never made in production").into(),
+            );
         }
         Environment::Local => {}
         _ if forced => {}

@@ -49,9 +49,13 @@ async fn request_status(w: &World, request: &ApprovalRequest) -> ApprovalStatus 
 /// The driver asks for AED 200 of 250 and the request waits.
 async fn asked(w: &World) -> (Delivery, ApprovalRequest) {
     let (out, line) = cod_delivery(w).await;
-    w.deliver(&w.driver, &out, &short_fields(&line, "200.00", "recipient_short"))
-        .await
-        .assert_status(303);
+    w.deliver(
+        &w.driver,
+        &out,
+        &short_fields(&line, "200.00", "recipient_short"),
+    )
+    .await
+    .assert_status(303);
     let request = pending_request(w, &out).await;
     (out, request)
 }
@@ -181,7 +185,10 @@ async fn without_a_choice_the_reasons_default_applies_and_unknown_absorbers_are_
 
     approve_as(&w, &out, "").await;
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::Delivered);
-    assert_eq!(w.delivered.all()[0].absorbed_by.as_deref(), Some("customer"));
+    assert_eq!(
+        w.delivered.all()[0].absorbed_by.as_deref(),
+        Some("customer")
+    );
 }
 
 /// 03 does not offer the customer: with no default that is offered and no
@@ -237,9 +244,13 @@ async fn the_driver_cannot_approve_their_own_difference() {
     let delivery = w.request(&[("Tiles", 10_000, None)], 25_000).await;
     let (out, _run) = w.out_for_delivery_by(&dora, &delivery).await;
     let line = w.lines(&out).await.remove(0);
-    w.deliver(&dora, &out, &short_fields(&line, "200.00", "recipient_short"))
-        .await
-        .assert_status(303);
+    w.deliver(
+        &dora,
+        &out,
+        &short_fields(&line, "200.00", "recipient_short"),
+    )
+    .await
+    .assert_status(303);
     pending_request(&w, &out).await;
 
     let approve = format!("/deliveries/{}/cod-difference/approve", out.id);
@@ -270,14 +281,20 @@ async fn giving_up_waiting_withdraws_the_request_and_fails_the_attempt() {
     .assert_status(303);
 
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::Attempted);
-    assert_eq!(request_status(&w, &request).await, ApprovalStatus::Withdrawn);
+    assert_eq!(
+        request_status(&w, &request).await,
+        ApprovalStatus::Withdrawn
+    );
     let attempts = Attempt::query()
         .where_(Attempt::DELIVERY_ID.eq(out.id))
         .get(w.db())
         .await
         .unwrap();
     assert_eq!(attempts.len(), 1);
-    assert_eq!(attempts[0].failure_reason.as_deref(), Some("refused_to_pay"));
+    assert_eq!(
+        attempts[0].failure_reason.as_deref(),
+        Some("refused_to_pay")
+    );
     assert_eq!(w.failed.all()[0].reason, "refused_to_pay");
     assert!(w.delivered.all().is_empty());
     assert!(w.custody.collections().is_empty());
@@ -314,10 +331,14 @@ async fn a_request_nobody_answers_lapses_and_a_late_approval_is_refused() {
 
     // The driver cannot ask again for this visit: only a failed attempt.
     let line = w.lines(&out).await.remove(0);
-    w.deliver(&w.driver, &out, &short_fields(&line, "200.00", "recipient_short"))
-        .await
-        .assert_status(422)
-        .assert_see("No approver answered in time");
+    w.deliver(
+        &w.driver,
+        &out,
+        &short_fields(&line, "200.00", "recipient_short"),
+    )
+    .await
+    .assert_status(422)
+    .assert_see("No approver answered in time");
     w.fail(&w.driver, &out, "refused_to_pay")
         .await
         .assert_status(303);
@@ -357,10 +378,14 @@ async fn with_approval_off_a_short_payment_can_only_fail() {
     let w = boot_custody_with(WlDelivery::new().cod_approval(false)).await;
     let (out, line) = cod_delivery(&w).await;
 
-    w.deliver(&w.driver, &out, &short_fields(&line, "200.00", "recipient_short"))
-        .await
-        .assert_status(422)
-        .assert_see("cannot be approved");
+    w.deliver(
+        &w.driver,
+        &out,
+        &short_fields(&line, "200.00", "recipient_short"),
+    )
+    .await
+    .assert_status(422)
+    .assert_see("cannot be approved");
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::OutForDelivery);
     assert!(
         ApprovalRequest::pending_about(w.db(), &out.delivery_id().subject())
@@ -381,10 +406,14 @@ async fn paying_nothing_is_a_failed_attempt_not_a_difference() {
     let w = boot_with_custody().await;
     let (out, line) = cod_delivery(&w).await;
 
-    w.deliver(&w.driver, &out, &short_fields(&line, "0.00", "recipient_short"))
-        .await
-        .assert_status(422)
-        .assert_see("Nothing was collected");
+    w.deliver(
+        &w.driver,
+        &out,
+        &short_fields(&line, "0.00", "recipient_short"),
+    )
+    .await
+    .assert_status(422)
+    .assert_see("Nothing was collected");
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::OutForDelivery);
 }
 
@@ -406,10 +435,14 @@ async fn a_rejected_difference_leaves_the_delivery_out() {
     assert_eq!(request_status(&w, &request).await, ApprovalStatus::Rejected);
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::OutForDelivery);
     let line = w.lines(&out).await.remove(0);
-    w.deliver(&w.driver, &out, &short_fields(&line, "200.00", "recipient_short"))
-        .await
-        .assert_status(422)
-        .assert_see("rejected the difference");
+    w.deliver(
+        &w.driver,
+        &out,
+        &short_fields(&line, "200.00", "recipient_short"),
+    )
+    .await
+    .assert_status(422)
+    .assert_see("rejected the difference");
     w.deliver(&w.driver, &out, &short_fields(&line, "250.00", ""))
         .await
         .assert_status(303);
@@ -434,7 +467,10 @@ async fn a_difference_within_the_tolerance_needs_no_approval() {
     assert_eq!(after.status, DeliveryStatus::Delivered);
     let events = w.delivered.all();
     assert_eq!(events[0].cod_difference, 500);
-    assert_eq!(events[0].cod_difference_reason.as_deref(), Some("no_change"));
+    assert_eq!(
+        events[0].cod_difference_reason.as_deref(),
+        Some("no_change")
+    );
     // The default of *no change* is the driver, so the custody expects it all.
     assert_eq!(events[0].absorbed_by.as_deref(), Some("driver"));
     assert_eq!(w.custody.collections()[0].amount, 25_000);
@@ -475,9 +511,13 @@ async fn a_delivery_without_cash_collects_nothing() {
     let delivery = w.simple_delivery().await;
     let out = w.out_for_delivery(&delivery).await;
     let line = w.lines(&out).await.remove(0);
-    w.deliver(&w.driver, &out, &stop_fields(&[(line.id, "10", "0", "", "")], "0"))
-        .await
-        .assert_status(303);
+    w.deliver(
+        &w.driver,
+        &out,
+        &stop_fields(&[(line.id, "10", "0", "", "")], "0"),
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::Delivered);
     assert!(w.custody.collections().is_empty());
 }

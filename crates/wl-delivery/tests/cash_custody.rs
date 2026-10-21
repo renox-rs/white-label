@@ -59,7 +59,13 @@ async fn the_run_closes_when_the_handover_is_counted_in_the_custody() {
     assert_eq!(w.reload_run(&run).await.status, RunStatus::ReturnedToDepot);
 
     w.custody
-        .count(w.state(), w.driver.id, &run.subject(), 10_000, w.dispatcher.id)
+        .count(
+            w.state(),
+            w.driver.id,
+            &run.subject(),
+            10_000,
+            w.dispatcher.id,
+        )
         .await;
 
     let closed = w.reload_run(&run).await;
@@ -78,7 +84,13 @@ async fn a_short_count_still_closes_the_run() {
     let run = back_with_cash(&w).await;
 
     w.custody
-        .count(w.state(), w.driver.id, &run.subject(), 9_000, w.dispatcher.id)
+        .count(
+            w.state(),
+            w.driver.id,
+            &run.subject(),
+            9_000,
+            w.dispatcher.id,
+        )
         .await;
 
     assert_eq!(w.reload_run(&run).await.status, RunStatus::Closed);

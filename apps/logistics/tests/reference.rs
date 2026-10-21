@@ -66,10 +66,7 @@ async fn a_csv_row_with_a_used_reference_is_refused_and_the_other_rows_import() 
         format!("client reference already used ({})", existing.number),
     );
     dry.assert_json_path("rows.1.refused", renox::serde_json::Value::Null);
-    dry.assert_json_path(
-        "rows.2.refused",
-        "client reference already used (row 3)",
-    );
+    dry.assert_json_path("rows.2.refused", "client reference already used (row 3)");
     dry.assert_json_path("rows.3.refused", renox::serde_json::Value::Null);
     assert_eq!(shipments(&w).await.len(), 1);
 

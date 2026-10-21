@@ -51,11 +51,7 @@ async fn deliver_cash(w: &World, delivery: &Delivery, cash: &str) {
 }
 
 /// The dispatcher aborts `run`.
-async fn abort(
-    w: &World,
-    run: &Run,
-    fields: &[(&str, &str)],
-) -> renox::testing::TestResponse {
+async fn abort(w: &World, run: &Run, fields: &[(&str, &str)]) -> renox::testing::TestResponse {
     w.post(&w.dispatcher, &format!("/runs/{}/abort", run.id), fields)
         .await
 }
@@ -73,9 +69,13 @@ async fn hand_over(w: &World, run: &Run, to_run: &Run, stops: &[&Delivery]) {
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    w.post(&w.dispatcher, &format!("/runs/{}/hand-over", run.id), &fields)
-        .await
-        .assert_ok();
+    w.post(
+        &w.dispatcher,
+        &format!("/runs/{}/hand-over", run.id),
+        &fields,
+    )
+    .await
+    .assert_ok();
     let record = HandOver::of_run(w.db(), run.id)
         .await
         .unwrap()
@@ -115,13 +115,9 @@ async fn aborting_with_a_breakdown_fails_the_four_stops_left_and_opens_the_ticke
     let r2 = dispatched_run(&w, &w.other_driver, &[]).await;
     hand_over(&w, &r1, &r2, &[&stops[0], &stops[1]]).await;
 
-    abort(
-        &w,
-        &r1,
-        &[("reason", "breakdown"), ("ticket", "breakdown")],
-    )
-    .await
-    .assert_ok();
+    abort(&w, &r1, &[("reason", "breakdown"), ("ticket", "breakdown")])
+        .await
+        .assert_ok();
 
     for stop in &stops[2..] {
         let failed = w.reload(stop).await;
@@ -227,7 +223,13 @@ async fn an_aborted_run_leaves_the_cash_handover_open() {
     // It is counted at the depot as usual; the run closes once the stop that
     // failed is received back as well.
     w.custody
-        .count(w.state(), w.driver.id, &run.subject(), 40_000, w.dispatcher.id)
+        .count(
+            w.state(),
+            w.driver.id,
+            &run.subject(),
+            40_000,
+            w.dispatcher.id,
+        )
         .await;
     assert_eq!(w.reload_run(&run).await.status, RunStatus::ReturnedToDepot);
 }
@@ -283,10 +285,7 @@ async fn the_driver_aborts_from_the_phone_only_with_a_reason() {
 
     assert_eq!(w.reload_run(&run).await.status, RunStatus::ReturnedToDepot);
     assert_eq!(w.aborted.all()[0].aborted_by, w.driver.id);
-    assert_eq!(
-        w.reload(&stops[0]).await.status,
-        DeliveryStatus::Attempted
-    );
+    assert_eq!(w.reload(&stops[0]).await.status, DeliveryStatus::Attempted);
 }
 
 /// Edge: the reason *other* needs a note.

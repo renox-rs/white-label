@@ -195,9 +195,14 @@ pub(crate) async fn reprice(tx: &mut Transaction, id: i64) -> Result<Repriced> {
         .first_or_404(&mut *tx)
         .await?;
     let terms = terms(&mut *tx, shipment.client()).await?;
-    let price = rates::band_price(&mut *tx, shipment.client(), &shipment.area, shipment.weight_grams)
-        .await?
-        .unwrap_or(shipment.price);
+    let price = rates::band_price(
+        &mut *tx,
+        shipment.client(),
+        &shipment.area,
+        shipment.weight_grams,
+    )
+    .await?
+    .unwrap_or(shipment.price);
     let mut reweigh_price = None;
     let mut surcharge = 0;
     if let Some(measured) = shipment.measured_weight_grams
@@ -501,7 +506,11 @@ pub async fn resolve_dispute(
             .resolve_from_source(state, tickets::TicketId(ticket), &note)
             .await?;
         creator
-            .comment(state, tickets::TicketId(ticket), TaskComment::visible(&note))
+            .comment(
+                state,
+                tickets::TicketId(ticket),
+                TaskComment::visible(&note),
+            )
             .await?;
     }
     load(state, id).await

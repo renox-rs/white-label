@@ -34,10 +34,7 @@ async fn a_client_user_cancels_a_created_shipment_with_a_fee_line() {
     w.post(&w.noor, &format!("/shipments/{}/cancel", shipment.id), &[])
         .await
         .assert_status(303);
-    assert_eq!(
-        w.reload(&shipment).await.status,
-        ShipmentStatus::Cancelled
-    );
+    assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Cancelled);
     let lines = charges(&w, &shipment).await;
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].kind, "cancellation");
@@ -59,10 +56,7 @@ async fn a_cancel_without_a_fee_on_the_rate_card_records_no_line() {
     w.post(&w.farah, &format!("/shipments/{}/cancel", shipment.id), &[])
         .await
         .assert_status(303);
-    assert_eq!(
-        w.reload(&shipment).await.status,
-        ShipmentStatus::Cancelled
-    );
+    assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Cancelled);
     assert!(charges(&w, &shipment).await.is_empty());
 }
 
@@ -76,8 +70,5 @@ async fn only_the_users_of_the_clients_company_cancel_its_shipment() {
     w.post(&w.farah, &path, &[]).await.assert_status(422);
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Created);
     w.post(&w.nadia, &path, &[]).await.assert_status(303);
-    assert_eq!(
-        w.reload(&shipment).await.status,
-        ShipmentStatus::Cancelled
-    );
+    assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Cancelled);
 }

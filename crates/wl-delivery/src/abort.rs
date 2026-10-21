@@ -128,9 +128,10 @@ pub(crate) fn transitions() -> Vec<Transition<Run>> {
                     let allowed =
                         matches!((ctx.actor(), driver), (Some(user), Some(d)) if user.id == d);
                     Box::pin(async move {
-                        guard((!allowed).then(|| {
-                            english("wl_delivery.abort.only_the_driver").to_owned()
-                        }))
+                        guard(
+                            (!allowed)
+                                .then(|| english("wl_delivery.abort.only_the_driver").to_owned()),
+                        )
                     })
                 }),
         ),
@@ -150,8 +151,8 @@ fn aborting(transition: Transition<Run>) -> Transition<Run> {
             })
         })
         .guard("note_for_other", |_run: &Run, ctx| {
-            let missing = abort_input(ctx)
-                .is_some_and(|i| i.reason == OTHER && i.note.trim().is_empty());
+            let missing =
+                abort_input(ctx).is_some_and(|i| i.reason == OTHER && i.note.trim().is_empty());
             Box::pin(async move {
                 guard(missing.then(|| english("wl_delivery.abort.note_for_other").to_owned()))
             })
@@ -395,8 +396,8 @@ async fn open_ticket(
     history: &str,
 ) -> Result<Option<TicketRef>> {
     let subject = run.vehicle_subject().unwrap_or_else(|| run.subject());
-    let title = english(&format!("wl_delivery.abort.ticket_title.{kind}"))
-        .replace("{run}", &run.number);
+    let title =
+        english(&format!("wl_delivery.abort.ticket_title.{kind}")).replace("{run}", &run.number);
     let ticket = OpenTicket::new(subject, TASK_CATEGORY, &title)
         .description(history)
         .source(run.subject())
@@ -438,7 +439,10 @@ mod tests {
             "other",
             "driver_unreachable",
         ] {
-            assert_ne!(reason_text(code), format!("wl_delivery.abort.reason.{code}"));
+            assert_ne!(
+                reason_text(code),
+                format!("wl_delivery.abort.reason.{code}")
+            );
         }
         for kind in TICKET_KINDS {
             let key = format!("wl_delivery.abort.ticket_title.{kind}");

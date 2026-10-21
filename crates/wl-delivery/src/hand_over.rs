@@ -359,7 +359,9 @@ pub async fn propose(
                     .await
                     .map_err(TransitionError::Failed)?;
             }
-            *made.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(hand_over);
+            *made
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(hand_over);
             Ok(())
         },
     )

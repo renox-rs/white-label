@@ -80,10 +80,7 @@ async fn the_client_user_who_booked_a_created_shipment_voids_it() {
         refused.assert_status(422);
         refused.assert_see("label invalid");
     }
-    assert_eq!(
-        w.reload(&shipment).await.status,
-        ShipmentStatus::Voided
-    );
+    assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Voided);
 }
 
 /// AC3 (system): the void cancels the shipment's pending delivery and leaves

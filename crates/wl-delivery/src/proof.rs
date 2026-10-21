@@ -616,18 +616,19 @@ fn deliver_short_transition(name: &'static str, approved: bool) -> Transition<De
     let transition = if approved {
         transition.system()
     } else {
-        transition
-            .permission(permissions::COMPLETE)
-            .guard("by_assigned_driver", |_delivery: &Delivery, ctx| {
-            let allowed = is_driver(ctx, deliver_input(ctx).ok().map(|i| i.driver_user_id));
-            Box::pin(async move {
-                if allowed {
-                    Ok(())
-                } else {
-                    Err("Only the driver of the run completes its stops.".to_owned())
-                }
-            })
-        })
+        transition.permission(permissions::COMPLETE).guard(
+            "by_assigned_driver",
+            |_delivery: &Delivery, ctx| {
+                let allowed = is_driver(ctx, deliver_input(ctx).ok().map(|i| i.driver_user_id));
+                Box::pin(async move {
+                    if allowed {
+                        Ok(())
+                    } else {
+                        Err("Only the driver of the run completes its stops.".to_owned())
+                    }
+                })
+            },
+        )
     };
     transition
         .guard("proof_and_quantities", |_delivery: &Delivery, ctx| {
@@ -998,13 +999,15 @@ async fn emit_delivered(state: &AppState, delivery: &Delivery, proof: &Proof) ->
 /// Registers the listener that finishes a delivery the kernel ran after an
 /// approver agreed to a cash difference.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: Transitioned<Delivery>, state: AppState| async move {
-        if event.transition == DELIVER_SHORT_APPROVED {
-            after_delivered(&state, event.key).await
-        } else {
-            Ok(())
-        }
-    });
+    app.listen(
+        |event: Transitioned<Delivery>, state: AppState| async move {
+            if event.transition == DELIVER_SHORT_APPROVED {
+                after_delivered(&state, event.key).await
+            } else {
+                Ok(())
+            }
+        },
+    );
 }
 
 /// Records a failed visit of `delivery` for `user`, the driver of its run:
@@ -1243,12 +1246,18 @@ mod tests {
         let mut short = short_by_fifty();
         let evaluated = evaluate(&short).unwrap();
         assert_eq!(evaluated.difference, 500);
-        assert_eq!(evaluated.difference_reason.as_deref(), Some("recipient_short"));
+        assert_eq!(
+            evaluated.difference_reason.as_deref(),
+            Some("recipient_short")
+        );
         assert!(evaluated.needs_approval);
 
         short.form.difference_reason = None;
         let error = evaluate(&short).unwrap_err();
-        assert!(error.contains("short of the AED 150.00 expected"), "{error}");
+        assert!(
+            error.contains("short of the AED 150.00 expected"),
+            "{error}"
+        );
         assert!(error.contains("ask for approval"), "{error}");
 
         short.form.difference_reason = Some("made_up".into());
@@ -1262,7 +1271,10 @@ mod tests {
         short.tolerance = 500;
         let evaluated = evaluate(&short).unwrap();
         assert!(!evaluated.needs_approval);
-        assert_eq!(evaluated.difference_reason.as_deref(), Some("recipient_short"));
+        assert_eq!(
+            evaluated.difference_reason.as_deref(),
+            Some("recipient_short")
+        );
         short.form.difference_reason = None;
         assert!(evaluate(&short).is_err());
     }

@@ -46,7 +46,9 @@ async fn hub_staff_hold_a_damaged_shipment_with_photos_and_the_client_is_told() 
     let at_hub = w.at_hub(&w.pick_up(&shipment).await).await;
     let path = format!("/shipments/{}/hold", at_hub.id);
 
-    let refused = w.post(&w.hub, &path, &[("reason", "damaged"), ("photos", " ")]).await;
+    let refused = w
+        .post(&w.hub, &path, &[("reason", "damaged"), ("photos", " ")])
+        .await;
     refused.assert_status(422);
     refused.assert_see("photos of the damaged parcel");
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::AtHub);
@@ -57,7 +59,11 @@ async fn hub_staff_hold_a_damaged_shipment_with_photos_and_the_client_is_told() 
     w.post(
         &w.hub,
         &path,
-        &[("reason", "damaged"), ("photos", TWO_PHOTOS), ("barcode", "SHP-9999-1")],
+        &[
+            ("reason", "damaged"),
+            ("photos", TWO_PHOTOS),
+            ("barcode", "SHP-9999-1"),
+        ],
     )
     .await
     .assert_status(422);
@@ -71,7 +77,11 @@ async fn hub_staff_hold_a_damaged_shipment_with_photos_and_the_client_is_told() 
     w.post(
         &w.hub,
         &path,
-        &[("reason", "damaged"), ("photos", TWO_PHOTOS), ("barcode", label.as_str())],
+        &[
+            ("reason", "damaged"),
+            ("photos", TWO_PHOTOS),
+            ("barcode", label.as_str()),
+        ],
     )
     .await
     .assert_status(303);
@@ -80,17 +90,33 @@ async fn hub_staff_hold_a_damaged_shipment_with_photos_and_the_client_is_told() 
     assert_eq!(held.status, ShipmentStatus::OnHold);
     assert_eq!(held.hold_reason.as_deref(), Some("damaged"));
     assert_eq!(held.held_from.as_deref(), Some("at_hub"));
-    assert_eq!(held.hold_photos.as_deref(), Some("damage-1.jpg\ndamage-2.jpg"));
+    assert_eq!(
+        held.hold_photos.as_deref(),
+        Some("damage-1.jpg\ndamage-2.jpg")
+    );
     let events = held.events(w.db()).await.unwrap();
-    assert!(events.iter().any(|e| e.kind == "hold_scan" && e.note == label));
-    assert!(events.iter().any(|e| e.kind == "held" && e.note == "damaged"));
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == "hold_scan" && e.note == label)
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == "held" && e.note == "damaged")
+    );
     let notices = w.notices.of_type("logistics.client_notice");
     assert_eq!(notices.len(), 1);
     assert_eq!(
         notices[0].recipients,
         vec![NotifyRecipient::Party { id: SOUQ }]
     );
-    assert!(notices[0].data["body"].as_str().unwrap().contains("damaged"));
+    assert!(
+        notices[0].data["body"]
+            .as_str()
+            .unwrap()
+            .contains("damaged")
+    );
 }
 
 /// AC1 (must not dispatch): a held shipment is not `at_hub`; its delivery on
@@ -128,7 +154,10 @@ async fn a_held_shipment_is_not_dispatched_and_a_created_one_is_not_picked_up() 
     )
     .await
     .assert_status(303);
-    assert_eq!(w.reload(&created).await.held_from.as_deref(), Some("created"));
+    assert_eq!(
+        w.reload(&created).await.held_from.as_deref(),
+        Some("created")
+    );
     let codes = w.labels(&created).await;
     w.post(
         &w.driver,
@@ -160,12 +189,18 @@ async fn release_needs_the_clients_recorded_instruction() {
     w.post(&w.noor, &path, &[("note", "  ")])
         .await
         .assert_status(422);
-    w.post(&w.noor, &path, &[("note", "deliver as is: portal 2026-11-04 09:10")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.noor,
+        &path,
+        &[("note", "deliver as is: portal 2026-11-04 09:10")],
+    )
+    .await
+    .assert_status(303);
     // Hub staff do not release.
     w.post(&w.hub, &release, &[]).await.assert_forbidden();
-    w.post(&w.dispatcher, &release, &[]).await.assert_status(303);
+    w.post(&w.dispatcher, &release, &[])
+        .await
+        .assert_status(303);
 
     let after = w.reload(&held).await;
     assert_eq!(after.status, ShipmentStatus::AtHub);
@@ -174,7 +209,9 @@ async fn release_needs_the_clients_recorded_instruction() {
     let events = after.events(w.db()).await.unwrap();
     assert!(events.iter().any(|e| e.kind == "released"));
     // Released, it is not offered a second release.
-    w.post(&w.dispatcher, &release, &[]).await.assert_status(422);
+    w.post(&w.dispatcher, &release, &[])
+        .await
+        .assert_status(422);
 }
 
 /// AC3: given an `attempted` shipment with failure reason *wrong address*, it
@@ -184,13 +221,19 @@ async fn release_needs_the_clients_recorded_instruction() {
 #[renox::test]
 async fn a_wrong_address_holds_the_shipment_until_the_client_confirms_a_new_zone() {
     let w = boot().await;
-    rates::set_band(w.db(), SOUQ, "Al Barsha", 5_000, 2_000).await.unwrap();
-    rates::set_band(w.db(), SOUQ, "Business Bay", 5_000, 2_500).await.unwrap();
+    rates::set_band(w.db(), SOUQ, "Al Barsha", 5_000, 2_000)
+        .await
+        .unwrap();
+    rates::set_band(w.db(), SOUQ, "Business Bay", 5_000, 2_500)
+        .await
+        .unwrap();
     let shipment = w.book_as(&w.noor, SOUQ, "ORD-1").await;
     assert_eq!(shipment.price, 2_000);
     let (out, delivery) = w.out_for_delivery(&shipment).await;
 
-    w.fail_stop(&delivery, "wrong_address").await.assert_status(303);
+    w.fail_stop(&delivery, "wrong_address")
+        .await
+        .assert_status(303);
 
     let held = w.reload(&out).await;
     assert_eq!(held.status, ShipmentStatus::OnHold);
@@ -200,16 +243,25 @@ async fn a_wrong_address_holds_the_shipment_until_the_client_confirms_a_new_zone
     let notices = w.notices.of_type("logistics.client_notice");
     assert_eq!(notices.len(), 1);
     assert!(
-        notices[0].data["body"].as_str().unwrap().contains("confirm"),
+        notices[0].data["body"]
+            .as_str()
+            .unwrap()
+            .contains("confirm"),
         "{:?}",
         notices[0].data
     );
     assert_eq!(w.delivery_of(&out).await.status, DeliveryStatus::Attempted);
     let events = held.events(w.db()).await.unwrap();
-    assert!(events.iter().any(|e| e.kind == "held" && e.note == "address_issue"));
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == "held" && e.note == "address_issue")
+    );
 
     let release = format!("/shipments/{}/release", out.id);
-    w.post(&w.dispatcher, &release, &[]).await.assert_status(422);
+    w.post(&w.dispatcher, &release, &[])
+        .await
+        .assert_status(422);
     // Another client's user cannot confirm; a recorded instruction does not
     // stand for the address.
     let confirm = format!("/shipments/{}/address/confirm", out.id);
@@ -223,12 +275,17 @@ async fn a_wrong_address_holds_the_shipment_until_the_client_confirms_a_new_zone
     )
     .await
     .assert_status(303);
-    w.post(&w.dispatcher, &release, &[]).await.assert_status(422);
+    w.post(&w.dispatcher, &release, &[])
+        .await
+        .assert_status(422);
 
     w.post(
         &w.noor,
         &confirm,
-        &[("address", "Tower 3, Office 12, Business Bay"), ("area", "Business Bay")],
+        &[
+            ("address", "Tower 3, Office 12, Business Bay"),
+            ("area", "Business Bay"),
+        ],
     )
     .await
     .assert_status(303);
@@ -253,7 +310,9 @@ async fn a_wrong_address_holds_the_shipment_until_the_client_confirms_a_new_zone
         "Tower 3, Office 12, Business Bay"
     );
 
-    w.post(&w.dispatcher, &release, &[]).await.assert_status(303);
+    w.post(&w.dispatcher, &release, &[])
+        .await
+        .assert_status(303);
     let after = w.reload(&out).await;
     assert_eq!(after.status, ShipmentStatus::AtHub);
     assert_eq!(after.price, 2_500);
@@ -266,13 +325,23 @@ async fn an_address_confirmed_as_it_is_releases_without_a_change() {
     let w = boot().await;
     let shipment = w.book_as(&w.noor, SOUQ, "ORD-1").await;
     let (out, delivery) = w.out_for_delivery(&shipment).await;
-    w.fail_stop(&delivery, "wrong_address").await.assert_status(303);
-    w.post(&w.noor, &format!("/shipments/{}/address/confirm", out.id), &[])
+    w.fail_stop(&delivery, "wrong_address")
         .await
         .assert_status(303);
-    w.post(&w.dispatcher, &format!("/shipments/{}/release", out.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.noor,
+        &format!("/shipments/{}/address/confirm", out.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/release", out.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.reload(&out).await.status, ShipmentStatus::AtHub);
     let changes = AddressChange::query()
         .where_(AddressChange::SHIPMENT_ID.eq(out.id))
@@ -281,7 +350,11 @@ async fn an_address_confirmed_as_it_is_releases_without_a_change() {
         .unwrap();
     assert_eq!(changes, 0);
     let events = w.reload(&out).await.events(w.db()).await.unwrap();
-    assert!(events.iter().any(|e| e.kind == "address_confirmed" && e.note.contains("unchanged")));
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == "address_confirmed" && e.note.contains("unchanged"))
+    );
 }
 
 /// AC3 (before dispatch): the client's user or customer service corrects the
@@ -290,8 +363,12 @@ async fn an_address_confirmed_as_it_is_releases_without_a_change() {
 #[renox::test]
 async fn the_address_is_corrected_until_the_shipment_is_out_for_delivery() {
     let w = boot().await;
-    rates::set_band(w.db(), SOUQ, "Al Barsha", 5_000, 2_000).await.unwrap();
-    rates::set_band(w.db(), SOUQ, "Jumeirah", 5_000, 3_000).await.unwrap();
+    rates::set_band(w.db(), SOUQ, "Al Barsha", 5_000, 2_000)
+        .await
+        .unwrap();
+    rates::set_band(w.db(), SOUQ, "Jumeirah", 5_000, 3_000)
+        .await
+        .unwrap();
     let shipment = w.book_as(&w.noor, SOUQ, "ORD-1").await;
     let path = format!("/shipments/{}/address", shipment.id);
     w.post(&w.farah, &path, &[("address", "x"), ("area", "Jumeirah")])
@@ -335,7 +412,9 @@ async fn the_address_is_corrected_until_the_shipment_is_out_for_delivery() {
 #[renox::test]
 async fn the_client_chooses_return_and_the_shipment_goes_back_with_one_charge() {
     let w = boot().await;
-    rates::set_price(w.db(), SOUQ, charge_kind::RETURN, 1_500).await.unwrap();
+    rates::set_price(w.db(), SOUQ, charge_kind::RETURN, 1_500)
+        .await
+        .unwrap();
     let held = held_damaged(&w, "ORD-1").await;
     let path = format!("/shipments/{}/return", held.id);
     w.post(&w.hub, &path, &[]).await.assert_forbidden();
@@ -364,15 +443,23 @@ async fn the_client_chooses_return_and_the_shipment_goes_back_with_one_charge() 
     // An attempted shipment is sent back the same way; one at the hub is not.
     let shipment = w.book_as(&w.noor, SOUQ, "ORD-2").await;
     let at_hub = w.at_hub(&w.pick_up(&shipment).await).await;
-    w.post(&w.dispatcher, &format!("/shipments/{}/return", at_hub.id), &[])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/return", at_hub.id),
+        &[],
+    )
+    .await
+    .assert_status(422);
     let other = w.book_as(&w.noor, SOUQ, "ORD-3").await;
     let (_out, delivery) = w.out_for_delivery(&other).await;
     w.fail_stop(&delivery, "not_home").await.assert_status(303);
-    w.post(&w.dispatcher, &format!("/shipments/{}/return", other.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/return", other.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.reload(&other).await.status, ShipmentStatus::Returning);
 }
 
@@ -386,7 +473,11 @@ async fn company_liable_on_a_damaged_hold_links_a_claim_ticket_once() {
     w.post(
         &w.hub,
         &format!("/shipments/{}/hold", at_hub.id),
-        &[("reason", "damaged"), ("photos", TWO_PHOTOS), ("company_liable", "1")],
+        &[
+            ("reason", "damaged"),
+            ("photos", TWO_PHOTOS),
+            ("company_liable", "1"),
+        ],
     )
     .await
     .assert_status(303);
@@ -399,9 +490,13 @@ async fn company_liable_on_a_damaged_hold_links_a_claim_ticket_once() {
     assert_eq!(opened[0].category_key, "claim");
     assert_eq!(opened[0].subject, shipment.subject());
     // Ticking it again opens no second ticket.
-    w.post(&w.dispatcher, &format!("/shipments/{}/liable", shipment.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/liable", shipment.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.tickets.opened().len(), 1);
 
     // Later, while on hold; hub staff cannot tick it; a non-damaged hold has none.
@@ -429,9 +524,13 @@ async fn company_liable_on_a_damaged_hold_links_a_claim_ticket_once() {
     )
     .await
     .assert_status(303);
-    w.post(&w.dispatcher, &format!("/shipments/{}/liable", third.id), &[])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/liable", third.id),
+        &[],
+    )
+    .await
+    .assert_status(422);
 }
 
 /// The client asks to stop delivery while disputing a re-weigh: the shipment
@@ -439,8 +538,12 @@ async fn company_liable_on_a_damaged_hold_links_a_claim_ticket_once() {
 #[renox::test]
 async fn a_client_who_disputes_a_reweigh_may_ask_to_stop_the_delivery() {
     let w = boot().await;
-    rates::set_band(w.db(), SOUQ, "", 2_000, 2_000).await.unwrap();
-    rates::set_band(w.db(), SOUQ, "", 4_000, 2_800).await.unwrap();
+    rates::set_band(w.db(), SOUQ, "", 2_000, 2_000)
+        .await
+        .unwrap();
+    rates::set_band(w.db(), SOUQ, "", 4_000, 2_800)
+        .await
+        .unwrap();
     let shipment = w.book_as(&w.noor, SOUQ, "ORD-1").await;
     let at_hub = w.at_hub(&w.pick_up(&shipment).await).await;
     w.post(
@@ -468,8 +571,12 @@ async fn a_client_who_disputes_a_reweigh_may_ask_to_stop_the_delivery() {
     )
     .await
     .assert_status(303);
-    w.post(&w.dispatcher, &format!("/shipments/{}/release", shipment.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/release", shipment.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::AtHub);
 }

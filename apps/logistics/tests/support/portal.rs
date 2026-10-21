@@ -33,12 +33,14 @@ impl PortalUsers for Portal {
     ) -> PortalFuture<'a, Option<PortalUser>> {
         let found = self.0.lock().unwrap().get(&user).copied();
         Box::pin(async move {
-            Ok(found.filter(|acts| *acts == party.0).map(|acts| PortalUser {
-                user_id: user,
-                person: PartyId(1000 + user),
-                acting_for: PartyId(acts),
-                roles: vec!["owner".to_owned()],
-            }))
+            Ok(found
+                .filter(|acts| *acts == party.0)
+                .map(|acts| PortalUser {
+                    user_id: user,
+                    person: PartyId(1000 + user),
+                    acting_for: PartyId(acts),
+                    roles: vec!["owner".to_owned()],
+                }))
         })
     }
 }

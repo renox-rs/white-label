@@ -445,12 +445,7 @@ pub async fn return_to_depot(
     // The driver's cash period ends now (or at its planned end, whichever is
     // earlier): `wl-payments` starts its escalation clock.
     custody(state)
-        .end_period(
-            state,
-            run.driver_user_id,
-            run.subject(),
-            renox::db::now(),
-        )
+        .end_period(state, run.driver_user_id, run.subject(), renox::db::now())
         .await
         .map_err(TransitionError::Failed)?;
     // A run with nothing to account for closes at once.

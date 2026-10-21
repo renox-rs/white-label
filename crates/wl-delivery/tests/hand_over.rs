@@ -94,8 +94,12 @@ async fn propose(
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    w.post(&w.dispatcher, &format!("/runs/{}/hand-over", run.id), &fields)
-        .await
+    w.post(
+        &w.dispatcher,
+        &format!("/runs/{}/hand-over", run.id),
+        &fields,
+    )
+    .await
 }
 
 /// The receiving driver confirms `parcels` and counts `cash` (AED text, or
@@ -197,10 +201,7 @@ async fn three_stops_move_to_the_other_run_when_the_receiver_confirms() {
     )
     .await
     .assert_status(303);
-    assert_eq!(
-        w.reload(&stops[0]).await.status,
-        DeliveryStatus::Delivered
-    );
+    assert_eq!(w.reload(&stops[0]).await.status, DeliveryStatus::Delivered);
 }
 
 /// AC2: B's rider permit expired yesterday: the hand-over is refused with the

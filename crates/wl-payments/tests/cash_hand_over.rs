@@ -9,13 +9,11 @@
 mod support;
 
 use renox::prelude::*;
-use wl_kernel::custody::{
-    CashCollection, HandoverPeriod, HandoverStatus, PeriodKind, custody,
-};
+use wl_kernel::custody::{CashCollection, HandoverPeriod, HandoverStatus, PeriodKind, custody};
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::{DeliveryId, RunHandedOver, RunId, Subject};
-use wl_payments::cash_handover::PostingKind;
 use wl_payments::cash_hand_over;
+use wl_payments::cash_handover::PostingKind;
 use wl_payments::cash_notices::CASH_HANDED_OVER;
 use wl_payments::{CashHandover, CashHolder};
 
@@ -245,10 +243,7 @@ async fn the_event_twice_moves_the_cash_once() {
     // A second hand-over is another key and moves what is left.
     let second = event(8, &c.giver, &c.receiver, &c.dispatcher, 1_000);
     t.app.state().emit(second).await.unwrap();
-    assert_eq!(
-        receivers(&t, &c.receiver).await.unwrap().expected,
-        124_000
-    );
+    assert_eq!(receivers(&t, &c.receiver).await.unwrap().expected, 124_000);
 }
 
 /// Edge: a receiver that has an open handover for the run already gets the
@@ -324,7 +319,11 @@ async fn nothing_moves_to_oneself_or_from_a_counted_handover() {
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
     ));
     let negative = event(2, &c.giver, &c.receiver, &c.dispatcher, -1);
-    assert!(cash_hand_over::hand_over(t.state(), &negative).await.is_err());
+    assert!(
+        cash_hand_over::hand_over(t.state(), &negative)
+            .await
+            .is_err()
+    );
     assert_eq!(t.reloaded(&giver).await.expected, 40_000);
 
     t.count_cash(&c.counter, &giver, "400.00").await.assert_ok();

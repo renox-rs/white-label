@@ -18,7 +18,12 @@ use wl_kernel::tickets::{TASK_CATEGORY, TicketId};
 
 use support::{World, boot_with_custody, chief_driver, stop_fields};
 
-async fn ask(w: &World, by: &User, delivery: &Delivery, liability: &str) -> renox::testing::TestResponse {
+async fn ask(
+    w: &World,
+    by: &User,
+    delivery: &Delivery,
+    liability: &str,
+) -> renox::testing::TestResponse {
     w.post(
         by,
         &format!("/deliveries/{}/reverse", delivery.id),
@@ -31,7 +36,12 @@ async fn ask(w: &World, by: &User, delivery: &Delivery, liability: &str) -> reno
     .await
 }
 
-async fn approve(w: &World, by: &User, delivery: &Delivery, cash: &str) -> renox::testing::TestResponse {
+async fn approve(
+    w: &World,
+    by: &User,
+    delivery: &Delivery,
+    cash: &str,
+) -> renox::testing::TestResponse {
     w.post(
         by,
         &format!("/deliveries/{}/reverse/approve", delivery.id),
@@ -76,9 +86,13 @@ async fn delivered_for_party(w: &World, collect: i64) -> Delivery {
     let out = w.out_for_delivery(&delivery).await;
     let line = w.lines(&out).await.remove(0);
     let cash = format!("{}.{:02}", collect / 100, collect % 100);
-    w.deliver(&w.driver, &out, &stop_fields(&[(line.id, "10", "0", "", "")], &cash))
-        .await
-        .assert_status(303);
+    w.deliver(
+        &w.driver,
+        &out,
+        &stop_fields(&[(line.id, "10", "0", "", "")], &cash),
+    )
+    .await
+    .assert_status(303);
     w.reload(&out).await
 }
 
@@ -90,7 +104,13 @@ async fn close_run(w: &World, delivery: &Delivery, counted: i64) {
         .await
         .assert_ok();
     w.custody
-        .count(w.state(), w.driver.id, &run.subject(), counted, w.dispatcher.id)
+        .count(
+            w.state(),
+            w.driver.id,
+            &run.subject(),
+            counted,
+            w.dispatcher.id,
+        )
         .await;
     assert_eq!(w.reload_run(&run).await.status, RunStatus::Closed);
 }
@@ -277,9 +297,13 @@ async fn the_driver_of_the_run_can_neither_request_nor_approve() {
     let delivery = w.simple_delivery().await;
     let (out, _run) = w.out_for_delivery_by(&chief, &delivery).await;
     let line = w.lines(&out).await.remove(0);
-    w.deliver(&chief, &out, &stop_fields(&[(line.id, "10", "0", "", "")], "0"))
-        .await
-        .assert_status(303);
+    w.deliver(
+        &chief,
+        &out,
+        &stop_fields(&[(line.id, "10", "0", "", "")], "0"),
+    )
+    .await
+    .assert_status(303);
 
     ask(&w, &chief, &out, "none")
         .await
@@ -338,9 +362,7 @@ async fn a_reversal_needs_a_reason_a_liability_and_a_delivered_delivery() {
     );
 
     let pending = w.simple_delivery().await;
-    ask(&w, &w.ops_a, &pending, "none")
-        .await
-        .assert_status(422);
+    ask(&w, &w.ops_a, &pending, "none").await.assert_status(422);
 }
 
 /// AC5: when B rejects, the delivery stays `delivered` and the proof is

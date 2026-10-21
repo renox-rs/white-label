@@ -126,10 +126,7 @@ async fn scan_effects(
         Parcel::query()
             .where_(Parcel::SHIPMENT_ID.eq(shipment.id))
             .where_(Parcel::BARCODE.eq(code.as_str()))
-            .update(
-                &mut *tx,
-                &[("state", &scanned_state), ("scanned_at", &now)],
-            )
+            .update(&mut *tx, &[("state", &scanned_state), ("scanned_at", &now)])
             .await?;
     }
     let scanned = Parcel::query()
@@ -444,23 +441,26 @@ fn release() -> Transition<Shipment> {
         .permission(permissions::SHIPMENTS_MANAGE)
         .from([ShipmentStatus::OnHold])
         .to(ShipmentStatus::AtHub)
-        .guard("confirmation_or_instruction_recorded", |s: &Shipment, _ctx| {
-            let recorded = if s.hold_reason.as_deref() == Some(hold_reason::ADDRESS_ISSUE) {
-                s.address_confirmed_at.is_some()
-            } else {
-                s.has_hold_instruction()
-            };
-            let address_issue = s.hold_reason.as_deref() == Some(hold_reason::ADDRESS_ISSUE);
-            Box::pin(async move {
-                if recorded {
-                    Ok(())
-                } else if address_issue {
-                    Err(english("logistics.hold.address_needed", &[]))
+        .guard(
+            "confirmation_or_instruction_recorded",
+            |s: &Shipment, _ctx| {
+                let recorded = if s.hold_reason.as_deref() == Some(hold_reason::ADDRESS_ISSUE) {
+                    s.address_confirmed_at.is_some()
                 } else {
-                    Err(english("logistics.hold.instruction_needed", &[]))
-                }
-            })
-        })
+                    s.has_hold_instruction()
+                };
+                let address_issue = s.hold_reason.as_deref() == Some(hold_reason::ADDRESS_ISSUE);
+                Box::pin(async move {
+                    if recorded {
+                        Ok(())
+                    } else if address_issue {
+                        Err(english("logistics.hold.address_needed", &[]))
+                    } else {
+                        Err(english("logistics.hold.instruction_needed", &[]))
+                    }
+                })
+            },
+        )
         .effect(|shipment: &Shipment, ctx, tx| {
             let id = shipment.id;
             let actor = ctx.actor().map(|user| user.id);
@@ -492,11 +492,7 @@ fn send_back() -> Transition<Shipment> {
 /// # Errors
 ///
 /// Database errors.
-pub async fn start_return(
-    tx: &mut Transaction,
-    shipment: &Shipment,
-    actor: Option<i64>,
-) -> Result {
+pub async fn start_return(tx: &mut Transaction, shipment: &Shipment, actor: Option<i64>) -> Result {
     match rates::price(&mut *tx, shipment.client(), charge_kind::RETURN).await? {
         Some(amount) => {
             rates::record_charge(&mut *tx, shipment, charge_kind::RETURN, amount, "").await?;

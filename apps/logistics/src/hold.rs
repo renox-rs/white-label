@@ -94,7 +94,12 @@ pub async fn hold(
         return Err(TransitionError::Forbidden);
     }
     let shipment = load(state, id).await?;
-    if let Some(code) = new.barcode.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+    if let Some(code) = new
+        .barcode
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
         let parcel = Parcel::query()
             .where_(Parcel::BARCODE.eq(code))
             .first(&state.db)
@@ -121,7 +126,12 @@ pub async fn hold(
         })
         .run(state)
         .await?;
-    if let Some(code) = new.barcode.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+    if let Some(code) = new
+        .barcode
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
         track(&state.db, id, "hold_scan", code, Some(user.id)).await?;
     }
     load(state, id).await
@@ -202,8 +212,15 @@ pub(crate) async fn open_claim(state: &AppState, id: i64) -> Result {
     if !shipment.company_liable || shipment.claim_ticket_id.is_some() {
         return Ok(());
     }
-    let title = english("logistics.hold.claim_title", &[("number", &shipment.number)]);
-    let photos = shipment.hold_photos.clone().unwrap_or_default().replace('\n', ", ");
+    let title = english(
+        "logistics.hold.claim_title",
+        &[("number", &shipment.number)],
+    );
+    let photos = shipment
+        .hold_photos
+        .clone()
+        .unwrap_or_default()
+        .replace('\n', ", ");
     let description = english(
         "logistics.hold.claim_description",
         &[("number", &shipment.number), ("photos", &photos)],
@@ -220,13 +237,23 @@ pub(crate) async fn open_claim(state: &AppState, id: i64) -> Result {
                 .where_(Shipment::ID.eq(id))
                 .update(
                     &state.db,
-                    &[("claim_ticket_id", &ticket_id), ("claim_ticket_number", &number)],
+                    &[
+                        ("claim_ticket_id", &ticket_id),
+                        ("claim_ticket_number", &number),
+                    ],
                 )
                 .await?;
             track(&state.db, id, "claim_ticket", &ticket.number, None).await?;
         }
         Ok(None) => {
-            track(&state.db, id, "claim_ticket_skipped", "ticketing is off", None).await?;
+            track(
+                &state.db,
+                id,
+                "claim_ticket_skipped",
+                "ticketing is off",
+                None,
+            )
+            .await?;
         }
         Err(error) => {
             let note = format!("{error:?}");
@@ -369,7 +396,14 @@ async fn change_address(
         "logistics.hold.address_event",
         &[("address", &address), ("area", &area)],
     );
-    track(&mut tx, shipment.id, "address_corrected", &note, Some(user.id)).await?;
+    track(
+        &mut tx,
+        shipment.id,
+        "address_corrected",
+        &note,
+        Some(user.id),
+    )
+    .await?;
     tx.commit().await?;
     if let Some(delivery) = shipment.delivery_id
         && state
@@ -380,7 +414,14 @@ async fn change_address(
             .await
     {
         let note = format!("{error:?}");
-        track(&state.db, shipment.id, "delivery_address_failed", &note, None).await?;
+        track(
+            &state.db,
+            shipment.id,
+            "delivery_address_failed",
+            &note,
+            None,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -444,7 +485,10 @@ pub async fn confirm_address(
     let note = match new {
         Some(new) => {
             change_address(state, user, &shipment, new).await?;
-            english("logistics.hold.address_event", &[("address", &new.address.trim()), ("area", &new.area.trim())])
+            english(
+                "logistics.hold.address_event",
+                &[("address", &new.address.trim()), ("area", &new.area.trim())],
+            )
         }
         None => english("logistics.hold.address_unchanged", &[]),
     };

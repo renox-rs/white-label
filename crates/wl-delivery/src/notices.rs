@@ -15,9 +15,7 @@
 use renox::auth::permissions::users_with_permission;
 use renox::prelude::*;
 use renox::serde_json::json;
-use wl_kernel::notify::{
-    self, NotificationTypeDef, NotifyChannel, NotifyRecipient, NotifyRequest,
-};
+use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRecipient, NotifyRequest};
 
 use crate::delivery::Delivery;
 use crate::permissions;

@@ -112,14 +112,12 @@ pub(crate) fn reason_and_liability(
 ) -> std::result::Result<(), String> {
     match input {
         None => Err("The reversal was not prepared by the reverse service.".to_owned()),
-        Some(input) if !REASONS.contains(&input.reason_code.as_str()) => Err(english(
-            "wl_delivery.reverse.choose_reason",
-        )
-        .to_owned()),
-        Some(input) if !LIABILITIES.contains(&input.liability.as_str()) => Err(english(
-            "wl_delivery.reverse.choose_liability",
-        )
-        .to_owned()),
+        Some(input) if !REASONS.contains(&input.reason_code.as_str()) => {
+            Err(english("wl_delivery.reverse.choose_reason").to_owned())
+        }
+        Some(input) if !LIABILITIES.contains(&input.liability.as_str()) => {
+            Err(english("wl_delivery.reverse.choose_liability").to_owned())
+        }
         Some(_) => Ok(()),
     }
 }
@@ -235,7 +233,11 @@ pub(crate) fn transitions() -> Vec<Transition<Delivery>> {
                 }
             })
         }),
-        reversing(Transition::new(REVERSE_DELIVERY_APPROVED).label("Reverse delivery (approved)").system()),
+        reversing(
+            Transition::new(REVERSE_DELIVERY_APPROVED)
+                .label("Reverse delivery (approved)")
+                .system(),
+        ),
         Transition::new(BACK_ON_THE_ROAD)
             .label("Back on the road")
             .tone("info")
@@ -348,7 +350,10 @@ pub async fn cash_handed_over(state: &AppState, delivery: &Delivery) -> Result<b
     }
     let run = Run::find_or_404(&state.db, run_id).await?;
     Ok(
-        match close_handover(state, &run).await?.map(|summary| summary.status) {
+        match close_handover(state, &run)
+            .await?
+            .map(|summary| summary.status)
+        {
             Some(status) => status != wl_kernel::custody::HandoverStatus::Open,
             None => false,
         },
@@ -588,10 +593,14 @@ async fn after_reversed(state: &AppState, event: &Transitioned<Delivery>) -> Res
                 .await?;
         }
     } else if driver_liable {
-        let title = english("wl_delivery.reverse.follow_up_title").replace("{number}", &delivery.number);
+        let title =
+            english("wl_delivery.reverse.follow_up_title").replace("{number}", &delivery.number);
         let description = english("wl_delivery.reverse.follow_up_description")
             .replace("{reason}", &reason)
-            .replace("{cash}", &crate::proof::aed(proof.as_ref().map_or(0, |p| p.cash_collected)))
+            .replace(
+                "{cash}",
+                &crate::proof::aed(proof.as_ref().map_or(0, |p| p.cash_collected)),
+            )
             .replace("{treatment}", cash_treatment.as_deref().unwrap_or("none"));
         let ticket = OpenTicket::new(delivery.delivery_id().subject(), TASK_CATEGORY, &title)
             .description(&description)
@@ -626,9 +635,11 @@ pub(crate) fn register(app: &mut Registry) {
         .step_permission(permissions::REVERSE)
         .expiry_hours(Some(EXPIRY_HOURS))
         .register();
-    app.listen(|event: Transitioned<Delivery>, state: AppState| async move {
-        after_reversed(&state, &event).await
-    });
+    app.listen(
+        |event: Transitioned<Delivery>, state: AppState| async move {
+            after_reversed(&state, &event).await
+        },
+    );
 }
 
 #[cfg(test)]

@@ -69,9 +69,13 @@ async fn hand_over(w: &World, r1: &Run, r2: &Run, stops: &[&Delivery], cash: &st
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    w.post(&w.dispatcher, &format!("/runs/{}/hand-over", r1.id), &fields)
-        .await
-        .assert_ok();
+    w.post(
+        &w.dispatcher,
+        &format!("/runs/{}/hand-over", r1.id),
+        &fields,
+    )
+    .await
+    .assert_ok();
     let record = HandOver::of_run(w.db(), r1.id)
         .await
         .unwrap()

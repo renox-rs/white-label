@@ -19,16 +19,15 @@ use wl_delivery::{
     seed,
 };
 use wl_kernel::custody::CashCustody;
-use wl_kernel::payments::PaymentRecorder;
 use wl_kernel::documents::{DocumentGuard, today};
+use wl_kernel::payments::PaymentRecorder;
 use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{
     ClientConfig, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered,
     DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryItem, DeliveryLost,
     DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequest, DeliveryReversed, PodMethod,
-    RunClosed,
-    RunAborted, RunDispatched, RunHandedOver, Subject,
+    RunAborted, RunClosed, RunDispatched, RunHandedOver, Subject,
 };
 
 pub mod custody;
@@ -599,7 +598,10 @@ async fn boot_inner(module: WlDelivery, docs: Documents, custody_from: Custody) 
     let app = record(app, &handed_over);
     let app = record(app, &aborted);
     let client = if custody_from == Custody::Real {
-        CLIENT.replace("[\"parties\", \"delivery\"]", "[\"parties\", \"invoicing\", \"delivery\", \"payments\"]")
+        CLIENT.replace(
+            "[\"parties\", \"delivery\"]",
+            "[\"parties\", \"invoicing\", \"delivery\", \"payments\"]",
+        )
     } else {
         CLIENT.to_owned()
     };

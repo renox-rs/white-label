@@ -197,7 +197,14 @@ pub async fn receive_at_hub(
     id: i64,
     barcodes: &[String],
 ) -> std::result::Result<Shipment, TransitionError> {
-    scan(state, user, id, RECEIVE_AT_HUB, &Handover::scanned(barcodes)).await
+    scan(
+        state,
+        user,
+        id,
+        RECEIVE_AT_HUB,
+        &Handover::scanned(barcodes),
+    )
+    .await
 }
 
 /// [`receive_at_hub`] with the parcels marked *not received* (a drop-off

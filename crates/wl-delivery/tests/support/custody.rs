@@ -144,7 +144,11 @@ impl CashCustody for FakeCustody {
     ) -> CustodyFuture<'a, Option<HandoverId>> {
         Box::pin(async move {
             let mut inner = self.0.lock().unwrap();
-            if inner.collections.iter().any(|c| c.source == collection.source) {
+            if inner
+                .collections
+                .iter()
+                .any(|c| c.source == collection.source)
+            {
                 return Ok(Some(HandoverId(1)));
             }
             let counted = inner.counted.iter().any(|(h, p, _, _)| {

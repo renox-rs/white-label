@@ -60,11 +60,7 @@ pub async fn demo_rates(db: &Db, client: PartyId) -> Result {
 /// # Errors
 ///
 /// The booking's refusals, as errors.
-pub async fn demo_shipments(
-    state: &AppState,
-    booked_by: i64,
-    client: PartyId,
-) -> Result<usize> {
+pub async fn demo_shipments(state: &AppState, booked_by: i64, client: PartyId) -> Result<usize> {
     let mut booked = 0;
     for (reference, recipient, area, parcels, cod_amount) in DEMO_SHIPMENTS {
         if booking::using_reference(&state.db, client, reference)

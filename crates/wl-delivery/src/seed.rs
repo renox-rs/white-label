@@ -68,7 +68,12 @@ pub const COD_REASONS: [(&str, &str, &str, &str); 4] = [
         "يعترض على المبلغ",
         "customer",
     ),
-    ("agreed_discount", "Agreed discount", "خصم متفق عليه", "business"),
+    (
+        "agreed_discount",
+        "Agreed discount",
+        "خصم متفق عليه",
+        "business",
+    ),
     ("no_change", "No change", "لا يوجد فكة", "driver"),
 ];
 

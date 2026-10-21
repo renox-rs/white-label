@@ -28,7 +28,8 @@ pub use booking::{ImportReport, NewShipment, RowResult};
 pub use rates::{ClientRate, WeightBand};
 pub use reweigh::{ClientTerms, Measurement};
 pub use shipment::{
-    AddressChange, Charge, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment, ShipmentStatus, TrackingEvent,
+    AddressChange, Charge, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment, ShipmentStatus,
+    TrackingEvent,
 };
 pub use shipment_machine::ShipmentInput;
 

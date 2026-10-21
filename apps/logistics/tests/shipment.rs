@@ -36,7 +36,10 @@ async fn a_booking_creates_the_shipment_its_labels_and_its_delivery() {
     let labels: Vec<_> = parcels.iter().map(|p| p.barcode.clone()).collect();
     assert_eq!(
         labels,
-        [format!("{}-1", shipment.number), format!("{}-2", shipment.number)]
+        [
+            format!("{}-1", shipment.number),
+            format!("{}-2", shipment.number)
+        ]
     );
     let delivery = w.delivery_of(&shipment).await;
     assert_eq!(delivery.status, DeliveryStatus::Pending);
@@ -57,7 +60,8 @@ async fn a_client_user_books_only_for_their_own_company() {
         .await;
     refused.assert_forbidden();
     // Staff book for any client.
-    w.book_as(&w.dispatcher, support::OTHER_CLIENT, "ORD-2").await;
+    w.book_as(&w.dispatcher, support::OTHER_CLIENT, "ORD-2")
+        .await;
 }
 
 /// AC: pick up, hub scan, dispatch with the run, deliver: the shipment
@@ -87,10 +91,7 @@ async fn a_shipment_follows_its_delivery_from_pickup_to_delivered() {
     )
     .await
     .assert_status(303);
-    assert_eq!(
-        w.reload(&shipment).await.status,
-        ShipmentStatus::Delivered
-    );
+    assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Delivered);
     let kinds: Vec<String> = TrackingEvent::query()
         .where_(TrackingEvent::SHIPMENT_ID.eq(shipment.id))
         .order_by(TrackingEvent::ID)

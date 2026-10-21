@@ -370,14 +370,11 @@ async fn show(
             .map(|id| format!("/deliveries/{id}"))
             .unwrap_or_default(),
         can_pickup: scans && shipment.status == Created,
-        can_hub: scans
-            && matches!(
-                shipment.status,
-                Created | PickedUp | Attempted | Returning
-            ),
+        can_hub: scans && matches!(shipment.status, Created | PickedUp | Attempted | Returning),
         can_void: has("void"),
         can_cancel: has("cancel") || cancel_for_company,
-        can_cancel_return: manages && matches!(shipment.status, PickedUp | AtHub | Attempted | OnHold),
+        can_cancel_return: manages
+            && matches!(shipment.status, PickedUp | AtHub | Attempted | OnHold),
         can_return: has("return_delivered")
             || (user.has_permission(permissions::SHIPMENTS_DELIVER)
                 && shipment.status == Returning),
@@ -385,7 +382,10 @@ async fn show(
         can_release: manages && held,
         can_hold_instruction: acts && held,
         can_address: acts
-            && matches!(shipment.status, Created | PickedUp | AtHub | Attempted | OnHold),
+            && matches!(
+                shipment.status,
+                Created | PickedUp | AtHub | Attempted | OnHold
+            ),
         can_confirm_address: acts && address_hold,
         can_liable: manages
             && held
@@ -415,8 +415,14 @@ async fn show(
         can_resolve_dispute: manages && surcharge.as_ref().is_some_and(|charge| charge.held),
         charged_price: shipment.charged_price(),
         outcomes: vec![
-            ["confirm".to_owned(), t(&lang, "logistics.screen.outcome_confirm")],
-            ["remove".to_owned(), t(&lang, "logistics.screen.outcome_remove")],
+            [
+                "confirm".to_owned(),
+                t(&lang, "logistics.screen.outcome_confirm"),
+            ],
+            [
+                "remove".to_owned(),
+                t(&lang, "logistics.screen.outcome_remove"),
+            ],
         ],
         instruction: shipment.return_instruction.clone().unwrap_or_default(),
         shipment,
@@ -474,9 +480,15 @@ async fn import(
         .parse::<i64>()
         .map_err(|_| refused(t(&lang, "logistics.bad_input")))?;
     let dry_run = matches!(field(&form, "dry_run").trim(), "1" | "true" | "on");
-    let report = booking::import_csv(&state, &user, PartyId(client), &field(&form, "csv"), dry_run)
-        .await
-        .map_err(answer)?;
+    let report = booking::import_csv(
+        &state,
+        &user,
+        PartyId(client),
+        &field(&form, "csv"),
+        dry_run,
+    )
+    .await
+    .map_err(answer)?;
     if dry_run {
         return Ok(Json(report).into_response());
     }
@@ -645,9 +657,7 @@ async fn reweigh(
 ) -> Result<Response> {
     let bad = || refused(t(&lang, "logistics.bad_input"));
     // Kilograms to 0.01 kg as entered, in grams.
-    let weight_grams = booking::parse_dirhams(&field(&form, "weight_kg"))
-        .ok_or_else(bad)?
-        * 10;
+    let weight_grams = booking::parse_dirhams(&field(&form, "weight_kg")).ok_or_else(bad)? * 10;
     let new = NewMeasurement {
         weight_grams,
         length_cm: whole(&form, "length_cm").ok_or_else(bad)?,
@@ -655,7 +665,9 @@ async fn reweigh(
         height_cm: whole(&form, "height_cm").ok_or_else(bad)?,
         photo: Some(field(&form, "photo")),
     };
-    reweigh::record(&state, &user, id, &new).await.map_err(answer)?;
+    reweigh::record(&state, &user, id, &new)
+        .await
+        .map_err(answer)?;
     back_to(&lang, "logistics.reweighed", id)
 }
 

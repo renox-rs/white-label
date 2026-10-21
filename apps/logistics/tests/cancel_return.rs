@@ -37,7 +37,10 @@ async fn a_dispatcher_sends_a_picked_up_shipment_back_on_the_clients_instruction
 
     let offered = w.offered(&w.noor, &picked).await;
     assert!(!offered.contains(&"cancel".to_owned()), "{offered:?}");
-    assert!(!offered.contains(&"cancel_return".to_owned()), "{offered:?}");
+    assert!(
+        !offered.contains(&"cancel_return".to_owned()),
+        "{offered:?}"
+    );
     w.post(&w.noor, &format!("/shipments/{}/cancel", picked.id), &[])
         .await
         .assert_status(422);
@@ -118,7 +121,11 @@ async fn the_instruction_can_come_with_the_call_and_a_card_without_a_return_line
     let lines = charges(&w, &shipment).await;
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].amount, 0);
-    assert!(lines[0].note.contains("no return price"), "{}", lines[0].note);
+    assert!(
+        lines[0].note.contains("no return price"),
+        "{}",
+        lines[0].note
+    );
 }
 
 /// AC3: given `cancel_return` without an instruction, it is refused.
@@ -157,7 +164,10 @@ async fn out_for_delivery_the_driver_fails_the_stop_first_and_it_does_not_count(
     .await
     .assert_status(303);
     let offered = w.offered(&w.dispatcher, &out).await;
-    assert!(!offered.contains(&"cancel_return".to_owned()), "{offered:?}");
+    assert!(
+        !offered.contains(&"cancel_return".to_owned()),
+        "{offered:?}"
+    );
     w.post(
         &w.dispatcher,
         &format!("/shipments/{}/cancel-return", out.id),

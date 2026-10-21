@@ -221,7 +221,12 @@ pub async fn boot() -> World {
     let ops = make_user(app.db(), "Olivia", &dispatcher_grants).await;
     let dispatcher = make_user(app.db(), "Dina", &dispatcher_grants).await;
     let dispatcher_b = make_user(app.db(), "Basel", &dispatcher_grants).await;
-    let hub = make_user(app.db(), "Hana", &[perm::SHIPMENTS_VIEW, perm::SHIPMENTS_SCAN]).await;
+    let hub = make_user(
+        app.db(),
+        "Hana",
+        &[perm::SHIPMENTS_VIEW, perm::SHIPMENTS_SCAN],
+    )
+    .await;
     let driver = make_user(
         app.db(),
         "Dev",
@@ -233,7 +238,11 @@ pub async fn boot() -> World {
         ],
     )
     .await;
-    let client_grants = [perm::SHIPMENTS_BOOK, perm::SHIPMENTS_VOID, perm::SHIPMENTS_CANCEL];
+    let client_grants = [
+        perm::SHIPMENTS_BOOK,
+        perm::SHIPMENTS_VOID,
+        perm::SHIPMENTS_CANCEL,
+    ];
     let noor = make_user(app.db(), "Noor", &client_grants).await;
     let nadia = make_user(app.db(), "Nadia", &client_grants).await;
     let farah = make_user(app.db(), "Farah", &client_grants).await;
@@ -441,7 +450,9 @@ impl World {
 
     /// The names of the transitions `user` is offered on `shipment`.
     pub async fn offered(&self, user: &User, shipment: &Shipment) -> Vec<String> {
-        let response = self.get(user, &format!("/probe/{}/available", shipment.id)).await;
+        let response = self
+            .get(user, &format!("/probe/{}/available", shipment.id))
+            .await;
         response.assert_ok();
         response
             .text()

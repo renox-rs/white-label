@@ -320,14 +320,29 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_delivery.reverse.liability", "Who is responsible"),
     ("wl_delivery.reverse.note", "Note"),
     ("wl_delivery.reverse.comment", "Comment"),
-    ("wl_delivery.reverse.reason.marked_by_mistake", "Marked delivered by mistake"),
-    ("wl_delivery.reverse.reason.recipient_denies", "Recipient denies the delivery"),
-    ("wl_delivery.reverse.reason.wrong_recipient", "Wrong recipient"),
+    (
+        "wl_delivery.reverse.reason.marked_by_mistake",
+        "Marked delivered by mistake",
+    ),
+    (
+        "wl_delivery.reverse.reason.recipient_denies",
+        "Recipient denies the delivery",
+    ),
+    (
+        "wl_delivery.reverse.reason.wrong_recipient",
+        "Wrong recipient",
+    ),
     ("wl_delivery.reverse.cash", "Cash already handed over"),
     ("wl_delivery.reverse.cash.refund", "Refund to payer"),
     ("wl_delivery.reverse.cash.keep", "Keep for next attempt"),
-    ("wl_delivery.reverse.handed_over", "Cash already handed over"),
-    ("wl_delivery.reverse.request_title", "Reversal waiting for approval"),
+    (
+        "wl_delivery.reverse.handed_over",
+        "Cash already handed over",
+    ),
+    (
+        "wl_delivery.reverse.request_title",
+        "Reversal waiting for approval",
+    ),
     ("wl_delivery.reverse.requested_by", "Asked by"),
     ("wl_delivery.reverse.approve", "Approve reversal"),
     ("wl_delivery.reverse.approve_title", "Approve the reversal"),
@@ -376,7 +391,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.reverse.cannot_refund",
         "A refund to the payer needs the payments module and a recipient party on the delivery.",
     ),
-    ("wl_delivery.reverse.refund_reason", "Delivery {number} was reversed."),
+    (
+        "wl_delivery.reverse.refund_reason",
+        "Delivery {number} was reversed.",
+    ),
     (
         "wl_delivery.reverse.follow_up_comment",
         "The delivery was reversed with the driver responsible: left open for the HR follow-up.",
@@ -398,10 +416,16 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_delivery.cod.expires", "Request lapses"),
     ("wl_delivery.cod.absorbed_by", "Absorbed by"),
     ("wl_delivery.cod.comment", "Comment"),
-    ("wl_delivery.cod.request_title", "Cash difference waiting for approval"),
+    (
+        "wl_delivery.cod.request_title",
+        "Cash difference waiting for approval",
+    ),
     ("wl_delivery.cod.requested_by", "Asked by"),
     ("wl_delivery.cod.approve", "Approve difference"),
-    ("wl_delivery.cod.approve_title", "Approve the cash difference"),
+    (
+        "wl_delivery.cod.approve_title",
+        "Approve the cash difference",
+    ),
     (
         "wl_delivery.cod.approve_description",
         "The delivery is delivered with the cash collected. Choose who absorbs the difference; leave it empty to take the reason's default.",
@@ -417,7 +441,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.cod.pending",
         "The cash difference was sent to an approver. If nobody answers in time, or you do not want to wait, record the failed visit.",
     ),
-    ("wl_delivery.cod.blocked_title", "Only a failed visit is left"),
+    (
+        "wl_delivery.cod.blocked_title",
+        "Only a failed visit is left",
+    ),
     ("wl_delivery.cod.no_answer", "No answer: fail attempt"),
     (
         "wl_delivery.cod.requested",
@@ -520,7 +547,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_delivery.hand_over.reason.breakdown", "Breakdown"),
     ("wl_delivery.hand_over.reason.accident", "Accident"),
-    ("wl_delivery.hand_over.reason.driver_unwell", "Driver unwell"),
+    (
+        "wl_delivery.hand_over.reason.driver_unwell",
+        "Driver unwell",
+    ),
     (
         "wl_delivery.hand_over.reason.load_balancing",
         "Load balancing",
@@ -538,7 +568,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_delivery.hand_over.confirmed", "Stops taken over."),
     ("wl_delivery.hand_over.confirm", "Take over the stops"),
-    ("wl_delivery.hand_over.waiting_title", "Stops waiting for you"),
+    (
+        "wl_delivery.hand_over.waiting_title",
+        "Stops waiting for you",
+    ),
     ("wl_delivery.hand_over.cash_counted", "Cash counted (AED)"),
     (
         "wl_delivery.hand_over.cheques",
@@ -546,7 +579,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_delivery.hand_over.parcel", "Parcel scanned or ticked"),
     ("wl_delivery.hand_over.from_run", "From run"),
-    ("wl_delivery.hand_over.pending", "Waiting for the receiving driver"),
+    (
+        "wl_delivery.hand_over.pending",
+        "Waiting for the receiving driver",
+    ),
     ("wl_delivery.hand_over.done", "Taken over"),
     // Aborting a run (#164).
     (
@@ -590,7 +626,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_delivery.abort.action", "Abort run"),
     ("wl_delivery.abort.reason", "Reason"),
     ("wl_delivery.abort.note", "Note (needed for other)"),
-    ("wl_delivery.abort.ticket", "Open a ticket about the vehicle"),
+    (
+        "wl_delivery.abort.ticket",
+        "Open a ticket about the vehicle",
+    ),
     ("wl_delivery.abort.ticket_none", "No ticket"),
     ("wl_delivery.abort.ticket_breakdown", "Breakdown ticket"),
     ("wl_delivery.abort.ticket_accident", "Accident ticket"),
