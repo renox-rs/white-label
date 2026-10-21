@@ -24,6 +24,7 @@
     "cheques": "Cheques",
     "enquiries": "Enquiries",
     "supplier_bills": "Supplier bills",
+    "payer_bills": "Payer bills",
     "expense_claims": "Expense claims",
     "compliance_flags": "Compliance flags",
     "broadcasts": "Broadcasts",

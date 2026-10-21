@@ -178,6 +178,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::EINVOICES_MANAGE,
             invoices::SUBSCRIPTIONS_VIEW,
             invoices::SUBSCRIPTIONS_MANAGE,
+            invoices::PAYER_BILLS_VIEW,
+            invoices::PAYER_BILLS_ISSUE,
+            invoices::PAYER_BILLS_RECONCILE,
+            invoices::PAYER_BILLS_WRITE_OFF,
             tickets::VIEW,
             tickets::CREATE,
             tickets::ASSIGN,
@@ -557,6 +561,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::EINVOICES_MANAGE,
             invoices::SUBSCRIPTIONS_VIEW,
             invoices::SUBSCRIPTIONS_MANAGE,
+            invoices::PAYER_BILLS_VIEW,
+            invoices::PAYER_BILLS_ISSUE,
+            invoices::PAYER_BILLS_RECONCILE,
+            invoices::PAYER_BILLS_WRITE_OFF,
             // The accountant works the deadline tasks (04 compliance
             // calendar, wl-ticketing §4.4).
             tickets::TASKS_VIEW,

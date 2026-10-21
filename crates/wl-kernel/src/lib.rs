@@ -153,7 +153,7 @@ pub use payer_bills::{
     NoPayerBills, PayerAnswer, PayerBillClosed, PayerBillFuture, PayerBillId, PayerBillIssued,
     PayerBillOutcome, PayerBillStatus, PayerBillSubmissionRejected, PayerBillSummary, PayerBills,
     PayerRecoupmentRecorded, PayerRemittanceRecorded, RecoupedLine, Recoupment, RejectionDeadline,
-    Remittance, RemittanceLine, SubmissionError,
+    NewPayerBill, NewPayerBillLine, Remittance, RemittanceLine, SubmissionError,
 };
 pub use manifest::Manifest;
 pub use notify::{

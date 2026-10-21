@@ -79,6 +79,15 @@ pub mod owner;
 pub mod owner_drawings;
 pub mod pages;
 pub mod payables;
+pub mod payer_agreement;
+pub mod payer_bill;
+pub mod payer_bill_machine;
+mod payer_bill_pages;
+pub mod payer_contract;
+pub mod payer_issue;
+pub mod payer_split;
+pub mod payer_tax;
+mod payer_texts;
 pub mod period_locks;
 pub mod policy;
 pub mod recover;
@@ -144,6 +153,9 @@ pub use einvoice_adapter::{EInvoiceAdapter, EInvoiceScope};
 pub use escalation_log::EscalationLog;
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
+pub use payer_agreement::{PayerAgreement, VatRecipient};
+pub use payer_bill::{PayerBill, PayerBillLine};
+pub use payer_contract::PayerBilling;
 pub use line::InvoiceLine;
 pub use recovery::Recovery;
 pub use reminders::ReminderLog;
@@ -288,6 +300,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-invoicing/subscription.html",
         include_str!("../views/wl-invoicing/subscription.html"),
     ),
+    (
+        "wl-invoicing/payer_bills.html",
+        include_str!("../views/wl-invoicing/payer_bills.html"),
+    ),
+    (
+        "wl-invoicing/payer_bill.html",
+        include_str!("../views/wl-invoicing/payer_bill.html"),
+    ),
 ];
 
 /// The module's settings in `state`: those `register` provided, else the
@@ -351,6 +371,17 @@ pub mod permissions {
     pub const SUBSCRIPTIONS_VIEW: &str = "subscriptions.view";
     /// Pause, resume and cancel a subscription in the back office.
     pub const SUBSCRIPTIONS_MANAGE: &str = "subscriptions.manage";
+    /// See payer bills, their lines, remittances and the payer credit
+    /// balance.
+    pub const PAYER_BILLS_VIEW: &str = "payer_bills.view";
+    /// Issue a payer bill, send it again, record its technical rejection and
+    /// void one created in error.
+    pub const PAYER_BILLS_ISSUE: &str = "payer_bills.issue";
+    /// Record the payer's remittances and recoupments (`FIN.ACL.16`).
+    pub const PAYER_BILLS_RECONCILE: &str = "payer_bills.reconcile";
+    /// Write off the open amount of a payer bill, or move it to the customer
+    /// (`FIN.ACL.14`).
+    pub const PAYER_BILLS_WRITE_OFF: &str = "payer_bills.write_off";
 }
 
 /// The invoicing module. The host adds it with
@@ -757,6 +788,13 @@ impl WlInvoicing {
         self
     }
 
+    /// The role whose holder gets the task of a payer bill the submission
+    /// channel rejected (default `billing_coordinator`).
+    pub fn payer_bill_task_role(mut self, role: &str) -> Self {
+        self.config.payer_bill_task_role = role.to_owned();
+        self
+    }
+
     /// What extra hours of an adjustment timesheet on invoiced hours become
     /// (default an extra line on the next usage invoice).
     pub fn adjustment_plus(mut self, plus: AdjustmentPlus) -> Self {
@@ -856,6 +894,7 @@ impl Module for WlInvoicing {
             .merge(drawing_pages::routes())
             .merge(einvoice_pages::routes())
             .merge(subscription_pages::routes())
+            .merge(payer_bill_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -969,8 +1008,13 @@ impl Module for WlInvoicing {
             .model::<Subscription>()
             .model::<SubscriptionPause>()
             .model::<SubscriptionCycle>()
+            .model::<PayerAgreement>()
+            .model::<PayerBill>()
+            .model::<PayerBillLine>()
             .view_data::<subscription_pages::IndexPage>()
             .view_data::<subscription_pages::ShowPage>()
+            .view_data::<payer_bill_pages::IndexPage>()
+            .view_data::<payer_bill_pages::ShowPage>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<vat_pages::IndexPage>()
@@ -1010,6 +1054,12 @@ impl Module for WlInvoicing {
         bill_machine::register();
         // The supplier debit note machine, as `invoicing.supplier_debit_note`.
         debit_note_machine::register();
+        // The payer bill machine, as `invoicing.payer_bill`, and what follows
+        // its committed transitions (tax documents, tasks, events).
+        payer_bill_machine::register();
+        payer_bill_machine::register_events(app);
+        // Verticals make and drive payer bills through the kernel (§6).
+        wl_kernel::payer_bills::provide_payer_bills(app, PayerBilling);
         // `FIN.RUL.17`, the cost reversal and the supplier notice of `issue`,
         // and the debit notes other modules draft and read through the kernel.
         debit_note_events::register_types();
@@ -1138,6 +1188,15 @@ impl Module for WlInvoicing {
                 .group("nav.app")
                 .order(44)
                 .permission(permissions::SUPPLIER_BILLS_VIEW),
+        );
+        // The payer bills (`nav.payer_bills`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.payer_bills", "nav.payer_bills")
+                .icon("clipboard-list")
+                .group("nav.app")
+                .order(49)
+                .permission(permissions::PAYER_BILLS_VIEW),
         );
         // `FIN.RUL.02`: the daily `invoicing:mark-overdue` task.
         overdue::schedule(app);

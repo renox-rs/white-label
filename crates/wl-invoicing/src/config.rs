@@ -246,6 +246,9 @@ pub struct InvoicingConfig {
     /// The role told when `FIN.RUL.17` drafts a debit note from a return
     /// (default `accountant`).
     pub debit_note_notify_role: String,
+    /// The role whose holder gets the task when a payer bill needs work: a
+    /// technical rejection of its submission (default `billing_coordinator`).
+    pub payer_bill_task_role: String,
     /// What extra hours of an adjustment on invoiced hours become (default
     /// an extra line on the next usage invoice).
     pub adjustment_plus: AdjustmentPlus,
@@ -335,6 +338,7 @@ impl Default for InvoicingConfig {
             debit_note_vat_timing: InputVatTiming::OnIssue,
             tax_credit_note_required: true,
             debit_note_notify_role: "accountant".to_owned(),
+            payer_bill_task_role: "billing_coordinator".to_owned(),
             adjustment_plus: AdjustmentPlus::ExtraLine,
             adjustment_task_role: "coordinator".to_owned(),
             subscription_suspension: true,
@@ -471,6 +475,7 @@ mod tests {
         assert_eq!(config.debit_note_vat_timing, InputVatTiming::OnIssue);
         assert!(config.tax_credit_note_required);
         assert_eq!(config.debit_note_notify_role, "accountant");
+        assert_eq!(config.payer_bill_task_role, "billing_coordinator");
         assert_eq!(config.adjustment_plus, AdjustmentPlus::ExtraLine);
         assert_eq!(config.adjustment_task_role, "coordinator");
         assert!(config.subscription_suspension);

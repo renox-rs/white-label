@@ -28,6 +28,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::invoicing::{InvoiceId, VatCategory};
 use crate::numbering::{Reset, Series};
 use crate::parties::PartyId;
 use crate::subject::Subject;
@@ -179,6 +180,110 @@ pub struct PayerBillSummary {
     /// Whether it was closed from `draft` for a missed first-submission
     /// window (*not submitted in time*).
     pub not_submitted_in_time: bool,
+}
+
+/// One line of a payer bill to make: what the payer is asked to pay.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NewPayerBillLine {
+    /// What is claimed.
+    pub description: String,
+    /// The payer's share of the line, net of VAT, in fils.
+    pub claimed: i64,
+    /// The VAT treatment on the tax document that carries the line.
+    pub vat_category: VatCategory,
+    /// The line of the customer's tax invoice that carries it, when the
+    /// customer is the VAT recipient.
+    pub invoice_line: Option<i64>,
+}
+
+impl NewPayerBillLine {
+    /// A zero-rated line of `description` claiming `claimed` fils.
+    pub fn new(description: &str, claimed: i64) -> Self {
+        NewPayerBillLine {
+            description: description.trim().to_owned(),
+            claimed,
+            vat_category: VatCategory::ZeroRated,
+            invoice_line: None,
+        }
+    }
+
+    /// With this VAT treatment.
+    pub fn vat_category(mut self, category: VatCategory) -> Self {
+        self.vat_category = category;
+        self
+    }
+
+    /// Carried by line `position` of the customer's tax invoice.
+    pub fn on_invoice_line(mut self, position: i64) -> Self {
+        self.invoice_line = Some(position);
+        self
+    }
+}
+
+/// A payer bill to make from a payer split: [`PayerBills::create`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NewPayerBill {
+    /// The payer agreement (its id in `wl-invoicing`) the bill follows.
+    pub agreement: i64,
+    /// The customer: the patient, the vehicle owner.
+    pub customer: PartyId,
+    /// What it is for (a clinic claim, an insurance claim).
+    pub source: Subject,
+    /// The day of the service; the agreement's windows count from it.
+    pub service_date: NaiveDate,
+    /// The payer reference (prior authorisation, claim number), if any.
+    pub payer_reference: Option<String>,
+    /// The customer's tax invoice that carries the payer share, if any.
+    pub customer_invoice: Option<InvoiceId>,
+    /// The ISO currency code.
+    pub currency: String,
+    /// 05 `CLN.ACL.14`: the bill may be voided only before its first
+    /// submission.
+    pub void_before_first_submission: bool,
+    /// The lines.
+    pub lines: Vec<NewPayerBillLine>,
+}
+
+impl NewPayerBill {
+    /// A bill in AED under `agreement` for `customer` about `source`, for a
+    /// service on `service_date`, with no line yet.
+    pub fn new(agreement: i64, customer: PartyId, source: Subject, service_date: NaiveDate) -> Self {
+        NewPayerBill {
+            agreement,
+            customer,
+            source,
+            service_date,
+            payer_reference: None,
+            customer_invoice: None,
+            currency: crate::invoicing::DEFAULT_CURRENCY.to_owned(),
+            void_before_first_submission: false,
+            lines: Vec::new(),
+        }
+    }
+
+    /// With this payer reference.
+    pub fn payer_reference(mut self, reference: &str) -> Self {
+        self.payer_reference = Some(reference.trim().to_owned()).filter(|r| !r.is_empty());
+        self
+    }
+
+    /// With the customer's tax invoice that carries the payer share.
+    pub fn customer_invoice(mut self, invoice: InvoiceId) -> Self {
+        self.customer_invoice = Some(invoice);
+        self
+    }
+
+    /// Voidable only before the first submission (05).
+    pub fn void_before_first_submission(mut self) -> Self {
+        self.void_before_first_submission = true;
+        self
+    }
+
+    /// With `line` added.
+    pub fn line(mut self, line: NewPayerBillLine) -> Self {
+        self.lines.push(line);
+        self
+    }
 }
 
 /// One error the submission channel gave for a rejected submission.
@@ -512,6 +617,34 @@ pub trait PayerBills: Send + Sync + 'static {
         _source: &'a Subject,
     ) -> PayerBillFuture<'a, Vec<PayerBillSummary>> {
         Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Makes a `draft` payer bill from a payer split, under the payer
+    /// agreement `request.agreement`, and returns its id. Refused (422) for
+    /// an unknown or inactive agreement, a bill without lines or with a line
+    /// of 0 or less, and when a payer bill of that agreement for the same
+    /// source is not voided yet.
+    fn create<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: NewPayerBill,
+        _by: Option<&'a AuthUser>,
+    ) -> PayerBillFuture<'a, PayerBillId> {
+        Box::pin(async { Err(payer_bills_off("the payer bill cannot be made")) })
+    }
+
+    /// Changes what a `draft` payer bill claims on `line` to `claimed` fils
+    /// (a corrected amount after a technical rejection). The tax documents
+    /// follow at the next `issue`: a credit note for a lower amount, an
+    /// extra invoice for a higher one.
+    fn correct_line<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: PayerBillId,
+        _line: i64,
+        _claimed: i64,
+    ) -> PayerBillFuture<'a, ()> {
+        Box::pin(async { Err(payer_bills_off("the payer bill cannot be corrected")) })
     }
 
     /// Issues the `draft` payer bill (05 claim `submit`): the first time it
