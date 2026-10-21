@@ -11,7 +11,9 @@ use wl_delivery::cod::{self, ApprovalChoice};
 use wl_delivery::{Attempt, Delivery, DeliveryLine, DeliveryStatus, WlDelivery, permissions};
 use wl_kernel::approvals::{ApprovalRequest, ApprovalStatus};
 
-use support::{World, boot_custody_with, boot_with_custody, stop_fields, user_with};
+use support::{
+    World, boot_custody_with, boot_with_custody, boot_with_real_payments, stop_fields, user_with,
+};
 
 /// A delivery of one tile line (10, AED 250 to collect) that is out.
 async fn cod_delivery(w: &World) -> (Delivery, DeliveryLine) {
@@ -568,4 +570,70 @@ async fn the_screens_follow_the_state_of_the_request() {
         .assert_ok()
         .assert_see("Only a failed visit is left")
         .assert_see("No approver answered in time");
+}
+
+/// The expected cash of the driver's real handover of the delivery's run.
+async fn real_expected(w: &World, delivery: &Delivery) -> i64 {
+    let after = w.reload(delivery).await;
+    let run = wl_delivery::Run::find_or_404(w.db(), after.run_id.unwrap())
+        .await
+        .unwrap();
+    let handover = wl_delivery::close::handover_of(w.state(), &run)
+        .await
+        .unwrap()
+        .expect("the driver's handover of the run");
+    assert_eq!(handover.holder_user, w.driver.id);
+    assert_eq!(handover.status, wl_kernel::custody::HandoverStatus::Open);
+    handover.expected
+}
+
+/// AC2 of #159 on the real `wl-payments`: the approver picks *business*: the
+/// driver's real handover of the run expects only the AED 200 collected.
+#[renox::test]
+async fn business_absorbing_a_short_payment_puts_the_collected_cash_in_the_real_custody() {
+    let w = boot_with_real_payments().await;
+    let (out, _request) = asked(&w).await;
+    approve_as(&w, &out, "business").await;
+
+    assert_eq!(w.reload(&out).await.status, DeliveryStatus::Delivered);
+    assert_eq!(real_expected(&w, &out).await, 20_000);
+}
+
+/// AC3 of #159 on the real `wl-payments`: the approver picks *driver*: the
+/// real handover expects the full AED 250, so the AED 50 missing is a shortage
+/// at the count of AED 200.
+#[renox::test]
+async fn driver_absorbing_a_short_payment_makes_the_real_custody_expect_it_all() {
+    use wl_kernel::custody::HandoverStatus;
+    use wl_payments::permissions as pay;
+    let w = boot_with_real_payments().await;
+    let (out, _request) = asked(&w).await;
+    approve_as(&w, &out, "driver").await;
+
+    assert_eq!(real_expected(&w, &out).await, 25_000);
+    let run = wl_delivery::Run::find_or_404(w.db(), w.reload(&out).await.run_id.unwrap())
+        .await
+        .unwrap();
+    let handover = wl_delivery::close::handover_of(w.state(), &run)
+        .await
+        .unwrap()
+        .unwrap();
+    // The driver is back; the depot counts the AED 200 in hand.
+    w.post(&w.driver, &format!("/driver/runs/{}/return", run.id), &[])
+        .await
+        .assert_ok();
+    let counter = user_with(&w, "Chandra", &[pay::CASH_VIEW, pay::CASH_COUNT]).await;
+    w.post(
+        &counter,
+        &format!("/cash/{}/count", handover.id.0),
+        &[("counted", "200.00")],
+    )
+    .await
+    .assert_ok();
+    let after = wl_delivery::close::handover_of(w.state(), &run)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.status, HandoverStatus::Short);
+    assert_eq!(after.difference, 5_000);
 }

@@ -20,11 +20,12 @@ use wl_delivery::{
 };
 use wl_kernel::custody::CashCustody;
 use wl_kernel::documents::{DocumentGuard, today};
+use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::payments::PaymentRecorder;
 use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{
-    ClientConfig, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered,
+    ClientConfig, PartyId, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered,
     DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryItem, DeliveryLost,
     DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequest, DeliveryReversed, PodMethod,
     RunAborted, RunClosed, RunDispatched, RunHandedOver, Subject,
@@ -599,7 +600,10 @@ async fn boot_full(
             let recorder: Arc<dyn PaymentRecorder> = Arc::new(payments.clone());
             app.provide(held).provide(recorder)
         }
-        Custody::Real => app.module(wl_payments::WlPayments::new()),
+        Custody::Real => {
+            let directory: Arc<dyn PartyDirectory> = Arc::new(KnownParties);
+            app.provide(directory).module(wl_payments::WlPayments::new())
+        }
         Custody::Off => app,
     };
     let app = record(app, &assigned);
@@ -746,4 +750,47 @@ pub async fn chief_driver(w: &World) -> User {
 /// A user holding exactly `grants`.
 pub async fn user_with(w: &World, name: &str, grants: &[&str]) -> User {
     make_user(w.db(), name, grants).await
+}
+
+/// The parties of the real-payments tests: every id from 1 to 99 is an
+/// active company (there is no wl-parties in the crate's tests).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct KnownParties;
+
+fn known(party: PartyId) -> Option<PartySummary> {
+    (1..100).contains(&party.0).then(|| PartySummary {
+        id: party,
+        code: format!("P-{:05}", party.0),
+        kind: PartyKind::Company,
+        display_name: format!("Party {}", party.0),
+        status: PartyStatus::Active,
+        display_block_reason: None,
+    })
+}
+
+impl PartyDirectory for KnownParties {
+    fn find<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async move { Ok(known(party)) })
+    }
+
+    fn find_by_code<'a>(
+        &'a self,
+        _db: &'a Db,
+        _code: &'a str,
+    ) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn display_name<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+        _lang: &'a str,
+    ) -> PartyFuture<'a, Option<String>> {
+        Box::pin(async move { Ok(known(party).map(|p| p.display_name)) })
+    }
+
+    fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
+        Box::pin(async move { Ok(known(party).map(|p| p.status)) })
+    }
 }
