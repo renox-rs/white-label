@@ -253,6 +253,16 @@ pub struct InvoicingConfig {
     /// the payer agreement's limit (`FIN.ACL.14`). Empty (the default): any
     /// `admin` or holder of `payer_bills.write_off`, never the requester.
     pub payer_write_off_approvers: Vec<String>,
+    /// The write-off limit a new payer agreement starts with, in fils
+    /// (`FIN.ACL.14`): a write-off above it needs an approval. 0 (the
+    /// default): every write-off is approved; 05 sets AED 1,000. The
+    /// agreement keeps its own value once it is made, and the company admin
+    /// changes it on the agreement.
+    pub payer_write_off_limit: i64,
+    /// The days after a payer bill is issued when `FIN.RUL.13` follows up a
+    /// bill with no remittance (§7: 45 for 05, 30 for 08; the default 30).
+    /// The rule is not built yet: this is the value it will read.
+    pub payer_follow_up_days: i64,
     /// What extra hours of an adjustment on invoiced hours become (default
     /// an extra line on the next usage invoice).
     pub adjustment_plus: AdjustmentPlus,
@@ -344,6 +354,8 @@ impl Default for InvoicingConfig {
             debit_note_notify_role: "accountant".to_owned(),
             payer_bill_task_role: "billing_coordinator".to_owned(),
             payer_write_off_approvers: Vec::new(),
+            payer_write_off_limit: 0,
+            payer_follow_up_days: 30,
             adjustment_plus: AdjustmentPlus::ExtraLine,
             adjustment_task_role: "coordinator".to_owned(),
             subscription_suspension: true,
@@ -482,6 +494,8 @@ mod tests {
         assert_eq!(config.debit_note_notify_role, "accountant");
         assert_eq!(config.payer_bill_task_role, "billing_coordinator");
         assert!(config.payer_write_off_approvers.is_empty());
+        assert_eq!(config.payer_write_off_limit, 0);
+        assert_eq!(config.payer_follow_up_days, 30);
         assert_eq!(config.adjustment_plus, AdjustmentPlus::ExtraLine);
         assert_eq!(config.adjustment_task_role, "coordinator");
         assert!(config.subscription_suspension);

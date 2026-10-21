@@ -15,6 +15,8 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 
+use crate::config::InvoicingConfig;
+
 /// Who the tax invoice of a payer bill is addressed to.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum VatRecipient {
@@ -65,6 +67,18 @@ pub struct PayerAgreement {
 }
 
 impl PayerAgreement {
+    /// A new, active agreement starting from the module's settings: the
+    /// write-off limit of [`InvoicingConfig::payer_write_off_limit`]. The
+    /// caller sets the entity, the payer, the name and the windows, and
+    /// inserts it.
+    pub fn with_defaults(config: &InvoicingConfig) -> Self {
+        PayerAgreement {
+            active: true,
+            write_off_limit: config.payer_write_off_limit,
+            ..PayerAgreement::default()
+        }
+    }
+
     /// The payer.
     pub fn payer(&self) -> PartyId {
         PartyId(self.payer_party_id)
@@ -109,6 +123,21 @@ mod tests {
             resubmission_days: 15,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_new_agreement_starts_with_the_write_off_limit_of_the_settings() {
+        let config = InvoicingConfig {
+            payer_write_off_limit: 100_000,
+            ..InvoicingConfig::default()
+        };
+        let agreement = PayerAgreement::with_defaults(&config);
+        assert!(agreement.active);
+        assert_eq!(agreement.write_off_limit, 100_000);
+        assert_eq!(
+            PayerAgreement::with_defaults(&InvoicingConfig::default()).write_off_limit,
+            0
+        );
     }
 
     #[test]

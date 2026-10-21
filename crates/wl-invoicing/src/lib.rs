@@ -816,6 +816,23 @@ impl WlInvoicing {
         self
     }
 
+    /// The write-off limit, in fils, a new payer agreement starts with
+    /// (`FIN.ACL.14`; default 0: every write-off is approved; 05: 100000,
+    /// AED 1,000). Read by [`PayerAgreement::with_defaults`]; an agreement
+    /// that exists keeps its own limit.
+    pub fn payer_write_off_limit(mut self, fils: i64) -> Self {
+        self.config.payer_write_off_limit = fils.max(0);
+        self
+    }
+
+    /// The days after a payer bill is issued when `FIN.RUL.13` follows up a
+    /// bill with no remittance (default 30; 05: 45). A value below 1 is
+    /// read as 1.
+    pub fn payer_follow_up_days(mut self, days: i64) -> Self {
+        self.config.payer_follow_up_days = days.max(1);
+        self
+    }
+
     /// What extra hours of an adjustment timesheet on invoiced hours become
     /// (default an extra line on the next usage invoice).
     pub fn adjustment_plus(mut self, plus: AdjustmentPlus) -> Self {
