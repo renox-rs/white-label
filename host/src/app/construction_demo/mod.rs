@@ -70,10 +70,12 @@ mod people;
 mod screens;
 mod seed_attendance;
 mod seed_closing;
+mod seed_guarantees;
 mod seed_hr;
 mod seed_ipas;
 mod seed_people;
 mod seed_projects;
+mod seed_variations;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -275,6 +277,10 @@ impl Seed {
         lap("staff", self);
         Box::pin(self.story()).await?;
         lap("projects and IPAs", self);
+        Box::pin(self.variations()).await?;
+        lap("variations", self);
+        Box::pin(self.guarantees()).await?;
+        lap("guarantees", self);
         self.permits().await?;
         self.assign_sites().await?;
         self.sites().await?;
