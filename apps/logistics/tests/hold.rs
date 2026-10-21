@@ -71,7 +71,7 @@ async fn hub_staff_hold_a_damaged_shipment_with_photos_and_the_client_is_told() 
     w.post(&w.noor, &path, &[("reason", "client_instruction")])
         .await
         .assert_forbidden();
-    assert!(w.notices.of_type("logistics.client_notice").is_empty());
+    assert!(w.notices.to_clients().is_empty());
 
     let label = w.label(&at_hub).await;
     w.post(
@@ -105,7 +105,7 @@ async fn hub_staff_hold_a_damaged_shipment_with_photos_and_the_client_is_told() 
             .iter()
             .any(|e| e.kind == "held" && e.note == "damaged")
     );
-    let notices = w.notices.of_type("logistics.client_notice");
+    let notices = w.notices.to_clients();
     assert_eq!(notices.len(), 1);
     assert_eq!(
         notices[0].recipients,
@@ -335,7 +335,7 @@ async fn a_wrong_address_holds_the_shipment_until_the_client_confirms_a_new_zone
     assert_eq!(held.hold_reason.as_deref(), Some("address_issue"));
     assert_eq!(held.held_from.as_deref(), Some("attempted"));
     // Not queued for a reattempt; the client is asked to confirm the address.
-    let notices = w.notices.of_type("logistics.client_notice");
+    let notices = w.notices.to_clients();
     assert_eq!(notices.len(), 1);
     assert!(
         notices[0].data["body"]
@@ -530,7 +530,7 @@ async fn the_client_chooses_return_and_the_shipment_goes_back_with_one_charge() 
     assert_eq!(charges[0].amount, 1_500);
     assert_eq!(w.delivery_of(&held).await.status, DeliveryStatus::Cancelled);
     // The hold told the client; so did the return.
-    assert_eq!(w.notices.of_type("logistics.client_notice").len(), 2);
+    assert_eq!(w.notices.to_clients().len(), 2);
     // Already returning.
     w.post(&w.dispatcher, &path, &[]).await.assert_status(422);
     assert_eq!(after.charges(w.db()).await.unwrap().len(), 1);
