@@ -284,6 +284,246 @@ async fn the_money_settings_page_shows_the_05_values_for_the_clinic() {
         .assert_dont_see("Block effect on leases");
 }
 
+/// `FIN.ACL.07`: a credit that settles a patient's dispute waits for a second
+/// person whatever its amount (the limit is AED 0); the accountant who agreed
+/// it cannot approve it, another accountant does and the credit follows.
+#[renox::test]
+async fn a_dispute_credit_waits_for_a_second_person() {
+    use wl_invoicing::CreditNote;
+    use wl_invoicing::dispute_resolve::{self, ResolveInput};
+    use wl_kernel::invoicing::{CreditNoteStatus, DisputeOutcome};
+
+    let app = clinics_booted().await;
+    let rita = person(&app, "Rita", RECEIVABLES).await;
+    let cleo = person(&app, "Cleo", RECEIVABLES).await;
+    let erin = person(&app, "Erin", ACCOUNTANT).await;
+    let patient = tenant(&app, "Sara Ali").await;
+    let invoice = issued_invoice(&app, &rita, patient, 100_000, VatCategory::Standard, day(10))
+        .await;
+    let id = dispute::raise(
+        app.state(),
+        DisputeRequest::new(
+            InvoiceId(invoice.id),
+            "charged for a service I did not have",
+            DisputeBy::Party { id: patient },
+        )
+        .amount(20_000),
+    )
+    .await
+    .unwrap();
+
+    let done = dispute_resolve::resolve(
+        app.state(),
+        invoice.id,
+        ResolveInput::credited("Agreed with the patient", 20_000),
+        DisputeBy::User { id: cleo.id },
+    )
+    .await
+    .unwrap();
+    let request = done.pending_request.expect("a credit waits for approval");
+    let draft = CreditNote::find(app.db(), done.credit_note.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(draft.status, CreditNoteStatus::Draft);
+    assert!(reload(&app, &invoice).await.disputed);
+    let own = approvals::approve(app.state(), request, &cleo, "").await;
+    assert!(matches!(own, Err(Error::Forbidden)), "{own:?}");
+
+    approvals::approve(app.state(), request, &erin, "agreed")
+        .await
+        .unwrap();
+    let after = reload(&app, &invoice).await;
+    assert!(!after.disputed);
+    assert_eq!(after.balance, invoice.balance - 20_000);
+    let note = CreditNote::find(app.db(), draft.id).await.unwrap().unwrap();
+    assert_eq!(note.status, CreditNoteStatus::Applied);
+    let stored = Dispute::find(app.db(), id).await.unwrap().unwrap();
+    assert_eq!(stored.outcome, Some(DisputeOutcome::Credited));
+}
+
+/// `FIN.ACL.16`: a payer's remittance that pays more than the claim is held
+/// for a second person whatever the amount: the accountant who recorded it
+/// cannot approve it, another accountant does and only then is the claim paid
+/// and the extra kept as the payer's credit.
+#[renox::test]
+async fn a_payer_overpayment_waits_for_a_second_person() {
+    use wl_invoicing::payer_credit;
+    use wl_invoicing::payer_remittance::PayerRemittance;
+
+    let app = clinics_booted().await;
+    let cara = person(&app, "Cara", ACCOUNTANT).await;
+    let cleo = person(&app, "Cleo", ACCOUNTANT).await;
+    let patient = tenant(&app, "Sara Ali").await;
+    let payer = company(&app, "Daman Insurance").await;
+    let legal = entity(&app, "PGC").await;
+    let agreement = PayerAgreement::create(
+        app.state(),
+        PayerAgreement {
+            legal_entity_id: legal.id,
+            payer_party_id: payer.0,
+            name: "Daman Gold".to_owned(),
+            active: true,
+            vat_recipient: VatRecipient::Customer,
+            first_submission_days: 30,
+            resubmission_days: 30,
+            resubmission_limit: 2,
+            ..PayerAgreement::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    let id = payer_bills(app.state())
+        .create(
+            app.state(),
+            NewPayerBill::new(
+                agreement.id,
+                patient,
+                Subject::new("clinics.visit", 8),
+                today(),
+            )
+            .line(NewPayerBillLine::new("Consultation x 1", 40_000)),
+            None,
+        )
+        .await
+        .expect("the payer bill is made");
+    app.acting_as(&cara);
+    app.htmx()
+        .post(&format!("/payer-bills/{}/issue", id.0), &[])
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", id.0));
+    let line = wl_invoicing::payer_bill::lines_of(app.db(), id.0)
+        .await
+        .unwrap()
+        .remove(0);
+
+    // AED 450 against a claim of AED 400: held.
+    let paid = format!("line_{}_paid", line.id);
+    app.htmx()
+        .post(
+            &format!("/payer-bills/{}/remittance", id.0),
+            &[
+                ("reference", "ADV-1"),
+                ("date", today().to_string().as_str()),
+                (paid.as_str(), "450.00"),
+            ],
+        )
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", id.0));
+    let held = PayerBill::find_or_404(app.db(), id.0).await.unwrap();
+    assert_eq!(held.status, PayerBillStatus::Issued, "nothing is recorded yet");
+    assert!(PayerRemittance::query().get(app.db()).await.unwrap().is_empty());
+    let request = approvals::pending_for(app.db(), &held.subject())
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(request.action, "invoicing.payer_money");
+    assert_eq!(request.requester_id, cara.id);
+    let own = approvals::approve(app.state(), request.id, &cara, "").await;
+    assert!(matches!(own, Err(Error::Forbidden)), "{own:?}");
+
+    approvals::approve(app.state(), request.id, &cleo, "agreed")
+        .await
+        .unwrap();
+    let paid_bill = PayerBill::find_or_404(app.db(), id.0).await.unwrap();
+    assert_eq!(paid_bill.status, PayerBillStatus::Paid);
+    assert_eq!((paid_bill.paid_total, paid_bill.balance), (40_000, 0));
+    assert_eq!(
+        payer_credit::balance(app.db(), payer, legal.id, "AED")
+            .await
+            .unwrap(),
+        5_000,
+        "AED 50 is the payer's credit"
+    );
+}
+
+/// `FIN.ACL.18`: a chargeback is accepted only after a second person approves
+/// it: the accountant who asks cannot approve, another accountant does, and
+/// only then is the gateway told; a reason is required. A real online payment
+/// of an invoice, charged back by the gateway.
+#[renox::test]
+async fn accepting_a_chargeback_needs_a_second_person_and_tells_the_gateway() {
+    use wl_payments::chargeback::{self, DisputeOpened};
+    use wl_payments::chargeback_close::ACCEPT_ACTION;
+
+    let gateway = FakeGateway::new();
+    let app = clinics_booted_with_gateway(gateway.clone()).await;
+    let rita = person(&app, "Rita", RECEIVABLES).await;
+    let cara = person(&app, "Cara", ACCOUNTANT).await;
+    let cleo = person(&app, "Cleo", ACCOUNTANT).await;
+    let patient = tenant(&app, "Sara Ali").await;
+    let legal = entity(&app, "PGC").await;
+    let invoice = issued_invoice(&app, &rita, patient, 80_000, VatCategory::ZeroRated, day(10)).await;
+    let link = payment_link::create(
+        app.state(),
+        NewLink::new(patient, legal.id, 80_000, "AED").target(&Subject::new("invoicing.invoice", invoice.id), 80_000),
+    )
+    .await
+    .expect("the link is made");
+    app.logout();
+    app.htmx()
+        .post(
+            &format!("{}/start", payment_link::path(app.state(), link.id)),
+            &[],
+        )
+        .await
+        .assert_status(303);
+    let payment = Payment::query()
+        .where_(Payment::PAYMENT_LINK_ID.eq(link.id))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("a payment on the link");
+    let txn = payment.gateway_transaction.clone().expect("a transaction");
+    online::gateway_succeeded(app.state(), &txn, 80_000)
+        .await
+        .unwrap()
+        .expect("confirmed");
+    let charged = chargeback::gateway_dispute_opened(
+        app.state(),
+        &txn,
+        &DisputeOpened::new("dp_1").evidence_due(day(30)),
+    )
+    .await
+    .unwrap()
+    .expect("charged back");
+    assert_eq!(charged.status, PaymentStatus::ChargedBack);
+
+    let path = format!("/payments/{}/accept-chargeback", payment.id);
+    app.acting_as(&cara);
+    app.htmx()
+        .post(&path, &[("reason", " ")])
+        .await
+        .assert_status(422);
+    app.htmx()
+        .post(&path, &[("reason", "Not worth contesting")])
+        .await
+        .assert_ok();
+    let waiting = ApprovalRequest::pending_about(app.db(), &payment.subject())
+        .await
+        .unwrap();
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(waiting[0].action, ACCEPT_ACTION);
+    assert_eq!(waiting[0].requester_id, cara.id);
+    assert!(gateway.accepted().is_empty(), "the gateway is not told yet");
+    let approve = format!("/approvals/{}/approve", waiting[0].id);
+    app.htmx()
+        .post(&approve, &[("comment", "")])
+        .await
+        .assert_forbidden();
+
+    app.acting_as(&cleo);
+    app.htmx()
+        .post(&approve, &[("comment", "")])
+        .await
+        .assert_ok();
+    let accepted = Payment::find_or_404(app.db(), payment.id).await.unwrap();
+    assert_eq!(accepted.status, PaymentStatus::Reversed);
+    assert_eq!(accepted.dispute_outcome.as_deref(), Some("accepted"));
+    assert_eq!(gateway.accepted(), [(txn, "dp_1".to_owned())]);
+}
+
 // ---- claims ---------------------------------------------------------------------
 
 /// A draft payer bill of `claimed` fils under `agreement` for visit `visit`,
@@ -447,6 +687,82 @@ async fn a_deposit_payment_pending_for_30_minutes_is_checked_with_the_gateway() 
         Some(PaymentFailureKind::Declined),
         "the gateway was asked: a decline, not a timeout"
     );
+}
+
+/// Done when (payments), late confirmation: the gateway confirms a deposit
+/// payment after it failed and after the booking was cancelled; the money is
+/// refunded to the same card at once, with no second person (the 05 setting
+/// is on), through the real booking, payment link and refund of the host.
+#[renox::test]
+async fn a_late_confirmation_after_the_booking_was_cancelled_is_refunded_at_once() {
+    let gateway = FakeGateway::new();
+    let app = clinics_booted_with_gateway(gateway.clone()).await;
+    let rita = person(&app, "Rita", RECEPTIONIST).await;
+    let doctor = clinic_doctor(&app, "Dr A").await;
+    let service = clinic_service(&app, "checkup", 0, &doctor).await;
+    let patient = tenant(&app, "Sara Ali").await;
+    let legal = entity(&app, "PGC").await;
+    let booking = clinic_booking(
+        &app,
+        patient,
+        &service,
+        &doctor,
+        renox::db::now() + renox::chrono::TimeDelta::hours(5),
+    )
+    .await;
+    let link = payment_link::create(
+        app.state(),
+        NewLink::new(patient, legal.id, 20_000, "AED").prepaid(booking.subject()),
+    )
+    .await
+    .expect("the link is made");
+    app.logout();
+    app.htmx()
+        .post(
+            &format!("{}/start", payment_link::path(app.state(), link.id)),
+            &[],
+        )
+        .await
+        .assert_status(303);
+    let payment = Payment::query()
+        .where_(Payment::PAYMENT_LINK_ID.eq(link.id))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("a payment on the link");
+    let txn = payment.gateway_transaction.clone().expect("a transaction");
+    online::gateway_failed(app.state(), &txn, PaymentFailureKind::Timeout, "")
+        .await
+        .unwrap()
+        .expect("the payment failed");
+
+    // The booking is cancelled before the gateway answers.
+    app.acting_as(&rita);
+    app.htmx()
+        .post(
+            &format!("/scheduling/bookings/{}/cancel", booking.id),
+            &[("reason_code", "equipment_failure")],
+        )
+        .await
+        .assert_status(303);
+
+    let late = online::gateway_succeeded(app.state(), &txn, 20_000)
+        .await
+        .unwrap()
+        .expect("confirmed late");
+    assert_eq!(late.status, PaymentStatus::Received);
+    let refunds = Refund::query()
+        .where_(Refund::SOURCE_KIND.eq("payment"))
+        .where_(Refund::SOURCE_ID.eq(payment.id))
+        .get(app.db())
+        .await
+        .unwrap();
+    assert_eq!(refunds.len(), 1, "one refund of the late payment");
+    assert_eq!(refunds[0].amount, 20_000);
+    assert_eq!(refunds[0].reason, wl_payments::late::REASON);
+    assert_eq!(refunds[0].requested_by, None, "no person asked");
+    assert_eq!(refunds[0].approved_by, None, "and none approved");
+    assert_eq!(gateway.refunded(), [(txn, 20_000)], "back to the same card");
 }
 
 /// Done when (payments), 2: a failed refund is retried once, 24 hours after
@@ -1043,9 +1359,8 @@ async fn an_owner_drawing_needs_the_owner_and_is_not_operating_cost() {
 // ---- the settings, read back from the booted host ------------------------------------------
 
 /// The 05 values as the booted host holds them: the invoicing, payments,
-/// sales and inventory settings, the cash holder and shortage values of the
-/// seed (the handover itself is `BL-PAY-17`), and the two things 05 must not
-/// do (salary deduction for a shortage, `allow_consumption`).
+/// sales and inventory settings and the negative stock policy of every store
+/// (no `allow_consumption`).
 #[renox::test]
 async fn the_booted_host_holds_the_05_money_and_stock_values() {
     let app = clinics_booted().await;
@@ -1093,7 +1408,33 @@ async fn the_booted_host_holds_the_05_money_and_stock_values() {
     assert!(inventory.release_needs_second_person("recall"));
     assert_eq!(inventory.reminder_hours("quality", None), 24);
 
-    // Cash holders and shortages: the values the handover will read.
+    // 05 §7.2: no branch store allows consumption below zero. A new location
+    // blocks (the module's default is pinned here, so that a change of it
+    // cannot silently let a clinic store go negative), and so does every
+    // location of the booted clinic.
+    use wl_inventory::{Location, NegativeStockPolicy};
+    assert_eq!(
+        Location::new("NEW", "New store").negative_stock_policy,
+        NegativeStockPolicy::Block
+    );
+    for location in Location::query().get(app.db()).await.unwrap() {
+        assert_eq!(
+            location.negative_stock_policy,
+            NegativeStockPolicy::Block,
+            "{}",
+            location.code
+        );
+    }
+}
+
+/// The cash values of the 05 table that the handover of `BL-PAY-17` (#110,
+/// not built) will read are constants in `clinics::seed`. This proves only
+/// the constants: it is **not** coverage of the cash handover (one handover
+/// per receptionist, branch and day, counted by someone other than the
+/// holder, a shortage written off only with approval), which stays open with
+/// #110.
+#[test]
+fn the_cash_values_for_the_future_handover_are_the_05_constants() {
     assert_eq!(clinics::seed::CASH_HOLDER_MODE, "staff");
     assert_eq!(clinics::seed::CASH_HANDOVER_PERIOD, "day");
     assert_eq!(clinics::seed::CASH_SHORTAGE_WRITE_OFF_LIMIT, 0);

@@ -256,26 +256,95 @@ async fn releasing_a_recall_held_lot_needs_a_second_holder_of_lots_release() {
     assert_eq!(closed.status, HoldStatus::Closed);
 }
 
+/// Done when (stock), `STK.RUL.07`: an open hold on a suspect consumable
+/// reminds the deciders every 24 hours (not at 23) and tells the owner every
+/// 48, once each, as the hourly task runs it.
+#[renox::test]
+async fn an_open_quality_hold_is_reminded_every_24_hours_and_escalated_at_48() {
+    use wl_inventory::hold_reminder::{ESCALATION_NOTICE, REMINDER_NOTICE, TASK};
+
+    let app = clinics_booted().await;
+    let hal = person(&app, "Hal", STOREKEEPER).await;
+    let mona = person(&app, "Mona", CLINIC_MANAGER).await;
+    let olga = person(&app, "Olga", OWNER).await;
+    let mut item = Item::new("FILLER", "Dermal filler", "syringe").lot_tracked();
+    item.save(app.db()).await.unwrap();
+    let mut branch = Location::new("BRANCH-1", "Branch 1");
+    branch.save(app.db()).await.unwrap();
+    let lot = held_lot(&app, &item, &branch, "L11").await;
+    place_hold(&app, &mona, &lot, "quality").await;
+
+    let hour = 3600;
+    app.travel(Duration::from_secs(23 * hour));
+    app.run_scheduled(TASK).await.unwrap();
+    assert!(messages_to(&app, REMINDER_NOTICE, &hal).await.is_empty());
+
+    app.travel(Duration::from_secs(hour));
+    app.run_scheduled(TASK).await.unwrap();
+    assert_eq!(messages_to(&app, REMINDER_NOTICE, &hal).await.len(), 1);
+    assert_eq!(messages_to(&app, REMINDER_NOTICE, &mona).await.len(), 1);
+    assert!(messages_to(&app, ESCALATION_NOTICE, &olga).await.is_empty());
+    // Once for the period, however often it runs.
+    app.run_scheduled(TASK).await.unwrap();
+    assert_eq!(messages_to(&app, REMINDER_NOTICE, &hal).await.len(), 1);
+
+    app.travel(Duration::from_secs(24 * hour));
+    app.run_scheduled(TASK).await.unwrap();
+    assert_eq!(messages_to(&app, REMINDER_NOTICE, &hal).await.len(), 2);
+    assert_eq!(messages_to(&app, ESCALATION_NOTICE, &olga).await.len(), 1);
+}
+
 /// The recall owner is the owner / medical director and the notices are sent
-/// by the clinic manager (05 section 7.2): the roles hold the permissions.
-#[test]
-fn the_owner_opens_the_recall_and_the_clinic_manager_sends_the_notices() {
-    let holds = |role: &str, permission: &str| {
-        host::roles::ROLES
-            .iter()
-            .find(|(name, _)| *name == role)
-            .is_some_and(|(_, grants)| grants.contains(&permission))
-    };
-    assert!(holds(OWNER, wl_inventory::permissions::RECALLS_MANAGE));
-    assert!(holds(CLINIC_MANAGER, clinics::permissions::RECALLS_NOTIFY));
-    assert!(holds(
-        CLINIC_MANAGER,
-        wl_inventory::permissions::LOTS_RELEASE
-    ));
-    assert!(holds(STOREKEEPER, wl_inventory::permissions::LOTS_RELEASE));
-    // `STK.RUL.06` tells the clinic manager through `stock.approve`.
-    assert!(holds(
-        CLINIC_MANAGER,
-        wl_inventory::permissions::STOCK_APPROVE
-    ));
+/// by the clinic manager (05 section 7.2), with real users and real calls:
+/// the owner opens a recall of a lot (it is held at once), the storekeeper and
+/// the receptionist cannot, the clinic manager sends the notices (the page
+/// answers, with nobody to tell) and the receptionist may not.
+#[renox::test]
+async fn the_owner_opens_the_recall_and_the_clinic_manager_sends_the_notices() {
+    let app = clinics_booted().await;
+    let olga = person(&app, "Olga", OWNER).await;
+    let hal = person(&app, "Hal", STOREKEEPER).await;
+    let mona = person(&app, "Mona", CLINIC_MANAGER).await;
+    let rita = person(&app, "Rita", host::roles::RECEPTIONIST).await;
+    let mut item = Item::new("FILLER", "Dermal filler", "syringe").lot_tracked();
+    item.save(app.db()).await.unwrap();
+    let mut branch = Location::new("BRANCH-1", "Branch 1");
+    branch.save(app.db()).await.unwrap();
+    let lot = held_lot(&app, &item, &branch, "L12").await;
+    let item_id = item.id.to_string();
+    let form = [
+        ("source", "supplier"),
+        ("items", item_id.as_str()),
+        ("lot_numbers", "L12"),
+        ("reason", "Contamination found by the supplier"),
+    ];
+
+    for refused in [&hal, &rita] {
+        app.acting_as(refused);
+        app.htmx().post("/recalls", &form).await.assert_forbidden();
+    }
+    assert_eq!(
+        Lot::find_or_404(app.db(), lot.id).await.unwrap().status,
+        LotStatus::Released,
+        "nothing was held"
+    );
+    app.acting_as(&olga);
+    app.htmx().post("/recalls", &form).await.assert_ok();
+    assert_eq!(
+        Lot::find_or_404(app.db(), lot.id).await.unwrap().status,
+        LotStatus::OnHold,
+        "the recalled lot is held at once"
+    );
+    let recall = wl_inventory::Recall::query()
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("the recall is open");
+
+    let notices = format!("/clinics/recalls/{}/notices", recall.id);
+    app.acting_as(&rita);
+    app.htmx().post(&notices, &[]).await.assert_forbidden();
+    app.acting_as(&mona);
+    let answer = app.htmx().post(&notices, &[]).await;
+    assert_ne!(answer.status.as_u16(), 403, "the clinic manager may send");
 }
