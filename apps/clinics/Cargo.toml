@@ -21,3 +21,5 @@ wl-parties = { path = "../../crates/wl-parties" }
 wl-scheduling = { path = "../../crates/wl-scheduling" }
 wl-payments = { path = "../../crates/wl-payments" }
 wl-hr = { path = "../../crates/wl-hr" }
+# The real notifier, for the tests that prove the quiet hours.
+wl-notify = { path = "../../crates/wl-notify" }

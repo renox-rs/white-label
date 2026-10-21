@@ -10,7 +10,7 @@ use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::Subject;
 use wl_kernel::documents::{DocumentAccepted, DocumentId, DocumentUploaded};
-use wl_kernel::notify::{NotifyRecipient, Urgency, notification_type};
+use wl_kernel::notify::NotifyRecipient;
 use wl_scheduling::Booking;
 use wl_scheduling::pages::local_text;
 
@@ -19,7 +19,7 @@ use clinics::flags::{AppointmentFlag, FlagCause};
 use clinics::policies::{self, NewPolicy};
 use clinics::{InsurancePolicy, appointments};
 use renox::chrono::NaiveDate;
-use support::{Clinic, PATIENT, at, boot, day};
+use support::{Clinic, PATIENT, PATIENT_EMAIL, at, boot, boot_real_notify, day, dubai};
 
 const PAYER: PartyId = PartyId(900);
 
@@ -31,7 +31,10 @@ struct Scene {
 }
 
 async fn scene() -> Scene {
-    let t = boot().await;
+    scene_on(boot().await).await
+}
+
+async fn scene_on(t: Clinic) -> Scene {
     let doctor = t.practitioner("Dr A", 61, None).await;
     let service = t.consultation(&[&doctor]).await;
     Scene { t, doctor, service }
@@ -103,9 +106,9 @@ fn long(date: NaiveDate) -> String {
 
 /// Done when 1: an insured appointment on day 5 and a policy valid through day
 /// 3: at 02:00 of day 3 the appointment is flagged for the front desk and the
-/// patient gets one message with the upload link. The message is a normal
-/// urgency type, which wl-notify holds until the quiet hours end and then
-/// sends.
+/// patient gets one message with the upload link. (The hold for the quiet
+/// hours is proved with the real wl-notify in
+/// `a_card_request_queued_at_night_is_held_until_08_00`.)
 #[renox::test]
 async fn a_policy_that_ends_before_the_visit_is_asked_for_a_new_card() {
     let s = scene().await;
@@ -126,12 +129,6 @@ async fn a_policy_that_ends_before_the_visit_is_asked_for_a_new_card() {
     assert_eq!(
         asked[0].recipients,
         [NotifyRecipient::Party { id: PATIENT }]
-    );
-    let kind = notification_type(CARD_UPLOAD_REQUEST).expect("the type is registered");
-    assert_eq!(
-        kind.urgency,
-        Urgency::Normal,
-        "held for the quiet hours, never dropped"
     );
 
     // The same day again: still one message and one flag.
@@ -364,4 +361,68 @@ async fn booking_rescheduling_cancelling_and_dependants() {
         [NotifyRecipient::Party { id: PartyId(80) }]
     );
     assert!(support::Messages::body(last).contains("/portal/link/80/document_upload"));
+}
+
+/// Moves the clock of the app to a second after the instant `to` (the travel
+/// counts whole seconds from the real clock, which keeps running).
+fn clock_at(t: &Clinic, to: renox::db::DateTime) {
+    t.app.travel_back();
+    let ahead = (to - renox::db::now()).to_std().expect("ahead");
+    t.app
+        .travel(std::time::Duration::from_secs(ahead.as_secs() + 1));
+}
+
+/// Done when 1, with the real wl-notify: the request is made at 22:15, inside
+/// the quiet hours (21:00-08:00) of a normal message to a patient, so it is
+/// deferred, nothing reaches the provider, and the release at 08:00 sends it.
+#[renox::test]
+async fn a_card_request_queued_at_night_is_held_until_08_00() {
+    use wl_notify::{Message, MessageStatus, release};
+
+    let s = scene_on(boot_real_notify().await).await;
+    let policy = s.policy(3, None).await;
+    let booking = s.insured(5, &policy).await;
+    let date = day(3).to_string();
+
+    clock_at(&s.t, dubai(&date, 22, 15));
+    let ran = s
+        .t
+        .app
+        .at_travelled_time(card_requests::run_daily(s.t.state(), dubai(&date, 22, 15)))
+        .await
+        .unwrap();
+    assert_eq!(ran, [booking.id]);
+    s.t.app.run_jobs().await;
+
+    let messages = Message::query().order_by(Message::ID).get(s.t.db()).await.unwrap();
+    let asked: Vec<_> = messages
+        .iter()
+        .filter(|m| m.type_key == CARD_UPLOAD_REQUEST)
+        .collect();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].status, MessageStatus::Deferred);
+    assert_eq!(asked[0].scheduled_for, Some(dubai(&day(4).to_string(), 8, 0)));
+    assert!(s.t.outbox.sent().is_empty(), "nothing sent in the quiet hours");
+
+    // Still held one minute before 08:00.
+    clock_at(&s.t, dubai(&day(4).to_string(), 7, 59));
+    assert_eq!(
+        s.t.app
+            .at_travelled_time(release::run_due(s.t.state(), renox::db::now()))
+            .await
+            .unwrap(),
+        0
+    );
+    s.t.app.run_jobs().await;
+    assert!(s.t.outbox.sent().is_empty());
+
+    // At 08:00 the scheduled release queues it and the send job sends it.
+    clock_at(&s.t, dubai(&day(4).to_string(), 8, 0));
+    s.t.app.run_scheduled(release::TASK).await.unwrap();
+    s.t.app.run_jobs().await;
+    let sent = s.t.outbox.sent();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].address, PATIENT_EMAIL);
+    let message = Message::find(s.t.db(), asked[0].id).await.unwrap().unwrap();
+    assert_eq!(message.status, MessageStatus::Sent);
 }

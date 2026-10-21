@@ -20,7 +20,9 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_kernel::documents::{dubai_date, provide_guard};
-use wl_kernel::notify::provide_notifier;
+use wl_kernel::notify::{
+    ContactKind, NotifyChannel, PartyContactPoint, PartyContacts, provide_notifier,
+};
 use wl_kernel::parties::{
     PartyDirectory, PartyFuture, PartyStatus, PartySummary, provide_directory,
 };
@@ -157,6 +159,28 @@ impl PartyDirectory for Guardians {
         Box::pin(async { Ok(None) })
     }
 
+    fn contacts<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<PartyContacts>> {
+        // Only the patient can be reached, by e-mail (the real notifier tests).
+        let found = (party == PATIENT).then(|| PartyContacts {
+            party,
+            language: "en".to_owned(),
+            preferred_channel: None,
+            points: vec![PartyContactPoint {
+                id: 1,
+                kind: ContactKind::Email,
+                address: PATIENT_EMAIL.to_owned(),
+                primary: true,
+                verified: true,
+                valid: true,
+            }],
+        });
+        Box::pin(async move { Ok(found) })
+    }
+
     fn guardians<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Vec<PartyId>> {
         Box::pin(async move {
             Ok(self
@@ -170,8 +194,51 @@ impl PartyDirectory for Guardians {
     }
 }
 
+/// The patient's e-mail address in the real-notifier tests.
+pub const PATIENT_EMAIL: &str = "patient@example.com";
+
+/// The e-mails the real wl-notify handed to its provider, oldest first.
+#[derive(Clone, Default)]
+pub struct Outbox(Arc<Mutex<Vec<wl_notify::Outgoing>>>);
+
+impl Outbox {
+    /// What was sent.
+    pub fn sent(&self) -> Vec<wl_notify::Outgoing> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl wl_notify::ChannelProvider for Outbox {
+    fn name(&self) -> &'static str {
+        "clinics-test-email"
+    }
+
+    fn channel(&self) -> NotifyChannel {
+        NotifyChannel::Email
+    }
+
+    fn available(&self, _state: &AppState) -> bool {
+        true
+    }
+
+    fn send<'a>(
+        &'a self,
+        _state: &'a AppState,
+        outgoing: &'a wl_notify::Outgoing,
+    ) -> wl_notify::channels::ProviderFuture<'a, std::result::Result<String, wl_notify::SendError>>
+    {
+        let n = {
+            let mut sent = self.0.lock().unwrap();
+            sent.push(outgoing.clone());
+            sent.len()
+        };
+        Box::pin(async move { Ok(format!("email-{n}")) })
+    }
+}
+
 /// Provides the fakes.
 struct Harness {
+    real_notify: bool,
     guardians: Guardians,
     refunds: Refunds,
     work: Work,
@@ -189,7 +256,9 @@ impl Module for Harness {
     fn register(&self, app: &mut Registry) {
         provide_payment_recorder(app, self.refunds.clone());
         provide_work_done_status(app, self.work.clone());
-        provide_notifier(app, self.messages.clone());
+        if !self.real_notify {
+            provide_notifier(app, self.messages.clone());
+        }
         provide_guard(app, self.docs.clone());
         provide_task_creator(app, self.tasks.clone());
         provide_self_pay_prices(app, self.prices.clone());
@@ -213,6 +282,8 @@ pub struct Clinic {
     pub tasks: Tasks,
     /// The self-pay price list.
     pub prices: Prices,
+    /// What the real wl-notify sent ([`boot_real_notify`] only).
+    pub outbox: Outbox,
     /// The guardians of the dependants.
     pub guardians: Guardians,
     /// The `QualificationExpired` events wl-hr emitted.
@@ -234,6 +305,16 @@ pub fn at(date: NaiveDate, hour: u32) -> DateTime {
 /// Boots the clinics app: scheduling, HR and the fakes, with the 05 reason
 /// codes and a self-pay price of AED 450.00 for the consultation.
 pub async fn boot() -> Clinic {
+    boot_with(false).await
+}
+
+/// Like [`boot`] with the real wl-notify in place of the notifier fake: its
+/// quiet hours hold a message to the patient, its provider is [`Outbox`].
+pub async fn boot_real_notify() -> Clinic {
+    boot_with(true).await
+}
+
+async fn boot_with(real_notify: bool) -> Clinic {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -246,6 +327,7 @@ pub async fn boot() -> Clinic {
     let tasks = Tasks::default();
     let prices = Prices::default();
     let guardians = Guardians::default();
+    let outbox = Outbox::default();
     let expired = Recorded::<QualificationExpired>::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in clinics::reasons::SCHEDULING_REASON_CODES {
@@ -259,6 +341,7 @@ pub async fn boot() -> Clinic {
         .module(scheduling_module)
         .module(clinics::Clinics)
         .module(Harness {
+            real_notify,
             guardians: guardians.clone(),
             refunds: refunds.clone(),
             work,
@@ -267,6 +350,11 @@ pub async fn boot() -> Clinic {
             tasks: tasks.clone(),
             prices: prices.clone(),
         });
+    let app = if real_notify {
+        app.module(wl_notify::WlNotify::new().provider(outbox.clone()))
+    } else {
+        app
+    };
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
     let app = record(app, &events.checked_in);
@@ -290,6 +378,7 @@ pub async fn boot() -> Clinic {
         docs,
         tasks,
         prices,
+        outbox,
         guardians,
         expired,
         _views: views,
