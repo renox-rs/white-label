@@ -26,7 +26,9 @@ async fn scene() -> (World, InvoiceId, InvoiceId) {
     remit::set_netting_allowed(w.db(), SOUQ, true)
         .await
         .unwrap();
-    let first = w.delivery_invoice(SOUQ, "INV-1", 50_000, (2026, 10, 1)).await;
+    let first = w
+        .delivery_invoice(SOUQ, "INV-1", 50_000, (2026, 10, 1))
+        .await;
     let second = w
         .delivery_invoice(SOUQ, "INV-2", 180_000, (2026, 11, 1))
         .await;
@@ -273,7 +275,8 @@ async fn an_invoice_written_off_meanwhile_is_removed_with_its_reason() {
 async fn without_netting_in_the_contract_no_offset_appears() {
     let w = boot_with_payments().await;
     w.cod_terms(SOUQ, 0, Some(ACCOUNT)).await;
-    w.delivery_invoice(SOUQ, "INV-1", 50_000, (2026, 10, 1)).await;
+    w.delivery_invoice(SOUQ, "INV-1", 50_000, (2026, 10, 1))
+        .await;
     w.delivered(SOUQ, "ORD-1", "2000").await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;

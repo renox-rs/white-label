@@ -73,7 +73,10 @@ async fn a_disputed_delivery_flags_the_issued_invoice_of_its_shipment() {
     .await
     .assert_status(303);
     let flagged = Invoice::find_or_404(w.db(), invoice.id).await.unwrap();
-    assert!(flagged.disputed, "the invoice that bills the shipment is disputed");
+    assert!(
+        flagged.disputed,
+        "the invoice that bills the shipment is disputed"
+    );
 
     let delivery = w.delivery_of(&w.reload(&shipment).await).await;
     w.post(

@@ -7,8 +7,8 @@
 mod support;
 
 use logistics::portal::{self, Access};
-use renox::chrono::TimeDelta;
 use logistics::{Remittance, RemittanceStatus};
+use renox::chrono::TimeDelta;
 use support::{SOUQ, boot, boot_with_payments};
 use wl_kernel::documents::today;
 
@@ -121,9 +121,13 @@ async fn paid_statement() -> (support::World, Remittance) {
     w.delivered(SOUQ, "ORD-1", "500").await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.amal,
         &format!("/remittances/{}/pay", draft.id),

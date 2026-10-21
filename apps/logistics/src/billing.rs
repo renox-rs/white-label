@@ -177,12 +177,7 @@ pub async fn mark_shipment_invoiced(db: &Db, id: i64, at: DateTime) -> Result {
 }
 
 /// Records that run `run` billed `charges` and `shipments`.
-async fn link_run(
-    db: &Db,
-    run: i64,
-    charges: &[i64],
-    shipments: &BTreeSet<i64>,
-) -> Result {
+async fn link_run(db: &Db, run: i64, charges: &[i64], shipments: &BTreeSet<i64>) -> Result {
     let run = Some(run);
     for id in charges {
         Charge::query()
@@ -238,20 +233,19 @@ pub async fn release_discarded(state: &AppState, client: Option<PartyId>) -> Res
         for shipment in &shipments {
             Shipment::query()
                 .where_(Shipment::ID.eq(shipment.id))
-                .update(&mut tx, &[("invoiced_on", &none), ("billing_run_id", &no_run)])
+                .update(
+                    &mut tx,
+                    &[("invoiced_on", &none), ("billing_run_id", &no_run)],
+                )
                 .await?;
-            track(
-                &mut tx,
-                shipment.id,
-                "billing_released",
-                &run.period,
-                None,
-            )
-            .await?;
+            track(&mut tx, shipment.id, "billing_released", &run.period, None).await?;
         }
         Charge::query()
             .where_(Charge::BILLING_RUN_ID.eq(run.id))
-            .update(&mut tx, &[("billed_on", &none), ("billing_run_id", &no_run)])
+            .update(
+                &mut tx,
+                &[("billed_on", &none), ("billing_run_id", &no_run)],
+            )
             .await?;
         BillingRun::query()
             .where_(BillingRun::ID.eq(run.id))

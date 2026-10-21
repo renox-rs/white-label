@@ -74,10 +74,10 @@ impl TaskCreator for TicketDesk {
                 return Ok(None);
             }
             if !KNOWN_CATEGORIES.contains(&ticket.category_key.trim()) {
-                return Err(abort(StatusCode::UNPROCESSABLE_ENTITY, format!(
-                    "`{}` is not a ticket category.",
-                    ticket.category_key
-                )));
+                return Err(abort(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("`{}` is not a ticket category.", ticket.category_key),
+                ));
             }
             let mut opened = self.opened.lock().unwrap();
             opened.push(ticket);

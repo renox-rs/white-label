@@ -388,7 +388,9 @@ async fn a_reversed_shipment_leaves_billing_until_it_is_delivered_again() {
     roles(&w).await;
     let boss = manager(&w, "Rana").await;
     let second = manager(&w, "Samir").await;
-    rates::set_band(w.db(), SOUQ, "", 5_000, 2_500).await.unwrap();
+    rates::set_band(w.db(), SOUQ, "", 5_000, 2_500)
+        .await
+        .unwrap();
     let shipment = w.delivered(SOUQ, "ORD-1", "120").await;
     assert_eq!(Shipment::billable(w.db(), SOUQ).await.unwrap().len(), 1);
 
@@ -448,7 +450,9 @@ async fn an_invoiced_shipment_gets_a_credit_due_for_the_invoice_owner() {
         .unwrap();
     let boss = manager(&w, "Rana").await;
     let second = manager(&w, "Samir").await;
-    rates::set_band(w.db(), SOUQ, "", 5_000, 2_500).await.unwrap();
+    rates::set_band(w.db(), SOUQ, "", 5_000, 2_500)
+        .await
+        .unwrap();
     let shipment = w.delivered(SOUQ, "ORD-1", "120").await;
     // The November run bills it (AED 25) on a real monthly draft.
     let drafted = billing::run_monthly(w.state(), first_of_next_month())

@@ -33,8 +33,8 @@ use wl_parties::{CompanyDetails, NewParty, create};
 use wl_sales::LeadSource;
 
 use support::{
-    messages_to,
-    company, entity, logistics_booted, logistics_booted_with, person, scoped_person, tenant,
+    company, entity, logistics_booted, logistics_booted_with, messages_to, person, scoped_person,
+    tenant,
 };
 
 /// The vehicle (an asset) of the runs.
@@ -523,7 +523,15 @@ async fn the_rule_that_fails_for_good_alerts_the_admin_and_the_owner_role() {
     let manager = person(&app, "Olivia", OPERATIONS_MANAGER).await;
     let driver = person(&app, "Dev", host::roles::DRIVER).await;
     document(&app, &van(), "mulkiya", day(-3)).await;
-    run(&app, "RUN-T-1", &driver, day(1), "Depot A", VehicleType::Van).await;
+    run(
+        &app,
+        "RUN-T-1",
+        &driver,
+        day(1),
+        "Depot A",
+        VehicleType::Van,
+    )
+    .await;
     // The grounding cannot be stored: the rule fails.
     renox::db::sql("DROP TABLE logistics_vehicle_groundings")
         .execute(app.db())
@@ -543,7 +551,11 @@ async fn the_rule_that_fails_for_good_alerts_the_admin_and_the_owner_role() {
         .at_travelled_time(run_ground_rule(app.state(), night))
         .await
         .unwrap();
-    assert_eq!(outcome, RunOutcome::Failed, "the fifth attempt fails for good");
+    assert_eq!(
+        outcome,
+        RunOutcome::Failed,
+        "the fifth attempt fails for good"
+    );
 
     let alerts = ComplianceAlert::query().get(app.db()).await.unwrap();
     assert_eq!(alerts.len(), 1, "one alert");
@@ -899,7 +911,10 @@ async fn the_registration_kinds_have_the_company_admin_and_a_trademark_notifies_
     // another certification.
     for (key, days) in [
         ("trademark_registration", defaults::TRADEMARK_REMINDERS),
-        ("other_certification", defaults::OTHER_CERTIFICATION_REMINDERS),
+        (
+            "other_certification",
+            defaults::OTHER_CERTIFICATION_REMINDERS,
+        ),
     ] {
         let kind = DocumentKind::by_key(app.db(), key).await.unwrap().unwrap();
         assert_eq!(kind.reminder_offsets.0, days, "{key}");
@@ -967,7 +982,10 @@ async fn the_claim_and_the_reweigh_dispute_open_in_the_real_ticket_desk() {
         renox::db::now(),
     )
     .await;
-    assert!(refused.is_err(), "the real desk refuses an unknown category");
+    assert!(
+        refused.is_err(),
+        "the real desk refuses an unknown category"
+    );
 }
 
 /// AC5 (ASP half): with the e-invoicing ASP out of reach (no adapter answers)
@@ -1036,17 +1054,17 @@ async fn an_asp_that_is_down_for_24_hours_leaves_the_invoice_issued_and_raises_t
     }
     let tasks = stuck(&app).await;
     assert_eq!(tasks.len(), 1, "one task, once");
-    assert!(tasks[0].message.contains("24 hours"), "{}", tasks[0].message);
+    assert!(
+        tasks[0].message.contains("24 hours"),
+        "{}",
+        tasks[0].message
+    );
 }
 
 /// Sends the notice `type_key` to `party` with a bouncing mailbox, runs the
 /// queued jobs, and answers the staff tasks of the give-up (tickets whose
 /// source key is that of a give-up about the shipment).
-async fn gives_up(
-    app: &TestApp,
-    type_key: &str,
-    party: PartyId,
-) -> Vec<wl_ticketing::Ticket> {
+async fn gives_up(app: &TestApp, type_key: &str, party: PartyId) -> Vec<wl_ticketing::Ticket> {
     use wl_kernel::notify::{self, NotifyRequest};
     let request = NotifyRequest::new(type_key, Subject::new("logistics.shipment", 1))
         .subject_label("S-1")
@@ -1103,20 +1121,29 @@ async fn a_notice_that_gives_up_is_followed_by_the_reaction_of_its_group() {
     let tracked = company(&app, "Tracked Trading LLC").await;
     let tasks = gives_up(&app, logistics::notices::CLIENT_NOTICE, tracked).await;
     assert!(!mail.attempts().is_empty(), "the notice was e-mailed");
-    assert!(tasks.is_empty(), "a tracking notice that gives up opens no task");
+    assert!(
+        tasks.is_empty(),
+        "a tracking notice that gives up opens no task"
+    );
 
     // The COD statement (invoices group): the contact is invalid and the
     // accountant has the task.
     let billed = company(&app, "Billed Trading LLC").await;
     let tasks = gives_up(&app, logistics::notices::STATEMENT_NOTICE, billed).await;
-    assert_eq!(email_status(&app, billed).await, wl_parties::ContactStatus::Invalid);
+    assert_eq!(
+        email_status(&app, billed).await,
+        wl_parties::ContactStatus::Invalid
+    );
     assert_eq!(tasks.len(), 1, "one task for the accountant");
     assert_eq!(tasks[0].assignee_user_id, Some(accountant.id));
 
     // The address confirmation (portal group): the dispatcher has the task.
     let asked = company(&app, "Asked Trading LLC").await;
     let tasks = gives_up(&app, logistics::notices::ACTION_REQUEST_DISPATCHER, asked).await;
-    assert_eq!(email_status(&app, asked).await, wl_parties::ContactStatus::Invalid);
+    assert_eq!(
+        email_status(&app, asked).await,
+        wl_parties::ContactStatus::Invalid
+    );
     let for_dispatcher: Vec<_> = tasks
         .iter()
         .filter(|t| t.assignee_user_id == Some(dispatcher.id))
@@ -1170,7 +1197,10 @@ async fn an_overdue_onboarding_step_is_reminded_every_2_days_and_escalated_after
     let before = wl_hr::reminders::run(app.state(), first_due).await.unwrap();
     assert_eq!(before.reminded, 0, "nothing on the due date itself");
     let first = wl_hr::reminders::run(app.state(), at(1)).await.unwrap();
-    assert!(first.reminded > 0, "reminded on the first run after the due date");
+    assert!(
+        first.reminded > 0,
+        "reminded on the first run after the due date"
+    );
     assert_eq!(first.escalated, 0, "not yet");
     assert_eq!(earliest().await.last_reminded_on, Some(at(1)));
     wl_hr::reminders::run(app.state(), at(2)).await.unwrap();
@@ -1245,9 +1275,15 @@ async fn an_over_budget_linkedin_cost_waits_for_the_marketing_manager() {
         requested_by: requester.id,
         manages_costs: false,
     };
-    let within = costs::save(app.state(), cost(480_000)).await.unwrap().unwrap();
+    let within = costs::save(app.state(), cost(480_000))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(within.status, CostStatus::Approved);
-    let over = costs::save(app.state(), cost(40_000)).await.unwrap().unwrap();
+    let over = costs::save(app.state(), cost(40_000))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(over.status, CostStatus::PendingApproval);
     let request = over.approval_request_id.expect("a request");
     assert!(

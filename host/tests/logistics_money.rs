@@ -348,7 +348,11 @@ async fn a_client_disputes_in_the_portal_and_the_dispute_escalates_after_14_days
 
     let by_other = dispute::raise(
         app.state(),
-        DisputeRequest::new(InvoiceId(invoice.id), "not ours", DisputeBy::Party { id: other }),
+        DisputeRequest::new(
+            InvoiceId(invoice.id),
+            "not ours",
+            DisputeBy::Party { id: other },
+        ),
     )
     .await;
     assert!(by_other.is_err(), "another company cannot dispute it");
@@ -706,7 +710,9 @@ async fn the_budget_is_approved_by_the_admin_and_overspending_warns_the_accounta
             note: None,
         })
         .collect();
-    budget_lines::set_lines(app.db(), draft.id, &lines).await.unwrap();
+    budget_lines::set_lines(app.db(), draft.id, &lines)
+        .await
+        .unwrap();
     app.acting_as(&accountant);
     app.htmx()
         .post(&format!("/budgets/{}/submit", draft.id), &[])
@@ -726,7 +732,10 @@ async fn the_budget_is_approved_by_the_admin_and_overspending_warns_the_accounta
         .await
         .unwrap()
         .expect("the admin approves");
-    let approved = CompanyBudget::find(app.db(), draft.id).await.unwrap().unwrap();
+    let approved = CompanyBudget::find(app.db(), draft.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(approved.status, wl_invoicing::BudgetStatus::Approved);
 
     // Two bills take March of the line (AED 10,000) to 100%: one warning.
@@ -736,9 +745,8 @@ async fn the_budget_is_approved_by_the_admin_and_overspending_warns_the_accounta
         async move {
             let mut draft = BillDraft::new(supplier, number, today());
             draft.legal_entity_id = Some(nec_id);
-            draft = draft.line(
-                BillLineDraft::new("Ads", price, VatCategory::Standard).cost_code(&code),
-            );
+            draft = draft
+                .line(BillLineDraft::new("Ads", price, VatCategory::Standard).cost_code(&code));
             let bill = supplier_bill::create(&db, &draft, Some(by)).await.unwrap();
             bill_submit::submit(&state, By::System(Some(by)), bill.id)
                 .await

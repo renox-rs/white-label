@@ -100,7 +100,12 @@ async fn the_absence_note_is_a_real_absence_case_on_the_drivers_hr_record() {
     managers(&w).await;
     let employee = driver_employee(&w).await;
     let (run, start) = returned_with_cash(&w).await;
-    assert!(AbsenceCase::open_of(w.db(), employee.id).await.unwrap().is_empty());
+    assert!(
+        AbsenceCase::open_of(w.db(), employee.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let done = cash_watch::run(w.state(), start + Duration::hours(48))
         .await
@@ -117,7 +122,13 @@ async fn the_absence_note_is_a_real_absence_case_on_the_drivers_hr_record() {
         .await
         .unwrap();
     assert_eq!(again, Watched::default());
-    assert_eq!(AbsenceCase::open_of(w.db(), employee.id).await.unwrap().len(), 1);
+    assert_eq!(
+        AbsenceCase::open_of(w.db(), employee.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 /// AC7: a real attendance record whose check-in follows the clock start makes
@@ -162,7 +173,12 @@ async fn a_real_check_in_after_the_start_means_no_absence_case() {
         .unwrap();
     assert_eq!(done.admin_notices, 1);
     assert_eq!(done.absence_notes, 0);
-    assert!(AbsenceCase::open_of(w.db(), employee.id).await.unwrap().is_empty());
+    assert!(
+        AbsenceCase::open_of(w.db(), employee.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let watch = CashWatch::query().first(w.db()).await.unwrap().unwrap();
     assert_eq!(watch.absence_skipped.as_deref(), Some("checked_in"));
 }
@@ -205,5 +221,11 @@ async fn a_check_in_before_the_start_does_not_excuse_the_driver() {
         .await
         .unwrap();
     assert_eq!(done.absence_notes, 1);
-    assert_eq!(AbsenceCase::open_of(w.db(), employee.id).await.unwrap().len(), 1);
+    assert_eq!(
+        AbsenceCase::open_of(w.db(), employee.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
