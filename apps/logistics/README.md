@@ -3,7 +3,9 @@
 The vertical app for courier and freight companies (03 Logistics). This
 first part is the **Shipment lifecycle**, with the two negative flows that
 need only it: voiding a duplicate booking and cancelling a shipment after
-pickup. The COD remittance and the freight job come with their own issues.
+pickup, then a partial pickup, the re-weigh at the hub and the hold of a
+shipment for an exception. The COD remittance and the freight job come with
+their own issues.
 
 ## What is here
 
@@ -38,9 +40,27 @@ pickup. The COD remittance and the freight job come with their own issues.
   the driver first fails the stop with *cancelled by client*, which does not
   count as an attempt. The client's e-POD makes the returned shipment
   `returned`.
+- **Partial pickup** (`pickup`, BL-LOG-03): `pick_up` (and a drop-off) marks
+  the parcels not handed over *not received*, recalculates the weight and the
+  price from the parcels received and tells the client; a parcel not received
+  is never scanned in later. With nothing scanned the pickup fails, a
+  *pickup failed* event keeps the reason and the shipment stays `created`.
+- **Re-weigh** (`reweigh`, `billing`, BL-LOG-04): hub staff record the
+  measured weight and size with a photo of the scale; above the client's
+  tolerance (on the chargeable weight) the shipment is priced on the measured
+  value and a surcharge line waits for the next monthly draft, held while a
+  billing ticket disputes it. The latest measurement counts.
+- **Hold** (`hold`, BL-LOG-05): `hold` (damaged with photos, address issue,
+  client instruction, re-weigh dispute), `release` (only with the confirmed
+  address or the client's recorded answer) and `return`. A failed attempt with
+  *wrong address* holds the shipment. The address is corrected with an audit
+  until the shipment is out for delivery, and "company liable" links a claim
+  ticket.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
-  exist; `rates::price` is the one place to change.
+  exist; `rates::price` is the one place to change. The zone prices by weight
+(`WeightBand`, `rates::band_price`) and the re-weigh terms (`ClientTerms`) are
+stand-ins in the same way.
 
 ## Routes
 
