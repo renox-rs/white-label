@@ -350,7 +350,10 @@ pub async fn add(
     if let Some(id) = new.corrects_remittance_id {
         let corrected = Remittance::find(&state.db, id).await?;
         if corrected.is_none_or(|r| r.client_party_id != new.client.0) {
-            return Err(guard(english("logistics.adjustment.remittance_unknown", &[])));
+            return Err(guard(english(
+                "logistics.adjustment.remittance_unknown",
+                &[],
+            )));
         }
     }
     let target = match new.remittance_id {

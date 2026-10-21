@@ -92,7 +92,10 @@ pub fn routes() -> Routes {
         .name("logistics.adjustment_approve")
         .post("/remittances/adjustments/{id}/reject", reject_adjustment)
         .name("logistics.adjustment_reject")
-        .post("/remittances/adjustments/{id}/resubmit", resubmit_adjustment)
+        .post(
+            "/remittances/adjustments/{id}/resubmit",
+            resubmit_adjustment,
+        )
         .name("logistics.adjustment_resubmit")
         .post("/remittances/adjustments/{id}/delete", delete_adjustment)
         .name("logistics.adjustment_delete")
@@ -330,7 +333,10 @@ async fn show(
         .into_iter()
         .map(|offset| OffsetRow {
             invoice: offset.invoice_number,
-            due_date: offset.due_date.map(|day| day.to_string()).unwrap_or_default(),
+            due_date: offset
+                .due_date
+                .map(|day| day.to_string())
+                .unwrap_or_default(),
             amount: offset.amount,
             payment: offset.payment_number.unwrap_or_default(),
         })
@@ -357,7 +363,10 @@ async fn show(
             source: line.source.clone(),
             status: t(
                 &lang,
-                &format!("logistics.screen.adjustment_status.{}", line.status.as_str()),
+                &format!(
+                    "logistics.screen.adjustment_status.{}",
+                    line.status.as_str()
+                ),
             ),
             counts: line.counts(),
             can_decide: line.status == AdjustmentStatus::Pending
@@ -378,7 +387,12 @@ async fn show(
     {
         let mut tx = state.db.begin().await?;
         let outcome = block_guard::guard(&state)
-            .check_in(&mut tx, Some(&user), remittance.client(), ActionKind::MoneyOut)
+            .check_in(
+                &mut tx,
+                Some(&user),
+                remittance.client(),
+                ActionKind::MoneyOut,
+            )
             .await?;
         match outcome {
             GuardOutcome::Allowed => None,
@@ -412,8 +426,7 @@ async fn show(
             remittance.status,
             RemittanceStatus::Approved | RemittanceStatus::Paid
         ) && user.has_permission(permissions::REMITTANCES_DISPUTE),
-        can_resolve: remittance.disputed
-            && user.has_permission(permissions::REMITTANCES_APPROVE),
+        can_resolve: remittance.disputed && user.has_permission(permissions::REMITTANCES_APPROVE),
         can_return: remittance.status == RemittanceStatus::Paid
             && user.has_permission(permissions::REMITTANCES_PAY),
         can_repay: remittance.status == RemittanceStatus::PaymentReturned
@@ -461,7 +474,10 @@ async fn build(
         .trim()
         .parse::<i64>()
         .map_err(|_| {
-            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, t(&lang, "logistics.bad_input"))
+            Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                t(&lang, "logistics.bad_input"),
+            )
         })?;
     let remittance = remit::build(&state, &user, PartyId(client))
         .await
@@ -520,9 +536,15 @@ async fn return_payment(
     Path(id): Path<i64>,
     Form(form): Fields,
 ) -> Result<Response> {
-    remit::return_payment(&state, &user, id, &field(&form, "advice"), &field(&form, "reason"))
-        .await
-        .map_err(answer)?;
+    remit::return_payment(
+        &state,
+        &user,
+        id,
+        &field(&form, "advice"),
+        &field(&form, "reason"),
+    )
+    .await
+    .map_err(answer)?;
     back_to(&lang, "logistics.remittance_payment_returned", id)
 }
 
@@ -623,7 +645,10 @@ async fn withdraw_account(
 
 /// A whole number from a form; blank is none, anything else that is not a
 /// number is `Err`.
-fn id_in(form: &std::collections::BTreeMap<String, String>, name: &str) -> std::result::Result<Option<i64>, ()> {
+fn id_in(
+    form: &std::collections::BTreeMap<String, String>,
+    name: &str,
+) -> std::result::Result<Option<i64>, ()> {
     match field(form, name).trim() {
         "" => Ok(None),
         text => text.parse::<i64>().map(Some).map_err(|_| ()),

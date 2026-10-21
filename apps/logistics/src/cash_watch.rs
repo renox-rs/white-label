@@ -262,8 +262,8 @@ async fn escalate(
     // The admin is told.
     let title = english("logistics.cash.admin_title", &args);
     let body = english("logistics.cash.admin_body", &args);
-    let mut request = NotifyRequest::new(CASH_ESCALATED, handover.id.subject())
-        .data(renox::serde_json::json!({
+    let mut request =
+        NotifyRequest::new(CASH_ESCALATED, handover.id.subject()).data(renox::serde_json::json!({
             "title": title,
             "body": body,
             "link": format!("/cash/{}", handover.id.0),
@@ -346,7 +346,10 @@ async fn absence_note(
 
 /// Closes the tasks of the handover `handover_id` once it is no longer open.
 async fn close_tasks(state: &AppState, row: &CashWatch, note: &str) -> Result {
-    for ticket in [row.task_ticket_id, row.count_ticket_id].into_iter().flatten() {
+    for ticket in [row.task_ticket_id, row.count_ticket_id]
+        .into_iter()
+        .flatten()
+    {
         tickets::task_creator(state)
             .complete(state, TicketId(ticket), note)
             .await?;

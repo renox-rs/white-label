@@ -58,7 +58,10 @@ async fn a_job_in_customs_clearance_is_held_with_its_reason_and_the_portal_shows
     let held = w.job(job.id).await;
     assert_eq!(held.status, FreightStatus::OnHold);
     assert_eq!(held.held_from.as_deref(), Some("customs_clearance"));
-    assert_eq!(held.hold_reason.as_deref(), Some("customs_hold_or_inspection"));
+    assert_eq!(
+        held.hold_reason.as_deref(),
+        Some("customs_hold_or_inspection")
+    );
     assert_eq!(held.hold_note.as_deref(), Some(NOTE));
     let periods = freight_hold::holds_of(w.db(), job.id).await.unwrap();
     assert_eq!(periods.len(), 1);
@@ -68,10 +71,7 @@ async fn a_job_in_customs_clearance_is_held_with_its_reason_and_the_portal_shows
     let client = w.notices.to_clients();
     assert_eq!(client.len(), before + 1);
     assert!(
-        client
-            .last()
-            .unwrap()
-            .data["title"]
+        client.last().unwrap().data["title"]
             .as_str()
             .unwrap()
             .contains("Customs hold or inspection")
@@ -109,9 +109,14 @@ async fn release_returns_the_job_to_the_state_before_the_hold_and_needs_a_note()
         .assert_status(422)
         .assert_see("Note how the reason was resolved");
     assert_eq!(w.job(job.id).await.status, FreightStatus::OnHold);
-    w.job_action(&w.dispatcher, &job, "release", &[("note", "inspection passed")])
-        .await
-        .assert_forbidden();
+    w.job_action(
+        &w.dispatcher,
+        &job,
+        "release",
+        &[("note", "inspection passed")],
+    )
+    .await
+    .assert_forbidden();
 
     w.job_action(
         &w.docs,
@@ -148,9 +153,14 @@ async fn a_job_returns_to_in_transit_or_ready_for_delivery_as_it_was() {
         (&transit, FreightStatus::InTransit),
         (&ready, FreightStatus::ReadyForDelivery),
     ] {
-        w.job_action(&w.docs, job, "hold", &[("reason", "duty_unpaid"), ("note", "")])
-            .await
-            .assert_status(303);
+        w.job_action(
+            &w.docs,
+            job,
+            "hold",
+            &[("reason", "duty_unpaid"), ("note", "")],
+        )
+        .await
+        .assert_status(303);
         assert_eq!(w.job(job.id).await.status, FreightStatus::OnHold);
         w.job_action(&w.docs, job, "release", &[("note", "duty paid")])
             .await
@@ -165,9 +175,14 @@ async fn a_job_returns_to_in_transit_or_ready_for_delivery_as_it_was() {
 async fn release_cannot_go_to_a_state_other_than_the_stored_one() {
     let w = boot().await;
     let job = w.in_customs().await;
-    w.job_action(&w.docs, &job, "hold", &[("reason", "documents_missing"), ("note", "BL copy")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "hold",
+        &[("reason", "documents_missing"), ("note", "BL copy")],
+    )
+    .await
+    .assert_status(303);
     let held = w.job(job.id).await;
     let outcome = held
         .transition(RELEASE_IN_TRANSIT)
@@ -188,31 +203,56 @@ async fn release_cannot_go_to_a_state_other_than_the_stored_one() {
 async fn a_booked_job_cannot_be_held_and_the_reason_must_be_known() {
     let w = boot().await;
     let booked = w.open_job().await;
-    w.job_action(&w.docs, &booked, "hold", &[("reason", "documents_missing"), ("note", "")])
-        .await
-        .assert_status(422);
+    w.job_action(
+        &w.docs,
+        &booked,
+        "hold",
+        &[("reason", "documents_missing"), ("note", "")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(w.job(booked.id).await.status, FreightStatus::Booked);
-    w.job_action(&w.docs, &booked, "request-documents", &[("missing", "invoice")])
-        .await
-        .assert_status(303);
-    w.job_action(&w.docs, &booked, "hold", &[("reason", "documents_missing"), ("note", "")])
-        .await
-        .assert_status(422);
+    w.job_action(
+        &w.docs,
+        &booked,
+        "request-documents",
+        &[("missing", "invoice")],
+    )
+    .await
+    .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &booked,
+        "hold",
+        &[("reason", "documents_missing"), ("note", "")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(
         w.job(booked.id).await.status,
         FreightStatus::DocumentsPending
     );
 
     let transit = w.in_transit().await;
-    w.job_action(&w.docs, &transit, "hold", &[("reason", "bad weather"), ("note", "")])
-        .await
-        .assert_status(422);
+    w.job_action(
+        &w.docs,
+        &transit,
+        "hold",
+        &[("reason", "bad weather"), ("note", "")],
+    )
+    .await
+    .assert_status(422);
     w.job_action(&w.docs, &transit, "hold", &[("reason", "")])
         .await
         .assert_status(422);
-    w.job_action(&w.dispatcher, &transit, "hold", &[("reason", "duty_unpaid")])
-        .await
-        .assert_forbidden();
+    w.job_action(
+        &w.dispatcher,
+        &transit,
+        "hold",
+        &[("reason", "duty_unpaid")],
+    )
+    .await
+    .assert_forbidden();
     assert_eq!(w.job(transit.id).await.status, FreightStatus::InTransit);
 }
 
@@ -222,12 +262,22 @@ async fn a_booked_job_cannot_be_held_and_the_reason_must_be_known() {
 async fn a_second_reason_is_a_note_on_the_open_hold() {
     let w = boot().await;
     let job = w.in_transit().await;
-    w.job_action(&w.docs, &job, "hold", &[("reason", "customs_hold_or_inspection"), ("note", NOTE)])
-        .await
-        .assert_status(303);
-    w.job_action(&w.docs, &job, "hold", &[("reason", "duty_unpaid"), ("note", "x")])
-        .await
-        .assert_status(422);
+    w.job_action(
+        &w.docs,
+        &job,
+        "hold",
+        &[("reason", "customs_hold_or_inspection"), ("note", NOTE)],
+    )
+    .await
+    .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "hold",
+        &[("reason", "duty_unpaid"), ("note", "x")],
+    )
+    .await
+    .assert_status(422);
 
     w.job_action(
         &w.docs,
@@ -239,10 +289,16 @@ async fn a_second_reason_is_a_note_on_the_open_hold() {
     .assert_status(303);
     let held = w.job(job.id).await;
     assert_eq!(held.status, FreightStatus::OnHold);
-    assert_eq!(held.hold_reason.as_deref(), Some("customs_hold_or_inspection"));
+    assert_eq!(
+        held.hold_reason.as_deref(),
+        Some("customs_hold_or_inspection")
+    );
     let note = held.hold_note.unwrap();
     assert!(note.contains(NOTE), "{note}");
-    assert!(note.contains("Customs duty unpaid: AED 250 to pay"), "{note}");
+    assert!(
+        note.contains("Customs duty unpaid: AED 250 to pay"),
+        "{note}"
+    );
     let periods = FreightHold::query().get(w.db()).await.unwrap();
     assert_eq!(periods.len(), 1);
     // A job that is not on hold has no hold to add to.
@@ -269,7 +325,10 @@ async fn the_eta_passing_while_on_hold_raises_no_alert_until_the_release() {
         &w.docs,
         &job,
         "hold",
-        &[("reason", "customs_platform_down"), ("note", "Mirsal is down")],
+        &[
+            ("reason", "customs_platform_down"),
+            ("note", "Mirsal is down"),
+        ],
     )
     .await
     .assert_status(303);
@@ -292,10 +351,7 @@ async fn the_eta_passing_while_on_hold_raises_no_alert_until_the_release() {
     let notices = w.notices.of_type(STAFF_NOTICE);
     assert!(notices.len() > after_release);
     assert!(
-        notices
-            .last()
-            .unwrap()
-            .data["title"]
+        notices.last().unwrap().data["title"]
             .as_str()
             .unwrap()
             .contains("past its ETA")
@@ -344,9 +400,14 @@ async fn the_hold_periods_are_left_out_of_the_on_time_measure() {
     set_eta(&w, &held, eta).await;
     set_eta(&w, &plain, eta).await;
 
-    w.job_action(&w.docs, &held, "hold", &[("reason", "duty_unpaid"), ("note", "")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &held,
+        "hold",
+        &[("reason", "duty_unpaid"), ("note", "")],
+    )
+    .await
+    .assert_status(303);
     // The hold began ten days ago.
     let began = renox::db::now() - TimeDelta::days(10);
     FreightHold::query()
@@ -365,7 +426,9 @@ async fn the_hold_periods_are_left_out_of_the_on_time_measure() {
     );
 
     for job in [&held, &plain] {
-        w.job_action(&w.docs, job, "arrive", &[]).await.assert_status(303);
+        w.job_action(&w.docs, job, "arrive", &[])
+            .await
+            .assert_status(303);
         w.job_action(
             &w.docs,
             job,
@@ -384,6 +447,12 @@ async fn the_hold_periods_are_left_out_of_the_on_time_measure() {
     }
     let held_now = w.job(held.id).await;
     let plain_now = w.job(plain.id).await;
-    assert_eq!(freight_hold::is_on_time(w.db(), &held_now).await.unwrap(), Some(true));
-    assert_eq!(freight_hold::is_on_time(w.db(), &plain_now).await.unwrap(), Some(false));
+    assert_eq!(
+        freight_hold::is_on_time(w.db(), &held_now).await.unwrap(),
+        Some(true)
+    );
+    assert_eq!(
+        freight_hold::is_on_time(w.db(), &plain_now).await.unwrap(),
+        Some(false)
+    );
 }

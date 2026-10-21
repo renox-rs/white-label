@@ -22,9 +22,13 @@ use support::{SOUQ, World, boot};
 
 /// A holder of the operations manager role who approves a disposal.
 async fn manager(w: &World, name: &str) -> User {
-    permissions::define_role(w.db(), perm::OPERATIONS_MANAGER_ROLE, &[perm::SHIPMENTS_VIEW])
-        .await
-        .unwrap();
+    permissions::define_role(
+        w.db(),
+        perm::OPERATIONS_MANAGER_ROLE,
+        &[perm::SHIPMENTS_VIEW],
+    )
+    .await
+    .unwrap();
     let user = w
         .user_with(
             name,
@@ -89,7 +93,12 @@ fn disposal_notices(w: &World) -> usize {
     w.notices
         .of_type(CLIENT_NOTICE)
         .into_iter()
-        .filter(|n| n.data["title"].as_str().unwrap().contains("was disposed of"))
+        .filter(|n| {
+            n.data["title"]
+                .as_str()
+                .unwrap()
+                .contains("was disposed of")
+        })
         .count()
 }
 
@@ -134,11 +143,18 @@ async fn an_approved_disposal_destroys_the_held_shipment_and_tells_the_client() 
     assert_eq!(disposal_notices(&w), 1);
     // The delivery is cancelled with the shipment, and the history shows the
     // approved run.
-    assert_eq!(w.delivery_of(&disposed).await.status, DeliveryStatus::Cancelled);
+    assert_eq!(
+        w.delivery_of(&disposed).await.status,
+        DeliveryStatus::Cancelled
+    );
     let history = renox::state_machine::history(w.db(), Shipment::TABLE, shipment.id)
         .await
         .unwrap();
-    assert!(history.iter().any(|row| row.transition == "dispose_approved"));
+    assert!(
+        history
+            .iter()
+            .any(|row| row.transition == "dispose_approved")
+    );
     // The delivery module knew the shipment's delivery all along.
     assert_eq!(delivery.id, w.delivery_of(&disposed).await.id);
 }
@@ -170,21 +186,36 @@ async fn the_requester_cannot_approve_and_a_request_without_proof_is_refused() {
     w.post(
         &w.dispatcher,
         &path,
-        &[("reason", ""), ("photos", "a.jpg"), ("instruction", "x"), ("liability", "none")],
+        &[
+            ("reason", ""),
+            ("photos", "a.jpg"),
+            ("instruction", "x"),
+            ("liability", "none"),
+        ],
     )
     .await
     .assert_status(422);
     w.post(
         &w.dispatcher,
         &path,
-        &[("reason", "Leaking"), ("photos", " "), ("instruction", "x"), ("liability", "none")],
+        &[
+            ("reason", "Leaking"),
+            ("photos", " "),
+            ("instruction", "x"),
+            ("liability", "none"),
+        ],
     )
     .await
     .assert_status(422);
     w.post(
         &w.dispatcher,
         &path,
-        &[("reason", "Leaking"), ("photos", "a.jpg"), ("instruction", "x"), ("liability", "driver")],
+        &[
+            ("reason", "Leaking"),
+            ("photos", "a.jpg"),
+            ("instruction", "x"),
+            ("liability", "driver"),
+        ],
     )
     .await
     .assert_status(422);
@@ -392,12 +423,7 @@ async fn a_disposal_nobody_caused_has_no_claim_no_charge_and_is_not_billed() {
     assert_eq!(disposed.status, ShipmentStatus::Disposed);
     assert_eq!(disposed.liability.as_deref(), Some("none"));
     assert!(disposed.claim_ticket_id.is_none());
-    assert!(
-        w.tickets
-            .opened()
-            .iter()
-            .all(|t| t.category_key != "claim")
-    );
+    assert!(w.tickets.opened().iter().all(|t| t.category_key != "claim"));
     assert!(
         disposed
             .charges(w.db())
@@ -406,7 +432,12 @@ async fn a_disposal_nobody_caused_has_no_claim_no_charge_and_is_not_billed() {
             .iter()
             .all(|c| c.kind != charge_kind::DISPOSAL)
     );
-    assert!(billing::unbilled_disposals(w.db(), SOUQ).await.unwrap().is_empty());
+    assert!(
+        billing::unbilled_disposals(w.db(), SOUQ)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(Shipment::billable(w.db(), SOUQ).await.unwrap().is_empty());
 }
 
@@ -430,7 +461,13 @@ async fn a_rejected_disposal_leaves_the_shipment_on_hold() {
     assert_eq!(after.status, ShipmentStatus::OnHold);
     assert!(after.disposed_at.is_none());
     assert_eq!(disposal_notices(&w), 0);
-    assert!(Shipment::billable(w.db(), SOUQ).await.unwrap().iter().all(|s| s.status != ShipmentStatus::Disposed));
+    assert!(
+        Shipment::billable(w.db(), SOUQ)
+            .await
+            .unwrap()
+            .iter()
+            .all(|s| s.status != ShipmentStatus::Disposed)
+    );
     ask(&w, &w.dispatcher, &shipment, "none")
         .await
         .assert_status(303);
@@ -474,9 +511,13 @@ async fn keeping_the_settlement_can_dispose_of_the_goods_with_an_approval() {
     )
     .await
     .assert_status(303);
-    w.post(&w.hub, &format!("/shipments/{id}/found"), &[("depot", "Depot B")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.hub,
+        &format!("/shipments/{id}/found"),
+        &[("depot", "Depot B")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.shipment(id).await.status, ShipmentStatus::OnHold);
     let path = format!("/shipments/{id}/claim-choice");
 
@@ -562,7 +603,11 @@ async fn disposal_is_offered_only_on_a_held_shipment_to_staff() {
     let staff = w.offered(&w.dispatcher, &shipment).await;
     assert!(staff.contains(&"dispose".to_owned()));
     assert!(!staff.contains(&"dispose_approved".to_owned()));
-    assert!(!w.offered(&w.noor, &shipment).await.contains(&"dispose".to_owned()));
+    assert!(
+        !w.offered(&w.noor, &shipment)
+            .await
+            .contains(&"dispose".to_owned())
+    );
     let other = w.book_as(&w.noor, SOUQ, "ORD-2").await;
     let at_hub = w.at_hub(&w.pick_up(&other).await).await;
     assert!(

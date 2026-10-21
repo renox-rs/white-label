@@ -98,9 +98,14 @@ impl World {
     /// The job is `delivered`.
     pub async fn job_delivered(&self) -> FreightJob {
         let job = self.ready_for_delivery().await;
-        self.job_action(&self.docs, &job, "deliver", &[("pod_reference", "epod-9001")])
-            .await
-            .assert_status(303);
+        self.job_action(
+            &self.docs,
+            &job,
+            "deliver",
+            &[("pod_reference", "epod-9001")],
+        )
+        .await
+        .assert_status(303);
         let after = self.job(job.id).await;
         assert_eq!(after.status, FreightStatus::Delivered);
         after

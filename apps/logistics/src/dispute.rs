@@ -240,7 +240,10 @@ pub async fn resolve(
         return Err(TransitionError::Forbidden);
     }
     let remittance = load(state, id).await?;
-    let Some(dispute) = open_of(&state.db, id).await?.filter(|_| remittance.disputed) else {
+    let Some(dispute) = open_of(&state.db, id)
+        .await?
+        .filter(|_| remittance.disputed)
+    else {
         return Err(guard(english("logistics.dispute.not_disputed", &[])));
     };
     let outcome = outcome.trim();
@@ -355,7 +358,11 @@ fn back(user: &AuthUser, lang: &Lang, key: &str, id: i64) -> Result<Response> {
     } else {
         "logistics.remittance_statement"
     };
-    Ok((Toast::success(t(lang, key)), Redirect::route(route, &[&id])?).into_response())
+    Ok((
+        Toast::success(t(lang, key)),
+        Redirect::route(route, &[&id])?,
+    )
+        .into_response())
 }
 
 /// `POST /remittances/{id}/dispute`: `reason`.
@@ -388,7 +395,10 @@ async fn resolve_dispute(
     let amount = match field(&form, "amount").trim() {
         "" => 0,
         text => adjustment::parse_signed_dirhams(text).ok_or_else(|| {
-            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, t(&lang, "logistics.bad_input"))
+            Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                t(&lang, "logistics.bad_input"),
+            )
         })?,
     };
     resolve(

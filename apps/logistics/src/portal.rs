@@ -114,7 +114,10 @@ async fn contract_end(
         None
     } else {
         Some(date_in(&text).ok_or_else(|| {
-            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, t(&lang, "logistics.bad_input"))
+            Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                t(&lang, "logistics.bad_input"),
+            )
         })?)
     };
     end_contract(&state, &user, PartyId(client), ended)

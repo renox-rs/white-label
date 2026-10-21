@@ -33,7 +33,9 @@ async fn while_the_contract_runs_the_client_user_acts_and_looks() {
     let w = boot().await;
     let job = w.open_job().await;
     let shipment = w.book_as(&w.noor, SOUQ, "ORD-1").await;
-    w.get(&w.noor, &format!("/freight/{}", job.id)).await.assert_ok();
+    w.get(&w.noor, &format!("/freight/{}", job.id))
+        .await
+        .assert_ok();
     w.post(&w.noor, &format!("/shipments/{}/cancel", shipment.id), &[])
         .await
         .assert_status(303);
@@ -55,16 +57,22 @@ async fn after_the_end_the_client_user_only_looks_for_90_days() {
         portal::access(w.db(), SOUQ, today()).await.unwrap(),
         Access::ReadOnly
     );
-    w.get(&w.noor, &format!("/freight/{}", job.id)).await.assert_ok();
+    w.get(&w.noor, &format!("/freight/{}", job.id))
+        .await
+        .assert_ok();
     w.try_book(&w.noor, SOUQ, "ORD-2").await.assert_forbidden();
     w.post(&w.noor, &format!("/shipments/{}/cancel", shipment.id), &[])
         .await
         .assert_forbidden();
     // Staff are not affected.
-    w.get(&w.docs, &format!("/freight/{}", job.id)).await.assert_ok();
+    w.get(&w.docs, &format!("/freight/{}", job.id))
+        .await
+        .assert_ok();
     // The last day of the window still looks; the contract renewed opens it.
     contract_ended(&w, &ago(90)).await;
-    w.get(&w.noor, &format!("/freight/{}", job.id)).await.assert_ok();
+    w.get(&w.noor, &format!("/freight/{}", job.id))
+        .await
+        .assert_ok();
     contract_ended(&w, "").await;
     w.book_as(&w.noor, SOUQ, "ORD-3").await;
 }

@@ -21,7 +21,10 @@ async fn a_job_is_opened_booked_with_its_route_and_a_milestone() {
     assert_eq!(job.mode, "sea");
     assert_eq!(job.origin, "Shanghai");
     assert_eq!(job.destination, "Jebel Ali");
-    assert_eq!(job.eta.map(|d| d.to_string()).as_deref(), Some("2026-11-20"));
+    assert_eq!(
+        job.eta.map(|d| d.to_string()).as_deref(),
+        Some("2026-11-20")
+    );
     let events = job.events(w.db()).await.unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].kind, "booked");
@@ -53,15 +56,25 @@ async fn a_job_goes_from_booked_to_delivered_with_the_guards_of_each_step() {
     let w = boot().await;
     let job = w.open_job().await;
 
-    w.job_action(&w.docs, &job, "request-documents", &[("missing", "packing list")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "request-documents",
+        &[("missing", "packing list")],
+    )
+    .await
+    .assert_status(303);
     let pending = w.job(job.id).await;
     assert_eq!(pending.status, FreightStatus::DocumentsPending);
     assert_eq!(pending.documents_note.as_deref(), Some("packing list"));
     let notices = w.notices.to_clients();
     assert_eq!(notices.len(), 1);
-    assert!(notices[0].data["body"].as_str().unwrap().contains("packing list"));
+    assert!(
+        notices[0].data["body"]
+            .as_str()
+            .unwrap()
+            .contains("packing list")
+    );
 
     // No BL or AWB, no departure.
     w.job_action(&w.docs, &job, "depart", &[("bl_awb", " ")])
@@ -86,7 +99,11 @@ async fn a_job_goes_from_booked_to_delivered_with_the_guards_of_each_step() {
         &w.docs,
         &job,
         "clear",
-        &[("declaration_no", "DEC-1"), ("duties", "250.00"), ("delivery_order", "")],
+        &[
+            ("declaration_no", "DEC-1"),
+            ("duties", "250.00"),
+            ("delivery_order", ""),
+        ],
     )
     .await
     .assert_status(422);
@@ -111,9 +128,14 @@ async fn a_job_goes_from_booked_to_delivered_with_the_guards_of_each_step() {
     w.job_action(&w.docs, &job, "deliver", &[("pod_reference", " ")])
         .await
         .assert_status(422);
-    w.job_action(&w.docs_limited, &job, "deliver", &[("pod_reference", "epod-1")])
-        .await
-        .assert_forbidden();
+    w.job_action(
+        &w.docs_limited,
+        &job,
+        "deliver",
+        &[("pod_reference", "epod-1")],
+    )
+    .await
+    .assert_forbidden();
     w.job_action(&w.docs, &job, "deliver", &[("pod_reference", "epod-1")])
         .await
         .assert_status(303);
@@ -151,9 +173,14 @@ async fn a_step_out_of_order_or_without_the_permission_is_refused() {
             .await
             .assert_status(422);
     }
-    w.job_action(&w.dispatcher, &job, "request-documents", &[("missing", "x")])
-        .await
-        .assert_forbidden();
+    w.job_action(
+        &w.dispatcher,
+        &job,
+        "request-documents",
+        &[("missing", "x")],
+    )
+    .await
+    .assert_forbidden();
     w.job_action(&w.docs, &job, "no-such-action", &[])
         .await
         .assert_status(404);
@@ -242,12 +269,20 @@ async fn a_job_is_cancelled_before_departure_with_a_reason() {
     w.job_action(&w.docs, &job, "cancel", &[("reason", " ")])
         .await
         .assert_status(422);
-    w.job_action(&w.docs, &job, "cancel", &[("reason", "Client changed plans")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "cancel",
+        &[("reason", "Client changed plans")],
+    )
+    .await
+    .assert_status(303);
     let cancelled = w.job(job.id).await;
     assert_eq!(cancelled.status, FreightStatus::Cancelled);
-    assert_eq!(cancelled.cancel_reason.as_deref(), Some("Client changed plans"));
+    assert_eq!(
+        cancelled.cancel_reason.as_deref(),
+        Some("Client changed plans")
+    );
     w.job_action(&w.docs, &job, "depart", &[("bl_awb", "BL-1")])
         .await
         .assert_status(422);
@@ -283,7 +318,10 @@ async fn a_container_keeps_its_free_time_end_dates() {
     assert_eq!(containers.len(), 1);
     assert_eq!(containers[0].number, "MSKU1234567");
     assert_eq!(
-        containers[0].demurrage_end.map(|d| d.to_string()).as_deref(),
+        containers[0]
+            .demurrage_end
+            .map(|d| d.to_string())
+            .as_deref(),
         Some("2026-11-27")
     );
     w.post(&w.docs, &path, &[("number", "MSKU1234567")])

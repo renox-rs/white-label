@@ -59,11 +59,15 @@ async fn a_disputed_delivery_puts_the_shipment_under_review_and_out_of_the_draft
     )
     .await
     .assert_forbidden();
-    dispute(&w, &w.dispatcher, &shipment).await.assert_status(303);
+    dispute(&w, &w.dispatcher, &shipment)
+        .await
+        .assert_status(303);
 
     let reviewed = w.reload(&shipment).await;
     assert_eq!(reviewed.status, ShipmentStatus::UnderReview);
-    let ticket = reviewed.review_ticket_id.expect("the dispute ticket is linked");
+    let ticket = reviewed
+        .review_ticket_id
+        .expect("the dispute ticket is linked");
     assert_eq!(w.tickets.opened().len(), 1);
     let notices = w.notices.to_clients();
     assert_eq!(notices.len(), 1);
@@ -100,10 +104,17 @@ async fn an_approved_remittance_holding_it_goes_back_to_a_draft_without_the_line
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
     assert_eq!(draft.cod_total, 50_000);
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
-    assert_eq!(w.remittance_status(&draft).await, RemittanceStatus::Approved);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(
+        w.remittance_status(&draft).await,
+        RemittanceStatus::Approved
+    );
 
     dispute(&w, &w.ops, &disputed).await.assert_status(303);
 
@@ -148,9 +159,13 @@ async fn a_draft_loses_the_line_and_a_paid_remittance_keeps_it() {
     assert!(w.notices.of_type(REMITTANCE_REOPENED).is_empty());
 
     // The second one is paid; its review afterwards takes nothing back.
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.amal,
         &format!("/remittances/{}/pay", draft.id),
@@ -174,7 +189,9 @@ async fn a_draft_loses_the_line_and_a_paid_remittance_keeps_it() {
 async fn an_upheld_review_releases_the_cod_and_the_billing() {
     let w = boot().await;
     let shipment = w.delivered(SOUQ, "ORD-1", "300").await;
-    dispute(&w, &w.dispatcher, &shipment).await.assert_status(303);
+    dispute(&w, &w.dispatcher, &shipment)
+        .await
+        .assert_status(303);
     assert!(w.rule().await.is_empty());
 
     close_review(&w, &shipment).await;
@@ -203,7 +220,11 @@ async fn no_user_can_open_or_close_a_review_of_a_shipment() {
     let shipment = w.delivered(SOUQ, "ORD-1", "300").await;
     for user in [&w.ops, &w.dispatcher, &w.amal, &w.driver, &w.noor] {
         let offered = w.offered(user, &shipment).await;
-        assert!(!offered.iter().any(|n| n == OPEN_REVIEW || n == CLOSE_REVIEW));
+        assert!(
+            !offered
+                .iter()
+                .any(|n| n == OPEN_REVIEW || n == CLOSE_REVIEW)
+        );
         let result = shipment
             .transition(OPEN_REVIEW)
             .by(user)
@@ -213,12 +234,18 @@ async fn no_user_can_open_or_close_a_review_of_a_shipment() {
     }
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Delivered);
 
-    dispute(&w, &w.dispatcher, &shipment).await.assert_status(303);
+    dispute(&w, &w.dispatcher, &shipment)
+        .await
+        .assert_status(303);
     let reviewed = w.reload(&shipment).await;
     assert_eq!(reviewed.status, ShipmentStatus::UnderReview);
     for user in [&w.ops, &w.dispatcher, &w.amal] {
         let offered = w.offered(user, &reviewed).await;
-        assert!(!offered.iter().any(|n| n == OPEN_REVIEW || n == CLOSE_REVIEW));
+        assert!(
+            !offered
+                .iter()
+                .any(|n| n == OPEN_REVIEW || n == CLOSE_REVIEW)
+        );
         let result = reviewed
             .transition(CLOSE_REVIEW)
             .by(user)
@@ -243,7 +270,9 @@ async fn a_review_opens_without_a_ticket_when_ticketing_is_off() {
     let shipment = w.delivered(SOUQ, "ORD-1", "300").await;
     w.tickets.off(true);
 
-    dispute(&w, &w.dispatcher, &shipment).await.assert_status(303);
+    dispute(&w, &w.dispatcher, &shipment)
+        .await
+        .assert_status(303);
 
     let reviewed = w.reload(&shipment).await;
     assert_eq!(reviewed.status, ShipmentStatus::UnderReview);

@@ -381,7 +381,9 @@ async fn settle(
             &format!("logistics.freight_cancel:{}", job.id),
         )
         .description(&description);
-        ticket_id = role_tasks::open(state, task).await?.map(|ticket| ticket.id.0);
+        ticket_id = role_tasks::open(state, task)
+            .await?
+            .map(|ticket| ticket.id.0);
     }
     let mut record = FreightCancellation {
         job_id: job.id,
@@ -405,7 +407,14 @@ async fn settle(
         aed(record.recharged),
         aed(record.absorbed)
     );
-    track(&state.db, job.id, "cancellation_settled", &note, Some(user.id)).await?;
+    track(
+        &state.db,
+        job.id,
+        "cancellation_settled",
+        &note,
+        Some(user.id),
+    )
+    .await?;
     let title = english(
         "logistics.freight.cancelled_title",
         &[("number", &job.number)],
@@ -494,7 +503,10 @@ pub async fn decide_late_cost(
             .ok_or(TransitionError::Failed(Error::NotFound));
     }
     if line.liability.as_deref() != Some(freight_costing::liability::CLIENT) {
-        return Err(guard(english("logistics.freight.company_not_recharged", &[])));
+        return Err(guard(english(
+            "logistics.freight.company_not_recharged",
+            &[],
+        )));
     }
     let text = english(
         "logistics.freight.cancellation_cost_line",

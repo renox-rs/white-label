@@ -176,7 +176,6 @@ pub async fn mark_shipment_invoiced(db: &Db, id: i64, at: DateTime) -> Result {
     Ok(())
 }
 
-
 /// The first day of the month of `day`.
 fn month_start(day: NaiveDate) -> NaiveDate {
     day.with_day(1).unwrap_or(day)
@@ -252,7 +251,10 @@ async fn entries(db: &Db, client: PartyId, period_end: DateTime) -> Result<Vec<E
                 shipment_id: shipment.id,
                 order: 0,
                 line: DraftLine::new(
-                    &english("logistics.billing.delivery", &[("number", &shipment.number)]),
+                    &english(
+                        "logistics.billing.delivery",
+                        &[("number", &shipment.number)],
+                    ),
                     shipment.price,
                     VatCategory::Standard,
                 )
@@ -313,10 +315,7 @@ async fn entries(db: &Db, client: PartyId, period_end: DateTime) -> Result<Vec<E
             }
             _ => continue,
         };
-        let text = with_note(
-            english(key, &[("number", &shipment.number)]),
-            &charge.note,
-        );
+        let text = with_note(english(key, &[("number", &shipment.number)]), &charge.note);
         entries.push(Entry {
             shipment_id: shipment.id,
             order,
@@ -364,7 +363,8 @@ pub async fn draft_for(
         ..BillingRun::default()
     };
     run.insert(&state.db).await?;
-    let mut draft = InvoiceDraft::new(client, run.subject()).date_of_supply(month_start(day) - TimeDelta::days(1));
+    let mut draft = InvoiceDraft::new(client, run.subject())
+        .date_of_supply(month_start(day) - TimeDelta::days(1));
     for entry in &entries {
         draft = draft.line(entry.line.clone());
     }
@@ -387,8 +387,8 @@ pub async fn draft_for(
     for id in shipments {
         mark_shipment_invoiced(&state.db, id, at).await?;
     }
-    let unpriced = i64::try_from(entries.iter().filter(|e| e.unpriced_return).count())
-        .unwrap_or(i64::MAX);
+    let unpriced =
+        i64::try_from(entries.iter().filter(|e| e.unpriced_return).count()).unwrap_or(i64::MAX);
     let count = i64::try_from(entries.len()).unwrap_or(i64::MAX);
     let invoice_id = Some(invoice.0);
     BillingRun::query()

@@ -20,9 +20,9 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
-use wl_kernel::{PartyId, Subject};
-use wl_kernel::numbering::{Reset, Series};
 use wl_kernel::documents::today;
+use wl_kernel::numbering::{Reset, Series};
+use wl_kernel::{PartyId, Subject};
 
 use crate::block;
 use crate::pages::{Fields, field};
@@ -482,7 +482,10 @@ async fn open_job(
         .trim()
         .parse::<i64>()
         .map_err(|_| {
-            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, t(&lang, "logistics.bad_input"))
+            Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                t(&lang, "logistics.bad_input"),
+            )
         })?;
     let new = NewJob {
         mode: field(&form, "mode"),
@@ -491,9 +494,15 @@ async fn open_job(
         eta: date_in(&field(&form, "eta")),
         international: matches!(field(&form, "international").trim(), "1" | "on" | "true"),
     };
-    let job = open_with(&state, &user, PartyId(client), &field(&form, "description"), &new)
-        .await
-        .map_err(TransitionError::into_error)?;
+    let job = open_with(
+        &state,
+        &user,
+        PartyId(client),
+        &field(&form, "description"),
+        &new,
+    )
+    .await
+    .map_err(TransitionError::into_error)?;
     Ok((
         Toast::success(t(&lang, "logistics.freight_opened")),
         Redirect::route("logistics.freight_job", &[&job.id])?,

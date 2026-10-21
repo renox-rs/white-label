@@ -23,7 +23,9 @@ const ACCOUNT: &str = "AE070331234567890123456";
 async fn scene() -> (World, InvoiceId, InvoiceId) {
     let w = boot_with_payments().await;
     w.cod_terms(SOUQ, 0, Some(ACCOUNT)).await;
-    remit::set_netting_allowed(w.db(), SOUQ, true).await.unwrap();
+    remit::set_netting_allowed(w.db(), SOUQ, true)
+        .await
+        .unwrap();
     let first = w.invoices.open(SOUQ, "INV-1", 50_000, (2026, 10, 1));
     let second = w.invoices.open(SOUQ, "INV-2", 180_000, (2026, 11, 1));
     w.delivered(SOUQ, "ORD-1", "2000").await;
@@ -46,9 +48,13 @@ async fn approve_and_pay(
     draft: &Remittance,
     reference: &str,
 ) -> renox::testing::TestResponse {
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.amal,
         &format!("/remittances/{}/pay", draft.id),
@@ -85,7 +91,10 @@ async fn a_disputed_invoice_is_not_offset() {
     w.invoices.dispute(first);
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    assert_eq!(offsets(&w, &draft).await, vec![("INV-2".to_owned(), 180_000)]);
+    assert_eq!(
+        offsets(&w, &draft).await,
+        vec![("INV-2".to_owned(), 180_000)]
+    );
     assert_eq!(draft.offset_total, 180_000);
     assert_eq!(draft.net, 20_000);
 }
@@ -98,12 +107,21 @@ async fn paying_records_a_payment_per_offset_allocated_to_its_invoice() {
     let (w, first, second) = scene().await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    approve_and_pay(&w, &draft, "TRF-1").await.assert_status(303);
+    approve_and_pay(&w, &draft, "TRF-1")
+        .await
+        .assert_status(303);
 
     let paid = w.remittance(&draft).await;
     assert_eq!(paid.status, RemittanceStatus::Paid);
-    assert_eq!(paid.payment_id, None, "a net of 0 sends nothing to the bank");
-    let payments = Payment::query().order_by(Payment::ID).get(w.db()).await.unwrap();
+    assert_eq!(
+        paid.payment_id, None,
+        "a net of 0 sends nothing to the bank"
+    );
+    let payments = Payment::query()
+        .order_by(Payment::ID)
+        .get(w.db())
+        .await
+        .unwrap();
     assert_eq!(payments.len(), 2);
     for (payment, amount) in payments.iter().zip([50_000, 150_000]) {
         assert_eq!(payment.direction, Direction::In);
@@ -147,7 +165,9 @@ async fn the_cash_part_goes_to_the_bank_and_the_offsets_are_settled_beside_it() 
     w.invoices.dispute(first);
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    approve_and_pay(&w, &draft, "TRF-1").await.assert_status(303);
+    approve_and_pay(&w, &draft, "TRF-1")
+        .await
+        .assert_status(303);
     let paid = w.remittance(&draft).await;
     assert!(paid.payment_id.is_some());
     let payments = Payment::query().get(w.db()).await.unwrap();
@@ -169,9 +189,13 @@ async fn an_invoice_disputed_after_approval_sends_the_remittance_back_to_a_draft
     let (w, _first, second) = scene().await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.invoices.dispute(second);
 
     let pay = format!("/remittances/{}/pay", draft.id);
@@ -201,9 +225,13 @@ async fn an_invoice_disputed_after_approval_sends_the_remittance_back_to_a_draft
     w.post(&w.amal, &pay, &[("payment_reference", "TRF-1")])
         .await
         .assert_status(422);
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.remittance(&draft).await.message, None);
     w.post(&w.amal, &pay, &[("payment_reference", "TRF-1")])
         .await
@@ -219,9 +247,13 @@ async fn an_invoice_written_off_meanwhile_is_removed_with_its_reason() {
     let (w, first, _second) = scene().await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.invoices.write_off(first);
     w.post(
         &w.amal,
@@ -246,7 +278,9 @@ async fn without_netting_in_the_contract_no_offset_appears() {
     assert!(offsets(&w, &draft).await.is_empty());
     assert_eq!(draft.offset_total, 0);
     assert_eq!(draft.net, 200_000);
-    approve_and_pay(&w, &draft, "TRF-1").await.assert_status(303);
+    approve_and_pay(&w, &draft, "TRF-1")
+        .await
+        .assert_status(303);
     assert!(w.invoices.allocations().is_empty());
     assert_eq!(Payment::query().count(w.db()).await.unwrap(), 1);
 }

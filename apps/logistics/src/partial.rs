@@ -127,7 +127,10 @@ pub(crate) async fn create_return(
 ) -> Result {
     let unprocessable = |message: String| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message);
     let Some(plan) = input.return_plan.clone() else {
-        return Err(unprocessable(english("logistics.partial.plan_missing", &[])));
+        return Err(unprocessable(english(
+            "logistics.partial.plan_missing",
+            &[],
+        )));
     };
     let parcels = Parcel::query()
         .where_(Parcel::SHIPMENT_ID.eq(original.id))
@@ -137,10 +140,16 @@ pub(crate) async fn create_return(
     for refused in &input.refused {
         let reason = refused.reason.trim().to_owned();
         if reason.is_empty() {
-            return Err(unprocessable(english("logistics.partial.reason_needed", &[])));
+            return Err(unprocessable(english(
+                "logistics.partial.reason_needed",
+                &[],
+            )));
         }
         let Some(parcel) = parcels.iter().find(|p| p.id == refused.parcel_id) else {
-            return Err(unprocessable(english("logistics.partial.not_a_parcel", &[])));
+            return Err(unprocessable(english(
+                "logistics.partial.not_a_parcel",
+                &[],
+            )));
         };
         moved.push((parcel.clone(), reason));
     }
@@ -172,7 +181,10 @@ pub(crate) async fn create_return(
         let reason = Some(reason.clone());
         Parcel::query()
             .where_(Parcel::ID.eq(parcel.id))
-            .update(&mut *tx, &[("shipment_id", &ret.id), ("refusal_reason", &reason)])
+            .update(
+                &mut *tx,
+                &[("shipment_id", &ret.id), ("refusal_reason", &reason)],
+            )
             .await?;
         codes.push(parcel.barcode.clone());
     }
@@ -252,24 +264,10 @@ pub(crate) async fn note_received(state: &AppState, event: &DeliveryRefusedRecei
             continue;
         };
         if line.received_milli > 0 {
-            track(
-                &state.db,
-                ret.id,
-                "refused_received",
-                &parcel.barcode,
-                None,
-            )
-            .await?;
+            track(&state.db, ret.id, "refused_received", &parcel.barcode, None).await?;
         }
         if line.missing_milli > 0 {
-            track(
-                &state.db,
-                ret.id,
-                "refused_missing",
-                &parcel.barcode,
-                None,
-            )
-            .await?;
+            track(&state.db, ret.id, "refused_missing", &parcel.barcode, None).await?;
         }
     }
     Ok(())
@@ -281,12 +279,7 @@ pub(crate) async fn note_received(state: &AppState, event: &DeliveryRefusedRecei
 /// # Errors
 ///
 /// Database errors.
-pub async fn set_pickup_address(
-    db: &Db,
-    client: PartyId,
-    address: &str,
-    area: &str,
-) -> Result {
+pub async fn set_pickup_address(db: &Db, client: PartyId, address: &str, area: &str) -> Result {
     let found = ClientTerms::query()
         .where_(ClientTerms::CLIENT_PARTY_ID.eq(client.0))
         .first(db)

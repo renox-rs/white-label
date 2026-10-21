@@ -31,6 +31,7 @@ use std::sync::Arc;
 
 use logistics::defaults::{self, KindSpec, OnboardingSpec};
 use logistics::freight::FreightJob;
+use renox::auth::permissions::Scope;
 use renox::chrono::{Months, Weekday};
 use renox::prelude::*;
 use wl_documents::registrations::{OTHER, TRADEMARK, VerticalSettings, register_vertical};
@@ -38,14 +39,13 @@ use wl_documents::{KindSeed, Sop, SopReader, register_kind};
 use wl_hr::{OnboardingTemplate, StepInput, TemplateInput};
 use wl_invoicing::einvoice_adapter::{AspFuture, EInvoiceScope};
 use wl_invoicing::{BudgetCategory, InvoicingConfig, WlInvoicing};
-use renox::auth::permissions::Scope;
 use wl_kernel::documents::{
     BlockCondition, BlockMode, DocumentFuture, ReminderSchedule, register_reminder_schedule, today,
 };
 use wl_kernel::entities::LegalEntity;
 use wl_kernel::integrations::{Delivery, IntegrationDef};
 use wl_kernel::invoicing::INVOICE_SUBJECT_TYPE;
-use wl_kernel::late_entries::{Limits, LateEntryLimits, set_limits};
+use wl_kernel::late_entries::{LateEntryLimits, Limits, set_limits};
 use wl_kernel::{COMPANY_ADMIN_ROLE, Manifest, PartyKind, Subject};
 use wl_payments::WlPayments;
 use wl_sales::{LeadSource, WlSales};
@@ -544,7 +544,11 @@ mod tests {
             let input = template_input(spec);
             assert_eq!(input.steps.len(), spec.steps.len());
             for step in &input.steps {
-                assert!(wl_hr::template::is_valid_owner(&step.owner), "{}", step.owner);
+                assert!(
+                    wl_hr::template::is_valid_owner(&step.owner),
+                    "{}",
+                    step.owner
+                );
             }
         }
     }

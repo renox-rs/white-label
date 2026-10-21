@@ -15,9 +15,9 @@
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
+use serde::{Deserialize, Serialize};
 use wl_kernel::SubjectMachine;
 use wl_kernel::block_guard::ActionKind;
-use serde::{Deserialize, Serialize};
 
 use crate::permissions;
 use crate::remittance::{Remittance, RemittanceStatus, SUBJECT_TYPE};
@@ -115,7 +115,10 @@ fn approve() -> Transition<Remittance> {
             let open = input_of(ctx).unapproved_lines;
             Box::pin(async move {
                 if open > 0 {
-                    Err(english("logistics.remittance.unapproved_lines", &[("count", &open)]))
+                    Err(english(
+                        "logistics.remittance.unapproved_lines",
+                        &[("count", &open)],
+                    ))
                 } else {
                     Ok(())
                 }
@@ -450,7 +453,9 @@ pub fn transitions() -> Vec<Transition<Remittance>> {
 pub fn subject_machine() -> SubjectMachine {
     SubjectMachine::of::<Remittance>(SUBJECT_TYPE)
         .block_guarded(PAY, ActionKind::MoneyOut, |r: &Remittance| Some(r.client()))
-        .block_guarded(REPAY, ActionKind::MoneyOut, |r: &Remittance| Some(r.client()))
+        .block_guarded(REPAY, ActionKind::MoneyOut, |r: &Remittance| {
+            Some(r.client())
+        })
         .build()
 }
 
@@ -459,7 +464,7 @@ impl StateMachine for Remittance {
     const COLUMN: renox::db::Col<Remittance, RemittanceStatus> = Remittance::STATUS;
 
     fn machine() -> Machine<Self> {
-        use RemittanceStatus::{Approved, Draft, PaymentReturned, Paid};
+        use RemittanceStatus::{Approved, Draft, Paid, PaymentReturned};
         let machine = Machine::new()
             .initial([Draft])
             .state(Draft)
@@ -495,7 +500,13 @@ mod tests {
             assert!(machine.find(name).is_ok(), "{name}");
         }
         assert_eq!(machine.find(PAY).unwrap().from_states(), ["approved"]);
-        assert_eq!(machine.find(RETURN_PAYMENT).unwrap().from_states(), ["paid"]);
-        assert_eq!(machine.find(REPAY).unwrap().from_states(), ["payment_returned"]);
+        assert_eq!(
+            machine.find(RETURN_PAYMENT).unwrap().from_states(),
+            ["paid"]
+        );
+        assert_eq!(
+            machine.find(REPAY).unwrap().from_states(),
+            ["payment_returned"]
+        );
     }
 }

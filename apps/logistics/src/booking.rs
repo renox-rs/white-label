@@ -267,8 +267,9 @@ async fn request_delivery(state: &AppState, shipment: &mut Shipment, parcels: &[
         .partial_acceptance(parcels.len() > 1);
     for parcel in parcels {
         request = request.item(
-            DeliveryItem::new(&format!("Parcel {}", parcel.barcode), 1_000)
-                .source_line(Subject::new(crate::shipment::PARCEL_SUBJECT_TYPE, parcel.id)),
+            DeliveryItem::new(&format!("Parcel {}", parcel.barcode), 1_000).source_line(
+                Subject::new(crate::shipment::PARCEL_SUBJECT_TYPE, parcel.id),
+            ),
         );
     }
     match wl_kernel::delivery::requester(state)

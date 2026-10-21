@@ -53,9 +53,13 @@ async fn manager(w: &World, name: &str) -> User {
 
 /// The operations manager role exists before anybody holds it.
 async fn roles(w: &World) {
-    permissions::define_role(w.db(), perm::OPERATIONS_MANAGER_ROLE, &[perm::SHIPMENTS_VIEW])
-        .await
-        .unwrap();
+    permissions::define_role(
+        w.db(),
+        perm::OPERATIONS_MANAGER_ROLE,
+        &[perm::SHIPMENTS_VIEW],
+    )
+    .await
+    .unwrap();
     permissions::define_role(w.db(), perm::INVOICE_OWNER_ROLE, &[perm::REMITTANCES_VIEW])
         .await
         .unwrap();
@@ -126,9 +130,13 @@ async fn remit(w: &World) {
     w.cod_terms(SOUQ, 0, Some(ACCOUNT)).await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.amal,
         &format!("/remittances/{}/pay", draft.id),
@@ -198,7 +206,10 @@ async fn a_refunded_reversal_of_remitted_cod_drafts_a_negative_line_and_a_task_f
     assert_eq!(lines[0].status, AdjustmentStatus::Pending);
     assert_eq!(lines[0].source, "delivery_reversal");
     assert_eq!(lines[0].shipment_id, Some(shipment.id));
-    assert_eq!(lines[0].reason, "Delivery reversed, COD refunded to recipient");
+    assert_eq!(
+        lines[0].reason,
+        "Delivery reversed, COD refunded to recipient"
+    );
     let paid = w.the_remittance_of(SOUQ).await;
     assert_eq!(lines[0].corrects_remittance_id, Some(paid.id));
     // The next weekly run puts it on the client's draft; it counts once
@@ -222,11 +233,22 @@ async fn a_refunded_reversal_of_remitted_cod_drafts_a_negative_line_and_a_task_f
     // The claim ticket is linked, the task is the operations manager's.
     let claim = reversed.claim_ticket_id.expect("a claim ticket is linked");
     let opened = w.tickets.opened();
-    let claims: Vec<_> = opened.iter().filter(|t| t.category_key == "claim").collect();
+    let claims: Vec<_> = opened
+        .iter()
+        .filter(|t| t.category_key == "claim")
+        .collect();
     assert_eq!(claims.len(), 1);
-    assert_eq!(claim, i64::try_from(
-        opened.iter().position(|t| t.category_key == "claim").unwrap() + 1
-    ).unwrap());
+    assert_eq!(
+        claim,
+        i64::try_from(
+            opened
+                .iter()
+                .position(|t| t.category_key == "claim")
+                .unwrap()
+                + 1
+        )
+        .unwrap()
+    );
     let task = opened
         .iter()
         .find(|t| t.title.contains("Driver liable for AED 120.00"))
@@ -248,7 +270,12 @@ async fn a_refunded_reversal_of_remitted_cod_drafts_a_negative_line_and_a_task_f
         .filter(|n| n.data["title"].as_str().unwrap().contains("reversed"))
         .collect();
     assert_eq!(told.len(), 1);
-    assert!(told[0].data["body"].as_str().unwrap().contains(&shipment.number));
+    assert!(
+        told[0].data["body"]
+            .as_str()
+            .unwrap()
+            .contains(&shipment.number)
+    );
     // The task is on the operations manager's page.
     w.get(&boss, "/reversals")
         .await

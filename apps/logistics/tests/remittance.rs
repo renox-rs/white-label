@@ -19,9 +19,13 @@ const ACCOUNT: &str = "AE070331234567890123456";
 /// A draft of AED 300 for Souq Express that `preparer` built by hand.
 async fn draft_by(w: &World, preparer: &User) -> logistics::Remittance {
     w.delivered(SOUQ, "ORD-1", "300").await;
-    w.post(preparer, "/remittances/build", &[("client_party_id", "501")])
-        .await
-        .assert_status(303);
+    w.post(
+        preparer,
+        "/remittances/build",
+        &[("client_party_id", "501")],
+    )
+    .await
+    .assert_status(303);
     w.the_remittance_of(SOUQ).await
 }
 
@@ -54,15 +58,21 @@ async fn a_draft_is_approved_by_another_user_than_its_preparer() {
 async fn the_permissions_decide_who_builds_approves_reopens_and_pays() {
     let w = boot().await;
     w.delivered(SOUQ, "ORD-1", "300").await;
-    w.post(&w.dispatcher, "/remittances/build", &[("client_party_id", "501")])
-        .await
-        .assert_forbidden();
+    w.post(
+        &w.dispatcher,
+        "/remittances/build",
+        &[("client_party_id", "501")],
+    )
+    .await
+    .assert_forbidden();
     w.post(&w.amal, "/remittances/build", &[("client_party_id", "501")])
         .await
         .assert_status(303);
     let draft = w.the_remittance_of(SOUQ).await;
     let approve = format!("/remittances/{}/approve", draft.id);
-    w.post(&w.dispatcher, &approve, &[]).await.assert_forbidden();
+    w.post(&w.dispatcher, &approve, &[])
+        .await
+        .assert_forbidden();
     w.post(&w.bashar, &approve, &[]).await.assert_status(303);
     w.post(
         &w.dispatcher,
@@ -95,9 +105,13 @@ async fn an_approved_remittance_is_reopened_to_a_draft() {
     let draft = draft_by(&w, &w.amal).await;
     let reopen = format!("/remittances/{}/reopen", draft.id);
     w.post(&w.bashar, &reopen, &[]).await.assert_status(422);
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(&w.bashar, &reopen, &[]).await.assert_status(303);
     let reopened = w.remittance(&draft).await;
     assert_eq!(reopened.status, RemittanceStatus::Draft);
@@ -112,9 +126,13 @@ async fn paying_records_the_payout_in_the_real_payments_module() {
     let w = boot_with_payments().await;
     w.cod_terms(SOUQ, 0, Some(ACCOUNT)).await;
     let draft = draft_by(&w, &w.amal).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
 
     w.post(
         &w.amal,
@@ -157,9 +175,13 @@ async fn paying_records_the_payout_in_the_real_payments_module() {
 async fn a_payment_that_a_guard_refuses_records_no_payout() {
     let w = boot_with_payments().await;
     let draft = draft_by(&w, &w.amal).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     let pay = format!("/remittances/{}/pay", draft.id);
 
     // No account on file.
@@ -181,7 +203,10 @@ async fn a_payment_that_a_guard_refuses_records_no_payout() {
         .assert_see("on hold");
 
     assert_eq!(Payment::query().count(w.db()).await.unwrap(), 0);
-    assert_eq!(w.remittance_status(&draft).await, RemittanceStatus::Approved);
+    assert_eq!(
+        w.remittance_status(&draft).await,
+        RemittanceStatus::Approved
+    );
 
     w.parties.unblock(SOUQ);
     w.post(&w.amal, &pay, &[("payment_reference", "TRF-1")])
@@ -209,9 +234,13 @@ async fn a_remittance_of_zero_has_nothing_to_pay() {
         .assert_status(303);
     let empty = w.remittance(&draft).await;
     assert_eq!(empty.net, 0);
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.amal,
         &format!("/remittances/{}/pay", draft.id),

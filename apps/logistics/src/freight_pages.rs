@@ -16,8 +16,8 @@ use crate::freight_costing::{self, Figures};
 use crate::freight_flow as flow;
 use crate::freight_free_time::{self, BillCost};
 use crate::freight_hold;
-use crate::freight_reopen;
 use crate::freight_machine as machine;
+use crate::freight_reopen;
 use crate::pages::{Fields, Texts, field, tx};
 use crate::permissions;
 use crate::texts::t;
@@ -158,8 +158,18 @@ const ACTIONS: &[(&str, &str, &str, &[&str])] = &[
         "logistics.screen.job_request_documents",
         &["missing"],
     ),
-    (machine::DEPART, "depart", "logistics.screen.job_depart", &["bl_awb"]),
-    (machine::ARRIVE, "arrive", "logistics.screen.job_arrive", &[]),
+    (
+        machine::DEPART,
+        "depart",
+        "logistics.screen.job_depart",
+        &["bl_awb"],
+    ),
+    (
+        machine::ARRIVE,
+        "arrive",
+        "logistics.screen.job_arrive",
+        &[],
+    ),
     (
         machine::CLEAR,
         "clear",
@@ -190,7 +200,12 @@ const ACTIONS: &[(&str, &str, &str, &[&str])] = &[
         "logistics.screen.job_release",
         &["note"],
     ),
-    (machine::DELIVER, "deliver", "logistics.screen.job_deliver", &["pod_reference"]),
+    (
+        machine::DELIVER,
+        "deliver",
+        "logistics.screen.job_deliver",
+        &["pod_reference"],
+    ),
     (machine::CLOSE, "close", "logistics.screen.job_close", &[]),
     (
         machine::REOPEN,
@@ -198,7 +213,12 @@ const ACTIONS: &[(&str, &str, &str, &[&str])] = &[
         "logistics.screen.job_reopen",
         &["reason", "note"],
     ),
-    (machine::CANCEL, "cancel", "logistics.screen.job_cancel", &["reason"]),
+    (
+        machine::CANCEL,
+        "cancel",
+        "logistics.screen.job_cancel",
+        &["reason"],
+    ),
 ];
 
 /// What the job's page needs.
@@ -280,7 +300,9 @@ async fn show(
     if staff
         && job.status == FreightStatus::Delivered
         && user.has_permission(permissions::JOBS_MANAGE)
-        && !freight_costing::margins_of(&state.db, job.id).await?.is_empty()
+        && !freight_costing::margins_of(&state.db, job.id)
+            .await?
+            .is_empty()
     {
         actions.push(ActionView {
             slug: "supplementary",
@@ -306,9 +328,7 @@ async fn show(
     };
     let mut days = std::collections::BTreeMap::new();
     for line in &lines {
-        if let Some((logged, billed)) =
-            freight_free_time::days_compared(&state.db, line).await?
-        {
+        if let Some((logged, billed)) = freight_free_time::days_compared(&state.db, line).await? {
             days.insert(line.id, format!("{logged} / {billed}"));
         }
     }
@@ -403,7 +423,10 @@ async fn show(
 }
 
 fn bad_input(lang: &Lang) -> Error {
-    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, t(lang, "logistics.bad_input"))
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        t(lang, "logistics.bad_input"),
+    )
 }
 
 /// `POST /freight/{id}/{action}`: `request-documents` (`missing`), `depart`
@@ -443,8 +466,14 @@ async fn act(
             .await
         }
         "hold" => {
-            freight_hold::hold(&state, &user, id, &field(&form, "reason"), &field(&form, "note"))
-                .await
+            freight_hold::hold(
+                &state,
+                &user,
+                id,
+                &field(&form, "reason"),
+                &field(&form, "note"),
+            )
+            .await
         }
         "hold-note" => {
             freight_hold::add_reason(
@@ -458,8 +487,14 @@ async fn act(
         }
         "release" => freight_hold::release(&state, &user, id, &field(&form, "note")).await,
         "reopen" => {
-            freight_reopen::reopen(&state, &user, id, &field(&form, "reason"), &field(&form, "note"))
-                .await
+            freight_reopen::reopen(
+                &state,
+                &user,
+                id,
+                &field(&form, "reason"),
+                &field(&form, "note"),
+            )
+            .await
         }
         "deliver" => flow::deliver(&state, &user, id, &field(&form, "pod_reference")).await,
         "close" => flow::close(&state, &user, id).await,
@@ -561,7 +596,11 @@ async fn allocate(
 }
 
 /// A charge typed in dirhams; none when blank or zero.
-fn charge_in(lang: &Lang, form: &std::collections::BTreeMap<String, String>, name: &str) -> Result<Option<i64>> {
+fn charge_in(
+    lang: &Lang,
+    form: &std::collections::BTreeMap<String, String>,
+    name: &str,
+) -> Result<Option<i64>> {
     let text = field(form, name);
     if text.trim().is_empty() {
         return Ok(None);
@@ -585,7 +624,10 @@ async fn quotation(
         fixed: charge_in(&lang, &form, "fixed_charge")?,
         booked: charge_in(&lang, &form, "booked_charge")?,
         documents_pending: charge_in(&lang, &form, "documents_pending_charge")?,
-        recharge_incurred: matches!(field(&form, "recharge_incurred").trim(), "1" | "on" | "true"),
+        recharge_incurred: matches!(
+            field(&form, "recharge_incurred").trim(),
+            "1" | "on" | "true"
+        ),
     };
     freight_cancel::set_quotation(&state, &user, id, &input)
         .await
@@ -618,7 +660,11 @@ async fn decide(
 }
 
 /// A date typed in a form; today when blank; 422 when it is no date.
-fn date_or_today(lang: &Lang, form: &std::collections::BTreeMap<String, String>, name: &str) -> Result<renox::chrono::NaiveDate> {
+fn date_or_today(
+    lang: &Lang,
+    form: &std::collections::BTreeMap<String, String>,
+    name: &str,
+) -> Result<renox::chrono::NaiveDate> {
     let text = field(form, name);
     if text.trim().is_empty() {
         return Ok(wl_kernel::documents::today());

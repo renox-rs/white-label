@@ -35,16 +35,17 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::delivery::{
     DeliveryAttemptFailed, DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed,
-    DeliveryFound, DeliveryId, DeliveryLost, DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequester, DeliveryReversed,
-    ReviewOutcome,
+    DeliveryFound, DeliveryId, DeliveryLost, DeliveryOutForDelivery, DeliveryRefusedReceived,
+    DeliveryRequester, DeliveryReversed, ReviewOutcome,
 };
 use wl_kernel::{Subject, voids};
 
 use crate::notices::tell_client;
 use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentDelivered, ShipmentStatus, track};
 use crate::shipment_machine::{
-    CANCEL, CANCEL_RETURN, CLOSE_REVIEW, DELIVER, DISPATCH, DISPOSE, DISPOSE_APPROVED, FAIL_ATTEMPT, FOUND, FOUND_SYSTEM, HOLD,
-    HOLD_SYSTEM, MARK_LOST, MARK_LOST_APPROVED, MARK_LOST_SYSTEM, OPEN_REVIEW, PICK_UP, RECEIVE_AT_HUB, RELEASE, RETURN, REVERSE_DELIVERY,
+    CANCEL, CANCEL_RETURN, CLOSE_REVIEW, DELIVER, DISPATCH, DISPOSE, DISPOSE_APPROVED,
+    FAIL_ATTEMPT, FOUND, FOUND_SYSTEM, HOLD, HOLD_SYSTEM, MARK_LOST, MARK_LOST_APPROVED,
+    MARK_LOST_SYSTEM, OPEN_REVIEW, PICK_UP, RECEIVE_AT_HUB, RELEASE, RETURN, REVERSE_DELIVERY,
     REVERSE_DELIVERY_ON_ROAD, ShipmentInput,
 };
 use crate::texts::english;
@@ -242,9 +243,11 @@ pub(crate) fn register(app: &mut Registry) {
         }
         Ok(())
     });
-    app.listen(|event: DeliveryRefusedReceived, state: AppState| async move {
-        crate::partial::note_received(&state, &event).await
-    });
+    app.listen(
+        |event: DeliveryRefusedReceived, state: AppState| async move {
+            crate::partial::note_received(&state, &event).await
+        },
+    );
     app.listen(|event: DeliveryAttemptFailed, state: AppState| async move {
         if let Some(shipment) = shipment_of(&state, &event.source).await? {
             follow(

@@ -96,7 +96,8 @@ async fn the_demo_logistics_client_boots_and_the_demo_company_is_made_once() {
 }
 
 #[test]
-fn the_accountant_and_the_client_user_ask_for_a_bank_account_change_and_a_second_user_approves_it() {
+fn the_accountant_and_the_client_user_ask_for_a_bank_account_change_and_a_second_user_approves_it()
+{
     // `LOG.ACL.13`: the accountant (and the company admin) and a client user
     // in the portal ask; only the holders of `remittances.approve` decide.
     assert!(holds(roles::ACCOUNTANT, perm::REMITTANCES_REQUEST_ACCOUNT));
@@ -121,7 +122,10 @@ fn customer_service_flags_statement_disputes_and_the_company_admin_approves_bloc
     // `PTY.ACL.03`: 03 has no finance manager; the company admin approves an
     // exception and the accountant who asks for it does not.
     assert!(holds(ADMIN, wl_parties::permissions::BLOCK_EXCEPTION));
-    assert!(!holds(roles::ACCOUNTANT, wl_parties::permissions::BLOCK_EXCEPTION));
+    assert!(!holds(
+        roles::ACCOUNTANT,
+        wl_parties::permissions::BLOCK_EXCEPTION
+    ));
     // Freight jobs are opened by the dispatcher and the operations manager.
     for role in [ADMIN, DISPATCHER, OPERATIONS_MANAGER] {
         assert!(holds(role, perm::FREIGHT_MANAGE), "{role}");
@@ -143,7 +147,12 @@ fn the_documentation_officer_works_and_closes_freight_jobs() {
     // the company admin) hold, release, deliver, close and reopen jobs; the
     // operations manager and the accountant only see them.
     for role in [ADMIN, roles::DOCUMENTATION_OFFICER] {
-        for permission in [perm::JOBS_VIEW, perm::JOBS_MANAGE, perm::JOBS_DELIVER, perm::JOBS_CLOSE] {
+        for permission in [
+            perm::JOBS_VIEW,
+            perm::JOBS_MANAGE,
+            perm::JOBS_DELIVER,
+            perm::JOBS_CLOSE,
+        ] {
             assert!(holds(role, permission), "{role} {permission}");
         }
     }
@@ -156,7 +165,10 @@ fn the_documentation_officer_works_and_closes_freight_jobs() {
     // invoiced (BL-LOG-23); the documentation officer does not.
     assert!(holds(roles::ACCOUNTANT, perm::JOBS_BILL_CANCELLED));
     assert!(holds(ADMIN, perm::JOBS_BILL_CANCELLED));
-    assert!(!holds(roles::DOCUMENTATION_OFFICER, perm::JOBS_BILL_CANCELLED));
+    assert!(!holds(
+        roles::DOCUMENTATION_OFFICER,
+        perm::JOBS_BILL_CANCELLED
+    ));
     for role in [OPERATIONS_MANAGER, roles::ACCOUNTANT] {
         assert!(holds(role, perm::JOBS_VIEW), "{role}");
         assert!(!holds(role, perm::JOBS_MANAGE), "{role}");

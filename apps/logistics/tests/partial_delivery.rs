@@ -56,9 +56,14 @@ async fn two_parcels_accepted_and_one_refused_makes_a_linked_return_shipment() {
     let parcels = out.parcels(w.db()).await.unwrap();
     assert_eq!(parcels.len(), 3);
 
-    w.deliver_parcels(&delivery, "300.00", &[(2, "damaged", "damage-photo-1")], &[])
-        .await
-        .assert_status(303);
+    w.deliver_parcels(
+        &delivery,
+        "300.00",
+        &[(2, "damaged", "damage-photo-1")],
+        &[],
+    )
+    .await
+    .assert_status(303);
 
     let delivered = w.reload(&out).await;
     assert_eq!(delivered.status, ShipmentStatus::Delivered);

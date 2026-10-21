@@ -92,7 +92,10 @@ pub async fn request_documents(
         ..FreightInput::default()
     };
     let job = run(state, user, id, REQUEST_DOCUMENTS, &input).await?;
-    let title = english("logistics.freight.documents_title", &[("number", &job.number)]);
+    let title = english(
+        "logistics.freight.documents_title",
+        &[("number", &job.number)],
+    );
     let body = english(
         "logistics.freight.documents_body",
         &[("number", &job.number), ("missing", &missing.trim())],
@@ -119,7 +122,10 @@ pub async fn depart(
         ..FreightInput::default()
     };
     let job = run(state, user, id, DEPART, &input).await?;
-    let title = english("logistics.freight.departed_title", &[("number", &job.number)]);
+    let title = english(
+        "logistics.freight.departed_title",
+        &[("number", &job.number)],
+    );
     let body = english(
         "logistics.freight.departed_body",
         &[

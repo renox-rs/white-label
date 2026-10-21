@@ -277,7 +277,11 @@ async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool
             WlDelivery::new()
                 .partial_acceptance(logistics::SUBJECT_TYPE, false)
                 // As the host sets 03: never the customer (`WRK.ACL.09`).
-                .cod_absorbers(&[CodAbsorber::Client, CodAbsorber::Business, CodAbsorber::Driver])
+                .cod_absorbers(&[
+                    CodAbsorber::Client,
+                    CodAbsorber::Business,
+                    CodAbsorber::Driver,
+                ])
                 // As the host sets 03: the cash escalation of a driver is
                 // `LOG.RUL.13`, and a run can be aborted for *driver
                 // unreachable*.
@@ -303,11 +307,8 @@ async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool
     let app = if real_parties {
         // The real wl-parties is the directory and the block guard; 03 has no
         // finance manager, so the company admin approves an exception.
-        app.module(
-            wl_parties::WlParties::new()
-                .exception_approver(wl_kernel::COMPANY_ADMIN_ROLE),
-        )
-        .module(wl_payments::WlPayments::new().cash_write_off_limit(5_000))
+        app.module(wl_parties::WlParties::new().exception_approver(wl_kernel::COMPANY_ADMIN_ROLE))
+            .module(wl_payments::WlPayments::new().cash_write_off_limit(5_000))
     } else if real_payments {
         let directory: Arc<dyn PartyDirectory> = Arc::new(parties.clone());
         app.provide(directory)
@@ -409,12 +410,7 @@ async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool
         wl_invoicing::permissions::ISSUE,
     ];
     let docs = make_user(app.db(), "Dalia", &documentation).await;
-    let docs_limited = make_user(
-        app.db(),
-        "Dima",
-        &[perm::JOBS_VIEW, perm::JOBS_MANAGE],
-    )
-    .await;
+    let docs_limited = make_user(app.db(), "Dima", &[perm::JOBS_VIEW, perm::JOBS_MANAGE]).await;
     portal.grant(noor.id, SOUQ.0);
     portal.grant(nadia.id, SOUQ.0);
     portal.grant(farah.id, OTHER_CLIENT.0);
@@ -776,7 +772,8 @@ impl World {
     /// The weekly rule `LOG.RUL.06` for a period that ended an hour from
     /// now: everything delivered so far is in the period.
     pub async fn rule(&self) -> Vec<Built> {
-        self.rule_until(renox::db::now() + TimeDelta::hours(1)).await
+        self.rule_until(renox::db::now() + TimeDelta::hours(1))
+            .await
     }
 
     /// The weekly rule for the period ending at `period_end`.

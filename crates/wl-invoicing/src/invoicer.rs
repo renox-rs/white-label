@@ -127,11 +127,7 @@ impl Invoicer for Invoices {
         })
     }
 
-    fn open_of<'a>(
-        &'a self,
-        db: &'a Db,
-        party: PartyId,
-    ) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
+    fn open_of<'a>(&'a self, db: &'a Db, party: PartyId) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
         Box::pin(async move {
             let open = [
                 InvoiceStatus::Issued,

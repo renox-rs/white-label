@@ -251,7 +251,10 @@ pub(crate) async fn settled(state: &AppState, id: i64) -> Result {
     credit::due(state, &shipment, "lost", shipment.id).await?;
     if shipment.claim_ticket_id.is_none() {
         // A lost shipment always gets a claim, whatever the liability.
-        let title = english("logistics.loss.claim_title", &[("number", &shipment.number)]);
+        let title = english(
+            "logistics.loss.claim_title",
+            &[("number", &shipment.number)],
+        );
         let description = english(
             "logistics.loss.claim_description",
             &[
@@ -290,7 +293,10 @@ pub(crate) async fn settled(state: &AppState, id: i64) -> Result {
             client: shipment.client(),
             from: shipment.lost_from.clone().unwrap_or_default(),
             reason: shipment.lost_reason.clone().unwrap_or_default(),
-            liability: shipment.liability.clone().unwrap_or_else(|| "none".to_owned()),
+            liability: shipment
+                .liability
+                .clone()
+                .unwrap_or_else(|| "none".to_owned()),
             claim_ticket: shipment.claim_ticket_id,
         })
         .await
@@ -307,7 +313,10 @@ pub(crate) async fn settled(state: &AppState, id: i64) -> Result {
 pub(crate) async fn found_settled(state: &AppState, id: i64) -> Result {
     let shipment = Shipment::find_or_404(&state.db, id).await?;
     let depot = shipment.found_depot.clone().unwrap_or_default();
-    let title = english("logistics.loss.found_title", &[("number", &shipment.number)]);
+    let title = english(
+        "logistics.loss.found_title",
+        &[("number", &shipment.number)],
+    );
     let body = english(
         "logistics.loss.found_body",
         &[("number", &shipment.number), ("depot", &depot)],
@@ -415,16 +424,12 @@ pub async fn settle_claim(
             &[("claim_settled_amount", &amount), ("claim_settled_at", &at)],
         )
         .await?;
-    track(
-        &state.db,
-        id,
-        "claim_settled",
-        &aed(amount),
-        Some(user.id),
-    )
-    .await?;
+    track(&state.db, id, "claim_settled", &aed(amount), Some(user.id)).await?;
     if let Some(ticket) = shipment.claim_ticket_id {
-        let text = english("logistics.loss.settled_comment", &[("amount", &aed(amount))]);
+        let text = english(
+            "logistics.loss.settled_comment",
+            &[("amount", &aed(amount))],
+        );
         tickets::task_creator(state)
             .comment(state, TicketId(ticket), TaskComment::internal(&text))
             .await?;
@@ -523,7 +528,14 @@ pub async fn choose(
                     .await?;
             }
             None => {
-                track(&state.db, id, "claim_invoice_skipped", "invoicing is off", None).await?;
+                track(
+                    &state.db,
+                    id,
+                    "claim_invoice_skipped",
+                    "invoicing is off",
+                    None,
+                )
+                .await?;
             }
         }
         hold::release(state, user, id).await

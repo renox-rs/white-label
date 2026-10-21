@@ -213,7 +213,10 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .await?;
     // Whether each client that has a shipment waiting for pickup is blocked.
     let mut on_hold: BTreeMap<i64, bool> = BTreeMap::new();
-    for s in shipments.iter().filter(|s| s.status == ShipmentStatus::Created) {
+    for s in shipments
+        .iter()
+        .filter(|s| s.status == ShipmentStatus::Created)
+    {
         if !on_hold.contains_key(&s.client_party_id) {
             let blocked = crate::block::on_hold(&state, s.client()).await?;
             on_hold.insert(s.client_party_id, blocked);
@@ -466,10 +469,8 @@ async fn show(
                 ]
             })
             .collect(),
-        can_depot_scan: scans
-            && matches!(shipment.status, PickedUp | AtHub | OnHold | Returning),
-        can_note: manages
-            && !matches!(shipment.status, Cancelled | Voided | Disposed),
+        can_depot_scan: scans && matches!(shipment.status, PickedUp | AtHub | OnHold | Returning),
+        can_note: manages && !matches!(shipment.status, Cancelled | Voided | Disposed),
         liabilities: crate::loss::LIABILITIES
             .iter()
             .map(|liability| {

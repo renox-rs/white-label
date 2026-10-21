@@ -34,10 +34,9 @@ async fn attempted(w: &World) -> Shipment {
 /// The delivery of `shipment` is untraced for 7 days: wl-delivery marks it
 /// lost (`WRK.RUL.17`) and the shipment follows.
 async fn untraced(w: &World) {
-    let marked =
-        wl_delivery::lost::run(w.state(), renox::db::now() + TimeDelta::days(8))
-            .await
-            .unwrap();
+    let marked = wl_delivery::lost::run(w.state(), renox::db::now() + TimeDelta::days(8))
+        .await
+        .unwrap();
     assert_eq!(marked, 1);
 }
 
@@ -92,14 +91,23 @@ async fn an_attempted_shipment_follows_its_lost_delivery_with_the_claim_ticket()
     assert_eq!(after.lost_from.as_deref(), Some("attempted"));
     let notices = lost_notices(&w);
     assert_eq!(notices.len(), 1);
-    assert!(notices[0]["body"].as_str().unwrap().contains(&shipment.number));
+    assert!(
+        notices[0]["body"]
+            .as_str()
+            .unwrap()
+            .contains(&shipment.number)
+    );
     let events = w.shipment_lost.all();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].shipment, shipment.id);
     assert_eq!(events[0].from, "attempted");
     assert_eq!(events[0].claim_ticket, after.claim_ticket_id);
     assert!(Shipment::billable(w.db(), SOUQ).await.unwrap().is_empty());
-    assert!(transitions(&w, &after).await.contains(&MARK_LOST_SYSTEM.to_owned()));
+    assert!(
+        transitions(&w, &after)
+            .await
+            .contains(&MARK_LOST_SYSTEM.to_owned())
+    );
     let tracked = after.events(w.db()).await.unwrap();
     assert!(tracked.iter().any(|e| e.kind == "lost"));
 }
@@ -150,12 +158,20 @@ async fn a_lost_shipment_scanned_at_a_depot_is_back_at_the_hub() {
     let claim = shipment.claim_ticket_id.expect("a claim ticket");
 
     // Only a scanner, and only with a depot.
-    w.post(&w.noor, &format!("/shipments/{}/found", shipment.id), &[("depot", "Depot B")])
-        .await
-        .assert_forbidden();
-    w.post(&w.hub, &format!("/shipments/{}/found", shipment.id), &[("depot", " ")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.noor,
+        &format!("/shipments/{}/found", shipment.id),
+        &[("depot", "Depot B")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &w.hub,
+        &format!("/shipments/{}/found", shipment.id),
+        &[("depot", " ")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Lost);
 
     w.post(
@@ -188,7 +204,11 @@ async fn a_lost_shipment_scanned_at_a_depot_is_back_at_the_hub() {
     );
     // Not settled: no hold, and billing starts again with its delivery.
     assert!(transitions(&w, &found).await.contains(&FOUND.to_owned()));
-    assert!(!transitions(&w, &found).await.contains(&"hold_system".to_owned()));
+    assert!(
+        !transitions(&w, &found)
+            .await
+            .contains(&"hold_system".to_owned())
+    );
     assert_eq!(Shipment::billable(w.db(), SOUQ).await.unwrap().len(), 1);
 }
 
@@ -226,12 +246,20 @@ async fn a_found_shipment_after_a_settled_claim_is_held_until_the_client_chooses
     let claim = shipment.claim_ticket_id.unwrap();
 
     // The claim is settled by staff, on a lost shipment, with an amount.
-    w.post(&w.noor, &format!("/shipments/{}/claim-settled", shipment.id), &[("amount", "400")])
-        .await
-        .assert_forbidden();
-    w.post(&w.dispatcher, &format!("/shipments/{}/claim-settled", shipment.id), &[("amount", "0")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.noor,
+        &format!("/shipments/{}/claim-settled", shipment.id),
+        &[("amount", "400")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/claim-settled", shipment.id),
+        &[("amount", "0")],
+    )
+    .await
+    .assert_status(422);
     w.post(
         &w.dispatcher,
         &format!("/shipments/{}/claim-settled", shipment.id),
@@ -257,19 +285,33 @@ async fn a_found_shipment_after_a_settled_claim_is_held_until_the_client_chooses
     assert_eq!(history[found_at + 1], "hold_system");
     // The ticket is reopened: the comment says so.
     assert!(w.tickets.comments().iter().any(|(ticket, comment)| {
-        ticket.0 == claim && comment.text.contains("reopened") && comment.text.contains("AED 400.00")
+        ticket.0 == claim
+            && comment.text.contains("reopened")
+            && comment.text.contains("AED 400.00")
     }));
 
     // It cannot be released before the client chooses; the choice is checked.
-    w.post(&w.dispatcher, &format!("/shipments/{}/release", shipment.id), &[])
-        .await
-        .assert_status(422);
-    w.post(&w.dispatcher, &format!("/shipments/{}/claim-choice", shipment.id), &[("choice", "maybe")])
-        .await
-        .assert_status(422);
-    w.post(&w.noor, &format!("/shipments/{}/claim-choice", shipment.id), &[("choice", "delivery")])
-        .await
-        .assert_forbidden();
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/release", shipment.id),
+        &[],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/claim-choice", shipment.id),
+        &[("choice", "maybe")],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &w.noor,
+        &format!("/shipments/{}/claim-choice", shipment.id),
+        &[("choice", "delivery")],
+    )
+    .await
+    .assert_forbidden();
     assert!(w.invoices.drafts().is_empty());
 
     w.post(
@@ -288,13 +330,20 @@ async fn a_found_shipment_after_a_settled_claim_is_held_until_the_client_chooses
     assert_eq!(drafts[0].party, SOUQ);
     assert_eq!(drafts[0].lines.len(), 1);
     assert_eq!(drafts[0].lines[0].net(), 40_000);
-    assert_eq!(drafts[0].lines[0].description, "Claim reversed, goods found");
+    assert_eq!(
+        drafts[0].lines[0].description,
+        "Claim reversed, goods found"
+    );
     assert_eq!(drafts[0].lines[0].origin, Some(released.subject()));
     assert_eq!(released.claim_invoice_id, Some(1));
     // Chosen once.
-    w.post(&w.dispatcher, &format!("/shipments/{}/claim-choice", shipment.id), &[("choice", "keep")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/claim-choice", shipment.id),
+        &[("choice", "keep")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(w.invoices.drafts().len(), 1);
 }
 
@@ -395,5 +444,9 @@ async fn a_found_delivery_brings_the_shipment_back_to_the_hub() {
     let found = w.reload(&shipment).await;
     assert_eq!(found.status, ShipmentStatus::AtHub);
     assert_eq!(found.found_depot.as_deref(), Some("Depot C"));
-    assert!(transitions(&w, &found).await.contains(&FOUND_SYSTEM.to_owned()));
+    assert!(
+        transitions(&w, &found)
+            .await
+            .contains(&FOUND_SYSTEM.to_owned())
+    );
 }

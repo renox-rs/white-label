@@ -134,10 +134,7 @@ async fn under_review(w: &World, shipment: &Shipment) {
     )
     .await
     .assert_status(303);
-    assert_eq!(
-        w.reload(shipment).await.status,
-        ShipmentStatus::UnderReview
-    );
+    assert_eq!(w.reload(shipment).await.status, ShipmentStatus::UnderReview);
 }
 
 /// The review of the delivery of `shipment` is closed (upheld).
@@ -309,7 +306,10 @@ async fn the_november_draft_bills_deliveries_surcharges_and_returns_and_none_of_
         ));
     }
     for shipment in [&returned_a, &returned_b] {
-        assert!(mentions(draft, &format!("Return charge {}", shipment.number)));
+        assert!(mentions(
+            draft,
+            &format!("Return charge {}", shipment.number)
+        ));
         assert!(
             !mentions(draft, &format!("Delivery {}", shipment.number)),
             "a return before any attempt is billed the return charge only"
@@ -352,10 +352,7 @@ async fn a_shipment_under_review_on_day_one_is_billed_on_the_december_draft() {
     assert!(drafts(&w).is_empty());
 
     close_review(&w, &shipment).await;
-    assert_eq!(
-        w.reload(&shipment).await.status,
-        ShipmentStatus::Delivered
-    );
+    assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Delivered);
     let december = billing::run_monthly(w.state(), day(2026, 12, 1))
         .await
         .unwrap();
@@ -392,7 +389,10 @@ async fn a_return_charge_is_billed_in_the_month_of_the_epod() {
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].lines.len(), 1);
     assert_eq!(all[0].lines[0].net(), 1_500);
-    assert!(mentions(&all[0], &format!("Return charge {}", shipment.number)));
+    assert!(mentions(
+        &all[0],
+        &format!("Return charge {}", shipment.number)
+    ));
 }
 
 /// A shipment returned after a failed visit is billed its delivery charge and
@@ -428,7 +428,10 @@ async fn a_returned_shipment_that_was_attempted_is_billed_the_delivery_too() {
     let net: i64 = all[0].lines.iter().map(|l| l.net()).sum();
     assert_eq!(net, 2_000 + 1_500);
     assert!(mentions(&all[0], &format!("Delivery {}", shipment.number)));
-    assert!(mentions(&all[0], &format!("Return charge {}", shipment.number)));
+    assert!(mentions(
+        &all[0],
+        &format!("Return charge {}", shipment.number)
+    ));
 }
 
 /// AC4: a disposed shipment with liability *client* is billed its delivery
@@ -569,7 +572,11 @@ async fn a_surcharge_recorded_after_the_invoice_goes_on_the_next_draft_alone() {
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].lines.len(), 1);
     assert_eq!(all[0].lines[0].net(), 800);
-    assert!(all[0].lines[0].description.starts_with("Re-weigh surcharge"));
+    assert!(
+        all[0].lines[0]
+            .description
+            .starts_with("Re-weigh surcharge")
+    );
 }
 
 /// Closes the seam of BL-LOG-04: a surcharge held by an open re-weigh ticket
@@ -661,10 +668,7 @@ async fn a_cancellation_fee_is_billed_and_a_cancelled_shipment_has_no_delivery_l
     w.post(&w.noor, &format!("/shipments/{}/cancel", shipment.id), &[])
         .await
         .assert_status(303);
-    assert_eq!(
-        w.reload(&shipment).await.status,
-        ShipmentStatus::Cancelled
-    );
+    assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Cancelled);
     assert!(Shipment::billable(w.db(), SOUQ).await.unwrap().is_empty());
 
     // The fee was recorded now; the run on 1 January is after it.

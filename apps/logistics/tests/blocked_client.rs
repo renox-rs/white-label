@@ -33,7 +33,10 @@ async fn scene() -> (World, PartyId) {
 /// The company admin: holds the admin role and the permission to approve a
 /// block exception.
 async fn company_admin(w: &World, name: &str, extra: &[&str]) -> User {
-    let mut grants = vec![wl_parties::permissions::BLOCK_EXCEPTION, perm::REMITTANCES_VIEW];
+    let mut grants = vec![
+        wl_parties::permissions::BLOCK_EXCEPTION,
+        perm::REMITTANCES_VIEW,
+    ];
     grants.extend_from_slice(extra);
     permissions::define_role(w.db(), COMPANY_ADMIN_ROLE, &grants)
         .await
@@ -59,9 +62,13 @@ async fn approved_and_blocked() -> (World, PartyId, logistics::Remittance) {
     w.rule().await;
     let draft = w.the_remittance_of(client).await;
     assert_eq!(draft.status, RemittanceStatus::Draft);
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     let approved = w.remittance(&draft).await;
     assert_eq!(approved.status, RemittanceStatus::Approved);
     (w, client, approved)
@@ -107,7 +114,11 @@ async fn a_blocked_client_cannot_book_and_the_text_is_neutral() {
         .post(
             &w.noor,
             "/shipments/import",
-            &[("client_party_id", id.as_str()), ("csv", csv()), ("dry_run", "1")],
+            &[
+                ("client_party_id", id.as_str()),
+                ("csv", csv()),
+                ("dry_run", "1"),
+            ],
         )
         .await;
     dry.assert_ok();
@@ -151,10 +162,7 @@ async fn shipments_booked_before_the_block_finish_and_the_dispatcher_sees_client
     w.post(&w.noor, &format!("/shipments/{}/cancel", cancelled.id), &[])
         .await
         .assert_status(303);
-    assert_eq!(
-        w.reload(&cancelled).await.status,
-        ShipmentStatus::Cancelled
-    );
+    assert_eq!(w.reload(&cancelled).await.status, ShipmentStatus::Cancelled);
 }
 
 /// AC3: C's Monday draft is created and can be approved; `pay` is refused
@@ -244,9 +252,14 @@ async fn an_exception_approved_by_the_company_admin_lets_one_payment_go_ahead() 
     assert!(!w.remittance(&approved).await.block_exception_granted);
 
     let admin = company_admin(&w, "Aisha", &[]).await;
-    approve(w.state(), requests[0].id, &admin, "Paid arrears on 4 November")
-        .await
-        .unwrap();
+    approve(
+        w.state(),
+        requests[0].id,
+        &admin,
+        "Paid arrears on 4 November",
+    )
+    .await
+    .unwrap();
     let granted = w.remittance(&approved).await;
     assert!(granted.block_exception_granted);
     assert_eq!(granted.status, RemittanceStatus::Approved);
@@ -317,9 +330,13 @@ async fn a_returned_remittance_of_a_blocked_client_is_not_repaid_without_an_exce
     w.delivered(client, "ORD-1", "500").await;
     w.rule().await;
     let draft = w.the_remittance_of(client).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.amal,
         &format!("/remittances/{}/pay", draft.id),
@@ -376,9 +393,13 @@ async fn an_exception_is_asked_only_for_a_blocked_client_by_the_accountant() {
     w.post(&w.amal, &pay, &[("block_exception", "1")])
         .await
         .assert_status(422);
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     // The client is not blocked: no exception is needed.
     w.post(&w.amal, &pay, &[("block_exception", "1")])
         .await
@@ -401,7 +422,10 @@ async fn a_new_freight_job_is_refused_and_an_open_one_continues() {
     w.post(
         &w.dispatcher,
         "/freight",
-        &[("client_party_id", id.as_str()), ("description", "2 pallets to Muscat")],
+        &[
+            ("client_party_id", id.as_str()),
+            ("description", "2 pallets to Muscat"),
+        ],
     )
     .await
     .assert_status(303);
@@ -416,7 +440,10 @@ async fn a_new_freight_job_is_refused_and_an_open_one_continues() {
     w.post(
         &w.dispatcher,
         "/freight",
-        &[("client_party_id", id.as_str()), ("description", "A second job")],
+        &[
+            ("client_party_id", id.as_str()),
+            ("description", "A second job"),
+        ],
     )
     .await
     .assert_status(422)

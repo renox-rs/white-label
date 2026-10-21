@@ -22,9 +22,9 @@ pub mod freight_costing;
 pub mod freight_flow;
 pub mod freight_free_time;
 pub mod freight_hold;
-pub mod freight_reopen;
 pub mod freight_machine;
 mod freight_pages;
+pub mod freight_reopen;
 pub mod grounding;
 pub mod hold;
 pub mod loss;
@@ -41,35 +41,29 @@ pub mod remit;
 pub mod remittance;
 pub mod remittance_machine;
 mod remittance_pages;
-pub mod review;
 pub mod reversal;
 mod reversal_pages;
+pub mod review;
 pub mod reweigh;
 pub mod scan;
 mod screen_texts;
 pub mod seed;
 pub mod shipment;
-pub mod sms_fallback;
 pub mod shipment_machine;
+pub mod sms_fallback;
 pub mod statement;
-pub mod trace;
 mod texts;
+pub mod trace;
 mod voiding;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
-pub use booking::{ImportReport, NewShipment, RowResult};
-pub use rates::{ClientRate, WeightBand};
-pub use reweigh::{ClientTerms, Measurement};
-pub use shipment::{
-    AddressChange, Charge, PARCEL_SUBJECT_TYPE, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment,
-    ShipmentDelivered, ShipmentLost, ShipmentStatus, TrackingEvent,
-};
 pub use account::{AccountChange, AccountChangeStatus};
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
 pub use billing::{BillingRun, Monthly};
+pub use booking::{ImportReport, NewShipment, RowResult};
 pub use cash_watch::CashWatch;
 pub use cod::{CodLoss, CodRule};
 pub use dispute::StatementDispute;
@@ -78,18 +72,24 @@ pub use freight_cancel::{FreightCancellation, FreightQuotation};
 pub use freight_costing::{FreightMargin, JobLine};
 pub use freight_free_time::{FreeTimeLine, FreeTimeNotice};
 pub use freight_hold::FreightHold;
-pub use grounding::VehicleGrounding;
-pub use freight_reopen::FreightReopening;
 pub use freight_machine::FreightInput;
+pub use freight_reopen::FreightReopening;
+pub use grounding::VehicleGrounding;
 pub use netting::Offset;
-pub use statement::Statement;
-pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
-pub use trace::TraceTask;
+pub use rates::{ClientRate, WeightBand};
 pub use remittance::{
     PaymentReturn, REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus,
 };
 pub use remittance_machine::RemittanceInput;
+pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
+pub use reweigh::{ClientTerms, Measurement};
+pub use shipment::{
+    AddressChange, Charge, PARCEL_SUBJECT_TYPE, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment,
+    ShipmentDelivered, ShipmentLost, ShipmentStatus, TrackingEvent,
+};
 pub use shipment_machine::ShipmentInput;
+pub use statement::Statement;
+pub use trace::TraceTask;
 
 /// The Logistics module. Add it to the app with
 /// `.module(logistics::Logistics)`.
@@ -132,7 +132,8 @@ impl Module for Logistics {
                 .chain(remittance_pages::VIEWS)
                 .chain(cod::VIEWS)
                 .chain(freight_pages::VIEWS)
-                .chain(reversal_pages::VIEWS) {
+                .chain(reversal_pages::VIEWS)
+            {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
                     renox::view::add_template(env, *name, *source)

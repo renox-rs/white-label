@@ -43,7 +43,13 @@ async fn last_cost(w: &World, job: &FreightJob) -> JobLine {
 
 /// A cost of `amount` dirhams recorded on the job and allocated with
 /// `liability`, rechargeable when `recharge`.
-async fn cost(w: &World, job: &FreightJob, amount: &str, liability: &str, recharge: bool) -> JobLine {
+async fn cost(
+    w: &World,
+    job: &FreightJob,
+    amount: &str,
+    liability: &str,
+    recharge: bool,
+) -> JobLine {
     w.post(
         &w.docs,
         &format!("/freight/{}/costs", job.id),
@@ -88,9 +94,14 @@ async fn invoices(w: &World) -> Vec<Invoice> {
 /// A `documents_pending` job.
 async fn pending_job(w: &World) -> FreightJob {
     let job = w.open_job().await;
-    w.job_action(&w.docs, &job, "request-documents", &[("missing", "Packing list")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "request-documents",
+        &[("missing", "Packing list")],
+    )
+    .await
+    .assert_status(303);
     let after = w.job(job.id).await;
     assert_eq!(after.status, FreightStatus::DocumentsPending);
     after
@@ -128,17 +139,30 @@ async fn cancel_drafts_one_invoice_with_the_charge_and_the_booking_fee_at_five_p
     w.job_action(&w.docs, &job, "cancel", &[("reason", " ")])
         .await
         .assert_status(422);
-    w.job_action(&w.hub, &job, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_forbidden();
+    w.job_action(
+        &w.hub,
+        &job,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_forbidden();
     assert!(invoices(&w).await.is_empty());
 
-    w.job_action(&w.docs, &job, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     let cancelled = w.job(job.id).await;
     assert_eq!(cancelled.status, FreightStatus::Cancelled);
-    assert_eq!(cancelled.cancel_reason.as_deref(), Some("client cancelled order"));
+    assert_eq!(
+        cancelled.cancel_reason.as_deref(),
+        Some("client cancelled order")
+    );
 
     let drafted = invoices(&w).await;
     assert_eq!(drafted.len(), 1, "one invoice");
@@ -172,7 +196,10 @@ async fn cancel_drafts_one_invoice_with_the_charge_and_the_booking_fee_at_five_p
     assert_eq!(last_cost(&w, &job).await.invoice_id, Some(invoice.id));
     let figures = freight_costing::figures_of(w.db(), job.id).await.unwrap();
     assert_eq!((figures.revenue, figures.cost), (70_000, 20_000));
-    assert!(w.tickets.opened().is_empty(), "nothing for the officer to decide");
+    assert!(
+        w.tickets.opened().is_empty(),
+        "nothing for the officer to decide"
+    );
 }
 
 /// A booking fee with the three conditions of VATP013 recorded is recharged
@@ -181,7 +208,12 @@ async fn cancel_drafts_one_invoice_with_the_charge_and_the_booking_fee_at_five_p
 async fn an_incurred_disbursement_is_recharged_out_of_scope_and_a_reimbursement_at_five_percent() {
     let w = invoicing_world().await;
     let job = w.open_job().await;
-    quote(&w, &job, &[("fixed_charge", "500.00"), ("recharge_incurred", "1")]).await;
+    quote(
+        &w,
+        &job,
+        &[("fixed_charge", "500.00"), ("recharge_incurred", "1")],
+    )
+    .await;
     let fee = cost(&w, &job, "200.00", "client", true).await;
     w.post(
         &w.docs,
@@ -191,9 +223,14 @@ async fn an_incurred_disbursement_is_recharged_out_of_scope_and_a_reimbursement_
     .await
     .assert_status(303);
     cost(&w, &job, "100.00", "client", true).await;
-    w.job_action(&w.docs, &job, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     let invoice = invoices(&w).await.remove(0);
     // 500 + 200 (no VAT) + 100 (VAT 5.00 on the charge and the fee: 25 + 5).
     assert_eq!(invoice.net_total, 80_000);
@@ -219,12 +256,20 @@ async fn a_charge_per_stage_uses_the_stage_of_the_job_at_cancel() {
     quote(
         &w,
         &job,
-        &[("booked_charge", "300.00"), ("documents_pending_charge", "500.00")],
+        &[
+            ("booked_charge", "300.00"),
+            ("documents_pending_charge", "500.00"),
+        ],
     )
     .await;
-    w.job_action(&w.docs, &job, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     let invoice = invoices(&w).await.remove(0);
     assert_eq!(invoice.net_total, 30_000);
     assert_eq!(invoice.vat_total, 1_500);
@@ -236,12 +281,20 @@ async fn a_charge_per_stage_uses_the_stage_of_the_job_at_cancel() {
     quote(
         &w,
         &other,
-        &[("booked_charge", "300.00"), ("documents_pending_charge", "500.00")],
+        &[
+            ("booked_charge", "300.00"),
+            ("documents_pending_charge", "500.00"),
+        ],
     )
     .await;
-    w.job_action(&w.docs, &other, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &other,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(invoices(&w).await[1].net_total, 50_000);
 }
 
@@ -251,9 +304,14 @@ async fn a_charge_per_stage_uses_the_stage_of_the_job_at_cancel() {
 async fn cancel_is_not_offered_after_departure() {
     let w = boot().await;
     let departed = w.in_transit().await;
-    w.job_action(&w.docs, &departed, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(422);
+    w.job_action(
+        &w.docs,
+        &departed,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(w.job(departed.id).await.status, FreightStatus::InTransit);
     assert!(cancellation_missing(&w, &departed).await);
     w.get(&w.docs, &format!("/freight/{}", departed.id))
@@ -291,9 +349,14 @@ async fn without_cancellation_terms_no_charge_is_drafted_and_the_officer_gets_a_
     let w = boot().await;
     let job = w.open_job().await;
     cost(&w, &job, "200.00", "client", true).await;
-    w.job_action(&w.docs, &job, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.job(job.id).await.status, FreightStatus::Cancelled);
     assert!(w.invoices.drafts().is_empty(), "no charge, no invoice");
     let tasks = w.tickets.opened();
@@ -312,9 +375,14 @@ async fn without_cancellation_terms_no_charge_is_drafted_and_the_officer_gets_a_
     // Per-stage charges with none for this stage are no terms at all.
     let pending = pending_job(&w).await;
     quote(&w, &pending, &[("booked_charge", "300.00")]).await;
-    w.job_action(&w.docs, &pending, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &pending,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     assert!(w.invoices.drafts().is_empty());
     assert_eq!(w.tickets.opened().len(), 2);
 }
@@ -325,18 +393,31 @@ async fn without_cancellation_terms_no_charge_is_drafted_and_the_officer_gets_a_
 async fn incurred_costs_the_quotation_does_not_recharge_are_the_jobs_loss() {
     let w = boot().await;
     let job = w.open_job().await;
-    quote(&w, &job, &[("fixed_charge", "500.00"), ("recharge_incurred", "0")]).await;
+    quote(
+        &w,
+        &job,
+        &[("fixed_charge", "500.00"), ("recharge_incurred", "0")],
+    )
+    .await;
     let fee = cost(&w, &job, "200.00", "client", true).await;
-    w.job_action(&w.docs, &job, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     let drafts = w.invoices.drafts();
     assert_eq!(drafts.len(), 1);
     assert_eq!(drafts[0].lines.len(), 1);
     assert_eq!(drafts[0].lines[0].unit_price, 50_000);
     assert_eq!(drafts[0].lines[0].vat_category, VatCategory::Standard);
     let record = cancellation(&w, &job).await;
-    assert_eq!((record.charge, record.recharged, record.absorbed), (50_000, 0, 20_000));
+    assert_eq!(
+        (record.charge, record.recharged, record.absorbed),
+        (50_000, 0, 20_000)
+    );
     assert_eq!(last_cost(&w, &job).await.invoice_id, None);
     assert_eq!(fee.id, last_cost(&w, &job).await.id);
 }
@@ -350,9 +431,14 @@ async fn the_quotations_provider_answers_the_cancellation_terms() {
     let mut terms = QuotationTerms::new("QUO-9");
     terms.cancellation_fixed = Some(40_000);
     w.quotes.set(job.id, terms);
-    w.job_action(&w.docs, &job, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     let drafts = w.invoices.drafts();
     assert_eq!(drafts.len(), 1);
     assert_eq!(drafts[0].lines[0].unit_price, 40_000);
@@ -364,19 +450,34 @@ async fn the_quotations_provider_answers_the_cancellation_terms() {
 async fn the_quotation_terms_need_the_permission_and_a_valid_amount() {
     let w = boot().await;
     let job = w.open_job().await;
-    w.post(&w.hub, &format!("/freight/{}/quotation", job.id), &[("fixed_charge", "500.00")])
-        .await
-        .assert_forbidden();
-    w.post(&w.docs, &format!("/freight/{}/quotation", job.id), &[("fixed_charge", "abc")])
-        .await
-        .assert_status(422);
-    w.post(&w.docs, &format!("/freight/{}/quotation", job.id), &[("fixed_charge", "-5.00")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.hub,
+        &format!("/freight/{}/quotation", job.id),
+        &[("fixed_charge", "500.00")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &w.docs,
+        &format!("/freight/{}/quotation", job.id),
+        &[("fixed_charge", "abc")],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &w.docs,
+        &format!("/freight/{}/quotation", job.id),
+        &[("fixed_charge", "-5.00")],
+    )
+    .await
+    .assert_status(422);
     quote(&w, &job, &[("fixed_charge", "500.00")]).await;
     // Entered again, the terms are replaced, not added.
     quote(&w, &job, &[("fixed_charge", "250.00")]).await;
-    let terms = freight_cancel::terms_of(w.state(), &job).await.unwrap().unwrap();
+    let terms = freight_cancel::terms_of(w.state(), &job)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(terms.cancellation_fixed, Some(25_000));
 }
 
@@ -390,9 +491,14 @@ async fn a_cost_billed_after_cancel_is_decided_by_the_accountant() {
         .user_with("Amina", &[perm::JOBS_VIEW, perm::JOBS_BILL_CANCELLED])
         .await;
     let job = w.open_job().await;
-    w.job_action(&w.docs, &job, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     let before = w.notices.of_type(STAFF_NOTICE).len();
 
     // The bill arrives after the cancel: allocated to the job, which stays.
@@ -403,15 +509,27 @@ async fn a_cost_billed_after_cancel_is_decided_by_the_accountant() {
     assert_eq!(late.decision, None);
 
     // The officer does not decide; the accountant does.
-    w.post(&w.docs, &format!("/freight/lines/{}/decide", late.id), &[("invoice", "1")])
-        .await
-        .assert_forbidden();
-    w.post(&w.hub, &format!("/freight/lines/{}/decide", late.id), &[("invoice", "1")])
-        .await
-        .assert_forbidden();
-    w.post(&amina, &format!("/freight/lines/{}/decide", late.id), &[("invoice", "1")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.docs,
+        &format!("/freight/lines/{}/decide", late.id),
+        &[("invoice", "1")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &w.hub,
+        &format!("/freight/lines/{}/decide", late.id),
+        &[("invoice", "1")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &amina,
+        &format!("/freight/lines/{}/decide", late.id),
+        &[("invoice", "1")],
+    )
+    .await
+    .assert_status(303);
     let decided = last_cost(&w, &job).await;
     assert_eq!(decided.decision.as_deref(), Some("invoiced"));
     assert!(decided.invoice_id.is_some());
@@ -419,19 +537,34 @@ async fn a_cost_billed_after_cancel_is_decided_by_the_accountant() {
     assert_eq!(w.invoices.drafts()[0].lines[0].unit_price, 35_000);
     assert_eq!(w.job(job.id).await.status, FreightStatus::Cancelled);
     // Decided once.
-    w.post(&amina, &format!("/freight/lines/{}/decide", late.id), &[("invoice", "0")])
-        .await
-        .assert_status(422);
+    w.post(
+        &amina,
+        &format!("/freight/lines/{}/decide", late.id),
+        &[("invoice", "0")],
+    )
+    .await
+    .assert_status(422);
 
     // A cost the company is liable for is not invoiced, only absorbed.
     let ours = cost(&w, &job, "90.00", "company", false).await;
-    w.post(&amina, &format!("/freight/lines/{}/decide", ours.id), &[("invoice", "1")])
-        .await
-        .assert_status(422);
-    w.post(&amina, &format!("/freight/lines/{}/decide", ours.id), &[("invoice", "0")])
-        .await
-        .assert_status(303);
-    assert_eq!(last_cost(&w, &job).await.decision.as_deref(), Some("absorbed"));
+    w.post(
+        &amina,
+        &format!("/freight/lines/{}/decide", ours.id),
+        &[("invoice", "1")],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &amina,
+        &format!("/freight/lines/{}/decide", ours.id),
+        &[("invoice", "0")],
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(
+        last_cost(&w, &job).await.decision.as_deref(),
+        Some("absorbed")
+    );
     assert_eq!(w.invoices.drafts().len(), 1);
 }
 
@@ -444,14 +577,23 @@ async fn only_an_allocated_cost_of_a_cancelled_job_is_decided() {
         .await;
     let open = w.open_job().await;
     let line = cost(&w, &open, "50.00", "client", true).await;
-    w.post(&amina, &format!("/freight/lines/{}/decide", line.id), &[("invoice", "1")])
-        .await
-        .assert_status(422);
+    w.post(
+        &amina,
+        &format!("/freight/lines/{}/decide", line.id),
+        &[("invoice", "1")],
+    )
+    .await
+    .assert_status(422);
 
     let job = w.open_job().await;
-    w.job_action(&w.docs, &job, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &job,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.docs,
         &format!("/freight/{}/costs", job.id),

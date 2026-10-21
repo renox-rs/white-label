@@ -256,10 +256,7 @@ pub async fn invoicing_state(db: &Db, job_id: i64) -> Result<(i64, bool)> {
     ))
 }
 
-async fn job_of(
-    db: &Db,
-    id: i64,
-) -> std::result::Result<FreightJob, TransitionError> {
+async fn job_of(db: &Db, id: i64) -> std::result::Result<FreightJob, TransitionError> {
     FreightJob::find(db, id)
         .await?
         .ok_or(TransitionError::Failed(Error::NotFound))

@@ -8,8 +8,8 @@
 
 mod support;
 
-use logistics::notices::REMITTANCE_DRAFTED;
 use logistics::adjustment::{self, AdjustmentLine, AdjustmentStatus};
+use logistics::notices::REMITTANCE_DRAFTED;
 use logistics::remit;
 use logistics::{Remittance, RemittanceLine, RemittanceStatus, Shipment, ShipmentStatus};
 use renox::prelude::*;
@@ -123,7 +123,12 @@ async fn the_draft_pays_the_cod_recorded_whatever_the_drivers_handover_says() {
     let users = w.notices.users_of_type(REMITTANCE_DRAFTED);
     assert!(users.contains(&w.amal.id) && users.contains(&w.bashar.id));
     assert!(!users.contains(&w.driver.id));
-    assert!(told[0].data["summary"].as_str().unwrap().contains("net AED 980.00"));
+    assert!(
+        told[0].data["summary"]
+            .as_str()
+            .unwrap()
+            .contains("net AED 980.00")
+    );
 }
 
 /// AC2: a fourth shipment `under_review` (COD AED 150) is not on the draft;
@@ -175,9 +180,13 @@ async fn a_difference_the_client_absorbs_shows_on_the_line_with_its_reason() {
         .book_with(&w.dispatcher, SOUQ, "ORD-1", &[("cod", "300")])
         .await;
     let (_out, delivery) = w.out_for_delivery(&shipment).await;
-    w.deliver_stop_with(&delivery, "250.00", &[("difference_reason", "recipient_short")])
-        .await
-        .assert_status(303);
+    w.deliver_stop_with(
+        &delivery,
+        "250.00",
+        &[("difference_reason", "recipient_short")],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.ops,
         &format!("/deliveries/{}/cod-difference/approve", delivery.id),
@@ -200,7 +209,10 @@ async fn a_difference_the_client_absorbs_shows_on_the_line_with_its_reason() {
     assert_eq!(line.cod_amount, 30_000);
     assert_eq!(line.absorbed, 5_000);
     assert_eq!(line.collected_for_client(), 25_000);
-    assert_eq!(Some(line.absorbed_reason.clone()), delivered.cod_difference_reason);
+    assert_eq!(
+        Some(line.absorbed_reason.clone()),
+        delivered.cod_difference_reason
+    );
     assert!(!line.absorbed_reason.is_empty());
     assert_eq!(draft.cod_total, 25_000);
     assert_eq!(draft.net, 25_000);
@@ -220,9 +232,13 @@ async fn a_difference_the_driver_or_the_business_absorbs_does_not_reduce_the_cli
             .book_with(&w.dispatcher, SOUQ, reference, &[("cod", "300")])
             .await;
         let (_out, delivery) = w.out_for_delivery(&shipment).await;
-        w.deliver_stop_with(&delivery, "250.00", &[("difference_reason", "recipient_short")])
-            .await
-            .assert_status(303);
+        w.deliver_stop_with(
+            &delivery,
+            "250.00",
+            &[("difference_reason", "recipient_short")],
+        )
+        .await
+        .assert_status(303);
         w.post(
             &w.ops,
             &format!("/deliveries/{}/cod-difference/approve", delivery.id),

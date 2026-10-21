@@ -200,7 +200,10 @@ pub(crate) async fn settled(state: &AppState, id: i64) -> Result {
                 "logistics.disposal.claim_description",
                 &[
                     ("number", &shipment.number),
-                    ("reason", &shipment.disposal_reason.clone().unwrap_or_default()),
+                    (
+                        "reason",
+                        &shipment.disposal_reason.clone().unwrap_or_default(),
+                    ),
                 ],
             );
             claim::open(

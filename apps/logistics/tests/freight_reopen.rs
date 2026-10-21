@@ -31,7 +31,13 @@ async fn last_cost(w: &World, job: &FreightJob) -> JobLine {
 
 /// A late cost of `amount` dirhams recorded and allocated with `liability`,
 /// rechargeable when `recharge`.
-async fn late_cost(w: &World, job: &FreightJob, amount: &str, liability: &str, recharge: bool) -> JobLine {
+async fn late_cost(
+    w: &World,
+    job: &FreightJob,
+    amount: &str,
+    liability: &str,
+    recharge: bool,
+) -> JobLine {
     w.post(
         &w.docs,
         &format!("/freight/{}/costs", job.id),
@@ -84,9 +90,14 @@ async fn a_closed_job_is_reopened_with_a_reason_and_is_delivered_again() {
     w.job_action(&w.docs, &job, "reopen", &[("reason", "boredom")])
         .await
         .assert_status(422);
-    w.job_action(&w.docs, &job, "reopen", &[("reason", "other"), ("note", " ")])
-        .await
-        .assert_status(422);
+    w.job_action(
+        &w.docs,
+        &job,
+        "reopen",
+        &[("reason", "other"), ("note", " ")],
+    )
+    .await
+    .assert_status(422);
     // Only a holder of `jobs.close` reopens.
     w.job_action(&w.docs_limited, &job, "reopen", &[("reason", "demurrage")])
         .await
@@ -119,9 +130,14 @@ async fn a_closed_job_is_reopened_with_a_reason_and_is_delivered_again() {
 async fn a_cancelled_or_open_job_is_not_reopened() {
     let w = boot().await;
     let cancelled = w.open_job().await;
-    w.job_action(&w.docs, &cancelled, "cancel", &[("reason", "client changed plans")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &cancelled,
+        "cancel",
+        &[("reason", "client changed plans")],
+    )
+    .await
+    .assert_status(303);
     w.job_action(&w.docs, &cancelled, "reopen", &[("reason", "demurrage")])
         .await
         .assert_status(422);
@@ -359,9 +375,13 @@ async fn an_invoice_that_is_not_issued_keeps_the_job_from_closing() {
     late_cost(&w, &job, "800.00", "client", true).await;
 
     // `docs_limited` works the job but does not hold `invoices.issue`.
-    w.post(&w.docs_limited, &format!("/freight/{}/supplementary", job.id), &[])
-        .await
-        .assert_forbidden();
+    w.post(
+        &w.docs_limited,
+        &format!("/freight/{}/supplementary", job.id),
+        &[],
+    )
+    .await
+    .assert_forbidden();
     let waiting = freight_costing::lines_of(w.db(), job.id)
         .await
         .unwrap()

@@ -14,9 +14,9 @@ use logistics::notices::STAFF_NOTICE;
 use logistics::{FreightContainer, FreightJob};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use wl_invoicing::BillLine;
 use wl_invoicing::invoice::Invoice;
 use wl_invoicing::line::InvoiceLine;
-use wl_invoicing::BillLine;
 use wl_kernel::invoicing::{BillRequest, DraftLine, VatCategory, supplier_bills};
 
 use support::{World, boot, boot_with_invoicing};
@@ -141,7 +141,12 @@ async fn each_day_past_the_end_date_adds_a_log_line_and_sends_nothing() {
     }
     let told = notices_to_client(&w).await;
     let staff = w.notices.of_type(STAFF_NOTICE).len();
-    for date in [day(2026, 11, 11), day(2026, 11, 12), day(2026, 11, 12), day(2026, 11, 13)] {
+    for date in [
+        day(2026, 11, 11),
+        day(2026, 11, 12),
+        day(2026, 11, 12),
+        day(2026, 11, 13),
+    ] {
         freight_free_time::run_free_time_alerts(w.state(), date)
             .await
             .unwrap();
@@ -247,12 +252,17 @@ async fn a_client_liable_charge_is_recharged_at_five_percent_and_matches_the_log
     let cost = last_cost(&w, &job).await;
     assert_eq!(cost.amount, 105_000);
     assert_eq!(cost.liability.as_deref(), Some("client"));
-    assert_eq!(cost.liability_reason.as_deref(), Some("late_collection_by_client"));
+    assert_eq!(
+        cost.liability_reason.as_deref(),
+        Some("late_collection_by_client")
+    );
     assert_eq!(cost.container_id, Some(container.id));
     assert_eq!(cost.charge_type.as_deref(), Some("demurrage"));
     assert!(cost.allocated && cost.rechargeable);
     assert_eq!(
-        freight_free_time::days_compared(w.db(), &cost).await.unwrap(),
+        freight_free_time::days_compared(w.db(), &cost)
+            .await
+            .unwrap(),
         Some((3, 3))
     );
     w.get(&w.docs, &format!("/freight/{}", job.id))
@@ -413,7 +423,13 @@ async fn the_liability_and_its_reason_are_required_before_the_bill_is_allocated(
         0
     );
     // Allocated once.
-    allocate_bill(&w, &job, bill_line, &[("liability", "company"), ("reason", "other")]).await;
+    allocate_bill(
+        &w,
+        &job,
+        bill_line,
+        &[("liability", "company"), ("reason", "other")],
+    )
+    .await;
     w.post(
         &w.docs,
         &path,
@@ -432,10 +448,18 @@ async fn a_bill_that_differs_from_the_log_is_shown_and_not_blocked() {
         .await
         .unwrap();
     let bill_line = demurrage_bill(&w, &job, "MSC-77005", 3).await;
-    allocate_bill(&w, &job, bill_line, &[("liability", "company"), ("reason", "other")]).await;
+    allocate_bill(
+        &w,
+        &job,
+        bill_line,
+        &[("liability", "company"), ("reason", "other")],
+    )
+    .await;
     let cost = last_cost(&w, &job).await;
     assert_eq!(
-        freight_free_time::days_compared(w.db(), &cost).await.unwrap(),
+        freight_free_time::days_compared(w.db(), &cost)
+            .await
+            .unwrap(),
         Some((1, 3))
     );
     w.get(&w.docs, &format!("/freight/{}", job.id))
@@ -494,7 +518,10 @@ async fn recording_the_collection_keeps_that_days_line_and_writes_none_after() {
             .unwrap(),
         3
     );
-    let stored = FreightContainer::find(w.db(), container.id).await.unwrap().unwrap();
+    let stored = FreightContainer::find(w.db(), container.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(stored.collected_on, Some(day(2026, 11, 13)));
 }
 
@@ -507,7 +534,10 @@ async fn the_log_stops_by_charge_type_and_not_while_the_container_is_still_out()
     let container = add_container(
         &w,
         &job,
-        &[("demurrage_end", "2026-11-10"), ("detention_end", "2026-11-10")],
+        &[
+            ("demurrage_end", "2026-11-10"),
+            ("detention_end", "2026-11-10"),
+        ],
     )
     .await;
     freight_free_time::run_free_time_alerts(w.state(), day(2026, 11, 11))
@@ -539,7 +569,13 @@ async fn the_log_stops_by_charge_type_and_not_while_the_container_is_still_out()
     freight_free_time::run_free_time_alerts(w.state(), day(2026, 11, 13))
         .await
         .unwrap();
-    assert_eq!(freight_free_time::log_of(w.db(), job.id).await.unwrap().len(), 3);
+    assert_eq!(
+        freight_free_time::log_of(w.db(), job.id)
+            .await
+            .unwrap()
+            .len(),
+        3
+    );
 }
 
 /// AC6: the end date extended on 2026-11-09 from 2026-11-10 to 2026-11-15 (the
@@ -592,7 +628,10 @@ async fn an_extended_end_date_has_its_own_notices_and_log() {
         assert_eq!(notices_to_client(&w).await - before, expected, "{date}");
     }
     assert_eq!(notices_to_client(&w).await, after_first + 2);
-    assert!(log_days(&w, &job).await.is_empty(), "nothing before the new date");
+    assert!(
+        log_days(&w, &job).await.is_empty(),
+        "nothing before the new date"
+    );
     freight_free_time::run_free_time_alerts(w.state(), day(2026, 11, 16))
         .await
         .unwrap();
@@ -625,7 +664,11 @@ async fn an_extension_drops_the_unsent_notice_and_notes_the_lines_written() {
     freight_free_time::run_free_time_alerts(w.state(), day(2026, 11, 10))
         .await
         .unwrap();
-    assert_eq!(notices_to_client(&w).await, before, "the old date sends nothing");
+    assert_eq!(
+        notices_to_client(&w).await,
+        before,
+        "the old date sends nothing"
+    );
 
     // Lines written for the old date stay, with a note, when it is extended.
     let other = w.in_transit().await;
@@ -655,9 +698,14 @@ async fn a_delivered_job_is_still_watched_and_a_cancelled_one_is_not() {
     add_container(&w, &delivered, &[("detention_end", "2026-11-10")]).await;
     let booked = w.open_job().await;
     add_container(&w, &booked, &[("detention_end", "2026-11-10")]).await;
-    w.job_action(&w.docs, &booked, "cancel", &[("reason", "client cancelled order")])
-        .await
-        .assert_status(303);
+    w.job_action(
+        &w.docs,
+        &booked,
+        "cancel",
+        &[("reason", "client cancelled order")],
+    )
+    .await
+    .assert_status(303);
 
     let run = freight_free_time::run_free_time_alerts(w.state(), day(2026, 11, 10))
         .await

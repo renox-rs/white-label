@@ -118,13 +118,7 @@ pub(crate) fn needs(
 ) -> Transition<FreightJob> {
     transition.guard(name, move |job: &FreightJob, ctx| {
         let fine = ok(job, &input_of(ctx));
-        Box::pin(async move {
-            if fine {
-                Ok(())
-            } else {
-                Err(english(key, &[]))
-            }
-        })
+        Box::pin(async move { if fine { Ok(()) } else { Err(english(key, &[])) } })
     })
 }
 
@@ -179,9 +173,12 @@ fn depart() -> Transition<FreightJob> {
         FreightStatus::InTransit,
         "departed",
     );
-    needs(transition, "bl_or_awb_recorded", "logistics.freight.bl_needed", |job, input| {
-        given(&input.bl_awb) || given(&job.bl_awb)
-    })
+    needs(
+        transition,
+        "bl_or_awb_recorded",
+        "logistics.freight.bl_needed",
+        |job, input| given(&input.bl_awb) || given(&job.bl_awb),
+    )
     .effect(|job: &FreightJob, ctx, tx| {
         let id = job.id;
         let bl = trimmed(&input_of(ctx).bl_awb).or_else(|| job.bl_awb.clone());
@@ -268,7 +265,14 @@ fn deliver() -> Transition<FreightJob> {
                 .where_(FreightJob::ID.eq(id))
                 .update(&mut *tx, &[("pod_ref", &pod)])
                 .await?;
-            track(&mut *tx, id, "delivered", pod.as_deref().unwrap_or_default(), actor).await
+            track(
+                &mut *tx,
+                id,
+                "delivered",
+                pod.as_deref().unwrap_or_default(),
+                actor,
+            )
+            .await
         })
     })
 }
@@ -317,9 +321,12 @@ fn cancel() -> Transition<FreightJob> {
         FreightStatus::Cancelled,
         "cancelled",
     );
-    needs(transition, "reason_given", "logistics.freight.reason_needed", |_job, input| {
-        given(&input.reason)
-    })
+    needs(
+        transition,
+        "reason_given",
+        "logistics.freight.reason_needed",
+        |_job, input| given(&input.reason),
+    )
     .effect(|job: &FreightJob, ctx, tx| {
         let id = job.id;
         let actor = ctx.actor().map(|user| user.id);
@@ -329,7 +336,14 @@ fn cancel() -> Transition<FreightJob> {
                 .where_(FreightJob::ID.eq(id))
                 .update(&mut *tx, &[("cancel_reason", &reason)])
                 .await?;
-            track(&mut *tx, id, "cancelled", reason.as_deref().unwrap_or_default(), actor).await
+            track(
+                &mut *tx,
+                id,
+                "cancelled",
+                reason.as_deref().unwrap_or_default(),
+                actor,
+            )
+            .await
         })
     })
 }

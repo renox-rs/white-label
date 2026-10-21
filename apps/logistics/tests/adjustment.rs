@@ -22,9 +22,13 @@ async fn paid_remittance(w: &World) -> (Remittance, Shipment) {
     let shipment = w.delivered(SOUQ, "ORD-1", "100").await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.amal,
         &format!("/remittances/{}/pay", draft.id),
@@ -144,7 +148,11 @@ async fn the_preparer_cannot_approve_the_line_and_an_unapproved_line_blocks_the_
     let draft = w.the_remittance_of(SOUQ).await;
 
     let line = add_line(&w, "70", "COD under-remitted on ORD-1", &[]).await;
-    assert_eq!(line.remittance_id, Some(draft.id), "the client's draft takes it");
+    assert_eq!(
+        line.remittance_id,
+        Some(draft.id),
+        "the client's draft takes it"
+    );
 
     w.post(&w.amal, &path(&line, "approve"), &[])
         .await
@@ -166,7 +174,10 @@ async fn the_preparer_cannot_approve_the_line_and_an_unapproved_line_blocks_the_
     assert_eq!(w.remittance(&draft).await.adjustment_total, 7_000);
     assert_eq!(w.remittance(&draft).await.net, 17_000);
     w.post(&w.bashar, &approve, &[]).await.assert_status(303);
-    assert_eq!(w.remittance_status(&draft).await, RemittanceStatus::Approved);
+    assert_eq!(
+        w.remittance_status(&draft).await,
+        RemittanceStatus::Approved
+    );
 }
 
 /// AC3: when B rejects the line, it stays unapproved and is not counted; the
@@ -191,12 +202,19 @@ async fn a_rejected_line_is_not_counted_until_it_is_edited_resubmitted_and_appro
     let rejected = reload(&w, &line).await;
     assert_eq!(rejected.status, AdjustmentStatus::Rejected);
     assert!(!rejected.counts());
-    assert_eq!(rejected.decision_note.as_deref(), Some("The amount is wrong"));
+    assert_eq!(
+        rejected.decision_note.as_deref(),
+        Some("The amount is wrong")
+    );
     assert_eq!(w.remittance(&draft).await.adjustment_total, 0);
     assert_eq!(w.remittance(&draft).await.net, 10_000);
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(422);
     // The next run attaches no rejected line a second time and keeps it as it is.
     w.rule().await;
     assert_eq!(reload(&w, &line).await.status, AdjustmentStatus::Rejected);
@@ -259,9 +277,13 @@ async fn the_preparer_deletes_an_unapproved_line() {
         .await
         .assert_status(303);
     assert!(lines(&w).await.is_empty());
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
 }
 
 /// AC4: R-10 cannot be edited: a line cannot be put on it, it cannot be
@@ -287,9 +309,13 @@ async fn a_paid_remittance_cannot_be_edited() {
     .assert_status(422)
     .assert_see("is paid and is never edited");
     for action in ["approve", "reopen"] {
-        w.post(&w.bashar, &format!("/remittances/{}/{action}", paid.id), &[])
-            .await
-            .assert_status(422);
+        w.post(
+            &w.bashar,
+            &format!("/remittances/{}/{action}", paid.id),
+            &[],
+        )
+        .await
+        .assert_status(422);
     }
     w.post(
         &w.amal,
@@ -323,9 +349,13 @@ async fn an_approved_remittance_is_reopened_before_a_line_goes_on_it() {
     w.delivered(SOUQ, "ORD-1", "100").await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     let target = draft.id.to_string();
     let fields = [
         ("client_party_id", "501"),
@@ -373,7 +403,11 @@ async fn the_permissions_and_the_inputs_of_a_line_are_checked() {
     w.post(
         &w.amal,
         "/remittances/adjustments",
-        &[("client_party_id", "501"), ("amount", "70"), ("reason", " ")],
+        &[
+            ("client_party_id", "501"),
+            ("amount", "70"),
+            ("reason", " "),
+        ],
     )
     .await
     .assert_status(422)
@@ -395,7 +429,11 @@ async fn the_permissions_and_the_inputs_of_a_line_are_checked() {
     w.post(
         &w.amal,
         "/remittances/adjustments",
-        &[("client_party_id", "501"), ("amount", "abc"), ("reason", "x")],
+        &[
+            ("client_party_id", "501"),
+            ("amount", "abc"),
+            ("reason", "x"),
+        ],
     )
     .await
     .assert_status(422);

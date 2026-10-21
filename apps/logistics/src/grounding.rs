@@ -104,7 +104,11 @@ pub async fn ground(
     let title = english("logistics.grounding.title", &[("vehicle", &label)]);
     let body = english(
         "logistics.grounding.body",
-        &[("vehicle", &label), ("document", &word), ("expired", &expired_on)],
+        &[
+            ("vehicle", &label),
+            ("document", &word),
+            ("expired", &expired_on),
+        ],
     );
     for role in [FLEET_MANAGER_ROLE, DISPATCHER_ROLE] {
         for user in users_with_role(&state.db, role).await? {

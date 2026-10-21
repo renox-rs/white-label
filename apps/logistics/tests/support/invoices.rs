@@ -36,7 +36,13 @@ impl Invoices {
 
     /// An issued invoice of `party` with `number`, a balance of `balance`
     /// fils and the due date `due`; answers its id.
-    pub fn open(&self, party: PartyId, number: &str, balance: i64, due: (i32, u32, u32)) -> InvoiceId {
+    pub fn open(
+        &self,
+        party: PartyId,
+        number: &str,
+        balance: i64,
+        due: (i32, u32, u32),
+    ) -> InvoiceId {
         let mut inner = self.0.lock().unwrap();
         let id = InvoiceId(FIRST_OPEN + i64::try_from(inner.open.len()).unwrap());
         inner.open.push(InvoiceSummary {
@@ -127,7 +133,9 @@ impl Invoicer for Invoices {
             .unwrap()
             .open
             .iter()
-            .filter(|invoice| invoice.party == party && invoice.status.is_open() && invoice.balance > 0)
+            .filter(|invoice| {
+                invoice.party == party && invoice.status.is_open() && invoice.balance > 0
+            })
             .cloned()
             .collect();
         found.sort_by_key(|invoice| (invoice.due_date, invoice.id.0));
@@ -143,7 +151,9 @@ impl Invoicer for Invoices {
     ) -> InvoiceFuture<'a, ()> {
         let mut inner = self.0.lock().unwrap();
         let answer = match inner.open.iter_mut().find(|invoice| invoice.id == id) {
-            Some(invoice) if invoice.status.is_open() && amount > 0 && amount <= invoice.balance => {
+            Some(invoice)
+                if invoice.status.is_open() && amount > 0 && amount <= invoice.balance =>
+            {
                 invoice.balance -= amount;
                 if invoice.balance == 0 {
                     invoice.status = InvoiceStatus::Paid;

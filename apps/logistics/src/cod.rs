@@ -116,7 +116,10 @@ async fn check(state: &AppState, decision: &CodDecision) -> Result {
             .where_(Shipment::ID.eq(shipment.id))
             .update(
                 &state.db,
-                &[("cod_instruction", &text), ("cod_instruction_by", &approver)],
+                &[
+                    ("cod_instruction", &text),
+                    ("cod_instruction_by", &approver),
+                ],
             )
             .await?;
         track(

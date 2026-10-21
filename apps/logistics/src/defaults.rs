@@ -193,11 +193,9 @@ pub const SMS_FALLBACK_AR: &str = "تبقى رسائل التتبع في الط�
 /// The fallback of the e-invoicing ASP (§8): invoices are issued and sent as
 /// PDF; the transmissions wait and are sent when it recovers, and
 /// `FIN.RUL.16` raises a task after 24 hours.
-pub const ASP_FALLBACK_EN: &str =
-    "Issue the invoices and send them to the client as PDF; the transmissions stay queued and are sent when the ASP recovers.";
+pub const ASP_FALLBACK_EN: &str = "Issue the invoices and send them to the client as PDF; the transmissions stay queued and are sent when the ASP recovers.";
 /// See [`ASP_FALLBACK_EN`].
-pub const ASP_FALLBACK_AR: &str =
-    "أصدر الفواتير وأرسلها للعميل بصيغة PDF؛ تبقى عمليات الإرسال في الطابور وتُرسل عند عودة مزود الخدمة.";
+pub const ASP_FALLBACK_AR: &str = "أصدر الفواتير وأرسلها للعميل بصيغة PDF؛ تبقى عمليات الإرسال في الطابور وتُرسل عند عودة مزود الخدمة.";
 
 /// The months from the entity's go-live during which an invoice for
 /// international goods transport with an air waybill is left out of the
@@ -266,11 +264,21 @@ pub const ONBOARDING: [OnboardingSpec; 4] = [
         name: "Driver onboarding",
         role: DRIVER_ROLE,
         steps: &[
-            ("Licence and documents", "role:operations_manager", 2, "task"),
+            (
+                "Licence and documents",
+                "role:operations_manager",
+                2,
+                "task",
+            ),
             WELCOME_STEP,
             ("Vehicle handover", "manager", 2, "task"),
             ("PWA and e-POD training", "manager", 3, "task"),
-            ("Cash handover training", "role:operations_manager", 3, "task"),
+            (
+                "Cash handover training",
+                "role:operations_manager",
+                3,
+                "task",
+            ),
             EMPLOYEE_STEP,
             SOP_STEP,
         ],
@@ -292,7 +300,12 @@ pub const ONBOARDING: [OnboardingSpec; 4] = [
         steps: &[
             ("Documents and access", "role:operations_manager", 2, "task"),
             WELCOME_STEP,
-            ("Run planning walk-through", "role:operations_manager", 3, "task"),
+            (
+                "Run planning walk-through",
+                "role:operations_manager",
+                3,
+                "task",
+            ),
             EMPLOYEE_STEP,
             SOP_STEP,
         ],
@@ -439,9 +452,18 @@ mod tests {
             .collect();
         assert_eq!(
             blocking,
-            [DRIVING_LICENCE, RIDER_PERMIT, MULKIYA, VEHICLE_INSURANCE, VEHICLE_PERMIT]
+            [
+                DRIVING_LICENCE,
+                RIDER_PERMIT,
+                MULKIYA,
+                VEHICLE_INSURANCE,
+                VEHICLE_PERMIT
+            ]
         );
-        for kind in KINDS.iter().filter(|kind| kind.subjects == [VEHICLE_SUBJECT]) {
+        for kind in KINDS
+            .iter()
+            .filter(|kind| kind.subjects == [VEHICLE_SUBJECT])
+        {
             assert_eq!(kind.blocks, [DISPATCH_GUARDED], "{}", kind.key);
             assert_eq!(kind.role, FLEET_MANAGER_ROLE);
         }

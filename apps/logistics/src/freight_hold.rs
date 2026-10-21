@@ -196,26 +196,26 @@ pub(crate) fn hold_transition() -> Transition<FreightJob> {
 
 /// A `release` transition to `to`: the state before the hold, how the reason
 /// was resolved.
-pub(crate) fn release_transition(
-    name: &'static str,
-    to: FreightStatus,
-) -> Transition<FreightJob> {
+pub(crate) fn release_transition(name: &'static str, to: FreightStatus) -> Transition<FreightJob> {
     let transition = Transition::new(name)
         .label("Release")
         .tone("primary")
         .permission(permissions::JOBS_MANAGE)
         .from([FreightStatus::OnHold])
         .to(to)
-        .guard("back_to_the_state_before_the_hold", move |job: &FreightJob, _ctx| {
-            let stored = job.held_from.as_deref() == Some(to.as_str());
-            Box::pin(async move {
-                if stored {
-                    Ok(())
-                } else {
-                    Err(english("logistics.freight.release_target", &[]))
-                }
-            })
-        });
+        .guard(
+            "back_to_the_state_before_the_hold",
+            move |job: &FreightJob, _ctx| {
+                let stored = job.held_from.as_deref() == Some(to.as_str());
+                Box::pin(async move {
+                    if stored {
+                        Ok(())
+                    } else {
+                        Err(english("logistics.freight.release_target", &[]))
+                    }
+                })
+            },
+        );
     needs(
         transition,
         "hold_reason_resolved",
@@ -240,7 +240,14 @@ pub(crate) fn release_transition(
                     ],
                 )
                 .await?;
-            track(&mut *tx, id, "released", note.as_deref().unwrap_or_default(), actor).await
+            track(
+                &mut *tx,
+                id,
+                "released",
+                note.as_deref().unwrap_or_default(),
+                actor,
+            )
+            .await
         })
     })
 }
@@ -263,7 +270,12 @@ pub async fn holds_of(db: &Db, job_id: i64) -> Result<Vec<FreightHold>> {
 }
 
 /// Tells the documentation officers (the holders of `jobs.manage`) of `job`.
-pub(crate) async fn tell_officers(state: &AppState, job: &FreightJob, title: &str, body: &str) -> Result {
+pub(crate) async fn tell_officers(
+    state: &AppState,
+    job: &FreightJob,
+    title: &str,
+    body: &str,
+) -> Result {
     for user in users_with_permission(&state.db, permissions::JOBS_MANAGE).await? {
         tell_user(state, job.subject(), &job.number, user.id, title, body).await?;
     }
@@ -299,7 +311,11 @@ pub async fn hold(
     );
     let body = english(
         "logistics.freight.hold_body",
-        &[("number", &job.number), ("reason", &label), ("note", &note.trim())],
+        &[
+            ("number", &job.number),
+            ("reason", &label),
+            ("note", &note.trim()),
+        ],
     );
     tell_client_to_act(state, &job, &title, &body).await?;
     tell_officers(state, &job, &title, &body).await?;
@@ -379,7 +395,10 @@ pub async fn release(
         ..FreightInput::default()
     };
     let job = run(state, user, id, release_name(stored.as_deref()), &input).await?;
-    let title = english("logistics.freight.release_title", &[("number", &job.number)]);
+    let title = english(
+        "logistics.freight.release_title",
+        &[("number", &job.number)],
+    );
     let body = english(
         "logistics.freight.release_body",
         &[("number", &job.number), ("note", &note.trim())],
@@ -427,7 +446,9 @@ pub async fn is_on_time(db: &Db, job: &FreightJob) -> Result<Option<bool>> {
     };
     let held = days_on_hold(db, job.id, delivered.occurred_at).await?;
     let allowed = eta + TimeDelta::days(held);
-    Ok(Some(wl_kernel::documents::dubai_date(delivered.occurred_at) <= allowed))
+    Ok(Some(
+        wl_kernel::documents::dubai_date(delivered.occurred_at) <= allowed,
+    ))
 }
 
 /// `LOG.RUL.09` on `day`: tells the documentation officers of every job whose

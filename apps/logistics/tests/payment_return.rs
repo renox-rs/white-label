@@ -30,9 +30,13 @@ async fn paid() -> (World, Remittance) {
     w.delivered(SOUQ, "ORD-1", "4000").await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.amal,
         &format!("/remittances/{}/pay", draft.id),
@@ -66,10 +70,7 @@ async fn the_account(w: &World) -> Option<String> {
 /// The path and query of the confirmation link the client's contact got.
 fn confirmation_path(w: &World) -> String {
     let sent = w.notices.of_type(ACCOUNT_CONFIRM);
-    let link = sent
-        .last()
-        .expect("the link was sent")
-        .data["link"]
+    let link = sent.last().expect("the link was sent").data["link"]
         .as_str()
         .expect("a link")
         .to_owned();
@@ -135,14 +136,22 @@ async fn a_returned_transfer_makes_the_remittance_payment_returned_and_asks_the_
     let told = w.notices.to_clients();
     let notice = told
         .iter()
-        .find(|request| request.data["title"].as_str().is_some_and(|t| t.contains("returned")))
+        .find(|request| {
+            request.data["title"]
+                .as_str()
+                .is_some_and(|t| t.contains("returned"))
+        })
         .expect("the client is told");
-    assert!(notice
-        .recipients
-        .contains(&NotifyRecipient::Party { id: SOUQ }));
-    assert!(notice.data["body"]
-        .as_str()
-        .is_some_and(|body| body.contains("confirm your bank account")));
+    assert!(
+        notice
+            .recipients
+            .contains(&NotifyRecipient::Party { id: SOUQ })
+    );
+    assert!(
+        notice.data["body"]
+            .as_str()
+            .is_some_and(|body| body.contains("confirm your bank account"))
+    );
     // It is paid once, so it cannot be returned again before `repay`.
     w.post(&w.amal, &path, &[("advice", "BANK-ADV-78")])
         .await
@@ -334,16 +343,23 @@ async fn the_same_account_is_repaid_on_the_clients_confirmation_and_may_come_bac
     w.post(&w.dispatcher, &confirm, &[("note", "called")])
         .await
         .assert_forbidden();
-    w.post(&w.amal, &confirm, &[("note", "Client e-mail 2026-11-03 10:15")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.amal,
+        &confirm,
+        &[("note", "Client e-mail 2026-11-03 10:15")],
+    )
+    .await
+    .assert_status(303);
     w.post(&w.amal, &repay, &[("payment_reference", "TRF-2")])
         .await
         .assert_status(303);
     let again = w.remittance(&r12).await;
     assert_eq!(again.status, RemittanceStatus::Paid);
     assert_eq!(again.bank_account.as_deref(), Some(OLD));
-    assert_eq!(again.account_confirmed_at, None, "the confirmation is used up");
+    assert_eq!(
+        again.account_confirmed_at, None,
+        "the confirmation is used up"
+    );
 
     // It comes back a second time: the second advice is kept beside the first.
     w.post(
@@ -401,10 +417,7 @@ async fn without_the_clients_confirmation_the_next_payment_goes_to_the_old_accou
     )
     .await
     .assert_status(303);
-    assert_eq!(
-        w.remittance(&next).await.bank_account.as_deref(),
-        Some(OLD)
-    );
+    assert_eq!(w.remittance(&next).await.bank_account.as_deref(), Some(OLD));
 }
 
 /// AC5: given a change requested and approved but not confirmed in 14 days,

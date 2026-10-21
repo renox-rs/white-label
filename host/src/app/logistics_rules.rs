@@ -77,7 +77,9 @@ async fn ground_expired(state: &AppState, day: NaiveDate) -> Result<usize> {
     for vehicle in vehicles_in_use(&state.db).await? {
         let subject = Subject::new(VEHICLE_SUBJECT, vehicle);
         for kind in &kinds {
-            let validity = guard(state).is_valid(&state.db, &subject, kind, day).await?;
+            let validity = guard(state)
+                .is_valid(&state.db, &subject, kind, day)
+                .await?;
             if let Validity::Invalid {
                 reason: InvalidReason::Expired,
                 expired_on: Some(expired),
@@ -135,9 +137,11 @@ impl Module for LogisticsRules {
             .expiry_hours(Some(wl_delivery::lost::EXPIRY_HOURS))
             .register();
         app.schedule()
-            .daily_at(defaults::GROUND_RULE_AT, GROUND_TASK, |state: AppState| async move {
-                run_ground_rule(&state, today()).await.map(|_| ())
-            })
+            .daily_at(
+                defaults::GROUND_RULE_AT,
+                GROUND_TASK,
+                |state: AppState| async move { run_ground_rule(&state, today()).await.map(|_| ()) },
+            )
             .timezone("Asia/Dubai");
     }
 }

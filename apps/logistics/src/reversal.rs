@@ -208,7 +208,14 @@ pub(crate) async fn record(
             ],
         )
         .await?;
-    track(&mut *tx, shipment.id, "reversed", &input.reason, input.approver).await
+    track(
+        &mut *tx,
+        shipment.id,
+        "reversed",
+        &input.reason,
+        input.approver,
+    )
+    .await
 }
 
 /// Runs the system's `reverse_delivery` of `shipment` for `event`: back to
@@ -448,10 +455,7 @@ pub(crate) async fn settled(state: &AppState, id: i64) -> Result {
         .await?;
 
     // The client is told.
-    let title = english(
-        "logistics.reversal.title",
-        &[("number", &shipment.number)],
-    );
+    let title = english("logistics.reversal.title", &[("number", &shipment.number)]);
     let body = english(
         "logistics.reversal.body",
         &[("number", &shipment.number), ("reason", &reversal.reason)],

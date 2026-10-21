@@ -29,7 +29,14 @@ const MODULE: &str = "default of the module";
 /// The row's value is set by the host for this client.
 const HOST: &str = "set by the host for this client";
 
-fn row(number: &str, group: &str, setting: &str, value: String, source: &str, reference: &str) -> Row {
+fn row(
+    number: &str,
+    group: &str,
+    setting: &str,
+    value: String,
+    source: &str,
+    reference: &str,
+) -> Row {
     Row {
         number: number.to_owned(),
         group: group.to_owned(),
@@ -140,7 +147,14 @@ pub fn compliance_rows(owner_role: &str) -> Vec<Row> {
         .collect();
     let sops: Vec<String> = defaults::SOPS
         .iter()
-        .map(|s| format!("{}: owner {}, readers {}", s.title, s.owner_role, s.readers.join(", ")))
+        .map(|s| {
+            format!(
+                "{}: owner {}, readers {}",
+                s.title,
+                s.owner_role,
+                s.readers.join(", ")
+            )
+        })
         .collect();
     vec![
         open(
@@ -252,87 +266,252 @@ pub fn money_rows(entities: &[String]) -> Vec<MoneyRow> {
     };
     let abort: Vec<String> = delivery.abort_reasons();
     vec![
-        money("1", "Delivery", "Partial acceptance (source type shipment)",
-            format!("source default {}; a shipment with several parcels asks for it per delivery, a single-parcel shipment never offers a refused quantity",
-                on(delivery.partial_acceptance(logistics::SUBJECT_TYPE))),
-            HOST),
-        money("2", "Delivery", "Failure reasons (shipment)",
-            format!("the module's list plus {}; run aborted and cancelled by client do not count against the maximum attempts; wrong address puts the shipment on hold (address issue)",
-                defaults::FAILURE_REASONS.join(", ")),
-            "seeded by wl-delivery (`wl:install`)"),
+        money(
+            "1",
+            "Delivery",
+            "Partial acceptance (source type shipment)",
+            format!(
+                "source default {}; a shipment with several parcels asks for it per delivery, a single-parcel shipment never offers a refused quantity",
+                on(delivery.partial_acceptance(logistics::SUBJECT_TYPE))
+            ),
+            HOST,
+        ),
+        money(
+            "2",
+            "Delivery",
+            "Failure reasons (shipment)",
+            format!(
+                "the module's list plus {}; run aborted and cancelled by client do not count against the maximum attempts; wrong address puts the shipment on hold (address issue)",
+                defaults::FAILURE_REASONS.join(", ")
+            ),
+            "seeded by wl-delivery (`wl:install`)",
+        ),
         money("3", "Delivery", "Run abort reasons", abort.join(", "), HOST),
-        money("4", "Delivery", "Hand-over between drivers",
-            format!("the receiving driver scans each parcel: on; counts the cash: {}", on(delivery.hand_over_counts_cash())),
-            HOST),
-        money("5", "Delivery", "COD difference tolerance (WRK.ACL.09)",
-            format!("{}; a short payment is allowed with approval: {}", aed(delivery.cod_tolerance()), on(delivery.cod_approval())),
-            HOST),
-        money("6", "Delivery", "COD difference approver",
-            format!("{OPERATIONS_MANAGER} (deliveries.approve_cod_difference); the driver cannot approve"),
-            "role permissions"),
-        money("7", "Delivery", "COD absorbers offered",
-            format!("{}; customer hidden; no preselected default", absorbers.join(", ")),
-            HOST),
-        money("8", "Delivery", "COD approval timeout and fallback",
-            format!("{} minutes; then only the failed attempt", delivery.cod_approval_minutes()),
-            HOST),
-        money("9", "Delivery", "Reversal and manual lost approval (WRK.ACL.10)",
-            format!("on; approver {OPERATIONS_MANAGER} or the company admin; the requester cannot approve and the driver of the run can neither request nor approve"),
-            "role permissions; logistics reversal and loss"),
-        money("10", "Delivery", "Untraced days before lost (WRK.RUL.17)",
-            delivery.untraced_days().to_string(), HOST),
-        money("11", "Cash", "Cash holders", "drivers: per person, per run".to_owned(), "wl-payments mapping"),
-        money("12", "Cash", "Cash counted by another user (FIN.ACL.05)",
-            "on; counter cashier or operations manager, never the driver who hands it over".to_owned(),
-            "default of the module; roles"),
-        money("13", "Cash", "Cash shortage write-off limit (FIN.ACL.06)",
-            format!("{}: up to it the cashier writes off; above it {} approves", aed(payments.cash_write_off_limit), payments.cash_manager_role),
-            HOST),
-        money("14", "Cash", "Shortage recovery by salary deduction (FIN.ACL.19)",
-            format!("{} (open: lawyer L-20); a setting, never decided in code", on(payments.cash_salary_deduction)),
-            HOST),
-        money("15", "Cash", "Handover escalation (FIN.RUL.22)",
+        money(
+            "4",
+            "Delivery",
+            "Hand-over between drivers",
+            format!(
+                "the receiving driver scans each parcel: on; counts the cash: {}",
+                on(delivery.hand_over_counts_cash())
+            ),
+            HOST,
+        ),
+        money(
+            "5",
+            "Delivery",
+            "COD difference tolerance (WRK.ACL.09)",
+            format!(
+                "{}; a short payment is allowed with approval: {}",
+                aed(delivery.cod_tolerance()),
+                on(delivery.cod_approval())
+            ),
+            HOST,
+        ),
+        money(
+            "6",
+            "Delivery",
+            "COD difference approver",
+            format!(
+                "{OPERATIONS_MANAGER} (deliveries.approve_cod_difference); the driver cannot approve"
+            ),
+            "role permissions",
+        ),
+        money(
+            "7",
+            "Delivery",
+            "COD absorbers offered",
+            format!(
+                "{}; customer hidden; no preselected default",
+                absorbers.join(", ")
+            ),
+            HOST,
+        ),
+        money(
+            "8",
+            "Delivery",
+            "COD approval timeout and fallback",
+            format!(
+                "{} minutes; then only the failed attempt",
+                delivery.cod_approval_minutes()
+            ),
+            HOST,
+        ),
+        money(
+            "9",
+            "Delivery",
+            "Reversal and manual lost approval (WRK.ACL.10)",
+            format!(
+                "on; approver {OPERATIONS_MANAGER} or the company admin; the requester cannot approve and the driver of the run can neither request nor approve"
+            ),
+            "role permissions; logistics reversal and loss",
+        ),
+        money(
+            "10",
+            "Delivery",
+            "Untraced days before lost (WRK.RUL.17)",
+            delivery.untraced_days().to_string(),
+            HOST,
+        ),
+        money(
+            "11",
+            "Cash",
+            "Cash holders",
+            "drivers: per person, per run".to_owned(),
+            "wl-payments mapping",
+        ),
+        money(
+            "12",
+            "Cash",
+            "Cash counted by another user (FIN.ACL.05)",
+            "on; counter cashier or operations manager, never the driver who hands it over"
+                .to_owned(),
+            "default of the module; roles",
+        ),
+        money(
+            "13",
+            "Cash",
+            "Cash shortage write-off limit (FIN.ACL.06)",
+            format!(
+                "{}: up to it the cashier writes off; above it {} approves",
+                aed(payments.cash_write_off_limit),
+                payments.cash_manager_role
+            ),
+            HOST,
+        ),
+        money(
+            "14",
+            "Cash",
+            "Shortage recovery by salary deduction (FIN.ACL.19)",
+            format!(
+                "{} (open: lawyer L-20); a setting, never decided in code",
+                on(payments.cash_salary_deduction)
+            ),
+            HOST,
+        ),
+        money(
+            "15",
+            "Cash",
+            "Handover escalation (FIN.RUL.22)",
             "replaced for drivers by LOG.RUL.13 (N = 12 h, M = 48 h)".to_owned(),
-            HOST),
-        money("16", "Receivables", "Invoice write-off (FIN.ACL.15)",
-            format!("limit {}; approvers {}; the requester cannot approve", aed(defaults::INVOICE_WRITE_OFF_LIMIT), invoicing.write_off_approvers.join(" or ")),
-            HOST),
-        money("17", "Receivables", "Write-off notice to the client",
-            if invoicing.write_off_notice { "sent" } else { "not sent" }.to_owned(),
-            HOST),
-        money("18", "Receivables", "Bad-debt relief proposal (FIN.RUL.14)",
-            format!("{} after {} months", on(invoicing.bad_debt_relief), invoicing.bad_debt_relief_months.get()),
-            HOST),
-        money("19", "Receivables", "Invoice dispute from the portal",
-            format!("client users may raise it: {}; outcomes upheld or credited; escalation FIN.RUL.15 after {} days to {}",
-                on(invoicing.portal_disputes), invoicing.dispute_escalation_days, invoicing.dispute_escalation_role),
-            HOST),
-        money("20", "Receivables", "Bounce fee on a returned cheque",
+            HOST,
+        ),
+        money(
+            "16",
+            "Receivables",
+            "Invoice write-off (FIN.ACL.15)",
+            format!(
+                "limit {}; approvers {}; the requester cannot approve",
+                aed(defaults::INVOICE_WRITE_OFF_LIMIT),
+                invoicing.write_off_approvers.join(" or ")
+            ),
+            HOST,
+        ),
+        money(
+            "17",
+            "Receivables",
+            "Write-off notice to the client",
+            if invoicing.write_off_notice {
+                "sent"
+            } else {
+                "not sent"
+            }
+            .to_owned(),
+            HOST,
+        ),
+        money(
+            "18",
+            "Receivables",
+            "Bad-debt relief proposal (FIN.RUL.14)",
+            format!(
+                "{} after {} months",
+                on(invoicing.bad_debt_relief),
+                invoicing.bad_debt_relief_months.get()
+            ),
+            HOST,
+        ),
+        money(
+            "19",
+            "Receivables",
+            "Invoice dispute from the portal",
+            format!(
+                "client users may raise it: {}; outcomes upheld or credited; escalation FIN.RUL.15 after {} days to {}",
+                on(invoicing.portal_disputes),
+                invoicing.dispute_escalation_days,
+                invoicing.dispute_escalation_role
+            ),
+            HOST,
+        ),
+        money(
+            "20",
+            "Receivables",
+            "Bounce fee on a returned cheque",
             payments.bounce_fee.as_ref().map_or_else(
                 || "off".to_owned(),
                 |fee| format!("{} {}", fee.charge_type, aed(fee.amount)),
             ),
-            "default of the module (open: lawyer L-22)"),
-        money("21", "Access", "Blocked-client exception approver (PTY.ACL.03)",
+            "default of the module (open: lawyer L-22)",
+        ),
+        money(
+            "21",
+            "Access",
+            "Blocked-client exception approver (PTY.ACL.03)",
             format!("{}; the requester cannot approve", parties.approver()),
-            HOST),
-        money("22", "Access", "Sanctions screening", "off".to_owned(), "default of the module"),
-        money("23", "Access", "Portal after contract end (POR.ACL.01)",
-            format!("read-only, closes after {} days (logistics::portal)", defaults::PORTAL_CLOSES_AFTER_DAYS),
-            "Logistics seed"),
-        money("24", "Cash-flow", "Forecast alert (FIN.CFL.01, FIN.RUL.23)",
-            format!("{} weeks from {:?}; alert below {}; {} at {}; COD remittances counted as payments on their schedule (logistics.cod_remittances); due dates moved by days late: {}; disputed amounts counted: {}",
-                invoicing.cash_forecast_weeks, invoicing.cash_week_start, thresholds,
-                invoicing.cash_alert_roles.join(" and "), invoicing.cash_alert_time,
-                on(invoicing.cash_days_late), on(invoicing.cash_disputed_counted)),
-            HOST),
-        money("25", "Budget", "Budget categories and approval (FIN.BUD.01, FIN.RUL.24)",
-            format!("categories owned by the accountant; one budget per legal entity and fiscal year, approved by the company admin; warns at {}% of a month's line: the category's owner role and {}",
-                invoicing.budget_variance_percent, invoicing.budget_variance_role),
-            "categories: Logistics seed; approval: default of the module"),
-        money("26", "Budget", "Owner drawings (FIN.ACL.21)",
-            format!("every drawing approved by the company admin, never the requester; {} told when none else can approve", invoicing.drawings_notify_role),
-            HOST),
+            HOST,
+        ),
+        money(
+            "22",
+            "Access",
+            "Sanctions screening",
+            "off".to_owned(),
+            "default of the module",
+        ),
+        money(
+            "23",
+            "Access",
+            "Portal after contract end (POR.ACL.01)",
+            format!(
+                "read-only, closes after {} days (logistics::portal)",
+                defaults::PORTAL_CLOSES_AFTER_DAYS
+            ),
+            "Logistics seed",
+        ),
+        money(
+            "24",
+            "Cash-flow",
+            "Forecast alert (FIN.CFL.01, FIN.RUL.23)",
+            format!(
+                "{} weeks from {:?}; alert below {}; {} at {}; COD remittances counted as payments on their schedule (logistics.cod_remittances); due dates moved by days late: {}; disputed amounts counted: {}",
+                invoicing.cash_forecast_weeks,
+                invoicing.cash_week_start,
+                thresholds,
+                invoicing.cash_alert_roles.join(" and "),
+                invoicing.cash_alert_time,
+                on(invoicing.cash_days_late),
+                on(invoicing.cash_disputed_counted)
+            ),
+            HOST,
+        ),
+        money(
+            "25",
+            "Budget",
+            "Budget categories and approval (FIN.BUD.01, FIN.RUL.24)",
+            format!(
+                "categories owned by the accountant; one budget per legal entity and fiscal year, approved by the company admin; warns at {}% of a month's line: the category's owner role and {}",
+                invoicing.budget_variance_percent, invoicing.budget_variance_role
+            ),
+            "categories: Logistics seed; approval: default of the module",
+        ),
+        money(
+            "26",
+            "Budget",
+            "Owner drawings (FIN.ACL.21)",
+            format!(
+                "every drawing approved by the company admin, never the requester; {} told when none else can approve",
+                invoicing.drawings_notify_role
+            ),
+            HOST,
+        ),
     ]
 }
 

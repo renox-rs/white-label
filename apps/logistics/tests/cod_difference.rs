@@ -182,10 +182,14 @@ async fn the_client_needs_its_instruction_and_the_customer_is_not_offered() {
     let w = boot().await;
     let (out, delivery) = asked(&w, "ORD-1").await;
 
-    approve(&w, &delivery, &[("absorbed_by", "client"), ("instruction", "  ")])
-        .await
-        .assert_status(422)
-        .assert_see("only on its instruction");
+    approve(
+        &w,
+        &delivery,
+        &[("absorbed_by", "client"), ("instruction", "  ")],
+    )
+    .await
+    .assert_status(422)
+    .assert_see("only on its instruction");
     approve(&w, &delivery, &[("absorbed_by", "customer")])
         .await
         .assert_status(422)
@@ -245,10 +249,26 @@ async fn the_shipments_rule_refuses_the_customer_and_a_client_without_instructio
         approver: w.ops.id,
     };
 
-    assert!(rule.check(w.state(), decision(CodAbsorber::Customer)).await.is_err());
-    assert!(rule.check(w.state(), decision(CodAbsorber::Client)).await.is_err());
-    assert!(rule.check(w.state(), decision(CodAbsorber::Business)).await.is_ok());
-    assert!(rule.check(w.state(), decision(CodAbsorber::Driver)).await.is_ok());
+    assert!(
+        rule.check(w.state(), decision(CodAbsorber::Customer))
+            .await
+            .is_err()
+    );
+    assert!(
+        rule.check(w.state(), decision(CodAbsorber::Client))
+            .await
+            .is_err()
+    );
+    assert!(
+        rule.check(w.state(), decision(CodAbsorber::Business))
+            .await
+            .is_ok()
+    );
+    assert!(
+        rule.check(w.state(), decision(CodAbsorber::Driver))
+            .await
+            .is_ok()
+    );
     // Another source's delivery is none of its business.
     let other = CodDecision {
         source: wl_kernel::Subject::new("sales.order", 1),

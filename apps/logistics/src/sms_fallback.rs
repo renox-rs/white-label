@@ -12,10 +12,8 @@
 //! (`logistics_seed`), with the fallback text of [`crate::defaults`].
 
 use renox::prelude::*;
-use wl_kernel::integrations::{
-    IntegrationStatusChanged, Outbound, Submitted, submit,
-};
 use wl_kernel::PartyId;
+use wl_kernel::integrations::{IntegrationStatusChanged, Outbound, Submitted, submit};
 use wl_kernel::role_tasks::{self, RoleTask};
 
 use crate::defaults::SMS_GATEWAY;
@@ -101,10 +99,7 @@ pub async fn on_status_changed(state: &AppState, event: &IntegrationStatusChange
     let title = english("logistics.sms.task_title", &[]);
     let description = english(
         "logistics.sms.task_body",
-        &[
-            ("count", &shipments.len()),
-            ("list", &list.join("\n")),
-        ],
+        &[("count", &shipments.len()), ("list", &list.join("\n"))],
     );
     let task = RoleTask::new(
         wl_kernel::Subject::new(wl_kernel::integrations::SUBJECT_TYPE, 0),
@@ -144,7 +139,9 @@ pub async fn on_status_changed(state: &AppState, event: &IntegrationStatusChange
 
 /// Registers the listener.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: IntegrationStatusChanged, state: AppState| async move {
-        on_status_changed(&state, &event).await.map(|_| ())
-    });
+    app.listen(
+        |event: IntegrationStatusChanged, state: AppState| async move {
+            on_status_changed(&state, &event).await.map(|_| ())
+        },
+    );
 }

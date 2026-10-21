@@ -39,9 +39,9 @@ use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::voids;
 
-use crate::permissions;
 use crate::disposal::{self, DisposalInput};
 use crate::loss::{self, LossInput};
+use crate::permissions;
 use crate::rates;
 use crate::reversal::ReversalInput;
 use crate::shipment::{
@@ -332,23 +332,26 @@ fn followed(name: &'static str, from: ShipmentStatus, to: ShipmentStatus) -> Tra
     let transition = if name == DELIVER {
         // §7.1 `deliver`: only a shipment of several parcels may have refused
         // parcels (`WRK.POD.01`), and each has a reason.
-        transition.guard("refused_parcels_allowed_and_explained", |s: &Shipment, ctx| {
-            let input = input_of(ctx);
-            let single = s.parcel_count <= 1 && !input.refused.is_empty();
-            let unexplained = input
-                .refused
-                .iter()
-                .any(|refused| refused.reason.trim().is_empty());
-            Box::pin(async move {
-                if single {
-                    Err(english("logistics.partial.single_parcel", &[]))
-                } else if unexplained {
-                    Err(english("logistics.partial.reason_needed", &[]))
-                } else {
-                    Ok(())
-                }
-            })
-        })
+        transition.guard(
+            "refused_parcels_allowed_and_explained",
+            |s: &Shipment, ctx| {
+                let input = input_of(ctx);
+                let single = s.parcel_count <= 1 && !input.refused.is_empty();
+                let unexplained = input
+                    .refused
+                    .iter()
+                    .any(|refused| refused.reason.trim().is_empty());
+                Box::pin(async move {
+                    if single {
+                        Err(english("logistics.partial.single_parcel", &[]))
+                    } else if unexplained {
+                        Err(english("logistics.partial.reason_needed", &[]))
+                    } else {
+                        Ok(())
+                    }
+                })
+            },
+        )
     } else {
         transition
     };
@@ -877,10 +880,13 @@ fn dispose(name: &'static str) -> Transition<Shipment> {
         .tone("danger")
         .from([ShipmentStatus::OnHold])
         .to(ShipmentStatus::Disposed)
-        .guard("reason_photo_instruction_and_liability", |_s: &Shipment, ctx| {
-            let checked = disposal::check(input_of(ctx).disposal.as_ref());
-            Box::pin(async move { checked })
-        });
+        .guard(
+            "reason_photo_instruction_and_liability",
+            |_s: &Shipment, ctx| {
+                let checked = disposal::check(input_of(ctx).disposal.as_ref());
+                Box::pin(async move { checked })
+            },
+        );
     let transition = if name == DISPOSE {
         transition.permission(permissions::SHIPMENTS_MANAGE)
     } else {

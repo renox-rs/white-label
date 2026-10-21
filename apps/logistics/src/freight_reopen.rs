@@ -31,9 +31,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::invoicing::{self, DraftLine, InvoiceDraft, InvoiceId, VatCategory};
 
 use crate::freight::{FreightJob, FreightStatus, track};
-use crate::freight_costing::{
-    self, FreightMargin, JobLine, line_kind, margins_of, mark_issued,
-};
+use crate::freight_costing::{self, FreightMargin, JobLine, line_kind, margins_of, mark_issued};
 use crate::freight_flow::{load, run};
 use crate::freight_machine::{FreightInput, REOPEN, given, input_of, needs, trimmed};
 use crate::permissions;
@@ -101,7 +99,9 @@ pub(crate) fn reopen_transition() -> Transition<FreightJob> {
         transition,
         "note_given_for_other",
         "logistics.freight.reopen_note_needed",
-        |_job, input| input.reason.as_deref().map(str::trim) != Some(reason::OTHER) || given(&input.note),
+        |_job, input| {
+            input.reason.as_deref().map(str::trim) != Some(reason::OTHER) || given(&input.note)
+        },
     )
     .effect(|job: &FreightJob, ctx, tx| {
         let id = job.id;
@@ -409,7 +409,11 @@ async fn invoice_recharges(
     track(
         &state.db,
         id,
-        if late { "supplementary_invoice" } else { "recharge_invoice" },
+        if late {
+            "supplementary_invoice"
+        } else {
+            "recharge_invoice"
+        },
         &format!("{} / {net}", invoice.0),
         Some(user.id),
     )

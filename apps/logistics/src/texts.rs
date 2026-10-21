@@ -293,7 +293,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.reweigh_resolved", "Dispute resolved."),
     ("logistics.remittance_built", "Draft remittance built."),
     ("logistics.remittance_approved", "Remittance approved."),
-    ("logistics.remittance_reopened", "Remittance back to a draft."),
+    (
+        "logistics.remittance_reopened",
+        "Remittance back to a draft.",
+    ),
     ("logistics.remittance_paid", "Remittance paid."),
     // A COD difference (`WRK.ACL.09`, BL-LOG-08).
     (
@@ -447,8 +450,14 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.adjustment.amount_needed",
         "Give the amount of the line: a positive amount is owed to the client, a negative one is taken back.",
     ),
-    ("logistics.adjustment.reason_needed", "Give the reason: the client reads it on its statement."),
-    ("logistics.adjustment.source_unknown", "Choose where the line comes from."),
+    (
+        "logistics.adjustment.reason_needed",
+        "Give the reason: the client reads it on its statement.",
+    ),
+    (
+        "logistics.adjustment.source_unknown",
+        "Choose where the line comes from.",
+    ),
     (
         "logistics.adjustment.shipment_unknown",
         "That shipment is not one of the client's.",
@@ -472,7 +481,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.adjustment_added", "Adjustment line added."),
     ("logistics.adjustment_approved", "Adjustment line approved."),
     ("logistics.adjustment_rejected", "Adjustment line rejected."),
-    ("logistics.adjustment_resubmitted", "Adjustment line sent again."),
+    (
+        "logistics.adjustment_resubmitted",
+        "Adjustment line sent again.",
+    ),
     ("logistics.adjustment_deleted", "Adjustment line deleted."),
     // A lost shipment and the goods found again (`WRK.RUL.17`, `LOG.ACL.14`,
     // BL-LOG-11).
@@ -480,7 +492,10 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.loss.not_prepared",
         "The loss was not prepared by the loss service.",
     ),
-    ("logistics.loss.reason_needed", "Give the reason the shipment is lost."),
+    (
+        "logistics.loss.reason_needed",
+        "Give the reason the shipment is lost.",
+    ),
     (
         "logistics.loss.liability_needed",
         "Choose who bears the loss: driver, business, client or none.",
@@ -506,7 +521,10 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.loss.body_claim",
         "Shipment {{ number }} could not be traced and is marked lost. It is not billed and no cash on delivery is expected. Your claim is ticket {{ claim }}.",
     ),
-    ("logistics.loss.found_title", "Shipment {{ number }} was found"),
+    (
+        "logistics.loss.found_title",
+        "Shipment {{ number }} was found",
+    ),
     (
         "logistics.loss.found_body",
         "Shipment {{ number }} was found at {{ depot }} and is back at the hub.",
@@ -527,7 +545,10 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.loss.not_lost",
         "Only a lost shipment has a claim to settle.",
     ),
-    ("logistics.loss.amount_needed", "Give the credit in dirhams, above 0."),
+    (
+        "logistics.loss.amount_needed",
+        "Give the credit in dirhams, above 0.",
+    ),
     (
         "logistics.loss.settled_comment",
         "Claim settled with a credit of {{ amount }} for the client.",
@@ -554,7 +575,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("logistics.loss_found", "Shipment found."),
     ("logistics.loss_claim_settled", "Claim settled."),
-    ("logistics.loss_claim_chosen", "The client's choice is recorded."),
+    (
+        "logistics.loss_claim_chosen",
+        "The client's choice is recorded.",
+    ),
     // Tracing and marking lost off a delivery (`LOG.RUL.12`, `LOG.ACL.14`,
     // BL-LOG-12).
     (
@@ -621,10 +645,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.disposal.no_price",
         "No disposal price for client {{ client }}: charged AED 0.",
     ),
-    (
-        "logistics.disposal.delivery_reason",
-        "Shipment disposed of",
-    ),
+    ("logistics.disposal.delivery_reason", "Shipment disposed of"),
     (
         "logistics.disposal.claim_title",
         "Claim: shipment {{ number }} was destroyed",
@@ -687,10 +708,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.cash.count_returned",
         "Count the handover of run {{ run }} at what was received, often nothing: the whole {{ amount }} is a shortage. Recover it in cash or write it off with approval.",
     ),
-    (
-        "logistics.cash.closed",
-        "The cash was counted.",
-    ),
+    ("logistics.cash.closed", "The cash was counted."),
     // A reversed delivery (`WRK.ACL.10`, `LOG.ACL.12`, BL-LOG-10).
     (
         "logistics.reversal.event_needed",
@@ -716,10 +734,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.reversal.body",
         "The delivery of shipment {{ number }} was taken back ({{ reason }}). It is delivered again before it is billed, and the cash on delivery is settled with you on your statement.",
     ),
-    (
-        "logistics.reversal.no_driver",
-        "the driver of the run",
-    ),
+    ("logistics.reversal.no_driver", "the driver of the run"),
     (
         "logistics.reversal.task_title",
         "Driver liable for {{ amount }}: shipment {{ number }} ({{ driver }})",
@@ -753,7 +768,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The delivery of shipment {{ number }} was reversed ({{ reason }}) with the driver {{ driver }} liable for {{ amount }}.",
     ),
     ("logistics.reversal.hr_opened", "HR case opened."),
-    ("logistics.reversal_shortage_raised", "Shortage raised against the driver."),
+    (
+        "logistics.reversal_shortage_raised",
+        "Shortage raised against the driver.",
+    ),
     ("logistics.reversal_hr_opened", "HR case opened."),
     (
         "logistics.credit.title",
@@ -823,10 +841,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.account.no_contact",
         "The client has no e-mail on record to confirm the account with: add one on its party record first.",
     ),
-    (
-        "logistics.account.link_dead",
-        "This link no longer works.",
-    ),
+    ("logistics.account.link_dead", "This link no longer works."),
     (
         "logistics.account.lapsed_title",
         "Bank account change lapsed",
@@ -875,13 +890,31 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.remittance.return_note",
         "The bank returned the transfer of {{ number }} (advice {{ advice }}).",
     ),
-    ("logistics.remittance_payment_returned", "Payment marked as returned."),
+    (
+        "logistics.remittance_payment_returned",
+        "Payment marked as returned.",
+    ),
     ("logistics.remittance_repaid", "Remittance paid again."),
-    ("logistics.remittance_account_confirmed", "The client's confirmation is recorded."),
-    ("logistics.account_requested", "Bank account change requested."),
-    ("logistics.account_approved", "Bank account change approved."),
-    ("logistics.account_rejected", "Bank account change rejected."),
-    ("logistics.account_withdrawn", "Bank account change withdrawn."),
+    (
+        "logistics.remittance_account_confirmed",
+        "The client's confirmation is recorded.",
+    ),
+    (
+        "logistics.account_requested",
+        "Bank account change requested.",
+    ),
+    (
+        "logistics.account_approved",
+        "Bank account change approved.",
+    ),
+    (
+        "logistics.account_rejected",
+        "Bank account change rejected.",
+    ),
+    (
+        "logistics.account_withdrawn",
+        "Bank account change withdrawn.",
+    ),
     // A COD statement dispute (`LOG.ACL.12`, BL-LOG-18).
     (
         "logistics.dispute.returned",
@@ -932,12 +965,18 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.dispute.adjusted_body",
         "We reviewed statement {{ number }} and corrected it: a line of {{ amount }} will appear on your next statement. {{ note }}",
     ),
-    ("logistics.remittance_disputed", "The statement is flagged as disputed."),
+    (
+        "logistics.remittance_disputed",
+        "The statement is flagged as disputed.",
+    ),
     (
         "logistics.remittance_dispute_added",
         "Your message was added to the open question.",
     ),
-    ("logistics.remittance_dispute_resolved", "The dispute is resolved."),
+    (
+        "logistics.remittance_dispute_resolved",
+        "The dispute is resolved.",
+    ),
     // A blocked client (`PTY.ACL.03`, BL-LOG-19).
     (
         "logistics.blocked.neutral",
@@ -1054,10 +1093,7 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.freight.release_note_needed",
         "Note how the reason was resolved before releasing the job.",
     ),
-    (
-        "logistics.freight.not_on_hold",
-        "The job is not on hold.",
-    ),
+    ("logistics.freight.not_on_hold", "The job is not on hold."),
     (
         "logistics.freight.hold_note_needed",
         "Give a known reason and a note.",

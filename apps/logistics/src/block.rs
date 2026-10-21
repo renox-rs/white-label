@@ -40,10 +40,7 @@ pub fn neutral() -> String {
 ///
 /// The directory's errors.
 pub async fn on_hold(state: &AppState, party: PartyId) -> Result<bool> {
-    Ok(parties::directory(state)
-        .status(&state.db, party)
-        .await?
-        == Some(PartyStatus::Blocked))
+    Ok(parties::directory(state).status(&state.db, party).await? == Some(PartyStatus::Blocked))
 }
 
 /// Refuses the action `kind` for `party` when it is blocked, with the neutral

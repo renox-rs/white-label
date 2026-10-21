@@ -391,7 +391,9 @@ impl StateMachine for AccountChange {
     const COLUMN: renox::db::Col<AccountChange, AccountChangeStatus> = AccountChange::STATUS;
 
     fn machine() -> Machine<Self> {
-        use AccountChangeStatus::{Active, Approved, Confirmed, Lapsed, Pending, Rejected, Withdrawn};
+        use AccountChangeStatus::{
+            Active, Approved, Confirmed, Lapsed, Pending, Rejected, Withdrawn,
+        };
         Machine::new()
             .initial([Pending])
             .state(Pending)
@@ -739,7 +741,10 @@ mod tests {
 
     #[test]
     fn an_iban_is_normalised_and_checked_for_its_shape() {
-        assert_eq!(normalized(" ae07 0331 2345 6789 0123 456 "), "AE070331234567890123456");
+        assert_eq!(
+            normalized(" ae07 0331 2345 6789 0123 456 "),
+            "AE070331234567890123456"
+        );
         assert!(plausible("AE070331234567890123456"));
         assert!(!plausible("AE07"));
         assert!(!plausible("1207033123456789012345X"));
@@ -764,6 +769,9 @@ mod tests {
         assert!(machine.find(CONFIRM).unwrap().is_system());
         assert!(machine.find(LAPSE).unwrap().is_system());
         assert!(!machine.find(APPROVE).unwrap().is_system());
-        assert_eq!(machine.find(CONFIRM_APPROVED).unwrap().to_state(), Some("active"));
+        assert_eq!(
+            machine.find(CONFIRM_APPROVED).unwrap().to_state(),
+            Some("active")
+        );
     }
 }

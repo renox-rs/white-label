@@ -9,9 +9,7 @@ use logistics::defaults::SMS_GATEWAY;
 use logistics::notices::CLIENT_NOTICE;
 use logistics::sms_fallback;
 use support::{SOUQ, boot};
-use wl_kernel::integrations::{
-    self, Delivery, IntegrationConnection, IntegrationDef, Submitted,
-};
+use wl_kernel::integrations::{self, Delivery, IntegrationConnection, IntegrationDef, Submitted};
 
 /// Registers the gateway as the host does.
 fn register_gateway() {
@@ -47,9 +45,10 @@ async fn a_tracking_sms_is_queued_while_the_gateway_is_down() {
     let w = boot().await;
     let shipment = w.book_as(&w.noor, SOUQ, "ORD-1").await;
 
-    let sent = sms_fallback::queue_tracking_sms(w.state(), &shipment, "SHP:out", "Out for delivery")
-        .await
-        .unwrap();
+    let sent =
+        sms_fallback::queue_tracking_sms(w.state(), &shipment, "SHP:out", "Out for delivery")
+            .await
+            .unwrap();
     assert_eq!(sent, Submitted::Sent);
 
     gateway_down(&w).await;
@@ -82,7 +81,11 @@ async fn the_dispatcher_gets_the_recipients_to_call_and_the_clients_an_email() {
     assert_eq!(tasks.len(), 1, "one task for the dispatcher");
     assert!(tasks[0].title.contains("SMS gateway is down"));
     for shipment in [&first, &second] {
-        assert!(tasks[0].description.contains(&shipment.number), "{}", shipment.number);
+        assert!(
+            tasks[0].description.contains(&shipment.number),
+            "{}",
+            shipment.number
+        );
     }
     assert!(tasks[0].description.contains("+971500000000"));
     assert!(
@@ -95,7 +98,10 @@ async fn the_dispatcher_gets_the_recipients_to_call_and_the_clients_an_email() {
     let last = told.last().unwrap();
     assert_eq!(last.type_key, CLIENT_NOTICE);
     let body = last.data["body"].as_str().unwrap_or_default();
-    assert!(body.contains(&first.number) && body.contains(&second.number), "{body}");
+    assert!(
+        body.contains(&first.number) && body.contains(&second.number),
+        "{body}"
+    );
 
     // Another change of the same connection does nothing more.
     let event = integrations::IntegrationStatusChanged {
@@ -104,13 +110,21 @@ async fn the_dispatcher_gets_the_recipients_to_call_and_the_clients_an_email() {
         to: "degraded".to_owned(),
         failed_since: None,
     };
-    assert!(!sms_fallback::on_status_changed(w.state(), &event).await.unwrap());
+    assert!(
+        !sms_fallback::on_status_changed(w.state(), &event)
+            .await
+            .unwrap()
+    );
     let other = integrations::IntegrationStatusChanged {
         connection: "email".to_owned(),
         from: "up".to_owned(),
         to: "down".to_owned(),
         failed_since: None,
     };
-    assert!(!sms_fallback::on_status_changed(w.state(), &other).await.unwrap());
+    assert!(
+        !sms_fallback::on_status_changed(w.state(), &other)
+            .await
+            .unwrap()
+    );
     assert_eq!(w.tickets.opened().len(), 1);
 }

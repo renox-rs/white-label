@@ -35,9 +35,13 @@ const NOV_9: &str = "2026-11-08T22:00:00Z";
 
 /// The operations manager: holds the role and approves a loss.
 async fn manager(w: &World, name: &str) -> User {
-    permissions::define_role(w.db(), perm::OPERATIONS_MANAGER_ROLE, &[perm::SHIPMENTS_VIEW])
-        .await
-        .unwrap();
+    permissions::define_role(
+        w.db(),
+        perm::OPERATIONS_MANAGER_ROLE,
+        &[perm::SHIPMENTS_VIEW],
+    )
+    .await
+    .unwrap();
     let user = w
         .user_with(
             name,
@@ -89,7 +93,13 @@ fn trace_tickets(w: &World) -> usize {
         .count()
 }
 
-async fn ask(w: &World, by: &User, shipment: &Shipment, reason: &str, liability: &str) -> renox::testing::TestResponse {
+async fn ask(
+    w: &World,
+    by: &User,
+    shipment: &Shipment,
+    reason: &str,
+    liability: &str,
+) -> renox::testing::TestResponse {
     w.post(
         by,
         &format!("/shipments/{}/mark-lost", shipment.id),
@@ -215,7 +225,11 @@ async fn after_seven_days_the_task_asks_for_mark_lost_and_another_manager_approv
     let history = renox::state_machine::history(w.db(), Shipment::TABLE, shipment.id)
         .await
         .unwrap();
-    assert!(history.iter().any(|row| row.transition == "mark_lost_approved"));
+    assert!(
+        history
+            .iter()
+            .any(|row| row.transition == "mark_lost_approved")
+    );
 }
 
 /// AC3: D cannot approve; a request without a reason or liability is refused;
@@ -233,9 +247,15 @@ async fn the_requester_cannot_approve_and_the_company_admin_can() {
     ask(&w, &w.dispatcher, &shipment, "Not at the hub", "")
         .await
         .assert_status(422);
-    ask(&w, &w.dispatcher, &shipment, "Not at the hub", "the carrier")
-        .await
-        .assert_status(422);
+    ask(
+        &w,
+        &w.dispatcher,
+        &shipment,
+        "Not at the hub",
+        "the carrier",
+    )
+    .await
+    .assert_status(422);
     ask(&w, &w.noor, &shipment, "Not at the hub", "business")
         .await
         .assert_forbidden();
@@ -271,7 +291,11 @@ async fn the_requester_cannot_approve_and_the_company_admin_can() {
         .await
         .assert_status(303);
     let own = pending(&w, &shipment).await;
-    assert!(approvals::approve(w.state(), own.id, &boss, "mine").await.is_err());
+    assert!(
+        approvals::approve(w.state(), own.id, &boss, "mine")
+            .await
+            .is_err()
+    );
 
     // The company admin holds every permission.
     let admin = w
@@ -321,12 +345,20 @@ async fn a_scan_closes_the_trace_task_and_restarts_the_clock() {
     assert_eq!(tasks(&w).await.len(), 1);
 
     // Only a scanner scans, and a depot is named.
-    w.post(&w.noor, &format!("/shipments/{}/depot-scan", shipment.id), &[("depot", "Depot A")])
-        .await
-        .assert_forbidden();
-    w.post(&w.hub, &format!("/shipments/{}/depot-scan", shipment.id), &[("depot", "")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.noor,
+        &format!("/shipments/{}/depot-scan", shipment.id),
+        &[("depot", "Depot A")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &w.hub,
+        &format!("/shipments/{}/depot-scan", shipment.id),
+        &[("depot", "")],
+    )
+    .await
+    .assert_status(422);
     w.post(
         &w.hub,
         &format!("/shipments/{}/depot-scan", shipment.id),
@@ -351,7 +383,9 @@ async fn a_scan_closes_the_trace_task_and_restarts_the_clock() {
     let run = trace::run(w.state(), at(NOV_9)).await.unwrap();
     assert_eq!(run, TraceRun::default());
     // 88 hours after the scan, a new task.
-    let later = trace::run(w.state(), at("2026-11-09T22:00:00Z")).await.unwrap();
+    let later = trace::run(w.state(), at("2026-11-09T22:00:00Z"))
+        .await
+        .unwrap();
     assert_eq!(later.opened, 1);
     assert_eq!(tasks(&w).await.len(), 2);
 }
@@ -364,12 +398,20 @@ async fn a_note_closes_the_trace_task_too() {
     let shipment = at_hub(&w, LAST_SCAN).await;
     trace::run(w.state(), at(NOV_5)).await.unwrap();
 
-    w.post(&w.noor, &format!("/shipments/{}/note", shipment.id), &[("note", "Called")])
-        .await
-        .assert_forbidden();
-    w.post(&w.dispatcher, &format!("/shipments/{}/note", shipment.id), &[("note", " ")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.noor,
+        &format!("/shipments/{}/note", shipment.id),
+        &[("note", "Called")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/note", shipment.id),
+        &[("note", " ")],
+    )
+    .await
+    .assert_status(422);
     w.post(
         &w.dispatcher,
         &format!("/shipments/{}/note", shipment.id),
@@ -428,7 +470,10 @@ async fn a_scan_after_the_request_fails_it_at_the_final_approval() {
         .expect("the request ends");
 
     assert_eq!(decided.decision, ApprovalEnd::Failed);
-    let stored = ApprovalRequest::find(w.db(), request.id).await.unwrap().unwrap();
+    let stored = ApprovalRequest::find(w.db(), request.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(stored.status, ApprovalStatus::Failed);
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::AtHub);
     assert!(w.tickets.opened().iter().all(|t| t.category_key != "claim"));

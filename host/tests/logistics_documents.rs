@@ -31,7 +31,9 @@ use wl_kernel::notify::{GiveUpReaction, notification_type};
 use wl_kernel::{PartyId, PartyKind, Subject};
 use wl_sales::LeadSource;
 
-use support::{company, entity, logistics_booted, logistics_booted_with, person, scoped_person, tenant};
+use support::{
+    company, entity, logistics_booted, logistics_booted_with, person, scoped_person, tenant,
+};
 
 /// The vehicle (an asset) of the runs.
 const VAN: i64 = 7;
@@ -133,7 +135,11 @@ async fn a_03_deployment_lists_the_kind_rows_with_their_blocks_and_responsible_r
         blocks.sort_by(|a, b| a.guarded.cmp(&b.guarded));
         let names: Vec<&str> = blocks.iter().map(|b| b.guarded.as_str()).collect();
         assert_eq!(names, guarded, "{key}");
-        assert!(blocks.iter().all(|b| b.mode == BlockMode::Block && b.locked));
+        assert!(
+            blocks
+                .iter()
+                .all(|b| b.mode == BlockMode::Block && b.locked)
+        );
     }
     // The rider permit is for a motorbike rider only.
     let rider = DocumentKind::by_key(app.db(), "rider_permit")
@@ -172,7 +178,15 @@ async fn an_expired_mulkiya_refuses_dispatch_and_offers_no_override() {
     document(&app, &van(), "vehicle_insurance", day(200)).await;
     document(&app, &van(), "vehicle_permit", day(200)).await;
     document(&app, &van(), "mulkiya", day(-1)).await;
-    let planned = run(&app, "RUN-T-1", &driver, today(), "Depot A", VehicleType::Van).await;
+    let planned = run(
+        &app,
+        "RUN-T-1",
+        &driver,
+        today(),
+        "Depot A",
+        VehicleType::Van,
+    )
+    .await;
 
     let guard = documents::guard(app.state());
     let refused = guard
@@ -180,7 +194,11 @@ async fn an_expired_mulkiya_refuses_dispatch_and_offers_no_override() {
         .await
         .expect("the check runs")
         .expect_err("an expired Mulkiya refuses the dispatch");
-    assert!(refused.message().contains("Mulkiya"), "{}", refused.message());
+    assert!(
+        refused.message().contains("Mulkiya"),
+        "{}",
+        refused.message()
+    );
     assert!(
         refused.override_links().is_empty(),
         "a legal block offers no override"
@@ -197,7 +215,15 @@ async fn an_expired_mulkiya_refuses_dispatch_and_offers_no_override() {
     );
 
     // A motorbike run is refused without the rider permit.
-    let bike = run(&app, "RUN-T-2", &driver, today(), "Depot A", VehicleType::Motorbike).await;
+    let bike = run(
+        &app,
+        "RUN-T-2",
+        &driver,
+        today(),
+        "Depot A",
+        VehicleType::Motorbike,
+    )
+    .await;
     let refused = guard
         .check(app.state(), "run.dispatch", bike.id, today())
         .await
@@ -223,9 +249,33 @@ async fn a_licence_expiring_in_25_days_lists_the_drivers_planned_runs() {
     let other = person(&app, "Dora", host::roles::DRIVER).await;
     let expires = day(25);
     document(&app, &driver_subject(&driver), "driving_licence", expires).await;
-    let after = run(&app, "RUN-T-1", &driver, day(30), "Depot A", VehicleType::Van).await;
-    run(&app, "RUN-T-2", &driver, day(10), "Depot A", VehicleType::Van).await;
-    run(&app, "RUN-T-3", &other, day(30), "Depot A", VehicleType::Truck).await;
+    let after = run(
+        &app,
+        "RUN-T-1",
+        &driver,
+        day(30),
+        "Depot A",
+        VehicleType::Van,
+    )
+    .await;
+    run(
+        &app,
+        "RUN-T-2",
+        &driver,
+        day(10),
+        "Depot A",
+        VehicleType::Van,
+    )
+    .await;
+    run(
+        &app,
+        "RUN-T-3",
+        &other,
+        day(30),
+        "Depot A",
+        VehicleType::Truck,
+    )
+    .await;
 
     let entries = wl_documents::blocks_for(app.db(), "run.dispatch")
         .await
@@ -236,7 +286,12 @@ async fn a_licence_expiring_in_25_days_lists_the_drivers_planned_runs() {
         .expect("the driving licence entry");
     let work = documents::future_work("run.dispatch").expect("the provider is registered");
     let planned = work
-        .planned_from(app.state(), entry, &driver_subject(&driver), expires + Days::new(1))
+        .planned_from(
+            app.state(),
+            entry,
+            &driver_subject(&driver),
+            expires + Days::new(1),
+        )
         .await
         .unwrap();
     let ids: Vec<i64> = planned.iter().map(|p| p.record.subject_id).collect();
@@ -253,12 +308,21 @@ async fn a_licence_expiring_in_25_days_lists_the_drivers_planned_runs() {
 #[renox::test]
 async fn the_company_admin_cannot_change_the_override_mode_of_the_three_kinds() {
     let app = logistics_booted().await;
-    for key in ["driving_licence", "mulkiya", "vehicle_insurance", "vehicle_permit"] {
+    for key in [
+        "driving_licence",
+        "mulkiya",
+        "vehicle_insurance",
+        "vehicle_permit",
+    ] {
         let refused = kinds::set_override_mode(app.db(), key, OverrideMode::WithApproval)
             .await
             .unwrap()
             .expect_err("the override mode is locked to never");
-        assert_eq!(refused.reason, wl_documents::RefusalReason::LegalBlock, "{key}");
+        assert_eq!(
+            refused.reason,
+            wl_documents::RefusalReason::LegalBlock,
+            "{key}"
+        );
         let kind = DocumentKind::by_key(app.db(), key).await.unwrap().unwrap();
         assert_eq!(kind.override_mode, OverrideMode::Never, "{key}");
     }
@@ -267,10 +331,11 @@ async fn the_company_admin_cannot_change_the_override_mode_of_the_three_kinds() 
         .unwrap()
         .expect_err("a locked block cannot be removed");
     assert_eq!(refused.reason, wl_documents::RefusalReason::Locked);
-    let refused = wl_documents::set_block_mode(app.db(), "mulkiya", "run.dispatch", BlockMode::Flag)
-        .await
-        .unwrap()
-        .expect_err("a locked block cannot be flagged only");
+    let refused =
+        wl_documents::set_block_mode(app.db(), "mulkiya", "run.dispatch", BlockMode::Flag)
+            .await
+            .unwrap()
+            .expect_err("a locked block cannot be flagged only");
     assert_eq!(refused.reason, wl_documents::RefusalReason::Locked);
 }
 
@@ -319,7 +384,10 @@ async fn the_reminder_goes_to_the_drivers_depot_and_the_mulkiya_task_to_the_flee
 
     let report = expiry::run(app.state(), today()).await.unwrap();
     assert_eq!(report.failed, 0, "{report:?}");
-    let mulkiya = DocumentKind::by_key(app.db(), "mulkiya").await.unwrap().unwrap();
+    let mulkiya = DocumentKind::by_key(app.db(), "mulkiya")
+        .await
+        .unwrap()
+        .unwrap();
     let task = RenewalTask::find_open(app.db(), defaults::VEHICLE_SUBJECT, VAN, mulkiya.id)
         .await
         .unwrap()
@@ -337,7 +405,12 @@ async fn the_notification_types_take_the_reaction_of_their_group() {
     let _app = logistics_booted().await;
     let reactions = |key: &str| {
         let def = notification_type(key).unwrap_or_else(|| panic!("{key} is registered"));
-        (def.give_up.clone(), def.staff_role.clone(), def.statutory, def.group.clone())
+        (
+            def.give_up.clone(),
+            def.staff_role.clone(),
+            def.statutory,
+            def.group.clone(),
+        )
     };
     // A COD statement e-mail that gives up goes to the client's other finance
     // contact, then creates a task for the accountant.
@@ -350,7 +423,10 @@ async fn the_notification_types_take_the_reaction_of_their_group() {
             GiveUpReaction::StaffTask
         ]
     );
-    assert_eq!((role.as_deref(), statutory, group.as_str()), (Some("accountant"), false, "invoices"));
+    assert_eq!(
+        (role.as_deref(), statutory, group.as_str()),
+        (Some("accountant"), false, "invoices")
+    );
     // A failed-attempt notice (a client shipment notice) that gives up creates
     // no task.
     let (tracking, _, _, group) = reactions("logistics.client_notice");
@@ -360,10 +436,16 @@ async fn the_notification_types_take_the_reaction_of_their_group() {
     // and creates a task for the dispatcher; the freight requests, holds and
     // free-time alerts do for the documentation officer; the bank account
     // confirmation for the accountant.
-    let portal = vec![GiveUpReaction::MarkContactInvalid, GiveUpReaction::StaffTask];
+    let portal = vec![
+        GiveUpReaction::MarkContactInvalid,
+        GiveUpReaction::StaffTask,
+    ];
     for (key, owner) in [
         ("logistics.action_request_dispatcher", "dispatcher"),
-        ("logistics.action_request_documentation", "documentation_officer"),
+        (
+            "logistics.action_request_documentation",
+            "documentation_officer",
+        ),
         ("logistics.account_confirm", "accountant"),
     ] {
         let (reaction, role, statutory, group) = reactions(key);
@@ -420,7 +502,15 @@ async fn the_rule_grounds_a_vehicle_with_an_expired_document_once() {
     let driver = person(&app, "Dev", host::roles::DRIVER).await;
     document(&app, &van(), "mulkiya", day(-3)).await;
     document(&app, &van(), "vehicle_insurance", day(100)).await;
-    run(&app, "RUN-T-1", &driver, day(1), "Depot A", VehicleType::Van).await;
+    run(
+        &app,
+        "RUN-T-1",
+        &driver,
+        day(1),
+        "Depot A",
+        VehicleType::Van,
+    )
+    .await;
 
     let outcome = host::logistics_rules::run_ground_rule(app.state(), today())
         .await
@@ -453,7 +543,10 @@ async fn the_sms_gateway_is_registered_with_its_fallback_and_queues_while_down()
     let def = integrations::get(defaults::SMS_GATEWAY).expect("the SMS gateway is registered");
     assert_eq!(def.owner_role_name(), "dispatcher");
     assert!(def.fallback_en().contains("queued"));
-    assert!(def.fallback_en().contains("dispatcher calls the recipients"));
+    assert!(
+        def.fallback_en()
+            .contains("dispatcher calls the recipients")
+    );
     let row = integrations::ensure(app.db(), defaults::SMS_GATEWAY)
         .await
         .unwrap();
@@ -493,7 +586,9 @@ async fn the_asp_task_is_raised_after_24_hours() {
 #[renox::test]
 async fn a_late_epod_is_flagged_after_30_minutes_and_needs_approval_after_24_hours() {
     let app = logistics_booted().await;
-    let limits = limits_for(app.db(), defaults::EPOD_LATE_ENTRY).await.unwrap();
+    let limits = limits_for(app.db(), defaults::EPOD_LATE_ENTRY)
+        .await
+        .unwrap();
     assert_eq!(limits.flag_after_minutes, 30);
     assert_eq!(limits.approval_after_hours, 24);
     let period = wl_kernel::late_entries::Period::Open;
@@ -502,7 +597,10 @@ async fn a_late_epod_is_flagged_after_30_minutes_and_needs_approval_after_24_hou
     assert!(matches!(found, Assessment::Flagged { .. }), "{found:?}");
     let stop = renox::db::now() - renox::chrono::Duration::hours(30);
     let found = assess(limits, stop, renox::db::now(), &period);
-    assert!(matches!(found, Assessment::NeedsApproval { .. }), "{found:?}");
+    assert!(
+        matches!(found, Assessment::NeedsApproval { .. }),
+        "{found:?}"
+    );
     let stop = renox::db::now() - renox::chrono::Duration::minutes(10);
     let found = assess(limits, stop, renox::db::now(), &period);
     assert!(!found.is_late());
@@ -524,8 +622,11 @@ async fn job_invoice(
     job: &logistics::FreightJob,
     issued: NaiveDate,
 ) -> i64 {
-    let draft = InvoiceDraft::new(client, job.subject())
-        .line(DraftLine::new("Freight", 100_000, VatCategory::Standard));
+    let draft = InvoiceDraft::new(client, job.subject()).line(DraftLine::new(
+        "Freight",
+        100_000,
+        VatCategory::Standard,
+    ));
     let id: InvoiceId = invoicer(app.state())
         .draft(app.db(), draft)
         .await
@@ -540,7 +641,12 @@ async fn job_invoice(
 }
 
 /// A freight job of `mode` for `client`, marked international when asked.
-async fn freight_job(app: &TestApp, client: PartyId, mode: &str, international: bool) -> logistics::FreightJob {
+async fn freight_job(
+    app: &TestApp,
+    client: PartyId,
+    mode: &str,
+    international: bool,
+) -> logistics::FreightJob {
     logistics::freight::create(
         app.state(),
         None,
@@ -589,7 +695,10 @@ async fn an_air_waybill_invoice_is_left_out_of_the_mandate_for_24_months() {
     let sea_invoice = job_invoice(&app, client, &sea, go_live + Days::new(30)).await;
     assert!(in_scope(sea_invoice).await, "sea freight");
     let domestic = job_invoice(&app, client, &domestic_air, go_live + Days::new(30)).await;
-    assert!(in_scope(domestic).await, "an air job that is not international");
+    assert!(
+        in_scope(domestic).await,
+        "an air job that is not international"
+    );
     let after = job_invoice(&app, client, &air, go_live + Months::new(24)).await;
     assert!(in_scope(after).await, "after the 24 months");
     let last_day = job_invoice(&app, client, &air, go_live + Months::new(24) - Days::new(1)).await;
@@ -665,7 +774,12 @@ async fn hiring_a_driver_starts_the_checklist_and_the_sops_are_seeded() {
     for owner in ["role:operations_manager", "manager", "employee"] {
         assert!(owners.contains(&owner), "{owner}");
     }
-    assert_eq!(host::logistics_seed::hr(wl_hr::WlHr::new(), "admin").config().manager_role, "dispatcher");
+    assert_eq!(
+        host::logistics_seed::hr(wl_hr::WlHr::new(), "admin")
+            .config()
+            .manager_role,
+        "dispatcher"
+    );
 
     let dispatch = Sop::query()
         .where_(Sop::CODE.eq("SOP-LOG-DISPATCH"))

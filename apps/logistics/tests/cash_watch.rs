@@ -20,13 +20,13 @@ use renox::chrono::Duration;
 use renox::db::DateTime;
 use renox::prelude::*;
 use wl_kernel::Subject;
-use wl_kernel::tickets::{Assignee, OpenTicket};
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::custody::{
     CashCollection, HandoverPeriod, HandoverStatus, HandoverSummary, custody,
 };
 use wl_kernel::delivery::RunId;
 use wl_kernel::documents::today;
+use wl_kernel::tickets::{Assignee, OpenTicket};
 use wl_payments::cash_escalation::{self, Escalated};
 use wl_payments::cash_notices::CASH_TASK;
 use wl_payments::permissions as pperm;
@@ -37,9 +37,13 @@ use support::{SOUQ, World, boot_with_payments};
 
 /// The operations manager: holds the role and counts and writes off cash.
 async fn manager(w: &World, name: &str) -> User {
-    permissions::define_role(w.db(), perm::OPERATIONS_MANAGER_ROLE, &[perm::SHIPMENTS_VIEW])
-        .await
-        .unwrap();
+    permissions::define_role(
+        w.db(),
+        perm::OPERATIONS_MANAGER_ROLE,
+        &[perm::SHIPMENTS_VIEW],
+    )
+    .await
+    .unwrap();
     let user = w
         .user_with(
             name,
@@ -79,7 +83,10 @@ async fn out_with_cash(w: &World, reference: &str) -> i64 {
     w.deliver_stop(&delivery, "1800.00")
         .await
         .assert_status(303);
-    assert_eq!(w.reload(&shipment).await.status, logistics::ShipmentStatus::Delivered);
+    assert_eq!(
+        w.reload(&shipment).await.status,
+        logistics::ShipmentStatus::Delivered
+    );
     w.delivery_of(&shipment).await.run_id.expect("on a run")
 }
 
@@ -156,7 +163,13 @@ async fn the_manager_gets_a_task_12_hours_after_the_return() {
     assert!(call_tickets(&w).is_empty());
 
     let done = cash_watch::run(w.state(), start + hours(12)).await.unwrap();
-    assert_eq!(done, Watched { tasks: 1, ..Watched::default() });
+    assert_eq!(
+        done,
+        Watched {
+            tasks: 1,
+            ..Watched::default()
+        }
+    );
     let tasks = call_tickets(&w);
     assert_eq!(tasks.len(), 1);
     assert!(tasks[0].title.contains("Call Dev"));
@@ -193,7 +206,9 @@ async fn for_a_run_still_out_the_clock_starts_at_the_end_of_the_shift_and_asks_t
         .await
         .unwrap();
     assert_eq!(early, Watched::default());
-    let done = cash_watch::run(w.state(), shift_end + hours(12)).await.unwrap();
+    let done = cash_watch::run(w.state(), shift_end + hours(12))
+        .await
+        .unwrap();
     assert_eq!(done.tasks, 1);
     let tasks = call_tickets(&w);
     assert_eq!(tasks.len(), 1);
@@ -226,13 +241,21 @@ async fn without_a_shift_a_run_still_out_starts_at_23_59_of_the_run_date() {
     let start: DateTime = format!("{}T19:59:00Z", today()).parse().unwrap();
 
     let open = handover(&w, run).await;
-    assert_eq!(cash_watch::clock_start(w.state(), &open).await.unwrap(), start);
     assert_eq!(
-        cash_watch::run(w.state(), start + hours(12) - minutes(1)).await.unwrap(),
+        cash_watch::clock_start(w.state(), &open).await.unwrap(),
+        start
+    );
+    assert_eq!(
+        cash_watch::run(w.state(), start + hours(12) - minutes(1))
+            .await
+            .unwrap(),
         Watched::default()
     );
     assert_eq!(
-        cash_watch::run(w.state(), start + hours(12)).await.unwrap().tasks,
+        cash_watch::run(w.state(), start + hours(12))
+            .await
+            .unwrap()
+            .tasks,
         1
     );
 }
@@ -277,9 +300,13 @@ async fn after_48_hours_the_admin_is_told_the_manager_counts_and_the_driver_has_
 
     // Counted at AED 0 by the manager: short by the whole amount.
     let open = handover(&w, run).await;
-    w.post(&mona, &format!("/cash/{}/count", open.id.0), &[("counted", "0")])
-        .await
-        .assert_ok();
+    w.post(
+        &mona,
+        &format!("/cash/{}/count", open.id.0),
+        &[("counted", "0")],
+    )
+    .await
+    .assert_ok();
     let short = handover(&w, run).await;
     assert_eq!(short.status, HandoverStatus::Short);
     assert_eq!(short.difference, 180_000);
@@ -303,9 +330,13 @@ async fn the_clients_remittance_still_includes_the_cod_of_the_missing_cash() {
     let start = returned_at(&w, run).await;
     cash_watch::run(w.state(), start + hours(48)).await.unwrap();
     let open = handover(&w, run).await;
-    w.post(&mona, &format!("/cash/{}/count", open.id.0), &[("counted", "0")])
-        .await
-        .assert_ok();
+    w.post(
+        &mona,
+        &format!("/cash/{}/count", open.id.0),
+        &[("counted", "0")],
+    )
+    .await
+    .assert_ok();
     assert_eq!(handover(&w, run).await.status, HandoverStatus::Short);
 
     w.rule().await;
@@ -343,9 +374,13 @@ async fn recovery_is_in_cash_only_and_the_write_off_needs_approval() {
     assert_eq!(handover(&w, run).await.recovered, 2_000);
 
     // The write-off of the rest waits for the second manager.
-    w.post(&mona, &format!("{path}/write-off"), &[("reason", "Driver unreachable")])
-        .await
-        .assert_ok();
+    w.post(
+        &mona,
+        &format!("{path}/write-off"),
+        &[("reason", "Driver unreachable")],
+    )
+    .await
+    .assert_ok();
     assert_eq!(handover(&w, run).await.status, HandoverStatus::Short);
     let request = ApprovalRequest::pending_about(w.db(), &open.id.subject())
         .await
@@ -353,7 +388,11 @@ async fn recovery_is_in_cash_only_and_the_write_off_needs_approval() {
         .pop()
         .expect("a request waits");
     assert_eq!(request.payload.0["amount"], 178_000);
-    assert!(approvals::approve(w.state(), request.id, &mona, "mine").await.is_err());
+    assert!(
+        approvals::approve(w.state(), request.id, &mona, "mine")
+            .await
+            .is_err()
+    );
     approvals::approve(w.state(), request.id, &nadia, "agreed")
         .await
         .unwrap();
@@ -371,13 +410,19 @@ async fn a_handover_counted_in_time_produces_no_task() {
     let start = returned_at(&w, run).await;
     let open = handover(&w, run).await;
 
-    w.post(&mona, &format!("/cash/{}/count", open.id.0), &[("counted", "1800")])
-        .await
-        .assert_ok();
+    w.post(
+        &mona,
+        &format!("/cash/{}/count", open.id.0),
+        &[("counted", "1800")],
+    )
+    .await
+    .assert_ok();
     assert_eq!(handover(&w, run).await.status, HandoverStatus::Counted);
 
     for later in [12, 13, 48, 49] {
-        let done = cash_watch::run(w.state(), start + hours(later)).await.unwrap();
+        let done = cash_watch::run(w.state(), start + hours(later))
+            .await
+            .unwrap();
         assert_eq!(done, Watched::default(), "{later} hours");
     }
     assert!(call_tickets(&w).is_empty());
@@ -399,9 +444,13 @@ async fn a_driver_who_hands_over_after_the_task_closes_it() {
     assert_eq!(call_tickets(&w).len(), 1);
 
     let open = handover(&w, run).await;
-    w.post(&mona, &format!("/cash/{}/count", open.id.0), &[("counted", "1800")])
-        .await
-        .assert_ok();
+    w.post(
+        &mona,
+        &format!("/cash/{}/count", open.id.0),
+        &[("counted", "1800")],
+    )
+    .await
+    .assert_ok();
 
     assert!(!w.tickets.completed().is_empty(), "the task closes");
     let watch = CashWatch::query().first(w.db()).await.unwrap().unwrap();

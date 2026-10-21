@@ -42,9 +42,13 @@ async fn paid() -> (World, Remittance) {
 }
 
 async fn approve_and_pay(w: &World, draft: &Remittance, reference: &str) {
-    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.bashar,
+        &format!("/remittances/{}/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.post(
         &w.amal,
         &format!("/remittances/{}/pay", draft.id),
@@ -175,12 +179,20 @@ async fn who_may_dispute_which_remittance() {
 #[renox::test]
 async fn a_second_dispute_adds_a_message_to_the_open_ticket() {
     let (w, r14) = paid().await;
-    w.post(&w.noor, &dispute_path(&r14), &[("reason", "shipment S-3001 missing")])
-        .await
-        .assert_status(303);
-    w.post(&w.nadia, &dispute_path(&r14), &[("reason", "and S-3002 too")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.noor,
+        &dispute_path(&r14),
+        &[("reason", "shipment S-3001 missing")],
+    )
+    .await
+    .assert_status(303);
+    w.post(
+        &w.nadia,
+        &dispute_path(&r14),
+        &[("reason", "and S-3002 too")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.tickets.opened().len(), 1);
     let comments = w.tickets.comments();
     assert_eq!(comments.len(), 1);
@@ -226,9 +238,13 @@ async fn a_dispute_is_not_offered_while_the_transfer_is_returned() {
 #[renox::test]
 async fn resolving_adjusted_puts_a_line_on_the_next_draft_for_another_user_to_approve() {
     let (w, r14) = paid().await;
-    w.post(&w.noor, &dispute_path(&r14), &[("reason", "shipment S-3001 missing")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.noor,
+        &dispute_path(&r14),
+        &[("reason", "shipment S-3001 missing")],
+    )
+    .await
+    .assert_status(303);
     let next = next_draft(&w).await;
 
     // Only a holder of `remittances.approve` resolves; the outcome and the
@@ -241,18 +257,28 @@ async fn resolving_adjusted_puts_a_line_on_the_next_draft_for_another_user_to_ap
         ("note", "Shipment S-3001 is confirmed missing"),
     ];
     w.post(&service, &resolve, &fields).await.assert_forbidden();
-    w.post(&w.bashar, &resolve, &[("outcome", "adjusted"), ("amount", "150"), ("note", " ")])
-        .await
-        .assert_status(422);
-    w.post(&w.bashar, &resolve, &[("outcome", "adjusted"), ("amount", ""), ("note", "x")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.bashar,
+        &resolve,
+        &[("outcome", "adjusted"), ("amount", "150"), ("note", " ")],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &w.bashar,
+        &resolve,
+        &[("outcome", "adjusted"), ("amount", ""), ("note", "x")],
+    )
+    .await
+    .assert_status(422);
     w.post(&w.bashar, &resolve, &[("outcome", "maybe"), ("note", "x")])
         .await
         .assert_status(422);
     assert!(w.remittance(&r14).await.disputed);
 
-    w.post(&w.bashar, &resolve, &fields).await.assert_status(303);
+    w.post(&w.bashar, &resolve, &fields)
+        .await
+        .assert_status(303);
     let cleared = w.remittance(&r14).await;
     assert!(!cleared.disputed);
     assert_eq!(cleared.dispute_ticket_id, None);
@@ -263,7 +289,11 @@ async fn resolving_adjusted_puts_a_line_on_the_next_draft_for_another_user_to_ap
     assert_eq!(line.source, "statement_dispute");
     assert_eq!(line.corrects_remittance_id, Some(r14.id));
     assert_eq!(line.remittance_id, Some(next.id), "on the next draft");
-    assert_eq!(line.prepared_by, Some(w.bashar.id), "prepared by the resolver");
+    assert_eq!(
+        line.prepared_by,
+        Some(w.bashar.id),
+        "prepared by the resolver"
+    );
     assert_eq!(line.status, AdjustmentStatus::Pending);
     // The resolver cannot approve it; another user can, and the draft counts it.
     w.post(
@@ -306,8 +336,17 @@ async fn resolving_adjusted_puts_a_line_on_the_next_draft_for_another_user_to_ap
         })
         .collect();
     assert_eq!(told.len(), 1);
-    assert!(told[0].recipients.contains(&NotifyRecipient::Party { id: SOUQ }));
-    assert!(told[0].data["body"].as_str().unwrap().contains("AED 150.00"));
+    assert!(
+        told[0]
+            .recipients
+            .contains(&NotifyRecipient::Party { id: SOUQ })
+    );
+    assert!(
+        told[0].data["body"]
+            .as_str()
+            .unwrap()
+            .contains("AED 150.00")
+    );
     // The disputed remittance itself was not edited.
     assert_eq!(cleared.net, r14.net);
     assert_eq!(cleared.status, RemittanceStatus::Paid);
@@ -319,17 +358,28 @@ async fn resolving_adjusted_puts_a_line_on_the_next_draft_for_another_user_to_ap
 async fn resolving_upheld_clears_the_flag_without_a_line_and_tells_the_client() {
     let (w, r14) = paid().await;
     let resolve = resolve_path(&r14);
-    w.post(&w.bashar, &resolve, &[("outcome", "upheld"), ("note", "It stands")])
-        .await
-        .assert_status(422)
-        .assert_see("no open dispute");
-    w.post(&w.noor, &dispute_path(&r14), &[("reason", "shipment S-3001 missing")])
-        .await
-        .assert_status(303);
     w.post(
         &w.bashar,
         &resolve,
-        &[("outcome", "upheld"), ("note", "S-3001 was delivered on 3 November, POD attached")],
+        &[("outcome", "upheld"), ("note", "It stands")],
+    )
+    .await
+    .assert_status(422)
+    .assert_see("no open dispute");
+    w.post(
+        &w.noor,
+        &dispute_path(&r14),
+        &[("reason", "shipment S-3001 missing")],
+    )
+    .await
+    .assert_status(303);
+    w.post(
+        &w.bashar,
+        &resolve,
+        &[
+            ("outcome", "upheld"),
+            ("note", "S-3001 was delivered on 3 November, POD attached"),
+        ],
     )
     .await
     .assert_status(303);
@@ -358,9 +408,13 @@ async fn resolving_upheld_clears_the_flag_without_a_line_and_tells_the_client() 
 #[renox::test]
 async fn a_dispute_pauses_nothing() {
     let (w, r14) = paid().await;
-    w.post(&w.noor, &dispute_path(&r14), &[("reason", "shipment S-3001 missing")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.noor,
+        &dispute_path(&r14),
+        &[("reason", "shipment S-3001 missing")],
+    )
+    .await
+    .assert_status(303);
     assert!(w.remittance(&r14).await.disputed);
 
     let next = next_draft(&w).await;

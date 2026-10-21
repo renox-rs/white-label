@@ -19,16 +19,16 @@ use renox::chrono::{Datelike, Days, NaiveDate, Weekday};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_delivery::reasons::FailureReason;
+use wl_invoicing::Invoice;
 use wl_invoicing::cash_alert::{self, BELOW_THRESHOLD};
 use wl_invoicing::cash_balance::{self, EnterBalance};
 use wl_invoicing::cash_forecast::{self, Forecast};
 use wl_invoicing::cash_forecast_load;
 use wl_invoicing::supplier_bill::{SupplierBill, SupplierBillStatus};
-use wl_invoicing::Invoice;
+use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalPolicy};
 use wl_kernel::delivery::CodAbsorber;
 use wl_kernel::documents::today;
-use wl_kernel::LegalEntity;
 use wl_kernel::invoicing::{InvoiceStatus, VatCategory};
 
 use support::{company, entity, issued_invoice, logistics_booted, messages_to, person};
@@ -65,9 +65,17 @@ async fn the_failure_and_abort_reasons_and_partial_acceptance_are_the_03_values(
     assert_eq!(count("wrong_address"), Some(true));
 
     let settings = wl_delivery::settings::settings(app.state());
-    assert!(settings.abort_reasons().iter().any(|r| r == "driver_unreachable"));
+    assert!(
+        settings
+            .abort_reasons()
+            .iter()
+            .any(|r| r == "driver_unreachable")
+    );
     for reason in ["breakdown", "accident", "driver_unwell", "weather", "other"] {
-        assert!(settings.abort_reasons().iter().any(|r| r == reason), "{reason}");
+        assert!(
+            settings.abort_reasons().iter().any(|r| r == reason),
+            "{reason}"
+        );
     }
     assert!(
         !settings.partial_acceptance(logistics::SUBJECT_TYPE),
@@ -90,16 +98,26 @@ async fn a_cod_difference_needs_the_operations_manager_who_chooses_who_absorbs_i
     assert_eq!(settings.cod_approval_minutes(), 10);
     assert_eq!(
         settings.cod_absorbers(),
-        [CodAbsorber::Client, CodAbsorber::Business, CodAbsorber::Driver]
+        [
+            CodAbsorber::Client,
+            CodAbsorber::Business,
+            CodAbsorber::Driver
+        ]
     );
     assert!(!settings.offers_absorber(CodAbsorber::Customer));
     // The approver is a holder of the permission: the operations manager and
     // the company admin; the driver cannot approve.
     for role in [OPERATIONS_MANAGER, ADMIN] {
-        assert!(holds(role, wl_delivery::permissions::APPROVE_COD_DIFFERENCE), "{role}");
+        assert!(
+            holds(role, wl_delivery::permissions::APPROVE_COD_DIFFERENCE),
+            "{role}"
+        );
     }
     for role in [DRIVER, DISPATCHER, CASHIER, ACCOUNTANT] {
-        assert!(!holds(role, wl_delivery::permissions::APPROVE_COD_DIFFERENCE), "{role}");
+        assert!(
+            !holds(role, wl_delivery::permissions::APPROVE_COD_DIFFERENCE),
+            "{role}"
+        );
     }
 }
 
@@ -117,10 +135,7 @@ async fn approvers(app: &TestApp, action: &str) -> ApprovalPolicy {
 #[renox::test]
 async fn a_reversal_and_a_manual_lost_marking_are_approved_by_the_operations_manager() {
     let app = logistics_booted().await;
-    for action in [
-        wl_delivery::reverse::ACTION,
-        wl_delivery::lost::ACTION,
-    ] {
+    for action in [wl_delivery::reverse::ACTION, wl_delivery::lost::ACTION] {
         let policy = approvers(&app, action).await;
         assert!(policy.sod, "the requester never approves: {action}");
         let step = &policy.steps.0[0];
@@ -129,8 +144,14 @@ async fn a_reversal_and_a_manual_lost_marking_are_approved_by_the_operations_man
         assert!(!step.allows(DISPATCHER), "{action}");
         assert!(!step.allows(DRIVER), "{action}");
     }
-    assert!(holds(DISPATCHER, wl_delivery::permissions::REVERSE), "the dispatcher asks");
-    assert!(!holds(DRIVER, wl_delivery::permissions::REVERSE), "the driver cannot ask");
+    assert!(
+        holds(DISPATCHER, wl_delivery::permissions::REVERSE),
+        "the dispatcher asks"
+    );
+    assert!(
+        !holds(DRIVER, wl_delivery::permissions::REVERSE),
+        "the driver cannot ask"
+    );
 }
 
 /// AC4: a AED 40 shortage can be written off by the cashier, AED 60 needs an
@@ -186,8 +207,7 @@ async fn every_invoice_write_off_needs_the_operations_manager_or_the_admin() {
     let dispatcher = person(&app, "Dina", DISPATCHER).await;
     let client = company(&app, "Souq Express Trading LLC").await;
     let due = today() - Days::new(30);
-    let invoice =
-        issued_invoice(&app, &clerk, client, 100, VatCategory::Standard, due).await;
+    let invoice = issued_invoice(&app, &clerk, client, 100, VatCategory::Standard, due).await;
 
     app.acting_as(&accountant);
     app.htmx()
@@ -225,12 +245,21 @@ async fn every_invoice_write_off_needs_the_operations_manager_or_the_admin() {
 
     let invoicing = host::invoicing_for("logistics", &["NEC".to_owned()]);
     let config = invoicing.config();
-    assert!(config.write_off_notice, "the client receives the write-off notice");
+    assert!(
+        config.write_off_notice,
+        "the client receives the write-off notice"
+    );
     assert!(config.bad_debt_relief, "FIN.RUL.14 proposes the relief");
-    assert!(config.portal_disputes, "a client user disputes in the portal");
+    assert!(
+        config.portal_disputes,
+        "a client user disputes in the portal"
+    );
     assert_eq!(config.dispute_escalation_days, 14);
     assert!(
-        host::payments_for("logistics").config().bounce_fee.is_none(),
+        host::payments_for("logistics")
+            .config()
+            .bounce_fee
+            .is_none(),
         "a returned cheque adds no fee"
     );
 }
@@ -259,7 +288,11 @@ async fn the_exception_approver_is_the_admin_and_the_portal_closes_after_90_days
         ("2027-01-30", Access::ReadOnly),
         ("2027-01-31", Access::Closed),
     ] {
-        assert_eq!(portal::access(app.db(), client, day(on)).await.unwrap(), access, "{on}");
+        assert_eq!(
+            portal::access(app.db(), client, day(on)).await.unwrap(),
+            access,
+            "{on}"
+        );
     }
     // A user who may not manage shipments cannot record it.
     let member = person(&app, "Mia", MEMBER).await;
@@ -272,11 +305,16 @@ async fn the_exception_approver_is_the_admin_and_the_portal_closes_after_90_days
     .assert_forbidden();
     // Taking the end back opens the portal again.
     app.acting_as(&manager);
-    app.post(&format!("/clients/{}/contract-end", client.0), &[("date", "")])
-        .await
-        .assert_status(303);
+    app.post(
+        &format!("/clients/{}/contract-end", client.0),
+        &[("date", "")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(
-        portal::access(app.db(), client, day("2030-01-01")).await.unwrap(),
+        portal::access(app.db(), client, day("2030-01-01"))
+            .await
+            .unwrap(),
         Access::Open
     );
 }
@@ -395,7 +433,10 @@ async fn the_forecast_has_thirteen_weeks_from_monday_and_runs_at_six() {
         .expect("the daily cash check is scheduled");
     let at = run.at.expect("it has a next run");
     assert_eq!(run.zone.to_string(), "Asia/Dubai");
-    assert_eq!(run.zone.local(at.timestamp()).format("%H:%M").to_string(), "06:00");
+    assert_eq!(
+        run.zone.local(at.timestamp()).format("%H:%M").to_string(),
+        "06:00"
+    );
 }
 
 /// The COD owed to clients is a payment of the forecast: an approved
@@ -424,7 +465,10 @@ async fn a_cod_remittance_owed_to_a_client_counts_as_a_payment() {
     tx.commit().await.unwrap();
 
     let sent = cash_alert::run(app.state(), today()).await.unwrap();
-    assert_eq!(sent, 1, "AED 110,000 less the AED 20,000 owed to the client");
+    assert_eq!(
+        sent, 1,
+        "AED 110,000 less the AED 20,000 owed to the client"
+    );
     let notice = &messages_to(&app, BELOW_THRESHOLD, &admin).await[0];
     assert_eq!(notice.data.0["balance"], "AED 90,000.00");
     assert!(
@@ -454,14 +498,22 @@ async fn the_budget_is_approved_by_the_admin_and_the_drawings_by_someone_else() 
     assert_eq!(config.cash_threshold_of("NEC"), 10_000_000);
     // The accountant prepares the budget; only the company admin approves it.
     assert!(holds(ACCOUNTANT, wl_invoicing::permissions::BUDGETS_MANAGE));
-    assert!(!holds(ACCOUNTANT, wl_invoicing::permissions::BUDGETS_APPROVE));
+    assert!(!holds(
+        ACCOUNTANT,
+        wl_invoicing::permissions::BUDGETS_APPROVE
+    ));
     assert!(holds(ADMIN, wl_invoicing::permissions::BUDGETS_APPROVE));
     // The budget categories have the accountant as owner role.
     let categories = wl_invoicing::BudgetCategory::listed(app.db(), true)
         .await
         .unwrap();
     for category in categories.iter().filter(|c| !c.is_drawings()) {
-        assert_eq!(category.owner_role.as_deref(), Some("accountant"), "{}", category.name_en);
+        assert_eq!(
+            category.owner_role.as_deref(),
+            Some("accountant"),
+            "{}",
+            category.name_en
+        );
     }
 }
 

@@ -39,7 +39,7 @@ use wl_kernel::documents::today;
 use wl_kernel::invoicing::{self, SupplierBillLineId, SupplierBillStatus};
 
 use crate::freight::{FreightContainer, FreightJob, FreightStatus, track};
-use crate::freight_costing::{JobLine, closed_before, line_kind, liability, liability_reason};
+use crate::freight_costing::{JobLine, closed_before, liability, liability_reason, line_kind};
 use crate::freight_flow::{load, tell_client_to_act};
 use crate::freight_hold::tell_officers;
 use crate::permissions;
@@ -144,11 +144,25 @@ const OPEN: [FreightStatus; 7] = [
 
 /// The end date and the day the charge stopped, for each charge type of the
 /// container.
-fn schedule(container: &FreightContainer) -> [(&'static str, Option<NaiveDate>, Option<NaiveDate>); 3] {
+fn schedule(
+    container: &FreightContainer,
+) -> [(&'static str, Option<NaiveDate>, Option<NaiveDate>); 3] {
     [
-        (charge::PORT_STORAGE, container.port_storage_end, container.collected_on),
-        (charge::DEMURRAGE, container.demurrage_end, container.collected_on),
-        (charge::DETENTION, container.detention_end, container.returned_empty_on),
+        (
+            charge::PORT_STORAGE,
+            container.port_storage_end,
+            container.collected_on,
+        ),
+        (
+            charge::DEMURRAGE,
+            container.demurrage_end,
+            container.collected_on,
+        ),
+        (
+            charge::DETENTION,
+            container.detention_end,
+            container.returned_empty_on,
+        ),
     ]
 }
 
@@ -232,8 +246,17 @@ pub async fn run_with(state: &AppState, day: NaiveDate, before: i64) -> Result<F
                     } else {
                         continue;
                     };
-                    if notify_once(state, &job, &container, charge_type, end, moment, day, before)
-                        .await?
+                    if notify_once(
+                        state,
+                        &job,
+                        &container,
+                        charge_type,
+                        end,
+                        moment,
+                        day,
+                        before,
+                    )
+                    .await?
                     {
                         done.notices += 1;
                     }
@@ -446,7 +469,15 @@ pub async fn record_returned_empty(
     container_id: i64,
     on: NaiveDate,
 ) -> std::result::Result<FreightContainer, TransitionError> {
-    record(state, user, container_id, on, "returned_empty_on", "returned_empty").await
+    record(
+        state,
+        user,
+        container_id,
+        on,
+        "returned_empty_on",
+        "returned_empty",
+    )
+    .await
 }
 
 async fn record(
@@ -537,7 +568,10 @@ pub async fn add_bill_cost(
     let liability_of = input.liability.trim();
     let reason = input.reason.trim();
     if !liability::ALL.contains(&liability_of) {
-        return Err(guard(english("logistics.freight.bill_liability_needed", &[])));
+        return Err(guard(english(
+            "logistics.freight.bill_liability_needed",
+            &[],
+        )));
     }
     if !liability_reason::fits(liability_of, reason) {
         return Err(guard(english("logistics.freight.reason_unfit", &[])));
@@ -587,10 +621,15 @@ pub async fn add_bill_cost(
 ///
 /// Database errors.
 pub async fn days_compared(db: &Db, line: &JobLine) -> Result<Option<(i64, i64)>> {
-    let (Some(container), Some(charge_type), Some(billed)) =
-        (line.container_id, line.charge_type.as_deref(), line.billed_days)
-    else {
+    let (Some(container), Some(charge_type), Some(billed)) = (
+        line.container_id,
+        line.charge_type.as_deref(),
+        line.billed_days,
+    ) else {
         return Ok(None);
     };
-    Ok(Some((logged_days(db, container, charge_type).await?, billed)))
+    Ok(Some((
+        logged_days(db, container, charge_type).await?,
+        billed,
+    )))
 }

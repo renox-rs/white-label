@@ -44,15 +44,14 @@ use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::LegalEntity;
+use wl_kernel::PartyId;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::block_guard;
-use wl_kernel::PartyId;
 use wl_kernel::delivery::DeliveryId;
 use wl_kernel::documents::{DUBAI_OFFSET_SECONDS, today};
 use wl_kernel::invoicing::{InvoiceId, InvoiceSummary};
 use wl_kernel::payments::{
-    self, AllocationTarget, PaymentId, PaymentMethod, PaymentSource, RecordPayment,
-    ReversalReason,
+    self, AllocationTarget, PaymentId, PaymentMethod, PaymentSource, RecordPayment, ReversalReason,
 };
 
 use crate::adjustment::{AdjustmentLine, AdjustmentStatus, source};
@@ -698,7 +697,10 @@ async fn record_offset(
         .where_(Offset::ID.eq(offset.id))
         .update(
             &state.db,
-            &[("payment_id", &payment_id), ("payment_number", &payment_number)],
+            &[
+                ("payment_id", &payment_id),
+                ("payment_number", &payment_number),
+            ],
         )
         .await?;
     Ok(payment.id.0)
@@ -746,8 +748,8 @@ pub async fn pay(
     let reference = reference.trim().to_owned();
     // A blocked client waits for the unblock, or for one approved exception
     // (`PTY.ACL.03`).
-    let blocked = block::on_hold(state, remittance.client()).await?
-        && !remittance.block_exception_granted;
+    let blocked =
+        block::on_hold(state, remittance.client()).await? && !remittance.block_exception_granted;
     let mut input = RemittanceInput {
         payment_reference: Some(reference.clone()),
         bank_account: account.clone(),
@@ -998,8 +1000,8 @@ pub async fn repay(
     let reference = reference.trim().to_owned();
     // A blocked client waits for the unblock, or for one approved exception
     // (`PTY.ACL.03`).
-    let blocked = block::on_hold(state, remittance.client()).await?
-        && !remittance.block_exception_granted;
+    let blocked =
+        block::on_hold(state, remittance.client()).await? && !remittance.block_exception_granted;
     let changed = account
         .as_deref()
         .is_some_and(|now| Some(now) != remittance.bank_account.as_deref());
@@ -1087,7 +1089,12 @@ pub async fn ask_exception(
     let transition = match remittance.status {
         RemittanceStatus::Approved => PAY,
         RemittanceStatus::PaymentReturned => REPAY,
-        _ => return Err(guard(english("logistics.remittance.exception_not_pay", &[]))),
+        _ => {
+            return Err(guard(english(
+                "logistics.remittance.exception_not_pay",
+                &[],
+            )));
+        }
     };
     let mut tx = state.db.begin().await?;
     let request = block_guard::request_exception_in(

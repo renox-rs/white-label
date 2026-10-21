@@ -24,6 +24,7 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::accounting_seed::parties_for;
 pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
@@ -31,7 +32,6 @@ pub use app::logistics_demo;
 pub use app::logistics_rules;
 pub use app::logistics_seed;
 pub use app::logistics_settings;
-pub use app::accounting_seed::parties_for;
 pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
 pub use app::roles;
 

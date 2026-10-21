@@ -46,14 +46,7 @@ pub(crate) async fn due(
             &[("credit_due", &amount), ("invoiced_on", &not_invoiced)],
         )
         .await?;
-    track(
-        &state.db,
-        shipment.id,
-        "credit_due",
-        &aed(amount),
-        None,
-    )
-    .await?;
+    track(&state.db, shipment.id, "credit_due", &aed(amount), None).await?;
     let title = english(
         "logistics.credit.title",
         &[("number", &shipment.number), ("amount", &aed(amount))],
