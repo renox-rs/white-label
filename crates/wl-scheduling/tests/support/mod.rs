@@ -4,6 +4,7 @@
 
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use renox::auth::{Auth, Permissions, permissions};
@@ -12,6 +13,13 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::calendar::BusinessCalendar;
+use wl_kernel::documents::{
+    BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, Validity,
+    provide_guard,
+};
+use wl_kernel::tickets::{
+    OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+};
 use wl_kernel::notify::{
     self, MessageId, NotificationTypeDef, Notifier, NotifyChannel, NotifyFuture, NotifyRequest,
     provide_notifier,
@@ -320,6 +328,217 @@ impl Notifier for Messages {
     }
 }
 
+/// What the document desk holds for one subject and kind.
+#[derive(Clone, Default)]
+struct DocEntry {
+    /// The accepted document and its expiry date.
+    accepted: Option<(i64, Option<NaiveDate>)>,
+}
+
+/// The documents of the employees and assets, as `wl-documents` answers
+/// `document_valid`: valid on or before the expiry date. The real
+/// `wl-hr` asks it for `qualification_valid`.
+#[derive(Clone, Default)]
+pub struct Docs(Arc<Mutex<BTreeMap<(String, String), DocEntry>>>);
+
+impl Docs {
+    /// `subject` has an accepted document `document` of `kind`, valid through
+    /// `expires_on` (for ever when `None`); a renewal replaces the earlier one.
+    pub fn accepted_until(
+        &self,
+        subject: &Subject,
+        kind: &str,
+        document: i64,
+        expires_on: Option<NaiveDate>,
+    ) {
+        let mut all = self.0.lock().unwrap();
+        all.entry((subject.to_string(), kind.to_owned()))
+            .or_default()
+            .accepted = Some((document, expires_on));
+    }
+}
+
+impl DocumentGuard for Docs {
+    fn blocks_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+    ) -> DocumentFuture<'a, Vec<BlockEntry>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn is_valid<'a>(
+        &'a self,
+        _db: &'a Db,
+        subject: &'a Subject,
+        kind: &'a str,
+        on_date: NaiveDate,
+    ) -> DocumentFuture<'a, Validity> {
+        Box::pin(async move {
+            let entry = self
+                .0
+                .lock()
+                .unwrap()
+                .get(&(subject.to_string(), kind.to_owned()))
+                .cloned()
+                .unwrap_or_default();
+            Ok(match entry.accepted {
+                Some((id, expires_on)) if expires_on.is_none_or(|day| day >= on_date) => {
+                    Validity::Valid {
+                        document: Some(wl_kernel::DocumentId(id)),
+                        expires_on,
+                    }
+                }
+                Some((id, expires_on)) => Validity::Invalid {
+                    reason: wl_kernel::InvalidReason::Expired,
+                    document: Some(wl_kernel::DocumentId(id)),
+                    expired_on: expires_on,
+                    pending: None,
+                },
+                None => Validity::Invalid {
+                    reason: wl_kernel::InvalidReason::Missing,
+                    document: None,
+                    expired_on: None,
+                    pending: None,
+                },
+            })
+        })
+    }
+
+    fn check_as<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _guarded: &'a str,
+        _record_id: i64,
+        _on_date: NaiveDate,
+        _actor: Option<i64>,
+    ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, wl_kernel::BlockRefusal>> {
+        Box::pin(async { Ok(Ok(CheckOutcome::default())) })
+    }
+
+    fn record_flags<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+        _record_id: i64,
+        _flags: &'a [FlagFailure],
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn flags_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_flag_counts<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _ids: &'a [i64],
+    ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
+        Box::pin(async { Ok(BTreeMap::new()) })
+    }
+
+    fn review_flag<'a>(
+        &'a self,
+        _db: &'a Db,
+        _flag_id: i64,
+        _reviewer: i64,
+        _note: &'a str,
+    ) -> DocumentFuture<'a, RecordFlag> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+}
+
+/// The staff tasks other modules open through the kernel's task creator.
+#[derive(Clone, Default)]
+pub struct Tasks {
+    opened: Arc<Mutex<Vec<OpenTicket>>>,
+    resolved: Arc<Mutex<Vec<i64>>>,
+}
+
+impl Tasks {
+    /// Every task opened so far.
+    pub fn opened(&self) -> Vec<OpenTicket> {
+        self.opened.lock().unwrap().clone()
+    }
+
+    /// The tasks opened with a source key that starts with `prefix`.
+    pub fn with_key(&self, prefix: &str) -> Vec<OpenTicket> {
+        self.opened()
+            .into_iter()
+            .filter(|t| {
+                t.source_key
+                    .as_deref()
+                    .is_some_and(|k| k.starts_with(prefix))
+            })
+            .collect()
+    }
+
+    /// Whether task number `id` (1 for the first opened) was resolved.
+    pub fn is_resolved(&self, id: i64) -> bool {
+        self.resolved.lock().unwrap().contains(&id)
+    }
+
+    fn reference(n: usize) -> TicketRef {
+        TicketRef {
+            id: TicketId(i64::try_from(n).unwrap()),
+            number: format!("TKT-2026-{n:04}"),
+        }
+    }
+}
+
+impl TaskCreator for Tasks {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let mut all = self.opened.lock().unwrap();
+            all.push(ticket);
+            Ok(Some(Tasks::reference(all.len())))
+        })
+    }
+
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let all = self.opened.lock().unwrap();
+            let resolved = self.resolved.lock().unwrap();
+            Ok(all
+                .iter()
+                .position(|t| t.source_key.as_deref() == Some(source_key))
+                .filter(|n| !resolved.contains(&(i64::try_from(*n).unwrap() + 1)))
+                .map(|n| Tasks::reference(n + 1)))
+        })
+    }
+
+    fn resolve_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        _note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            let mut resolved = self.resolved.lock().unwrap();
+            if resolved.contains(&ticket.0) {
+                return Ok(false);
+            }
+            resolved.push(ticket.0);
+            Ok(true)
+        })
+    }
+}
+
 /// The vertical's licence check: the resources it refuses.
 #[derive(Clone, Default)]
 pub struct Licences(Arc<Mutex<Vec<i64>>>);
@@ -383,6 +602,21 @@ impl AvailabilitySource for Sources {
     }
 }
 
+/// A client with the real HR module on too.
+const CLIENT_HR: &str = r#"
+[client]
+name = "Palm Grove Clinic LLC"
+app = "property"
+
+[modules]
+enabled = ["parties", "hr", "scheduling"]
+
+[[legal_entities]]
+code = "PGC"
+name_en = "Palm Grove Clinic LLC"
+default = true
+"#;
+
 /// A client with the real parties and payments modules on too.
 const CLIENT_REAL: &str = r#"
 [client]
@@ -408,6 +642,8 @@ struct Harness {
     messages: Messages,
     licences: Licences,
     sources: Sources,
+    docs: Docs,
+    tasks: Tasks,
 }
 
 impl Module for Harness {
@@ -424,6 +660,8 @@ impl Module for Harness {
         provide_notifier(app, self.messages.clone());
         provide_resource_eligibility(app, self.licences.clone());
         provide_availability_source(app, self.sources.clone());
+        provide_guard(app, self.docs.clone());
+        provide_task_creator(app, self.tasks.clone());
     }
 }
 
@@ -445,10 +683,22 @@ pub struct Booked {
     pub licences: Licences,
     /// The blocks other modules supply.
     pub sources: Sources,
+    /// The documents the employees and assets hold.
+    pub docs: Docs,
+    /// The staff tasks other modules opened.
+    pub tasks: Tasks,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
     /// Keeps the database file alive (when the test uses one).
     _database: tempfile::TempDir,
+}
+
+/// The kind of the practitioner's licence.
+pub const LICENCE: &str = "practitioner_licence";
+
+/// The branch the practitioners work at.
+pub fn branch() -> Subject {
+    Subject::new("test.branch", 2)
 }
 
 /// The party that books in the tests.
@@ -590,6 +840,69 @@ impl Booked {
         self.user("Walid", &[perm::VIEW, perm::WAIVE_DEPOSIT]).await
     }
 
+    /// An active employee of the real `wl-hr` (only with [`boot_hr`]).
+    pub async fn employee(&self, party: i64) -> wl_hr::Employee {
+        let mut employee = wl_hr::Employee {
+            party_id: party,
+            job_role: "practitioner".into(),
+            job_title: "Doctor".into(),
+            hire_date: NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(),
+            status: wl_hr::EmployeeStatus::Active,
+            ..wl_hr::Employee::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        employee
+            .insert_in_state(&mut tx, wl_hr::EmployeeStatus::Active, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        employee
+    }
+
+    /// A practitioner: a real employee of `wl-hr` with a licence of the kind
+    /// [`LICENCE`] for the role `practitioner` at [`branch`], whose document
+    /// is valid through `until` (for ever when `None`), and a person resource
+    /// at that branch open every day of the week.
+    pub async fn practitioner(
+        &self,
+        name: &str,
+        party: i64,
+        until: Option<NaiveDate>,
+    ) -> Resource {
+        let employee = self.employee(party).await;
+        let mut licence = wl_hr::qualification::NewQualification::new(
+            employee.employee_id(),
+            LICENCE,
+        )
+        .role("practitioner")
+        .scope(branch())
+        .number(&format!("DHA-{party}"));
+        if let Some(until) = until {
+            licence = licence.valid_to(until);
+        }
+        wl_hr::qualification::record(self.db(), licence)
+            .await
+            .unwrap();
+        self.docs
+            .accepted_until(&employee.subject(), LICENCE, party, until);
+        let mut resource = Resource::new(name, ResourceType::Person)
+            .employee(employee.id)
+            .role("practitioner")
+            .at(&branch());
+        resource.save(self.db()).await.unwrap();
+        self.open_all_week(&resource).await;
+        resource
+    }
+
+    /// A 30-minute service that needs the licence [`LICENCE`] of the person
+    /// who delivers it, offered by `doctors`.
+    pub async fn licensed_service(&self, doctors: &[&Resource]) -> ServiceType {
+        self.service_with("consultation", doctors, |service| {
+            service.required_qualifications = LICENCE.to_owned();
+        })
+        .await
+    }
+
     /// A plain 30-minute service that `doctor` delivers.
     pub async fn service(&self, doctor: &Resource) -> ServiceType {
         self.service_with("consultation", &[doctor], |_| {}).await
@@ -695,14 +1008,21 @@ pub async fn boot_real() -> Booked {
 /// [`boot`] on a SQLite file in a directory of its own, with ten
 /// connections, so that concurrent callers really use separate connections.
 pub async fn boot_file_backed() -> Booked {
-    boot_app_on(WlScheduling::new(), false, true).await
+    boot_app_on(WlScheduling::new(), false, true, false).await
 }
 
 async fn boot_app(module: WlScheduling, real: bool) -> Booked {
-    boot_app_on(module, real, false).await
+    boot_app_on(module, real, false, false).await
 }
 
-async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Booked {
+/// [`boot`] with the real `wl-hr` mounted: `qualification_valid` is the real
+/// guard, answering through the documents of [`Booked::docs`], and the
+/// employees are real rows.
+pub async fn boot_hr() -> Booked {
+    boot_app_on(WlScheduling::new(), false, false, true).await
+}
+
+async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool, hr: bool) -> Booked {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -714,6 +1034,8 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
     let messages = Messages::default();
     let licences = Licences::default();
     let sources = Sources::default();
+    let docs = Docs::default();
+    let tasks = Tasks::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -721,6 +1043,11 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
     let app = if real {
         app.module(wl_parties::WlParties::new())
             .module(wl_payments::WlPayments::new())
+    } else {
+        app
+    };
+    let app = if hr {
+        app.module(wl_hr::WlHr::new())
     } else {
         app
     };
@@ -732,6 +1059,8 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
         messages: messages.clone(),
         licences: licences.clone(),
         sources: sources.clone(),
+        docs: docs.clone(),
+        tasks: tasks.clone(),
     });
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
@@ -742,7 +1071,13 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
     let app = record(app, &events.reassigned);
     let app = record(app, &events.released);
     let app = record(app, &events.conflicts);
-    let client = if real { CLIENT_REAL } else { CLIENT };
+    let client = if real {
+        CLIENT_REAL
+    } else if hr {
+        CLIENT_HR
+    } else {
+        CLIENT
+    };
     let config = wl_kernel::ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -780,6 +1115,8 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
         messages,
         licences,
         sources,
+        docs,
+        tasks,
         _views: views,
         _database: database,
     }

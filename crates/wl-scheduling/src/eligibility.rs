@@ -198,10 +198,26 @@ pub async fn failures(
                     if status.valid {
                         None
                     } else {
-                        Some(match status.valid_to {
-                            Some(date) if date < on => Problem::Expired(date),
-                            _ if status.number.is_none() => Problem::Missing,
-                            _ => Problem::NotValid,
+                        // The licence row's `valid_to` is for display; the
+                        // document is what expired.
+                        let expired = match status.valid_to {
+                            Some(date) if date < on => Some(date),
+                            _ => match documents::guard(state)
+                                .is_valid(&state.db, &EmployeeId(employee).subject(), &kind, on)
+                                .await?
+                            {
+                                Validity::Invalid {
+                                    reason: InvalidReason::Expired,
+                                    expired_on,
+                                    ..
+                                } => expired_on,
+                                _ => None,
+                            },
+                        };
+                        Some(match expired {
+                            Some(date) => Problem::Expired(date),
+                            None if status.number.is_none() => Problem::Missing,
+                            None => Problem::NotValid,
                         })
                     }
                 }
