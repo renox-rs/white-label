@@ -212,7 +212,7 @@ async fn issue_first(state: &AppState, bill: &PayerBill, lines: &[PayerBillLine]
     PayerBill::query()
         .where_(PayerBill::ID.eq(bill.id))
         .update(
-            &mut *tx,
+            &mut tx,
             &[
                 ("payer_invoice_id", &Some(invoice.id)),
                 ("tax_document_pending", &false),
@@ -224,7 +224,7 @@ async fn issue_first(state: &AppState, bill: &PayerBill, lines: &[PayerBillLine]
         PayerBillLine::query()
             .where_(PayerBillLine::ID.eq(line.id))
             .update(
-                &mut *tx,
+                &mut tx,
                 &[
                     ("invoiced", &line.claimed),
                     ("invoice_line_position", &Some(position)),

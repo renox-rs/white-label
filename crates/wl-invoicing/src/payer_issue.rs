@@ -24,7 +24,7 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::json;
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
+use renox::state_machine::{Transition, TransitionCtx, TransitionError, Transitioned};
 use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
 use wl_kernel::documents::today;
@@ -374,6 +374,7 @@ pub(crate) async fn on_transition(state: &AppState, event: &Transitioned<PayerBi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use renox::state_machine::StateMachine;
 
     fn ready() -> IssueInput {
         IssueInput {

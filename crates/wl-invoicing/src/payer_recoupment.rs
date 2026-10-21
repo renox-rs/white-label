@@ -51,7 +51,7 @@ use wl_kernel::payments::PaymentReversed;
 
 use crate::payer_bill::{PayerBill, PayerBillLine, lines_of, write_totals_in};
 use crate::payer_credit::{self, PayerCreditMovement};
-use crate::payer_remittance::{ACTION, PayerAllocation, answer_of, approval_of};
+use crate::payer_remittance::{PayerAllocation, answer_of, approval_of};
 use crate::permissions;
 use crate::texts::english;
 
