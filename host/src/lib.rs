@@ -291,6 +291,7 @@ fn enable(
             )
         }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
+        "scheduling" => Ok(app.module(wl_scheduling::WlScheduling::new())),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
         ))),

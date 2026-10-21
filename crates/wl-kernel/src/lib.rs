@@ -41,6 +41,7 @@ pub mod portal;
 pub mod qualifications;
 pub mod role_tasks;
 pub mod sales;
+pub mod scheduling;
 pub mod scopes;
 pub mod screening_guard;
 pub mod segments;

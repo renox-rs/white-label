@@ -26,3 +26,4 @@ wl-hr = { path = "../crates/wl-hr" }
 wl-attendance = { path = "../crates/wl-attendance" }
 wl-inventory = { path = "../crates/wl-inventory" }
 wl-portal = { path = "../crates/wl-portal" }
+wl-scheduling = { path = "../crates/wl-scheduling" }

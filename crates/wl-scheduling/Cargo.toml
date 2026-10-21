@@ -1,0 +1,16 @@
+[package]
+name = "wl-scheduling"
+description = "Scheduling: bookable resources and their availability, bookings with their lifecycle, and the guarantee that nobody is double-booked."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"

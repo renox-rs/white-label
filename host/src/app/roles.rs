@@ -19,6 +19,7 @@ use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
 use wl_payments::permissions as payments;
 use wl_sales::permissions as sales;
+use wl_scheduling::permissions as scheduling;
 use wl_ticketing::permissions as tickets;
 
 /// Manages users and their roles.
@@ -274,6 +275,12 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_ADJUST,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
+            scheduling::VIEW,
+            scheduling::VIEW_DETAILS,
+            scheduling::MANAGE,
+            scheduling::CHECKIN,
+            scheduling::WAIVE_DEPOSIT,
+            scheduling::RESOURCES_MANAGE,
             inventory::RECALLS_MANAGE,
             con::PROJECTS_VIEW,
             con::PROJECTS_MANAGE,
