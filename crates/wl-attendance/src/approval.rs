@@ -41,10 +41,12 @@
 //!   a transaction is open. A failure after the commit leaves the timesheet
 //!   approved; the idempotent keys make a retry of the posting safe
 //!   ([`post_labour_cost`]).
-//! - `deem_approve` (`HRM.RUL.15`, needs the contract's `ApproverResolver`) and
-//!   the system approval of a `provisional_reconciliation` adjustment
-//!   (BL-ATT-13) are not here; the event already has room for the basis
-//!   `deemed`.
+//! - `deem_approve` (`HRM.RUL.15`, needs the contract's `ApproverResolver`) is
+//!   not here (BL-ATT-11); the event already has room for the basis `deemed`.
+//!   The system approval of a `provisional_reconciliation` adjustment is the
+//!   transition [`APPROVE_BY_SYSTEM`] (BL-ATT-13): it copies the approver and
+//!   the basis of the original's approval and is refused for any other
+//!   timesheet.
 //! - Whoever may approve may reject. The permission of `reject` follows the
 //!   approver kind as for `approve`.
 
@@ -68,7 +70,7 @@ use crate::permissions;
 use crate::record::{AttendanceRecord, AttendanceStatus};
 use crate::review;
 use crate::texts::english;
-use crate::timesheet::{ApprovalBasis, ApproverKind, Timesheet, TimesheetStatus};
+use crate::timesheet::{AdjustmentOrigin, ApprovalBasis, ApproverKind, Timesheet, TimesheetStatus};
 
 /// The approver approves a submitted timesheet.
 pub const APPROVE: &str = "approve";
@@ -76,6 +78,9 @@ pub const APPROVE: &str = "approve";
 pub const APPROVE_ON_BEHALF: &str = "approve_on_behalf";
 /// The approver sends a submitted timesheet back to `open` with a reason.
 pub const REJECT: &str = "reject";
+/// The system approves a `provisional_reconciliation` adjustment in the same
+/// step as the approval of its original (BL-ATT-13).
+pub const APPROVE_BY_SYSTEM: &str = "approve_by_system";
 
 /// The proof of an approval given outside the system: the signed sheet.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
@@ -191,6 +196,29 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
                     approve_in(tx, &sheet, by, ApprovalBasis::OnBehalf, evidence).await
                 })
             }),
+        Transition::new(APPROVE_BY_SYSTEM)
+            .label("Approve")
+            .system()
+            .from([TimesheetStatus::Submitted])
+            .to(TimesheetStatus::Approved)
+            .guard("reconciliation_only", |sheet: &Timesheet, _ctx| {
+                let allowed = sheet.is_adjustment()
+                    && sheet.origin == Some(AdjustmentOrigin::ProvisionalReconciliation);
+                Box::pin(async move {
+                    if allowed {
+                        Ok(())
+                    } else {
+                        Err(english(
+                            "wl_attendance.approval.system_reconciliation_only",
+                            &[],
+                        ))
+                    }
+                })
+            })
+            .effect(|sheet: &Timesheet, _ctx, tx| {
+                let sheet = sheet.clone();
+                Box::pin(async move { copy_approval_in(tx, &sheet).await })
+            }),
         Transition::new(REJECT)
             .label("Reject")
             .tone("danger")
@@ -289,6 +317,35 @@ async fn approve_in(
             }
         }
     }
+    Ok(())
+}
+
+/// The effect of [`APPROVE_BY_SYSTEM`]: the approver and the approval basis
+/// are those of the original's approval, since the original's approval
+/// already covers these hours.
+async fn copy_approval_in(tx: &mut Transaction, sheet: &Timesheet) -> Result {
+    let original = match sheet.adjusts_id {
+        Some(id) => Timesheet::find(&mut *tx, id).await?,
+        None => None,
+    };
+    let (by, basis) = original.map_or((None, ApprovalBasis::Approved), |original| {
+        (
+            original.approved_by,
+            original.approval_basis.unwrap_or(ApprovalBasis::Approved),
+        )
+    });
+    Timesheet::query()
+        .where_(Timesheet::ID.eq(sheet.id))
+        .update(
+            &mut *tx,
+            &[
+                ("approval_basis", &Some(basis.as_str().to_owned())),
+                ("approved_by", &by),
+                ("approved_at", &Some(now())),
+                ("updated_at", &now()),
+            ],
+        )
+        .await?;
     Ok(())
 }
 

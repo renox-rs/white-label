@@ -151,6 +151,36 @@ pub trait Timesheets: Send + Sync + 'static {
     }
 }
 
+/// A timesheet that payroll paid on provisional hours was approved, and the
+/// approved hours differ from the hours paid (wl-attendance §5.7 point 3,
+/// §6 *Events emitted*). `wl-attendance` has opened, submitted and approved
+/// an adjustment timesheet of origin `provisional_reconciliation` that
+/// affects payroll, and emits this and no `TimesheetApproved` of its own for
+/// it, so that payroll applies the difference once: `wl-hr` puts it in the
+/// next run (a negative one within the Art. 25 limits).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimesheetReconciliationNeeded {
+    /// The timesheet that was approved, `attendance.timesheet:3`.
+    pub timesheet: Subject,
+    /// The employee whose hours these are.
+    pub owner: EmployeeId,
+    /// The payroll run that paid the provisional hours, `hr.payroll_run:5`.
+    pub payroll_run: Subject,
+    /// The hours the run paid, per category.
+    pub provisional: Vec<CategoryMinutes>,
+    /// The hours that were approved, per category.
+    pub approved: Vec<CategoryMinutes>,
+    /// Approved minus provisional, per category; categories with no
+    /// difference are left out. A category can move without the total
+    /// moving.
+    pub delta: Vec<CategoryMinutes>,
+    /// The adjustment timesheet that holds the difference per day and
+    /// category, `attendance.timesheet:9`.
+    pub adjustment: Subject,
+}
+
+impl Event for TimesheetReconciliationNeeded {}
+
 /// The service when `wl-attendance` is off: there are no hours.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoTimesheets;
@@ -283,6 +313,33 @@ mod tests {
                 category: "normal".into(),
                 minutes: 960
             }]
+        );
+    }
+
+    #[test]
+    fn the_reconciliation_event_round_trips_through_json() {
+        let event = TimesheetReconciliationNeeded {
+            timesheet: Subject::new(TIMESHEET_SUBJECT_TYPE, 3),
+            owner: EmployeeId(1),
+            payroll_run: Subject::new("hr.payroll_run", 5),
+            provisional: vec![CategoryMinutes {
+                category: "normal".into(),
+                minutes: 9600,
+            }],
+            approved: vec![CategoryMinutes {
+                category: "normal".into(),
+                minutes: 9120,
+            }],
+            delta: vec![CategoryMinutes {
+                category: "normal".into(),
+                minutes: -480,
+            }],
+            adjustment: Subject::new(TIMESHEET_SUBJECT_TYPE, 9),
+        };
+        let json = renox::serde_json::to_string(&event).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<TimesheetReconciliationNeeded>(&json).unwrap(),
+            event
         );
     }
 

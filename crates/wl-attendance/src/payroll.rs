@@ -11,8 +11,8 @@
 //!   timesheet still `open` or `submitted` the accepted attendance hours of
 //!   its owner, marked *provisional*. Only `accepted` attendance counts: a
 //!   record still `flagged` at the cut-off is left out and its hours come
-//!   later through the reconciliation (BL-ATT-13) once the timesheet is
-//!   approved. It has no side effect and gives the same answer
+//!   later through the reconciliation ([`crate::reconcile`]) once the
+//!   timesheet is approved. It has no side effect and gives the same answer
 //!   until the data changes.
 //! - **`record_payroll_use(run, used)`**, told by payroll at `submit`, marks
 //!   the timesheets: an approved one is `lock`ed with `paid_by` = the run; one
@@ -117,7 +117,7 @@ impl ProvisionalHours {
 
 /// The hours of an `approved` or `locked` timesheet: its entries, per day
 /// and category.
-async fn approved_lines(db: &Db, sheet: &Timesheet) -> Result<Vec<HoursLine>> {
+pub(crate) async fn approved_lines(db: &Db, sheet: &Timesheet) -> Result<Vec<HoursLine>> {
     let mut sums: BTreeMap<(NaiveDate, usize), i64> = BTreeMap::new();
     for entry in TimesheetEntry::of_timesheet(db, sheet.id).await? {
         for (n, category) in Category::ALL.iter().enumerate() {

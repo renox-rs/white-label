@@ -32,7 +32,7 @@
 //!
 //! - The permission `timesheets.adjust` is checked in the scope of the
 //!   original's context. The system's own `provisional_reconciliation`
-//!   adjustment comes with BL-ATT-13.
+//!   adjustment is made by [`crate::reconcile`] (BL-ATT-13).
 //! - A link to an invoice dispute must be to an open one, and a
 //!   `client_dispute` that affects pay needs attendance evidence
 //!   ([`crate::dispute`], BL-ATT-09).

@@ -39,7 +39,9 @@ use wl_kernel::qualifications::{
 use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
-use wl_kernel::timesheets::{ApproverResolver, provide_approver_resolver};
+use wl_kernel::timesheets::{
+    ApproverResolver, TimesheetReconciliationNeeded, provide_approver_resolver,
+};
 use wl_kernel::workforce::{
     EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
 };
@@ -755,6 +757,7 @@ struct Fakes {
     recorded: Arc<Mutex<Vec<AttendanceRecorded>>>,
     flagged: Arc<Mutex<Vec<AttendanceFlagged>>>,
     approved: Arc<Mutex<Vec<TimesheetApproved>>>,
+    reconciled: Arc<Mutex<Vec<TimesheetReconciliationNeeded>>>,
 }
 
 impl Module for Fakes {
@@ -775,6 +778,7 @@ impl Module for Fakes {
         record(app, &self.recorded);
         record(app, &self.flagged);
         record(app, &self.approved);
+        record(app, &self.reconciled);
     }
 }
 
@@ -800,6 +804,8 @@ pub struct Booted {
     pub posted: Posted,
     /// `TimesheetApproved`.
     pub approved: Recorded<TimesheetApproved>,
+    /// `TimesheetReconciliationNeeded`.
+    pub reconciled: Recorded<TimesheetReconciliationNeeded>,
     /// The invoice disputes.
     pub disputes: Disputes,
     /// The contract of the deployments.
@@ -1047,6 +1053,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         recorded: Arc::default(),
         flagged: Arc::default(),
         approved: Arc::default(),
+        reconciled: Arc::default(),
     };
     let (notices, staff, tasks) = (
         fakes.notices.clone(),
@@ -1056,6 +1063,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     let (docs, quals) = (fakes.docs.clone(), fakes.quals.clone());
     let (posted, approved) = (fakes.posted.clone(), Recorded(fakes.approved.clone()));
     let (disputes, approvers) = (fakes.disputes.clone(), fakes.approvers.clone());
+    let reconciled = Recorded(fakes.reconciled.clone());
     let (recorded, flagged) = (
         Recorded(fakes.recorded.clone()),
         Recorded(fakes.flagged.clone()),
@@ -1166,6 +1174,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         flagged,
         posted,
         approved,
+        reconciled,
         disputes,
         approvers,
         clock_days: std::sync::atomic::AtomicI64::new(0),
@@ -1237,4 +1246,76 @@ pub async fn post_to(
         .htmx()
         .post(&format!("/timesheets/{}/{action}", sheet.id), form)
         .await
+}
+
+/// An 8 h accepted record (07:00 to 15:00) of `employee` on each of `days` of
+/// November, at a site of its own.
+pub async fn accepted_days(t: &Booted, employee: EmployeeId, days: &[u32]) {
+    let site = t.location(&format!("Site {}", employee.0)).await;
+    for day in days {
+        t.fixture(
+            employee,
+            &site,
+            at(*day, 7, 0),
+            Some(at(*day, 15, 0)),
+            AttendanceStatus::Accepted,
+        )
+        .await;
+    }
+}
+
+/// `minutes` of `category` on `day` of November, as an entry of `sheet`
+/// against the deployment.
+pub async fn put_hours(
+    t: &Booted,
+    sheet: &wl_attendance::Timesheet,
+    day: u32,
+    category: &str,
+    minutes: i64,
+) {
+    let mut entry = wl_attendance::TimesheetEntry {
+        timesheet_id: sheet.id,
+        employee_id: sheet.owner_employee_id,
+        date: nov(day),
+        cost_object_type: Some("manpower.deployment".into()),
+        cost_object_id: Some(9),
+        billable: true,
+        ..wl_attendance::TimesheetEntry::default()
+    };
+    match category {
+        "normal" => entry.normal_minutes = minutes,
+        "overtime" => entry.overtime_minutes = minutes,
+        other => panic!("category {other}"),
+    }
+    wl_attendance::TimesheetEntry::create(t.db(), entry)
+        .await
+        .unwrap();
+}
+
+/// A November timesheet of `employee` for the deployment whose client
+/// approves it (role `client_approver`), in `status`.
+pub async fn client_timesheet(
+    t: &Booted,
+    employee: EmployeeId,
+    status: wl_attendance::TimesheetStatus,
+) -> wl_attendance::Timesheet {
+    let mut new = wl_attendance::Timesheet::regular(employee, nov(1), nov(30))
+        .in_context(&Subject::new("manpower.deployment", 9));
+    new.approver_kind = wl_attendance::timesheet::ApproverKind::External;
+    new.approver_role = Some("client_approver".into());
+    t.sheet_in(new, status).await
+}
+
+/// Payroll run 7 pays the provisional hours, as `wl-hr` would at
+/// its `submit`: it asks the hours of November (cut-off on the 25th) and tells
+/// the service it used them.
+pub async fn pay_provisionally(t: &Booted) {
+    use wl_kernel::timesheets::{PayrollPeriod, timesheets};
+    let service = timesheets(t.state());
+    let period = PayrollPeriod::new(nov(1), nov(30), nov(25));
+    let hours = service.hours_for_payroll(t.state(), &period).await.unwrap();
+    service
+        .record_payroll_use(t.state(), &Subject::new("hr.payroll_run", 7), &hours)
+        .await
+        .unwrap();
 }

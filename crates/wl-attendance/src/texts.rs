@@ -357,6 +357,22 @@ const TEXTS: &[(&str, &str)] = &[
         "The timesheet :timesheet is locked: payroll pays it as approved hours, not on provisional hours.",
     ),
     (
+        "wl_attendance.approval.system_reconciliation_only",
+        "Only an adjustment of origin provisional_reconciliation is approved by the system. Anything else needs its approver.",
+    ),
+    (
+        "wl_attendance.reconcile.reason",
+        "Provisional hours paid by :run reconciled with the approved hours.",
+    ),
+    (
+        "wl_attendance.reconcile.not_locked",
+        "The timesheet :timesheet is not locked yet: it locks when it is approved, and only then is it reconciled.",
+    ),
+    (
+        "wl_attendance.reconcile.bad_run",
+        "The payroll run :run of this timesheet is not a record reference.",
+    ),
+    (
         "wl_attendance.timesheet.consumed",
         "A payroll run, an invoice or an export used this timesheet: it cannot be reopened.",
     ),

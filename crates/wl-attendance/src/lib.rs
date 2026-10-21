@@ -25,6 +25,7 @@ pub mod payroll;
 pub mod period_end;
 pub mod permit;
 pub mod proposal;
+pub mod reconcile;
 pub mod record;
 pub mod review;
 pub mod service;
@@ -224,6 +225,7 @@ impl Module for WlAttendance {
         renox::state_machine::register::<Timesheet>();
         notices::register_types();
         dispute::register(app);
+        reconcile::register(app);
         escalation::schedule(app);
         period_end::schedule(app);
         wl_kernel::documents::register_future_work(
