@@ -17,6 +17,12 @@
         <rx-confirm :id="'submit-order-' ~ order.id" :label="tx['orders.submit']" :action="route('wl_sales.sales_order_submit', order.id)" method="POST"
                     :title="tx['orders.submit']" :message="tx['orders.submit_message']" :confirm-label="tx['orders.submit']" :cancel-label="tx['cancel']" icon="check"/>
       </template>
+      <rx-action-sheet rx-if="can_attach" id="attach-order-member" :label="tx['loyalty.attach']" :action="route('wl_sales.sales_order_member', order.id)"
+                       :title="tx['loyalty.attach']" :description="tx['loyalty.attach_description']" :submit-label="tx['loyalty.attach']" icon="gift">
+        <rx-input name="code" :label="tx['loyalty.code']" id="attach-order-member-code"/>
+        <rx-input name="mobile" :label="tx['loyalty.mobile']" id="attach-order-member-mobile"/>
+        <rx-input name="party_id" :label="tx['loyalty.party']" id="attach-order-member-party"/>
+      </rx-action-sheet>
       <template rx-if="actions">
         <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
       </template>
@@ -36,6 +42,7 @@
         <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
         <rx-entry :label="tx['orders.payment_mode']" :value="order.payment_mode"/>
         <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>
+        <rx-entry rx-if="member" :label="tx['loyalty.member']" :value="member"/>
       </rx-infolist>
     </rx-card>
   </rx-stack>

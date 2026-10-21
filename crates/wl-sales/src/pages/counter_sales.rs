@@ -8,6 +8,9 @@
 //! | `POST /counter-sales/{id}/lines` | `wl_sales.counter_sale_line` | `pos.sell` |
 //! | `POST /counter-sales/{id}/complete` | `wl_sales.counter_sale_complete` | `pos.sell` |
 //!
+//! The loyalty member is attached from `POST /counter-sales/{id}/member`
+//! ([`crate::pages::loyalty`]).
+//!
 
 use std::collections::BTreeMap;
 
@@ -200,7 +203,9 @@ pub(crate) struct ShowPage {
     gross: String,
     lines: Vec<LineRow>,
     payments: Vec<PaymentRow>,
+    member: Option<String>,
     can_edit: bool,
+    can_attach: bool,
 }
 
 /// `1.5` for 1500 thousandths, `2` for 2000.
@@ -217,6 +222,7 @@ fn quantity_text(milli: i64) -> String {
 /// `GET /counter-sales/{id}`: the cart or the receipt.
 async fn show(
     State(state): State<AppState>,
+    user: AuthUser,
     lang: Lang,
     Found(sale): Found<CounterSale>,
 ) -> Result<View> {
@@ -242,6 +248,7 @@ async fn show(
             amount: money(p.amount),
         })
         .collect();
+    let member = crate::loyalty_account::label_of(&state.db, sale.loyalty_account_id).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: sale.number.clone(),
@@ -252,7 +259,9 @@ async fn show(
         gross: money(totals.gross),
         lines: rows,
         payments,
+        member,
         can_edit: sale.is_open(),
+        can_attach: sale.is_open() && user.has_permission(permissions::LOYALTY_ENROL),
         sale,
     }))
 }

@@ -871,6 +871,24 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.loyalty.problem.mobile_taken",
         "This mobile number belongs to another member of the programme.",
     ),
+    ("wl_sales.loyalty.attach", "Attach a member"),
+    (
+        "wl_sales.loyalty.attach_description",
+        "Give the member's code, mobile number or party. A member can only be attached before the sale completes.",
+    ),
+    ("wl_sales.loyalty.member", "Loyalty member"),
+    ("wl_sales.loyalty.attached", "Member attached to the sale."),
+    ("wl_sales.loyalty.errors.member", "Give the member's code, mobile number or party."),
+    ("wl_sales.loyalty.problem.no_member", "There is no open loyalty account for this member."),
+    ("wl_sales.loyalty.problem.programme_off", "The loyalty programme is not earning."),
+    (
+        "wl_sales.loyalty.problem.own_account",
+        "A cashier cannot attach a sale they process to their own loyalty account.",
+    ),
+    (
+        "wl_sales.loyalty.problem.sale_completed",
+        "The sale is completed or ended; a member is attached before it completes.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

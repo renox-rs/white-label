@@ -178,7 +178,9 @@ pub(crate) struct ShowPage {
     gross: String,
     lines: Vec<LineRow>,
     actions: Vec<Available>,
+    member: Option<String>,
     can_edit: bool,
+    can_attach: bool,
 }
 
 /// `1.5` for 1500 thousandths, `2` for 2000.
@@ -219,6 +221,14 @@ async fn show(
         .into_iter()
         .filter(|a| ![SUBMIT, SUBMIT_ONLINE, SUBMIT_FOR_ACCEPTANCE].contains(&a.name.as_str()))
         .collect();
+    let member = crate::loyalty_account::label_of(&state.db, order.loyalty_account_id).await?;
+    let attachable = !matches!(
+        order.status,
+        SalesOrderStatus::Fulfilled
+            | SalesOrderStatus::Closed
+            | SalesOrderStatus::Cancelled
+            | SalesOrderStatus::Rejected
+    );
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: order.number.clone(),
@@ -229,6 +239,8 @@ async fn show(
         gross: money(t.gross),
         lines: rows,
         actions,
+        member,
+        can_attach: attachable && user.has_permission(permissions::LOYALTY_ENROL),
         can_edit: order.is_draft() && user.has_permission(permissions::SALES_ORDERS_CREATE),
         order,
     }))

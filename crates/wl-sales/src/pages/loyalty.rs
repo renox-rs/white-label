@@ -5,6 +5,8 @@
 //! | `GET /loyalty` | `wl_sales.loyalty` | `loyalty.view` |
 //! | `POST /loyalty/programme` | `wl_sales.loyalty_programme` | `loyalty.manage` |
 //! | `POST /loyalty/accounts` | `wl_sales.loyalty_enrol` | `loyalty.enrol` |
+//! | `POST /counter-sales/{id}/member` | `wl_sales.counter_sale_member` | `loyalty.enrol` |
+//! | `POST /sales-orders/{id}/member` | `wl_sales.sales_order_member` | `loyalty.enrol` |
 //!
 //! The page shows the programme, the latest accounts with their balance, and
 //! the sheets to turn the programme on and to enrol a member.
@@ -16,9 +18,12 @@ use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
 use wl_kernel::PartyId;
 
+use crate::counter_sale::CounterSale;
 use crate::loyalty_account::{self, Enrolment, LoyaltyAccount};
+use crate::loyalty_attach::{self, MemberRef};
 use crate::loyalty_programme::{self, EarnKind, LoyaltyProgramme, NewProgramme};
 use crate::notices::aed;
+use crate::sales_order::SalesOrder;
 use crate::pages::campaigns::parse_fils;
 use crate::{permissions, texts};
 
@@ -44,6 +49,10 @@ pub fn routes() -> Routes {
             Routes::new()
                 .post("/loyalty/accounts", enrol)
                 .name("wl_sales.loyalty_enrol")
+                .post("/counter-sales/{id}/member", attach_counter_sale)
+                .name("wl_sales.counter_sale_member")
+                .post("/sales-orders/{id}/member", attach_sales_order)
+                .name("wl_sales.sales_order_member")
                 .require_permission(permissions::LOYALTY_ENROL),
         )
 }
@@ -256,6 +265,58 @@ async fn enrol(
     Ok((
         Toast::success(text(&lang, "loyalty.enrolled")),
         Redirect::route("wl_sales.loyalty", &[])?,
+    )
+        .into_response())
+}
+
+/// The member the form names: a `code`, else a `mobile` number, else the
+/// member's `party_id` (a portal login).
+fn member_of(form: &BTreeMap<String, String>, lang: &Lang) -> Result<MemberRef> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    if !get("code").is_empty() {
+        return Ok(MemberRef::Code(get("code").to_owned()));
+    }
+    if !get("mobile").is_empty() {
+        return Ok(MemberRef::Mobile(get("mobile").to_owned()));
+    }
+    match get("party_id").parse::<i64>() {
+        Ok(party) if party > 0 => Ok(MemberRef::Party(PartyId(party))),
+        _ => Err(invalid("code", text(lang, "loyalty.errors.member"), form)),
+    }
+}
+
+/// `POST /counter-sales/{id}/member`: attaches the member (`code`, `mobile`
+/// or `party_id`) to the open sale, `SAL.ACL.08`.
+async fn attach_counter_sale(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(sale): Found<CounterSale>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let member = member_of(&form, &lang)?;
+    loyalty_attach::attach_to_counter_sale(&state, &user, sale.id, &member).await?;
+    Ok((
+        Toast::success(text(&lang, "loyalty.attached")),
+        Redirect::route("wl_sales.counter_sale", &[&sale.id])?,
+    )
+        .into_response())
+}
+
+/// `POST /sales-orders/{id}/member`: attaches the member to the order until
+/// it is fulfilled.
+async fn attach_sales_order(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let member = member_of(&form, &lang)?;
+    loyalty_attach::attach_to_sales_order(&state, &user, order.id, &member).await?;
+    Ok((
+        Toast::success(text(&lang, "loyalty.attached")),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
     )
         .into_response())
 }
