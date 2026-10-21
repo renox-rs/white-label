@@ -12,6 +12,7 @@ pub mod bank_statement_parse;
 pub mod cash_count;
 pub mod cash_custody;
 pub mod cash_escalation;
+pub mod cash_hand_over;
 pub mod cash_handover;
 pub mod cash_later;
 mod cash_machine;
@@ -691,6 +692,8 @@ impl Module for WlPayments {
         cash_notices::register_types();
         // `CashHandoverCounted` and `CashShortage` after a count.
         cash_count::register(app);
+        // `RunHandedOver`: the cash moves between the drivers' handovers.
+        cash_hand_over::register(app);
         // The write-off approval (`FIN.ACL.06`) and `CashShortageSettled`.
         cash_settle::register(app, self.config.cash_write_off_limit);
         // The salary deduction approval (`FIN.ACL.19`).

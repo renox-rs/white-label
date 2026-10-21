@@ -7,6 +7,10 @@
 //!   (reach the holder, count what was received, approve a deduction), and the
 //!   company admin that a holder did not hand over (`FIN.RUL.22`).
 //!
+//! - `payments.cash_handed_over`: the giving driver, the receiving driver and
+//!   the dispatcher are told that cash moved between the drivers on a run
+//!   hand-over (`RunHandedOver`, #113).
+//!
 //! The holder's manager is the one recorded on the holder, else the first
 //! manager wl-hr names for the holder's employee record, else the first
 //! holder of the configured manager role (`cash_manager_role`), else a
@@ -15,6 +19,8 @@
 use renox::auth::permissions::users_with_role;
 use renox::prelude::*;
 use renox::serde_json::json;
+use wl_kernel::custody::HandoverId;
+use wl_kernel::delivery::RunHandedOver;
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::scopes::COMPANY_ADMIN_ROLE;
 use wl_kernel::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY};
@@ -29,6 +35,9 @@ pub const CASH_SHORTAGE: &str = "payments.cash_shortage";
 
 /// The type of the notice of a task about a handover.
 pub const CASH_TASK: &str = "payments.cash_task";
+
+/// The type of the notice of cash moved between drivers on a hand-over.
+pub const CASH_HANDED_OVER: &str = "payments.cash_handed_over";
 
 const MODULE: &str = "payments";
 const GROUP: &str = "payments";
@@ -59,10 +68,78 @@ pub fn task_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type [`CASH_HANDED_OVER`].
+pub fn handed_over_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CASH_HANDED_OVER, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cash_handed_over.subject")),
+            english("wl_payments.cash_handed_over.body"),
+        )
+}
+
 /// Registers the types with the kernel registry.
 pub(crate) fn register_types() {
     notify::register_type(shortage_type());
     notify::register_type(task_type());
+    notify::register_type(handed_over_type());
+}
+
+/// The name of the user `id` for a notice, else `#id`.
+async fn user_name(state: &AppState, id: i64) -> String {
+    match User::find(&state.db, id).await {
+        Ok(Some(user)) => user.name,
+        _ => format!("#{id}"),
+    }
+}
+
+/// The users told of a hand-over: the giver, the receiver and the dispatcher,
+/// each once.
+pub(crate) fn handed_over_recipients(event: &RunHandedOver) -> Vec<i64> {
+    let mut ids = vec![event.from_driver, event.to_driver, event.requested_by];
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+/// Tells both drivers and the dispatcher that `moved` (and the `overage`
+/// line) of cash moved from the giver to the receiver on the hand-over of
+/// `event`, and what the giver still has to hand over.
+///
+/// # Errors
+///
+/// Database errors, or a notice that failed.
+pub(crate) async fn handed_over(
+    state: &AppState,
+    event: &RunHandedOver,
+    moved: i64,
+    overage: i64,
+    giver: Option<HandoverId>,
+) -> Result {
+    let (rest, link) = match giver {
+        Some(id) => {
+            let rest = CashHandover::find(&state.db, id.0)
+                .await?
+                .map_or(0, |handover| handover.expected);
+            (rest, format!("/cash/{}", id.0))
+        }
+        None => (0, "/cash".to_owned()),
+    };
+    let mut request = NotifyRequest::new(CASH_HANDED_OVER, event.run.subject()).data(json!({
+        "amount": money_text("AED", moved + overage),
+        "from": user_name(state, event.from_driver).await,
+        "to": user_name(state, event.to_driver).await,
+        "rest": money_text("AED", rest),
+        "link": link,
+    }));
+    for id in handed_over_recipients(event) {
+        request = request.to_user(id);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
 }
 
 /// The manager of the holder of `handover`: see the module text.
@@ -266,7 +343,7 @@ mod tests {
 
     #[test]
     fn the_types_have_english_templates() {
-        for def in [shortage_type(), task_type()] {
+        for def in [shortage_type(), task_type(), handed_over_type()] {
             assert!(def.template_for(NotifyChannel::Email, "en").is_some());
         }
     }

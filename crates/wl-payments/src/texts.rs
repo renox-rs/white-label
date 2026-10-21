@@ -1542,6 +1542,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.cash_shortage.body",
         "The cash of {{ period }} is short by {{ amount }}. See {{ link }}.",
     ),
+    (
+        "wl_payments.cash_handed_over.subject",
+        "Cash handed over: {{ amount }}",
+    ),
+    (
+        "wl_payments.cash_handed_over.body",
+        "{{ from }} handed {{ amount }} over to {{ to }} with the stops of a run. {{ from }} still has {{ rest }} to hand over. See {{ link }}.",
+    ),
     ("wl_payments.cash_task.subject", "{{ text }}"),
     ("wl_payments.cash_task.body", "{{ text }} See {{ link }}."),
 ];
