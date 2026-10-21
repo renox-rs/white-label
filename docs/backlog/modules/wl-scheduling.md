@@ -669,13 +669,13 @@ the expiry was known or before the item lapsed, i.e. work already planned (wl-do
 - Must not tell the party the reason.
 
 #### Done when
-- [ ] Given Dr A's licence expires 2026-11-20 and bookings on 2026-11-18 and 2026-11-25, the daily
+- [x] Given Dr A's licence expires 2026-11-20 and bookings on 2026-11-18 and 2026-11-25, the daily
       run on 2026-11-01 flags only the 25 November booking (cause `eligibility`) and creates a
       front-desk task.
-- [ ] A booking on 2026-12-15 (beyond 30 days) is not flagged on 2026-11-01.
-- [ ] On `DocumentExpiring` with `affected` = [25 Nov booking], it is flagged once; the next
+- [x] A booking on 2026-12-15 (beyond 30 days) is not flagged on 2026-11-01.
+- [x] On `DocumentExpiring` with `affected` = [25 Nov booking], it is flagged once; the next
       nightly run does not flag it again.
-- [ ] When the renewed licence (valid to 2027-11-20) is accepted, the conflict clears and the
+- [x] When the renewed licence (valid to 2027-11-20) is accepted, the conflict clears and the
       booking is unchanged.
 
 #### Out of scope
