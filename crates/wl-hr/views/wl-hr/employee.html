@@ -28,6 +28,60 @@
         <rx-entry :label="tx['employees.scopes']" :value="scopes" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="attempts or report or can_record_attempt">
+      <rx-card :title="tx['absence.title']">
+        <rx-stack>
+          <rx-infolist columns="2" rx-if="report">
+            <rx-entry :label="tx['exits.report_number']" :value="report"/>
+          </rx-infolist>
+          <rx-table :rows="attempts" as="attempt" :key="attempt.date ~ attempt.method" :caption="tx['absence.attempts']" rx-if="attempts">
+            <rx-column :label="tx['absence.date']">{{ attempt.date }}</rx-column>
+            <rx-column :label="tx['absence.method']">{{ attempt.method }}</rx-column>
+            <rx-column :label="tx['absence.outcome']">{{ attempt.outcome }}</rx-column>
+            <rx-column :label="tx['absence.by']" hide-narrow>{{ attempt.by }}</rx-column>
+            <rx-column :label="tx['absence.note']" hide-narrow>{{ attempt.note }}</rx-column>
+          </rx-table>
+          <template rx-if="can_record_attempt">
+            <rx-action-sheet id="record-attempt" :label="tx['absence.record']" :action="route('wl_hr.contact_attempt', employee.id)"
+                             :title="tx['absence.record']" :submit-label="tx['absence.submit']" icon="phone">
+              <rx-input name="attempted_on" type="date" :label="tx['absence.date']" :value="today" id="record-attempt-date"/>
+              <rx-input name="method" :label="tx['absence.method']" id="record-attempt-method" required/>
+              <rx-select name="outcome" :label="tx['absence.outcome']" :options="outcomes" :selected="outcome_selected"/>
+              <rx-textarea name="note" :label="tx['absence.note']" id="record-attempt-note"/>
+            </rx-action-sheet>
+          </template>
+        </rx-stack>
+      </rx-card>
+    </template>
+    <template rx-if="pending_exit or can_request_exit">
+      <rx-card :title="tx['exits.title']">
+        <rx-stack>
+          <template rx-if="pending_exit">
+            <rx-badge kind="warning" :text="tx['exits.pending'] ~ ': ' ~ pending_exit.action"/>
+            <rx-infolist columns="2">
+              <rx-entry :label="tx['exits.pending_by']" :value="pending_exit.requested_by"/>
+              <rx-entry :label="tx['exits.reason']" :value="pending_exit.reason"/>
+            </rx-infolist>
+          </template>
+          <template rx-if="can_request_exit">
+            <rx-action-sheet id="request-exit" :label="tx['exits.request']" :action="route('wl_hr.exit_request', employee.id)"
+                             :title="tx['exits.request']" :submit-label="tx['exits.submit']" icon="log-out">
+              <rx-select name="transition" :label="tx['exits.action']" :options="exit_actions" :selected="exit_selected" required/>
+              <rx-textarea name="reason" :label="tx['exits.reason']" id="request-exit-reason" required/>
+              <rx-input name="agreement" :label="tx['exits.agreement']" id="request-exit-agreement"/>
+              <rx-input name="report_number" :label="tx['exits.report_number']" id="request-exit-report-number"/>
+              <rx-input name="report_date" type="date" :label="tx['exits.report_date']" id="request-exit-report-date"/>
+              <rx-input name="report_file" type="number" :label="tx['exits.report_file']" id="request-exit-report-file"/>
+              <rx-input name="reference" :label="tx['exits.reference']" id="request-exit-reference"/>
+              <rx-input name="return_date" type="date" :label="tx['exits.return_date']" id="request-exit-return-date"/>
+              <rx-input name="death_certificate" :label="tx['exits.death_document']" id="request-exit-death-certificate"/>
+              <rx-input name="authority_notice" :label="tx['exits.authority_notice']" id="request-exit-authority-notice"/>
+              <rx-input name="death_date" type="date" :label="tx['exits.death_date']" id="request-exit-death-date"/>
+            </rx-action-sheet>
+          </template>
+        </rx-stack>
+      </rx-card>
+    </template>
     <rx-card rx-for="onboarding in onboardings" :title="tx['onboarding.title'] ~ ' · ' ~ onboarding.started_on">
       <rx-stack>
         <rx-infolist columns="4">

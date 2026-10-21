@@ -14,6 +14,9 @@
 //! ([`Workforce::all_staff`]), the [`StaffProfile`] of one (role, scopes,
 //! account, manager, leave) and the employee of a user.
 //!
+//! `wl-hr` also provides [`Qualifications`](crate::qualifications::Qualifications) (`qualification_valid`) and emits
+//! [`QualificationExpiring`] and [`QualificationExpired`].
+//!
 //! An employee is referred to by [`EmployeeId`] or as a [`Subject`] of type
 //! [`EMPLOYEE_SUBJECT_TYPE`]; a scope is a [`Subject`] too (a branch).
 
@@ -26,6 +29,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::documents::{AffectedGroup, BlockedGroup, PlannedRecord};
 use crate::parties::PartyId;
 use crate::subject::Subject;
 
@@ -139,6 +143,56 @@ pub struct EmployeeDeceased {
 
 impl Event for EmployeeDeceased {}
 
+/// A vertical opened an absence case for an employee (`MPW.RUL.09`,
+/// `CON.RUL.08`): N consecutive days without attendance or approved leave.
+/// `wl-hr` keeps it, because `report_absconding` needs an open case and
+/// counts the days from `last_present_on`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AbsenceCaseOpened {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The case, e.g. `ticketing.ticket:12`.
+    pub case: Subject,
+    /// The day the case was opened.
+    pub opened_on: NaiveDate,
+    /// The last day with attendance or approved leave (day 0 of the
+    /// absence), as the vertical counted it from the attendance records.
+    pub last_present_on: NaiveDate,
+}
+
+impl Event for AbsenceCaseOpened {}
+
+/// A vertical closed the absence case of an employee, e.g. the worker
+/// returned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AbsenceCaseClosed {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The case.
+    pub case: Subject,
+    /// The day it was closed.
+    pub closed_on: NaiveDate,
+    /// Why.
+    pub reason: String,
+}
+
+impl Event for AbsenceCaseClosed {}
+
+/// An employee was reported as absconded (`report_absconding`, approved under
+/// `HRM.ACL.07`): the apps end the deployments, the portal and attendance are
+/// off, the open pay is held.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeAbsconded {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The MoHRE absence report number.
+    pub report_number: String,
+    /// The MoHRE absence report date.
+    pub report_date: NaiveDate,
+}
+
+impl Event for EmployeeAbsconded {}
+
 /// A scope assignment or the job role of an employee was added, changed or
 /// ended. It does not start an onboarding by itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -227,6 +281,13 @@ pub trait Workforce: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// Whether the account of user `user_id` belongs to an employee whose
+    /// portal access is switched off: one reported as absconded (`HRM.RUL.14`).
+    /// The default switches nobody off.
+    fn access_disabled<'a>(&'a self, _db: &'a Db, _user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// The employee whose account is the user `user_id`, if any. The default
     /// knows nobody.
     fn employee_of_user<'a>(
@@ -267,6 +328,169 @@ pub struct StaffProfile {
     /// manager*): the holders of the manager role in the employee's scopes,
     /// HR when there are none.
     pub managers: Vec<i64>,
+}
+
+/// The id of a qualification (a licence, permit or certificate of an
+/// employee).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct QualificationId(pub i64);
+
+impl fmt::Display for QualificationId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// One record of an employee's work that a qualification blocks: an open or
+/// planned booking, deployment or run, as `wl-documents` found it
+/// ([`BlockedGroup`], [`AffectedGroup`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AffectedWork {
+    /// The guarded transition, `<entity>.<transition>`.
+    pub guarded: String,
+    /// The record.
+    pub record: Subject,
+    /// The date it is planned for (Asia/Dubai calendar date).
+    pub date: NaiveDate,
+    /// What to show to the staff.
+    pub label: String,
+    /// Whether it is already running (open) rather than planned.
+    pub open: bool,
+}
+
+impl AffectedWork {
+    /// `record`, found under the guarded transition `guarded`.
+    pub fn of(guarded: &str, record: &PlannedRecord, open: bool) -> Self {
+        AffectedWork {
+            guarded: guarded.to_owned(),
+            record: record.record.clone(),
+            date: record.date,
+            label: record.label.clone(),
+            open,
+        }
+    }
+
+    /// The planned records of `groups`, in order, unchanged
+    /// (`DocumentExpiring::affected`).
+    pub fn planned_in(groups: &[AffectedGroup]) -> Vec<AffectedWork> {
+        groups
+            .iter()
+            .flat_map(|group| {
+                group
+                    .records
+                    .iter()
+                    .map(|record| AffectedWork::of(&group.guarded, record, false))
+            })
+            .collect()
+    }
+
+    /// The open and then the planned records of each of `groups`
+    /// (`DocumentExpired::blocked`).
+    pub fn blocked_in(groups: &[BlockedGroup]) -> Vec<AffectedWork> {
+        groups
+            .iter()
+            .flat_map(|group| {
+                let open = group
+                    .open
+                    .iter()
+                    .map(|record| AffectedWork::of(&group.guarded, record, true));
+                let planned = group
+                    .planned
+                    .iter()
+                    .map(|record| AffectedWork::of(&group.guarded, record, false));
+                open.chain(planned)
+            })
+            .collect()
+    }
+}
+
+/// A qualification of an employee is about to expire (`HRM.RUL.10`, from
+/// `DocumentExpiring`). It carries the planned work after the expiry date, as
+/// the document event listed it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QualificationExpiring {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The qualification record, when the employee has one of the kind.
+    pub qualification: Option<QualificationId>,
+    /// The document kind.
+    pub kind: String,
+    /// The scopes (branches) the qualification covers; empty for any.
+    pub scope: Vec<Subject>,
+    /// The expiry date; the qualification is valid through it.
+    pub expires_on: NaiveDate,
+    /// Expiry date minus today.
+    pub days_left: i64,
+    /// The planned work after the expiry date.
+    pub affected: Vec<AffectedWork>,
+}
+
+impl Event for QualificationExpiring {}
+
+/// A qualification of an employee expired (`HRM.RUL.10`, from
+/// `DocumentExpired`): `qualification_valid` answers *no* from now on. It
+/// carries the employee's open and planned work that the expiry blocks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QualificationExpired {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The qualification record, when the employee has one of the kind.
+    pub qualification: Option<QualificationId>,
+    /// The document kind.
+    pub kind: String,
+    /// The scopes (branches) the qualification covered; empty for any.
+    pub scope: Vec<Subject>,
+    /// The roles the qualification covered; empty for any.
+    pub roles: Vec<String>,
+    /// The expiry date; the qualification was valid through it.
+    pub expires_on: NaiveDate,
+    /// The open and planned work the expiry blocks.
+    pub affected: Vec<AffectedWork>,
+}
+
+impl Event for QualificationExpired {}
+
+/// The approved leave of an employee (wl-hr §4 *Leave request*): what the
+/// verticals need to tell an absence from a leave (`CON.RUL.08`). `wl-hr`
+/// provides it; without it, [`leave_calendar`] gives [`NoLeaveCalendar`]:
+/// nobody is on leave.
+pub trait LeaveCalendar: Send + Sync + 'static {
+    /// The periods of approved (or completed) leave of `employee` that touch
+    /// the days `from` to `to` (both included), as `(first day, last day)`
+    /// pairs, oldest first. The default has none.
+    fn approved_leave<'a>(
+        &'a self,
+        _db: &'a Db,
+        _employee: EmployeeId,
+        _from: NaiveDate,
+        _to: NaiveDate,
+    ) -> WorkforceFuture<'a, Vec<(NaiveDate, NaiveDate)>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The leave calendar when the `hr` module is off: nobody is on leave.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoLeaveCalendar;
+
+impl LeaveCalendar for NoLeaveCalendar {}
+
+/// Makes `calendar` the app's [`LeaveCalendar`]; `wl-hr` calls it in
+/// `register`.
+pub fn provide_leave_calendar(app: &mut Registry, calendar: impl LeaveCalendar) {
+    let calendar: Arc<dyn LeaveCalendar> = Arc::new(calendar);
+    app.provide(calendar);
+}
+
+/// The app's [`LeaveCalendar`], or [`NoLeaveCalendar`] when none is provided.
+pub fn leave_calendar(state: &AppState) -> Arc<dyn LeaveCalendar> {
+    match state.provided::<Arc<dyn LeaveCalendar>>() {
+        Some(calendar) => Arc::clone(&calendar),
+        None => Arc::new(NoLeaveCalendar),
+    }
 }
 
 /// The workforce when the `hr` module is off: nobody works anywhere.

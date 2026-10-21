@@ -14,7 +14,7 @@
 //! use wl_kernel::qualifications::qualifications;
 //!
 //! let answer = qualifications(&state)
-//!     .qualification_valid(&state.db, employee, "fta_tax_agent", on, Some("tax_agent"), Some(&agency))
+//!     .qualification_valid(&state, employee, "fta_tax_agent", on, Some("tax_agent"), Some(&agency))
 //!     .await?;
 //! if !answer.valid { /* refuse: the registration is missing or expired */ }
 //! ```
@@ -55,7 +55,7 @@ pub trait Qualifications: Send + Sync + 'static {
     /// The default answers *no* (nothing found).
     fn qualification_valid<'a>(
         &'a self,
-        _db: &'a Db,
+        _state: &'a AppState,
         _employee: EmployeeId,
         _kind: &'a str,
         _on_date: NaiveDate,

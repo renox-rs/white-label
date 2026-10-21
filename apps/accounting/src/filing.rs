@@ -141,7 +141,7 @@ pub async fn tax_agent(
     let agency = Subject::new(AGENCY_SUBJECT_TYPE, entity.id);
     let status = qualifications(state)
         .qualification_valid(
-            &state.db,
+            state,
             employee,
             TAX_AGENT_KIND,
             on,

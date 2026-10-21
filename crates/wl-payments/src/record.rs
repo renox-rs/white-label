@@ -43,6 +43,14 @@ pub const RECORD: &str = "record";
 /// The system's `record_by_system` transition's name.
 pub const RECORD_BY_SYSTEM: &str = "record_by_system";
 
+/// The `record_set_off` transition's name: a user records a set-off
+/// (wl-payments §4 *Set-off*, [`crate::set_off`]).
+pub const RECORD_SET_OFF: &str = "record_set_off";
+
+/// The system's `record_set_off_approved` transition's name: the kernel runs
+/// it when an exception for a blocked party was approved (`PTY.ACL.03`).
+pub const RECORD_SET_OFF_APPROVED: &str = "record_set_off_approved";
+
 /// What a record run carries to its guards, gathered by [`record`].
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct RecordInput {
@@ -180,8 +188,26 @@ fn with_rules(transition: Transition<Payment>) -> Transition<Payment> {
         })
 }
 
-/// `record` (a user with `payments.record`) and `record_by_system`, for the
-/// machine.
+/// What a set-off adds to the record rules: the payment is of method
+/// `set_off`, moves no money (no bank account) and names the invoice and the
+/// supplier bill it settles ([`crate::set_off::targets_of`]).
+fn set_off_rules(transition: Transition<Payment>) -> Transition<Payment> {
+    with_rules(transition).guard("set_off_targets", |payment: &Payment, _ctx| {
+        let problem = if payment.method != PaymentMethod::SetOff {
+            Some("Only a set-off is recorded this way.".to_owned())
+        } else if payment.bank_account.is_some() {
+            Some("A set-off moves no money: it has no bank account.".to_owned())
+        } else if crate::set_off::targets_of(payment).is_none() {
+            Some("A set-off names the invoice and the supplier bill it settles.".to_owned())
+        } else {
+            None
+        };
+        Box::pin(async move { problem.map_or(Ok(()), Err) })
+    })
+}
+
+/// `record` (a user with `payments.record`) and `record_by_system`, then the
+/// two set-off transitions, for the machine.
 pub(crate) fn transitions() -> Vec<Transition<Payment>> {
     vec![
         with_rules(
@@ -193,6 +219,18 @@ pub(crate) fn transitions() -> Vec<Transition<Payment>> {
         with_rules(
             Transition::new(RECORD_BY_SYSTEM)
                 .label("Record")
+                .tone("primary")
+                .system(),
+        ),
+        set_off_rules(
+            Transition::new(RECORD_SET_OFF)
+                .label("Record set-off")
+                .tone("primary")
+                .permission(permissions::RECORD),
+        ),
+        set_off_rules(
+            Transition::new(RECORD_SET_OFF_APPROVED)
+                .label("Record set-off (exception approved)")
                 .tone("primary")
                 .system(),
         ),
@@ -309,6 +347,12 @@ async fn run_record(
     recorded_by: Option<i64>,
     request: &RecordPayment,
 ) -> std::result::Result<Payment, TransitionError> {
+    // A set-off settles two documents at once: only `set_off::record` makes one.
+    if request.method == PaymentMethod::SetOff {
+        return Err(TransitionError::Guard(
+            "A set-off is recorded with the invoice and the supplier bill it settles.".to_owned(),
+        ));
+    }
     let (payment, input) = prepare(state, request, recorded_by).await?;
     let mut tx = state.db.begin().await?;
     let (payment, outcome) = record_in(&mut tx, actor, payment, &input).await?;

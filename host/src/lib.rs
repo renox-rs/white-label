@@ -24,6 +24,7 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::construction_seed;
 pub use app::demo_data;
 pub use app::negative_flow::{invoicing_for, payments_for};
 pub use app::roles;
@@ -173,6 +174,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     if client_app == "accounting" {
         app = app.module(app::accounting_seed::AccountingSeed);
     }
+    // The Construction client's categories, checklists and SOPs (BL-CON-17,
+    // BL-CON-18).
+    if client_app == app::construction_seed::CONSTRUCTION {
+        app = app.module(app::construction_seed::ConstructionSeed);
+    }
     // The page that shows the shared modules' settings of this client.
     let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
@@ -206,12 +212,12 @@ fn with_brand(app: renox::App, name: &str) -> renox::App {
 }
 
 /// The vertical apps built so far, as `[client] app` names them.
-pub const VERTICALS: &[&str] = &["property", "accounting"];
+pub const VERTICALS: &[&str] = &["property", "accounting", "construction"];
 
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property` and `accounting`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting` and `construction`"
     ))
 }
 
@@ -230,6 +236,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
     match name {
         "property" => Ok(app.module(property::Property)),
         "accounting" => Ok(app.module(accounting::Accounting)),
+        "construction" => Ok(app.module(construction::Construction)),
         other => Err(unbuilt_vertical(other)),
     }
 }
@@ -249,6 +256,9 @@ fn enable(
         "documents" => {
             app::property_seed::register_documents(client_app);
             app::accounting_seed::register_documents(client_app);
+            if client_app == app::construction_seed::CONSTRUCTION {
+                app::construction_seed::register_documents();
+            }
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
@@ -269,6 +279,17 @@ fn enable(
         "payments" => Ok(app.module(app::negative_flow::payments_for(client_app))),
         "sales" => Ok(app.module(app::property_seed::sales_for(client_app))),
         "hr" => Ok(app.module(app::property_seed::hr_for(client_app, owner_role))),
+        "attendance" => Ok(app.module(app::property_seed::attendance_for(client_app))),
+        "inventory" => {
+            let module = wl_inventory::WlInventory::new();
+            Ok(
+                app.module(if client_app == app::construction_seed::CONSTRUCTION {
+                    app::construction_seed::inventory(module)
+                } else {
+                    module
+                }),
+            )
+        }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"

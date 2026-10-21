@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod approvals;
+pub mod attendance;
 pub mod automation;
 pub mod bank_statements;
 pub mod block_effects;
@@ -26,6 +27,7 @@ pub mod einvoice;
 pub mod entities;
 pub mod held_funds;
 pub mod integrations;
+pub mod inventory;
 pub mod invoicing;
 pub mod late_entries;
 pub mod machines;
@@ -132,15 +134,14 @@ pub use integrations::{
 pub use invoicing::{
     BillBalance, BillReopenReason, CostObjectAmount, CostPoster, CostReversal, CreditLine,
     CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus, CreditNoteSummary,
-    DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue,
-    InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer, LandedCostLine,
-    LandedCosts, NoCostPoster, NoInvoicer, NoLandedCosts, NoSupplierBills, NoSupplierDebitNotes,
-    PayBill, PostCost, ReverseCost, SupplierBillApproved, SupplierBillId, SupplierBillLine,
-    SupplierBillLineId, SupplierBillReopened, SupplierBillStatus, SupplierBillVoided,
-    SupplierBills, SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
-    SupplierDebitNoteSettled, SupplierDebitNoteStatus, SupplierDebitNoteSummary,
-    SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine, UnallocateBill, VatCategory,
-    WriteOffAnswer,
+    DebitedLine, DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued,
+    InvoiceOverdue, InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
+    LandedCostLine, LandedCosts, NoCostPoster, NoInvoicer, NoLandedCosts, NoSupplierBills,
+    NoSupplierDebitNotes, PayBill, PostCost, ReverseCost, SupplierBillApproved, SupplierBillId,
+    SupplierBillLine, SupplierBillLineId, SupplierBillReopened, SupplierBillStatus,
+    SupplierBillVoided, SupplierBills, SupplierDebitNoteCancelled, SupplierDebitNoteId,
+    SupplierDebitNoteIssued, SupplierDebitNoteSettled, SupplierDebitNoteStatus,
+    SupplierDebitNoteSummary, SupplierDebitNotes, UnallocateBill, VatCategory, WriteOffAnswer,
 };
 pub use late_entries::{
     ApprovalWhy, Assessment, FiredRun, LateEntry, LateEntryDef, LateEntryLimits, LateEntryRecorded,
@@ -198,6 +199,10 @@ pub use voids::{
 };
 pub use wip::{NoUnbilledTime, UnbilledTime, WipSummary};
 
+pub use workforce::{
+    AbsenceCaseClosed, AbsenceCaseOpened, AffectedWork, EmployeeAbsconded, QualificationExpired,
+    QualificationExpiring, QualificationId,
+};
 /// The kernel's permissions (wl-kernel §6).
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,

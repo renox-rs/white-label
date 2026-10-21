@@ -1,0 +1,27 @@
+-- The lifecycle of a guarantee (02 Construction §4.6, §7.1 *Guarantee*,
+-- `CON.RUL.11`; BL-CON-09). Money is fils.
+-- Who holds the guarantee.
+ALTER TABLE "construction_guarantees" ADD COLUMN beneficiary TEXT NOT NULL DEFAULT '';
+-- The expiry date the extension task was made for: set when the task is
+-- made, reset by `extend`, so the next expiry gets its own task.
+ALTER TABLE "construction_guarantees" ADD COLUMN reminded_for TEXT;
+
+-- The advance paid to the project and what the invoiced IPAs recovered of it;
+-- the advance guarantee cannot go below the difference.
+ALTER TABLE "construction_projects" ADD COLUMN advance_paid INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "construction_projects" ADD COLUMN advance_recovered INTEGER NOT NULL DEFAULT 0;
+
+-- The bank documents of a guarantee: each transition keeps its own.
+CREATE TABLE "construction_guarantee_documents" (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guarantee_id INTEGER NOT NULL REFERENCES "construction_guarantees" (id),
+    -- The transition the document came with: `issue`, `reduce`, `extend` or
+    -- `release`.
+    transition TEXT NOT NULL,
+    -- The document, a reference.
+    reference TEXT NOT NULL,
+    created_at TEXT,
+    updated_at TEXT
+);
+
+CREATE INDEX "construction_guarantee_documents_guarantee" ON "construction_guarantee_documents" (guarantee_id);

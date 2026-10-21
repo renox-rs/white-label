@@ -4,13 +4,16 @@
 //! (it runs on every sign-up, seed and `users:admin`).
 
 use accounting::permissions as acc;
+use construction::permissions as con;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
+use wl_attendance::permissions as attendance;
 use wl_documents::permissions as documents;
 use wl_hr::permissions as hr;
+use wl_inventory::permissions as inventory;
 use wl_invoicing::permissions as invoices;
 use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
@@ -85,6 +88,29 @@ pub const BILLING: &str = acc::BILLING_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
+/// A site supervisor: marks attendance of the crews and people of their
+/// location and corrects it within the window (wl-attendance §6, `HRM.ACL.01`).
+pub const SUPERVISOR: &str = "supervisor";
+/// The storekeeper: receives deliveries at the stores of their site and
+/// records what was accepted and rejected (wl-inventory §6, `STK.ACL.04`).
+pub const STOREKEEPER: &str = "storekeeper";
+/// The procurement officer: sees purchase orders and approves an
+/// over-receipt at the locations in their scope (wl-inventory §6,
+/// `STK.ACL.04`).
+pub const PROCUREMENT: &str = "procurement";
+/// The procurement manager: told of a supplier review and of a request to
+/// change the preferred supplier of an item, and approves it when they are
+/// not the requester (wl-inventory §6, `STK.ACL.07`).
+pub const PROCUREMENT_MANAGER: &str = "procurement_manager";
+/// The project manager: runs a project, asks for its termination and settles
+/// its final account (02 Construction §3.1, `CON.ACL.15`).
+pub const PROJECT_MANAGER: &str = con::PROJECT_MANAGER_ROLE;
+/// The quantity surveyor (QS): records the client's certificates and the
+/// deductions on them (02 §3, `CON.ACL.14`).
+pub const QUANTITY_SURVEYOR: &str = con::QS_ROLE;
+/// The HSE officer: told of a midday break flag (`HRM.RUL.13`) and the
+/// responsible role of the ISO certificate (02 §7.2).
+pub const HSE_OFFICER: &str = "hse";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -191,8 +217,41 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LEADS_MANAGE,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
+            hr::EMPLOYEES_EXIT_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            attendance::VIEW,
+            attendance::MARK,
+            attendance::SELF_CHECK_IN,
+            attendance::REVIEW,
+            attendance::CORRECT,
+            attendance::WORK_LOCATIONS_MANAGE,
+            attendance::TIMESHEETS_SUBMIT,
+            attendance::TIMESHEETS_ADJUST,
+            attendance::TIMESHEETS_APPROVE,
+            attendance::TIMESHEETS_APPROVE_ON_BEHALF,
+            attendance::TIMESHEETS_REOPEN,
+            inventory::ITEMS_VIEW,
+            inventory::ITEMS_MANAGE,
+            inventory::LOCATIONS_MANAGE,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::PURCHASE_ORDERS_ISSUE,
+            inventory::GOODS_RECEIPTS_POST,
+            inventory::GOODS_RECEIPTS_REVERSE,
+            inventory::SUPPLIER_RETURNS_MANAGE,
+            inventory::LANDED_COSTS_POST,
+            inventory::ITEM_SUPPLIERS_MANAGE,
+            inventory::ITEM_SUPPLIERS_APPROVE,
+            con::PROJECTS_VIEW,
+            con::PROJECTS_MANAGE,
+            con::PROJECTS_TERMINATE,
+            con::PROJECTS_CANCEL,
+            con::PROJECTS_AWARD,
+            con::RETENTIONS_MANAGE,
+            con::GUARANTEES_MANAGE,
+            con::VARIATIONS_RECORD,
+            con::VARIATIONS_SUBMIT,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -465,6 +524,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             prp::LEASES_VIEW,
             prp::LEASES_CANCEL,
             prp::OWNER_STATEMENTS_PREPARE,
+            con::PROJECTS_VIEW,
+            con::RETENTIONS_MANAGE,
+            con::GUARANTEES_MANAGE,
             invoices::VIEW,
             invoices::CREDIT,
             invoices::VAT_VIEW,
@@ -545,8 +607,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::BUDGETS_APPROVE,
             invoices::CASHFLOW_VIEW,
             invoices::DRAWINGS_APPROVE,
-            // The second person for `waive` and `reopen` (`HRM.ACL.10`).
+            // The second person for `waive` and `reopen` (`HRM.ACL.10`), and
+            // the MD who approves the non-standard exits (`HRM.ACL.07`).
             hr::EMPLOYEES_VIEW,
+            hr::EMPLOYEES_EXIT_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
         ],
@@ -558,6 +622,74 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            attendance::VIEW,
+            attendance::REVIEW,
+            // HR clears a permit flag by correcting or accepting it, and is
+            // never the supervisor who marked the record (`HRM.ACL.09`).
+            attendance::CORRECT,
+        ],
+    ),
+    (
+        SUPERVISOR,
+        &[attendance::VIEW, attendance::MARK, attendance::CORRECT],
+    ),
+    (
+        STOREKEEPER,
+        &[
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::GOODS_RECEIPTS_POST,
+        ],
+    ),
+    (
+        PROCUREMENT,
+        &[
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::PURCHASE_ORDERS_ISSUE,
+            inventory::SUPPLIER_RETURNS_MANAGE,
+            inventory::LANDED_COSTS_POST,
+            inventory::ITEM_SUPPLIERS_MANAGE,
+        ],
+    ),
+    (
+        PROJECT_MANAGER,
+        &[
+            con::PROJECTS_VIEW,
+            con::PROJECTS_MANAGE,
+            con::PROJECTS_TERMINATE,
+            con::PROJECTS_AWARD,
+            con::IPAS_SUBMIT,
+            con::IPAS_DEDUCTIONS_DECIDE,
+            con::VARIATIONS_SUBMIT,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            attendance::VIEW,
+            attendance::REVIEW,
+        ],
+    ),
+    (
+        QUANTITY_SURVEYOR,
+        &[
+            con::PROJECTS_VIEW,
+            con::IPAS_CERTIFY,
+            con::IPAS_DEDUCTIONS_RECORD,
+            con::VARIATIONS_RECORD,
+            con::RETENTIONS_MANAGE,
+        ],
+    ),
+    (
+        PROCUREMENT_MANAGER,
+        &[
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::PURCHASE_ORDERS_ISSUE,
+            inventory::ITEM_SUPPLIERS_MANAGE,
+            inventory::ITEM_SUPPLIERS_APPROVE,
         ],
     ),
     (
@@ -601,6 +733,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LEADS_MANAGE,
         ],
     ),
+    (HSE_OFFICER, &[attendance::VIEW]),
     (MEMBER, &[]),
 ];
 

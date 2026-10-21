@@ -790,6 +790,13 @@ import row results reference any `Subject`.
 - **Strategy traits** in the capability registry, with no-op fallbacks: `Invoicer`,
   `PaymentRecorder`, `Notifier`, `DocumentStore`, `TaskCreator`, `ApproverResolver` (how a
   step's role maps to people, e.g. "manager of the requester's branch").
+- **Stopping a context** (02 `terminate`, `CON.ACL.15`): `ContextClosure` (the vertical says the
+  last working day of a project; `wl-attendance` refuses a later day), `AttendanceReview`
+  (`wl-attendance` flags attendance recorded after that day for the reviewer and says whether a
+  context has any attendance), `ScopeStock` (`wl-inventory` lists the open purchase orders of a
+  scope, cancels its purchase requests with no order, opens the count of its stores and says
+  whether a goods receipt exists) and `TaskCreator::cancel_from_source` (`wl-ticketing` cancels the
+  snags and defects of a record with a reason). Each has a no-op fallback.
 - **Rule catalogue extension:** a module registers new triggers, conditions or actions. A
   client cannot.
 - **Events:** every kernel event above. Client extension crates listen to them.

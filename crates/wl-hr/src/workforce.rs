@@ -3,12 +3,13 @@
 //! every listed employee, the profile of one (role, scopes, account, manager,
 //! leave) and the employee of a user.
 
-use renox::chrono::Days;
+use renox::chrono::{Days, NaiveDate};
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::today;
-use wl_kernel::workforce::{EmployeeId, StaffProfile, Workforce, WorkforceFuture};
+use wl_kernel::workforce::{EmployeeId, LeaveCalendar, StaffProfile, Workforce, WorkforceFuture};
 
+use crate::absence::AbsenceReport;
 use crate::assignees;
 use crate::employee::{Employee, EmployeeScope, EmployeeStatus};
 use crate::leave::{LeaveRequest, LeaveStatus};
@@ -16,6 +17,29 @@ use crate::leave::{LeaveRequest, LeaveStatus};
 /// The workforce of the HR module.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Staff;
+
+impl LeaveCalendar for Staff {
+    fn approved_leave<'a>(
+        &'a self,
+        db: &'a Db,
+        employee: EmployeeId,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> WorkforceFuture<'a, Vec<(NaiveDate, NaiveDate)>> {
+        Box::pin(async move {
+            Ok(LeaveRequest::query()
+                .where_(LeaveRequest::EMPLOYEE_ID.eq(employee.0))
+                .where_(LeaveRequest::STATUS.is_in([LeaveStatus::Approved, LeaveStatus::Completed]))
+                .order_by(LeaveRequest::FROM_DATE)
+                .get(db)
+                .await?
+                .into_iter()
+                .filter(|leave| leave.days() > 0 && leave.from_date <= to && leave.to_date >= from)
+                .map(|leave| (leave.from_date, leave.to_date))
+                .collect())
+        })
+    }
+}
 
 impl Workforce for Staff {
     fn employees_in<'a>(
@@ -103,6 +127,25 @@ impl Workforce for Staff {
                 returns_on,
                 managers,
             }))
+        })
+    }
+
+    fn access_disabled<'a>(&'a self, db: &'a Db, user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            let employees = Employee::query()
+                .where_(Employee::USER_ID.eq(user_id))
+                .get(db)
+                .await?;
+            for employee in employees {
+                if employee.status == EmployeeStatus::Absconded {
+                    return Ok(true);
+                }
+                let report = AbsenceReport::valid_for(db, employee.id).await?;
+                if report.is_some_and(|report| report.access_disabled_at.is_some()) {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         })
     }
 

@@ -1,0 +1,11 @@
+ALTER TABLE "wl_inventory_supplier_return_lines" DROP COLUMN covered_milli;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN wastage_fils;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN debit_note_id;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN credited_at;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN credited_by;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN credit_reason;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN credit_basis;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN kept_goods;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN cancelled_at;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN cancelled_by;
+ALTER TABLE "wl_inventory_supplier_returns" DROP COLUMN cancel_reason;

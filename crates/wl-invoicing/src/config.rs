@@ -84,6 +84,30 @@ pub enum DuplicateKey {
     ContractPeriodAmount,
 }
 
+/// When a supplier debit note reduces the input VAT of the VAT summary
+/// (§7 *input VAT timing*, `⚠ open: accountant (A-11)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum InputVatTiming {
+    /// On the issue date of the debit note (the default).
+    #[default]
+    OnIssue,
+    /// On the date of the supplier's tax credit note.
+    OnTaxCreditNote,
+}
+
+/// What billing does with extra hours of an adjustment timesheet whose
+/// original hours are already invoiced (§5.2 step 5, wl-attendance §7
+/// *Adjustment of already-invoiced hours (+)*).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum AdjustmentPlus {
+    /// An extra usage line on the next usage invoice (the default).
+    #[default]
+    ExtraLine,
+    /// A separate draft usage invoice at once, with only the adjustment
+    /// line.
+    SeparateInvoice,
+}
+
 /// The e-invoicing settings of one legal entity (`FIN.INV.01`, §7).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EInvoiceEntity {
@@ -214,6 +238,20 @@ pub struct InvoicingConfig {
     /// drafts the system may issue without a user (`Invoicer::issue` with no
     /// user). Empty by default: drafts are reviewed first.
     pub auto_issue_sources: Vec<String>,
+    /// When a supplier debit note reduces the input VAT of the VAT summary.
+    pub debit_note_vat_timing: InputVatTiming,
+    /// Whether the supplier's tax credit note must be recorded before a
+    /// supplier debit note settles (default on).
+    pub tax_credit_note_required: bool,
+    /// The role told when `FIN.RUL.17` drafts a debit note from a return
+    /// (default `accountant`).
+    pub debit_note_notify_role: String,
+    /// What extra hours of an adjustment on invoiced hours become (default
+    /// an extra line on the next usage invoice).
+    pub adjustment_plus: AdjustmentPlus,
+    /// The role whose task opens when an adjustment's credit is refused
+    /// (default `coordinator`).
+    pub adjustment_task_role: String,
     /// Whether `FIN.RUL.06` suspends a subscription after its last retry or
     /// reminder (§7 *suspension enabled*): on. 04 turns it off.
     pub subscription_suspension: bool,
@@ -294,6 +332,11 @@ impl Default for InvoicingConfig {
             einvoice_task_hours: 24,
             cash_accounts: Vec::new(),
             auto_issue_sources: Vec::new(),
+            debit_note_vat_timing: InputVatTiming::OnIssue,
+            tax_credit_note_required: true,
+            debit_note_notify_role: "accountant".to_owned(),
+            adjustment_plus: AdjustmentPlus::ExtraLine,
+            adjustment_task_role: "coordinator".to_owned(),
             subscription_suspension: true,
             subscription_retry_days: vec![1, 3, 7],
             subscription_pause_allowance_days: 0,
@@ -425,6 +468,11 @@ mod tests {
         assert_eq!(config.duplicate_keys, [DuplicateKey::SupplierInvoiceNumber]);
         assert_eq!(config.duplicate_notify_role, "accountant");
         assert!(config.auto_issue_sources.is_empty());
+        assert_eq!(config.debit_note_vat_timing, InputVatTiming::OnIssue);
+        assert!(config.tax_credit_note_required);
+        assert_eq!(config.debit_note_notify_role, "accountant");
+        assert_eq!(config.adjustment_plus, AdjustmentPlus::ExtraLine);
+        assert_eq!(config.adjustment_task_role, "coordinator");
         assert!(config.subscription_suspension);
         assert_eq!(config.subscription_retry_days, [1, 3, 7]);
         assert_eq!(config.subscription_pause_allowance_days, 0);

@@ -13,6 +13,7 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 wl-kernel = { path = "../crates/wl-kernel" }
 property = { path = "../apps/property" }
+construction = { path = "../apps/construction" }
 accounting = { path = "../apps/accounting" }
 wl-parties = { path = "../crates/wl-parties" }
 wl-documents = { path = "../crates/wl-documents" }
@@ -22,4 +23,6 @@ wl-ticketing = { path = "../crates/wl-ticketing" }
 wl-payments = { path = "../crates/wl-payments" }
 wl-sales = { path = "../crates/wl-sales" }
 wl-hr = { path = "../crates/wl-hr" }
+wl-attendance = { path = "../crates/wl-attendance" }
+wl-inventory = { path = "../crates/wl-inventory" }
 wl-portal = { path = "../crates/wl-portal" }

@@ -31,6 +31,9 @@ pub struct BillLineDraft {
     pub cost_object: Option<Subject>,
     /// The purchase order line the goods were ordered on, if any.
     pub po_line: Option<Subject>,
+    /// The wl-inventory landed cost a freight, duty or clearing line is
+    /// coded to, if any. Such a line posts no cost to a cost object.
+    pub landed_cost: Option<Subject>,
     /// The cost code, which budget vs actual maps to a budget category
     /// (`FIN.BUD.01`).
     pub cost_code: Option<String>,
@@ -48,6 +51,7 @@ impl BillLineDraft {
             service_end_date: None,
             cost_object: None,
             po_line: None,
+            landed_cost: None,
             cost_code: None,
         }
     }
@@ -88,6 +92,13 @@ impl BillLineDraft {
         self
     }
 
+    /// Coded to a wl-inventory landed cost (a freight, duty or clearing
+    /// line): its cost is not posted to a cost object.
+    pub fn landed_cost(mut self, landed_cost: Subject) -> Self {
+        self.landed_cost = Some(landed_cost);
+        self
+    }
+
     /// Why this line (number `position`, from 1) cannot be saved, if it
     /// cannot.
     pub fn problem(&self, position: usize) -> Option<String> {
@@ -99,6 +110,13 @@ impl BillLineDraft {
         }
         if self.unit_price < 0 {
             return Some(format!("line {position} has a negative price"));
+        }
+        // The cost of a landed cost line goes to the receipts, never also to
+        // a cost object: it would be counted twice.
+        if self.landed_cost.is_some() && self.cost_object.is_some() {
+            return Some(format!(
+                "line {position} is coded to a landed cost and to a cost object"
+            ));
         }
         None
     }
@@ -147,6 +165,10 @@ pub struct BillLine {
     pub po_line_type: Option<String>,
     /// The id of the purchase order line the goods were ordered on.
     pub po_line_id: Option<i64>,
+    /// The type of the landed cost the line is coded to, if any.
+    pub landed_cost_type: Option<String>,
+    /// The id of the landed cost the line is coded to, if any.
+    pub landed_cost_id: Option<i64>,
     /// The cost code, which budget vs actual maps to a budget category.
     pub cost_code: Option<String>,
     /// When the row was created.
@@ -183,6 +205,8 @@ impl BillLine {
             cost_id: draft.cost_object.as_ref().map(|c| c.subject_id),
             po_line_type: draft.po_line.as_ref().map(|c| c.subject_type.clone()),
             po_line_id: draft.po_line.as_ref().map(|c| c.subject_id),
+            landed_cost_type: draft.landed_cost.as_ref().map(|c| c.subject_type.clone()),
+            landed_cost_id: draft.landed_cost.as_ref().map(|c| c.subject_id),
             cost_code: draft.cost_code.clone(),
             ..Default::default()
         };
@@ -226,6 +250,17 @@ impl BillLine {
     /// The cost object the line is coded to, if any.
     pub fn cost_object(&self) -> Option<Subject> {
         match (&self.cost_type, self.cost_id) {
+            (Some(subject_type), Some(subject_id)) => Some(Subject {
+                subject_type: subject_type.clone(),
+                subject_id,
+            }),
+            _ => None,
+        }
+    }
+
+    /// The landed cost the line is coded to, if any.
+    pub fn landed_cost(&self) -> Option<Subject> {
+        match (&self.landed_cost_type, self.landed_cost_id) {
             (Some(subject_type), Some(subject_id)) => Some(Subject {
                 subject_type: subject_type.clone(),
                 subject_id,
@@ -292,6 +327,33 @@ mod tests {
             line.po_line(),
             Some(Subject::new("procurement.po_line", 12))
         );
+    }
+
+    #[test]
+    fn a_line_keeps_the_landed_cost_it_is_coded_to() {
+        let draft = BillLineDraft::new("Freight", 40_000, VatCategory::Standard)
+            .landed_cost(Subject::new("inventory.landed_cost", 12));
+        let line = BillLine::from_draft(1, 2, &draft, Some(1_000_000));
+        assert_eq!(
+            line.landed_cost(),
+            Some(Subject::new("inventory.landed_cost", 12))
+        );
+        assert_eq!(line.cost_object(), None);
+        let plain = BillLine::from_draft(
+            1,
+            1,
+            &BillLineDraft::new("Pump", 100, VatCategory::Standard),
+            None,
+        );
+        assert_eq!(plain.landed_cost(), None);
+    }
+
+    #[test]
+    fn a_landed_cost_line_has_no_cost_object() {
+        let both = BillLineDraft::new("Freight", 40_000, VatCategory::Standard)
+            .landed_cost(Subject::new("inventory.landed_cost", 12))
+            .cost_object(Subject::new("property.unit", 4));
+        assert!(both.problem(2).unwrap().contains("landed cost"));
     }
 
     #[test]

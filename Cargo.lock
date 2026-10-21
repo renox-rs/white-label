@@ -413,6 +413,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
+name = "construction"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-attendance",
+ "wl-inventory",
+ "wl-kernel",
+]
+
+[[package]]
 name = "cookie"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -927,14 +939,17 @@ name = "host"
 version = "0.1.0"
 dependencies = [
  "accounting",
+ "construction",
  "http-body-util",
  "property",
  "renox",
  "serde",
  "sha2 0.11.1",
  "tower",
+ "wl-attendance",
  "wl-documents",
  "wl-hr",
+ "wl-inventory",
  "wl-invoicing",
  "wl-kernel",
  "wl-notify",
@@ -3460,6 +3475,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
+name = "wl-attendance"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
+]
+
+[[package]]
 name = "wl-documents"
 version = "0.1.0"
 dependencies = [
@@ -3478,6 +3503,18 @@ dependencies = [
  "serde",
  "tempfile",
  "wl-kernel",
+]
+
+[[package]]
+name = "wl-inventory"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-invoicing",
+ "wl-kernel",
+ "wl-parties",
 ]
 
 [[package]]

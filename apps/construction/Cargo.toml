@@ -1,0 +1,21 @@
+[package]
+name = "construction"
+description = "Construction: the vertical app for fit-out and construction subcontractors (projects, termination, final account)."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real attendance and inventory modules in the integration tests: the
+# attendance a terminated project refuses, and the purchasing and the store it
+# stops.
+wl-attendance = { path = "../../crates/wl-attendance" }
+wl-inventory = { path = "../../crates/wl-inventory" }

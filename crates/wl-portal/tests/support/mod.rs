@@ -19,6 +19,7 @@ use wl_kernel::block_guard::{
     provide_block_guard,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
+use wl_kernel::workforce::{Workforce, WorkforceFuture, provide_workforce};
 use wl_portal::{AccessGrant, NewGrant, PortalAccess, PortalAction, PortalGuard, WlPortal};
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -90,6 +91,33 @@ impl BlockGuard for Blocks {
                 }],
                 "Compliance",
             )))
+        })
+    }
+}
+
+/// The users whose employee was reported as absconded: the workforce switches
+/// their portal access off, as `wl-hr` does from the approved report.
+#[derive(Clone, Default)]
+pub struct Absent(Arc<Mutex<BTreeSet<i64>>>);
+
+impl Absent {
+    /// The portal access of `user` is switched off from now on.
+    pub fn disable(&self, user: i64) {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(user);
+    }
+}
+
+impl Workforce for Absent {
+    fn access_disabled<'a>(&'a self, _db: &'a Db, user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .contains(&user_id))
         })
     }
 }
@@ -227,6 +255,7 @@ struct Harness {
     blocks: Blocks,
     done: Done,
     notices: Recording,
+    absent: Absent,
 }
 
 impl Module for Harness {
@@ -239,6 +268,7 @@ impl Module for Harness {
             provide_block_guard(app, self.blocks.clone());
         }
         provide_notifier(app, self.notices.clone());
+        provide_workforce(app, self.absent.clone());
         app.provide(self.done.clone());
     }
 
@@ -259,6 +289,8 @@ pub struct Booted {
     pub blocks: Blocks,
     /// The actions that went through.
     pub done: Done,
+    /// The users whose portal access is switched off.
+    pub absent: Absent,
     /// What the notifier was asked for.
     pub notices: Recording,
     /// Keeps the views directory alive.
@@ -344,7 +376,12 @@ pub async fn boot() -> Booted {
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
-    let (blocks, done, notices) = (Blocks::default(), Done::default(), Recording::default());
+    let (blocks, done, notices, absent) = (
+        Blocks::default(),
+        Done::default(),
+        Recording::default(),
+        Absent::default(),
+    );
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -354,6 +391,7 @@ pub async fn boot() -> Booted {
             blocks: blocks.clone(),
             done: done.clone(),
             notices: notices.clone(),
+            absent: absent.clone(),
         });
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
@@ -361,6 +399,7 @@ pub async fn boot() -> Booted {
         app,
         blocks,
         done,
+        absent,
         notices,
         _views: views,
     }
@@ -388,7 +427,12 @@ pub async fn boot_real() -> Booted {
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
-    let (blocks, done, notices) = (Blocks::default(), Done::default(), Recording::default());
+    let (blocks, done, notices, absent) = (
+        Blocks::default(),
+        Done::default(),
+        Recording::default(),
+        Absent::default(),
+    );
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -399,6 +443,7 @@ pub async fn boot_real() -> Booted {
             blocks: blocks.clone(),
             done: done.clone(),
             notices: notices.clone(),
+            absent: absent.clone(),
         });
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -415,6 +460,7 @@ pub async fn boot_real() -> Booted {
         app,
         blocks,
         done,
+        absent,
         notices,
         _views: views,
     }

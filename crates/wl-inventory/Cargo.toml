@@ -1,0 +1,20 @@
+[package]
+name = "wl-inventory"
+description = "Inventory: items, locations, purchase orders and goods receipts that take accepted quantity into stock."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real invoicing module, to follow a dispatched return into its debit note.
+wl-invoicing = { path = "../wl-invoicing" }
+# The real parties module: its directory and block guard.
+wl-parties = { path = "../wl-parties" }

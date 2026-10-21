@@ -138,6 +138,14 @@ const TEXTS: &[(&str, &str)] = &[
         "Every line of a bill against a contract needs a service date.",
     ),
     (
+        "wl_invoicing.supplier_bill.problem.landed_unknown",
+        "There is no such landed cost.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.landed_entity",
+        "The landed cost belongs to another legal entity than the one that receives the bill.",
+    ),
+    (
         "wl_invoicing.supplier_bill.problem.not_held",
         "The bill is held, as a possible duplicate or for work after the contract end; it is not matched.",
     ),
@@ -860,6 +868,30 @@ const TEXTS: &[(&str, &str)] = &[
         "Reversal of {{ amount }} refused: {{ reason }}",
     ),
     (
+        "wl_invoicing.task.record_tax_credit_note",
+        "Record the supplier's tax credit note for debit note {{ number }} ({{ amount }}) so that it can be settled.",
+    ),
+    (
+        "wl_invoicing.task.adjustment_credit_refused",
+        "Adjustment {{ adjustment }} takes back {{ amount }} on invoice {{ number }}, which can no longer be credited by that much: {{ reason }} Agree the correction with the client.",
+    ),
+    (
+        "wl_invoicing.tasks.kind.adjustment_credit_refused",
+        "Adjustment credit refused",
+    ),
+    (
+        "wl_invoicing.usage_adjustment.credit_reason",
+        "Hours corrected by adjustment timesheet {{ adjustment }} ({{ origin }}) of {{ adjusts }}: {{ hours }} h",
+    ),
+    (
+        "wl_invoicing.usage_adjustment.extra_line",
+        "{{ description }}: {{ hours }} h more, adjustment timesheet {{ adjustment }} of {{ adjusts }}",
+    ),
+    (
+        "wl_invoicing.tasks.kind.record_tax_credit_note",
+        "Record the tax credit note",
+    ),
+    (
         "wl_invoicing.task.statement_balance_stale",
         "The balance of bank account {{ account }} of {{ entity }} is missing or old (latest: {{ as_of }}, limit {{ days }} days). Import a statement or enter a balance.",
     ),
@@ -1228,6 +1260,82 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_invoicing.debit_note.errors.over_bill_line",
         "A line is above what is left on its bill line.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.period_locked",
+        "Today is in a locked VAT period of the receiving entity. Ask the accountant to date the debit note in an open period.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.creator",
+        "FIN.ACL.17: the creator of a manual debit note cannot issue it. Another person must.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.no_tax_credit_note",
+        "Record the supplier's tax credit note before the debit note is settled.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.not_checked",
+        "The debit note could not be checked; use the settle or cancel action of the debit note.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.not_fully_applied",
+        "The debit note is not fully applied. Set the debit balance off on a bill, wait for the supplier's refund, or accept the difference with a reason.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.difference_reason",
+        "Give the reason for accepting the difference.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.refunded",
+        "The supplier has already paid part of this debit note back, so it cannot be cancelled.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.settle_state",
+        "Only an issued debit note can be settled, set off or refunded.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.set_off_bill",
+        "A debit balance is set off on an approved or partially paid bill of the same supplier and receiving entity.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.set_off_amount",
+        "The amount must be more than 0 and within the debit balance and the bill's open balance.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.tcn_number",
+        "Give the number on the supplier's tax credit note.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.tcn_twice",
+        "The supplier's tax credit note is already recorded.",
+    ),
+    (
+        "wl_invoicing.debit_note_cancelled.subject",
+        "Debit note {{ number }} withdrawn",
+    ),
+    (
+        "wl_invoicing.debit_note_cancelled.body",
+        "We have withdrawn debit note {{ number }} of {{ amount }} against your bill {{ bill }}: {{ reason }}",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.not_found",
+        "The supplier debit note was not found.",
+    ),
+    (
+        "wl_invoicing.debit_note_issued.subject",
+        "Debit note {{ number }}",
+    ),
+    (
+        "wl_invoicing.debit_note_issued.body",
+        "We have issued debit note {{ number }} for {{ amount }} against your bill {{ bill }}. Please send us your tax credit note for it.",
+    ),
+    (
+        "wl_invoicing.debit_note_drafted.subject",
+        "Debit note drafted for a return",
+    ),
+    (
+        "wl_invoicing.debit_note_drafted.body",
+        "A debit note of {{ amount }} was drafted for the goods returned to {{ supplier }} ({{ state }}). Check it and issue it: {{ link }}",
     ),
     ("wl_invoicing.budget.title", "Company budgets"),
     ("wl_invoicing.budget.empty", "No company budgets yet"),

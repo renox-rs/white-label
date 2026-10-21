@@ -44,8 +44,13 @@ mod credit_note_machine;
 pub mod credit_note_movement;
 mod credit_note_pages;
 pub mod credit_notes;
+pub mod debit_note_contract;
+mod debit_note_events;
 pub mod debit_note_line;
 mod debit_note_machine;
+pub mod debit_note_movement;
+pub mod debit_note_settle;
+pub mod debit_note_vat;
 pub mod debit_notes;
 pub mod dispute;
 pub mod dispute_credit;
@@ -74,6 +79,7 @@ pub mod owner;
 pub mod owner_drawings;
 pub mod pages;
 pub mod payables;
+pub mod period_locks;
 pub mod policy;
 pub mod recover;
 pub mod recovery;
@@ -94,6 +100,8 @@ mod task_pages;
 mod texts;
 pub mod unallocate;
 pub mod unallocation;
+pub mod usage;
+pub mod usage_adjustment;
 pub mod vat;
 pub mod vat_adjustment;
 pub mod vat_pages;
@@ -120,13 +128,14 @@ pub use budget_contract::Budgets;
 pub use budget_reminder::BudgetReminder;
 pub use budget_variance::BudgetWarning;
 pub use config::{
-    DuplicateKey, EInvoiceEntity, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError,
-    WriteOffReason,
+    AdjustmentPlus, DuplicateKey, EInvoiceEntity, InputVatTiming, InvoicingConfig, ReasonProblem,
+    ReliefMonths, SettingError, WriteOffReason,
 };
 pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
 pub use credit_note_movement::{CreditNoteMovement, MovementKind};
 pub use debit_note_line::{DebitNoteLine, PricedAt};
+pub use debit_note_movement::{DebitMovementKind, DebitNoteMovement};
 pub use dispute::{Dispute, DisputeVia};
 pub use drawings::BillRecoding;
 pub use drawings_machine::{DrawingApproval, DrawingStatus};
@@ -144,6 +153,8 @@ pub use supplier_bill::{BillDraft, SupplierBill, SupplierBillStatus};
 pub use supplier_debit_note::{DebitNoteOrigin, DebitNoteReason, SupplierDebitNote};
 pub use task::{InvoicingTask, TaskKind, TaskStatus};
 pub use unallocation::{Unallocation, UnallocationOutcome};
+pub use usage::{UsageDraft, UsageRecord};
+pub use usage_adjustment::{AdjustmentOutcome, UsageAdjustment};
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
 pub use vat_adjustment::{AdjustmentKind, AdjustmentStatus, VatAdjustment};
 pub use vat_period::TaxPeriod;
@@ -725,6 +736,41 @@ impl WlInvoicing {
         self
     }
 
+    /// When a supplier debit note reduces input VAT: on its issue (default)
+    /// or on the supplier's tax credit note (§7).
+    pub fn debit_note_vat_timing(mut self, timing: InputVatTiming) -> Self {
+        self.config.debit_note_vat_timing = timing;
+        self
+    }
+
+    /// Whether the supplier's tax credit note must be recorded before a
+    /// debit note settles (default on, §7).
+    pub fn tax_credit_note_required(mut self, required: bool) -> Self {
+        self.config.tax_credit_note_required = required;
+        self
+    }
+
+    /// The role told when a debit note is drafted from a return (default
+    /// `accountant`).
+    pub fn debit_note_notify_role(mut self, role: &str) -> Self {
+        self.config.debit_note_notify_role = role.to_owned();
+        self
+    }
+
+    /// What extra hours of an adjustment timesheet on invoiced hours become
+    /// (default an extra line on the next usage invoice).
+    pub fn adjustment_plus(mut self, plus: AdjustmentPlus) -> Self {
+        self.config.adjustment_plus = plus;
+        self
+    }
+
+    /// The role whose task opens when the credit of an adjustment is refused
+    /// (default `coordinator`).
+    pub fn adjustment_task_role(mut self, role: &str) -> Self {
+        self.config.adjustment_task_role = role.to_owned();
+        self
+    }
+
     /// Whether `FIN.RUL.06` suspends a subscription after its last retry
     /// (default on; 04 turns it off).
     pub fn subscription_suspension(mut self, on: bool) -> Self {
@@ -894,6 +940,7 @@ impl Module for WlInvoicing {
             .model::<BillLine>()
             .model::<SupplierDebitNote>()
             .model::<DebitNoteLine>()
+            .model::<DebitNoteMovement>()
             .model::<duplicates::BillException>()
             .model::<CreditNote>()
             .model::<CreditNoteLine>()
@@ -916,6 +963,8 @@ impl Module for WlInvoicing {
             .model::<BudgetReminder>()
             .model::<BudgetWarning>()
             .model::<DrawingApproval>()
+            .model::<UsageRecord>()
+            .model::<UsageAdjustment>()
             .model::<BillRecoding>()
             .model::<Subscription>()
             .model::<SubscriptionPause>()
@@ -961,12 +1010,25 @@ impl Module for WlInvoicing {
         bill_machine::register();
         // The supplier debit note machine, as `invoicing.supplier_debit_note`.
         debit_note_machine::register();
+        // `FIN.RUL.17`, the cost reversal and the supplier notice of `issue`,
+        // and the debit notes other modules draft and read through the kernel.
+        debit_note_events::register_types();
+        debit_note_events::register(app);
+        wl_kernel::invoicing::provide_supplier_debit_notes(app, debit_note_contract::DebitNotes);
+        // Which dates are in a filed VAT period, for the modules that post
+        // to a past date.
+        wl_kernel::invoicing::provide_period_locks(
+            app,
+            period_locks::VatPeriodLocks::new(self.config.clone()),
+        );
         // The kernel runs `write_off_approved` by name; `FIN.ACL.15`.
         policy::register(&self.config);
         // The settings the services read (`config_of`).
         app.provide(self.config.clone());
         // `InvoiceIssued`, `InvoicePaid` and `InvoiceOverdue` after a commit.
         events::register(app);
+        // Hours corrected after billing (§5.2 step 5).
+        usage_adjustment::register(app);
         // The customer notice and `InvoiceWrittenOff` after a write-off.
         write_off::register(app);
         // `db:seed`: the demo invoices, as drafts.

@@ -20,6 +20,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -255,6 +256,19 @@ pub trait PartyDirectory: Send + Sync + 'static {
 
     /// The party's lifecycle state.
     fn status<'a>(&'a self, db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>>;
+
+    /// Whether the party has the role `role_key` (`subcontractor`, `vendor`...)
+    /// on `on_date`: the role started on or before it and has not ended
+    /// before it. The default says no.
+    fn has_role<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _role_key: &'a str,
+        _on_date: NaiveDate,
+    ) -> PartyFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 
     /// How to reach the party: its language, preferred channel and e-mail
     /// and mobile contact points, for `wl-notify`. The default knows none.

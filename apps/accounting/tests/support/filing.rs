@@ -106,7 +106,7 @@ impl Workforce for QualificationBook {
 impl Qualifications for QualificationBook {
     fn qualification_valid<'a>(
         &'a self,
-        _db: &'a Db,
+        _state: &'a AppState,
         employee: EmployeeId,
         kind: &'a str,
         on_date: NaiveDate,
