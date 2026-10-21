@@ -69,6 +69,15 @@ async fn touched_at(w: &World, shipment: &Shipment, when: &str) {
         .unwrap();
 }
 
+/// The clock of the app reaches `when` (the scans of these tests lie in
+/// November; a request made earlier would be older than the scan and the
+/// final re-check of the approval would see it as activity since).
+fn clock_reaches(w: &World, when: &str) {
+    let secs = (at(when) - renox::db::now()).num_seconds().max(0);
+    w.app
+        .travel(std::time::Duration::from_secs(secs.unsigned_abs() + 3_600));
+}
+
 /// A shipment `at_hub` whose last scan was `when`.
 async fn at_hub(w: &World, when: &str) -> Shipment {
     let booked = w.book_as(&w.dispatcher, SOUQ, "ORD-1").await;
@@ -159,6 +168,7 @@ async fn after_seven_days_the_task_asks_for_mark_lost_and_another_manager_approv
     let w = boot().await;
     let boss = manager(&w, "Mona").await;
     let shipment = at_hub(&w, LAST_SCAN).await;
+    clock_reaches(&w, NOV_9);
     trace::run(w.state(), at(NOV_5)).await.unwrap();
 
     let run = trace::run(w.state(), at(NOV_9)).await.unwrap();
@@ -239,6 +249,7 @@ async fn after_seven_days_the_task_asks_for_mark_lost_and_another_manager_approv
 async fn the_requester_cannot_approve_and_the_company_admin_can() {
     let w = boot().await;
     let shipment = at_hub(&w, LAST_SCAN).await;
+    clock_reaches(&w, NOV_9);
 
     // Refused requests.
     ask(&w, &w.dispatcher, &shipment, "", "business")
