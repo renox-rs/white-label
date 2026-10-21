@@ -4,12 +4,16 @@
 
 mod support;
 
+use std::time::Duration;
+
 use renox::prelude::*;
 use wl_kernel::scheduling::Initiator;
 use wl_scheduling::service::{self, Actor, NewBooking};
 use wl_scheduling::{Booking, BookingStatus, Refusal, Resource, ServiceType};
 
 use support::{Booked, Messages, PATIENT, boot, in_hours};
+
+const HOUR: Duration = Duration::from_secs(3600);
 
 fn reassign_path(id: i64) -> String {
     format!("/scheduling/bookings/{id}/reassign")
@@ -172,6 +176,55 @@ async fn the_message_names_the_new_resource_and_cancelling_from_it_refunds() {
         t.events.cancelled.all()[0].initiated_by,
         Initiator::Business
     );
+}
+
+/// #168: a booking 3 hours away, inside the 24 hour cancellation cut-off, is
+/// reassigned; the party cancels from the link of the message that was sent
+/// (the ordinary link would be refused at this hour) and is recorded as the
+/// business, with the deposit refunded in full.
+#[renox::test]
+async fn cancelling_from_the_message_of_a_reassign_works_after_the_cut_off() {
+    let t = boot().await;
+    let (a, b, service) = two_doctors(&t).await;
+    let booking = t.booking(&service, &[&a], in_hours(3)).await;
+
+    let ordinary = wl_scheduling::links::cancel_url(t.state(), booking.id, HOUR).unwrap();
+    t.app
+        .htmx()
+        .post(&t.path_of(&ordinary), &[("x", "y")])
+        .await
+        .assert_status(422);
+    assert_eq!(t.reload(booking.id).await.status, BookingStatus::Booked);
+
+    service::reassign(
+        t.state(),
+        booking.id,
+        a.id,
+        b.id,
+        "resource_unavailable",
+        Actor::staff(1),
+        support::now(),
+    )
+    .await
+    .expect("Dr B is free and eligible");
+    let sent = t.messages.sent();
+    assert_eq!(sent.len(), 1);
+    let link = sent[0].data["cancel_url"]
+        .as_str()
+        .expect("a cancel link")
+        .to_owned();
+
+    t.app
+        .htmx()
+        .post(&t.path_of(&link), &[("x", "y")])
+        .await
+        .assert_ok();
+    let done = t.reload(booking.id).await;
+    assert_eq!(done.status, BookingStatus::Cancelled);
+    assert_eq!(done.cancel_code.as_deref(), Some("resource_unavailable"));
+    assert_eq!(done.cancel_initiated_by.as_deref(), Some("business"));
+    assert_eq!(done.deposit_outcome.as_deref(), Some("refunded"));
+    assert_eq!(t.refunds.amounts(), [20_000]);
 }
 
 /// A resource that is busy then, or that is not eligible then, is refused;
