@@ -9,6 +9,7 @@ use clinics::seed::REQUIRED_QUALIFICATIONS;
 use host::roles::RECEPTIONIST;
 use renox::prelude::*;
 use support::{clinics_booted, person};
+use wl_kernel::approvals::{ApprovalPolicy, Step};
 use wl_kernel::documents::{BlockMode, OverrideMode, guard};
 use wl_scheduling::ServiceType;
 
@@ -32,6 +33,42 @@ async fn the_service_types_need_the_licence_and_the_privileges() {
     }
     let again = host::clinics_seed::install(app.state()).await.unwrap();
     assert_eq!(again.total(), 0);
+}
+
+/// A payer bill's write-off above the limit is the owner's to approve
+/// (`FIN.ACL.14`): the Clinics client builds wl-invoicing with the owner and the
+/// company administrators as approvers, so a new database stores that. A
+/// database that was made with wl-invoicing's own default keeps its row
+/// through `wl:install`; the clinics install brings that row to the owner and
+/// leaves a row an admin changed as it is.
+#[renox::test]
+async fn the_write_off_of_a_payer_bill_is_the_owners_to_approve() {
+    let app = clinics_booted().await;
+    let owner = Step::one_of(["owner", "admin"]);
+    let stored = || async {
+        ApprovalPolicy::query()
+            .where_(ApprovalPolicy::ACTION.eq("invoicing.payer_write_off"))
+            .get(app.db())
+            .await
+            .unwrap()
+    };
+    let policies = stored().await;
+    assert_eq!(policies.len(), 1);
+    assert_eq!(policies[0].steps.0, [owner.clone()]);
+
+    // Made by an earlier build: the module's default, with the manager's permission.
+    let mut policy = policies[0].clone();
+    policy.steps = renox::db::Json(vec![Step::one_of(["admin"]).or_permission("payer_bills.write_off")]);
+    policy.save(app.db()).await.unwrap();
+    host::clinics_seed::install(app.state()).await.unwrap();
+    assert_eq!(stored().await[0].steps.0, [owner.clone()]);
+
+    // An admin's own choice is kept.
+    let mut policy = stored().await.remove(0);
+    policy.steps = renox::db::Json(vec![Step::one_of(["accountant"])]);
+    policy.save(app.db()).await.unwrap();
+    host::clinics_seed::install(app.state()).await.unwrap();
+    assert_eq!(stored().await[0].steps.0, [Step::one_of(["accountant"])]);
 }
 
 /// The licence and the privileges block `booking.book`, `booking.check_in`

@@ -17,6 +17,7 @@
 
 use wl_kernel::approvals::PolicyDefault;
 
+use crate::config::InvoicingConfig;
 use crate::payer_closing::WRITE_OFF_ACTION;
 use crate::payer_remittance::ACTION;
 use crate::permissions;
@@ -36,11 +37,18 @@ pub fn money_policy() -> PolicyDefault {
 }
 
 /// The `FIN.ACL.14` default policy.
-pub fn write_off_policy() -> PolicyDefault {
-    PolicyDefault::new(WRITE_OFF_ACTION)
-        .amount_above(0)
-        .step_or_permission([APPROVER_ROLE], permissions::PAYER_BILLS_WRITE_OFF)
-        .expiry_hours(Some(EXPIRY_HOURS))
+///
+/// With `payer_write_off_approvers` set on the module (an app that keeps the
+/// decision to its owner) the one step is decided by those roles alone;
+/// otherwise by an `admin` or a holder of `payer_bills.write_off`.
+pub fn write_off_policy(config: &InvoicingConfig) -> PolicyDefault {
+    let policy = PolicyDefault::new(WRITE_OFF_ACTION).amount_above(0);
+    let policy = if config.payer_write_off_approvers.is_empty() {
+        policy.step_or_permission([APPROVER_ROLE], permissions::PAYER_BILLS_WRITE_OFF)
+    } else {
+        policy.step(config.payer_write_off_approvers.iter().cloned())
+    };
+    policy.expiry_hours(Some(EXPIRY_HOURS))
 }
 
 #[cfg(test)]
@@ -53,7 +61,20 @@ mod tests {
             .amount_above(0)
             .step_or_permission(["admin"], "payer_bills.write_off")
             .expiry_hours(Some(168));
-        assert_eq!(write_off_policy(), expected);
+        assert_eq!(write_off_policy(&InvoicingConfig::default()), expected);
+    }
+
+    #[test]
+    fn an_app_may_keep_the_decision_to_its_own_roles() {
+        let config = InvoicingConfig {
+            payer_write_off_approvers: vec!["owner".to_owned(), "admin".to_owned()],
+            ..InvoicingConfig::default()
+        };
+        let expected = PolicyDefault::new("invoicing.payer_write_off")
+            .amount_above(0)
+            .step(["owner", "admin"])
+            .expiry_hours(Some(168));
+        assert_eq!(write_off_policy(&config), expected);
     }
 
     #[test]

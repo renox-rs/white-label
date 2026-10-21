@@ -37,14 +37,16 @@
 use std::sync::Arc;
 
 use clinics::card_requests::CARD_KIND;
-use clinics::permissions::{CLINIC_MANAGER_ROLE, RECEPTIONIST_ROLE};
+use clinics::permissions::{CLINIC_MANAGER_ROLE, OWNER_ROLE, RECEPTIONIST_ROLE};
 use clinics::policy::POLICY_SUBJECT_TYPE;
 use clinics::seed::{
     self, LICENCE_KIND, LOOK_AHEAD_DAYS, PRIVILEGES_KIND, REMINDER_DAYS, REQUIRED_QUALIFICATIONS,
 };
+use renox::db::Json;
 use renox::prelude::*;
 use wl_documents::{KindSeed, Sensitivity, register_kind};
-use wl_kernel::Manifest;
+use wl_kernel::approvals::{ApprovalPolicy, Step};
+use wl_kernel::{COMPANY_ADMIN_ROLE, Manifest};
 use wl_kernel::documents::{BlockMode, OverrideMode};
 use wl_kernel::workforce::EMPLOYEE_SUBJECT_TYPE;
 use wl_scheduling::eligibility::{GUARDED_BOOK, GUARDED_CHECK_IN};
@@ -180,7 +182,38 @@ pub async fn install(state: &AppState) -> Result<Installed> {
         service.save(&state.db).await?;
         installed.service_types += 1;
     }
+    keep_write_off_with_the_owner(state).await?;
     Ok(installed)
+}
+
+/// The approval action of a payer bill's write-off above the limit.
+const WRITE_OFF_ACTION: &str = "invoicing.payer_write_off";
+
+/// Brings a stored write-off policy that is still wl-invoicing's default (a
+/// database made before the module was built with the owner's approver roles:
+/// `install` keeps the rows that exist) to the owner and the company
+/// administrators. A policy an admin changed is left as it is. Returns
+/// whether a row changed.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn keep_write_off_with_the_owner(state: &AppState) -> Result<bool> {
+    let owner = Step::one_of([OWNER_ROLE, COMPANY_ADMIN_ROLE]);
+    let default = Step::one_of(["admin"]).or_permission("payer_bills.write_off");
+    let mut changed = false;
+    for mut policy in ApprovalPolicy::query()
+        .where_(ApprovalPolicy::ACTION.eq(WRITE_OFF_ACTION))
+        .get(&state.db)
+        .await?
+    {
+        if policy.steps.0 == [default.clone()] {
+            policy.steps = Json(vec![owner.clone()]);
+            policy.save(&state.db).await?;
+            changed = true;
+        }
+    }
+    Ok(changed)
 }
 
 /// The module that seeds the Clinics client's values: the seeder runs after

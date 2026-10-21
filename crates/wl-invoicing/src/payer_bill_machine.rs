@@ -27,6 +27,7 @@ use wl_kernel::machines::SubjectMachine;
 use wl_kernel::payer_bills::PayerBillStatus;
 use wl_kernel::voids;
 
+use crate::config::InvoicingConfig;
 use crate::payer_bill::{PayerBill, SUBJECT_TYPE};
 use crate::payer_closing;
 use crate::payer_issue;
@@ -82,7 +83,7 @@ pub const VOID_ACTION: &str = "invoicing.payer_bill_void";
 
 /// Registers the machine as the subject `invoicing.payer_bill` and for
 /// `rnx state:diagram PayerBill`.
-pub(crate) fn register() {
+pub(crate) fn register(config: &InvoicingConfig) {
     // The overpayment of a remittance and a recoupment share one approval
     // action (`FIN.ACL.16`); a recoupment from a reversed payment is the
     // system's and is not gated.
@@ -108,7 +109,7 @@ pub(crate) fn register() {
     machine.register();
     renox::state_machine::register::<PayerBill>();
     payer_policy::money_policy().register();
-    payer_policy::write_off_policy().register();
+    payer_policy::write_off_policy(config).register();
     // A payer bill created in error is voided through the kernel (`PLT.ACL.09`):
     // never once a remittance was recorded. Declared after the machine, so
     // the void policy takes its action key.

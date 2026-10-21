@@ -178,7 +178,10 @@ pub async fn boot_real() -> Real {
         .module(Auth::new())
         .module(Permissions)
         .module(renox::audit::Audit)
-        .module(WlInvoicing::new())
+        .module(WlInvoicing::new().payer_write_off_approvers(&[
+            clinics::permissions::OWNER_ROLE,
+            wl_kernel::COMPANY_ADMIN_ROLE,
+        ]))
         .module(clinics::Clinics)
         .module(Harness {
             tasks: tasks.clone(),

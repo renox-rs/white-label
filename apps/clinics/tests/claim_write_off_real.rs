@@ -11,7 +11,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_invoicing::PayerAgreement;
-use wl_kernel::approvals;
+use wl_kernel::approvals::{self, ApprovalPolicy, Step};
 use wl_kernel::payer_bills::{PayerBillStatus, payer_bills};
 
 use clinics::claim_closing::{self, Closed};
@@ -477,4 +477,37 @@ async fn a_denied_claim_is_written_off_by_the_clinic_manager_alone() {
         .await
         .is_err()
     );
+}
+
+/// The write-off above the limit is the owner's: the policy stored for
+/// `invoicing.payer_write_off` is wl-invoicing's own default, built with the
+/// approver roles this app set on the module, not a second default registered
+/// over it, so it does not depend on the order the modules boot in.
+#[renox::test]
+async fn the_stored_policy_of_a_payer_bill_write_off_names_the_owner_alone() {
+    let t = boot_real().await;
+    let policy = ApprovalPolicy::for_action(
+        t.db(),
+        "invoicing.payer_write_off",
+        &renox::serde_json::json!({ "amount": 150_000 }),
+    )
+    .await
+    .unwrap()
+    .expect("a write-off above the limit needs an approval");
+    assert_eq!(
+        policy.steps.0,
+        [Step::one_of([
+            clinics::permissions::OWNER_ROLE,
+            wl_kernel::COMPANY_ADMIN_ROLE
+        ])]
+    );
+    assert!(policy.sod, "never the requester");
+    assert_eq!(policy.expiry_hours, Some(168));
+    // Exactly one policy: the module's own default, with the app's roles.
+    let all = ApprovalPolicy::query()
+        .where_(ApprovalPolicy::ACTION.eq("invoicing.payer_write_off"))
+        .get(t.db())
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 1);
 }

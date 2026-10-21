@@ -803,6 +803,19 @@ impl WlInvoicing {
         self
     }
 
+    /// The roles whose holders alone approve the write-off of a payer bill
+    /// above the payer agreement's limit (`FIN.ACL.14`). By default any
+    /// `admin` or holder of `payer_bills.write_off` may. The setting is read
+    /// when this module registers its own default policy, so it belongs to the
+    /// app that builds the module: no other default is registered over it, and
+    /// the order modules register in does not matter. A database that already
+    /// holds the policy keeps its row (policies changed in the admin are kept):
+    /// change the stored `invoicing.payer_write_off` policy there.
+    pub fn payer_write_off_approvers(mut self, roles: &[&str]) -> Self {
+        self.config.payer_write_off_approvers = roles.iter().map(|r| (*r).to_owned()).collect();
+        self
+    }
+
     /// What extra hours of an adjustment timesheet on invoiced hours become
     /// (default an extra line on the next usage invoice).
     pub fn adjustment_plus(mut self, plus: AdjustmentPlus) -> Self {
@@ -1069,7 +1082,7 @@ impl Module for WlInvoicing {
         debit_note_machine::register();
         // The payer bill machine, as `invoicing.payer_bill`, and what follows
         // its committed transitions (tax documents, tasks, events).
-        payer_bill_machine::register();
+        payer_bill_machine::register(&self.config);
         payer_bill_machine::register_events(app);
         // Verticals make and drive payer bills through the kernel (§6).
         wl_kernel::payer_bills::provide_payer_bills(app, PayerBilling);

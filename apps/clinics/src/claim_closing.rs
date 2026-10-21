@@ -37,15 +37,13 @@
 //!   payer agreement's own (the two are kept equal) and its refusal comes
 //!   back unchanged.
 //! - **The owner approves**, not the clinic manager: the approval policy of
-//!   the write-off is the owner's alone in this app (`register_policy`), so a
+//!   the write-off is the owner's alone in this app (the host sets `payer_write_off_approvers` on its `WlInvoicing`), so a
 //!   second clinic manager cannot approve above the limit.
 
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
-use wl_kernel::COMPANY_ADMIN_ROLE;
-use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::payer_bills::{PayerAnswer, PayerBillClosed, PayerBillOutcome, payer_bills};
 
@@ -53,16 +51,12 @@ use crate::claim::{Claim, ClaimStatus};
 use crate::claim_machine::{ClaimInput, WRITE_OFF, WRITE_OFF_APPROVED, clean};
 use crate::claims::{attempt_deadline, contract_of, dry_run};
 use crate::contract::PayerContract;
-use crate::permissions::{self, OWNER_ROLE};
+use crate::permissions;
 use crate::texts::english;
 use crate::visit::Visit;
 
 /// What `held_kind` says while a write-off waits for the owner.
 pub const HELD_WRITE_OFF: &str = "write_off";
-
-/// The approval action of the payer bill's write-off (`FIN.ACL.14`), as
-/// wl-invoicing names it (`invoicing.payer_write_off`).
-pub const WRITE_OFF_ACTION: &str = "invoicing.payer_write_off";
 
 /// What closing a claim came to.
 #[derive(Debug, Clone, PartialEq)]
@@ -305,22 +299,17 @@ pub fn closable(claim: &Claim, input: &ClaimInput) -> bool {
         && !claim.is_held()
 }
 
-/// The owner's alone decides a write-off above the limit: replaces the
-/// default approval policy of the payer bill's write-off (any holder of
-/// `payer_bills.write_off`, the clinic manager among them) by one step for the
-/// owner role and the company administrators.
-pub(crate) fn register_policy() {
-    PolicyDefault::new(WRITE_OFF_ACTION)
-        .amount_above(0)
-        .step([OWNER_ROLE, COMPANY_ADMIN_ROLE])
-        .expiry_hours(Some(168))
-        .register();
-}
-
-/// Registers the owner's approval policy and the listener that follows the
-/// payer bill's close.
+/// Registers the listener that follows the payer bill's close.
+///
+/// Decision: the approval policy of the write-off is not registered here. The
+/// policy registry is process-wide and the last registration of an action
+/// wins, so a second default over wl-invoicing's would depend on the order the
+/// modules boot in. The owner-only approver is a setting of the app's
+/// `WlInvoicing` module (`payer_write_off_approvers`, set where the host
+/// builds it), which registers its own default once. A database that already
+/// holds the `invoicing.payer_write_off` policy keeps that row: the admin
+/// changes its step to the owner and company administrators there.
 pub(crate) fn register(app: &mut Registry) {
-    register_policy();
     app.listen(|event: PayerBillClosed, state: AppState| async move {
         on_bill_closed(&state, &event).await
     });
