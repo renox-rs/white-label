@@ -88,7 +88,7 @@ async fn a_recall_holds_the_lot_at_every_location_in_transit_too() {
     let recalls = t.all_recalls().await;
     assert_eq!(recalls.len(), 1);
     let opened = &recalls[0];
-    assert_eq!(opened.status, RecallStatus::Open);
+    assert_eq!(opened.status, RecallStatus::Traced);
     assert_eq!(opened.source, RecallSource::Supplier);
     assert_eq!(opened.opened_by, Some(manager.id));
     assert!(
@@ -426,7 +426,7 @@ async fn a_recall_of_lots_that_are_used_up_still_opens() {
     .assert_ok();
 
     let opened = t.all_recalls().await.remove(0);
-    assert_eq!(opened.status, RecallStatus::Open);
+    assert_eq!(opened.status, RecallStatus::Traced);
     let hold = t.all_holds().await.remove(0);
     assert!(t.hold_lines(&hold).await.is_empty());
     assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Closed);

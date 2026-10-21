@@ -30,8 +30,10 @@ use wl_kernel::documents::{
 };
 use wl_kernel::inventory::{
     GoodsReceived, LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
-    PreferredSupplierChanged, PurchaseOrderRevised, RecallOpened, StockHoldClosed, StockHoldPlaced,
-    StockNegative, SupplierReturnCredited, SupplierReturnDispatched, SupplierScoreBelowThreshold,
+    PreferredSupplierChanged, PurchaseOrderRevised, RecallClosed, RecallOpened, RecallTraced,
+    StockHoldClosed, StockHoldPlaced, StockNegative, SupplierReturnCredited,
+    SupplierReturnDispatched, SupplierScoreBelowThreshold, TraceFuture, TraceParty,
+    TracePartyResolver,
 };
 use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
@@ -96,6 +98,61 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
             Ok(())
         }
     });
+}
+
+/// A vertical's `TracePartyResolver`: the party of each subject the test sets,
+/// and the subject types whose sales are walk-in.
+#[derive(Clone, Default)]
+pub struct TraceParties {
+    parties: Arc<Mutex<std::collections::BTreeMap<Subject, PartyId>>>,
+    walk_in: Arc<Mutex<Vec<String>>>,
+    delivery: Arc<Mutex<std::collections::BTreeMap<Subject, String>>>,
+}
+
+impl TraceParties {
+    /// `party` is behind `subject`.
+    pub fn set(&self, subject: &Subject, party: PartyId) {
+        self.parties.lock().unwrap().insert(subject.clone(), party);
+    }
+
+    /// Every subject of `subject_type` is a walk-in sale.
+    pub fn walk_in(&self, subject_type: &str) {
+        self.walk_in.lock().unwrap().push(subject_type.to_owned());
+    }
+
+    /// The delivery of `subject` is `status`.
+    pub fn delivery(&self, subject: &Subject, status: &str) {
+        self.delivery
+            .lock()
+            .unwrap()
+            .insert(subject.clone(), status.to_owned());
+    }
+}
+
+impl TracePartyResolver for TraceParties {
+    fn party<'a>(
+        &'a self,
+        _state: &'a AppState,
+        subject: &'a Subject,
+    ) -> TraceFuture<'a, TraceParty> {
+        Box::pin(async move {
+            if self.walk_in.lock().unwrap().contains(&subject.subject_type) {
+                return Ok(TraceParty::WalkIn);
+            }
+            Ok(match self.parties.lock().unwrap().get(subject) {
+                Some(party) => TraceParty::Party(*party),
+                None => TraceParty::Unknown,
+            })
+        })
+    }
+
+    fn delivery_status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        subject: &'a Subject,
+    ) -> TraceFuture<'a, Option<String>> {
+        Box::pin(async move { Ok(self.delivery.lock().unwrap().get(subject).cloned()) })
+    }
 }
 
 /// A `TaskCreator` that records the tickets it opens; a ticket opened with
@@ -538,6 +595,9 @@ struct Fakes {
     released: Arc<Mutex<Vec<LotReleased>>>,
     discarded: Arc<Mutex<Vec<LotDiscarded>>>,
     recalls: Arc<Mutex<Vec<RecallOpened>>>,
+    traced: Arc<Mutex<Vec<RecallTraced>>>,
+    recall_closed: Arc<Mutex<Vec<RecallClosed>>>,
+    trace_parties: TraceParties,
 }
 
 impl Module for Fakes {
@@ -572,6 +632,9 @@ impl Module for Fakes {
         record(app, &self.released);
         record(app, &self.discarded);
         record(app, &self.recalls);
+        record(app, &self.traced);
+        record(app, &self.recall_closed);
+        wl_kernel::inventory::provide_trace_party_resolver(app, self.trace_parties.clone());
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
@@ -628,6 +691,12 @@ pub struct Booted {
     pub discarded: Recorded<LotDiscarded>,
     /// Every `RecallOpened`.
     pub recalls: Recorded<RecallOpened>,
+    /// Every `RecallTraced`.
+    pub traced: Recorded<RecallTraced>,
+    /// Every `RecallClosed`.
+    pub recall_closed: Recorded<RecallClosed>,
+    /// The parties behind the subjects of a trace.
+    pub trace_parties: TraceParties,
     /// The days the clock was moved forward.
     clock_days: std::sync::atomic::AtomicI64,
 }
@@ -726,6 +795,136 @@ impl Booted {
     pub async fn recall_as(&self, by: &User, form: &[(&str, &str)]) -> TestResponse {
         self.app.acting_as(by);
         self.app.htmx().post("/recalls", form).await
+    }
+
+    /// `POST /recalls/{id}/trace` as `by`.
+    pub async fn trace_as(&self, by: &User, recall: &wl_inventory::Recall) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/recalls/{}/trace", recall.id), &[])
+            .await
+    }
+
+    /// `POST /recalls/{id}/notices` as `by`: the `template` to the lines
+    /// `lines`.
+    pub async fn notices_as(
+        &self,
+        by: &User,
+        recall: &wl_inventory::Recall,
+        template: &str,
+        lines: &[&wl_inventory::RecallLine],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        let ids: Vec<String> = lines.iter().map(|line| line.id.to_string()).collect();
+        let ids = ids.join(", ");
+        self.app
+            .htmx()
+            .post(
+                &format!("/recalls/{}/notices", recall.id),
+                &[("template", template), ("lines", ids.as_str())],
+            )
+            .await
+    }
+
+    /// `POST /recall-lines/{id}/waive` as `by` with `reason`.
+    pub async fn waive_as(
+        &self,
+        by: &User,
+        line: &wl_inventory::RecallLine,
+        reason: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                &format!("/recall-lines/{}/waive", line.id),
+                &[("reason", reason)],
+            )
+            .await
+    }
+
+    /// `POST /recalls/{id}/close` as `by`.
+    pub async fn close_recall_as(&self, by: &User, recall: &wl_inventory::Recall) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/recalls/{}/close", recall.id), &[])
+            .await
+    }
+
+    /// The affected lines of `recall`, oldest first.
+    pub async fn recall_lines(&self, recall: &wl_inventory::Recall) -> Vec<wl_inventory::RecallLine> {
+        wl_inventory::recall_line::lines_of(self.db(), recall.id)
+            .await
+            .unwrap()
+    }
+
+    /// The recall as stored now.
+    pub async fn recall_now(&self, recall: &wl_inventory::Recall) -> wl_inventory::Recall {
+        wl_inventory::Recall::find_or_404(self.db(), recall.id)
+            .await
+            .unwrap()
+    }
+
+    /// A movement of `movement_type` of `quantity_milli` of `item` (of `lot`)
+    /// at `at`, caused by `source` and charged to `cost_object`: from
+    /// `from`, to `to`. A fixture of what other modules would post.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn movement(
+        &self,
+        movement_type: wl_inventory::MovementType,
+        item: &Item,
+        lot: Option<&Lot>,
+        from: Option<&Location>,
+        to: Option<&Location>,
+        quantity_milli: i64,
+        source: &Subject,
+        cost_object: Option<&Subject>,
+        at: DateTime,
+        theoretical: bool,
+    ) {
+        let mut moved = StockMovement::moving(
+            movement_type,
+            item.id,
+            lot.map(|l| l.id),
+            from.map(|l| l.id),
+            to.map(|l| l.id),
+            quantity_milli,
+            0,
+            0,
+            source,
+            None,
+        );
+        moved.moved_at = at;
+        moved.theoretical = theoretical;
+        moved.cost_object_type = cost_object.map(|s| s.subject_type.clone());
+        moved.cost_object_id = cost_object.map(|s| s.subject_id);
+        moved.save(self.db()).await.unwrap();
+    }
+
+    /// Tells the recall module a notice of `line` could not be delivered:
+    /// the `MessageGaveUp` of wl-notify.
+    pub async fn gave_up(&self, line: &wl_inventory::RecallLine, template: &str) {
+        self.state()
+            .emit(wl_kernel::notify::MessageGaveUp {
+                message: MessageId(1),
+                type_key: format!("inventory.recall_notice_{template}"),
+                subject: line.subject(),
+                subject_label: None,
+                recipient: wl_kernel::notify::NotifyRecipient::Party {
+                    id: PartyId(line.party_id.unwrap_or_default()),
+                },
+                gave_up_at: renox::db::now(),
+                contact_point: None,
+                channels_tried: Vec::new(),
+                statutory: false,
+                reactions: Vec::new(),
+                alternative_of: None,
+                contact_of: None,
+            })
+            .await
+            .unwrap();
     }
 
     /// The recalls opened, oldest first.
@@ -1449,6 +1648,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let released = Arc::new(Mutex::new(Vec::new()));
     let discarded = Arc::new(Mutex::new(Vec::new()));
     let recalls = Arc::new(Mutex::new(Vec::new()));
+    let traced = Arc::new(Mutex::new(Vec::new()));
+    let recall_closed = Arc::new(Mutex::new(Vec::new()));
+    let trace_parties = TraceParties::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1489,6 +1691,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         released: released.clone(),
         discarded: discarded.clone(),
         recalls: recalls.clone(),
+        traced: traced.clone(),
+        recall_closed: recall_closed.clone(),
+        trace_parties: trace_parties.clone(),
     });
     let client = if with_invoicing {
         CLIENT_WITH_INVOICING
@@ -1607,6 +1812,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         released: Recorded(released),
         discarded: Recorded(discarded),
         recalls: Recorded(recalls),
+        traced: Recorded(traced),
+        recall_closed: Recorded(recall_closed),
+        trace_parties,
         clock_days: std::sync::atomic::AtomicI64::new(0),
     }
 }
