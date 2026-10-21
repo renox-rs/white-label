@@ -143,13 +143,11 @@ async fn the_renewed_permit_resumes_the_deployment_through_the_real_chain() {
     let back = reload(&app, d.id).await;
     assert_eq!(back.status, DeploymentStatus::Active);
     assert_eq!(back.resumed_on, Some(day(0)));
-    assert_eq!(
-        ManpowerRequest::find_or_404(app.db(), cover.id)
-            .await
-            .unwrap()
-            .status,
-        RequestStatus::Cancelled
-    );
+    let cancelled = ManpowerRequest::find_or_404(app.db(), cover.id)
+        .await
+        .unwrap();
+    assert_eq!(cancelled.status, RequestStatus::Cancelled);
+    assert_eq!(cancelled.cancel_reason.as_deref(), Some("worker returned"));
     // The cover starts today: the client is also told it is not found yet
     // (`MPW.RUL.13`, BL-MPW-16), which this test leaves aside.
     let told: Vec<_> = support::messages_to_party(&app, "manpower.client_notice", a.client)

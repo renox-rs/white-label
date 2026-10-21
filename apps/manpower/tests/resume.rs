@@ -262,6 +262,7 @@ async fn an_open_cover_request_is_cancelled_when_the_worker_returns() {
     assert_eq!(w.deployment().await.status, DeploymentStatus::Active);
     let cancelled = w.t.reload_request(cover.id).await;
     assert_eq!(cancelled.status, RequestStatus::Cancelled);
+    assert_eq!(cancelled.cancel_reason.as_deref(), Some("worker returned"));
 }
 
 /// AC4 and AC5: the cover request is `partially_filled` (headcount 2) with an
@@ -319,10 +320,9 @@ async fn an_active_cover_runs_to_its_end_date_and_a_filled_request_stays() {
     w.accept("work_permit", Some(date(2028, 11, 20))).await;
 
     assert_eq!(w.deployment().await.status, DeploymentStatus::Active);
-    assert_eq!(
-        w.t.reload_request(cover.id).await.status,
-        RequestStatus::Cancelled
-    );
+    let cancelled = w.t.reload_request(cover.id).await;
+    assert_eq!(cancelled.status, RequestStatus::Cancelled);
+    assert_eq!(cancelled.cancel_reason.as_deref(), Some("worker returned"));
     let c = w.t.reload_deployment(active.id).await;
     assert_eq!(c.status, DeploymentStatus::Active, "C keeps running");
     assert_eq!(c.end_date, Some(date(2027, 12, 15)));
