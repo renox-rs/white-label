@@ -41,9 +41,25 @@ impl Invoiced {
 
 /// The invoices drafted and issued so far.
 #[derive(Clone, Default)]
-pub struct Books(Arc<Mutex<Vec<Invoiced>>>);
+pub struct Books(Arc<Mutex<Vec<Invoiced>>>, Arc<Mutex<Vec<(i64, i64)>>>);
 
 impl Books {
+    /// A payment of `amount` fils was allocated to invoice `id`.
+    pub fn paid(&self, id: i64, amount: i64) {
+        self.1.lock().unwrap().push((id, amount));
+    }
+
+    /// What invoice `id` was paid so far, in fils.
+    pub fn paid_of(&self, id: i64) -> i64 {
+        self.1
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(invoice, _)| *invoice == id)
+            .map(|(_, amount)| amount)
+            .sum()
+    }
+
     /// Every invoice, oldest first.
     pub fn all(&self) -> Vec<Invoiced> {
         self.0.lock().unwrap().clone()
@@ -85,7 +101,7 @@ impl Invoicer for Books {
                 legal_entity_id: None,
                 currency: i.draft.currency.clone(),
                 gross_total: i.gross(),
-                balance: i.gross(),
+                balance: i.gross() - self.paid_of(i.id),
                 due_date: None,
                 disputed: false,
                 chasing_paused_until: None,
@@ -507,21 +523,24 @@ impl PackageLedger for Packages {
 /// An allocation of a payment the clinic asked for.
 pub type Allocated = (PaymentId, AllocationTarget, i64);
 
-/// The payment recorder with deposits held for bookings: it answers
+/// The payment recorder with deposits held for bookings (what it allocates to
+/// an invoice lowers the invoice's balance in [`Books`]): it answers
 /// `payments_for` with them, records the allocations and delegates the
 /// refunds to wl-scheduling's own stand-in.
 #[derive(Clone, Default)]
 pub struct Deposits {
     refunds: Refunds,
+    books: Books,
     held: Arc<Mutex<Vec<(Subject, PaymentSummary)>>>,
     allocated: Arc<Mutex<Vec<Allocated>>>,
 }
 
 impl Deposits {
     /// Over the refunds stand-in.
-    pub fn new(refunds: Refunds) -> Self {
+    pub fn new(refunds: Refunds, books: Books) -> Self {
         Deposits {
             refunds,
+            books,
             ..Deposits::default()
         }
     }
@@ -582,6 +601,9 @@ impl PaymentRecorder for Deposits {
                 summary.unallocated -= amount;
                 summary.allocated += amount;
             }
+        }
+        if let AllocationTarget::Invoice(invoice) = target {
+            self.books.paid(invoice.0, amount);
         }
         self.allocated
             .lock()

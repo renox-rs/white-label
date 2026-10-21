@@ -9,6 +9,7 @@ mod support;
 
 use clinics::{ChargeLine, VisitStatus};
 use support::day;
+use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, invoicer};
 use support::desk::{PAYER, desk};
 use wl_scheduling::BookingStatus;
 
@@ -71,7 +72,16 @@ async fn a_delivered_service_is_billed_and_the_balance_is_due() {
     let invoice = &d.t.books.all()[0];
     assert_eq!(invoice.gross(), 30_000);
     assert_eq!(d.t.deposits.allocated_total(), 20_000);
-    assert_eq!(invoice.gross() - d.t.deposits.allocated_total(), 10_000);
+    // What is due is read from the issued invoice itself.
+    let issued = invoicer(d.t.state())
+        .find(d.t.db(), InvoiceId(invoice.id))
+        .await
+        .unwrap()
+        .expect("the invoice exists");
+    assert_eq!(issued.status, InvoiceStatus::Issued);
+    assert_eq!(issued.gross_total, 30_000);
+    assert_eq!(issued.balance, 10_000, "AED 100.00 is due from the patient");
+    assert_eq!(d.visit(visit.id).await.invoice_id, Some(invoice.id));
     assert!(d.t.refunds.asked().is_empty(), "no refund, no forfeit");
     let done = d.t.booking(booking.id).await;
     assert_eq!(done.deposit_forfeited, 0);

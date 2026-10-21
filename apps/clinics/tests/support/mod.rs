@@ -404,8 +404,8 @@ async fn boot_with(real_notify: bool, stock: bool) -> Clinic {
     std::fs::write(&path, LAYOUT).unwrap();
     let events = Events::default();
     let refunds = Refunds::default();
-    let deposits = Deposits::new(refunds.clone());
     let books = Books::default();
+    let deposits = Deposits::new(refunds.clone(), books.clone());
     let claims = Claims::default();
     let packages = Packages::default();
     let messages = Messages::default();
