@@ -664,6 +664,9 @@ impl Clinic {
                 service.required_qualifications = clinics::seed::REQUIRED_QUALIFICATIONS.to_owned();
                 service.check_in_required = true;
                 service.track_in_progress = true;
+                // 05 section 7.1: after a walk-out the deposit remainder is
+                // refunded, never forfeited.
+                service.walk_out_forfeits = false;
                 service.save(self.db()).await.unwrap();
                 service
             }
@@ -772,6 +775,9 @@ impl Clinic {
                 service.required_qualifications = clinics::seed::REQUIRED_QUALIFICATIONS.to_owned();
                 service.check_in_required = true;
                 service.track_in_progress = true;
+                // 05 section 7.1: after a walk-out the deposit remainder is
+                // refunded, never forfeited.
+                service.walk_out_forfeits = false;
                 service.deposit_amount = 10_000;
                 service.deposit_forfeit_hours = 24;
                 service.cancel_cutoff_hours = 2;
