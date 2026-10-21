@@ -153,6 +153,34 @@ async fn a_pending_issue_that_posted_in_time_creates_no_task() {
     assert_eq!(ShortageAlert::query().count(t.db()).await.unwrap(), 0);
 }
 
+/// The task opened after H hours is resolved when the shortage clears later:
+/// stock arrives and the pending issue posts.
+#[renox::test]
+async fn the_task_is_resolved_when_the_shortage_clears_after_it_was_raised() {
+    let t = boot().await;
+    let _clerk = t.clerk("Cass").await;
+    let _manager = t.user_with("Mia", "stock_manager").await;
+    let item = t.item("GAUZE").await;
+    let branch = t.named_location("BRANCH-1", "Branch 1").await;
+    t.consume(&item, &branch, 3_000, &visit(1)).await;
+    wait(&t, 24, 0);
+    t.app.run_scheduled(TASK).await.unwrap();
+    assert_eq!(t.tickets.opened().len(), 1);
+    assert!(t.tickets.resolved().is_empty());
+
+    receive_later(&t, &item, &branch, 10_000).await;
+    t.app.run_scheduled(TASK).await.unwrap();
+
+    let resolved = t.tickets.resolved();
+    assert_eq!(resolved.len(), 1, "{resolved:?}");
+    assert_eq!(ShortageAlert::query().count(t.db()).await.unwrap(), 0);
+    // Nothing more is opened or sent on the next run.
+    wait(&t, 1, 0);
+    t.app.run_scheduled(TASK).await.unwrap();
+    assert_eq!(t.tickets.opened().len(), 1);
+    assert_eq!(told(&t, OVERDUE_NOTICE).len(), 1);
+}
+
 /// The storekeeper is told once an hour per item and location, not once per
 /// consumption; another item at the location is told on its own.
 #[renox::test]

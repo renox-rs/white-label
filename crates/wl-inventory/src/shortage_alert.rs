@@ -8,7 +8,7 @@
 //!   (a shortage that began less than an hour ago is told once, not once per
 //!   consumption).
 //! - The hourly [`TASK`] looks at every item and location that is still
-//!   short, a pending issue still `open` or a balance below zero. After H
+//!   short, that is, with a pending issue still `open`. After H
 //!   hours (default 24, [`crate::InventoryConfig::pending_alert_hours`]) it
 //!   opens one task for the storekeeper to count or clear (one open task per
 //!   item and location) and tells the manager, the holders of `stock.approve`
@@ -17,7 +17,13 @@
 //!   balance is back) is forgotten, and its task is resolved: nothing is
 //!   created for a shortage that ended before H hours.
 //!
-//! Decisions: the storekeeper is whoever holds `stock.adjust` in the
+//! Decisions: only a pending issue starts and keeps an alert. A balance below
+//! zero cannot arise yet: a location blocks negative stock, and the policy
+//! that lets automatic consumption go below zero (`allow_consumption`) is
+//! BL-STK-19, which will emit [`StockNegative`] without a pending issue
+//! ([`on_negative`] already starts the alert for such an event) and extend
+//! [`still_short`] with the balance check at the same time. Until then the
+//! balance branch would be dead code, so it is not here. The storekeeper is whoever holds `stock.adjust` in the
 //! location's scope and the manager whoever holds `stock.approve`; the task
 //! goes to the first storekeeper; the hours count from when the oldest open
 //! pending issue was recorded.
@@ -30,7 +36,6 @@ use wl_kernel::inventory::{ITEM_SUBJECT_TYPE, StockNegative};
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY};
 
-use crate::balance::on_hand_at;
 use crate::config_of;
 use crate::item::{Item, quantity_text};
 use crate::location::Location;
@@ -127,15 +132,14 @@ async fn holders(db: &Db, permission: &str, location: &Location) -> Result<Vec<i
 }
 
 /// Whether `item_id` is still short at `location_id`: a pending issue is
-/// `open` or the balance is below zero.
+/// `open` (see the module docs for the balance below zero).
 async fn still_short(db: &Db, item_id: i64, location_id: i64) -> Result<bool> {
-    let pending = PendingIssue::query()
+    PendingIssue::query()
         .where_(PendingIssue::ITEM_ID.eq(item_id))
         .where_(PendingIssue::LOCATION_ID.eq(location_id))
         .where_(PendingIssue::STATUS.eq(PendingStatus::Open))
         .exists(db)
-        .await?;
-    Ok(pending || on_hand_at(db, item_id, location_id, None).await? < 0)
+        .await
 }
 
 /// `STK.RUL.06` when a pending issue is recorded: tells the storekeeper of
