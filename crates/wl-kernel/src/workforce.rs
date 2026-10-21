@@ -19,7 +19,10 @@
 //! are announced with [`PayrollRunReturned`] (a run sent back to draft) and
 //! [`PayrollLinesFailed`] (the bank rejected a SIF file, or lines of it) and
 //! [`PayrollRunPaid`] (payment confirmed). A final settlement is announced with
-//! [`SettlementPaid`] and [`SettlementDisputed`].
+//! [`SettlementPaid`] and [`SettlementDisputed`]. The non-standard exits are
+//! announced with [`EmployeeOnboardingCancelled`], [`EmployeeNoticeWithdrawn`],
+//! [`EmployeeAbsconded`] and [`EmployeeReinstated`]; a refused visa with
+//! [`VisaCaseRejected`].
 //!
 //! An employee is referred to by [`EmployeeId`] or as a [`Subject`] of type
 //! [`EMPLOYEE_SUBJECT_TYPE`]; a scope is a [`Subject`] too (a branch).
@@ -379,6 +382,56 @@ pub struct EmployeeAbsconded {
 }
 
 impl Event for EmployeeAbsconded {}
+
+/// A notice was withdrawn by agreement (`withdraw_notice`, approved under
+/// `HRM.ACL.07`): the employee is `active` again, the settlement and the
+/// cancellation visa case are cancelled and the last working day is cleared.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeNoticeWithdrawn {
+    /// The employee.
+    pub employee: EmployeeId,
+}
+
+impl Event for EmployeeNoticeWithdrawn {}
+
+/// An absconded employee was reinstated (`reinstate`, approved under
+/// `HRM.ACL.07`) after the absence report was withdrawn or cancelled. The
+/// vertical closes its absence case; the held pay is released by `HRM.RUL.12`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeReinstated {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The day the worker returned.
+    pub return_date: NaiveDate,
+}
+
+impl Event for EmployeeReinstated {}
+
+/// The subject type of a visa case, for [`Subject`] references.
+pub const VISA_CASE_SUBJECT_TYPE: &str = "hr.visa_case";
+
+/// A visa case was refused by the authority (`reject`). The vertical tells the
+/// employee's active deployments from `visa_expiry`; wl-documents lists the
+/// affected work again in `DocumentExpiring` (`affected`, `DOC.RUL.02`) once the
+/// visa enters its look-ahead window, so wl-hr builds no `affected` list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VisaCaseRejected {
+    /// The case, `hr.visa_case:7`.
+    pub case: Subject,
+    /// `new`, `renewal`, `cancellation` or a configured type.
+    pub case_type: String,
+    /// The employee.
+    pub employee: EmployeeId,
+    /// For a *renewal*: the day the follow-up task is due (N days before the
+    /// current visa expires, today when that day has passed); empty for the
+    /// other types.
+    pub deadline: Option<NaiveDate>,
+    /// For a *renewal*: the expiry date of the current residence visa; empty
+    /// for the other types.
+    pub visa_expiry: Option<NaiveDate>,
+}
+
+impl Event for VisaCaseRejected {}
 
 /// A scope assignment or the job role of an employee was added, changed or
 /// ended. It does not start an onboarding by itself.

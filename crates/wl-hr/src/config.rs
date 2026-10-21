@@ -48,6 +48,10 @@ pub const DEFAULT_SETTLEMENT_DEADLINE_DAYS: i64 = 14;
 /// Days after `pay` at which a settlement without a dispute closes (wl-hr §7).
 pub const DEFAULT_SETTLEMENT_CLOSE_DAYS: i64 = 30;
 
+/// Days before the current residence visa expires at which the follow-up task
+/// of a refused renewal is due (wl-hr §7).
+pub const DEFAULT_VISA_REJECTION_TASK_DAYS: i64 = 30;
+
 /// The settings of the HR module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HrConfig {
@@ -76,6 +80,9 @@ pub struct HrConfig {
     pub settlement_deadline_days: i64,
     /// Days after `pay` at which a settlement without a dispute closes.
     pub settlement_close_days: i64,
+    /// Days before the current residence visa expires at which the task after
+    /// a refused renewal is due.
+    pub visa_rejection_task_days: i64,
     /// The routing codes of the banks and agents a pay account may name. Empty
     /// accepts any code of the right form: the list comes with the salary
     /// file formats.
@@ -97,6 +104,7 @@ impl Default for HrConfig {
             settlement_alert_days: DEFAULT_SETTLEMENT_ALERT_DAYS,
             settlement_deadline_days: DEFAULT_SETTLEMENT_DEADLINE_DAYS,
             settlement_close_days: DEFAULT_SETTLEMENT_CLOSE_DAYS,
+            visa_rejection_task_days: DEFAULT_VISA_REJECTION_TASK_DAYS,
             routing_codes: Vec::new(),
         }
     }

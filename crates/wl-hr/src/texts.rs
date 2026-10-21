@@ -492,6 +492,39 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.exits.no_policy",
         "No approval policy is active for this action, so it cannot be requested.",
     ),
+    // Visa cases (#193, #195).
+    (
+        "wl_hr.visa.reference_required",
+        "Give the authority's reference of the refusal.",
+    ),
+    (
+        "wl_hr.visa.task_new_title",
+        "Visa refused for :employee: cancel onboarding or open another case",
+    ),
+    (
+        "wl_hr.visa.task_new_description",
+        "The authority refused the new visa case. Cancel the onboarding, or open another visa case.",
+    ),
+    (
+        "wl_hr.visa.task_renewal_title",
+        "Visa renewal refused for :employee: try another route or give notice",
+    ),
+    (
+        "wl_hr.visa.task_renewal_description",
+        "The authority refused the renewal. Open a new case by another route, or give notice and open a cancellation case, by :deadline (before the current residence visa expires).",
+    ),
+    (
+        "wl_hr.visa.not_needed_reason_required",
+        "Give the reason no cancellation case is needed.",
+    ),
+    (
+        "wl_hr.visa.not_needed_new_only",
+        "Only a new visa case can be marked cancellation not needed.",
+    ),
+    (
+        "wl_hr.visa.not_needed_no_permit",
+        "No work permit or entry permit was issued on this case, so a cancellation is not in question.",
+    ),
     // Templates.
     ("wl_hr.templates.title", "Onboarding templates"),
     (
@@ -1248,6 +1281,14 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_hr.notices.settlement_overdue_subject",
         "Final settlement of {{ employee }} is overdue",
+    ),
+    (
+        "wl_hr.notices.visa_rejected_subject",
+        "Visa refused for {{ employee }}",
+    ),
+    (
+        "wl_hr.notices.visa_rejected_body",
+        "The authority refused the {{ case }} visa case of {{ employee }} (reference {{ reference }}): {{ reason }}. HR has a task to act by {{ deadline }}.",
     ),
     (
         "wl_hr.notices.settlement_overdue_body",

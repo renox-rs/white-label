@@ -5,6 +5,7 @@ pub mod pay_accounts;
 pub mod payroll;
 pub mod settlements;
 pub mod templates;
+pub mod visas;
 
 use renox::prelude::*;
 
@@ -16,4 +17,5 @@ pub fn routes() -> Routes {
         .merge(payroll::routes())
         .merge(settlements::routes())
         .merge(templates::routes())
+        .merge(visas::routes())
 }

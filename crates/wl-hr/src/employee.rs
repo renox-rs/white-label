@@ -98,6 +98,13 @@ pub struct Employee {
     pub cost_rate_per_hour: Option<i64>,
     /// Where the employee stands; changed only by the machine.
     pub status: EmployeeStatus,
+    /// The last working day while the employee serves notice; cleared when
+    /// the notice is withdrawn or the employee is reinstated.
+    pub last_working_day: Option<NaiveDate>,
+    /// How the employment ended: `onboarding_cancelled`, `absconding`, ...
+    pub exit_route: Option<String>,
+    /// When the portal account was closed (`cancel_onboarding`).
+    pub portal_closed_at: Option<DateTime>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

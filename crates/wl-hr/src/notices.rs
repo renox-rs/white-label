@@ -18,6 +18,7 @@ use crate::pay_account::PayAccount;
 use crate::payroll::PayrollRun;
 use crate::settlement::FinalSettlement;
 use crate::texts::english;
+use crate::visa::VisaCase;
 
 /// The assignees are told of a step (a new onboarding, a new holder).
 pub const STEP_ASSIGNED: &str = "hr.onboarding_step_assigned";
@@ -78,6 +79,9 @@ pub const SETTLEMENT_UNDISPUTED_DUE: &str = "hr.settlement_undisputed_due";
 /// The MD is told that a final settlement is overdue (`HRM.RUL.09`).
 pub const SETTLEMENT_OVERDUE: &str = "hr.settlement_overdue";
 
+/// The MD is told that the authority refused a visa case.
+pub const VISA_REJECTED: &str = "hr.visa_rejected";
+
 /// `date` as `9 Nov 2026`.
 fn date_text(date: NaiveDate) -> String {
     date.format("%-d %b %Y").to_string()
@@ -119,6 +123,7 @@ pub(crate) fn register_types() {
         "settlement_undisputed_due",
     ));
     notify::register_type(english_reminder(SETTLEMENT_OVERDUE, "settlement_overdue"));
+    notify::register_type(english_type(VISA_REJECTED, "visa_rejected"));
     notify::register_type(english_type(PAY_ACCOUNT_REQUESTED, "pay_account_requested"));
     notify::register_type(english_type(PAY_ACCOUNT_REJECTED, "pay_account_rejected"));
     notify::register_type(english_type(PAY_ACCOUNT_STOPPED, "pay_account_stopped"));
@@ -190,6 +195,35 @@ pub(crate) async fn settlement_notice(
             "undisputed": aed(settlement.undisputed_amount),
             "net": aed(settlement.net),
             "last_working_day": settlement.last_working_day.map(date_text).unwrap_or_default(),
+            "deadline": deadline.map(date_text).unwrap_or_default(),
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the MD) that the authority refused visa case `case` of
+/// `employee`, and by when HR has to act (a renewal).
+pub(crate) async fn visa_rejected(
+    state: &AppState,
+    case: &VisaCase,
+    employee: &Employee,
+    name: &str,
+    deadline: Option<NaiveDate>,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(VISA_REJECTED, employee.subject())
+        .subject_label(name)
+        .data(json!({
+            "employee": name,
+            "case": case.case_type,
+            "reference": case.rejection_reference.clone().unwrap_or_default(),
+            "reason": case.rejection_reason.clone().unwrap_or_default(),
             "deadline": deadline.map(date_text).unwrap_or_default(),
         }));
     for user in users {

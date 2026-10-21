@@ -86,7 +86,7 @@ pub use steps::{DoneInput, InPerson, StepRefused};
 pub use template::{
     OnboardingTemplate, StepInput, StepKind, TemplateInput, TemplateRefused, TemplateStep,
 };
-pub use visa::{VisaCase, VisaCaseStatus};
+pub use visa::{VisaCase, VisaCaseStatus, VisaCaseStep};
 
 /// The employee services under the names of the plan: `employees::create`.
 pub mod employees {
@@ -244,6 +244,13 @@ impl WlHr {
         self
     }
 
+    /// Days before the current residence visa expires at which the task after
+    /// a refused renewal is due (default 30).
+    pub fn visa_rejection_task_days(mut self, days: i64) -> Self {
+        self.config.visa_rejection_task_days = days;
+        self
+    }
+
     /// The routing codes a pay account may name; none listed accepts any code
     /// of the right form.
     pub fn routing_codes(mut self, codes: &[&str]) -> Self {
@@ -320,6 +327,7 @@ impl Module for WlHr {
         app.model::<FinalSettlement>();
         app.model::<SettlementPayment>();
         app.model::<VisaCase>();
+        app.model::<VisaCaseStep>();
         app.model::<PayAccount>();
         app.provide(self.config.clone());
         employee_machine::register(app);
@@ -329,6 +337,7 @@ impl Module for WlHr {
         renox::state_machine::register::<FinalSettlement>();
         renox::state_machine::register::<VisaCase>();
         events::register(app);
+        visa::register(app);
         settlement_events::register(app);
         // `HRM.ACL.05`: the pay account's machine, the MD's waiver policy, its
         // notices, the daily activation.
