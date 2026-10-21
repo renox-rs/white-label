@@ -28,6 +28,7 @@ pub mod preferred_change;
 pub mod purchase_order;
 pub mod purchase_request;
 pub mod receipt_post;
+pub mod recall;
 pub mod receipt_reverse;
 pub mod reorder;
 pub mod return_credit;
@@ -69,6 +70,7 @@ pub use po_revise::{PurchaseOrderRevision, ReviseInput, ReviseOutcome, revise};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use purchase_request::{PurchaseRequest, PurchaseRequestStatus};
 pub use receipt_post::{PostOutcome, post};
+pub use recall::{Recall, RecallLot, RecallScope, RecallSource, RecallStatus};
 pub use receipt_reverse::reverse;
 pub use reorder::{ReorderSuggestion, SuggestionStatus};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
@@ -132,6 +134,8 @@ pub mod permissions {
     pub const STOCK_HOLD: &str = "stock.hold";
     /// Decide the lines of a stock hold, and be told when one is placed.
     pub const LOTS_RELEASE: &str = "lots.release";
+    /// Open, trace, notify and close recalls.
+    pub const RECALLS_MANAGE: &str = "recalls.manage";
 }
 
 /// The inventory module. The host adds it with
@@ -366,6 +370,9 @@ impl Module for WlInventory {
         app.model::<StockHold>();
         app.model::<StockHoldLine>();
         app.model::<StockHoldItem>();
+        app.model::<Recall>();
+        app.model::<RecallScope>();
+        app.model::<RecallLot>();
         app.model::<PendingIssue>();
         app.model::<ShortageAlert>();
         app.model::<GoodsReceipt>();
@@ -381,6 +388,7 @@ impl Module for WlInventory {
         renox::state_machine::register::<Transfer>();
         renox::state_machine::register::<StockHold>();
         renox::state_machine::register::<StockHoldLine>();
+        renox::state_machine::register::<Recall>();
         renox::state_machine::register::<PendingIssue>();
         renox::state_machine::register::<SupplierReturn>();
         renox::state_machine::register::<LandedCost>();
@@ -521,6 +529,9 @@ impl Module for WlInventory {
         // `STK.RUL.07`: the deciders of an open hold are reminded every H
         // hours and the escalation role told every 2 x H.
         hold_reminder::register_types();
+        // Opening a recall holds every lot in scope and tells the owner, the
+        // storekeepers and procurement.
+        recall::register_types();
         hold_reminder::schedule(app);
         // `STK.RUL.08`: the notice type and the daily chase of the returns
         // that stay `dispatched`.

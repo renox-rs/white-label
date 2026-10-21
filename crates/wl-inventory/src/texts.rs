@@ -855,6 +855,36 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.hold.escalation_body",
         "Stock hold {{ number }} ({{ reason }}) still has {{ lines }} line(s) to decide, {{ hours }} hours after it was placed. The people who decide it have been reminded.",
     ),
+    // Opening a recall.
+    (
+        "wl_inventory.recall.no_reason",
+        "A recall needs a reason.",
+    ),
+    (
+        "wl_inventory.recall.bad_scope",
+        "A recall needs a scope: the items, with the lot numbers or the supplier lot numbers recalled.",
+    ),
+    (
+        "wl_inventory.recall.bad_source",
+        "The source of a recall is supplier, authority, internal or complaint.",
+    ),
+    (
+        "wl_inventory.recall.bad_form",
+        "A recall takes a source, a reason, the item ids and lot numbers or supplier lot numbers.",
+    ),
+    (
+        "wl_inventory.recall.no_lot",
+        "No lot matches the scope of the recall: check the item and the lot numbers.",
+    ),
+    ("wl_inventory.recall.opened", "Recall opened."),
+    (
+        "wl_inventory.recall.opened_subject",
+        "Recall {{ number }}: stock is on hold",
+    ),
+    (
+        "wl_inventory.recall.opened_body",
+        "Recall {{ number }} ({{ source }}) was opened: {{ reason }}. {{ lots }} lot(s) are on hold at every location and cannot be picked, issued, consumed, transferred or dispatched.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

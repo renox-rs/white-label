@@ -16,9 +16,9 @@
 use std::collections::BTreeSet;
 
 use renox::auth::permissions::users_with_permission_in;
-use renox::db::Executor;
+use renox::db::{Executor, Transaction};
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError};
+use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::inventory::{
@@ -262,16 +262,30 @@ fn held_line(line: &StockHoldLine) -> HeldLine {
     }
 }
 
-/// Places a hold (§4 `place`). Moves no stock: it makes the lines from the
-/// balances in scope, puts each lot of a whole-lot scope `on_hold`, tells the
-/// holders of `lots.release` and emits [`StockHoldPlaced`] (and `LotHeld`
-/// for each lot held now) after the commit.
+/// A hold placed inside a transaction that is not committed yet: the hold and
+/// the lots that went `on_hold`, whose events follow the commit
+/// ([`announce_placed`]).
+pub(crate) struct Placed {
+    /// The hold.
+    pub(crate) hold: StockHold,
+    /// The `hold` runs of the lots, to emit after the commit.
+    outcomes: Vec<Outcome<Lot>>,
+}
+
+/// Places a hold in `tx` without committing (§4 `place`): the lines from the
+/// balances in scope, the hold's items, and each lot of a whole-lot scope
+/// `on_hold`. With `allow_empty` a scope with no balance gives a hold with no
+/// line (a recall of lots that are all used up); otherwise it is refused.
 ///
 /// # Errors
 ///
-/// 422 for a reason that is not one of [`REASONS`], a missing reference, an
-/// empty scope or a scope with no balance; a database error.
-pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
+/// 422 for a reason that is not one of [`REASONS`], an empty scope or (unless
+/// `allow_empty`) a scope with no balance; a database error.
+pub(crate) async fn place_in(
+    tx: &mut Transaction,
+    new: &NewHold,
+    allow_empty: bool,
+) -> Result<Placed> {
     let reason = new.reason.trim().to_lowercase();
     if !REASONS.contains(&reason.as_str()) {
         return Err(refused(said("wl_inventory.hold.bad_reason", &[])));
@@ -291,13 +305,12 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
     if scope_kind == HoldScope::Lots && lot_ids.is_empty() {
         return Err(refused(said("wl_inventory.hold.no_scope", &[])));
     }
-    let mut tx = state.db.begin().await?;
     let mut lines: Vec<AddedLine> = Vec::new();
     match &new.scope {
         NewScope::Lots(lots) => {
             for lot_id in lots {
-                let lot = Lot::find_or_404(&mut tx, *lot_id).await?;
-                for (place, quantity) in balance::lot_locations(&mut tx, lot.id).await? {
+                let lot = Lot::find_or_404(&mut *tx, *lot_id).await?;
+                for (place, quantity) in balance::lot_locations(&mut *tx, lot.id).await? {
                     lines.push(AddedLine {
                         item_id: lot.item_id,
                         location_id: place,
@@ -311,18 +324,18 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
             location_id,
             item_ids,
         } => {
-            Location::find_or_404(&mut tx, *location_id).await?;
-            lines = location_lines(&mut tx, *location_id, item_ids).await?;
+            Location::find_or_404(&mut *tx, *location_id).await?;
+            lines = location_lines(&mut *tx, *location_id, item_ids).await?;
         }
     }
-    if lines.is_empty() {
+    if lines.is_empty() && !allow_empty {
         return Err(refused(said("wl_inventory.hold.no_balance", &[])));
     }
     // The scope of the location of a hold on a location decides who may
     // cancel it.
     let (scope_type, scope_id) = match location_id {
         Some(id) => {
-            let location = Location::find_or_404(&mut tx, id).await?;
+            let location = Location::find_or_404(&mut *tx, id).await?;
             (location.scope_type, location.scope_id)
         }
         None => (None, None),
@@ -330,7 +343,7 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
     let mut hold = StockHold {
         number: Some(
             STOCK_HOLD_SERIES
-                .next(&mut tx, None, None, today())
+                .next(&mut *tx, None, None, today())
                 .await?,
         ),
         reason: reason.clone(),
@@ -345,10 +358,10 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
         placed_at: Some(renox::db::now()),
         ..StockHold::default()
     };
-    hold.insert(&mut tx).await?;
+    hold.insert(&mut *tx).await?;
     for added in &lines {
         new_line(
-            &mut tx,
+            &mut *tx,
             hold.id,
             added.item_id,
             added.location_id,
@@ -363,25 +376,31 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
             item_id: *item_id,
             ..StockHoldItem::default()
         };
-        row.insert(&mut tx).await?;
+        row.insert(&mut *tx).await?;
     }
     // A lot that can be held goes `on_hold`; one that is held or expired
     // already stays as it is, with its balance as a line all the same.
     let mut outcomes = Vec::new();
     for lot_id in &lot_ids {
-        let lot = Lot::find_or_404(&mut tx, *lot_id).await?;
+        let lot = Lot::find_or_404(&mut *tx, *lot_id).await?;
         if matches!(lot.status, LotStatus::Quarantine | LotStatus::Released) {
             let outcome = lot
                 .transition(lot::HOLD)
                 .by_system()
                 .reason(reason.clone())
-                .run_in(&mut tx)
+                .run_in(&mut *tx)
                 .await
                 .map_err(TransitionError::into_error)?;
             outcomes.push(outcome);
         }
     }
-    tx.commit().await?;
+    Ok(Placed { hold, outcomes })
+}
+
+/// After the commit of [`place_in`]: emits `LotHeld` for each lot held now
+/// and [`StockHoldPlaced`], and tells the holders of `lots.release`.
+pub(crate) async fn announce_placed(state: &AppState, placed: Placed) -> Result<StockHold> {
+    let Placed { hold, outcomes } = placed;
     for outcome in outcomes {
         outcome.emit(state).await?;
     }
@@ -391,7 +410,7 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
         .emit(StockHoldPlaced {
             hold: hold.subject(),
             number: number.clone(),
-            reason: reason.clone(),
+            reason: hold.reason.clone(),
             reference: hold.reference(),
             lines: rows.iter().map(held_line).collect(),
         })
@@ -404,12 +423,28 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
         &locations,
         renox::serde_json::json!({
             "number": number,
-            "reason": reason,
+            "reason": hold.reason,
             "lines": rows.len().to_string(),
         }),
     )
     .await?;
     Ok(hold)
+}
+
+/// Places a hold (§4 `place`). Moves no stock: it makes the lines from the
+/// balances in scope, puts each lot of a whole-lot scope `on_hold`, tells the
+/// holders of `lots.release` and emits [`StockHoldPlaced`] (and `LotHeld`
+/// for each lot held now) after the commit.
+///
+/// # Errors
+///
+/// 422 for a reason that is not one of [`REASONS`], an empty scope or a
+/// scope with no balance; a database error.
+pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
+    let mut tx = state.db.begin().await?;
+    let placed = place_in(&mut tx, &new, false).await?;
+    tx.commit().await?;
+    announce_placed(state, placed).await
 }
 
 /// `user` (a holder of `stock.hold`) places `new`: the permission is checked
