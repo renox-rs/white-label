@@ -5,8 +5,11 @@ pub mod contract;
 pub mod contracts;
 mod db;
 pub mod events;
+pub mod notices;
 pub mod pages;
 pub mod permissions;
+pub mod request;
+pub mod requests;
 pub mod site;
 mod texts;
 
@@ -16,6 +19,7 @@ use renox::prelude::*;
 
 pub use contract::{BillingCycle, ClientContract, ContractStatus};
 pub use events::ContractActivated;
+pub use request::{ManpowerRequest, RequestKind, RequestStatus};
 pub use site::Site;
 
 /// The Manpower module. Add it to the app with
@@ -36,7 +40,8 @@ impl Module for Manpower {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.view_data::<pages::ContractsPage>();
+        app.view_data::<pages::ContractsPage>()
+            .view_data::<pages::RequestsPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -56,8 +61,12 @@ impl Module for Manpower {
                 .order(9)
                 .permission(permissions::CONTRACTS_VIEW),
         );
-        app.model::<Site>().model::<ClientContract>();
+        app.model::<Site>()
+            .model::<ClientContract>()
+            .model::<ManpowerRequest>();
         contract::register();
+        request::register();
+        notices::register_types();
         // A site is a scope roles are assigned in, shown by its name.
         wl_kernel::scopes::register_label(site::SUBJECT_TYPE, |db, id| {
             let id = id.to_owned();
@@ -73,7 +82,13 @@ impl Module for Manpower {
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
-const VIEWS: &[(&str, &str)] = &[(
-    "manpower/contracts.html",
-    include_str!("../views/manpower/contracts.html"),
-)];
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "manpower/contracts.html",
+        include_str!("../views/manpower/contracts.html"),
+    ),
+    (
+        "manpower/requests.html",
+        include_str!("../views/manpower/requests.html"),
+    ),
+];

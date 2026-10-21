@@ -61,6 +61,51 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.contract.history_cancel",
         "Contract cancelled before it was signed into force",
     ),
+    // The manpower request (§7.1).
+    (
+        "manpower.request.positions",
+        "The request has no position left for this worker.",
+    ),
+    (
+        "manpower.request.contract_unknown",
+        "The client contract does not exist.",
+    ),
+    (
+        "manpower.request.contract_over",
+        "The client contract has ended or was cancelled.",
+    ),
+    (
+        "manpower.request.site",
+        "Pick a site of the client that is in use.",
+    ),
+    (
+        "manpower.request.fields",
+        "Give the role and the shift, and ask for at least one worker.",
+    ),
+    (
+        "manpower.request.dates",
+        "The request must not end before it starts.",
+    ),
+    (
+        "manpower.request.contract_not_active",
+        "The contract does not take new requests now.",
+    ),
+    (
+        "manpower.request.outside_contract",
+        "The request runs past the end date of the contract.",
+    ),
+    (
+        "manpower.request.not_on_rate_card",
+        "The rate card does not price {{ role }} on the {{ shift }} shift.",
+    ),
+    (
+        "manpower.request.submitted_title",
+        "New request for {{ role }}",
+    ),
+    (
+        "manpower.request.submitted_body",
+        "The client asks for {{ count }} {{ role }} from {{ from }}.",
+    ),
     // The screens.
     ("manpower.screen.status", "Status"),
     ("manpower.screen.client", "Client"),
@@ -80,7 +125,24 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.screen.contracts.empty_text",
         "A contract is made for a client company before its workers are requested.",
     ),
+    ("manpower.screen.requests.title", "Manpower requests"),
+    (
+        "manpower.screen.requests.subtitle",
+        "The workers the clients ask for.",
+    ),
+    ("manpower.screen.requests.request", "Request"),
+    ("manpower.screen.requests.workers", "Workers"),
+    ("manpower.screen.requests.period", "Period"),
+    ("manpower.screen.requests.cover", "Cover"),
+    ("manpower.screen.requests.empty", "No requests yet"),
+    (
+        "manpower.screen.requests.empty_text",
+        "A client asks for workers by role, headcount, site and shift.",
+    ),
     ("manpower.screen.status.draft", "Draft"),
+    ("manpower.screen.status.open", "Open"),
+    ("manpower.screen.status.partially_filled", "Partly filled"),
+    ("manpower.screen.status.filled", "Filled"),
     ("manpower.screen.status.active", "Active"),
     ("manpower.screen.status.on_hold", "On hold"),
     ("manpower.screen.status.terminating", "Terminating"),
@@ -91,6 +153,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.billing.monthly", "Monthly"),
     // The nav.
     ("manpower.nav.contracts", "Client contracts"),
+    ("manpower.nav.requests", "Manpower requests"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
@@ -117,6 +180,14 @@ pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> St
         );
     }
     wl_kernel::notify::fill(text, &renox::serde_json::Value::Object(data))
+}
+
+/// The English text of `key`, unfilled: a notification template.
+pub(crate) fn template(key: &str) -> &'static str {
+    TEXTS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map_or("", |(_, text)| *text)
 }
 
 /// Every text of the screens, by the name a template reads

@@ -8,6 +8,10 @@
 //! | `POST /manpower/contracts/{id}/activate` | `manpower.contract_activate` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/cancel` | `manpower.contract_cancel` | `contracts.manage` for the client |
 //! | `POST /manpower/sites` | `manpower.site_create` | `sites.manage` for the client |
+//! | `GET /manpower/requests` | `manpower.requests` | `requests.view`, `requests.create` or `requests.manage` for the client, or the client's portal access |
+//! | `POST /manpower/requests` | `manpower.request_create` | `requests.create` for the client, or the client's approver |
+//! | `POST /manpower/requests/{id}/submit` | `manpower.request_submit` | `requests.create` for the client, or the client's approver |
+//! | `POST /manpower/requests/{id}/cancel` | `manpower.request_cancel` | `requests.manage` for the client, or the client's approver |
 //!
 //! The list answers a page when the request names `text/html` and JSON
 //! otherwise ([`wl_kernel::negotiate`]); the actions answer 303 back to the
@@ -25,7 +29,9 @@ use crate::contract::{BillingCycle, ClientContract, ContractStatus};
 use crate::contracts::{self, NewContract};
 use crate::db::refused;
 use crate::permissions;
-use crate::site;
+use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
+use crate::requests::{self, NewRequest};
+use crate::site::{self, Site};
 use crate::texts::{screen_texts, t, word};
 
 /// The routes.
@@ -43,6 +49,14 @@ pub fn routes() -> Routes {
         .name("manpower.contract_cancel")
         .post("/manpower/sites", create_site)
         .name("manpower.site_create")
+        .get("/manpower/requests", requests_index)
+        .name("manpower.requests")
+        .post("/manpower/requests", create_request)
+        .name("manpower.request_create")
+        .post("/manpower/requests/{id}/submit", submit_request)
+        .name("manpower.request_submit")
+        .post("/manpower/requests/{id}/cancel", cancel_request)
+        .name("manpower.request_cancel")
         .require_auth()
 }
 
@@ -279,4 +293,156 @@ async fn create_site(
     )
     .await?;
     Ok(back("/manpower/contracts"))
+}
+
+/// A request as the list shows it.
+#[derive(Debug, Serialize, Clone)]
+pub(crate) struct RequestRow {
+    id: i64,
+    client_contract_id: i64,
+    client_party_id: i64,
+    client: String,
+    site_id: i64,
+    site: String,
+    role: String,
+    headcount: i64,
+    filled_count: i64,
+    shift_type: String,
+    status: String,
+    status_kind: &'static str,
+    start_date: NaiveDate,
+    end_date: Option<NaiveDate>,
+    replacement: bool,
+}
+
+/// What the requests page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "manpower/requests.html")]
+pub(crate) struct RequestsPage {
+    tx: BTreeMap<&'static str, String>,
+    requests: Vec<RequestRow>,
+}
+
+/// The badge colour of a request.
+fn request_kind(status: RequestStatus) -> &'static str {
+    match status {
+        RequestStatus::Filled => "success",
+        RequestStatus::Open | RequestStatus::PartiallyFilled => "warning",
+        RequestStatus::Draft | RequestStatus::Cancelled => "info",
+    }
+}
+
+/// `GET /manpower/requests`: the requests of the client companies the person
+/// works for, or the one the portal grants them (`MPW.ACL.01`).
+async fn requests_index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
+) -> Result<Response> {
+    let mut rows = Vec::new();
+    let mut any = false;
+    for request in ManpowerRequest::query()
+        .order_by(ManpowerRequest::ID)
+        .get(&state.db)
+        .await?
+    {
+        let see = requests::may_see(
+            &state,
+            &user,
+            request.client(),
+            &[
+                permissions::REQUESTS_VIEW,
+                permissions::REQUESTS_CREATE,
+                permissions::REQUESTS_MANAGE,
+            ],
+        )
+        .await?;
+        if !see {
+            continue;
+        }
+        any = true;
+        let site = Site::find(&state.db, request.site_id)
+            .await?
+            .map(|site| site.name)
+            .unwrap_or_default();
+        rows.push(RequestRow {
+            id: request.id,
+            client_contract_id: request.client_contract_id,
+            client_party_id: request.client_party_id,
+            client: party_name(&state, &lang, request.client_party_id).await,
+            site_id: request.site_id,
+            site,
+            role: request.role.clone(),
+            headcount: request.headcount,
+            filled_count: request.filled_count,
+            shift_type: request.shift_type.clone(),
+            status: word(&lang, "status", request.status.as_str()),
+            status_kind: request_kind(request.status),
+            start_date: request.start_date,
+            end_date: request.end_date,
+            replacement: request.kind == RequestKind::Replacement,
+        });
+    }
+    if !any
+        && !user.has_permission_anywhere(permissions::REQUESTS_VIEW)
+        && !user.has_permission_anywhere(permissions::REQUESTS_CREATE)
+        && !user.has_permission_anywhere(permissions::REQUESTS_MANAGE)
+    {
+        return Err(Error::Forbidden);
+    }
+    if wl_kernel::negotiate::wants_html(&headers) {
+        return Ok(View::typed(RequestsPage {
+            tx: screen_texts(&lang),
+            requests: rows,
+        })
+        .into_response());
+    }
+    Ok(Json(rows).into_response())
+}
+
+/// `POST /manpower/requests`: `client_contract_id`, `site_id`, `role`,
+/// `headcount`, `shift_type`, `start_date` and, optionally, `shift_start`,
+/// `shift_end` (`07:00`) and `end_date`.
+async fn create_request(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let bad = || refused(t(&lang, "manpower.bad_input"));
+    let new = NewRequest {
+        contract_id: number(&lang, &form, "client_contract_id")?.ok_or_else(bad)?,
+        site_id: number(&lang, &form, "site_id")?.ok_or_else(bad)?,
+        role: field(&form, "role"),
+        headcount: number(&lang, &form, "headcount")?.ok_or_else(bad)?,
+        shift_type: field(&form, "shift_type"),
+        shift_start: Some(field(&form, "shift_start")),
+        shift_end: Some(field(&form, "shift_end")),
+        start_date: date(&lang, &form, "start_date")?.ok_or_else(bad)?,
+        end_date: date(&lang, &form, "end_date")?,
+    };
+    requests::create(&state, &user, new).await?;
+    Ok(back("/manpower/requests"))
+}
+
+/// `POST /manpower/requests/{id}/submit`.
+async fn submit_request(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    requests::submit(&state, &user, id).await?;
+    Ok(back("/manpower/requests"))
+}
+
+/// `POST /manpower/requests/{id}/cancel`: `reason`.
+async fn cancel_request(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    requests::cancel(&state, &user, id, &field(&form, "reason")).await?;
+    Ok(back("/manpower/requests"))
 }

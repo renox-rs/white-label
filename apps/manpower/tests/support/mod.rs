@@ -10,7 +10,10 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use manpower::permissions as perm;
-use manpower::{ClientContract, ContractActivated, ContractStatus, Manpower};
+use manpower::{
+    ClientContract, ContractActivated, ContractStatus, Manpower, ManpowerRequest, RequestStatus,
+    Site,
+};
 use renox::auth::{Permissions, permissions};
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
@@ -21,6 +24,7 @@ use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
 use wl_kernel::parties::{PartyDirectory, PartyFuture, provide_directory};
+use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::rate_cards::{RateCardFuture, RateCardVersion, RateCards, provide_rate_cards};
 use wl_kernel::{BusinessCalendar, PartyId, PartyKind, PartyStatus, PartySummary, Subject};
 
@@ -139,6 +143,60 @@ impl PartyDirectory for Parties {
                 .unwrap()
                 .contains_key(&party.0)
                 .then_some(PartyStatus::Active))
+        })
+    }
+}
+
+/// The portal grants: who acts for which client company, with which roles.
+#[derive(Clone, Default)]
+pub struct Portal(Arc<Mutex<Vec<PortalUser>>>);
+
+impl Portal {
+    /// `user` acts for `party` with the portal `roles`.
+    pub fn grant(&self, user: &User, party: PartyId, roles: &[&str]) {
+        self.0.lock().unwrap().push(PortalUser {
+            user_id: user.id,
+            person: PartyId(9_000 + user.id),
+            acting_for: party,
+            roles: roles.iter().map(|r| (*r).to_owned()).collect(),
+        });
+    }
+}
+
+impl PortalUsers for Portal {
+    fn users_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+        _on: NaiveDate,
+    ) -> PortalFuture<'a, Vec<PortalUser>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|user| user.acting_for == party)
+                .cloned()
+                .collect())
+        })
+    }
+
+    fn acting_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        user: i64,
+        party: PartyId,
+        _on: NaiveDate,
+    ) -> PortalFuture<'a, Option<PortalUser>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|grant| grant.user_id == user && grant.acting_for == party)
+                .cloned())
         })
     }
 }
@@ -262,6 +320,7 @@ impl Notifier for Recording {
 struct Fakes {
     parties: Parties,
     cards: Cards,
+    portal: Portal,
     notices: Recording,
     activated: Recorded<ContractActivated>,
 }
@@ -274,6 +333,7 @@ impl Module for Fakes {
     fn register(&self, app: &mut Registry) {
         provide_directory(app, self.parties.clone());
         provide_rate_cards(app, self.cards.clone());
+        provide_portal_users(app, self.portal.clone());
         provide_notifier(app, self.notices.clone());
         record(app, &self.activated);
     }
@@ -287,6 +347,8 @@ pub struct Booted {
     pub parties: Parties,
     /// The rate cards.
     pub cards: Cards,
+    /// The portal grants.
+    pub portal: Portal,
     /// What the notifier was asked for.
     pub notices: Recording,
     /// `ContractActivated`.
@@ -388,6 +450,66 @@ impl Booted {
         contract
     }
 
+    /// A client user of the portal who acts for `party` with the portal
+    /// `roles` (`owner`, `approver`, `viewer`...).
+    pub async fn client_user(&self, name: &str, party: PartyId, roles: &[&str]) -> User {
+        let user = self.user(name).await;
+        self.portal.grant(&user, party, roles);
+        user
+    }
+
+    /// A site of `client`, in use.
+    pub async fn site(&self, client: PartyId, name: &str) -> Site {
+        Site::create(
+            self.db(),
+            Site {
+                client_party_id: client.0,
+                name: name.to_owned(),
+                active: true,
+                ..Site::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// A request for `headcount` guards on the day shift at `site`, from 1
+    /// February 2027 to 31 July 2027, in `status` (a fixture).
+    pub async fn request(
+        &self,
+        contract: &ClientContract,
+        site: &Site,
+        headcount: i64,
+        status: RequestStatus,
+    ) -> ManpowerRequest {
+        let mut request = ManpowerRequest {
+            client_contract_id: contract.id,
+            client_party_id: contract.client_party_id,
+            site_id: site.id,
+            role: "guard".into(),
+            headcount,
+            shift_type: "day".into(),
+            shift_start: Some("07:00".into()),
+            shift_end: Some("19:00".into()),
+            start_date: date(2027, 2, 1),
+            end_date: Some(date(2027, 7, 31)),
+            status,
+            ..ManpowerRequest::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        request
+            .insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        request
+    }
+
+    /// The request `id` as it is now.
+    pub async fn reload_request(&self, id: i64) -> ManpowerRequest {
+        ManpowerRequest::find_or_404(self.db(), id).await.unwrap()
+    }
+
     /// The contract `id` as it is now.
     pub async fn reload_contract(&self, id: i64) -> ClientContract {
         ClientContract::find_or_404(self.db(), id).await.unwrap()
@@ -422,11 +544,13 @@ pub async fn boot() -> Booted {
     parties.know(TOWER, "Gulf Tower LLC");
     parties.know(FOODS, "Desert Foods LLC");
     let cards = Cards::default();
+    let portal = Portal::default();
     let notices = Recording::default();
     let activated = Recorded::default();
     let fakes = Fakes {
         parties: parties.clone(),
         cards: cards.clone(),
+        portal: portal.clone(),
         notices: notices.clone(),
         activated: activated.clone(),
     };
@@ -481,6 +605,7 @@ pub async fn boot() -> Booted {
         app,
         parties,
         cards,
+        portal,
         notices,
         activated,
         clock_days: std::sync::atomic::AtomicI64::new(0),
