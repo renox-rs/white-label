@@ -93,6 +93,30 @@ pub(crate) async fn account_managers(
     Ok(ids)
 }
 
+/// The MD: the holders of the role in the client company (or globally), else
+/// the one the kernel picks for the role; empty when nobody holds it.
+///
+/// # Errors
+///
+/// A database error.
+pub(crate) async fn md_users(state: &AppState, client: PartyId) -> Result<Vec<i64>> {
+    let mut ids: Vec<i64> = users_with_role_in(
+        &state.db,
+        permissions::MD_ROLE,
+        &permissions::client_scope(client.0),
+    )
+    .await?
+    .iter()
+    .map(|user| user.id)
+    .collect();
+    if ids.is_empty()
+        && let Some(user) = role_tasks::assignee(&state.db, permissions::MD_ROLE).await?
+    {
+        ids.push(user);
+    }
+    Ok(ids)
+}
+
 /// Tells `users` about `subject`; no message when there are none. Returns
 /// whether a message was asked for.
 ///

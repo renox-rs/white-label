@@ -61,6 +61,54 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.contract.history_cancel",
         "Contract cancelled before it was signed into force",
     ),
+    // The credit hold (§7.1 `hold`, `MPW.RUL.10`, BL-MPW-01).
+    (
+        "manpower.hold.reason_required",
+        "Give the reason for the credit hold: overdue, bounced cheque, or another reason with its text.",
+    ),
+    (
+        "manpower.hold.text_required",
+        "Write what the other reason is.",
+    ),
+    (
+        "manpower.hold.not_holdable",
+        "Only a contract that is active, terminating or already on hold can be put on credit hold.",
+    ),
+    (
+        "manpower.hold.history_overdue",
+        "Credit hold: invoice {{ what }} overdue",
+    ),
+    (
+        "manpower.hold.history_bounced_cheque",
+        "Credit hold: cheque {{ what }} bounced",
+    ),
+    ("manpower.hold.history_other", "Credit hold: {{ text }}"),
+    ("manpower.hold.held_title", "Credit hold: {{ contract }}"),
+    (
+        "manpower.hold.held_body",
+        "Contract {{ contract }} of {{ client }} is on credit hold. No request, activation or extension goes through until it is released. The workers on site stay and are billed; the MD decides whether to withdraw them.\n{{ reasons }}\nWorkers on site ({{ count }}):\n{{ workers }}",
+    ),
+    (
+        "manpower.hold.added_title",
+        "Another reason for the credit hold: {{ contract }}",
+    ),
+    (
+        "manpower.hold.added_body",
+        "Contract {{ contract }} of {{ client }} was already on credit hold. It is held for:\n{{ reasons }}\nWorkers on site ({{ count }}):\n{{ workers }}",
+    ),
+    (
+        "manpower.hold.line_overdue",
+        "Overdue: {{ amount }} ({{ invoices }}).",
+    ),
+    (
+        "manpower.hold.line_cheque",
+        "Bounced cheque {{ cheque }}: {{ amount }}.",
+    ),
+    ("manpower.hold.line_other", "Other: {{ text }}."),
+    (
+        "manpower.hold.worker",
+        "{{ worker }}, {{ role }} at {{ site }}",
+    ),
     // The manpower request (§7.1).
     (
         "manpower.request.positions",
@@ -248,6 +296,11 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.contracts.billing", "Billing"),
     ("manpower.screen.contracts.cover", "Cover"),
     ("manpower.screen.contracts.cover_required", "Cover required"),
+    (
+        "manpower.screen.contracts.held_since",
+        "On credit hold since",
+    ),
+    ("manpower.screen.contracts.held_before", "before:"),
     ("manpower.screen.contracts.empty", "No client contracts yet"),
     (
         "manpower.screen.contracts.empty_text",
@@ -323,6 +376,23 @@ pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> St
     wl_kernel::notify::fill(text, &renox::serde_json::Value::Object(data))
 }
 
+/// An amount in fils as `AED 42,000` (`AED 42,000.50` with fils).
+pub(crate) fn money(fils: i64) -> String {
+    let whole = (fils / 100).abs().to_string();
+    let mut grouped = String::new();
+    for (i, digit) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    let sign = if fils < 0 { "-" } else { "" };
+    match (fils % 100).abs() {
+        0 => format!("{sign}AED {grouped}"),
+        cents => format!("{sign}AED {grouped}.{cents:02}"),
+    }
+}
+
 /// The English text of `key`, unfilled: a notification template.
 pub(crate) fn template(key: &str) -> &'static str {
     TEXTS
@@ -364,6 +434,15 @@ mod tests {
         keys.sort_unstable();
         keys.dedup();
         assert_eq!(keys.len(), count, "a text key is listed twice");
+    }
+
+    #[test]
+    fn an_amount_is_grouped_by_thousands() {
+        assert_eq!(money(4_200_000), "AED 42,000");
+        assert_eq!(money(1_500_000), "AED 15,000");
+        assert_eq!(money(12_345), "AED 123.45");
+        assert_eq!(money(0), "AED 0");
+        assert_eq!(money(100_000_000), "AED 1,000,000");
     }
 
     #[test]

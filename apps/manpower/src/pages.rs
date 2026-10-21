@@ -7,6 +7,7 @@
 //! | `POST /manpower/contracts/{id}/signed` | `manpower.contract_signed` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/activate` | `manpower.contract_activate` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/cancel` | `manpower.contract_cancel` | `contracts.manage` for the client |
+//! | `POST /manpower/contracts/{id}/hold` | `manpower.contract_hold` | `contracts.manage` for the client |
 //! | `POST /manpower/sites` | `manpower.site_create` | `sites.manage` for the client |
 //! | `GET /manpower/requests` | `manpower.requests` | `requests.view`, `requests.create` or `requests.manage` for the client, or the client's portal access |
 //! | `POST /manpower/requests` | `manpower.request_create` | `requests.create` for the client, or the client's approver |
@@ -39,6 +40,7 @@ use crate::db::refused;
 use crate::deployment::{Deployment, DeploymentKind, DeploymentStatus};
 use crate::deployments::{self, NewDeployment};
 use crate::documents::DeploymentDocumentFlag;
+use crate::hold::ContractHold;
 use crate::permissions;
 use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
 use crate::requests::{self, NewRequest};
@@ -58,6 +60,8 @@ pub fn routes() -> Routes {
         .name("manpower.contract_activate")
         .post("/manpower/contracts/{id}/cancel", cancel_contract)
         .name("manpower.contract_cancel")
+        .post("/manpower/contracts/{id}/hold", hold_contract)
+        .name("manpower.contract_hold")
         .post("/manpower/sites", create_site)
         .name("manpower.site_create")
         .get("/manpower/requests", requests_index)
@@ -149,6 +153,18 @@ pub(crate) struct ContractRow {
     end_date: NaiveDate,
     billing_cycle: String,
     cover_required: bool,
+    /// On hold: since when, the state before, who held it and the reasons.
+    hold: Option<HoldRow>,
+}
+
+/// The credit hold of a contract as the list shows it (staff only: the client
+/// is never told).
+#[derive(Debug, Serialize, Clone)]
+pub(crate) struct HoldRow {
+    held_at: Option<NaiveDate>,
+    status_before: Option<String>,
+    held_by: Option<i64>,
+    reasons: Vec<String>,
 }
 
 /// What the contracts page needs.
@@ -197,6 +213,19 @@ async fn contracts_index(
         if !may {
             continue;
         }
+        let hold = if contract.status == ContractStatus::OnHold {
+            let open = ContractHold::open_of(&state.db, contract.id).await?;
+            Some(HoldRow {
+                held_at: contract.held_at.map(wl_kernel::documents::dubai_date),
+                status_before: contract
+                    .status_before_hold
+                    .map(|status| word(&lang, "status", status.as_str())),
+                held_by: contract.held_by,
+                reasons: crate::hold::reason_lines(&open),
+            })
+        } else {
+            None
+        };
         rows.push(ContractRow {
             id: contract.id,
             reference: contract.reference.clone(),
@@ -208,6 +237,7 @@ async fn contracts_index(
             end_date: contract.end_date,
             billing_cycle: word(&lang, "billing", contract.billing_cycle.as_str()),
             cover_required: contract.cover_required,
+            hold,
         });
     }
     if rows.is_empty()
@@ -296,6 +326,26 @@ async fn cancel_contract(
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     contracts::cancel(&state, &user, id, &field(&form, "reason")).await?;
+    Ok(back("/manpower/contracts"))
+}
+
+/// `POST /manpower/contracts/{id}/hold`: `reason` (`overdue`,
+/// `bounced_cheque` or `other`) and, for `other`, `text`.
+async fn hold_contract(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let text = field(&form, "text");
+    contracts::hold(
+        &state,
+        &user,
+        id,
+        &field(&form, "reason"),
+        Some(text.as_str()).filter(|text| !text.is_empty()),
+    )
+    .await?;
     Ok(back("/manpower/contracts"))
 }
 

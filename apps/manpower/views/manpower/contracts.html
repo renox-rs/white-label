@@ -10,6 +10,8 @@
           <span>{{ contract.reference }}</span>
           <span class="rx-subtitle">{{ contract.client }}</span>
           <span><rx-badge :kind="contract.status_kind" :text="contract.status"/></span>
+          <span rx-if="contract.hold" class="rx-subtitle">{{ tx['contracts.held_since'] }} {{ contract.hold.held_at }}, {{ tx['contracts.held_before'] }} {{ contract.hold.status_before }}</span>
+          <template rx-if="contract.hold"><template rx-for="line in contract.hold.reasons"><span class="rx-subtitle">{{ line }}</span></template></template>
         </rx-stack>
       </rx-column>
       <rx-column :label="tx['contracts.period']" hide-narrow>{{ contract.start_date }} - {{ contract.end_date }}</rx-column>

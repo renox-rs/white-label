@@ -3,6 +3,7 @@
 
 mod access;
 pub mod blocked;
+pub mod config;
 pub mod contract;
 pub mod contracts;
 pub mod cover;
@@ -11,6 +12,7 @@ pub mod deployment;
 pub mod deployments;
 pub mod documents;
 pub mod events;
+pub mod hold;
 pub mod notices;
 pub mod pages;
 pub mod permissions;
@@ -28,12 +30,17 @@ pub use deployment::{Deployment, DeploymentKind, DeploymentStatus};
 pub use events::{
     ContractActivated, CoverRequested, DeploymentActivated, DeploymentCancelled, DeploymentEnded,
 };
+pub use hold::{ContractHold, HoldReason};
 pub use request::{ManpowerRequest, RequestKind, RequestStatus};
 pub use site::Site;
 
 /// The name of the daily scheduled task that ends the deployments whose end
 /// date has passed.
 pub const END_DATE_TASK: &str = "manpower:deployment-end-daily";
+
+/// The name of the daily scheduled task of `MPW.RUL.10`: contracts with an
+/// invoice overdue more than 30 days go on credit hold.
+pub const CREDIT_HOLD_TASK: &str = "manpower:credit-hold-daily";
 
 /// The Manpower module. Add it to the app with
 /// `.module(manpower::Manpower)`.
@@ -95,7 +102,8 @@ impl Module for Manpower {
             .model::<ClientContract>()
             .model::<ManpowerRequest>()
             .model::<Deployment>()
-            .model::<documents::DeploymentDocumentFlag>();
+            .model::<documents::DeploymentDocumentFlag>()
+            .model::<ContractHold>();
         contract::register();
         request::register();
         // `MPW.RUL.06`: an approved leave opens the cover requests the
@@ -119,6 +127,14 @@ impl Module for Manpower {
                 deployments::daily(&state).await
             })
             .timezone("Asia/Dubai");
+        // `MPW.RUL.10`: the credit hold, daily at 02:00 and on a payment or a
+        // bounced cheque of the client.
+        app.schedule()
+            .daily_at("02:00", CREDIT_HOLD_TASK, |state: AppState| async move {
+                hold::daily(&state).await
+            })
+            .timezone("Asia/Dubai");
+        hold::listen(app);
         // A site is a scope roles are assigned in, shown by its name.
         wl_kernel::scopes::register_label(site::SUBJECT_TYPE, |db, id| {
             let id = id.to_owned();

@@ -257,3 +257,23 @@ pub async fn cancel(
         .map_err(answer)?;
     load(state, id).await
 }
+
+/// `by` puts contract `id` on credit hold with `reason` (`overdue`,
+/// `bounced_cheque` or `other`) and, for `other`, the `text`; a contract
+/// already on hold gets the reason added. The account manager and the MD are
+/// told once.
+///
+/// # Errors
+///
+/// `Forbidden` without `contracts.manage` for the client; a 422 without a
+/// reason, for `other` without its text, or unless the contract is `active`,
+/// `terminating` or `on_hold`.
+pub async fn hold(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    reason: &str,
+    text: Option<&str>,
+) -> Result<ClientContract> {
+    crate::hold::hold_by_hand(state, by, id, reason, text).await
+}

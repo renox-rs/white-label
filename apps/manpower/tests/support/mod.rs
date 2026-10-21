@@ -21,10 +21,19 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
+use wl_kernel::cheques::{
+    ChequeBounceResolved, ChequeBounced, ChequeFuture, ChequeId, ChequeOutcome, ChequeStatus,
+    ChequeSummary, Cheques, NoCheques, provide_cheques,
+};
+use wl_kernel::invoicing::{
+    InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
+    provide_invoicer,
+};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
 use wl_kernel::parties::{PartyDirectory, PartyFuture, provide_directory};
+use wl_kernel::payments::Direction;
 use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::rate_cards::{RateCardFuture, RateCardVersion, RateCards, provide_rate_cards};
 use wl_kernel::workforce::{
@@ -390,8 +399,233 @@ impl Notifier for Recording {
     }
 }
 
+/// The invoices of wl-invoicing, as the vertical reads them: each bills the
+/// contract it was issued under.
+#[derive(Clone, Default)]
+pub struct Invoices(Arc<Mutex<Vec<(InvoiceSummary, Subject)>>>);
+
+impl Invoices {
+    /// An invoice `number` of AED `balance` fils issued under `contract`, due
+    /// on `due`, still unpaid.
+    pub fn issue(
+        &self,
+        contract: &ClientContract,
+        number: &str,
+        balance: i64,
+        due: NaiveDate,
+    ) -> InvoiceId {
+        let mut all = self.0.lock().unwrap();
+        let id = InvoiceId(all.len() as i64 + 1);
+        all.push((
+            InvoiceSummary {
+                id,
+                number: Some(number.to_owned()),
+                status: InvoiceStatus::Overdue,
+                party: PartyId(contract.client_party_id),
+                legal_entity_id: None,
+                currency: "AED".into(),
+                gross_total: balance,
+                balance,
+                due_date: Some(due),
+                disputed: false,
+                chasing_paused_until: None,
+            },
+            contract.subject(),
+        ));
+        id
+    }
+
+    /// Changes the invoice `id`.
+    pub fn change(&self, id: InvoiceId, change: impl FnOnce(&mut InvoiceSummary)) {
+        let mut all = self.0.lock().unwrap();
+        let (summary, _) = all
+            .iter_mut()
+            .find(|(summary, _)| summary.id == id)
+            .expect("a known invoice");
+        change(summary);
+    }
+
+    /// `amount` fils of the invoice `id` are paid.
+    pub fn pay(&self, id: InvoiceId, amount: i64) {
+        self.change(id, |summary| {
+            summary.balance -= amount;
+            summary.status = if summary.balance == 0 {
+                InvoiceStatus::Paid
+            } else {
+                InvoiceStatus::PartiallyPaid
+            };
+        });
+    }
+
+    /// The invoice `id` is under a billing dispute.
+    pub fn dispute(&self, id: InvoiceId) {
+        self.change(id, |summary| summary.disputed = true);
+    }
+}
+
+impl Invoicer for Invoices {
+    fn draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        _draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, Option<InvoiceId>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn find<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(summary, _)| summary.id == id)
+                .map(|(summary, _)| summary.clone()))
+        })
+    }
+
+    fn billing<'a>(
+        &'a self,
+        _db: &'a Db,
+        origin: &'a Subject,
+    ) -> InvoiceFuture<'a, Vec<InvoiceId>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, source)| source == origin)
+                .map(|(summary, _)| summary.id)
+                .collect())
+        })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: InvoiceId,
+        _source: Subject,
+        amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async move {
+            self.pay(id, amount);
+            Ok(())
+        })
+    }
+}
+
+/// The cheques of wl-payments, as the vertical looks them up.
+#[derive(Clone, Default)]
+pub struct Register(Arc<Mutex<Vec<ChequeSummary>>>);
+
+impl Register {
+    /// A cheque `number` of `client` for `amount` fils bounced: it is in the
+    /// register as `bounced`, and the event is what wl-payments emits.
+    pub fn bounce(&self, id: i64, client: PartyId, number: &str, amount: i64) -> ChequeBounced {
+        self.0.lock().unwrap().push(ChequeSummary {
+            id: ChequeId(id),
+            direction: Direction::In,
+            party: client,
+            legal_entity_id: 1,
+            bank: "Emirates NBD".into(),
+            number: number.to_owned(),
+            date: date(2026, 10, 1),
+            amount,
+            honoured_amount: 0,
+            open_amount: amount,
+            currency: "AED".into(),
+            presentations: 1,
+            status: ChequeStatus::Bounced,
+            agreement: None,
+            linked: Vec::new(),
+        });
+        ChequeBounced {
+            cheque: ChequeId(id),
+            party: client,
+            credit_group: None,
+            amount,
+            honoured_amount: 0,
+            open_amount: amount,
+            currency: "AED".into(),
+            reason: "insufficient funds".into(),
+            presentation: 1,
+            linked: Vec::new(),
+        }
+    }
+
+    /// The cheque `id` was cleared after a re-presentation: the register says
+    /// so and the event is what wl-payments emits.
+    pub fn clear(&self, id: i64) -> ChequeBounceResolved {
+        let mut all = self.0.lock().unwrap();
+        let cheque = all
+            .iter_mut()
+            .find(|cheque| cheque.id == ChequeId(id))
+            .expect("a known cheque");
+        cheque.status = ChequeStatus::Cleared;
+        cheque.open_amount = 0;
+        ChequeBounceResolved {
+            cheque: cheque.id,
+            party: cheque.party,
+            outcome: ChequeOutcome::Cleared,
+            others_open: Vec::new(),
+        }
+    }
+}
+
+impl Cheques for Register {
+    fn register<'a>(
+        &'a self,
+        state: &'a AppState,
+        cheque: wl_kernel::cheques::RegisterCheque,
+        by: Option<i64>,
+    ) -> ChequeFuture<'a, ChequeSummary> {
+        NoCheques.register(state, cheque, by)
+    }
+
+    fn register_schedule<'a>(
+        &'a self,
+        state: &'a AppState,
+        schedule: wl_kernel::cheques::ChequeSchedule,
+        by: Option<i64>,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        NoCheques.register_schedule(state, schedule, by)
+    }
+
+    fn find<'a>(&'a self, _db: &'a Db, id: ChequeId) -> ChequeFuture<'a, Option<ChequeSummary>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|cheque| cheque.id == id)
+                .cloned())
+        })
+    }
+
+    fn of_agreement<'a>(
+        &'a self,
+        _db: &'a Db,
+        _agreement: &'a Subject,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_bounced_amount<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> ChequeFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+}
+
 /// Provides the fakes.
 struct Fakes {
+    invoices: Invoices,
+    register: Register,
     parties: Parties,
     cards: Cards,
     portal: Portal,
@@ -415,6 +649,8 @@ impl Module for Fakes {
         provide_portal_users(app, self.portal.clone());
         provide_notifier(app, self.notices.clone());
         provide_workforce(app, self.staff.clone());
+        provide_invoicer(app, self.invoices.clone());
+        provide_cheques(app, self.register.clone());
         record(app, &self.activated);
         record(app, &self.deployed);
         record(app, &self.ended);
@@ -437,6 +673,10 @@ pub struct Booted {
     pub notices: Recording,
     /// The workforce of HR.
     pub staff: Staff,
+    /// The invoices of wl-invoicing.
+    pub invoices: Invoices,
+    /// The cheques of wl-payments.
+    pub register: Register,
     /// `ContractActivated`.
     pub activated: Recorded<ContractActivated>,
     /// `DeploymentActivated`.
@@ -693,7 +933,11 @@ pub async fn boot() -> Booted {
     let ended = Recorded::default();
     let cancelled = Recorded::default();
     let covers = Recorded::default();
+    let invoices = Invoices::default();
+    let register = Register::default();
     let fakes = Fakes {
+        invoices: invoices.clone(),
+        register: register.clone(),
         parties: parties.clone(),
         cards: cards.clone(),
         portal: portal.clone(),
@@ -758,6 +1002,8 @@ pub async fn boot() -> Booted {
         cards,
         portal,
         staff,
+        invoices,
+        register,
         notices,
         activated,
         deployed,

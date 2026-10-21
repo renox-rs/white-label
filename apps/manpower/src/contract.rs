@@ -11,11 +11,16 @@
 //! active, on_hold, terminating --end--> ended                              (BL-MPW-06)
 //! ```
 //!
-//! Built here: the six states and `activate` and `cancel`. `on_hold`,
-//! `terminating` and `ended` are declared so the issues that add `hold`,
-//! `release`, `terminate`, `renew` and `end` only add transitions: **`hold` and
-//! `release` come with BL-MPW-01 and BL-MPW-03, `terminate` with BL-MPW-04,
-//! `renew` with BL-MPW-05, `end` with BL-MPW-06.**
+//! Built here: the six states and `activate`, `cancel` and `hold`. `ended` and
+//! the transitions into and out of `terminating` are declared so the issues
+//! that add `release`, `terminate`, `renew` and `end` only add transitions:
+//! **`release` comes with BL-MPW-03, `terminate` with BL-MPW-04, `renew` with
+//! BL-MPW-05, `end` with BL-MPW-06.**
+//!
+//! - `hold` (`contracts.manage`, with a reason) and its twin `auto_hold` (the
+//!   system's, `MPW.RUL.10`) put an `active` or `terminating` contract on
+//!   credit hold; the state before, the day, who held it and the reasons are
+//!   kept ([`crate::hold`]).
 //!
 //! - `activate` (`contracts.manage` for the client) needs the signed contract
 //!   (`DOC.SIG.01`: the day and the document are recorded by
@@ -35,6 +40,7 @@ use wl_kernel::documents::today;
 use wl_kernel::{PartyId, Subject, SubjectMachine};
 
 use crate::db::set_contract;
+use crate::hold::{hold_effects, hold_input, hold_problem};
 use crate::permissions;
 
 /// The subject type of a client contract.
@@ -44,6 +50,11 @@ pub const SUBJECT_TYPE: &str = "manpower.client_contract";
 pub const ACTIVATE: &str = "activate";
 /// The `cancel` transition's name.
 pub const CANCEL: &str = "cancel";
+/// The `hold` transition's name: the account manager puts the contract on
+/// credit hold.
+pub const HOLD: &str = "hold";
+/// The system's `hold` (`MPW.RUL.10`).
+pub const AUTO_HOLD: &str = "auto_hold";
 
 /// Where a client contract stands (§7.1).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -122,6 +133,13 @@ pub struct ClientContract {
     pub activated_on: Option<NaiveDate>,
     /// Why it was cancelled.
     pub cancel_reason: Option<String>,
+    /// The state before the credit hold (`active` or `terminating`), kept by
+    /// `hold` so `release` goes back to it; none unless `on_hold`.
+    pub status_before_hold: Option<ContractStatus>,
+    /// When it was put on hold; none unless `on_hold`.
+    pub held_at: Option<DateTime>,
+    /// The user who held it; none when the rule did or it is not on hold.
+    pub held_by: Option<i64>,
     /// The user who created it.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -180,6 +198,25 @@ fn user(name: &str, label: &str, permission: &'static str) -> Transition<ClientC
         .permission_in(permission, |contract: &ClientContract| contract.scope())
 }
 
+/// `hold` and `auto_hold`: the contract is `active` or `terminating`, a reason
+/// is given, and the state before, the day, who held it and the reasons are
+/// kept.
+fn holding(transition: Transition<ClientContract>) -> Transition<ClientContract> {
+    transition
+        .reason_required()
+        .from([ContractStatus::Active, ContractStatus::Terminating])
+        .to(ContractStatus::OnHold)
+        .guard("reason", |_contract: &ClientContract, ctx| {
+            let problem = hold_problem(&hold_input(ctx));
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|contract: &ClientContract, ctx, tx| {
+            let contract = contract.clone();
+            let input = hold_input(ctx);
+            Box::pin(async move { hold_effects(&mut *tx, &contract, &input).await })
+        })
+}
+
 impl StateMachine for ClientContract {
     type State = ContractStatus;
     const COLUMN: renox::db::Col<ClientContract, ContractStatus> = ClientContract::STATUS;
@@ -225,6 +262,10 @@ impl StateMachine for ClientContract {
                         })
                     }),
             )
+            .transition(holding(
+                user(HOLD, "Hold", permissions::CONTRACTS_MANAGE).tone("danger"),
+            ))
+            .transition(holding(Transition::new(AUTO_HOLD).label("Hold").system()))
             .transition(
                 user(CANCEL, "Cancel", permissions::CONTRACTS_MANAGE)
                     .tone("danger")
@@ -263,17 +304,21 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_that_is_built_is_declared() {
         let machine = ClientContract::machine();
-        let table: [(&str, &[&str], &str); 2] = [
-            (ACTIVATE, &["draft"], "active"),
-            (CANCEL, &["draft"], "cancelled"),
+        let table: [(&str, &[&str], &str, bool); 4] = [
+            (ACTIVATE, &["draft"], "active", false),
+            (CANCEL, &["draft"], "cancelled", false),
+            (HOLD, &["active", "terminating"], "on_hold", false),
+            (AUTO_HOLD, &["active", "terminating"], "on_hold", true),
         ];
         assert_eq!(machine.transitions().len(), table.len());
-        for (name, from, to) in &table {
+        for (name, from, to, by_system) in &table {
             let transition = machine.find(name).expect(name);
             assert_eq!(transition.from_states(), *from, "{name}");
             assert_eq!(transition.to_state(), Some(*to), "{name}");
-            assert!(!transition.is_system(), "{name}");
+            assert_eq!(transition.is_system(), *by_system, "{name}");
         }
+        assert!(machine.find(HOLD).expect("hold").needs_reason());
+        assert!(machine.find(AUTO_HOLD).expect("auto_hold").needs_reason());
     }
 
     #[test]
