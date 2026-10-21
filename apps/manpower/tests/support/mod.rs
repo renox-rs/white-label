@@ -691,9 +691,19 @@ impl DocumentGuard for Documents {
 
 /// A notifier that records every request and queues nothing.
 #[derive(Clone, Default)]
-pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>, Arc<AtomicBool>);
+pub struct Recording(
+    Arc<Mutex<Vec<NotifyRequest>>>,
+    Arc<AtomicBool>,
+    Arc<Mutex<Vec<String>>>,
+);
 
 impl Recording {
+    /// Requests of the type `key` work even while the notifier is failing (the
+    /// kernel's alert to the owner is a different channel from the client's).
+    pub fn always_works(&self, key: &str) {
+        self.2.lock().unwrap().push(key.to_owned());
+    }
+
     /// Makes every further request fail (or work again).
     pub fn fail(&self, failing: bool) {
         self.1.store(failing, Ordering::SeqCst);
@@ -731,7 +741,8 @@ impl Notifier for Recording {
         _state: &'a AppState,
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
-        if self.1.load(Ordering::SeqCst) {
+        let exempt = self.2.lock().unwrap().contains(&request.type_key);
+        if self.1.load(Ordering::SeqCst) && !exempt {
             return Box::pin(async { Err(Error::permanent_message("the notifier is down")) });
         }
         self.0.lock().unwrap().push(request);

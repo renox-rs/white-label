@@ -482,6 +482,11 @@ async fn a_failing_run_is_retried_and_then_alerts_the_owner() {
     );
 
     // Another worker's run keeps failing: five attempts, then the alert.
+    let md = w.t.md("Bader").await;
+    renox::auth::permissions::define_role(w.t.db(), wl_kernel::COMPANY_ADMIN_ROLE, &[])
+        .await
+        .unwrap();
+    let admin = w.t.user_with("Aisha", wl_kernel::COMPANY_ADMIN_ROLE).await;
     let w2 = w.t.staff.employ(&w.t.parties, 8, "Omar Said", true);
     let d2 =
         w.t.deployment(
@@ -493,16 +498,21 @@ async fn a_failing_run_is_retried_and_then_alerts_the_owner() {
         )
         .await;
     w.t.notices.fail(true);
+    w.t.notices
+        .always_works(wl_kernel::compliance::service::NOTIFICATION_TYPE);
     w.t.documents.expire(8, "work_permit");
     let mut event = expired("work_permit", blocking("work_permit", BlockMode::Block));
     event.subject = Subject::new("hr.employee", 8);
     w.t.state().emit(event).await.unwrap();
-    for _ in 0..5 {
+    for attempt in 1..=5 {
         w.t.app.travel(Duration::from_secs(2 * 60 * 60));
-        let _ =
-            w.t.app
-                .at_travelled_time(suspension::retry(w.t.state()))
-                .await;
+        // A follow-up that fails is kept for the next attempt and the fifth
+        // gives up with the alert: the run answers `Ok`, so an `Err` would be
+        // a fault of the rule and must not hide behind the alert below.
+        w.t.app
+            .at_travelled_time(suspension::retry(w.t.state()))
+            .await
+            .unwrap_or_else(|error| panic!("attempt {attempt} ended in an error: {error}"));
     }
     let alerts = ComplianceAlert::query()
         .where_(ComplianceAlert::RULE.eq("MPW.RUL.12"))
@@ -512,4 +522,14 @@ async fn a_failing_run_is_retried_and_then_alerts_the_owner() {
     assert_eq!(alerts.len(), 1, "the owner is alerted once");
     assert_eq!(alerts[0].subject_id, d2.id);
     assert_eq!(alerts[0].owner_role, "md");
+    // The kernel tells the MD and the company admin (`PLT.RUL.04`), once.
+    let told =
+        w.t.notices
+            .of_type(wl_kernel::compliance::service::NOTIFICATION_TYPE);
+    assert_eq!(told.len(), 1);
+    let mut recipients = users_of(&told[0]);
+    recipients.sort_unstable();
+    let mut wanted = vec![md.id, admin.id];
+    wanted.sort_unstable();
+    assert_eq!(recipients, wanted, "the MD and the company admin");
 }
