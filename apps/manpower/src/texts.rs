@@ -110,6 +110,19 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.request.cancelled_deployments",
         "request cancelled",
     ),
+    // A blocked client (BL-MPW-15).
+    (
+        "manpower.blocked.task_title",
+        "Client on hold: review its deployments",
+    ),
+    (
+        "manpower.blocked.task_body",
+        "The client is on hold. Workers on site continue; no deployment is activated or extended, no contract renewed and no request submitted until it is released. The MD decides any ending. Its deployments:",
+    ),
+    (
+        "manpower.blocked.line",
+        "{{ worker }}, {{ role }} at {{ site }}, {{ status }}, {{ from }} to {{ until }}",
+    ),
     // The documents a deployment depends on (BL-MPW-09).
     (
         "manpower.deployment.document_expiring",

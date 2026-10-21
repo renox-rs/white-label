@@ -515,7 +515,15 @@ pub(crate) struct ClientDeploymentRow {
     end_date: Option<NaiveDate>,
     status: String,
     status_kind: &'static str,
-    /// What staff are warned of; empty for a client user.
+}
+
+/// A row of the deployments page: a [`ClientDeploymentRow`] and, for staff, what
+/// they are warned of (BL-MPW-09); empty for a client user, whose JSON rows
+/// stay exactly the client's keys.
+#[derive(Debug, Serialize, Clone)]
+pub(crate) struct PageDeploymentRow {
+    #[serde(flatten)]
+    row: ClientDeploymentRow,
     flags: Vec<String>,
 }
 
@@ -525,7 +533,7 @@ pub(crate) struct ClientDeploymentRow {
 #[view(template = "manpower/deployments.html")]
 pub(crate) struct DeploymentsPage {
     tx: BTreeMap<&'static str, String>,
-    deployments: Vec<ClientDeploymentRow>,
+    deployments: Vec<PageDeploymentRow>,
 }
 
 /// The badge colour of a deployment.
@@ -611,7 +619,6 @@ async fn deployments_index(
                 end_date: deployment.end_date,
                 status,
                 status_kind: kind,
-                flags: Vec::new(),
             });
         }
     }
@@ -629,20 +636,28 @@ async fn deployments_index(
     }
     if wants_page {
         // The page reads the same keys for both kinds of row.
-        let rows = if staff.is_empty() {
+        let rows: Vec<PageDeploymentRow> = if staff.is_empty() {
             clients
+                .into_iter()
+                .map(|row| PageDeploymentRow {
+                    row,
+                    flags: Vec::new(),
+                })
+                .collect()
         } else {
             staff
                 .iter()
-                .map(|row| ClientDeploymentRow {
-                    worker: row.worker.clone(),
-                    role: row.role.clone(),
-                    site: row.site.clone(),
-                    shift_type: row.shift_type.clone(),
-                    start_date: row.start_date,
-                    end_date: row.end_date,
-                    status: row.status.clone(),
-                    status_kind: row.status_kind,
+                .map(|row| PageDeploymentRow {
+                    row: ClientDeploymentRow {
+                        worker: row.worker.clone(),
+                        role: row.role.clone(),
+                        site: row.site.clone(),
+                        shift_type: row.shift_type.clone(),
+                        start_date: row.start_date,
+                        end_date: row.end_date,
+                        status: row.status.clone(),
+                        status_kind: row.status_kind,
+                    },
                     flags: row.document_flags.clone(),
                 })
                 .collect()

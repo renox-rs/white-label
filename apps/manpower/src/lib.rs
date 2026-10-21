@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 mod access;
+pub mod blocked;
 pub mod contract;
 pub mod contracts;
 pub mod cover;
@@ -105,6 +106,10 @@ impl Module for Manpower {
         // expiring document stops (`FutureWork`) and the flags the nightly
         // look-ahead leaves.
         documents::register();
+        // BL-MPW-15: a blocked client's deployments continue (the decider is the
+        // MD); its task is opened on `PartyBlocked`.
+        blocked::register();
+        blocked::listen(app);
         documents::listen(app);
         notices::register_types();
         // Deployments whose end date has passed end by themselves: daily at

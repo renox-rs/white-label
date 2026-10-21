@@ -10,11 +10,13 @@ use renox::chrono::NaiveDate;
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::{Outcome, StateMachine};
+use wl_kernel::block_guard::ActionKind;
 use wl_kernel::documents::today;
 use wl_kernel::parties::directory;
 use wl_kernel::workforce::{EmployeeId, workforce};
 use wl_kernel::{PartyId, Subject};
 
+use crate::blocked;
 use crate::contract::{ClientContract, ContractStatus};
 use crate::db::{answer, refused};
 use crate::deployment::{
@@ -228,6 +230,15 @@ pub async fn activate(state: &AppState, by: &AuthUser, id: i64, lang: &str) -> R
         new_end_date: None,
     };
     let mut tx = state.db.begin().await?;
+    // A blocked client starts nothing new (BL-MPW-15).
+    blocked::check(
+        &mut tx,
+        state,
+        Some(by),
+        deployment.client(),
+        ActionKind::Start,
+    )
+    .await?;
     let activated = deployment
         .transition(ACTIVATE)
         .by(by)
@@ -330,6 +341,8 @@ pub async fn extend(
 ) -> Result<Deployment> {
     let deployment = load(state, id).await?;
     require_manage(by, deployment.client())?;
+    // A blocked client extends nothing (BL-MPW-15).
+    blocked::ensure(state, Some(by), deployment.client(), ActionKind::Extend).await?;
     let contract = ClientContract::find_or_404(&state.db, deployment.client_contract_id).await?;
     let mut problems = Vec::new();
     if !contract.takes_deployments() {

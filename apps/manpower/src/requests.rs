@@ -11,10 +11,12 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
+use wl_kernel::block_guard::ActionKind;
 use wl_kernel::documents::today;
 use wl_kernel::rate_cards::rate_cards;
 
 use crate::access::may_write;
+use crate::blocked;
 use crate::contract::{ClientContract, ContractStatus};
 use crate::db::{answer, refused};
 use crate::deployments;
@@ -171,6 +173,8 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<Manpower
     {
         return Err(Error::Forbidden);
     }
+    // A blocked client orders nothing new (BL-MPW-15).
+    blocked::ensure(state, Some(by), request.client(), ActionKind::Start).await?;
     let contract = ClientContract::find_or_404(&state.db, request.client_contract_id).await?;
     let input = RequestInput {
         problems: readiness(state, &request, &contract).await?,

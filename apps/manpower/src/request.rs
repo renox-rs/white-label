@@ -23,8 +23,8 @@
 //!   (`MPW.ACL.01`), staff with `requests.create` for the client. **The
 //!   refusal while the contract is on hold needs `hold`, which comes with
 //!   BL-MPW-01; the guard on the status is built here and BL-MPW-02 tests it
-//!   with the hold. The client-blocked guard (`PartyBlocked`) comes with
-//!   BL-MPW-15.**
+//!   with the hold.** A blocked client (`PartyBlocked`, BL-MPW-15) is refused
+//!   `submit` through [`crate::blocked`].
 //! - `cancel` needs a reason; the planned deployments of the request are
 //!   cancelled with it ([`crate::requests::cancel`]). `auto_cancel` is the
 //!   system's, for the contract's `terminate` (BL-MPW-04) and `end`

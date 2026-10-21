@@ -23,7 +23,8 @@
 //!   request still taking workers; the request takes one position in the same
 //!   transaction (`fill_partly` or `fill`). **The document and licence check
 //!   (`MPW.ACL.07`) comes with BL-MPW-08, the overlap check (`MPW.ACL.15`)
-//!   with BL-MPW-10, the blocked-client check with BL-MPW-15.**
+//!   with BL-MPW-10. A blocked client (BL-MPW-15) is refused `activate` and
+//!   `extend` through [`crate::blocked`].**
 //! - `extend` moves the end date later, within the contract, while the
 //!   contract takes deployments (`active` or `terminating`; the document
 //!   check of the new end date comes with BL-MPW-08).
