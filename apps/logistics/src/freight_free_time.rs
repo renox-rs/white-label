@@ -39,7 +39,7 @@ use wl_kernel::documents::today;
 use wl_kernel::invoicing::{self, SupplierBillLineId, SupplierBillStatus};
 
 use crate::freight::{FreightContainer, FreightJob, FreightStatus, track};
-use crate::freight_costing::{self, JobLine, closed_before, line_kind, liability, liability_reason};
+use crate::freight_costing::{JobLine, closed_before, line_kind, liability, liability_reason};
 use crate::freight_flow::{load, tell_client_to_act};
 use crate::freight_hold::tell_officers;
 use crate::permissions;
