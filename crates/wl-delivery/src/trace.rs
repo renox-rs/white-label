@@ -23,6 +23,8 @@ pub const NOTE: &str = "note";
 pub const DEPOT_RECEIPT: &str = "depot_receipt";
 /// The goods of a lost delivery were found.
 pub const FOUND: &str = "found";
+/// A delivery was reversed: its goods are traced from then on.
+pub const REVERSAL: &str = "reversal";
 
 /// Stores a trace of `kind` for delivery `delivery_id` inside `tx`.
 ///

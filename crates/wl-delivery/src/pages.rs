@@ -25,6 +25,9 @@
 //! | `POST /driver/stops/{id}/deliver` | `wl_delivery.stop_deliver` | `deliveries.complete` and the run's driver |
 //! | `POST /driver/stops/{id}/fail` | `wl_delivery.stop_fail` | `deliveries.complete` and the run's driver |
 //! | `POST /driver/stops/{id}/no-answer` | `wl_delivery.stop_no_answer` | `deliveries.complete` and the run's driver (withdraws the cash difference request and fails the visit with *refused to pay*) |
+//! | `POST /deliveries/{id}/reverse` | `wl_delivery.reverse` | `deliveries.reverse`, not the run's driver (fields `reason`, `liability`, `note`) |
+//! | `POST /deliveries/{id}/reverse/approve` | `wl_delivery.reverse_approve` | `deliveries.reverse`, neither the requester nor the run's driver (fields `cash_treatment`, `comment`) |
+//! | `POST /deliveries/{id}/reverse/reject` | `wl_delivery.reverse_reject` | `deliveries.reverse` (field `comment`, required) |
 //! | `POST /deliveries/{id}/cod-difference/approve` | `wl_delivery.cod_approve` | `deliveries.approve_cod_difference`, not the driver (fields `absorbed_by`, `comment`) |
 //! | `POST /deliveries/{id}/cod-difference/reject` | `wl_delivery.cod_reject` | `deliveries.approve_cod_difference` (field `comment`, required) |
 //!
@@ -56,6 +59,7 @@ use crate::permissions;
 use crate::plan::{self, NewRun};
 use crate::proof::{self, DeliverForm, LineEntry, aed, milli_text};
 use crate::reasons::{CodReason, FailureReason, RefusalReason};
+use crate::reverse;
 use crate::review;
 use crate::run::{Run, RunStatus, VehicleType};
 use crate::settings::settings;
@@ -106,6 +110,12 @@ pub fn routes() -> Routes {
             Routes::new()
                 .post("/deliveries/{id}/mark-lost", store_mark_lost)
                 .name("wl_delivery.mark_lost")
+                .post("/deliveries/{id}/reverse", store_reverse)
+                .name("wl_delivery.reverse")
+                .post("/deliveries/{id}/reverse/approve", store_reverse_approve)
+                .name("wl_delivery.reverse_approve")
+                .post("/deliveries/{id}/reverse/reject", store_reverse_reject)
+                .name("wl_delivery.reverse_reject")
                 .require_permission(permissions::REVERSE),
         )
         .merge(
@@ -363,6 +373,17 @@ pub(crate) struct LostRow {
     claim: Option<String>,
 }
 
+/// A reversal waiting for a second manager, as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ReversalRow {
+    requested_by: String,
+    reason: String,
+    liability: String,
+    /// Whether the cash was already handed over, so the approver chooses
+    /// what happens to it.
+    handed_over: bool,
+}
+
 /// A cash difference waiting for an approver, as the page shows it.
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct CodRequestRow {
@@ -403,6 +424,17 @@ pub(crate) struct ShowPage {
     review_outcomes: Vec<(String, String)>,
     /// The planned runs the assign sheet offers, `(id, label)`.
     planned_runs: Vec<(String, String)>,
+    /// Whether the viewer may ask to reverse the delivery.
+    can_reverse: bool,
+    /// The reversal that waits for a second manager.
+    reversal: Option<ReversalRow>,
+    /// Whether the viewer may approve or reject it (never the requester or
+    /// the run's driver).
+    can_decide_reversal: bool,
+    /// `(value, label)` of the reasons for a reversal.
+    reversal_reasons: Vec<(String, String)>,
+    /// `(value, label)` of what to do with cash already handed over.
+    cash_choices: Vec<(String, String)>,
     /// The cash difference that waits for an approver.
     cod_request: Option<CodRequestRow>,
     /// Whether the viewer may approve or reject it (never the driver who
@@ -546,6 +578,41 @@ async fn show(
     } else {
         Vec::new()
     };
+    let can_reverse = user.has_permission(permissions::REVERSE)
+        && !driver_of_run
+        && matches!(
+            delivery.status,
+            DeliveryStatus::Delivered | DeliveryStatus::UnderReview
+        );
+    let mut reversal = None;
+    let mut can_decide_reversal = false;
+    if let Some(request) = cod::pending_request(&state.db, delivery.id, reverse::ACTION).await? {
+        let input =
+            renox::serde_json::from_value::<reverse::ReverseInput>(request.payload.0.clone()).ok();
+        let requested_by = User::find(&state.db, request.requester_id)
+            .await?
+            .map_or_else(|| format!("#{}", request.requester_id), |u| u.name);
+        reversal = Some(ReversalRow {
+            requested_by,
+            reason: input.as_ref().map(|i| i.reason.clone()).unwrap_or_default(),
+            liability: input
+                .as_ref()
+                .map(|i| t(&format!("liability.{}", i.liability)))
+                .unwrap_or_default(),
+            handed_over: reverse::cash_handed_over(&state, &delivery).await?,
+        });
+        can_decide_reversal = user.has_permission(permissions::REVERSE)
+            && !driver_of_run
+            && request.requester_id != user.id;
+    }
+    let reversal_reasons = reverse::REASONS
+        .iter()
+        .map(|key| ((*key).to_owned(), t(&format!("reverse.reason.{key}"))))
+        .collect();
+    let cash_choices = reverse::CASH_CHOICES
+        .iter()
+        .map(|key| ((*key).to_owned(), t(&format!("reverse.cash.{key}"))))
+        .collect();
     cod::lapse_overdue(&state, delivery.id).await?;
     let mut cod_request = None;
     let mut can_decide_cod = false;
@@ -622,6 +689,11 @@ async fn show(
         review,
         review_outcomes,
         planned_runs,
+        can_reverse,
+        reversal,
+        can_decide_reversal,
+        reversal_reasons,
+        cash_choices,
         cod_request,
         can_decide_cod,
         cod_absorbers,
@@ -767,6 +839,99 @@ async fn store_mark_lost(
         lost::LostRequest::Requested(_) => "wl_delivery.actions.mark_lost_requested",
     };
     Ok((Toast::success(texts::t(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// The form that asks to reverse a delivery.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct ReverseForm {
+    /// `marked_by_mistake`, `recipient_denies` or `wrong_recipient`.
+    #[serde(default)]
+    pub reason: String,
+    /// Who is responsible: `driver`, `business`, `client` or `none`.
+    #[serde(default)]
+    pub liability: String,
+    /// The requester's note.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /deliveries/{id}/reverse`: asks to reverse the delivery. With the
+/// policy `delivery.reverse_delivery` the request waits for a second holder
+/// of `deliveries.reverse`; the answer says so. A refusal answers 422.
+async fn store_reverse(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<ReverseForm>,
+) -> Result<Response> {
+    let asked = reverse::request(
+        &state,
+        &user,
+        &delivery,
+        &form.reason,
+        &form.liability,
+        &form.note,
+    )
+    .await
+    .map_err(TransitionError::into_error)?;
+    let key = match asked {
+        reverse::ReverseRequest::Reversed => "wl_delivery.reverse.done",
+        reverse::ReverseRequest::Requested(_) => "wl_delivery.reverse.requested",
+    };
+    Ok((Toast::success(texts::t(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// The form of a second manager's answer to a reversal.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ReverseDecisionForm {
+    /// `refund` or `keep`, when the cash was already handed over.
+    #[serde(default)]
+    pub cash_treatment: String,
+    /// The approver's comment (required to reject).
+    #[serde(default)]
+    pub comment: String,
+}
+
+/// `POST /deliveries/{id}/reverse/approve`: approves the reversal; when the
+/// cash was already handed over the approver chooses what happens to it.
+async fn store_reverse_approve(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<ReverseDecisionForm>,
+) -> Result<Response> {
+    reverse::approve(
+        &state,
+        &user,
+        &delivery,
+        Some(&form.cash_treatment),
+        &form.comment,
+    )
+    .await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.reverse.approved")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /deliveries/{id}/reverse/reject`: rejects the reversal; the
+/// delivery and its proof stay as they were.
+async fn store_reverse_reject(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<ReverseDecisionForm>,
+) -> Result<Response> {
+    reverse::reject(&state, &user, &delivery, &form.comment).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.reverse.rejected_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records that a lost delivery was found.

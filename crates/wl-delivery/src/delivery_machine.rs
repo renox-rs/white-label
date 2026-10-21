@@ -8,6 +8,8 @@
 //!         pending | assigned --cancel--> cancelled (terminal)
 //! out_for_delivery --deliver_short (approval, WRK.ACL.09)--> delivered
 //! delivered --open_review--> under_review --close_review--> delivered
+//! delivered | under_review --reverse_delivery (approval, WRK.ACL.10)--> attempted
+//!     --back_on_the_road (system, run still dispatched)--> out_for_delivery
 //! out_for_delivery | attempted | under_review --mark_lost--> lost --found--> attempted
 //! ```
 //!
@@ -15,7 +17,8 @@
 //! the transitions out of `attempted` come with their issues (BL-DLV-03,
 //! BL-DLV-07). `assign`, `unassign`, `dispatch` and `cancel` are in
 //! [`crate::plan`], `deliver` and `fail` in [`crate::proof`],
-//! `open_review` and `close_review` in [`crate::review`], `mark_lost` (and its
+//! `open_review` and `close_review` in [`crate::review`], `reverse_delivery` (and
+//! its approved twin) in [`crate::reverse`], `mark_lost` (and its
 //! approved and system twins) and `found` in [`crate::lost`]. `Delivery` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
@@ -62,6 +65,7 @@ impl StateMachine for Delivery {
             .chain(crate::proof::transitions())
             .chain(crate::review::transitions())
             .chain(crate::lost::transitions())
+            .chain(crate::reverse::transitions())
             .fold(machine, Machine::transition)
     }
 }
@@ -151,6 +155,19 @@ mod tests {
                 true,
             ),
             ("found", vec!["lost"], "attempted", false),
+            (
+                "reverse_delivery",
+                vec!["delivered", "under_review"],
+                "attempted",
+                false,
+            ),
+            (
+                "reverse_delivery_approved",
+                vec!["delivered", "under_review"],
+                "attempted",
+                true,
+            ),
+            ("back_on_the_road", vec!["attempted"], "out_for_delivery", true),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to, system) in expected {

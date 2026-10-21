@@ -381,6 +381,14 @@ pub struct Proof {
     pub absorbed_by: Option<String>,
     /// The approval request that allowed a difference above the tolerance.
     pub approval_request_id: Option<i64>,
+    /// When a reversal marked it reversed.
+    pub reversed_at: Option<DateTime>,
+    /// Why it was reversed.
+    pub reversal_reason: Option<String>,
+    /// Who bears the reversal: `driver`, `business`, `client` or `none`.
+    pub reversal_liability: Option<String>,
+    /// The user who approved the reversal.
+    pub reversed_by: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

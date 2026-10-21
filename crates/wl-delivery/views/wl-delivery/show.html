@@ -27,6 +27,21 @@
         <rx-textarea name="reason" :label="tx['actions.mark_lost_reason']" :id="'mark-lost-reason-' ~ delivery.id" required/>
         <rx-select name="liability" :label="tx['actions.mark_lost_liability']" :options="liabilities" :selected="'none'" :id="'mark-lost-liability-' ~ delivery.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_reverse" :id="'reverse-' ~ delivery.id" :label="tx['reverse.action']" :action="route('wl_delivery.reverse', delivery.id)"
+                       :title="tx['reverse.title']" :description="tx['reverse.description']" :submit-label="tx['reverse.action']" icon="undo-2" variant="danger" danger>
+        <rx-select name="reason" :label="tx['reverse.reason']" :options="reversal_reasons" :selected="''" :id="'reverse-reason-' ~ delivery.id" required/>
+        <rx-select name="liability" :label="tx['reverse.liability']" :options="liabilities" :selected="'none'" :id="'reverse-liability-' ~ delivery.id" required/>
+        <rx-textarea name="note" :label="tx['reverse.note']" :id="'reverse-note-' ~ delivery.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_decide_reversal" :id="'reverse-approve-' ~ delivery.id" :label="tx['reverse.approve']" :action="route('wl_delivery.reverse_approve', delivery.id)"
+                       :title="tx['reverse.approve_title']" :description="tx['reverse.approve_description']" :submit-label="tx['reverse.approve']" icon="check">
+        <rx-select rx-if="reversal.handed_over" name="cash_treatment" :label="tx['reverse.cash']" :options="cash_choices" :selected="''" :id="'reverse-cash-' ~ delivery.id" required/>
+        <rx-textarea name="comment" :label="tx['reverse.comment']" :id="'reverse-approve-comment-' ~ delivery.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_decide_reversal" :id="'reverse-reject-' ~ delivery.id" :label="tx['reverse.reject']" :action="route('wl_delivery.reverse_reject', delivery.id)"
+                       :title="tx['reverse.reject_title']" :description="tx['reverse.reject_description']" :submit-label="tx['reverse.reject']" icon="x" variant="danger" danger>
+        <rx-textarea name="comment" :label="tx['reverse.comment']" :id="'reverse-reject-comment-' ~ delivery.id" required/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_find" :id="'found-' ~ delivery.id" :label="tx['actions.found']" :action="route('wl_delivery.found', delivery.id)"
                        :title="tx['actions.found_title']" :description="tx['actions.found_description']" :submit-label="tx['actions.found']" icon="package-check">
         <rx-input name="depot" :label="tx['actions.found_depot']" :id="'found-depot-' ~ delivery.id" required/>
@@ -41,6 +56,14 @@
         <rx-textarea name="comment" :label="tx['cod.comment']" :id="'cod-reject-comment-' ~ delivery.id" required/>
       </rx-action-sheet>
     </rx-page-header>
+    <rx-card rx-if="reversal" :title="tx['reverse.request_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['reverse.requested_by']" :value="reversal.requested_by"/>
+        <rx-entry :label="tx['reverse.reason']" :value="reversal.reason"/>
+        <rx-entry :label="tx['reverse.liability']" :value="reversal.liability"/>
+        <rx-entry :label="tx['reverse.handed_over']" :value="tx['yes'] if reversal.handed_over else tx['no']"/>
+      </rx-infolist>
+    </rx-card>
     <rx-card rx-if="cod_request" :title="tx['cod.request_title']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['cod.requested_by']" :value="cod_request.requested_by"/>

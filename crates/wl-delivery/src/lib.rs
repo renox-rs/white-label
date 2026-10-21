@@ -13,6 +13,7 @@ pub mod plan;
 pub mod proof;
 pub mod reasons;
 pub mod request;
+pub mod reverse;
 pub mod review;
 pub mod run;
 mod run_machine;
@@ -245,6 +246,9 @@ impl Module for WlDelivery {
         // `deliver_short`'s approval (`WRK.ACL.09`), the lapse of a request
         // nobody answered, and the finish of a difference the kernel approved.
         cod::register(app);
+        // `reverse_delivery`'s approval (`WRK.ACL.10`) and what follows a
+        // reversal: the cash, the ticket and `DeliveryReversed`.
+        reverse::register(app);
         proof::register(app);
         // A run closes when the driver's cash handover of it is counted.
         close::register(app);

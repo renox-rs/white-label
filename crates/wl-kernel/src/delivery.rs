@@ -624,6 +624,16 @@ pub struct DeliveryReversed {
     pub source: Subject,
     /// Why it was reversed.
     pub reason: String,
+    /// Who is responsible: `driver`, `business`, `client` or `none`.
+    pub liability: String,
+    /// The original proof of delivery, kept and marked reversed.
+    pub proof: Option<i64>,
+    /// What became of the cash recorded as collected: `removed` (taken out of
+    /// the driver's open custody), `refunded` (to the payer), `kept` (for the
+    /// next attempt); `None` when no cash was recorded.
+    pub cash_treatment: Option<String>,
+    /// The user who approved the reversal (`WRK.ACL.10`).
+    pub approver: Option<i64>,
     /// The source line references of the delivery's lines.
     pub lines: Vec<Subject>,
 }

@@ -86,6 +86,10 @@ fn reversed(lines: &[i64]) -> DeliveryReversed {
         delivery: DELIVERY,
         source: order(),
         reason: "recipient denies".into(),
+        liability: "none".into(),
+        proof: None,
+        cash_treatment: None,
+        approver: None,
         lines: lines.iter().map(|n| line(*n)).collect(),
     }
 }
