@@ -3,9 +3,9 @@
 
 -- The held line that a line of an off-cycle run, or one carried into the
 -- next regular run, pays.
-ALTER TABLE "wl_hr_payroll_lines" ADD COLUMN source_line_id INTEGER REFERENCES "wl_hr_payroll_lines" (id);
+ALTER TABLE "wl_hr_payroll_lines" ADD COLUMN source_line_id INTEGER;
 -- On a held line: the run that finally pays it. Set once.
-ALTER TABLE "wl_hr_payroll_lines" ADD COLUMN released_into INTEGER REFERENCES "wl_hr_payroll_runs" (id);
+ALTER TABLE "wl_hr_payroll_lines" ADD COLUMN released_into INTEGER;
 -- On a held line: the day its hold reason cleared.
 ALTER TABLE "wl_hr_payroll_lines" ADD COLUMN hold_cleared_on TEXT;
 -- On a carried line: why it was carried into a regular run, and the warning
