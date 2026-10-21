@@ -16,6 +16,7 @@ pub mod claim_closing;
 pub mod claim_machine;
 pub mod claim_money;
 pub mod claim_rules;
+pub mod claim_void;
 pub mod claim_window;
 pub mod claims;
 pub mod consent;

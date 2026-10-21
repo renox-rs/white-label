@@ -288,46 +288,9 @@ async fn run(state: &AppState, id: i64, basis: Basis) -> Result<Billed> {
             }
         }
     }
-    // The payer's share, as a draft payer bill: the claim to prepare.
-    if quote.payer_total > 0 && visit.payer_bill_id.is_none() {
-        let agreement = quote
-            .contract
-            .as_ref()
-            .and_then(|contract| contract.agreement_id)
-            .ok_or_else(|| refused(english("clinics.billing.problem.no_agreement", &[])))?;
-        let mut request = NewPayerBill::new(agreement, patient, visit.subject(), visit.visit_date)
-            .void_before_first_submission();
-        if let Some(reference) = first_reference(state, &quote).await? {
-            request = request.payer_reference(&reference);
-        }
-        for line in quote.lines.iter().filter(|l| l.payer_share > 0) {
-            request = request.line(
-                NewPayerBillLine::new(&describe(line), line.payer_share).vat_category(vat(line)),
-            );
-        }
-        let made: PayerBillId = payer_bills(state).create(state, request, None).await?;
-        Visit::query()
-            .where_(Visit::ID.eq(id))
-            .update(&state.db, &[("payer_bill_id", &Some(made.0))])
-            .await?;
-        visit.payer_bill_id = Some(made.0);
-    }
-    // The claim that wraps the payer bill; a bill that stopped before it was
-    // made finishes it.
-    if let Some(bill) = visit.payer_bill_id
-        && Claim::of_payer_bill(&state.db, bill).await?.is_none()
-    {
-        let reference = first_reference(state, &quote).await?;
-        claims::create_for_visit(
-            state,
-            &visit,
-            PayerBillId(bill),
-            quote.contract.as_ref(),
-            reference,
-            None,
-        )
-        .await?;
-    }
+    // The payer's share, as a draft payer bill and the claim around it: the
+    // claim to prepare; a bill that stopped before it was made finishes it.
+    payer_side(state, &mut visit, &quote, None).await?;
     // The units of the authorisations the covered services used.
     if visit.authorisations_consumed_at.is_none() {
         let at = now();
@@ -343,6 +306,69 @@ async fn run(state: &AppState, id: i64, basis: Basis) -> Result<Billed> {
     }
     settle_deposit(state, id, basis, gross).await?;
     Ok(Billed::of(&Visit::find_or_404(&state.db, id).await?))
+}
+
+/// The payer's share of `quote` as a draft payer bill under the agreement of
+/// the quote's payer contract, and the claim that wraps it
+/// ([`claims::create_for_visit`], `CLN.CLM.01`). A visit that has its payer
+/// bill already only gets the claim it lacks. Returns the claim made now.
+///
+/// Used by the bill of a visit and by the re-split after a claim was voided
+/// (`CLN.ACL.14`).
+///
+/// # Errors
+///
+/// A 422 for a visit without a patient, a contract without an agreement, and
+/// the errors of the contracts it calls.
+pub(crate) async fn payer_side(
+    state: &AppState,
+    visit: &mut Visit,
+    quote: &charges::Quote,
+    by: Option<i64>,
+) -> Result<Option<Claim>> {
+    let patient = visit
+        .patient_party_id
+        .map(PartyId)
+        .ok_or_else(|| refused(english("clinics.billing.problem.no_patient", &[])))?;
+    if quote.payer_total > 0 && visit.payer_bill_id.is_none() {
+        let agreement = quote
+            .contract
+            .as_ref()
+            .and_then(|contract| contract.agreement_id)
+            .ok_or_else(|| refused(english("clinics.billing.problem.no_agreement", &[])))?;
+        let mut request = NewPayerBill::new(agreement, patient, visit.subject(), visit.visit_date)
+            .void_before_first_submission();
+        if let Some(reference) = first_reference(state, quote).await? {
+            request = request.payer_reference(&reference);
+        }
+        for line in quote.lines.iter().filter(|l| l.payer_share > 0) {
+            request = request.line(
+                NewPayerBillLine::new(&describe(line), line.payer_share).vat_category(vat(line)),
+            );
+        }
+        let made: PayerBillId = payer_bills(state).create(state, request, None).await?;
+        Visit::query()
+            .where_(Visit::ID.eq(visit.id))
+            .update(&state.db, &[("payer_bill_id", &Some(made.0))])
+            .await?;
+        visit.payer_bill_id = Some(made.0);
+    }
+    if let Some(bill) = visit.payer_bill_id
+        && Claim::of_payer_bill(&state.db, bill).await?.is_none()
+    {
+        let reference = first_reference(state, quote).await?;
+        let claim = claims::create_for_visit(
+            state,
+            visit,
+            PayerBillId(bill),
+            quote.contract.as_ref(),
+            reference,
+            by,
+        )
+        .await?;
+        return Ok(Some(claim));
+    }
+    Ok(None)
 }
 
 /// The payer's reference of the first authorisation the bill consumes.
