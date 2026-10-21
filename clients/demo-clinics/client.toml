@@ -21,6 +21,10 @@ enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments
 # (the owner / medical director) and the company admin (05 §7.2).
 owner = "owner"
 
+# The number the product recall notice asks patients to call (BL-CLN-14).
+[clinics]
+phone = "+971 4 555 0100"
+
 [[legal_entities]]
 code      = "PGC"
 name_en   = "Palm Grove Clinic LLC"
