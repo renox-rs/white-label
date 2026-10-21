@@ -63,6 +63,9 @@ pub const STOCK_HOLD_SUBJECT_TYPE: &str = "inventory.stock_hold";
 /// The subject type of one line of a stock hold.
 pub const STOCK_HOLD_LINE_SUBJECT_TYPE: &str = "inventory.stock_hold_line";
 
+/// The subject type of a recall.
+pub const RECALL_SUBJECT_TYPE: &str = "inventory.recall";
+
 /// The subject type of a transfer between two locations.
 pub const TRANSFER_SUBJECT_TYPE: &str = "inventory.transfer";
 
@@ -1014,3 +1017,23 @@ pub struct LotDiscarded {
 }
 
 impl Event for LotDiscarded {}
+
+/// A recall was opened (wl-inventory §6 `RecallOpened`): every lot in its
+/// scope is on hold, wherever it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecallOpened {
+    /// The recall, `inventory.recall:2`.
+    pub recall: Subject,
+    /// Its number, `RCL-2026-0001`.
+    pub number: String,
+    /// `supplier`, `authority`, `internal` or `complaint`.
+    pub source: String,
+    /// Why it was opened.
+    pub reason: String,
+    /// The lots in its scope, `inventory.lot:4`.
+    pub lots: Vec<Subject>,
+    /// The stock hold that blocks them, `inventory.stock_hold:3`.
+    pub stock_hold: Subject,
+}
+
+impl Event for RecallOpened {}
