@@ -46,6 +46,10 @@ use crate::hold_line::{
 use crate::item::{Item, value_of};
 use crate::lot::{self, Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
+use crate::return_credit::{CANCEL as RETURN_CANCEL, CANCEL_WITH_RECEIPT};
+use crate::supplier_return::{
+    self, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine,
+};
 use crate::stock_hold::{
     CANCEL, CLOSE, HoldLineStatus, HoldScope, HoldStatus, SettleInput, StockHold, StockHoldLine,
     lines_of,
@@ -371,6 +375,58 @@ async fn discarded_quantity(db: &Db, lot_id: i64) -> Result<i64> {
         .sum())
 }
 
+/// A cancelled Return to supplier gives back the lots it held aside.
+///
+/// `return_to_supplier` closes the hold but leaves the lot `on_hold` until
+/// the return is dispatched. When the draft is cancelled instead, the goods
+/// stay in the quarantine location with a lot nobody holds any more.
+/// Decision: each such lot goes back to `quarantine` (`unhold_to_quarantine`),
+/// not straight to `released`: the goods were held for a quality reason, were
+/// moved to quarantine, and nobody has decided to release them; the
+/// storekeeper inspects and releases them. A lot another open hold has
+/// undecided lines of, or that another draft return still lists, stays held.
+async fn restore_after_cancelled_return(state: &AppState, return_id: i64) -> Result {
+    let mut tx = state.db.begin().await?;
+    let lines = supplier_return::lines_in(&mut tx, return_id).await?;
+    let lots: BTreeSet<i64> = lines
+        .iter()
+        .filter(|line| line.origin == ReturnOrigin::FromStock)
+        .filter_map(|line| line.lot_id)
+        .collect();
+    let mut outcomes = Vec::new();
+    for lot_id in lots {
+        let lot = Lot::find_or_404(&mut tx, lot_id).await?;
+        if lot.status != LotStatus::OnHold || held_elsewhere(&mut tx, lot_id, 0).await? {
+            continue;
+        }
+        let mut listed_elsewhere = false;
+        for other in SupplierReturnLine::query()
+            .where_(SupplierReturnLine::LOT_ID.eq(Some(lot_id)))
+            .where_(SupplierReturnLine::SUPPLIER_RETURN_ID.ne(return_id))
+            .get(&mut tx)
+            .await?
+        {
+            let ret = SupplierReturn::find_or_404(&mut tx, other.supplier_return_id).await?;
+            listed_elsewhere |= ret.status == ReturnStatus::Draft;
+        }
+        if listed_elsewhere {
+            continue;
+        }
+        outcomes.push(
+            lot.transition(lot::UNHOLD_TO_QUARANTINE)
+                .by_system()
+                .run_in(&mut tx)
+                .await
+                .map_err(TransitionError::into_error)?,
+        );
+    }
+    tx.commit().await?;
+    for outcome in outcomes {
+        outcome.emit(state).await?;
+    }
+    Ok(())
+}
+
 /// Registers the listeners of the decisions: a decided line posts its
 /// wastage and settles its hold; a closed hold, a released lot and a
 /// discarded lot are told to the other modules.
@@ -407,6 +463,14 @@ pub(crate) fn register(app: &mut Registry) {
             let hold = StockHold::find_or_404(&state.db, event.key).await?;
             let lines = lines_of(&state.db, hold.id).await?;
             state.emit(closed_event(&hold, &lines)).await
+        },
+    );
+    app.listen(
+        |event: Transitioned<SupplierReturn>, state: AppState| async move {
+            if event.transition != RETURN_CANCEL && event.transition != CANCEL_WITH_RECEIPT {
+                return Ok(());
+            }
+            restore_after_cancelled_return(&state, event.key).await
         },
     );
     app.listen(|event: Transitioned<Lot>, state: AppState| async move {

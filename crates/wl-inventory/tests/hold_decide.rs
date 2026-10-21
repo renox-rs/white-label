@@ -484,6 +484,51 @@ async fn returning_to_the_supplier_moves_the_stock_to_quarantine_and_onto_a_draf
     assert_eq!(wastage_of(&t, &item).await.len(), 0);
 }
 
+/// A return to the supplier that is cancelled before it is dispatched gives
+/// the lot back: it was left `on_hold` by the decision, with no hold open.
+/// It goes to `quarantine` (the goods sit there, nobody released them).
+#[renox::test]
+async fn cancelling_the_return_gives_the_held_lot_back() {
+    let t = boot_outlet().await;
+    let item = t.tracked_item("VACCINE").await;
+    let branch = t.named_location("BRANCH-A", "Branch A").await;
+    let (order, po_line) = t.order(&branch, &item, 20_000, 500).await;
+    let receipt = t
+        .receipt(
+            &order,
+            &branch,
+            vec![DraftLine::on(po_line.id, 20_000, 20_000).lot("V-1", day(2027, 6, 30))],
+        )
+        .await;
+    let keeper = t.storekeeper("Amal").await;
+    t.post_as(&keeper, &receipt).await.assert_ok();
+    let lot = Lot::query()
+        .where_(Lot::ITEM_ID.eq(item.id))
+        .first(t.db())
+        .await
+        .unwrap()
+        .expect("the receipt made a lot");
+    let holder = t.holder("Hal").await;
+    let rae = t.releaser("Rae").await;
+    let hold = hold_lots(&t, &holder, &[&lot], "quality").await;
+    let line = t.hold_lines(&hold).await.remove(0);
+    t.decide_as(&rae, &line, "return-to-supplier")
+        .await
+        .assert_ok();
+    assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Closed);
+    assert_eq!(t.lot_now(&lot).await.status, LotStatus::OnHold);
+    let draft = SupplierReturn::query().first(t.db()).await.unwrap().unwrap();
+
+    let buyer = t.procurement("Pat").await;
+    t.cancel_as(&buyer, &draft, "The supplier took the goods back on site", None)
+        .await
+        .assert_ok();
+
+    let cancelled = SupplierReturn::find_or_404(t.db(), draft.id).await.unwrap();
+    assert_eq!(cancelled.status, ReturnStatus::Cancelled);
+    assert_eq!(t.lot_now(&lot).await.status, LotStatus::Quarantine);
+}
+
 /// A lot with no supplier (a produced lot) cannot go back to one.
 #[renox::test]
 async fn a_lot_without_a_supplier_is_not_returned() {
