@@ -26,3 +26,8 @@ wl-parties = { path = "../../crates/wl-parties" }
 # The real wl-invoicing in the freight tests: the supplementary invoice of a
 # reopened job is a real draft, issued by a user.
 wl-invoicing = { path = "../../crates/wl-invoicing" }
+# The real wl-hr and wl-attendance in the cash-watch tests: the absence note of
+# a driver is a real absence case on his HR record, and a check-in is a real
+# attendance record.
+wl-hr = { path = "../../crates/wl-hr" }
+wl-attendance = { path = "../../crates/wl-attendance" }

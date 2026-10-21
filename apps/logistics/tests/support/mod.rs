@@ -235,13 +235,13 @@ impl Module for Probe {
 
 /// The app booted with the real wl-delivery.
 pub async fn boot() -> World {
-    boot_with(false, false, false).await
+    boot_with(false, false, false, false).await
 }
 
 /// The app booted with the real wl-delivery and the real wl-payments (the
 /// payout of a COD remittance is a voucher there).
 pub async fn boot_with_payments() -> World {
-    boot_with(true, false, false).await
+    boot_with(true, false, false, false).await
 }
 
 /// The app booted with the real wl-delivery, wl-payments and wl-parties: the
@@ -249,17 +249,30 @@ pub async fn boot_with_payments() -> World {
 /// block is the real block guard and the company admin approves the exception
 /// of `PTY.ACL.03`.
 pub async fn boot_with_parties() -> World {
-    boot_with(true, true, false).await
+    boot_with(true, true, false, false).await
 }
 
 /// [`boot_with_parties`] with the real wl-invoicing too: the drafts are real
 /// invoices (`World::invoices` stays empty), issued by users who hold
 /// `invoices.issue`.
 pub async fn boot_with_invoicing() -> World {
-    boot_with(true, true, true).await
+    boot_with(true, true, true, false).await
 }
 
-async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool) -> World {
+/// [`boot_with_payments`] with the real wl-hr and wl-attendance instead of
+/// the stand-ins: the drivers are employees (create them with
+/// [`World::driver_employee`]), the absence note of the cash escalation is a
+/// real absence case and a check-in a real attendance record.
+pub async fn boot_with_labour() -> World {
+    boot_with(true, false, false, true).await
+}
+
+async fn boot_with(
+    real_payments: bool,
+    real_parties: bool,
+    real_invoicing: bool,
+    real_labour: bool,
+) -> World {
     let real_payments = real_payments || real_parties;
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
@@ -308,13 +321,19 @@ async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool
         )
         .module(Logistics)
         .module(Probe)
-        .provide(workforce)
         .provide(notifier)
         .provide(portal_users)
         .provide(task_creator)
         .provide(quotations)
-        .provide(shift_calendar)
-        .provide(history);
+        .provide(shift_calendar);
+    // The stand-ins for the employees and their check-ins, unless the real
+    // wl-hr and wl-attendance are booted.
+    let app = if real_labour {
+        app.module(wl_hr::WlHr::new())
+            .module(wl_attendance::WlAttendance::new())
+    } else {
+        app.provide(workforce).provide(history)
+    };
     // The recording stand-in answers the invoicing contract unless the real
     // wl-invoicing does.
     let app = if real_invoicing {
@@ -346,6 +365,11 @@ async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool
         )
     } else {
         CLIENT.to_owned()
+    };
+    let client = if real_labour {
+        client.replace("\"delivery\"", "\"delivery\", \"hr\", \"attendance\"")
+    } else {
+        client
     };
     let config = ClientConfig::parse(&client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
