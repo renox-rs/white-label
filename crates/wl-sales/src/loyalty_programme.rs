@@ -43,8 +43,11 @@ pub struct LoyaltyProgramme {
     pub brand: Option<String>,
     /// Points per AED, or visits per reward.
     pub earn_kind: EarnKind,
-    /// Points per AED spent, or visits per reward.
+    /// Points per `earn_unit_aed` dirhams spent, or visits per reward.
     pub earn_rate: i64,
+    /// The dirhams of an eligible sale that earn `earn_rate` points (1: the
+    /// points are per AED 1; 05 Clinics: 10, one point per AED 10).
+    pub earn_unit_aed: i64,
     /// The least eligible amount of a sale before VAT, in fils.
     pub minimum_amount: i64,
     /// Item codes that never earn, separated by commas.
@@ -100,7 +103,8 @@ impl LoyaltyProgramme {
     pub fn points_for(&self, eligible_net: i64) -> i64 {
         match self.earn_kind {
             EarnKind::PerAed => {
-                let points = i128::from(eligible_net) * i128::from(self.earn_rate) / 100;
+                let unit = i128::from(self.earn_unit_aed.max(1));
+                let points = i128::from(eligible_net) * i128::from(self.earn_rate) / (100 * unit);
                 i64::try_from(points).unwrap_or(0).max(0)
             }
             EarnKind::PerVisit => 1,
@@ -141,6 +145,8 @@ pub struct NewProgramme {
     pub earn_kind: EarnKind,
     /// Points per AED, or visits per reward.
     pub earn_rate: i64,
+    /// The dirhams of an eligible sale that earn `earn_rate` points.
+    pub earn_unit_aed: i64,
     /// The least eligible amount before VAT, in fils.
     pub minimum_amount: i64,
     /// Item codes that never earn.
@@ -173,6 +179,7 @@ impl NewProgramme {
             brand: None,
             earn_kind: EarnKind::PerAed,
             earn_rate: 1,
+            earn_unit_aed: 1,
             minimum_amount: 0,
             excluded_items: Vec::new(),
             point_value: 1,
@@ -204,6 +211,24 @@ impl NewProgramme {
     pub fn points_per_aed(mut self, points: i64) -> Self {
         self.earn_kind = EarnKind::PerAed;
         self.earn_rate = points;
+        self.earn_unit_aed = 1;
+        self
+    }
+
+    /// `points` points for every `aed` dirhams (05 Clinics: `1, 10`, one
+    /// point per AED 10).
+    pub fn points_per_aed_units(mut self, points: i64, aed: i64) -> Self {
+        self.earn_kind = EarnKind::PerAed;
+        self.earn_rate = points;
+        self.earn_unit_aed = aed;
+        self
+    }
+
+    /// With this many fils of value for a point and this many points to
+    /// redeem at least (05 Clinics: 10 fils, 100 points: AED 10).
+    pub fn redeeming(mut self, point_value: i64, min_points: i64) -> Self {
+        self.point_value = point_value;
+        self.min_redeem_points = min_points;
         self
     }
 
@@ -255,7 +280,8 @@ pub async fn create(db: &Db, new: NewProgramme) -> Result<LoyaltyProgramme> {
     if new.name.is_empty() {
         return Err(refused("wl_sales.loyalty.problem.name"));
     }
-    if new.earn_rate < 1 || new.point_value < 1 || new.validity_months < 1 {
+    if new.earn_rate < 1 || new.earn_unit_aed < 1 || new.point_value < 1 || new.validity_months < 1
+    {
         return Err(refused("wl_sales.loyalty.problem.terms"));
     }
     if new.minimum_amount < 0
@@ -277,6 +303,7 @@ pub async fn create(db: &Db, new: NewProgramme) -> Result<LoyaltyProgramme> {
             brand: new.brand,
             earn_kind: new.earn_kind,
             earn_rate: new.earn_rate,
+            earn_unit_aed: new.earn_unit_aed,
             minimum_amount: new.minimum_amount,
             excluded_items: new.excluded_items.join(","),
             point_value: new.point_value,
@@ -313,6 +340,20 @@ mod tests {
         assert_eq!(programme(1).points_for(10_000), 100);
         assert_eq!(programme(2).points_for(10_000), 200);
         assert_eq!(programme(1).points_for(-500), 0);
+    }
+
+    #[test]
+    fn a_programme_can_earn_per_ten_dirhams() {
+        // 05 Clinics: 1 point per AED 10, so AED 200 earns 20 points, AED
+        // 19.90 one and AED 9.99 none.
+        let p = LoyaltyProgramme {
+            earn_rate: 1,
+            earn_unit_aed: 10,
+            ..programme(1)
+        };
+        assert_eq!(p.points_for(20_000), 20);
+        assert_eq!(p.points_for(1_990), 1);
+        assert_eq!(p.points_for(999), 0);
     }
 
     #[test]
