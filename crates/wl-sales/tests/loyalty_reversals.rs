@@ -22,6 +22,7 @@ use wl_kernel::sales::{
 };
 use wl_kernel::{PartyId, Subject};
 use wl_sales::liability;
+use wl_sales::permissions as perm;
 use wl_sales::notices::{LOYALTY_REVERSED, LOYALTY_REWARD};
 use wl_sales::{
     CounterSale, LoyaltyAccount, LoyaltyEarning, PointsKind, ReturnStatus, SaleLine, SalesOrder,
@@ -97,12 +98,21 @@ async fn returning_half_of_the_eligible_amount_reverses_half_the_points_and_the_
         )
         .await;
     assert_eq!(account(&t, &m).await.points_balance, 100);
-    // 80 of the points were spent elsewhere: the balance is 20.
-    LoyaltyAccount::query()
-        .where_(LoyaltyAccount::ID.eq(m.id))
-        .update(t.db(), &[("points_balance", &20_i64)])
+    // 80 of the points are taken off by a points adjustment (within the
+    // limit, so it is saved at once): the balance is 20.
+    let ana = t
+        .user("Ana", &[perm::LOYALTY_VIEW, perm::LOYALTY_ADJUST])
+        .await;
+    t.app.acting_as(&ana);
+    t.app
+        .post(
+            &format!("/loyalty/accounts/{}/adjust", m.id),
+            &[("points", "-80"), ("reason", "Spent elsewhere")],
+        )
         .await
-        .unwrap();
+        .assert_status(303);
+    t.app.acting_as(&floor.cora);
+    assert_eq!(account(&t, &m).await.points_balance, 20);
 
     let r = give_back(&t, &sale, "1").await;
     assert_eq!(r.eligible_net, 5_000);

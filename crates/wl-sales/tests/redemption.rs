@@ -16,6 +16,7 @@ use wl_kernel::notify::{NotifyChannel, NotifyRecipient};
 use wl_kernel::sales::{LoyaltyAccountId, QuoteRedemption, discount_engine};
 use wl_kernel::{PartyId, Subject};
 use wl_sales::notices::LOYALTY_GIVEN_BACK;
+use wl_sales::permissions as perm;
 use wl_sales::redeem;
 use wl_sales::sale_line::KIND_LOYALTY_REDEMPTION;
 use wl_sales::sales_orders;
@@ -503,12 +504,23 @@ async fn a_shortfall_at_completion_takes_the_line_off_before_the_sale_completes(
     ask(&t, &sale, 800, 303).await;
     enter_right(&t, &shop, &sale).await;
     assert_eq!(reload(&t, &sale).await.gross_total, 3_200);
-    // 700 of the points are taken back elsewhere meanwhile.
-    LoyaltyAccount::query()
-        .where_(LoyaltyAccount::ID.eq(m.id))
-        .update(t.db(), &[("points_balance", &100_i64)])
-        .await
-        .unwrap();
+    // 700 of the points are taken off meanwhile by two points adjustments
+    // (each within the limit of 500).
+    let ana = t
+        .user("Ana", &[perm::LOYALTY_VIEW, perm::LOYALTY_ADJUST])
+        .await;
+    t.app.acting_as(&ana);
+    for _ in 0..2 {
+        t.app
+            .post(
+                &format!("/loyalty/accounts/{}/adjust", m.id),
+                &[("points", "-350"), ("reason", "Abuse of the programme")],
+            )
+            .await
+            .assert_status(303);
+    }
+    t.app.acting_as(&floor.cora);
+    assert_eq!(account(&t, &m).await.points_balance, 100);
 
     // The tenders for AED 32.00 no longer match: the line is off.
     complete(&t, &sale, "32.00", 422).await;
