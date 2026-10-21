@@ -335,6 +335,37 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.adjustment.not_your_line",
         "Only the user who prepared the line resubmits it.",
     ),
+    (
+        "logistics.adjustment.amount_needed",
+        "Give the amount of the line: a positive amount is owed to the client, a negative one is taken back.",
+    ),
+    ("logistics.adjustment.reason_needed", "Give the reason: the client reads it on its statement."),
+    ("logistics.adjustment.source_unknown", "Choose where the line comes from."),
+    (
+        "logistics.adjustment.shipment_unknown",
+        "That shipment is not one of the client's.",
+    ),
+    (
+        "logistics.adjustment.remittance_unknown",
+        "That remittance is not one of the client's.",
+    ),
+    (
+        "logistics.adjustment.reopen_first",
+        "The remittance is approved: reopen it to a draft before adding a line.",
+    ),
+    (
+        "logistics.adjustment.paid_not_edited",
+        "{{ number }} is paid and is never edited: the line goes on the client's next draft.",
+    ),
+    (
+        "logistics.adjustment.approved_kept",
+        "An approved line is never deleted or edited: correct it with another line.",
+    ),
+    ("logistics.adjustment_added", "Adjustment line added."),
+    ("logistics.adjustment_approved", "Adjustment line approved."),
+    ("logistics.adjustment_rejected", "Adjustment line rejected."),
+    ("logistics.adjustment_resubmitted", "Adjustment line sent again."),
+    ("logistics.adjustment_deleted", "Adjustment line deleted."),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

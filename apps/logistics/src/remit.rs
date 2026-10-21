@@ -33,7 +33,7 @@
 use std::collections::BTreeSet;
 
 use renox::chrono::{NaiveDate, TimeDelta, Weekday};
-use renox::db::DateTime;
+use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::LegalEntity;
@@ -163,6 +163,103 @@ async fn candidates(
     Ok(taken)
 }
 
+/// What a draft's figures come to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Totals {
+    cod_total: i64,
+    fee_total: i64,
+    adjustment_total: i64,
+    net: i64,
+}
+
+/// Works out the figures of draft `remittance` from the lines it has now and
+/// stores them, inside `tx`: the COD of its shipment lines less the
+/// differences the client absorbed, the fees, the approved adjustment lines
+/// attached to it (a pending or rejected one is not counted) and the net,
+/// never below 0. The rest of a negative net becomes an open, approved
+/// adjustment line for the next draft; the one the earlier settle made is
+/// replaced, so it is never carried twice.
+async fn settle(tx: &mut Transaction, remittance: &Remittance) -> Result<Totals> {
+    AdjustmentLine::query()
+        .where_(AdjustmentLine::CARRIED_FROM_ID.eq(remittance.id))
+        .where_(AdjustmentLine::REMITTANCE_ID.is_null())
+        .delete(&mut *tx)
+        .await?;
+    let lines = RemittanceLine::query()
+        .where_(RemittanceLine::REMITTANCE_ID.eq(remittance.id))
+        .get(&mut *tx)
+        .await?;
+    let cod_total: i64 = lines.iter().map(RemittanceLine::collected_for_client).sum();
+    let fee_total: i64 = lines.iter().map(|line| line.fee).sum();
+    let lines_amount: i64 = lines.iter().map(|line| line.amount).sum();
+    let attached = AdjustmentLine::query()
+        .where_(AdjustmentLine::REMITTANCE_ID.eq(remittance.id))
+        .get(&mut *tx)
+        .await?;
+    let adjustment_total: i64 = attached
+        .iter()
+        .filter(|line| line.counts())
+        .map(|line| line.amount)
+        .sum();
+    let (net, carried) = net_and_carried(lines_amount, adjustment_total);
+    if carried < 0 {
+        let mut line = AdjustmentLine {
+            client_party_id: remittance.client_party_id,
+            amount: carried,
+            reason: english(
+                "logistics.remittance.carried_reason",
+                &[("number", &remittance.number)],
+            ),
+            source: source::CARRIED_FORWARD.to_owned(),
+            carried_from_id: Some(remittance.id),
+            decided_at: Some(renox::db::now()),
+            decision_note: Some(english("logistics.remittance.carried_note", &[])),
+            // Derived from lines that were approved: the rest of them.
+            status: AdjustmentStatus::Approved,
+            ..AdjustmentLine::default()
+        };
+        line.insert(&mut *tx).await?;
+    }
+    let carried_forward = -carried;
+    Remittance::query()
+        .where_(Remittance::ID.eq(remittance.id))
+        .update(
+            &mut *tx,
+            &[
+                ("cod_total", &cod_total),
+                ("fee_total", &fee_total),
+                ("adjustment_total", &adjustment_total),
+                ("net", &net),
+                ("carried_forward", &carried_forward),
+            ],
+        )
+        .await?;
+    Ok(Totals {
+        cod_total,
+        fee_total,
+        adjustment_total,
+        net,
+    })
+}
+
+/// Works the figures of the draft `id` out again after one of its
+/// adjustment lines was decided, edited or deleted. A remittance that is not
+/// a draft is left as it is: it is never edited.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn refresh_totals(state: &AppState, id: i64) -> Result<Remittance> {
+    let remittance = Remittance::find_or_404(&state.db, id).await?;
+    if remittance.status != RemittanceStatus::Draft {
+        return Ok(remittance);
+    }
+    let mut tx = state.db.begin().await?;
+    settle(&mut tx, &remittance).await?;
+    tx.commit().await?;
+    Remittance::find_or_404(&state.db, id).await
+}
+
 /// What a build did, for the notice and the tests.
 #[derive(Debug, Clone)]
 pub struct Built {
@@ -232,19 +329,11 @@ pub async fn draft_for(
         remittance.adjustment_total,
         remittance.net,
     );
-    // Recompute the shipment lines; drop the carry of the earlier build.
+    // Recompute the shipment lines.
     RemittanceLine::query()
         .where_(RemittanceLine::REMITTANCE_ID.eq(remittance.id))
         .delete(&mut tx)
         .await?;
-    AdjustmentLine::query()
-        .where_(AdjustmentLine::CARRIED_FROM_ID.eq(remittance.id))
-        .where_(AdjustmentLine::REMITTANCE_ID.is_null())
-        .delete(&mut tx)
-        .await?;
-    let mut cod_total = 0;
-    let mut fee_total = 0;
-    let mut lines_amount = 0;
     for shipment in &shipments {
         let figures = figures(shipment, terms.cod_fee_bp);
         let mut line = RemittanceLine {
@@ -258,9 +347,6 @@ pub async fn draft_for(
             ..RemittanceLine::default()
         };
         line.insert(&mut tx).await?;
-        cod_total += figures.cod_amount - figures.absorbed;
-        fee_total += figures.fee;
-        lines_amount += figures.amount;
     }
     // Attach what waited for a draft; lines already attached stay as they
     // are, with their approval.
@@ -271,52 +357,26 @@ pub async fn draft_for(
             .update(&mut tx, &[("remittance_id", &draft_id)])
             .await?;
     }
-    let attached = AdjustmentLine::query()
-        .where_(AdjustmentLine::REMITTANCE_ID.eq(remittance.id))
-        .get(&mut tx)
-        .await?;
-    let adjustment_total: i64 = attached
-        .iter()
-        .filter(|line| line.counts())
-        .map(|line| line.amount)
-        .sum();
-    let (net, carried) = net_and_carried(lines_amount, adjustment_total);
-    if carried < 0 {
-        let mut line = AdjustmentLine {
-            client_party_id: client.0,
-            amount: carried,
-            reason: english("logistics.remittance.carried_reason", &[("number", &remittance.number)]),
-            source: source::CARRIED_FORWARD.to_owned(),
-            carried_from_id: Some(remittance.id),
-            decided_at: Some(renox::db::now()),
-            decision_note: Some(english("logistics.remittance.carried_note", &[])),
-            // Derived from lines that were approved: the rest of them.
-            status: AdjustmentStatus::Approved,
-            ..AdjustmentLine::default()
-        };
-        line.insert(&mut tx).await?;
-    }
-    let carried_forward = -carried;
+    let totals = settle(&mut tx, &remittance).await?;
     // A user who builds it becomes its preparer; the weekly rule keeps it.
     let prepared_by = by.or(remittance.prepared_by);
     Remittance::query()
         .where_(Remittance::ID.eq(remittance.id))
         .update(
             &mut tx,
-            &[
-                ("cod_total", &cod_total),
-                ("fee_total", &fee_total),
-                ("adjustment_total", &adjustment_total),
-                ("net", &net),
-                ("carried_forward", &carried_forward),
-                ("period_end", &period_end),
-                ("prepared_by", &prepared_by),
-            ],
+            &[("period_end", &period_end), ("prepared_by", &prepared_by)],
         )
         .await?;
     tx.commit().await?;
     remittance = Remittance::find_or_404(&state.db, remittance.id).await?;
-    let changed = created || before != (cod_total, fee_total, adjustment_total, net);
+    let changed = created
+        || before
+            != (
+                totals.cod_total,
+                totals.fee_total,
+                totals.adjustment_total,
+                totals.net,
+            );
     if changed {
         tell_accountants(state, &remittance, created).await?;
     }

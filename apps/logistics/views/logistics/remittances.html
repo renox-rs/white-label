@@ -8,6 +8,14 @@
                        :title="tx['remit_build_title']" :description="tx['remit_build_description']" :submit-label="tx['remit_build']" icon="banknote">
         <rx-input name="client_party_id" :label="tx['client']" id="build-remittance-client" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_add_adjustment" id="add-adjustment" :label="tx['adj_add']" :action="route('logistics.adjustment_add')"
+                       :title="tx['adj_add_title']" :description="tx['adj_add_description']" :submit-label="tx['adj_add']" icon="plus">
+        <rx-input name="client_party_id" :label="tx['client']" id="add-adjustment-client" required/>
+        <rx-input name="amount" :label="tx['adj_amount']" id="add-adjustment-amount" required/>
+        <rx-textarea name="reason" :label="tx['reason']" id="add-adjustment-reason" required/>
+        <rx-input name="shipment_id" :label="tx['adj_shipment']" id="add-adjustment-shipment"/>
+        <rx-input name="corrects_remittance_id" :label="tx['adj_remittance']" id="add-adjustment-remittance"/>
+      </rx-action-sheet>
     </rx-page-header>
     <rx-table :rows="remittances" as="remittance" :key="remittance.number" :caption="tx['remit_title']">
       <rx-column :label="tx['remit_number']"><a href="{{ remittance.url }}">{{ remittance.number }}</a></rx-column>

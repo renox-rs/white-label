@@ -43,6 +43,14 @@
       <rx-column :label="tx['reason']">{{ adjustment.reason }}</rx-column>
       <rx-column :label="tx['kind']" hide-narrow>{{ adjustment.source }}</rx-column>
       <rx-column :label="tx['state']">{{ adjustment.status }}</rx-column>
+      <rx-column :label="tx['actions']" hide-narrow>
+        <rx-confirm rx-if="adjustment.can_decide" :id="'approve-line-' ~ adjustment.id" :label="tx['adj_approve']" :action="route('logistics.adjustment_approve', adjustment.id)" method="POST"
+                    :title="tx['adj_approve']" :message="tx['adj_approve_message']" :confirm-label="tx['adj_approve']"/>
+        <rx-confirm rx-if="adjustment.can_decide" :id="'reject-line-' ~ adjustment.id" :label="tx['adj_reject']" :action="route('logistics.adjustment_reject', adjustment.id)" method="POST"
+                    :title="tx['adj_reject']" :message="tx['adj_reject_message']" :confirm-label="tx['adj_reject']"/>
+        <rx-confirm rx-if="adjustment.can_delete" :id="'delete-line-' ~ adjustment.id" :label="tx['adj_delete']" :action="route('logistics.adjustment_delete', adjustment.id)" method="POST"
+                    :title="tx['adj_delete']" :message="tx['adj_delete_message']" :confirm-label="tx['adj_delete']"/>
+      </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['remit_no_adjustments']" icon="receipt"/></rx-slot>
     </rx-table>
   </rx-stack>

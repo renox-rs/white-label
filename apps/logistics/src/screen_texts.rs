@@ -285,4 +285,23 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("logistics.screen.adjustment_status.pending", "Waiting for approval"),
     ("logistics.screen.adjustment_status.approved", "Approved"),
     ("logistics.screen.adjustment_status.rejected", "Rejected"),
+    ("logistics.screen.adj_add", "Add an adjustment line"),
+    ("logistics.screen.adj_add_title", "Add an adjustment line"),
+    (
+        "logistics.screen.adj_add_description",
+        "A correction for the client's next draft. Another user approves it before it counts.",
+    ),
+    ("logistics.screen.adj_amount", "Amount (AED, minus to take back)"),
+    ("logistics.screen.adj_shipment", "Shipment id it corrects"),
+    ("logistics.screen.adj_remittance", "Remittance id it corrects"),
+    ("logistics.screen.adj_approve", "Approve the line"),
+    ("logistics.screen.adj_approve_message", "The line counts on the draft from now."),
+    ("logistics.screen.adj_reject", "Reject the line"),
+    (
+        "logistics.screen.adj_reject_message",
+        "The line stays unapproved and does not count. Its preparer edits it or deletes it.",
+    ),
+    ("logistics.screen.adj_delete", "Delete the line"),
+    ("logistics.screen.adj_delete_message", "Only an unapproved line can be deleted."),
+    ("logistics.screen.actions", "Actions"),
 ];

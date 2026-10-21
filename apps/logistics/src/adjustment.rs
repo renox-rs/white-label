@@ -11,11 +11,13 @@
 
 use renox::db::DateTime;
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine, Transition};
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 
 use crate::permissions;
+use crate::remittance::{Remittance, RemittanceStatus};
+use crate::shipment::Shipment;
 use crate::texts::english;
 
 /// `approve`: pending → approved.
@@ -154,7 +156,11 @@ fn approve() -> Transition<AdjustmentLine> {
         .effect(|line: &AdjustmentLine, ctx, tx| {
             let id = line.id;
             let actor = ctx.actor().map(|user| user.id);
-            let note = ctx.reason().map(str::to_owned);
+            let note = ctx
+                .reason()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_owned);
             Box::pin(async move { decided(&mut *tx, id, actor, note).await })
         })
 }
@@ -182,7 +188,11 @@ fn reject() -> Transition<AdjustmentLine> {
         .effect(|line: &AdjustmentLine, ctx, tx| {
             let id = line.id;
             let actor = ctx.actor().map(|user| user.id);
-            let note = ctx.reason().map(str::to_owned);
+            let note = ctx
+                .reason()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_owned);
             Box::pin(async move { decided(&mut *tx, id, actor, note).await })
         })
 }
@@ -250,4 +260,308 @@ impl StateMachine for AdjustmentLine {
             .transition(reject())
             .transition(resubmit())
     }
+}
+
+// ---------------------------------------------------------------------------
+// The services (BL-LOG-15)
+
+fn guard(message: String) -> TransitionError {
+    TransitionError::Guard(message)
+}
+
+async fn load(state: &AppState, id: i64) -> std::result::Result<AdjustmentLine, TransitionError> {
+    AdjustmentLine::find(&state.db, id)
+        .await?
+        .ok_or(TransitionError::Failed(Error::NotFound))
+}
+
+/// Dirhams with a sign as fils: `70`, `-40`, `+12.5` are 7000, -4000 and 1250.
+pub fn parse_signed_dirhams(text: &str) -> Option<i64> {
+    let text = text.trim();
+    let (negative, digits) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text.strip_prefix('+').unwrap_or(text)),
+    };
+    if digits.trim().is_empty() {
+        return None;
+    }
+    let fils = crate::booking::parse_dirhams(digits)?;
+    Some(if negative { -fils } else { fils })
+}
+
+/// What a user enters for an adjustment line.
+#[derive(Debug, Clone, Default)]
+pub struct NewAdjustment {
+    /// The client.
+    pub client: PartyId,
+    /// Signed, in fils; not 0.
+    pub amount: i64,
+    /// Why; the client sees it.
+    pub reason: String,
+    /// One of [`source`]; blank is [`source::MANUAL`].
+    pub source: String,
+    /// The shipment it corrects.
+    pub shipment_id: Option<i64>,
+    /// The remittance it corrects (the paid one that was wrong).
+    pub corrects_remittance_id: Option<i64>,
+    /// A draft to put it on now; none: the client's draft if it has one,
+    /// else it waits for the next weekly run.
+    pub remittance_id: Option<i64>,
+}
+
+/// `user` (`remittances.prepare`) prepares an adjustment line for a client.
+/// It is pending until another user approves it. It goes on `remittance_id`
+/// when that is a draft of the client, else on the client's draft if there is
+/// one, else it is left open for the next weekly run (`LOG.RUL.06`). A paid
+/// or approved remittance is never edited: naming one as the target is
+/// refused (an approved one is reopened first).
+///
+/// # Errors
+///
+/// `Forbidden` without `remittances.prepare`; `Guard` (422) for an amount of
+/// 0, a blank reason, an unknown source, shipment or remittance, and a target
+/// that is not a draft of the client.
+pub async fn add(
+    state: &AppState,
+    user: &AuthUser,
+    new: &NewAdjustment,
+) -> std::result::Result<AdjustmentLine, TransitionError> {
+    if !user.has_permission(permissions::REMITTANCES_PREPARE) {
+        return Err(TransitionError::Forbidden);
+    }
+    if new.amount == 0 {
+        return Err(guard(english("logistics.adjustment.amount_needed", &[])));
+    }
+    let reason = new.reason.trim();
+    if reason.is_empty() {
+        return Err(guard(english("logistics.adjustment.reason_needed", &[])));
+    }
+    let source: &str = match new.source.trim() {
+        "" => source::MANUAL,
+        known if known != source::CARRIED_FORWARD && source::ALL.contains(&known) => known,
+        _ => return Err(guard(english("logistics.adjustment.source_unknown", &[]))),
+    };
+    if let Some(id) = new.shipment_id {
+        let shipment = Shipment::find(&state.db, id).await?;
+        if shipment.is_none_or(|s| s.client_party_id != new.client.0) {
+            return Err(guard(english("logistics.adjustment.shipment_unknown", &[])));
+        }
+    }
+    if let Some(id) = new.corrects_remittance_id {
+        let corrected = Remittance::find(&state.db, id).await?;
+        if corrected.is_none_or(|r| r.client_party_id != new.client.0) {
+            return Err(guard(english("logistics.adjustment.remittance_unknown", &[])));
+        }
+    }
+    let target = match new.remittance_id {
+        Some(id) => {
+            let remittance = Remittance::find(&state.db, id)
+                .await?
+                .filter(|r| r.client_party_id == new.client.0)
+                .ok_or_else(|| guard(english("logistics.adjustment.remittance_unknown", &[])))?;
+            match remittance.status {
+                RemittanceStatus::Draft => Some(remittance.id),
+                RemittanceStatus::Approved => {
+                    return Err(guard(english("logistics.adjustment.reopen_first", &[])));
+                }
+                _ => {
+                    return Err(guard(english(
+                        "logistics.adjustment.paid_not_edited",
+                        &[("number", &remittance.number)],
+                    )));
+                }
+            }
+        }
+        None => Remittance::draft_of(&state.db, new.client)
+            .await?
+            .map(|draft| draft.id),
+    };
+    let mut line = AdjustmentLine {
+        client_party_id: new.client.0,
+        remittance_id: target,
+        amount: new.amount,
+        reason: reason.to_owned(),
+        source: source.to_owned(),
+        shipment_id: new.shipment_id,
+        corrects_remittance_id: new.corrects_remittance_id,
+        prepared_by: Some(user.id),
+        status: AdjustmentStatus::Pending,
+        ..AdjustmentLine::default()
+    };
+    line.insert(&state.db).await?;
+    // A pending line is not counted; the figures of the draft stay.
+    Ok(line)
+}
+
+/// `user` (`remittances.approve`, not the preparer) approves line `id`; the
+/// draft carrying it counts it from now.
+///
+/// # Errors
+///
+/// `Forbidden` without the permission; `NotFrom` unless it is pending;
+/// `Guard` (422) for the preparer.
+pub async fn approve_line(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    note: &str,
+) -> std::result::Result<AdjustmentLine, TransitionError> {
+    decide(state, user, id, APPROVE, note).await
+}
+
+/// `user` (`remittances.approve`, not the preparer) rejects line `id`: it
+/// stays unapproved and is not counted.
+///
+/// # Errors
+///
+/// As [`approve_line`].
+pub async fn reject_line(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    note: &str,
+) -> std::result::Result<AdjustmentLine, TransitionError> {
+    decide(state, user, id, REJECT, note).await
+}
+
+async fn decide(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    transition: &str,
+    note: &str,
+) -> std::result::Result<AdjustmentLine, TransitionError> {
+    let line = load(state, id).await?;
+    let _outcome = line
+        .transition(transition)
+        .by(user)
+        .reason(note.trim())
+        .run(state)
+        .await?;
+    let line = load(state, id).await?;
+    if let Some(remittance) = line.remittance_id {
+        crate::remit::refresh_totals(state, remittance).await?;
+    }
+    Ok(line)
+}
+
+/// The preparer edits a rejected line (`amount` in fils, `reason`) and sends
+/// it for a new decision. An approved line is never edited: the transition
+/// refuses it, and a wrong line is corrected by another line.
+///
+/// # Errors
+///
+/// `Forbidden` without `remittances.prepare`; `NotFrom` unless the line is
+/// rejected; `Guard` (422) for another user than the preparer and for an
+/// amount of 0 or a blank reason.
+pub async fn resubmit_line(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    amount: i64,
+    reason: &str,
+) -> std::result::Result<AdjustmentLine, TransitionError> {
+    let line = load(state, id).await?;
+    let editable = line.status == AdjustmentStatus::Rejected
+        && line.prepared_by == Some(user.id)
+        && user.has_permission(permissions::REMITTANCES_PREPARE);
+    if editable {
+        if amount == 0 {
+            return Err(guard(english("logistics.adjustment.amount_needed", &[])));
+        }
+        if reason.trim().is_empty() {
+            return Err(guard(english("logistics.adjustment.reason_needed", &[])));
+        }
+        let reason = reason.trim().to_owned();
+        AdjustmentLine::query()
+            .where_(AdjustmentLine::ID.eq(id))
+            .update(&state.db, &[("amount", &amount), ("reason", &reason)])
+            .await?;
+    }
+    // Not editable: the transition says why (the state, the permission, the
+    // preparer).
+    let line = load(state, id).await?;
+    let _outcome = line.transition(RESUBMIT).by(user).run(state).await?;
+    load(state, id).await
+}
+
+/// The preparer deletes line `id` while it is unapproved (pending or
+/// rejected); an approved line stays.
+///
+/// # Errors
+///
+/// `Forbidden` without `remittances.prepare`; `Guard` (422) for another user
+/// than the preparer and for an approved line.
+pub async fn delete_line(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+) -> std::result::Result<(), TransitionError> {
+    if !user.has_permission(permissions::REMITTANCES_PREPARE) {
+        return Err(TransitionError::Forbidden);
+    }
+    let line = load(state, id).await?;
+    if line.prepared_by != Some(user.id) {
+        return Err(guard(english("logistics.adjustment.not_your_line", &[])));
+    }
+    if line.status == AdjustmentStatus::Approved {
+        return Err(guard(english("logistics.adjustment.approved_kept", &[])));
+    }
+    line.delete(&state.db).await?;
+    if let Some(remittance) = line.remittance_id {
+        crate::remit::refresh_totals(state, remittance).await?;
+    }
+    Ok(())
+}
+
+/// One adjustment line as the client reads it on its statement: the date,
+/// the amount, the reason and what it corrects. The preparer, the approver
+/// and the approver's note are internal and not here.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct StatementLine {
+    /// The day it was approved (Asia/Dubai).
+    pub date: String,
+    /// Signed, in fils.
+    pub amount: i64,
+    /// Why.
+    pub reason: String,
+    /// The shipment or remittance it corrects, by number; blank for none.
+    pub corrects: String,
+}
+
+/// The adjustment lines on `remittance` that count, as its statement shows
+/// them (`LOG.ACL.12`: the client sees each line and its reason on the next
+/// statement). A line that is pending or rejected is not shown. The portal
+/// screen and the PDF are POR.SLF.01 and DOC.GEN.01.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn statement_lines(db: &Db, remittance: &Remittance) -> Result<Vec<StatementLine>> {
+    let mut out = Vec::new();
+    for line in remittance.adjustments(db).await? {
+        if !line.counts() {
+            continue;
+        }
+        let mut corrects = String::new();
+        if let Some(id) = line.shipment_id
+            && let Some(shipment) = Shipment::find(db, id).await?
+        {
+            corrects = shipment.number;
+        } else if let Some(id) = line.corrects_remittance_id
+            && let Some(corrected) = Remittance::find(db, id).await?
+        {
+            corrects = corrected.number;
+        }
+        out.push(StatementLine {
+            date: line
+                .decided_at
+                .map(|at| wl_kernel::documents::dubai_date(at).to_string())
+                .unwrap_or_default(),
+            amount: line.amount,
+            reason: line.reason.clone(),
+            corrects,
+        });
+    }
+    Ok(out)
 }
