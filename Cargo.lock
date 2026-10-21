@@ -3504,6 +3504,8 @@ dependencies = [
  "renox",
  "serde",
  "tempfile",
+ "wl-documents",
+ "wl-hr",
  "wl-kernel",
  "wl-payments",
 ]

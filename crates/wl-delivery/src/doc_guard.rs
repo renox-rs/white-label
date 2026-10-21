@@ -18,9 +18,14 @@
 //! The document kind says which subject type it attaches to
 //! ([`DocumentGuard::kind_subject_types`]): a licence is checked on the
 //! driver, an insurance on the vehicle. `qualification_valid` of `wl-hr` is
-//! the wrapper of `document_valid` on the employee; this module asks the
-//! document guard for the employee subject directly, which is what the
-//! wrapper does.
+//! the wrapper of `document_valid` on the employee plus a role and scope
+//! check for a role-bound kind. This module asks the document guard for the
+//! employee subject directly: for a kind that is not bound to a role (the
+//! driving licence and the rider permit of 03) the answer is the same, which
+//! `tests/dispatch_documents_real.rs` shows against the real wl-hr. A client
+//! that binds a licence to roles and scopes in wl-hr would need the call of
+//! `wl_kernel::qualifications` here (decision: not built, no 03 kind is
+//! role-bound).
 //!
 //! [`run`] is the call both transitions go through: the check with the
 //! business date (`assign`: the run's date; `dispatch`: today), then the
