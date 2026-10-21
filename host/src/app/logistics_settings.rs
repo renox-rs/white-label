@@ -14,12 +14,11 @@
 
 use logistics::defaults::{self, KINDS};
 use logistics::notices;
-use logistics::rates::aed;
 use wl_kernel::integrations;
 
 use super::compliance_settings::{Row, kind_text, type_text};
 use super::logistics_seed::{self, LOGISTICS};
-use super::negative_flow::{self, Row as MoneyRow};
+use super::negative_flow::{self, Row as MoneyRow, aed};
 use super::roles::{ADMIN, OPERATIONS_MANAGER};
 
 /// The row's value is this client's seed.
