@@ -152,7 +152,7 @@ Visit fields (§6): "coverage outcome (insured, re-split, self-pay with consent 
 - [x] Given an insured appointment for 2026-11-10 09:00 and eligibility recorded *negative*, when
       receptionist A tries `check_in` without an outcome, it is refused with "coverage outcome
       required".
-- [ ] Given policy P1 expired 2026-11-09 and policy P2 valid to 2027-03-31 with positive
+- [x] Given policy P1 expired 2026-11-09 and policy P2 valid to 2027-03-31 with positive
       eligibility, when A records `re_split` to P2, `check_in` succeeds, the visit shows outcome
       `re_split` with P2 and the patient share is recalculated from P2's contract.
 - [x] Given eligibility negative and the patient signs a self-pay consent showing estimated
@@ -164,7 +164,7 @@ Visit fields (§6): "coverage outcome (insured, re-split, self-pay with consent 
 - [x] Given a deposit of AED 100.00, when A cancels with `coverage_not_confirmed`, initiated by is
       `business` and AED 100.00 is refunded; when A reschedules instead, the AED 100.00 is linked
       to the new appointment.
-- [ ] On a `self_pay` visit, adding a service not on the consent in charge capture is refused
+- [x] On a `self_pay` visit, adding a service not on the consent in charge capture is refused
       until an updated consent is signed.
 - [x] Given a policy valid to 2026-11-10 and a visit on 2026-11-10, no outcome other than
       `insured` is asked after a positive eligibility result.
