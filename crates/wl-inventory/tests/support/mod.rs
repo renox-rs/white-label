@@ -715,6 +715,11 @@ impl Booted {
     /// A user holding the role `role` everywhere.
     pub async fn user_with(&self, name: &str, role: &str) -> User {
         let email = format!("{}@example.com", name.to_lowercase());
+        // The same name is the same person: a helper that opens a recall as
+        // Rita and a test that asks for Rita again share the user.
+        if let Some(user) = User::find_by_email(self.db(), &email).await.unwrap() {
+            return user;
+        }
         let user = User::register(self.db(), name, &email, "password123")
             .await
             .unwrap();
