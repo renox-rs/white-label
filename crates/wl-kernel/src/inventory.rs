@@ -69,6 +69,9 @@ pub const RECALL_SUBJECT_TYPE: &str = "inventory.recall";
 /// The subject type of a transfer between two locations.
 pub const TRANSFER_SUBJECT_TYPE: &str = "inventory.transfer";
 
+/// The subject type of an affected line of a recall.
+pub const RECALL_LINE_SUBJECT_TYPE: &str = "inventory.recall_line";
+
 /// The subject type of a pending issue.
 pub const PENDING_ISSUE_SUBJECT_TYPE: &str = "inventory.pending_issue";
 
@@ -819,6 +822,12 @@ pub struct ConsumeRequest {
     pub cost_object: Option<Subject>,
     /// When the consumption happened; now when `None`.
     pub at: Option<renox::db::DateTime>,
+    /// Derived from a recipe or a bill of materials without a scan (06: an
+    /// F&B sale): the lot it posts against keeps the lot balances right but
+    /// is no proof of what was used, so a recall trace lists the subject as
+    /// *possible* ([`TraceMark::Possible`]).
+    #[serde(default)]
+    pub theoretical: bool,
 }
 
 impl ConsumeRequest {
@@ -831,7 +840,14 @@ impl ConsumeRequest {
             source,
             cost_object: None,
             at: None,
+            theoretical: false,
         }
+    }
+
+    /// Derived from a recipe or bill of materials, not scanned.
+    pub fn theoretical(mut self) -> Self {
+        self.theoretical = true;
+        self
     }
 
     /// Charged to `cost_object`.
@@ -1037,3 +1053,208 @@ pub struct RecallOpened {
 }
 
 impl Event for RecallOpened {}
+
+/// How sure a recall trace is that a subject got the recalled lot (§4
+/// *Recall*, forward trace).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TraceMark {
+    /// A movement of the lot to the subject proves it.
+    Confirmed,
+    /// A pending issue whose lot was assigned when stock arrived: it may
+    /// have been any lot of the item at the location (*lot uncertain*).
+    Uncertain,
+    /// Theoretical consumption, or an item not tracked by lot: the unit used
+    /// cannot be proven to come from the recalled lot.
+    Possible,
+}
+
+/// The party behind a subject in a recall trace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TraceParty {
+    /// The patient, customer, vehicle owner or fleet of the subject.
+    Party(PartyId),
+    /// A sale without a known party (walk-in POS): the trace lists a count
+    /// per outlet and day instead of a line per sale.
+    WalkIn,
+    /// The vertical does not know: the line is listed with the party
+    /// *unknown* for manual handling.
+    Unknown,
+}
+
+/// The future a [`TracePartyResolver`] or [`LotTrace`] method returns.
+pub type TraceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// The party behind a subject in a recall trace (wl-inventory §6
+/// `TracePartyResolver`), provided by the vertical: 05 visit to patient, 06
+/// order to customer, 07 sales order or dispatch to customer, 08 job card to
+/// vehicle owner or fleet. Without one [`trace_party_resolver`] gives
+/// [`NoTraceParties`]: every party is unknown.
+pub trait TracePartyResolver: Send + Sync + 'static {
+    /// The party of `subject`.
+    fn party<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+    ) -> TraceFuture<'a, TraceParty> {
+        Box::pin(async { Ok(TraceParty::Unknown) })
+    }
+
+    /// The delivery status of a dispatched `subject` (`wl-delivery`), when
+    /// the deployment has one: an undelivered delivery can still be stopped.
+    fn delivery_status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+    ) -> TraceFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The resolver when no vertical provides one: nobody is known.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoTraceParties;
+
+impl TracePartyResolver for NoTraceParties {}
+
+/// Makes `resolver` the app's [`TracePartyResolver`]; a vertical calls it in
+/// `register`.
+pub fn provide_trace_party_resolver(app: &mut Registry, resolver: impl TracePartyResolver) {
+    let resolver: Arc<dyn TracePartyResolver> = Arc::new(resolver);
+    app.provide(resolver);
+}
+
+/// The app's [`TracePartyResolver`], or [`NoTraceParties`] when none is
+/// provided.
+pub fn trace_party_resolver(state: &AppState) -> Arc<dyn TracePartyResolver> {
+    match state.provided::<Arc<dyn TracePartyResolver>>() {
+        Some(resolver) => Arc::clone(&resolver),
+        None => Arc::new(NoTraceParties),
+    }
+}
+
+/// One line of a recall's trace: who got the goods (wl-inventory §3 *Recall*,
+/// affected line).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TracedHolder {
+    /// The line itself, `inventory.recall_line:7` (the subject of its
+    /// notices).
+    pub line: Subject,
+    /// The visit, order, job card, dispatch or work order that used the lot;
+    /// `None` for a count of walk-in sales.
+    pub subject: Option<Subject>,
+    /// The patient, customer or other party to tell; `None` when the vertical
+    /// does not know (or for walk-in sales).
+    pub party: Option<PartyId>,
+    /// The lot, `inventory.lot:4`.
+    pub lot: Option<Subject>,
+    /// Where it was used: the location it left, `inventory.location:2`.
+    pub location: Option<Subject>,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The day it was used (Asia/Dubai).
+    pub on: Option<NaiveDate>,
+    /// `confirmed`, `uncertain`, `possible`, `dispatch` or `walk_in`.
+    pub kind: String,
+    /// How sure the trace is.
+    pub mark: TraceMark,
+    /// The sales counted, for `walk_in` (else 1).
+    pub sales: i64,
+    /// The delivery status of a dispatch.
+    pub delivery_status: Option<String>,
+    /// `pending`, `sent` or `waived`.
+    pub notice: String,
+}
+
+/// Where a lot of a recall is now: the stock the recall's holds block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TracedPlace {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The location it is at (the in-transit one included).
+    pub location: Subject,
+    /// The quantity held there, in thousandths.
+    pub quantity_milli: i64,
+}
+
+/// The forward trace of a recall, for other modules (wl-inventory §6
+/// `LotTrace`): the clinics vertical reads the patients to call back, 06 the
+/// customers. Without the inventory module [`lot_trace`] gives [`NoLotTrace`],
+/// which knows nothing.
+pub trait LotTrace: Send + Sync + 'static {
+    /// The affected lines of `recall` (`inventory.recall:2`): subject, party,
+    /// lot, quantity and notice status of each.
+    fn holders<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _recall: &'a Subject,
+    ) -> TraceFuture<'a, Vec<TracedHolder>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Where each lot of `recall` is, as its holds block it.
+    fn places<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _recall: &'a Subject,
+    ) -> TraceFuture<'a, Vec<TracedPlace>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The trace when `inventory` is off: nothing is known.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoLotTrace;
+
+impl LotTrace for NoLotTrace {}
+
+/// Makes `trace` the app's [`LotTrace`]; `wl-inventory` calls it in
+/// `register`.
+pub fn provide_lot_trace(app: &mut Registry, trace: impl LotTrace) {
+    let trace: Arc<dyn LotTrace> = Arc::new(trace);
+    app.provide(trace);
+}
+
+/// The app's [`LotTrace`], or [`NoLotTrace`] when none is provided.
+pub fn lot_trace(state: &AppState) -> Arc<dyn LotTrace> {
+    match state.provided::<Arc<dyn LotTrace>>() {
+        Some(trace) => Arc::clone(&trace),
+        None => Arc::new(NoLotTrace),
+    }
+}
+
+/// A recall was traced (wl-inventory §6 `RecallTraced`): the affected lines
+/// exist and the lots made from the recalled ones are in its scope and held.
+/// A re-run emits it again with every line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecallTraced {
+    /// The recall, `inventory.recall:2`.
+    pub recall: Subject,
+    /// Its number, `RCL-2026-0001`.
+    pub number: String,
+    /// Every lot in its scope now, the output lots included.
+    pub lots: Vec<Subject>,
+    /// The affected lines.
+    pub lines: Vec<TracedHolder>,
+}
+
+impl Event for RecallTraced {}
+
+/// A recall was closed (wl-inventory §6 `RecallClosed`): every lot has an
+/// outcome and every affected party was told or waived.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecallClosed {
+    /// The recall, `inventory.recall:2`.
+    pub recall: Subject,
+    /// Its number, `RCL-2026-0001`.
+    pub number: String,
+    /// The lots in its scope.
+    pub lots: Vec<Subject>,
+    /// The affected lines with their notice status.
+    pub lines: Vec<TracedHolder>,
+    /// What was decided for each held line.
+    pub outcomes: Vec<HeldOutcome>,
+}
+
+impl Event for RecallClosed {}
