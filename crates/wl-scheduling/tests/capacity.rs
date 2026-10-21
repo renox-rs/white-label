@@ -16,7 +16,7 @@ use wl_scheduling::{
     Booking, BookingStatus, Refusal, Resource, ResourceType, ServiceType, WaitingEntry,
 };
 
-use support::{Booked, PATIENT, boot, in_hours, now};
+use support::{Booked, PATIENT, boot, boot_file_backed, in_hours, now};
 
 /// A studio of five seats and the 30-minute class that gives five seats.
 async fn class(t: &Booked) -> (Resource, ServiceType) {
@@ -42,6 +42,10 @@ async fn seats_at(t: &Booked, start: renox::db::DateTime) -> u64 {
         .unwrap()
 }
 
+/// The tests that race run on a SQLite file with ten connections: an
+/// in-memory database has one connection, on which the callers would queue
+/// whatever the code does.
+///
 /// `callers` book the same slot behind a barrier, so that they reach the
 /// capacity check together. The answers, in no order.
 async fn together(
@@ -79,7 +83,7 @@ async fn together(
 /// slots and the waiting list. Fifty times; every run ends with five seats.
 #[renox::test]
 async fn two_bookers_for_the_last_seat_one_wins() {
-    let t = boot().await;
+    let t = boot_file_backed().await;
     let (studio, class) = class(&t).await;
     let base = in_hours(48);
     for run in 0..50 {
@@ -123,7 +127,7 @@ async fn two_bookers_for_the_last_seat_one_wins() {
 /// Ten bookers for the last seat: five seats in all, nine told it was taken.
 #[renox::test]
 async fn ten_bookers_for_the_last_seat_one_wins() {
-    let t = boot().await;
+    let t = boot_file_backed().await;
     let (studio, class) = class(&t).await;
     let start = in_hours(48);
     for seat in 0..4 {
@@ -143,7 +147,7 @@ async fn ten_bookers_for_the_last_seat_one_wins() {
 /// An empty slot of five seats takes five of ten bookers.
 #[renox::test]
 async fn ten_bookers_for_five_empty_seats_five_win() {
-    let t = boot().await;
+    let t = boot_file_backed().await;
     let (studio, class) = class(&t).await;
     let start = in_hours(48);
     let answers = together(&t, &class, &studio, start, 10).await;

@@ -710,6 +710,12 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    if file_backed {
+        assert!(
+            database.path().join("t.db").exists(),
+            "the test runs on its SQLite file"
+        );
+    }
     if real {
         wl_parties::seed::run(app.state())
             .await
