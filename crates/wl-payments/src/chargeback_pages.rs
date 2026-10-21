@@ -5,6 +5,8 @@
 //! |---|---|---|
 //! | `POST /payments/{id}/chargeback` | `wl_payments.chargeback` | `payments.chargeback` (fields `reference`, `deadline`, `fee`): records a chargeback by hand, for N-Genius |
 //! | `POST /payments/{id}/evidence` | `wl_payments.chargeback_evidence` | `payments.chargeback`: the evidence was submitted in the gateway |
+//! | `POST /payments/{id}/accept-chargeback` | `wl_payments.chargeback_accept` | `payments.chargeback` (field `reason`): asks to accept the chargeback; another holder of the permission approves it from "Needs your action" (`FIN.ACL.18`) |
+//! | `POST /payments/{id}/chargeback-lost` | `wl_payments.chargeback_lost` | `payments.chargeback`: records that the dispute was lost (N-Genius) |
 //!
 //! Each has its own route because its guards read the input the module
 //! gathers; the kernel's transition route serves the others. A refused guard
@@ -16,6 +18,7 @@ use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 
 use crate::chargeback::{charge_back_by_hand, evidence_submitted};
+use crate::chargeback_close::{accept, lose_by_hand};
 use crate::pages::{filled, invalid, parse_amount, texts_in};
 use crate::payment::Payment;
 use crate::permissions;
@@ -27,6 +30,10 @@ pub fn routes() -> Routes {
         .name("wl_payments.chargeback")
         .post("/payments/{id}/evidence", store_evidence)
         .name("wl_payments.chargeback_evidence")
+        .post("/payments/{id}/accept-chargeback", store_accept)
+        .name("wl_payments.chargeback_accept")
+        .post("/payments/{id}/chargeback-lost", store_lost)
+        .name("wl_payments.chargeback_lost")
         .require_permission(permissions::CHARGEBACK)
 }
 
@@ -81,4 +88,56 @@ async fn store_evidence(
         .await
         .map_err(TransitionError::into_error)?;
     Ok((Toast::success(t("evidence.done")), renox::HxRefresh).into_response())
+}
+
+/// The accept sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct AcceptForm {
+    /// Why the chargeback is not contested.
+    #[validate(max = 2000)]
+    pub reason: Option<String>,
+}
+
+/// `POST /payments/{id}/accept-chargeback`: asks to accept the chargeback.
+/// It waits for another person's approval; without a reason it answers 422
+/// under the field.
+async fn store_accept(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(payment): Found<Payment>,
+    Valid(form): Valid<AcceptForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let reason = filled(&form.reason).unwrap_or_default().to_owned();
+    match accept(&state, &user, &payment, &reason).await {
+        Ok(accepted) => {
+            let key = if accepted.request.is_some() {
+                "accept_chargeback.pending"
+            } else {
+                "accept_chargeback.done"
+            };
+            Ok((Toast::success(t(key)), renox::HxRefresh).into_response())
+        }
+        Err(TransitionError::ReasonRequired) => Err(invalid(
+            "reason",
+            t("accept_chargeback.reason_required"),
+            &form,
+        )),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `POST /payments/{id}/chargeback-lost`: the dispute was lost.
+async fn store_lost(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(payment): Found<Payment>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    lose_by_hand(&state, &user, &payment)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((Toast::success(t("lose_chargeback.done")), renox::HxRefresh).into_response())
 }

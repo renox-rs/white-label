@@ -716,6 +716,9 @@ pub(crate) struct ShowPage {
     /// Whether "evidence submitted" is offered: a charged-back payment whose
     /// evidence was not noted yet.
     can_evidence: bool,
+    /// Whether "accept" and "dispute lost" are offered: a charged-back
+    /// payment, for a holder of the chargeback permission.
+    can_close_chargeback: bool,
     /// The state of the dispute in words.
     dispute_label: String,
     /// The gateway's dispute fee, formatted.
@@ -818,6 +821,8 @@ async fn show(
                 crate::reverse::REVERSE,
                 crate::record::RECORD,
                 crate::chargeback::CHARGE_BACK,
+                crate::chargeback_close::LOSE_CHARGEBACK,
+                crate::chargeback_close::ACCEPT_CHARGEBACK,
             ]
             .contains(&a.name.as_str())
         })
@@ -836,6 +841,7 @@ async fn show(
     let can_evidence = charged_back
         && payment.dispute_evidence_submitted_on.is_none()
         && user.has_permission(permissions::CHARGEBACK);
+    let can_close_chargeback = charged_back && user.has_permission(permissions::CHARGEBACK);
     let dispute_label = payment
         .dispute_outcome
         .clone()
@@ -884,6 +890,7 @@ async fn show(
         can_reverse,
         can_chargeback,
         can_evidence,
+        can_close_chargeback,
         dispute_label,
         dispute_fee,
         reasons,

@@ -1037,6 +1037,40 @@ pub struct PaymentLinkExpired {
 
 impl Event for PaymentLinkExpired {}
 
+/// How a chargeback that was not won ended (wl-payments §4).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ChargebackOutcome {
+    /// The gateway ruled for the card holder, or the evidence deadline
+    /// passed without a submission (`lose_chargeback`).
+    #[default]
+    Lost,
+    /// The accountant chose not to contest it, with another person's
+    /// approval (`accept_chargeback`, `FIN.ACL.18`).
+    Accepted,
+}
+
+/// A chargeback ended lost or accepted (`lose_chargeback`,
+/// `accept_chargeback`): the payment is `reversed`. A won dispute emits
+/// [`PaymentReceived`] instead.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChargebackClosed {
+    /// The payment.
+    pub payment: PaymentId,
+    /// Who paid.
+    pub party: PartyId,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// How it ended.
+    pub outcome: ChargebackOutcome,
+    /// The documents the payment had paid, which stay open: collect the
+    /// amount again, or write them off through invoice `write_off`.
+    pub reopened: Vec<PaymentAllocation>,
+}
+
+impl Event for ChargebackClosed {}
+
 /// Whether the record a payment was made in advance for still waits for the
 /// money. The owner of the record (wl-scheduling for a booking, wl-sales for
 /// an order) provides it. A prepaid subject is **not** active once it is
@@ -1375,6 +1409,28 @@ mod tests {
         let back: RefundFailed = renox::serde_json::from_value(json).unwrap();
         assert_eq!(back, e);
     }
+    #[test]
+    fn a_chargeback_ends_lost_or_accepted() {
+        let outcomes: Vec<_> = ChargebackOutcome::ALL.iter().map(|o| o.as_str()).collect();
+        assert_eq!(outcomes, ["lost", "accepted"]);
+        let closed = ChargebackClosed {
+            payment: PaymentId(4),
+            party: PartyId(2),
+            amount: 80_000,
+            currency: "AED".into(),
+            outcome: ChargebackOutcome::Accepted,
+            reopened: vec![PaymentAllocation {
+                target: Subject::new("invoicing.invoice", 9),
+                amount: 80_000,
+            }],
+        };
+        let json = renox::serde_json::to_value(&closed).unwrap();
+        assert_eq!(json["outcome"], "accepted");
+        assert_eq!(json["reopened"][0]["amount"], 80_000);
+        let back: ChargebackClosed = renox::serde_json::from_value(json).unwrap();
+        assert_eq!(back, closed);
+    }
+
     #[test]
     fn a_payment_failure_is_declined_abandoned_or_a_timeout() {
         let kinds: Vec<_> = PaymentFailureKind::ALL.iter().map(|k| k.as_str()).collect();

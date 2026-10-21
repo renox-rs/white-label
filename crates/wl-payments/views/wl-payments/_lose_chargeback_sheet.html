@@ -1,0 +1,8 @@
+{#- wl-payments: the "dispute lost" action on a charged-back payment's page
+    (N-Genius has no disputes API, so the accountant records the acquirer's
+    decision). Replace it with
+    resources/views/wl-payments/_lose_chargeback_sheet.html in the app. -#}
+<rx-action-sheet :id="'lose-chargeback-' ~ payment.id" :label="tx['lose_chargeback.action']" :action="route('wl_payments.chargeback_lost', payment.id)"
+                 :title="tx['lose_chargeback.title']" :description="tx['lose_chargeback.description']" :submit-label="tx['lose_chargeback.submit']"
+                 icon="triangle-alert" variant="danger" danger>
+</rx-action-sheet>

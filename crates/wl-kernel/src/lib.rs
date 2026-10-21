@@ -168,7 +168,8 @@ pub use parties::{
     ScreeningStatus,
 };
 pub use payments::{
-    AllocationTarget, BankPayment, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments,
+    AllocationTarget, BankPayment, ChargebackClosed, ChargebackOutcome, DEPOSIT_SUBJECT_TYPE,
+    DepositId, Direction, NoPayments,
     NoPrepaidSubjects, PAYMENT_LINK_SUBJECT_TYPE, PaymentFailed, PaymentFailureKind, PaymentId,
     PaymentLinkExpired, PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed,
     PaymentSource, PaymentStatus, PaymentSummary, PrepaidSubjects, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,

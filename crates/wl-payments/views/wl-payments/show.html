@@ -10,6 +10,8 @@
       <template rx-if="can_reverse"><rx-include template="wl-payments/_reverse_sheet.html"/></template>
       <template rx-if="can_chargeback"><rx-include template="wl-payments/_chargeback_sheet.html"/></template>
       <template rx-if="can_evidence"><rx-include template="wl-payments/_evidence_sheet.html"/></template>
+      <template rx-if="can_close_chargeback"><rx-include template="wl-payments/_accept_chargeback_sheet.html"/></template>
+      <template rx-if="can_close_chargeback"><rx-include template="wl-payments/_lose_chargeback_sheet.html"/></template>
       <template rx-if="actions">
         <rx-transition-actions :actions="actions" action="/payments/{{ payment.id }}/transitions"/>
       </template>

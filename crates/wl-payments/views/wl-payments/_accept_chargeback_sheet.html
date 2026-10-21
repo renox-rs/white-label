@@ -1,0 +1,10 @@
+{#- wl-payments: the "accept the chargeback" action on a charged-back
+    payment's page, a sheet with the reason (required). The acceptance waits
+    for another holder of payments.chargeback to approve it (FIN.ACL.18).
+    Replace it with resources/views/wl-payments/_accept_chargeback_sheet.html
+    in the app. -#}
+<rx-action-sheet :id="'accept-chargeback-' ~ payment.id" :label="tx['accept_chargeback.action']" :action="route('wl_payments.chargeback_accept', payment.id)"
+                 :title="tx['accept_chargeback.title']" :description="tx['accept_chargeback.description']" :submit-label="tx['accept_chargeback.submit']"
+                 icon="x" variant="danger" danger>
+  <rx-textarea name="reason" :label="tx['accept_chargeback.reason']" :id="'accept-chargeback-reason-' ~ payment.id" required/>
+</rx-action-sheet>

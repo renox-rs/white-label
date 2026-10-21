@@ -10,6 +10,7 @@ mod bank_statement_machine;
 pub mod bank_statement_pages;
 pub mod bank_statement_parse;
 pub mod chargeback;
+pub mod chargeback_close;
 pub mod chargeback_pages;
 pub mod cheque;
 pub mod cheque_bounce;
@@ -213,6 +214,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/_evidence_sheet.html",
         include_str!("../views/wl-payments/_evidence_sheet.html"),
+    ),
+    (
+        "wl-payments/_accept_chargeback_sheet.html",
+        include_str!("../views/wl-payments/_accept_chargeback_sheet.html"),
+    ),
+    (
+        "wl-payments/_lose_chargeback_sheet.html",
+        include_str!("../views/wl-payments/_lose_chargeback_sheet.html"),
     ),
 ];
 
@@ -515,6 +524,10 @@ impl Module for WlPayments {
                 |payment: &Payment| Some(wl_kernel::PartyId(payment.party_id)),
             )
             .register();
+        // `accept_chargeback` needs another person's approval (`FIN.ACL.18`)
+        // and tells the gateway at the final approval; this replaces the
+        // final re-check the machine above registered, and keeps its guard.
+        chargeback_close::register_approval();
         app.model::<Payment>();
         app.model::<payment_link::PaymentLink>();
         app.model::<Allocation>();
@@ -639,6 +652,7 @@ impl Module for WlPayments {
         online::register(app);
         // `charge_back` and `FIN.RUL.20`.
         chargeback::register(app);
+        chargeback_close::register(app);
         payment_link::register(app);
         // How other modules record, allocate and read payments.
         wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
