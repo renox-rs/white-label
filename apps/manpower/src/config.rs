@@ -18,3 +18,8 @@ pub const DEFAULT_END_NOTICE_SECOND_DAYS: i64 = 30;
 /// date of the deployment, if that is earlier), so a worker is not deployed on
 /// a visa that expires next week.
 pub const DEFAULT_DOCUMENT_LOOK_AHEAD_DAYS: i64 = 30;
+
+/// N of `MPW.RUL.13` (§7.2): the client and the account manager are told that
+/// cover is not found this many hours before the cover period starts (the
+/// replacement request's start date and shift start time).
+pub const DEFAULT_COVER_NOTICE_HOURS: i64 = 24;

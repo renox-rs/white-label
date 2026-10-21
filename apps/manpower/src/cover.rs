@@ -17,7 +17,7 @@
 //!   the same cause (`cause_ref`), so a repeated event changes nothing. The
 //!   account manager is told. **BL-MPW-11 (suspension) and BL-MPW-14 (client
 //!   rejection, [`crate::ends`]) call it; the notice of cover not found in time, `MPW.RUL.13`,
-//!   is BL-MPW-16.**
+//!   is [`crate::cover_notice`] (BL-MPW-16).**
 //! - `MPW.RUL.06`: when a leave request is approved (the kernel's
 //!   [`LeaveApproved`]) every `active` deployment of the employee that
 //!   overlaps the leave gets a cover request for the days of the overlap.
@@ -39,6 +39,7 @@ use wl_kernel::documents::today;
 
 use crate::access::may_write;
 use crate::contract::{ClientContract, ContractStatus};
+use crate::cover_notice;
 use crate::db::refused;
 use crate::deployment::{Deployment, DeploymentStatus};
 use crate::deployments::worker_name;
@@ -153,6 +154,9 @@ pub async fn open_cover(state: &AppState, ask: CoverAsk<'_>) -> Result<Cover> {
         })
         .await?;
     tell_account_manager(state, &contract, deployment, &request).await?;
+    // A request opened less than N hours before it starts is noticed at once
+    // (`MPW.RUL.13`).
+    cover_notice::notify_if_due(state, request.id, renox::db::now()).await?;
     Ok(Cover::Opened(request))
 }
 

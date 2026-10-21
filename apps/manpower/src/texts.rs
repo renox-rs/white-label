@@ -488,6 +488,15 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.exit.line_visa",
         "{{ contract }}: {{ site }} as {{ role }}, {{ status }}, ends {{ until }}.",
     ),
+    // Cover not found in time (`MPW.RUL.13`, BL-MPW-16).
+    (
+        "manpower.cover.missing_title",
+        "Cover not found yet for {{ role }} at {{ site }}",
+    ),
+    (
+        "manpower.cover.missing_body",
+        "We have not found cover yet: {{ missing }} of {{ headcount }} {{ role }} still to be found at {{ site }} from {{ from }}. We are still working on it.",
+    ),
     // Ending for a reason that needs more (§7.1 `end`, BL-MPW-14).
     (
         "manpower.end.note_required",

@@ -9,6 +9,7 @@ pub mod config;
 pub mod contract;
 pub mod contracts;
 pub mod cover;
+pub mod cover_notice;
 mod db;
 pub mod deployment;
 pub mod deployments;
@@ -181,6 +182,12 @@ impl Module for Manpower {
                 |state: AppState| async move { expiry::daily(&state).await },
             )
             .timezone("Asia/Dubai");
+        // `MPW.RUL.13`: cover not found in time, within a quarter of an hour
+        // of the hour.
+        app.schedule()
+            .every_minutes(15, cover_notice::TASK, |state: AppState| async move {
+                cover_notice::run(&state).await
+            });
         hold::listen(app);
         release::listen(app);
         termination::listen(app);

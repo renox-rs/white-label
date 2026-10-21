@@ -137,6 +137,9 @@ pub struct ManpowerRequest {
     pub submitted_by: Option<i64>,
     /// When it was submitted.
     pub submitted_at: Option<DateTime>,
+    /// A cover request: when the client and the account manager were told
+    /// that no cover was found yet (`MPW.RUL.13`); none before.
+    pub cover_notice_sent_at: Option<DateTime>,
     /// Why it was cancelled.
     pub cancel_reason: Option<String>,
     /// The user who created it.
