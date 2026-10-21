@@ -1891,26 +1891,26 @@ and programme changes: BL-SAL-26.)
 - Must not let points stay earned on a sale whose payment was reversed or written off.
 
 #### Done when
-- [ ] Given programme 1 point per AED 1 and member M, a counter sale of AED 105 incl. 5% VAT
+- [x] Given programme 1 point per AED 1 and member M, a counter sale of AED 105 incl. 5% VAT
       earns 100 points expiring 12 months later.
-- [ ] Given an invoice of AED 1,000 excl. VAT (AED 1,050 incl. 5% VAT) with an insurer share of
+- [x] Given an invoice of AED 1,000 excl. VAT (AED 1,050 incl. 5% VAT) with an insurer share of
       AED 800 excl. VAT (AED 840 incl.), M pays AED 210 and earns 200 points.
-- [ ] An on-account sales order of AED 300 excl. VAT for M earns 300 points on `fulfilled`,
+- [x] An on-account sales order of AED 300 excl. VAT for M earns 300 points on `fulfilled`,
       before its invoice is paid; writing the invoice off reverses the 300.
-- [ ] A sales order invoiced on fulfilment earns once (on `fulfilled`), not again on `InvoicePaid`.
-- [ ] Returning half of the AED 100 eligible amount reverses 50 points; with a balance of 20 the
+- [x] A sales order invoiced on fulfilment earns once (on `fulfilled`), not again on `InvoicePaid`.
+- [x] Returning half of the AED 100 eligible amount reverses 50 points; with a balance of 20 the
       balance becomes −30.
-- [ ] Given per-visit with 10 visits per reward, the 10th sale makes the reward available and
+- [x] Given per-visit with 10 visits per reward, the 10th sale makes the reward available and
       M is told; visits restart at 0.
-- [ ] Enrolment records the terms version and does not create a marketing consent.
-- [ ] M earns 100 points on a card counter sale of AED 105; a chargeback of the full payment
+- [x] Enrolment records the terms version and does not create a marketing consent.
+- [x] M earns 100 points on a card counter sale of AED 105; a chargeback of the full payment
       reverses 100 points and M is told; winning the chargeback earns 100 again.
-- [ ] An invoice of AED 1,000 that earned 1,000 points is reopened after its cheque bounced:
+- [x] An invoice of AED 1,000 that earned 1,000 points is reopened after its cheque bounced:
       1,000 points are reversed; paid again, 1,000 are earned with a new lot.
-- [ ] A cashier attaching a sale they ring up to their own loyalty account is refused;
+- [x] A cashier attaching a sale they ring up to their own loyalty account is refused;
       attaching M to a sale completed yesterday is refused.
-- [ ] Enrolling a second account with M's mobile number is refused.
-- [ ] Given per-visit, 10 visits per reward, returning the 10th sale before the reward is used
+- [x] Enrolling a second account with M's mobile number is refused.
+- [x] Given per-visit, 10 visits per reward, returning the 10th sale before the reward is used
       withdraws the reward and leaves 9 visits.
 
 #### Out of scope
