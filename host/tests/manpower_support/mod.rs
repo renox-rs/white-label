@@ -161,6 +161,25 @@ pub async fn boot_seeded_with(tuning: host::Tuning) -> TestApp {
     app
 }
 
+/// [`boot_seeded`] with the test routes of `support::Probe` (the upload of an
+/// SOP version needs an `AuthUser`).
+pub async fn boot_seeded_probe() -> TestApp {
+    let config = ClientConfig::parse(SEEDED_CLIENT).unwrap();
+    let app = TestApp::new(
+        host::app_for(config)
+            .unwrap()
+            .provide(noon_clock())
+            .module(crate::support::Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
 /// An employee `active` in HR.
 pub async fn worker(app: &TestApp, name: &str) -> EmployeeId {
     let party = tenant(app, name).await;
