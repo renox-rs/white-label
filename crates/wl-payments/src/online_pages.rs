@@ -49,11 +49,14 @@ async fn cancel(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     let link = PaymentLink::find_or_404(&state.db, id).await?;
-    link.transition(payment_link::CANCEL)
+    let outcome = link
+        .transition(payment_link::CANCEL)
         .by(&user)
         .run(&state)
         .await
         .map_err(TransitionError::into_error)?;
+    // An interceptor may have deferred the cancel: tell its approvers.
+    wl_kernel::approvals::announce(&state, &outcome).await?;
     Ok(Redirect::route("wl_payments.index", &[])?.into_response())
 }
 

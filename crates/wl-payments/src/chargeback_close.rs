@@ -665,8 +665,8 @@ mod tests {
     async fn an_acceptance_needs_a_reason() {
         let machine = Payment::machine();
         let accept = machine.find(ACCEPT_CHARGEBACK).expect("transition");
-        assert!(accept.reason_required());
+        assert!(accept.needs_reason());
         let lose = machine.find(LOSE_CHARGEBACK).expect("transition");
-        assert!(!lose.reason_required());
+        assert!(!lose.needs_reason());
     }
 }
