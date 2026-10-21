@@ -422,7 +422,15 @@ async fn stopping_a_sending_broadcast_suppresses_what_is_not_sent() {
 
     // The rest of the run queues nothing more and completes.
     run_due(t.app.state(), send_at).await.unwrap();
-    assert_eq!(t.messages().await.len(), 65);
+    // The stop notice to the requester is a message of its own, not the
+    // broadcast's.
+    let queued = t
+        .messages()
+        .await
+        .iter()
+        .filter(|m| m.broadcast_id == Some(id.0))
+        .count();
+    assert_eq!(queued, 65);
     assert_eq!(stored(&t, id).await.status, BroadcastStatus::Completed);
     t.run_jobs().await;
     assert_eq!(t.sms.sent().len(), 30);
