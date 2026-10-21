@@ -154,6 +154,37 @@ their own issues.
   recovery in cash, the salary deduction (off while the client's setting is
   off, `FIN.ACL.19`, open item L-20) and the write-off with approval are
   wl-payments'.
+- **Netting** (`netting`, `LOG.COD.01`, `FIN.PAY.01`): when the client's
+  contract allows it (`ClientTerms::netting_allowed`), the draft remittance
+  offsets the client's open, undisputed invoices (`Invoicer::open_of`), oldest
+  due date first and capped so the net is not negative. At `pay` each offset is
+  re-checked: an invoice that became disputed, paid or written off sends the
+  remittance back to a draft with the message "offset INV-2 removed: invoice
+  disputed". Otherwise the payout of the net and one incoming payment per
+  offset, allocated in full to its invoice, are recorded in wl-payments and the
+  statement is published (`statement`, `GET /remittances/{id}/statement`).
+- **A returned transfer** (`return_payment`, `repay`, `LOG.ACL.13`): the
+  accountant attaches the bank's return advice; the payout voucher is reversed
+  as a bank return, the remittance is `payment_returned` and the client is told
+  and asked to confirm its bank account. `repay` pays the cash part again with
+  a new reference, to a changed account that is active, or to the same account
+  once the client's confirmation is recorded; the statement is published again
+  as a new version. A change of the client's remittance bank account
+  (`account`) takes effect only when a second user approved it and the client
+  confirmed it with the signed link sent to its primary e-mail on record; it
+  lapses after 14 days and the requester is told. Until it is active
+  remittances use the old account.
+- **A statement dispute** (`dispute`, `LOG.ACL.12`): the `disputed` flag and a
+  ticket for the accountant; a second dispute adds a message to the ticket;
+  *upheld* clears the flag, *adjusted* also puts an adjustment line on the next
+  draft that another user approves; the client is told. Nothing pauses, and a
+  dispute is not offered while the transfer is returned.
+- **A blocked client** (`block`, `freight`, `PTY.ACL.03`): new bookings, CSV
+  uploads and freight jobs are refused with the neutral text; shipments already
+  booked or picked up finish and the dispatcher sees *client on hold*; the
+  Monday draft is made and approved, but `pay` and `repay` wait for the
+  unblock or for one exception that the company admin (never the requester)
+  approves.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
@@ -169,7 +200,7 @@ the reason when refused.
 ## Permissions
 
 `shipments.view`, `.book`, `.manage`, `.scan`, `.deliver`, `.void`,
-`.cancel`, `.approve_loss` and `.approve_disposal`, and `remittances.view`, `.prepare`, `.approve` and `.pay`
+`.cancel`, `.approve_loss` and `.approve_disposal`, `freight.manage`, and `remittances.view`, `.prepare`, `.approve`, `.pay`, `.request_account` and `.dispute`
 (`permissions`). The host maps them to the operations manager, the
 dispatcher, hub staff, the driver and the client user, and the remittances to
 the accountant.
