@@ -5,7 +5,7 @@
 //! `cancel`led while planned; the daily run ends the deployments whose end
 //! date has passed. `suspend`, `resume` and the other end reasons come with
 //! BL-MPW-11 to -14, the checks of `MPW.ACL.07`, `MPW.ACL.14` (the hold),
-//! `MPW.ACL.15` with BL-MPW-08, -02 and -10.
+//! `MPW.ACL.15` with BL-MPW-08, -02 and -10 (all built).
 
 mod support;
 
