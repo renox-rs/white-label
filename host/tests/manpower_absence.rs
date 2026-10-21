@@ -10,12 +10,13 @@
 mod manpower_support;
 mod support;
 
-use host::roles::{HR, OWNER};
+use host::roles::{ADMIN, HR, OWNER};
 use manpower::absence::{self, AbsenceCase};
 use manpower::{DeploymentStatus, ManpowerRequest, RequestKind, RequestStatus};
-use manpower_support::{account, all_valid, boot, deployment, reload, worker};
+use manpower_support::{
+    account, all_valid, boot, deployment, draft_run, post, reload, run_transition, salary, worker,
+};
 use renox::prelude::*;
-use renox::state_machine::StateMachine;
 use support::{day, messages_to, messages_to_party, person};
 use wl_hr::{LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
 use wl_kernel::Subject;
@@ -175,18 +176,24 @@ async fn the_case_leads_to_the_report_and_the_end_of_the_deployment() {
     assert_eq!(cases[0].report_number.as_deref(), Some("MOHRE-777"));
 }
 
-/// AC5 with the real wl-hr: W's pay for the paid run is held for the absence
-/// case; W returns, HR closes the case with "hospitalised": the ticket is
-/// completed, the open cover request cancelled, and wl-hr proposes an off-cycle
-/// run in `draft` with W's held line (paid only after a second user approves
-/// it, which wl-hr's own tests cover).
+/// AC1 and AC5 with the real wl-hr: the case is open when HR prepares the
+/// November run, so W's line is held ("absence case") by `calculate` itself;
+/// the run is approved by a second user and paid, W's line stays held. W
+/// returns, HR closes the case with "hospitalised": the ticket is completed,
+/// the open cover request cancelled, and wl-hr proposes an off-cycle run in
+/// `draft` with W's held line. The preparer of the off-cycle run cannot
+/// approve it (`HRM.ACL.04`); it is paid after a second user approves.
 #[renox::test]
-async fn closing_the_case_releases_the_held_line_into_a_draft_off_cycle_run() {
+async fn closing_the_case_releases_the_held_line_into_an_off_cycle_run_paid_after_a_second_approval()
+ {
     let app = boot().await;
     let a = account(&app).await;
     let hr = person(&app, "Hana", HR).await;
+    let md = person(&app, "Basel", OWNER).await;
+    let admin = person(&app, "Ada", ADMIN).await;
     let w = worker(&app, "Wasim Khan").await;
     all_valid(&app, w).await;
+    salary(&app, w, 300_000).await;
     deployment(
         &app,
         &a,
@@ -198,47 +205,47 @@ async fn closing_the_case_releases_the_held_line_into_a_draft_off_cycle_run() {
         Some(day(200)),
     )
     .await;
-    // The November pay, held while the case is open.
-    let mut run = PayrollRun {
-        period: "2026-11".into(),
-        run_type: "regular".into(),
-        status: PayrollRunStatus::Paid,
-        ..PayrollRun::default()
-    };
-    let mut tx = app.db().begin().await.unwrap();
-    run.insert_in_state(&mut tx, PayrollRunStatus::Paid, "fixture")
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
-    let held = PayrollLine::create(
-        app.db(),
-        PayrollLine {
-            run_id: run.id,
-            employee_id: w.0,
-            fixed_wage: 300_000,
-            net_amount: 300_000,
-            ..PayrollLine::default()
-        },
-    )
-    .await
-    .unwrap();
-    PayrollLine::query()
-        .where_(PayrollLine::ID.eq(held.id))
-        .update(
-            app.db(),
-            &[
-                ("status", &LineStatus::Held.as_str().to_owned()),
-                ("held_reason", &Some("absence case".to_owned())),
-            ],
-        )
-        .await
-        .unwrap();
 
     absence::run_on(app.state(), today()).await.unwrap();
     let case = AbsenceCase::open_of(app.db(), w.0)
         .await
         .unwrap()
         .expect("the case");
+
+    // AC1: the hold is what `calculate` makes of the open case.
+    let november = draft_run(&app, "2026-11").await;
+    run_transition(&app, &hr, &november, "calculate")
+        .await
+        .assert_status(303);
+    let held = line_of(&app, &november, w.0).await;
+    assert_eq!(held.status, LineStatus::Held);
+    assert_eq!(held.held_reason.as_deref(), Some("absence case"));
+    run_transition(&app, &md, &november, "approve")
+        .await
+        .assert_status(303);
+    wl_hr::payroll::submit(app.state(), november.id)
+        .await
+        .unwrap();
+    post(
+        &app,
+        &md,
+        &format!("/hr/payroll/{}/confirm", november.id),
+        &[("confirmation", "BANK-1")],
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(
+        PayrollRun::find_or_404(app.db(), november.id)
+            .await
+            .unwrap()
+            .status,
+        PayrollRunStatus::Paid
+    );
+    assert_eq!(
+        line_of(&app, &november, w.0).await.status,
+        LineStatus::Held,
+        "W is not paid while the case is open"
+    );
 
     app.acting_as(&hr);
     app.htmx()
@@ -274,4 +281,123 @@ async fn closing_the_case_releases_the_held_line_into_a_draft_off_cycle_run() {
         .await
         .unwrap();
     assert_eq!(covers[0].status, RequestStatus::Cancelled);
+
+    // AC5: the admin prepares the off-cycle run and cannot approve it; the
+    // MD, a second user, does, and only then W is paid.
+    let off = off[0].clone();
+    run_transition(&app, &admin, &off, "calculate")
+        .await
+        .assert_status(303);
+    run_transition(&app, &admin, &off, "approve")
+        .await
+        .assert_status(422);
+    assert_eq!(
+        PayrollRun::find_or_404(app.db(), off.id)
+            .await
+            .unwrap()
+            .status,
+        PayrollRunStatus::Calculated
+    );
+    assert_ne!(line_of(&app, &off, w.0).await.status, LineStatus::Paid);
+    run_transition(&app, &md, &off, "approve")
+        .await
+        .assert_status(303);
+    wl_hr::payroll::submit(app.state(), off.id).await.unwrap();
+    post(
+        &app,
+        &md,
+        &format!("/hr/payroll/{}/confirm", off.id),
+        &[("confirmation", "BANK-2")],
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(line_of(&app, &off, w.0).await.status, LineStatus::Paid);
+    assert_eq!(
+        PayrollLine::find_or_404(app.db(), held.id)
+            .await
+            .unwrap()
+            .released_into,
+        Some(off.id)
+    );
+}
+
+/// The line of employee `employee` in `run`.
+async fn line_of(app: &renox::testing::TestApp, run: &PayrollRun, employee: i64) -> PayrollLine {
+    PayrollLine::query()
+        .where_(PayrollLine::RUN_ID.eq(run.id))
+        .where_(PayrollLine::EMPLOYEE_ID.eq(employee))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("the line")
+}
+
+/// Approved leave counts as present, through the real wl-hr leave calendar:
+/// W was on approved leave until 5 days ago, so ten days after the
+/// deployment began there is no case; X, with the same deployment and no
+/// leave, has one. A leave that ended 9 days ago leaves 9 days: a case, with
+/// day 0 at the last day of leave.
+#[renox::test]
+async fn approved_leave_in_wl_hr_counts_as_present() {
+    use wl_hr::{LeaveRequest, LeaveStatus};
+
+    let app = boot().await;
+    let a = account(&app).await;
+    let on_leave = worker(&app, "Wasim Khan").await;
+    let back = worker(&app, "Basim Khan").await;
+    let nobody = worker(&app, "Xavier Khan").await;
+    for who in [on_leave, back, nobody] {
+        all_valid(&app, who).await;
+        deployment(
+            &app,
+            &a,
+            &a.site,
+            who,
+            "security_guard",
+            DeploymentStatus::Active,
+            day(-20),
+            Some(day(200)),
+        )
+        .await;
+    }
+    for (who, from, to, status) in [
+        (on_leave, day(-15), day(-5), LeaveStatus::Approved),
+        (back, day(-15), day(-9), LeaveStatus::Completed),
+        // Not approved: it counts for nothing.
+        (nobody, day(-15), day(-5), LeaveStatus::Requested),
+    ] {
+        LeaveRequest::create(
+            app.db(),
+            LeaveRequest {
+                employee_id: who.0,
+                leave_type: "annual".into(),
+                from_date: from,
+                to_date: to,
+                status,
+                ..LeaveRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    absence::run_on(app.state(), today()).await.unwrap();
+
+    assert!(
+        AbsenceCase::open_of(app.db(), on_leave.0)
+            .await
+            .unwrap()
+            .is_none(),
+        "5 days after approved leave is not 7"
+    );
+    let case = AbsenceCase::open_of(app.db(), back.0)
+        .await
+        .unwrap()
+        .expect("9 days after the leave");
+    assert_eq!(case.last_present_on, day(-9), "day 0 is the last leave day");
+    let unapproved = AbsenceCase::open_of(app.db(), nobody.0)
+        .await
+        .unwrap()
+        .expect("a leave that is only requested is no leave");
+    assert_eq!(unapproved.last_present_on, day(-20));
 }
