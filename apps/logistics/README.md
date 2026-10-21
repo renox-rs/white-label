@@ -1,11 +1,27 @@
 # logistics
 
-The vertical app for courier and freight companies (03 Logistics). This
-first part is the **Shipment lifecycle**, with the two negative flows that
-need only it: voiding a duplicate booking and cancelling a shipment after
-pickup, then a partial pickup, the re-weigh at the hub and the hold of a
-shipment for an exception. The COD remittance and the freight job come with
-their own issues.
+The vertical app for courier and freight companies (03 Logistics). It has
+three lifecycles, each a state machine whose every change goes through the
+engine and leaves a history row:
+
+- the **Shipment** (a consignment of parcels for a client: booking, pickup,
+  hub, delivery, return) with its negative flows: void, cancel, partial pickup
+  and delivery, re-weigh, hold, reversal, loss, trace, disposal and the COD
+  difference;
+- the **COD remittance** (the payout of the cash collected to the client:
+  draft, approve, reopen, pay) with its adjustment lines, netting, returned
+  transfer, bank account change, statement dispute and the blocked client;
+- the **Freight job** (booked to closed) with documents, holds, cancellation
+  before departure, container free time and demurrage, and the reopening of a
+  closed job for a late cost.
+
+The delivery itself (runs, drivers, proof of delivery, cash custody) is
+`wl-delivery`; the app reaches the shared modules only through `wl-kernel`
+(its invoicer, notifier, task creator, portal users, document guard, supplier
+bills, cash forecast, integrations, quotations). The host
+(`host/src/app/logistics_*`) maps roles and permissions, turns the tables of
+[`defaults`] into the shared modules' own settings and shows them on the
+settings pages.
 
 ## What is here
 
@@ -224,6 +240,63 @@ their own issues.
   the main service's 5% (zero-rated only for an international job with its
   evidence). `close` has the same guards and the margin of each close stays in
   the history; the first invoice is never changed.
+- **Cancelling a freight job before departure** (`freight_cancel`, BL-LOG-23):
+  `jobs.manage` cancels a `booked` or `documents_pending` job with a reason;
+  after departure `cancel` is not offered (a hold instead). The cancellation
+  charge is read from the quotation's terms by the job's stage at `cancel`
+  (one fixed amount, or one amount per stage; a stage without an amount is no
+  terms), drafted through the invoicer on one invoice with the incurred costs
+  that are rechargeable (a reimbursement at 5%, or a disbursement
+  `out_of_scope` with the VATP013 conditions); the cancellation charge itself is
+  always standard rated. Without terms no charge is drafted and the
+  documentation officers get a task to decide the incurred costs; costs not
+  recharged stay the job's loss. A cost billed after `cancel` is allocated to
+  the cancelled job (which stays `cancelled`); the accountants
+  (`jobs.bill_cancelled`) are told and invoice it or absorb it. The quotation
+  (`FIN.QUO.01`) is a seam: `wl_kernel::quotations::Quotations` answers the
+  terms of a job when a module provides it, else the terms typed on the job
+  (`FreightQuotation`).
+- **Container free time and demurrage** (`freight_free_time`, `LOG.RUL.14`,
+  BL-LOG-24): each container has free-time end dates for port storage,
+  demurrage and detention. Every day at 06:00 (Asia/Dubai) the documentation
+  officers and the client are told 2 days before and on an end date (once for
+  each container, charge type, end date and moment); after it only a daily
+  line is added to the job's free-time log. Collecting the container stops the
+  log of storage and demurrage, returning it empty that of detention; an
+  extended end date has its own notices and the lines already written keep a
+  note. A charge line of a supplier bill (the kernel's `SupplierBills`) is
+  allocated to the job and the container with its liability and a reason
+  (late documents, late duty payment, late collection by the client: client;
+  company delay, other: company); a client liability is recharged on the
+  invoice of `recharge_invoice` (or the supplementary invoice of a reopened
+  job) at 5% or out of scope; a company liability only lowers the margin. The
+  bill screen shows the logged days next to the billed days.
+- **Defaults of the 03 deployment** (`defaults`, BL-LOG-25, BL-LOG-26): the
+  document kinds (driving licence, rider permit, Mulkiya, vehicle insurance,
+  vehicle permit: legal blocks of `run.dispatch`, the first two also of
+  `delivery.assign`, override never until `L-19`), their responsible roles, the
+  critical rules, lead sources, onboarding checklists, SOPs, late-entry limits
+  and the numbers of the money, cash and access settings. No module hard-codes
+  them; the host seeds them and the settings pages read them back.
+- **Vehicles grounded** (`grounding`, `LOG.RUL.10`): a vehicle with an expired
+  blocking document is recorded as grounded and the fleet managers and the
+  dispatchers are told; the daily rule is the host's.
+- **SMS gateway down** (`sms_fallback`): tracking SMS go through the kernel's
+  integration queue; when the gateway goes down the dispatcher gets one task
+  listing the recipients on today's runs and their clients are told by e-mail.
+- **Notices** (`notices`): shipment notices are in the *tracking* group (a
+  message that gives up does nothing more); requests that ask the client to
+  act (address confirmation, freight documents, holds, free-time alerts, the
+  bank account confirmation) are in *portal*, with a staff task for the
+  dispatcher, the documentation officer or the accountant; COD statements and
+  adjustment notices are in *invoices* (the client's other finance contact,
+  then the accountant).
+- **Portal window** (`portal`, `POR.ACL.01`): the day the client's contract
+  ended is on its terms; its portal users act until then, only look for 90
+  days (`acts_for` is for acting, `sees_for` for looking), then the portal
+  closes.
+- **Cash-flow forecast** (`cash_forecast`): the COD remittances owed to clients
+  are payments in the forecast of wl-invoicing, a draft at the next Monday run.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
@@ -239,12 +312,30 @@ the reason when refused.
 ## Permissions
 
 `shipments.view`, `.book`, `.manage`, `.scan`, `.deliver`, `.void`,
-`.cancel`, `.approve_loss` and `.approve_disposal`, `freight.manage`, `jobs.view`, `.manage`, `.deliver` and `.close`, and `remittances.view`, `.prepare`, `.approve`, `.pay`, `.request_account` and `.dispute`
-(`permissions`). The host maps them to the operations manager, the
-dispatcher, hub staff, the driver and the client user, and the remittances to
-the accountant.
+`.cancel`, `.approve_loss` and `.approve_disposal`, `freight.manage`, `jobs.view`, `.manage`, `.deliver`, `.close` and `.bill_cancelled`, and `remittances.view`, `.prepare`, `.approve`, `.pay`, `.request_account` and `.dispute`
+(`permissions`). The host maps them to the roles of 03 §3.1: the operations
+manager, the dispatcher, hub staff, the driver, customer service and the
+client user for shipments; the documentation officer for freight jobs; the
+accountant for remittances and for deciding a cost billed to a cancelled job;
+the fleet manager (the responsible role of the vehicle documents) and the
+cashier (counts cash, writes off a shortage up to AED 50); the company admin
+holds everything.
+
+## Seams
+
+What the app needs from modules that are not built is a trait in `wl-kernel`
+and a stand-in here, so the module can replace the stand-in: the quotation
+terms (`wl_kernel::quotations`, `FreightQuotation`), rate cards (`rates`),
+job costing, supplier bills allocated to a job and disbursements
+(`freight_costing`, `freight_free_time::add_bill_cost`), usage billing (the
+invoicer's drafts), the first invoice of a job. Each is listed with its
+provider in the deferred notes of the build.
 
 ## Tests
 
-`tests/` boots the app with the real wl-delivery, a recording notifier and a
-portal fake; `tests/support` holds the fixtures.
+`tests/` boots the app with the real wl-delivery, a recording notifier, a
+ticket desk, an invoicer and a quotation provider that record what they are
+asked, and a portal fake; the freight tests also run against the real
+wl-invoicing (`boot_with_invoicing`) and wl-parties. `tests/support` holds the
+fixtures. The 03 values in force in a whole deployment are tested in the host
+(`host/tests/logistics_documents.rs`, `host/tests/logistics_money.rs`).
