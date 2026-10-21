@@ -25,6 +25,7 @@ What is here so far:
 | Free time: rules less blocks less bookings, buffers, seats per slot, all required resources or none | §3, `SCH.RES.01` | `slots` |
 | `ResourceEligibility` asked at the booking's start (the default says yes); the bookings as `PrepaidSubjects` for `wl-payments` | §8, `SCH.ACL.04` | `service`, `prepaid` |
 | The staff pages (list, booking, book, accept, decline, confirm, reschedule, cancel, check in, start, complete, no-show) | §5.1 | `pages` |
+| Cancellation reason codes and who initiated: staff pick a code (the side is the code's default; the other side needs a note), a party records `party_request` from the portal or a confirmation link and the code of the change, as the business, from a change message; *late* follows the deposit forfeit window or the cancellation cut-off; `BookingCancelled` carries it all | §4.1, `SCH.ACL.02` | `service`, `links`, `booking` |
 
 The rest of the negative flows, the self-booking pages, the waiting list and the reminders are other parts of the
 issues listed in the backlog (`docs/backlog/modules/wl-scheduling.md`).
