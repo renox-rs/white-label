@@ -63,7 +63,10 @@ async fn the_run_closes_when_the_real_handover_is_counted() {
 
     let closed = w.reload_run(&run).await;
     assert_eq!(closed.status, RunStatus::Closed);
-    assert_eq!(closed.cash_counted_at, None, "the module's record is unused");
+    assert_eq!(
+        closed.cash_counted_at, None,
+        "the module's record is unused"
+    );
     let events = w.run_closed.all();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].cash_collected, 10_000);

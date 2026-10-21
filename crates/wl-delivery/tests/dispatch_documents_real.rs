@@ -299,7 +299,10 @@ impl Real {
     }
 
     async fn run_status(&self, run: &Run) -> RunStatus {
-        Run::find_or_404(self.app.db(), run.id).await.unwrap().status
+        Run::find_or_404(self.app.db(), run.id)
+            .await
+            .unwrap()
+            .status
     }
 }
 
