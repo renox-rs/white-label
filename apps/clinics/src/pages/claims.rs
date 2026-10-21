@@ -9,11 +9,12 @@
 //! | `POST /clinics/claims/{id}/reject` | `clinics.claim_reject` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/resubmit` | `clinics.claim_resubmit` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/remittance` | `clinics.claim_remittance` | `claims.manage` |
+//! | `POST /clinics/claims/{id}/recoupment` | `clinics.claim_recoupment` | `claims.manage` |
 //!
 //! The pages only read the form and call the services of
 //! [`crate::claims`] and [`crate::claim_money`]; the transitions are the
 //! machine's. A claim offers an action only from the states the machine
-//! leaves with it.
+//! leaves with it: a `paid` claim offers only the recoupment.
 //!
 //! Amounts typed in a form are dirhams (`450` or `450.00`).
 
@@ -32,7 +33,7 @@ use crate::claim::{
     AnswerKind, AttemptKind, Claim, ClaimAttempt, ClaimError, ClaimLine, ClaimRemittance,
     ClaimStatus,
 };
-use crate::claim_money::{self, Advice, AdviceLine, Recorded};
+use crate::claim_money::{self, Advice, AdviceLine, Recorded, Takeback};
 use crate::claims::{self, attempt_deadline, resubmission_deadline};
 use crate::contract::PayerContract;
 use crate::money_text;
@@ -56,6 +57,8 @@ pub fn routes() -> Routes {
         .name("clinics.claim_resubmit")
         .post("/clinics/claims/{id}/remittance", remittance)
         .name("clinics.claim_remittance")
+        .post("/clinics/claims/{id}/recoupment", recoupment)
+        .name("clinics.claim_recoupment")
         .require_auth()
 }
 
@@ -289,6 +292,7 @@ pub(crate) struct ShowPage {
     held: bool,
     held_text: String,
     held_result: String,
+    written_off: String,
     lines: Vec<LineRow>,
     attempts: Vec<AttemptRow>,
     answers: Vec<AnswerRow>,
@@ -298,6 +302,7 @@ pub(crate) struct ShowPage {
     can_reject: bool,
     can_resubmit: bool,
     can_remit: bool,
+    can_recoup: bool,
 }
 
 /// `GET /clinics/claims/{id}`.
@@ -388,6 +393,19 @@ async fn show(
     let bill = payer_bills(&state)
         .find(&state.db, claim.payer_bill())
         .await?;
+    // What was written off or moved to the patient stays shown after a
+    // recoupment reopens lines of the claim.
+    let closed: i64 = payer_bills(&state)
+        .lines(&state.db, claim.payer_bill())
+        .await?
+        .iter()
+        .map(|l| l.written_off + l.transferred)
+        .sum();
+    let written_off = if closed > 0 {
+        money_text(closed)
+    } else {
+        dash.clone()
+    };
     let held = claim.is_held();
     let held_text = match (&claim.held_kind, claim.held_reference.as_deref()) {
         (Some(kind), reference) if held => text_with(
@@ -433,6 +451,7 @@ async fn show(
         held,
         held_text,
         held_result,
+        written_off,
         lines,
         attempts,
         answers,
@@ -442,6 +461,10 @@ async fn show(
         can_reject: claim.status.is_with_payer(),
         can_resubmit: matches!(claim.status, ClaimStatus::PartiallyPaid | ClaimStatus::Denied),
         can_remit: claim.status.is_with_payer() && !held,
+        can_recoup: matches!(
+            claim.status,
+            ClaimStatus::Paid | ClaimStatus::PartiallyPaid | ClaimStatus::WrittenOff
+        ) && !held,
     }))
 }
 
@@ -600,6 +623,33 @@ async fn remittance(
         .await
         .map_err(refusal)?;
     answered(&lang, recorded, "claim.remittance_recorded", "claim.remittance_held")
+}
+
+/// `POST /clinics/claims/{id}/recoupment`. The form has the `code`, the
+/// `reason`, the `reference` and `date` of the later advice that carried it
+/// and, per claim line, `line_<id>_recouped`.
+async fn recoupment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    require(&user, permissions::CLAIMS_MANAGE)?;
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    let mut takeback = Takeback::new(get("code"), advice_date(get("date"))?)
+        .reason(get("reason"))
+        .carried_by(get("reference"));
+    for line in ClaimLine::of_claim(&state.db, id).await? {
+        let amount = parse_aed(get(&format!("line_{}_recouped", line.id)))?;
+        if amount != 0 {
+            takeback = takeback.line(line.id, amount);
+        }
+    }
+    let recorded = claim_money::record_recoupment(&state, &user, id, takeback)
+        .await
+        .map_err(refusal)?;
+    answered(&lang, recorded, "claim.recoupment_recorded", "claim.recoupment_held")
 }
 
 #[cfg(test)]

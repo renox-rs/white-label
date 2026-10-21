@@ -666,6 +666,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.claim.paid", "Paid"),
     ("clinics.claim.denied", "Denied"),
     ("clinics.claim.recouped", "Taken back"),
+    ("clinics.claim.written_off", "Written off or moved to the patient"),
     ("clinics.claim.deadline", "Last day to send"),
     ("clinics.claim.resubmissions", "Resubmissions"),
     ("clinics.claim.submission_reference", "Submission reference"),

@@ -41,8 +41,8 @@ use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::approvals::{ApprovalDecided, ApprovalEnd};
 use wl_kernel::documents::today;
 use wl_kernel::payer_bills::{
-    PAYER_BILL_SUBJECT_TYPE, PayerAnswer, PayerBillStatus, PayerRemittanceRecorded, Remittance,
-    RemittanceLine, payer_bills,
+    PAYER_BILL_SUBJECT_TYPE, PayerAnswer, PayerBillStatus, PayerRecoupmentRecorded,
+    PayerRemittanceRecorded, Recoupment, Remittance, RemittanceLine, payer_bills,
 };
 
 use crate::claim::{AnswerKind, Claim, ClaimLine, ClaimStatus};
@@ -122,6 +122,53 @@ impl Advice {
     /// With `line` added.
     pub fn line(mut self, line: AdviceLine) -> Self {
         self.lines.push(line);
+        self
+    }
+}
+
+/// Money a payer takes back from a claim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Takeback {
+    /// The payer's recoupment code, e.g. `R07`.
+    pub code: String,
+    /// The payer's reason, if it gave one.
+    pub reason: Option<String>,
+    /// The reference of the later advice that carried it.
+    pub reference: Option<String>,
+    /// The date of that advice.
+    pub date: NaiveDate,
+    /// The claim lines and the amounts taken back, in fils.
+    pub lines: Vec<(i64, i64)>,
+}
+
+impl Takeback {
+    /// A recoupment under `code` on the advice dated `date`, with no line
+    /// yet.
+    pub fn new(code: &str, date: NaiveDate) -> Self {
+        Takeback {
+            code: code.trim().to_owned(),
+            reason: None,
+            reference: None,
+            date,
+            lines: Vec::new(),
+        }
+    }
+
+    /// With the payer's `reason`.
+    pub fn reason(mut self, reason: &str) -> Self {
+        self.reason = clean(&Some(reason.to_owned()));
+        self
+    }
+
+    /// Carried by the advice `reference`.
+    pub fn carried_by(mut self, reference: &str) -> Self {
+        self.reference = clean(&Some(reference.to_owned()));
+        self
+    }
+
+    /// With `amount` taken back from claim line `line`.
+    pub fn line(mut self, line: i64, amount: i64) -> Self {
+        self.lines.push((line, amount));
         self
     }
 }
@@ -317,6 +364,94 @@ pub async fn record_remittance(
     .await
 }
 
+/// Records money the payer takes back from claim `id`, as `by` (who needs
+/// `claims.manage`), with a second person's approval (`FIN.ACL.16`): the
+/// answer is [`Recorded::Held`] and nothing is recorded until it is given.
+/// Then the recouped lines are open again as denied with the payer's code,
+/// the amount is set off from the payer credit balance first, and the claim
+/// is `denied` when nothing is paid on any line, else `partially_paid`.
+///
+/// # Errors
+///
+/// `Forbidden` without `claims.manage`; `NotFrom` unless the claim is `paid`,
+/// `partially_paid` or `written_off`; `Guard` (422) without the payer's code,
+/// for a line that is not on the claim, for an amount at 0 or above what the
+/// line has been paid, and while another advice waits.
+pub async fn record_recoupment(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    takeback: Takeback,
+) -> std::result::Result<Recorded, TransitionError> {
+    if !can_manage(by) {
+        return Err(TransitionError::Forbidden);
+    }
+    let claim = Claim::find_or_404(&state.db, id).await?;
+    Claim::machine()
+        .find(RECORD_RECOUPMENT_DENIED)?
+        .check_from(claim.status.as_str())?;
+    if claim.is_held() {
+        return Err(guard(english("clinics.claim.problem.held", &[])));
+    }
+    if takeback.code.trim().is_empty() {
+        return Err(guard(english("clinics.claim.problem.recoup_code", &[])));
+    }
+    let lines = ClaimLine::of_claim(&state.db, id).await?;
+    let mut recoupment = Recoupment::new(&takeback.code);
+    if let Some(reason) = &takeback.reason {
+        recoupment = recoupment.reason(reason);
+    }
+    if let Some(reference) = &takeback.reference {
+        recoupment = recoupment.carried_by(reference, takeback.date);
+    }
+    if takeback.lines.is_empty() {
+        return Err(guard(english("clinics.claim.problem.recoup_above", &[])));
+    }
+    for (line_id, amount) in &takeback.lines {
+        let line = lines
+            .iter()
+            .find(|l| l.id == *line_id)
+            .ok_or_else(|| guard(english("clinics.claim.problem.no_line", &[])))?;
+        let bill_line = line
+            .payer_bill_line_id
+            .ok_or_else(|| guard(english("clinics.claim.problem.no_line", &[])))?;
+        if *amount <= 0 || *amount > line.paid {
+            return Err(guard(english("clinics.claim.problem.recoup_above", &[])));
+        }
+        recoupment = recoupment.line(bill_line, *amount);
+    }
+    mark(
+        state,
+        id,
+        "recoupment",
+        takeback.reference.as_deref(),
+        takeback.date,
+        by.id,
+    )
+    .await?;
+    let answer = match payer_bills(state)
+        .record_recoupment(state, claim.payer_bill(), recoupment, by)
+        .await
+    {
+        Ok(answer) => answer,
+        Err(error) => {
+            clear(state, id, None).await?;
+            return Err(error.into());
+        }
+    };
+    settle(
+        state,
+        id,
+        answer,
+        Heard {
+            reference: takeback.reference.clone(),
+            code: Some(takeback.code.clone()),
+            ..Heard::default()
+        },
+    )
+    .await
+}
+
 /// Brings claim `id` to what its payer bill holds: the remittance recorded
 /// on it moves a `submitted` or `resubmitted` claim to `paid`,
 /// `partially_paid` or `denied`; money taken back moves a `paid`,
@@ -450,6 +585,30 @@ pub async fn on_remittance_recorded(state: &AppState, event: &PayerRemittanceRec
     .map_err(TransitionError::into_error)
 }
 
+/// `PayerRecoupmentRecorded`: the claim of that payer bill follows it, also
+/// when a reversed payment caused it (no approval was needed).
+///
+/// # Errors
+///
+/// The errors of [`follow`].
+pub async fn on_recoupment_recorded(state: &AppState, event: &PayerRecoupmentRecorded) -> Result {
+    let Some(claim) = Claim::of_payer_bill(&state.db, event.payer_bill.0).await? else {
+        return Ok(());
+    };
+    follow(
+        state,
+        claim.id,
+        Heard {
+            code: Some(event.code.clone()),
+            reversal: event.reversal,
+            ..Heard::default()
+        },
+    )
+    .await
+    .map(|_| ())
+    .map_err(TransitionError::into_error)
+}
+
 /// `ApprovalDecided` for the payer bill of a claim: when the request that
 /// held its advice ended without a yes (rejected, returned, withdrawn,
 /// expired, failed), nothing was recorded; the hold is cleared and the way it
@@ -480,6 +639,11 @@ pub fn register(app: &mut Registry) {
             on_remittance_recorded(&state, &event).await
         },
     );
+    app.listen(
+        |event: PayerRecoupmentRecorded, state: AppState| async move {
+            on_recoupment_recorded(&state, &event).await
+        },
+    );
     app.listen(|event: ApprovalDecided, state: AppState| async move {
         on_approval_decided(&state, &event).await
     });
@@ -503,5 +667,17 @@ mod tests {
         assert_eq!(advice.payment, Some(5));
         assert_eq!(advice.lines[1].code.as_deref(), Some("R12"));
         assert_eq!(advice.lines[0].denied, 0);
+    }
+
+    #[test]
+    fn a_takeback_is_built_with_its_builders() {
+        let takeback = Takeback::new(" R07 ", day("2026-12-10"))
+            .reason(" taken back ")
+            .carried_by("ADV-10")
+            .line(3, 40_000);
+        assert_eq!(takeback.code, "R07");
+        assert_eq!(takeback.reason.as_deref(), Some("taken back"));
+        assert_eq!(takeback.reference.as_deref(), Some("ADV-10"));
+        assert_eq!(takeback.lines, [(3, 40_000)]);
     }
 }

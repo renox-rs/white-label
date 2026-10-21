@@ -36,6 +36,18 @@
           </rx-stack>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_recoup">
+        <rx-action-sheet :id="'claim-recoup-' ~ id" :label="tx['claim.recoup']" :action="route('clinics.claim_recoupment', id)"
+                         :title="tx['claim.recoup']" :description="tx['claim.recoup_description']" :submit-label="tx['claim.recoup']" icon="history">
+          <rx-input name="code" :label="tx['claim.recoup_code']" :id="'claim-recoup-code-' ~ id" required/>
+          <rx-input name="reason" :label="tx['claim.advice_reason']" :id="'claim-recoup-reason-' ~ id"/>
+          <rx-input name="reference" :label="tx['claim.advice_reference']" :id="'claim-recoup-reference-' ~ id"/>
+          <rx-input name="date" type="date" :label="tx['claim.advice_date']" :value="today" :id="'claim-recoup-date-' ~ id"/>
+          <rx-stack rx-for="line in lines">
+            <rx-input :name="'line_' ~ line.id ~ '_recouped'" :label="line.description ~ ': ' ~ tx['claim.recoup_amount']" :hint="tx['claim.line_paid'] ~ ': ' ~ line.paid" :id="'claim-recoup-amount-' ~ line.id"/>
+          </rx-stack>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_resubmit">
         <rx-action-sheet :id="'claim-resubmit-' ~ id" :label="tx['claim.resubmit']" :action="route('clinics.claim_resubmit', id)"
                          :title="tx['claim.resubmit']" :description="tx['claim.resubmit_description']" :submit-label="tx['claim.resubmit']" icon="send">
@@ -57,6 +69,7 @@
         <rx-entry :label="tx['claim.claimed']" :value="claimed"/>
         <rx-entry :label="tx['claim.paid']" :value="paid"/>
         <rx-entry :label="tx['claim.denied']" :value="denied"/>
+        <rx-entry :label="tx['claim.written_off']" :value="written_off"/>
         <rx-entry :label="tx['claim.resubmissions']" :value="resubmissions"/>
         <rx-entry :label="tx['claim.submission_reference']" :value="submission_reference"/>
         <rx-entry :label="tx['claim.submitted_on']" :value="submitted_on"/>
