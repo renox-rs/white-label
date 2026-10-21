@@ -2,6 +2,9 @@
 #![warn(missing_docs)]
 
 pub mod acquisition;
+pub mod adjustment;
+pub mod adjustment_machine;
+pub mod adjustments;
 pub mod acquisition_change;
 pub mod acquisition_daily;
 pub mod attribution;
@@ -17,10 +20,12 @@ pub mod counter_sale_machine;
 pub mod counter_sales;
 pub mod daily;
 mod events;
+pub mod expiry;
 pub mod lead;
 mod lead_events;
 pub mod lead_machine;
 pub mod lead_source;
+pub mod liability;
 pub mod loyalty_account;
 pub mod loyalty_attach;
 pub mod loyalty_points;
@@ -55,6 +60,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use acquisition::{AcquisitionRefused, AcquisitionSale, PartyAcquisition};
+pub use adjustment::{AdjustmentStatus, PointsAdjustment};
 pub use acquisition_change::{
     AcquisitionChange, ChangeRefused, ChangeRequest, ChangeStatus, ChangeTarget,
 };
@@ -150,6 +156,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-sales/loyalty_review.html",
         include_str!("../views/wl-sales/loyalty_review.html"),
+    ),
+    (
+        "wl-sales/adjustments.html",
+        include_str!("../views/wl-sales/adjustments.html"),
+    ),
+    (
+        "wl-sales/liability.html",
+        include_str!("../views/wl-sales/liability.html"),
     ),
 ];
 
@@ -406,7 +420,9 @@ impl Module for WlSales {
             .view_data::<pages::sales_returns::IndexPage>()
             .view_data::<pages::sales_returns::ShowPage>()
             .view_data::<pages::loyalty::IndexPage>()
-            .view_data::<pages::loyalty::ReviewPage>();
+            .view_data::<pages::loyalty::ReviewPage>()
+            .view_data::<pages::adjustments::IndexPage>()
+            .view_data::<pages::liability::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -442,6 +458,7 @@ impl Module for WlSales {
         app.model::<PointsMovement>();
         app.model::<LoyaltyReview>();
         app.model::<Redemption>();
+        app.model::<PointsAdjustment>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
@@ -464,6 +481,10 @@ impl Module for WlSales {
         // Redeeming points on a sale: the code, the hold, the spending and the
         // giving back; and the module's `DiscountEngine`.
         redeem::register(app);
+        // Manual adjustments with approval (`SAL.ACL.07`) and the daily
+        // expiry and reminder (`SAL.RUL.08`).
+        adjustments::register(app);
+        expiry::schedule(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);

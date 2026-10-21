@@ -4,6 +4,8 @@
 <rx-page layout="layouts/app.html" :title="tx['loyalty.title']">
   <rx-stack>
     <rx-page-header :title="tx['loyalty.title']" :subtitle="tx['loyalty.subtitle']">
+      <rx-link-button :href="route('wl_sales.loyalty_liability')" :label="tx['liability.title']" variant="secondary" icon="receipt"/>
+      <rx-link-button :href="route('wl_sales.loyalty_adjustments')" :label="tx['adjust.title']" variant="secondary" icon="history"/>
       <rx-link-button rx-if="can_manage" :href="route('wl_sales.loyalty_review')" :label="tx['loyalty.review.title']" variant="secondary" icon="list-checks"/>
       <rx-action-sheet rx-if="can_enrol" id="enrol-member" :label="tx['loyalty.enrol']" :action="route('wl_sales.loyalty_enrol')"
                        :title="tx['loyalty.enrol']" :description="tx['loyalty.enrol_description']" :submit-label="tx['loyalty.enrol']" variant="primary" icon="plus">
@@ -43,6 +45,20 @@
       <rx-column :label="tx['loyalty.mobile']" hide-narrow>{{ account.mobile }}</rx-column>
       <rx-column :label="tx['loyalty.balance']">{{ account.balance }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="account.status_kind" :text="account.status_label"/></rx-column>
+      <rx-column :label="tx['loyalty.reminder']" hide-narrow>{{ account.reminder_note }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="can_adjust">
+          <rx-action-sheet rx-if="account.open" :id="'adjust-account-' ~ account.id" :label="tx['adjust.adjust']" :action="route('wl_sales.loyalty_adjust', account.id)"
+                           :title="tx['adjust.adjust']" :description="tx['adjust.adjust_description']" :submit-label="tx['adjust.adjust']" icon="pencil">
+            <rx-input name="points" :label="tx['adjust.points']" :id="'adjust-account-points-' ~ account.id" required/>
+            <rx-textarea name="reason" :label="tx['adjust.reason']" :id="'adjust-account-reason-' ~ account.id" required/>
+          </rx-action-sheet>
+          <rx-action-sheet rx-if="account.open" :id="'close-account-' ~ account.id" :label="tx['adjust.close']" :action="route('wl_sales.loyalty_close', account.id)"
+                           :title="tx['adjust.close']" :description="tx['adjust.close_description']" :submit-label="tx['adjust.close']" icon="x" danger>
+            <rx-textarea name="reason" :label="tx['adjust.reason']" :id="'close-account-reason-' ~ account.id" required/>
+          </rx-action-sheet>
+        </template>
+      </rx-row-actions>
       <rx-slot name="empty"><rx-empty :title="tx['loyalty.no_accounts']" icon="inbox"/></rx-slot>
     </rx-table>
   </rx-stack>

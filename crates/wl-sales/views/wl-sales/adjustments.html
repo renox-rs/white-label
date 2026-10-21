@@ -1,0 +1,23 @@
+{#- wl-sales: the manual points adjustments and the closings of accounts by
+    staff, with the approval they wait for (SAL.ACL.07). Replace it with
+    resources/views/wl-sales/adjustments.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['adjust.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['adjust.title']" :subtitle="tx['adjust.subtitle']" :back="route('wl_sales.loyalty')" :back-label="tx['loyalty.title']"/>
+    <rx-table :rows="adjustments" as="item" :key="item.id" :caption="tx['adjust.title']" card>
+      <rx-column :label="tx['adjust.account']">{{ item.code }}</rx-column>
+      <rx-column :label="tx['adjust.points']">{{ item.points }}</rx-column>
+      <rx-column :label="tx['adjust.reason']" hide-narrow>{{ item.reason }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="item.status_kind" :text="item.status_label"/></rx-column>
+      <rx-column :label="tx['adjust.outcome']" hide-narrow>{{ item.outcome }}</rx-column>
+      <rx-row-actions>
+        <rx-action-sheet rx-if="item.can_resubmit" :id="'resubmit-adjustment-' ~ item.id" :label="tx['adjust.resubmit']" :action="route('wl_sales.loyalty_adjustment_resubmit', item.id)"
+                         :title="tx['adjust.resubmit']" :submit-label="tx['adjust.resubmit']" icon="pencil">
+          <rx-input name="points" :label="tx['adjust.points']" :id="'resubmit-adjustment-points-' ~ item.id" required/>
+          <rx-textarea name="reason" :label="tx['adjust.reason']" :id="'resubmit-adjustment-reason-' ~ item.id" required/>
+        </rx-action-sheet>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['adjust.empty']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

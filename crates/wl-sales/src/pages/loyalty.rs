@@ -110,6 +110,10 @@ pub struct AccountRow {
     pub status_label: String,
     /// The badge colour.
     pub status_kind: &'static str,
+    /// *Reminder not delivered* when the last expiry reminder gave up.
+    pub reminder_note: String,
+    /// Whether the account is open (it can be adjusted or closed).
+    pub open: bool,
 }
 
 /// What the page needs.
@@ -121,6 +125,7 @@ pub(crate) struct IndexPage {
     accounts: Vec<AccountRow>,
     can_manage: bool,
     can_enrol: bool,
+    can_adjust: bool,
 }
 
 /// `GET /loyalty`: the programme and the latest accounts.
@@ -143,6 +148,12 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
             balance: if per_visit { a.visits } else { a.points_balance },
             status_label: text(&lang, &format!("loyalty.status.{}", a.status.as_str())),
             status_kind: if a.is_active() { "success" } else { "info" },
+            reminder_note: if a.expiry_reminder_failed_at.is_some() {
+                text(&lang, "loyalty.reminder_not_delivered")
+            } else {
+                String::new()
+            },
+            open: a.is_active(),
         })
         .collect();
     let view = programme.map(|p| {
@@ -166,6 +177,7 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
         accounts,
         can_manage: user.has_permission(permissions::LOYALTY_MANAGE),
         can_enrol: user.has_permission(permissions::LOYALTY_ENROL),
+        can_adjust: user.has_permission(permissions::LOYALTY_ADJUST),
     }))
 }
 

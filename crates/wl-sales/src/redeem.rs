@@ -51,7 +51,7 @@ use wl_kernel::notify::{
 };
 use wl_kernel::sales::{
     COUNTER_SALE_SUBJECT_TYPE, CounterSaleCompleted, DiscountEngine, PointsGivenBack,
-    PointsRedeemed, QuoteRedemption, RedemptionQuote, ReturnResolved, SALES_ORDER_SUBJECT_TYPE,
+    QuoteRedemption, RedemptionQuote, ReturnResolved, SALES_ORDER_SUBJECT_TYPE,
     SalesFuture, SalesOrderCancelled, SalesOrderLineCancelled, SalesOrderRejected,
 };
 use wl_kernel::Subject;

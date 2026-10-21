@@ -34,6 +34,15 @@ pub const LOYALTY_REVERSED: &str = "sales.loyalty_reversed";
 /// A member is told that redeemed points were given back.
 pub const LOYALTY_GIVEN_BACK: &str = "sales.loyalty_given_back";
 
+/// A member is told that points are about to expire (`SAL.RUL.08`).
+pub const LOYALTY_EXPIRY: &str = "sales.loyalty_expiry";
+
+/// The requester of a points adjustment is told that it was rejected.
+pub const ADJUSTMENT_REJECTED: &str = "sales.loyalty_adjustment_rejected";
+
+/// The requester of a points adjustment is told that it was returned.
+pub const ADJUSTMENT_RETURNED: &str = "sales.loyalty_adjustment_returned";
+
 /// The owner of a lead is told that its win was reverted.
 pub const LEAD_WIN_REVERTED: &str = "sales.lead_win_reverted";
 
@@ -72,6 +81,15 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(LOYALTY_REWARD, "loyalty_reward"));
     notify::register_type(english_type(LOYALTY_REVERSED, "loyalty_reversed"));
     notify::register_type(english_type(LOYALTY_GIVEN_BACK, "loyalty_given_back"));
+    // A reminder: the member's opt-out is respected, and when it gives up
+    // nothing happens but the account showing it (`SAL.RUL.08`).
+    notify::register_type(
+        english_type(LOYALTY_EXPIRY, "loyalty_expiry")
+            .category(notify::Category::Reminder)
+            .give_up(&[notify::GiveUpReaction::None]),
+    );
+    notify::register_type(english_type(ADJUSTMENT_REJECTED, "adjustment_rejected"));
+    notify::register_type(english_type(ADJUSTMENT_RETURNED, "adjustment_returned"));
 }
 
 /// `fils` as `4,000.00`.
@@ -253,6 +271,49 @@ pub(crate) async fn loyalty_given_back(
             "code": account.code,
             "points": points,
             "why": why,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the member of `account` that `points` expire on `expires_on` unless
+/// they are used (the guardian for a minor).
+pub(crate) async fn loyalty_expiry(
+    state: &AppState,
+    account: &crate::loyalty_account::LoyaltyAccount,
+    points: i64,
+    value: i64,
+    expires_on: NaiveDate,
+) -> Result {
+    let request = NotifyRequest::new(LOYALTY_EXPIRY, account.subject())
+        .to_party(account.notify_party())
+        .subject_label(&account.code)
+        .data(json!({
+            "code": account.code,
+            "points": points,
+            "value": aed(value),
+            "expires_on": date_text(Some(expires_on)),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the requester of `adjustment` that it was rejected or returned
+/// (`reason` is the manager's comment).
+pub(crate) async fn adjustment_ended(
+    state: &AppState,
+    adjustment: &crate::adjustment::PointsAdjustment,
+    account_code: &str,
+    key: &str,
+    reason: &str,
+) -> Result {
+    let request = NotifyRequest::new(key, adjustment.subject())
+        .to_user(adjustment.requested_by)
+        .subject_label(account_code)
+        .data(json!({
+            "code": account_code,
+            "points": adjustment.points,
+            "reason": reason,
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())

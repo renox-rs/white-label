@@ -1,0 +1,29 @@
+{#- wl-sales: the points liability as at a date: outstanding points and
+    their value by brand, entity, age and expiry month, for the accountant.
+    Replace it with resources/views/wl-sales/liability.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['liability.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['liability.title']" :subtitle="tx['liability.subtitle']" :back="route('wl_sales.loyalty')" :back-label="tx['loyalty.title']"/>
+    <rx-form method="GET" action="{{ route('wl_sales.loyalty_liability') }}">
+      <rx-row>
+        <rx-input name="as_at" type="date" :label="tx['liability.as_at']" :value="as_at" id="liability-as-at"/>
+        <rx-button type="submit" :label="tx['liability.show']"/>
+      </rx-row>
+    </rx-form>
+    <rx-card :title="tx['liability.total']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['liability.points']" :value="total_points"/>
+        <rx-entry :label="tx['liability.value']" :value="total_value"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.key" :caption="tx['liability.title']" card>
+      <rx-column :label="tx['liability.brand']" hide-narrow>{{ line.brand }}</rx-column>
+      <rx-column :label="tx['liability.entity']" hide-narrow>{{ line.entity }}</rx-column>
+      <rx-column :label="tx['liability.age']">{{ line.age }}</rx-column>
+      <rx-column :label="tx['liability.expiry_month']">{{ line.expiry_month }}</rx-column>
+      <rx-column :label="tx['liability.points']">{{ line.points }}</rx-column>
+      <rx-column :label="tx['liability.value']">{{ line.value }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['liability.empty']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

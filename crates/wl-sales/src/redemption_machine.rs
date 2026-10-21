@@ -26,7 +26,6 @@ use renox::db::{DateTime, now};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};
 use serde::{Deserialize, Serialize};
-use wl_kernel::Subject;
 use wl_kernel::sales::PointsRedeemed;
 
 use crate::loyalty_account::LoyaltyAccount;
@@ -76,43 +75,36 @@ fn check(ok: bool, key: &str) -> std::result::Result<(), String> {
     if ok { Ok(()) } else { Err(english(key, &[])) }
 }
 
-/// Spends `points` of `account` from its lots, earliest expiry first, one
-/// `redeem` movement per slice, and takes them off the balance and the hold.
-/// Fails (422, the transaction rolls back) when the usable lots hold fewer.
-#[allow(clippy::too_many_arguments)]
+/// Spends `points` from the lots of `template.account_id`, earliest expiry
+/// first, one movement per lot slice (a copy of `template` with the slice's
+/// points, value and lot), and takes them off the balance. With `on`, only
+/// the lots usable on that day count. Returns the first movement written.
+/// Fails (422, the transaction rolls back) when the lots hold fewer.
 pub(crate) async fn consume_lots(
     tx: &mut renox::db::Transaction,
-    account: i64,
+    template: &PointsMovement,
     points: i64,
-    on: NaiveDate,
+    on: Option<NaiveDate>,
     point_value: i64,
-    source: &Subject,
-    entity: Option<i64>,
-    kind: PointsKind,
-    cause: &str,
-) -> Result {
+) -> Result<Option<i64>> {
+    let account = template.account_id;
     let mut left = points;
-    for lot in PointsMovement::lots(&mut *tx, account, Some(on)).await? {
+    let mut first = None;
+    for lot in PointsMovement::lots(&mut *tx, account, on).await? {
         if left == 0 {
             break;
         }
         let take = lot.lot_remaining().min(left);
-        PointsMovement {
-            account_id: account,
-            kind,
+        let mut slice = PointsMovement {
             points: -take,
             value: take * point_value,
-            legal_entity_id: entity,
-            source_type: source.subject_type.clone(),
-            source_id: source.subject_id,
             earning_id: lot.earning_id,
-            cause: cause.to_owned(),
             lot_id: Some(lot.id),
             lot_expires_on: lot.lot_expires_on,
-            ..PointsMovement::default()
-        }
-        .insert(&mut *tx)
-        .await?;
+            ..template.clone()
+        };
+        slice.insert(&mut *tx).await?;
+        first = first.or(Some(slice.id));
         PointsMovement::query()
             .where_(PointsMovement::ID.eq(lot.id))
             .increment(&mut *tx, "consumed", take)
@@ -129,7 +121,7 @@ pub(crate) async fn consume_lots(
         .where_(LoyaltyAccount::ID.eq(account))
         .increment(&mut *tx, "points_balance", -points)
         .await?;
-    Ok(())
+    Ok(first)
 }
 
 impl StateMachine for Redemption {
@@ -228,18 +220,18 @@ fn apply() -> Transition<Redemption> {
                 let Some(input) = input else {
                     return Ok(());
                 };
-                consume_lots(
-                    tx,
-                    r.account_id,
-                    r.points,
-                    input.on,
-                    input.point_value,
-                    &r.sale(),
-                    input.entity,
-                    PointsKind::Redeem,
-                    CAUSE_REDEEM,
-                )
-                .await?;
+                let sale = r.sale();
+                let template = PointsMovement {
+                    account_id: r.account_id,
+                    kind: PointsKind::Redeem,
+                    legal_entity_id: input.entity,
+                    source_type: sale.subject_type.clone(),
+                    source_id: sale.subject_id,
+                    cause: CAUSE_REDEEM.to_owned(),
+                    user_id: r.requested_by,
+                    ..PointsMovement::default()
+                };
+                consume_lots(tx, &template, r.points, Some(input.on), input.point_value).await?;
                 LoyaltyAccount::query()
                     .where_(LoyaltyAccount::ID.eq(r.account_id))
                     .increment(&mut *tx, "points_held", -r.points)

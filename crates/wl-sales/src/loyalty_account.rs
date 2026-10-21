@@ -92,6 +92,9 @@ pub struct LoyaltyAccount {
     pub closed_reason: Option<String>,
     /// When it was closed.
     pub closed_at: Option<DateTime>,
+    /// When the last expiry reminder gave up; the account shows *reminder
+    /// not delivered* (BL-SAL-24).
+    pub expiry_reminder_failed_at: Option<DateTime>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

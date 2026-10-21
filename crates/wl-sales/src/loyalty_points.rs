@@ -131,6 +131,8 @@ pub struct PointsMovement {
     pub approval_request_id: Option<i64>,
     /// The user who did it, if a user did.
     pub user_id: Option<i64>,
+    /// Lots: the day the member was reminded that the lot expires.
+    pub reminded_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

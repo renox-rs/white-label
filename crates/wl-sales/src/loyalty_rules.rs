@@ -136,7 +136,7 @@ pub enum Reversed {
 }
 
 /// The expiry of a lot earned on `on`: `months` later.
-fn expiry(on: NaiveDate, months: i64) -> NaiveDate {
+pub(crate) fn expiry(on: NaiveDate, months: i64) -> NaiveDate {
     on.checked_add_months(Months::new(u32::try_from(months).unwrap_or(12)))
         .unwrap_or(on)
 }

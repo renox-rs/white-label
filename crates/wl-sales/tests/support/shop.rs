@@ -21,7 +21,9 @@ use wl_kernel::notify::{
     OtpRequest, OtpSent, OtpVerdict,
 };
 use wl_kernel::payer_bills::{PayerBillId, PayerBillStatus, PayerBillSummary, PayerBills};
-use wl_kernel::sales::{PointsEarned, PointsGivenBack, PointsRedeemed, PointsReversed};
+use wl_kernel::sales::{
+    PointsAdjusted, PointsEarned, PointsExpired, PointsGivenBack, PointsRedeemed, PointsReversed,
+};
 use wl_kernel::workforce::{EmployeeId, StaffProfile, Workforce, WorkforceFuture};
 use wl_kernel::{PartyId, Subject};
 
@@ -339,6 +341,10 @@ pub struct Points {
     pub redeemed: Arc<Mutex<Vec<PointsRedeemed>>>,
     /// `PointsGivenBack`.
     pub given_back: Arc<Mutex<Vec<PointsGivenBack>>>,
+    /// `PointsExpired`.
+    pub expired: Arc<Mutex<Vec<PointsExpired>>>,
+    /// `PointsAdjusted`.
+    pub adjusted: Arc<Mutex<Vec<PointsAdjusted>>>,
 }
 
 /// The fakes of the other modules, handed to the test.
@@ -384,6 +390,22 @@ impl Module for Shop {
         });
         let log = self.points.redeemed.clone();
         app.listen(move |event: PointsRedeemed, _state: AppState| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().push(event);
+                Ok(())
+            }
+        });
+        let log = self.points.expired.clone();
+        app.listen(move |event: PointsExpired, _state: AppState| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().push(event);
+                Ok(())
+            }
+        });
+        let log = self.points.adjusted.clone();
+        app.listen(move |event: PointsAdjusted, _state: AppState| {
             let log = log.clone();
             async move {
                 log.lock().unwrap().push(event);
