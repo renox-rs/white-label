@@ -925,3 +925,62 @@ pub async fn clinics_booted_with_gateway(gateway: wl_payments::gateway::FakeGate
     app.kernel().seed().await.unwrap();
     app
 }
+
+// ---- Bookings of the clinics host ----------------------------------------
+
+/// A practitioner of the clinics host: a person resource at a branch, open
+/// every day all day. It has no wl-hr employee, so no licence or privileges
+/// are asked (the documents are not what these tests are about).
+pub async fn clinic_doctor(app: &TestApp, name: &str) -> wl_scheduling::Resource {
+    let mut resource = wl_scheduling::Resource::new(name, wl_scheduling::ResourceType::Person)
+        .role("practitioner")
+        .at(&Subject::new("clinics.branch", 1));
+    resource.save(app.db()).await.unwrap();
+    for weekday in 1..=7 {
+        let mut rule = wl_scheduling::AvailabilityRule::new(resource.id, weekday, 0, 1440);
+        rule.save(app.db()).await.unwrap();
+    }
+    resource
+}
+
+/// A service type of `code` added after the seed, made with the client's
+/// settings (`ServiceType::new_in`): checked in and tracked, with a deposit of
+/// `deposit` fils, offered by `doctor`.
+pub async fn clinic_service(
+    app: &TestApp,
+    code: &str,
+    deposit: i64,
+    doctor: &wl_scheduling::Resource,
+) -> wl_scheduling::ServiceType {
+    let mut service = wl_scheduling::ServiceType::new_in(app.state(), code, code, 30);
+    service.check_in_required = true;
+    service.track_in_progress = true;
+    service.deposit_amount = deposit;
+    service.deposit_forfeit_hours = 24;
+    service.cancel_cutoff_hours = 2;
+    service.save(app.db()).await.unwrap();
+    wl_scheduling::resource::offer(app.db(), service.id, doctor.id)
+        .await
+        .unwrap();
+    service
+}
+
+/// A booking of `service` with `doctor` from `start` for `patient`, made by
+/// staff; the clinic's appointment follows from the event.
+pub async fn clinic_booking(
+    app: &TestApp,
+    patient: PartyId,
+    service: &wl_scheduling::ServiceType,
+    doctor: &wl_scheduling::Resource,
+    start: renox::db::DateTime,
+) -> wl_scheduling::Booking {
+    wl_scheduling::service::book(
+        app.state(),
+        wl_scheduling::NewBooking::new(patient, service.id, &[doctor.id], start)
+            .for_subject(patient.subject()),
+        wl_scheduling::service::Actor::staff(1),
+        renox::db::now(),
+    )
+    .await
+    .expect("the booking is made")
+}

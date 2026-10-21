@@ -19,6 +19,10 @@
 //!   the service (the receptionist sees demographics, not the reason,
 //!   `CLN.ACL.02`).
 //! - With both connections down, the earlier moment is the start.
+//! - Decision: the 24 hours are counted from the moment the connection went
+//!   down, and from `now` once the outage has lasted longer (05 gives the
+//!   start only): reminders keep failing while it lasts, so the list must not
+//!   stop at the first day.
 
 use renox::chrono::Duration;
 use renox::db::{DateTime, now};
@@ -114,8 +118,11 @@ pub async fn entries(state: &AppState, user: &AuthUser, lang: &str) -> Result<Ve
     let Some(since) = down_since(&state.db).await? else {
         return Ok(Vec::new());
     };
-    let until = since + Duration::hours(HOURS_AHEAD);
+    // The window is the next 24 hours from the moment the connection went
+    // down; while the outage lasts it moves on with the clock, so an
+    // appointment booked on day two of a long outage is listed too.
     let from = since.max(now());
+    let until = from + Duration::hours(HOURS_AHEAD);
     let appointments = Appointment::query()
         .where_(Appointment::STARTS_AT.gte(from))
         .where_(Appointment::STARTS_AT.lte(until))
@@ -126,13 +133,21 @@ pub async fn entries(state: &AppState, user: &AuthUser, lang: &str) -> Result<Ve
         .where_(CallTick::OUTAGE_SINCE.eq(since))
         .get(&state.db)
         .await?;
+    // One query for the visits of all the bookings, not one per row.
+    let visited: Vec<i64> = if appointments.is_empty() {
+        Vec::new()
+    } else {
+        Visit::query()
+            .where_(Visit::BOOKING_ID.is_in(appointments.iter().map(|a| a.booking_id)))
+            .get(&state.db)
+            .await?
+            .into_iter()
+            .map(|visit| visit.booking_id)
+            .collect()
+    };
     let mut rows = Vec::new();
     for appointment in appointments {
-        if appointment.is_cancelled()
-            || Visit::of_booking(&state.db, appointment.booking_id)
-                .await?
-                .is_some()
-        {
+        if appointment.is_cancelled() || visited.contains(&appointment.booking_id) {
             continue;
         }
         let scope = scope_of(&state.db, &appointment.subject()).await?;
@@ -210,7 +225,7 @@ pub async fn tick(state: &AppState, by: &AuthUser, booking: i64) -> Result<CallT
     {
         return Ok(done);
     }
-    CallTick::create(
+    let made = CallTick::create(
         &state.db,
         CallTick {
             booking_id: booking,
@@ -220,5 +235,15 @@ pub async fn tick(state: &AppState, by: &AuthUser, booking: i64) -> Result<CallT
             ..CallTick::default()
         },
     )
-    .await
+    .await;
+    match made {
+        // A double click: the other request ticked it first.
+        Err(error) if error.is_unique_violation() => CallTick::query()
+            .where_(CallTick::BOOKING_ID.eq(booking))
+            .where_(CallTick::OUTAGE_SINCE.eq(since))
+            .first(&state.db)
+            .await?
+            .ok_or(error),
+        other => other,
+    }
 }
