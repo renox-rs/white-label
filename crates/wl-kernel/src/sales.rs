@@ -952,6 +952,25 @@ pub struct PointsAdjusted {
 
 impl Event for PointsAdjusted {}
 
+/// A party merge moved points from one loyalty account to another (`transfer`
+/// movements, wl-sales §4.7). The lots keep their expiry dates; nothing is
+/// forfeited.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PointsTransferred {
+    /// The account the points left (closed *merged into*).
+    pub from: LoyaltyAccountId,
+    /// The account they went to.
+    pub to: LoyaltyAccountId,
+    /// The surviving member.
+    pub party: PartyId,
+    /// The points moved (negative when the merged account owed points).
+    pub points: i64,
+    /// Their value in fils, signed like the points.
+    pub value: i64,
+}
+
+impl Event for PointsTransferred {}
+
 /// A line of a sales order was cancelled (`cancel_line`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SalesOrderLineCancelled {

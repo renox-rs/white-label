@@ -336,6 +336,8 @@ pub async fn earn(state: &AppState, facts: SaleFacts) -> Result<Earned> {
     let Some(programme) = LoyaltyProgramme::find(&state.db, account.programme_id).await? else {
         return Ok(Earned::Skipped("no_programme"));
     };
+    // A change of the terms applies to the sales from its effective date.
+    let programme = programme.terms_on(&state.db, facts.on).await?;
     if !programme.earns_on(facts.on) {
         return Ok(Earned::Skipped("programme"));
     }
@@ -615,9 +617,16 @@ const PAID_AGAIN: &[&str] = &[CAUSE_PAYMENT_REVERSED, CAUSE_WRITTEN_OFF];
 /// The causes a new hand-over earns again.
 const FULFILLED_AGAIN: &[&str] = &[CAUSE_FULFILMENT_REVERSED];
 
-/// The programme of the account.
-async fn programme_of(db: &Db, account: &LoyaltyAccount) -> Result<Option<LoyaltyProgramme>> {
-    LoyaltyProgramme::find(db, account.programme_id).await
+/// The programme of the account with the terms that apply to a sale of `on`.
+async fn programme_of(
+    db: &Db,
+    account: &LoyaltyAccount,
+    on: NaiveDate,
+) -> Result<Option<LoyaltyProgramme>> {
+    match LoyaltyProgramme::find(db, account.programme_id).await? {
+        Some(programme) => Ok(Some(programme.terms_on(db, on).await?)),
+        None => Ok(None),
+    }
 }
 
 /// What the lines of a sale count for `programme`, before VAT.
@@ -640,14 +649,14 @@ async fn on_counter_sale(state: &AppState, event: &CounterSaleCompleted) -> Resu
     let Some(account) = LoyaltyAccount::find(&state.db, account_id).await? else {
         return Ok(());
     };
-    let Some(programme) = programme_of(&state.db, &account).await? else {
+    let on = sale
+        .completed_at
+        .map_or_else(wl_kernel::documents::today, wl_kernel::documents::dubai_date);
+    let Some(programme) = programme_of(&state.db, &account, on).await? else {
         return Ok(());
     };
     let lines = SaleLine::of(&state.db, &sale.subject()).await?;
     let eligible = eligible_of(&lines, &programme);
-    let on = sale
-        .completed_at
-        .map_or_else(wl_kernel::documents::today, wl_kernel::documents::dubai_date);
     let facts = SaleFacts::new(
         sale.subject(),
         account.id,
@@ -680,7 +689,7 @@ async fn on_order_fulfilled(state: &AppState, event: &SalesOrderFulfilled) -> Re
     let Some(account) = LoyaltyAccount::find(&state.db, account_id).await? else {
         return Ok(());
     };
-    let Some(programme) = programme_of(&state.db, &account).await? else {
+    let Some(programme) = programme_of(&state.db, &account, on).await? else {
         return Ok(());
     };
     let lines = SaleLine::of(&state.db, &order.subject()).await?;

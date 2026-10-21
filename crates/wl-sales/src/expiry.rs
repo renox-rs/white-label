@@ -13,7 +13,8 @@
 //! 2. **Expiry.** The rest of each lot whose last day is before the run date
 //!    expires with an `expire` movement and [`PointsExpired`] (a lot can be
 //!    redeemed through its last day, so a lot ending 30 Nov expires in the run
-//!    of 1 Dec). Only the unused rest expires; a lot that is empty, or an
+//!    of 1 Dec; when the programme was turned off, every open lot expires in
+//!    the run after its closing date, BL-SAL-26). Only the unused rest expires; a lot that is empty, or an
 //!    account with a zero or negative balance, has nothing to expire; points
 //!    held for an open sale are not expired until the hold ends.
 //!
@@ -99,6 +100,8 @@ pub async fn run_daily(state: &AppState, on: NaiveDate, at: DateTime) -> Result<
             }
         }
     }
+    // The programmes whose closing date passed are over once their lots are.
+    crate::terms::end_closed(state, on).await?;
     Ok(report)
 }
 
@@ -179,7 +182,10 @@ async fn expire(
         let remaining = lot.lot_remaining();
         let shielded = shield.min(remaining);
         shield -= shielded;
-        if !lot.lot_expires_on.is_some_and(|last| last < on) {
+        // A programme that was turned off expires every open lot once its
+        // closing date has passed (BL-SAL-26).
+        let closed = programme.closing_date.is_some_and(|last| last < on);
+        if !closed && !lot.lot_expires_on.is_some_and(|last| last < on) {
             continue;
         }
         let amount = (remaining - shielded).min(room);

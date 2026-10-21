@@ -50,6 +50,13 @@ pub const DEFAULT_ADJUSTMENT_LIMIT: i64 = 500;
 /// the member count as returned (§7: 30).
 pub const DEFAULT_RETENTION_RESPONSE_DAYS: i64 = 30;
 
+/// The days before a change of the loyalty terms takes effect that members
+/// must be told (§7: 30).
+pub const DEFAULT_PROGRAMME_NOTICE_DAYS: i64 = 30;
+
+/// The days members can redeem after the programme is turned off (§7: 90).
+pub const DEFAULT_PROGRAMME_CLOSING_DAYS: i64 = 90;
+
 /// The lost reasons a lead can be closed with (§7: the starter list, always
 /// with *duplicate* and *spam or invalid*).
 pub const DEFAULT_LOST_REASONS: &[&str] = &[
@@ -124,6 +131,11 @@ pub struct SalesConfig {
     pub clinical_items: Vec<String>,
     /// Whether segment rules may use clinical items (§7: off).
     pub segment_clinical_rules: bool,
+    /// The least days ahead a change of the loyalty terms may take effect.
+    pub programme_notice_days: i64,
+    /// The days after the programme is turned off that points can still be
+    /// redeemed.
+    pub programme_closing_days: i64,
 }
 
 impl Default for SalesConfig {
@@ -158,6 +170,8 @@ impl Default for SalesConfig {
             retention_response_days: DEFAULT_RETENTION_RESPONSE_DAYS,
             clinical_items: Vec::new(),
             segment_clinical_rules: false,
+            programme_notice_days: DEFAULT_PROGRAMME_NOTICE_DAYS,
+            programme_closing_days: DEFAULT_PROGRAMME_CLOSING_DAYS,
         }
     }
 }
@@ -216,5 +230,9 @@ mod tests {
         config.segment_clinical_rules = true;
         assert!(!config.is_blocked_clinical("xray"));
         assert_eq!(config.retention_response_days, 30);
+        assert_eq!(
+            (config.programme_notice_days, config.programme_closing_days),
+            (30, 90)
+        );
     }
 }
