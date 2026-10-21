@@ -372,12 +372,12 @@ pub async fn record_use(state: &AppState, run: &Subject, used: &[PayrollHours]) 
 ///
 /// The errors of `lock`.
 pub async fn lock_when_paid_provisionally(state: &AppState, sheet: Timesheet) -> Result<Timesheet> {
-    match (&sheet.status, sheet.paid_provisionally_by.clone()) {
-        (TimesheetStatus::Approved, Some(reference)) => {
-            timesheet::lock(state, sheet.id, Consumer::PayrollProvisional, &reference).await
-        }
-        _ => Ok(sheet),
+    if sheet.status == TimesheetStatus::Approved
+        && let Some(reference) = sheet.paid_provisionally_by.clone()
+    {
+        return timesheet::lock(state, sheet.id, Consumer::PayrollProvisional, &reference).await;
     }
+    Ok(sheet)
 }
 
 /// The module's [`Timesheets`] for payroll.
