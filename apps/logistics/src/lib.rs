@@ -5,7 +5,9 @@ pub mod adjustment;
 pub mod billing;
 pub mod booking;
 pub mod cancel;
+mod claim;
 pub mod cod;
+mod credit;
 mod events;
 pub mod hold;
 pub mod notices;
@@ -19,6 +21,8 @@ pub mod remittance;
 pub mod remittance_machine;
 mod remittance_pages;
 pub mod review;
+pub mod reversal;
+mod reversal_pages;
 pub mod reweigh;
 pub mod scan;
 mod screen_texts;
@@ -37,10 +41,11 @@ pub use rates::{ClientRate, WeightBand};
 pub use reweigh::{ClientTerms, Measurement};
 pub use shipment::{
     AddressChange, Charge, PARCEL_SUBJECT_TYPE, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment,
-    ShipmentDelivered, ShipmentStatus, TrackingEvent,
+    ShipmentDelivered, ShipmentLost, ShipmentStatus, TrackingEvent,
 };
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
 pub use cod::{CodLoss, CodRule};
+pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
 pub use remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};
 pub use remittance_machine::RemittanceInput;
 pub use shipment_machine::ShipmentInput;
@@ -58,6 +63,7 @@ impl Module for Logistics {
         pages::routes()
             .merge(remittance_pages::routes())
             .merge(cod::routes())
+            .merge(reversal_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -69,12 +75,14 @@ impl Module for Logistics {
             .view_data::<pages::ShowPage>()
             .view_data::<remittance_pages::IndexPage>()
             .view_data::<remittance_pages::ShowPage>()
-            .view_data::<cod::IndexPage>();
+            .view_data::<cod::IndexPage>()
+            .view_data::<reversal_pages::IndexPage>();
         app.templates(|env| {
             for (name, source) in pages::VIEWS
                 .iter()
                 .chain(remittance_pages::VIEWS)
-                .chain(cod::VIEWS) {
+                .chain(cod::VIEWS)
+                .chain(reversal_pages::VIEWS) {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
                     renox::view::add_template(env, *name, *source)
@@ -94,9 +102,12 @@ impl Module for Logistics {
             .model::<Remittance>()
             .model::<RemittanceLine>()
             .model::<AdjustmentLine>()
-            .model::<CodLoss>();
+            .model::<CodLoss>()
+            .model::<Reversal>();
         // The shipment's rule on who absorbs a COD difference.
         wl_kernel::delivery::provide_cod_rule(app, CodRule);
+        // A refund to a recipient who is no party is paid by hand.
+        wl_kernel::delivery::provide_manual_refunds(app, ShipmentRefunds);
         // The remittance and its adjustment lines have machines of their own.
         renox::state_machine::register::<Remittance>();
         renox::state_machine::register::<AdjustmentLine>();

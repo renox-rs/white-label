@@ -450,6 +450,82 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.adjustment_rejected", "Adjustment line rejected."),
     ("logistics.adjustment_resubmitted", "Adjustment line sent again."),
     ("logistics.adjustment_deleted", "Adjustment line deleted."),
+    // A reversed delivery (`WRK.ACL.10`, `LOG.ACL.12`, BL-LOG-10).
+    (
+        "logistics.reversal.event_needed",
+        "A delivery is reversed by the delivery module: the shipment follows its event.",
+    ),
+    (
+        "logistics.reversal.refund_reason",
+        "Delivery reversed, COD refunded to recipient",
+    ),
+    (
+        "logistics.reversal.claim_title",
+        "Claim: delivery of shipment {{ number }} reversed",
+    ),
+    (
+        "logistics.reversal.claim_description",
+        "The delivery of shipment {{ number }} was reversed ({{ reason }}). Liability: {{ liability }}.",
+    ),
+    (
+        "logistics.reversal.title",
+        "The delivery of shipment {{ number }} was reversed",
+    ),
+    (
+        "logistics.reversal.body",
+        "The delivery of shipment {{ number }} was taken back ({{ reason }}). It is delivered again before it is billed, and the cash on delivery is settled with you on your statement.",
+    ),
+    (
+        "logistics.reversal.no_driver",
+        "the driver of the run",
+    ),
+    (
+        "logistics.reversal.task_title",
+        "Driver liable for {{ amount }}: shipment {{ number }} ({{ driver }})",
+    ),
+    (
+        "logistics.reversal.task_description",
+        "The delivery of shipment {{ number }} was reversed ({{ reason }}) with the driver {{ driver }} liable for {{ amount }}. Raise a later cash shortage against the driver or open an HR case.",
+    ),
+    (
+        "logistics.reversal.task_closed",
+        "This task is already decided.",
+    ),
+    (
+        "logistics.reversal.no_cash",
+        "No cash was recorded for this reversal, so there is no shortage to raise.",
+    ),
+    (
+        "logistics.reversal.shortage_reason",
+        "Delivery of shipment {{ number }} reversed ({{ reason }})",
+    ),
+    (
+        "logistics.reversal.shortage_raised",
+        "Later shortage of {{ amount }} raised against the driver.",
+    ),
+    (
+        "logistics.reversal.hr_title",
+        "HR case: shipment {{ number }} reversed, {{ driver }} liable",
+    ),
+    (
+        "logistics.reversal.hr_description",
+        "The delivery of shipment {{ number }} was reversed ({{ reason }}) with the driver {{ driver }} liable for {{ amount }}.",
+    ),
+    ("logistics.reversal.hr_opened", "HR case opened."),
+    ("logistics.reversal_shortage_raised", "Shortage raised against the driver."),
+    ("logistics.reversal_hr_opened", "HR case opened."),
+    (
+        "logistics.credit.title",
+        "Credit {{ amount }} for shipment {{ number }}",
+    ),
+    (
+        "logistics.credit.description.reversed",
+        "Shipment {{ number }} was on an issued invoice and its delivery was reversed: credit its charge of {{ amount }}. It is billed again in the month it is delivered.",
+    ),
+    (
+        "logistics.credit.description.lost",
+        "Shipment {{ number }} was on an issued invoice and is lost: credit its charge of {{ amount }}.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

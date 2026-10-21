@@ -61,3 +61,11 @@ pub const DRIVER_ROLE: &str = "driver";
 /// A client user books, tracks and cancels its own shipments (§3.1). The
 /// host's `roles::SHIPPING_CLIENT`.
 pub const CLIENT_ROLE: &str = "shipping_client";
+
+/// The invoice owner: the role whose holders get the task to credit the
+/// charge of an invoiced shipment that was reversed or lost (BL-LOG-10,
+/// BL-LOG-11). The host's `roles::ACCOUNTANT`.
+pub const INVOICE_OWNER_ROLE: &str = "accountant";
+/// The HR role: the owner of the HR case opened for a driver who is liable
+/// (BL-LOG-10). The host's `roles::HR`.
+pub const HR_ROLE: &str = "hr";

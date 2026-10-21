@@ -13,6 +13,8 @@
 //! attempted | on_hold --return--> returning
 //! delivered --open_review (system, DeliveryDisputed)--> under_review
 //! under_review --close_review (system, DeliveryDisputeClosed)--> delivered
+//! delivered | under_review --reverse_delivery (system, DeliveryReversed)--> attempted
+//! delivered | under_review --reverse_delivery_on_road (system)--> out_for_delivery
 //! ```
 //!
 //! Every state of §7.1 is declared with its tone, so the diagram is whole;
@@ -35,6 +37,7 @@ use wl_kernel::voids;
 
 use crate::permissions;
 use crate::rates;
+use crate::reversal::ReversalInput;
 use crate::shipment::{
     Parcel, SUBJECT_TYPE, Shipment, ShipmentStatus, charge_kind, hold_reason, parcel_state, track,
 };
@@ -73,6 +76,13 @@ pub const OPEN_REVIEW: &str = "open_review";
 /// `close_review`: under_review → delivered, by the system when the review
 /// is upheld (`DeliveryDisputeClosed`).
 pub const CLOSE_REVIEW: &str = "close_review";
+/// `reverse_delivery`: delivered, under_review → attempted, by the system
+/// when wl-delivery reverses the delivery and leaves it `attempted`
+/// (BL-LOG-10).
+pub const REVERSE_DELIVERY: &str = "reverse_delivery";
+/// `reverse_delivery`, run by the system when wl-delivery put the delivery
+/// back on the road: delivered, under_review → out_for_delivery.
+pub const REVERSE_DELIVERY_ON_ROAD: &str = "reverse_delivery_on_road";
 /// `void`: created → voided (the kernel's void pattern).
 pub const VOID: &str = voids::VOID;
 
@@ -134,6 +144,9 @@ pub struct ShipmentInput {
     /// (`open_review`).
     #[serde(default)]
     pub ticketing_off: bool,
+    /// What the delivery's reversal says (`reverse_delivery`).
+    #[serde(default)]
+    pub reversal: Option<ReversalInput>,
 }
 
 /// A parcel the recipient refused, with the refusal reason's code.
@@ -331,6 +344,7 @@ fn followed(name: &'static str, from: ShipmentStatus, to: ShipmentStatus) -> Tra
                             ("cod_difference", &input.cod_difference),
                             ("cod_difference_reason", &input.cod_difference_reason),
                             ("cod_absorbed_by", &input.absorbed_by),
+                            ("reversed", &false),
                         ],
                     )
                     .await?;
@@ -708,6 +722,40 @@ fn close_review() -> Transition<Shipment> {
         })
 }
 
+/// `reverse_delivery` (`WRK.ACL.10`): the system, when wl-delivery reverses
+/// the delivery with the operations manager's approval; `name` says where the
+/// delivery went (`attempted`, or back out on the road). The original e-POD is
+/// wl-delivery's and stays; the COD, the billing, the liability and the
+/// client's notice follow after the commit ([`crate::reversal`]). No user runs
+/// it.
+fn reverse_delivery(name: &'static str, to: ShipmentStatus) -> Transition<Shipment> {
+    Transition::new(name)
+        .label("Delivery reversed")
+        .system()
+        .from([ShipmentStatus::Delivered, ShipmentStatus::UnderReview])
+        .to(to)
+        .guard("reversal_given", |_s: &Shipment, ctx| {
+            let given = input_of(ctx).reversal.is_some();
+            Box::pin(async move {
+                if given {
+                    Ok(())
+                } else {
+                    Err(english("logistics.reversal.event_needed", &[]))
+                }
+            })
+        })
+        .effect(|shipment: &Shipment, ctx, tx| {
+            let shipment = shipment.clone();
+            let reversal = input_of(ctx).reversal;
+            Box::pin(async move {
+                match reversal {
+                    Some(reversal) => crate::reversal::record(&mut *tx, &shipment, &reversal).await,
+                    None => Ok(()),
+                }
+            })
+        })
+}
+
 /// What `void` adds to the kernel's guards (BL-LOG-01): no parcel scanned
 /// (`PLT.ACL.09`: a safety check for a scan recorded without a state
 /// change), and a client user voids only the shipment they booked
@@ -757,6 +805,8 @@ pub fn transitions() -> Vec<Transition<Shipment>> {
         send_back(),
         open_review(),
         close_review(),
+        reverse_delivery(REVERSE_DELIVERY, Attempted),
+        reverse_delivery(REVERSE_DELIVERY_ON_ROAD, OutForDelivery),
     ];
     all.extend(
         voids::transitions::<Shipment, _>(SUBJECT_TYPE, [Created])
@@ -836,6 +886,8 @@ mod tests {
             RETURN,
             OPEN_REVIEW,
             CLOSE_REVIEW,
+            REVERSE_DELIVERY,
+            REVERSE_DELIVERY_ON_ROAD,
             voids::VOID,
             voids::VOID_APPROVED,
         ] {
@@ -849,5 +901,7 @@ mod tests {
         assert!(machine.find(DISPATCH).unwrap().is_system());
         assert!(machine.find(OPEN_REVIEW).unwrap().is_system());
         assert!(machine.find(CLOSE_REVIEW).unwrap().is_system());
+        assert!(machine.find(REVERSE_DELIVERY).unwrap().is_system());
+        assert!(machine.find(REVERSE_DELIVERY_ON_ROAD).unwrap().is_system());
     }
 }

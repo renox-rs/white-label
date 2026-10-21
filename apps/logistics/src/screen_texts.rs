@@ -343,4 +343,26 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("logistics.screen.adj_delete", "Delete the line"),
     ("logistics.screen.adj_delete_message", "Only an unapproved line can be deleted."),
     ("logistics.screen.actions", "Actions"),
+    ("logistics.screen.rev_title", "Reversed deliveries"),
+    (
+        "logistics.screen.rev_subtitle",
+        "Tasks for a delivery reversed with the driver liable.",
+    ),
+    ("logistics.screen.rev_amount", "Cash"),
+    ("logistics.screen.rev_driver", "Driver"),
+    ("logistics.screen.rev_shortage", "Raise shortage"),
+    (
+        "logistics.screen.rev_shortage_message",
+        "A later cash shortage is raised against the driver for the cash of this delivery.",
+    ),
+    ("logistics.screen.rev_hr", "Open HR case"),
+    (
+        "logistics.screen.rev_hr_message",
+        "A task for HR is opened to follow up with the driver.",
+    ),
+    ("logistics.screen.rev_empty", "No tasks waiting"),
+    (
+        "logistics.screen.rev_empty_text",
+        "A delivery reversed with the driver liable appears here.",
+    ),
 ];

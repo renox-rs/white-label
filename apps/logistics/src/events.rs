@@ -17,6 +17,10 @@
 //!   `open_review` commits, the client is told and the COD comes off its
 //!   remittance ([`crate::review`]). A second event finds the shipment in the
 //!   target state and does nothing.
+//! - `DeliveryReversed` runs `reverse_delivery` (or `reverse_delivery_on_road`)
+//!   as the system from `delivered` or `under_review`, as the event says where
+//!   the delivery went; the COD, the billing, the liability and the client's
+//!   notice follow after the commit ([`crate::reversal`], BL-LOG-10).
 //! - `cancel`, `cancel_return` and `void` cancel the shipment's open
 //!   delivery; a delivery that cannot be cancelled (it is on a dispatched
 //!   run, or already attempted) is written to the tracking events. A voided
@@ -27,7 +31,8 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::delivery::{
     DeliveryAttemptFailed, DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId,
-    DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequester, ReviewOutcome,
+    DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequester, DeliveryReversed,
+    ReviewOutcome,
 };
 use wl_kernel::{Subject, voids};
 
@@ -35,7 +40,8 @@ use crate::notices::tell_client;
 use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentDelivered, ShipmentStatus, track};
 use crate::shipment_machine::{
     CANCEL, CANCEL_RETURN, CLOSE_REVIEW, DELIVER, DISPATCH, FAIL_ATTEMPT, HOLD, HOLD_SYSTEM,
-    OPEN_REVIEW, PICK_UP, RECEIVE_AT_HUB, RELEASE, RETURN, ShipmentInput,
+    OPEN_REVIEW, PICK_UP, RECEIVE_AT_HUB, RELEASE, RETURN, REVERSE_DELIVERY,
+    REVERSE_DELIVERY_ON_ROAD, ShipmentInput,
 };
 use crate::texts::english;
 
@@ -289,9 +295,18 @@ pub(crate) fn register(app: &mut Registry) {
         }
         Ok(())
     });
+    app.listen(|event: DeliveryReversed, state: AppState| async move {
+        if let Some(shipment) = shipment_of(&state, &event.source).await? {
+            crate::reversal::follow(&state, shipment, &event).await?;
+        }
+        Ok(())
+    });
     app.listen(
         |event: Transitioned<Shipment>, state: AppState| async move {
             let name = event.transition.as_str();
+            if name == REVERSE_DELIVERY || name == REVERSE_DELIVERY_ON_ROAD {
+                return crate::reversal::settled(&state, event.key).await;
+            }
             if name == OPEN_REVIEW {
                 return crate::review::held(&state, event.key).await;
             }

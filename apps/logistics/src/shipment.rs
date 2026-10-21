@@ -175,6 +175,20 @@ pub struct Shipment {
     /// For a return shipment, the shipment whose refused parcels it carries
     /// (BL-LOG-07).
     pub return_of_id: Option<i64>,
+    /// Who carries the cost of the latest reversal or loss: `driver`,
+    /// `business`, `client` or `none` (BL-LOG-10, BL-LOG-11).
+    pub liability: Option<String>,
+    /// What became of the cash of the latest reversal: `removed`,
+    /// `refunded` or `kept` (BL-LOG-10).
+    pub cash_treatment: Option<String>,
+    /// The COD no longer expected (refunded to the payer, or lost with the
+    /// shipment), in fils; it is expected again when the goods are found.
+    pub cod_released: i64,
+    /// The charge to credit on the invoice it was billed on, in fils
+    /// (BL-LOG-10, BL-LOG-11).
+    pub credit_due: i64,
+    /// Whether the delivery was reversed and not made again: out of billing.
+    pub reversed: bool,
     /// The lifecycle state; changed only by a transition.
     pub status: ShipmentStatus,
     /// When the row was created.
@@ -276,8 +290,10 @@ impl Shipment {
 
     /// The shipments of `client` a monthly invoice may bill: never a voided
     /// one, and none whose delivery is under review until the review is
-    /// closed (`LOG.RUL.07`, BL-LOG-09; BL-LOG-20 adds the held, lost and
-    /// cancelled ones and wires this to the usage billing run).
+    /// closed (`LOG.RUL.07`, BL-LOG-09), none that is lost (BL-LOG-11) and
+    /// none whose delivery was reversed until it is made again (BL-LOG-10);
+    /// BL-LOG-20 adds the held and cancelled ones and wires this to the usage
+    /// billing run.
     ///
     /// # Errors
     ///
@@ -286,7 +302,12 @@ impl Shipment {
         wl_kernel::voids::exclude_voided(
             Shipment::query()
                 .where_(Shipment::CLIENT_PARTY_ID.eq(client.0))
-                .where_(Shipment::STATUS.ne(ShipmentStatus::UnderReview)),
+                .where_(Shipment::STATUS.ne(ShipmentStatus::UnderReview))
+                // A lost shipment is never billed (BL-LOG-11), and one whose
+                // delivery was reversed waits until it is delivered again
+                // (BL-LOG-10).
+                .where_(Shipment::STATUS.ne(ShipmentStatus::Lost))
+                .where_(Shipment::REVERSED.eq(false)),
         )
         .order_by(Shipment::ID)
         .get(db)
@@ -397,6 +418,28 @@ pub struct ShipmentDelivered {
 }
 
 impl Event for ShipmentDelivered {}
+
+/// A shipment was marked lost (03 §7.1 row `mark_lost`, event `ShipmentLost`),
+/// by the system with its delivery or with an approval off a delivery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShipmentLost {
+    /// The shipment.
+    pub shipment: i64,
+    /// Its number.
+    pub number: String,
+    /// The client.
+    pub client: PartyId,
+    /// The state it was lost from.
+    pub from: String,
+    /// Why.
+    pub reason: String,
+    /// Who carries the loss: `driver`, `business`, `client` or `none`.
+    pub liability: String,
+    /// The claim ticket linked to the loss.
+    pub claim_ticket: Option<i64>,
+}
+
+impl Event for ShipmentLost {}
 
 /// A status change or a scan (§6 *Tracking event*).
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]

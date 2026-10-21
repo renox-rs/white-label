@@ -89,6 +89,19 @@ their own issues.
   a difference the operations manager approves: never the customer, the client
   only with its instruction, the business as a COD loss, the driver as cash
   still expected in the handover. The report is at `/cod-differences`.
+- **Reversed deliveries** (`reversal`, `WRK.ACL.10`, `LOG.ACL.12`): when
+  wl-delivery reverses a delivery the shipment runs the system's
+  `reverse_delivery` (back to `attempted`) or `reverse_delivery_on_road` (back
+  to `out_for_delivery`), as the event says. The shipment is out of billing
+  until it is delivered again; an invoiced one gets a credit due and the
+  invoice owner a task. The COD comes off a draft or approved remittance; when
+  it was already paid, *refund to payer* drafts a negative adjustment line
+  (source `delivery_reversal`, approved by another user) and *keep* marks it
+  already remitted so it is never remitted twice. Liability *driver* or
+  *business* opens one claim ticket; *driver* gives the operations manager a
+  task (`/reversals`) to raise a later shortage against the driver
+  (wl-payments, through the kernel's `ShortageRaiser`) or open an HR case;
+  *business* records the loss; *client* and *none* post nothing.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
