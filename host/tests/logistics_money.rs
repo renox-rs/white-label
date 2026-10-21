@@ -293,6 +293,15 @@ async fn every_invoice_write_off_needs_the_operations_manager_or_the_admin() {
         .unwrap();
     let after = Invoice::find_or_404(app.db(), invoice.id).await.unwrap();
     assert_eq!(after.status, InvoiceStatus::WrittenOff);
+    // The client's write-off notice is sent by the queued job and dated.
+    assert_eq!(after.write_off_notice_on, None, "not before the job");
+    app.run_all_jobs().await;
+    let noticed = Invoice::find_or_404(app.db(), invoice.id).await.unwrap();
+    assert_eq!(
+        noticed.write_off_notice_on,
+        Some(today()),
+        "the client received the write-off notice"
+    );
 
     let invoicing = host::invoicing_for("logistics", &["NEC".to_owned()]);
     let config = invoicing.config();
@@ -312,6 +321,83 @@ async fn every_invoice_write_off_needs_the_operations_manager_or_the_admin() {
             .bounce_fee
             .is_none(),
         "a returned cheque adds no fee"
+    );
+}
+
+/// AC5: a client user disputes an invoice of its own company in the portal
+/// (not another company's), and the dispute is escalated 14 days after it was raised
+/// (the owner of the invoice) and again after 28 (the accountant).
+#[renox::test]
+async fn a_client_disputes_in_the_portal_and_the_dispute_escalates_after_14_days() {
+    use wl_invoicing::{dispute, escalation};
+    use wl_kernel::invoicing::{DisputeBy, DisputeRequest, InvoiceId};
+    let app = logistics_booted().await;
+    let clerk = person(&app, "Clara", RECEIVABLES).await;
+    let accountant = person(&app, "Amal", ACCOUNTANT).await;
+    let client = company(&app, "Souq Express Trading LLC").await;
+    let other = company(&app, "Other Trading LLC").await;
+    let invoice = issued_invoice(
+        &app,
+        &clerk,
+        client,
+        100_000,
+        VatCategory::Standard,
+        today() + Days::new(30),
+    )
+    .await;
+
+    let by_other = dispute::raise(
+        app.state(),
+        DisputeRequest::new(InvoiceId(invoice.id), "not ours", DisputeBy::Party { id: other }),
+    )
+    .await;
+    assert!(by_other.is_err(), "another company cannot dispute it");
+    dispute::raise(
+        app.state(),
+        DisputeRequest::new(
+            InvoiceId(invoice.id),
+            "three shipments missing",
+            DisputeBy::Party { id: client },
+        )
+        .amount(10_000),
+    )
+    .await
+    .expect("the client disputes its own invoice");
+    assert!(
+        Invoice::find_or_404(app.db(), invoice.id)
+            .await
+            .unwrap()
+            .disputed
+    );
+
+    let before = escalation::run(app.state(), today() + Days::new(13))
+        .await
+        .unwrap();
+    assert_eq!(before, 0, "nothing before day 14");
+    let sent = escalation::run(app.state(), today() + Days::new(14))
+        .await
+        .unwrap();
+    assert!(sent >= 1, "escalated on day 14");
+    assert!(
+        !messages_to(&app, escalation::ESCALATED, &clerk)
+            .await
+            .is_empty(),
+        "the invoice owner is told first"
+    );
+    assert!(
+        messages_to(&app, escalation::ESCALATED, &accountant)
+            .await
+            .is_empty(),
+        "the escalation role follows at the next step"
+    );
+    escalation::run(app.state(), today() + Days::new(28))
+        .await
+        .unwrap();
+    assert!(
+        !messages_to(&app, escalation::ESCALATED, &accountant)
+            .await
+            .is_empty(),
+        "the accountant is told after 28 days"
     );
 }
 
