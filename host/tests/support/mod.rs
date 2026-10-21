@@ -154,6 +154,30 @@ pub async fn accounting_booted() -> TestApp {
     app
 }
 
+/// The demo clinic (05 Clinics).
+const CLINICS_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-clinics/client.toml"
+);
+
+/// The clinics host, with `wl:install` and the seeds run as the demo does.
+pub async fn clinics_booted() -> TestApp {
+    let config = wl_kernel::ClientConfig::load(CLINICS_CLIENT).expect("the clinics client");
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
 /// A verified user `name` holding `role`.
 pub async fn person(app: &TestApp, name: &str, role: &str) -> User {
     let mut user = User::register(

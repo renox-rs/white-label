@@ -24,7 +24,7 @@ use wl_kernel::payments::provide_payment_recorder;
 use wl_kernel::sales::{SalesFuture, SelfPayPrices, provide_self_pay_prices};
 use wl_kernel::scheduling::{BookingId, Initiator, provide_work_done_status};
 use wl_kernel::tickets::provide_task_creator;
-use wl_kernel::workforce::EmployeeId;
+use wl_kernel::workforce::{EmployeeId, QualificationExpired};
 use wl_kernel::{PartyId, Subject};
 use wl_scheduling::service::{self, Actor, NewBooking};
 use wl_scheduling::{
@@ -151,6 +151,8 @@ pub struct Clinic {
     pub tasks: Tasks,
     /// The self-pay price list.
     pub prices: Prices,
+    /// The `QualificationExpired` events wl-hr emitted.
+    pub expired: Recorded<QualificationExpired>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
 }
@@ -179,6 +181,7 @@ pub async fn boot() -> Clinic {
     let docs = Docs::default();
     let tasks = Tasks::default();
     let prices = Prices::default();
+    let expired = Recorded::<QualificationExpired>::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in clinics::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -204,6 +207,7 @@ pub async fn boot() -> Clinic {
     let app = record(app, &events.completed);
     let app = record(app, &events.cancelled);
     let app = record(app, &events.conflicts);
+    let app = record(app, &expired);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -220,6 +224,7 @@ pub async fn boot() -> Clinic {
         docs,
         tasks,
         prices,
+        expired,
         _views: views,
     }
 }
