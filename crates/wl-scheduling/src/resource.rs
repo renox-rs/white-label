@@ -51,6 +51,9 @@ pub struct Resource {
     pub employee_id: Option<i64>,
     /// The asset (`wl-inventory`) behind a bay or a piece of equipment.
     pub asset_id: Option<i64>,
+    /// The role a person works in here (`practitioner`), asked of a
+    /// role-bound qualification such as a licence.
+    pub role: Option<String>,
     /// Bookings that may overlap: 1, or N for a group slot.
     pub capacity: i64,
     /// Whether it can be booked.
@@ -92,6 +95,12 @@ impl Resource {
     /// For this employee.
     pub fn employee(mut self, employee: i64) -> Self {
         self.employee_id = Some(employee);
+        self
+    }
+
+    /// Working in this role (`practitioner`).
+    pub fn role(mut self, role: &str) -> Self {
+        self.role = Some(role.to_owned());
         self
     }
 
@@ -154,6 +163,13 @@ pub struct ServiceType {
     pub walk_out_forfeits: bool,
     /// The prepayment of a self-booking in fils; 0 for none.
     pub prepayment_amount: i64,
+    /// The kinds of qualification (`practitioner_licence`) the person who
+    /// delivers it must hold, comma separated; checked with
+    /// `qualification_valid` (`SCH.ACL.04`, `SCH.RUL.05`).
+    pub required_qualifications: String,
+    /// The kinds of document the resource (its employee or asset) must hold
+    /// valid, comma separated; checked with `document_valid`.
+    pub required_documents: String,
     /// Whether it can be booked.
     pub active: bool,
     /// When the row was created.
@@ -195,10 +211,29 @@ impl ServiceType {
             .collect()
     }
 
+    /// The qualification kinds the delivering person must hold.
+    pub fn qualification_kinds(&self) -> Vec<String> {
+        kinds(&self.required_qualifications)
+    }
+
+    /// The document kinds the resource must hold.
+    pub fn document_kinds(&self) -> Vec<String> {
+        kinds(&self.required_documents)
+    }
+
     /// Whether the service takes a deposit.
     pub fn has_deposit(&self) -> bool {
         self.deposit_amount > 0
     }
+}
+
+/// The kinds of a comma separated list, trimmed and without blanks.
+fn kinds(list: &str) -> Vec<String> {
+    list.split(',')
+        .map(str::trim)
+        .filter(|kind| !kind.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// A resource that can deliver a service type.

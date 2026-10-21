@@ -134,7 +134,7 @@ fn flag_column(cause: ConflictCause) -> &'static str {
     }
 }
 
-async fn set_flag(db: &Db, booking_id: i64, cause: ConflictCause, on: bool) -> Result {
+pub(crate) async fn set_flag(db: &Db, booking_id: i64, cause: ConflictCause, on: bool) -> Result {
     let stamp = now();
     Booking::query()
         .where_(Booking::ID.eq(booking_id))

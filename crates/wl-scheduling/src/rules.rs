@@ -130,7 +130,7 @@ pub async fn managers(state: &AppState, booking: &Booking) -> Result<Vec<i64>> {
 }
 
 /// The front desk: the holders of `bookings.manage` in the booking's location.
-async fn front_desk(state: &AppState, booking: &Booking) -> Result<Vec<i64>> {
+pub(crate) async fn front_desk(state: &AppState, booking: &Booking) -> Result<Vec<i64>> {
     let scope = scope_of(&state.db, booking).await?;
     let staff = users_with_permission_in(&state.db, permissions::MANAGE, &scope).await?;
     Ok(staff.iter().map(|user| user.id).collect())

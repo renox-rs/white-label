@@ -407,6 +407,35 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_scheduling.problem.too_far",
         "That is further ahead than bookings are taken.",
     ),
+    (
+        "wl_scheduling.eligibility.expired",
+        ":item expired on :date",
+    ),
+    ("wl_scheduling.eligibility.missing", ":item is missing"),
+    (
+        "wl_scheduling.eligibility.not_valid",
+        ":item is not valid on :date",
+    ),
+    (
+        "wl_scheduling.eligibility.hint_reassign",
+        "reassign first",
+    ),
+    (
+        "wl_scheduling.eligibility.hint_rebook",
+        "cancel with resource_ineligible and rebook",
+    ),
+    (
+        "wl_scheduling.eligibility.task_title",
+        "Reassign or reschedule booking :number: :item",
+    ),
+    (
+        "wl_scheduling.eligibility.task_body",
+        "The resource of booking :number on :when will not hold a valid :item then. Reassign the booking to another resource or move it to another time; the party is told only that the booking changed.",
+    ),
+    (
+        "wl_scheduling.eligibility.task_resolved",
+        "The item was renewed; the conflict is cleared.",
+    ),
 ];
 
 /// The package text `key` in `lang`: the app's translation if it has one,

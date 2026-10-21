@@ -23,6 +23,9 @@ pub const DEFAULT_SLOT_STEP_MINUTES: i64 = 15;
 pub const DEFAULT_ESCALATION_HOURS: i64 = 2;
 /// Hours before a booking at which a reminder goes out (`SCH.RUL.01`; 05, 10).
 pub const DEFAULT_REMINDER_HOURS: [i64; 2] = [24, 2];
+/// How many days ahead `SCH.RUL.05` looks for a resource that will not be
+/// eligible (§6).
+pub const DEFAULT_LOOK_AHEAD_DAYS: i64 = 30;
 /// How many nearest free slots a refused booker is shown (§3).
 pub const NEAREST_SLOTS: usize = 3;
 
@@ -47,6 +50,8 @@ pub struct SchedulingConfig {
     pub escalation_hours: i64,
     /// Hours before a booking at which a reminder goes out.
     pub reminder_hours: Vec<i64>,
+    /// Days ahead the look-ahead for lapsing licences checks (`SCH.RUL.05`).
+    pub look_ahead_days: i64,
     /// The vertical's manager role, whose holders in the booking's location
     /// are told of an open conflict (`SCH.RUL.06`); the users with
     /// `bookings.manage` there when nobody holds it or none is set.
@@ -68,6 +73,7 @@ impl Default for SchedulingConfig {
             slot_step_minutes: DEFAULT_SLOT_STEP_MINUTES,
             escalation_hours: DEFAULT_ESCALATION_HOURS,
             reminder_hours: DEFAULT_REMINDER_HOURS.to_vec(),
+            look_ahead_days: DEFAULT_LOOK_AHEAD_DAYS,
             manager_role: None,
             extra_reason_codes: Vec::new(),
         }

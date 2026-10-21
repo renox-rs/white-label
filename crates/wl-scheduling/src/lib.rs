@@ -7,6 +7,7 @@ pub mod config;
 pub mod conflict;
 pub mod conflict_pages;
 pub mod deposit;
+pub mod eligibility;
 pub mod events;
 pub mod links;
 mod notices;
@@ -154,6 +155,14 @@ impl WlScheduling {
         self
     }
 
+    /// Days ahead `SCH.RUL.05` checks bookings against the resource's
+    /// qualifications and documents at their start (30 by default).
+    pub fn look_ahead_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "the look-ahead is at least a day");
+        self.config.look_ahead_days = days;
+        self
+    }
+
     /// Hours before a booking at which a reminder goes out (`SCH.RUL.01`).
     pub fn reminder_hours(mut self, hours: &[i64]) -> Self {
         assert!(
@@ -225,6 +234,9 @@ impl Module for WlScheduling {
         });
         notices::register_types();
         rules::schedule(app);
+        // `SCH.RUL.05`: lapsing licences and documents flag the bookings made
+        // before they lapsed; the providers wl-documents asks for the work.
+        eligibility::register(app);
         // Sick leave and other leave block the employee's resources and flag
         // the bookings they overlap; a cancelled leave takes its blocks away.
         app.listen(|event: LeaveApproved, state: AppState| async move {
