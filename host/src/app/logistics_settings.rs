@@ -104,6 +104,9 @@ pub fn compliance_rows(owner_role: &str) -> Vec<Row> {
     let sales = sales.config();
     let hr = logistics_seed::hr(wl_hr::WlHr::new(), owner_role);
     let hr = hr.config();
+    let asp_task_hours = logistics_seed::invoicing(wl_invoicing::WlInvoicing::new(), &[])
+        .config()
+        .einvoice_task_hours;
     let critical: Vec<String> = defaults::CRITICAL_RULES
         .iter()
         .map(|rule| {
@@ -203,7 +206,8 @@ pub fn compliance_rows(owner_role: &str) -> Vec<Row> {
             "tracking SMS queued; the dispatcher gets a task listing the recipients on today's runs to call; the clients of those shipments are told by e-mail".to_owned(),
             "logistics::sms_fallback", "§8"),
         row("13", "Integrations", "E-invoicing ASP fallback",
-            "invoices issued and sent as PDF; transmissions queued; FIN.RUL.16 raises a task after 24 hours".to_owned(),
+            format!("invoices issued and sent as PDF; transmissions queued; FIN.RUL.16 raises a task after {} hours",
+                asp_task_hours),
             MODULE, "§8"),
         row("14", "E-invoicing", "EInvoiceScope",
             format!("an invoice for international goods transport by air (air waybill) issued within {} months of the entity's go-live is not transmitted; sea and road freight are", defaults::EINVOICE_EXCLUSION_MONTHS),
@@ -213,7 +217,8 @@ pub fn compliance_rows(owner_role: &str) -> Vec<Row> {
                 defaults::LATE_ENTRY_FLAG_MINUTES, defaults::LATE_ENTRY_APPROVAL_HOURS, defaults::EPOD_LATE_ENTRY),
             "limits seeded by `logistics:install`, editable per entity", "§4.1, wl-kernel"),
         row("16", "Late entry", "Digest of voids and late entries (PLT.RUL.06)",
-            format!("on, daily at 07:00, to the holders of late_entries.approve: the {OPERATIONS_MANAGER} of each depot and the company admin"),
+            format!("on, daily at {} ({}), to the holders of late_entries.approve: the {OPERATIONS_MANAGER} of each depot and the company admin",
+                wl_kernel::digest::TASK_AT, wl_kernel::digest::TASK_ZONE),
             MODULE, "§7.2"),
         row("17", "Sales", "Lead sources used (SAL.CRM.02)",
             format!("{}; recorded on the lead and carried to the client party when it converts; walk-in and aggregator are turned off; a source requires a campaign: {}",
@@ -225,12 +230,16 @@ pub fn compliance_rows(owner_role: &str) -> Vec<Row> {
                 channels.join(", "), on(sales.over_budget_approval)),
             "channels: the module's fixed list; approval: Logistics seed", "§5; §7.2 settings"),
         row("19", "Staff", "Onboarding checklists (HRM.ONB.01, HRM.RUL.16, HRM.RUL.17, HRM.ACL.10)",
-            format!("{}; started when the employee record is created in onboarding; tasks to the operations manager, the line manager (the {}) and the employee; the employee's own steps only by them; completion blocks nothing (run dispatch stays guarded by the driving licence); HRM.RUL.17 reminds on the first run after the due date, then every 2 days, and tells the operations manager and the line manager after 5 days",
-                onboarding.join("; "), hr.manager_role),
+            format!("{}; started when the employee record is created in onboarding; tasks to the operations manager, the line manager (the {}) and the employee; the employee's own steps only by them; completion blocks nothing (run dispatch stays guarded by the driving licence); HRM.RUL.17 reminds on the first run after the due date, then every {} days, and tells the operations manager and the line manager after {} days",
+                onboarding.join("; "), hr.manager_role,
+                wl_hr::reminders::REMIND_EVERY, wl_hr::reminders::ESCALATE_AFTER),
             "checklists: Logistics seed; reminder days: default of the module", "§5; §7.2 settings"),
         row("20", "Staff", "SOP library (HRM.ONB.01, DOC.RUL.04, HRM.ACL.10)",
-            format!("{}; DOC.RUL.04 asks each reader to acknowledge within 7 days, reminds every 3 days and tells the reader's manager and the SOP owner role after 7 days overdue; only the reader acknowledges; a new version asks again",
-                sops.join("; ")),
+            format!("{}; DOC.RUL.04 asks each reader to acknowledge within {} days, reminds every {} days and tells the reader's manager and the SOP owner role after {} days overdue; only the reader acknowledges; a new version asks again",
+                sops.join("; "),
+                wl_documents::sops::service::DEFAULT_ACK_DUE_DAYS,
+                wl_documents::acknowledgements::run::REMIND_EVERY,
+                wl_documents::acknowledgements::run::ESCALATE_AFTER),
             "SOPs and readers: Logistics seed; days: default of the module", "§5; §7.2 settings"),
         row("21", "Registrations", "Registration and certification kinds (DOC.EXP.01, DOC.RUL.01)",
             format!("Trademark registration ({} days) and Other certification ({} days), subject legal entity, responsible role {ADMIN}, no blocks",
@@ -392,7 +401,11 @@ pub fn money_rows(entities: &[String]) -> Vec<MoneyRow> {
             "15",
             "Cash",
             "Handover escalation (FIN.RUL.22)",
-            "replaced for drivers by LOG.RUL.13 (N = 12 h, M = 48 h)".to_owned(),
+            format!(
+                "replaced for drivers by LOG.RUL.13 (N = {} h, M = {} h)",
+                logistics::cash_watch::TASK_HOURS,
+                logistics::cash_watch::ADMIN_HOURS
+            ),
             HOST,
         ),
         money(
