@@ -1206,3 +1206,60 @@ async fn an_overdue_onboarding_step_is_reminded_every_2_days_and_escalated_after
     assert_eq!(told_on(&still), Some(at(5)), "told once");
     let _ = last_due;
 }
+
+/// AC8 (behaviour): a LinkedIn campaign (recorded as *other online*) with a
+/// budget of AED 5,000: a cost within it is approved on save; one that takes it
+/// over waits for a holder of `campaigns.costs.manage` other than the
+/// requester, who is the marketing manager and not the marketing user.
+#[renox::test]
+async fn an_over_budget_linkedin_cost_waits_for_the_marketing_manager() {
+    use host::roles::{MARKETING, MARKETING_MANAGER};
+    use wl_kernel::approvals as approvals_;
+    use wl_sales::costs::{self, CostInput};
+    use wl_sales::{Campaign, CostEntry, CostStatus, MarketingChannel, Purpose};
+    let app = logistics_booted().await;
+    let requester = person(&app, "Mina", MARKETING).await;
+    let manager = person(&app, "Mark", MARKETING_MANAGER).await;
+    let (name, recorded_as) = defaults::CAMPAIGN_CHANNELS[0];
+    assert_eq!((name, recorded_as), ("LinkedIn", "other_online"));
+    let campaign = Campaign {
+        name: "LinkedIn Q1".into(),
+        code: "LINKEDIN-Q1".into(),
+        purpose: Some(Purpose::Acquisition),
+        marketing_channel: Some(MarketingChannel::OtherOnline),
+        owner_id: Some(manager.id),
+        start_date: Some(day(0)),
+        end_date: Some(day(60)),
+        budget: Some(500_000),
+        ..Campaign::default()
+    }
+    .store(app.db())
+    .await
+    .unwrap()
+    .unwrap();
+    let cost = |amount: i64| CostInput {
+        campaign_id: campaign.id,
+        entry_date: day(0),
+        amount,
+        description: "Sponsored posts".into(),
+        requested_by: requester.id,
+        manages_costs: false,
+    };
+    let within = costs::save(app.state(), cost(480_000)).await.unwrap().unwrap();
+    assert_eq!(within.status, CostStatus::Approved);
+    let over = costs::save(app.state(), cost(40_000)).await.unwrap().unwrap();
+    assert_eq!(over.status, CostStatus::PendingApproval);
+    let request = over.approval_request_id.expect("a request");
+    assert!(
+        approvals_::approve(app.state(), request, &requester, "")
+            .await
+            .is_err(),
+        "the requester and the marketing role cannot approve"
+    );
+    approvals_::approve(app.state(), request, &manager, "")
+        .await
+        .unwrap();
+    let after = CostEntry::find(app.db(), over.id).await.unwrap().unwrap();
+    assert_eq!(after.status, CostStatus::Approved);
+    assert_eq!(after.approved_by, Some(manager.id));
+}
