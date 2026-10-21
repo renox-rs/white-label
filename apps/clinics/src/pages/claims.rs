@@ -383,7 +383,10 @@ async fn show(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<View> {
-    require(&user, permissions::CLAIMS_MANAGE)?;
+    // The clinic manager who closes a claim (`claims.writeoff`) sees it too.
+    if !user.has_permission(permissions::CLAIMS_WRITEOFF) {
+        require(&user, permissions::CLAIMS_MANAGE)?;
+    }
     let claim = Claim::find_or_404(&state.db, id).await?;
     let dash = text(&lang, "none");
     let contract = match claim.contract_id {
