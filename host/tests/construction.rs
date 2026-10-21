@@ -109,9 +109,12 @@ fn the_roles_hold_the_project_permissions() {
 
 #[test]
 fn an_unbuilt_vertical_is_refused_by_name() {
-    let config = ClientConfig::parse(&CLIENT.replace("construction", "manpower")).unwrap();
+    let config = ClientConfig::parse(&CLIENT.replace("construction", "hospitality")).unwrap();
     let Err(err) = host::app_for(config) else {
-        panic!("manpower is not built");
+        panic!("hospitality is not built");
     };
-    assert!(err.0.contains("app `manpower` is not built yet"), "{err}");
+    assert!(
+        err.0.contains("app `hospitality` is not built yet"),
+        "{err}"
+    );
 }
