@@ -836,7 +836,7 @@ mod tests {
 
     #[test]
     fn the_series_is_gapless_per_entity_and_yearly() {
-        assert!(PAYER_BILL_SERIES.gapless && PAYER_BILL_SERIES.per_entity);
+        const { assert!(PAYER_BILL_SERIES.gapless && PAYER_BILL_SERIES.per_entity) };
         assert_eq!(PAYER_BILL_SERIES.reset, Reset::Yearly);
         assert_eq!(payer_bill_series(1), &PAYER_BILL_SERIES_SINGLE);
         assert_eq!(payer_bill_series(2), &PAYER_BILL_SERIES);
