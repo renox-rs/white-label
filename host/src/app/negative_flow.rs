@@ -181,6 +181,11 @@ fn on(flag: bool) -> &'static str {
 /// What the client's configuration says, read back from the modules' own
 /// settings.
 pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
+    // The 05 client has its own table: Property's rows (leases, cheques,
+    // deposits) are not its settings.
+    if client_app == super::clinics_seed::CLINICS {
+        return super::clinics_money::rows(entities);
+    }
     let invoicing = invoicing_for(client_app, entities);
     let invoicing = invoicing.config();
     let payments = payments_for(client_app);

@@ -478,10 +478,6 @@ pub const REFUND_RETRY_HOURS: i64 = 24;
 /// The retries of one failed refund: once.
 pub const REFUND_MAX_RETRIES: i64 = 1;
 
-/// Days before the evidence deadline of a chargeback that the accountant is
-/// reminded (`FIN.RUL.20`).
-pub const CHARGEBACK_REMINDER_DAYS: i64 = 2;
-
 /// Hours a pending issue stays open before the clinic manager is told and the
 /// storekeeper gets the task (`STK.RUL.06`).
 pub const PENDING_ISSUE_ALERT_HOURS: i64 = 24;

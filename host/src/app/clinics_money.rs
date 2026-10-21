@@ -20,8 +20,8 @@
 //!   and the owner drawings;
 //! - payments ([`payments`]): a pending online payment is checked after 30
 //!   minutes, a late confirmation is refunded automatically, a failed refund
-//!   is retried once after 24 hours, a chargeback's evidence is reminded 2
-//!   days ahead;
+//!   is retried once after 24 hours, a chargeback's evidence reminder keeps
+//!   the module's default (05 gives no number of days);
 //! - inventory ([`inventory`]): pending issues alert after 24 hours, a recall
 //!   hold is released by a second holder of `lots.release`, a hold is
 //!   reminded every 24 hours. No branch store allows consumption below zero:
@@ -53,6 +53,7 @@ use wl_kernel::COMPANY_ADMIN_ROLE;
 use wl_payments::WlPayments;
 
 use super::clinics_seed::CLINICS;
+use super::negative_flow::{Row, aed};
 use super::roles::ACCOUNTANT;
 
 /// The invoicing module with the 05 client's money values: see the module
@@ -101,13 +102,13 @@ pub fn invoicing(module: WlInvoicing, entities: &[String]) -> WlInvoicing {
 }
 
 /// The payments module with the 05 client's values (`FIN.RUL.19`,
-/// `FIN.RUL.20`, `FIN.RUL.21`, wl-payments section 7).
+/// `FIN.RUL.20`, `FIN.RUL.21`, wl-payments section 7). 05 gives no number of
+/// days for the chargeback evidence reminder: the module's own default stays.
 pub fn payments(module: WlPayments) -> WlPayments {
     module
         .pending_timeout(seed::PENDING_TIMEOUT_MINUTES)
         .late_refunds_auto(true)
         .refund_retry(seed::REFUND_RETRY_HOURS, seed::REFUND_MAX_RETRIES)
-        .chargeback_reminder(seed::CHARGEBACK_REMINDER_DAYS)
 }
 
 /// The inventory module with the 05 client's values (`STK.RUL.06`,
@@ -143,6 +144,189 @@ pub async fn install_budget_categories(db: &Db) -> Result<usize> {
         }
     }
     Ok(changed)
+}
+
+/// The rows of the read-only money settings page for the 05 client: what the
+/// invoicing, payments and inventory modules have in force for it, read back
+/// from the same builder calls (`entities` are the codes of the client's
+/// legal entities).
+pub fn rows(entities: &[String]) -> Vec<Row> {
+    let invoicing = invoicing(WlInvoicing::new(), entities);
+    let invoicing = invoicing.config();
+    let payments = payments(WlPayments::new());
+    let payments = payments.config();
+    let stock = inventory(CLINICS, WlInventory::new());
+    let stock = stock.config();
+    let host = "set by the host for this client";
+    let module = "default of the module";
+    let seed_note = "the 05 values (clinics::seed)";
+    let make = |number: &str, group: &str, setting: &str, value: String, source: &str| Row {
+        number: number.to_owned(),
+        group: group.to_owned(),
+        setting: setting.to_owned(),
+        value,
+        source: source.to_owned(),
+    };
+    let thresholds = if entities.is_empty() {
+        "none".to_owned()
+    } else {
+        entities
+            .iter()
+            .map(|code| format!("{code} {}", aed(invoicing.cash_threshold_of(code))))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    vec![
+        make(
+            "1",
+            "Invoices",
+            "Patient write-off (FIN.ACL.15)",
+            format!(
+                "limit AED 0: always an approval by {}, never the requester",
+                invoicing.write_off_approvers.join(" or ")
+            ),
+            host,
+        ),
+        make(
+            "2",
+            "Invoices",
+            "Billing dispute by the patient (FIN.RUL.15)",
+            format!(
+                "{}; escalated after {} days to {}; the ticket goes to {}",
+                if invoicing.portal_disputes { "on" } else { "off" },
+                invoicing.dispute_escalation_days,
+                invoicing.dispute_escalation_role,
+                invoicing.dispute_ticket_role.as_deref().unwrap_or("nobody")
+            ),
+            host,
+        ),
+        make(
+            "3",
+            "Claims",
+            "Claim write-off limit (FIN.ACL.14)",
+            format!(
+                "{} for a new payer agreement; above it {} approve",
+                aed(invoicing.payer_write_off_limit),
+                invoicing.payer_write_off_approvers.join(" or ")
+            ),
+            seed_note,
+        ),
+        make(
+            "4",
+            "Claims",
+            "Follow-up of a payer bill with no remittance (FIN.RUL.13)",
+            format!("{} days", invoicing.payer_follow_up_days),
+            seed_note,
+        ),
+        make(
+            "5",
+            "Payments",
+            "Online payment pending (FIN.RUL.19)",
+            format!(
+                "checked with the gateway after {} minutes; a late confirmation is refunded: {}",
+                payments.pending_timeout_minutes,
+                if payments.late_refund_auto { "yes" } else { "no" }
+            ),
+            seed_note,
+        ),
+        make(
+            "6",
+            "Payments",
+            "Failed refund (FIN.RUL.21)",
+            format!(
+                "retried {} time(s) after {} hours",
+                payments.refund_max_retries, payments.refund_retry_hours
+            ),
+            seed_note,
+        ),
+        make(
+            "7",
+            "Payments",
+            "Chargeback evidence reminder (FIN.RUL.20)",
+            format!("{} days before the deadline", payments.chargeback_reminder_days),
+            module,
+        ),
+        make(
+            "8",
+            "Cash",
+            "Cash holders and handover (FIN.CSH.01)",
+            format!(
+                "one holder per {} of the receptionist's {}; shortage write-off limit {}; salary recovery {} (not built: BL-PAY-17)",
+                seed::CASH_HANDOVER_PERIOD,
+                seed::CASH_HOLDER_MODE,
+                aed(seed::CASH_SHORTAGE_WRITE_OFF_LIMIT),
+                if seed::SALARY_RECOVERY { "on" } else { "off" }
+            ),
+            seed_note,
+        ),
+        make(
+            "9",
+            "Cash-flow",
+            "Forecast alert (FIN.RUL.23)",
+            format!(
+                "{} weeks from {:?}; alert below {}; {} at {}",
+                invoicing.cash_forecast_weeks,
+                invoicing.cash_week_start,
+                thresholds,
+                invoicing.cash_alert_roles.join(" and "),
+                invoicing.cash_alert_time
+            ),
+            host,
+        ),
+        make(
+            "10",
+            "Budget",
+            "Budget categories (FIN.RUL.24)",
+            format!(
+                "owned by {}; warns at {}% of a month's line: the category's owner role and {}",
+                invoicing
+                    .budget_category_owner
+                    .as_deref()
+                    .unwrap_or("nobody"),
+                invoicing.budget_variance_percent,
+                invoicing.budget_variance_role
+            ),
+            host,
+        ),
+        make(
+            "11",
+            "Budget",
+            "Owner drawings (FIN.ACL.21)",
+            format!(
+                "every drawing approved by someone other than the requester; {} told when none else can approve",
+                invoicing.drawings_notify_role
+            ),
+            host,
+        ),
+        make(
+            "12",
+            "Stock",
+            "Negative stock (STK.RUL.06)",
+            "block: the short quantity of a visit's consumables becomes a pending issue; no branch store allows consumption below zero".to_owned(),
+            module,
+        ),
+        make(
+            "13",
+            "Stock",
+            "Pending issue alert (STK.RUL.06)",
+            format!(
+                "the storekeeper is told at once; after {} hours they have the task and the clinic manager is told",
+                stock.pending_alert_hours
+            ),
+            seed_note,
+        ),
+        make(
+            "14",
+            "Stock",
+            "Stock hold (STK.RUL.07, STK.ACL.05)",
+            format!(
+                "reminded every {} hours; a second holder of lots.release for {}",
+                stock.hold_reminder_hours,
+                stock.hold_second_person_reasons.join(", ")
+            ),
+            seed_note,
+        ),
+    ]
 }
 
 #[cfg(test)]
@@ -188,7 +372,11 @@ mod tests {
         assert!(config.late_refund_auto);
         assert_eq!(config.refund_retry_hours, 24);
         assert_eq!(config.refund_max_retries, 1);
-        assert_eq!(config.chargeback_reminder_days, 2);
+        // 05 gives no number: the module's own default applies.
+        assert_eq!(
+            config.chargeback_reminder_days,
+            wl_payments::config::DEFAULT_CHARGEBACK_REMINDER_DAYS
+        );
     }
 
     #[test]

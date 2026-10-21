@@ -246,6 +246,28 @@ async fn the_payer_write_off_policy_follows_invoicing_not_scheduling() {
     assert_eq!(again.steps.0, [Step::one_of(["owner", "admin"])]);
 }
 
+/// The read-only money settings page shows the clinic's own values, not
+/// Property's (leases, cheques, deposits).
+#[renox::test]
+async fn the_money_settings_page_shows_the_05_values_for_the_clinic() {
+    let app = clinics_booted().await;
+    let admin = person(&app, "Ada", host::roles::ADMIN).await;
+    app.acting_as(&admin);
+    app.get("/settings/negative-flow")
+        .await
+        .assert_ok()
+        .assert_see("Money settings")
+        .assert_see("Claim write-off limit")
+        .assert_see("AED 1,000.00 for a new payer agreement")
+        .assert_see("PGC AED 50,000.00")
+        .assert_see("checked with the gateway after 30 minutes")
+        .assert_see("Pending issue alert")
+        .assert_see("owned by accountant")
+        .assert_dont_see("Maximum presentations of one cheque")
+        .assert_dont_see("Duplicate check keys")
+        .assert_dont_see("Block effect on leases");
+}
+
 // ---- claims ---------------------------------------------------------------------
 
 /// A draft payer bill of `claimed` fils under `agreement` for visit `visit`,
@@ -288,18 +310,27 @@ async fn a_claim_write_off_of_1000_01_needs_the_owner_and_1000_00_does_not() {
         .provided::<InvoicingConfig>()
         .expect("the invoicing settings are provided");
     assert_eq!(config.payer_follow_up_days, 45, "FIN.RUL.13: 45 days");
-    let mut agreement = PayerAgreement {
+    let made = |name: &str| PayerAgreement {
         legal_entity_id: legal.id,
         payer_party_id: payer.0,
-        name: "Daman Gold".to_owned(),
+        name: name.to_owned(),
+        active: true,
         vat_recipient: VatRecipient::Customer,
         first_submission_days: 30,
         resubmission_days: 30,
         resubmission_limit: 2,
-        ..PayerAgreement::with_defaults(&config)
+        ..PayerAgreement::default()
     };
-    agreement.insert(app.db()).await.unwrap();
+    // Made the way any agreement is made, it starts with the clinic's limit,
+    // whatever the row said; a limit the caller states is kept.
+    let agreement = PayerAgreement::create(app.state(), made("Daman Gold"), None)
+        .await
+        .unwrap();
     assert_eq!(agreement.write_off_limit, 100_000, "AED 1,000");
+    let own = PayerAgreement::create(app.state(), made("Daman Silver"), Some(50_000))
+        .await
+        .unwrap();
+    assert_eq!(own.write_off_limit, 50_000);
 
     let over = draft_claim(&app, &agreement, patient, 1, 100_001).await;
     app.acting_as(&mona);
@@ -1041,7 +1072,11 @@ async fn the_booted_host_holds_the_05_money_and_stock_values() {
         (payments.refund_retry_hours, payments.refund_max_retries),
         (24, 1)
     );
-    assert_eq!(payments.chargeback_reminder_days, 2);
+    assert_eq!(
+        payments.chargeback_reminder_days,
+        wl_payments::config::DEFAULT_CHARGEBACK_REMINDER_DAYS,
+        "05 gives no number of days: the module's default"
+    );
 
     let sales = wl_sales::config::config_of(app.state());
     assert_eq!(sales.package_seller_role, "receptionist");
