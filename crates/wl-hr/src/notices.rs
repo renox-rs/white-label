@@ -76,7 +76,7 @@ pub(crate) fn register_types() {
 }
 
 /// The employee's name for staff-facing text.
-async fn name_of(state: &AppState, employee: &Employee) -> String {
+pub(crate) async fn name_of(state: &AppState, employee: &Employee) -> String {
     wl_kernel::parties::directory(state)
         .display_name(&state.db, employee.party(), "en")
         .await

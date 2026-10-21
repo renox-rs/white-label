@@ -22,6 +22,7 @@ pub mod qualification;
 pub mod qualification_expiry;
 pub mod reminders;
 pub mod seed;
+pub mod sick_leave;
 pub mod settlement;
 pub mod steps;
 pub mod template;
@@ -136,6 +137,14 @@ impl WlHr {
         self
     }
 
+    /// Working days after the start of a same-day sick leave in which the
+    /// sick note may follow (default 2).
+    pub fn sick_note_days(mut self, days: i64) -> Self {
+        assert!(days >= 0, "the sick note days cannot be negative");
+        self.config.sick_note_days = days;
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &HrConfig {
         &self.config
@@ -196,6 +205,8 @@ impl Module for WlHr {
         renox::state_machine::register::<VisaCase>();
         events::register(app);
         leave_service::register(app);
+        // The daily run at 00:00 Asia/Dubai: the HR task of a missing sick note.
+        sick_leave::schedule(app);
         // `HRM.ACL.07`: the policies of the five non-standard exits and the
         // audit of their requests and decisions.
         exits::register(app);
@@ -239,6 +250,7 @@ mod tests {
         assert_eq!(module.config().manager_role, "manager");
         assert_eq!(module.config().owner_role, "owner");
         assert_eq!(module.config().absence_days, 7);
+        assert_eq!(module.config().sick_note_days, 2);
     }
 
     #[test]

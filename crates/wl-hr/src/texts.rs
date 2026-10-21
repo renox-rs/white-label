@@ -448,6 +448,38 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.leave.approved", "Leave approved."),
     ("wl_hr.leave.rejected", "Leave rejected."),
     ("wl_hr.leave.cancelled", "Leave cancelled."),
+    // Same-day sick leave.
+    (
+        "wl_hr.sick.problem.not_today",
+        "Same-day sick leave starts today.",
+    ),
+    (
+        "wl_hr.sick.problem.not_sick",
+        "Only a sick leave takes a sick note.",
+    ),
+    ("wl_hr.sick.task_title", "Sick note missing: :employee"),
+    (
+        "wl_hr.sick.task_description",
+        ":employee called in sick on :from. The sick note was due by :due and is not attached.",
+    ),
+    ("wl_hr.sick.task_resolved", "The sick note was attached."),
+    ("wl_hr.sick.title", "Leave"),
+    ("wl_hr.sick.record", "Record sick leave"),
+    ("wl_hr.sick.submit", "Record"),
+    ("wl_hr.sick.from", "First day (today)"),
+    ("wl_hr.sick.to", "Last day"),
+    ("wl_hr.sick.recorded", "Sick leave recorded and approved."),
+    ("wl_hr.sick.attach", "Attach sick note"),
+    ("wl_hr.sick.attach_submit", "Attach"),
+    ("wl_hr.sick.attached", "Sick note attached."),
+    ("wl_hr.sick.request", "Leave"),
+    ("wl_hr.sick.document", "Sick note number"),
+    ("wl_hr.sick.type", "Type"),
+    ("wl_hr.sick.period", "Period"),
+    ("wl_hr.sick.unpaid", "Unpaid days"),
+    ("wl_hr.sick.note", "Sick note"),
+    ("wl_hr.sick.note_due", "Due by :date"),
+    ("wl_hr.sick.note_attached", "Attached"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
