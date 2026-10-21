@@ -517,12 +517,21 @@ async fn cancelling_the_return_gives_the_held_lot_back() {
         .assert_ok();
     assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Closed);
     assert_eq!(t.lot_now(&lot).await.status, LotStatus::OnHold);
-    let draft = SupplierReturn::query().first(t.db()).await.unwrap().unwrap();
+    let draft = SupplierReturn::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
 
     let buyer = t.procurement("Pat").await;
-    t.cancel_as(&buyer, &draft, "The supplier took the goods back on site", None)
-        .await
-        .assert_ok();
+    t.cancel_as(
+        &buyer,
+        &draft,
+        "The supplier took the goods back on site",
+        None,
+    )
+    .await
+    .assert_ok();
 
     let cancelled = SupplierReturn::find_or_404(t.db(), draft.id).await.unwrap();
     assert_eq!(cancelled.status, ReturnStatus::Cancelled);

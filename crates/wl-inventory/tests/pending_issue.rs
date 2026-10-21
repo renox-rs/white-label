@@ -334,7 +334,11 @@ async fn the_storekeepers_page_lists_the_open_pending_issues_in_their_scope() {
     let all: Vec<wl_inventory::PendingRow> = list(&clerk).await.assert_ok().json();
     assert_eq!(
         all.iter()
-            .map(|row| (row.location.as_str(), row.quantity_milli, row.source.as_str()))
+            .map(|row| (
+                row.location.as_str(),
+                row.quantity_milli,
+                row.source.as_str()
+            ))
             .collect::<Vec<_>>(),
         vec![
             ("STORE-1", 3_000, "clinics.visit:1"),
@@ -357,7 +361,9 @@ async fn the_storekeepers_page_lists_the_open_pending_issues_in_their_scope() {
     .unwrap();
     let mine: Vec<wl_inventory::PendingRow> = list(&user).await.assert_ok().json();
     assert_eq!(
-        mine.iter().map(|row| row.location.as_str()).collect::<Vec<_>>(),
+        mine.iter()
+            .map(|row| row.location.as_str())
+            .collect::<Vec<_>>(),
         vec!["STORE-1", "STORE-1"]
     );
 

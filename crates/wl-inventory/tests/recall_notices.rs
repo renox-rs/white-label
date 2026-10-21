@@ -239,9 +239,7 @@ async fn a_line_with_the_party_unknown_blocks_the_close_until_it_is_waived() {
     assert_eq!(t.recall_now(&recall).await.status, RecallStatus::Traced);
     assert!(t.recall_closed.all().is_empty());
 
-    t.waive_as(&manager, &unknown, "")
-        .await
-        .assert_status(422);
+    t.waive_as(&manager, &unknown, "").await.assert_status(422);
     t.close_recall_as(&manager, &recall)
         .await
         .assert_status(422);

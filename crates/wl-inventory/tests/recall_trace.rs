@@ -653,7 +653,12 @@ async fn a_transfer_out_ends_the_window_and_the_transfer_in_opens_one() {
     .await;
     // (order, outlet, day): 1 before the transfer at Outlet 1, 2 after it
     // there, 3 before it at Outlet 2 (nothing there yet), 4 after it there.
-    for (n, outlet, day) in [(1, &outlet_1, 3), (2, &outlet_1, 7), (3, &outlet_2, 3), (4, &outlet_2, 8)] {
+    for (n, outlet, day) in [
+        (1, &outlet_1, 3),
+        (2, &outlet_1, 7),
+        (3, &outlet_2, 3),
+        (4, &outlet_2, 8),
+    ] {
         t.movement(
             MovementType::Consume,
             &item,
@@ -675,7 +680,12 @@ async fn a_transfer_out_ends_the_window_and_the_transfer_in_opens_one() {
         .recall_lines(&opened)
         .await
         .iter()
-        .map(|line| (line.used_by().unwrap().to_string(), line.kind.as_str().to_owned()))
+        .map(|line| {
+            (
+                line.used_by().unwrap().to_string(),
+                line.kind.as_str().to_owned(),
+            )
+        })
         .collect();
     found.sort();
     assert_eq!(
@@ -748,14 +758,61 @@ async fn a_genealogy_cycle_traces_each_lot_once() {
     let one = Subject::new("manufacturing.batch", 1);
     let two = Subject::new("manufacturing.batch", 2);
     let steps = [
-        (MovementType::Consume, &serum, &l9, Some(&branch), None, &one, 4, 2_000),
-        (MovementType::Produce, &kit, &l20, None, Some(&branch), &one, 5, 6_000),
-        (MovementType::Consume, &kit, &l20, Some(&branch), None, &two, 6, 2_000),
-        (MovementType::Produce, &serum, &l9, None, Some(&branch), &two, 7, 1_000),
+        (
+            MovementType::Consume,
+            &serum,
+            &l9,
+            Some(&branch),
+            None,
+            &one,
+            4,
+            2_000,
+        ),
+        (
+            MovementType::Produce,
+            &kit,
+            &l20,
+            None,
+            Some(&branch),
+            &one,
+            5,
+            6_000,
+        ),
+        (
+            MovementType::Consume,
+            &kit,
+            &l20,
+            Some(&branch),
+            None,
+            &two,
+            6,
+            2_000,
+        ),
+        (
+            MovementType::Produce,
+            &serum,
+            &l9,
+            None,
+            Some(&branch),
+            &two,
+            7,
+            1_000,
+        ),
     ];
     for (kind, item, lot, from, to, source, day, quantity) in steps {
-        t.movement(kind, item, Some(lot), from, to, quantity, source, None, at(day, 8), false)
-            .await;
+        t.movement(
+            kind,
+            item,
+            Some(lot),
+            from,
+            to,
+            quantity,
+            source,
+            None,
+            at(day, 8),
+            false,
+        )
+        .await;
     }
     t.movement(
         MovementType::Issue,
@@ -797,10 +854,15 @@ async fn a_genealogy_cycle_traces_each_lot_once() {
         )]
     );
     // Tracing again changes nothing.
-    t.trace_as(&t.recaller("Rita").await, &opened).await.assert_ok();
+    t.trace_as(&t.recaller("Rita").await, &opened)
+        .await
+        .assert_ok();
     assert_eq!(t.recall_lines(&opened).await.len(), 1);
     assert_eq!(
-        recall::lots_in_scope(t.db(), opened.id).await.unwrap().len(),
+        recall::lots_in_scope(t.db(), opened.id)
+            .await
+            .unwrap()
+            .len(),
         2
     );
 }

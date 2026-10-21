@@ -48,7 +48,11 @@ fn told(t: &Booted, kind: &str) -> Vec<i64> {
 }
 
 /// What a pick may take of `item` at `location`: `(lot, available)`.
-async fn offered(t: &Booted, item: &wl_inventory::Item, location: &Location) -> Vec<(Option<i64>, i64)> {
+async fn offered(
+    t: &Booted,
+    item: &wl_inventory::Item,
+    location: &Location,
+) -> Vec<(Option<i64>, i64)> {
     wl_inventory::balance::candidates(t.db(), item, location.id)
         .await
         .unwrap()
@@ -252,7 +256,10 @@ async fn the_picking_source_never_offers_held_quantity() {
     )
     .await
     .assert_ok();
-    assert_eq!(offered(&t, &item, &fridge).await, vec![(Some(lot_b.id), 4_000)]);
+    assert_eq!(
+        offered(&t, &item, &fridge).await,
+        vec![(Some(lot_b.id), 4_000)]
+    );
 
     // A hold on the location: lot B is held too, and 3 more of it that arrive
     // afterwards are the only quantity offered.
@@ -269,7 +276,10 @@ async fn the_picking_source_never_offers_held_quantity() {
     .assert_ok();
     assert!(offered(&t, &item, &fridge).await.is_empty());
     t.stock_in(&item, &fridge, Some(&lot_b), 3_000, 100).await;
-    assert_eq!(offered(&t, &item, &fridge).await, vec![(Some(lot_b.id), 3_000)]);
+    assert_eq!(
+        offered(&t, &item, &fridge).await,
+        vec![(Some(lot_b.id), 3_000)]
+    );
 
     // An item that is not lot-tracked has one candidate, less the held part.
     let plain = t.item("PLAIN").await;

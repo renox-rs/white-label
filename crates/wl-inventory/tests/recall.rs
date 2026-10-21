@@ -8,7 +8,9 @@ use renox::auth::permissions;
 use renox::prelude::*;
 use wl_inventory::permissions as perm;
 use wl_inventory::recall::{self, OPENED_NOTICE};
-use wl_inventory::{HoldLineStatus, HoldScope, HoldStatus, Item, Lot, LotStatus, RecallSource, RecallStatus};
+use wl_inventory::{
+    HoldLineStatus, HoldScope, HoldStatus, Item, Lot, LotStatus, RecallSource, RecallStatus,
+};
 use wl_kernel::Subject;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::notify::NotifyRecipient;

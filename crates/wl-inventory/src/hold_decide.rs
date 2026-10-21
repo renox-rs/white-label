@@ -47,12 +47,12 @@ use crate::item::{Item, value_of};
 use crate::lot::{self, Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
 use crate::return_credit::{CANCEL as RETURN_CANCEL, CANCEL_WITH_RECEIPT};
-use crate::supplier_return::{
-    self, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine,
-};
 use crate::stock_hold::{
     CANCEL, CLOSE, HoldLineStatus, HoldScope, HoldStatus, SettleInput, StockHold, StockHoldLine,
     lines_of,
+};
+use crate::supplier_return::{
+    self, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine,
 };
 
 /// What a holder of `lots.release` decides for a line.

@@ -447,7 +447,8 @@ async fn list_pending_issues(State(state): State<AppState>, user: AuthUser) -> R
             continue;
         }
         let item = crate::item::Item::find_or_404(&state.db, pending.item_id).await?;
-        let location = crate::location::Location::find_or_404(&state.db, pending.location_id).await?;
+        let location =
+            crate::location::Location::find_or_404(&state.db, pending.location_id).await?;
         rows.push(PendingRow {
             id: pending.id,
             item: item.code.clone(),
