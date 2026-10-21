@@ -17,6 +17,12 @@
           <rx-input name="reference" :label="tx['claim.submission_reference']" :id="'claim-submit-reference-' ~ id"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_reject">
+        <rx-action-sheet :id="'claim-reject-' ~ id" :label="tx['claim.reject']" :action="route('clinics.claim_reject', id)"
+                         :title="tx['claim.reject']" :description="tx['claim.reject_description']" :submit-label="tx['claim.reject']" icon="x">
+          <rx-textarea name="errors" :label="tx['claim.reject_errors']" :id="'claim-reject-errors-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_remit">
         <rx-action-sheet :id="'claim-remit-' ~ id" :label="tx['claim.remit']" :action="route('clinics.claim_remittance', id)"
                          :title="tx['claim.remit']" :description="tx['claim.remit_description']" :submit-label="tx['claim.remit']" icon="receipt">

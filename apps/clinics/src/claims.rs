@@ -35,12 +35,12 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionCtx, TransitionError};
 use wl_kernel::documents::dubai_date;
-use wl_kernel::payer_bills::{PayerBillId, payer_bills};
+use wl_kernel::payer_bills::{PayerBillId, SubmissionError, payer_bills};
 
 use crate::authorisation::PriorAuthService;
 use crate::charge::ChargeLine;
-use crate::claim::{Claim, ClaimLine};
-use crate::claim_machine::{ClaimInput, RESUBMIT, SUBMIT, VALIDATE, clean};
+use crate::claim::{Claim, ClaimError, ClaimLine};
+use crate::claim_machine::{ClaimInput, REJECT_SUBMISSION, RESUBMIT, SUBMIT, VALIDATE, clean};
 use crate::contract::PayerContract;
 use crate::db::refused;
 use crate::permissions;
@@ -274,6 +274,51 @@ pub async fn submit(
         .await?;
     let _ = claim
         .transition(SUBMIT)
+        .by(by)
+        .input(&input)
+        .run(state)
+        .await?;
+    Ok(Claim::find_or_404(&state.db, id).await?)
+}
+
+/// `reject_submission`: the submission channel refused the claim before the
+/// payer looked at it. The claim is a `draft` again with the attempt's
+/// `errors` (never `ready`: it is validated again), the resubmission count
+/// and the numbers stay, and the payer bill runs `submission_rejected`.
+///
+/// # Errors
+///
+/// `Forbidden` without `claims.manage`; `NotFrom` unless the claim is
+/// `submitted` or `resubmitted` (so also once a remittance is recorded);
+/// `Guard` (422) without an error having its code and message.
+pub async fn reject_submission(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    errors: Vec<ClaimError>,
+    at: DateTime,
+) -> std::result::Result<Claim, TransitionError> {
+    let claim = Claim::find_or_404(&state.db, id).await?;
+    let contract = contract_of(&state.db, &claim).await?;
+    let mut input = ClaimInput {
+        on: Some(dubai_date(at)),
+        by: Some(by.id),
+        errors,
+        fix_deadline: attempt_deadline(&claim, contract.as_ref()),
+        ..ClaimInput::default()
+    };
+    dry_run(&claim, REJECT_SUBMISSION, by, &input).await?;
+    let sent: Vec<SubmissionError> = input
+        .errors
+        .iter()
+        .map(|e| SubmissionError::new(&e.code, &e.message))
+        .collect();
+    let answer = payer_bills(state)
+        .submission_rejected(state, claim.payer_bill(), sent, Some(by))
+        .await?;
+    input.fix_deadline = answer.deadline.or(input.fix_deadline);
+    let _ = claim
+        .transition(REJECT_SUBMISSION)
         .by(by)
         .input(&input)
         .run(state)

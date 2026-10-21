@@ -14,6 +14,7 @@ pub mod charges;
 pub mod claim;
 pub mod claim_machine;
 pub mod claim_money;
+pub mod claim_rules;
 pub mod claims;
 pub mod consent;
 pub mod contract;
@@ -189,6 +190,7 @@ impl Module for Clinics {
         // its tasks: the technical rejection and `CLN.RUL.05` (BL-CLN-07,
         // BL-CLN-08).
         claim_money::register(app);
+        claim_rules::register(app);
         // `CLN.RUL.01`: an expired licence or set of privileges is told to
         // the clinic manager of the branch and the owner (BL-CLN-12).
         licences::register(app);

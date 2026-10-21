@@ -6,6 +6,7 @@
 //! | `GET /clinics/claims/{id}` | `clinics.claim` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/validate` | `clinics.claim_validate` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/submit` | `clinics.claim_submit` | `claims.manage` |
+//! | `POST /clinics/claims/{id}/reject` | `clinics.claim_reject` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/resubmit` | `clinics.claim_resubmit` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/remittance` | `clinics.claim_remittance` | `claims.manage` |
 //!
@@ -28,7 +29,8 @@ use wl_kernel::payer_bills::payer_bills;
 
 use super::{Texts, invalid, parse_date, party_name, require, text, text_with};
 use crate::claim::{
-    AnswerKind, AttemptKind, Claim, ClaimAttempt, ClaimLine, ClaimRemittance, ClaimStatus,
+    AnswerKind, AttemptKind, Claim, ClaimAttempt, ClaimError, ClaimLine, ClaimRemittance,
+    ClaimStatus,
 };
 use crate::claim_money::{self, Advice, AdviceLine, Recorded};
 use crate::claims::{self, attempt_deadline, resubmission_deadline};
@@ -48,6 +50,8 @@ pub fn routes() -> Routes {
         .name("clinics.claim_validate")
         .post("/clinics/claims/{id}/submit", submit)
         .name("clinics.claim_submit")
+        .post("/clinics/claims/{id}/reject", reject)
+        .name("clinics.claim_reject")
         .post("/clinics/claims/{id}/resubmit", resubmit)
         .name("clinics.claim_resubmit")
         .post("/clinics/claims/{id}/remittance", remittance)
@@ -100,6 +104,30 @@ pub(crate) fn parse_aed(text: &str) -> std::result::Result<i64, Error> {
         .checked_mul(100)
         .and_then(|fils| fils.checked_add(fraction))
         .ok_or_else(bad)
+}
+
+/// The errors typed one per line as `CODE: message` (or `CODE message`).
+/// A line without a message keeps the code as the message.
+pub(crate) fn parse_errors(text: &str) -> Vec<ClaimError> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let (code, message) = line
+                .split_once(':')
+                .or_else(|| line.split_once(char::is_whitespace))
+                .unwrap_or((line, ""));
+            let message = message.trim();
+            ClaimError {
+                code: code.trim().to_owned(),
+                message: if message.is_empty() {
+                    code.trim().to_owned()
+                } else {
+                    message.to_owned()
+                },
+            }
+        })
+        .collect()
 }
 
 /// One claim of the list.
@@ -267,6 +295,7 @@ pub(crate) struct ShowPage {
     today: String,
     can_validate: bool,
     can_submit: bool,
+    can_reject: bool,
     can_resubmit: bool,
     can_remit: bool,
 }
@@ -410,6 +439,7 @@ async fn show(
         today: today().to_string(),
         can_validate: claim.status == ClaimStatus::Draft,
         can_submit: claim.status == ClaimStatus::Ready,
+        can_reject: claim.status.is_with_payer(),
         can_resubmit: matches!(claim.status, ClaimStatus::PartiallyPaid | ClaimStatus::Denied),
         can_remit: claim.status.is_with_payer() && !held,
     }))
@@ -469,6 +499,28 @@ async fn submit(
         .await
         .map_err(refusal)?;
     done(&lang, "claim.submitted")
+}
+
+/// The form of `reject_submission`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct RejectForm {
+    /// The channel's errors, one per line as `E104: invalid member ID`.
+    #[serde(default)]
+    pub errors: String,
+}
+
+/// `POST /clinics/claims/{id}/reject`.
+async fn reject(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<RejectForm>,
+) -> Result<Response> {
+    claims::reject_submission(&state, &user, id, parse_errors(&form.errors), now())
+        .await
+        .map_err(refusal)?;
+    done(&lang, "claim.rejected")
 }
 
 /// The form of `resubmit`.
@@ -563,6 +615,23 @@ mod tests {
         assert!(parse_aed("4.505").is_err());
         assert!(parse_aed("abc").is_err());
         assert!(parse_aed("-5").is_err());
+    }
+
+    #[test]
+    fn errors_are_read_one_per_line() {
+        let errors = parse_errors("E104: invalid member ID\n\n E7 missing field \nE9");
+        let pairs: Vec<_> = errors
+            .iter()
+            .map(|e| (e.code.as_str(), e.message.as_str()))
+            .collect();
+        assert_eq!(
+            pairs,
+            [
+                ("E104", "invalid member ID"),
+                ("E7", "missing field"),
+                ("E9", "E9")
+            ]
+        );
     }
 
     #[test]
