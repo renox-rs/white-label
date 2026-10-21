@@ -249,19 +249,19 @@ the authorisation."
 - Must not consume units at check-in (consumption stays at charge capture).
 
 #### Done when
-- [ ] Given a procedure needing authorisation and authorisation A1 `approved` for 3 units, 3
+- [x] Given a procedure needing authorisation and authorisation A1 `approved` for 3 units, 3
       consumed, when receptionist A checks in with 1 unit needed and no outcome, it is refused
       with "prior authorisation required: self-pay with consent or reschedule" and the
       appointment stays `confirmed`; with a signed self-pay consent for the procedure, check-in
       succeeds.
-- [ ] Given A1 valid until 2026-11-10 and a visit on 2026-11-11, check-in is refused the same way.
-- [ ] Given A1 with 1 unit left and visit V1 already checked in with 1 unit needed, a second visit
+- [x] Given A1 valid until 2026-11-10 and a visit on 2026-11-11, check-in is refused the same way.
+- [x] Given A1 with 1 unit left and visit V1 already checked in with 1 unit needed, a second visit
       V2 the same day sees 0 units left.
-- [ ] Given A1 with 2 units left and 3 units needed, 2 units stay in the payer split and 1 unit
+- [x] Given A1 with 2 units left and 3 units needed, 2 units stay in the payer split and 1 unit
       goes self-pay with consent.
-- [ ] With a covered consultation and an unauthorised procedure, the consent lists only the
+- [x] With a covered consultation and an unauthorised procedure, the consent lists only the
       procedure and the consultation stays in the payer split.
-- [ ] On reschedule, the billing coordinator gets a task to request a new authorisation.
+- [x] On reschedule, the billing coordinator gets a task to request a new authorisation.
 
 #### Out of scope
 Look-ahead flags (BL-CLN-03); the coverage outcome mechanics and consent (BL-CLN-01).
