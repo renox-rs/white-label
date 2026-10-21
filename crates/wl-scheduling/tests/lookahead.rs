@@ -18,7 +18,7 @@ use wl_kernel::documents::{
 };
 use wl_kernel::scheduling::ConflictCause;
 use wl_kernel::tickets::Assignee;
-use wl_kernel::workforce::EmployeeId;
+use wl_kernel::workforce::{AffectedWork, EmployeeId, QualificationExpired, QualificationExpiring};
 use wl_kernel::{DocumentId, Subject};
 use wl_scheduling::eligibility::{self, LookAhead};
 use wl_scheduling::{AvailabilityBlock, Booking, Conflict, Resource, ServiceType, conflict};
@@ -324,6 +324,76 @@ async fn an_expired_document_flags_the_bookings_planned_after_it() {
         vec![s.early.booking_id(), s.late.booking_id()]
     );
     assert_eq!(s.t.tasks.with_key("scheduling.eligibility:").len(), 2);
+}
+
+/// Done when 3, the `wl-hr` side: `QualificationExpiring` flags the planned
+/// booking it names (an entry already running is not touched), once; a second
+/// delivery adds nothing.
+#[renox::test]
+async fn a_qualification_expiring_flags_the_planned_bookings_it_names() {
+    let s = scene().await;
+    s.licence_until(DOC, day(19));
+    let employee = EmployeeId(s.doctor.employee_id.expect("an employee"));
+    let event = QualificationExpiring {
+        employee,
+        qualification: None,
+        kind: LICENCE.to_owned(),
+        scope: Vec::new(),
+        expires_on: day(19),
+        days_left: 19,
+        affected: vec![
+            AffectedWork::of("booking.book", &Scene::planned(&s.late), false),
+            AffectedWork::of("booking.book", &Scene::planned(&s.early), true),
+            AffectedWork::of("invoice.issue", &Scene::planned(&s.beyond), false),
+        ],
+    };
+
+    s.t.state().emit(event.clone()).await.unwrap();
+    s.t.state().emit(event).await.unwrap();
+
+    assert!(s.reload(&s.late).await.conflict_eligibility);
+    assert!(!s.reload(&s.early).await.conflict_eligibility, "running");
+    assert!(!s.reload(&s.beyond).await.conflict_eligibility, "not ours");
+    assert_eq!(s.rows(&s.late).await.len(), 1);
+    assert_eq!(s.t.events.conflicts.all().len(), 1);
+    assert_eq!(s.t.tasks.with_key("scheduling.eligibility:").len(), 1);
+}
+
+/// `QualificationExpired` flags the planned bookings it names within the
+/// look-ahead; the booking it does not name stays, and one beyond the window
+/// is left to the nightly run.
+#[renox::test]
+async fn a_qualification_expired_flags_the_planned_bookings_it_names() {
+    let s = scene().await;
+    s.licence_until(DOC, day(-1));
+    let employee = EmployeeId(s.doctor.employee_id.expect("an employee"));
+
+    s.t.state()
+        .emit(QualificationExpired {
+            employee,
+            qualification: None,
+            kind: LICENCE.to_owned(),
+            scope: Vec::new(),
+            roles: Vec::new(),
+            expires_on: day(-1),
+            affected: vec![
+                AffectedWork::of("booking.book", &Scene::planned(&s.late), false),
+                AffectedWork::of("booking.book", &Scene::planned(&s.beyond), false),
+            ],
+        })
+        .await
+        .unwrap();
+
+    assert!(s.reload(&s.late).await.conflict_eligibility);
+    assert!(
+        !s.reload(&s.beyond).await.conflict_eligibility,
+        "named, but beyond the look-ahead: the nightly run takes it later"
+    );
+    assert!(!s.reload(&s.early).await.conflict_eligibility, "not named");
+    let events = s.t.events.conflicts.all();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].cause, ConflictCause::Eligibility);
+    assert_eq!(s.t.tasks.with_key("scheduling.eligibility:").len(), 1);
 }
 
 /// Done when 4: the renewed licence (valid to next year) is accepted; the
