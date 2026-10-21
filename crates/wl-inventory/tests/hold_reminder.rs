@@ -333,3 +333,34 @@ async fn the_location_beats_the_reason_and_the_reason_beats_the_default() {
             .contains(&(other_hold.subject(), vec![owner.id]))
     );
 }
+
+/// By default H is 24 hours: the first reminder after a day, the first
+/// escalation after two.
+#[renox::test]
+async fn the_default_is_a_reminder_after_a_day_and_an_escalation_after_two() {
+    let t = boot_with(WlInventory::new()).await;
+    let holder = t.holder("Hal").await;
+    let chef = t.releaser("Chef").await;
+    let (_fridge, hold) = fridge_hold(&t, &holder).await;
+
+    wait(&t, 23, 59);
+    t.app.run_scheduled(TASK).await.unwrap();
+    assert!(told(&t, REMINDER_NOTICE).is_empty());
+
+    wait(&t, 0, 1);
+    t.app.run_scheduled(TASK).await.unwrap();
+    assert_eq!(
+        told(&t, REMINDER_NOTICE),
+        vec![(hold.subject(), vec![chef.id])]
+    );
+    assert!(told(&t, ESCALATION_NOTICE).is_empty());
+
+    // After 48 hours the owner would be told; nobody holds the owner's role
+    // or the admin's here, so the escalation is counted and nobody is told.
+    wait(&t, 24, 0);
+    t.app.run_scheduled(TASK).await.unwrap();
+    assert_eq!(told(&t, REMINDER_NOTICE).len(), 2);
+    let kept = StockHold::find_or_404(t.db(), hold.id).await.unwrap();
+    assert_eq!(kept.escalations_sent, 1);
+    assert!(told(&t, ESCALATION_NOTICE).is_empty());
+}
