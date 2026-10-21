@@ -23,6 +23,10 @@ pub const DEFAULT_PACKAGE_EXTENSION_LIMIT: i64 = 1;
 /// The days after a sale within which goods can come back (§7: 14).
 pub const DEFAULT_RETURN_WINDOW_DAYS: i64 = 14;
 
+/// The channels whose orders wait for the seller to accept them (§7: website
+/// and portal).
+pub const DEFAULT_ACCEPTANCE_CHANNELS: &[&str] = &["website", "portal"];
+
 /// The lost reasons a lead can be closed with (§7: the starter list, always
 /// with *duplicate* and *spam or invalid*).
 pub const DEFAULT_LOST_REASONS: &[&str] = &[
@@ -71,6 +75,8 @@ pub struct SalesConfig {
     pub counter_sales_on_account: bool,
     /// The days after a sale within which goods can come back (§7: 14).
     pub return_window_days: i64,
+    /// The order channels that need the seller to accept an order (§7).
+    pub order_acceptance_channels: Vec<String>,
 }
 
 impl Default for SalesConfig {
@@ -92,6 +98,10 @@ impl Default for SalesConfig {
             package_seller_role: String::new(),
             counter_sales_on_account: false,
             return_window_days: DEFAULT_RETURN_WINDOW_DAYS,
+            order_acceptance_channels: DEFAULT_ACCEPTANCE_CHANNELS
+                .iter()
+                .map(|c| (*c).to_owned())
+                .collect(),
         }
     }
 }

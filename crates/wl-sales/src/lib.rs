@@ -32,6 +32,9 @@ pub mod policy;
 pub mod promo_code;
 pub mod report;
 pub mod sale_line;
+pub mod sales_order;
+pub mod sales_order_machine;
+pub mod sales_orders;
 pub mod seed;
 mod texts;
 pub mod voids;
@@ -57,6 +60,7 @@ pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
 pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
 pub use sale_line::SaleLine;
+pub use sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
 
 /// The campaign services under the names of the plan: `campaigns::delete`
 /// and `campaigns::run_daily`.
@@ -104,6 +108,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-sales/counter_sale.html",
         include_str!("../views/wl-sales/counter_sale.html"),
     ),
+    (
+        "wl-sales/sales_orders.html",
+        include_str!("../views/wl-sales/sales_orders.html"),
+    ),
+    (
+        "wl-sales/sales_order.html",
+        include_str!("../views/wl-sales/sales_order.html"),
+    ),
 ];
 
 /// The module's permissions (wl-sales §6).
@@ -130,6 +142,14 @@ pub mod permissions {
     pub const LEADS_MANAGE: &str = "leads.manage";
     /// Ring up and complete counter sales.
     pub const POS_SELL: &str = "pos.sell";
+    /// See sales orders.
+    pub const SALES_ORDERS_VIEW: &str = "sales_orders.view";
+    /// Enter, edit and submit sales orders.
+    pub const SALES_ORDERS_CREATE: &str = "sales_orders.create";
+    /// Accept or reject an order that waits for the seller.
+    pub const SALES_ORDERS_ACCEPT: &str = "sales_orders.accept";
+    /// Cancel a sales order.
+    pub const SALES_ORDERS_CANCEL: &str = "sales_orders.cancel";
 }
 
 /// The sales module. The host adds it with
@@ -241,6 +261,14 @@ impl WlSales {
         self
     }
 
+    /// The order channels that wait for the seller to accept an order (§7,
+    /// default `website` and `portal`).
+    pub fn order_acceptance_channels(mut self, channels: &[&str]) -> Self {
+        self.config.order_acceptance_channels =
+            channels.iter().map(|c| (*c).to_owned()).collect();
+        self
+    }
+
     /// The days after a sale within which goods can come back (§7, default
     /// 14).
     pub fn return_window_days(mut self, days: i64) -> Self {
@@ -276,7 +304,9 @@ impl Module for WlSales {
             .view_data::<pages::campaigns::FormPage>()
             .view_data::<pages::campaigns::ShowPage>()
             .view_data::<pages::counter_sales::IndexPage>()
-            .view_data::<pages::counter_sales::ShowPage>();
+            .view_data::<pages::counter_sales::ShowPage>()
+            .view_data::<pages::sales_orders::IndexPage>()
+            .view_data::<pages::sales_orders::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -302,6 +332,8 @@ impl Module for WlSales {
         app.model::<SaleLine>();
         app.model::<CounterSale>();
         app.model::<CounterSalePayment>();
+        app.model::<SalesOrder>();
+        app.model::<FulfilmentRecord>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
@@ -314,6 +346,9 @@ impl Module for WlSales {
         package_reopen::register(app);
         // The counter sale: its machine and the `CounterSaleCompleted` event.
         counter_sales::register(app);
+        // The sales order: its machine, its events and the kernel's
+        // `OrderFulfilment`.
+        sales_orders::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);
@@ -355,6 +390,14 @@ impl Module for WlSales {
                 .group("nav.app")
                 .order(51)
                 .permission(permissions::POS_SELL),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.sales_orders", "nav.sales_orders")
+                .icon("clipboard-list")
+                .group("nav.app")
+                .order(52)
+                .permission(permissions::SALES_ORDERS_VIEW),
         );
     }
 }

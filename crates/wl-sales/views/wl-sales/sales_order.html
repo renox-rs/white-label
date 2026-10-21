@@ -1,0 +1,42 @@
+{#- wl-sales: a sales order: its lines, its totals and the transitions the
+    viewer may run. Replace it with resources/views/wl-sales/sales_order.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="tx['orders.subtitle']" :back="route('wl_sales.sales_orders')" :back-label="tx['orders.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="can_edit">
+        <rx-action-sheet id="add-order-line" :label="tx['orders.add_line']" :action="route('wl_sales.sales_order_line', order.id)"
+                         :title="tx['orders.add_line']" :submit-label="tx['orders.add_line']" icon="plus">
+          <rx-input name="item_code" :label="tx['counter.item']" id="add-order-line-item" required/>
+          <rx-input name="description" :label="tx['counter.description']" id="add-order-line-description"/>
+          <rx-input name="quantity" :label="tx['counter.quantity']" id="add-order-line-quantity"/>
+          <rx-input name="unit_price" :label="tx['counter.unit_price']" id="add-order-line-price" required/>
+          <rx-checkbox name="loyalty_excluded" :label="tx['counter.loyalty_excluded']" id="add-order-line-excluded"/>
+        </rx-action-sheet>
+        <rx-confirm :id="'submit-order-' ~ order.id" :label="tx['orders.submit']" :action="route('wl_sales.sales_order_submit', order.id)" method="POST"
+                    :title="tx['orders.submit']" :message="tx['orders.submit_message']" :confirm-label="tx['orders.submit']" :cancel-label="tx['cancel']" icon="check"/>
+      </template>
+      <template rx-if="actions">
+        <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['counter.lines']" card>
+      <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['counter.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['orders.fulfilled']" hide-narrow>{{ line.fulfilled }}</rx-column>
+      <rx-column :label="tx['counter.total']">{{ line.gross }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['counter.no_lines']" icon="inbox"/></rx-slot>
+    </rx-table>
+    <rx-card :title="tx['counter.totals']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['counter.net']" :value="net"/>
+        <rx-entry :label="tx['counter.vat']" :value="vat"/>
+        <rx-entry :label="tx['counter.total']" :value="gross"/>
+        <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
+        <rx-entry :label="tx['orders.payment_mode']" :value="order.payment_mode"/>
+        <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>
