@@ -12,7 +12,10 @@ use std::time::Duration;
 
 use renox::chrono::{Duration as Days, NaiveDate};
 use renox::prelude::*;
-use wl_kernel::notify::{NotifyChannel, NotifyRecipient};
+use wl_kernel::notify::{
+    ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyChannel, NotifyRecipient,
+    OTP_TYPE_KEY,
+};
 use wl_kernel::sales::{LoyaltyAccountId, QuoteRedemption, discount_engine};
 use wl_kernel::{PartyId, Subject};
 use wl_sales::notices::LOYALTY_GIVEN_BACK;
@@ -338,6 +341,65 @@ async fn a_code_that_cannot_be_sent_refuses_the_redemption_and_the_sale_goes_on(
         .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
         .await;
     ask(&t, &next, 600, 303).await;
+}
+
+/// The give-up of the message `type_key` about `subject`, as wl-notify
+/// emits it when every channel failed.
+fn gave_up(type_key: &str, subject: Subject) -> MessageGaveUp {
+    MessageGaveUp {
+        message: MessageId(1),
+        type_key: type_key.to_owned(),
+        subject,
+        subject_label: None,
+        recipient: NotifyRecipient::Party { id: PartyId(M) },
+        gave_up_at: renox::db::now(),
+        contact_point: None,
+        channels_tried: vec![ChannelTried {
+            message: MessageId(1),
+            channel: NotifyChannel::Sms,
+            last_error_code: Some("500".to_owned()),
+            last_error: Some("no route".to_owned()),
+        }],
+        statutory: false,
+        reactions: vec![GiveUpReaction::None],
+        alternative_of: None,
+        contact_of: None,
+    }
+}
+
+#[renox::test]
+async fn a_code_that_gave_up_after_the_send_refuses_the_pending_redemption_and_the_sale_goes_on() {
+    let (t, shop, floor, m) = world(800, &[]).await;
+    let sale = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
+    ask(&t, &sale, 600, 303).await;
+    assert_eq!(
+        redemptions(&t, &sale.subject()).await[0].status,
+        RedemptionStatus::Pending
+    );
+    // Another message about the same sale giving up changes nothing.
+    t.state()
+        .emit(gave_up("sales.loyalty_expiry", sale.subject()))
+        .await
+        .unwrap();
+    assert_eq!(
+        redemptions(&t, &sale.subject()).await[0].status,
+        RedemptionStatus::Pending
+    );
+    // The one-time code itself could not be delivered after all.
+    t.state()
+        .emit(gave_up(OTP_TYPE_KEY, sale.subject()))
+        .await
+        .unwrap();
+    let refused = &redemptions(&t, &sale.subject()).await[0];
+    assert_eq!(refused.status, RedemptionStatus::Refused);
+    assert_eq!(refused.refusal.as_deref(), Some("code_not_sent"));
+    // The code no longer works, nothing is held, and the sale completes.
+    enter(&t, &sale, &shop.mail.code_for(&sale.subject()), 422).await;
+    assert_eq!(account(&t, &m).await.points_held, 0);
+    complete(&t, &sale, "21.00", 303).await;
+    assert!(movements(&t, &m, PointsKind::Redeem).await.is_empty());
 }
 
 #[renox::test]
