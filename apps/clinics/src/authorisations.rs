@@ -27,7 +27,7 @@ use renox::chrono::NaiveDate;
 use renox::db::{DateTime, Json};
 use renox::prelude::*;
 use renox::serde_json::json;
-use renox::state_machine::{TransitionError, Transitioned};
+use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::PartyId;
 use wl_kernel::documents::dubai_date;
 use wl_kernel::notify::{self, GROUP_BOOKINGS, NotificationTypeDef, NotifyChannel, NotifyRequest};
@@ -125,7 +125,7 @@ async fn run(
 ) -> Result<PriorAuthorisation> {
     let authorisation = PriorAuthorisation::find_or_404(&state.db, id).await?;
     input.by = Some(by.id);
-    authorisation
+    let _outcome = authorisation
         .transition(name)
         .by(by)
         .input(&input)
@@ -259,7 +259,7 @@ pub async fn consume(
         on: Some(dubai_date(at)),
         ..AuthInput::default()
     };
-    authorisation
+    let _outcome = authorisation
         .transition(name)
         .by_system()
         .input(&input)

@@ -17,6 +17,7 @@ tempfile = "3"
 # The real modules in the integration tests: scheduling (the bookings the
 # visits come from, check-in, cancel), payments (the stand-in gateway its
 # support brings) and HR (the practitioner licences behind `qualification_valid`).
+wl-parties = { path = "../../crates/wl-parties" }
 wl-scheduling = { path = "../../crates/wl-scheduling" }
 wl-payments = { path = "../../crates/wl-payments" }
 wl-hr = { path = "../../crates/wl-hr" }

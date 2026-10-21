@@ -15,7 +15,6 @@
 //! the visit later and add their own columns, not states.
 
 use renox::db::DateTime;
-use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 

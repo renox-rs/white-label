@@ -9,7 +9,7 @@
 //! cancellation before the check-in has no visit and does nothing here.
 
 use renox::prelude::*;
-use renox::state_machine::TransitionError;
+use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::parties::PARTY_SUBJECT_TYPE;
 use wl_kernel::scheduling::{

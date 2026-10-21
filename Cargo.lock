@@ -399,6 +399,7 @@ dependencies = [
  "tempfile",
  "wl-hr",
  "wl-kernel",
+ "wl-parties",
  "wl-payments",
  "wl-scheduling",
 ]
