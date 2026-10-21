@@ -1,0 +1,11 @@
+ALTER TABLE "wl_inventory_stock_holds" DROP COLUMN closed_at;
+ALTER TABLE "wl_inventory_stock_holds" DROP COLUMN cancelled_by;
+ALTER TABLE "wl_inventory_stock_holds" DROP COLUMN cancel_reason;
+ALTER TABLE "wl_inventory_stock_holds" DROP COLUMN placed_at;
+ALTER TABLE "wl_inventory_stock_holds" DROP COLUMN scope_id;
+ALTER TABLE "wl_inventory_stock_holds" DROP COLUMN scope_type;
+DROP INDEX IF EXISTS "wl_inventory_stock_hold_lines_status";
+ALTER TABLE "wl_inventory_stock_hold_lines" DROP COLUMN supplier_return_id;
+ALTER TABLE "wl_inventory_stock_hold_lines" DROP COLUMN scope_id;
+ALTER TABLE "wl_inventory_stock_hold_lines" DROP COLUMN scope_type;
+ALTER TABLE "wl_inventory_stock_hold_lines" DROP COLUMN status;

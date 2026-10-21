@@ -6,10 +6,13 @@
 //!
 //! ```text
 //! [*] --place--> open --add_lines--> open
+//!                  |--close (system, last line decided)--> closed
+//!                  |--cancel (lots.release, nothing decided)--> cancelled
 //! ```
 //!
 //! This file has the rows and the machine; `place`, the notices and the
-//! system service are in [`crate::hold_service`].
+//! system service are in [`crate::hold_service`], the decisions on the lines
+//! in [`crate::hold_line`] and [`crate::hold_decide`].
 //!
 //! - `place` creates the hold open, with its lines (item, location, lot,
 //!   quantity) made from the balances in scope.
@@ -18,8 +21,12 @@
 //!   an open hold on a location): the quantity moved in joins the hold as new
 //!   lines with the hold's reason and reference.
 //!
-//! `close`, `cancel` and the decisions on the lines come with the issue that
-//! decides them (BL-STK-12); the states are declared.
+//! - `close` (system): runs when the last line is decided and its effect
+//!   posted ([`crate::hold_decide::settle`]); `StockHoldClosed` follows.
+//! - `cancel` (`lots.release` in the hold's scope, a reason): a hold placed
+//!   in error, before any line is decided; never a recall hold. The held
+//!   quantity is available again and a lot goes back to the status it had
+//!   ([`crate::hold_decide::cancel`]).
 //!
 //! Decisions: the reason is one of [`REASONS`]; a reference is required (§4
 //! guard "reason and reference"); a hold on a location with no items named
@@ -28,14 +35,16 @@
 //! is; the balance of an `expired` lot is a line too and the lot stays
 //! `expired`.
 
-use renox::db::Executor;
+use renox::auth::permissions::Scope;
+use renox::db::{Executor, Transaction};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
-use wl_kernel::inventory::STOCK_HOLD_SUBJECT_TYPE;
+use wl_kernel::inventory::{STOCK_HOLD_LINE_SUBJECT_TYPE, STOCK_HOLD_SUBJECT_TYPE};
 use wl_kernel::numbering::{Reset, Series};
 
+use crate::location::{Location, scope_of};
 use crate::permissions;
 use crate::texts::english;
 
@@ -44,6 +53,12 @@ pub const ADD_LINES: &str = "add_lines";
 
 /// The system's `add_lines_by_system` transition's name.
 pub const ADD_LINES_BY_SYSTEM: &str = "add_lines_by_system";
+
+/// The system's `close` transition's name.
+pub const CLOSE: &str = "close";
+
+/// The `cancel` transition's name.
+pub const CANCEL: &str = "cancel";
 
 /// The reasons a hold can have (§7 *Stock hold reasons*).
 pub const REASONS: [&str; 5] = ["recall", "quality", "temperature", "complaint", "other"];
@@ -113,6 +128,18 @@ pub struct StockHold {
     pub status: HoldStatus,
     /// The user who placed it; `None` for the system.
     pub placed_by: Option<i64>,
+    /// The type of the scope of the location, for a hold on a location.
+    pub scope_type: Option<String>,
+    /// The id of the scope of the location, for a hold on a location.
+    pub scope_id: Option<i64>,
+    /// When it was placed.
+    pub placed_at: Option<DateTime>,
+    /// Why it was cancelled.
+    pub cancel_reason: Option<String>,
+    /// The user who cancelled it.
+    pub cancelled_by: Option<i64>,
+    /// When it closed or was cancelled.
+    pub closed_at: Option<DateTime>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -120,6 +147,12 @@ pub struct StockHold {
 }
 
 impl StockHold {
+    /// Who may cancel it: the scope of the location for a hold on a
+    /// location, everywhere for a hold on whole lots.
+    pub fn scope(&self) -> Scope {
+        scope_of(self.scope_type.as_deref(), self.scope_id)
+    }
+
     /// The hold as a [`Subject`]: `inventory.stock_hold:3`.
     pub fn subject(&self) -> Subject {
         Subject::new(STOCK_HOLD_SUBJECT_TYPE, self.id)
@@ -134,9 +167,30 @@ impl StockHold {
     }
 }
 
+/// Where a held line stands (a decision waiting for its approval leaves it
+/// `undecided`).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum HoldLineStatus {
+    /// Waiting for a decision; the quantity is held.
+    #[default]
+    Undecided,
+    /// Decided `release`: available again (terminal).
+    Released,
+    /// Decided `discard`: posted as wastage (terminal).
+    Discarded,
+    /// Decided `return_to_supplier`: in quarantine, on a draft return
+    /// (terminal).
+    ReturnedToSupplier,
+}
+
 /// One held quantity: an item at a location, of a lot when it is tracked.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_inventory_stock_hold_lines", index(stock_hold_id))]
+#[model(
+    table = "wl_inventory_stock_hold_lines",
+    state_machine,
+    index(stock_hold_id),
+    index(status)
+)]
 pub struct StockHoldLine {
     /// The primary key.
     pub id: i64,
@@ -150,6 +204,14 @@ pub struct StockHoldLine {
     pub lot_id: Option<i64>,
     /// The quantity held, in thousandths of the base unit.
     pub quantity_milli: i64,
+    /// The lifecycle state; changed only by a transition.
+    pub status: HoldLineStatus,
+    /// The type of the scope of the location (who may decide the line).
+    pub scope_type: Option<String>,
+    /// The id of the scope of the location.
+    pub scope_id: Option<i64>,
+    /// The draft return a `return_to_supplier` line was added to.
+    pub supplier_return_id: Option<i64>,
     /// `release`, `discard` or `return_to_supplier` once decided.
     pub outcome: Option<String>,
     /// The user who decided it.
@@ -160,6 +222,47 @@ pub struct StockHoldLine {
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
     pub updated_at: Option<DateTime>,
+}
+
+impl StockHoldLine {
+    /// The line as a [`Subject`]: `inventory.stock_hold_line:7`.
+    pub fn subject(&self) -> Subject {
+        Subject::new(STOCK_HOLD_LINE_SUBJECT_TYPE, self.id)
+    }
+
+    /// Who may decide it: the scope of its location.
+    pub fn scope(&self) -> Scope {
+        scope_of(self.scope_type.as_deref(), self.scope_id)
+    }
+}
+
+/// Inserts a line for `quantity_milli` of `item_id` (of `lot_id`) at
+/// `location_id` into hold `hold_id`, with the scope of the location.
+///
+/// # Errors
+///
+/// A database error.
+pub(crate) async fn new_line(
+    tx: &mut Transaction,
+    hold_id: i64,
+    item_id: i64,
+    location_id: i64,
+    lot_id: Option<i64>,
+    quantity_milli: i64,
+) -> Result<StockHoldLine> {
+    let location = Location::find_or_404(&mut *tx, location_id).await?;
+    let mut row = StockHoldLine {
+        stock_hold_id: hold_id,
+        item_id,
+        location_id,
+        lot_id,
+        quantity_milli,
+        scope_type: location.scope_type.clone(),
+        scope_id: location.scope_id,
+        ..StockHoldLine::default()
+    };
+    row.insert(&mut *tx).await?;
+    Ok(row)
 }
 
 /// An item a hold on a location is limited to.
@@ -202,6 +305,43 @@ pub struct AddLinesInput {
 
 fn input(ctx: &TransitionCtx) -> Option<AddLinesInput> {
     ctx.input_as::<AddLinesInput>().ok()
+}
+
+/// What a `close` or `cancel` run carries to its guards.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SettleInput {
+    /// The lines still undecided.
+    pub undecided: i64,
+    /// The lines decided already.
+    pub decided: i64,
+}
+
+fn settle_input(ctx: &TransitionCtx) -> Option<SettleInput> {
+    ctx.input_as::<SettleInput>().ok()
+}
+
+/// The effect of `close` and `cancel`: when it ended, and for a cancel why
+/// and by whom (columns other than the status).
+async fn ended_in(
+    tx: &mut Transaction,
+    id: i64,
+    reason: Option<String>,
+    by: Option<i64>,
+) -> Result {
+    let now = renox::db::now();
+    StockHold::query()
+        .where_(StockHold::ID.eq(id))
+        .update(
+            &mut *tx,
+            &[
+                ("closed_at", &Some(now)),
+                ("cancel_reason", &reason),
+                ("cancelled_by", &by),
+                ("updated_at", &now),
+            ],
+        )
+        .await?;
+    Ok(())
 }
 
 /// The two `add_lines` transitions: the user's and the system's.
@@ -261,15 +401,15 @@ fn add_lines_rules(transition: Transition<StockHold>) -> Transition<StockHold> {
             let lines = input(ctx).map(|input| input.lines).unwrap_or_default();
             Box::pin(async move {
                 for line in lines {
-                    let mut row = StockHoldLine {
-                        stock_hold_id: hold_id,
-                        item_id: line.item_id,
-                        location_id: line.location_id,
-                        lot_id: line.lot_id,
-                        quantity_milli: line.quantity_milli,
-                        ..StockHoldLine::default()
-                    };
-                    row.insert(&mut *tx).await?;
+                    new_line(
+                        &mut *tx,
+                        hold_id,
+                        line.item_id,
+                        line.location_id,
+                        line.lot_id,
+                        line.quantity_milli,
+                    )
+                    .await?;
                 }
                 Ok(())
             })
@@ -302,6 +442,63 @@ impl StateMachine for StockHold {
                     .label("Add lines (moved in)")
                     .system(),
             ))
+            .transition(
+                Transition::new(CLOSE)
+                    .label("Close")
+                    .tone("success")
+                    .system()
+                    .from([Open])
+                    .to(Closed)
+                    .guard("every_line_decided", |_hold: &StockHold, ctx| {
+                        let open = settle_input(ctx).is_none_or(|input| input.undecided > 0);
+                        Box::pin(async move {
+                            if open {
+                                Err(english("wl_inventory.hold.lines_undecided").to_owned())
+                            } else {
+                                Ok(())
+                            }
+                        })
+                    })
+                    .effect(|hold: &StockHold, _ctx, tx| {
+                        let id = hold.id;
+                        Box::pin(async move { ended_in(tx, id, None, None).await })
+                    }),
+            )
+            .transition(
+                Transition::new(CANCEL)
+                    .label("Cancel")
+                    .tone("danger")
+                    .permission_in(permissions::LOTS_RELEASE, |hold: &StockHold| hold.scope())
+                    .reason_required()
+                    .from([Open])
+                    .to(Cancelled)
+                    .guard("not_a_recall", |hold: &StockHold, _ctx| {
+                        let recall = hold.reason == "recall";
+                        Box::pin(async move {
+                            if recall {
+                                Err(english("wl_inventory.hold.recall_cannot_cancel").to_owned())
+                            } else {
+                                Ok(())
+                            }
+                        })
+                    })
+                    .guard("no_line_decided", |_hold: &StockHold, ctx| {
+                        let decided = settle_input(ctx).is_none_or(|input| input.decided > 0);
+                        Box::pin(async move {
+                            if decided {
+                                Err(english("wl_inventory.hold.line_decided").to_owned())
+                            } else {
+                                Ok(())
+                            }
+                        })
+                    })
+                    .effect(|hold: &StockHold, ctx, tx| {
+                        let id = hold.id;
+                        let reason = ctx.reason().map(str::to_owned);
+                        let by = ctx.actor().map(|user| user.id);
+                        Box::pin(async move { ended_in(tx, id, reason, by).await })
+                    }),
+            )
     }
 }
 /// The lines of `hold`, oldest first.
@@ -351,6 +548,24 @@ mod tests {
             user.guard_names(),
             ["location_scope", "item_in_scope", "quantity_moved_in"]
         );
+    }
+
+    #[test]
+    fn a_hold_closes_by_itself_and_is_cancelled_by_a_decider() {
+        let machine = StockHold::machine();
+        let close = machine.find(CLOSE).expect("close");
+        assert!(close.is_system());
+        assert_eq!(close.from_states(), ["open"]);
+        assert_eq!(close.to_state(), Some("closed"));
+        assert_eq!(close.guard_names(), ["every_line_decided"]);
+        let cancel = machine.find(CANCEL).expect("cancel");
+        assert!(!cancel.is_system());
+        assert_eq!(cancel.to_state(), Some("cancelled"));
+        assert_eq!(cancel.guard_names(), ["not_a_recall", "no_line_decided"]);
+        for state in ["closed", "cancelled"] {
+            let ended = machine.states().iter().find(|s| s.name == state);
+            assert!(ended.is_some_and(|s| s.terminal), "{state}");
+        }
     }
 
     #[test]

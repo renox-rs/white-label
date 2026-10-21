@@ -73,6 +73,10 @@ impl Default for ScoreSettings {
 /// default (`STK.RUL.06`).
 pub const DEFAULT_PENDING_ALERT_HOURS: i64 = 24;
 
+/// The hold reasons whose release needs a second person by default (§7,
+/// `STK.ACL.05`).
+pub const DEFAULT_SECOND_PERSON_REASONS: &[&str] = &["recall"];
+
 /// The rejection reasons by default (§7).
 pub const DEFAULT_REASONS: &[&str] = &[
     "temperature",
@@ -129,9 +133,20 @@ pub struct InventoryConfig {
     /// the storekeeper gets a task and the manager is told (`STK.RUL.06`,
     /// H = 24).
     pub pending_alert_hours: i64,
+    /// The hold reasons whose release (a hold line decided `release`) needs
+    /// a second holder of `lots.release` (`STK.ACL.05`, default `recall`).
+    pub hold_second_person_reasons: Vec<String>,
 }
 
 impl InventoryConfig {
+    /// Whether releasing a line of a hold with `reason` needs a second
+    /// person.
+    pub fn release_needs_second_person(&self, reason: &str) -> bool {
+        self.hold_second_person_reasons
+            .iter()
+            .any(|listed| listed == reason)
+    }
+
     /// The reason with `code`, if it is configured.
     pub fn reason(&self, code: &str) -> Option<&RejectionReason> {
         self.rejection_reasons.iter().find(|r| r.code == code)
@@ -150,6 +165,10 @@ impl Default for InventoryConfig {
             score: ScoreSettings::default(),
             preferred_change_needs_approval: true,
             pending_alert_hours: DEFAULT_PENDING_ALERT_HOURS,
+            hold_second_person_reasons: DEFAULT_SECOND_PERSON_REASONS
+                .iter()
+                .map(|reason| (*reason).to_owned())
+                .collect(),
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {
@@ -186,5 +205,7 @@ mod tests {
         assert_eq!(config.score.min_receipts, 3);
         assert!(config.preferred_change_needs_approval);
         assert_eq!(config.pending_alert_hours, 24);
+        assert!(config.release_needs_second_person("recall"));
+        assert!(!config.release_needs_second_person("quality"));
     }
 }

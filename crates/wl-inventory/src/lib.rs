@@ -7,6 +7,7 @@ pub mod chase;
 pub mod config;
 mod events;
 pub mod goods_receipt;
+pub mod hold_line;
 pub mod hold_service;
 pub mod item;
 pub mod item_supplier;
@@ -72,7 +73,9 @@ pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
 pub use shortage_alert::ShortageAlert;
 pub use stock_count::{StockCount, StockCountStatus};
-pub use stock_hold::{HoldScope, HoldStatus, StockHold, StockHoldItem, StockHoldLine};
+pub use stock_hold::{
+    HoldLineStatus, HoldScope, HoldStatus, StockHold, StockHoldItem, StockHoldLine,
+};
 pub use supplier_return::{
     RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome,
 };
@@ -201,6 +204,14 @@ impl WlInventory {
         self
     }
 
+    /// The hold reasons whose release needs a second holder of `lots.release`
+    /// (default `recall`; `STK.ACL.05`). Other holds are released by one.
+    pub fn hold_second_person_reasons(mut self, reasons: &[&str]) -> Self {
+        self.config.hold_second_person_reasons =
+            reasons.iter().map(|reason| (*reason).trim().to_lowercase()).collect();
+        self
+    }
+
     /// The settings of the supplier score: weights, caps, grace days, window,
     /// minimum receipts and the threshold (defaults in [`ScoreSettings`]).
     pub fn supplier_score(mut self, settings: ScoreSettings) -> Self {
@@ -303,6 +314,7 @@ impl Module for WlInventory {
         renox::state_machine::register::<Lot>();
         renox::state_machine::register::<Transfer>();
         renox::state_machine::register::<StockHold>();
+        renox::state_machine::register::<StockHoldLine>();
         renox::state_machine::register::<PendingIssue>();
         renox::state_machine::register::<SupplierReturn>();
         renox::state_machine::register::<LandedCost>();
@@ -416,6 +428,27 @@ impl Module for WlInventory {
         wl_kernel::PolicyDefault::new(pending_issue::ACTION)
             .amount_above(self.config.wastage_approval_fils)
             .step_permission(permissions::STOCK_APPROVE)
+            .register();
+        // Each line of a hold is decided by a holder of `lots.release`. A
+        // release for a listed reason (`recall`, `STK.ACL.05`) and a discard
+        // above the wastage value (`STK.ACL.02`) wait for a second holder,
+        // never the decider; the kernel runs `release_approved` or
+        // `discard_approved` on the last yes.
+        wl_kernel::SubjectMachine::of::<StockHoldLine>(
+            wl_kernel::inventory::STOCK_HOLD_LINE_SUBJECT_TYPE,
+        )
+        .action(hold_line::RELEASE, hold_line::RELEASE_ACTION)
+        .action(hold_line::DISCARD, hold_line::DISCARD_ACTION)
+        .scope(|line: &StockHoldLine| line.scope())
+        .register();
+        wl_kernel::PolicyDefault::new(hold_line::RELEASE_ACTION)
+            .amount_above(0)
+            .input_key(hold_line::SECOND_PERSON_KEY)
+            .step_permission(permissions::LOTS_RELEASE)
+            .register();
+        wl_kernel::PolicyDefault::new(hold_line::DISCARD_ACTION)
+            .amount_above(self.config.wastage_approval_fils)
+            .step_permission(permissions::LOTS_RELEASE)
             .register();
         events::register(app);
         // `STK.RUL.08`: the notice type and the daily chase of the returns

@@ -35,7 +35,7 @@ use crate::permissions;
 use crate::stock_hold::{
     ADD_LINES, ADD_LINES_BY_SYSTEM, AddLinesInput, AddedLine, HoldScope, HoldStatus, LINES_NOTICE,
     PLACED_NOTICE, REASONS, STOCK_HOLD_SERIES, StockHold, StockHoldItem, StockHoldLine, lines_of,
-    scope_items,
+    new_line, scope_items,
 };
 use crate::texts::{english, said};
 
@@ -318,6 +318,15 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
     if lines.is_empty() {
         return Err(refused(said("wl_inventory.hold.no_balance", &[])));
     }
+    // The scope of the location of a hold on a location decides who may
+    // cancel it.
+    let (scope_type, scope_id) = match location_id {
+        Some(id) => {
+            let location = Location::find_or_404(&mut tx, id).await?;
+            (location.scope_type, location.scope_id)
+        }
+        None => (None, None),
+    };
     let mut hold = StockHold {
         number: Some(
             STOCK_HOLD_SERIES
@@ -331,19 +340,22 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
         location_id,
         status: HoldStatus::Open,
         placed_by: new.by,
+        scope_type,
+        scope_id,
+        placed_at: Some(renox::db::now()),
         ..StockHold::default()
     };
     hold.insert(&mut tx).await?;
     for added in &lines {
-        let mut row = StockHoldLine {
-            stock_hold_id: hold.id,
-            item_id: added.item_id,
-            location_id: added.location_id,
-            lot_id: added.lot_id,
-            quantity_milli: added.quantity_milli,
-            ..StockHoldLine::default()
-        };
-        row.insert(&mut tx).await?;
+        new_line(
+            &mut tx,
+            hold.id,
+            added.item_id,
+            added.location_id,
+            added.lot_id,
+            added.quantity_milli,
+        )
+        .await?;
     }
     for item_id in &item_ids {
         let mut row = StockHoldItem {

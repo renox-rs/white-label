@@ -5,9 +5,10 @@
 //! - *on hand*: what arrived less what left;
 //! - *reserved*: set aside for a draft Return to supplier (the other
 //!   reservations come with the issues that build them);
-//! - *on hold*: blocked by an open stock hold: the lines of an open hold on
-//!   whole lots follow the lot wherever it is, the lines of an open hold on
-//!   a location block that balance only;
+//! - *on hold*: blocked by an open stock hold: the undecided lines of an open
+//!   hold on whole lots follow the lot wherever it is, those of an open hold
+//!   on a location block that balance only (a line decided `release`,
+//!   `discard` or `return_to_supplier` no longer holds anything);
 //! - *available*: on hand less reserved less on hold, never below zero.
 //!
 //! [`candidates`] lists where a picking, an issue or an automatic
@@ -25,7 +26,7 @@ use renox::prelude::*;
 use crate::item::Item;
 use crate::lot::{Lot, LotStatus};
 use crate::movement::StockMovement;
-use crate::stock_hold::{HoldScope, HoldStatus, StockHold, StockHoldLine};
+use crate::stock_hold::{HoldLineStatus, HoldScope, HoldStatus, StockHold, StockHoldLine};
 use crate::supplier_return::{ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine};
 
 /// The balance of an item at a location (and lot), in thousandths of the
@@ -198,6 +199,7 @@ pub async fn held_at<'c>(
         let lines = StockHoldLine::query()
             .where_(StockHoldLine::STOCK_HOLD_ID.eq(hold.id))
             .where_(StockHoldLine::ITEM_ID.eq(item_id))
+            .where_(StockHoldLine::STATUS.eq(HoldLineStatus::Undecided))
             .get(conn.reborrow())
             .await?;
         match hold.scope_kind {
