@@ -163,6 +163,7 @@ pub fn sales_for(client_app: &str) -> WlSales {
         PROPERTY => module.over_budget_approval(true).campaign_required_for(&[]),
         super::construction_seed::CONSTRUCTION => super::construction_seed::sales(module),
         "accounting" => super::accounting_seed::sales_for(client_app),
+        super::clinics_seed::CLINICS => super::clinics_seed::sales(module),
         _ => module,
     }
 }

@@ -101,6 +101,11 @@ pub const PRACTITIONER: &str = cln::PRACTITIONER_ROLE;
 /// authorisations and is asked to request a new one when one stops covering
 /// an appointment (`CLN.RUL.07`, `CLN.RUL.09`).
 pub const BILLING_COORDINATOR: &str = cln::BILLING_COORDINATOR_ROLE;
+/// The call-centre agent (05 §3.1): books and reschedules for all branches
+/// and follows up leads.
+pub const CALL_CENTRE_AGENT: &str = cln::CALL_CENTRE_ROLE;
+/// The nurse or assistant (05 §3.1): records the consumables used.
+pub const NURSE: &str = cln::NURSE_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
@@ -311,6 +316,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::RECALLS_TRACE,
             cln::RECALLS_NOTIFY,
             cln::RECALLS_CALL,
+            cln::PERMITS_VIEW,
+            cln::PERMITS_MANAGE,
+            cln::APPOINTMENTS_CALL,
             inventory::RECALLS_MANAGE,
             con::PROJECTS_VIEW,
             con::PROJECTS_MANAGE,
@@ -694,6 +702,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::VISITS_VIEW,
             cln::MISSED_WINDOW_BILLING,
             cln::RECALLS_TRACE,
+            // The recall owner (05 §7.2): opens a recall, decides the lines of
+            // a hold, and approves the advertising permit of a campaign.
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_HOLD,
+            inventory::LOTS_RELEASE,
+            inventory::RECALLS_MANAGE,
+            cln::PERMITS_VIEW,
+            cln::PERMITS_MANAGE,
         ],
     ),
     (
@@ -805,6 +822,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         MARKETING,
         &[
+            cln::PERMITS_VIEW,
             sales::CAMPAIGNS_VIEW,
             sales::CAMPAIGNS_MANAGE,
             sales::SEGMENTS_MANAGE,
@@ -815,6 +833,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         MARKETING_MANAGER,
         &[
+            cln::PERMITS_VIEW,
             sales::CAMPAIGNS_VIEW,
             sales::CAMPAIGNS_MANAGE,
             sales::CAMPAIGNS_COSTS_MANAGE,
@@ -846,6 +865,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::RECALLS_TRACE,
             cln::RECALLS_NOTIFY,
             cln::RECALLS_CALL,
+            cln::APPOINTMENTS_CALL,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_HOLD,
+            inventory::LOTS_RELEASE,
             invoices::PAYER_BILLS_VIEW,
             invoices::PAYER_BILLS_WRITE_OFF,
         ],
@@ -885,7 +909,23 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::COVERAGE_RECORD,
             cln::CHARGES_DESK,
             cln::RECALLS_CALL,
+            cln::APPOINTMENTS_CALL,
         ],
+    ),
+    (
+        CALL_CENTRE_AGENT,
+        &[
+            scheduling::VIEW,
+            scheduling::MANAGE,
+            cln::VISITS_VIEW,
+            cln::APPOINTMENTS_CALL,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
+        ],
+    ),
+    (
+        NURSE,
+        &[scheduling::VIEW, cln::VISITS_VIEW, cln::CHARGES_DESK],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),
     (MEMBER, &[]),

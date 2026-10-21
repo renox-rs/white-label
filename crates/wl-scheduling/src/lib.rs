@@ -10,7 +10,7 @@ pub mod deposit;
 pub mod eligibility;
 pub mod events;
 pub mod links;
-mod notices;
+pub mod notices;
 pub mod pages;
 pub mod prepaid;
 pub mod prepayment;
@@ -188,6 +188,11 @@ impl WlScheduling {
             .extra_reason_codes
             .push((code.to_owned(), initiated_by));
         self
+    }
+
+    /// The module's settings, as the builder calls left them.
+    pub fn config(&self) -> &SchedulingConfig {
+        &self.config
     }
 }
 

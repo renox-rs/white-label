@@ -29,10 +29,6 @@ use wl_kernel::documents::today;
 use crate::permissions;
 use crate::texts::english;
 
-/// The code the guard answers when a campaign that promotes services has no
-/// valid permit.
-pub const GUARD_CODE: &str = "advertising_permit";
-
 /// The audit action of a recorded permit.
 pub const RECORDED: &str = "clinics.permit_recorded";
 
@@ -74,6 +70,30 @@ pub enum Problem {
 }
 
 impl Problem {
+    /// The code the guard answers for this problem (`advertising_permit_`
+    /// then the problem): kept as the reason of a broadcast that is not
+    /// sent.
+    pub fn code(self) -> &'static str {
+        match self {
+            Problem::Missing => "advertising_permit_missing",
+            Problem::NoNumber => "advertising_permit_no_number",
+            Problem::NoValidity => "advertising_permit_no_validity",
+            Problem::Lapsed => "advertising_permit_lapsed",
+        }
+    }
+
+    /// The problem a [`code`](Problem::code) stands for.
+    pub fn from_code(code: &str) -> Option<Problem> {
+        [
+            Problem::Missing,
+            Problem::NoNumber,
+            Problem::NoValidity,
+            Problem::Lapsed,
+        ]
+        .into_iter()
+        .find(|p| p.code() == code)
+    }
+
     /// The words for staff.
     pub fn message(self) -> String {
         let key = match self {
@@ -280,6 +300,20 @@ mod tests {
             permit("AD-1", None).problem_on(day),
             Some(Problem::NoValidity)
         );
+    }
+
+    #[test]
+    fn every_problem_has_a_code_that_names_it_again() {
+        for problem in [
+            Problem::Missing,
+            Problem::NoNumber,
+            Problem::NoValidity,
+            Problem::Lapsed,
+        ] {
+            assert_eq!(Problem::from_code(problem.code()), Some(problem));
+            assert!(!problem.message().is_empty());
+        }
+        assert_eq!(Problem::from_code("something_else"), None);
     }
 
     #[test]

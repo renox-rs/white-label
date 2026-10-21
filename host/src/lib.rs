@@ -144,6 +144,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::negative_flow::register_block_effects(&client_app);
     app::accounting_seed::register_block_effects(&client_app);
     app::accounting_seed::register_integrations(&client_app);
+    // The connections of the Clinics client and their manual fallbacks
+    // (BL-CLN-15).
+    app::clinics_seed::register_integrations(&client_app);
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
@@ -269,7 +272,7 @@ fn enable(
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
-            let module = WlNotify::new();
+            let module = app::clinics_seed::notify_for(client_app);
             Ok(app.module(match tuning.notify.take() {
                 Some(tune) => tune(module),
                 None => module,
