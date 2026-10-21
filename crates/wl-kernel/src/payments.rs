@@ -979,6 +979,104 @@ pub struct RefundFailed {
 
 impl Event for RefundFailed {}
 
+/// The subject type of a payment link, for [`Subject`] references.
+pub const PAYMENT_LINK_SUBJECT_TYPE: &str = "payments.payment_link";
+
+/// Why an online payment failed (wl-payments §4 `fail`).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum PaymentFailureKind {
+    /// The gateway declined it; the reason is the gateway's.
+    #[default]
+    Declined,
+    /// The payer cancelled or let the hosted session expire.
+    Abandoned,
+    /// The gateway gave no final answer within the timeout (`FIN.RUL.19`).
+    Timeout,
+}
+
+/// An online payment failed (`fail`). The payment link stays `open` so the
+/// party can retry; a subscription retries its charge (`FIN.RUL.06`); a
+/// prepaid booking or order is not confirmed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentFailed {
+    /// The payment.
+    pub payment: PaymentId,
+    /// Who was paying.
+    pub party: PartyId,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// Why, as a kind.
+    pub kind: PaymentFailureKind,
+    /// The gateway's reason, or `timeout` / `abandoned` in words.
+    pub reason: String,
+    /// The subscription it was a charge for, if any.
+    pub subscription: Option<Subject>,
+    /// The payment link it was paid through (`payments.payment_link`), if any.
+    pub payment_link: Option<Subject>,
+    /// The record paid in advance for (a booking, an order), if any.
+    pub prepaid: Option<Subject>,
+}
+
+impl Event for PaymentFailed {}
+
+/// A payment link expired unpaid (`expire`): wl-scheduling releases an unpaid
+/// booking hold.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentLinkExpired {
+    /// The payment link (`payments.payment_link`).
+    pub payment_link: Subject,
+    /// Who was asked to pay.
+    pub party: PartyId,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The record paid in advance for (a booking, an order), if any.
+    pub prepaid: Option<Subject>,
+}
+
+impl Event for PaymentLinkExpired {}
+
+/// Whether the record a payment was made in advance for still waits for the
+/// money. The owner of the record (wl-scheduling for a booking, wl-sales for
+/// an order) provides it. A prepaid subject is **not** active once it is
+/// cancelled, rejected, or its slot is gone (the booking hold was released,
+/// for example on [`PaymentLinkExpired`]); wl-payments adds "already paid by
+/// another payment" itself. Without a provider every subject counts as
+/// active, so no refund is approved on a guess.
+pub trait PrepaidSubjects: Send + Sync + 'static {
+    /// Whether `subject` can still take the money of a payment.
+    fn is_active<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+    ) -> PaymentFuture<'a, bool> {
+        Box::pin(async { Ok(true) })
+    }
+}
+
+/// The prepaid subjects when no module provides them: all are active.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPrepaidSubjects;
+
+impl PrepaidSubjects for NoPrepaidSubjects {}
+
+/// Makes `subjects` the app's [`PrepaidSubjects`]; the module that owns
+/// prepaid records calls it in `register`.
+pub fn provide_prepaid_subjects(app: &mut Registry, subjects: impl PrepaidSubjects) {
+    let subjects: Arc<dyn PrepaidSubjects> = Arc::new(subjects);
+    app.provide(subjects);
+}
+
+/// The app's [`PrepaidSubjects`], or [`NoPrepaidSubjects`] when none is
+/// provided.
+pub fn prepaid_subjects(state: &AppState) -> Arc<dyn PrepaidSubjects> {
+    match state.provided::<Arc<dyn PrepaidSubjects>>() {
+        Some(subjects) => Arc::clone(&subjects),
+        None => Arc::new(NoPrepaidSubjects),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1276,5 +1374,30 @@ mod tests {
         assert_eq!(json["outgoing_payment"], renox::serde_json::Value::Null);
         let back: RefundFailed = renox::serde_json::from_value(json).unwrap();
         assert_eq!(back, e);
+    }
+    #[test]
+    fn a_payment_failure_is_declined_abandoned_or_a_timeout() {
+        let kinds: Vec<_> = PaymentFailureKind::ALL.iter().map(|k| k.as_str()).collect();
+        assert_eq!(kinds, ["declined", "abandoned", "timeout"]);
+        assert_eq!(PAYMENT_LINK_SUBJECT_TYPE, "payments.payment_link");
+    }
+
+    #[test]
+    fn the_failed_and_expired_events_carry_the_link_and_the_prepaid_record() {
+        let failed = PaymentFailed {
+            payment: PaymentId(4),
+            party: PartyId(2),
+            amount: 25_000,
+            kind: PaymentFailureKind::Timeout,
+            reason: "timeout".into(),
+            subscription: None,
+            payment_link: Some(Subject::new(PAYMENT_LINK_SUBJECT_TYPE, 9)),
+            prepaid: Some(Subject::new("scheduling.booking", 3)),
+        };
+        let json = renox::serde_json::to_value(&failed).unwrap();
+        assert_eq!(json["kind"], "timeout");
+        assert_eq!(json["payment_link"]["subject_id"], 9);
+        let back: PaymentFailed = renox::serde_json::from_value(json).unwrap();
+        assert_eq!(back, failed);
     }
 }

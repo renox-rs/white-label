@@ -169,8 +169,9 @@ pub use parties::{
 };
 pub use payments::{
     AllocationTarget, BankPayment, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments,
-    PaymentId, PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed, PaymentSource,
-    PaymentStatus, PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
+    NoPrepaidSubjects, PAYMENT_LINK_SUBJECT_TYPE, PaymentFailed, PaymentFailureKind, PaymentId,
+    PaymentLinkExpired, PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed,
+    PaymentSource, PaymentStatus, PaymentSummary, PrepaidSubjects, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
     RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
     UnpaidRefund,
 };
