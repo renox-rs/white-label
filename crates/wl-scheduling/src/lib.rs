@@ -5,6 +5,7 @@ pub mod booking;
 pub mod booking_machine;
 pub mod config;
 pub mod events;
+pub mod links;
 pub mod pages;
 pub mod prepaid;
 pub mod refusal;
@@ -37,6 +38,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-scheduling/booking.html",
         include_str!("../views/wl-scheduling/booking.html"),
+    ),
+    (
+        "wl-scheduling/link.html",
+        include_str!("../views/wl-scheduling/link.html"),
     ),
 ];
 
@@ -139,7 +144,7 @@ impl Module for WlScheduling {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        pages::routes().merge(links::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -156,7 +161,8 @@ impl Module for WlScheduling {
             .model::<BookingResource>();
         renox::state_machine::register::<Booking>();
         app.view_data::<pages::IndexPage>()
-            .view_data::<pages::ShowPage>();
+            .view_data::<pages::ShowPage>()
+            .view_data::<links::LinkPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.

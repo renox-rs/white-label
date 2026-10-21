@@ -43,6 +43,7 @@
         <rx-action-sheet id="cancel-booking" :label="tx['booking.cancel']" :action="route('wl_scheduling.booking_cancel', booking.id)"
                          :title="tx['booking.cancel']" :submit-label="tx['booking.cancel']" icon="x">
           <rx-select name="reason_code" :label="tx['booking.reason_code']" :options="reasons" :selected="'other'"/>
+          <rx-select name="initiated_by" :label="tx['booking.side']" :options="sides" :selected="''"/>
           <rx-textarea name="note" :label="tx['booking.reason']" id="cancel-booking-note"/>
         </rx-action-sheet>
       </template>

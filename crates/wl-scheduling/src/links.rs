@@ -1,0 +1,223 @@
+//! Cancelling as the party (wl-scheduling §4.1, §5.2 step 4, `SCH.ACL.01`,
+//! `SCH.ACL.02`): from the portal, from the link in a confirmation or
+//! reminder, and from the link in a message about a change the business made.
+//!
+//! | Route | Name | Who |
+//! |---|---|---|
+//! | `GET/POST /scheduling/links/{id}/cancel` | `wl_scheduling.link_cancel_page`, `wl_scheduling.link_cancel` | a signed link: `party_request`, initiated by the party, before the cut-off |
+//! | `GET/POST /scheduling/links/{id}/cancel/{code}` | `wl_scheduling.link_change_page`, `wl_scheduling.link_change_cancel` | a signed link in a change message: reason `code`, initiated by the business, at any time before the check-in |
+//! | `POST /scheduling/portal/bookings/{id}/cancel` | `wl_scheduling.portal_cancel` | a portal user acting for the booking's party: `party_request` |
+//!
+//! The signature is the credential of a link ([`renox::signed`]); a booking
+//! of another party answers 404 in the portal. Neither route lets the party
+//! pick a code or a side: the ordinary routes record `party_request`, the
+//! change route records the code of the change as `business`.
+//!
+//! Decision: a link opens a page with a button, and the button posts to the
+//! same signed URL, so a mail scanner that opens the link cancels nothing.
+
+use std::collections::BTreeMap;
+use std::time::Duration;
+
+use renox::axum::extract::OriginalUri;
+use renox::prelude::*;
+use renox::signed::ValidSignature;
+use serde::Serialize;
+use wl_kernel::documents::{dubai_text, today};
+
+use crate::booking::{Booking, default_initiator};
+use crate::config::config_of;
+use crate::resource::ServiceType;
+use crate::service::{self, Actor, CancelRequest};
+use crate::texts;
+
+/// The link in a confirmation or reminder that cancels `booking_id`, valid
+/// for `ttl`.
+///
+/// # Errors
+///
+/// When the route is not registered.
+pub fn cancel_url(state: &AppState, booking_id: i64, ttl: Duration) -> Result<String> {
+    state.signed_url("wl_scheduling.link_cancel_page", &[&booking_id], ttl)
+}
+
+/// The link in a message about the change `reason_code` that cancels
+/// `booking_id` as initiated by the business, valid for `ttl`.
+///
+/// # Errors
+///
+/// When the route is not registered.
+pub fn change_cancel_url(
+    state: &AppState,
+    booking_id: i64,
+    reason_code: &str,
+    ttl: Duration,
+) -> Result<String> {
+    state.signed_url(
+        "wl_scheduling.link_change_page",
+        &[&booking_id, &reason_code],
+        ttl,
+    )
+}
+
+/// The routes of the links (public: the signature is the credential) and of
+/// the portal.
+pub fn routes() -> Routes {
+    Routes::new()
+        .merge(
+            Routes::new()
+                .get("/scheduling/links/{id}/cancel", cancel_page)
+                .name("wl_scheduling.link_cancel_page")
+                .post("/scheduling/links/{id}/cancel", cancel_by_link)
+                .name("wl_scheduling.link_cancel")
+                .get("/scheduling/links/{id}/cancel/{code}", change_page)
+                .name("wl_scheduling.link_change_page")
+                .post("/scheduling/links/{id}/cancel/{code}", cancel_by_change)
+                .name("wl_scheduling.link_change_cancel"),
+        )
+        .merge(
+            Routes::new()
+                .post("/scheduling/portal/bookings/{id}/cancel", portal_cancel)
+                .name("wl_scheduling.portal_cancel")
+                .require_auth(),
+        )
+}
+
+/// What the link page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-scheduling/link.html")]
+pub(crate) struct LinkPage {
+    tx: BTreeMap<&'static str, String>,
+    summary: String,
+    action: String,
+    can_cancel: bool,
+    message: String,
+}
+
+async fn page(
+    state: &AppState,
+    lang: &Lang,
+    id: i64,
+    action: String,
+    message: Option<String>,
+) -> Result<View> {
+    let booking = Booking::find_or_404(&state.db, id).await?;
+    let service = ServiceType::find_or_404(&state.db, booking.service_type_id).await?;
+    let can_cancel = message.is_none()
+        && booking.status.is_open()
+        && !booking.status.is_after_check_in();
+    Ok(View::typed(LinkPage {
+        tx: texts::all(lang),
+        summary: format!("{} · {}", service.name_en, dubai_text(booking.starts_at)),
+        action,
+        can_cancel,
+        message: message.unwrap_or_default(),
+    }))
+}
+
+/// `GET /scheduling/links/{id}/cancel`.
+async fn cancel_page(
+    _signature: ValidSignature,
+    State(state): State<AppState>,
+    lang: Lang,
+    OriginalUri(uri): OriginalUri,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    page(&state, &lang, id, uri.to_string(), None).await
+}
+
+/// `POST /scheduling/links/{id}/cancel`: the party cancels, `party_request`.
+async fn cancel_by_link(
+    _signature: ValidSignature,
+    State(state): State<AppState>,
+    lang: Lang,
+    OriginalUri(uri): OriginalUri,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    service::cancel(
+        &state,
+        id,
+        CancelRequest::by_party(),
+        Actor::party(None),
+        renox::db::now(),
+    )
+    .await
+    .map_err(|refusal| refusal.into_error(&lang))?;
+    let message = texts::t(&lang, "wl_scheduling.link.cancelled");
+    page(&state, &lang, id, uri.to_string(), Some(message)).await
+}
+
+/// The reason code of a change message, if the module knows it.
+fn known_code(state: &AppState, code: &str) -> Result<()> {
+    default_initiator(code, &config_of(state).extra_reason_codes)
+        .map(|_| ())
+        .ok_or(Error::NotFound)
+}
+
+/// `GET /scheduling/links/{id}/cancel/{code}`.
+async fn change_page(
+    _signature: ValidSignature,
+    State(state): State<AppState>,
+    lang: Lang,
+    OriginalUri(uri): OriginalUri,
+    Path((id, code)): Path<(i64, String)>,
+) -> Result<View> {
+    known_code(&state, &code)?;
+    page(&state, &lang, id, uri.to_string(), None).await
+}
+
+/// `POST /scheduling/links/{id}/cancel/{code}`: the party cancels from a
+/// message about a change the business made: the code of the change,
+/// initiated by the business, also after the cancellation cut-off.
+async fn cancel_by_change(
+    _signature: ValidSignature,
+    State(state): State<AppState>,
+    lang: Lang,
+    OriginalUri(uri): OriginalUri,
+    Path((id, code)): Path<(i64, String)>,
+) -> Result<View> {
+    known_code(&state, &code)?;
+    service::cancel(
+        &state,
+        id,
+        CancelRequest::from_change_message(&code),
+        Actor::party(None),
+        renox::db::now(),
+    )
+    .await
+    .map_err(|refusal| refusal.into_error(&lang))?;
+    let message = texts::t(&lang, "wl_scheduling.link.cancelled");
+    page(&state, &lang, id, uri.to_string(), Some(message)).await
+}
+
+/// `POST /scheduling/portal/bookings/{id}/cancel`: a portal user cancels a
+/// booking of the party they act for (`SCH.ACL.01`); a booking of anyone
+/// else answers 404. The code is `party_request` and the party picks none.
+async fn portal_cancel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let booking = Booking::find_or_404(&state.db, id).await?;
+    let acting = wl_kernel::portal::portal_users(&state)
+        .acting_for(&state.db, user.id, booking.party(), today())
+        .await?;
+    if acting.is_none() {
+        return Err(Error::NotFound);
+    }
+    service::cancel(
+        &state,
+        id,
+        CancelRequest::by_party(),
+        Actor::party(Some(user.id)),
+        renox::db::now(),
+    )
+    .await
+    .map_err(|refusal| refusal.into_error(&lang))?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_scheduling.link.cancelled")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}

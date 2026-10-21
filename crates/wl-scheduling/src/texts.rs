@@ -35,6 +35,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.booking.cancel", "Cancel booking"),
     ("wl_scheduling.booking.reason", "Reason"),
     ("wl_scheduling.booking.reason_code", "Reason code"),
+    ("wl_scheduling.booking.side", "Caused by"),
+    ("wl_scheduling.booking.side_default", "As the reason says"),
+    ("wl_scheduling.booking.side_party", "The party"),
+    ("wl_scheduling.booking.side_business", "The business"),
     ("wl_scheduling.booking.starts_at", "New start"),
     ("wl_scheduling.booking.booked", "Booking made."),
     ("wl_scheduling.booking.accepted", "Booking accepted."),
@@ -113,6 +117,9 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_scheduling.problem.override_needs_note",
         "To record the other side as the cause, add a note saying why.",
     ),
+    ("wl_scheduling.link.title", "Your booking"),
+    ("wl_scheduling.link.cancel", "Cancel this booking"),
+    ("wl_scheduling.link.cancelled", "The booking is cancelled."),
     ("wl_scheduling.problem.too_far", "That is further ahead than bookings are taken."),
 ];
 

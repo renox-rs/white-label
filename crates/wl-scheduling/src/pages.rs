@@ -26,9 +26,10 @@ use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::calendar::BusinessCalendar;
 use wl_kernel::documents::dubai_text;
+use wl_kernel::scheduling::Initiator;
 use wl_kernel::{PartyId, Subject};
 
-use crate::booking::{Booking, BookingStatus, REASON_CODES};
+use crate::booking::{Booking, BookingStatus, REASON_CODES, WALKED_OUT};
 use crate::resource::{Resource, ServiceType};
 use crate::service::{self, Actor, CancelRequest, NewBooking};
 use crate::{permissions, texts};
@@ -205,6 +206,7 @@ pub(crate) struct ShowPage {
     notes: String,
     cancel_reason: String,
     reasons: Vec<(String, String)>,
+    sides: Vec<(String, String)>,
     can_manage: bool,
     can_checkin: bool,
     is_requested: bool,
@@ -230,10 +232,17 @@ async fn show(
     let status = booking.status;
     let manage = user.has_permission(permissions::MANAGE);
     let checkin = user.has_permission(permissions::CHECKIN);
+    // `walked_out` is offered only once the party is checked in (§4.1).
     let reasons = REASON_CODES
         .iter()
+        .filter(|(code, _)| *code != WALKED_OUT || status.is_after_check_in())
         .map(|(code, _)| ((*code).to_owned(), text(&lang, &format!("reason.{code}"))))
         .collect();
+    let sides = vec![
+        (String::new(), text(&lang, "booking.side_default")),
+        ("party".to_owned(), text(&lang, "booking.side_party")),
+        ("business".to_owned(), text(&lang, "booking.side_business")),
+    ];
     let local = BusinessCalendar::default().local(booking.starts_at);
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -247,6 +256,7 @@ async fn show(
             .map(|code| text(&lang, &format!("reason.{code}")))
             .unwrap_or_default(),
         reasons,
+        sides,
         can_manage: manage,
         can_checkin: checkin,
         is_requested: manage && status == BookingStatus::Requested,
@@ -414,6 +424,10 @@ async fn cancel(
     let note = field(&form, "note");
     if !note.is_empty() {
         request = request.note(note);
+    }
+    // Staff may record the other side than the code's default, with a note.
+    if let Some(side) = Initiator::parse(field(&form, "initiated_by")) {
+        request = request.initiated_by(side);
     }
     service::cancel(&state, id, request, Actor::staff(user.id), renox::db::now())
         .await

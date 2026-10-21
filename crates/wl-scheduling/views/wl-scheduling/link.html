@@ -1,0 +1,13 @@
+{#- wl-scheduling: the page of a signed link in a confirmation, a reminder or a
+    change message: the booking in one line and a button to cancel it. Replace
+    it with resources/views/wl-scheduling/link.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['link.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['link.title']" :subtitle="summary"/>
+    <rx-alert rx-if="message" kind="success" :message="message"/>
+    <template rx-if="can_cancel">
+      <rx-confirm id="cancel-link" :label="tx['link.cancel']" :action="action" method="POST"
+                  :title="tx['link.cancel']" :message="summary" :confirm-label="tx['link.cancel']" :cancel-label="tx['cancel']" icon="x"/>
+    </template>
+  </rx-stack>
+</rx-page>
