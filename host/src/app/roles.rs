@@ -829,8 +829,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
 static EXTRA: std::sync::RwLock<Vec<(&'static str, &'static str)>> =
     std::sync::RwLock::new(Vec::new());
 
+/// Forgets the extra grants of the deployment built before. Each deployment
+/// starts from here (`app_for_tuned`), so the grants of one vertical never reach
+/// the app of another that is built later in the same process.
+pub fn reset_extra() {
+    EXTRA.write().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
 /// Grants `role` the `extra` permissions for this deployment, besides its row of
-/// [`ROLES`]; [`define`] keeps them. A repeat changes nothing.
+/// [`ROLES`]; [`define`] keeps them, and creates a role that only a vertical
+/// grants (09's `md`). A repeat changes nothing.
 pub fn grant_extra(role: &'static str, extra: &[&'static str]) {
     let mut found = EXTRA.write().unwrap_or_else(|e| e.into_inner());
     for permission in extra {
@@ -856,9 +864,21 @@ pub fn grants_of(role: &str) -> Vec<&'static str> {
     grants
 }
 
+/// Every role of this deployment: those of [`ROLES`], then the ones only the
+/// vertical grants ([`grant_extra`]).
+pub fn role_names() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = ROLES.iter().map(|(name, _)| *name).collect();
+    for (name, _) in EXTRA.read().unwrap_or_else(|e| e.into_inner()).iter() {
+        if !names.contains(name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
 /// Creates the roles, or brings their permissions up to date.
 pub async fn define(db: &Db) -> Result {
-    for (role, _) in ROLES {
+    for role in role_names() {
         permissions::define_role(db, role, &grants_of(role)).await?;
     }
     Ok(())
@@ -899,7 +919,7 @@ pub async fn invite(args: Args, state: AppState) -> Result {
         .unwrap_or_default();
     if let Some(bad) = roles
         .iter()
-        .find(|r| !ROLES.iter().any(|(name, _)| name == *r))
+        .find(|r| !role_names().iter().any(|n| *n == **r))
     {
         return Err(anyhow!("there is no role called {bad}").into());
     }

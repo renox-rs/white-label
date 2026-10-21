@@ -205,9 +205,13 @@ pub fn register_integrations(client_app: &str) {
 /// shared by every vertical, where the accountant of an accounting firm must
 /// not see its AML cases, so this is a grant of this client only.
 pub fn grant_roles(client_app: &str) {
+    // The grants are the deployment's: start from none, so the role `md` of
+    // this client never reaches another vertical built in the same process.
+    super::roles::reset_extra();
     if client_app != MANPOWER {
         return;
     }
+    super::roles::grant_extra(manpower::permissions::MD_ROLE, &MD_PERMISSIONS);
     for role in [seed::HR, seed::ACCOUNTANT] {
         super::roles::grant_extra(
             role,
@@ -218,6 +222,49 @@ pub fn grant_roles(client_app: &str) {
         );
     }
 }
+
+/// What the role `md` holds in a manpower deployment: everything the company
+/// admin approves there (the contract release and termination, the rate cards
+/// dated in the past, the non-standard exits, the pay accounts, the final
+/// settlements, payroll, the write-offs and the owner's budget lines), the cash
+/// alert's forecast and the confidential tickets. The admin keeps all of it and
+/// stays the fallback of every `[md, admin]` approval step; segregation of
+/// duties applies to both (never the requester).
+const MD_PERMISSIONS: [&str; 33] = [
+    wl_kernel::permissions::APPROVALS_VIEW,
+    wl_kernel::permissions::LATE_ENTRIES_APPROVE,
+    wl_parties::permissions::VIEW,
+    wl_documents::permissions::VIEW,
+    wl_documents::permissions::BLOCK_OVERRIDE,
+    wl_invoicing::permissions::VIEW,
+    wl_invoicing::permissions::RECEIVABLES_VIEW,
+    wl_invoicing::permissions::WRITE_OFF,
+    wl_invoicing::permissions::BUDGETS_VIEW,
+    wl_invoicing::permissions::BUDGETS_APPROVE,
+    wl_invoicing::permissions::DRAWINGS_APPROVE,
+    wl_invoicing::permissions::CASHFLOW_VIEW,
+    wl_invoicing::permissions::RATE_CARDS_VIEW,
+    wl_invoicing::permissions::RATE_CARDS_APPROVE,
+    wl_hr::permissions::EMPLOYEES_VIEW,
+    wl_hr::permissions::EMPLOYEES_EXIT_APPROVE,
+    wl_hr::permissions::PAY_ACCOUNTS_APPROVE,
+    wl_hr::permissions::PAYROLL_VIEW,
+    wl_hr::permissions::PAYROLL_APPROVE,
+    wl_hr::permissions::SETTLEMENTS_APPROVE,
+    wl_ticketing::permissions::VIEW,
+    wl_ticketing::permissions::CONFIDENTIAL_VIEW,
+    wl_attendance::permissions::VIEW,
+    manpower::permissions::CONTRACTS_VIEW,
+    manpower::permissions::CONTRACTS_MANAGE,
+    manpower::permissions::SITES_MANAGE,
+    manpower::permissions::REQUESTS_VIEW,
+    manpower::permissions::REQUESTS_CREATE,
+    manpower::permissions::REQUESTS_MANAGE,
+    manpower::permissions::DEPLOYMENTS_VIEW,
+    manpower::permissions::DEPLOYMENTS_MANAGE,
+    manpower::permissions::ABSENCE_MANAGE,
+    wl_hr::permissions::VISAS_MANAGE,
+];
 
 /// What [`install`] stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
