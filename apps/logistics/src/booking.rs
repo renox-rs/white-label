@@ -30,6 +30,7 @@ use wl_kernel::portal::portal_users;
 use wl_kernel::{PartyId, Subject};
 
 use crate::permissions;
+use crate::portal;
 use crate::shipment::{Parcel, SHIPMENT_SERIES, Shipment, ShipmentStatus, parcel_state, track};
 use crate::texts::english;
 
@@ -72,10 +73,7 @@ pub async fn may_book_for(state: &AppState, user: &AuthUser, client: PartyId) ->
     if user.has_permission(permissions::SHIPMENTS_MANAGE) {
         return Ok(true);
     }
-    Ok(portal_users(state)
-        .acting_for(&state.db, user.id, client, today())
-        .await?
-        .is_some())
+    Ok(has_grant(state, user, client).await? && portal::open_today(&state.db, client).await?)
 }
 
 /// Whether `user` acts for the company `client` in the portal (a client
@@ -85,6 +83,22 @@ pub async fn may_book_for(state: &AppState, user: &AuthUser, client: PartyId) ->
 ///
 /// The portal's errors.
 pub async fn acts_for(state: &AppState, user: &AuthUser, client: PartyId) -> Result<bool> {
+    Ok(has_grant(state, user, client).await? && portal::open_today(&state.db, client).await?)
+}
+
+/// Whether `user` may look at the records of the company `client` in the
+/// portal: it acts for it, and the portal is open or read-only (`POR.ACL.01`:
+/// read-only for 90 days after the contract ends, then closed).
+///
+/// # Errors
+///
+/// The portal's errors.
+pub async fn sees_for(state: &AppState, user: &AuthUser, client: PartyId) -> Result<bool> {
+    Ok(has_grant(state, user, client).await? && portal::visible_today(&state.db, client).await?)
+}
+
+/// Whether the portal says `user` acts for `client`.
+async fn has_grant(state: &AppState, user: &AuthUser, client: PartyId) -> Result<bool> {
     Ok(portal_users(state)
         .acting_for(&state.db, user.id, client, today())
         .await?

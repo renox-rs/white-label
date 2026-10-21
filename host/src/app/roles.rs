@@ -606,6 +606,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             con::GUARANTEES_MANAGE,
             invoices::VIEW,
             invoices::CREDIT,
+            // 03: the accountant requests a write-off, which the operations
+            // manager or the company admin approves (`FIN.ACL.15`).
+            invoices::WRITE_OFF,
             invoices::VAT_VIEW,
             invoices::VAT_PREPARE,
             invoices::VAT_REVIEW,
@@ -842,6 +845,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             delivery::RUNS_VIEW,
             delivery::RUNS_DISPATCH,
             delivery::POD_VIEW,
+            // The dispatcher asks to reverse a delivery; the operations
+            // manager or the company admin approves (`WRK.ACL.10`).
+            delivery::REVERSE,
             log::SHIPMENTS_VIEW,
             log::SHIPMENTS_BOOK,
             log::SHIPMENTS_MANAGE,

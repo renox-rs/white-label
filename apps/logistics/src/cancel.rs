@@ -112,6 +112,15 @@ pub async fn cancel(
     id: i64,
 ) -> std::result::Result<Shipment, TransitionError> {
     let shipment = load(state, id).await?;
+    // A client user of a company whose contract ended only looks
+    // (`POR.ACL.01`), even at the shipment they booked themselves.
+    if !user.has_permission(crate::permissions::SHIPMENTS_MANAGE)
+        && crate::portal::access(&state.db, shipment.client(), wl_kernel::documents::today())
+            .await?
+            != crate::portal::Access::Open
+    {
+        return Err(TransitionError::Forbidden);
+    }
     let client_acts = booking::acts_for(state, user, shipment.client()).await?;
     let _outcome = shipment
         .transition(CANCEL)

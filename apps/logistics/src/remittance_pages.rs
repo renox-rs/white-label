@@ -441,7 +441,7 @@ async fn statement_of(
 ) -> Result<Response> {
     let remittance = Remittance::find_or_404(&state.db, id).await?;
     let staff = user.has_permission(permissions::REMITTANCES_VIEW);
-    if !staff && !booking::acts_for(&state, &user, remittance.client()).await? {
+    if !staff && !booking::sees_for(&state, &user, remittance.client()).await? {
         return Err(Error::Forbidden);
     }
     match statement::view(&state.db, &remittance).await? {

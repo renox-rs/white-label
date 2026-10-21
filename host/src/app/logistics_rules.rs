@@ -14,6 +14,10 @@
 //! has expired is grounded ([`logistics::grounding::ground`]): the fleet
 //! managers and the dispatchers are told. Dispatch itself is refused by the
 //! document guard.
+//!
+//! **Approvals** (`WRK.ACL.10`): the module also puts the approval of a
+//! delivery's reversal and of a manual `mark_lost` with the operations manager
+//! and the company admin.
 
 use std::collections::BTreeSet;
 
@@ -22,9 +26,12 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_delivery::{Run, RunStatus, VehicleType};
 use wl_kernel::Subject;
+use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::automation::{RuleRunSpec, RunOutcome, run_rule};
 use wl_kernel::compliance::{CriticalRule, occurrence_key, schedule_subject};
 use wl_kernel::documents::{InvalidReason, Validity, guard, today};
+
+use super::roles::{ADMIN, OPERATIONS_MANAGER};
 
 /// The name of the scheduled task of `LOG.RUL.10`.
 pub const GROUND_TASK: &str = "logistics-vehicle-documents";
@@ -114,6 +121,19 @@ impl Module for LogisticsRules {
     }
 
     fn register(&self, app: &mut Registry) {
+        // `WRK.ACL.10`: a reversal of a delivery and a manual `mark_lost` are
+        // approved by the operations manager or the company admin, never the
+        // requester (a dispatcher asks) and never the run's driver. This runs
+        // after wl-delivery's own register, whose default (any other holder of
+        // `deliveries.reverse`) it replaces.
+        PolicyDefault::new(wl_delivery::reverse::ACTION)
+            .step([OPERATIONS_MANAGER, ADMIN])
+            .expiry_hours(Some(wl_delivery::reverse::EXPIRY_HOURS))
+            .register();
+        PolicyDefault::new(wl_delivery::lost::ACTION)
+            .step([OPERATIONS_MANAGER, ADMIN])
+            .expiry_hours(Some(wl_delivery::lost::EXPIRY_HOURS))
+            .register();
         app.schedule()
             .daily_at(defaults::GROUND_RULE_AT, GROUND_TASK, |state: AppState| async move {
                 run_ground_rule(&state, today()).await.map(|_| ())

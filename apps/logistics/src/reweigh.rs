@@ -77,6 +77,10 @@ pub struct ClientTerms {
     pub pickup_address: Option<String>,
     /// The area of that address.
     pub pickup_area: Option<String>,
+    /// The day the client's contract ended: its portal users keep read-only
+    /// access for 90 days after it, then the portal closes (`POR.ACL.01`,
+    /// BL-LOG-26).
+    pub contract_ended_on: Option<renox::chrono::NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

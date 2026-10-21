@@ -7,6 +7,7 @@ pub mod billing;
 pub mod block;
 pub mod booking;
 pub mod cancel;
+pub mod cash_forecast;
 pub mod cash_watch;
 mod claim;
 pub mod cod;
@@ -34,6 +35,7 @@ pub mod pages;
 pub mod partial;
 pub mod permissions;
 pub mod pickup;
+pub mod portal;
 pub mod rates;
 pub mod remit;
 pub mod remittance;
@@ -109,6 +111,7 @@ impl Module for Logistics {
             .merge(reversal_pages::routes())
             .merge(loss_pages::routes())
             .merge(disposal::routes())
+            .merge(portal::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -188,6 +191,8 @@ impl Module for Logistics {
         account::register(app);
         // `LOG.RUL.06`, weekly on Monday.
         remit::register(app);
+        // The COD owed to clients is a payment in the cash-flow forecast.
+        cash_forecast::register();
         // `LOG.RUL.07`, monthly on day 1: the draft invoice of each client.
         billing::register(app);
         // `LOG.RUL.09`, daily at 07:00: the ETA of a freight job.

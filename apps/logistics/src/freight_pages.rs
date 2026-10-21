@@ -247,7 +247,7 @@ async fn show(
 ) -> Result<Response> {
     let job = FreightJob::find_or_404(&state.db, id).await?;
     let staff = user.has_permission(permissions::JOBS_VIEW);
-    if !staff && !booking::acts_for(&state, &user, job.client()).await? {
+    if !staff && !booking::sees_for(&state, &user, job.client()).await? {
         return Err(Error::Forbidden);
     }
     let offered: Vec<String> = if staff {
