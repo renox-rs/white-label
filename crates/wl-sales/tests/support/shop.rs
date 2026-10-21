@@ -229,6 +229,16 @@ impl Invoicer for Books {
         })
     }
 
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: InvoiceId,
+        _source: Subject,
+        _amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
     fn net_total<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<i64>> {
         Box::pin(async move { Ok(self.0.lock().unwrap().get(&id.0).map(|e| e.net)) })
     }

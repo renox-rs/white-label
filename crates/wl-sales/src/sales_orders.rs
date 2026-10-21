@@ -24,7 +24,7 @@
 
 use renox::prelude::*;
 use renox::serde_json::Value;
-use renox::state_machine::Transitioned;
+use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::{PartyId, Subject};
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{

@@ -209,7 +209,9 @@ mod tests {
 
     #[test]
     fn statuses_kinds_and_resolutions_are_stored_in_snake_case() {
-        let names = |all: Vec<&str>| all;
+        fn names(all: Vec<&str>) -> Vec<&str> {
+            all
+        }
         assert_eq!(
             names(ReturnStatus::ALL.iter().map(|s| s.as_str()).collect()),
             ["requested", "received", "resolved", "reversed", "rejected"]

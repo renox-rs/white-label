@@ -60,7 +60,7 @@ CREATE TABLE "wl_sales_loyalty_accounts" (
 
 CREATE UNIQUE INDEX "wl_sales_loyalty_accounts_code" ON "wl_sales_loyalty_accounts" (code);
 CREATE INDEX "wl_sales_loyalty_accounts_party" ON "wl_sales_loyalty_accounts" (programme_id, party_id);
-CREATE INDEX "wl_sales_loyalty_accounts_mobile" ON "wl_sales_loyalty_accounts" (programme_id, mobile);
+CREATE INDEX "wl_sales_loyalty_accounts_mobile" ON "wl_sales_loyalty_accounts" (mobile);
 -- One open account per programme and party, one per programme and mobile
 -- number (a closed account never blocks a new enrolment).
 CREATE UNIQUE INDEX "wl_sales_loyalty_accounts_one_party" ON "wl_sales_loyalty_accounts" (programme_id, party_id) WHERE status = 'active';

@@ -42,7 +42,7 @@
 use renox::chrono::{NaiveDate, TimeDelta};
 use renox::db::{DateTime, now};
 use renox::prelude::*;
-use renox::state_machine::Transitioned;
+use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{DraftLine, VatCategory};
 use wl_kernel::notify::{
@@ -133,7 +133,6 @@ struct SaleView {
     account: Option<i64>,
     open: bool,
     entity: Option<i64>,
-    is_order: bool,
 }
 
 /// The counter sale or the order named by `sale`.
@@ -146,7 +145,6 @@ async fn sale_view(db: &Db, sale: &Subject) -> Result<SaleView> {
                 account: s.loyalty_account_id,
                 open: s.is_open(),
                 entity: s.legal_entity_id,
-                is_order: false,
             })
         }
         SALES_ORDER_SUBJECT_TYPE => {
@@ -156,7 +154,6 @@ async fn sale_view(db: &Db, sale: &Subject) -> Result<SaleView> {
                 account: o.loyalty_account_id,
                 open: o.is_draft(),
                 entity: o.legal_entity_id,
-                is_order: true,
             })
         }
         _ => Err(refused("wl_sales.redeem.problem.sale_type")),

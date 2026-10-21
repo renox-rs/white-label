@@ -12,7 +12,7 @@
 //!   no invoice.
 
 use renox::prelude::*;
-use renox::state_machine::Transitioned;
+use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::Subject;
 use wl_kernel::sales::{COUNTER_SALE_SUBJECT_TYPE, CounterSaleCompleted};

@@ -11,6 +11,7 @@ use renox::prelude::*;
 use wl_kernel::invoicing::{
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceSummary, Invoicer, provide_invoicer,
 };
+use wl_kernel::Subject;
 use wl_kernel::sales::CounterSaleCompleted;
 use wl_sales::permissions as perm;
 use wl_sales::{CounterSale, CounterSalePayment, CounterSaleStatus, WlSales};
@@ -38,6 +39,16 @@ impl Invoicer for Books {
         _id: InvoiceId,
     ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
         Box::pin(async { Ok(None) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: InvoiceId,
+        _source: Subject,
+        _amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
     }
 }
 

@@ -46,6 +46,16 @@ impl Invoicer for Books {
     ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
         Box::pin(async { Ok(None) })
     }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: InvoiceId,
+        _source: Subject,
+        _amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// The events and drafts a test saw.

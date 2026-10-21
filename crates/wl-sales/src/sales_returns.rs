@@ -6,7 +6,7 @@
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use renox::state_machine::Transitioned;
+use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::Subject;
 use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::sales::{

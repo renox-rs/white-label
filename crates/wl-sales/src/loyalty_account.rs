@@ -52,7 +52,7 @@ pub enum AccountStatus {
     table = "wl_sales_loyalty_accounts",
     unique(code),
     index(programme_id, party_id),
-    index(programme_id, mobile)
+    index(mobile)
 )]
 pub struct LoyaltyAccount {
     /// The primary key.

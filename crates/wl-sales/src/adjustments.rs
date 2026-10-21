@@ -14,7 +14,7 @@
 //! adjustment, in a listener on the machine's `Transitioned`.
 
 use renox::prelude::*;
-use renox::state_machine::Transitioned;
+use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::approvals::{self, ApprovalDecided, ApprovalEnd};
 use wl_kernel::sales::PointsAdjusted;
 

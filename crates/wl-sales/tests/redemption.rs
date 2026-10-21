@@ -13,7 +13,7 @@ use std::time::Duration;
 use renox::chrono::{Duration as Days, NaiveDate};
 use renox::prelude::*;
 use wl_kernel::notify::{NotifyChannel, NotifyRecipient};
-use wl_kernel::sales::{DiscountEngine, LoyaltyAccountId, QuoteRedemption, discount_engine};
+use wl_kernel::sales::{LoyaltyAccountId, QuoteRedemption, discount_engine};
 use wl_kernel::{PartyId, Subject};
 use wl_sales::notices::LOYALTY_GIVEN_BACK;
 use wl_sales::redeem;

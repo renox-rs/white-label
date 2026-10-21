@@ -89,10 +89,12 @@ fn remaining_at(lot: &PointsMovement, movements: &[PointsMovement], as_at: Naive
     (lot.points - used).max(0)
 }
 
+/// What a liability row groups by: brand, legal entity, age bucket and expiry month.
+type GroupKey = (String, Option<i64>, &'static str, String);
+
 /// The points liability as at `as_at`.
 pub async fn report(db: &Db, as_at: NaiveDate) -> Result<Liability> {
-    let mut grouped: BTreeMap<(String, Option<i64>, &'static str, String), (i64, i64)> =
-        BTreeMap::new();
+    let mut grouped: BTreeMap<GroupKey, (i64, i64)> = BTreeMap::new();
     for account in LoyaltyAccount::query().order_by(LoyaltyAccount::ID).get(db).await? {
         let Some(programme) = LoyaltyProgramme::find(db, account.programme_id).await? else {
             continue;
