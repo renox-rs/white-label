@@ -34,7 +34,8 @@ use wl_kernel::scheduling::{
     provide_resource_eligibility,
 };
 use wl_kernel::scheduling::{
-    BookingId, SchedulingFuture, WorkDone, WorkDoneStatus, provide_work_done_status,
+    BookingId, CheckInAnswer, CompleteGuard, SchedulingFuture, WorkDone, WorkDoneStatus,
+    provide_complete_guard, provide_work_done_status,
 };
 use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
@@ -290,6 +291,62 @@ impl WorkDoneStatus for Work {
                 .iter()
                 .find(|(id, _)| *id == booking.0)
                 .map_or(WorkDone::Nothing, |(_, work)| *work))
+        })
+    }
+}
+
+/// The vertical's [`CompleteGuard`]: it allows every completion until a
+/// booking (or every booking) is refused with a text, and remembers which
+/// bookings it was asked about.
+#[derive(Clone, Default)]
+pub struct CompleteGate {
+    refused: Arc<Mutex<BTreeMap<i64, String>>>,
+    all: Arc<Mutex<Option<String>>>,
+    asked: Arc<Mutex<Vec<i64>>>,
+}
+
+impl CompleteGate {
+    /// From now on `booking` may not be completed: `text` is the reason.
+    pub fn refuse(&self, booking: i64, text: &str) {
+        self.refused.lock().unwrap().insert(booking, text.to_owned());
+    }
+
+    /// From now on no booking may be completed.
+    pub fn refuse_all(&self, text: &str) {
+        *self.all.lock().unwrap() = Some(text.to_owned());
+    }
+
+    /// `booking` may be completed again.
+    pub fn allow(&self, booking: i64) {
+        self.refused.lock().unwrap().remove(&booking);
+    }
+
+    /// The bookings the guard was asked about, in order.
+    pub fn asked(&self) -> Vec<i64> {
+        self.asked.lock().unwrap().clone()
+    }
+}
+
+impl CompleteGuard for CompleteGate {
+    fn check<'a>(
+        &'a self,
+        _state: &'a AppState,
+        booking: BookingId,
+        _at: DateTime,
+    ) -> SchedulingFuture<'a, CheckInAnswer> {
+        self.asked.lock().unwrap().push(booking.0);
+        let text = self
+            .refused
+            .lock()
+            .unwrap()
+            .get(&booking.0)
+            .cloned()
+            .or_else(|| self.all.lock().unwrap().clone());
+        Box::pin(async move {
+            Ok(match text {
+                Some(text) => CheckInAnswer::Refused(text),
+                None => CheckInAnswer::Allowed,
+            })
         })
     }
 }
@@ -681,6 +738,7 @@ struct Harness {
     sources: Sources,
     docs: Docs,
     tasks: Tasks,
+    gate: CompleteGate,
 }
 
 impl Module for Harness {
@@ -694,6 +752,7 @@ impl Module for Harness {
             provide_payment_recorder(app, self.refunds.clone());
         }
         provide_work_done_status(app, self.work.clone());
+        provide_complete_guard(app, self.gate.clone());
         provide_notifier(app, self.messages.clone());
         provide_resource_eligibility(app, self.licences.clone());
         provide_availability_source(app, self.sources.clone());
@@ -724,6 +783,8 @@ pub struct Booked {
     pub docs: Docs,
     /// The staff tasks other modules opened.
     pub tasks: Tasks,
+    /// The vertical's guard on `complete`.
+    pub gate: CompleteGate,
     /// The payment gateway of `wl-payments` ([`boot_paid`] installs it).
     pub gateway: wl_payments::gateway::FakeGateway,
     /// Keeps the views directory alive.
@@ -1085,6 +1146,7 @@ async fn boot_app_on(
     let sources = Sources::default();
     let docs = Docs::default();
     let tasks = Tasks::default();
+    let gate = CompleteGate::default();
     let gateway = wl_payments::gateway::FakeGateway::new();
     let app = App::new()
         .module(Auth::new())
@@ -1115,6 +1177,7 @@ async fn boot_app_on(
         sources: sources.clone(),
         docs: docs.clone(),
         tasks: tasks.clone(),
+        gate: gate.clone(),
     });
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
@@ -1171,6 +1234,7 @@ async fn boot_app_on(
         sources,
         docs,
         tasks,
+        gate,
         gateway,
         _views: views,
         _database: database,
