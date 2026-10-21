@@ -32,6 +32,7 @@ pub mod return_note;
 pub mod scope_stock;
 pub mod stock_count;
 pub mod stock_hold;
+pub mod stock_service;
 mod stock_pages;
 mod supplier_pages;
 pub mod supplier_return;

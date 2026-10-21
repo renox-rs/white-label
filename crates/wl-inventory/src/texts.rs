@@ -629,6 +629,28 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.review.block_body",
         "Procurement asks for a decision on blocking the supplier after review {{ review }}. Nothing is blocked until a holder of parties.block does it.",
     ),
+    // Manual issues of stock.
+    (
+        "wl_inventory.issue.bad_quantity",
+        "Enter a quantity above zero.",
+    ),
+    (
+        "wl_inventory.issue.wrong_lot",
+        "The lot is not a lot of that item.",
+    ),
+    (
+        "wl_inventory.issue.lot_not_released",
+        "Lot {{ lot }} is not released; only released lots can be issued.",
+    ),
+    (
+        "wl_inventory.issue.held",
+        "{{ item }} has {{ held }} on hold here; held quantity cannot be issued.",
+    ),
+    (
+        "wl_inventory.issue.not_available",
+        "Only {{ available }} of {{ item }} is available here, {{ quantity }} is needed.",
+    ),
+    ("wl_inventory.issue.done", "Stock issued."),
     // Transfers between two locations.
     (
         "wl_inventory.transfer.same_location",

@@ -3,6 +3,7 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `POST /stock-holds` | `wl_inventory.hold_place` | `stock.hold` (at the location, for a hold on a location) |
+//! | `POST /stock-issues` | `wl_inventory.stock_issue` | `stock.issue` at the location |
 //! | `POST /transfers/{id}/send` | `wl_inventory.transfer_send` | `stock.transfer` at the source |
 //! | `POST /transfers/{id}/receive` | `wl_inventory.transfer_receive` | `stock.transfer` at the destination |
 //!
@@ -31,6 +32,8 @@ pub fn routes() -> Routes {
     Routes::new()
         .post("/stock-holds", place_hold)
         .name("wl_inventory.hold_place")
+        .post("/stock-issues", issue_stock)
+        .name("wl_inventory.stock_issue")
         .post("/transfers/{id}/send", send_transfer)
         .name("wl_inventory.transfer_send")
         .post("/transfers/{id}/receive", receive_transfer)
@@ -129,6 +132,85 @@ async fn place_hold(
     .await?;
     Ok((
         Toast::success(text(&lang, "hold.placed")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// What a user enters to issue stock.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct IssueForm {
+    /// The id of the item.
+    #[validate(max = 20)]
+    pub item: Option<String>,
+    /// The id of the location.
+    #[validate(max = 20)]
+    pub location: Option<String>,
+    /// The quantity in the item's base unit, like `5` or `0.5`.
+    #[validate(max = 32)]
+    pub quantity: Option<String>,
+    /// The id of the lot, when it matters which one.
+    #[validate(max = 20)]
+    pub lot: Option<String>,
+    /// The cost object, like `construction.cost_code:3`.
+    #[validate(max = 100)]
+    pub cost_object: Option<String>,
+    /// Why.
+    #[validate(max = 200)]
+    pub reason: Option<String>,
+}
+
+/// The id in `field`, `None` when empty.
+fn id_of(field: &Option<String>) -> Result<Option<i64>> {
+    match field.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        None => Ok(None),
+        Some(value) => value
+            .parse()
+            .map(Some)
+            .map_err(|_| refused("an id must be a number")),
+    }
+}
+
+/// `POST /stock-issues`: issues stock to a cost object. Refused when the
+/// quantity is short or part of it is on hold.
+async fn issue_stock(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Valid(form): Valid<IssueForm>,
+) -> Result<Response> {
+    let item_id = id_of(&form.item)?.ok_or_else(|| refused("item: required"))?;
+    let location_id = id_of(&form.location)?.ok_or_else(|| refused("location: required"))?;
+    let quantity_milli = crate::pages::parse_quantity(form.quantity.as_deref().unwrap_or_default())
+        .ok_or_else(|| refused("quantity: not a quantity"))?;
+    let cost_object = match form
+        .cost_object
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        None => None,
+        Some(value) => Some(
+            value
+                .parse::<Subject>()
+                .map_err(|_| refused("cost_object: like construction.cost_code:3"))?,
+        ),
+    };
+    crate::stock_service::issue(
+        &state,
+        &user,
+        crate::stock_service::IssueRequest {
+            item_id,
+            location_id,
+            quantity_milli,
+            lot_id: id_of(&form.lot)?,
+            cost_object,
+            reason: form.reason.clone().filter(|r| !r.trim().is_empty()),
+        },
+    )
+    .await?;
+    Ok((
+        Toast::success(text(&lang, "issue.done")),
         renox::HxRefresh,
     )
         .into_response())
