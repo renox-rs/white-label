@@ -51,6 +51,23 @@
         </rx-stack>
       </rx-card>
     </template>
+    <template rx-if="carryable">
+      <rx-card :title="tx['payroll.carryable']">
+        <rx-table :rows="carryable" as="held" :key="held.line_id" :caption="tx['payroll.carryable']">
+          <rx-column :label="tx['payroll.employee']">{{ held.employee }}</rx-column>
+          <rx-column :label="tx['payroll.net']">{{ held.amount }}</rx-column>
+          <rx-column :label="tx['payroll.released_into']" hide-narrow>{{ held.held_in }}</rx-column>
+          <rx-column :label="tx['payroll.reason']" hide-narrow>{{ held.reason }}</rx-column>
+          <rx-column :label="tx['payroll.warning']">
+            {{ held.warning }}
+            <rx-action-sheet :id="'carry-line-' ~ held.line_id" :label="tx['payroll.carry']" :action="'/hr/payroll/' ~ run.id ~ '/carry/' ~ held.line_id"
+                             :title="tx['payroll.carry']" :description="held.warning" :submit-label="tx['payroll.carry']" icon="send">
+              <rx-input name="reason" :label="tx['payroll.carry_reason']" :id="'carry-reason-' ~ held.line_id" required/>
+            </rx-action-sheet>
+          </rx-column>
+        </rx-table>
+      </rx-card>
+    </template>
     <template rx-if="differences">
       <rx-table :rows="differences" as="difference" :key="difference.id" :caption="tx['payroll.differences']" card>
         <rx-column :label="tx['payroll.employee']">{{ difference.employee }}</rx-column>
@@ -89,6 +106,8 @@
       <rx-column :label="tx['payroll.reason']" hide-narrow>
         {{ line.reason }}
         <template rx-if="line.exception"><rx-badge kind="warning" :text="line.exception"/></template>
+        <template rx-if="line.carried">{{ tx['payroll.carried_from'] }}: {{ line.carried }}</template>
+        <template rx-if="line.warning"><rx-badge kind="warning" :text="line.warning"/></template>
       </rx-column>
       <rx-column :label="tx['payroll.payslip']" hide-narrow>
         <template rx-if="line.payslip">{{ tx['payroll.payslip_published'] }}</template>

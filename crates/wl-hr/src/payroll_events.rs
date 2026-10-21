@@ -144,5 +144,8 @@ async fn paid(state: &AppState, run_id: i64) -> Result {
             total: paid.iter().map(|l| l.net_amount).sum(),
             employees: paid.iter().map(|l| EmployeeId(l.employee_id)).collect(),
         })
-        .await
+        .await?;
+    // `HRM.RUL.12`: lines whose hold cleared while this run was being paid are
+    // released now that it is `paid`.
+    crate::release::propose(state).await.map(|_| ())
 }

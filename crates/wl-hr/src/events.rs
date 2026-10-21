@@ -8,7 +8,8 @@
 //! - `EmployeeAssignmentChanged`: the open steps get their current assignees
 //!   ([`crate::onboarding::re_resolve`]).
 //! - `AbsenceCaseOpened` and `AbsenceCaseClosed`: the absence cases the
-//!   verticals keep, which `report_absconding` needs ([`crate::absence`]).
+//!   verticals keep, which `report_absconding` needs ([`crate::absence`]); a
+//!   closed case releases the lines held for it ([`crate::release`]).
 //! - `DocumentExpired` and `DocumentExpiring` of an employee: the qualification
 //!   events of `HRM.RUL.10` ([`crate::qualification_expiry`]).
 //! - `Transitioned<PayrollRun>`: the notices and events that follow a payroll
@@ -35,7 +36,9 @@ use wl_kernel::workforce::{
 };
 
 use crate::payroll::PayrollRun;
-use crate::{absence, differences, onboarding, payroll_events, qualification_expiry, steps};
+use crate::{
+    absence, differences, onboarding, payroll_events, qualification_expiry, release, steps,
+};
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
@@ -86,7 +89,9 @@ pub(crate) fn register(app: &mut Registry) {
         absence::on_case_opened(&state, &event).await
     });
     app.listen(|event: AbsenceCaseClosed, state: AppState| async move {
-        absence::on_case_closed(&state, &event).await
+        absence::on_case_closed(&state, &event).await?;
+        // `HRM.RUL.12`: the lines held for the case are released.
+        release::on_case_closed(&state, &event).await
     });
     app.listen(|event: DocumentExpired, state: AppState| async move {
         qualification_expiry::on_expired(&state, &event).await

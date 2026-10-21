@@ -176,7 +176,8 @@ pub async fn problems_in(tx: &mut Transaction, run_id: i64) -> Result<Vec<CapPro
         .await?;
     let adjustments = Adjustment::of_run_in(&mut *tx, run_id).await?;
     let mut problems = Vec::new();
-    for line in lines {
+    // A line that pays a released held line carries no deductions of its own.
+    for line in lines.into_iter().filter(|l| l.source_line_id.is_none()) {
         let deductions: Vec<(AdjustmentKind, i64)> = adjustments
             .iter()
             .filter(|a| a.employee_id == line.employee_id)

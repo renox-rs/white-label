@@ -215,6 +215,7 @@ async fn line_of(
     let existing = PayrollLine::query()
         .where_(PayrollLine::RUN_ID.eq(run.id))
         .where_(PayrollLine::EMPLOYEE_ID.eq(employee.id))
+        .where_(PayrollLine::SOURCE_LINE_ID.is_null())
         .order_by(PayrollLine::ID)
         .first(&mut *tx)
         .await?;

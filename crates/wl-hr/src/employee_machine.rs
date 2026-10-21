@@ -233,6 +233,13 @@ pub(crate) fn register(app: &mut Registry) {
                         })
                         .await
                 }
+                REINSTATE | REINSTATE_APPROVED => {
+                    // The absence report is withdrawn: the lines it held are
+                    // released (`HRM.RUL.12`).
+                    crate::release::report_withdrawn(&state, event.key)
+                        .await
+                        .map(|_| ())
+                }
                 REPORT_ABSCONDING | REPORT_ABSCONDING_APPROVED => {
                     let Some(report) = AbsenceReport::valid_for(&state.db, event.key).await? else {
                         return Ok(());

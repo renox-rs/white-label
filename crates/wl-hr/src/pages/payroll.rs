@@ -6,6 +6,7 @@
 //! | `GET /hr/payroll/{id}` | `wl_hr.payroll_run` | `payroll.view` |
 //! | `POST /hr/payroll/{id}/transitions/calculate` | `wl_hr.payroll_calculate` | `payroll.view` and `payroll.prepare`; asks the timesheets for the hours first |
 //! | `POST /hr/payroll/{id}/transitions/{name}` | `wl_hr.payroll_transitions.*` | `payroll.view` and the transition's permission |
+//! | `POST /hr/payroll/{id}/carry/{line}` | `wl_hr.payroll_carry` | `payroll.prepare` |
 //! | `POST /hr/payroll/differences/{id}/convert` | `wl_hr.payroll_difference_convert` | `payroll.prepare` |
 //! | `POST /hr/payroll/{id}/rejection` | `wl_hr.payroll_rejection` | `payroll.prepare` |
 //! | `POST /hr/payroll/{id}/resubmit` | `wl_hr.payroll_resubmit` | `payroll.prepare` |
@@ -31,6 +32,7 @@ use crate::employee::Employee;
 use crate::payroll::{
     ConfirmInput, FailedLine, LineStatus, PartialInput, PayrollLine, PayrollRun, PayrollRunStatus,
 };
+use crate::release;
 use crate::sif::SifFile;
 use crate::wps_partial::{self, OTHER_METHODS};
 use crate::wps_rejection::{REASON_FILE_FORMAT, REASONS, RejectionInput, ResubmitInput};
@@ -67,6 +69,8 @@ pub fn routes() -> Routes {
                 .name("wl_hr.payroll_partial")
                 .post("/hr/payroll/{id}/confirm", confirm_paid)
                 .name("wl_hr.payroll_confirm")
+                .post("/hr/payroll/{id}/carry/{line}", carry_line)
+                .name("wl_hr.payroll_carry")
                 .post("/hr/payroll/differences/{id}/convert", convert_difference)
                 .name("wl_hr.payroll_difference_convert")
                 .post("/hr/payroll/lines/{id}/hold", hold_line)
@@ -148,6 +152,27 @@ pub struct LineView {
     pub difference: String,
     /// The deductions, dirhams.
     pub deductions: String,
+    /// On a carried line: the warning that it pays after the WPS due date.
+    pub warning: String,
+    /// On a carried line: why it was carried.
+    pub carried: String,
+}
+
+/// A held line of a paid run that the regular run can carry.
+#[derive(Serialize, Debug, Clone)]
+pub struct CarryView {
+    /// The held line.
+    pub line_id: i64,
+    /// The employee's name.
+    pub employee: String,
+    /// The amount it pays, dirhams.
+    pub amount: String,
+    /// The period of the run it was held in.
+    pub held_in: String,
+    /// Why it was held.
+    pub reason: String,
+    /// The warning that carrying it pays after the WPS due date, if it does.
+    pub warning: String,
 }
 
 /// One difference line of the run: hours an adjustment timesheet or a
@@ -206,6 +231,7 @@ pub(crate) struct ShowPage {
     lines: Vec<LineView>,
     exceptions: Vec<ExceptionView>,
     differences: Vec<DifferenceView>,
+    carryable: Vec<CarryView>,
     actions: Vec<ActionView>,
     approve_blocked: bool,
     can_approve: bool,
@@ -292,6 +318,31 @@ async fn show(
                 ),
         });
     }
+    let mut carry_views = Vec::new();
+    if user.has_permission(permissions::PAYROLL_PREPARE) {
+        for held in release::carryable(&state, &run).await? {
+            let employee = match Employee::find(&state.db, held.employee_id).await? {
+                Some(employee) => {
+                    crate::pages::employees::employee_name(&state, &lang, &employee).await
+                }
+                None => format!("#{}", held.employee_id),
+            };
+            let held_in = PayrollRun::find(&state.db, held.run_id)
+                .await?
+                .map(|r| r.period)
+                .unwrap_or_default();
+            carry_views.push(CarryView {
+                line_id: held.id,
+                employee,
+                amount: aed(held.net_amount),
+                held_in,
+                reason: held.held_reason.clone().unwrap_or_default(),
+                warning: release::warning_for(&state, &held, &run)
+                    .await?
+                    .unwrap_or_default(),
+            });
+        }
+    }
     let mut exceptions = Vec::new();
     for problem in caps::problems(&state.db, id).await? {
         exceptions.push(ExceptionView {
@@ -330,6 +381,7 @@ async fn show(
         lines,
         exceptions,
         differences: difference_lines,
+        carryable: carry_views,
         actions,
         approve_blocked: approve_blocked && run.status == PayrollRunStatus::Calculated,
         can_approve: user.has_permission(permissions::PAYROLL_APPROVE),
@@ -421,6 +473,8 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
         variable: aed(line.variable_amount),
         difference: aed(line.difference_amount),
         deductions: aed(line.deductions_amount),
+        warning: line.late_warning.clone().unwrap_or_default(),
+        carried: line.carry_reason.clone().unwrap_or_default(),
     }
 }
 
@@ -447,6 +501,38 @@ async fn calculate(
         .await
         .map_err(TransitionError::into_error)?;
     Ok(back.into_response())
+}
+
+/// The form that carries a released held line into a regular run.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct CarryForm {
+    /// Why the line is carried into the regular run instead of an off-cycle
+    /// run.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// `POST /hr/payroll/{id}/carry/{line}`: the preparer carries the released
+/// held line `line` into the regular run `id`, with a reason. The warning
+/// that it pays after the WPS due date comes back with the toast.
+async fn carry_line(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path((id, line)): Path<(i64, i64)>,
+    Valid(form): Valid<CarryForm>,
+) -> Result<Response> {
+    if !user.has_permission(permissions::PAYROLL_PREPARE) {
+        return Err(Error::Forbidden);
+    }
+    let carried = release::carry(&state, line, id, &form.reason).await?;
+    let toast = match carried.warning {
+        Some(warning) => Toast::warning(format!("{} {warning}", text(&lang, "payroll.carried"))),
+        None => Toast::success(text(&lang, "payroll.carried")),
+    };
+    Ok((toast, back).into_response())
 }
 
 /// The form that turns a difference into a recovery plan.

@@ -292,6 +292,44 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.payroll.cap.court_debt", "Court debts (25%)"),
     ("wl_hr.payroll.cap.damage", "Damage (5 days' wage)"),
     ("wl_hr.payroll.cap.total", "All deductions (50%)"),
+    // Releasing held lines (issue #208).
+    (
+        "wl_hr.payroll.late_warning",
+        "This pays after the WPS due date :due.",
+    ),
+    (
+        "wl_hr.payroll.carry_reason_required",
+        "Give the reason for carrying the line into the next regular run.",
+    ),
+    (
+        "wl_hr.payroll.line_not_releasable",
+        "Only a held line of a paid run whose hold reason has cleared can be released.",
+    ),
+    (
+        "wl_hr.payroll.carry_target_invalid",
+        "A line is carried into a later regular run of the same legal entity that is still being prepared.",
+    ),
+    ("wl_hr.payroll.line_not_held", "The line is not held."),
+    (
+        "wl_hr.payroll.already_released",
+        "The line was already released into a run.",
+    ),
+    (
+        "wl_hr.payroll.carryable",
+        "Held lines that can be carried here",
+    ),
+    ("wl_hr.payroll.carry", "Carry into this run"),
+    ("wl_hr.payroll.carry_reason", "Why it is carried"),
+    ("wl_hr.payroll.carried", "Line carried into the run."),
+    ("wl_hr.payroll.released", "Hold released."),
+    ("wl_hr.payroll.release", "Release the hold"),
+    (
+        "wl_hr.payroll.release_hint",
+        "The reason for the hold is gone.",
+    ),
+    ("wl_hr.payroll.released_into", "Paid in run"),
+    ("wl_hr.payroll.carried_from", "Pays a held line"),
+    ("wl_hr.payroll.warning", "Warning"),
     // The calculation of the lines (issue #206).
     ("wl_hr.payroll.hours", "Hours"),
     ("wl_hr.payroll.provisional", "provisional"),
@@ -679,6 +717,14 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_hr.notices.payroll_escalated_body",
         "The salary file of payroll {{ period }} was rejected by the bank and the run is still {{ status }} ({{ count }} failed line(s)). The WPS due date is {{ due }}.",
+    ),
+    (
+        "wl_hr.notices.payroll_released_subject",
+        "Held pay of payroll {{ period }} can be paid",
+    ),
+    (
+        "wl_hr.notices.payroll_released_body",
+        "{{ count }} held line(s) of payroll {{ period }} are released. A draft off-cycle run holds them: calculate, approve and submit it, or carry them into the next regular run with a reason.",
     ),
     (
         "wl_hr.notices.step_escalated_subject",

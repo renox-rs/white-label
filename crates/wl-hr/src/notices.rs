@@ -41,6 +41,10 @@ pub const PAYROLL_FAILED: &str = "hr.payroll_failed";
 /// before the due date (`HRM.RUL.11`).
 pub const PAYROLL_ESCALATED: &str = "hr.payroll_escalated";
 
+/// The payroll officers are told that held lines were released into a draft
+/// off-cycle run (`HRM.RUL.12`).
+pub const PAYROLL_RELEASED: &str = "hr.payroll_released";
+
 /// `date` as `9 Nov 2026`.
 fn date_text(date: NaiveDate) -> String {
     date.format("%-d %b %Y").to_string()
@@ -74,6 +78,7 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(PAYROLL_RETURNED, "payroll_returned"));
     notify::register_type(english_type(PAYROLL_FAILED, "payroll_failed"));
     notify::register_type(english_type(PAYROLL_ESCALATED, "payroll_escalated"));
+    notify::register_type(english_type(PAYROLL_RELEASED, "payroll_released"));
     // The employee's own channel: SMS to the number on record.
     let body = english("wl_hr.notices.in_person_body", &[]);
     notify::register_type(
@@ -342,6 +347,30 @@ pub(crate) async fn payroll_escalated(
             "period": run.period,
             "status": run.status.as_str(),
             "due": date_text(due),
+            "count": count,
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the payroll officers) that `count` held lines were released
+/// into the draft off-cycle run `run`.
+pub(crate) async fn payroll_released(
+    state: &AppState,
+    run: &PayrollRun,
+    count: usize,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(PAYROLL_RELEASED, run.subject())
+        .subject_label(&run.period)
+        .data(json!({
+            "period": run.period,
             "count": count,
         }));
     for user in users {

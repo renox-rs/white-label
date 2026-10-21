@@ -17,6 +17,9 @@
 //!
 //! - `confirm_paid` (submitted, partially_rejected -> paid, `payroll.approve`)
 //!   and the partly failed file: see [`crate::wps_partial`].
+//! - Held lines are released by `HRM.RUL.12` into a draft `off_cycle` run, or
+//!   carried into the next regular run ([`crate::release`], BL-HRM-18); the
+//!   `calculate` of such a run keeps its lines.
 //! - `record_rejection` (submitted -> rejected) and `resubmit` (rejected ->
 //!   submitted), `payroll.prepare`: the bank rejects the whole file and the
 //!   preparer sends a new version for the same lines ([`crate::wps_rejection`]);
@@ -210,6 +213,19 @@ pub struct PayrollLine {
     /// An exception the preparer reviews, e.g. `missing_timesheet`
     /// ([`crate::calculation::MISSING_TIMESHEET`]).
     pub exception: Option<String>,
+    /// On a line of an off-cycle run, or one carried into a regular run: the
+    /// held line it pays ([`crate::release`]).
+    pub source_line_id: Option<i64>,
+    /// On a held line: the run that finally pays it (set once, when the line
+    /// is added to an off-cycle run or carried into a regular one).
+    pub released_into: Option<i64>,
+    /// On a held line: the day its hold reason cleared.
+    pub hold_cleared_on: Option<NaiveDate>,
+    /// On a carried line: why it was carried into a regular run.
+    pub carry_reason: Option<String>,
+    /// On a carried line: the warning that it pays after the WPS due date of
+    /// its period; empty for a line held by a valid absence report.
+    pub late_warning: Option<String>,
     /// The approver's comment on this line to fix (`return`); cleared by the
     /// next `calculate`.
     pub approver_comment: Option<String>,

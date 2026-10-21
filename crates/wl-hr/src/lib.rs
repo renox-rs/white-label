@@ -26,6 +26,7 @@ mod payroll_events;
 pub mod qualification;
 pub mod qualification_expiry;
 pub mod recovery;
+pub mod release;
 pub mod reminders;
 pub mod salary;
 pub mod seed;
@@ -260,6 +261,8 @@ impl Module for WlHr {
         reminders::schedule(app);
         // `HRM.RUL.11`: the daily escalation of WPS rejections still open.
         wps_alerts::schedule(app);
+        // `HRM.RUL.12`: the daily proposal of off-cycle runs for released held lines.
+        release::schedule(app);
         wl_kernel::workforce::provide_workforce(app, workforce::Staff);
         wl_kernel::workforce::provide_leave_calendar(app, workforce::Staff);
         wl_kernel::qualifications::provide_qualifications(app, Quals);
