@@ -13,6 +13,7 @@ use renox::state_machine::{Outcome, StateMachine};
 use wl_kernel::block_guard::ActionKind;
 use wl_kernel::documents::today;
 use wl_kernel::parties::directory;
+use wl_kernel::timesheets::{TimesheetClosure, timesheet_closing};
 use wl_kernel::workforce::{EmployeeId, workforce};
 use wl_kernel::{PartyId, Subject};
 
@@ -451,10 +452,25 @@ pub async fn end(
     after_end(state, id, lang).await
 }
 
-/// What follows the commit of an `end`: the event and the client's notice.
-async fn after_end(state: &AppState, id: i64, lang: &str) -> Result<Deployment> {
+/// What follows the commit of an `end`: the open timesheet of the worker is
+/// closed at the last day and submitted at once (the kernel's
+/// `TimesheetClosing`, wl-attendance), the event and the client's notice.
+/// Answers the deployment and the timesheets closed.
+pub(crate) async fn finish_end(
+    state: &AppState,
+    id: i64,
+    lang: &str,
+) -> Result<(Deployment, Vec<TimesheetClosure>)> {
     let ended = load(state, id).await?;
     let last_day = ended.ended_on.unwrap_or_else(today);
+    let closed = timesheet_closing(state)
+        .close_open(
+            state,
+            &ended.subject(),
+            ended.employee(),
+            ended.end_date.map_or(last_day, |end| end.min(last_day)),
+        )
+        .await?;
     state
         .emit(DeploymentEnded {
             deployment: ended.subject(),
@@ -466,7 +482,12 @@ async fn after_end(state: &AppState, id: i64, lang: &str) -> Result<Deployment> 
         .await?;
     let worker = worker_name(state, lang, ended.employee()).await;
     tell_client(state, &ended, "manpower.deployment.ended", &worker).await?;
-    Ok(ended)
+    Ok((ended, closed))
+}
+
+/// [`finish_end`] for the callers that need the deployment only.
+pub(crate) async fn after_end(state: &AppState, id: i64, lang: &str) -> Result<Deployment> {
+    Ok(finish_end(state, id, lang).await?.0)
 }
 
 /// Cancels planned deployment `id` for `by` with `reason`.

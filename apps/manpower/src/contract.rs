@@ -11,10 +11,12 @@
 //! active, on_hold, terminating --end--> ended                              (BL-MPW-06)
 //! ```
 //!
-//! Built here: the six states and `activate`, `cancel`, `hold`, `release`, `terminate` and
-//! `renew`. `ended` and the transitions into and out of `terminating` are
-//! declared so the issue that adds `end` only adds a transition: **`end` comes
-//! with BL-MPW-06.**
+//! Built here: the six states and every transition of the spec: `activate`,
+//! `cancel`, `hold`, `release`, `terminate`, `renew` and `end`.
+//!
+//! - `end` is the system's, at the first daily run after the end date (00:05
+//!   Asia/Dubai), when the contract was not renewed; the deployments, the
+//!   requests and the last timesheets close with it ([`crate::ending`]).
 //!
 //! - `renew` (`contracts.manage`; `renew_on_hold` is its twin for a contract
 //!   on credit hold, because a transition has one target) moves the end date
@@ -51,6 +53,7 @@ use wl_kernel::machines::approved;
 use wl_kernel::{PartyId, Subject, SubjectMachine};
 
 use crate::db::set_contract;
+use crate::ending::{end_effects, end_problem};
 use crate::hold::{hold_effects, hold_input, hold_problem};
 use crate::permissions;
 use crate::release::{release_effects, release_input, release_policy, release_problem};
@@ -72,6 +75,8 @@ pub const AUTO_HOLD: &str = "auto_hold";
 /// The `terminate` transition's name: the account manager's request to end the
 /// contract early, which the MD approves (`MPW.ACL.17`).
 pub const TERMINATE: &str = "terminate";
+/// The system's `end`: the first daily run after the end date (BL-MPW-06).
+pub const END: &str = "end";
 /// The `renew` transition's name: the account manager renews an `active`
 /// contract with a later end date and a signed renewal (`MPW.RUL.11`).
 pub const RENEW: &str = "renew";
@@ -202,6 +207,10 @@ pub struct ClientContract {
     /// The effective date of the rate card version that changed the rates with
     /// the latest renewal; none when the rates stayed.
     pub renewal_rates_from: Option<NaiveDate>,
+    /// When the system ended it.
+    pub ended_at: Option<DateTime>,
+    /// When the follow-up of the end (timesheets, notices) was done.
+    pub end_announced_at: Option<DateTime>,
     /// The user who created it.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -428,6 +437,22 @@ impl StateMachine for ClientContract {
                 user(RENEW_ON_HOLD, "Renew", permissions::CONTRACTS_MANAGE).tone("primary"),
                 OnHold,
             ))
+            .transition(
+                Transition::new(END)
+                    .label("End")
+                    .system()
+                    .from([Active, OnHold, Terminating])
+                    .to(Ended)
+                    .guard("not_renewed", |contract: &ClientContract, ctx| {
+                        let on = input_of(ctx).on.unwrap_or_else(today);
+                        let problem = end_problem(contract, on);
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .effect(|contract: &ClientContract, _ctx, tx| {
+                        let contract = contract.clone();
+                        Box::pin(async move { end_effects(&mut *tx, &contract).await })
+                    }),
+            )
             .transition(terminating(
                 user(TERMINATE, "Terminate", permissions::CONTRACTS_MANAGE).tone("danger"),
             ))
@@ -477,7 +502,8 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_that_is_built_is_declared() {
         let machine = ClientContract::machine();
-        let table: [(&str, &[&str], &str, bool); 14] = [
+        let table: [(&str, &[&str], &str, bool); 15] = [
+            (END, &["active", "on_hold", "terminating"], "ended", true),
             (RENEW, &["active"], "active", false),
             (RENEW_ON_HOLD, &["on_hold"], "on_hold", false),
             (ACTIVATE, &["draft"], "active", false),

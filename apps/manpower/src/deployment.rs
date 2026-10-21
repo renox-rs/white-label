@@ -32,12 +32,14 @@
 //! - `end` is the user's, with a reason: for now *end date* (the date has
 //!   come) and *replaced*; **the other reasons come with their issues:
 //!   *client rejected* and *client non-payment* and *entered in error* with
-//!   BL-MPW-14, *contract end* with BL-MPW-06, *exit*, *absconded* and
-//!   *deceased* with BL-MPW-13.** `auto_end` is the system's and takes any
-//!   reason, so those issues only call it. The daily run ends the deployments
-//!   whose end date has passed ([`crate::deployments::end_due`]). Closing the
-//!   open timesheet of the period comes with BL-MPW-06, which owns the
-//!   timesheet contract.
+//!   BL-MPW-14, *exit*, *absconded* and *deceased* with BL-MPW-13;
+//!   *contract end* is the contract's `end`, BL-MPW-06.** `auto_end` is the
+//!   system's and takes any reason, so those issues only call it. The daily
+//!   run ends the deployments whose end date has passed
+//!   ([`crate::deployments::end_due`]). After every `end` the open timesheet of
+//!   the worker in this deployment is closed at the last day and submitted at
+//!   once, through the kernel's `TimesheetClosing` (wl-attendance,
+//!   [`crate::deployments::finish_end`]).
 //! - `cancel` (a reason) is for a deployment that never started.
 
 use renox::auth::permissions::Scope;

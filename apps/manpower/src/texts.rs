@@ -192,6 +192,20 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ worker }}, {{ role }}, {{ site }}, until {{ until }}",
     ),
     ("manpower.expiry.none", "No worker is on site."),
+    // Ending a contract with its deployments, requests and timesheets (`end`, BL-MPW-06).
+    (
+        "manpower.end.not_yet",
+        "The contract ends on {{ end }}: it is ended the day after, not on {{ day }}.",
+    ),
+    ("manpower.end.cancel_reason", "contract ended"),
+    ("manpower.end.history", "End date {{ end }} reached"),
+    ("manpower.end.withdraw_reason", "contract ended"),
+    ("manpower.end.bench_none", "none"),
+    ("manpower.end.title", "Contract {{ contract }} has ended"),
+    (
+        "manpower.end.body",
+        "Contract {{ contract }} ended on {{ end }}. {{ ended }} deployments ended and {{ cancelled }} planned ones were cancelled with the open requests. {{ timesheets }} last timesheets were closed and sent to the client for approval, {{ open }} need attention before they can be sent. Back on the bench: {{ bench }}.",
+    ),
     (
         "manpower.release.not_on_hold",
         "Only a contract on credit hold can be released.",

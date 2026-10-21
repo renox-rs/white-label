@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 mod access;
+pub mod bench;
 pub mod blocked;
 pub mod config;
 pub mod contract;
@@ -11,6 +12,7 @@ mod db;
 pub mod deployment;
 pub mod deployments;
 pub mod documents;
+pub mod ending;
 pub mod events;
 pub mod expiry;
 pub mod hold;
@@ -32,8 +34,8 @@ use renox::prelude::*;
 pub use contract::{BillingCycle, ClientContract, ContractStatus};
 pub use deployment::{Deployment, DeploymentKind, DeploymentStatus};
 pub use events::{
-    ContractActivated, ContractRenewed, CoverRequested, DeploymentActivated, DeploymentCancelled,
-    DeploymentEnded,
+    ContractActivated, ContractEnded, ContractRenewed, CoverRequested, DeploymentActivated,
+    DeploymentCancelled, DeploymentEnded,
 };
 pub use hold::{ContractHold, HoldReason};
 pub use request::{ManpowerRequest, RequestKind, RequestStatus};
@@ -46,6 +48,10 @@ pub const END_DATE_TASK: &str = "manpower:deployment-end-daily";
 /// The name of the daily scheduled task of `MPW.RUL.10`: contracts with an
 /// invoice overdue more than 30 days go on credit hold.
 pub const CREDIT_HOLD_TASK: &str = "manpower:credit-hold-daily";
+
+/// The name of the daily scheduled task that ends the client contracts whose
+/// end date has passed (`end`, BL-MPW-06).
+pub const CONTRACT_END_TASK: &str = "manpower:contract-end-daily";
 
 /// The name of the daily scheduled task of `MPW.RUL.11`: the account manager is
 /// told 60 and 30 days before a client contract's end date.
@@ -142,6 +148,12 @@ impl Module for Manpower {
         app.schedule()
             .daily_at("02:00", CREDIT_HOLD_TASK, |state: AppState| async move {
                 hold::daily(&state).await
+            })
+            .timezone("Asia/Dubai");
+        // The contracts past their end date `end`, daily at 00:05.
+        app.schedule()
+            .daily_at("00:05", CONTRACT_END_TASK, |state: AppState| async move {
+                ending::daily(&state).await
             })
             .timezone("Asia/Dubai");
         // `MPW.RUL.11`: the warnings before a contract ends, daily at 02:00.

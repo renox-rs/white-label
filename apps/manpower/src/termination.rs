@@ -42,7 +42,7 @@
 //!   message to the client company with the terms, as the other letters of the
 //!   verticals do until the document generator exists.
 //! - An `end` or a `renew` of the contract while a request waits withdraws it
-//!   with [`withdraw_pending`], which BL-MPW-05 and BL-MPW-06 call.
+//!   with [`withdraw_pending`], which `renew` (BL-MPW-05) and `end` (BL-MPW-06) call.
 //! - The new end date is the contract's end date from the approval; the date
 //!   it had is kept in `original_end_date`.
 
