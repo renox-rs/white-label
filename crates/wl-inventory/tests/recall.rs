@@ -8,7 +8,7 @@ use renox::auth::permissions;
 use renox::prelude::*;
 use wl_inventory::permissions as perm;
 use wl_inventory::recall::{self, OPENED_NOTICE};
-use wl_inventory::{HoldScope, HoldStatus, Item, Lot, LotStatus, RecallSource, RecallStatus};
+use wl_inventory::{HoldLineStatus, HoldScope, HoldStatus, Item, Lot, LotStatus, RecallSource, RecallStatus};
 use wl_kernel::Subject;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::notify::NotifyRecipient;
@@ -147,6 +147,84 @@ async fn a_recall_holds_the_lot_at_every_location_in_transit_too() {
     assert_eq!(placed[0].reference, Some(opened.subject()));
     assert_eq!(placed[0].lines.len(), 3);
     assert_eq!(t.lots_held.all().len(), 1);
+}
+
+/// Done when 2, the part that exists today: a picked dispatch holding L9 is
+/// flagged by BL-STK-21, which reads the open hold lines and the lot's
+/// `on_hold` status. After a recall that lookup returns L9 at every location,
+/// the in-transit one included, and says how much of it is held there.
+#[renox::test]
+async fn the_lookup_a_dispatch_reads_returns_the_recalled_lot_at_every_location() {
+    let t = boot().await;
+    let manager = t.recaller("Rita").await;
+    let item = t.tracked_item("SERUM").await;
+    let lot = t.lot(&item, "L9", LotStatus::Released).await;
+    let other = t.lot(&item, "L10", LotStatus::Released).await;
+    let branch_1 = t.named_location("BRANCH-1", "Branch 1").await;
+    let branch_2 = t.named_location("BRANCH-2", "Branch 2").await;
+    t.stock_in(&item, &branch_1, Some(&lot), 18_000, 1_000)
+        .await;
+    t.stock_in(&item, &branch_2, Some(&lot), 4_000, 1_000).await;
+    t.stock_in(&item, &branch_1, Some(&other), 9_000, 1_000)
+        .await;
+    let mover = t.mover("Mo").await;
+    let transfer = t
+        .transfer(
+            &branch_1,
+            &branch_2,
+            vec![wl_inventory::transfer::NewTransferLine::of(item.id, 6_000).lot(lot.id)],
+        )
+        .await;
+    t.send_as(&mover, &transfer).await.assert_ok();
+    let transit = t
+        .transfer_now(&transfer)
+        .await
+        .transit_location_id
+        .expect("in transit");
+    let item_id = item.id.to_string();
+    t.recall_as(
+        &manager,
+        &[
+            ("source", "supplier"),
+            ("reason", "Contamination found by the supplier"),
+            ("items", item_id.as_str()),
+            ("lot_numbers", "L9"),
+        ],
+    )
+    .await
+    .assert_ok();
+
+    // The lookup: the lot's undecided lines on open holds, and its status.
+    let open_holds: Vec<i64> = t
+        .all_holds()
+        .await
+        .iter()
+        .filter(|hold| hold.status == HoldStatus::Open)
+        .map(|hold| hold.id)
+        .collect();
+    let mut held_at: Vec<(i64, i64)> = Vec::new();
+    for hold_id in open_holds {
+        for line in wl_inventory::stock_hold::lines_of(t.db(), hold_id)
+            .await
+            .unwrap()
+        {
+            if line.lot_id == Some(lot.id) && line.status == HoldLineStatus::Undecided {
+                held_at.push((line.location_id, line.quantity_milli));
+            }
+        }
+    }
+    held_at.sort_unstable();
+    let mut expected = vec![
+        (branch_1.id, 12_000),
+        (branch_2.id, 4_000),
+        (transit, 6_000),
+    ];
+    expected.sort_unstable();
+    assert_eq!(held_at, expected);
+    assert_eq!(t.lot_now(&lot).await.status, LotStatus::OnHold);
+    // The lot not recalled is not flagged.
+    assert_eq!(t.lot_now(&other).await.status, LotStatus::Released);
+    assert_eq!(t.available(&item, &branch_1, Some(&other)).await, 9_000);
 }
 
 /// Done when 3: a scope with no matching lot is refused, and nothing is made:
