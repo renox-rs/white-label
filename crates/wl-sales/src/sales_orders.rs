@@ -30,7 +30,7 @@ use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
     FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment, ReverseFulfilment,
     SalesFuture, SalesOrderCancelled, SalesOrderClosed, SalesOrderConfirmed, SalesOrderFulfilled,
-    SalesOrderFulfilmentReversed, SalesOrderRejected,
+    SalesOrderFulfilmentReversed, SalesOrderLineCancelled, SalesOrderRejected,
 };
 
 use crate::config::config_of;
@@ -39,7 +39,7 @@ use crate::sales_order::{
     FulfilmentRecord, ORDER_SERIES, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
 };
 use crate::sales_order_machine::{
-    ACCEPT, CANCEL, CLOSE, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, CloseInput, FULFIL,
+    ACCEPT, CANCEL, CANCEL_LINE, CANCEL_LINE_PARTLY, CLOSE, CancelLineInput, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, CloseInput, FULFIL,
     FULFIL_LAST, FulfilInput, PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT,
     REVERSE_FULFILMENT_ALL, ReverseInput, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE,
     SubmitInput,
@@ -371,6 +371,64 @@ pub async fn reverse_fulfilment(
     })
 }
 
+/// Cancels `quantity_milli` of the open quantity of the item line `line` of
+/// the order `id` as `by`, with `reason` (`cancel_line`).
+///
+/// Decision: the order's stored totals stay as they were ordered; the money
+/// side of a cancelled line (refund, credit note, a smaller invoice) is
+/// BL-SAL-06 and BL-SAL-09. A cancellation that would leave nothing open or
+/// fulfilled is `cancel`'s, and one that would leave only fulfilled
+/// quantities is `cancel_remaining`'s; both are refused here.
+///
+/// # Errors
+///
+/// 422 when the order is not `confirmed` or `partially_fulfilled`, the line
+/// is not an item of the order, the quantity is not above zero or exceeds
+/// what is open, the reason is blank, or nothing would stay open.
+pub async fn cancel_line(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    line: i64,
+    quantity_milli: i64,
+    reason: &str,
+) -> Result<SalesOrder> {
+    let order = SalesOrder::find_or_404(&state.db, id).await?;
+    let lines = SaleLine::of(&state.db, &order.subject()).await?;
+    let items = item_lines(&lines);
+    let problem = match items.iter().find(|l| l.id == line) {
+        None => Some(english("wl_sales.orders.problem.unknown_line", &[])),
+        Some(found) if quantity_milli <= 0 || quantity_milli > found.open_milli() => {
+            Some(english("wl_sales.orders.problem.quantity", &[]))
+        }
+        Some(_) => {
+            let left: i64 = items.iter().map(|l| l.open_milli()).sum::<i64>() - quantity_milli;
+            (left <= 0).then(|| english("wl_sales.orders.problem.cancel_line_last", &[]))
+        }
+    };
+    let input = CancelLineInput {
+        line,
+        quantity_milli,
+        problem,
+    };
+    let name = if order.status == SalesOrderStatus::PartiallyFulfilled {
+        CANCEL_LINE_PARTLY
+    } else {
+        CANCEL_LINE
+    };
+    let meta = renox::serde_json::to_value(&input).unwrap_or(Value::Null);
+    let _ = order
+        .transition(name)
+        .by(by)
+        .reason(reason.trim().to_owned())
+        .input(&input)
+        .meta(meta)
+        .run(state)
+        .await
+        .map_err(|e| e.into_error())?;
+    SalesOrder::find_or_404(&state.db, id).await
+}
+
 /// Drafts the invoice of a fulfilled order, once, with the order as its
 /// source; nothing when invoicing is off.
 async fn draft_invoice(state: &AppState, id: i64) -> Result {
@@ -504,6 +562,21 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
                     order: id,
                     party,
                     reason: order.reason.clone().unwrap_or_default(),
+                })
+                .await
+        }
+        CANCEL_LINE | CANCEL_LINE_PARTLY => {
+            let Ok(input) = renox::serde_json::from_value::<CancelLineInput>(event.meta.clone())
+            else {
+                return Ok(());
+            };
+            state
+                .emit(SalesOrderLineCancelled {
+                    order: id,
+                    party,
+                    line: input.line,
+                    quantity_milli: input.quantity_milli,
+                    reason: event.reason.clone().unwrap_or_default(),
                 })
                 .await
         }

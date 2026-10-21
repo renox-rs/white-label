@@ -23,11 +23,18 @@
         <rx-input name="mobile" :label="tx['loyalty.mobile']" id="attach-order-member-mobile"/>
         <rx-input name="party_id" :label="tx['loyalty.party']" id="attach-order-member-party"/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_cancel_line" id="cancel-order-line" :label="tx['orders.cancel_line']" :action="route('wl_sales.sales_order_cancel_line', order.id)"
+                       :title="tx['orders.cancel_line']" :description="tx['orders.cancel_line_description']" :submit-label="tx['orders.cancel_line']" icon="x" danger>
+        <rx-input name="line_no" :label="tx['orders.line_no']" id="cancel-order-line-no" required/>
+        <rx-input name="quantity" :label="tx['counter.quantity']" id="cancel-order-line-quantity" required/>
+        <rx-textarea name="reason" :label="tx['orders.reason']" id="cancel-order-line-reason" required/>
+      </rx-action-sheet>
       <template rx-if="actions">
         <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
       </template>
     </rx-page-header>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['counter.lines']" card>
+      <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>
       <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>
       <rx-column :label="tx['counter.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
       <rx-column :label="tx['orders.fulfilled']" hide-narrow>{{ line.fulfilled }}</rx-column>

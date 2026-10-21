@@ -8,6 +8,7 @@
 //! | `POST /sales-orders` | `wl_sales.sales_order_create` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/lines` | `wl_sales.sales_order_line` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/submit` | `wl_sales.sales_order_submit` | `sales_orders.create` |
+//! | `POST /sales-orders/{id}/cancel-line` | `wl_sales.sales_order_cancel_line` | `sales_orders.cancel` |
 //!
 //! `accept`, `reject` and `cancel` run through the kernel's generic
 //! transition route, with the reason the form gives. The system transitions
@@ -27,7 +28,9 @@ use crate::pages::campaigns::parse_fils;
 use crate::pages::counter_sales::parse_milli;
 use crate::sale_line::{NewLine, SaleLine, totals};
 use crate::sales_order::{SalesOrder, SalesOrderStatus};
-use crate::sales_order_machine::{SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE};
+use crate::sales_order_machine::{
+    CANCEL_LINE, CANCEL_LINE_PARTLY, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE,
+};
 use crate::sales_orders::{self, NewSalesOrder};
 use crate::{permissions, texts};
 
@@ -62,6 +65,12 @@ pub fn routes() -> Routes {
                 .post("/sales-orders/{id}/submit", submit)
                 .name("wl_sales.sales_order_submit")
                 .require_permission(permissions::SALES_ORDERS_CREATE),
+        )
+        .merge(
+            Routes::new()
+                .post("/sales-orders/{id}/cancel-line", cancel_line)
+                .name("wl_sales.sales_order_cancel_line")
+                .require_permission(permissions::SALES_ORDERS_CANCEL),
         )
 }
 
@@ -154,6 +163,8 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
 pub struct LineRow {
     /// The primary key.
     pub id: i64,
+    /// The position of the line, from 1.
+    pub line_no: i64,
     /// The description.
     pub description: String,
     /// The quantity in units.
@@ -181,6 +192,7 @@ pub(crate) struct ShowPage {
     member: Option<String>,
     can_edit: bool,
     can_attach: bool,
+    can_cancel_line: bool,
 }
 
 /// `1.5` for 1500 thousandths, `2` for 2000.
@@ -208,6 +220,7 @@ async fn show(
         .iter()
         .map(|line| LineRow {
             id: line.id,
+            line_no: line.line_no,
             description: line.description.clone(),
             quantity: quantity_text(line.quantity_milli),
             fulfilled: quantity_text(line.fulfilled_milli),
@@ -219,7 +232,16 @@ async fn show(
         .available(&user, &state.db)
         .await?
         .into_iter()
-        .filter(|a| ![SUBMIT, SUBMIT_ONLINE, SUBMIT_FOR_ACCEPTANCE].contains(&a.name.as_str()))
+        .filter(|a| {
+            ![
+                SUBMIT,
+                SUBMIT_ONLINE,
+                SUBMIT_FOR_ACCEPTANCE,
+                CANCEL_LINE,
+                CANCEL_LINE_PARTLY,
+            ]
+            .contains(&a.name.as_str())
+        })
         .collect();
     let member = crate::loyalty_account::label_of(&state.db, order.loyalty_account_id).await?;
     let attachable = !matches!(
@@ -241,6 +263,10 @@ async fn show(
         actions,
         member,
         can_attach: attachable && user.has_permission(permissions::LOYALTY_ENROL),
+        can_cancel_line: matches!(
+            order.status,
+            SalesOrderStatus::Confirmed | SalesOrderStatus::PartiallyFulfilled
+        ) && user.has_permission(permissions::SALES_ORDERS_CANCEL),
         can_edit: order.is_draft() && user.has_permission(permissions::SALES_ORDERS_CREATE),
         order,
     }))
@@ -334,6 +360,39 @@ async fn submit(
     sales_orders::submit(&state, &user, order.id).await?;
     Ok((
         Toast::success(text(&lang, "orders.submitted")),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
+}
+
+/// `POST /sales-orders/{id}/cancel-line`: cancels open quantity of one line.
+/// Fields: `line_no` (the position of the line), `quantity` (units) and
+/// `reason`.
+async fn cancel_line(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    let line_no: i64 = get("line_no")
+        .parse()
+        .map_err(|_| invalid("line_no", text(&lang, "orders.errors.number"), &form))?;
+    let quantity = parse_milli(get("quantity"))
+        .filter(|q| *q > 0)
+        .ok_or_else(|| invalid("quantity", text(&lang, "orders.errors.number"), &form))?;
+    if get("reason").is_empty() {
+        return Err(invalid("reason", text(&lang, "orders.errors.reason"), &form));
+    }
+    let lines = SaleLine::of(&state.db, &order.subject()).await?;
+    let line = lines
+        .iter()
+        .find(|l| l.line_no == line_no)
+        .ok_or_else(|| invalid("line_no", text(&lang, "orders.problem.unknown_line"), &form))?;
+    sales_orders::cancel_line(&state, &user, order.id, line.id, quantity, get("reason")).await?;
+    Ok((
+        Toast::success(text(&lang, "orders.line_cancelled")),
         Redirect::route("wl_sales.sales_order", &[&order.id])?,
     )
         .into_response())

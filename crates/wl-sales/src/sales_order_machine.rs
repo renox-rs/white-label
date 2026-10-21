@@ -15,9 +15,16 @@
 //!     partially_fulfilled | fulfilled --reverse_fulfilment--> partially_fulfilled
 //!     partially_fulfilled | fulfilled --reverse_fulfilment_all--> confirmed
 //!     fulfilled --close--> closed
+//!     confirmed --cancel_line--> confirmed
+//!     partially_fulfilled --cancel_line_partly--> partially_fulfilled
 //! ```
 //!
-//! `hold`, `release`, `amend`, `cancel_line` and `cancel_remaining` come with
+//! `cancel_line` is the part of the spec's `cancel_line` that BL-SAL-23 needs
+//! (open quantity of one line cancelled, a reason, a state that stays); the
+//! outcome per line, the approval when fulfilment started, the refund and the
+//! credit note, and the move to `fulfilled` when nothing is open (use
+//! `cancel_remaining`) come with BL-SAL-06 and BL-SAL-09.
+//! `hold`, `release`, `amend` and `cancel_remaining` come with
 //! their issues (BL-SAL-05 to BL-SAL-11). `confirm_payment`, `payment_failed`,
 //! `fulfil`, `fulfil_last`, `reverse_fulfilment`, `reverse_fulfilment_all` and
 //! `close` are system transitions (the gateway, the hand-over, the invoicing
@@ -71,6 +78,11 @@ pub const REVERSE_FULFILMENT: &str = "reverse_fulfilment";
 pub const REVERSE_FULFILMENT_ALL: &str = "reverse_fulfilment_all";
 /// `fulfilled → closed`: everything fulfilled is invoiced.
 pub const CLOSE: &str = "close";
+/// `confirmed → confirmed`: open quantity of one line cancelled.
+pub const CANCEL_LINE: &str = "cancel_line";
+/// `partially_fulfilled → partially_fulfilled`: open quantity of one line
+/// cancelled.
+pub const CANCEL_LINE_PARTLY: &str = "cancel_line_partly";
 
 /// What the `submit` family takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +140,17 @@ pub struct CloseInput {
     pub invoiced: bool,
 }
 
+/// What `cancel_line` takes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelLineInput {
+    /// The sale line.
+    pub line: i64,
+    /// The open quantity cancelled, in thousandths.
+    pub quantity_milli: i64,
+    /// Why the quantity is not acceptable, found by the service.
+    pub problem: Option<String>,
+}
+
 /// A guard that fails with the English `key` unless `ok`.
 fn check(ok: bool, key: &str) -> std::result::Result<(), String> {
     if ok { Ok(()) } else { Err(english(key, &[])) }
@@ -139,6 +162,37 @@ fn reason_of(ctx: &renox::state_machine::TransitionCtx) -> Option<String> {
         .map(str::trim)
         .filter(|r| !r.is_empty())
         .map(str::to_owned)
+}
+
+/// Adds `quantity` to the cancelled quantity of line `line` of order
+/// `order`, in one statement. Fails when it would leave more than is open.
+async fn move_cancelled(
+    tx: &mut renox::db::Transaction,
+    order: i64,
+    line: i64,
+    quantity: i64,
+) -> Result {
+    let changed = renox::db::sql(format!(
+        "UPDATE {} SET cancelled_milli = cancelled_milli + ?, updated_at = ? \
+         WHERE id = ? AND subject_type = '{}' AND subject_id = ? \
+         AND fulfilled_milli + cancelled_milli + ? <= quantity_milli",
+        SaleLine::TABLE,
+        SALES_ORDER_SUBJECT_TYPE
+    ))
+    .bind(quantity)
+    .bind(now())
+    .bind(line)
+    .bind(order)
+    .bind(quantity)
+    .execute(&mut *tx)
+    .await?;
+    if changed == 0 {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            english("wl_sales.orders.problem.quantity", &[]),
+        ));
+    }
+    Ok(())
 }
 
 /// Adds `delta` (negative to take off) to the fulfilled quantity of line
@@ -229,6 +283,8 @@ impl StateMachine for SalesOrder {
             .transition(reverse(REVERSE_FULFILMENT, PartiallyFulfilled))
             .transition(reverse(REVERSE_FULFILMENT_ALL, Confirmed))
             .transition(close())
+            .transition(cancel_line(CANCEL_LINE, Confirmed))
+            .transition(cancel_line(CANCEL_LINE_PARTLY, PartiallyFulfilled))
     }
 }
 
@@ -512,6 +568,35 @@ fn reverse(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
         })
 }
 
+/// `cancel_line` and `cancel_line_partly`: open quantity of one line is
+/// cancelled and the order stays where it is.
+fn cancel_line(name: &str, state: SalesOrderStatus) -> Transition<SalesOrder> {
+    Transition::new(name)
+        .label("Cancel a line")
+        .tone("danger")
+        .permission(permissions::SALES_ORDERS_CANCEL)
+        .reason_required()
+        .from([state])
+        .to(state)
+        .guard("quantity_open", |_o: &SalesOrder, ctx| {
+            let problem = match ctx.input_as::<CancelLineInput>() {
+                Ok(input) => input.problem,
+                Err(_) => Some(english("wl_sales.orders.problem.input", &[])),
+            };
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|order: &SalesOrder, ctx, tx| {
+            let id = order.id;
+            let input = ctx.input_as::<CancelLineInput>().ok();
+            Box::pin(async move {
+                let Some(input) = input else {
+                    return Ok(());
+                };
+                move_cancelled(tx, id, input.line, input.quantity_milli).await
+            })
+        })
+}
+
 /// `close`: fulfilled → closed once everything fulfilled is invoiced.
 fn close() -> Transition<SalesOrder> {
     Transition::new(CLOSE)
@@ -578,6 +663,13 @@ mod tests {
                 true,
             ),
             (CLOSE, vec!["fulfilled"], "closed", true),
+            (CANCEL_LINE, vec!["confirmed"], "confirmed", false),
+            (
+                CANCEL_LINE_PARTLY,
+                vec!["partially_fulfilled"],
+                "partially_fulfilled",
+                false,
+            ),
         ];
         assert_eq!(machine.transitions().len(), table.len());
         for (name, from, to, system) in table {
@@ -594,6 +686,7 @@ mod tests {
         let machine = SalesOrder::machine();
         assert!(machine.find(CANCEL).unwrap().needs_reason());
         assert!(machine.find(REJECT).unwrap().needs_reason());
+        assert!(machine.find(CANCEL_LINE).unwrap().needs_reason());
         assert!(!machine.find(ACCEPT).unwrap().needs_reason());
     }
 }

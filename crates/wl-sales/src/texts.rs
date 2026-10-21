@@ -914,6 +914,18 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.loyalty.review.resolve", "Mark as reviewed"),
     ("wl_sales.loyalty.review.resolved", "Account marked as reviewed."),
     ("wl_sales.loyalty.review.empty", "Nothing to review"),
+    ("wl_sales.orders.cancel_line", "Cancel a line"),
+    (
+        "wl_sales.orders.cancel_line_description",
+        "Cancels open quantity of one line. Points redeemed on the order are given back in proportion.",
+    ),
+    ("wl_sales.orders.line_no", "Line"),
+    ("wl_sales.orders.line_cancelled", "Line cancelled."),
+    ("wl_sales.orders.errors.reason", "Give the reason."),
+    (
+        "wl_sales.orders.problem.cancel_line_last",
+        "A line cancellation must leave some quantity open; cancel the order or its remaining quantities instead.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
