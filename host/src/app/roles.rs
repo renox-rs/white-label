@@ -182,6 +182,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::EINVOICES_MANAGE,
             invoices::SUBSCRIPTIONS_VIEW,
             invoices::SUBSCRIPTIONS_MANAGE,
+            // The MD approves a rate card version dated in the past
+            // (`MPW.ACL.16`).
+            invoices::RATE_CARDS_VIEW,
+            invoices::RATE_CARDS_MANAGE,
+            invoices::RATE_CARDS_APPROVE,
             tickets::VIEW,
             tickets::CREATE,
             tickets::ASSIGN,
@@ -692,6 +697,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             parties::VIEW,
             documents::VIEW,
             invoices::VIEW,
+            // The account manager makes the rate card versions of the
+            // client contracts and records the signed acceptance
+            // (`MPW.ACL.16`).
+            invoices::RATE_CARDS_VIEW,
+            invoices::RATE_CARDS_MANAGE,
             attendance::VIEW,
             tickets::VIEW,
             tickets::CREATE,
