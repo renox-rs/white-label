@@ -9,18 +9,35 @@
 //! balance below zero: under every negative stock policy a manual issue
 //! stops there.
 //!
+//! [`consume`] is the consumption another module posts automatically (a
+//! clinic visit, an F&B sale, a work order material issue) through the
+//! kernel's [`StockService`](wl_kernel::inventory::StockService): the business
+//! event is never blocked. What is available posts now, as `consume`
+//! movements against the source and the cost object; the short part becomes a
+//! [`PendingIssue`](crate::pending_issue::PendingIssue) and
+//! [`StockNegative`] follows the commit. A lot balance is never negative: a
+//! lot-tracked item is taken from the `released` lots only, first expiry
+//! first, and held quantity is never consumed, at any location.
+//!
 //! Decisions: the movement's source is the cost object when there is one,
-//! else the location; a manual issue costs the item's average cost.
+//! else the location; a manual issue costs the item's average cost; the
+//! location's `allow_consumption` policy comes with BL-STK-19, so every
+//! location blocks negative stock here.
 
 use renox::db::Transaction;
 use renox::prelude::*;
 use wl_kernel::Subject;
+use wl_kernel::inventory::{
+    ConsumeRequest, Consumed, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, StockFuture, StockNegative,
+    StockService,
+};
 
 use crate::balance::{self, Candidate};
 use crate::item::{Item, quantity_text, value_of};
 use crate::location::Location;
 use crate::lot::{Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
+use crate::pending_issue;
 use crate::permissions;
 use crate::texts::said;
 
@@ -172,6 +189,101 @@ pub async fn issue(
     }
     tx.commit().await?;
     Ok(movements)
+}
+
+/// Consumes `request` automatically (see the module docs).
+///
+/// # Errors
+///
+/// 422 for a quantity that is not above zero; a database error.
+pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consumed> {
+    if request.quantity_milli <= 0 {
+        return Err(refused(said("wl_inventory.issue.bad_quantity", &[])));
+    }
+    let at = request.at.unwrap_or_else(renox::db::now);
+    let location = Location::find_or_404(&state.db, request.location.subject_id).await?;
+    let item = Item::find_or_404(&state.db, request.item.subject_id).await?;
+    let mut tx = state.db.begin().await?;
+    let candidates = balance::candidates(&mut tx, &item, location.id).await?;
+    let (taken, short) = plan(&candidates, request.quantity_milli);
+    let mut posted = 0;
+    for (lot_id, quantity) in taken {
+        let mut moved = StockMovement::leaving(
+            MovementType::Consume,
+            item.id,
+            lot_id,
+            location.id,
+            quantity,
+            item.average_cost,
+            value_of(quantity, item.average_cost),
+            &request.source,
+            None,
+            None,
+        );
+        moved.moved_at = at;
+        moved.cost_object_type = request
+            .cost_object
+            .as_ref()
+            .map(|subject| subject.subject_type.clone());
+        moved.cost_object_id = request.cost_object.as_ref().map(|subject| subject.subject_id);
+        moved.insert(&mut tx).await?;
+        posted += quantity;
+    }
+    let pending = if short > 0 {
+        Some(
+            pending_issue::record_in(
+                &mut tx,
+                &location,
+                item.id,
+                short,
+                &request.source,
+                request.cost_object.as_ref(),
+                at,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    tx.commit().await?;
+    if let Some(pending) = &pending {
+        state
+            .emit(StockNegative {
+                item: Subject::new(ITEM_SUBJECT_TYPE, item.id),
+                location: Subject::new(LOCATION_SUBJECT_TYPE, location.id),
+                quantity_milli: short,
+                source: Some(request.source.clone()),
+                pending_issue: Some(pending.subject()),
+            })
+            .await?;
+    }
+    Ok(Consumed {
+        posted_milli: posted,
+        short_milli: short,
+        pending_issue: pending.map(|pending| pending.subject()),
+    })
+}
+
+/// The module's [`StockService`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InventoryStock;
+
+impl StockService for InventoryStock {
+    fn consume<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: ConsumeRequest,
+    ) -> StockFuture<'a, Consumed> {
+        Box::pin(async move { consume(state, request).await })
+    }
+
+    fn source_cancelled<'a>(
+        &'a self,
+        state: &'a AppState,
+        source: &'a Subject,
+    ) -> StockFuture<'a, usize> {
+        Box::pin(async move { pending_issue::cancel_for_source(state, source).await })
+    }
 }
 
 #[cfg(test)]

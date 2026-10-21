@@ -4,6 +4,7 @@
 //! |---|---|---|
 //! | `POST /stock-holds` | `wl_inventory.hold_place` | `stock.hold` (at the location, for a hold on a location) |
 //! | `POST /stock-issues` | `wl_inventory.stock_issue` | `stock.issue` at the location |
+//! | `POST /pending-issues/{id}/clear` | `wl_inventory.pending_clear` | `stock.adjust` at the location |
 //! | `POST /transfers/{id}/send` | `wl_inventory.transfer_send` | `stock.transfer` at the source |
 //! | `POST /transfers/{id}/receive` | `wl_inventory.transfer_receive` | `stock.transfer` at the destination |
 //!
@@ -34,6 +35,8 @@ pub fn routes() -> Routes {
         .name("wl_inventory.hold_place")
         .post("/stock-issues", issue_stock)
         .name("wl_inventory.stock_issue")
+        .post("/pending-issues/{id}/clear", clear_pending_issue)
+        .name("wl_inventory.pending_clear")
         .post("/transfers/{id}/send", send_transfer)
         .name("wl_inventory.transfer_send")
         .post("/transfers/{id}/receive", receive_transfer)
@@ -214,6 +217,47 @@ async fn issue_stock(
         renox::HxRefresh,
     )
         .into_response())
+}
+
+/// What the storekeeper enters to clear a pending issue.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ClearForm {
+    /// Why the stock is entered: it was used but never on the books.
+    #[validate(max = 200)]
+    pub reason: Option<String>,
+    /// The id of the lot to enter the stock in, for a lot-tracked item.
+    #[validate(max = 20)]
+    pub lot: Option<String>,
+}
+
+/// `POST /pending-issues/{id}/clear`: clears a pending issue with a reason.
+/// Above the `STK.ACL.02` value it asks a second person to approve instead.
+async fn clear_pending_issue(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ClearForm>,
+) -> Result<Response> {
+    let reason = form.reason.clone().unwrap_or_default();
+    if reason.trim().is_empty() {
+        return Err(refused(text(&lang, "pending.reason_needed")));
+    }
+    let lot_id = id_of(&form.lot)?;
+    match crate::pending_issue::clear(&state, &user, id, &reason, lot_id).await {
+        Ok(crate::pending_issue::ClearOutcome::Cleared(_)) => Ok((
+            Toast::success(text(&lang, "pending.cleared")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Ok(crate::pending_issue::ClearOutcome::Waiting(_)) => Ok((
+            Toast::success(text(&lang, "pending.waiting")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
 }
 
 /// `POST /transfers/{id}/send`: sends a draft transfer. Refused with the

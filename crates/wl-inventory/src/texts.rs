@@ -651,6 +651,32 @@ const TEXTS: &[(&str, &str)] = &[
         "Only {{ available }} of {{ item }} is available here, {{ quantity }} is needed.",
     ),
     ("wl_inventory.issue.done", "Stock issued."),
+    // Pending issues.
+    (
+        "wl_inventory.pending.not_covered",
+        "The stock that arrived does not cover the pending issue.",
+    ),
+    (
+        "wl_inventory.pending.not_open",
+        "Only an open pending issue can be posted or cleared.",
+    ),
+    (
+        "wl_inventory.pending.lot_needed",
+        "Name the lot the stock is entered in: the item is lot-tracked.",
+    ),
+    (
+        "wl_inventory.pending.wrong_lot",
+        "The lot is not a lot of that item.",
+    ),
+    (
+        "wl_inventory.pending.reason_needed",
+        "Give the reason: why the stock was used but never on the books.",
+    ),
+    ("wl_inventory.pending.cleared", "Pending issue cleared."),
+    (
+        "wl_inventory.pending.waiting",
+        "The value needs a second person's approval before it clears.",
+    ),
     // Transfers between two locations.
     (
         "wl_inventory.transfer.same_location",

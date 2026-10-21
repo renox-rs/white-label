@@ -2,7 +2,9 @@
 //! posted, a transfer is received): the quantity that moved into the
 //! location of an open stock hold joins that hold as new lines, decided like
 //! the others and never available while the hold is open (wl-inventory §4
-//! *Stock hold* `add_lines`, issue #230).
+//! *Stock hold* `add_lines`, issue #230). What is left then posts the pending
+//! issues waiting at the location, oldest first (§3 *Negative stock*, issue
+//! #237).
 //!
 //! Decision: the screens warn first ([`crate::hold_service::warnings_for`]);
 //! the stock is moved all the same once the user goes on, so this runs for
@@ -30,12 +32,18 @@ pub struct Arrival {
     pub quantity_milli: i64,
 }
 
-/// `arrivals` arrived at `location_id`, as committed.
+/// `arrivals` arrived at `location_id`, as committed, by `via` (`receipt`
+/// or `transfer`).
 ///
 /// # Errors
 ///
 /// A database error, or a refusal of `add_lines`.
-pub async fn arrived(state: &AppState, location_id: i64, arrivals: &[Arrival]) -> Result {
+pub async fn arrived(
+    state: &AppState,
+    location_id: i64,
+    arrivals: &[Arrival],
+    via: &str,
+) -> Result {
     let mut by_hold: BTreeMap<i64, Vec<AddedLine>> = BTreeMap::new();
     for arrival in arrivals.iter().filter(|a| a.quantity_milli > 0) {
         for hold in open_on_location(&state.db, location_id, arrival.item_id).await? {
@@ -52,7 +60,13 @@ pub async fn arrived(state: &AppState, location_id: i64, arrivals: &[Arrival]) -
             .await
             .map_err(TransitionError::into_error)?;
     }
-    Ok(())
+    // Held quantity is not available, so only the rest posts what waits.
+    let items: Vec<i64> = arrivals
+        .iter()
+        .filter(|a| a.quantity_milli > 0)
+        .map(|a| a.item_id)
+        .collect();
+    crate::pending_issue::post_on_arrival(state, location_id, &items, via).await
 }
 
 /// The accepted lines of a posted goods receipt arrived at its location.
@@ -74,7 +88,7 @@ pub async fn on_receipt(
             quantity_milli: line.accepted_qty_milli,
         })
         .collect();
-    arrived(state, receipt.location_id, &arrivals).await
+    arrived(state, receipt.location_id, &arrivals, "receipt").await
 }
 
 /// The lines of a received transfer arrived at its destination.
@@ -92,5 +106,5 @@ pub async fn on_transfer(state: &AppState, transfer: &Transfer) -> Result {
             quantity_milli: line.quantity_milli,
         })
         .collect();
-    arrived(state, transfer.to_location_id, &arrivals).await
+    arrived(state, transfer.to_location_id, &arrivals, "transfer").await
 }

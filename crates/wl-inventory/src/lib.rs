@@ -17,6 +17,7 @@ pub mod location;
 pub mod lot;
 pub mod match_source;
 pub mod movement;
+pub mod pending_issue;
 pub mod pages;
 pub mod po_issue;
 pub mod po_revise;
@@ -58,6 +59,7 @@ pub use location::{Location, LocationType, NegativeStockPolicy};
 pub use lot::{Lot, LotStatus};
 pub use match_source::PurchaseMatch;
 pub use movement::{MovementType, StockMovement};
+pub use pending_issue::{PendingIssue, PendingStatus};
 pub use po_issue::{IssueOutcome, issue};
 pub use po_revise::{PurchaseOrderRevision, ReviseInput, ReviseOutcome, revise};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
@@ -277,6 +279,7 @@ impl Module for WlInventory {
         app.model::<StockHold>();
         app.model::<StockHoldLine>();
         app.model::<StockHoldItem>();
+        app.model::<PendingIssue>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
         app.model::<SupplierReturn>();
@@ -289,6 +292,7 @@ impl Module for WlInventory {
         renox::state_machine::register::<Lot>();
         renox::state_machine::register::<Transfer>();
         renox::state_machine::register::<StockHold>();
+        renox::state_machine::register::<PendingIssue>();
         renox::state_machine::register::<SupplierReturn>();
         renox::state_machine::register::<LandedCost>();
         renox::state_machine::register::<LandedCostAdjustment>();
@@ -384,6 +388,20 @@ impl Module for WlInventory {
         // stock at a location (06: an out-of-range reading).
         wl_kernel::inventory::provide_stock_hold_service(app, hold_service::InventoryHolds);
         hold_service::register_types();
+        // `StockService`: another module consumes stock automatically; the
+        // short part becomes a pending issue. Clearing one above the value
+        // (`STK.ACL.02`) needs a second holder of `stock.approve`.
+        wl_kernel::inventory::provide_stock_service(app, stock_service::InventoryStock);
+        wl_kernel::SubjectMachine::of::<PendingIssue>(
+            wl_kernel::inventory::PENDING_ISSUE_SUBJECT_TYPE,
+        )
+        .action(pending_issue::CLEAR, pending_issue::ACTION)
+        .scope(|_pending: &PendingIssue| renox::auth::permissions::Scope::global())
+        .register();
+        wl_kernel::PolicyDefault::new(pending_issue::ACTION)
+            .amount_above(self.config.wastage_approval_fils)
+            .step_permission(permissions::STOCK_APPROVE)
+            .register();
         events::register(app);
         // `STK.RUL.08`: the notice type and the daily chase of the returns
         // that stay `dispatched`.
