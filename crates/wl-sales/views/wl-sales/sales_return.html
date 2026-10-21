@@ -1,0 +1,40 @@
+{#- wl-sales: a sales return: its value, how it was resolved and what the
+    viewer may do. Replace it with resources/views/wl-sales/sales_return.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="tx['returns.subtitle']" :back="route('wl_sales.sales_returns')" :back-label="tx['returns.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="can_receive">
+        <rx-action-sheet id="receive-sales-return" :label="tx['returns.receive']" :action="route('wl_sales.sales_return_receive', sales_return.id)"
+                         :title="tx['returns.receive']" :description="tx['returns.receive_description']" :submit-label="tx['returns.receive']" icon="check">
+          <rx-checkbox name="approved" :label="tx['returns.approved']" id="receive-return-approved"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_resolve">
+        <rx-action-sheet id="resolve-sales-return" :label="tx['returns.resolve']" :action="route('wl_sales.sales_return_resolve', sales_return.id)"
+                         :title="tx['returns.resolve']" :submit-label="tx['returns.resolve']" variant="primary" icon="check">
+          <rx-input name="resolution" :label="tx['returns.resolution']" id="resolve-return-resolution" required/>
+          <rx-input name="credit_note" :label="tx['returns.credit_note']" id="resolve-return-credit-note"/>
+          <rx-checkbox name="inspected" :label="tx['returns.inspected']" id="resolve-return-inspected"/>
+          <rx-input name="complaint_category" :label="tx['returns.complaint_category']" id="resolve-return-category"/>
+          <rx-input name="responsible_party" :label="tx['returns.responsible_party']" id="resolve-return-responsible"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions">
+        <rx-transition-actions :actions="actions" action="/sales-returns/{{ sales_return.id }}/transitions"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['returns.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['returns.sale']" :value="sale"/>
+        <rx-entry :label="tx['returns.kind']" :value="kind_label"/>
+        <rx-entry :label="tx['returns.net']" :value="net"/>
+        <rx-entry :label="tx['returns.value']" :value="gross"/>
+        <rx-entry :label="tx['returns.reason']" :value="sales_return.reason" :placeholder="tx['returns.none']"/>
+        <rx-entry :label="tx['returns.resolution']" :value="resolution_label" :placeholder="tx['returns.none']"/>
+        <rx-entry rx-if="sales_return.closing_reason" :label="tx['returns.closing_reason']" :value="sales_return.closing_reason"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

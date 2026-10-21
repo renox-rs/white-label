@@ -35,6 +35,9 @@ pub mod sale_line;
 pub mod sales_order;
 pub mod sales_order_machine;
 pub mod sales_orders;
+pub mod sales_return;
+pub mod sales_return_machine;
+pub mod sales_returns;
 pub mod seed;
 mod texts;
 pub mod voids;
@@ -61,6 +64,9 @@ pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
 pub use sale_line::SaleLine;
 pub use sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
+pub use sales_return::{
+    ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, SalesReturnLine,
+};
 
 /// The campaign services under the names of the plan: `campaigns::delete`
 /// and `campaigns::run_daily`.
@@ -116,6 +122,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-sales/sales_order.html",
         include_str!("../views/wl-sales/sales_order.html"),
     ),
+    (
+        "wl-sales/sales_returns.html",
+        include_str!("../views/wl-sales/sales_returns.html"),
+    ),
+    (
+        "wl-sales/sales_return.html",
+        include_str!("../views/wl-sales/sales_return.html"),
+    ),
 ];
 
 /// The module's permissions (wl-sales §6).
@@ -150,6 +164,10 @@ pub mod permissions {
     pub const SALES_ORDERS_ACCEPT: &str = "sales_orders.accept";
     /// Cancel a sales order.
     pub const SALES_ORDERS_CANCEL: &str = "sales_orders.cancel";
+    /// Request a sales return.
+    pub const RETURNS_REQUEST: &str = "returns.request";
+    /// Receive, resolve, reject and reverse sales returns.
+    pub const RETURNS_HANDLE: &str = "returns.handle";
 }
 
 /// The sales module. The host adds it with
@@ -306,7 +324,9 @@ impl Module for WlSales {
             .view_data::<pages::counter_sales::IndexPage>()
             .view_data::<pages::counter_sales::ShowPage>()
             .view_data::<pages::sales_orders::IndexPage>()
-            .view_data::<pages::sales_orders::ShowPage>();
+            .view_data::<pages::sales_orders::ShowPage>()
+            .view_data::<pages::sales_returns::IndexPage>()
+            .view_data::<pages::sales_returns::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -334,6 +354,8 @@ impl Module for WlSales {
         app.model::<CounterSalePayment>();
         app.model::<SalesOrder>();
         app.model::<FulfilmentRecord>();
+        app.model::<SalesReturn>();
+        app.model::<SalesReturnLine>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
@@ -349,6 +371,8 @@ impl Module for WlSales {
         // The sales order: its machine, its events and the kernel's
         // `OrderFulfilment`.
         sales_orders::register(app);
+        // The sales return: its machine and the `ReturnResolved` event.
+        sales_returns::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);
@@ -398,6 +422,14 @@ impl Module for WlSales {
                 .group("nav.app")
                 .order(52)
                 .permission(permissions::SALES_ORDERS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.sales_returns", "nav.sales_returns")
+                .icon("refresh-cw")
+                .group("nav.app")
+                .order(53)
+                .permission(permissions::RETURNS_REQUEST),
         );
     }
 }

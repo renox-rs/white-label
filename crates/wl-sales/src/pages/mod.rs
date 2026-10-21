@@ -8,6 +8,7 @@ pub mod lead_sources;
 pub mod leads;
 pub mod report;
 pub mod sales_orders;
+pub mod sales_returns;
 
 use renox::prelude::*;
 
@@ -22,4 +23,5 @@ pub fn routes() -> Routes {
         .merge(leads::routes())
         .merge(report::routes())
         .merge(sales_orders::routes())
+        .merge(sales_returns::routes())
 }

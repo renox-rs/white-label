@@ -1,0 +1,305 @@
+//! The sales return pages (wl-sales §4.5, §5.6), each behind its permission.
+//!
+//! | Route | Name | Needs |
+//! |---|---|---|
+//! | `GET /sales-returns` | `wl_sales.sales_returns` | `returns.request` |
+//! | `GET /sales-returns/{id}` | `wl_sales.sales_return` | `returns.request` |
+//! | `POST /sales-returns` | `wl_sales.sales_return_request` | `returns.request` |
+//! | `POST /sales-returns/{id}/receive` | `wl_sales.sales_return_receive` | `returns.handle` |
+//! | `POST /sales-returns/{id}/resolve` | `wl_sales.sales_return_resolve` | `returns.handle` |
+//! | `POST /sales-returns/{id}/transitions/{name}` | `wl_sales.sales_return_transitions.` | `returns.handle` (`reject`, `reverse`) |
+
+use std::collections::BTreeMap;
+
+use renox::prelude::*;
+use renox::state_machine::{Available, StateMachine};
+use renox::validation::{Errors, ValidationError};
+use serde::Serialize;
+use wl_kernel::Subject;
+use wl_kernel::sales::{COUNTER_SALE_SUBJECT_TYPE, SALES_ORDER_SUBJECT_TYPE};
+
+use crate::notices::aed;
+use crate::pages::counter_sales::parse_milli;
+use crate::sales_return::{ReturnKind, ReturnResolution, ReturnStatus, SalesReturn};
+use crate::sales_return_machine::{RECEIVE, RESOLVE, ResolveInput};
+use crate::sales_returns::{self, NewReturn};
+use crate::{permissions, texts};
+
+/// The texts a template reads as `tx['returns.title']`.
+type Texts = BTreeMap<&'static str, String>;
+
+/// The routes of the pages, each behind its permission.
+pub fn routes() -> Routes {
+    Routes::new()
+        .merge(
+            Routes::new()
+                .get("/sales-returns", index)
+                .name("wl_sales.sales_returns")
+                .get("/sales-returns/{id}", show)
+                .name("wl_sales.sales_return")
+                .post("/sales-returns", request)
+                .name("wl_sales.sales_return_request")
+                .require_permission(permissions::RETURNS_REQUEST),
+        )
+        .merge(
+            Routes::new()
+                .post("/sales-returns/{id}/receive", receive)
+                .name("wl_sales.sales_return_receive")
+                .post("/sales-returns/{id}/resolve", resolve)
+                .name("wl_sales.sales_return_resolve")
+                .group(
+                    "/sales-returns",
+                    "wl_sales.sales_return_transitions.",
+                    wl_kernel::machines::routes::<SalesReturn>(),
+                )
+                .require_permission(permissions::RETURNS_HANDLE),
+        )
+}
+
+/// The package text `key` (without the `wl_sales.` prefix).
+fn text(lang: &Lang, key: &str) -> String {
+    texts::t(lang, &format!("wl_sales.{key}"))
+}
+
+/// `fils` as `AED 4,000.00`.
+fn money(fils: i64) -> String {
+    format!("AED {}", aed(fils))
+}
+
+/// A 422 with `message` under `field`, keeping what was typed.
+fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
+    let mut errors = Errors::new();
+    errors.add(field, message);
+    Error::Validation(ValidationError::new(errors).with_input(form))
+}
+
+/// The badge colour of a status.
+fn status_kind(status: ReturnStatus) -> &'static str {
+    match status {
+        ReturnStatus::Requested | ReturnStatus::Received => "info",
+        ReturnStatus::Resolved => "success",
+        ReturnStatus::Reversed | ReturnStatus::Rejected => "warning",
+    }
+}
+
+/// One return as the list shows it.
+#[derive(Serialize, Debug, Clone)]
+pub struct ReturnRow {
+    /// The primary key.
+    pub id: i64,
+    /// The return number.
+    pub number: String,
+    /// The sale returned, e.g. `sales.counter_sale:4`.
+    pub sale: String,
+    /// The value with VAT, `AED 52.50`.
+    pub value: String,
+    /// The status in words.
+    pub status_label: String,
+    /// The badge colour.
+    pub status_kind: &'static str,
+}
+
+/// What the list needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-sales/sales_returns.html")]
+pub(crate) struct IndexPage {
+    tx: Texts,
+    returns: Vec<ReturnRow>,
+}
+
+/// `GET /sales-returns`: the latest returns, newest first.
+async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
+    let returns = SalesReturn::query()
+        .order_by_desc(SalesReturn::ID)
+        .get(&db)
+        .await?
+        .into_iter()
+        .take(50)
+        .map(|r| ReturnRow {
+            id: r.id,
+            number: r.number.clone(),
+            sale: r.sale().to_string(),
+            value: money(r.gross_value),
+            status_label: text(&lang, &format!("returns.status.{}", r.status.as_str())),
+            status_kind: status_kind(r.status),
+        })
+        .collect();
+    Ok(View::typed(IndexPage {
+        tx: texts::all(&lang),
+        returns,
+    }))
+}
+
+/// What the return page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-sales/sales_return.html")]
+pub(crate) struct ShowPage {
+    tx: Texts,
+    sales_return: SalesReturn,
+    title: String,
+    status_label: String,
+    status_kind: &'static str,
+    kind_label: String,
+    resolution_label: Option<String>,
+    sale: String,
+    net: String,
+    gross: String,
+    actions: Vec<Available>,
+    can_receive: bool,
+    can_resolve: bool,
+}
+
+/// `GET /sales-returns/{id}`: the return and what the viewer may do.
+async fn show(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(r): Found<SalesReturn>,
+) -> Result<View> {
+    let handles = user.has_permission(permissions::RETURNS_HANDLE);
+    // Receiving and resolving have their own sheets (they take input).
+    let actions = r
+        .available(&user, &state.db)
+        .await?
+        .into_iter()
+        .filter(|a| a.name != RECEIVE && a.name != RESOLVE)
+        .collect();
+    Ok(View::typed(ShowPage {
+        tx: texts::all(&lang),
+        title: r.number.clone(),
+        status_label: text(&lang, &format!("returns.status.{}", r.status.as_str())),
+        status_kind: status_kind(r.status),
+        kind_label: text(&lang, &format!("returns.kind.{}", r.kind.as_str())),
+        resolution_label: r
+            .resolution
+            .map(|x| text(&lang, &format!("returns.resolution.{}", x.as_str()))),
+        sale: r.sale().to_string(),
+        net: money(r.net_value),
+        gross: money(r.gross_value),
+        actions,
+        can_receive: handles
+            && r.status == ReturnStatus::Requested
+            && r.kind == ReturnKind::Goods,
+        can_resolve: handles
+            && (r.status == ReturnStatus::Received
+                || (r.status == ReturnStatus::Requested && r.kind == ReturnKind::NoGoods)),
+        sales_return: r,
+    }))
+}
+
+/// `POST /sales-returns`: requests a return. Fields: `sale_type`
+/// (`counter_sale` or `sales_order`), `sale_id`, `kind` (`goods` or
+/// `no_goods`), `reason` and `lines` as `line id:quantity` pairs separated
+/// by commas (`12:1, 13:2.5`).
+async fn request(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    let sale_type = match get("sale_type") {
+        "counter_sale" => COUNTER_SALE_SUBJECT_TYPE,
+        "sales_order" => SALES_ORDER_SUBJECT_TYPE,
+        _ => {
+            return Err(invalid(
+                "sale_type",
+                text(&lang, "returns.errors.choice"),
+                &form,
+            ));
+        }
+    };
+    let sale_id: i64 = get("sale_id")
+        .parse()
+        .map_err(|_| invalid("sale_id", text(&lang, "returns.errors.number"), &form))?;
+    let kind = match get("kind") {
+        "" | "goods" => ReturnKind::Goods,
+        "no_goods" => ReturnKind::NoGoods,
+        _ => return Err(invalid("kind", text(&lang, "returns.errors.choice"), &form)),
+    };
+    let mut new = NewReturn::new(Subject::new(sale_type, sale_id))
+        .kind(kind)
+        .reason(get("reason"))
+        .requested_by(user.id);
+    for pair in get("lines").split(',').filter(|p| !p.trim().is_empty()) {
+        let parsed = pair.split_once(':').and_then(|(line, quantity)| {
+            Some((line.trim().parse::<i64>().ok()?, parse_milli(quantity)?))
+        });
+        let Some((line, quantity)) = parsed else {
+            return Err(invalid("lines", text(&lang, "returns.errors.lines"), &form));
+        };
+        new = new.line(line, quantity);
+    }
+    let created = sales_returns::request(&state, new).await?;
+    Ok((
+        Toast::success(text(&lang, "returns.requested")),
+        Redirect::route("wl_sales.sales_return", &[&created.id])?,
+    )
+        .into_response())
+}
+
+/// `POST /sales-returns/{id}/receive`: the goods are back; `approved` (a
+/// checkbox) accepts them outside the return window.
+async fn receive(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(r): Found<SalesReturn>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let approved = matches!(form.get("approved").map(String::as_str), Some("1" | "on"));
+    sales_returns::receive(&state, &user, r.id, approved).await?;
+    Ok((
+        Toast::success(text(&lang, "returns.received")),
+        Redirect::route("wl_sales.sales_return", &[&r.id])?,
+    )
+        .into_response())
+}
+
+/// `POST /sales-returns/{id}/resolve`: fields `resolution`, `credit_note`
+/// (the id of the credit note issued), `inspected` (checkbox),
+/// `complaint_category` and `responsible_party`.
+async fn resolve(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(r): Found<SalesReturn>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    let resolution = match get("resolution") {
+        "credit_note" => Some(ReturnResolution::CreditNote),
+        "refund" => Some(ReturnResolution::Refund),
+        "replacement" => Some(ReturnResolution::Replacement),
+        "refunded_by_channel" => Some(ReturnResolution::RefundedByChannel),
+        "" => None,
+        _ => {
+            return Err(invalid(
+                "resolution",
+                text(&lang, "returns.errors.choice"),
+                &form,
+            ));
+        }
+    };
+    let credit_note = match get("credit_note") {
+        "" => None,
+        v => Some(
+            v.parse::<i64>()
+                .map_err(|_| invalid("credit_note", text(&lang, "returns.errors.number"), &form))?,
+        ),
+    };
+    let optional = |key: &str| Some(get(key).to_owned()).filter(|v| !v.is_empty());
+    let input = ResolveInput {
+        resolution,
+        credit_note,
+        inspected: matches!(get("inspected"), "1" | "on"),
+        complaint_category: optional("complaint_category"),
+        responsible_party: optional("responsible_party"),
+    };
+    sales_returns::resolve(&state, &user, r.id, input).await?;
+    Ok((
+        Toast::success(text(&lang, "returns.resolved")),
+        Redirect::route("wl_sales.sales_return", &[&r.id])?,
+    )
+        .into_response())
+}

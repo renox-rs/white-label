@@ -229,6 +229,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::SALES_ORDERS_CREATE,
             sales::SALES_ORDERS_ACCEPT,
             sales::SALES_ORDERS_CANCEL,
+            sales::RETURNS_REQUEST,
+            sales::RETURNS_HANDLE,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
             hr::EMPLOYEES_EXIT_APPROVE,
