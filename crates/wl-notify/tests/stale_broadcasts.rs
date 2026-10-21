@@ -254,6 +254,48 @@ async fn an_unapproved_broadcast_is_cancelled_a_day_after_its_send_time() {
     assert_eq!(cancelled.all().len(), 1);
 }
 
+/// Done when 1, through the registered job: the 15-minute task
+/// ([`stale::TASK`]) run by the scheduler (`run_scheduled`), with the
+/// module clock at the send time plus a day (and a quarter hour). A minute
+/// short of the limit it does nothing; at the limit it cancels once.
+#[renox::test]
+async fn the_registered_15_minute_task_cancels_the_unapproved_broadcast() {
+    let (t, cancelled, _) = boot().await;
+    let a = t.user("Aisha", &[MARKETING_SEND]).await;
+    let id = ask(&t, 3, a.id).await;
+    let b = stored(&t, id).await;
+    let due = b.send_at + Duration::hours(24);
+
+    t.clock.set_instant(due - Duration::minutes(1));
+    t.app
+        .run_scheduled(stale::TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(
+        stored(&t, id).await.status,
+        BroadcastStatus::PendingApproval
+    );
+
+    t.clock.set_instant(due);
+    t.app
+        .run_scheduled(stale::TASK)
+        .await
+        .expect("the task runs");
+    let b = stored(&t, id).await;
+    assert_eq!(b.status, BroadcastStatus::Cancelled);
+    assert_eq!(b.cancel_reason.as_deref(), Some("approval_expired"));
+    assert_eq!(cancelled.all().len(), 1);
+    assert_eq!(t.notices(&a, FALLBACK_KIND).await.len(), 1);
+
+    // The run a quarter of an hour later changes nothing.
+    t.clock.set_instant(due + Duration::minutes(15));
+    t.app
+        .run_scheduled(stale::TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(cancelled.all().len(), 1);
+}
+
 /// A broadcast approved before the check runs is not expired.
 #[renox::test]
 async fn a_broadcast_approved_in_time_is_not_expired() {

@@ -912,6 +912,11 @@ impl TestClock {
         *self.0.lock().unwrap() = dubai(at);
     }
 
+    /// Says the instant `at` from now on.
+    pub fn set_instant(&self, at: DateTime) {
+        *self.0.lock().unwrap() = at;
+    }
+
     /// The instant now.
     pub fn now(&self) -> DateTime {
         *self.0.lock().unwrap()
