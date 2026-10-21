@@ -151,11 +151,24 @@ pub async fn visit_of(
     hour: u32,
     notes: &str,
 ) -> (Booking, Visit) {
+    visit_with(d, &d.doctor, &d.consultation, patient, days, hour, notes).await
+}
+
+/// Like [`visit_of`] with `doctor` and the service `service`.
+pub async fn visit_with(
+    d: &Desk,
+    doctor: &wl_scheduling::Resource,
+    service_type: &wl_scheduling::ServiceType,
+    patient: PartyId,
+    days: i64,
+    hour: u32,
+    notes: &str,
+) -> (Booking, Visit) {
     use wl_scheduling::service::{self, Actor, NewBooking};
     let mut new = NewBooking::new(
         patient,
-        d.consultation.id,
-        &[d.doctor.id],
+        service_type.id,
+        &[doctor.id],
         at(day(days), hour),
     )
     .for_subject(patient.subject());
@@ -183,8 +196,32 @@ pub async fn used_filler(
     units: i64,
     lot: &str,
 ) -> Visit {
+    used_filler_with(d, &d.doctor, &d.consultation, patient, days, hour, units, lot).await
+}
+
+/// Like [`used_filler`] with `doctor` and the service `service_type`.
+#[allow(clippy::too_many_arguments)]
+pub async fn used_filler_with(
+    d: &Desk,
+    doctor: &wl_scheduling::Resource,
+    service_type: &wl_scheduling::ServiceType,
+    patient: PartyId,
+    days: i64,
+    hour: u32,
+    units: i64,
+    lot: &str,
+) -> Visit {
     use wl_scheduling::service::{self, Actor};
-    let (booking, visit) = visit_of(d, patient, days, hour, "Chest pain, suspected angina").await;
+    let (booking, visit) = visit_with(
+        d,
+        doctor,
+        service_type,
+        patient,
+        days,
+        hour,
+        "Chest pain, suspected angina",
+    )
+    .await;
     record(d, &visit, units, lot).await.assert_ok();
     service::complete(
         d.t.state(),
@@ -195,4 +232,43 @@ pub async fn used_filler(
     .await
     .expect("the visit is checked out");
     d.visit(visit.id).await
+}
+
+/// The second branch: a practitioner and a service there, and a store of its
+/// own holding `l1` units of the lot L1 of the filler.
+pub struct Elsewhere {
+    /// The practitioner of the second branch.
+    pub doctor: wl_scheduling::Resource,
+    /// The service the practitioner offers.
+    pub service: wl_scheduling::ServiceType,
+    /// The store of the second branch.
+    pub store: Location,
+}
+
+/// Sets up the second branch next to the store `s` of the first.
+pub async fn elsewhere(d: &Desk, s: &Store, l1: i64) -> Elsewhere {
+    let doctor = d
+        .t
+        .practitioner_at("Dr B", 62, &super::other_branch(), None)
+        .await;
+    let service = d.t.service_type("consultation_b", &[&doctor]).await;
+    let mut store = Location::new("STORE-B3", "Second branch store").in_scope(&super::other_branch());
+    store.save(d.t.db()).await.unwrap();
+    let source = Subject::new("inventory.goods_receipt", 901);
+    let mut moved = StockMovement::receive(
+        s.item.id,
+        Some(s.l1.id),
+        store.id,
+        l1 * 1_000,
+        500,
+        value_of(l1 * 1_000, 500),
+        &source,
+        None,
+    );
+    moved.save(d.t.db()).await.unwrap();
+    Elsewhere {
+        doctor,
+        service,
+        store,
+    }
 }

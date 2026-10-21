@@ -53,6 +53,7 @@ use wl_kernel::notify::{
     self, Category, MessageGaveUp, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
 };
 use wl_kernel::scheduling::BOOKING_SUBJECT_TYPE;
+use renox::auth::permissions::Scope;
 use wl_kernel::{ClientConfig, PartyId, Subject, scopes};
 
 use crate::authorisations::addressees;
@@ -131,6 +132,9 @@ pub struct TraceRow {
     pub on: Option<NaiveDate>,
     /// The branch, as a label.
     pub branch: String,
+    /// The branch scope of the visit, for who may see the row and who is
+    /// called when the notice gives up.
+    pub scope: Scope,
     /// How sure the trace is about the line.
     pub mark: TraceMark,
     /// `pending`, `sent` or `waived`.
@@ -146,7 +150,7 @@ impl TraceRow {
 }
 
 /// The branch scope of a visit: the scope of its booking.
-async fn branch_scope(db: &Db, visit: &Visit) -> Result<renox::auth::permissions::Scope> {
+async fn branch_scope(db: &Db, visit: &Visit) -> Result<Scope> {
     scopes::scope_of(db, &Subject::new(BOOKING_SUBJECT_TYPE, visit.booking_id)).await
 }
 
@@ -180,12 +184,22 @@ pub async fn trace(state: &AppState, recall: i64) -> Result<Vec<TraceRow>> {
             addressee: holder.party.map_or(0, |party| party.0),
             on: Some(visit.visit_date).or(holder.on),
             branch: scopes::label_of(&state.db, &scope).await?,
+            scope,
             mark: holder.mark,
             notice: holder.notice.clone(),
         });
     }
     rows.sort_by_key(|row| (row.on, row.visit));
     Ok(rows)
+}
+
+/// The rows of `rows` that `user` may read: all for a holder of
+/// `recalls.trace` everywhere, else those of the branches where the user
+/// holds it (`CLN.ACL.01`).
+pub fn readable(user: &AuthUser, rows: Vec<TraceRow>) -> Vec<TraceRow> {
+    rows.into_iter()
+        .filter(|row| user.has_permission_in(crate::permissions::RECALLS_TRACE, &row.scope))
+        .collect()
 }
 
 /// Records that `user` looked at the trace list of recall `recall`
@@ -259,7 +273,8 @@ struct Group {
 }
 
 /// Sends the notice of recall `recall_id`: one message to each party that
-/// has visits among the lines still `pending`, listing all their visit days.
+/// has visits among the lines still `pending`, listing their visit days at
+/// one branch (a patient seen at two branches gets one message for each).
 /// Returns the notices made; none when everyone was told.
 ///
 /// # Errors
@@ -268,12 +283,20 @@ struct Group {
 /// notice that failed is removed and its lines stay `pending`).
 pub async fn send(state: &AppState, by: &AuthUser, recall_id: i64) -> Result<Vec<RecallNotice>> {
     let rows = trace(state, recall_id).await?;
-    let mut groups: BTreeMap<i64, Group> = BTreeMap::new();
+    let mut groups: BTreeMap<(i64, String, String), Group> = BTreeMap::new();
     for row in rows
         .iter()
         .filter(|row| row.notice == "pending" && row.addressee != 0)
     {
-        let group = groups.entry(row.addressee).or_default();
+        // One notice for each branch the patient was seen at, so the call
+        // task of a notice that gives up goes to the front desk of the
+        // branch of the visits it names.
+        let key = (
+            row.addressee,
+            row.scope.kind().to_owned(),
+            row.scope.id().to_owned(),
+        );
+        let group = groups.entry(key).or_default();
         group.patient = group.patient.or(row.patient);
         group.visits.insert(row.visit);
         group.lines.push(row.line.clone());
@@ -285,7 +308,7 @@ pub async fn send(state: &AppState, by: &AuthUser, recall_id: i64) -> Result<Vec
     let (clinic, contact, contact_ar) = clinic_contact(state);
     let trace_service = lot_trace(state);
     let mut made = Vec::new();
-    for (party, group) in groups {
+    for ((party, _, _), group) in groups {
         let dates = group
             .dates
             .iter()
@@ -380,17 +403,18 @@ pub async fn on_gave_up(state: &AppState, event: &MessageGaveUp) -> Result {
     Ok(())
 }
 
-/// The scope a notice lies in: the branch of the first visit it covers.
+/// The scope a notice lies in: the branch of the visits it covers (a notice
+/// covers the visits of one branch, see [`send`]).
 pub async fn notice_scope(
     db: &Db,
     notice: &RecallNotice,
-) -> Result<renox::auth::permissions::Scope> {
+) -> Result<Scope> {
     for visit in notice.visit_ids.0.iter() {
         if let Some(visit) = Visit::find(db, *visit).await? {
             return branch_scope(db, &visit).await;
         }
     }
-    Ok(renox::auth::permissions::Scope::global())
+    Ok(Scope::global())
 }
 
 /// The front desk records the outcome of the call to the patient of notice
@@ -464,7 +488,7 @@ pub(crate) fn register(app: &mut Registry) {
         Box::pin(async move {
             match RecallNotice::find(db, id).await? {
                 Some(notice) => notice_scope(db, &notice).await,
-                None => Ok(renox::auth::permissions::Scope::global()),
+                None => Ok(Scope::global()),
             }
         })
     });

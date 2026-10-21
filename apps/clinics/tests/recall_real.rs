@@ -24,7 +24,7 @@ use clinics::permissions::{
 };
 use clinics::recall_notice::{NOTICE_TYPE, RecallNotice, RecallNoticeStatus};
 use support::desk::{Desk, desk_with_stock, desk_with_stock_and_notify};
-use support::stock::{Store, receive, store, used_filler};
+use support::stock::{Store, elsewhere, receive, store, used_filler, used_filler_with};
 use support::Messages;
 
 const P1: PartyId = PartyId(70);
@@ -693,4 +693,153 @@ async fn the_arabic_notice_is_filled_and_neutral() {
         assert!(!body.contains(secret), "the notice says `{secret}`: {body}");
     }
     assert!(!out.title.contains("Filler"), "{}", out.title);
+}
+
+/// A patient seen at two branches gets one notice for each branch (not one
+/// notice whose call task lies in the branch of the first visit): when both
+/// give up, the call of each goes to the front desk of its own branch, and
+/// each branch's call list shows the days of that branch only.
+#[renox::test]
+async fn a_patient_seen_at_two_branches_is_called_from_each_branch() {
+    let d = desk_with_stock_and_notify().await;
+    name_patients(&d);
+    let s = store(&d, 10, 0).await;
+    let e = elsewhere(&d, &s, 10).await;
+    let first = used_filler(&d, P1, 1, 9, 1, "L1").await;
+    let second = used_filler_with(&d, &e.doctor, &e.service, P1, 2, 9, 1, "L1").await;
+    assert_ne!(first.visit_date, second.visit_date);
+    let fay = desk_of(&d, "Fay", &support::branch()).await;
+    let zed = desk_of(&d, "Zed", &support::other_branch()).await;
+    d.t.guardians.reachable(P1);
+    d.t.outbox.refuse(support::PATIENT_EMAIL, "550", "mailbox unknown");
+
+    let recall = open_recall(&d, s.item.id, "L1").await;
+    let mia = manager(&d).await;
+    d.post(
+        &mia,
+        &format!("/clinics/recalls/{}/notices", recall.id),
+        &[("x", "y")],
+    )
+    .await
+    .assert_ok();
+    let made = RecallNotice::of_recall(d.t.db(), recall.id).await.unwrap();
+    assert_eq!(made.len(), 2, "one notice for each branch: {made:?}");
+    let at_first = made.iter().find(|n| n.visit_ids.0 == vec![first.id]);
+    let at_second = made.iter().find(|n| n.visit_ids.0 == vec![second.id]);
+    let (at_first, at_second) = (
+        at_first.expect("a notice for the visit of branch 1"),
+        at_second.expect("a notice for the visit of branch 2"),
+    );
+    assert_eq!(at_first.visit_dates, first.visit_date.to_string());
+    assert_eq!(at_second.visit_dates, second.visit_date.to_string());
+
+    while d.t.app.run_jobs().await > 0 {}
+    for notice in [at_first, at_second] {
+        let now = RecallNotice::find_or_404(d.t.db(), notice.id)
+            .await
+            .unwrap();
+        assert_eq!(now.status, RecallNoticeStatus::GaveUp);
+    }
+    let tasks = d.t.tasks.opened();
+    assert_eq!(tasks.len(), 2, "{tasks:?}");
+    let task_of = |notice: &RecallNotice| {
+        tasks
+            .iter()
+            .find(|task| task.subject == notice.subject())
+            .unwrap_or_else(|| panic!("no task for {notice:?}: {tasks:?}"))
+    };
+    assert_eq!(task_of(at_first).assignee, Some(Assignee::user(fay.id)));
+    assert_eq!(task_of(at_second).assignee, Some(Assignee::user(zed.id)));
+
+    // Each desk sees the call of its own branch only.
+    let fay_page = d.get(&fay, "/clinics/recall-calls").await;
+    fay_page.assert_ok().assert_see(&first.visit_date.to_string());
+    assert!(
+        !fay_page.text().contains(&second.visit_date.to_string()),
+        "{}",
+        fay_page.text()
+    );
+    let zed_page = d.get(&zed, "/clinics/recall-calls").await;
+    zed_page.assert_ok().assert_see(&second.visit_date.to_string());
+    assert!(
+        !zed_page.text().contains(&first.visit_date.to_string()),
+        "{}",
+        zed_page.text()
+    );
+    let path = format!("/clinics/recall-calls/{}", at_second.id);
+    d.post(&fay, &path, &[("outcome", "Reached")])
+        .await
+        .assert_forbidden();
+    d.post(&zed, &path, &[("outcome", "Reached")])
+        .await
+        .assert_ok();
+}
+
+/// A manager who holds `recalls.trace` in one branch only opens the trace and
+/// reads the rows of that branch; one who holds it in a branch with no row of
+/// the recall is refused; the holder everywhere reads all rows. Each view is
+/// audited.
+#[renox::test]
+async fn a_branch_manager_reads_the_trace_rows_of_her_branch() {
+    let d = desk_with_stock().await;
+    name_patients(&d);
+    let s = store(&d, 10, 0).await;
+    let e = elsewhere(&d, &s, 10).await;
+    used_filler(&d, P2, 1, 9, 1, "L1").await;
+    used_filler_with(&d, &e.doctor, &e.service, P3, 2, 9, 1, "L1").await;
+    let recall = open_recall(&d, s.item.id, "L1").await;
+    let path = format!("/clinics/recalls/{}", recall.id);
+
+    let scoped = |name: &'static str, branch: Subject| {
+        let d = &d;
+        async move {
+            let user = User::register(
+                d.t.db(),
+                name,
+                &format!("{}@example.com", name.to_lowercase()),
+                "password123",
+            )
+            .await
+            .unwrap();
+            permissions::define_role(d.t.db(), "branch_manager", &[RECALLS_TRACE])
+                .await
+                .unwrap();
+            user.assign_role_in(
+                d.t.db(),
+                "branch_manager",
+                &Scope::new(&branch.subject_type, branch.subject_id),
+            )
+            .await
+            .unwrap();
+            user
+        }
+    };
+    let mona = scoped("Mona", support::branch()).await;
+    let page = d.get(&mona, &path).await;
+    page.assert_ok().assert_see("Omar Saleh");
+    assert!(!page.text().contains("Noor Haddad"), "{}", page.text());
+    // The send is the global manager's, not the branch manager's.
+    d.post(&mona, &format!("{path}/notices"), &[("x", "y")])
+        .await
+        .assert_forbidden();
+
+    let nobody = scoped("Nora", Subject::new("test.branch", 4)).await;
+    d.get(&nobody, &path).await.assert_forbidden();
+
+    let mia = manager(&d).await;
+    let all = d.get(&mia, &path).await;
+    all.assert_ok()
+        .assert_see("Omar Saleh")
+        .assert_see("Noor Haddad");
+
+    let log = renox::audit::for_subject(d.t.db(), "inventory.recall", recall.id, 10)
+        .await
+        .unwrap();
+    let viewers: Vec<_> = log
+        .iter()
+        .filter(|entry| entry.action == clinics::recalls::VIEWED)
+        .filter_map(|entry| entry.user_id)
+        .collect();
+    assert_eq!(viewers.len(), 2, "{viewers:?}");
+    assert!(viewers.contains(&mona.id) && viewers.contains(&mia.id));
 }

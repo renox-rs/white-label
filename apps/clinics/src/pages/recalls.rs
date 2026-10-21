@@ -2,7 +2,7 @@
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
-//! | `GET /clinics/recalls/{id}` | `clinics.recall` | `recalls.trace` (every view is audited) |
+//! | `GET /clinics/recalls/{id}` | `clinics.recall` | `recalls.trace`, everywhere or in a branch (that branch's rows only; every view is audited) |
 //! | `POST /clinics/recalls/{id}/notices` | `clinics.recall_notices` | `recalls.notify` |
 //! | `GET /clinics/recall-calls` | `clinics.recall_calls` | `recalls.call` |
 //! | `POST /clinics/recall-calls/{id}` | `clinics.recall_call` | `recalls.call` in the notice's branch |
@@ -74,8 +74,18 @@ async fn show(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<View> {
-    require(&user, permissions::RECALLS_TRACE)?;
-    let rows = recalls::trace(&state, id).await?;
+    // Everywhere, or in the branches of the visits: a manager of one branch
+    // reads the rows of that branch only.
+    if !user.has_permission(permissions::RECALLS_TRACE)
+        && !user.has_permission_anywhere(permissions::RECALLS_TRACE)
+    {
+        return Err(Error::Forbidden);
+    }
+    let all = recalls::trace(&state, id).await?;
+    let rows = recalls::readable(&user, all);
+    if rows.is_empty() && !user.has_permission(permissions::RECALLS_TRACE) {
+        return Err(Error::Forbidden);
+    }
     recalls::audit_view(&state, &user, id).await?;
     let mut lines = Vec::with_capacity(rows.len());
     for row in &rows {
