@@ -532,6 +532,19 @@ async fn show(
             Claim::find_or_404(&state.db, other).await?.number()
         ));
     }
+    // The claim a duplicate names shows the link too: every duplicate of it.
+    for duplicate in Claim::query()
+        .where_(Claim::VOID_DUPLICATE_OF.eq(Some(claim.id)))
+        .order_by(Claim::ID)
+        .get(&state.db)
+        .await?
+    {
+        links.push(format!(
+            "{} {}",
+            text(&lang, "claim.duplicated_by"),
+            duplicate.number()
+        ));
+    }
     if let Some(other) = claim.replaces_claim_id {
         links.push(format!(
             "{} {}",

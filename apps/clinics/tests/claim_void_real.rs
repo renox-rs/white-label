@@ -71,6 +71,14 @@ async fn ready(t: &Real, by: &AuthUser) -> Claim {
     t.claim_now(claim.id).await
 }
 
+/// The table row of the list that holds `number`.
+fn row_of(page: &str, number: &str) -> String {
+    page.split("<tr")
+        .find(|row| row.contains(number))
+        .unwrap_or_else(|| panic!("a row for {number} in {page}"))
+        .to_owned()
+}
+
 fn void_path(claim: &Claim) -> String {
     format!("/clinics/claims/{}/void", claim.id)
 }
@@ -137,7 +145,12 @@ async fn a_ready_claim_is_voided_and_the_visit_is_split_again_to_the_right_payer
     let response = t.get(&cora, "/clinics/claims").await;
     let list = response.assert_ok();
     list.assert_see(&claim.number());
-    list.assert_see("Void");
+    // The row of the voided claim itself: its number and the void badge.
+    let row = row_of(&list.text(), &claim.number());
+    assert!(row.contains("Void"), "{row}");
+    assert!(!row.contains("Draft"), "{row}");
+    let new_row = row_of(&list.text(), &made.number());
+    assert!(new_row.contains("Draft"), "{new_row}");
     t.get(&cora, &format!("/clinics/claims/{}", claim.id))
         .await
         .assert_ok()
@@ -401,6 +414,11 @@ async fn a_duplicate_names_the_claim_it_duplicates() {
         .await
         .assert_ok()
         .assert_see(&format!("Duplicate of {}", first.number()));
+    // And the claim it duplicates shows the link too.
+    t.get(&cora, &format!("/clinics/claims/{}", first.id))
+        .await
+        .assert_ok()
+        .assert_see(&format!("Duplicated by {}", second.number()));
 
     // The service refuses a reason that is none of the three, too.
     let service = claim_void::void(t.state(), &cora, first.id, VoidRequest::new("tired")).await;

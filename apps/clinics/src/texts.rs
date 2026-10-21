@@ -784,6 +784,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("clinics.claim.void_info", "Voided on :date (:reason)"),
     ("clinics.claim.duplicate_of", "Duplicate of"),
+    ("clinics.claim.duplicated_by", "Duplicated by"),
     ("clinics.claim.replaces", "Replaces"),
     ("clinics.claim.replaced_by", "Replaced by"),
     (
