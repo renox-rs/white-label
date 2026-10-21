@@ -3,7 +3,7 @@
 
 -- The paid run a supplementary run corrects (always the original run), and
 -- why it was made.
-ALTER TABLE "wl_hr_payroll_runs" ADD COLUMN corrects INTEGER REFERENCES "wl_hr_payroll_runs" (id);
+ALTER TABLE "wl_hr_payroll_runs" ADD COLUMN corrects INTEGER;
 ALTER TABLE "wl_hr_payroll_runs" ADD COLUMN reason TEXT;
 CREATE INDEX "wl_hr_payroll_runs_corrects" ON "wl_hr_payroll_runs" (corrects);
 

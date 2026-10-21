@@ -417,3 +417,49 @@ async fn hrm17_a_run_that_is_not_paid_a_blank_reason_or_no_difference_is_refused
         .await
         .assert_status(403);
 }
+
+/// A positive difference held at the `submit` of the supplementary run (no
+/// usable pay account) is paid later in an off-cycle run (`HRM.RUL.12`), not
+/// in the supplementary run.
+#[renox::test]
+async fn hrm17_a_positive_line_held_at_submit_is_paid_in_an_off_cycle_run() {
+    let w = world().await;
+    w.correct(&w.r, "Overtime miscounted", &rows(&w.e, Some(&w.f)))
+        .await
+        .assert_status(303);
+    let run = w.supplementary().await.remove(0);
+    let f_line = w.lines(&run).await.remove(1);
+    PayrollLine::query()
+        .where_(PayrollLine::ID.eq(f_line.id))
+        .update(
+            w.t.db(),
+            &[
+                ("status", &LineStatus::Held.as_str().to_owned()),
+                ("held_reason", &Some("closed account".to_owned())),
+            ],
+        )
+        .await
+        .unwrap();
+    w.send(&run).await;
+    assert!(SifFile::of_run(w.t.db(), run.id).await.unwrap().is_empty());
+    w.t.confirm(&w.b, &run, "").await.assert_status(303);
+    assert_eq!(w.t.line(&f_line).await.status, LineStatus::Held);
+
+    wl_hr::release::line_fixed(w.t.state(), f_line.id)
+        .await
+        .unwrap();
+
+    let off = PayrollRun::query()
+        .where_(PayrollRun::RUN_TYPE.eq("off_cycle"))
+        .get(w.t.db())
+        .await
+        .unwrap();
+    assert_eq!(off.len(), 1);
+    let lines = w.lines(&off[0]).await;
+    assert_eq!(lines.len(), 1);
+    assert_eq!(
+        (lines[0].employee_id, lines[0].net_amount),
+        (w.f.id, aed(200))
+    );
+    assert_eq!(w.t.line(&f_line).await.released_into, Some(off[0].id));
+}
