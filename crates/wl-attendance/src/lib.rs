@@ -6,6 +6,7 @@ pub mod adjustment;
 pub mod after_last_day;
 pub mod approval;
 pub mod checks;
+pub mod closing;
 pub mod config;
 pub mod crew;
 pub mod crews_affected;
@@ -222,6 +223,7 @@ impl Module for WlAttendance {
         wl_kernel::timesheets::provide_timesheets(app, payroll::AttendanceTimesheets);
         wl_kernel::attendance::provide_attendance_review(app, after_last_day::Reviewer);
         wl_kernel::attendance::provide_attendance_history(app, history::Attended);
+        wl_kernel::timesheets::provide_timesheet_closing(app, closing::Closer);
         renox::state_machine::register::<AttendanceRecord>();
         renox::state_machine::register::<Timesheet>();
         notices::register_types();

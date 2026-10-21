@@ -9,6 +9,9 @@
 //!   it at `calculate` ([`Timesheets::hours_for_payroll`]) and tells it at
 //!   `submit` ([`Timesheets::record_payroll_use`]). Without it,
 //!   [`timesheets`] gives [`NoTimesheets`]: there are no hours.
+//! - [`TimesheetClosing`]: closes the open timesheet of a context at its last
+//!   day and submits it at once (09 Manpower: a deployment or a contract
+//!   ends). `wl-attendance` provides it.
 //! - [`ApproverResolver`] (§8): who stands behind an externally approved
 //!   timesheet. The vertical provides it from the deployment's contract
 //!   (09 Manpower: the client approver, the escalation contact, the account
@@ -212,6 +215,67 @@ pub fn timesheets(state: &AppState) -> Arc<dyn Timesheets> {
     match state.provided::<Arc<dyn Timesheets>>() {
         Some(timesheets) => Arc::clone(&timesheets),
         None => Arc::new(NoTimesheets),
+    }
+}
+
+/// What closing one open timesheet came to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimesheetClosure {
+    /// The timesheet, `attendance.timesheet:3`.
+    pub timesheet: Subject,
+    /// The last day it now covers.
+    pub period_to: NaiveDate,
+    /// Whether it was submitted to its approver. When a check refused the
+    /// submit (a day without hours allocated, attendance still flagged) it
+    /// stays `open` with a task for its submitter, and `message` says why.
+    pub submitted: bool,
+    /// Why it was not submitted.
+    pub message: Option<String>,
+}
+
+/// Closes the open timesheet of a context when the work ends (09 Manpower
+/// §7.1 *Deployment* `end` and *Client contract* `end`: "each open timesheet
+/// closed at the end date and submitted to the client at once"). `wl-attendance`
+/// provides it with [`provide_timesheet_closing`]. Without it,
+/// [`timesheet_closing`] gives [`NoTimesheetClosing`]: nothing is closed.
+pub trait TimesheetClosing: Send + Sync + 'static {
+    /// Closes, at `last_day`, every regular timesheet of `owner` in `context`
+    /// (`manpower.deployment:4`) that is still `open` and starts on or before
+    /// that day: a period that runs past `last_day` is cut to it, then the
+    /// timesheet is submitted as the system, at once and not at the period
+    /// end, with the checks of any submit. Timesheets already submitted,
+    /// approved or locked are not touched, so a second call changes nothing.
+    /// The default closes nothing.
+    fn close_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: &'a Subject,
+        _owner: EmployeeId,
+        _last_day: NaiveDate,
+    ) -> LabourFuture<'a, Vec<TimesheetClosure>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The closing when `wl-attendance` is off: nothing is closed.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoTimesheetClosing;
+
+impl TimesheetClosing for NoTimesheetClosing {}
+
+/// Makes `closing` the app's [`TimesheetClosing`]; `wl-attendance` calls it in
+/// `register`.
+pub fn provide_timesheet_closing(app: &mut Registry, closing: impl TimesheetClosing) {
+    let closing: Arc<dyn TimesheetClosing> = Arc::new(closing);
+    app.provide(closing);
+}
+
+/// The app's [`TimesheetClosing`], or [`NoTimesheetClosing`] when none is
+/// provided.
+pub fn timesheet_closing(state: &AppState) -> Arc<dyn TimesheetClosing> {
+    match state.provided::<Arc<dyn TimesheetClosing>>() {
+        Some(closing) => Arc::clone(&closing),
+        None => Arc::new(NoTimesheetClosing),
     }
 }
 
