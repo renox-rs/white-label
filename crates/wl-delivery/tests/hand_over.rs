@@ -255,6 +255,53 @@ async fn a_permit_that_expires_before_the_confirmation_stops_the_hand_over() {
     assert!(w.handed_over.all().is_empty());
 }
 
+/// AC2 (the vehicle half of the guard): the receiving run's vehicle has an
+/// expired insurance: the hand-over is refused at the proposal with the
+/// document named, nothing is created and no stop moves; and an insurance that
+/// expires before the confirmation stops the hand-over there too.
+#[renox::test]
+async fn a_receiving_vehicle_with_an_expired_insurance_stops_the_hand_over() {
+    let w = boot_with_custody().await;
+    let (r1, stops) = giving_run(&w, 2).await;
+    let r2 = dispatched_run(&w, &w.other_driver, &[]).await;
+    let yesterday = today() - Days::new(1);
+    w.docs.set(
+        &w.vehicle_subject(),
+        documents::INSURANCE,
+        Some(yesterday),
+    );
+
+    propose(&w, &r1, &r2, "breakdown", &[&stops[0]])
+        .await
+        .assert_status(422)
+        .assert_see("expired on");
+    assert!(HandOver::of_run(w.db(), r1.id).await.unwrap().is_empty());
+    assert_eq!(w.reload(&stops[0]).await.run_id, Some(r1.id));
+
+    // Valid at the proposal, expired at the confirmation.
+    w.docs.set(
+        &w.vehicle_subject(),
+        documents::INSURANCE,
+        Some(today() + Days::new(30)),
+    );
+    propose(&w, &r1, &r2, "breakdown", &[&stops[0]])
+        .await
+        .assert_ok();
+    let waiting = only_hand_over(&w, &r1).await;
+    w.docs.set(
+        &w.vehicle_subject(),
+        documents::INSURANCE,
+        Some(yesterday),
+    );
+    confirm(&w, &w.other_driver, &waiting, &[&stops[0]], Some("400.00"))
+        .await
+        .assert_status(422)
+        .assert_see("expired on");
+    assert_eq!(w.reload(&stops[0]).await.run_id, Some(r1.id));
+    assert!(!only_hand_over(&w, &r1).await.is_confirmed());
+    assert!(w.handed_over.all().is_empty());
+}
+
 /// AC3: B counts AED 380 while A's custody holds AED 400: `RunHandedOver`
 /// carries the AED 380 counted, and the giving driver's custody is not
 /// touched here, so the AED 20 stays in A's handover as the shortage the

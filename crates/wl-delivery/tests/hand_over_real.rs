@@ -11,6 +11,8 @@ use wl_delivery::hand_over::HandOver;
 use wl_delivery::{Delivery, NewRun, Run, RunStatus, VehicleType, close};
 use wl_kernel::custody::{HandoverStatus, HandoverSummary};
 use wl_kernel::documents::today;
+use wl_payments::cash_handover::CashEntry;
+use wl_payments::cash_hand_over::OVERAGE_SOURCE_TYPE;
 use wl_payments::cash_notices::CASH_HANDED_OVER;
 use wl_payments::permissions as pay;
 
@@ -130,6 +132,9 @@ async fn the_cash_a_receiving_driver_counts_moves_into_his_custody() {
     let ours = custody_of(&w, &r1).await.unwrap();
     assert_eq!(ours.expected, 0);
     assert_eq!(ours.holder_user, w.driver.id);
+    // Nothing is left to hand over; the handover is not counted by itself,
+    // it stays open at 0 until the depot counts it (DEFERRED-dlv, #165).
+    assert_eq!(ours.status, HandoverStatus::Open);
     assert_eq!(w.handed_over.all().len(), 1);
     let told = w.notices.users_of_type(CASH_HANDED_OVER);
     assert!(told.contains(&w.driver.id));
@@ -183,6 +188,16 @@ async fn an_excess_counted_by_the_receiver_is_an_overage_line() {
 
     hand_over(&w, &r1, &r2, &[&stops[0]], "430.00").await;
 
-    assert_eq!(custody_of(&w, &r2).await.unwrap().expected, 43_000);
-    assert_eq!(custody_of(&w, &r1).await.unwrap().expected, 0);
+    let theirs = custody_of(&w, &r2).await.unwrap();
+    assert_eq!(theirs.expected, 43_000);
+    let ours = custody_of(&w, &r1).await.unwrap();
+    assert_eq!(ours.expected, 0);
+    assert_eq!(ours.status, HandoverStatus::Open);
+    let entries = CashEntry::of_handover(w.db(), theirs.id.0).await.unwrap();
+    assert_eq!(entries.len(), 2);
+    let line = entries
+        .iter()
+        .find(|e| e.source_type == OVERAGE_SOURCE_TYPE)
+        .expect("the overage line");
+    assert_eq!(line.amount, 3_000);
 }
