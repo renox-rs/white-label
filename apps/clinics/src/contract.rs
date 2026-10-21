@@ -52,6 +52,10 @@ pub struct PayerContract {
     /// Whether the payer still accepts a first claim after its window, with
     /// a late reason recorded on the claim.
     pub accepts_late_claims: bool,
+    /// N of `CLN.RUL.03`: the days after the visit the billing coordinator is
+    /// told of a claim still in `draft` or `ready`; below the
+    /// first-submission window.
+    pub reminder_days: i64,
     /// The user who recorded it.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -81,6 +85,21 @@ impl PayerContract {
     /// `remitted_on` (Asia/Dubai, inclusive).
     pub fn resubmission_deadline(&self, remitted_on: NaiveDate) -> Option<NaiveDate> {
         add_days(remitted_on, self.resubmission_days)
+    }
+
+    /// The first day the billing coordinator is told of a claim for a visit
+    /// on `visit_date` (`CLN.RUL.03`, N days after it).
+    pub fn reminder_date(&self, visit_date: NaiveDate) -> Option<NaiveDate> {
+        add_days(visit_date, self.reminder_days)
+    }
+
+    /// The first day the clinic manager gets the task for a claim for a
+    /// visit on `visit_date` (`CLN.RUL.03`, `days` before the window ends,
+    /// but never before the visit).
+    pub fn task_date(&self, visit_date: NaiveDate, days: i64) -> Option<NaiveDate> {
+        let end = self.first_submission_deadline(visit_date)?;
+        let before = end.checked_sub_days(renox::chrono::Days::new(u64::try_from(days).ok()?))?;
+        Some(before.max(visit_date))
     }
 
     /// The terms the split reads.
@@ -189,6 +208,37 @@ mod tests {
             ..PayerContract::default()
         };
         assert_eq!(negative.first_submission_deadline(day("2026-11-01")), None);
+    }
+
+    #[test]
+    fn the_reminder_days_count_from_the_visit_and_the_task_from_the_end() {
+        let contract = PayerContract {
+            first_submission_days: 30,
+            reminder_days: 7,
+            ..PayerContract::default()
+        };
+        assert_eq!(
+            contract.reminder_date(day("2026-11-01")),
+            Some(day("2026-11-08"))
+        );
+        assert_eq!(
+            contract.task_date(day("2026-11-01"), 2),
+            Some(day("2026-11-29"))
+        );
+        // A window shorter than D: the task is due at once.
+        let short = PayerContract {
+            first_submission_days: 1,
+            reminder_days: 0,
+            ..PayerContract::default()
+        };
+        assert_eq!(
+            short.task_date(day("2026-11-01"), 2),
+            Some(day("2026-11-01"))
+        );
+        assert_eq!(
+            short.reminder_date(day("2026-11-01")),
+            Some(day("2026-11-01"))
+        );
     }
 
     #[test]

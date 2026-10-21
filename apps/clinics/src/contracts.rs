@@ -40,6 +40,10 @@ pub struct NewContract {
     pub resubmission_limit: i64,
     /// Whether a first claim after the window is accepted with a late reason.
     pub accepts_late_claims: bool,
+    /// N of `CLN.RUL.03`: the days after the visit the billing coordinator
+    /// is told of a claim still in `draft` or `ready`; `None` takes
+    /// [`DEFAULT_REMINDER_DAYS`], or one day less than a short window.
+    pub reminder_days: Option<i64>,
 }
 
 impl NewContract {
@@ -58,6 +62,7 @@ impl NewContract {
             resubmission_days: DEFAULT_RESUBMISSION_DAYS,
             resubmission_limit: DEFAULT_RESUBMISSION_LIMIT,
             accepts_late_claims: false,
+            reminder_days: None,
         }
     }
 
@@ -106,6 +111,22 @@ impl NewContract {
         self.accepts_late_claims = true;
         self
     }
+
+    /// The billing coordinator is told of a claim still in `draft` or
+    /// `ready` `days` days after the visit (`CLN.RUL.03`, N); it must be
+    /// below the first-submission window. 0 is allowed, for a window of one
+    /// day.
+    pub fn reminder_days(mut self, days: i64) -> Self {
+        self.reminder_days = Some(days);
+        self
+    }
+
+    /// N as it will be recorded: the one given, else 7 days or, for a window
+    /// that is not longer than that, one day less than the window.
+    pub fn reminder(&self) -> i64 {
+        self.reminder_days
+            .unwrap_or_else(|| DEFAULT_REMINDER_DAYS.min(self.first_submission_days - 1))
+    }
 }
 
 /// Decision: the window of a contract that does not give one (spec: the
@@ -116,6 +137,12 @@ pub const DEFAULT_FIRST_SUBMISSION_DAYS: i64 = 30;
 pub const DEFAULT_RESUBMISSION_DAYS: i64 = 30;
 /// See [`DEFAULT_FIRST_SUBMISSION_DAYS`].
 pub const DEFAULT_RESUBMISSION_LIMIT: i64 = 2;
+/// N of `CLN.RUL.03`: the days after a visit the billing coordinator is told
+/// of a claim that is still a draft or ready.
+pub const DEFAULT_REMINDER_DAYS: i64 = 7;
+/// D of `CLN.RUL.03`: the days before the first-submission window ends the
+/// clinic manager gets a task.
+pub const TASK_DAYS_BEFORE: i64 = 2;
 
 /// Records a contract.
 ///
@@ -123,7 +150,9 @@ pub const DEFAULT_RESUBMISSION_LIMIT: i64 = 2;
 ///
 /// A 422 for a copay outside 0 to 10,000 basis points, a negative
 /// deductible, an end before the start, a first-submission window below one
-/// day, or a resubmission window or limit that is negative.
+/// day, or a resubmission window or limit that is negative; a reminder N that
+/// is negative or not below the first-submission window (`CLN.RUL.03`: "N
+/// must be below the submission window").
 pub async fn create(state: &AppState, by: Option<i64>, new: NewContract) -> Result<PayerContract> {
     if !(0..=10_000).contains(&new.copay_bp)
         || new.deductible < 0
@@ -133,6 +162,10 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewContract) -> Resu
         || new.valid_to.is_some_and(|to| to < new.valid_from)
     {
         return Err(refused(english("clinics.contract.problem.terms", &[])));
+    }
+    let reminder = new.reminder();
+    if reminder < 0 || reminder >= new.first_submission_days {
+        return Err(refused(english("clinics.contract.problem.reminder", &[])));
     }
     let mut contract = PayerContract {
         payer_party_id: new.payer.0,
@@ -144,6 +177,7 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewContract) -> Resu
         resubmission_days: new.resubmission_days,
         resubmission_limit: new.resubmission_limit,
         accepts_late_claims: new.accepts_late_claims,
+        reminder_days: reminder,
         valid_from: new.valid_from,
         valid_to: new.valid_to,
         created_by: by,
@@ -241,5 +275,15 @@ mod tests {
             (15, 20, 1)
         );
         assert!(!windows.accepts_late_claims);
+    }
+
+    #[test]
+    fn n_defaults_to_seven_days_or_below_a_short_window() {
+        let day: NaiveDate = "2026-11-01".parse().unwrap();
+        let new = NewContract::new(PartyId(5), day);
+        assert_eq!(new.reminder(), 7);
+        assert_eq!(new.clone().windows(1, 30, 2).reminder(), 0);
+        assert_eq!(new.clone().windows(5, 30, 2).reminder(), 4);
+        assert_eq!(new.windows(30, 30, 2).reminder_days(3).reminder(), 3);
     }
 }

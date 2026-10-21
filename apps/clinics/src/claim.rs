@@ -141,6 +141,12 @@ pub struct Claim {
     /// How the last hold ended without a yes (`rejected`, `returned`,
     /// `withdrawn`, `expired`, `failed`); cleared by the next hold.
     pub held_result: Option<String>,
+    /// The day the billing coordinator was told the first-submission window
+    /// is running (`CLN.RUL.03`, N days after the visit).
+    pub window_notified_on: Option<NaiveDate>,
+    /// The day the clinic manager got the task for the window about to end
+    /// (`CLN.RUL.03`, D days before it ends).
+    pub window_task_on: Option<NaiveDate>,
     /// The lifecycle state; changed only by a transition.
     pub status: ClaimStatus,
     /// The user who made it, if any.

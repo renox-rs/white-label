@@ -132,6 +132,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
                 "contract.windows_text",
                 &[
                     ("first", &c.first_submission_days),
+                    ("reminder", &c.reminder_days),
                     ("again", &c.resubmission_days),
                     ("limit", &c.resubmission_limit),
                 ],
@@ -201,6 +202,10 @@ pub struct ContractForm {
     /// `yes` when a late first claim is accepted with a late reason.
     #[serde(default)]
     pub accepts_late_claims: String,
+    /// Days after the visit to remind the billing coordinator of a claim
+    /// not sent (`CLN.RUL.03`, N); blank = 7, or below a short window.
+    #[serde(default)]
+    pub reminder_days: String,
 }
 
 /// `POST /clinics/contracts`.
@@ -240,6 +245,11 @@ async fn create(
     new = new.windows(first, resubmission, limit);
     if form.accepts_late_claims == "yes" {
         new = new.accepts_late_claims();
+    }
+    if !form.reminder_days.trim().is_empty() {
+        new = new.reminder_days(
+            parse_id(&form.reminder_days).ok_or_else(|| invalid("reminder: days"))?,
+        );
     }
     contracts::create(&state, Some(user.id), new).await?;
     Ok((

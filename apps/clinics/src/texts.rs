@@ -672,7 +672,32 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.contract.windows", "Windows"),
     (
         "clinics.contract.windows_text",
-        "Send within :first days, resubmit within :again days, :limit times at most",
+        "Send within :first days (coordinator told after :reminder), resubmit within :again days, :limit times at most",
+    ),
+    (
+        "clinics.contract.reminder_days",
+        "Days after the visit to remind the coordinator",
+    ),
+    (
+        "clinics.contract.problem.reminder",
+        "N must be below the submission window: the days after the visit to remind the coordinator are 0 or more and fewer than the days to send a claim.",
+    ),
+    // The first-submission window about to pass (CLN.RUL.03).
+    (
+        "clinics.window.subject",
+        "Claim {{ number }} is still not sent: {{ days_left }} days left",
+    ),
+    (
+        "clinics.window.body",
+        "Claim {{ number }} for the visit of {{ visit_date }} is still {{ status }}. The payer accepts it until {{ deadline }}. Validate and submit it in time; after that it can only be written off.",
+    ),
+    (
+        "clinics.window.task_title",
+        "Claim :number must be sent by :deadline",
+    ),
+    (
+        "clinics.window.task_description",
+        "Claim :number for the visit of :visit_date is still :status and the payer's first-submission window ends on :deadline. Send it in time, or it is written off as not submitted in time.",
     ),
     ("clinics.claim.title", "Claims"),
     (
