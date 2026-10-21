@@ -116,7 +116,7 @@ async fn an_overpayment_is_held_and_records_nothing() {
     b.d.get(&b.bea, &format!("/clinics/claims/{}", claim.id))
         .await
         .assert_ok()
-        .assert_see("waits for a second person's approval");
+        .assert_see("Nothing is recorded until it is given");
     advise(&b, "ADV-2", "360.00", "").await.assert_status(422);
     assert_eq!(b.claim().await.status, ClaimStatus::Submitted);
 }
