@@ -210,7 +210,10 @@ pub fn scheduling_for(client_app: &str) -> WlScheduling {
             .escalation_hours(seed::ESCALATION_HOURS)
             .reminder_hours(seed::REMINDER_HOURS)
             .no_show_grace_minutes(seed::NO_SHOW_GRACE_MINUTES)
-            .manager_role(CLINIC_MANAGER_ROLE);
+            .manager_role(CLINIC_MANAGER_ROLE)
+            // 05 §7.1: after a walk-out the remainder of the deposit is
+            // refunded, for the seeded service types and those added later.
+            .walk_out_forfeits(false);
         for (code, initiated_by) in clinics::reasons::SCHEDULING_REASON_CODES {
             module = module.reason_code(code, *initiated_by);
         }
@@ -461,7 +464,7 @@ async fn install_service_types(state: &AppState) -> Result<usize> {
         if found.is_some() {
             continue;
         }
-        let mut service = ServiceType::new(spec.code, spec.name_en, spec.minutes);
+        let mut service = ServiceType::new_in(state, spec.code, spec.name_en, spec.minutes);
         service.name_ar = Some(spec.name_ar.to_owned());
         service.check_in_required = true;
         service.track_in_progress = true;
@@ -471,7 +474,6 @@ async fn install_service_types(state: &AppState) -> Result<usize> {
         // remainder, only a late cancellation or a no-show forfeits.
         service.deposit_amount = seed::BOOKING_DEPOSIT_FILS;
         service.deposit_forfeit_hours = seed::DEPOSIT_FORFEIT_HOURS;
-        service.walk_out_forfeits = false;
         service.save(&state.db).await?;
         created += 1;
     }

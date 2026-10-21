@@ -181,6 +181,13 @@ impl WlScheduling {
         self
     }
 
+    /// Whether a service type made with `ServiceType::new_in` forfeits the
+    /// rest of the deposit after check-in (default `true`; 05 refunds it).
+    pub fn walk_out_forfeits(mut self, forfeits: bool) -> Self {
+        self.config.walk_out_forfeits = forfeits;
+        self
+    }
+
     /// Adds a cancellation reason code with its default *initiated by*. The
     /// codes of the module stay (wl-scheduling §4.1).
     pub fn reason_code(mut self, code: &str, initiated_by: Initiator) -> Self {

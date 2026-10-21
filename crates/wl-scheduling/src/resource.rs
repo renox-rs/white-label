@@ -198,6 +198,16 @@ impl ServiceType {
         }
     }
 
+    /// Like [`new`](ServiceType::new), with the module's settings of the app:
+    /// the rest of the deposit after check-in is forfeited or refunded as
+    /// `SchedulingConfig::walk_out_forfeits` says, so a service type added
+    /// after the seed starts with the client's value.
+    pub fn new_in(state: &AppState, code: &str, name_en: &str, duration_minutes: i64) -> Self {
+        let mut service = ServiceType::new(code, name_en, duration_minutes);
+        service.walk_out_forfeits = crate::config::config_of(state).walk_out_forfeits;
+        service
+    }
+
     /// The resource types one booking needs.
     pub fn required(&self) -> Vec<ResourceType> {
         self.required_types

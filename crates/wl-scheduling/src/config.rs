@@ -59,6 +59,12 @@ pub struct SchedulingConfig {
     /// Cancellation reason codes a vertical added, with their default
     /// *initiated by*.
     pub extra_reason_codes: Vec<(String, Initiator)>,
+    /// What a service type made with [`ServiceType::new_in`] does with the
+    /// rest of the deposit after check-in: forfeit it (the default) or refund
+    /// it (05 §7.1).
+    ///
+    /// [`ServiceType::new_in`]: crate::ServiceType::new_in
+    pub walk_out_forfeits: bool,
 }
 
 impl Default for SchedulingConfig {
@@ -76,6 +82,7 @@ impl Default for SchedulingConfig {
             look_ahead_days: DEFAULT_LOOK_AHEAD_DAYS,
             manager_role: None,
             extra_reason_codes: Vec::new(),
+            walk_out_forfeits: true,
         }
     }
 }
