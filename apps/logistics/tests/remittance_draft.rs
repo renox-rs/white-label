@@ -181,7 +181,10 @@ async fn a_difference_the_client_absorbs_shows_on_the_line_with_its_reason() {
     w.post(
         &w.ops,
         &format!("/deliveries/{}/cod-difference/approve", delivery.id),
-        &[("absorbed_by", "client")],
+        &[
+            ("absorbed_by", "client"),
+            ("instruction", "agreed discount, client e-mail 2026-11-04"),
+        ],
     )
     .await
     .assert_ok();

@@ -19,6 +19,7 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
 use wl_delivery::{Delivery, NewRun, VehicleType, WlDelivery, permissions as dperm, seed};
+use wl_kernel::delivery::CodAbsorber;
 use wl_kernel::documents::today;
 use wl_kernel::notify::Notifier;
 use wl_kernel::parties::PartyDirectory;
@@ -212,7 +213,12 @@ async fn boot_with(real_payments: bool) -> World {
         .module(Auth::new())
         .module(renox::audit::Audit)
         .module(Permissions)
-        .module(WlDelivery::new().partial_acceptance(logistics::SUBJECT_TYPE, false))
+        .module(
+            WlDelivery::new()
+                .partial_acceptance(logistics::SUBJECT_TYPE, false)
+                // As the host sets 03: never the customer (`WRK.ACL.09`).
+                .cod_absorbers(&[CodAbsorber::Client, CodAbsorber::Business, CodAbsorber::Driver]),
+        )
         .module(Logistics)
         .module(Probe)
         .provide(workforce)
