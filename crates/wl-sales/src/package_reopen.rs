@@ -70,6 +70,8 @@ pub struct PackageReopening {
     pub balance: i64,
     /// The seller's task.
     pub ticket_id: Option<i64>,
+    /// When the invoice was paid again; the row no longer counts.
+    pub settled_at: Option<DateTime>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -155,16 +157,7 @@ pub async fn reopen(
         },
     )
     .await?;
-    Package::query()
-        .where_(Package::ID.eq(package.id))
-        .update(
-            &state.db,
-            &[
-                ("reopened_balance", &balance),
-                ("reopened_at", &Some(renox::db::now())),
-            ],
-        )
-        .await?;
+    refresh_balance(state, &package).await?;
 
     let ticket = open_collect_task(state, &package, money_source, balance).await?;
     if let Some(ticket) = ticket {
@@ -339,21 +332,68 @@ async fn on_payment_reversed(state: &AppState, event: &PaymentReversed) -> Resul
 /// The invoice is paid: a reopened balance of the package is paid, so
 /// consumption is no longer suspended.
 pub(crate) async fn on_invoice_paid(state: &AppState, event: &InvoicePaid) -> Result {
-    let Some(package) = of_invoice(&state.db, event.invoice).await? else {
+    let by_source =
+        (event.source.subject_type == PACKAGE_SUBJECT_TYPE).then_some(event.source.subject_id);
+    let package = match by_source {
+        Some(id) => Package::find(&state.db, id).await?,
+        None => of_invoice(&state.db, event.invoice).await?,
+    };
+    let Some(package) = package else {
         return Ok(());
     };
-    if package.has_unpaid_balance() {
-        Package::query()
-            .where_(Package::ID.eq(package.id))
-            .update(
-                &state.db,
-                &[
-                    ("reopened_balance", &0_i64),
-                    ("reopened_at", &None::<DateTime>),
-                ],
-            )
-            .await?;
+    // Only what this invoice reopened is paid; another invoice of the
+    // package may still be open.
+    PackageReopening::query()
+        .where_(PackageReopening::PACKAGE_ID.eq(package.id))
+        .where_(PackageReopening::INVOICE_ID.eq(event.invoice.0))
+        .where_(PackageReopening::SETTLED_AT.is_null())
+        .update(&state.db, &[("settled_at", &Some(renox::db::now()))])
+        .await?;
+    refresh_balance(state, &package).await
+}
+
+/// Sets the package's reopened balance to what is still open: for each
+/// invoice the balance of its latest reopening (an invoice reopened again
+/// has the new balance, not the sum), plus each reopening that names no
+/// invoice; a paid invoice counts 0.
+///
+/// Decision: a package normally has one invoice, but an event names the
+/// package as its source, so a second invoice for the same package adds its
+/// own balance instead of replacing the first one's.
+async fn refresh_balance(state: &AppState, package: &Package) -> Result {
+    let rows = PackageReopening::query()
+        .where_(PackageReopening::PACKAGE_ID.eq(package.id))
+        .order_by(PackageReopening::ID)
+        .get(&state.db)
+        .await?;
+    let mut per_invoice: std::collections::BTreeMap<i64, i64> = std::collections::BTreeMap::new();
+    let mut without_invoice = 0_i64;
+    for row in &rows {
+        let open = if row.settled_at.is_some() { 0 } else { row.balance };
+        match row.invoice_id {
+            Some(invoice) => {
+                per_invoice.insert(invoice, open);
+            }
+            None => without_invoice += open,
+        }
     }
+    // Reversals with no invoice never reopen more than the package cost.
+    if package.price_paid > 0 {
+        without_invoice = without_invoice.min(package.price_paid);
+    }
+    let total = per_invoice.values().sum::<i64>() + without_invoice;
+    let since = if total > 0 {
+        Some(package.reopened_at.unwrap_or_else(renox::db::now))
+    } else {
+        None
+    };
+    Package::query()
+        .where_(Package::ID.eq(package.id))
+        .update(
+            &state.db,
+            &[("reopened_balance", &total), ("reopened_at", &since)],
+        )
+        .await?;
     Ok(())
 }
 

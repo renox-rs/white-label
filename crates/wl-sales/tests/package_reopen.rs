@@ -513,6 +513,52 @@ async fn the_reversal_itself_counts_only_for_a_package_without_an_invoice() {
     assert_eq!(mail.balance_due().len(), 2);
 }
 
+/// Two invoices that name one package as their source: each reopening adds
+/// its own balance (one invoice reopened twice keeps its latest balance),
+/// and paying one invoice clears only its part.
+#[renox::test]
+async fn several_invoices_of_one_package_add_up_and_are_paid_one_by_one() {
+    let (t, _, _) = boot().await;
+    let package = active_package(&t, None).await;
+    let on = |invoice: i64, n: i64, balance: i64| InvoiceReopened {
+        invoice: InvoiceId(invoice),
+        ..reopened(&package, n, balance)
+    };
+
+    t.state().emit(on(55, 42, 100_000)).await.unwrap();
+    t.state().emit(on(56, 43, 30_000)).await.unwrap();
+    assert_eq!(reload(&t, &package).await.reopened_balance, 130_000);
+
+    // Invoice 55 reopened again with a larger balance replaces its own part.
+    t.state().emit(on(55, 44, 120_000)).await.unwrap();
+    assert_eq!(reload(&t, &package).await.reopened_balance, 150_000);
+
+    // Invoice 56 paid: invoice 55 is still open, consumption stays suspended.
+    t.state()
+        .emit(InvoicePaid {
+            invoice: InvoiceId(56),
+            party: HOLDER,
+            source: package.subject(),
+        })
+        .await
+        .unwrap();
+    let after = reload(&t, &package).await;
+    assert_eq!(after.reopened_balance, 120_000);
+    assert!(after.reopened_at.is_some());
+
+    t.state()
+        .emit(InvoicePaid {
+            invoice: InvoiceId(55),
+            party: HOLDER,
+            source: package.subject(),
+        })
+        .await
+        .unwrap();
+    let after = reload(&t, &package).await;
+    assert_eq!(after.reopened_balance, 0);
+    assert!(after.reopened_at.is_none());
+}
+
 #[renox::test]
 async fn the_new_tables_match_the_models() {
     let (t, _, _) = boot().await;
