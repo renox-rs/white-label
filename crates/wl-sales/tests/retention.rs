@@ -24,10 +24,9 @@ use wl_kernel::notify::NotifyChannel;
 use wl_sales::permissions as perm;
 use wl_sales::retention::{self, CampaignRequesters};
 use wl_sales::{
-    CounterSale,
     BroadcastState, Campaign, CampaignBroadcast, CampaignGuard, CampaignStatus, CostEntry,
-    CostStatus, MarketingChannel, MatchMode, Purpose, Rule, SalesConfig, Segment, WlSales,
-    campaigns,
+    CostStatus, CounterSale, MarketingChannel, MatchMode, Purpose, Rule, SalesConfig, Segment,
+    WlSales, campaigns,
 };
 
 use support::retention::{Stage, campaign_subject, sale_at};
@@ -411,7 +410,11 @@ async fn the_report_counts_the_recipients_who_bought_within_the_response_days() 
         w.t.app
             .post(
                 &format!("/counter-sales/{}/lines", open.id),
-                &[("item_code", "tee"), ("unit_price", price), ("quantity", "1")],
+                &[
+                    ("item_code", "tee"),
+                    ("unit_price", price),
+                    ("quantity", "1"),
+                ],
             )
             .await
             .assert_status(303);

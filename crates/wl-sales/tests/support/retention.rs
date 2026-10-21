@@ -36,7 +36,10 @@ pub struct Directory {
 impl Directory {
     /// Gives `party` an e-mail address besides its mobile number.
     pub fn set_email(&self, party: i64, address: &str) {
-        self.emails.lock().unwrap().insert(party, address.to_owned());
+        self.emails
+            .lock()
+            .unwrap()
+            .insert(party, address.to_owned());
     }
 
     /// Sets the state of `party`.

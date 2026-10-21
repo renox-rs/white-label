@@ -225,10 +225,12 @@ async fn turning_the_programme_off_sets_the_closing_date_and_expires_every_lot_a
         )
         .await
         .assert_status(422);
-    assert!(Redemption::of_sale(t.db(), &late.subject())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        Redemption::of_sale(t.db(), &late.subject())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // The expiry job of 02:00 that morning expires what is left. (The closing
     // day's own run, before, expired nothing.)

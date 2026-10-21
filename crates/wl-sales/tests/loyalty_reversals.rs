@@ -8,11 +8,11 @@ mod support;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     CreditNoteId, CreditNoteIssued, InvoiceId, InvoicePaid, InvoiceReopened, InvoiceStatus,
     InvoiceWrittenOff, ReopenReason,
 };
-use wl_kernel::documents::today;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::payments::{
     PaymentId, PaymentMethod, PaymentReceived, PaymentReversed, PaymentSource, ReversalReason,
@@ -22,8 +22,8 @@ use wl_kernel::sales::{
 };
 use wl_kernel::{PartyId, Subject};
 use wl_sales::liability;
-use wl_sales::permissions as perm;
 use wl_sales::notices::{LOYALTY_REVERSED, LOYALTY_REWARD};
+use wl_sales::permissions as perm;
 use wl_sales::{
     CounterSale, LoyaltyAccount, LoyaltyEarning, PointsKind, ReturnStatus, SaleLine, SalesOrder,
     SalesReturn,
@@ -531,7 +531,8 @@ async fn nothing_is_reversed_on_a_closed_account_or_for_a_sale_that_never_earned
 }
 
 #[renox::test]
-async fn a_reversal_and_an_earn_again_stay_in_the_legal_entity_of_the_sale_in_the_liability_report() {
+async fn a_reversal_and_an_earn_again_stay_in_the_legal_entity_of_the_sale_in_the_liability_report()
+{
     let (t, _shop, floor) = start().await;
     floor.turn_on(&t, &[]).await;
     let m = floor.enrol(&t, M, "0501234567").await;

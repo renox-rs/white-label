@@ -27,8 +27,8 @@ use wl_sales::redeem;
 use wl_sales::sale_line::KIND_LOYALTY_REDEMPTION;
 use wl_sales::sales_orders;
 use wl_sales::{
-    CounterSale, LoyaltyAccount, LoyaltyEarning, PointsKind, PointsMovement, Redemption, RedemptionStatus,
-    ReturnStatus, SaleLine, SalesOrder, SalesOrderStatus, SalesReturn, WlSales,
+    CounterSale, LoyaltyAccount, LoyaltyEarning, PointsKind, PointsMovement, Redemption,
+    RedemptionStatus, ReturnStatus, SaleLine, SalesOrder, SalesOrderStatus, SalesReturn, WlSales,
 };
 
 use support::floor::{Floor, account, movements};

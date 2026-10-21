@@ -18,8 +18,8 @@ use wl_kernel::notify::{
 };
 use wl_sales::expiry::{self, TASK};
 use wl_sales::liability;
-use wl_sales::permissions as perm;
 use wl_sales::notices::LOYALTY_EXPIRY;
+use wl_sales::permissions as perm;
 use wl_sales::{
     LoyaltyAccount, LoyaltyProgramme, PointsKind, PointsMovement, Redemption, RedemptionStatus,
 };
@@ -466,7 +466,10 @@ async fn the_liability_report_groups_by_brand_entity_age_and_expiry_month() {
     .unwrap();
 
     // A member of the programme of the brand Gold, earned in entity 5.
-    let first = LoyaltyProgramme::first_active(t.db()).await.unwrap().unwrap();
+    let first = LoyaltyProgramme::first_active(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     let gold = LoyaltyProgramme::create(
         t.db(),
         LoyaltyProgramme {
