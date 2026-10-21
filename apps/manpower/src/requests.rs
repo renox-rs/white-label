@@ -194,8 +194,12 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<Manpower
     {
         return Err(Error::Forbidden);
     }
-    // The contract is read in the transaction of the transition, so a `hold`
-    // committed first wins (`MPW.ACL.14`).
+    // The dates and the rate card are read before the transaction opens (the
+    // rate cards are another module's); the state of the contract is read in
+    // the transaction of the transition, so a `hold` committed first wins
+    // (`MPW.ACL.14`).
+    let first = ClientContract::find_or_404(&state.db, request.client_contract_id).await?;
+    let mut problems = readiness(state, &request, &first).await?;
     let mut tx = state.db.begin().await?;
     // A blocked client orders nothing new (BL-MPW-15).
     blocked::check(
@@ -208,7 +212,6 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<Manpower
     .await?;
     let contract = lock_contract(&mut tx, request.client_contract_id).await?;
     let staff = by.has_permission_in(permissions::REQUESTS_CREATE, &request.scope());
-    let mut problems = readiness(state, &request, &contract).await?;
     if let Some(problem) = status_problem(&mut tx, &contract, staff).await? {
         problems.insert(0, problem);
     }
