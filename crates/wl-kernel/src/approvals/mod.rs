@@ -28,7 +28,9 @@ pub use awaiting::{
 pub use decide::{
     Approval, FinalCheck, approve, approve_in, ensure_approver, register_final_check,
 };
-pub use end::{End, Ended, SubjectEnd, end_in, expire, reject, return_request, withdraw};
+pub use end::{
+    End, Ended, SubjectEnd, end_in, expire, reject, return_request, withdraw, withdraw_because,
+};
 pub use events::{ApprovalDecided, ApprovalEnd, ApprovalRequested};
 pub use intercept::ApprovalInterceptor;
 pub use notify::register_excluded_approvers;
