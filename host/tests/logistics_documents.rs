@@ -32,6 +32,7 @@ use wl_kernel::{PartyId, PartyKind, Subject};
 use wl_sales::LeadSource;
 
 use support::{
+    messages_to,
     company, entity, logistics_booted, logistics_booted_with, person, scoped_person, tenant,
 };
 
@@ -384,6 +385,21 @@ async fn the_reminder_goes_to_the_drivers_depot_and_the_mulkiya_task_to_the_flee
 
     let report = expiry::run(app.state(), today()).await.unwrap();
     assert_eq!(report.failed, 0, "{report:?}");
+    // The message the run sent about the licence (30 days left) went to
+    // Depot A's operations manager and to nobody at Depot B.
+    assert_eq!(
+        messages_to(&app, expiry::run::NOTIFICATION_TYPE, &olivia)
+            .await
+            .len(),
+        1,
+        "Depot A's operations manager is told once"
+    );
+    assert!(
+        messages_to(&app, expiry::run::NOTIFICATION_TYPE, &omar)
+            .await
+            .is_empty(),
+        "Depot B's operations manager is not"
+    );
     let mulkiya = DocumentKind::by_key(app.db(), "mulkiya")
         .await
         .unwrap()
