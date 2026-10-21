@@ -2,8 +2,8 @@
 //! submitted and no deployment is activated or extended (`MPW.ACL.14`); drafts
 //! and planned deployments can still be made, workers on site stay, and the
 //! client approver in the portal is told neither the hold nor its reason.
-//! (`resume` of a suspended deployment is not refused by the hold; the
-//! transition comes with BL-MPW-12, so it has no test here.)
+//! (`resume` of a suspended deployment is not refused by the hold: tested with
+//! the transition in `resume.rs`, BL-MPW-12.)
 
 mod support;
 

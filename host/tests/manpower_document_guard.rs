@@ -13,8 +13,8 @@ mod support;
 use host::roles::ADMIN;
 use manpower::DeploymentStatus;
 use manpower_support::{
-    account, activate, all_valid_except, boot, boot_with, deployment, document, extend, post,
-    reload, worker,
+    account, activate, all_valid_except, boot, boot_with, deployment, document, extend, reload,
+    worker,
 };
 use renox::prelude::*;
 use support::{day, person};
