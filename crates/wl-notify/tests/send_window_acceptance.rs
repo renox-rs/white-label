@@ -288,13 +288,19 @@ async fn done_4_two_broadcasts_releasing_at_once_cannot_both_pass_the_cap() {
     assert!(queued.iter().any(|m| m.broadcast_id == Some(first.id)));
     assert!(queued.iter().any(|m| m.broadcast_id == Some(second.id)));
 
+    // Two tasks of their own, each sending one message: the per-party lock
+    // is what lets only one of them pass the cap.
     let state = t.app.state();
-    let (a, b) = renox::tokio::join!(
-        send::send(state, queued[0].id),
-        send::send(state, queued[1].id)
-    );
-    a.unwrap();
-    b.unwrap();
+    let tasks: Vec<_> = queued
+        .iter()
+        .map(|message| {
+            let (state, id) = (state.clone(), message.id);
+            renox::tokio::spawn(async move { send::send(&state, id).await })
+        })
+        .collect();
+    for task in tasks {
+        task.await.expect("the task ran").unwrap();
+    }
     t.run_jobs().await;
 
     let mut statuses = Vec::new();

@@ -195,10 +195,18 @@ async fn two_concurrent_sends_cannot_both_pass_the_cap() {
     let one = t.notify_party(SMS_OFFER, BLUE_DUNES).await;
     let two = t.notify_party(EMAIL_OFFER, BLUE_DUNES).await;
 
+    // Two tasks of their own, one send each; the per-party lock serialises them.
     let state = t.app.state();
-    let (a, b) = renox::tokio::join!(send::send(state, one[0].0), send::send(state, two[0].0));
-    a.unwrap();
-    b.unwrap();
+    let tasks: Vec<_> = [one[0].0, two[0].0]
+        .into_iter()
+        .map(|id| {
+            let state = state.clone();
+            renox::tokio::spawn(async move { send::send(&state, id).await })
+        })
+        .collect();
+    for task in tasks {
+        task.await.expect("the task ran").unwrap();
+    }
     t.run_jobs().await;
 
     let statuses = [
