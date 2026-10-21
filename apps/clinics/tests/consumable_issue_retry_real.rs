@@ -67,7 +67,10 @@ async fn a_failed_issue_is_flagged_and_the_desk_retries_it() {
         "{:?}",
         after.issue_pending_reason
     );
-    assert!(after.billed_at.is_some(), "the bill does not wait for the stock");
+    assert!(
+        after.billed_at.is_some(),
+        "the bill does not wait for the stock"
+    );
     assert!(issued(&d, &visit).await.is_empty());
     let line = ChargeLine::active_of(d.t.db(), visit.id)
         .await
@@ -108,7 +111,11 @@ async fn a_failed_issue_is_flagged_and_the_desk_retries_it() {
     assert_eq!(issued(&d, &visit).await.len(), 1, "nothing is issued twice");
     assert_eq!(movements(&d).await, 1);
     let page = d.get(&d.rita, &path).await;
-    assert!(!page.text().contains("Issue the stock again"), "{}", page.text());
+    assert!(
+        !page.text().contains("Issue the stock again"),
+        "{}",
+        page.text()
+    );
 }
 
 /// The daily job issues what a failed check-out left, for a cancelled visit

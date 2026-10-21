@@ -18,14 +18,14 @@ use wl_kernel::notify::{NotifyRecipient, NotifyRequest};
 use wl_kernel::tickets::Assignee;
 use wl_kernel::{PartyId, Subject};
 
-use clinics::{ConsumableIssue, Visit};
 use clinics::permissions::{
     RECALLS_CALL, RECALLS_NOTIFY, RECALLS_TRACE, RECEPTIONIST_ROLE, VISITS_VIEW,
 };
 use clinics::recall_notice::{NOTICE_TYPE, RecallNotice, RecallNoticeStatus};
+use clinics::{ConsumableIssue, Visit};
+use support::Messages;
 use support::desk::{Desk, desk_with_stock, desk_with_stock_and_notify};
 use support::stock::{Store, elsewhere, receive, store, used_filler, used_filler_with};
-use support::Messages;
 
 const P1: PartyId = PartyId(70);
 const P2: PartyId = PartyId(71);
@@ -318,9 +318,13 @@ async fn a_pending_issue_recorded_after_the_hold_is_not_listed() {
     assert!(posted_on_arrival(&d, &after).await);
 
     let mia = manager(&d).await;
-    d.post(&mia, &format!("/recalls/{}/trace", recall.id), &[("x", "y")])
-        .await
-        .assert_ok();
+    d.post(
+        &mia,
+        &format!("/recalls/{}/trace", recall.id),
+        &[("x", "y")],
+    )
+    .await
+    .assert_ok();
     let listed = lines(&d, &recall).await;
     assert_eq!(listed.len(), 1, "{listed:?}");
     assert_eq!(listed[0].used_by(), Some(before.subject()));
@@ -560,7 +564,11 @@ async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch(
         .iter()
         .find(|out| out.address == support::PATIENT_EMAIL)
         .expect("P1's notice reached the provider");
-    assert!(to_p1.body.contains("Palm Grove Clinic LLC"), "{}", to_p1.body);
+    assert!(
+        to_p1.body.contains("Palm Grove Clinic LLC"),
+        "{}",
+        to_p1.body
+    );
     let told = RecallNotice::of_recall(d.t.db(), recall.id).await.unwrap();
     assert!(
         told.iter()
@@ -683,12 +691,23 @@ async fn the_arabic_notice_is_filled_and_neutral() {
     assert_eq!(out.language, "ar");
     assert_eq!(out.title, "رسالة من Palm Grove Clinic LLC");
     let body = &out.body;
-    assert!(body.starts_with("Palm Grove Clinic LLC: يرجى الاتصال بنا على الرقم +971 4 555 0100"), "{body}");
+    assert!(
+        body.starts_with("Palm Grove Clinic LLC: يرجى الاتصال بنا على الرقم +971 4 555 0100"),
+        "{body}"
+    );
     assert!(body.contains(&first.visit_date.to_string()), "{body}");
     assert!(body.contains(&second.visit_date.to_string()), "{body}");
     assert!(!body.contains("{{"), "a placeholder is left: {body}");
     for secret in [
-        "Filler", "filler", "L1", REASON, "Chest pain", "angina", "recall", "call us", "سحب",
+        "Filler",
+        "filler",
+        "L1",
+        REASON,
+        "Chest pain",
+        "angina",
+        "recall",
+        "call us",
+        "سحب",
     ] {
         assert!(!body.contains(secret), "the notice says `{secret}`: {body}");
     }
@@ -711,7 +730,8 @@ async fn a_patient_seen_at_two_branches_is_called_from_each_branch() {
     let fay = desk_of(&d, "Fay", &support::branch()).await;
     let zed = desk_of(&d, "Zed", &support::other_branch()).await;
     d.t.guardians.reachable(P1);
-    d.t.outbox.refuse(support::PATIENT_EMAIL, "550", "mailbox unknown");
+    d.t.outbox
+        .refuse(support::PATIENT_EMAIL, "550", "mailbox unknown");
 
     let recall = open_recall(&d, s.item.id, "L1").await;
     let mia = manager(&d).await;
@@ -753,14 +773,18 @@ async fn a_patient_seen_at_two_branches_is_called_from_each_branch() {
 
     // Each desk sees the call of its own branch only.
     let fay_page = d.get(&fay, "/clinics/recall-calls").await;
-    fay_page.assert_ok().assert_see(&first.visit_date.to_string());
+    fay_page
+        .assert_ok()
+        .assert_see(&first.visit_date.to_string());
     assert!(
         !fay_page.text().contains(&second.visit_date.to_string()),
         "{}",
         fay_page.text()
     );
     let zed_page = d.get(&zed, "/clinics/recall-calls").await;
-    zed_page.assert_ok().assert_see(&second.visit_date.to_string());
+    zed_page
+        .assert_ok()
+        .assert_see(&second.visit_date.to_string());
     assert!(
         !zed_page.text().contains(&first.visit_date.to_string()),
         "{}",

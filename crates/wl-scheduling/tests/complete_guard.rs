@@ -43,7 +43,8 @@ async fn a_refusing_guard_blocks_the_completion() {
     let booking = started(&t, "Dr A").await;
     let other = started(&t, "Dr B").await;
     assert_eq!(booking.status, BookingStatus::InProgress);
-    t.gate.refuse(booking.id, "Lot required: set the lot of filler.");
+    t.gate
+        .refuse(booking.id, "Lot required: set the lot of filler.");
     let at = in_hours(3);
 
     let refused = service::complete(t.state(), booking.id, staff(), at).await;

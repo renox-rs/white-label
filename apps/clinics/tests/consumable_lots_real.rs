@@ -332,10 +332,9 @@ async fn a_lot_put_on_hold_after_it_was_assigned_blocks_the_check_out() {
     assert_eq!(line.lot_number.as_deref(), Some("L1"));
 
     // A recall of L1 holds it.
-    let mia = d
-        .t
-        .user("Mia", &[wl_inventory::permissions::RECALLS_MANAGE])
-        .await;
+    let mia =
+        d.t.user("Mia", &[wl_inventory::permissions::RECALLS_MANAGE])
+            .await;
     let item = s.item.id.to_string();
     d.post(
         &mia,

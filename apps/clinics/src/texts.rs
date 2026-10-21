@@ -1130,7 +1130,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Pending: the branch store or the item is not known to the stock",
     ),
     ("clinics.lots.issue_retry", "Issue the stock again"),
-    ("clinics.lots.issue_retried", "The stock issue was tried again."),
+    (
+        "clinics.lots.issue_retried",
+        "The stock issue was tried again.",
+    ),
     (
         "clinics.lots.problem.no_line",
         "This is not a consumable of the visit that needs a lot.",

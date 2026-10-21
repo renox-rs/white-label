@@ -308,7 +308,10 @@ pub struct CompleteGate {
 impl CompleteGate {
     /// From now on `booking` may not be completed: `text` is the reason.
     pub fn refuse(&self, booking: i64, text: &str) {
-        self.refused.lock().unwrap().insert(booking, text.to_owned());
+        self.refused
+            .lock()
+            .unwrap()
+            .insert(booking, text.to_owned());
     }
 
     /// From now on no booking may be completed.

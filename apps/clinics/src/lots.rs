@@ -414,9 +414,7 @@ pub async fn issue_or_flag(state: &AppState, visit_id: i64) -> Result<Vec<Consum
     let (made, reason) = match run(state, visit_id).await {
         Ok(done) if done.unplaced.is_empty() => (done.made, None),
         Ok(done) => (done.made, Some(UNKNOWN_STORE.to_owned())),
-        Err(error) => {
-            (Vec::new(), Some(format!("stock: {error}")))
-        }
+        Err(error) => (Vec::new(), Some(format!("stock: {error}"))),
     };
     let (at, why) = match &reason {
         Some(reason) => (Some(now()), Some(reason.clone())),

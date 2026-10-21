@@ -40,6 +40,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use renox::auth::permissions::Scope;
 use renox::chrono::NaiveDate;
 use renox::db::Json;
 use renox::prelude::*;
@@ -53,7 +54,6 @@ use wl_kernel::notify::{
     self, Category, MessageGaveUp, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
 };
 use wl_kernel::scheduling::BOOKING_SUBJECT_TYPE;
-use renox::auth::permissions::Scope;
 use wl_kernel::{ClientConfig, PartyId, Subject, scopes};
 
 use crate::authorisations::addressees;
@@ -81,8 +81,7 @@ pub const CALL_VIEWED: &str = "clinics.recall_call_viewed";
 const SUBJECT_AR: &str = "رسالة من {{ clinic }}";
 
 /// The Arabic body of the notice.
-const BODY_AR: &str =
-    "{{ clinic }}: يرجى الاتصال بنا{{ contact_ar }} بخصوص منتج استُخدم خلال زيارتكم بتاريخ {{ dates }}.";
+const BODY_AR: &str = "{{ clinic }}: يرجى الاتصال بنا{{ contact_ar }} بخصوص منتج استُخدم خلال زيارتكم بتاريخ {{ dates }}.";
 
 /// The Arabic way to give the phone number, ahead of its digits.
 const CALL_US_ON_AR: &str = " على الرقم ";
@@ -405,10 +404,7 @@ pub async fn on_gave_up(state: &AppState, event: &MessageGaveUp) -> Result {
 
 /// The scope a notice lies in: the branch of the visits it covers (a notice
 /// covers the visits of one branch, see [`send`]).
-pub async fn notice_scope(
-    db: &Db,
-    notice: &RecallNotice,
-) -> Result<Scope> {
+pub async fn notice_scope(db: &Db, notice: &RecallNotice) -> Result<Scope> {
     for visit in notice.visit_ids.0.iter() {
         if let Some(visit) = Visit::find(db, *visit).await? {
             return branch_scope(db, &visit).await;
