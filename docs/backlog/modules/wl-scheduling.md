@@ -835,17 +835,17 @@ while staff accept or decline; after that the booking stays `requested` without 
 - Must not ignore holds when counting.
 
 #### Done when
-- [ ] Given a group slot with capacity 5 and 4 bookings, when users A and B book at the same
+- [x] Given a group slot with capacity 5 and 4 bookings, when users A and B book at the same
       moment, exactly one succeeds and the other gets "just taken" with nearest slots and a
       waiting-list option. Test harness: two `book` calls on two separate database connections,
       both started behind a barrier so they reach the capacity check together; repeat 50 times;
       every run ends with exactly 5 bookings. The same test with 10 parallel callers on the last
       seat ends with 5 bookings and 9 "just taken". This test is what proves the check is inside
       the transaction: a check outside it lets two win.
-- [ ] Given capacity 1 and a `requested` hold made 10 minutes ago (hold 15 min), a second `book`
+- [x] Given capacity 1 and a `requested` hold made 10 minutes ago (hold 15 min), a second `book`
       is refused; at 16 minutes it succeeds and a later `accept` of the request is refused.
-- [ ] Given that hold expired 1 minute ago (cleanup not run), `book` succeeds.
-- [ ] Given a waiting-list offer holding the slot, a staff `book` is refused until it lapses.
+- [x] Given that hold expired 1 minute ago (cleanup not run), `book` succeeds.
+- [x] Given a waiting-list offer holding the slot, a staff `book` is refused until it lapses.
 
 #### Out of scope
 Payment after an expired hold (BL-SCH-10).
