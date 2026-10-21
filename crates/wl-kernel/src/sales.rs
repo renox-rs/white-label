@@ -900,6 +900,24 @@ pub struct PointsRedeemed {
 
 impl Event for PointsRedeemed {}
 
+/// Redeemed points were given back (`reverse_redeem`, BL-SAL-23): a sale
+/// was returned, an order was cancelled or rejected, or a line was cancelled.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PointsGivenBack {
+    /// The loyalty account.
+    pub account: LoyaltyAccountId,
+    /// The member.
+    pub party: PartyId,
+    /// The points given back, positive.
+    pub points: i64,
+    /// Their value in fils.
+    pub value: i64,
+    /// The record that caused it: a sales return or an order.
+    pub source: Subject,
+}
+
+impl Event for PointsGivenBack {}
+
 /// The rest of an earn lot expired after its date (`expire`, `SAL.RUL.08`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PointsExpired {

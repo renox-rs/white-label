@@ -233,6 +233,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::RETURNS_HANDLE,
             sales::LOYALTY_VIEW,
             sales::LOYALTY_ENROL,
+            sales::LOYALTY_REDEEM,
+            sales::LOYALTY_ADJUST,
             sales::LOYALTY_MANAGE,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
@@ -550,6 +552,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
         ACCOUNTANT,
         &[
             acc::AML_RAISE,
+            sales::LOYALTY_VIEW,
             prp::UNITS_VIEW,
             prp::LEASES_VIEW,
             prp::LEASES_CANCEL,

@@ -11,13 +11,18 @@
 //! - An `earn` movement is a **lot**: it carries the day it expires, what was
 //!   used (`consumed`, by `redeem` and `expire`, BL-SAL-23 and BL-SAL-24) and
 //!   what was taken back (`reversed`). Lots are consumed oldest expiry first.
+//! - A **lot** is a positive movement with a `lot_expires_on`: an `earn`, a
+//!   `reverse_redeem` (points given back keep the expiry of the lot they came
+//!   from, or the setting's days when that has passed) and a positive `adjust`.
+//!   Redemptions, expiries and negative adjustments consume lots oldest expiry
+//!   first, one movement per lot slice.
 //! - `cause` says why a reversal happened (`return`, `credit_note`,
 //!   `payment_reversed`, `written_off`, `fulfilment_reversed`); a reversal is
 //!   once per cause and source (`SAL.RUL.09`), and a money cause is earned
 //!   again when the sale is paid or fulfilled again (`reearned`).
 
 use renox::chrono::NaiveDate;
-use renox::db::DateTime;
+use renox::db::{DateTime, Executor};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
@@ -38,7 +43,7 @@ pub enum PointsKind {
     ReverseRedeem,
     /// The rest of a lot after its date (BL-SAL-24).
     Expire,
-    /// A correction by hand (BL-SAL-24).
+    /// A correction by hand (BL-SAL-24); a positive one is a lot.
     Adjust,
     /// A lot moved by a party merge (BL-SAL-26).
     Transfer,
@@ -66,6 +71,19 @@ pub const CAUSE_PAYMENT_REVERSED: &str = "payment_reversed";
 pub const CAUSE_WRITTEN_OFF: &str = "written_off";
 /// A reversed fulfilment.
 pub const CAUSE_FULFILMENT_REVERSED: &str = "fulfilment_reversed";
+
+/// The cause of a `redeem` movement.
+pub const CAUSE_REDEEM: &str = "redeem";
+/// The cause of an `expire` movement.
+pub const CAUSE_EXPIRE: &str = "expire";
+/// The cause of an `adjust` movement.
+pub const CAUSE_ADJUST: &str = "adjust";
+/// Redeemed points given back for a cancelled order line.
+pub const CAUSE_CANCEL_LINE: &str = "cancel_line";
+/// Redeemed points given back because the order was cancelled.
+pub const CAUSE_ORDER_CANCELLED: &str = "order_cancelled";
+/// Redeemed points given back because the order was rejected.
+pub const CAUSE_ORDER_REJECTED: &str = "order_rejected";
 
 /// A change to a loyalty account.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
@@ -138,6 +156,41 @@ impl PointsMovement {
     /// never below zero.
     pub fn lot_remaining(&self) -> i64 {
         (self.points - self.consumed - self.reversed).max(0)
+    }
+
+    /// Whether the movement is a lot of points that can be redeemed or
+    /// expire: positive and with an expiry day.
+    pub fn is_lot(&self) -> bool {
+        self.points > 0
+            && self.lot_expires_on.is_some()
+            && matches!(
+                self.kind,
+                PointsKind::Earn | PointsKind::ReverseRedeem | PointsKind::Adjust
+            )
+    }
+
+    /// The lots of `account` with points left, oldest expiry first (then
+    /// oldest movement first). With `on`, only those whose last day of use
+    /// is `on` or later.
+    pub async fn lots<'c>(
+        db: impl Executor<'c>,
+        account: i64,
+        on: Option<NaiveDate>,
+    ) -> Result<Vec<PointsMovement>> {
+        let mut lots: Vec<PointsMovement> = PointsMovement::query()
+            .where_(PointsMovement::ACCOUNT_ID.eq(account))
+            .order_by(PointsMovement::ID)
+            .get(db)
+            .await?
+            .into_iter()
+            .filter(|m| {
+                m.is_lot()
+                    && m.lot_remaining() > 0
+                    && on.is_none_or(|day| m.lot_expires_on.is_some_and(|d| d >= day))
+            })
+            .collect();
+        lots.sort_by_key(|m| (m.lot_expires_on, m.id));
+        Ok(lots)
     }
 }
 

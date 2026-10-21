@@ -702,6 +702,10 @@ fn otp_off() -> Error {
     )
 }
 
+/// The key of the notification type that carries a one-time code. A
+/// requester that listens to [`MessageGaveUp`] tells its own codes by it.
+pub const OTP_TYPE_KEY: &str = "notify.otp_code";
+
 /// How long a one-time code is valid, in minutes (wl-notify §7).
 pub const OTP_VALIDITY_MINUTES: i64 = 5;
 

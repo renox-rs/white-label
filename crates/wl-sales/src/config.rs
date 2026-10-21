@@ -31,6 +31,21 @@ pub const DEFAULT_ACCEPTANCE_CHANNELS: &[&str] = &["website", "portal"];
 /// the manager's review (§7, `SAL.ACL.08`).
 pub const DEFAULT_LOYALTY_DAILY_SALES_LIMIT: i64 = 5;
 
+/// The minutes points are held for an open sale once the member confirmed
+/// (§7: 30).
+pub const DEFAULT_REDEMPTION_HOLD_MINUTES: i64 = 30;
+
+/// The days points given back after their expiry are valid (§7: 30).
+pub const DEFAULT_GIVE_BACK_DAYS: i64 = 30;
+
+/// The days before an earn lot expires that its member is reminded
+/// (`SAL.RUL.08`, §7: 30).
+pub const DEFAULT_EXPIRY_REMINDER_DAYS: i64 = 30;
+
+/// The points above which a manual adjustment needs a manager (`SAL.ACL.07`,
+/// §7: 500).
+pub const DEFAULT_ADJUSTMENT_LIMIT: i64 = 500;
+
 /// The lost reasons a lead can be closed with (§7: the starter list, always
 /// with *duplicate* and *spam or invalid*).
 pub const DEFAULT_LOST_REASONS: &[&str] = &[
@@ -84,6 +99,18 @@ pub struct SalesConfig {
     /// The earning sales per member per day before the account is listed for
     /// review (`SAL.ACL.08`).
     pub loyalty_daily_sales_limit: i64,
+    /// Whether a redemption is confirmed by a one-time code to the member's
+    /// mobile (§7: on). Off, a cashier's redemption is held at once; a
+    /// member logged in to the portal never needs the code.
+    pub confirm_redemption_by_code: bool,
+    /// The minutes points are held for an open sale once confirmed.
+    pub redemption_hold_minutes: i64,
+    /// The days points given back after their expiry are valid.
+    pub give_back_days: i64,
+    /// The days before an earn lot expires that its member is reminded.
+    pub expiry_reminder_days: i64,
+    /// The points above which a manual adjustment needs a manager.
+    pub adjustment_limit: i64,
 }
 
 impl Default for SalesConfig {
@@ -110,6 +137,11 @@ impl Default for SalesConfig {
                 .map(|c| (*c).to_owned())
                 .collect(),
             loyalty_daily_sales_limit: DEFAULT_LOYALTY_DAILY_SALES_LIMIT,
+            confirm_redemption_by_code: true,
+            redemption_hold_minutes: DEFAULT_REDEMPTION_HOLD_MINUTES,
+            give_back_days: DEFAULT_GIVE_BACK_DAYS,
+            expiry_reminder_days: DEFAULT_EXPIRY_REMINDER_DAYS,
+            adjustment_limit: DEFAULT_ADJUSTMENT_LIMIT,
         }
     }
 }
