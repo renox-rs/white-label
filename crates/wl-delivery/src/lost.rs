@@ -499,6 +499,11 @@ async fn after_lost(state: &AppState, event: &Transitioned<Delivery>) -> Result 
 /// depot receipt may have been recorded after the request; the request then
 /// fails and the delivery stays where it is.
 async fn recheck(tx: &mut Transaction, request: &ApprovalRequest) -> Result<Option<String>> {
+    // Only one hook is kept per subject type: the cash difference's lapse is
+    // checked here too (`WRK.ACL.09`).
+    if request.action == crate::cod::ACTION {
+        return Ok(crate::cod::recheck(request));
+    }
     if request.action != ACTION {
         return Ok(None);
     }

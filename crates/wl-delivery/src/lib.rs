@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod close;
+pub mod cod;
 pub mod day_list;
 pub mod delivery;
 mod delivery_machine;
@@ -29,7 +30,7 @@ pub use delivery::{
     Attempt, AttemptOutcome, Delivery, DeliveryLine, DeliveryStatus, Direction, Proof, Trace,
 };
 pub use plan::NewRun;
-pub use reasons::{FailureReason, RefusalReason};
+pub use reasons::{CodReason, FailureReason, RefusalReason};
 pub use request::Deliveries;
 pub use run::{Run, RunStatus, VehicleType};
 pub use settings::DeliverySettings;
@@ -125,6 +126,35 @@ impl WlDelivery {
         self
     }
 
+    /// Allows (`true`, §7) or forbids a short payment above the tolerance
+    /// with an approver's agreement (`WRK.ACL.09`); forbidden, the driver can
+    /// only fail the attempt.
+    pub fn cod_approval(mut self, allowed: bool) -> Self {
+        self.settings.set_cod_approval(allowed);
+        self
+    }
+
+    /// Sets the minutes an approver has to answer a cash difference before
+    /// the request lapses (§7: 10).
+    pub fn cod_approval_minutes(mut self, minutes: i64) -> Self {
+        self.settings.set_cod_approval_minutes(minutes);
+        self
+    }
+
+    /// Sets who may absorb a cash difference (§7: all four; 03 leaves out the
+    /// customer).
+    pub fn cod_absorbers(mut self, absorbers: &[wl_kernel::delivery::CodAbsorber]) -> Self {
+        self.settings.set_cod_absorbers(absorbers);
+        self
+    }
+
+    /// Makes the driver's cash period leave the escalation of `wl-payments`
+    /// (`FIN.RUL.22`) to a vertical rule (03: `LOG.RUL.13`).
+    pub fn replace_cash_escalation(mut self, replaced: bool) -> Self {
+        self.settings.set_replace_cash_escalation(replaced);
+        self
+    }
+
     /// Sets the days a delivery may go untraced before `WRK.RUL.17` marks
     /// it lost (§7: 7).
     pub fn untraced_days(mut self, days: i64) -> Self {
@@ -196,7 +226,9 @@ impl Module for WlDelivery {
             .model::<Trace>()
             .model::<close::Receipt>()
             .model::<FailureReason>()
-            .model::<RefusalReason>();
+            .model::<RefusalReason>()
+            .model::<CodReason>()
+            .model::<cod::ApprovalChoice>();
         // `rnx state:diagram Delivery` and the admin panel find the machines.
         renox::state_machine::register::<Delivery>();
         renox::state_machine::register::<Run>();
@@ -210,6 +242,10 @@ impl Module for WlDelivery {
         // `mark_lost`'s approval (`WRK.ACL.10`), the claim ticket and
         // `DeliveryLost` after a loss, and the rule `WRK.RUL.17` at 02:00.
         lost::register(app);
+        // `deliver_short`'s approval (`WRK.ACL.09`), the lapse of a request
+        // nobody answered, and the finish of a difference the kernel approved.
+        cod::register(app);
+        proof::register(app);
         // The seeded defaults keep the client's changes.
         app.command(
             "delivery:install",

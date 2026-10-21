@@ -31,7 +31,26 @@
                        :title="tx['actions.found_title']" :description="tx['actions.found_description']" :submit-label="tx['actions.found']" icon="package-check">
         <rx-input name="depot" :label="tx['actions.found_depot']" :id="'found-depot-' ~ delivery.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_decide_cod" :id="'cod-approve-' ~ delivery.id" :label="tx['cod.approve']" :action="route('wl_delivery.cod_approve', delivery.id)"
+                       :title="tx['cod.approve_title']" :description="tx['cod.approve_description']" :submit-label="tx['cod.approve']" icon="check">
+        <rx-select name="absorbed_by" :label="tx['cod.absorbed_by']" :options="cod_absorbers" :selected="''" :id="'cod-absorbed-' ~ delivery.id"/>
+        <rx-textarea name="comment" :label="tx['cod.comment']" :id="'cod-approve-comment-' ~ delivery.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_decide_cod" :id="'cod-reject-' ~ delivery.id" :label="tx['cod.reject']" :action="route('wl_delivery.cod_reject', delivery.id)"
+                       :title="tx['cod.reject_title']" :description="tx['cod.reject_description']" :submit-label="tx['cod.reject']" icon="x" variant="danger" danger>
+        <rx-textarea name="comment" :label="tx['cod.comment']" :id="'cod-reject-comment-' ~ delivery.id" required/>
+      </rx-action-sheet>
     </rx-page-header>
+    <rx-card rx-if="cod_request" :title="tx['cod.request_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['cod.requested_by']" :value="cod_request.requested_by"/>
+        <rx-entry :label="tx['proof.cash_expected']" :value="cod_request.expected"/>
+        <rx-entry :label="tx['proof.cash_collected']" :value="cod_request.collected"/>
+        <rx-entry :label="tx['cod.difference']" :value="cod_request.difference"/>
+        <rx-entry :label="tx['cod.reason']" :value="cod_request.reason"/>
+        <rx-entry :label="tx['cod.expires']" :value="cod_request.expires" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
     <rx-card rx-if="lost" :title="tx['lost.title']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['lost.reason']" :value="lost.reason"/>
@@ -79,6 +98,8 @@
         <rx-entry :label="tx['proof.at']" :value="proof.at"/>
         <rx-entry :label="tx['proof.cash_expected']" :value="proof.cash_expected"/>
         <rx-entry :label="tx['proof.cash_collected']" :value="proof.cash_collected"/>
+        <rx-entry :label="tx['cod.reason']" rx-if="proof.difference_reason" :value="proof.difference_reason"/>
+        <rx-entry :label="tx['cod.absorbed_by']" rx-if="proof.absorbed_by" :value="proof.absorbed_by"/>
         <rx-entry :label="tx['proof.cheque']" :value="proof.cheque" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>

@@ -25,6 +25,7 @@ use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
 use wl_invoicing::WlInvoicing;
 use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::block_effects::{BlockEffect, BlockEffectOverride, effect_for};
+use wl_kernel::delivery::CodAbsorber;
 use wl_payments::WlPayments;
 
 use super::roles::{ACCOUNTANT, ADMIN, OPERATIONS_MANAGER, PROPERTY_MANAGER, SETTINGS_VIEW};
@@ -157,6 +158,25 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // 04: a bounced cheque adds no fee; the billing role decides with the
         // engagement manager (BL-ACC-24).
         "accounting" => super::accounting_seed::payments(module),
+        _ => module,
+    }
+}
+
+/// The delivery module for `client_app` (wl-delivery §4 vertical mapping):
+/// 03 offers *client*, *business* and *driver* to the approver of a cash
+/// difference (never the customer, none preselected, `WRK.ACL.09`), and its
+/// drivers' cash escalation is the vertical's own rule (`LOG.RUL.13`, which
+/// replaces `FIN.RUL.22`).
+pub fn delivery_for(client_app: &str) -> wl_delivery::WlDelivery {
+    let module = wl_delivery::WlDelivery::new();
+    match client_app {
+        "logistics" => module
+            .cod_absorbers(&[
+                CodAbsorber::Client,
+                CodAbsorber::Business,
+                CodAbsorber::Driver,
+            ])
+            .replace_cash_escalation(true),
         _ => module,
     }
 }

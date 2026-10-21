@@ -25,26 +25,49 @@
 //! the source gives an amount per line, the sum of the accepted quantities'
 //! amounts (a part of a line pro rata to its quantity), so refused lines
 //! reduce it without a difference. Cash above the expected amount is refused
-//! (change is given back). Cash below it, beyond the tolerance, needs the
-//! difference flow with a reason and approval (`WRK.ACL.09`, BL-DLV-03),
-//! which is not built here: `deliver` is refused and the driver fails the
-//! attempt with *refused to pay* or *no cash*.
+//! (change is given back). Cash below it needs a difference reason; beyond
+//! the tolerance it also needs an approver's agreement (`WRK.ACL.09`,
+//! [`crate::cod`]): the driver's request is the transition `deliver_short`,
+//! which the kernel defers as an approval request, and the delivery is
+//! delivered by `deliver_short_approved` once an approver agrees. Without
+//! that the driver fails the attempt with *refused to pay* or *no cash*.
+//!
+//! **Cash custody.** After the commit of a delivery the cash collected is
+//! added to the driver's cash custody for the run (`FIN.CSH.01`, the kernel's
+//! `CashCustody`): the cash actually collected, except when the driver
+//! absorbs the difference, then the full cash expected (the missing part is
+//! the shortage at the count).
 
-use renox::db::DateTime;
+use renox::chrono::Duration;
+use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
+use renox::serde_json::Value;
+use renox::state_machine::{
+    StateMachine, Transition, TransitionCtx, TransitionError, Transitioned,
+};
 use serde::{Deserialize, Serialize};
+use wl_kernel::custody::{CashCollection, HandoverPeriod, custody};
 use wl_kernel::delivery::{DeliveredLine, DeliveryAttemptFailed, DeliveryDelivered, PodMethod};
 
+use crate::cod::{self, ApprovalChoice};
 use crate::delivery::{Attempt, AttemptOutcome, Delivery, DeliveryLine, DeliveryStatus, Proof};
 use crate::permissions;
-use crate::reasons::{DAMAGED, FailureReason, RefusalReason};
+use crate::reasons::{CodReason, DAMAGED, FailureReason, RefusalReason};
+use crate::run::Run;
 use crate::settings::settings;
+use crate::texts::english;
 
 /// `deliver`: out_for_delivery → delivered.
 pub const DELIVER: &str = "deliver";
 /// `fail`: out_for_delivery → attempted.
 pub const FAIL: &str = "fail";
+/// `deliver` with a cash difference above the tolerance: the user's request,
+/// which an approval policy defers (`WRK.ACL.09`).
+pub const DELIVER_SHORT: &str = "deliver_short";
+/// `deliver_short`, run by the kernel once the difference is approved.
+pub const DELIVER_SHORT_APPROVED: &str = "deliver_short_approved";
+/// The failure reason of a forced failed attempt.
+pub const REFUSED_TO_PAY: &str = "refused_to_pay";
 
 /// What the driver enters for one line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,6 +130,10 @@ pub struct DeliverForm {
     /// The driver's notes.
     #[serde(default)]
     pub notes: String,
+    /// The code of the reason the cash collected is below the cash expected
+    /// (`WRK.ACL.09`).
+    #[serde(default)]
+    pub difference_reason: Option<String>,
 }
 
 /// What the service reads of a line for the rules.
@@ -132,6 +159,15 @@ pub(crate) struct DeliverInput {
     pub amount_to_collect: i64,
     pub tolerance: i64,
     pub refusal_reasons: Vec<String>,
+    /// The codes of the active difference reasons.
+    #[serde(default)]
+    pub cod_reasons: Vec<String>,
+    /// Whether a short payment above the tolerance may be approved.
+    #[serde(default)]
+    pub approval_allowed: bool,
+    /// The absorbers that may be chosen.
+    #[serde(default)]
+    pub absorbers: Vec<String>,
 }
 
 /// What the rules work out for a valid `deliver`.
@@ -141,6 +177,12 @@ pub(crate) struct Evaluated {
     pub cash_expected: i64,
     /// The methods the driver captured.
     pub captured: Vec<PodMethod>,
+    /// Expected less collected, in fils.
+    pub difference: i64,
+    /// The difference reason's code, when the cash is short.
+    pub difference_reason: Option<String>,
+    /// Whether the difference is above the tolerance and needs an approval.
+    pub needs_approval: bool,
 }
 
 /// `quantity_milli` as text: `5`, `2.5`, `0.125`.
@@ -301,16 +343,49 @@ pub(crate) fn evaluate(input: &DeliverInput) -> std::result::Result<Evaluated, S
             aed(cash_expected)
         ));
     }
-    if cash_expected - form.cash_collected > input.tolerance {
-        return Err(format!(
-            "The cash collected is {} short of the {} expected: record the difference with a reason and approval, or fail the attempt with the reason Refused to pay.",
-            aed(cash_expected - form.cash_collected),
-            aed(cash_expected)
-        ));
+    let difference = cash_expected - form.cash_collected;
+    let mut difference_reason = None;
+    let mut needs_approval = false;
+    if difference > 0 {
+        if form.cash_collected == 0 {
+            return Err(format!(
+                "Nothing was collected of the {} expected: fail the attempt with the reason Refused to pay or No cash.",
+                aed(cash_expected)
+            ));
+        }
+        let above = difference > input.tolerance;
+        if above && !input.approval_allowed {
+            return Err(format!(
+                "The cash collected is {} short of the {} expected and a short payment cannot be approved: fail the attempt with the reason Refused to pay.",
+                aed(difference),
+                aed(cash_expected)
+            ));
+        }
+        let given = form
+            .difference_reason
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default();
+        if given.is_empty() {
+            return Err(format!(
+                "The cash collected is {} short of the {} expected: record the difference with a reason{}, or fail the attempt with the reason Refused to pay.",
+                aed(difference),
+                aed(cash_expected),
+                if above { " and ask for approval" } else { "" }
+            ));
+        }
+        if !input.cod_reasons.iter().any(|known| known == given) {
+            return Err(format!("{given} is not a reason for a cash difference."));
+        }
+        needs_approval = above;
+        difference_reason = Some(given.to_owned());
     }
     Ok(Evaluated {
         cash_expected,
         captured,
+        difference,
+        difference_reason,
+        needs_approval,
     })
 }
 
@@ -342,7 +417,150 @@ fn fail_input(ctx: &TransitionCtx) -> Option<FailInput> {
 
 /// The delivery transitions of the stop outcome, for the machine.
 pub(crate) fn transitions() -> Vec<Transition<Delivery>> {
-    vec![deliver_transition(), fail_transition()]
+    vec![
+        deliver_transition(),
+        deliver_short_transition(DELIVER_SHORT, false),
+        deliver_short_transition(DELIVER_SHORT_APPROVED, true),
+        fail_transition(),
+    ]
+}
+
+/// What a `deliver` saves, read from the delivery and the run's context before
+/// the future starts.
+struct Job {
+    delivery_id: i64,
+    run_id: Option<i64>,
+    actor: Option<i64>,
+    /// The approval request the transition runs for, when it is the
+    /// approved twin of a difference.
+    request: Option<i64>,
+    input: std::result::Result<DeliverInput, String>,
+}
+
+impl Job {
+    fn of(delivery: &Delivery, ctx: &TransitionCtx) -> Self {
+        Job {
+            delivery_id: delivery.id,
+            run_id: delivery.run_id,
+            actor: ctx.actor().map(|user| user.id),
+            request: ctx.meta().get("approval_request").and_then(Value::as_i64),
+            input: deliver_input(ctx),
+        }
+    }
+
+    /// Saves the attempt, the proof and the line quantities. `short` is a
+    /// delivery with a difference above the tolerance: its absorber must be
+    /// known (the approver's choice, else the reason's default that is
+    /// offered).
+    async fn save(self, tx: &mut Transaction, short: bool) -> Result<()> {
+        let invalid = |message: String| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message);
+        let input = self.input.map_err(invalid)?;
+        let evaluated = evaluate(&input).map_err(invalid)?;
+        let form = &input.form;
+        let actor = self.actor.or(Some(input.driver_user_id));
+        let mut attempt = Attempt {
+            delivery_id: self.delivery_id,
+            run_id: self.run_id,
+            number: input.attempt_number,
+            outcome: AttemptOutcome::Delivered,
+            failure_reason: None,
+            counts: true,
+            occurred_at: input.at,
+            latitude_micro: form.latitude_micro,
+            longitude_micro: form.longitude_micro,
+            actor_user_id: actor,
+            ..Attempt::default()
+        };
+        attempt.insert(&mut *tx).await?;
+        let absorbed_by = match &evaluated.difference_reason {
+            Some(reason) => {
+                let chosen = match self.request {
+                    Some(request) => ApprovalChoice::in_tx(&mut *tx, request)
+                        .await?
+                        .and_then(|choice| choice.absorbed_by),
+                    None => None,
+                };
+                let absorber = absorber_for(&mut *tx, &input, reason, chosen).await?;
+                if short && absorber.is_none() {
+                    return Err(invalid(
+                        english("wl_delivery.cod.choose_absorber").to_owned(),
+                    ));
+                }
+                absorber
+            }
+            None => None,
+        };
+        let methods: Vec<&str> = evaluated.captured.iter().map(|m| m.as_str()).collect();
+        let mut proof = Proof {
+            delivery_id: self.delivery_id,
+            attempt_id: attempt.id,
+            methods: methods.join(","),
+            recipient_name: form.recipient_name.trim().to_owned(),
+            photo_ref: form.photo.clone().filter(|p| !p.trim().is_empty()),
+            signature_ref: form.signature.clone().filter(|p| !p.trim().is_empty()),
+            otp_verified: form.otp_verified,
+            cash_expected: evaluated.cash_expected,
+            cash_collected: form.cash_collected,
+            cheque_reference: form.cheque.clone().filter(|c| !c.trim().is_empty()),
+            notes: form.notes.trim().to_owned(),
+            reversed: false,
+            cod_difference_reason: evaluated.difference_reason.clone(),
+            absorbed_by,
+            approval_request_id: self.request,
+            ..Proof::default()
+        };
+        proof.insert(&mut *tx).await?;
+        for entry in &form.lines {
+            let reason = if entry.refused_milli > 0 {
+                entry.reason.as_deref().map(|r| r.trim().to_owned())
+            } else {
+                None
+            };
+            let photo = if entry.refused_milli > 0 {
+                entry.photo.clone().filter(|p| !p.trim().is_empty())
+            } else {
+                None
+            };
+            DeliveryLine::query()
+                .where_(DeliveryLine::ID.eq(entry.line_id))
+                .update(
+                    &mut *tx,
+                    &[
+                        ("delivered_milli", &entry.delivered_milli),
+                        ("refused_milli", &entry.refused_milli),
+                        ("refusal_reason", &reason),
+                        ("refusal_photo_ref", &photo),
+                    ],
+                )
+                .await?;
+        }
+        let attempts = counted_attempts(&mut *tx, self.delivery_id).await?;
+        Delivery::query()
+            .where_(Delivery::ID.eq(self.delivery_id))
+            .update(&mut *tx, &[("attempts", &attempts)])
+            .await?;
+        Ok(())
+    }
+}
+
+/// Who absorbs the difference of reason `reason`: the approver's `chosen`
+/// absorber, else the reason's default; `None` when it is not one of the
+/// absorbers the settings offer (03 leaves out the customer).
+async fn absorber_for(
+    tx: &mut Transaction,
+    input: &DeliverInput,
+    reason: &str,
+    chosen: Option<String>,
+) -> Result<Option<String>> {
+    let candidate = match chosen {
+        Some(chosen) => Some(chosen),
+        None => CodReason::query()
+            .where_(CodReason::CODE.eq(reason))
+            .first(&mut *tx)
+            .await?
+            .map(|row| row.default_absorbed_by),
+    };
+    Ok(candidate.filter(|key| input.absorbers.iter().any(|offered| offered == key)))
 }
 
 fn deliver_transition() -> Transition<Delivery> {
@@ -366,79 +584,72 @@ fn deliver_transition() -> Transition<Delivery> {
             let checked = deliver_input(ctx).and_then(|input| evaluate(&input).map(|_| ()));
             Box::pin(async move { checked })
         })
+        .guard("no_approval_needed", |_delivery: &Delivery, ctx| {
+            let checked = deliver_input(ctx)
+                .and_then(|input| evaluate(&input))
+                .and_then(|evaluated| {
+                    if evaluated.needs_approval {
+                        Err(english("wl_delivery.cod.needs_approval").to_owned())
+                    } else {
+                        Ok(())
+                    }
+                });
+            Box::pin(async move { checked })
+        })
         .effect(|delivery: &Delivery, ctx, tx| {
-            let delivery_id = delivery.id;
-            let run_id = delivery.run_id;
-            let actor = ctx.actor().map(|user| user.id);
-            let input = deliver_input(ctx);
+            let job = Job::of(delivery, ctx);
+            Box::pin(async move { job.save(tx, false).await })
+        })
+}
+
+/// `deliver_short` (the driver's request) and `deliver_short_approved` (run
+/// by the kernel): a delivery whose cash is short by more than the tolerance.
+fn deliver_short_transition(name: &'static str, approved: bool) -> Transition<Delivery> {
+    let transition = Transition::new(name)
+        .label(if approved {
+            "Deliver with a cash difference (approved)"
+        } else {
+            "Deliver with a cash difference"
+        })
+        .tone("warning")
+        .from([DeliveryStatus::OutForDelivery])
+        .to(DeliveryStatus::Delivered);
+    let transition = if approved {
+        transition.system()
+    } else {
+        transition
+            .permission(permissions::COMPLETE)
+            .guard("by_assigned_driver", |_delivery: &Delivery, ctx| {
+            let allowed = is_driver(ctx, deliver_input(ctx).ok().map(|i| i.driver_user_id));
             Box::pin(async move {
-                let invalid =
-                    |message: String| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message);
-                let input = input.map_err(invalid)?;
-                let evaluated = evaluate(&input).map_err(invalid)?;
-                let form = &input.form;
-                let mut attempt = Attempt {
-                    delivery_id,
-                    run_id,
-                    number: input.attempt_number,
-                    outcome: AttemptOutcome::Delivered,
-                    failure_reason: None,
-                    counts: true,
-                    occurred_at: input.at,
-                    latitude_micro: form.latitude_micro,
-                    longitude_micro: form.longitude_micro,
-                    actor_user_id: actor,
-                    ..Attempt::default()
-                };
-                attempt.insert(&mut *tx).await?;
-                let methods: Vec<&str> = evaluated.captured.iter().map(|m| m.as_str()).collect();
-                let mut proof = Proof {
-                    delivery_id,
-                    attempt_id: attempt.id,
-                    methods: methods.join(","),
-                    recipient_name: form.recipient_name.trim().to_owned(),
-                    photo_ref: form.photo.clone().filter(|p| !p.trim().is_empty()),
-                    signature_ref: form.signature.clone().filter(|p| !p.trim().is_empty()),
-                    otp_verified: form.otp_verified,
-                    cash_expected: evaluated.cash_expected,
-                    cash_collected: form.cash_collected,
-                    cheque_reference: form.cheque.clone().filter(|c| !c.trim().is_empty()),
-                    notes: form.notes.trim().to_owned(),
-                    reversed: false,
-                    ..Proof::default()
-                };
-                proof.insert(&mut *tx).await?;
-                for entry in &form.lines {
-                    let reason = if entry.refused_milli > 0 {
-                        entry.reason.as_deref().map(|r| r.trim().to_owned())
-                    } else {
-                        None
-                    };
-                    let photo = if entry.refused_milli > 0 {
-                        entry.photo.clone().filter(|p| !p.trim().is_empty())
-                    } else {
-                        None
-                    };
-                    DeliveryLine::query()
-                        .where_(DeliveryLine::ID.eq(entry.line_id))
-                        .update(
-                            &mut *tx,
-                            &[
-                                ("delivered_milli", &entry.delivered_milli),
-                                ("refused_milli", &entry.refused_milli),
-                                ("refusal_reason", &reason),
-                                ("refusal_photo_ref", &photo),
-                            ],
-                        )
-                        .await?;
+                if allowed {
+                    Ok(())
+                } else {
+                    Err("Only the driver of the run completes its stops.".to_owned())
                 }
-                let attempts = counted_attempts(&mut *tx, delivery_id).await?;
-                Delivery::query()
-                    .where_(Delivery::ID.eq(delivery_id))
-                    .update(&mut *tx, &[("attempts", &attempts)])
-                    .await?;
-                Ok(())
             })
+        })
+    };
+    transition
+        .guard("proof_and_quantities", |_delivery: &Delivery, ctx| {
+            let checked = deliver_input(ctx).and_then(|input| evaluate(&input).map(|_| ()));
+            Box::pin(async move { checked })
+        })
+        .guard("approval_needed", |_delivery: &Delivery, ctx| {
+            let checked = deliver_input(ctx)
+                .and_then(|input| evaluate(&input))
+                .and_then(|evaluated| {
+                    if evaluated.needs_approval {
+                        Ok(())
+                    } else {
+                        Err(english("wl_delivery.cod.needs_no_approval").to_owned())
+                    }
+                });
+            Box::pin(async move { checked })
+        })
+        .effect(|delivery: &Delivery, ctx, tx| {
+            let job = Job::of(delivery, ctx);
+            Box::pin(async move { job.save(tx, true).await })
         })
 }
 
@@ -532,11 +743,26 @@ async fn driver_of(db: &Db, delivery: &Delivery) -> Result<Option<i64>> {
     }
 }
 
+/// What a driver's `deliver` came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeliverOutcome {
+    /// The delivery is `delivered`.
+    Delivered,
+    /// The cash collected is short by more than the tolerance: an approval
+    /// request (its id) waits for an approver; the delivery stays
+    /// `out_for_delivery` (`WRK.ACL.09`).
+    Requested(i64),
+}
+
 /// Records the outcome *delivered* of `delivery` for `user`, the driver of
 /// its run, at `at`.
 ///
 /// A second submit for a delivery that is already `delivered` is refused and
-/// the answer shows the saved proof; the proof is never edited.
+/// the answer shows the saved proof; the proof is never edited. When the
+/// cash collected is below the cash expected by more than the tolerance, the
+/// outcome is a request for approval ([`DeliverOutcome::Requested`]) if the
+/// driver gave a difference reason, the setting allows it and no earlier
+/// request of this visit lapsed or was rejected.
 ///
 /// # Errors
 ///
@@ -549,10 +775,13 @@ pub async fn deliver(
     delivery: &Delivery,
     form: DeliverForm,
     at: DateTime,
-) -> std::result::Result<(), TransitionError> {
+) -> std::result::Result<DeliverOutcome, TransitionError> {
     if delivery.status == DeliveryStatus::Delivered {
         return Err(guard_error(saved_proof_text(&state.db, delivery).await));
     }
+    cod::lapse_overdue(state, delivery.id)
+        .await
+        .map_err(TransitionError::Failed)?;
     let settings = settings(state);
     let lines = delivery
         .lines(&state.db)
@@ -590,16 +819,73 @@ pub async fn deliver(
         refusal_reasons: RefusalReason::active_codes(&state.db)
             .await
             .map_err(TransitionError::Failed)?,
+        cod_reasons: CodReason::active_ones(&state.db)
+            .await
+            .map_err(TransitionError::Failed)?
+            .into_iter()
+            .map(|reason| reason.code)
+            .collect(),
+        approval_allowed: settings.cod_approval(),
+        absorbers: settings
+            .cod_absorbers()
+            .iter()
+            .map(|absorber| absorber.as_str().to_owned())
+            .collect(),
     };
+    if evaluate(&input).is_ok_and(|evaluated| evaluated.needs_approval) {
+        return request_difference(state, user, delivery, &input).await;
+    }
     let _outcome = delivery
         .transition(DELIVER)
         .by(user)
         .input(&input)
         .run(state)
         .await?;
-    emit_delivered(state, delivery.id)
+    after_delivered(state, delivery.id)
         .await
-        .map_err(TransitionError::Failed)
+        .map_err(TransitionError::Failed)?;
+    Ok(DeliverOutcome::Delivered)
+}
+
+/// The driver's request for a cash difference above the tolerance: the
+/// transition `deliver_short`, deferred by the approval policy; the request
+/// is announced after the commit and given the approval timeout.
+async fn request_difference(
+    state: &AppState,
+    user: &AuthUser,
+    delivery: &Delivery,
+    input: &DeliverInput,
+) -> std::result::Result<DeliverOutcome, TransitionError> {
+    if let Some(message) = cod::blocked(&state.db, delivery)
+        .await
+        .map_err(TransitionError::Failed)?
+    {
+        return Err(guard_error(message));
+    }
+    let outcome = delivery
+        .transition(DELIVER_SHORT)
+        .by(user)
+        .input(input)
+        .run(state)
+        .await?;
+    wl_kernel::approvals::announce(state, &outcome)
+        .await
+        .map_err(TransitionError::Failed)?;
+    match cod::request_id(&outcome) {
+        Some(id) => {
+            cod::set_timeout(state, id)
+                .await
+                .map_err(TransitionError::Failed)?;
+            Ok(DeliverOutcome::Requested(id))
+        }
+        // No policy is in force: the difference was delivered at once.
+        None => {
+            after_delivered(state, delivery.id)
+                .await
+                .map_err(TransitionError::Failed)?;
+            Ok(DeliverOutcome::Delivered)
+        }
+    }
 }
 
 /// The saved proof of a delivered delivery, as a sentence for the refusal of
@@ -630,13 +916,62 @@ pub(crate) async fn next_attempt_number(db: &Db, delivery: &Delivery) -> Result<
     Ok(i64::try_from(made).unwrap_or(i64::MAX) + 1)
 }
 
-/// Emits `DeliveryDelivered` for the committed state of delivery `id`.
-async fn emit_delivered(state: &AppState, id: i64) -> Result<()> {
+/// After the commit of a delivery (by `deliver`, or by the kernel when a
+/// difference was approved): the cash goes to the driver's custody, then
+/// `DeliveryDelivered` is emitted.
+pub(crate) async fn after_delivered(state: &AppState, id: i64) -> Result<()> {
     let delivery = Delivery::find_or_404(&state.db, id).await?;
     let proof = delivery
         .latest_proof(&state.db)
         .await?
         .ok_or(Error::NotFound)?;
+    collect_cash(state, &delivery, &proof).await?;
+    emit_delivered(state, &delivery, &proof).await
+}
+
+/// Adds the cash of `proof` to the custody of the driver of the run
+/// (`FIN.CSH.01`): the cash collected, or, when the driver absorbs the
+/// difference, the full cash expected, so the missing part is the shortage at
+/// the count. The kernel adds one source's cash once; the call is refused
+/// once the driver's handover of the run was counted (it cannot be: the run
+/// is back only after every stop has an outcome).
+async fn collect_cash(state: &AppState, delivery: &Delivery, proof: &Proof) -> Result<()> {
+    let Some(run_id) = delivery.run_id else {
+        return Ok(());
+    };
+    let amount = if proof.absorbed_by.as_deref() == Some("driver") {
+        proof.cash_expected
+    } else {
+        proof.cash_collected
+    };
+    if amount <= 0 {
+        return Ok(());
+    }
+    let run = Run::find_or_404(&state.db, run_id).await?;
+    let planned_end = match (run.planned_start, run.estimated_minutes) {
+        (Some(start), Some(minutes)) => Some(start + Duration::minutes(minutes)),
+        _ => None,
+    };
+    let mut period = HandoverPeriod::run(run.subject(), run.run_date, planned_end);
+    if settings(state).replace_cash_escalation() {
+        period = period.replaced_escalation();
+    }
+    custody(state)
+        .collect(
+            state,
+            CashCollection::new(
+                run.driver_user_id,
+                period,
+                amount,
+                delivery.delivery_id().subject(),
+            ),
+        )
+        .await?;
+    Ok(())
+}
+
+/// Emits `DeliveryDelivered` for the committed state of `delivery`.
+async fn emit_delivered(state: &AppState, delivery: &Delivery, proof: &Proof) -> Result<()> {
     let attempt = Attempt::find_or_404(&state.db, proof.attempt_id).await?;
     let lines = delivery
         .lines(&state.db)
@@ -661,11 +996,23 @@ async fn emit_delivered(state: &AppState, id: i64) -> Result<()> {
             cash_expected: proof.cash_expected,
             cash_collected: proof.cash_collected,
             cod_difference: proof.cash_expected - proof.cash_collected,
-            cod_difference_reason: None,
-            absorbed_by: None,
+            cod_difference_reason: proof.cod_difference_reason.clone(),
+            absorbed_by: proof.absorbed_by.clone(),
             cheque: proof.cheque_reference.clone(),
         })
         .await
+}
+
+/// Registers the listener that finishes a delivery the kernel ran after an
+/// approver agreed to a cash difference.
+pub(crate) fn register(app: &mut Registry) {
+    app.listen(|event: Transitioned<Delivery>, state: AppState| async move {
+        if event.transition == DELIVER_SHORT_APPROVED {
+            after_delivered(&state, event.key).await
+        } else {
+            Ok(())
+        }
+    });
 }
 
 /// Records a failed visit of `delivery` for `user`, the driver of its run:
@@ -684,6 +1031,9 @@ pub async fn fail(
     location: (Option<i64>, Option<i64>),
     at: DateTime,
 ) -> std::result::Result<(), TransitionError> {
+    cod::lapse_overdue(state, delivery.id)
+        .await
+        .map_err(TransitionError::Failed)?;
     let reason = FailureReason::active_by_code(&state.db, reason_code)
         .await
         .map_err(TransitionError::Failed)?
@@ -708,6 +1058,11 @@ pub async fn fail(
         .input(&input)
         .run(state)
         .await?;
+    // A cash difference the driver was waiting on is withdrawn (*no answer:
+    // fail attempt*).
+    cod::withdraw_pending(state, user, delivery.id)
+        .await
+        .map_err(TransitionError::Failed)?;
     state
         .emit(DeliveryAttemptFailed {
             delivery: delivery.delivery_id(),
@@ -717,6 +1072,23 @@ pub async fn fail(
         })
         .await
         .map_err(TransitionError::Failed)
+}
+
+/// *No answer: fail attempt*: the driver gives up waiting for an approver. The
+/// pending request is withdrawn and the visit fails with the reason *refused
+/// to pay* (`WRK.ACL.09`).
+///
+/// # Errors
+///
+/// As [`fail`].
+pub async fn fail_no_answer(
+    state: &AppState,
+    user: &AuthUser,
+    delivery: &Delivery,
+    location: (Option<i64>, Option<i64>),
+    at: DateTime,
+) -> std::result::Result<(), TransitionError> {
+    fail(state, user, delivery, REFUSED_TO_PAY, location, at).await
 }
 
 #[cfg(test)]
@@ -760,6 +1132,9 @@ mod tests {
             amount_to_collect: 15_000,
             tolerance: 0,
             refusal_reasons: vec!["damaged".into(), "other".into()],
+            cod_reasons: vec!["recipient_short".into()],
+            approval_allowed: true,
+            absorbers: vec!["business".into(), "driver".into()],
         }
     }
 
@@ -861,5 +1236,58 @@ mod tests {
         plain.form.cash_collected = 13_000;
         let error = evaluate(&plain).unwrap_err();
         assert!(error.contains("short"), "{error}");
+    }
+
+    fn short_by_fifty() -> DeliverInput {
+        let lines = vec![entry(1, 10_000, 0), entry(2, 5_000, 0)];
+        let mut short = input(lines, 14_500);
+        short.form.difference_reason = Some("recipient_short".into());
+        short.tolerance = 0;
+        short
+    }
+
+    #[test]
+    fn a_short_payment_above_the_tolerance_needs_a_reason_and_an_approval() {
+        let mut short = short_by_fifty();
+        let evaluated = evaluate(&short).unwrap();
+        assert_eq!(evaluated.difference, 500);
+        assert_eq!(evaluated.difference_reason.as_deref(), Some("recipient_short"));
+        assert!(evaluated.needs_approval);
+
+        short.form.difference_reason = None;
+        let error = evaluate(&short).unwrap_err();
+        assert!(error.contains("short of the AED 150.00 expected"), "{error}");
+        assert!(error.contains("ask for approval"), "{error}");
+
+        short.form.difference_reason = Some("made_up".into());
+        let error = evaluate(&short).unwrap_err();
+        assert!(error.contains("not a reason"), "{error}");
+    }
+
+    #[test]
+    fn a_difference_within_the_tolerance_needs_a_reason_but_no_approval() {
+        let mut short = short_by_fifty();
+        short.tolerance = 500;
+        let evaluated = evaluate(&short).unwrap();
+        assert!(!evaluated.needs_approval);
+        assert_eq!(evaluated.difference_reason.as_deref(), Some("recipient_short"));
+        short.form.difference_reason = None;
+        assert!(evaluate(&short).is_err());
+    }
+
+    #[test]
+    fn with_approval_off_only_a_failed_attempt_is_left() {
+        let mut short = short_by_fifty();
+        short.approval_allowed = false;
+        let error = evaluate(&short).unwrap_err();
+        assert!(error.contains("cannot be approved"), "{error}");
+    }
+
+    #[test]
+    fn nothing_collected_is_not_a_difference() {
+        let mut nothing = short_by_fifty();
+        nothing.form.cash_collected = 0;
+        let error = evaluate(&nothing).unwrap_err();
+        assert!(error.contains("Nothing was collected"), "{error}");
     }
 }

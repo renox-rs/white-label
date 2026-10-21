@@ -110,3 +110,54 @@ impl RefusalReason {
             .await
     }
 }
+
+/// Why the cash collected is below the cash expected (`WRK.ACL.09`).
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[model(table = "wl_delivery_cod_reasons", unique(code))]
+pub struct CodReason {
+    /// The primary key.
+    pub id: i64,
+    /// The key, e.g. `recipient_short`.
+    pub code: String,
+    /// The English name.
+    pub name_en: String,
+    /// The Arabic name.
+    pub name_ar: String,
+    /// Who absorbs a difference with this reason unless the approver picks
+    /// another: `customer`, `client`, `business` or `driver`.
+    pub default_absorbed_by: String,
+    /// Whether the driver may choose it.
+    pub active: bool,
+    /// When the row was created.
+    pub created_at: Option<DateTime>,
+    /// When the row was last changed.
+    pub updated_at: Option<DateTime>,
+}
+
+impl CodReason {
+    /// The active reason `code`, if there is one.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn active_by_code(db: &Db, code: &str) -> Result<Option<CodReason>> {
+        CodReason::query()
+            .where_(CodReason::CODE.eq(code.trim()))
+            .where_(CodReason::ACTIVE.eq(true))
+            .first(db)
+            .await
+    }
+
+    /// The active reasons, in order.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn active_ones(db: &Db) -> Result<Vec<CodReason>> {
+        CodReason::query()
+            .where_(CodReason::ACTIVE.eq(true))
+            .order_by(CodReason::ID)
+            .get(db)
+            .await
+    }
+}

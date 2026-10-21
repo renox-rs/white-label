@@ -301,6 +301,78 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_delivery.method.otp", "OTP"),
     ("wl_delivery.partial.on", "On"),
     ("wl_delivery.partial.off", "Off: every line in full"),
+    ("wl_delivery.absorber.customer", "Customer"),
+    ("wl_delivery.absorber.client", "Client"),
+    ("wl_delivery.absorber.business", "Business"),
+    ("wl_delivery.absorber.driver", "Driver"),
+    ("wl_delivery.cod.reason", "Reason for the difference"),
+    ("wl_delivery.cod.difference", "Difference"),
+    ("wl_delivery.cod.expires", "Request lapses"),
+    ("wl_delivery.cod.absorbed_by", "Absorbed by"),
+    ("wl_delivery.cod.comment", "Comment"),
+    ("wl_delivery.cod.request_title", "Cash difference waiting for approval"),
+    ("wl_delivery.cod.requested_by", "Asked by"),
+    ("wl_delivery.cod.approve", "Approve difference"),
+    ("wl_delivery.cod.approve_title", "Approve the cash difference"),
+    (
+        "wl_delivery.cod.approve_description",
+        "The delivery is delivered with the cash collected. Choose who absorbs the difference; leave it empty to take the reason's default.",
+    ),
+    ("wl_delivery.cod.reject", "Reject difference"),
+    ("wl_delivery.cod.reject_title", "Reject the cash difference"),
+    (
+        "wl_delivery.cod.reject_description",
+        "The delivery stays out; the driver collects in full or fails the attempt.",
+    ),
+    ("wl_delivery.cod.pending_title", "Waiting for approval"),
+    (
+        "wl_delivery.cod.pending",
+        "The cash difference was sent to an approver. If nobody answers in time, or you do not want to wait, record the failed visit.",
+    ),
+    ("wl_delivery.cod.blocked_title", "Only a failed visit is left"),
+    ("wl_delivery.cod.no_answer", "No answer: fail attempt"),
+    (
+        "wl_delivery.cod.requested",
+        "Waiting for an approver. If nobody answers in {minutes} minutes, record the failed visit.",
+    ),
+    ("wl_delivery.cod.approved", "Cash difference approved."),
+    ("wl_delivery.cod.rejected_done", "Cash difference rejected."),
+    (
+        "wl_delivery.cod.no_request",
+        "No cash difference is waiting for approval on this delivery.",
+    ),
+    (
+        "wl_delivery.cod.lapsed",
+        "No approver answered in time. Record the failed visit with the reason Refused to pay.",
+    ),
+    (
+        "wl_delivery.cod.rejected",
+        "The approver rejected the difference. Collect the full amount, or record the failed visit with the reason Refused to pay.",
+    ),
+    (
+        "wl_delivery.cod.timed_out",
+        "The request lapsed before it was approved.",
+    ),
+    (
+        "wl_delivery.cod.choose_absorber",
+        "Choose who absorbs the difference.",
+    ),
+    (
+        "wl_delivery.cod.not_offered",
+        "{absorber} cannot absorb a cash difference here.",
+    ),
+    (
+        "wl_delivery.cod.approval_failed",
+        "The approval could not be applied: the request failed.",
+    ),
+    (
+        "wl_delivery.cod.needs_approval",
+        "The cash collected is short by more than the tolerance: ask for approval, or fail the attempt.",
+    ),
+    (
+        "wl_delivery.cod.needs_no_approval",
+        "The cash collected is within the tolerance: deliver without approval.",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

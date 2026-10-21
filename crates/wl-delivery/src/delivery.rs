@@ -373,6 +373,14 @@ pub struct Proof {
     pub notes: String,
     /// Whether a reversal marked it reversed (only `reverse_delivery`).
     pub reversed: bool,
+    /// Why the cash collected is below the cash expected, when it is
+    /// (`WRK.ACL.09`).
+    pub cod_difference_reason: Option<String>,
+    /// Who absorbs the difference: `customer`, `client`, `business` or
+    /// `driver`.
+    pub absorbed_by: Option<String>,
+    /// The approval request that allowed a difference above the tolerance.
+    pub approval_request_id: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

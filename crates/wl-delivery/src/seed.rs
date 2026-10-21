@@ -1,14 +1,16 @@
 //! The idempotent seeder with the §7 defaults: the failure reasons (not
 //! home, refused, refused to pay, wrong address, no cash, access denied, and
 //! the three that do not count) and the refusal reasons (damaged, wrong
-//! item, not ordered, short-dated, temperature, other).
+//! item, not ordered, short-dated, temperature, other) and the cash difference
+//! reasons (recipient short of cash, disputes the amount, agreed discount, no
+//! change).
 //!
 //! [`install`] adds the rows the database lacks and keeps every row that is
 //! there, so a client's changes survive a re-run.
 
 use renox::prelude::*;
 
-use crate::reasons::{FailureReason, RefusalReason};
+use crate::reasons::{CodReason, FailureReason, RefusalReason};
 
 /// The failure reasons as (code, English name, Arabic name, counts, allows a
 /// reattempt).
@@ -40,6 +42,25 @@ pub const REFUSAL_REASONS: [(&str, &str, &str); 6] = [
     ("other", "Other", "أخرى"),
 ];
 
+/// The cash difference reasons as (code, English name, Arabic name, default
+/// absorbed by).
+pub const COD_REASONS: [(&str, &str, &str, &str); 4] = [
+    (
+        "recipient_short",
+        "Recipient short of cash",
+        "نقص النقد لدى المستلم",
+        "customer",
+    ),
+    (
+        "disputes_amount",
+        "Disputes the amount",
+        "يعترض على المبلغ",
+        "customer",
+    ),
+    ("agreed_discount", "Agreed discount", "خصم متفق عليه", "business"),
+    ("no_change", "No change", "لا يوجد فكة", "driver"),
+];
+
 /// How many rows [`install`] added.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Installed {
@@ -47,12 +68,14 @@ pub struct Installed {
     pub failure_reasons: usize,
     /// Refusal reasons added.
     pub refusal_reasons: usize,
+    /// Cash difference reasons added.
+    pub cod_reasons: usize,
 }
 
 impl Installed {
     /// All rows added.
     pub fn total(self) -> usize {
-        self.failure_reasons + self.refusal_reasons
+        self.failure_reasons + self.refusal_reasons + self.cod_reasons
     }
 }
 
@@ -97,6 +120,24 @@ pub async fn install(db: &Db) -> Result<Installed> {
             };
             row.insert(db).await?;
             installed.refusal_reasons += 1;
+        }
+    }
+    for (code, name_en, name_ar, absorbed_by) in COD_REASONS {
+        let found = CodReason::query()
+            .where_(CodReason::CODE.eq(code))
+            .first(db)
+            .await?;
+        if found.is_none() {
+            let mut row = CodReason {
+                code: code.to_owned(),
+                name_en: name_en.to_owned(),
+                name_ar: name_ar.to_owned(),
+                default_absorbed_by: absorbed_by.to_owned(),
+                active: true,
+                ..CodReason::default()
+            };
+            row.insert(db).await?;
+            installed.cod_reasons += 1;
         }
     }
     Ok(installed)

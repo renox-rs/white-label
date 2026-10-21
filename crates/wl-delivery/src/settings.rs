@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use renox::prelude::*;
-use wl_kernel::delivery::PodMethod;
+use wl_kernel::delivery::{CodAbsorber, PodMethod};
 
 /// The proof required when the setting names nothing for a source type:
 /// photo and signature, both needed (§7).
@@ -19,6 +19,18 @@ pub const DEFAULT_METHODS: [PodMethod; 2] = [PodMethod::Photo, PodMethod::Signat
 
 /// The days untraced before a delivery is marked lost (`WRK.RUL.17`, §7).
 pub const DEFAULT_UNTRACED_DAYS: i64 = 7;
+
+/// Minutes an approver has to answer a cash difference (`WRK.ACL.09`, §7).
+pub const DEFAULT_COD_APPROVAL_MINUTES: i64 = 10;
+
+/// Who may absorb a cash difference when the setting names nobody: all four
+/// (03 leaves out the customer).
+pub const ALL_ABSORBERS: [CodAbsorber; 4] = [
+    CodAbsorber::Customer,
+    CodAbsorber::Client,
+    CodAbsorber::Business,
+    CodAbsorber::Driver,
+];
 
 /// The settings. `Default` is the §7 defaults.
 #[derive(Debug, Clone)]
@@ -33,6 +45,16 @@ pub struct DeliverySettings {
     /// The days a delivery may go untraced before `WRK.RUL.17` marks it lost
     /// (§7: 7).
     untraced_days: i64,
+    /// Whether a short payment above the tolerance may be approved (§7:
+    /// allowed with approval); off means it is always a failed attempt.
+    cod_approval: bool,
+    /// Minutes an approver has to answer before the request lapses (§7: 10).
+    cod_approval_minutes: i64,
+    /// Who may absorb a difference; the approver picks one of these.
+    cod_absorbers: Vec<CodAbsorber>,
+    /// Whether the driver's cash period leaves the escalation of the
+    /// payments module to a vertical rule (03: `LOG.RUL.13`).
+    replace_cash_escalation: bool,
 }
 
 impl Default for DeliverySettings {
@@ -42,6 +64,10 @@ impl Default for DeliverySettings {
             proof: BTreeMap::new(),
             cod_tolerance: 0,
             untraced_days: DEFAULT_UNTRACED_DAYS,
+            cod_approval: true,
+            cod_approval_minutes: DEFAULT_COD_APPROVAL_MINUTES,
+            cod_absorbers: ALL_ABSORBERS.to_vec(),
+            replace_cash_escalation: false,
         }
     }
 }
@@ -67,6 +93,54 @@ impl DeliverySettings {
     /// Sets the days a delivery may go untraced before it is marked lost.
     pub fn set_untraced_days(&mut self, days: i64) {
         self.untraced_days = days.max(1);
+    }
+
+    /// Allows (`true`) or forbids a short payment above the tolerance with
+    /// an approval; forbidden, it is always a failed attempt.
+    pub fn set_cod_approval(&mut self, allowed: bool) {
+        self.cod_approval = allowed;
+    }
+
+    /// Sets the minutes an approver has to answer a cash difference.
+    pub fn set_cod_approval_minutes(&mut self, minutes: i64) {
+        self.cod_approval_minutes = minutes.max(1);
+    }
+
+    /// Sets who may absorb a cash difference.
+    pub fn set_cod_absorbers(&mut self, absorbers: &[CodAbsorber]) {
+        self.cod_absorbers = absorbers.to_vec();
+    }
+
+    /// Makes the driver's cash period leave the escalation to a vertical
+    /// rule.
+    pub fn set_replace_cash_escalation(&mut self, replaced: bool) {
+        self.replace_cash_escalation = replaced;
+    }
+
+    /// Whether a short payment above the tolerance may be approved.
+    pub fn cod_approval(&self) -> bool {
+        self.cod_approval
+    }
+
+    /// Minutes an approver has to answer a cash difference.
+    pub fn cod_approval_minutes(&self) -> i64 {
+        self.cod_approval_minutes
+    }
+
+    /// Who may absorb a cash difference.
+    pub fn cod_absorbers(&self) -> &[CodAbsorber] {
+        &self.cod_absorbers
+    }
+
+    /// Whether `absorber` may be chosen.
+    pub fn offers_absorber(&self, absorber: CodAbsorber) -> bool {
+        self.cod_absorbers.contains(&absorber)
+    }
+
+    /// Whether the driver's cash period leaves the escalation to a vertical
+    /// rule.
+    pub fn replace_cash_escalation(&self) -> bool {
+        self.replace_cash_escalation
     }
 
     /// The days a delivery may go untraced before it is marked lost.
@@ -114,6 +188,20 @@ mod tests {
         );
         assert_eq!(settings.cod_tolerance(), 0);
         assert_eq!(settings.untraced_days(), 7);
+        assert!(settings.cod_approval());
+        assert_eq!(settings.cod_approval_minutes(), 10);
+        assert!(settings.offers_absorber(CodAbsorber::Customer));
+        assert!(!settings.replace_cash_escalation());
+    }
+
+    #[test]
+    fn the_cash_difference_settings_can_be_changed() {
+        let mut settings = DeliverySettings::default();
+        settings.set_cod_approval(false);
+        settings.set_cod_absorbers(&[CodAbsorber::Client, CodAbsorber::Driver]);
+        assert!(!settings.cod_approval());
+        assert!(!settings.offers_absorber(CodAbsorber::Customer));
+        assert!(settings.offers_absorber(CodAbsorber::Client));
     }
 
     #[test]

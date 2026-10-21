@@ -6,6 +6,7 @@
 //!         out_for_delivery --deliver--> delivered
 //!         out_for_delivery --fail--> attempted
 //!         pending | assigned --cancel--> cancelled (terminal)
+//! out_for_delivery --deliver_short (approval, WRK.ACL.09)--> delivered
 //! delivered --open_review--> under_review --close_review--> delivered
 //! out_for_delivery | attempted | under_review --mark_lost--> lost --found--> attempted
 //! ```
@@ -111,6 +112,18 @@ mod tests {
             ),
             ("deliver", vec!["out_for_delivery"], "delivered", false),
             ("fail", vec!["out_for_delivery"], "attempted", false),
+            (
+                "deliver_short",
+                vec!["out_for_delivery"],
+                "delivered",
+                false,
+            ),
+            (
+                "deliver_short_approved",
+                vec!["out_for_delivery"],
+                "delivered",
+                true,
+            ),
             ("open_review", vec!["delivered"], "under_review", false),
             (
                 "open_review_system",

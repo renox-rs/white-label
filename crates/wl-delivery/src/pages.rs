@@ -24,6 +24,9 @@
 //! | `GET /driver/stops/{id}` | `wl_delivery.stop` | `runs.drive` (404 for anyone else's stop) |
 //! | `POST /driver/stops/{id}/deliver` | `wl_delivery.stop_deliver` | `deliveries.complete` and the run's driver |
 //! | `POST /driver/stops/{id}/fail` | `wl_delivery.stop_fail` | `deliveries.complete` and the run's driver |
+//! | `POST /driver/stops/{id}/no-answer` | `wl_delivery.stop_no_answer` | `deliveries.complete` and the run's driver (withdraws the cash difference request and fails the visit with *refused to pay*) |
+//! | `POST /deliveries/{id}/cod-difference/approve` | `wl_delivery.cod_approve` | `deliveries.approve_cod_difference`, not the driver (fields `absorbed_by`, `comment`) |
+//! | `POST /deliveries/{id}/cod-difference/reject` | `wl_delivery.cod_reject` | `deliveries.approve_cod_difference` (field `comment`, required) |
 //!
 //! Every POST calls the services of [`crate::plan`] and [`crate::proof`]
 //! with the time of the request (`renox::db::now()`), never the generic
@@ -45,15 +48,17 @@ use wl_kernel::delivery::ReviewOutcome;
 use wl_kernel::documents::{dubai_text, today};
 
 use crate::close;
+use crate::cod;
 use crate::day_list::{StopView, stop_of, stops_of};
 use crate::delivery::{Attempt, Delivery, DeliveryStatus};
 use crate::lost;
 use crate::permissions;
 use crate::plan::{self, NewRun};
 use crate::proof::{self, DeliverForm, LineEntry, aed, milli_text};
-use crate::reasons::{FailureReason, RefusalReason};
+use crate::reasons::{CodReason, FailureReason, RefusalReason};
 use crate::review;
 use crate::run::{Run, RunStatus, VehicleType};
+use crate::settings::settings;
 use crate::texts;
 
 /// The texts a template reads as `tx['fields.number']`.
@@ -105,6 +110,14 @@ pub fn routes() -> Routes {
         )
         .merge(
             Routes::new()
+                .post("/deliveries/{id}/cod-difference/approve", store_cod_approve)
+                .name("wl_delivery.cod_approve")
+                .post("/deliveries/{id}/cod-difference/reject", store_cod_reject)
+                .name("wl_delivery.cod_reject")
+                .require_permission(permissions::APPROVE_COD_DIFFERENCE),
+        )
+        .merge(
+            Routes::new()
                 .get("/runs", runs)
                 .name("wl_delivery.runs")
                 .get("/runs/{id}", run_show)
@@ -141,6 +154,8 @@ pub fn routes() -> Routes {
                 .name("wl_delivery.stop_deliver")
                 .post("/driver/stops/{id}/fail", store_fail)
                 .name("wl_delivery.stop_fail")
+                .post("/driver/stops/{id}/no-answer", store_no_answer)
+                .name("wl_delivery.stop_no_answer")
                 .require_permission(permissions::COMPLETE),
         )
 }
@@ -316,6 +331,8 @@ pub(crate) struct ProofRow {
     cash_expected: String,
     cash_collected: String,
     cheque: Option<String>,
+    difference_reason: Option<String>,
+    absorbed_by: Option<String>,
 }
 
 /// The delivery as the card shows it.
@@ -344,6 +361,17 @@ pub(crate) struct LostRow {
     reason: String,
     liability: String,
     claim: Option<String>,
+}
+
+/// A cash difference waiting for an approver, as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct CodRequestRow {
+    requested_by: String,
+    expected: String,
+    collected: String,
+    difference: String,
+    reason: String,
+    expires: Option<String>,
 }
 
 /// What the delivery page needs.
@@ -375,6 +403,13 @@ pub(crate) struct ShowPage {
     review_outcomes: Vec<(String, String)>,
     /// The planned runs the assign sheet offers, `(id, label)`.
     planned_runs: Vec<(String, String)>,
+    /// The cash difference that waits for an approver.
+    cod_request: Option<CodRequestRow>,
+    /// Whether the viewer may approve or reject it (never the driver who
+    /// asked).
+    can_decide_cod: bool,
+    /// `(value, label)` of who may absorb a cash difference.
+    cod_absorbers: Vec<(String, String)>,
 }
 
 /// The window as text: `from - to`.
@@ -446,6 +481,11 @@ async fn show(
                 cash_expected: aed(proof.cash_expected),
                 cash_collected: aed(proof.cash_collected),
                 cheque: proof.cheque_reference.clone(),
+                difference_reason: proof.cod_difference_reason.clone(),
+                absorbed_by: proof
+                    .absorbed_by
+                    .as_ref()
+                    .map(|key| t(&format!("absorber.{key}"))),
             })
         }
         None => None,
@@ -506,6 +546,49 @@ async fn show(
     } else {
         Vec::new()
     };
+    cod::lapse_overdue(&state, delivery.id).await?;
+    let mut cod_request = None;
+    let mut can_decide_cod = false;
+    if let Some(request) = cod::pending_request(&state.db, delivery.id, cod::ACTION).await? {
+        let evaluated = renox::serde_json::from_value::<proof::DeliverInput>(request.payload.0.clone())
+            .ok()
+            .and_then(|input| proof::evaluate(&input).ok());
+        let requested_by = User::find(&state.db, request.requester_id)
+            .await?
+            .map_or_else(|| format!("#{}", request.requester_id), |u| u.name);
+        cod_request = Some(CodRequestRow {
+            requested_by,
+            expected: evaluated
+                .as_ref()
+                .map(|e| aed(e.cash_expected))
+                .unwrap_or_default(),
+            collected: evaluated
+                .as_ref()
+                .map(|e| aed(e.cash_expected - e.difference))
+                .unwrap_or_default(),
+            difference: evaluated
+                .as_ref()
+                .map(|e| aed(e.difference))
+                .unwrap_or_default(),
+            reason: evaluated
+                .as_ref()
+                .and_then(|e| e.difference_reason.clone())
+                .unwrap_or_default(),
+            expires: request.expires_at.map(dubai_text),
+        });
+        can_decide_cod = user.has_permission(permissions::APPROVE_COD_DIFFERENCE)
+            && request.requester_id != user.id;
+    }
+    let cod_absorbers = settings(&state)
+        .cod_absorbers()
+        .iter()
+        .map(|absorber| {
+            (
+                absorber.as_str().to_owned(),
+                t(&format!("absorber.{}", absorber.as_str())),
+            )
+        })
+        .collect();
     let card = Card {
         window: window_text(&delivery),
         run: run.as_ref().map(|r| r.number.clone()),
@@ -539,6 +622,9 @@ async fn show(
         review,
         review_outcomes,
         planned_runs,
+        cod_request,
+        can_decide_cod,
+        cod_absorbers,
     }))
 }
 
@@ -1224,6 +1310,21 @@ pub(crate) struct StopPage {
     refusal_reasons: Vec<(String, String)>,
     failure_reasons: Vec<(String, String)>,
     otp_options: Vec<(String, String)>,
+    cod: CodView,
+}
+
+/// What the stop page shows of a cash difference (`WRK.ACL.09`).
+#[derive(Serialize, Debug, Clone, Default)]
+pub(crate) struct CodView {
+    /// A request waits for an approver.
+    pending: bool,
+    /// Why only a failed attempt is left (the request lapsed or was
+    /// rejected).
+    blocked: Option<String>,
+    /// A short payment can only end in a failed attempt (approval is off).
+    fail_only: bool,
+    /// `(code, label)` of the reasons for a difference.
+    reasons: Vec<(String, String)>,
 }
 
 /// `GET /driver/stops/{id}`: the stop; 404 unless it is on a run of the
@@ -1235,6 +1336,7 @@ async fn stop(
     Path(id): Path<i64>,
 ) -> Result<View> {
     let t = texts_in(&lang);
+    cod::lapse_overdue(&state, id).await?;
     let found = stop_of(&state.db, user.id, today(), id)
         .await?
         .ok_or(Error::NotFound)?;
@@ -1262,6 +1364,18 @@ async fn stop(
         .into_iter()
         .map(|r| (r.code, r.name_en))
         .collect();
+    let cod = CodView {
+        pending: cod::pending_request(&state.db, delivery.id, cod::ACTION)
+            .await?
+            .is_some(),
+        blocked: cod::blocked(&state.db, &delivery).await?,
+        fail_only: !settings(&state).cod_approval(),
+        reasons: CodReason::active_ones(&state.db)
+            .await?
+            .into_iter()
+            .map(|r| (r.code, r.name_en))
+            .collect(),
+    };
     Ok(View::typed(StopPage {
         tx: texts::all(&lang),
         stop: found.view(),
@@ -1274,6 +1388,7 @@ async fn stop(
         refusal_reasons,
         failure_reasons,
         otp_options: vec![("0".to_owned(), t("no")), ("1".to_owned(), t("yes"))],
+        cod,
         delivery,
     }))
 }
@@ -1347,13 +1462,96 @@ async fn store_deliver(
         cash_collected,
         cheque: field(&fields, "cheque").map(str::to_owned),
         notes: field(&fields, "notes").unwrap_or_default().to_owned(),
+        difference_reason: field(&fields, "difference_reason").map(str::to_owned),
     };
-    proof::deliver(&state, &user, &delivery, form, renox::db::now())
+    let outcome = proof::deliver(&state, &user, &delivery, form, renox::db::now())
+        .await
+        .map_err(TransitionError::into_error)?;
+    let toast = match outcome {
+        proof::DeliverOutcome::Delivered => {
+            Toast::success(texts::t(&lang, "wl_delivery.driver.delivered"))
+        }
+        proof::DeliverOutcome::Requested(_) => Toast::success(
+            texts::t(&lang, "wl_delivery.cod.requested")
+                .replace("{minutes}", &settings(&state).cod_approval_minutes().to_string()),
+        ),
+    };
+    Ok((toast, Redirect::route("wl_delivery.driver", &[])?).into_response())
+}
+
+/// `POST /driver/stops/{id}/no-answer`: the driver gives up waiting for an
+/// approver (`latitude`, `longitude`): the request is withdrawn and the visit
+/// fails with the reason *refused to pay*.
+async fn store_no_answer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(fields): Form<HashMap<String, String>>,
+) -> Result<Response> {
+    let delivery = Delivery::find_or_404(&state.db, id).await?;
+    let location = (
+        field(&fields, "latitude").and_then(parse_degrees),
+        field(&fields, "longitude").and_then(parse_degrees),
+    );
+    proof::fail_no_answer(&state, &user, &delivery, location, renox::db::now())
         .await
         .map_err(TransitionError::into_error)?;
     Ok((
-        Toast::success(texts::t(&lang, "wl_delivery.driver.delivered")),
+        Toast::success(texts::t(&lang, "wl_delivery.driver.failed")),
         Redirect::route("wl_delivery.driver", &[])?,
+    )
+        .into_response())
+}
+
+/// The form of an approver's answer to a cash difference.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CodDecisionForm {
+    /// Who absorbs the difference; blank takes the reason's default.
+    #[serde(default)]
+    pub absorbed_by: String,
+    /// The approver's comment (required to reject).
+    #[serde(default)]
+    pub comment: String,
+}
+
+/// `POST /deliveries/{id}/cod-difference/approve`: approves the cash
+/// difference, choosing who absorbs it. The delivery is `delivered`.
+async fn store_cod_approve(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<CodDecisionForm>,
+) -> Result<Response> {
+    cod::approve(
+        &state,
+        &user,
+        &delivery,
+        Some(&form.absorbed_by),
+        &form.comment,
+    )
+    .await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.cod.approved")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /deliveries/{id}/cod-difference/reject`: rejects the cash
+/// difference; the delivery stays `out_for_delivery`.
+async fn store_cod_reject(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<CodDecisionForm>,
+) -> Result<Response> {
+    cod::reject(&state, &user, &delivery, &form.comment).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.cod.rejected_done")),
+        renox::HxRefresh,
     )
         .into_response())
 }
