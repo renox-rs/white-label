@@ -83,6 +83,7 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
             module
         }
         "construction" => super::construction_seed::invoicing(module, entities),
+        "manpower" => super::manpower_seed::invoicing(module, entities),
         // The retainer of an engagement bills itself: its cycle invoices
         // are issued at once, so that ending the engagement can credit the
         // cycle already invoiced in advance (BL-ACC-06).
@@ -145,6 +146,7 @@ pub fn payments_for(client_app: &str) -> WlPayments {
             // and decides beside the accountant (items 10 and 11).
             .cheque_manager(PROPERTY_MANAGER, true),
         "construction" => super::construction_seed::payments(module),
+        "manpower" => super::manpower_seed::payments(module),
         // 04: a bounced cheque adds no fee; the billing role decides with the
         // engagement manager (BL-ACC-24).
         "accounting" => super::accounting_seed::payments(module),
