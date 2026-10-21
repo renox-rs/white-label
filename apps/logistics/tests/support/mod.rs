@@ -20,6 +20,7 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
 use wl_delivery::{Delivery, NewRun, VehicleType, WlDelivery, permissions as dperm, seed};
+use wl_kernel::attendance::{AttendanceHistory, ShiftCalendar};
 use wl_kernel::delivery::CodAbsorber;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::Invoicer;
@@ -27,9 +28,10 @@ use wl_kernel::notify::Notifier;
 use wl_kernel::parties::PartyDirectory;
 use wl_kernel::portal::PortalUsers;
 use wl_kernel::tickets::TaskCreator;
-use wl_kernel::workforce::Workforce;
+use wl_kernel::workforce::{AbsenceCaseOpened, Workforce};
 use wl_kernel::{ClientConfig, PartyId, RecordVoided};
 
+pub mod attendance;
 pub mod invoices;
 pub mod notices;
 pub mod parties;
@@ -37,6 +39,7 @@ pub mod portal;
 pub mod roster;
 pub mod tickets;
 
+use attendance::{Attendance, Shifts};
 use invoices::Invoices;
 use notices::Notices;
 use parties::Parties;
@@ -144,6 +147,12 @@ pub struct World {
     /// The party directory (the real wl-payments knows the clients through
     /// it); blocking a client is done here.
     pub parties: Parties,
+    /// The end of the drivers' shifts (`LOG.RUL.13`).
+    pub shifts: Shifts,
+    /// The check-ins of the employees (`HRM.ATT.01`).
+    pub attendance: Attendance,
+    /// `AbsenceCaseOpened`: the absence notes on the drivers' HR records.
+    pub absences: Recorded<AbsenceCaseOpened>,
 }
 
 async fn make_user(db: &Db, name: &str, grants: &[&str]) -> User {
@@ -220,6 +229,11 @@ async fn boot_with(real_payments: bool) -> World {
     let invoices = Invoices::default();
     let invoicer: Arc<dyn Invoicer> = Arc::new(invoices.clone());
     let parties = Parties::default();
+    let shifts = Shifts::default();
+    let shift_calendar: Arc<dyn ShiftCalendar> = Arc::new(shifts.clone());
+    let attendance = Attendance::default();
+    let history: Arc<dyn AttendanceHistory> = Arc::new(attendance.clone());
+    let absences = Recorded::new();
     let app = App::new()
         .module(Auth::new())
         .module(renox::audit::Audit)
@@ -228,7 +242,12 @@ async fn boot_with(real_payments: bool) -> World {
             WlDelivery::new()
                 .partial_acceptance(logistics::SUBJECT_TYPE, false)
                 // As the host sets 03: never the customer (`WRK.ACL.09`).
-                .cod_absorbers(&[CodAbsorber::Client, CodAbsorber::Business, CodAbsorber::Driver]),
+                .cod_absorbers(&[CodAbsorber::Client, CodAbsorber::Business, CodAbsorber::Driver])
+                // As the host sets 03: the cash escalation of a driver is
+                // `LOG.RUL.13`, and a run can be aborted for *driver
+                // unreachable*.
+                .replace_cash_escalation(true)
+                .abort_reasons(&["driver_unreachable"]),
         )
         .module(Logistics)
         .module(Probe)
@@ -236,17 +255,21 @@ async fn boot_with(real_payments: bool) -> World {
         .provide(notifier)
         .provide(portal_users)
         .provide(task_creator)
-        .provide(invoicer);
+        .provide(invoicer)
+        .provide(shift_calendar)
+        .provide(history);
     let app = if real_payments {
         let directory: Arc<dyn PartyDirectory> = Arc::new(parties.clone());
         app.provide(directory)
-            .module(wl_payments::WlPayments::new())
+            // 03 writes off a cash shortage above AED 50 only with approval.
+            .module(wl_payments::WlPayments::new().cash_write_off_limit(5_000))
     } else {
         app
     };
     let app = record(app, &voided);
     let app = record(app, &shipment_delivered);
     let app = record(app, &shipment_lost);
+    let app = record(app, &absences);
     let client = if real_payments {
         CLIENT.replace(
             "[\"parties\", \"delivery\"]",
@@ -342,6 +365,9 @@ async fn boot_with(real_payments: bool) -> World {
         amal,
         bashar,
         parties,
+        shifts,
+        attendance,
+        absences,
     }
 }
 

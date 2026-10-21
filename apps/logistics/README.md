@@ -139,6 +139,21 @@ their own issues.
   task for the accountant without a disposal line) and the shipment stays
   billable; *none* records the liability only. After a settled claim, *keep the
   settlement* with `then=dispose` on `/claim-choice` makes the same request.
+- **Cash not handed over** (`cash_watch`, `LOG.RUL.13`, replaces `FIN.RUL.22`
+  for drivers): the host collects a run's cash period with the escalation
+  replaced, and every 15 minutes the rule reads those open handovers from the
+  custody contract. The clock starts at the run's return to the depot (an abort
+  returns it), else at the end of the driver's shift (`ShiftCalendar`), else
+  at 23:59 of the run date. 12 hours later the operations manager gets a task
+  to call the driver (and, for a run still out, to abort it for *driver
+  unreachable*); 48 hours after the same start the company admin is told, the
+  manager is asked to count at what was received and, unless an attendance
+  check-in followed the start, an absence case is opened on the driver's HR
+  record (`AbsenceCaseOpened`; reporting absconding is an HR decision). A
+  handover counted closes the tasks. The client's remittance is never reduced;
+  recovery in cash, the salary deduction (off while the client's setting is
+  off, `FIN.ACL.19`, open item L-20) and the write-off with approval are
+  wl-payments'.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
