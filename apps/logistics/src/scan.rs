@@ -132,11 +132,14 @@ async fn scan(
         })
         .run(state)
         .await;
-    if let Err(TransitionError::Guard(message)) = &result
-        && shipment.status == ShipmentStatus::Created
+    let nothing_handed = shipment.status == ShipmentStatus::Created
         && handover.barcodes.is_empty()
-        && *message == english("logistics.scan.parcel_needed", &[])
-    {
+        && matches!(
+            &result,
+            Err(TransitionError::Guard(message))
+                if *message == english("logistics.scan.parcel_needed", &[])
+        );
+    if nothing_handed {
         // Nothing was handed over: the attempt failed, the shipment stays
         // `created` and can be picked up again or cancelled.
         let reason = match handover.failed_reason.trim() {
