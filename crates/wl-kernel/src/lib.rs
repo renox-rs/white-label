@@ -210,8 +210,9 @@ pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
     EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, FailedPayrollLine, NoWorkforce,
     ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted,
-    PAYROLL_RUN_SUBJECT_TYPE, PayrollLinesFailed, PayrollRunId, PayrollRunPaid, PayrollRunReturned,
-    StaffProfile, Workforce, provide_workforce, workforce,
+    PAY_ACCOUNT_SUBJECT_TYPE, PAYROLL_RUN_SUBJECT_TYPE, PayAccountChanged, PayrollLinesFailed,
+    PayrollRunId, PayrollRunPaid, PayrollRunReturned, StaffProfile, Workforce, provide_workforce,
+    workforce,
 };
 
 /// The permission names the kernel declares.

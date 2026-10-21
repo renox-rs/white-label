@@ -31,6 +31,7 @@ pub use decide::{
 pub use end::{End, Ended, SubjectEnd, end_in, expire, reject, return_request, withdraw};
 pub use events::{ApprovalDecided, ApprovalEnd, ApprovalRequested};
 pub use intercept::ApprovalInterceptor;
+pub use notify::register_excluded_approvers;
 pub use policy::{ApprovalPolicy, Condition, ConditionKind, PolicyDefault, Step};
 pub use request::{ApprovalDecision, ApprovalRequest, ApprovalStatus, DecisionKind};
 pub use resubmit::{EarlierDecision, earlier_decisions, same_payload};

@@ -183,6 +183,24 @@ pub struct PayrollRunPaid {
 
 impl Event for PayrollRunPaid {}
 
+/// The subject type of a pay account, for [`Subject`] references.
+pub const PAY_ACCOUNT_SUBJECT_TYPE: &str = "hr.pay_account";
+
+/// A new pay account became `active` (`activate`, or `waive_cooling` once an
+/// MD approved it): payroll pays the employee into it from the next run
+/// submitted. The account number itself is never in the event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayAccountChanged {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The last 4 digits of the IBAN or card number.
+    pub last4: String,
+    /// The user who approved the account (at `approve`).
+    pub approver: Option<i64>,
+}
+
+impl Event for PayAccountChanged {}
+
 /// An employee became `active` (`activate`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EmployeeActivated {
