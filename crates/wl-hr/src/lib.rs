@@ -4,7 +4,9 @@
 pub mod absconding;
 pub mod absence;
 pub mod activation;
+pub mod adjustment;
 pub mod assignees;
+pub mod caps;
 pub mod config;
 pub mod employee;
 pub mod employee_machine;
@@ -32,6 +34,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use absence::{AbsenceCase, AbsenceReport, ContactAttempt, ContactOutcome};
+pub use adjustment::{Adjustment, AdjustmentKind};
 pub use config::HrConfig;
 pub use employee::{
     Employee, EmployeeScope, EmployeeStatus, EmploymentType, NewEmployee, change_job_role,
@@ -69,6 +72,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-hr/employee.html"),
     ),
     (
+        "wl-hr/payroll_run.html",
+        include_str!("../views/wl-hr/payroll_run.html"),
+    ),
+    (
         "wl-hr/templates.html",
         include_str!("../views/wl-hr/templates.html"),
     ),
@@ -89,6 +96,16 @@ pub mod permissions {
     pub const SETTLEMENTS_PREPARE: &str = "settlements.prepare";
     /// Manage visa cases, and cancel one.
     pub const VISAS_MANAGE: &str = "visas.manage";
+    /// See payroll runs, their lines and SIF files.
+    pub const PAYROLL_VIEW: &str = "payroll.view";
+    /// Calculate, submit and record the bank's results of a payroll run
+    /// (`HRM.ACL.04`: not the same user as the approver).
+    pub const PAYROLL_PREPARE: &str = "payroll.prepare";
+    /// Approve or return a payroll run, comment on its lines and confirm
+    /// payment (`HRM.ACL.04`).
+    pub const PAYROLL_APPROVE: &str = "payroll.approve";
+    /// Add advances, recoveries and bonuses.
+    pub const ADJUSTMENTS_MANAGE: &str = "adjustments.manage";
     /// Approve the non-standard exits `cancel_onboarding`, `withdraw_notice`,
     /// `report_absconding`, `reinstate` and `record_death` (`HRM.ACL.07`,
     /// default: the MD).
@@ -150,6 +167,7 @@ impl Module for WlHr {
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::employees::IndexPage>()
             .view_data::<pages::employees::ShowPage>()
+            .view_data::<pages::payroll::ShowPage>()
             .view_data::<pages::templates::IndexPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
@@ -176,6 +194,7 @@ impl Module for WlHr {
         app.model::<AbsenceReport>();
         app.model::<PayrollRun>();
         app.model::<PayrollLine>();
+        app.model::<Adjustment>();
         app.model::<FinalSettlement>();
         app.model::<VisaCase>();
         app.provide(self.config.clone());

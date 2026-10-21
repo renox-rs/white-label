@@ -1,8 +1,17 @@
-//! Payroll runs and lines as far as an exit needs them (wl-hr §4 *Payroll
-//! run*, §5.6, issue #197). The lifecycle of a run (`calculate`, `approve`,
-//! `return`, `reject`, `confirm_paid`, ...) comes with BL-HRM-11 to 18; here
-//! are the run and its lines, and the three transitions that decide which
-//! line goes into which SIF file:
+//! Payroll runs and lines as far as an exit and the WPS rejections need them
+//! (wl-hr §4 *Payroll run*, §5.6, issues #197 and #201 to #205). The rest of
+//! the lifecycle (the calculation itself, `confirm_paid`, `cancel`, off-cycle
+//! and supplementary runs) comes with BL-HRM-16 to 18; here are the run and its
+//! lines, and:
+//!
+//! - `calculate` (draft, calculated -> calculated, `payroll.prepare`): the
+//!   user is the preparer; the period's adjustments are taken into the lines.
+//!   The base of BL-HRM-15: the amounts of the lines are not calculated yet.
+//! - `approve` (calculated -> approved, `payroll.approve`): another user than
+//!   the preparer (`HRM.ACL.04`), and refused while a line is above the
+//!   Art. 25 caps (`HRM.ACL.06`, [`crate::caps`]) for every approver.
+//!
+//! The transitions that decide which line goes into which SIF file:
 //!
 //! - `submit` (approved -> submitted): generates SIF version 1 from the lines
 //!   that are `included`. A `held` line is left out, so no line is put in a
@@ -32,10 +41,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::employee::{Employee, EmployeeStatus};
 use crate::texts::english;
+use crate::{adjustment, caps, permissions};
 
 /// The reason of a line held by the absence report.
 pub const HELD_ABSENCE_REPORT: &str = "absence report";
 
+/// The preparer calculates the lines of the run.
+pub const CALCULATE: &str = "calculate";
+/// A second user approves the calculated run.
+pub const APPROVE: &str = "approve";
 /// The run is ready to be sent.
 pub const SUBMIT: &str = "submit";
 /// The bank's result file shows failed lines.
@@ -87,6 +101,10 @@ pub struct PayrollRun {
     pub status: PayrollRunStatus,
     /// How many SIF versions were generated.
     pub sif_version: i64,
+    /// The user who last ran `calculate`: the preparer (`HRM.ACL.04`).
+    pub prepared_by: Option<i64>,
+    /// The user who approved it; empty after `return`.
+    pub approved_by: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -125,6 +143,10 @@ pub struct PayrollLine {
     pub employee_id: i64,
     /// The net pay, AED fils.
     pub net_amount: i64,
+    /// The gross fixed wage for the period (basic plus fixed allowances), AED
+    /// fils: the basis of the Art. 25 caps (`HRM.ACL.06`). The payroll
+    /// calculation fills it from the salary structure.
+    pub fixed_wage: i64,
     /// Where it stands.
     pub status: LineStatus,
     /// Why it is held.
@@ -188,6 +210,8 @@ impl StateMachine for PayrollRun {
             .state(Paid)
             .tone("success")
             .terminal()
+            .transition(calculate())
+            .transition(approve())
             .transition(
                 Transition::new(SUBMIT)
                     .label("Submit")
@@ -247,6 +271,84 @@ impl StateMachine for PayrollRun {
                     }),
             )
     }
+}
+
+/// `calculate` (draft, calculated -> calculated, `payroll.prepare`): the user
+/// who runs it is the preparer. The adjustments of the run's period are taken
+/// into the lines (`HRM.ACL.06` checks them). The lines themselves (salary
+/// structure, hours, leave) are calculated by the payroll calculation of
+/// BL-HRM-16; until then the lines and their `fixed_wage` are what the run
+/// holds.
+fn calculate() -> Transition<PayrollRun> {
+    Transition::new(CALCULATE)
+        .label("Calculate")
+        .permission(permissions::PAYROLL_PREPARE)
+        .from([PayrollRunStatus::Draft, PayrollRunStatus::Calculated])
+        .to(PayrollRunStatus::Calculated)
+        .effect(|run: &PayrollRun, ctx, tx| {
+            let id = run.id;
+            let period = run.period.clone();
+            let by = ctx.actor().map(|user| user.id);
+            Box::pin(async move {
+                adjustment::link_to_run_in(tx, id, &period).await?;
+                PayrollRun::query()
+                    .where_(PayrollRun::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("prepared_by", &by),
+                            ("approved_by", &None::<i64>),
+                            ("updated_at", &now()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// `approve` (calculated -> approved, `payroll.approve`): not the preparer
+/// (`HRM.ACL.04`), and not while a line is above the Art. 25 caps
+/// (`HRM.ACL.06`, [`caps`]): the check is an effect, so it cannot be skipped
+/// by any permission.
+fn approve() -> Transition<PayrollRun> {
+    Transition::new(APPROVE)
+        .label("Approve")
+        .tone("primary")
+        .permission(permissions::PAYROLL_APPROVE)
+        .from([PayrollRunStatus::Calculated])
+        .to(PayrollRunStatus::Approved)
+        .guard("not_the_preparer", |run: &PayrollRun, ctx| {
+            let same = matches!(
+                (ctx.actor(), run.prepared_by),
+                (Some(user), Some(preparer)) if user.id == preparer
+            );
+            Box::pin(async move {
+                if same {
+                    Err(english("wl_hr.payroll.same_user", &[]))
+                } else {
+                    Ok(())
+                }
+            })
+        })
+        .effect(|run: &PayrollRun, ctx, tx| {
+            let id = run.id;
+            let by = ctx.actor().map(|user| user.id);
+            Box::pin(async move {
+                let problems = caps::problems_in(tx, id).await?;
+                if !problems.is_empty() {
+                    return Err(Error::Status(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        english("wl_hr.payroll.caps_exceeded", &[("count", &problems.len())]),
+                    ));
+                }
+                PayrollRun::query()
+                    .where_(PayrollRun::ID.eq(id))
+                    .update(&mut *tx, &[("approved_by", &by), ("updated_at", &now())])
+                    .await?;
+                Ok(())
+            })
+        })
 }
 
 /// The next SIF version of run `run_id`: every `included` line goes into it

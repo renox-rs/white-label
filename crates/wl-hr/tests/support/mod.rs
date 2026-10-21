@@ -17,7 +17,8 @@ use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_hr::permissions as perm;
 use wl_hr::{
-    Employee, EmploymentType, NewEmployee, Onboarding, OnboardingStep, WlHr, employees,
+    Adjustment, AdjustmentKind, Employee, EmploymentType, LineStatus, NewEmployee, Onboarding,
+    OnboardingStep, PayrollLine, PayrollRun, PayrollRunStatus, WlHr, employees,
     template::{self, StepInput, TemplateInput},
 };
 use wl_kernel::documents::{
@@ -600,6 +601,96 @@ impl Booted {
         (employee, account)
     }
 
+    /// A payroll run of `period` in `status`, inserted as a fixture (the
+    /// machine would not take it there).
+    pub async fn payroll_run(&self, period: &str, status: PayrollRunStatus) -> PayrollRun {
+        let mut run = PayrollRun {
+            period: period.to_owned(),
+            run_type: "regular".into(),
+            status,
+            ..PayrollRun::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        run.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        run
+    }
+
+    /// A line of `run` for `employee` with a fixed wage and a net, in fils.
+    pub async fn payroll_line(
+        &self,
+        run: &PayrollRun,
+        employee: &Employee,
+        wage: i64,
+        net: i64,
+    ) -> PayrollLine {
+        PayrollLine::create(
+            self.db(),
+            PayrollLine {
+                run_id: run.id,
+                employee_id: employee.id,
+                fixed_wage: wage,
+                net_amount: net,
+                status: LineStatus::Included,
+                ..PayrollLine::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// A deduction of `fils` of `kind` from the pay of `employee` in `period`.
+    pub async fn deduct(
+        &self,
+        employee: &Employee,
+        kind: AdjustmentKind,
+        fils: i64,
+        period: &str,
+    ) -> Adjustment {
+        Adjustment::create(
+            self.db(),
+            Adjustment {
+                employee_id: employee.id,
+                kind,
+                amount: fils,
+                period: period.to_owned(),
+                ..Adjustment::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// `user` runs the transition `name` of `run` through its page route,
+    /// with `reason`.
+    pub async fn transition(
+        &self,
+        user: &User,
+        run: &PayrollRun,
+        name: &str,
+        reason: &str,
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app
+            .post(
+                &format!("/hr/payroll/{}/transitions/{name}", run.id),
+                &[("reason", reason)],
+            )
+            .await
+    }
+
+    /// `run`, as stored now.
+    pub async fn run(&self, run: &PayrollRun) -> PayrollRun {
+        PayrollRun::find_or_404(self.db(), run.id).await.unwrap()
+    }
+
+    /// `line`, as stored now.
+    pub async fn line(&self, line: &PayrollLine) -> PayrollLine {
+        PayrollLine::find_or_404(self.db(), line.id).await.unwrap()
+    }
+
     /// The onboardings of `employee`, oldest first.
     pub async fn onboardings(&self, employee: &Employee) -> Vec<Onboarding> {
         let mut all = Onboarding::of_employee(self.db(), employee.id)
@@ -724,6 +815,46 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
     )
     .await
     .unwrap();
+    // Payroll: HR prepares, the MD approves (`HRM.ACL.04`); one role holds
+    // everything, to show that no permission gets past the caps.
+    permissions::define_role(
+        app.db(),
+        "payroll_prep",
+        &[
+            perm::PAYROLL_VIEW,
+            perm::PAYROLL_PREPARE,
+            perm::ADJUSTMENTS_MANAGE,
+        ],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(
+        app.db(),
+        "payroll_appr",
+        &[perm::PAYROLL_VIEW, perm::PAYROLL_APPROVE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(
+        app.db(),
+        "payroll_all",
+        &[
+            perm::PAYROLL_VIEW,
+            perm::PAYROLL_PREPARE,
+            perm::PAYROLL_APPROVE,
+            perm::ADJUSTMENTS_MANAGE,
+            perm::EMPLOYEES_VIEW,
+            perm::EMPLOYEES_MANAGE,
+            perm::EMPLOYEES_EXIT_APPROVE,
+            perm::ONBOARDING_VIEW,
+            perm::ONBOARDING_MANAGE,
+        ],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(app.db(), "accountant", &[perm::PAYROLL_VIEW])
+        .await
+        .unwrap();
     if induction {
         wl_hr::seed::install(app.db()).await.unwrap().total();
     }

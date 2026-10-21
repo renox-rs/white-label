@@ -102,7 +102,7 @@ async fn user_name(db: &Db, id: i64) -> String {
 }
 
 /// The employee's name, else `#id`.
-async fn employee_name(state: &AppState, lang: &Lang, employee: &Employee) -> String {
+pub(crate) async fn employee_name(state: &AppState, lang: &Lang, employee: &Employee) -> String {
     wl_kernel::parties::directory(state)
         .display_name(&state.db, employee.party(), &lang.locale)
         .await

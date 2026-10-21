@@ -1,0 +1,37 @@
+{#- wl-hr: a payroll run: its lines, the lines above the Art. 25 caps
+    (`HRM.ACL.06`) and what the signed-in user may do. Approve is disabled
+    while a line is above the caps. Replace it with
+    resources/views/wl-hr/payroll_run.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['payroll.title'] ~ ' ' ~ run.period">
+  <rx-stack>
+    <rx-page-header :title="tx['payroll.title'] ~ ' ' ~ run.period" :subtitle="run.run_type"
+                    :badge="run.status" :badge-kind="run.status_kind"/>
+    <template rx-if="actions">
+      <rx-transition-actions :actions="actions" :action="'/hr/payroll/' ~ run.id ~ '/transitions'"/>
+    </template>
+    <template rx-if="approve_blocked and can_approve">
+      <rx-button :label="tx['payroll.approve']" variant="primary" disabled :disabled-reason="tx['payroll.approve_blocked']"/>
+    </template>
+    <template rx-if="exceptions">
+      <rx-card :title="tx['payroll.exceptions']">
+        <rx-stack>
+          <rx-alert kind="warning" :message="tx['payroll.exceptions_hint']"/>
+          <rx-table :rows="exceptions" as="exception" :key="exception.employee ~ exception.cap" :caption="tx['payroll.exceptions']">
+            <rx-column :label="tx['payroll.employee']">{{ exception.employee }}</rx-column>
+            <rx-column :label="tx['payroll.cap']">{{ exception.cap }}</rx-column>
+            <rx-column :label="tx['payroll.amount']">{{ exception.amount }}</rx-column>
+            <rx-column :label="tx['payroll.limit']">{{ exception.limit }}</rx-column>
+          </rx-table>
+        </rx-stack>
+      </rx-card>
+    </template>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['payroll.lines']" card>
+      <rx-column :label="tx['payroll.employee']">{{ line.employee }}</rx-column>
+      <rx-column :label="tx['payroll.wage']" hide-narrow>{{ line.wage }}</rx-column>
+      <rx-column :label="tx['payroll.net']">{{ line.net }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="line.status_kind" :text="line.status"/></rx-column>
+      <rx-column :label="tx['payroll.reason']" hide-narrow>{{ line.reason }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['payroll.no_lines']" icon="users"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
