@@ -17,9 +17,9 @@ use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_hr::permissions as perm;
 use wl_hr::{
-    Adjustment, AdjustmentKind, Employee, EmploymentType, LineStatus, NewEmployee, Onboarding,
-    OnboardingStep, PayAccount, PayAccountStatus, PayrollLine, PayrollRun, PayrollRunStatus,
-    SalaryStructure, WlHr, employees,
+    Adjustment, AdjustmentKind, Employee, EmploymentType, FinalSettlement, LineStatus, NewEmployee,
+    Onboarding, OnboardingStep, PayAccount, PayAccountStatus, PayrollLine, PayrollRun,
+    PayrollRunStatus, SalaryStructure, SettlementPayment, SettlementStatus, WlHr, employees,
     template::{self, StepInput, TemplateInput},
 };
 use wl_kernel::attendance::LabourFuture;
@@ -46,7 +46,8 @@ use wl_kernel::timesheets::{
 use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
     OnboardingCompleted, OnboardingStarted, PayAccountChanged, PayrollLinesFailed, PayrollRunPaid,
-    PayrollRunReturned, QualificationExpired, QualificationExpiring,
+    PayrollRunReturned, QualificationExpired, QualificationExpiring, SettlementDisputed,
+    SettlementPaid,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -516,6 +517,8 @@ struct Fakes {
     returned: Arc<Mutex<Vec<PayrollRunReturned>>>,
     failed: Arc<Mutex<Vec<PayrollLinesFailed>>>,
     paid: Arc<Mutex<Vec<PayrollRunPaid>>>,
+    settlement_paid: Arc<Mutex<Vec<SettlementPaid>>>,
+    settlement_disputed: Arc<Mutex<Vec<SettlementDisputed>>>,
     tasks: TicketDesk,
 }
 
@@ -524,12 +527,18 @@ struct Fakes {
 #[derive(Clone, Default)]
 pub struct TicketDesk {
     opened: Arc<Mutex<Vec<OpenTicket>>>,
+    completed: Arc<Mutex<Vec<(i64, String)>>>,
 }
 
 impl TicketDesk {
     /// The tickets opened, oldest first.
     pub fn opened(&self) -> Vec<OpenTicket> {
         self.opened.lock().unwrap().clone()
+    }
+
+    /// `(ticket, note)` of each ticket closed on behalf of its source.
+    pub fn completed(&self) -> Vec<(i64, String)> {
+        self.completed.lock().unwrap().clone()
     }
 
     /// The tickets opened with a source key that starts with `prefix`.
@@ -559,6 +568,21 @@ impl TaskCreator for TicketDesk {
                 id: TicketId(n),
                 number: format!("TKT-{n}"),
             }))
+        })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            self.completed
+                .lock()
+                .unwrap()
+                .push((ticket.0, note.to_owned()));
+            Ok(true)
         })
     }
 
@@ -710,6 +734,8 @@ impl Module for Fakes {
         record(app, &self.returned);
         record(app, &self.failed);
         record(app, &self.paid);
+        record(app, &self.settlement_paid);
+        record(app, &self.settlement_disputed);
         provide_task_creator(app, self.tasks.clone());
     }
 }
@@ -756,6 +782,10 @@ pub struct Booted {
     pub failed: Recorded<PayrollLinesFailed>,
     /// `PayrollRunPaid`.
     pub paid: Recorded<PayrollRunPaid>,
+    /// `SettlementPaid`.
+    pub settlement_paid: Recorded<SettlementPaid>,
+    /// `SettlementDisputed`.
+    pub settlement_disputed: Recorded<SettlementDisputed>,
     /// The tasks (tickets) opened for staff.
     pub tasks: TicketDesk,
     /// Days the clock was moved forward from the real one.
@@ -1276,6 +1306,88 @@ impl Booted {
             .unwrap()
     }
 
+    /// A final settlement of `employee` in `status` with the figures `set`
+    /// gives it, inserted as a fixture (the machine would not take it there).
+    pub async fn settlement_in(
+        &self,
+        employee: &Employee,
+        status: SettlementStatus,
+        set: impl FnOnce(&mut FinalSettlement),
+    ) -> FinalSettlement {
+        let mut settlement = FinalSettlement {
+            employee_id: employee.id,
+            reason: "resignation".into(),
+            payee: "employee".into(),
+            statement_version: 1,
+            status,
+            ..FinalSettlement::default()
+        };
+        set(&mut settlement);
+        let mut tx = self.db().begin().await.unwrap();
+        settlement
+            .insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        settlement
+    }
+
+    /// `settlement`, as stored now.
+    pub async fn settlement(&self, settlement: &FinalSettlement) -> FinalSettlement {
+        FinalSettlement::find_or_404(self.db(), settlement.id)
+            .await
+            .unwrap()
+    }
+
+    /// A payment of `fils` already made against `settlement` (a fixture).
+    pub async fn paid_against(&self, settlement: &FinalSettlement, fils: i64) {
+        SettlementPayment::create(
+            self.db(),
+            SettlementPayment {
+                settlement_id: settlement.id,
+                amount: fils,
+                method: "transfer".into(),
+                reference: "FIXTURE".into(),
+                paid_on: nov(1),
+                ..SettlementPayment::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    /// `user` posts `fields` to the settlement route `path` (`pay`,
+    /// `dispute`, `payments`, ...).
+    pub async fn settle(
+        &self,
+        user: &User,
+        settlement: &FinalSettlement,
+        path: &str,
+        fields: &[(&str, &str)],
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app
+            .post(&format!("/hr/settlements/{}/{path}", settlement.id), fields)
+            .await
+    }
+
+    /// `user` runs the transition `name` of `settlement` through its page
+    /// route.
+    pub async fn settle_transition(
+        &self,
+        user: &User,
+        settlement: &FinalSettlement,
+        name: &str,
+    ) -> renox::testing::TestResponse {
+        self.settle(
+            user,
+            settlement,
+            &format!("transitions/{name}"),
+            &[("reason", "")],
+        )
+        .await
+    }
+
     /// `run`, as stored now.
     pub async fn run(&self, run: &PayrollRun) -> PayrollRun {
         PayrollRun::find_or_404(self.db(), run.id).await.unwrap()
@@ -1346,6 +1458,8 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         returned: Arc::default(),
         failed: Arc::default(),
         paid: Arc::default(),
+        settlement_paid: Arc::default(),
+        settlement_disputed: Arc::default(),
         tasks: TicketDesk::default(),
     };
     let (qualification_expired, qualification_expiring, absconded, returned, failed, paid, tasks) = (
@@ -1356,6 +1470,10 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         Recorded(fakes.failed.clone()),
         Recorded(fakes.paid.clone()),
         fakes.tasks.clone(),
+    );
+    let (settlement_paid, settlement_disputed) = (
+        Recorded(fakes.settlement_paid.clone()),
+        Recorded(fakes.settlement_disputed.clone()),
     );
     let (parties, pay_changed) = (fakes.parties.clone(), Recorded(fakes.pay_changed.clone()));
     let (notices, checklists, sops, docs, timesheets, costs) = (
@@ -1485,6 +1603,33 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
     permissions::define_role(app.db(), "accountant", &[perm::PAYROLL_VIEW])
         .await
         .unwrap();
+    // Final settlements (`HRM.ACL.04`): one user prepares, another approves, a
+    // third pays; `settle_all` holds all three, to show the preparer cannot
+    // approve their own figures.
+    permissions::define_role(
+        app.db(),
+        "settle_prep",
+        &[perm::EMPLOYEES_VIEW, perm::SETTLEMENTS_PREPARE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(app.db(), "settle_appr", &[perm::SETTLEMENTS_APPROVE])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "settle_pay", &[perm::SETTLEMENTS_PAY])
+        .await
+        .unwrap();
+    permissions::define_role(
+        app.db(),
+        "settle_all",
+        &[
+            perm::SETTLEMENTS_PREPARE,
+            perm::SETTLEMENTS_APPROVE,
+            perm::SETTLEMENTS_PAY,
+        ],
+    )
+    .await
+    .unwrap();
     if induction {
         wl_hr::seed::install(app.db()).await.unwrap().total();
     }
@@ -1509,6 +1654,8 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         returned,
         failed,
         paid,
+        settlement_paid,
+        settlement_disputed,
         tasks,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         cases: std::sync::atomic::AtomicI64::new(0),
