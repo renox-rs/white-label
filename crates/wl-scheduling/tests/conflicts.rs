@@ -460,6 +460,101 @@ async fn a_booking_the_new_resource_cannot_take_fails_alone() {
     assert_eq!(t.messages.sent().len(), 1);
 }
 
+/// The toasts an htmx answer carries (its `HX-Trigger` header).
+fn toasts(response: &renox::testing::TestResponse) -> String {
+    response.header("hx-trigger").unwrap_or_default().to_owned()
+}
+
+/// #172 point 5 through the route: Dr B is busy at 12:00, so of the two
+/// selected bookings the 11:00 one moves and the 12:00 one is reported failed
+/// in the answer (a warning that names it); it stays with Dr A, conflicted.
+#[renox::test]
+async fn a_partial_failure_of_a_bulk_action_is_reported_by_the_route() {
+    let t = boot().await;
+    let s = scene(&t).await;
+    t.book_for(PATIENT, &s.service, &[&s.b], dubai(DAY, 12, 0))
+        .await;
+    let desk = t.front_desk().await;
+    t.state().emit(leave(510, "sick", DAY, DAY)).await.unwrap();
+
+    t.app.acting_as(&desk);
+    let first = s.a11.id.to_string();
+    let second = s.a12.id.to_string();
+    let to = s.b.id.to_string();
+    let answer = t
+        .app
+        .htmx()
+        .post(
+            "/scheduling/conflicts/resolve",
+            &[
+                ("action", "reassign"),
+                ("to", to.as_str()),
+                ("bookings", first.as_str()),
+                ("bookings", second.as_str()),
+            ],
+        )
+        .await;
+    answer.assert_status(303);
+
+    assert!(!t.reload(s.a11.id).await.has_conflict());
+    let stays = t.reload(s.a12.id).await;
+    assert!(stays.conflict_block);
+    assert_eq!(stays.resource_ids(t.db()).await.unwrap(), [s.a.id]);
+    let shown = toasts(&answer);
+    assert!(shown.contains("warning"), "{shown}");
+    assert!(shown.contains(&format!("#{}", s.a12.id)), "{shown}");
+    assert!(shown.contains("taken"), "{shown}");
+    assert_eq!(t.messages.sent().len(), 1, "only the moved booking's party");
+}
+
+/// #172 point 6 through the route: `action=reschedule` offers the party times
+/// and moves nothing.
+#[renox::test]
+async fn the_bulk_reschedule_action_of_the_route_offers_times_and_moves_nothing() {
+    let t = boot_with(WlScheduling::new().horizon_days(5000).slot_step_minutes(30)).await;
+    let mut a = t
+        .resource("Dr A", wl_scheduling::ResourceType::Person)
+        .await;
+    a.employee_id = Some(EMPLOYEE);
+    a.save(t.db()).await.unwrap();
+    for weekday in 1..=7 {
+        for (from, to) in [(540, 630), (840, 960)] {
+            AvailabilityRule::new(a.id, weekday, from, to)
+                .save(t.db())
+                .await
+                .unwrap();
+        }
+    }
+    let service = t.service_with("consultation", &[&a], |_| {}).await;
+    let booking = t
+        .book_for(PATIENT, &service, &[&a], dubai(DAY, 15, 0))
+        .await;
+    let desk = t.front_desk().await;
+    t.state().emit(leave(511, "sick", DAY, DAY)).await.unwrap();
+
+    t.app.acting_as(&desk);
+    let id = booking.id.to_string();
+    let answer = t
+        .app
+        .htmx()
+        .post(
+            "/scheduling/conflicts/resolve",
+            &[("action", "reschedule"), ("bookings", id.as_str())],
+        )
+        .await;
+    answer.assert_status(303);
+
+    let sent = t.messages.sent();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].type_key, "scheduling.reschedule_offer");
+    assert_eq!(sent[0].recipients, [NotifyRecipient::Party { id: PATIENT }]);
+    let same = t.reload(booking.id).await;
+    assert_eq!(same.starts_at, dubai(DAY, 15, 0), "nothing is moved");
+    assert!(same.conflict_block, "it stays conflicted until the pick");
+    assert!(t.events.rescheduled.all().is_empty());
+    assert!(toasts(&answer).contains("success"), "{}", toasts(&answer));
+}
+
 /// Only conflicted bookings are resolved in bulk; the others are reported.
 #[renox::test]
 async fn a_booking_without_a_conflict_is_reported_not_touched() {
