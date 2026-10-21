@@ -7,7 +7,9 @@
 //!   accepted attendance hours marked provisional (§5.7), and the mark that a
 //!   payroll run used them. `wl-attendance` provides it; `wl-hr` payroll asks
 //!   it at `calculate` ([`Timesheets::hours_for_payroll`]) and tells it at
-//!   `submit` ([`Timesheets::record_payroll_use`]). Without it,
+//!   `submit` ([`Timesheets::record_payroll_use`]). Billing asks for the hours
+//!   the client pays ([`Timesheets::billable_hours`]) and tells it which
+//!   timesheets an invoice used ([`Timesheets::record_billing_use`]). Without it,
 //!   [`timesheets`] gives [`NoTimesheets`]: there are no hours.
 //! - [`TimesheetClosing`]: closes the open timesheet of a context at its last
 //!   day and submits it at once (09 Manpower: a deployment or a contract
@@ -150,6 +152,35 @@ pub trait Timesheets: Send + Sync + 'static {
         _state: &'a AppState,
         _run: &'a Subject,
         _used: &'a [PayrollHours],
+    ) -> LabourFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// The hours the client is billed for on `timesheet`
+    /// (`attendance.timesheet:3`): the entries of a regular timesheet that is
+    /// `approved` or `locked` and billable, per day and category, oldest day
+    /// first (`PayrollHours::provisional` is false). Hours that are paid but
+    /// not billed (`permit_invalid`) are left out. `None` for a timesheet
+    /// that is not a regular approved one. Asking has no side effect. The
+    /// default knows none.
+    fn billable_hours<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _timesheet: &'a Subject,
+    ) -> LabourFuture<'a, Option<PayrollHours>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Billing used `timesheets` for the usage invoice `reference`
+    /// (`invoicing.invoice:5`): an approved one is `lock`ed with
+    /// `billed_by` = the reference; one payroll locked first only gets
+    /// `billed_by`. The same reference told twice changes nothing. The
+    /// default does nothing.
+    fn record_billing_use<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _timesheets: &'a [Subject],
+        _reference: &'a str,
     ) -> LabourFuture<'a, ()> {
         Box::pin(async { Ok(()) })
     }

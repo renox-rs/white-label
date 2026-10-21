@@ -51,6 +51,7 @@ pub mod subscriptions;
 mod texts;
 pub mod tickets;
 pub mod timesheets;
+pub mod usage;
 pub mod visa_steps;
 pub mod voids;
 pub mod wip;

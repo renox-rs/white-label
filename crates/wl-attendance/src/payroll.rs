@@ -135,6 +135,106 @@ pub(crate) async fn approved_lines(db: &Db, sheet: &Timesheet) -> Result<Vec<Hou
         .collect())
 }
 
+/// The billable hours of an `approved` or `locked` timesheet: its entries
+/// flagged billable, per day and category. Hours paid but not billed
+/// (`permit_invalid`) are not.
+pub(crate) async fn billable_lines(db: &Db, sheet: &Timesheet) -> Result<Vec<HoursLine>> {
+    let mut sums: BTreeMap<(NaiveDate, usize), i64> = BTreeMap::new();
+    for entry in TimesheetEntry::of_timesheet(db, sheet.id)
+        .await?
+        .into_iter()
+        .filter(|entry| entry.billable)
+    {
+        for (n, category) in Category::ALL.iter().enumerate() {
+            *sums.entry((entry.date, n)).or_default() += entry.minutes_of(*category);
+        }
+    }
+    Ok(sums
+        .into_iter()
+        .filter(|(_, minutes)| *minutes != 0)
+        .map(|((date, n), minutes)| HoursLine {
+            date,
+            category: Category::ALL[n].as_str().to_owned(),
+            minutes,
+        })
+        .collect())
+}
+
+/// The hours billing charges for the timesheet `subject` (see
+/// [`Timesheets::billable_hours`]): `None` unless it is a regular timesheet
+/// that is `approved` or `locked`.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn billable_hours(state: &AppState, subject: &Subject) -> Result<Option<PayrollHours>> {
+    if subject.subject_type != TIMESHEET_SUBJECT_TYPE {
+        return Ok(None);
+    }
+    let Some(sheet) = Timesheet::find(&state.db, subject.subject_id).await? else {
+        return Ok(None);
+    };
+    if sheet.kind != TimesheetKind::Regular
+        || !matches!(
+            sheet.status,
+            TimesheetStatus::Approved | TimesheetStatus::Locked
+        )
+    {
+        return Ok(None);
+    }
+    Ok(Some(PayrollHours {
+        timesheet: sheet.subject(),
+        owner: sheet.owner(),
+        period_from: sheet.period_from,
+        period_to: sheet.period_to,
+        context: sheet.context(),
+        approver_kind: kind_text(sheet.approver_kind).to_owned(),
+        provisional: false,
+        lines: billable_lines(&state.db, &sheet).await?,
+    }))
+}
+
+/// Billing used `timesheets` for `reference`: an approved one is `lock`ed
+/// with `billed_by` = the reference; one payroll locked first only gets
+/// `billed_by`. A timesheet another invoice billed keeps that reference.
+///
+/// # Errors
+///
+/// `422` for a timesheet that is not approved or locked; the database's
+/// errors.
+pub async fn record_billing_use(
+    state: &AppState,
+    timesheets: &[Subject],
+    reference: &str,
+) -> Result {
+    for subject in timesheets {
+        let id = timesheet_id(subject)?;
+        let sheet = Timesheet::find_or_404(&state.db, id).await?;
+        if sheet.billed_by.is_some() {
+            continue;
+        }
+        match sheet.status {
+            TimesheetStatus::Approved => {
+                timesheet::lock(state, sheet.id, Consumer::Billing, reference).await?;
+            }
+            TimesheetStatus::Locked => {
+                Timesheet::query()
+                    .where_(Timesheet::ID.eq(sheet.id))
+                    .where_(Timesheet::BILLED_BY.is_null())
+                    .update(&state.db, &[("billed_by", &Some(reference.to_owned()))])
+                    .await?;
+            }
+            _ => {
+                return Err(refuse(english(
+                    "wl_attendance.payroll.not_approved",
+                    &[("timesheet", &sheet.subject())],
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// The provisional hours of an unapproved `sheet`: the worked minutes of the
 /// owner's `accepted` records from the first day of the timesheet to the
 /// cut-off (or its last day, or the end of the payroll period), as `normal`
@@ -400,6 +500,23 @@ impl Timesheets for AttendanceTimesheets {
         used: &'a [PayrollHours],
     ) -> LabourFuture<'a, ()> {
         Box::pin(async move { record_use(state, run, used).await })
+    }
+
+    fn billable_hours<'a>(
+        &'a self,
+        state: &'a AppState,
+        timesheet: &'a Subject,
+    ) -> LabourFuture<'a, Option<PayrollHours>> {
+        Box::pin(async move { billable_hours(state, timesheet).await })
+    }
+
+    fn record_billing_use<'a>(
+        &'a self,
+        state: &'a AppState,
+        timesheets: &'a [Subject],
+        reference: &'a str,
+    ) -> LabourFuture<'a, ()> {
+        Box::pin(async move { record_billing_use(state, timesheets, reference).await })
     }
 
     fn is_locked<'a>(&'a self, state: &'a AppState, sheet: &'a Subject) -> LabourFuture<'a, bool> {
