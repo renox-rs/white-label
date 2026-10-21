@@ -6,8 +6,20 @@
 //! [*] --open--> open --trace--> traced --close--> closed
 //! ```
 //!
-//! This issue builds `open`; `trace`, the notices to the parties and `close`
-//! come with BL-STK-15 and BL-STK-16, the states are declared.
+//! `open` (issue #233) is here; `trace` ([`crate::recall_trace`], issue #234)
+//! runs right after it, `send_notices` ([`crate::recall_notice`]) and `close`
+//! ([`crate::recall_close`], issue #235) follow. The transitions are declared
+//! here:
+//!
+//! - `trace` (a holder of `recalls.manage` to run it again, or the system
+//!   right after `open`, `trace_by_system`): `open` or `traced` to `traced`;
+//!   the lines and the output lots are made by the service before it, in the
+//!   same transaction, and the effect stamps the run;
+//! - `send_notices` (`recalls.manage`): `traced` to `traced`; guards *notice
+//!   template chosen* and *lines selected*; the effect marks the lines `sent`;
+//! - `close` (`recalls.manage`): `traced` to `closed`; guards *the recall's
+//!   stock holds are closed* and *no affected line is pending*; the effect
+//!   stamps it and keeps the report.
 //!
 //! [`open`] (a holder of `recalls.manage`) takes a source (`supplier`,
 //! `authority`, `internal` or `complaint`), a reason and a scope of items with
@@ -41,7 +53,7 @@ use std::collections::BTreeSet;
 
 use renox::auth::permissions::{Scope, users_with_permission_in, users_with_role};
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine};
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::COMPANY_ADMIN_ROLE;
 use wl_kernel::Subject;
@@ -57,12 +69,25 @@ use crate::hold_service::{NewHold, NewScope, announce_placed, place_in};
 use crate::location::Location;
 use crate::lot::Lot;
 use crate::permissions;
+use crate::recall_line::{NoticeStatus, RecallLine};
 use crate::stock_hold::lines_of;
 use crate::texts::{english, said};
 
 /// The notification type told to the owner, the storekeepers and procurement
 /// when a recall is opened.
 pub const OPENED_NOTICE: &str = "inventory.recall_opened";
+
+/// The `trace` transition's name (run again by a holder of `recalls.manage`).
+pub const TRACE: &str = "trace";
+
+/// The system's `trace_by_system` transition's name (right after `open`).
+pub const TRACE_BY_SYSTEM: &str = "trace_by_system";
+
+/// The `send_notices` transition's name.
+pub const SEND_NOTICES: &str = "send_notices";
+
+/// The `close` transition's name.
+pub const CLOSE: &str = "close";
 
 /// The numbers of recalls: `RCL-2026-0001`.
 pub const RECALL_SERIES: Series = Series {
@@ -137,6 +162,17 @@ pub struct Recall {
     pub opened_by: Option<i64>,
     /// When it was opened.
     pub opened_at: Option<DateTime>,
+    /// When the trace last ran.
+    pub traced_at: Option<DateTime>,
+    /// How often the trace ran.
+    pub trace_runs: i64,
+    /// When it was closed.
+    pub closed_at: Option<DateTime>,
+    /// The user who closed it.
+    pub closed_by: Option<i64>,
+    /// The recall report (scope, trace, notices, outcomes), a PDF document
+    /// kept as text; set when it closes.
+    pub report: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -186,6 +222,68 @@ pub struct RecallLot {
     pub updated_at: Option<DateTime>,
 }
 
+/// What a `send_notices` run carries to its guards and effect.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct NoticeInput {
+    /// The notice template: `customer`, `patient` or `internal`; empty when
+    /// none was chosen.
+    pub template: String,
+    /// The ids of the affected lines to tell.
+    pub lines: Vec<i64>,
+    /// The user who sends them.
+    pub by: Option<i64>,
+    /// What is wrong with the selection (a line of another recall, one that
+    /// is not pending, one with no party), `None` when nothing is.
+    pub problem: Option<String>,
+}
+
+/// What a `close` run carries to its guards and effect.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CloseInput {
+    /// Every stock hold of the recall is `closed`.
+    pub holds_closed: bool,
+    /// The affected lines still `pending`.
+    pub pending_lines: i64,
+    /// The user who closes it.
+    pub by: Option<i64>,
+    /// The report document to keep.
+    pub report: String,
+}
+
+fn notice_input(ctx: &TransitionCtx) -> Option<NoticeInput> {
+    ctx.input_as::<NoticeInput>().ok()
+}
+
+fn close_input(ctx: &TransitionCtx) -> Option<CloseInput> {
+    ctx.input_as::<CloseInput>().ok()
+}
+
+/// The two `trace` transitions: the user's re-run and the system's first run.
+fn trace_rules(transition: Transition<Recall>) -> Transition<Recall> {
+    transition
+        .from([RecallStatus::Open, RecallStatus::Traced])
+        .to(RecallStatus::Traced)
+        .effect(|recall: &Recall, _ctx, tx| {
+            let id = recall.id;
+            let runs = recall.trace_runs + 1;
+            Box::pin(async move {
+                let now = renox::db::now();
+                Recall::query()
+                    .where_(Recall::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("traced_at", &Some(now)),
+                            ("trace_runs", &runs),
+                            ("updated_at", &now),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
 impl StateMachine for Recall {
     type State = RecallStatus;
     const COLUMN: renox::db::Col<Recall, RecallStatus> = Recall::STATUS;
@@ -201,6 +299,125 @@ impl StateMachine for Recall {
             .state(Closed)
             .tone("success")
             .terminal()
+            .transition(trace_rules(
+                Transition::new(TRACE)
+                    .label("Trace again")
+                    .tone("primary")
+                    .permission(permissions::RECALLS_MANAGE),
+            ))
+            .transition(trace_rules(
+                Transition::new(TRACE_BY_SYSTEM)
+                    .label("Trace")
+                    .system(),
+            ))
+            .transition(
+                Transition::new(SEND_NOTICES)
+                    .label("Send notices")
+                    .tone("primary")
+                    .permission(permissions::RECALLS_MANAGE)
+                    .from([Traced])
+                    .to(Traced)
+                    .guard("template_chosen", |_recall: &Recall, ctx| {
+                        let chosen = notice_input(ctx)
+                            .is_some_and(|input| crate::recall_notice::is_template(&input.template));
+                        Box::pin(async move {
+                            if chosen {
+                                Ok(())
+                            } else {
+                                Err(english("wl_inventory.recall.no_template").to_owned())
+                            }
+                        })
+                    })
+                    .guard("lines_selected", |_recall: &Recall, ctx| {
+                        let input = notice_input(ctx);
+                        let none = input.as_ref().is_none_or(|input| input.lines.is_empty());
+                        let problem = input.and_then(|input| input.problem);
+                        Box::pin(async move {
+                            if let Some(problem) = problem {
+                                Err(problem)
+                            } else if none {
+                                Err(english("wl_inventory.recall.no_lines").to_owned())
+                            } else {
+                                Ok(())
+                            }
+                        })
+                    })
+                    .effect(|_recall: &Recall, ctx, tx| {
+                        let input = notice_input(ctx).unwrap_or_default();
+                        Box::pin(async move {
+                            let now = renox::db::now();
+                            let sent = NoticeStatus::Sent.as_str().to_owned();
+                            let template = Some(input.template.clone());
+                            for id in input.lines {
+                                RecallLine::query()
+                                    .where_(RecallLine::ID.eq(id))
+                                    .update(
+                                        &mut *tx,
+                                        &[
+                                            ("notice_status", &sent),
+                                            ("template", &template),
+                                            ("sent_at", &Some(now)),
+                                            ("sent_by", &input.by),
+                                            ("updated_at", &now),
+                                        ],
+                                    )
+                                    .await?;
+                            }
+                            Ok(())
+                        })
+                    }),
+            )
+            .transition(
+                Transition::new(CLOSE)
+                    .label("Close")
+                    .tone("success")
+                    .permission(permissions::RECALLS_MANAGE)
+                    .from([Traced])
+                    .to(Closed)
+                    .guard("holds_closed", |_recall: &Recall, ctx| {
+                        let closed = close_input(ctx).is_some_and(|input| input.holds_closed);
+                        Box::pin(async move {
+                            if closed {
+                                Ok(())
+                            } else {
+                                Err(english("wl_inventory.recall.hold_open").to_owned())
+                            }
+                        })
+                    })
+                    .guard("no_line_pending", |_recall: &Recall, ctx| {
+                        let pending = close_input(ctx).map_or(1, |input| input.pending_lines);
+                        Box::pin(async move {
+                            if pending == 0 {
+                                Ok(())
+                            } else {
+                                Err(said(
+                                    "wl_inventory.recall.lines_pending",
+                                    &[("count", &pending.to_string())],
+                                ))
+                            }
+                        })
+                    })
+                    .effect(|recall: &Recall, ctx, tx| {
+                        let id = recall.id;
+                        let input = close_input(ctx).unwrap_or_default();
+                        Box::pin(async move {
+                            let now = renox::db::now();
+                            Recall::query()
+                                .where_(Recall::ID.eq(id))
+                                .update(
+                                    &mut *tx,
+                                    &[
+                                        ("closed_at", &Some(now)),
+                                        ("closed_by", &input.by),
+                                        ("report", &Some(input.report.clone())),
+                                        ("updated_at", &now),
+                                    ],
+                                )
+                                .await?;
+                            Ok(())
+                        })
+                    }),
+            )
     }
 }
 
@@ -457,7 +674,12 @@ pub async fn open(state: &AppState, user: &AuthUser, new: NewRecall) -> Result<R
         // Nothing of the lots is left to decide.
         settle(state, hold.id).await?;
     }
-    Ok(recall)
+    // The trace starts at once (§4 *Recall*): who got the goods, and the lots
+    // made from them.
+    crate::recall_trace::trace(state, None, recall.id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(Recall::find_or_404(&state.db, recall.id).await?)
 }
 
 /// The lots found in the scope of `recall_id`, oldest first.

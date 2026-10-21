@@ -885,6 +885,71 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.recall.opened_body",
         "Recall {{ number }} ({{ source }}) was opened: {{ reason }}. {{ lots }} lot(s) are on hold at every location and cannot be picked, issued, consumed, transferred or dispatched.",
     ),
+    // The trace, the notices and the close of a recall.
+    ("wl_inventory.recall.traced", "Trace run again."),
+    ("wl_inventory.recall.notices_sent", "Notices sent."),
+    ("wl_inventory.recall.waived", "Line waived."),
+    ("wl_inventory.recall.closed", "Recall closed."),
+    (
+        "wl_inventory.recall.no_template",
+        "Choose the notice template: customer, patient or internal.",
+    ),
+    (
+        "wl_inventory.recall.no_lines",
+        "Select the affected lines to tell.",
+    ),
+    (
+        "wl_inventory.recall.hold_open",
+        "The stock hold of this recall is still open: decide every line (a release waits for a second person) before closing.",
+    ),
+    (
+        "wl_inventory.recall.lines_pending",
+        "{{ count }} affected line(s) are still pending: send the notice or waive each with a reason before closing.",
+    ),
+    (
+        "wl_inventory.recall.line_unknown",
+        "A selected line does not belong to this recall.",
+    ),
+    (
+        "wl_inventory.recall.line_not_pending",
+        "Only a pending line can be sent or waived.",
+    ),
+    (
+        "wl_inventory.recall.line_no_party",
+        "A line with no known party cannot be sent a notice: waive it with a reason.",
+    ),
+    (
+        "wl_inventory.recall.waive_reason",
+        "Give the reason the party need not be told.",
+    ),
+    (
+        "wl_inventory.recall.not_traced",
+        "Only a traced recall has lines to send or waive.",
+    ),
+    (
+        "wl_inventory.recall.notice_subject",
+        "Safety notice: recall {{ number }}",
+    ),
+    (
+        "wl_inventory.recall.notice_body_customer",
+        "We are recalling {{ item }} (lot {{ lot }}), which you received. {{ reason }}. Please stop using it and contact us.",
+    ),
+    (
+        "wl_inventory.recall.notice_body_patient",
+        "A product used in your care on {{ date }} ({{ item }}, lot {{ lot }}) is being recalled. {{ reason }}. Please contact the clinic to arrange a check.",
+    ),
+    (
+        "wl_inventory.recall.notice_body_internal",
+        "Recall {{ number }}: {{ item }}, lot {{ lot }}, was used for {{ subject }} on {{ date }}. {{ reason }}. Please check and act.",
+    ),
+    (
+        "wl_inventory.recall.notice_task_title",
+        "Recall {{ number }}: a notice could not be delivered",
+    ),
+    (
+        "wl_inventory.recall.notice_task_body",
+        "The notice about {{ subject }} to party {{ party }} could not be delivered after every retry. The line is pending again: send it again with another template or channel, or waive it with a reason.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

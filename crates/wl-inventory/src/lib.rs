@@ -29,6 +29,10 @@ pub mod purchase_order;
 pub mod purchase_request;
 pub mod receipt_post;
 pub mod recall;
+pub mod recall_close;
+pub mod recall_line;
+pub mod recall_notice;
+pub mod recall_trace;
 pub mod receipt_reverse;
 pub mod reorder;
 pub mod return_credit;
@@ -71,6 +75,7 @@ pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use purchase_request::{PurchaseRequest, PurchaseRequestStatus};
 pub use receipt_post::{PostOutcome, post};
 pub use recall::{Recall, RecallLot, RecallScope, RecallSource, RecallStatus};
+pub use recall_line::{LineKind, NoticeStatus, RecallLine};
 pub use receipt_reverse::reverse;
 pub use reorder::{ReorderSuggestion, SuggestionStatus};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
@@ -373,6 +378,7 @@ impl Module for WlInventory {
         app.model::<Recall>();
         app.model::<RecallScope>();
         app.model::<RecallLot>();
+        app.model::<RecallLine>();
         app.model::<PendingIssue>();
         app.model::<ShortageAlert>();
         app.model::<GoodsReceipt>();
@@ -532,6 +538,13 @@ impl Module for WlInventory {
         // Opening a recall holds every lot in scope and tells the owner, the
         // storekeepers and procurement.
         recall::register_types();
+        // The trace of a recall (who got the goods), its notices to the
+        // parties and its close with the report.
+        recall_notice::register_types();
+        recall_notice::register(app);
+        recall_trace::register(app);
+        recall_close::register(app);
+        wl_kernel::inventory::provide_lot_trace(app, recall_trace::InventoryTrace);
         hold_reminder::schedule(app);
         // `STK.RUL.08`: the notice type and the daily chase of the returns
         // that stay `dispatched`.
