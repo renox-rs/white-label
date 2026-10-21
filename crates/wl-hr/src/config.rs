@@ -52,6 +52,10 @@ pub const DEFAULT_SETTLEMENT_CLOSE_DAYS: i64 = 30;
 /// of a refused renewal is due (wl-hr §7).
 pub const DEFAULT_VISA_REJECTION_TASK_DAYS: i64 = 30;
 
+/// Days the employee portal stays read-only after `exit`, then closes (wl-hr
+/// §7 *Employee portal after exit*, `POR.ACL.01`).
+pub const DEFAULT_PORTAL_DAYS_AFTER_EXIT: i64 = 60;
+
 /// The settings of the HR module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HrConfig {
@@ -83,6 +87,8 @@ pub struct HrConfig {
     /// Days before the current residence visa expires at which the task after
     /// a refused renewal is due.
     pub visa_rejection_task_days: i64,
+    /// Days the portal stays read-only after `exit`, then closes.
+    pub portal_days_after_exit: i64,
     /// The routing codes of the banks and agents a pay account may name. Empty
     /// accepts any code of the right form: the list comes with the salary
     /// file formats.
@@ -105,6 +111,7 @@ impl Default for HrConfig {
             settlement_deadline_days: DEFAULT_SETTLEMENT_DEADLINE_DAYS,
             settlement_close_days: DEFAULT_SETTLEMENT_CLOSE_DAYS,
             visa_rejection_task_days: DEFAULT_VISA_REJECTION_TASK_DAYS,
+            portal_days_after_exit: DEFAULT_PORTAL_DAYS_AFTER_EXIT,
             routing_codes: Vec::new(),
         }
     }

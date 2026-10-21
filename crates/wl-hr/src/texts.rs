@@ -491,6 +491,39 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.death.task_repatriation_description",
         "Arrange the return of the body and the belongings; whether the employer bears the cost is open (L-25).",
     ),
+    ("wl_hr.exit.label", "Exit"),
+    (
+        "wl_hr.exit.wrong_state",
+        "Only an employee serving notice, absconded or deceased can exit.",
+    ),
+    (
+        "wl_hr.exit.cancellation_required",
+        "The cancellation visa case is not completed and the authority's cancellation reference is not recorded.",
+    ),
+    (
+        "wl_hr.exit.settlement_disputed",
+        "The final settlement is disputed: resolve the dispute first.",
+    ),
+    (
+        "wl_hr.exit.settlement_approved_required",
+        "The final settlement must be approved (or paid) before the employee exits.",
+    ),
+    (
+        "wl_hr.exit.settlement_paid_required",
+        "The final settlement must be paid before the employee exits.",
+    ),
+    (
+        "wl_hr.exit.reference_required",
+        "Give the authority's cancellation reference.",
+    ),
+    (
+        "wl_hr.exit.reference_saved",
+        "The cancellation reference is recorded.",
+    ),
+    (
+        "wl_hr.exit.reference_label",
+        "Authority's cancellation reference",
+    ),
     ("wl_hr.exits.reason_required", "Give the reason."),
     (
         "wl_hr.exits.agreement_required",

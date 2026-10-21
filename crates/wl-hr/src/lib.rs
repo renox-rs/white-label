@@ -15,6 +15,7 @@ pub mod employee;
 pub mod employee_machine;
 pub mod establishment;
 mod events;
+pub mod exit;
 pub mod exit_effects;
 pub mod exits;
 pub mod hours;
@@ -219,6 +220,13 @@ impl WlHr {
         self
     }
 
+    /// Days the employee portal stays read-only after `exit`, then closes
+    /// (default 60, `POR.ACL.01`).
+    pub fn portal_days_after_exit(mut self, days: i64) -> Self {
+        self.config.portal_days_after_exit = days;
+        self
+    }
+
     /// The role whose holders get the tasks for HR (default `hr`).
     pub fn hr_role(mut self, role: &str) -> Self {
         self.config.hr_role = role.to_owned();
@@ -358,8 +366,11 @@ impl Module for WlHr {
         settlement_close::schedule(app);
         // `HRM.RUL.12`: the daily proposal of off-cycle runs for released held lines.
         release::schedule(app);
-        wl_kernel::workforce::provide_workforce(app, workforce::Staff);
-        wl_kernel::workforce::provide_leave_calendar(app, workforce::Staff);
+        let staff = workforce::Staff {
+            portal_days: self.config.portal_days_after_exit,
+        };
+        wl_kernel::workforce::provide_workforce(app, staff);
+        wl_kernel::workforce::provide_leave_calendar(app, staff);
         wl_kernel::qualifications::provide_qualifications(app, Quals);
         // The all staff induction template; a re-run keeps the client's changes.
         app.command(

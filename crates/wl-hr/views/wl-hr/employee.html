@@ -11,6 +11,14 @@
         <rx-confirm :id="'activate-employee-' ~ employee.id" :label="tx['employees.activate']" :action="'/hr/employees/' ~ employee.id ~ '/transitions/activate'" method="POST"
                     :title="tx['employees.activate']" :message="employee.name" :confirm-label="tx['employees.activate']" :cancel-label="tx['cancel']" icon="check"/>
       </template>
+      <template rx-if="can_exit">
+        <rx-action-sheet id="cancellation-reference" :label="tx['exit.reference_label']" :action="route('wl_hr.cancellation_reference', employee.id)"
+                         :title="tx['exit.reference_label']" :submit-label="tx['exit.reference_label']" icon="file-text">
+          <rx-input name="reference" :label="tx['exit.reference_label']" :value="cancellation_reference" id="cancellation-reference-value" required/>
+        </rx-action-sheet>
+        <rx-confirm :id="'exit-employee-' ~ employee.id" :label="tx['exit.label']" :action="'/hr/employees/' ~ employee.id ~ '/transitions/exit'" method="POST"
+                    :title="tx['exit.label']" :message="employee.name" :confirm-label="tx['exit.label']" :cancel-label="tx['cancel']" icon="log-out"/>
+      </template>
       <template rx-if="can_manage">
         <rx-action-sheet id="start-onboarding" :label="tx['onboarding.start']" :action="route('wl_hr.onboarding_start', employee.id)"
                          :title="tx['onboarding.start_title']" :description="tx['onboarding.start_description']" :submit-label="tx['onboarding.start']" variant="primary" icon="plus">

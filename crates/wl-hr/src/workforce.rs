@@ -14,9 +14,33 @@ use crate::assignees;
 use crate::employee::{Employee, EmployeeScope, EmployeeStatus};
 use crate::leave::{LeaveRequest, LeaveStatus};
 
-/// The workforce of the HR module.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Staff;
+/// The workforce of the HR module. `portal_days` is how many days the
+/// portal of an employee who exited stays read-only before it closes
+/// ([`crate::HrConfig::portal_days_after_exit`]).
+#[derive(Debug, Clone, Copy)]
+pub struct Staff {
+    /// Days the portal stays read-only after `exit`.
+    pub portal_days: i64,
+}
+
+impl Default for Staff {
+    fn default() -> Self {
+        Staff {
+            portal_days: crate::config::DEFAULT_PORTAL_DAYS_AFTER_EXIT,
+        }
+    }
+}
+
+impl Staff {
+    /// The day the portal of `employee` closes: `exit` plus the days, or
+    /// `None` for an employee who has not exited.
+    pub fn portal_closes_on(&self, employee: &Employee) -> Option<NaiveDate> {
+        let exited = employee
+            .exited_on
+            .filter(|_| employee.status == EmployeeStatus::Exited)?;
+        exited.checked_add_days(Days::new(self.portal_days.unsigned_abs()))
+    }
+}
 
 impl LeaveCalendar for Staff {
     fn approved_leave<'a>(
@@ -158,12 +182,32 @@ impl Workforce for Staff {
                 {
                     return Ok(true);
                 }
+                // After `exit` the portal is read-only, then closes.
+                if self
+                    .portal_closes_on(&employee)
+                    .is_some_and(|closes| today() >= closes)
+                {
+                    return Ok(true);
+                }
                 let report = AbsenceReport::valid_for(db, employee.id).await?;
                 if report.is_some_and(|report| report.access_disabled_at.is_some()) {
                     return Ok(true);
                 }
             }
             Ok(false)
+        })
+    }
+
+    fn read_only<'a>(&'a self, db: &'a Db, user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            let employees = Employee::query()
+                .where_(Employee::USER_ID.eq(user_id))
+                .get(db)
+                .await?;
+            Ok(employees.iter().any(|employee| {
+                self.portal_closes_on(employee)
+                    .is_some_and(|closes| today() < closes)
+            }))
         })
     }
 

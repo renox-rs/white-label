@@ -13,6 +13,7 @@
 //! active | on_leave | notice --report_absconding--> absconded
 //! absconded --reinstate--> active
 //! active | on_leave | notice | absconded --record_death--> deceased
+//! notice | absconded | deceased --exit--> exited
 //! ```
 //!
 //! The five non-standard exits are requested by HR (`employees.manage`) and
@@ -49,6 +50,7 @@ use crate::absence::AbsenceReport;
 use crate::activation;
 use crate::death;
 use crate::employee::{Employee, EmployeeStatus};
+use crate::exit;
 use crate::exit_effects;
 use crate::exits::{self, ExitInput};
 use crate::permissions;
@@ -79,6 +81,10 @@ pub const REINSTATE_APPROVED: &str = "reinstate_approved";
 pub const RECORD_DEATH: &str = "record_death";
 /// The twin of [`RECORD_DEATH`] that the kernel runs at the approval.
 pub const RECORD_DEATH_APPROVED: &str = "record_death_approved";
+
+/// An absconded or deceased employee exits, and so does one serving notice
+/// (`employees.manage`, no approval; [`crate::exit`]).
+pub const EXIT: &str = crate::exit::EXIT;
 
 /// The user transition `name` and its system twin `approved`, from `from` to
 /// `to`: both need a reason and the documents the exit names
@@ -185,6 +191,18 @@ impl StateMachine for Employee {
                         })
                     }),
             );
+        let machine = machine.transition(
+            Transition::new(EXIT)
+                .label("Exit")
+                .tone("danger")
+                .permission(permissions::EMPLOYEES_MANAGE)
+                .from([Notice, Absconded, Deceased])
+                .to(Exited)
+                .effect(|employee: &Employee, _ctx, tx| {
+                    let employee = employee.clone();
+                    Box::pin(async move { exit::apply(tx, &employee).await })
+                }),
+        );
         let pairs = [
             exit_pair(
                 CANCEL_ONBOARDING,
@@ -304,6 +322,7 @@ pub(crate) fn register(app: &mut Registry) {
                 RECORD_DEATH | RECORD_DEATH_APPROVED => {
                     death::after_commit(&state, event.key).await
                 }
+                EXIT => exit::after_commit(&state, event.key).await,
                 REPORT_ABSCONDING | REPORT_ABSCONDING_APPROVED => {
                     let Some(report) = AbsenceReport::valid_for(&state.db, event.key).await? else {
                         return Ok(());
@@ -376,6 +395,7 @@ mod tests {
             assert_eq!(twin.from_states(), from, "{approved}");
             assert_eq!(twin.to_state(), Some(to), "{approved}");
         }
-        assert_eq!(machine.transitions().len(), 11);
+        // The five pairs and `activate`, and `exit` (#200).
+        assert_eq!(machine.transitions().len(), 12);
     }
 }
