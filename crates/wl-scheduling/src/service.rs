@@ -221,7 +221,7 @@ async fn resolve_resources(
 /// Asks the vertical's [`ResourceEligibility`](wl_kernel::scheduling::ResourceEligibility)
 /// for every resource at `at`: the booking's start, or now at check-in
 /// (`SCH.ACL.04`). The default says yes.
-async fn check_eligible(
+pub(crate) async fn check_eligible(
     state: &AppState,
     service: &ServiceType,
     resources: &[Resource],
@@ -252,6 +252,26 @@ pub(crate) fn refusal_for(unfit: Unfit) -> Refusal {
         },
         other => Refusal::Unavailable(other),
     }
+}
+
+/// What the booker who lost the slot is told (§3 *No double-booking*): the
+/// slot was just taken, here are the nearest free ones, or join the waiting
+/// list. A closed or blocked resource is told as it is.
+async fn refusal_after(
+    state: &AppState,
+    service: &ServiceType,
+    resources: &[Resource],
+    start: DateTime,
+    at: DateTime,
+    unfit: Unfit,
+) -> std::result::Result<Refusal, Refusal> {
+    Ok(match unfit {
+        Unfit::Taken => Refusal::Taken {
+            nearest: slots::nearest(state, service, resources, start, at, slots::SHOWN).await?,
+            waiting_list: true,
+        },
+        other => Refusal::Unavailable(other),
+    })
 }
 
 /// The occupied time of each of `resources` for a booking of `service`.
@@ -354,13 +374,13 @@ async fn create(
         .next_allowing_gaps(&state.db, None, None, dubai_date(at))
         .await?;
     let ids: Vec<i64> = resources.iter().map(|resource| resource.id).collect();
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_immediate().await?;
     let locked = slots::lock(&mut tx, &ids).await?;
     if let Err(unfit) =
         slots::check_free(&mut tx, &service, &locked, start, end, at, exclude).await?
     {
         tx.rollback().await?;
-        return Err(refusal_for(unfit));
+        return Err(refusal_after(state, &service, &locked, start, at, unfit).await?);
     }
     let (status, reason, hold_until) = match kind {
         Kind::Book => (BookingStatus::Booked, "book", None),
@@ -458,7 +478,7 @@ pub async fn accept(
     let ids = booking.resource_ids(&state.db).await?;
     let resources = resolve_resources(state, &service, &ids).await?;
     check_eligible(state, &service, &resources, booking.starts_at).await?;
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_immediate().await?;
     let locked = slots::lock(&mut tx, &ids).await?;
     let exclude = Exclude {
         booking: Some(booking.id),
@@ -476,7 +496,7 @@ pub async fn accept(
     .await?
     {
         tx.rollback().await?;
-        return Err(refusal_for(unfit));
+        return Err(refusal_after(state, &service, &locked, booking.starts_at, at, unfit).await?);
     }
     let input = input_for(state, actor, at, &service);
     let outcome = booking
@@ -564,7 +584,7 @@ pub async fn reschedule(
     let resources = resolve_resources(state, &service, &wanted).await?;
     check_eligible(state, &service, &resources, new_start).await?;
     let ids: Vec<i64> = resources.iter().map(|resource| resource.id).collect();
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_immediate().await?;
     let locked = slots::lock(&mut tx, &ids).await?;
     let exclude = Exclude {
         booking: Some(old.id),
@@ -574,7 +594,7 @@ pub async fn reschedule(
         slots::check_free(&mut tx, &service, &locked, new_start, end, at, exclude).await?
     {
         tx.rollback().await?;
-        return Err(refusal_for(unfit));
+        return Err(refusal_after(state, &service, &locked, new_start, at, unfit).await?);
     }
     let mut input = input_for(state, actor, at, &service);
     input.within_cutoff = hours_before(old.starts_at, at, service.reschedule_cutoff_hours);
@@ -807,4 +827,50 @@ pub async fn cancel(
     };
     events::slot_released(state, &service, ids, from, booking.ends_at).await?;
     Ok(done)
+}
+
+/// The resources for a booking whose booker named none (the portal): the
+/// first resource, by id, of the one type the service needs that is free at
+/// `start`; when none is free, the first one, so that the refusal tells the
+/// booker what is near. A service that needs several resources has no such
+/// default.
+pub async fn pick_resources(
+    state: &AppState,
+    service: &ServiceType,
+    start: DateTime,
+    at: DateTime,
+) -> std::result::Result<Vec<i64>, Refusal> {
+    let required = service.required();
+    let [kind] = required.as_slice() else {
+        return Err(Refusal::invalid("wl_scheduling.problem.choose_resource"));
+    };
+    let candidates: Vec<Resource> = crate::resource::eligible_resources(&state.db, service.id)
+        .await?
+        .into_iter()
+        .filter(|resource| resource.resource_type == *kind)
+        .collect();
+    let Some(first) = candidates.first() else {
+        return Err(Refusal::invalid("wl_scheduling.problem.no_resource"));
+    };
+    let end = start + TimeDelta::minutes(service.duration_minutes);
+    let mut tx = state.db.begin().await?;
+    let mut chosen = first.id;
+    for candidate in &candidates {
+        let free = slots::check_free(
+            &mut tx,
+            service,
+            std::slice::from_ref(candidate),
+            start,
+            end,
+            at,
+            Exclude::default(),
+        )
+        .await?;
+        if free.is_ok() {
+            chosen = candidate.id;
+            break;
+        }
+    }
+    tx.rollback().await?;
+    Ok(vec![chosen])
 }

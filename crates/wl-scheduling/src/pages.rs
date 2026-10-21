@@ -106,11 +106,11 @@ pub fn parse_local(text: &str) -> Option<DateTime> {
         .map(|local| BusinessCalendar::default().from_local(local))
 }
 
-fn field<'a>(form: &'a BTreeMap<String, String>, name: &str) -> &'a str {
+pub(crate) fn field<'a>(form: &'a BTreeMap<String, String>, name: &str) -> &'a str {
     form.get(name).map_or("", |value| value.trim())
 }
 
-fn number(form: &BTreeMap<String, String>, name: &str) -> Result<i64> {
+pub(crate) fn number(form: &BTreeMap<String, String>, name: &str) -> Result<i64> {
     field(form, name)
         .parse()
         .map_err(|_| Error::BadRequest(name.to_owned()))

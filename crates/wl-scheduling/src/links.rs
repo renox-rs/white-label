@@ -7,6 +7,9 @@
 //! | `GET/POST /scheduling/links/{id}/cancel` | `wl_scheduling.link_cancel_page`, `wl_scheduling.link_cancel` | a signed link: `party_request`, initiated by the party, before the cut-off |
 //! | `GET/POST /scheduling/links/{id}/cancel/{code}` | `wl_scheduling.link_change_page`, `wl_scheduling.link_change_cancel` | a signed link in a change message: reason `code`, initiated by the business, at any time before the check-in |
 //! | `POST /scheduling/portal/bookings/{id}/cancel` | `wl_scheduling.portal_cancel` | a portal user acting for the booking's party: `party_request` |
+//! | `POST /scheduling/portal/bookings` | `wl_scheduling.portal_book` | a portal user acting for `party`: books, or requests when the service needs acceptance; a slot just taken answers 409 with the nearest free slots |
+//! | `POST /scheduling/portal/waiting-list` | `wl_scheduling.portal_waiting_join` | a portal user acting for `party`: joins the waiting list |
+//! | `POST /scheduling/portal/waiting-list/{id}/withdraw` | `wl_scheduling.portal_waiting_withdraw` | a portal user acting for the entry's party |
 //!
 //! The signature is the credential of a link ([`renox::signed`]); a booking
 //! of another party answers 404 in the portal. Neither route lets the party
@@ -23,13 +26,16 @@ use renox::axum::extract::OriginalUri;
 use renox::prelude::*;
 use renox::signed::ValidSignature;
 use serde::Serialize;
+use wl_kernel::PartyId;
 use wl_kernel::documents::{dubai_text, today};
 
 use crate::booking::{Booking, default_initiator};
 use crate::config::config_of;
+use crate::pages::{field, number, parse_local};
 use crate::resource::ServiceType;
-use crate::service::{self, Actor, CancelRequest};
+use crate::service::{self, Actor, CancelRequest, NewBooking};
 use crate::texts;
+use crate::waiting::{self, NewEntry, WaitingEntry};
 
 /// The link in a confirmation or reminder that cancels `booking_id`, valid
 /// for `ttl`.
@@ -79,6 +85,15 @@ pub fn routes() -> Routes {
             Routes::new()
                 .post("/scheduling/portal/bookings/{id}/cancel", portal_cancel)
                 .name("wl_scheduling.portal_cancel")
+                .post("/scheduling/portal/bookings", portal_book)
+                .name("wl_scheduling.portal_book")
+                .post("/scheduling/portal/waiting-list", portal_join)
+                .name("wl_scheduling.portal_waiting_join")
+                .post(
+                    "/scheduling/portal/waiting-list/{id}/withdraw",
+                    portal_withdraw,
+                )
+                .name("wl_scheduling.portal_waiting_withdraw")
                 .require_auth(),
         )
 }
@@ -200,12 +215,7 @@ async fn portal_cancel(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     let booking = Booking::find_or_404(&state.db, id).await?;
-    let acting = wl_kernel::portal::portal_users(&state)
-        .acting_for(&state.db, user.id, booking.party(), today())
-        .await?;
-    if acting.is_none() {
-        return Err(Error::NotFound);
-    }
+    acts_for(&state, &user, booking.party()).await?;
     service::cancel(
         &state,
         id,
@@ -217,6 +227,104 @@ async fn portal_cancel(
     .map_err(|refusal| refusal.into_error(&lang))?;
     Ok((
         Toast::success(texts::t(&lang, "wl_scheduling.link.cancelled")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// Whether the portal user acts for `party` today; a party of anyone else is
+/// a 404.
+async fn acts_for(state: &AppState, user: &AuthUser, party: PartyId) -> Result<()> {
+    let acting = wl_kernel::portal::portal_users(state)
+        .acting_for(&state.db, user.id, party, today())
+        .await?;
+    acting.map(|_| ()).ok_or(Error::NotFound)
+}
+
+/// `POST /scheduling/portal/bookings`: a portal user books a slot for the
+/// party they act for (`SCH.SLF.01`). Fields: `party`, `service`,
+/// `starts_at` (`2026-11-03T10:30`, Asia/Dubai) and optionally `resource`
+/// (the first free one of the service otherwise).
+///
+/// A service that needs acceptance is requested and holds the slot for the
+/// request hold time. When another booker took the last seat first the answer
+/// is 409, with the nearest free slots (up to three) and the waiting list
+/// (`POST /scheduling/portal/waiting-list`).
+async fn portal_book(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let party = PartyId(number(&form, "party")?);
+    acts_for(&state, &user, party).await?;
+    let service = ServiceType::find_or_404(&state.db, number(&form, "service")?).await?;
+    let start = parse_local(field(&form, "starts_at"))
+        .ok_or_else(|| Error::BadRequest("starts_at".to_owned()))?;
+    let at = renox::db::now();
+    let resources = match field(&form, "resource").parse::<i64>() {
+        Ok(id) => vec![id],
+        Err(_) => service::pick_resources(&state, &service, start, at)
+            .await
+            .map_err(|refusal| refusal.into_error(&lang))?,
+    };
+    let new = NewBooking::new(party, service.id, &resources, start).source("portal");
+    let actor = Actor::party(Some(user.id));
+    let made = if service.requires_acceptance {
+        service::request(&state, new, actor, at).await
+    } else {
+        service::book(&state, new, actor, at).await
+    };
+    made.map_err(|refusal| refusal.into_error(&lang))?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_scheduling.booking.booked")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /scheduling/portal/waiting-list`: joins the waiting list. Fields:
+/// `party`, `service`, and optionally `resource`, `window_from`,
+/// `window_until` (`2026-11-03T09:00`) and `expires_on` (`2026-11-10`).
+async fn portal_join(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let party = PartyId(number(&form, "party")?);
+    acts_for(&state, &user, party).await?;
+    let mut entry = NewEntry::new(party, number(&form, "service")?);
+    if let Ok(resource) = field(&form, "resource").parse::<i64>() {
+        entry = entry.with(resource);
+    }
+    entry.window_from = parse_local(field(&form, "window_from"));
+    entry.window_until = parse_local(field(&form, "window_until"));
+    entry.expires_on = field(&form, "expires_on").parse().ok();
+    waiting::join(&state, entry)
+        .await
+        .map_err(|refusal| refusal.into_error(&lang))?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_scheduling.waiting.joined")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /scheduling/portal/waiting-list/{id}/withdraw`.
+async fn portal_withdraw(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let entry = WaitingEntry::find_or_404(&state.db, id).await?;
+    acts_for(&state, &user, entry.party()).await?;
+    waiting::withdraw(&state, id, Actor::party(Some(user.id)))
+        .await
+        .map_err(|refusal| refusal.into_error(&lang))?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_scheduling.waiting.withdrawn")),
         renox::HxRefresh,
     )
         .into_response())

@@ -117,6 +117,8 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_scheduling.problem.override_needs_note",
         "To record the other side as the cause, add a note saying why.",
     ),
+    ("wl_scheduling.waiting.joined", "You are on the waiting list."),
+    ("wl_scheduling.waiting.withdrawn", "You are off the waiting list."),
     ("wl_scheduling.link.title", "Your booking"),
     ("wl_scheduling.link.cancel", "Cancel this booking"),
     ("wl_scheduling.link.cancelled", "The booking is cancelled."),
@@ -127,6 +129,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.problem.offer_expired", "The offer has expired."),
     ("wl_scheduling.problem.offer_still_held", "The offer is still held."),
     ("wl_scheduling.problem.not_expired", "The entry has not expired."),
+    (
+        "wl_scheduling.problem.choose_resource",
+        "Choose who or what to book.",
+    ),
     ("wl_scheduling.problem.too_far", "That is further ahead than bookings are taken."),
 ];
 

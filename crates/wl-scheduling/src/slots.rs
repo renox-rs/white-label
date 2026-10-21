@@ -18,7 +18,9 @@ use renox::prelude::*;
 use wl_kernel::calendar::BusinessCalendar;
 
 use crate::booking::{Booking, BookingResource, BookingStatus};
-use crate::resource::{AvailabilityBlock, AvailabilityRule, Resource, ServiceType};
+use crate::config::{NEAREST_SLOTS, config_of};
+use crate::resource::{AvailabilityBlock, AvailabilityRule, Resource, ServiceType, eligible_resources};
+use crate::waiting::{WaitingEntry, WaitingStatus};
 
 /// A stretch of time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,16 +156,23 @@ pub fn fits(busy: &[Span], from: DateTime, until: DateTime, capacity: i64) -> bo
     })
 }
 
-/// Whether `booking` takes a seat at `now`.
-pub fn holds(booking: &Booking, _now: DateTime) -> bool {
-    matches!(
-        booking.status,
-        BookingStatus::Requested
-            | BookingStatus::Booked
-            | BookingStatus::Confirmed
-            | BookingStatus::CheckedIn
-            | BookingStatus::InProgress
-    )
+/// Whether `booking` takes a seat at `now` (§3 *No double-booking*).
+///
+/// A booking past its request takes a seat until it ends. Holds count only
+/// while they last, whether or not the cleanup job has run: a `requested`
+/// booking counts until its hold time, and a booking that still waits for its
+/// prepayment counts until the payment link expires.
+pub fn holds(booking: &Booking, now: DateTime) -> bool {
+    match booking.status {
+        BookingStatus::Requested => booking.hold_until.is_some_and(|until| until > now),
+        BookingStatus::Booked
+        | BookingStatus::Confirmed
+        | BookingStatus::CheckedIn
+        | BookingStatus::InProgress => {
+            !(booking.payment_pending && booking.hold_until.is_some_and(|until| until <= now))
+        }
+        BookingStatus::Completed | BookingStatus::NoShow | BookingStatus::Cancelled => false,
+    }
 }
 
 /// The stretches of `resource` that are taken and overlap `from`..`until`.
@@ -204,16 +213,39 @@ pub async fn busy(
             until: row.occupies_until,
         });
     }
+    // A slot offered to a waiting-list entry is held until the offer lapses.
+    let offers = WaitingEntry::query()
+        .where_(WaitingEntry::STATUS.eq(WaitingStatus::Offered))
+        .where_(WaitingEntry::OFFERED_RESOURCE_ID.eq(resource))
+        .where_(WaitingEntry::OFFERED_FROM.lt(until))
+        .where_(WaitingEntry::OFFERED_UNTIL.gt(from))
+        .where_(WaitingEntry::OFFER_HOLD_UNTIL.gt(now))
+        .get(&mut *tx)
+        .await?;
+    for offer in offers {
+        if exclude.entry == Some(offer.id) {
+            continue;
+        }
+        if let (Some(from), Some(until)) = (offer.offered_from, offer.offered_until) {
+            spans.push(Span { from, until });
+        }
+    }
     Ok(spans)
 }
 
-/// Reads the resources `ids` in a fixed order (by id), so that two bookers
-/// who need the same resources ask for them in the same order and cannot
-/// deadlock.
+/// Locks the resources `ids` for the rest of the transaction and reads them,
+/// in a fixed order (by id), so that two bookers who need the same resources
+/// ask for them in the same order and cannot deadlock.
+///
+/// Call it in a transaction that began with `begin_immediate`: on SQLite that
+/// holds the whole database for writing, on PostgreSQL `FOR UPDATE` locks the
+/// resource rows. Either way a second booker waits here until the first has
+/// committed, and then counts the seats it took ([`check_free`]).
 pub async fn lock(tx: &mut Transaction, ids: &[i64]) -> Result<Vec<Resource>> {
     Resource::query()
         .where_(Resource::ID.is_in(ids.to_vec()))
         .order_by(Resource::ID)
+        .lock_for_update()
         .get(&mut *tx)
         .await
 }
@@ -256,6 +288,184 @@ pub async fn check_free(
     Ok(Ok(()))
 }
 
+/// The first slot on the grid at or after `from`, `step` minutes apart.
+fn align(from: DateTime, step_minutes: i64) -> DateTime {
+    let step = step_minutes.max(1) * 60;
+    let mut ts = from.timestamp();
+    if from.timestamp_subsec_nanos() > 0 {
+        ts += 1;
+    }
+    let aligned = (ts + step - 1).div_euclid(step) * step;
+    from.with_nanosecond(0).unwrap_or(from) + TimeDelta::seconds(aligned - from.timestamp())
+}
+
+/// The first `limit` slots of `service` between `from` and `until` that are
+/// free for all of `resources`, on the grid of `step_minutes`.
+#[allow(clippy::too_many_arguments)]
+pub async fn free_in(
+    tx: &mut Transaction,
+    service: &ServiceType,
+    resources: &[Resource],
+    from: DateTime,
+    until: DateTime,
+    step_minutes: i64,
+    limit: usize,
+    now: DateTime,
+) -> Result<Vec<FreeSlot>> {
+    let duration = TimeDelta::minutes(service.duration_minutes);
+    let reach_from = from - TimeDelta::minutes(service.buffer_before_minutes);
+    let reach_until = until
+        + duration
+        + TimeDelta::minutes(service.buffer_after_minutes);
+    let mut loaded = Vec::new();
+    for resource in resources {
+        let rules = AvailabilityRule::query()
+            .where_(AvailabilityRule::RESOURCE_ID.eq(resource.id))
+            .get(&mut *tx)
+            .await?;
+        let blocks = AvailabilityBlock::query()
+            .where_(AvailabilityBlock::RESOURCE_ID.eq(resource.id))
+            .where_(AvailabilityBlock::STARTS_AT.lt(reach_until))
+            .where_(AvailabilityBlock::ENDS_AT.gt(reach_from))
+            .get(&mut *tx)
+            .await?;
+        let taken = busy(tx, resource.id, reach_from, reach_until, now, Exclude::default()).await?;
+        loaded.push((resource, rules, blocks, taken));
+    }
+    let step = TimeDelta::minutes(step_minutes.max(1));
+    let mut out = Vec::new();
+    let mut candidate = align(from, step_minutes);
+    while candidate <= until && out.len() < limit {
+        let end = candidate + duration;
+        let occupied = occupied_span(service, candidate, end);
+        let free = loaded.iter().all(|(resource, rules, blocks, taken)| {
+            covered(rules, service.id, candidate, end)
+                && !blocked(blocks, candidate, end)
+                && fits(taken, occupied.from, occupied.until, capacity_of(resource, service))
+        });
+        if free {
+            out.push(FreeSlot {
+                resource_ids: resources.iter().map(|resource| resource.id).collect(),
+                start: candidate,
+                end,
+            });
+        }
+        candidate += step;
+    }
+    Ok(out)
+}
+
+/// The nearest free slots to offer a booker who just lost the slot at
+/// `start` (§3 *No double-booking*): up to `limit` of the same service type
+/// and location, from the requested time up to the booking horizon. First
+/// the free slots of the same resources; when fewer than `limit`, the
+/// earliest free slots of the other eligible resources of the location (any
+/// time, not only the requested one), by start. Slots a resource may not
+/// deliver (`ResourceEligibility`) are left out.
+pub async fn nearest(
+    state: &AppState,
+    service: &ServiceType,
+    requested: &[Resource],
+    start: DateTime,
+    now: DateTime,
+    limit: usize,
+) -> Result<Vec<FreeSlot>> {
+    let cfg = config_of(state);
+    let horizon = now + TimeDelta::days(cfg.horizon_days);
+    let from = start.max(now);
+    // Read before the transaction opens: a pool of one connection cannot
+    // serve a second query while the transaction holds it.
+    let others: Vec<Resource> = if requested.len() == 1 && service.required().len() == 1 {
+        let location = requested[0].location();
+        eligible_resources(&state.db, service.id)
+            .await?
+            .into_iter()
+            .filter(|resource| {
+                resource.id != requested[0].id
+                    && resource.resource_type == requested[0].resource_type
+                    && resource.location() == location
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let mut tx = state.db.begin().await?;
+    // A few more than asked for, as some may be left out below.
+    let wanted = limit * 3;
+    let mut found = free_in(
+        &mut tx,
+        service,
+        requested,
+        from,
+        horizon,
+        cfg.slot_step_minutes,
+        wanted,
+        now,
+    )
+    .await?;
+    let mut elsewhere = Vec::new();
+    if found.len() < limit {
+        for resource in &others {
+            let slots = free_in(
+                &mut tx,
+                service,
+                std::slice::from_ref(resource),
+                now,
+                horizon,
+                cfg.slot_step_minutes,
+                wanted,
+                now,
+            )
+            .await?;
+            elsewhere.extend(slots);
+        }
+    }
+    tx.rollback().await?;
+
+    let mut everyone: Vec<&Resource> = requested.iter().collect();
+    everyone.extend(others.iter());
+    let mut kept = Vec::new();
+    for slot in found.drain(..) {
+        if eligible_slot(state, service, &everyone, &slot).await {
+            kept.push(slot);
+        }
+        if kept.len() >= limit {
+            return Ok(kept);
+        }
+    }
+    elsewhere.sort_by_key(|slot| (slot.start, slot.resource_ids.clone()));
+    for slot in elsewhere {
+        if eligible_slot(state, service, &everyone, &slot).await {
+            kept.push(slot);
+        }
+        if kept.len() >= limit {
+            break;
+        }
+    }
+    kept.truncate(limit);
+    Ok(kept)
+}
+
+/// Whether every resource of `slot` may deliver the service at its start.
+async fn eligible_slot(
+    state: &AppState,
+    service: &ServiceType,
+    resources: &[&Resource],
+    slot: &FreeSlot,
+) -> bool {
+    let chosen: Vec<Resource> = resources
+        .iter()
+        .filter(|resource| slot.resource_ids.contains(&resource.id))
+        .map(|resource| (*resource).clone())
+        .collect();
+    crate::service::check_eligible(state, service, &chosen, slot.start)
+        .await
+        .is_ok()
+}
+
+/// How many nearest slots a refused booker is shown (§3).
+pub const SHOWN: usize = NEAREST_SLOTS;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,6 +487,58 @@ mod tests {
     /// 2026-11-02 is a Monday.
     fn monday_nine_to_five() -> Vec<AvailabilityRule> {
         vec![AvailabilityRule::new(1, 1, 9 * 60, 17 * 60)]
+    }
+
+    #[test]
+    fn the_grid_starts_at_the_next_step() {
+        assert_eq!(align(at(2, 10, 0), 15), at(2, 10, 0));
+        assert_eq!(align(at(2, 10, 1), 15), at(2, 10, 15));
+        assert_eq!(align(at(2, 10, 14), 15), at(2, 10, 15));
+        assert_eq!(align(at(2, 10, 46), 30), at(2, 11, 0));
+    }
+
+    fn booking(status: BookingStatus, hold: Option<DateTime>, pending: bool) -> Booking {
+        Booking {
+            status,
+            hold_until: hold,
+            payment_pending: pending,
+            ..Booking::default()
+        }
+    }
+
+    #[test]
+    fn a_request_holds_the_slot_only_while_its_hold_lasts() {
+        let now = at(2, 10, 0);
+        let held = booking(BookingStatus::Requested, Some(at(2, 10, 5)), false);
+        let lapsed = booking(BookingStatus::Requested, Some(at(2, 9, 59)), false);
+        let ending_now = booking(BookingStatus::Requested, Some(now), false);
+        assert!(holds(&held, now));
+        assert!(!holds(&lapsed, now));
+        assert!(!holds(&ending_now, now));
+    }
+
+    #[test]
+    fn an_unpaid_booking_holds_the_slot_until_the_link_expires() {
+        let now = at(2, 10, 0);
+        let unpaid = booking(BookingStatus::Booked, Some(at(2, 10, 5)), true);
+        let expired = booking(BookingStatus::Booked, Some(at(2, 9, 55)), true);
+        let paid = booking(BookingStatus::Booked, Some(at(2, 9, 55)), false);
+        assert!(holds(&unpaid, now));
+        assert!(!holds(&expired, now));
+        assert!(holds(&paid, now));
+    }
+
+    #[test]
+    fn an_ended_booking_holds_nothing() {
+        let now = at(2, 10, 0);
+        for status in [
+            BookingStatus::Completed,
+            BookingStatus::NoShow,
+            BookingStatus::Cancelled,
+        ] {
+            assert!(!holds(&booking(status, None, false), now));
+        }
+        assert!(holds(&booking(BookingStatus::CheckedIn, None, false), now));
     }
 
     #[test]
