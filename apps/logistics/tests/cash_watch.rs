@@ -539,3 +539,28 @@ async fn the_module_rule_skips_the_drivers_handover_and_keeps_the_counter_staffs
     assert_eq!(done.tasks, 1);
     assert_eq!(done.admin_notices, 1);
 }
+
+/// AC1 on the scheduler: the rule runs every few minutes as the task
+/// `logistics:cash-watch`; a scheduled run 12 hours after the return opens the
+/// task, one before does not.
+#[renox::test]
+async fn the_rule_is_scheduled_and_the_scheduled_run_opens_the_task() {
+    let w = boot_with_payments().await;
+    manager(&w, "Mona").await;
+    let run = out_with_cash(&w, "ORD-1").await;
+    returned_at(&w, run).await;
+
+    w.app
+        .kernel()
+        .run_scheduled(cash_watch::TASK)
+        .await
+        .expect("the task is registered and runs");
+    assert!(call_tickets(&w).is_empty(), "not yet 12 hours");
+
+    w.app.travel(std::time::Duration::from_secs(12 * 3600 + 60));
+    w.app
+        .at_travelled_time(w.app.kernel().run_scheduled(cash_watch::TASK))
+        .await
+        .expect("the task runs");
+    assert_eq!(call_tickets(&w).len(), 1);
+}

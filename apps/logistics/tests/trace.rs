@@ -531,3 +531,32 @@ async fn a_shipment_on_a_delivery_is_not_requested_or_traced_here() {
     assert_eq!(run, TraceRun::default());
     assert_eq!(w.reload(&out).await.status, ShipmentStatus::OutForDelivery);
 }
+
+/// AC1 on the scheduler: the rule is the daily task `logistics:trace`; a
+/// scheduled run opens the trace task of a shipment untraced for three days
+/// and a second scheduled run the same day opens no second one.
+#[renox::test]
+async fn the_rule_is_scheduled_and_the_scheduled_run_opens_the_task() {
+    let w = boot().await;
+    manager(&w, "Mona").await;
+    let shipment = at_hub(&w, LAST_SCAN).await;
+    // Its last scan was four days ago.
+    let last_scan = renox::db::now() - renox::chrono::TimeDelta::days(4);
+    TrackingEvent::query()
+        .where_(TrackingEvent::SHIPMENT_ID.eq(shipment.id))
+        .update(w.db(), &[("occurred_at", &last_scan)])
+        .await
+        .unwrap();
+
+    for _ in 0..2 {
+        w.app
+            .kernel()
+            .run_scheduled(trace::TASK)
+            .await
+            .expect("the task is registered and runs");
+    }
+    let rows = tasks(&w).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].shipment_id, shipment.id);
+    assert_eq!(trace_tickets(&w), 1);
+}
