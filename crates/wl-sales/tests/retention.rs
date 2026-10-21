@@ -24,6 +24,7 @@ use wl_kernel::notify::NotifyChannel;
 use wl_sales::permissions as perm;
 use wl_sales::retention::{self, CampaignRequesters};
 use wl_sales::{
+    CounterSale,
     BroadcastState, Campaign, CampaignBroadcast, CampaignGuard, CampaignStatus, CostEntry,
     CostStatus, MarketingChannel, MatchMode, Purpose, Rule, SalesConfig, Segment, WlSales,
     campaigns,
@@ -391,8 +392,37 @@ async fn the_report_counts_the_recipients_who_bought_within_the_response_days() 
     // P1 and P2 got the message and bought 5 and 6 days ago; P3 got it and did
     // not buy; P4 bought, but its message was suppressed (the frequency cap),
     // so it is not among the recipients reached. P5 bought before the send.
-    sale_at(&w.t, 1, now() - Duration::days(5), 15_000, "tee").await;
-    sale_at(&w.t, 2, now() - Duration::days(6), 25_000, "tee").await;
+    // P1 and P2 buy at the counter today (AED 150 and AED 250 before VAT:
+    // the price typed is the one before VAT, the VAT comes on top and the
+    // report counts the net).
+    let cora = w.t.user("Cora", &[perm::POS_SELL]).await;
+    w.t.app.acting_as(&cora);
+    for (party, price, paid) in [(1, "150.00", "157.50"), (2, "250.00", "262.50")] {
+        w.t.app
+            .post("/counter-sales", &[("party_id", &party.to_string())])
+            .await
+            .assert_status(303);
+        let open = CounterSale::query()
+            .order_by_desc(CounterSale::ID)
+            .first(w.t.db())
+            .await
+            .unwrap()
+            .unwrap();
+        w.t.app
+            .post(
+                &format!("/counter-sales/{}/lines", open.id),
+                &[("item_code", "tee"), ("unit_price", price), ("quantity", "1")],
+            )
+            .await
+            .assert_status(303);
+        w.t.app
+            .post(
+                &format!("/counter-sales/{}/complete", open.id),
+                &[("cash", paid)],
+            )
+            .await
+            .assert_status(303);
+    }
     sale_at(&w.t, 4, now() - Duration::days(5), 40_000, "tee").await;
     sale_at(&w.t, 5, now() - Duration::days(12), 90_000, "tee").await;
     let mut late = report_of(1, "completed", None);
