@@ -369,7 +369,11 @@ async fn refresh_balance(state: &AppState, package: &Package) -> Result {
     let mut per_invoice: std::collections::BTreeMap<i64, i64> = std::collections::BTreeMap::new();
     let mut without_invoice = 0_i64;
     for row in &rows {
-        let open = if row.settled_at.is_some() { 0 } else { row.balance };
+        let open = if row.settled_at.is_some() {
+            0
+        } else {
+            row.balance
+        };
         match row.invoice_id {
             Some(invoice) => {
                 per_invoice.insert(invoice, open);

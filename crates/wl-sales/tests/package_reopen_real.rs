@@ -263,7 +263,11 @@ async fn paid_package(t: &Real) -> (Package, Invoice) {
     let paid = Invoice::find_or_404(t.app.db(), id.0).await.unwrap();
     assert_eq!(paid.status, InvoiceStatus::Paid);
     let active = Package::find_or_404(t.app.db(), package.id).await.unwrap();
-    assert_eq!(active.status, PackageStatus::Active, "the paid invoice activates it");
+    assert_eq!(
+        active.status,
+        PackageStatus::Active,
+        "the paid invoice activates it"
+    );
     packages::consume(
         t.app.state(),
         package.id,

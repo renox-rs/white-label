@@ -96,7 +96,13 @@ async fn boot() -> Real {
 /// The accountant: issues and writes off invoices, and the one the payment
 /// notices go to.
 async fn accountant(t: &Real) -> User {
-    let grants = [pay::VIEW, pay::RECORD, perm::VIEW, perm::ISSUE, perm::WRITE_OFF];
+    let grants = [
+        pay::VIEW,
+        pay::RECORD,
+        perm::VIEW,
+        perm::ISSUE,
+        perm::WRITE_OFF,
+    ];
     let user = User::register(t.app.db(), "Rita", "rita@example.com", "password123")
         .await
         .unwrap();
@@ -129,10 +135,13 @@ async fn payment_now(t: &Real, id: i64) -> Payment {
 /// online payment through a payment link, then charged back by the dispute
 /// `dp_1` (evidence due in ten days). The invoice is reopened.
 async fn charged_back(t: &Real, by: &User) -> (Payment, Invoice) {
-    let draft = InvoiceDraft::new(BLUE_DUNES, Subject::new("property.lease", 9)).line(
-        DraftLine::new("Consultation", AMOUNT, VatCategory::ZeroRated),
-    )
-    .due_date(wl_kernel::documents::today() - Days::new(5));
+    let draft = InvoiceDraft::new(BLUE_DUNES, Subject::new("property.lease", 9))
+        .line(DraftLine::new(
+            "Consultation",
+            AMOUNT,
+            VatCategory::ZeroRated,
+        ))
+        .due_date(wl_kernel::documents::today() - Days::new(5));
     let id = invoicer(t.app.state())
         .draft(t.app.db(), draft)
         .await
@@ -156,7 +165,10 @@ async fn charged_back(t: &Real, by: &User) -> (Payment, Invoice) {
     t.app.logout();
     t.app
         .htmx()
-        .post(&format!("{}/start", payment_link::path(t.app.state(), link.id)), &[])
+        .post(
+            &format!("{}/start", payment_link::path(t.app.state(), link.id)),
+            &[],
+        )
         .await;
     let started = Payment::query()
         .where_(Payment::PAYMENT_LINK_ID.eq(link.id))
