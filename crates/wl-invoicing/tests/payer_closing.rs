@@ -287,7 +287,7 @@ async fn a_late_draft_moves_to_the_customer_where_the_agreement_allows() {
     let told = t.notices.of_type("invoicing.payer_bill_transferred");
     assert_eq!(told.len(), 1);
     assert_eq!(told[0].subject, closed.subject());
-    assert_eq!(told[0].recipients, [NotifyRecipient::Party { id: OMAR.0 }]);
+    assert_eq!(told[0].recipients, [NotifyRecipient::Party { id: OMAR }]);
     let events = t.payer.closed.all();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].outcome, PayerBillOutcome::Transferred);
