@@ -129,7 +129,27 @@ async fn hrm25_a_draft_settlement_is_alerted_as_well() {
 #[renox::test]
 async fn hrm25_ac2_a_paid_settlement_is_not_alerted() {
     let w = world().await;
-    settlement(&w, SettlementStatus::Paid).await;
+    let pay = w.t.user_with("Pia", "settle_pay").await;
+    let s = settlement(&w, SettlementStatus::Approved).await;
+    w.t.on(
+        nov(5),
+        w.t.settle(
+            &pay,
+            &s,
+            "pay",
+            &[
+                ("amount", "12000"),
+                ("method", "transfer"),
+                ("reference", "TRF-1"),
+            ],
+        ),
+    )
+    .await
+    .assert_status(303);
+    let paid = w.t.settlement(&s).await;
+    assert_eq!(paid.status, SettlementStatus::Paid);
+    assert_eq!(paid.paid_on, Some(nov(5)));
+
     job_on(&w, nov(11)).await;
     job_on(&w, nov(15)).await;
     nothing_sent(&w);
