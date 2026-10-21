@@ -594,6 +594,8 @@ async fn an_online_order_paid_with_500_points_and_rejected_gives_them_back_and_a
     assert_eq!(account(&t, &m).await.points_balance, 500);
 
     // The outlet rejects the order: the 500 points come back and M is told.
+    // The cashier's session lapsed during the three hours: signing in again.
+    t.app.acting_as(&floor.cora);
     t.app
         .post(
             &format!("/sales-orders/{}/transitions/reject", order.id),

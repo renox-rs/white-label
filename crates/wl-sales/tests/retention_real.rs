@@ -126,6 +126,7 @@ async fn world(members: i64, tune: impl FnOnce(WlNotify) -> WlNotify) -> World {
         noon,
     };
     let t = boot_pair(WlSales::new(), notify, fakes.clone()).await;
+    approvals::install(t.db()).await.unwrap();
     let at = now();
     for party in 1..=members {
         sale_at(&t, party, at - Duration::days(90), 60_000, "tee").await;
