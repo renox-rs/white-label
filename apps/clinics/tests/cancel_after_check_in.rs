@@ -7,7 +7,7 @@
 
 mod support;
 
-use clinics::{ChargeLine, VisitStatus};
+use clinics::{ChargeLine, Claim, ClaimLine, ClaimStatus, VisitStatus};
 use support::day;
 use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, invoicer};
 use support::desk::{PAYER, desk};
@@ -187,6 +187,20 @@ async fn an_insured_walk_out_creates_a_draft_claim_for_the_payer_share() {
     assert_eq!(claims[0].agreement, 77);
     assert_eq!(d.t.claims.claimed(), 24_000);
     assert!(visit.payer_bill_id.is_some());
+    // The clinic's own claim record around the payer bill: a draft for the
+    // payer share, with its line.
+    let made = Claim::of_visit(d.t.db(), visit.id).await.unwrap();
+    assert_eq!(made.len(), 1);
+    let claim = &made[0];
+    assert_eq!(claim.status, ClaimStatus::Draft);
+    assert_eq!(Some(claim.payer_bill_id), visit.payer_bill_id);
+    assert_eq!(claim.payer_party_id, PAYER.0);
+    assert_eq!(claim.claimed, 24_000);
+    assert_eq!(claim.visit_date, visit.visit_date);
+    let lines = ClaimLine::of_claim(d.t.db(), claim.id).await.unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].code, "consultation");
+    assert_eq!(lines[0].claimed, 24_000);
     // The deposit applies to the patient share only; the rest goes back.
     assert_eq!(d.t.books.all()[0].gross(), 6_000);
     assert_eq!(d.t.deposits.allocated_total(), 6_000);
