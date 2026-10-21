@@ -10,6 +10,10 @@
 //! [`BookingCheckedIn`] (a visit, a job card) and consumes a package credit on
 //! [`BookingCompleted`].
 //!
+//! [`WorkDoneStatus`] is the vertical's answer to "what was done for this
+//! booking?" (`SCH.ACL.06`): a booking that is checked in is cancelled only
+//! once the visit or job card has its work done captured or marked none.
+//!
 //! [`ResourceEligibility`] answers "may this resource deliver this service at
 //! this time?" (`SCH.ACL.04`). The default says yes; a vertical provides its
 //! own with [`provide_resource_eligibility`] (05 adds the practitioner's
@@ -258,6 +262,14 @@ pub struct BookingCancelled {
     /// What became of the deposit; `None` before the deposit rules ran or
     /// when the service type has none.
     pub deposit_outcome: Option<DepositOutcome>,
+    /// The work done before the cancellation, in fils, as the vertical
+    /// captured it; 0 for none, or for a cancellation before the check-in.
+    /// The vertical bills it.
+    pub work_done_amount: i64,
+    /// The part of the deposit applied to the work done, in fils; the
+    /// vertical bills the work less this. 0 unless a party-initiated
+    /// cancellation came after the check-in.
+    pub deposit_applied: i64,
 }
 
 impl Event for BookingCancelled {}
@@ -277,6 +289,60 @@ pub struct SlotReleased {
 }
 
 impl Event for SlotReleased {}
+
+/// What was done for a booking before it was cancelled after the check-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkDone {
+    /// The record opened at check-in has not said yet: the booking cannot
+    /// be cancelled.
+    Pending,
+    /// Nothing was done.
+    Nothing,
+    /// Work was done and captured on the vertical's record, worth `amount`
+    /// fils at its price (normal or partial).
+    Captured {
+        /// The charge for the work done, in fils.
+        amount: i64,
+    },
+}
+
+/// What was done for a booking (wl-scheduling §8, `SCH.ACL.06`)? The vertical
+/// answers from the record it opened at check-in. The default says nothing
+/// was done.
+pub trait WorkDoneStatus: Send + Sync + 'static {
+    /// The work done for `booking`; `record` is the vertical record linked to
+    /// the booking, if any.
+    fn status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+        _record: Option<Subject>,
+    ) -> SchedulingFuture<'a, WorkDone> {
+        Box::pin(async { Ok(WorkDone::Nothing) })
+    }
+}
+
+/// The strategy when no vertical provides one: nothing was done.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoWorkDoneStatus;
+
+impl WorkDoneStatus for NoWorkDoneStatus {}
+
+/// Makes `status` the app's [`WorkDoneStatus`]; a vertical calls it in
+/// `register`.
+pub fn provide_work_done_status(app: &mut Registry, status: impl WorkDoneStatus) {
+    let status: Arc<dyn WorkDoneStatus> = Arc::new(status);
+    app.provide(status);
+}
+
+/// The app's [`WorkDoneStatus`], or [`NoWorkDoneStatus`].
+pub fn work_done_status(state: &AppState) -> Arc<dyn WorkDoneStatus> {
+    match state.provided::<Arc<dyn WorkDoneStatus>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoWorkDoneStatus),
+    }
+}
 
 /// What a [`ResourceEligibility`] asks about.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -117,6 +117,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_scheduling.problem.override_needs_note",
         "To record the other side as the cause, add a note saying why.",
     ),
+    (
+        "wl_scheduling.problem.work_done_pending",
+        "Record the work done first, or mark that none was done.",
+    ),
     ("wl_scheduling.problem.nothing_to_waive", "There is no forfeited deposit to waive."),
     ("wl_scheduling.deposit.title", "Deposit"),
     ("wl_scheduling.deposit.held", "held"),

@@ -141,6 +141,9 @@ pub struct Booking {
     pub work_done_type: Option<String>,
     /// The id of that record.
     pub work_done_id: Option<i64>,
+    /// The work done before a cancellation after check-in, in fils, as the
+    /// record captured it; 0 for none.
+    pub work_done_amount: i64,
     /// When the party confirmed.
     pub confirmed_at: Option<DateTime>,
     /// When the party was checked in.

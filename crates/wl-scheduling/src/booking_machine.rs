@@ -135,6 +135,11 @@ pub struct BookingInput {
     pub change_link: bool,
     /// How far the booking had got.
     pub stage: Option<CancelStage>,
+    /// The vertical record opened at check-in has not captured its work done
+    /// yet (`SCH.ACL.06`).
+    pub work_done_pending: bool,
+    /// The work done, in fils, as the vertical record captured it.
+    pub work_done_amount: i64,
 }
 
 impl BookingInput {
@@ -498,6 +503,17 @@ impl StateMachine for Booking {
                         }
                     })
                 })
+                .guard("work_done_settled", |booking: &Booking, ctx| {
+                    let refused =
+                        booking.status.is_after_check_in() && input_of(ctx).work_done_pending;
+                    Box::pin(async move {
+                        if refused {
+                            Err(guard_text("wl_scheduling.problem.work_done_pending"))
+                        } else {
+                            Ok(())
+                        }
+                    })
+                })
                 .guard("party_before_cutoff", |_b: &Booking, ctx| {
                     let input = input_of(ctx);
                     let refused = input.actor == ActorKind::Party
@@ -539,6 +555,7 @@ impl StateMachine for Booking {
                                 ("cancel_note", &input.note),
                                 ("cancel_stage", &stage),
                                 ("cancel_late", &input.late),
+                                ("work_done_amount", &input.work_done_amount),
                                 ("cancelled_at", &at),
                                 ("conflict_block", &false),
                                 ("conflict_eligibility", &false),
@@ -735,6 +752,7 @@ mod tests {
                 "reason_known",
                 "walked_out_after_check_in",
                 "staff_after_check_in",
+                "work_done_settled",
                 "party_before_cutoff",
                 "initiated_by"
             ]

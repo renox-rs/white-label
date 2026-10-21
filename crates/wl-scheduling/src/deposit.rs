@@ -38,10 +38,11 @@ use renox::db::now;
 use renox::prelude::*;
 use wl_kernel::LegalEntity;
 use wl_kernel::payments::{RefundRequest, RefundSource, payment_recorder};
-use wl_kernel::scheduling::{DepositOutcome, Initiator};
+use wl_kernel::scheduling::{CancelStage, DepositOutcome, Initiator};
 
 use crate::booking::Booking;
 use crate::refusal::Refusal;
+use crate::resource::ServiceType;
 use crate::service::Actor;
 use crate::texts::english;
 
@@ -88,17 +89,42 @@ impl Settlement {
     }
 }
 
-/// What a cancellation does to a `deposit` of fils before the start
-/// (`SCH.ACL.05`): the business pays it back; the party loses it only when
-/// the cancellation is `late`.
-pub fn decide_cancel(deposit: i64, initiated_by: Initiator, late: bool) -> Settlement {
+/// What a cancellation does to a `deposit` of fils (`SCH.ACL.05`,
+/// `SCH.ACL.06`):
+///
+/// - The business pays the deposit back in full, whenever it cancels, and
+///   never applies it to work done: if the party accepts the work, the
+///   vertical bills it separately.
+/// - Before the start the party loses it only when the cancellation is
+///   `late`.
+/// - After the check-in, a party-initiated cancellation (`walked_out`,
+///   `party_request`) applies the deposit to the work done first, up to the
+///   work's price; what is left is forfeited when the service type's
+///   walk-out setting says so, else paid back.
+pub fn decide_cancel(
+    deposit: i64,
+    initiated_by: Initiator,
+    late: bool,
+    stage: CancelStage,
+    work_done: i64,
+    walk_out_forfeits: bool,
+) -> Settlement {
     if deposit <= 0 {
         return Settlement::default();
     }
-    match initiated_by {
-        Initiator::Business => Settlement::refunded(deposit),
-        Initiator::Party if late => Settlement::forfeit(deposit),
-        Initiator::Party => Settlement::refunded(deposit),
+    match (initiated_by, stage) {
+        (Initiator::Business, _) => Settlement::refunded(deposit),
+        (Initiator::Party, CancelStage::BeforeStart) if late => Settlement::forfeit(deposit),
+        (Initiator::Party, CancelStage::BeforeStart) => Settlement::refunded(deposit),
+        (Initiator::Party, CancelStage::CheckedIn | CancelStage::InProgress) => {
+            let applied = work_done.clamp(0, deposit);
+            let rest = deposit - applied;
+            Settlement {
+                applied,
+                refund: if walk_out_forfeits { 0 } else { rest },
+                forfeited: if walk_out_forfeits { rest } else { 0 },
+            }
+        }
     }
 }
 
@@ -201,6 +227,7 @@ async fn apply(
 pub(crate) async fn settle_cancelled(
     state: &AppState,
     booking: &Booking,
+    service: &ServiceType,
     by: Option<i64>,
 ) -> std::result::Result<Booking, Refusal> {
     let held = booking.deposit_held();
@@ -212,7 +239,19 @@ pub(crate) async fn settle_cancelled(
         .as_deref()
         .and_then(Initiator::parse)
         .unwrap_or(Initiator::Business);
-    let settlement = decide_cancel(held, initiated_by, booking.cancel_late);
+    let stage = match booking.cancel_stage.as_deref() {
+        Some("checked_in") => CancelStage::CheckedIn,
+        Some("in_progress") => CancelStage::InProgress,
+        _ => CancelStage::BeforeStart,
+    };
+    let settlement = decide_cancel(
+        held,
+        initiated_by,
+        booking.cancel_late,
+        stage,
+        booking.work_done_amount,
+        service.walk_out_forfeits,
+    );
     apply(
         state,
         booking,
@@ -257,7 +296,8 @@ pub async fn settle(
     let booking = Booking::find_or_404(&state.db, id).await?;
     match booking.status {
         crate::booking::BookingStatus::Cancelled => {
-            settle_cancelled(state, &booking, actor.user).await
+            let service = ServiceType::find_or_404(&state.db, booking.service_type_id).await?;
+            settle_cancelled(state, &booking, &service, actor.user).await
         }
         crate::booking::BookingStatus::NoShow => settle_no_show(state, &booking).await,
         _ => Ok(booking),
@@ -387,33 +427,77 @@ mod tests {
         assert_eq!(money_text(-5), "-AED 0.05");
     }
 
+    const BEFORE: CancelStage = CancelStage::BeforeStart;
+
     #[test]
     fn the_business_always_pays_the_deposit_back() {
-        assert_eq!(
-            decide_cancel(20_000, Initiator::Business, true),
-            Settlement::refunded(20_000)
-        );
-        assert_eq!(
-            decide_cancel(20_000, Initiator::Business, false),
-            Settlement::refunded(20_000)
-        );
+        for stage in [BEFORE, CancelStage::CheckedIn, CancelStage::InProgress] {
+            assert_eq!(
+                decide_cancel(20_000, Initiator::Business, true, stage, 8_000, true),
+                Settlement::refunded(20_000),
+                "{stage:?}"
+            );
+        }
     }
 
     #[test]
     fn a_party_loses_the_deposit_only_when_late() {
         assert_eq!(
-            decide_cancel(20_000, Initiator::Party, false),
+            decide_cancel(20_000, Initiator::Party, false, BEFORE, 0, true),
             Settlement::refunded(20_000)
         );
         assert_eq!(
-            decide_cancel(20_000, Initiator::Party, true),
+            decide_cancel(20_000, Initiator::Party, true, BEFORE, 0, true),
             Settlement::forfeit(20_000)
         );
     }
 
     #[test]
+    fn a_walk_out_applies_the_deposit_to_the_work_first() {
+        let walk = |work, forfeits| {
+            decide_cancel(
+                20_000,
+                Initiator::Party,
+                false,
+                CancelStage::InProgress,
+                work,
+                forfeits,
+            )
+        };
+        // AED 80 of work: AED 80 applied, the AED 120 left follows the setting.
+        assert_eq!(
+            walk(8_000, true),
+            Settlement {
+                applied: 8_000,
+                refund: 0,
+                forfeited: 12_000
+            }
+        );
+        assert_eq!(
+            walk(8_000, false),
+            Settlement {
+                applied: 8_000,
+                refund: 12_000,
+                forfeited: 0
+            }
+        );
+        // Nothing done: the whole deposit follows the setting.
+        assert_eq!(walk(0, false), Settlement::refunded(20_000));
+        assert_eq!(walk(0, true), Settlement::forfeit(20_000));
+        // More work than deposit: the deposit is applied in full.
+        assert_eq!(
+            walk(30_000, true),
+            Settlement {
+                applied: 20_000,
+                refund: 0,
+                forfeited: 0
+            }
+        );
+    }
+
+    #[test]
     fn no_deposit_settles_nothing() {
-        let none = decide_cancel(0, Initiator::Party, true);
+        let none = decide_cancel(0, Initiator::Party, true, BEFORE, 0, true);
         assert_eq!(none, Settlement::default());
         assert_eq!(none.outcome(), None);
     }

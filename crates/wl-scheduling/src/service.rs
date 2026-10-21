@@ -19,7 +19,8 @@ use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::scheduling::{
-    CancelStage, CancelledBy, Eligibility, EligibilityQuery, Initiator, resource_eligibility,
+    CancelStage, CancelledBy, Eligibility, EligibilityQuery, Initiator, WorkDone,
+    resource_eligibility, work_done_status,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -821,11 +822,23 @@ pub async fn cancel(
         BookingStatus::InProgress => CancelStage::InProgress,
         _ => CancelStage::BeforeStart,
     });
+    // After the check-in the vertical's record says what was done; while it
+    // is pending the machine refuses (`SCH.ACL.06`).
+    if booking.status.is_after_check_in() {
+        let work = work_done_status(state)
+            .status(state, booking.booking_id(), booking.work_done())
+            .await?;
+        match work {
+            WorkDone::Pending => input.work_done_pending = true,
+            WorkDone::Nothing => {}
+            WorkDone::Captured { amount } => input.work_done_amount = amount.max(0),
+        }
+    }
     let cancelled = run_simple(state, &booking, CANCEL, &input, actor, Some(&code)).await?;
     // The deposit follows `SCH.ACL.05`. A refund `wl-payments` refuses does
     // not undo the cancellation: the events still go out and the refusal is
     // returned after them.
-    let settled = deposit::settle_cancelled(state, &cancelled, actor.user).await;
+    let settled = deposit::settle_cancelled(state, &cancelled, &service, actor.user).await;
     let done = settled.as_ref().map_or(cancelled, Clone::clone);
     events::cancelled(state, &done, cancelled_by(actor)).await?;
     // After check-in only the time that is left is freed.
@@ -836,6 +849,25 @@ pub async fn cancel(
     };
     events::slot_released(state, &service, ids, from, booking.ends_at).await?;
     settled
+}
+
+/// Links the record a vertical opened at check-in (a visit, a job card) to
+/// the booking, so that `BookingCancelled` names it and
+/// [`WorkDoneStatus`](wl_kernel::scheduling::WorkDoneStatus) is asked about
+/// it.
+pub async fn link_work_done(db: &Db, id: i64, record: &Subject) -> Result {
+    Booking::query()
+        .where_(Booking::ID.eq(id))
+        .update(
+            db,
+            &[
+                ("work_done_type", &Some(record.subject_type.clone())),
+                ("work_done_id", &Some(record.subject_id)),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    Ok(())
 }
 
 /// The resources for a booking whose booker named none (the portal): the

@@ -148,6 +148,8 @@ pub async fn cancelled(state: &AppState, booking: &Booking, by: CancelledBy) -> 
             work_done: booking.work_done(),
             late: booking.cancel_late,
             deposit_outcome,
+            work_done_amount: booking.work_done_amount,
+            deposit_applied: booking.deposit_applied,
         })
         .await
 }
