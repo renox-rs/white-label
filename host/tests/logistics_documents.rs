@@ -345,8 +345,8 @@ async fn the_company_admin_cannot_change_the_override_mode_of_the_three_kinds() 
 #[renox::test]
 async fn the_reminder_goes_to_the_drivers_depot_and_the_mulkiya_task_to_the_fleet_manager() {
     let app = logistics_booted().await;
-    let depot_a = Scope::new("depot", 1);
-    let depot_b = Scope::new("depot", 2);
+    let depot_a = Scope::new("logistics.depot", 1);
+    let depot_b = Scope::new("logistics.depot", 2);
     let olivia = scoped_person(&app, "Olivia", OPERATIONS_MANAGER, &depot_a).await;
     let omar = scoped_person(&app, "Omar", OPERATIONS_MANAGER, &depot_b).await;
     let fadi = person(&app, "Fadi", FLEET_MANAGER).await;
@@ -358,7 +358,7 @@ async fn the_reminder_goes_to_the_drivers_depot_and_the_mulkiya_task_to_the_flee
         app.state(),
         wl_hr::NewEmployee::new(party, "driver", day(-30))
             .user(user.id)
-            .scope(Subject::new("depot", 1)),
+            .scope(Subject::new("logistics.depot", 1)),
     )
     .await
     .unwrap();
