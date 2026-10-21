@@ -352,7 +352,7 @@ async fn the_clients_remittance_still_includes_the_cod_of_the_missing_cash() {
 async fn recovery_is_in_cash_only_and_the_write_off_needs_approval() {
     let w = boot_with_payments().await;
     let mona = manager(&w, "Mona").await;
-    let nadia = manager(&w, "Nadia").await;
+    let nadia = manager(&w, "Nasser").await;
     admin(&w).await;
     let run = out_with_cash(&w, "ORD-1").await;
     let start = returned_at(&w, run).await;
