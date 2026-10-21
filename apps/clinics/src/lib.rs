@@ -3,6 +3,8 @@
 
 pub mod appointment;
 pub mod appointments;
+pub mod consent;
+pub mod coverage;
 mod db;
 pub mod licences;
 pub mod pages;
@@ -21,16 +23,28 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use appointment::Appointment;
+pub use consent::{ConsentLine, SelfPayConsent};
+pub use coverage::{CoverageOutcome, PendingCheckIn};
 pub use licences::LicenceAlert;
 pub use policy::{EligibilityCheck, InsurancePolicy};
 pub use visit::{Visit, VisitStatus};
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory (`resources/views/clinics/policies.html`).
-const VIEWS: &[(&str, &str)] = &[(
-    "clinics/policies.html",
-    include_str!("../views/clinics/policies.html"),
-)];
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "clinics/policies.html",
+        include_str!("../views/clinics/policies.html"),
+    ),
+    (
+        "clinics/appointment.html",
+        include_str!("../views/clinics/appointment.html"),
+    ),
+    (
+        "clinics/visit.html",
+        include_str!("../views/clinics/visit.html"),
+    ),
+];
 
 /// Dirhams as text from fils: `AED 450.00`.
 pub fn money_text(fils: i64) -> String {
@@ -64,7 +78,9 @@ impl Module for Clinics {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.view_data::<pages::policies::IndexPage>();
+        app.view_data::<pages::policies::IndexPage>()
+            .view_data::<pages::appointments::ShowPage>()
+            .view_data::<pages::visits::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -78,13 +94,18 @@ impl Module for Clinics {
             .model::<Visit>()
             .model::<InsurancePolicy>()
             .model::<EligibilityCheck>()
-            .model::<LicenceAlert>();
+            .model::<LicenceAlert>()
+            .model::<PendingCheckIn>()
+            .model::<SelfPayConsent>();
         visit_machine::register();
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
         appointments::register(app);
         // The check-in opens the visit, which follows the booking.
         visits::register(app);
+        // `CLN.ACL.15`: an insured visit is checked in only with its coverage
+        // outcome (BL-CLN-01).
+        coverage::register(app);
         // `CLN.RUL.01`: an expired licence or set of privileges is told to
         // the clinic manager of the branch and the owner (BL-CLN-12).
         licences::register(app);

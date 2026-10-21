@@ -114,6 +114,16 @@ pub async fn attach_policy(state: &AppState, booking: i64, policy: i64) -> Resul
             &[],
         )));
     }
+    // What was recorded for another policy no longer holds.
+    if appointment.policy_id.is_some_and(|old| old != policy) {
+        crate::coverage::discard_for(
+            state,
+            booking,
+            crate::coverage::DISCARD_POLICY_CHANGED,
+            today(),
+        )
+        .await?;
+    }
     Appointment::query()
         .where_(Appointment::ID.eq(appointment.id))
         .update(

@@ -2,7 +2,9 @@
 //! appointment's pre-check-in screen and the visit. Every route needs a
 //! signed-in user; each handler checks the permission of its action.
 
+pub mod appointments;
 pub mod policies;
+pub mod visits;
 
 use std::collections::BTreeMap;
 
@@ -18,7 +20,10 @@ pub(crate) type Texts = BTreeMap<&'static str, String>;
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
-    Routes::new().merge(policies::routes())
+    Routes::new()
+        .merge(policies::routes())
+        .merge(appointments::routes())
+        .merge(visits::routes())
 }
 
 /// The app text `key` (without the `clinics.` prefix).

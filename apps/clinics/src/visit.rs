@@ -9,8 +9,9 @@
 //!
 //! Decision: the visit is built to be extended. Charge capture, the patient
 //! share, the claims and the lots of the consumables hang on `visit_id`
-//! later; the coverage columns come with the coverage outcome
-//! ([`crate::coverage`]).
+//! later. The coverage columns (the eligibility result, the outcome, the
+//! policy of the split, the self-pay consent) are moved to it by the check-in
+//! from what the receptionist recorded ([`crate::coverage`]).
 
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
@@ -18,6 +19,8 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::scheduling::BookingId;
+
+use crate::coverage::CoverageOutcome;
 
 /// The subject type of a visit.
 pub const VISIT_SUBJECT_TYPE: &str = "clinics.visit";
@@ -75,6 +78,19 @@ pub struct Visit {
     pub ended_at: Option<DateTime>,
     /// The cancellation reason code of the booking.
     pub cancel_reason: Option<String>,
+    /// The eligibility result the receptionist recorded for the policy
+    /// (`CLN.INS.02`).
+    pub eligibility_check_id: Option<i64>,
+    /// Whether that result is positive.
+    pub eligibility_positive: Option<bool>,
+    /// What the cover of an insured visit turned out to be (`CLN.ACL.15`);
+    /// `None` for a visit that is not insured.
+    pub coverage_outcome: Option<CoverageOutcome>,
+    /// The policy the visit's charge split reads: the appointment's own for
+    /// *insured*, the other one for *re-split*, none for *self-pay*.
+    pub coverage_policy_id: Option<i64>,
+    /// The signed self-pay consent of a *self-pay* visit.
+    pub consent_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: VisitStatus,
     /// When the row was created.
