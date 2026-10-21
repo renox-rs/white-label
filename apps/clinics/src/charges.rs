@@ -41,10 +41,10 @@ use std::collections::BTreeMap;
 
 use renox::db::{Json, now};
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::sales::self_pay_prices;
 use wl_kernel::scheduling::{BookingId, SchedulingFuture, WorkDone, WorkDoneStatus};
-use wl_kernel::Subject;
 
 use crate::appointment::Appointment;
 use crate::auth_check::{self, Need};
@@ -205,8 +205,17 @@ async fn record(
     if kind == ChargeKind::Service && policy.is_some() {
         // Units no authorisation covers go self-pay and need the consent.
         let existing = ChargeLine::active_of(&state.db, visit.id).await?;
-        let needs = needs_for(state, &visit, &existing, Some((new.code.as_str(), new.units))).await?;
-        for need in needs.iter().filter(|n| n.code == new.code && n.self_pay > 0) {
+        let needs = needs_for(
+            state,
+            &visit,
+            &existing,
+            Some((new.code.as_str(), new.units)),
+        )
+        .await?;
+        for need in needs
+            .iter()
+            .filter(|n| n.code == new.code && n.self_pay > 0)
+        {
             let consent = match visit.consent_id {
                 Some(id) => SelfPayConsent::find(&state.db, id).await?,
                 None => None,
@@ -252,10 +261,7 @@ async fn record(
     // Something was done: *none* no longer holds.
     Visit::query()
         .where_(Visit::ID.eq(visit.id))
-        .update(
-            &state.db,
-            &[("work_none", &false), ("updated_at", &now())],
-        )
+        .update(&state.db, &[("work_none", &false), ("updated_at", &now())])
         .await?;
     Ok(line)
 }
@@ -299,7 +305,10 @@ pub async fn record_consumable(
 pub async fn mark_none(state: &AppState, visit: i64) -> Result<Visit> {
     let visit = open_visit(state, visit).await?;
     if !ChargeLine::active_of(&state.db, visit.id).await?.is_empty() {
-        return Err(refused(english("clinics.charges.problem.none_with_work", &[])));
+        return Err(refused(english(
+            "clinics.charges.problem.none_with_work",
+            &[],
+        )));
     }
     Visit::query()
         .where_(Visit::ID.eq(visit.id))
@@ -457,8 +466,8 @@ pub async fn quote(state: &AppState, visit: &Visit) -> Result<Quote> {
         .collect();
     let mut parts = Vec::with_capacity(lines.len());
     for line in &mut lines {
-        let needs_authorisation = line.kind == ChargeKind::Service
-            && needs.iter().any(|need| need.code == line.code);
+        let needs_authorisation =
+            line.kind == ChargeKind::Service && needs.iter().any(|need| need.code == line.code);
         let covered = if needs_authorisation {
             let left = authorised.entry(line.code.clone()).or_insert(0);
             let taken = line.units.min(*left);

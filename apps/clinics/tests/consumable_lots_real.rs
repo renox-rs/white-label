@@ -9,8 +9,8 @@ mod support;
 
 use renox::prelude::*;
 use wl_inventory::StockMovement;
-use wl_scheduling::service::{self, Actor};
 use wl_scheduling::Refusal;
+use wl_scheduling::service::{self, Actor};
 
 use clinics::ChargeLine;
 use support::desk::desk_with_stock;
@@ -25,7 +25,10 @@ async fn the_issue_screen_proposes_the_lot_with_the_earliest_expiry() {
     store(&d, 2, 2).await;
     let (_, visit) = open_visit(&d).await;
     let page = d
-        .get(&d.rita, &format!("/clinics/visits/{}?code=filler", visit.id))
+        .get(
+            &d.rita,
+            &format!("/clinics/visits/{}?code=filler", visit.id),
+        )
         .await;
     page.assert_ok().assert_see("L1").assert_see("2027-01-31");
     assert!(!page.text().contains("L2 ("), "{}", page.text());
@@ -41,7 +44,10 @@ async fn a_lot_tracked_line_without_a_lot_blocks_the_check_out() {
     let s = store(&d, 2, 2).await;
     let (booking, visit) = open_visit(&d).await;
     record(&d, &visit, 1, "").await.assert_ok();
-    let line = ChargeLine::active_of(d.t.db(), visit.id).await.unwrap().remove(0);
+    let line = ChargeLine::active_of(d.t.db(), visit.id)
+        .await
+        .unwrap()
+        .remove(0);
     assert!(line.lot_tracked);
     assert_eq!(line.lot_id, None);
     d.get(&d.rita, &format!("/clinics/visits/{}", visit.id))
@@ -98,7 +104,10 @@ async fn a_wrong_lot_is_edited_before_the_check_out() {
     store(&d, 2, 2).await;
     let (booking, visit) = open_visit(&d).await;
     record(&d, &visit, 1, "L1").await.assert_ok();
-    let line = ChargeLine::active_of(d.t.db(), visit.id).await.unwrap().remove(0);
+    let line = ChargeLine::active_of(d.t.db(), visit.id)
+        .await
+        .unwrap()
+        .remove(0);
     assert_eq!(line.lot_number.as_deref(), Some("L1"));
     d.post(
         &d.rita,
@@ -137,7 +146,9 @@ async fn the_short_quantity_becomes_a_pending_issue_and_the_check_out_succeeds()
         issued(&d, &visit).await,
         vec![(Some("L1".to_owned()), 1, false), (None, 1, true)]
     );
-    let pending = wl_inventory::pending_issue::open_of(d.t.db()).await.unwrap();
+    let pending = wl_inventory::pending_issue::open_of(d.t.db())
+        .await
+        .unwrap();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].quantity_milli, 1_000);
     assert_eq!(pending[0].source_id, visit.id);
@@ -166,7 +177,10 @@ async fn a_quantity_larger_than_one_lot_is_split_per_lot_first_expiry_first() {
         ]
     );
     assert_eq!(
-        wl_inventory::pending_issue::open_of(d.t.db()).await.unwrap().len(),
+        wl_inventory::pending_issue::open_of(d.t.db())
+            .await
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -180,9 +194,18 @@ async fn a_held_lot_is_refused() {
     let (_, visit) = open_visit(&d).await;
     let refused = record(&d, &visit, 1, "L3").await;
     refused.assert_status(422);
-    assert!(refused.text().contains("cannot be issued"), "{}", refused.text());
+    assert!(
+        refused.text().contains("cannot be issued"),
+        "{}",
+        refused.text()
+    );
     record(&d, &visit, 1, "L9").await.assert_status(422);
-    assert!(ChargeLine::active_of(d.t.db(), visit.id).await.unwrap().is_empty());
+    assert!(
+        ChargeLine::active_of(d.t.db(), visit.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// A visit cancelled after the check-in issues what was used before it

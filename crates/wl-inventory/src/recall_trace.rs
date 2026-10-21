@@ -49,8 +49,8 @@ use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::inventory::{
     LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotTrace, RECALL_LINE_SUBJECT_TYPE,
-    RECALL_SUBJECT_TYPE, RecallTraced,
-    TraceFuture, TraceParty, TracePartyResolver, TracedHolder, TracedPlace, trace_party_resolver,
+    RECALL_SUBJECT_TYPE, RecallTraced, TraceFuture, TraceParty, TracePartyResolver, TracedHolder,
+    TracedPlace, trace_party_resolver,
 };
 use wl_kernel::{PartyId, Subject};
 

@@ -380,7 +380,11 @@ pub async fn void(
         );
         let description = english(
             "clinics.claim.task.coverage_description",
-            &[("visit", &visit_number), ("number", &number), ("reason", &reason)],
+            &[
+                ("visit", &visit_number),
+                ("number", &number),
+                ("reason", &reason),
+            ],
         );
         let task = RoleTask::new(
             visit.subject(),
@@ -445,7 +449,10 @@ mod tests {
         assert_eq!(reason_text(&VoidRequest::new("duplicate")), "duplicate");
         assert!(REASON_CODES.contains(&request.code.as_str()));
         let duplicate = VoidRequest::new("duplicate").duplicate_of(7).policy(3);
-        assert_eq!((duplicate.duplicate_of, duplicate.policy), (Some(7), Some(3)));
+        assert_eq!(
+            (duplicate.duplicate_of, duplicate.policy),
+            (Some(7), Some(3))
+        );
     }
 
     #[test]

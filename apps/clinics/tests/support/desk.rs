@@ -122,10 +122,7 @@ impl Desk {
     /// A booking of `service` tomorrow at `hour` for the patient, paid for by
     /// a deposit of the service's amount held for it.
     pub async fn booking(&self, service: &ServiceType, hour: u32) -> Booking {
-        let booking = self
-            .t
-            .book(service, &self.doctor, at(day(1), hour))
-            .await;
+        let booking = self.t.book(service, &self.doctor, at(day(1), hour)).await;
         if booking.deposit_amount > 0 {
             self.t
                 .deposits
@@ -183,9 +180,14 @@ impl Desk {
 
     /// The service starts.
     pub async fn start(&self, booking: &Booking) {
-        service::start(self.t.state(), booking.id, Actor::staff(self.rita.id), now())
-            .await
-            .expect("the service starts");
+        service::start(
+            self.t.state(),
+            booking.id,
+            Actor::staff(self.rita.id),
+            now(),
+        )
+        .await
+        .expect("the service starts");
     }
 
     /// The service is complete (the booking's end is a minute away, so the

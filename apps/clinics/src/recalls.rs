@@ -46,8 +46,8 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::StateMachine;
 use wl_kernel::inventory::{
-    RECALL_SUBJECT_TYPE, TraceFuture, TraceMark, TraceParty, TracePartyResolver,
-    lot_trace, provide_trace_party_resolver,
+    RECALL_SUBJECT_TYPE, TraceFuture, TraceMark, TraceParty, TracePartyResolver, lot_trace,
+    provide_trace_party_resolver,
 };
 use wl_kernel::notify::{
     self, Category, MessageGaveUp, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
@@ -72,7 +72,8 @@ pub const VIEWED: &str = "clinics.recall_viewed";
 const SUBJECT_AR: &str = "رسالة من {{ clinic }}";
 
 /// The Arabic body of the notice.
-const BODY_AR: &str = "{{ clinic }}: يرجى الاتصال بنا بخصوص منتج استُخدم خلال زيارتكم بتاريخ {{ dates }}. {{ contact }}";
+const BODY_AR: &str =
+    "{{ clinic }}: يرجى الاتصال بنا بخصوص منتج استُخدم خلال زيارتكم بتاريخ {{ dates }}. {{ contact }}";
 
 /// The app's `TracePartyResolver`: a visit is its patient, or the guardian of
 /// a dependant.
@@ -328,7 +329,10 @@ pub async fn on_gave_up(state: &AppState, event: &MessageGaveUp) -> Result {
 }
 
 /// The scope a notice lies in: the branch of the first visit it covers.
-pub async fn notice_scope(db: &Db, notice: &RecallNotice) -> Result<renox::auth::permissions::Scope> {
+pub async fn notice_scope(
+    db: &Db,
+    notice: &RecallNotice,
+) -> Result<renox::auth::permissions::Scope> {
     for visit in notice.visit_ids.0.iter() {
         if let Some(visit) = Visit::find(db, *visit).await? {
             return branch_scope(db, &visit).await;
@@ -412,7 +416,7 @@ pub(crate) fn register(app: &mut Registry) {
             }
         })
     });
-    app.listen(|event: MessageGaveUp, state: AppState| async move {
-        on_gave_up(&state, &event).await
-    });
+    app.listen(
+        |event: MessageGaveUp, state: AppState| async move { on_gave_up(&state, &event).await },
+    );
 }

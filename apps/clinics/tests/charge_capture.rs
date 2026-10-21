@@ -48,7 +48,10 @@ async fn a_re_split_visit_is_divided_by_the_contract_of_the_second_policy() {
     d.post(
         &d.rita,
         &format!("{appointment}/eligibility"),
-        &[("result", "positive"), ("policy", p2.id.to_string().as_str())],
+        &[
+            ("result", "positive"),
+            ("policy", p2.id.to_string().as_str()),
+        ],
     )
     .await
     .assert_ok();
@@ -136,7 +139,10 @@ async fn the_tariff_the_deductible_and_an_exclusion_shape_the_split() {
     assert_eq!((visit.patient_total, visit.payer_total), (17_000, 25_000));
     let lines = ChargeLine::active_of(d.t.db(), visit.id).await.unwrap();
     assert_eq!(lines[0].unit_price, 30_000);
-    assert_eq!((lines[0].patient_share, lines[0].payer_share), (5_000, 25_000));
+    assert_eq!(
+        (lines[0].patient_share, lines[0].payer_share),
+        (5_000, 25_000)
+    );
     assert_eq!((lines[1].patient_share, lines[1].payer_share), (12_000, 0));
     assert_eq!(d.t.books.all()[0].gross(), 17_000);
     // The deposit of AED 100.00 is all applied: the patient owes AED 70.00.
@@ -198,7 +204,10 @@ async fn a_service_not_on_the_self_pay_consent_waits_for_an_updated_one() {
         res.text()
     );
     assert_eq!(
-        ChargeLine::active_of(d.t.db(), visit.id).await.unwrap().len(),
+        ChargeLine::active_of(d.t.db(), visit.id)
+            .await
+            .unwrap()
+            .len(),
         1
     );
 
@@ -216,8 +225,20 @@ async fn a_service_not_on_the_self_pay_consent_waits_for_an_updated_one() {
     let consents = SelfPayConsent::of_booking(d.t.db(), booking.id)
         .await
         .unwrap();
-    assert!(consents.iter().find(|c| c.id == first).unwrap().is_superseded());
-    assert!(!consents.iter().find(|c| c.id == second).unwrap().is_superseded());
+    assert!(
+        consents
+            .iter()
+            .find(|c| c.id == first)
+            .unwrap()
+            .is_superseded()
+    );
+    assert!(
+        !consents
+            .iter()
+            .find(|c| c.id == second)
+            .unwrap()
+            .is_superseded()
+    );
     assert_eq!(consents.last().unwrap().codes(), ["consultation", "x_ray"]);
     d.deliver(&visit, "x_ray", 1).await.assert_ok();
 
@@ -245,7 +266,11 @@ async fn an_unpriced_service_and_a_missing_permission_are_refused() {
     d.post(
         &d.rita,
         &format!("/clinics/visits/{}/charges", visit.id),
-        &[("kind", "service"), ("code", "consultation"), ("units", "1")],
+        &[
+            ("kind", "service"),
+            ("code", "consultation"),
+            ("units", "1"),
+        ],
     )
     .await
     .assert_forbidden();
@@ -258,7 +283,9 @@ async fn an_unpriced_service_and_a_missing_permission_are_refused() {
     .await
     .assert_forbidden();
     // Fewer than one unit.
-    d.deliver(&visit, "consultation", 0).await.assert_status(422);
+    d.deliver(&visit, "consultation", 0)
+        .await
+        .assert_status(422);
 }
 
 /// A self-pay service is paid by the patient's package when it has credit;
@@ -325,7 +352,9 @@ async fn charging_a_service_consumes_the_authorisation() {
     let visit = d.check_in(&booking).await;
     d.start(&booking).await;
     // Checked in, nothing consumed.
-    let held = PriorAuthorisation::find_or_404(d.t.db(), a1.id).await.unwrap();
+    let held = PriorAuthorisation::find_or_404(d.t.db(), a1.id)
+        .await
+        .unwrap();
     assert_eq!(held.units_consumed, 0);
     d.deliver(&visit, "procedure", 1).await.assert_ok();
     assert_eq!(
@@ -338,14 +367,18 @@ async fn charging_a_service_consumes_the_authorisation() {
     );
     d.complete(&booking).await;
 
-    let a1 = PriorAuthorisation::find_or_404(d.t.db(), a1.id).await.unwrap();
+    let a1 = PriorAuthorisation::find_or_404(d.t.db(), a1.id)
+        .await
+        .unwrap();
     assert_eq!((a1.status, a1.units_consumed), (AuthStatus::Used, 1));
     let visit = d.visit(visit.id).await;
     assert_eq!((visit.patient_total, visit.payer_total), (12_000, 108_000));
     assert!(visit.authorisations_consumed_at.is_some());
     let flags = AppointmentFlag::open_of(d.t.db(), later.id).await.unwrap();
     assert!(
-        flags.iter().any(|f| f.cause == FlagCause::NeedsAuthorisation),
+        flags
+            .iter()
+            .any(|f| f.cause == FlagCause::NeedsAuthorisation),
         "the later appointment is flagged: {flags:?}"
     );
     assert_eq!(d.t.claims.all()[0].payer_reference.as_deref(), Some("A-1"));
@@ -398,6 +431,8 @@ async fn units_above_the_authorisation_go_self_pay_with_the_consent() {
         .unwrap()
         .remove(0);
     assert_eq!((line.authorised_units, line.self_pay_units), (2, 1));
-    let a1 = PriorAuthorisation::find_or_404(d.t.db(), a1.id).await.unwrap();
+    let a1 = PriorAuthorisation::find_or_404(d.t.db(), a1.id)
+        .await
+        .unwrap();
     assert_eq!((a1.status, a1.units_consumed), (AuthStatus::Used, 2));
 }

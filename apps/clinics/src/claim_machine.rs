@@ -851,10 +851,7 @@ fn void_rules(transition: Transition<Claim>) -> Transition<Claim> {
                 set(
                     tx,
                     id,
-                    &[
-                        ("voided_on", &Some(dubai_date(now()))),
-                        ("voided_by", &by),
-                    ],
+                    &[("voided_on", &Some(dubai_date(now()))), ("voided_by", &by)],
                 )
                 .await
             })
@@ -946,7 +943,13 @@ mod tests {
 
     /// A transition as the table below states it: name, from, to, whether
     /// it is a system one, its permissions.
-    type Expected = (&'static str, &'static [&'static str], &'static str, bool, &'static [&'static str]);
+    type Expected = (
+        &'static str,
+        &'static [&'static str],
+        &'static str,
+        bool,
+        &'static [&'static str],
+    );
 
     fn day(text: &str) -> NaiveDate {
         text.parse().expect("a date")
@@ -1132,13 +1135,23 @@ mod tests {
             ..input()
         };
         let refusal = window_missed(&draft, &open).unwrap_err();
-        assert!(refusal.contains("2026-11-03"), "the last day counts: {refusal}");
+        assert!(
+            refusal.contains("2026-11-03"),
+            "the last day counts: {refusal}"
+        );
         let accepting = ClaimInput {
             accepts_late: true,
             ..missed.clone()
         };
-        assert!(window_missed(&draft, &accepting).unwrap_err().contains("late"));
-        assert!(window_missed(&draft, &input()).is_err(), "no window to count");
+        assert!(
+            window_missed(&draft, &accepting)
+                .unwrap_err()
+                .contains("late")
+        );
+        assert!(
+            window_missed(&draft, &input()).is_err(),
+            "no window to count"
+        );
         // The window does not matter once the payer answered.
         let denied = Claim {
             status: ClaimStatus::Denied,

@@ -46,7 +46,9 @@ pub async fn lot(d: &Desk, item: &Item, number: &str, expiry: NaiveDate, status:
         ..Lot::default()
     };
     let mut tx = d.t.db().begin().await.unwrap();
-    lot.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    lot.insert_in_state(&mut tx, status, "fixture")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
     lot
 }
@@ -105,7 +107,12 @@ pub async fn open_visit(d: &Desk) -> (Booking, Visit) {
 }
 
 /// Records `units` of filler on the visit with `lot` (blank: none).
-pub async fn record(d: &Desk, visit: &Visit, units: i64, lot: &str) -> renox::testing::TestResponse {
+pub async fn record(
+    d: &Desk,
+    visit: &Visit,
+    units: i64,
+    lot: &str,
+) -> renox::testing::TestResponse {
     d.post(
         &d.rita,
         &format!("/clinics/visits/{}/charges", visit.id),
@@ -134,7 +141,6 @@ pub async fn issued(d: &Desk, visit: &Visit) -> Vec<(Option<String>, i64, bool)>
         })
         .collect()
 }
-
 
 /// A started visit of `patient` on `days` days from today at `hour`, with the
 /// booker's notes (the reason for the visit).

@@ -43,7 +43,10 @@ async fn the_choices_are_first_expiry_first_and_a_picked_lot_goes_first() {
         .unwrap()
         .expect("the branch has a store");
     assert_eq!(found, store.subject());
-    assert_eq!(stock.store_of(t.state(), "test.branch", 9).await.unwrap(), None);
+    assert_eq!(
+        stock.store_of(t.state(), "test.branch", 9).await.unwrap(),
+        None
+    );
 
     let choice = stock
         .choices(t.state(), "FILLER", &found)
@@ -55,7 +58,13 @@ async fn the_choices_are_first_expiry_first_and_a_picked_lot_goes_first() {
     assert_eq!(numbers, ["L1", "L2"]);
     assert_eq!(choice.lots[0].available_milli, 1_000);
     assert_eq!(choice.lots[0].expiry_date, Some(day(2027, 1, 31)));
-    assert!(stock.choices(t.state(), "NOPE", &found).await.unwrap().is_none());
+    assert!(
+        stock
+            .choices(t.state(), "NOPE", &found)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     // The user picked L2: it is taken first, then L1 first expiry first.
     let source = Subject::new("clinics.visit", 1);

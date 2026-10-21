@@ -268,9 +268,8 @@ async fn create(
         new = new.accepts_late_claims();
     }
     if !form.reminder_days.trim().is_empty() {
-        new = new.reminder_days(
-            parse_id(&form.reminder_days).ok_or_else(|| invalid("reminder: days"))?,
-        );
+        new = new
+            .reminder_days(parse_id(&form.reminder_days).ok_or_else(|| invalid("reminder: days"))?);
     }
     contracts::create(&state, Some(user.id), new).await?;
     Ok((

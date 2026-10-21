@@ -735,15 +735,15 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("clinics.claim.deadline", "Last day to send"),
     ("clinics.claim.closed", "Closed as"),
-    (
-        "clinics.claim.closed.written_off",
-        "Written off :amount",
-    ),
+    ("clinics.claim.closed.written_off", "Written off :amount"),
     (
         "clinics.claim.closed.transferred",
         "Moved to the patient :amount",
     ),
-    ("clinics.claim.not_submitted_in_time", "not submitted in time"),
+    (
+        "clinics.claim.not_submitted_in_time",
+        "not submitted in time",
+    ),
     (
         "clinics.claim.kpi",
         "Not submitted in time: :amount in :claims claims closed after the payer's first-submission window.",
@@ -1081,7 +1081,10 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.lots.proposed_description",
         "The lot with the earliest expiry at the branch store that is not expired and not on hold. Leave the lot blank to choose it later.",
     ),
-    ("clinics.lots.proposed_none", "No lot is available at the branch store."),
+    (
+        "clinics.lots.proposed_none",
+        "No lot is available at the branch store.",
+    ),
     ("clinics.lots.code", "Consumable code"),
     ("clinics.lots.propose", "Show the proposed lot"),
     ("clinics.lots.assign", "Set the lot"),
@@ -1095,7 +1098,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.lots.required", "Lot required"),
     ("clinics.lots.issued", "Issued"),
     ("clinics.lots.waiting", "Waiting for stock"),
-    ("clinics.lots.none_yet", "Issued from the store when the visit is checked out."),
+    (
+        "clinics.lots.none_yet",
+        "Issued from the store when the visit is checked out.",
+    ),
     (
         "clinics.lots.problem.not_available",
         "Lot :lot cannot be issued: it is unknown at this store, on hold or expired.",

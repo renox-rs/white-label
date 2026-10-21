@@ -22,7 +22,8 @@ use crate::texts;
 
 /// Whether `user` may record calls somewhere: globally or in a branch.
 fn may_call(user: &AuthUser) -> bool {
-    user.allows(permissions::RECALLS_CALL) || user.has_permission_anywhere(permissions::RECALLS_CALL)
+    user.allows(permissions::RECALLS_CALL)
+        || user.has_permission_anywhere(permissions::RECALLS_CALL)
 }
 
 /// The routes of the pages.
@@ -82,13 +83,12 @@ async fn show(
             Some(party) => party_name(&state, &lang, PartyId(party)).await,
             None => text(&lang, "none"),
         };
-        let told_through = if row.patient.is_some_and(|party| party != row.addressee)
-            && row.addressee != 0
-        {
-            party_name(&state, &lang, PartyId(row.addressee)).await
-        } else {
-            text(&lang, "none")
-        };
+        let told_through =
+            if row.patient.is_some_and(|party| party != row.addressee) && row.addressee != 0 {
+                party_name(&state, &lang, PartyId(row.addressee)).await
+            } else {
+                text(&lang, "none")
+            };
         lines.push(TraceLine {
             patient,
             visit_date: row

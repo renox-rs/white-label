@@ -8,8 +8,8 @@
 mod support;
 
 use clinics::{ChargeLine, VisitStatus};
-use support::desk::{PAYER, desk};
 use support::day;
+use support::desk::{PAYER, desk};
 use wl_scheduling::BookingStatus;
 
 /// A clinic with a deposit of AED 200.00 on the consultation and a filler
@@ -47,7 +47,11 @@ async fn a_walk_out_bills_the_consumable_and_the_deposit_settles_it() {
     assert_eq!(invoices.len(), 1);
     assert_eq!(invoices[0].gross(), 15_000);
     assert!(invoices[0].issued);
-    assert_eq!(d.t.deposits.allocated_total(), 15_000, "settled by the deposit");
+    assert_eq!(
+        d.t.deposits.allocated_total(),
+        15_000,
+        "settled by the deposit"
+    );
     assert!(d.t.claims.all().is_empty());
 }
 
@@ -71,7 +75,10 @@ async fn a_delivered_service_is_billed_and_the_balance_is_due() {
     assert!(d.t.refunds.asked().is_empty(), "no refund, no forfeit");
     let done = d.t.booking(booking.id).await;
     assert_eq!(done.deposit_forfeited, 0);
-    assert_eq!(done.deposit_outcome.as_deref(), Some("applied_to_work_done"));
+    assert_eq!(
+        done.deposit_outcome.as_deref(),
+        Some("applied_to_work_done")
+    );
 }
 
 /// Done when 3: an `in_progress` visit stopped for `equipment_failure` with a
@@ -130,10 +137,18 @@ async fn a_clinic_stop_the_patient_accepts_is_billed() {
         .await
         .assert_status(303);
 
-    assert_eq!(d.t.refunds.amounts(), [20_000], "the deposit is refunded in full");
+    assert_eq!(
+        d.t.refunds.amounts(),
+        [20_000],
+        "the deposit is refunded in full"
+    );
     let invoice = &d.t.books.all()[0];
     assert_eq!(invoice.gross(), 15_000);
-    assert_eq!(d.t.deposits.allocated_total(), 0, "the deposit is not applied");
+    assert_eq!(
+        d.t.deposits.allocated_total(),
+        0,
+        "the deposit is not applied"
+    );
     let visit = d.visit(visit.id).await;
     assert_eq!(visit.patient_total, 15_000);
     let lines = ChargeLine::active_of(d.t.db(), visit.id).await.unwrap();
@@ -290,7 +305,10 @@ async fn a_package_session_follows_the_service_delivered() {
     let visit = d.check_in(&first).await;
     d.issue(&visit, "filler_syringe", 1).await.assert_ok();
     d.cancel(&first, "walked_out").await.assert_status(303);
-    assert!(d.t.packages.used().is_empty(), "a consumable uses no session");
+    assert!(
+        d.t.packages.used().is_empty(),
+        "a consumable uses no session"
+    );
 
     let second = d.booking(&d.consultation, 11).await;
     let visit = d.check_in(&second).await;

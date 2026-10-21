@@ -15,8 +15,8 @@ use wl_kernel::approvals;
 use wl_kernel::payer_bills::{PayerBillStatus, payer_bills};
 
 use clinics::claim_closing::{self, Closed};
-use clinics::contracts::{self, NewContract};
 use clinics::claims;
+use clinics::contracts::{self, NewContract};
 use clinics::{ClaimStatus, PayerContract, Visit};
 use support::dubai;
 use support::real::{PAYER, Real, boot_real};
@@ -111,18 +111,26 @@ async fn with_the_flag_on_the_share_moves_to_the_patient() {
     let id = contract.to_string();
 
     // The clinic manager cannot set it; the owner can.
-    t.post(&mona, path, &[("contract", id.as_str()), ("allowed", "yes")])
-        .await
-        .assert_forbidden();
+    t.post(
+        &mona,
+        path,
+        &[("contract", id.as_str()), ("allowed", "yes")],
+    )
+    .await
+    .assert_forbidden();
     assert!(
         !PayerContract::find_or_404(t.db(), contract)
             .await
             .unwrap()
             .bill_missed_to_patient
     );
-    t.post(&olga, path, &[("contract", id.as_str()), ("allowed", "yes")])
-        .await
-        .assert_ok();
+    t.post(
+        &olga,
+        path,
+        &[("contract", id.as_str()), ("allowed", "yes")],
+    )
+    .await
+    .assert_ok();
     assert!(
         PayerContract::find_or_404(t.db(), contract)
             .await
@@ -407,9 +415,15 @@ async fn a_denied_claim_is_written_off_by_the_clinic_manager_alone() {
     claims::validate(t.state(), &cora, claim.id, None, dubai("2026-11-02", 9, 0))
         .await
         .unwrap();
-    claims::submit(t.state(), &cora, claim.id, Some("CH-1"), dubai("2026-11-03", 9, 0))
-        .await
-        .unwrap();
+    claims::submit(
+        t.state(),
+        &cora,
+        claim.id,
+        Some("CH-1"),
+        dubai("2026-11-03", 9, 0),
+    )
+    .await
+    .unwrap();
     let line = clinics::ClaimLine::of_claim(t.db(), claim.id)
         .await
         .unwrap()
@@ -453,8 +467,14 @@ async fn a_denied_claim_is_written_off_by_the_clinic_manager_alone() {
     assert_eq!(kpi.claims, 0);
     // Written off is left only by a recoupment; it is not written off twice.
     assert!(
-        claim_closing::write_off(t.state(), &mona, claim.id, "again", dubai("2026-12-01", 9, 0))
-            .await
-            .is_err()
+        claim_closing::write_off(
+            t.state(),
+            &mona,
+            claim.id,
+            "again",
+            dubai("2026-12-01", 9, 0)
+        )
+        .await
+        .is_err()
     );
 }

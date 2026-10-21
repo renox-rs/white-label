@@ -12,20 +12,20 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use renox::AuthUser;
 use renox::auth::{Auth, Permissions, permissions};
 use renox::chrono::NaiveDate;
 use renox::db::now;
 use renox::prelude::*;
-use renox::AuthUser;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_invoicing::{PayerAgreement, VatRecipient, WlInvoicing, permissions as inv};
+use wl_kernel::notify::provide_notifier;
 use wl_kernel::parties::{
     BillingIdentity, PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary,
     provide_directory,
 };
 use wl_kernel::payer_bills::{NewPayerBill, NewPayerBillLine, payer_bills};
-use wl_kernel::notify::provide_notifier;
 use wl_kernel::tickets::provide_task_creator;
 use wl_kernel::{LegalEntity, PartyId};
 
@@ -339,8 +339,8 @@ impl Real {
         ];
         let user = self.user_row("Olga", &grants).await;
         permissions::define_role(self.db(), clinics::permissions::OWNER_ROLE, &grants)
-        .await
-        .unwrap();
+            .await
+            .unwrap();
         user.assign_role(self.db(), clinics::permissions::OWNER_ROLE)
             .await
             .unwrap();

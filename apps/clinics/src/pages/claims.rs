@@ -506,7 +506,12 @@ async fn show(
     }
     let void_codes: Vec<[String; 2]> = REASON_CODES
         .iter()
-        .map(|code| [(*code).to_owned(), text(&lang, &format!("claim.void_code.{code}"))])
+        .map(|code| {
+            [
+                (*code).to_owned(),
+                text(&lang, &format!("claim.void_code.{code}")),
+            ]
+        })
         .collect();
     let void_info = match (&claim.void_code, claim.voided_on) {
         (Some(code), Some(on)) => text_with(
@@ -808,11 +813,7 @@ async fn void(
         .await
         .map_err(refusal)?;
     let message = match (&voided.replacement, voided.to_resolve) {
-        (Some(made), _) => text_with(
-            &lang,
-            "claim.voided_resplit",
-            &[("number", &made.number())],
-        ),
+        (Some(made), _) => text_with(&lang, "claim.voided_resplit", &[("number", &made.number())]),
         (None, true) => text(&lang, "claim.voided_to_resolve"),
         (None, false) => text(&lang, "claim.voided"),
     };

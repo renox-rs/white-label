@@ -7,9 +7,9 @@
 
 mod support;
 
+use renox::AuthUser;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use renox::AuthUser;
 use wl_invoicing::{PayerAgreement, VatRecipient};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
@@ -243,7 +243,11 @@ async fn a_policy_that_cannot_be_used_is_refused_before_anything_changes() {
         )
         .await;
     refused.assert_status(422);
-    assert!(refused.text().contains("another patient"), "{}", refused.text());
+    assert!(
+        refused.text().contains("another patient"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::Ready);
     assert_eq!(t.bill_of(&claim).await.status, PayerBillStatus::Draft);
 }
@@ -255,9 +259,15 @@ async fn a_claim_that_was_ever_sent_is_not_voided() {
     let t = boot_real().await;
     let cora = t.coordinator().await;
     let claim = ready(&t, &cora).await;
-    claims::submit(t.state(), &cora, claim.id, Some("CH-1"), dubai("2026-11-03", 9, 0))
-        .await
-        .unwrap();
+    claims::submit(
+        t.state(),
+        &cora,
+        claim.id,
+        Some("CH-1"),
+        dubai("2026-11-03", 9, 0),
+    )
+    .await
+    .unwrap();
     let rejected = claims::reject_submission(
         t.state(),
         &cora,
@@ -276,7 +286,11 @@ async fn a_claim_that_was_ever_sent_is_not_voided() {
         .post(&cora, &void_path(&claim), &[("code", "wrong_payer")])
         .await;
     refused.assert_status(422);
-    assert!(refused.text().contains("sent to the payer"), "{}", refused.text());
+    assert!(
+        refused.text().contains("sent to the payer"),
+        "{}",
+        refused.text()
+    );
     let after = t.claim_now(claim.id).await;
     assert_eq!(after.status, ClaimStatus::Draft);
     let bill = t.bill_of(&after).await;
@@ -293,9 +307,15 @@ async fn a_claim_that_was_ever_sent_is_not_voided() {
     claims::validate(t.state(), &cora, claim.id, None, dubai("2026-11-05", 9, 0))
         .await
         .unwrap();
-    claims::submit(t.state(), &cora, claim.id, Some("CH-2"), dubai("2026-11-06", 9, 0))
-        .await
-        .unwrap();
+    claims::submit(
+        t.state(),
+        &cora,
+        claim.id,
+        Some("CH-2"),
+        dubai("2026-11-06", 9, 0),
+    )
+    .await
+    .unwrap();
     t.post(&cora, &void_path(&claim), &[("code", "wrong_payer")])
         .await
         .assert_status(422);
@@ -367,7 +387,10 @@ async fn a_duplicate_names_the_claim_it_duplicates() {
     assert_eq!(voided.status, ClaimStatus::Voided);
     assert_eq!(voided.void_duplicate_of, Some(first.id));
     let visit = Visit::find_or_404(t.db(), second.visit_id).await.unwrap();
-    assert!(!visit.coverage_to_resolve, "the other claim carries the share");
+    assert!(
+        !visit.coverage_to_resolve,
+        "the other claim carries the share"
+    );
     assert_eq!(visit.payer_bill_id, None);
     assert!(
         t.tasks
@@ -389,9 +412,7 @@ async fn a_duplicate_names_the_claim_it_duplicates() {
 async fn only_the_billing_coordinator_voids() {
     let t = boot_real().await;
     let claim = t.claim(d("2026-11-01"), &[("consultation", 40_000)]).await;
-    let nobody = t
-        .user("Nina", &[clinics::permissions::VISITS_VIEW])
-        .await;
+    let nobody = t.user("Nina", &[clinics::permissions::VISITS_VIEW]).await;
     t.post(&nobody, &void_path(&claim), &[("code", "wrong_payer")])
         .await
         .assert_forbidden();

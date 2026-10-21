@@ -12,16 +12,16 @@ use std::time::Duration;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use wl_kernel::compliance::{AlertKind, ComplianceAlert, check_missed, is_critical};
 use wl_kernel::compliance::service::NOTIFICATION_TYPE;
+use wl_kernel::compliance::{AlertKind, ComplianceAlert, check_missed, is_critical};
 use wl_kernel::notify::{NotifyRecipient, NotifyRequest};
 use wl_kernel::tickets::Assignee;
 
 use clinics::claim_window::{self, NOTICE, RULE};
-use clinics::contracts::{self, NewContract};
 use clinics::claims;
-use support::real::{PAYER, boot_real};
+use clinics::contracts::{self, NewContract};
 use support::dubai;
+use support::real::{PAYER, boot_real};
 
 fn d(text: &str) -> NaiveDate {
     text.parse().expect("a date")
@@ -110,10 +110,7 @@ async fn a_ready_claim_is_chased_and_a_claim_past_its_window_is_not() {
     let report = claim_window::run(t.state(), d("2026-11-29")).await.unwrap();
     assert_eq!((report.notified, report.tasked), (1, 1));
     let tasks = t.tasks.with_key("clinics.claim_window:");
-    assert_eq!(
-        tasks[0].source_key,
-        Some(claim_window::task_key(ready.id))
-    );
+    assert_eq!(tasks[0].source_key, Some(claim_window::task_key(ready.id)));
     assert_eq!(t.claim_now(old.id).await.window_notified_on, None);
 }
 
@@ -239,7 +236,10 @@ async fn a_one_day_window_with_n_zero_is_chased_on_the_first_run() {
     let tasks = t.tasks.with_key("clinics.claim_window:");
     assert_eq!(tasks[0].assignee, Some(Assignee::user(mia.id)));
     assert_eq!(tasks[0].due_at, Some(dubai("2026-11-02", 23, 59)));
-    assert_eq!(t.claim_now(claim.id).await.window_task_on, Some(d("2026-11-02")));
+    assert_eq!(
+        t.claim_now(claim.id).await.window_task_on,
+        Some(d("2026-11-02"))
+    );
 }
 
 /// Done when 5 (failed): the rule is compliance-critical and set by us; a run

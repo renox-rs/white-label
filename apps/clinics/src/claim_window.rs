@@ -48,7 +48,9 @@ use wl_kernel::COMPANY_ADMIN_ROLE;
 use wl_kernel::automation::{RuleRunSpec, run_rule};
 use wl_kernel::compliance::{CriticalRule, occurrence_key, schedule_subject};
 use wl_kernel::documents::today;
-use wl_kernel::notify::{self, GROUP_DOCUMENTS, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier};
+use wl_kernel::notify::{
+    self, GROUP_DOCUMENTS, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier,
+};
 use wl_kernel::role_tasks::{self, RoleTask};
 
 use crate::claim::Claim;
@@ -121,13 +123,11 @@ async fn mark(state: &AppState, id: i64, column: &str, day: NaiveDate) -> Result
 }
 
 /// Tells the coordinators that `claim` is still not sent (N).
-async fn tell(
-    state: &AppState,
-    claim: &Claim,
-    deadline: NaiveDate,
-    day: NaiveDate,
-) -> Result<()> {
-    let status = english(&format!("clinics.claim.status.{}", claim.status.as_str()), &[]);
+async fn tell(state: &AppState, claim: &Claim, deadline: NaiveDate, day: NaiveDate) -> Result<()> {
+    let status = english(
+        &format!("clinics.claim.status.{}", claim.status.as_str()),
+        &[],
+    );
     let days_left = (deadline - day).num_days();
     for user in coordinators(state).await? {
         let request = NotifyRequest::new(NOTICE, claim.subject())
@@ -149,7 +149,10 @@ async fn tell(
 /// was opened (not when ticketing is off, or it exists).
 async fn open_task(state: &AppState, claim: &Claim, deadline: NaiveDate) -> Result<bool> {
     let number = claim.number();
-    let status = english(&format!("clinics.claim.status.{}", claim.status.as_str()), &[]);
+    let status = english(
+        &format!("clinics.claim.status.{}", claim.status.as_str()),
+        &[],
+    );
     let deadline_text = deadline.to_string();
     let visit_date = claim.visit_date.to_string();
     let title = english(
@@ -165,8 +168,13 @@ async fn open_task(state: &AppState, claim: &Claim, deadline: NaiveDate) -> Resu
             ("deadline", &deadline_text),
         ],
     );
-    let mut task = RoleTask::new(claim.subject(), CLINIC_MANAGER_ROLE, &title, &task_key(claim.id))
-        .description(&description);
+    let mut task = RoleTask::new(
+        claim.subject(),
+        CLINIC_MANAGER_ROLE,
+        &title,
+        &task_key(claim.id),
+    )
+    .description(&description);
     if let Some(due) = end_of(deadline) {
         task = task.due_at(due);
     }
@@ -174,12 +182,7 @@ async fn open_task(state: &AppState, claim: &Claim, deadline: NaiveDate) -> Resu
 }
 
 /// The steps due for `claim` on `day`; counts them in `report`.
-async fn chase(
-    state: &AppState,
-    claim: &Claim,
-    day: NaiveDate,
-    report: &mut Report,
-) -> Result<()> {
+async fn chase(state: &AppState, claim: &Claim, day: NaiveDate, report: &mut Report) -> Result<()> {
     let Some(contract_id) = claim.contract_id else {
         return Ok(());
     };
@@ -194,14 +197,15 @@ async fn chase(
     }
     if claim.resubmission_count == 0
         && claim.window_notified_on.is_none()
-        && contract.reminder_date(claim.visit_date).is_some_and(|due| day >= due)
+        && contract
+            .reminder_date(claim.visit_date)
+            .is_some_and(|due| day >= due)
     {
         tell(state, claim, deadline, day).await?;
         mark(state, claim.id, "window_notified_on", day).await?;
         report.notified += 1;
     }
-    if claim.window_task_on.is_none() && task_date(claim, &contract).is_some_and(|due| day >= due)
-    {
+    if claim.window_task_on.is_none() && task_date(claim, &contract).is_some_and(|due| day >= due) {
         let opened = open_task(state, claim, deadline).await?;
         mark(state, claim.id, "window_task_on", day).await?;
         report.tasked += usize::from(opened);
@@ -231,8 +235,8 @@ async fn steps(state: &AppState, day: NaiveDate, report: &mut Report) -> Result<
 ///
 /// The database's errors.
 pub async fn run(state: &AppState, day: NaiveDate) -> Result<Report> {
-    let spec = RuleRunSpec::new(RULE, schedule_subject(), occurrence_key(RULE, day))
-        .compliance_critical();
+    let spec =
+        RuleRunSpec::new(RULE, schedule_subject(), occurrence_key(RULE, day)).compliance_critical();
     let seen = Arc::new(Mutex::new(Report::default()));
     let out = Arc::clone(&seen);
     run_rule(state, spec, move |state: AppState| async move {

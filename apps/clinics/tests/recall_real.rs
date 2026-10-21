@@ -19,11 +19,11 @@ use wl_kernel::tickets::Assignee;
 use wl_kernel::{PartyId, Subject};
 use wl_notify::{GiveUpContext, StaffTask, open_give_up_task};
 
+use clinics::ConsumableIssue;
 use clinics::permissions::{
     RECALLS_CALL, RECALLS_NOTIFY, RECALLS_TRACE, RECEPTIONIST_ROLE, VISITS_VIEW,
 };
 use clinics::recall_notice::{NOTICE_TYPE, RecallNotice, RecallNoticeStatus};
-use clinics::ConsumableIssue;
 use support::desk::{Desk, desk_with_stock, desk_with_stock_and_notify};
 use support::stock::{received_on, store, used_filler};
 use support::{Messages, day, dubai};
@@ -127,11 +127,16 @@ async fn opening_a_recall_lists_the_visits_and_their_patients() {
     parties.sort_by_key(|(subject, _)| subject.as_ref().map(|s| s.subject_id));
     assert_eq!(
         parties,
-        vec![(Some(v1.subject()), Some(P1.0)), (Some(v2.subject()), Some(P2.0))]
+        vec![
+            (Some(v1.subject()), Some(P1.0)),
+            (Some(v2.subject()), Some(P2.0))
+        ]
     );
 
     let mia = manager(&d).await;
-    let page = d.get(&mia, &format!("/clinics/recalls/{}", recall.id)).await;
+    let page = d
+        .get(&mia, &format!("/clinics/recalls/{}", recall.id))
+        .await;
     page.assert_ok()
         .assert_see("Amal Rashid")
         .assert_see("Omar Saleh")
@@ -147,7 +152,9 @@ async fn opening_a_recall_lists_the_visits_and_their_patients() {
         .await
         .unwrap();
     assert_eq!(
-        log.iter().filter(|e| e.action == clinics::recalls::VIEWED).count(),
+        log.iter()
+            .filter(|e| e.action == clinics::recalls::VIEWED)
+            .count(),
         1
     );
 }
@@ -215,7 +222,12 @@ async fn a_pending_issue_inside_the_lot_window_is_listed_uncertain() {
     }
     // L1, the recalled lot, arrives a day ago and covers P3's.
     support::stock::receive(&d, &s, &s.l1, 10).await;
-    received_on(&d, &s.l1, renox::db::now() - renox::chrono::TimeDelta::days(1)).await;
+    received_on(
+        &d,
+        &s.l1,
+        renox::db::now() - renox::chrono::TimeDelta::days(1),
+    )
+    .await;
     wl_inventory::pending_issue::post_on_arrival(d.t.state(), s.store.id, &[s.item.id], "receipt")
         .await
         .unwrap();
@@ -228,7 +240,9 @@ async fn a_pending_issue_inside_the_lot_window_is_listed_uncertain() {
     assert_eq!(listed[0].kind.as_str(), "uncertain");
 
     let mia = manager(&d).await;
-    let page = d.get(&mia, &format!("/clinics/recalls/{}", recall.id)).await;
+    let page = d
+        .get(&mia, &format!("/clinics/recalls/{}", recall.id))
+        .await;
     page.assert_ok()
         .assert_see("Noor Haddad")
         .assert_see("Lot uncertain");
@@ -250,9 +264,13 @@ async fn a_patient_gets_one_neutral_notice_for_all_their_visits() {
     assert_eq!(lines(&d, &recall).await.len(), 3);
 
     let mia = manager(&d).await;
-    d.post(&mia, &format!("/clinics/recalls/{}/notices", recall.id), &[("x", "y")])
-        .await
-        .assert_ok();
+    d.post(
+        &mia,
+        &format!("/clinics/recalls/{}/notices", recall.id),
+        &[("x", "y")],
+    )
+    .await
+    .assert_ok();
 
     let sent = notices(&d);
     assert_eq!(sent.len(), 2, "one per patient: {sent:?}");
@@ -282,7 +300,11 @@ async fn a_patient_gets_one_neutral_notice_for_all_their_visits() {
     assert!(made.iter().all(|n| n.status == RecallNoticeStatus::Sent));
 
     let again = d
-        .post(&mia, &format!("/clinics/recalls/{}/notices", recall.id), &[("x", "y")])
+        .post(
+            &mia,
+            &format!("/clinics/recalls/{}/notices", recall.id),
+            &[("x", "y")],
+        )
         .await;
     again.assert_status(422);
     assert_eq!(notices(&d).len(), 2, "nobody is told twice");
@@ -304,14 +326,25 @@ async fn a_dependants_notice_goes_to_the_guardian() {
     assert_eq!(listed[0].party_id, Some(GUARDIAN.0));
 
     let mia = manager(&d).await;
-    let page = d.get(&mia, &format!("/clinics/recalls/{}", recall.id)).await;
-    page.assert_ok().assert_see("Lina Karim").assert_see("Karim Aziz");
-    d.post(&mia, &format!("/clinics/recalls/{}/notices", recall.id), &[("x", "y")])
-        .await
-        .assert_ok();
+    let page = d
+        .get(&mia, &format!("/clinics/recalls/{}", recall.id))
+        .await;
+    page.assert_ok()
+        .assert_see("Lina Karim")
+        .assert_see("Karim Aziz");
+    d.post(
+        &mia,
+        &format!("/clinics/recalls/{}/notices", recall.id),
+        &[("x", "y")],
+    )
+    .await
+    .assert_ok();
     let sent = notices(&d);
     assert_eq!(sent.len(), 1);
-    assert_eq!(sent[0].recipients, vec![NotifyRecipient::Party { id: GUARDIAN }]);
+    assert_eq!(
+        sent[0].recipients,
+        vec![NotifyRecipient::Party { id: GUARDIAN }]
+    );
 }
 
 /// A front desk user of one branch.
@@ -349,9 +382,13 @@ async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch(
     let fay = desk_of(&d, "Fay", &support::branch()).await;
     let recall = open_recall(&d, s.item.id, "L1").await;
     let mia = manager(&d).await;
-    d.post(&mia, &format!("/clinics/recalls/{}/notices", recall.id), &[("x", "y")])
-        .await
-        .assert_ok();
+    d.post(
+        &mia,
+        &format!("/clinics/recalls/{}/notices", recall.id),
+        &[("x", "y")],
+    )
+    .await
+    .assert_ok();
     let notice = RecallNotice::of_recall(d.t.db(), recall.id)
         .await
         .unwrap()
@@ -403,9 +440,13 @@ async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch(
     .await
     .unwrap();
 
-    let now = RecallNotice::find_or_404(d.t.db(), notice.id).await.unwrap();
+    let now = RecallNotice::find_or_404(d.t.db(), notice.id)
+        .await
+        .unwrap();
     assert_eq!(now.status, RecallNoticeStatus::GaveUp);
-    let line = RecallLine::find_or_404(d.t.db(), now.line_ids.0[0]).await.unwrap();
+    let line = RecallLine::find_or_404(d.t.db(), now.line_ids.0[0])
+        .await
+        .unwrap();
     assert_eq!(line.notice_status, NoticeStatus::Pending);
     let tasks = d.t.tasks.opened();
     assert_eq!(tasks.len(), 1, "{tasks:?}");
@@ -433,14 +474,27 @@ async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch(
     d.post(&elsewhere, &path, &[("outcome", "Reached")])
         .await
         .assert_forbidden();
-    d.post(&fay, &path, &[("outcome", " ")]).await.assert_status(422);
-    d.post(&fay, &path, &[("outcome", "Reached; will come in on Sunday")])
+    d.post(&fay, &path, &[("outcome", " ")])
         .await
-        .assert_ok();
-    let done = RecallNotice::find_or_404(d.t.db(), notice.id).await.unwrap();
+        .assert_status(422);
+    d.post(
+        &fay,
+        &path,
+        &[("outcome", "Reached; will come in on Sunday")],
+    )
+    .await
+    .assert_ok();
+    let done = RecallNotice::find_or_404(d.t.db(), notice.id)
+        .await
+        .unwrap();
     assert_eq!(done.status, RecallNoticeStatus::Called);
-    assert_eq!(done.call_outcome.as_deref(), Some("Reached; will come in on Sunday"));
+    assert_eq!(
+        done.call_outcome.as_deref(),
+        Some("Reached; will come in on Sunday")
+    );
     assert_eq!(done.called_by, Some(fay.id));
-    let line = RecallLine::find_or_404(d.t.db(), done.line_ids.0[0]).await.unwrap();
+    let line = RecallLine::find_or_404(d.t.db(), done.line_ids.0[0])
+        .await
+        .unwrap();
     assert_eq!(line.notice_status, NoticeStatus::Sent);
 }

@@ -217,7 +217,10 @@ fn lot_text(lang: &Lang, line: &ChargeLine, issues: &[ConsumableIssue]) -> Strin
             if issue.is_uncertain() {
                 text(lang, "lots.uncertain")
             } else {
-                issue.lot_number.clone().unwrap_or_else(|| text(lang, "none"))
+                issue
+                    .lot_number
+                    .clone()
+                    .unwrap_or_else(|| text(lang, "none"))
             }
         })
         .collect();
@@ -300,7 +303,10 @@ async fn show(
             lot: if issue.is_uncertain() {
                 text(&lang, "lots.uncertain")
             } else {
-                issue.lot_number.clone().unwrap_or_else(|| text(&lang, "none"))
+                issue
+                    .lot_number
+                    .clone()
+                    .unwrap_or_else(|| text(&lang, "none"))
             },
             expiry: issue
                 .expiry_date
@@ -310,8 +316,15 @@ async fn show(
         .collect();
     let lot_lines: Vec<[String; 2]> = lines
         .iter()
-        .filter(|line| line.kind == ChargeKind::Consumable && line.lot_tracked && line.issued_at.is_none())
-        .map(|line| [line.id.to_string(), format!("{} x {}", line.code, line.units)])
+        .filter(|line| {
+            line.kind == ChargeKind::Consumable && line.lot_tracked && line.issued_at.is_none()
+        })
+        .map(|line| {
+            [
+                line.id.to_string(),
+                format!("{} x {}", line.code, line.units),
+            ]
+        })
         .collect();
     let proposal_code = query.code.trim().to_owned();
     let proposal = if proposal_code.is_empty() {
@@ -414,9 +427,7 @@ async fn show(
         can_update_consent: user.has_permission(permissions::COVERAGE_RECORD)
             && visit.coverage_outcome == Some(CoverageOutcome::SelfPay)
             && visit.status.is_open(),
-        can_bill: (can_capture || can_desk)
-            && visit.billed_at.is_none()
-            && !visit.status.is_open(),
+        can_bill: (can_capture || can_desk) && visit.billed_at.is_none() && !visit.status.is_open(),
         kind_options: vec![
             option("service", "charges.kind.service"),
             option("consumable", "charges.kind.consumable"),
@@ -639,8 +650,8 @@ async fn bill(
         require(&user, permissions::CHARGES_CAPTURE)?;
     }
     let visit = Visit::find_or_404(&state.db, id).await?;
-    let basis = Basis::of_visit(&visit)
-        .ok_or_else(|| invalid(&text(&lang, "charges.problem.closed")))?;
+    let basis =
+        Basis::of_visit(&visit).ok_or_else(|| invalid(&text(&lang, "charges.problem.closed")))?;
     billing::bill(&state, id, basis).await?;
     done(&lang, "charges.billed")
 }

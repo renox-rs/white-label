@@ -6,8 +6,8 @@
 
 mod support;
 
-use renox::prelude::Model;
 use clinics::{AuthStatus, ChargeLine, PriorAuthorisation, VisitStatus};
+use renox::prelude::Model;
 use support::desk::{Desk, PAYER, desk};
 use support::{PATIENT, day};
 use wl_scheduling::{Booking, BookingStatus, ServiceType};
@@ -40,9 +40,13 @@ async fn the_consultation_is_billed_and_the_deposit_covers_it() {
     // The laser was entered before the decision.
     d.deliver(&visit, "laser", 1).await.assert_ok();
 
-    d.post(&d.dana, &not_suitable(visit.id), &[("consultation", "consultation")])
-        .await
-        .assert_ok();
+    d.post(
+        &d.dana,
+        &not_suitable(visit.id),
+        &[("consultation", "consultation")],
+    )
+    .await
+    .assert_ok();
     let lines = ChargeLine::active_of(d.t.db(), visit.id).await.unwrap();
     assert_eq!(lines.len(), 1, "the procedure line is taken out");
     assert_eq!(lines[0].code, "consultation");
@@ -62,7 +66,11 @@ async fn the_consultation_is_billed_and_the_deposit_covers_it() {
     let invoices = d.t.books.all();
     assert_eq!(invoices.len(), 1);
     assert_eq!(invoices[0].gross(), 25_000);
-    assert_eq!(d.t.deposits.allocated_total(), 25_000, "the deposit covers it");
+    assert_eq!(
+        d.t.deposits.allocated_total(),
+        25_000,
+        "the deposit covers it"
+    );
     assert_eq!(d.t.refunds.amounts(), [5_000], "and AED 50.00 goes back");
     assert_eq!(done.deposit_forfeited, 0, "never forfeited");
 }
@@ -79,7 +87,11 @@ async fn a_consultation_service_must_be_picked() {
 
     for consultation in ["", "laser"] {
         let res = d
-            .post(&d.dana, &not_suitable(visit.id), &[("consultation", consultation)])
+            .post(
+                &d.dana,
+                &not_suitable(visit.id),
+                &[("consultation", consultation)],
+            )
             .await;
         res.assert_status(422);
         assert!(
@@ -102,9 +114,13 @@ async fn the_desk_may_refund_the_deposit_in_full() {
     let booking = d.booking(&laser, 9).await;
     let visit = d.check_in(&booking).await;
     d.start(&booking).await;
-    d.post(&d.dana, &not_suitable(visit.id), &[("consultation", "consultation")])
-        .await
-        .assert_ok();
+    d.post(
+        &d.dana,
+        &not_suitable(visit.id),
+        &[("consultation", "consultation")],
+    )
+    .await
+    .assert_ok();
     d.post(
         &d.rita,
         &format!("/clinics/visits/{}/refund-deposit", visit.id),
@@ -146,13 +162,19 @@ async fn no_authorisation_unit_is_consumed_for_the_procedure() {
         "checked in, the laser holds its unit"
     );
     d.deliver(&visit, "laser", 1).await.assert_ok();
-    d.post(&d.dana, &not_suitable(visit.id), &[("consultation", "consultation")])
-        .await
-        .assert_ok();
+    d.post(
+        &d.dana,
+        &not_suitable(visit.id),
+        &[("consultation", "consultation")],
+    )
+    .await
+    .assert_ok();
 
     d.complete(&booking).await;
 
-    let a1 = PriorAuthorisation::find_or_404(d.t.db(), a1.id).await.unwrap();
+    let a1 = PriorAuthorisation::find_or_404(d.t.db(), a1.id)
+        .await
+        .unwrap();
     assert_eq!((a1.status, a1.units_consumed), (AuthStatus::Approved, 0));
     let held = clinics::AuthorisationHold::of_visit(d.t.db(), visit.id)
         .await
@@ -160,9 +182,17 @@ async fn no_authorisation_unit_is_consumed_for_the_procedure() {
     assert!(held.iter().all(|h| h.released_on.is_some()), "given back");
     let visit = d.visit(visit.id).await;
     assert_eq!((visit.patient_total, visit.payer_total), (0, 25_000));
-    assert_eq!(d.t.claims.claimed(), 25_000, "the claim is the consultation");
+    assert_eq!(
+        d.t.claims.claimed(),
+        25_000,
+        "the claim is the consultation"
+    );
     assert!(d.t.books.all().is_empty(), "the patient owes nothing");
-    assert_eq!(d.t.refunds.amounts(), [30_000], "the whole deposit goes back");
+    assert_eq!(
+        d.t.refunds.amounts(),
+        [30_000],
+        "the whole deposit goes back"
+    );
 }
 
 /// A self-pay patient with a package for the laser: no session is consumed
@@ -175,9 +205,13 @@ async fn no_package_session_is_consumed_for_the_procedure() {
     let visit = d.check_in(&booking).await;
     d.start(&booking).await;
     d.deliver(&visit, "laser", 1).await.assert_ok();
-    d.post(&d.dana, &not_suitable(visit.id), &[("consultation", "consultation")])
-        .await
-        .assert_ok();
+    d.post(
+        &d.dana,
+        &not_suitable(visit.id),
+        &[("consultation", "consultation")],
+    )
+    .await
+    .assert_ok();
     d.complete(&booking).await;
     assert!(d.t.packages.used().is_empty(), "{:?}", d.t.packages.used());
     assert_eq!(d.t.books.all()[0].gross(), 25_000);
@@ -190,15 +224,27 @@ async fn only_the_practitioner_records_it_and_only_while_the_visit_is_open() {
     let booking: Booking = d.booking(&laser, 9).await;
     let visit = d.check_in(&booking).await;
     d.start(&booking).await;
-    d.post(&d.rita, &not_suitable(visit.id), &[("consultation", "consultation")])
-        .await
-        .assert_forbidden();
-    d.post(&d.dana, &not_suitable(visit.id), &[("consultation", "consultation")])
-        .await
-        .assert_ok();
+    d.post(
+        &d.rita,
+        &not_suitable(visit.id),
+        &[("consultation", "consultation")],
+    )
+    .await
+    .assert_forbidden();
+    d.post(
+        &d.dana,
+        &not_suitable(visit.id),
+        &[("consultation", "consultation")],
+    )
+    .await
+    .assert_ok();
     d.complete(&booking).await;
     let res = d
-        .post(&d.dana, &not_suitable(visit.id), &[("consultation", "consultation")])
+        .post(
+            &d.dana,
+            &not_suitable(visit.id),
+            &[("consultation", "consultation")],
+        )
         .await;
     res.assert_status(422);
     assert!(res.text().contains("already billed"), "{}", res.text());
