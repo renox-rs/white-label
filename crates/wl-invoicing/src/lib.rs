@@ -818,7 +818,7 @@ impl WlInvoicing {
 
     /// The write-off limit, in fils, a new payer agreement starts with
     /// (`FIN.ACL.14`; default 0: every write-off is approved; 05: 100000,
-    /// AED 1,000). Read by [`PayerAgreement::with_defaults`]; an agreement
+    /// AED 1,000). Read by [`PayerAgreement::create`] and [`PayerAgreement::with_defaults`]; an agreement
     /// that exists keeps its own limit.
     pub fn payer_write_off_limit(mut self, fils: i64) -> Self {
         self.config.payer_write_off_limit = fils.max(0);

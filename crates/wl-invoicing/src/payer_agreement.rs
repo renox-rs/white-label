@@ -79,6 +79,27 @@ impl PayerAgreement {
         }
     }
 
+    /// Stores a new agreement. Its write-off limit is `write_off_limit` when
+    /// the caller says one, else the module's setting
+    /// ([`InvoicingConfig::payer_write_off_limit`]; 05: AED 1,000): the way
+    /// any agreement is made, so a row never starts with a limit the client
+    /// did not choose. `agreement.write_off_limit` is ignored.
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub async fn create(
+        state: &AppState,
+        mut agreement: PayerAgreement,
+        write_off_limit: Option<i64>,
+    ) -> Result<PayerAgreement> {
+        agreement.write_off_limit = write_off_limit
+            .unwrap_or_else(|| crate::config_of(state).payer_write_off_limit)
+            .max(0);
+        agreement.insert(&state.db).await?;
+        Ok(agreement)
+    }
+
     /// The payer.
     pub fn payer(&self) -> PartyId {
         PartyId(self.payer_party_id)

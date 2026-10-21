@@ -18,7 +18,6 @@ use support::{
     Wire, clinics_booted_with, company, draft_invoice, entity, person, tenant,
 };
 use wl_invoicing::payer_agreement::{PayerAgreement, VatRecipient};
-use wl_invoicing::InvoicingConfig;
 use wl_kernel::approvals;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{InvoiceId, VatCategory, invoicer};
@@ -96,21 +95,23 @@ fn aed(fils: i64) -> String {
 async fn claim(app: &TestApp, patient: PartyId, visit: i64, claimed: i64) {
     let payer = company(app, "Daman Insurance").await;
     let legal = entity(app, "PGC").await;
-    let config = app
-        .state()
-        .provided::<InvoicingConfig>()
-        .expect("the invoicing settings are provided");
-    let mut agreement = PayerAgreement {
-        legal_entity_id: legal.id,
-        payer_party_id: payer.0,
-        name: "Daman Gold".to_owned(),
-        vat_recipient: VatRecipient::Customer,
-        first_submission_days: 30,
-        resubmission_days: 30,
-        resubmission_limit: 2,
-        ..PayerAgreement::with_defaults(&config)
-    };
-    agreement.insert(app.db()).await.unwrap();
+    let agreement = PayerAgreement::create(
+        app.state(),
+        PayerAgreement {
+            legal_entity_id: legal.id,
+            payer_party_id: payer.0,
+            name: "Daman Gold".to_owned(),
+            active: true,
+            vat_recipient: VatRecipient::Customer,
+            first_submission_days: 30,
+            resubmission_days: 30,
+            resubmission_limit: 2,
+            ..PayerAgreement::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
     let request = NewPayerBill::new(
         agreement.id,
         patient,
