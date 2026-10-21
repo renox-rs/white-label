@@ -1496,27 +1496,27 @@ company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL
 
 #### Done when
 - Invoices and disputes
-  - [ ] Every patient invoice write-off creates an approval request (AED 0 limit).
+  - [x] Every patient invoice write-off creates an approval request (AED 0 limit).
   - [ ] A patient submits a *billing* complaint in the portal for invoice INV-0042: the invoice is
         `disputed`, reminders stop, and after 14 days the escalation runs.
 - Claims
-  - [ ] A claim write-off of AED 1,000.01 needs the owner; AED 1,000.00 does not.
+  - [x] A claim write-off of AED 1,000.01 needs the owner; AED 1,000.00 does not.
 - Payments
-  - [ ] A deposit payment pending 30 minutes is checked with the gateway.
-  - [ ] A failed refund is retried once after 24 hours.
-  - [ ] A reversed payment on package PKG-7 leaves it `active` and gives the front desk a collect task.
+  - [x] A deposit payment pending 30 minutes is checked with the gateway.
+  - [x] A failed refund is retried once after 24 hours.
+  - [x] A reversed payment on package PKG-7 leaves it `active` and gives the front desk a collect task.
 - Cash
   - [ ] Receptionist A has one handover for 2026-11-10 at Branch 1; it cannot be counted by A; a AED 10.00 shortage needs
         approval to write off; salary recovery is not offered.
 - Stock
-  - [ ] An issue to a visit beyond stock at a branch store creates a pending issue; after 24 hours
+  - [x] An issue to a visit beyond stock at a branch store creates a pending issue; after 24 hours
         the clinic manager is told.
-  - [ ] Releasing a recall-held lot needs a second `lots.release` holder.
+  - [x] Releasing a recall-held lot needs a second `lots.release` holder.
 - Cash-flow forecast and budget
-  - [ ] in a fresh 05 deployment, a projected balance of AED 49,999 in week 5 alerts the owner /
+  - [x] in a fresh 05 deployment, a projected balance of AED 49,999 in week 5 alerts the owner /
         medical director and the accountant once (`FIN.RUL.23`, 06:00 run); AED 50,000 or more in
         every week alerts no one; the forecast shows 13 weekly buckets from Monday.
-  - [ ] a monthly budget for a legal entity prepared by the accountant needs approval by the owner
+  - [x] a monthly budget for a legal entity prepared by the accountant needs approval by the owner
         / medical director; an expense with category *owner drawings* is left out of operating
         cost and profit reports, and the user who records it cannot approve it (`FIN.ACL.21`); an
         expense line reaching 100% of its month's budget line warns the category's owner role and
