@@ -53,11 +53,14 @@
 //!   names the reason.
 
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use renox::chrono::{NaiveDate, TimeDelta};
 use renox::db::DateTime;
 use renox::prelude::*;
 use wl_kernel::Subject;
+use wl_kernel::automation::{RuleRunSpec, run_rule};
+use wl_kernel::compliance::{occurrence_key, schedule_subject};
 use wl_kernel::documents::{
     self, AffectedGroup, BlockEntry, BlockSubjects, BlockedGroup, DocumentAccepted,
     DocumentExpired, DocumentExpiring, DocumentFuture, FutureWork, InvalidReason, PlannedRecord,
@@ -76,6 +79,11 @@ use crate::conflict::{Conflict, can_conflict, open_of, raise, set_flag};
 use crate::resource::{Resource, ResourceType, ServiceType};
 use crate::rules;
 use crate::texts::english;
+
+/// The rule the nightly look-ahead is (`SCH.RUL.05`). A vertical marks it
+/// compliance-critical (05: the owner is alerted when it fails or misses its
+/// schedule) with `CriticalRule::new(RULE)`.
+pub const RULE: &str = "SCH.RUL.05";
 
 /// The scheduled task and command of the nightly look-ahead.
 pub const TASK: &str = "scheduling:eligibility";
@@ -540,6 +548,30 @@ pub struct LookAhead {
     pub cleared: usize,
 }
 
+/// The nightly run of [`RULE`] for the day of `at`, as a kernel rule run
+/// under the schedule subject and the day's occurrence key, so that a
+/// vertical that marks the rule compliance-critical is alerted when it fails
+/// and the kernel finds that the run happened. A second run on the same day
+/// finds the run recorded and does nothing more.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn run_daily(state: &AppState, at: DateTime) -> Result<LookAhead> {
+    let day = dubai_date(at);
+    let spec = RuleRunSpec::new(RULE, schedule_subject(), occurrence_key(RULE, day));
+    let seen = Arc::new(Mutex::new(LookAhead::default()));
+    let out = Arc::clone(&seen);
+    run_rule(state, spec, move |state: AppState| async move {
+        let done = look_ahead(&state, at).await?;
+        *out.lock().unwrap_or_else(PoisonError::into_inner) = done;
+        Ok(())
+    })
+    .await?;
+    let done = *seen.lock().unwrap_or_else(PoisonError::into_inner);
+    Ok(done)
+}
+
 /// `SCH.RUL.05` at `at`: checks the `requested`, `booked` and `confirmed`
 /// bookings that start within the look-ahead at their start, flags those that
 /// fail, and clears the conflicts whose item is held again.
@@ -790,14 +822,14 @@ pub(crate) fn register(app: &mut Registry) {
     });
     app.schedule()
         .daily_at(TASK_AT, TASK, |state: AppState| async move {
-            look_ahead(&state, renox::db::now()).await.map(|_| ())
+            run_daily(&state, renox::db::now()).await.map(|_| ())
         })
         .timezone(TASK_ZONE);
     app.command(
         TASK,
         "Flag the bookings whose resource will not hold a required licence or document at their start (SCH.RUL.05)",
         |_args, state: AppState| async move {
-            let done = look_ahead(&state, renox::db::now()).await?;
+            let done = run_daily(&state, renox::db::now()).await?;
             println!(
                 "{} bookings flagged, {} conflicts cleared.",
                 done.flagged, done.cleared

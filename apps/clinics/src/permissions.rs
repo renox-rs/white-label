@@ -89,3 +89,6 @@ pub const CALL_CENTRE_ROLE: &str = "call_centre_agent";
 /// The nurse or assistant: prepares rooms, records the consumables used and
 /// helps with consent forms (05 §3.1).
 pub const NURSE_ROLE: &str = "nurse";
+/// The storekeeper of a branch store: receives and issues the consumables
+/// (05 §3.1).
+pub const STOREKEEPER_ROLE: &str = "storekeeper";

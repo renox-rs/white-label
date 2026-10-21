@@ -323,8 +323,9 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
     ]
 }
 
-/// Registers the notification type, the listener and the two compliance-
-/// critical rules owned by the owner / medical director.
+/// Registers the notification type, the listener and the three compliance-
+/// critical rules owned by the owner / medical director (`CLN.RUL.01`,
+/// `DOC.RUL.03`, `SCH.RUL.05`; `CLN.RUL.03` is registered with its job).
 pub(crate) fn register(app: &mut Registry) {
     for def in notification_types() {
         notify::register_type(def);
@@ -332,6 +333,13 @@ pub(crate) fn register(app: &mut Registry) {
     CriticalRule::new(RULE).owner_role(OWNER_ROLE).register();
     CriticalRule::new("DOC.RUL.03")
         .owner_role(OWNER_ROLE)
+        .register();
+    // `SCH.RUL.05`, wl-scheduling's nightly look-ahead at 02:00 Asia/Dubai:
+    // it runs as a kernel rule run, so a failure or a missed night alerts the
+    // owner / medical director (05 §7.2 *Compliance-critical*; BL-CLN-15).
+    CriticalRule::new("SCH.RUL.05")
+        .owner_role(OWNER_ROLE)
+        .daily_at("02:00")
         .register();
     app.listen(|event: QualificationExpired, state: AppState| async move {
         on_expired(&state, &event).await.map(|_| ())

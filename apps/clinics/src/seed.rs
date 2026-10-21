@@ -63,6 +63,385 @@ pub const REMINDER_DAYS: &[i64] = &[90, 60, 30, 7];
 /// (the same 30 days as `SCH.RUL.05`).
 pub const LOOK_AHEAD_DAYS: i64 = 30;
 
+// ---- Documents (05 §7.2 *Responsible role per document kind*, §5) ----
+
+/// The facility licence of the clinic (DHA, DoH, Sharjah Health Authority or
+/// MOHAP): a document of the legal entity, renewed by the owner / medical
+/// director, compliance-critical (`DOC.RUL.03`: the owner is told when it
+/// expires).
+pub const FACILITY_LICENCE_KIND: &str = "facility_licence";
+
+/// The days before its expiry that `DOC.RUL.01` reminds of the facility
+/// licence: 180 days, since a renewal takes months, then the usual steps.
+pub const FACILITY_REMINDER_DAYS: &[i64] = &[180, 90, 30, 7];
+
+/// The patient's Emirates ID: a document of the patient, kept by the
+/// receptionist; the patient (or the guardian) is told as the party when it
+/// is about to expire. The image needs `patients.sensitive.view`
+/// (`CLN.ACL.12`).
+pub const EMIRATES_ID_KIND: &str = "patient_emirates_id";
+
+/// The days before its expiry that the patient is reminded of the Emirates
+/// ID.
+pub const EMIRATES_ID_REMINDER_DAYS: &[i64] = &[90, 30, 7];
+
+// ---- Scheduling (05 §7.2 settings) ----
+
+/// Hours before an appointment's start at which an open conflict is
+/// escalated to the clinic manager (`SCH.RUL.06`, H).
+pub const ESCALATION_HOURS: i64 = 2;
+
+/// Minutes after the start of an appointment before the no-show rule marks
+/// it (`SCH.RUL.02`, M).
+pub const NO_SHOW_GRACE_MINUTES: i64 = 15;
+
+/// Hours before an appointment at which a reminder goes out (`SCH.RUL.01`,
+/// N = 24, 2).
+pub const REMINDER_HOURS: &[i64] = &[24, 2];
+
+/// The booking deposit of a service type the clinic seeds: none. A clinic
+/// enables it per service type (05 §13 question 8).
+pub const BOOKING_DEPOSIT_FILS: i64 = 0;
+
+/// Hours before the start inside which a patient's cancellation forfeits the
+/// deposit, for a service type that has one.
+pub const DEPOSIT_FORFEIT_HOURS: i64 = 24;
+
+// ---- Notifications (05 §7.2, wl-notify §7) ----
+
+/// A broadcast to more than this many patients needs a second approver
+/// (`NTF.ACL.03`).
+pub const BROADCAST_APPROVAL_ABOVE: i64 = 200;
+
+/// The most marketing messages one patient gets in 7 days (`NTF.RUL.02`).
+pub const MARKETING_CAP: i64 = 2;
+
+/// The marketing send window, minutes after midnight Asia/Dubai: 07:00 to
+/// 21:00 (`NTF.RUL.02`).
+pub const SEND_WINDOW_MINUTES: (i64, i64) = (7 * 60, 21 * 60);
+
+// ---- Sales and loyalty (05 §7.2, wl-sales §7) ----
+
+/// The lead sources a lead or a first sale must name a campaign for
+/// (`SAL.CRM.02`).
+pub const CAMPAIGN_REQUIRED_SOURCES: &[&str] = &["paid_ads", "social"];
+
+/// The lead sources 05 uses: the nine of the module, all of them.
+pub const LEAD_SOURCES: &[&str] = &[
+    "referral",
+    "walk_in",
+    "website",
+    "social",
+    "paid_ads",
+    "aggregator",
+    "event",
+    "partner",
+    "other",
+];
+
+/// The days before a loyalty lot expires that its member is reminded
+/// (`SAL.RUL.08`).
+pub const LOYALTY_REMINDER_DAYS: i64 = 30;
+
+/// The points above which a manual adjustment needs a manager
+/// (`SAL.ACL.07`).
+pub const LOYALTY_ADJUSTMENT_LIMIT: i64 = 500;
+
+/// The loyalty programme 05 seeds: 1 point per AED 10 paid by the patient,
+/// 100 points an AED 10 discount (10 fils a point), valid 12 months. Whether
+/// health authority rules limit rewards on medical services is
+/// `⚠ open: lawyer (L-38)`; the seed earns on self-pay services until
+/// answered. The VAT of the discounted supply is `⚠ open: accountant (A-15)`.
+pub const LOYALTY_POINTS: i64 = 1;
+/// The dirhams that earn [`LOYALTY_POINTS`].
+pub const LOYALTY_EARN_PER_AED: i64 = 10;
+/// What one point is worth, in fils.
+pub const LOYALTY_POINT_VALUE_FILS: i64 = 10;
+/// The fewest points that can be redeemed: 100 points, AED 10.
+pub const LOYALTY_MIN_REDEEM: i64 = 100;
+/// The months points are valid after they are earned.
+pub const LOYALTY_VALIDITY_MONTHS: i64 = 12;
+/// The name of the programme.
+pub const LOYALTY_NAME: &str = "Rewards";
+
+/// The days of no visit after which a patient is in the lapsed segment: six
+/// months.
+pub const LAPSED_SEGMENT_DAYS: i64 = 180;
+/// The name of the lapsed segment.
+pub const LAPSED_SEGMENT_NAME: &str = "No visit in 6 months";
+
+// ---- Connections (05 §8 *When a connection is down*) ----
+
+/// The key of the claims channel (eClaimLink / DHPO, Shafafiya, the MOHAP
+/// channel). The MVP records submissions made through the payer's portal; an
+/// integrated channel (`CLN.CLM.02`, later) reports to this key.
+pub const CLAIMS_CHANNEL: &str = "clinics.claims_channel";
+
+/// What the front desk does while the SMS connection is down.
+pub const SMS_FALLBACK_EN: &str = "Phone the patients on the call list of each branch: the appointments of the next 24 hours, with a called tick for each.";
+/// The same, in Arabic.
+pub const SMS_FALLBACK_AR: &str =
+    "اتصل بالمرضى من قائمة كل فرع: مواعيد الساعات الأربع والعشرين القادمة، مع علامة اتصال لكل موعد.";
+/// What the front desk does while the WhatsApp connection is down.
+pub const WHATSAPP_FALLBACK_EN: &str = SMS_FALLBACK_EN;
+/// The same, in Arabic.
+pub const WHATSAPP_FALLBACK_AR: &str = SMS_FALLBACK_AR;
+/// What the desk does while the payment gateway is down.
+pub const GATEWAY_FALLBACK_EN: &str =
+    "Take the deposit or the payment on the card terminal or in cash and record it.";
+/// The same, in Arabic.
+pub const GATEWAY_FALLBACK_AR: &str = "استلم العربون أو الدفعة عبر جهاز البطاقات أو نقدًا وسجّلها.";
+/// What billing does while the claims channel is down.
+pub const CLAIMS_FALLBACK_EN: &str = "Submit through the payer portal and record the reference.";
+/// The same, in Arabic.
+pub const CLAIMS_FALLBACK_AR: &str = "قدّم عبر بوابة شركة التأمين وسجّل الرقم المرجعي.";
+/// What staff do while e-mail is down.
+pub const EMAIL_FALLBACK_EN: &str = "Receipts and invoices stay visible in the portal; give the patient a printed copy at the desk.";
+/// The same, in Arabic.
+pub const EMAIL_FALLBACK_AR: &str =
+    "تبقى الإيصالات والفواتير ظاهرة في البوابة؛ سلّم المريض نسخة مطبوعة عند الاستقبال.";
+
+// ---- Onboarding checklists (HRM.ONB.01) ----
+
+/// One step of an onboarding checklist: title, owner (`hr`, `manager`,
+/// `employee` or `role:<key>`), due days after the start and kind (`task`,
+/// `sops` or `checklist:<template>`).
+pub type StepSpec = (&'static str, &'static str, i64, &'static str);
+
+/// An onboarding checklist for one job role.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OnboardingSpec {
+    /// The template's name.
+    pub name: &'static str,
+    /// The job role it applies to.
+    pub role: &'static str,
+    /// The steps, in order.
+    pub steps: &'static [StepSpec],
+}
+
+/// The first step of every checklist: the clinic manager sets up the account
+/// and the access (tasks to the clinic manager, the line manager and the
+/// employee; the employee records only their own steps, `HRM.ACL.10`).
+const ACCOUNT_STEP: StepSpec = (
+    "System account and access",
+    "role:clinic_manager",
+    1,
+    "task",
+);
+/// The line manager's welcome.
+const WELCOME_STEP: StepSpec = (
+    "Welcome, branch tour and introductions",
+    "manager",
+    1,
+    "task",
+);
+/// The employee uploads what they hold.
+const DOCUMENTS_STEP: StepSpec = (
+    "Upload your Emirates ID and your documents",
+    "employee",
+    3,
+    "task",
+);
+/// The employee reads the SOPs and acknowledges them.
+const SOPS_STEP: StepSpec = ("SOPs acknowledged", "employee", 7, "sops");
+
+/// The onboarding checklists 05 seeds: receptionist, call-centre agent, nurse
+/// or assistant, practitioner, billing coordinator and storekeeper. Each
+/// ends with the SOPs; completion blocks nothing (the role is active before
+/// the checklist is complete, and bookings stay guarded by the licences,
+/// `SCH.ACL.04`). The checklist steps are `WRK.CHK.01` templates with photos
+/// and a signature.
+pub const ONBOARDING: [OnboardingSpec; 6] = [
+    OnboardingSpec {
+        name: "Receptionist onboarding",
+        role: "receptionist",
+        steps: &[
+            ACCOUNT_STEP,
+            WELCOME_STEP,
+            (
+                "Front desk, check-in and payments",
+                "manager",
+                3,
+                "checklist:receptionist_induction",
+            ),
+            DOCUMENTS_STEP,
+            SOPS_STEP,
+        ],
+    },
+    OnboardingSpec {
+        name: "Call-centre agent onboarding",
+        role: "call_centre_agent",
+        steps: &[
+            ACCOUNT_STEP,
+            WELCOME_STEP,
+            (
+                "Booking, leads and patient contacts",
+                "manager",
+                3,
+                "checklist:call_centre_induction",
+            ),
+            DOCUMENTS_STEP,
+            SOPS_STEP,
+        ],
+    },
+    OnboardingSpec {
+        name: "Nurse and assistant onboarding",
+        role: "nurse",
+        steps: &[
+            ACCOUNT_STEP,
+            WELCOME_STEP,
+            (
+                "Rooms, consumables and consent forms",
+                "manager",
+                3,
+                "checklist:nurse_induction",
+            ),
+            DOCUMENTS_STEP,
+            SOPS_STEP,
+        ],
+    },
+    OnboardingSpec {
+        name: "Practitioner onboarding",
+        role: "practitioner",
+        steps: &[
+            ACCOUNT_STEP,
+            WELCOME_STEP,
+            (
+                "Licence and branch privileges recorded",
+                "role:clinic_manager",
+                1,
+                "task",
+            ),
+            (
+                "Schedule, charge capture and consent forms",
+                "manager",
+                3,
+                "checklist:practitioner_induction",
+            ),
+            DOCUMENTS_STEP,
+            SOPS_STEP,
+        ],
+    },
+    OnboardingSpec {
+        name: "Billing coordinator onboarding",
+        role: "billing_coordinator",
+        steps: &[
+            ACCOUNT_STEP,
+            WELCOME_STEP,
+            (
+                "Eligibility, authorisations and claims",
+                "manager",
+                3,
+                "checklist:billing_induction",
+            ),
+            DOCUMENTS_STEP,
+            SOPS_STEP,
+        ],
+    },
+    OnboardingSpec {
+        name: "Storekeeper onboarding",
+        role: "storekeeper",
+        steps: &[
+            ACCOUNT_STEP,
+            WELCOME_STEP,
+            (
+                "Receiving, lots and issuing consumables",
+                "manager",
+                3,
+                "checklist:storekeeper_induction",
+            ),
+            DOCUMENTS_STEP,
+            SOPS_STEP,
+        ],
+    },
+];
+
+/// An SOP of the library with its owner role and required readers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SopSpec {
+    /// The code.
+    pub code: &'static str,
+    /// The English title.
+    pub title: &'static str,
+    /// The category.
+    pub category: &'static str,
+    /// The role whose holders accept and review it.
+    pub owner_role: &'static str,
+    /// The roles that must read and acknowledge it.
+    pub readers: &'static [&'static str],
+}
+
+/// The SOP library 05 seeds: the clinic manager owns the front desk, billing
+/// and complaints procedures; the owner / medical director owns infection
+/// control and the clinical ones. `DOC.RUL.04` asks each reader to
+/// acknowledge within 7 days, reminds every 3 days and tells the reader's
+/// manager and the owner role of the SOP after 7 days overdue (the module's
+/// defaults); a new version asks for a new acknowledgement.
+pub const SOPS: [SopSpec; 5] = [
+    SopSpec {
+        code: "SOP-CLN-FRONT-DESK",
+        title: "Front desk: registration, check-in and payments",
+        category: "front_desk",
+        owner_role: crate::permissions::CLINIC_MANAGER_ROLE,
+        readers: &[
+            crate::permissions::RECEPTIONIST_ROLE,
+            crate::permissions::CALL_CENTRE_ROLE,
+            crate::permissions::CLINIC_MANAGER_ROLE,
+        ],
+    },
+    SopSpec {
+        code: "SOP-CLN-BILLING",
+        title: "Billing, claims and payer follow-up",
+        category: "billing",
+        owner_role: crate::permissions::CLINIC_MANAGER_ROLE,
+        readers: &[
+            crate::permissions::BILLING_COORDINATOR_ROLE,
+            crate::permissions::RECEPTIONIST_ROLE,
+            crate::permissions::CLINIC_MANAGER_ROLE,
+        ],
+    },
+    SopSpec {
+        code: "SOP-CLN-COMPLAINTS",
+        title: "Patient complaints",
+        category: "complaints",
+        owner_role: crate::permissions::CLINIC_MANAGER_ROLE,
+        readers: &[
+            crate::permissions::RECEPTIONIST_ROLE,
+            crate::permissions::CALL_CENTRE_ROLE,
+            crate::permissions::NURSE_ROLE,
+            crate::permissions::CLINIC_MANAGER_ROLE,
+        ],
+    },
+    SopSpec {
+        code: "SOP-CLN-INFECTION-CONTROL",
+        title: "Infection control",
+        category: "infection_control",
+        owner_role: crate::permissions::OWNER_ROLE,
+        readers: &[
+            crate::permissions::PRACTITIONER_ROLE,
+            crate::permissions::NURSE_ROLE,
+            crate::permissions::RECEPTIONIST_ROLE,
+            crate::permissions::STOREKEEPER_ROLE,
+            crate::permissions::CLINIC_MANAGER_ROLE,
+        ],
+    },
+    SopSpec {
+        code: "SOP-CLN-CLINICAL",
+        title: "Clinical procedures and consent",
+        category: "clinical",
+        owner_role: crate::permissions::OWNER_ROLE,
+        readers: &[
+            crate::permissions::PRACTITIONER_ROLE,
+            crate::permissions::NURSE_ROLE,
+        ],
+    },
+];
+
+/// The compliance-critical rules 05 lists (§7.2): the owner / medical
+/// director is alerted through `PLT.RUL.04` when one fails or misses its
+/// schedule, and the client cannot switch that off.
+pub const CRITICAL_RULES: [&str; 4] = ["CLN.RUL.01", "SCH.RUL.05", "CLN.RUL.03", "DOC.RUL.03"];
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -611,3 +611,26 @@ async fn the_module_registers_its_future_work_and_block_subjects() {
     assert!(block_subjects("booking.book").unwrap().bookable());
     assert!(!block_subjects("booking.check_in").unwrap().bookable());
 }
+
+/// The nightly run is a kernel rule run of `SCH.RUL.05` under the schedule
+/// subject, so that a vertical that marks the rule compliance-critical (05)
+/// is alerted when it fails and the kernel finds that the night ran.
+#[renox::test]
+async fn the_nightly_run_is_recorded_as_a_rule_run_of_sch_rul_05() {
+    use wl_kernel::automation::{RuleRun, RuleRunStatus};
+
+    let s = scene().await;
+    s.t.app
+        .kernel()
+        .call(eligibility::TASK, Vec::<String>::new())
+        .await
+        .expect("the command runs");
+    let runs = RuleRun::query()
+        .where_(RuleRun::RULE.eq(eligibility::RULE))
+        .get(s.t.db())
+        .await
+        .unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].status, RuleRunStatus::Succeeded);
+    assert_eq!(eligibility::RULE, "SCH.RUL.05");
+}
