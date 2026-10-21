@@ -344,7 +344,7 @@ impl RedeemRequest {
 }
 
 /// What [`request`] did.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Requested {
     /// The code was sent; the redemption waits for it ([`confirm`]).
     CodeSent {

@@ -2022,22 +2022,22 @@ back.
 - Must not give cash for points.
 
 #### Done when
-- [ ] Given M with 800 points, value AED 0.01, minimum 500, a sale of AED 40 redeems 800 points as
+- [x] Given M with 800 points, value AED 0.01, minimum 500, a sale of AED 40 redeems 800 points as
       an AED 8.00 discount line after M enters the code.
-- [ ] With 06's maximum share 50%, a sale of AED 10 accepts at most AED 5.00 (500 points).
-- [ ] Three wrong codes block redemption for that sale and no new code can be sent for it; the
+- [x] With 06's maximum share 50%, a sale of AED 10 accepts at most AED 5.00 (500 points).
+- [x] Three wrong codes block redemption for that sale and no new code can be sent for it; the
       sale completes without the redemption line. A code entered 6 minutes after sending is
       refused as expired, and a new code can be sent.
-- [ ] M with 400 points cannot redeem (minimum 500).
-- [ ] Returning the sale gives the 800 points back; a lot that expired gets 30 days.
-- [ ] M confirms 800 points on till 1; redeeming the same points on till 2 within 30 minutes is
+- [x] M with 400 points cannot redeem (minimum 500).
+- [x] Returning the sale gives the 800 points back; a lot that expired gets 30 days.
+- [x] M confirms 800 points on till 1; redeeming the same points on till 2 within 30 minutes is
       refused; after the sale on till 1 is abandoned, the hold lapses and they can be used.
-- [ ] A lot expiring at midnight while held is not expired until the hold ends.
-- [ ] An online order paid with 500 points and rejected by the outlet gives the 500 points back
+- [x] A lot expiring at midnight while held is not expired until the hold ends.
+- [x] An online order paid with 500 points and rejected by the outlet gives the 500 points back
       and M is told; one whose payment fails releases the hold and writes no movement.
-- [ ] Cancelling one of two equal lines of a confirmed order that redeemed 500 points gives back
+- [x] Cancelling one of two equal lines of a confirmed order that redeemed 500 points gives back
       250.
-- [ ] With the default treatment, the AED 8.00 redemption on a VAT-inclusive AED 40 sale lowers
+- [x] With the default treatment, the AED 8.00 redemption on a VAT-inclusive AED 40 sale lowers
       the VAT of the sale from AED 1.90 to AED 1.52.
 
 #### Out of scope
@@ -2117,16 +2117,16 @@ a manager. The accountant sees the outstanding points and their value.
 - Must not let the requester approve their own adjustment.
 
 #### Done when
-- [ ] Given a lot of 300 points expiring 30 Nov with 100 used, on 31 Oct M gets one reminder and
+- [x] Given a lot of 300 points expiring 30 Nov with 100 used, on 31 Oct M gets one reminder and
       on 1 Dec at 02:00 200 points expire with `PointsExpired`.
-- [ ] Re-running the job on 1 Dec expires nothing more.
-- [ ] A +400 adjustment by A is saved; a −900 adjustment by A waits for B's approval; A cannot
+- [x] Re-running the job on 1 Dec expires nothing more.
+- [x] A +400 adjustment by A is saved; a −900 adjustment by A waits for B's approval; A cannot
       approve.
-- [ ] Staff closing M's account with 50 points needs approval and writes an `adjust` of −50.
-- [ ] B rejects A's −900 adjustment: no movement is written and A is told.
-- [ ] A reminder that gave up does not stop the lot expiring; the account shows *reminder not
+- [x] Staff closing M's account with 50 points needs approval and writes an `adjust` of −50.
+- [x] B rejects A's −900 adjustment: no movement is written and A is told.
+- [x] A reminder that gave up does not stop the lot expiring; the account shows *reminder not
       delivered*.
-- [ ] The liability report on 31 Dec with 120,000 points at AED 0.01 shows AED 1,200.00.
+- [x] The liability report on 31 Dec with 120,000 points at AED 0.01 shows AED 1,200.00.
 
 #### Out of scope
 How the liability is booked in the accounts (`⚠ open: accountant (A-15)`).
