@@ -34,7 +34,7 @@ use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::scheduling::{CancelStage, Initiator};
 
-use crate::booking::{Booking, BookingResource, BookingStatus};
+use crate::booking::{Booking, BookingResource, BookingStatus, WALKED_OUT};
 use crate::texts::english;
 
 /// Staff accept a request.
@@ -267,13 +267,18 @@ impl StateMachine for Booking {
                             let at = Some(input.at());
                             let code = Some(crate::booking::OTHER.to_owned());
                             let by = Some(input.actor.as_str().to_owned());
+                            // A decline is the business saying no, before the start.
+                            let initiated = Some(Initiator::Business.as_str().to_owned());
+                            let stage = Some(CancelStage::BeforeStart.as_str().to_owned());
                             set(
                                 tx,
                                 id,
                                 &[
                                     ("cancel_code", &code),
+                                    ("cancel_initiated_by", &initiated),
                                     ("cancel_by", &by),
                                     ("cancel_note", &input.note),
+                                    ("cancel_stage", &stage),
                                     ("cancelled_at", &at),
                                 ],
                             )
@@ -461,19 +466,79 @@ impl StateMachine for Booking {
                         }
                     })
                 })
+                .guard("reason_known", |_b: &Booking, ctx| {
+                    let known = input_of(ctx).default_initiated_by.is_some();
+                    Box::pin(async move {
+                        if known {
+                            Ok(())
+                        } else {
+                            Err(guard_text("wl_scheduling.problem.unknown_reason"))
+                        }
+                    })
+                })
+                .guard("walked_out_after_check_in", |booking: &Booking, ctx| {
+                    let walked_out = input_of(ctx).reason_code.as_deref() == Some(WALKED_OUT);
+                    let refused = walked_out && !booking.status.is_after_check_in();
+                    Box::pin(async move {
+                        if refused {
+                            Err(guard_text("wl_scheduling.problem.walked_out_early"))
+                        } else {
+                            Ok(())
+                        }
+                    })
+                })
+                .guard("staff_after_check_in", |booking: &Booking, ctx| {
+                    let refused = booking.status.is_after_check_in()
+                        && input_of(ctx).actor != ActorKind::Staff;
+                    Box::pin(async move {
+                        if refused {
+                            Err(guard_text("wl_scheduling.problem.staff_after_check_in"))
+                        } else {
+                            Ok(())
+                        }
+                    })
+                })
+                .guard("party_before_cutoff", |_b: &Booking, ctx| {
+                    let input = input_of(ctx);
+                    let refused = input.actor == ActorKind::Party
+                        && !input.change_link
+                        && !input.within_cutoff;
+                    Box::pin(async move {
+                        if refused {
+                            Err(guard_text("wl_scheduling.problem.after_cutoff"))
+                        } else {
+                            Ok(())
+                        }
+                    })
+                })
+                .guard("initiated_by", |_b: &Booking, ctx| {
+                    let input = input_of(ctx);
+                    let problem = initiated_by_problem(&input);
+                    Box::pin(async move {
+                        match problem {
+                            Some(key) => Err(guard_text(key)),
+                            None => Ok(()),
+                        }
+                    })
+                })
                 .effect(|booking: &Booking, ctx, tx| {
                     let id = booking.id;
                     let input = input_of(ctx);
                     Box::pin(async move {
                         let at = Some(input.at());
                         let by = Some(input.actor.as_str().to_owned());
+                        let initiated = input.initiated_by.map(|i| i.as_str().to_owned());
+                        let stage = input.stage.map(|s| s.as_str().to_owned());
                         set(
                             tx,
                             id,
                             &[
                                 ("cancel_code", &input.reason_code),
+                                ("cancel_initiated_by", &initiated),
                                 ("cancel_by", &by),
                                 ("cancel_note", &input.note),
+                                ("cancel_stage", &stage),
+                                ("cancel_late", &input.late),
                                 ("cancelled_at", &at),
                                 ("conflict_block", &false),
                                 ("conflict_eligibility", &false),
@@ -485,6 +550,30 @@ impl StateMachine for Booking {
                 }),
             )
     }
+}
+
+/// What is wrong with *initiated by* of a cancellation, as a text key; `None`
+/// when it is fine (wl-scheduling §4.1 *Cancellation reason codes*):
+///
+/// - a party never picks `business`, except by cancelling from a message
+///   about a change the business made (`change_link`), where it is set;
+/// - staff may record the other side than the code's default only with a note.
+fn initiated_by_problem(input: &BookingInput) -> Option<&'static str> {
+    let Some(initiated) = input.initiated_by else {
+        return Some("wl_scheduling.problem.initiated_by_needed");
+    };
+    if input.actor == ActorKind::Party && !input.change_link && initiated != Initiator::Party {
+        return Some("wl_scheduling.problem.party_cannot_blame");
+    }
+    let overridden = input.default_initiated_by.is_some_and(|d| d != initiated);
+    let noted = input
+        .note
+        .as_deref()
+        .is_some_and(|note| !note.trim().is_empty());
+    if overridden && !noted && !input.change_link {
+        return Some("wl_scheduling.problem.override_needs_note");
+    }
+    None
 }
 
 /// Whether a party tries to move or cancel a booking after the cut-off
@@ -579,6 +668,49 @@ mod tests {
         );
     }
 
+    fn cancel_input(actor: ActorKind) -> BookingInput {
+        BookingInput {
+            actor,
+            reason_code: Some("site_closed".to_owned()),
+            default_initiated_by: Some(Initiator::Business),
+            initiated_by: Some(Initiator::Business),
+            ..BookingInput::default()
+        }
+    }
+
+    #[test]
+    fn staff_record_the_default_side_without_a_note() {
+        assert_eq!(initiated_by_problem(&cancel_input(ActorKind::Staff)), None);
+    }
+
+    #[test]
+    fn staff_override_the_side_only_with_a_note() {
+        let mut input = cancel_input(ActorKind::Staff);
+        input.initiated_by = Some(Initiator::Party);
+        assert_eq!(
+            initiated_by_problem(&input),
+            Some("wl_scheduling.problem.override_needs_note")
+        );
+        input.note = Some("patient asked to close early".to_owned());
+        assert_eq!(initiated_by_problem(&input), None);
+    }
+
+    #[test]
+    fn a_party_never_picks_business_except_from_a_change_message() {
+        let mut input = cancel_input(ActorKind::Party);
+        assert_eq!(
+            initiated_by_problem(&input),
+            Some("wl_scheduling.problem.party_cannot_blame")
+        );
+        input.change_link = true;
+        assert_eq!(initiated_by_problem(&input), None);
+        input.initiated_by = None;
+        assert_eq!(
+            initiated_by_problem(&input),
+            Some("wl_scheduling.problem.initiated_by_needed")
+        );
+    }
+
     #[test]
     fn the_guards_are_named() {
         let machine = Booking::machine();
@@ -596,7 +728,17 @@ mod tests {
         assert_eq!(guards(START), ["tracks_in_progress"]);
         assert_eq!(guards(COMPLETE), ["start_passed", "checked_in_first"]);
         assert_eq!(guards(MARK_NO_SHOW), ["grace_passed", "no_open_conflict"]);
-        assert_eq!(guards(CANCEL), ["reason_given"]);
+        assert_eq!(
+            guards(CANCEL),
+            [
+                "reason_given",
+                "reason_known",
+                "walked_out_after_check_in",
+                "staff_after_check_in",
+                "party_before_cutoff",
+                "initiated_by"
+            ]
+        );
         assert_eq!(guards(RESCHEDULE), ["before_cutoff"]);
     }
 }

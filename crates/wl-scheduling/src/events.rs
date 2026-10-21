@@ -5,8 +5,8 @@
 
 use renox::prelude::*;
 use wl_kernel::scheduling::{
-    BookingBooked, BookingCheckedIn, BookingCompleted, BookingNoShow, BookingRescheduled,
-    SlotReleased,
+    BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted, BookingNoShow,
+    BookingRescheduled, CancelStage, CancelledBy, DepositOutcome, Initiator, SlotReleased,
 };
 
 use crate::booking::Booking;
@@ -113,6 +113,40 @@ pub async fn slot_released(
             start,
             end,
             service_type: service.code.clone(),
+        })
+        .await
+}
+
+/// `cancel` or `decline` ended the booking. The reason, who initiated it, the
+/// stage and whether it was late are read from the committed booking; the
+/// deposit outcome is what the deposit rules recorded on it.
+pub async fn cancelled(state: &AppState, booking: &Booking, by: CancelledBy) -> Result {
+    let initiated_by = booking
+        .cancel_initiated_by
+        .as_deref()
+        .and_then(Initiator::parse)
+        .unwrap_or(Initiator::Business);
+    let stage = match booking.cancel_stage.as_deref() {
+        Some("checked_in") => CancelStage::CheckedIn,
+        Some("in_progress") => CancelStage::InProgress,
+        _ => CancelStage::BeforeStart,
+    };
+    let deposit_outcome = match booking.deposit_outcome.as_deref() {
+        Some("refunded") => Some(DepositOutcome::Refunded),
+        Some("forfeited") => Some(DepositOutcome::Forfeited),
+        Some("applied_to_work_done") => Some(DepositOutcome::AppliedToWorkDone),
+        _ => None,
+    };
+    state
+        .emit(BookingCancelled {
+            booking: booking.booking_id(),
+            by,
+            initiated_by,
+            reason_code: booking.cancel_code.clone().unwrap_or_default(),
+            stage,
+            work_done: booking.work_done(),
+            late: booking.cancel_late,
+            deposit_outcome,
         })
         .await
 }

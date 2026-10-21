@@ -95,6 +95,24 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.problem.not_self_bookable", "This service cannot be booked online."),
     ("wl_scheduling.problem.in_the_past", "That time has passed."),
     ("wl_scheduling.problem.too_soon", "That is too soon to book online; call the clinic."),
+    ("wl_scheduling.problem.unknown_reason", "That is not a cancellation reason."),
+    ("wl_scheduling.problem.walked_out_early", "A party can only walk out after check-in."),
+    (
+        "wl_scheduling.problem.staff_after_check_in",
+        "Only staff can cancel once the party is checked in.",
+    ),
+    (
+        "wl_scheduling.problem.initiated_by_needed",
+        "Say whether the party or the business cancelled.",
+    ),
+    (
+        "wl_scheduling.problem.party_cannot_blame",
+        "A party cannot record the business as the cause.",
+    ),
+    (
+        "wl_scheduling.problem.override_needs_note",
+        "To record the other side as the cause, add a note saying why.",
+    ),
     ("wl_scheduling.problem.too_far", "That is further ahead than bookings are taken."),
 ];
 

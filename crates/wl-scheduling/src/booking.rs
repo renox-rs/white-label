@@ -210,6 +210,14 @@ impl Booking {
         }
     }
 
+    /// The vertical record that holds the work done, if one was linked.
+    pub fn work_done(&self) -> Option<Subject> {
+        match (&self.work_done_type, self.work_done_id) {
+            (Some(kind), Some(id)) => Some(Subject::new(kind, id)),
+            _ => None,
+        }
+    }
+
     /// Whether any cause of a conflict is open (§3).
     pub fn has_conflict(&self) -> bool {
         self.conflict_block || self.conflict_eligibility

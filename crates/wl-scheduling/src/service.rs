@@ -18,10 +18,14 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::documents::dubai_date;
-use wl_kernel::scheduling::{Eligibility, EligibilityQuery, resource_eligibility};
+use wl_kernel::scheduling::{
+    CancelStage, CancelledBy, Eligibility, EligibilityQuery, Initiator, resource_eligibility,
+};
 use wl_kernel::{PartyId, Subject};
 
-use crate::booking::{BOOKING_SERIES, Booking, BookingResource, BookingStatus};
+use crate::booking::{
+    BOOKING_SERIES, Booking, BookingResource, BookingStatus, PARTY_REQUEST, default_initiator,
+};
 use crate::booking_machine::{
     ACCEPT, ActorKind, BookingInput, CANCEL, CHECK_IN, COMPLETE, CONFIRM, DECLINE, MARK_NO_SHOW,
     Occupy, RESCHEDULE, RESCHEDULE_REQUEST, START,
@@ -487,6 +491,7 @@ pub async fn decline(
     let mut input = input_for(state, actor, at, &service);
     input.note = Some(reason.to_owned());
     let done = run_simple(state, &booking, DECLINE, &input, actor, Some(reason)).await?;
+    events::cancelled(state, &done, cancelled_by(actor)).await?;
     events::slot_released(state, &service, ids, booking.starts_at, booking.ends_at).await?;
     Ok(done)
 }
@@ -650,10 +655,19 @@ pub async fn mark_no_show(
 /// What a cancellation says.
 #[derive(Debug, Clone)]
 pub struct CancelRequest {
-    /// The reason code.
+    /// The reason code. A party cancelling from the portal or an ordinary
+    /// link gives none (the code is `party_request`); from a message about a
+    /// change the business made it is the code of that change.
     pub reason_code: String,
-    /// The reason text, if any.
+    /// The reason text, if any. Required to record the other side than the
+    /// code's default.
     pub note: Option<String>,
+    /// Staff record this side instead of the code's default (needs a note).
+    pub initiated_by: Option<Initiator>,
+    /// The party cancels from a message about a change the business made
+    /// (a reassign, a conflict): it is recorded as initiated by `business`
+    /// and the cancellation cut-off does not apply.
+    pub change_link: bool,
 }
 
 impl CancelRequest {
@@ -662,6 +676,24 @@ impl CancelRequest {
         CancelRequest {
             reason_code: reason_code.to_owned(),
             note: None,
+            initiated_by: None,
+            change_link: false,
+        }
+    }
+
+    /// The party's own cancellation from the portal or an ordinary link:
+    /// `party_request`, initiated by the party.
+    pub fn by_party() -> Self {
+        CancelRequest::new(PARTY_REQUEST)
+    }
+
+    /// A party cancelling from a message about the change `reason_code`
+    /// (e.g. `resource_unavailable`): initiated by the business, also after
+    /// the cut-off.
+    pub fn from_change_message(reason_code: &str) -> Self {
+        CancelRequest {
+            change_link: true,
+            ..CancelRequest::new(reason_code)
         }
     }
 
@@ -670,10 +702,45 @@ impl CancelRequest {
         self.note = Some(note.to_owned());
         self
     }
+
+    /// Records `initiated_by` instead of the code's default (needs a note).
+    pub fn initiated_by(mut self, initiated_by: Initiator) -> Self {
+        self.initiated_by = Some(initiated_by);
+        self
+    }
 }
 
-/// Cancels a booking (`cancel`) with a reason code. The slot is released and
-/// offered to the waiting list.
+fn cancelled_by(actor: Actor) -> CancelledBy {
+    match actor.kind {
+        ActorKind::Party => CancelledBy::Party,
+        ActorKind::Staff => CancelledBy::Staff,
+        ActorKind::System => CancelledBy::System,
+    }
+}
+
+/// Whether a cancellation at `at` is *late* (§4.1): less than the deposit
+/// forfeit window before the start; for a service type without a deposit,
+/// less than the cancellation cut-off.
+pub fn is_late(service: &ServiceType, start: DateTime, at: DateTime) -> bool {
+    let window = if service.has_deposit() {
+        service.deposit_forfeit_hours
+    } else {
+        service.cancel_cutoff_hours
+    };
+    !hours_before(start, at, window)
+}
+
+/// Cancels a booking (`cancel`) with a reason code (§4.1). The slot is
+/// released and offered to the waiting list; the reason, who initiated it,
+/// the stage and *late* are recorded and sent with `BookingCancelled`.
+///
+/// - A party's cancellation records `party_request`, initiated by the party,
+///   and only before the cancellation cut-off, never after check-in. From a
+///   change message ([`CancelRequest::from_change_message`]) it records the
+///   code of the change, initiated by the business, at any time before the
+///   check-in.
+/// - Staff give the code; the side is the code's default unless they record
+///   the other with a note.
 pub async fn cancel(
     state: &AppState,
     id: i64,
@@ -681,21 +748,44 @@ pub async fn cancel(
     actor: Actor,
     at: DateTime,
 ) -> std::result::Result<Booking, Refusal> {
+    let cfg = config_of(state);
     let booking = Booking::find_or_404(&state.db, id).await?;
     let service = service_of(state, &booking).await?;
     let ids = booking.resource_ids(&state.db).await?;
     let mut input = input_for(state, actor, at, &service);
-    input.reason_code = Some(request.reason_code.clone());
+    let (code, initiated_by) = match actor.kind {
+        ActorKind::Party if request.change_link => {
+            (request.reason_code.clone(), Some(Initiator::Business))
+        }
+        ActorKind::Party => (PARTY_REQUEST.to_owned(), Some(Initiator::Party)),
+        _ => {
+            let default = default_initiator(&request.reason_code, &cfg.extra_reason_codes);
+            (
+                request.reason_code.clone(),
+                request.initiated_by.or(default),
+            )
+        }
+    };
+    input.default_initiated_by = default_initiator(&code, &cfg.extra_reason_codes);
+    input.reason_code = Some(code.clone());
+    input.initiated_by = initiated_by;
     input.note = request.note.clone();
-    let done = run_simple(
-        state,
-        &booking,
-        CANCEL,
-        &input,
-        actor,
-        Some(&request.reason_code),
-    )
-    .await?;
-    events::slot_released(state, &service, ids, booking.starts_at, booking.ends_at).await?;
+    input.change_link = request.change_link && actor.kind == ActorKind::Party;
+    input.within_cutoff = hours_before(booking.starts_at, at, service.cancel_cutoff_hours);
+    input.late = is_late(&service, booking.starts_at, at);
+    input.stage = Some(match booking.status {
+        BookingStatus::CheckedIn => CancelStage::CheckedIn,
+        BookingStatus::InProgress => CancelStage::InProgress,
+        _ => CancelStage::BeforeStart,
+    });
+    let done = run_simple(state, &booking, CANCEL, &input, actor, Some(&code)).await?;
+    events::cancelled(state, &done, cancelled_by(actor)).await?;
+    // After check-in only the time that is left is freed.
+    let from = if booking.status.is_after_check_in() {
+        booking.starts_at.max(at)
+    } else {
+        booking.starts_at
+    };
+    events::slot_released(state, &service, ids, from, booking.ends_at).await?;
     Ok(done)
 }
