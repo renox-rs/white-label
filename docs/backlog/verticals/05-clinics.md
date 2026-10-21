@@ -334,15 +334,15 @@ check-in. This gives the clinic time to get cover before the patient arrives.
 - Must not cancel or reschedule appointments automatically.
 
 #### Done when
-- [ ] Given authorisation A1 (patient P, laser, valid until 2026-11-30) and P's appointments on
+- [x] Given authorisation A1 (patient P, laser, valid until 2026-11-30) and P's appointments on
       2026-11-20 and 2026-12-05, when A1 is denied, both are flagged and the coordinator gets one task.
-- [ ] Given A1 valid until 2026-11-30, on 2026-11-27 at 02:00 the 2026-12-05 appointment is
+- [x] Given A1 valid until 2026-11-30, on 2026-11-27 at 02:00 the 2026-12-05 appointment is
       flagged; the 2026-11-20 one is not.
-- [ ] When A1's last unit is consumed on 2026-11-20, A1 is `used` and the 2026-12-05 appointment
+- [x] When A1's last unit is consumed on 2026-11-20, A1 is `used` and the 2026-12-05 appointment
       is flagged.
-- [ ] Given another authorisation A2 valid on 2026-12-05 with units left, nothing is flagged.
-- [ ] Running the rule twice creates one flag and one task.
-- [ ] When A3 is approved covering 2026-12-05, the flag is cleared.
+- [x] Given another authorisation A2 valid on 2026-12-05 with units left, nothing is flagged.
+- [x] Running the rule twice creates one flag and one task.
+- [x] When A3 is approved covering 2026-12-05, the flag is cleared.
 
 #### Out of scope
 `CLN.RUL.07` itself (base); the check at check-in (BL-CLN-02).
