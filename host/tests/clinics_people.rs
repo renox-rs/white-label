@@ -471,6 +471,9 @@ async fn hiring_a_receptionist_creates_the_checklist_and_its_reminders_run() {
             "employee" => assert_eq!(who, [receptionist.id], "{}", s.title_en),
             "manager" => assert_eq!(who, [manager.id], "{}", s.title_en),
             "role:clinic_manager" => assert!(who.contains(&manager.id), "{}", s.title_en),
+            // The module's own steps (accounts and access) belong to HR: the
+            // holders of the onboarding permission.
+            "hr" => assert!(who.contains(&admin.id), "{}", s.title_en),
             other => panic!("unexpected owner {other}"),
         }
     }
