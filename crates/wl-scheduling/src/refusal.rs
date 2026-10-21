@@ -78,6 +78,25 @@ impl Refusal {
         }
     }
 
+    /// The English text, for a result that is not shown in a request's
+    /// language (the failures of a bulk action).
+    pub fn plain(&self) -> String {
+        match self {
+            Refusal::Taken { .. } | Refusal::Unavailable(Unfit::Taken) => {
+                english("wl_scheduling.problem.taken", &[])
+            }
+            Refusal::Unavailable(Unfit::Closed(name)) => {
+                english("wl_scheduling.problem.closed", &[("name", name)])
+            }
+            Refusal::Unavailable(Unfit::Blocked(name)) => {
+                english("wl_scheduling.problem.blocked", &[("name", name)])
+            }
+            Refusal::Ineligible(text) | Refusal::Invalid(text) => text.clone(),
+            Refusal::Transition(error) => error.to_string(),
+            Refusal::Failed(error) => error.to_string(),
+        }
+    }
+
     /// The error a page answers with: 409 for a slot just taken, 422 for a
     /// refusal, the transition's own status for the machine's.
     pub fn into_error(self, lang: &Lang) -> Error {

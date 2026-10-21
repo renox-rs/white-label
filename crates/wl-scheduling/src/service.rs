@@ -33,6 +33,7 @@ use crate::booking_machine::{
     START,
 };
 use crate::config::config_of;
+use crate::conflict;
 use crate::deposit;
 use crate::events;
 use crate::notices;
@@ -666,6 +667,7 @@ async fn reschedule_with(
         .await?;
     tx.commit().await?;
     outcome.emit(state).await?;
+    conflict::close_all(&state.db, id, "reschedule", at).await?;
     let moved = Booking::find_or_404(&state.db, id).await?;
     events::rescheduled(state, &moved, &old, old_ids.clone(), ids).await?;
     events::slot_released(state, &service, old_ids, old.starts_at, old.ends_at).await?;
@@ -902,6 +904,7 @@ pub async fn cancel(
         }
     }
     let cancelled = run_simple(state, &booking, CANCEL, &input, actor, Some(&code)).await?;
+    conflict::close_all(&state.db, id, "cancel", at).await?;
     // The deposit follows `SCH.ACL.05`. A refund `wl-payments` refuses does
     // not undo the cancellation: the events still go out and the refusal is
     // returned after them.
@@ -944,6 +947,23 @@ pub async fn reassign(
     actor: Actor,
     at: DateTime,
 ) -> std::result::Result<Booking, Refusal> {
+    let (moved, who) = reassign_quietly(state, id, from, to, reason_code, actor, at).await?;
+    notices::reassigned(state, &moved, &who, reason_code, at).await?;
+    Ok(moved)
+}
+
+/// [`reassign`] without the message to the party: the booking, and the name of
+/// the resource that took over. A bulk action tells each party once, for all
+/// their bookings ([`crate::conflict::bulk_resolve`]).
+pub(crate) async fn reassign_quietly(
+    state: &AppState,
+    id: i64,
+    from: i64,
+    to: i64,
+    reason_code: &str,
+    actor: Actor,
+    at: DateTime,
+) -> std::result::Result<(Booking, String), Refusal> {
     staff_only(actor)?;
     let cfg = config_of(state);
     let booking = Booking::find_or_404(&state.db, id).await?;
@@ -1010,6 +1030,7 @@ pub async fn reassign(
         .await?;
     tx.commit().await?;
     outcome.emit(state).await?;
+    conflict::close_all(&state.db, id, "reassign", at).await?;
     let moved = Booking::find_or_404(&state.db, id).await?;
     events::reassigned(state, &moved, old_ids, new_ids, reason_code).await?;
     events::slot_released(
@@ -1024,8 +1045,7 @@ pub async fn reassign(
         .first()
         .map(|resource| resource.name.clone())
         .unwrap_or_default();
-    notices::reassigned(state, &moved, &who, reason_code, at).await?;
-    Ok(moved)
+    Ok((moved, who))
 }
 
 /// Links the record a vertical opened at check-in (a visit, a job card) to

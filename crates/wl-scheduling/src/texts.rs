@@ -211,6 +211,59 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_scheduling.problem.already_on_booking",
         "That resource is already on this booking.",
     ),
+    ("wl_scheduling.conflicts.title", "Conflicts"),
+    (
+        "wl_scheduling.conflicts.subtitle",
+        "Bookings that a block or an expired licence puts at risk. Nothing is cancelled until you act.",
+    ),
+    ("wl_scheduling.conflicts.empty", "No bookings in conflict"),
+    ("wl_scheduling.conflicts.resource", "Resource"),
+    ("wl_scheduling.conflicts.all", "All resources"),
+    ("wl_scheduling.conflicts.any", "The first that can take it"),
+    ("wl_scheduling.conflicts.day", "Day"),
+    ("wl_scheduling.conflicts.filter", "Filter"),
+    ("wl_scheduling.conflicts.bookings", "Bookings"),
+    ("wl_scheduling.conflicts.action", "Action"),
+    ("wl_scheduling.conflicts.to", "Reassign to"),
+    ("wl_scheduling.conflicts.reason_code", "Reason code (cancel)"),
+    ("wl_scheduling.conflicts.apply", "Apply to the selected"),
+    ("wl_scheduling.conflicts.action_reassign", "Reassign to another resource"),
+    (
+        "wl_scheduling.conflicts.action_reschedule",
+        "Offer the parties other times",
+    ),
+    (
+        "wl_scheduling.conflicts.action_cancel",
+        "Cancel (the business cancels)",
+    ),
+    (
+        "wl_scheduling.conflicts.result",
+        "Done for :done booking(s); failed for :failed.",
+    ),
+    (
+        "wl_scheduling.conflicts.blocked",
+        "Blocked. :count booking(s) are in conflict.",
+    ),
+    (
+        "wl_scheduling.conflicts.unblocked",
+        "Block removed. :count conflict(s) cleared.",
+    ),
+    (
+        "wl_scheduling.problem.block_period",
+        "The block must end after it starts.",
+    ),
+    (
+        "wl_scheduling.problem.unknown_booking",
+        "That booking does not exist.",
+    ),
+    (
+        "wl_scheduling.problem.not_conflicted",
+        "That booking has no open conflict.",
+    ),
+    (
+        "wl_scheduling.problem.no_replacement",
+        "No other resource can take this booking at that time.",
+    ),
     (
         "wl_scheduling.notices.reassigned_subject",
         "Your booking {{ number }} has a new resource",
@@ -218,6 +271,38 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_scheduling.notices.reassigned_body",
         "Your booking {{ number }} on {{ when }} is now with {{ resource }}.\n\nKeep it: {{ accept_url }}\nPick another time: {{ reschedule_url }}\nCancel it: {{ cancel_url }}",
+    ),
+    (
+        "wl_scheduling.notices.changed_subject",
+        "Your booking {{ number }} has changed",
+    ),
+    (
+        "wl_scheduling.notices.changed_body",
+        "Your booking has changed.\n\n{{ details }}",
+    ),
+    (
+        "wl_scheduling.notices.offer_subject",
+        "Choose another time for your booking {{ number }}",
+    ),
+    (
+        "wl_scheduling.notices.offer_body",
+        "We cannot keep your booking as it is. Please choose another time.\n\n{{ details }}",
+    ),
+    (
+        "wl_scheduling.notices.line_with",
+        "Booking :number on :when is now with :resource.",
+    ),
+    (
+        "wl_scheduling.notices.line_change",
+        "Booking :number on :when needs to change.",
+    ),
+    (
+        "wl_scheduling.notices.line_slots",
+        "You can move it to: :slots.",
+    ),
+    (
+        "wl_scheduling.notices.line_links",
+        "Keep it: :accept\nPick another time: :pick\nCancel it: :cancel",
     ),
     (
         "wl_scheduling.link.accepted",

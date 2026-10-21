@@ -4,6 +4,7 @@
 pub mod booking;
 pub mod booking_machine;
 pub mod config;
+pub mod conflict;
 pub mod deposit;
 pub mod events;
 pub mod links;
@@ -21,9 +22,11 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 use wl_kernel::scheduling::Initiator;
+use wl_kernel::workforce::{LeaveApproved, LeaveCancelled};
 
 pub use booking::{Booking, BookingResource, BookingStatus};
 pub use booking_machine::{ActorKind, BookingInput};
+pub use conflict::{BulkAction, BulkResult, Conflict};
 pub use config::{SchedulingConfig, config_of};
 pub use refusal::Refusal;
 pub use resource::{
@@ -167,7 +170,8 @@ impl Module for WlScheduling {
             .model::<AvailabilityBlock>()
             .model::<Booking>()
             .model::<BookingResource>()
-            .model::<WaitingEntry>();
+            .model::<WaitingEntry>()
+            .model::<Conflict>();
         renox::state_machine::register::<Booking>();
         renox::state_machine::register::<WaitingEntry>();
         app.view_data::<pages::IndexPage>()
@@ -184,6 +188,16 @@ impl Module for WlScheduling {
             }
         });
         notices::register_types();
+        // Sick leave and other leave block the employee's resources and flag
+        // the bookings they overlap; a cancelled leave takes its blocks away.
+        app.listen(|event: LeaveApproved, state: AppState| async move {
+            conflict::leave_approved(&state, &event, renox::db::now())
+                .await
+                .map(|_| ())
+        });
+        app.listen(|event: LeaveCancelled, state: AppState| async move {
+            conflict::leave_cancelled(&state, &event, renox::db::now()).await
+        });
         app.provide(self.config.clone());
         // wl-payments asks whether a booking still waits for its money.
         wl_kernel::payments::provide_prepaid_subjects(app, prepaid::PrepaidBookings);
