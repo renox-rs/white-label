@@ -24,6 +24,7 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::clinics_seed;
 pub use app::construction_seed;
 pub use app::demo_data;
 pub use app::negative_flow::{invoicing_for, payments_for};
