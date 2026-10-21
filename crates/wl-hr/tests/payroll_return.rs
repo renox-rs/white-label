@@ -84,6 +84,14 @@ async fn hrm11_ac1_the_approver_returns_an_approved_run_with_a_reason_and_a_line
     );
     assert_eq!(d.t.line(&d.other_line).await.approver_comment, None);
 
+    // The preparer sees the comment on the line of the draft run page.
+    d.t.app.acting_as(&d.a);
+    d.t.app
+        .get(&format!("/hr/payroll/{}", d.run.id))
+        .await
+        .assert_ok()
+        .assert_see("Overtime of 12 h, not 21 h");
+
     // The preparer is told.
     let notices = d.t.notices.of_type("hr.payroll_returned");
     assert_eq!(notices.len(), 1);
