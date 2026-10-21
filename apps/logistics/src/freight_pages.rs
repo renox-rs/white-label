@@ -271,10 +271,15 @@ async fn show(
         return Err(Error::Forbidden);
     }
     let offered: Vec<String> = if staff {
-        job.available(&user, &state.db)
-            .await?
-            .into_iter()
-            .map(|action| action.name)
+        // The buttons follow the state and the permission only: most guards
+        // judge what the person types in the sheet (`available` runs them
+        // without it and would hide `cancel` or `depart` for ever).
+        FreightJob::machine()
+            .from_state(job.status.as_str())
+            .filter(|transition| {
+                !transition.is_system() && transition.check_access(&job, Some(&user)).is_ok()
+            })
+            .map(|transition| transition.name().to_owned())
             .collect()
     } else {
         Vec::new()
@@ -604,6 +609,10 @@ fn charge_in(
     let text = field(form, name);
     if text.trim().is_empty() {
         return Ok(None);
+    }
+    // A negative amount is refused, not read as "no charge"; blank or zero is none.
+    if text.trim_start().starts_with('-') {
+        return Err(bad_input(lang));
     }
     let fils = parse_dirhams(&text).ok_or_else(|| bad_input(lang))?;
     Ok(Some(fils).filter(|fils| *fils > 0))
