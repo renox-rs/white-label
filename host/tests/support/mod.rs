@@ -984,3 +984,25 @@ pub async fn clinic_booking(
     .await
     .expect("the booking is made")
 }
+
+/// The clinics host with the notification module changed by `tune` and
+/// `module` added (consents, a clock of its own): nothing else is faked.
+pub async fn clinics_booted_with(
+    tune: impl FnOnce(wl_notify::WlNotify) -> wl_notify::WlNotify + 'static,
+    module: impl Module,
+) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(CLINICS_CLIENT).expect("the clinics client");
+    let app = TestApp::new(
+        host::app_for_tuned(config, host::Tuning::default().notify(tune))
+            .expect("the app")
+            .module(module)
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}

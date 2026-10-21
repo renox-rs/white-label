@@ -831,6 +831,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::SEGMENTS_MANAGE,
             sales::LEADS_VIEW,
             sales::LEADS_MANAGE,
+            // Sends the campaign's broadcast (`CLN.ACL.13`, `NTF.ACL.03`).
+            notify::MARKETING_SEND,
         ],
     ),
     (
@@ -845,6 +847,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LEADS_MANAGE,
             sales::SEGMENTS_MANAGE,
             sales::SEGMENTS_EXPORT,
+            // The second person who approves a broadcast above the limit
+            // (`NTF.ACL.03`), never the one who asked for it.
+            notify::MARKETING_SEND,
         ],
     ),
     (
