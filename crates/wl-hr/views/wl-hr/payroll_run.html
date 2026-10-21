@@ -36,7 +36,7 @@
       </rx-action-sheet>
     </template>
     <template rx-if="approve_blocked and can_approve">
-      <rx-button :label="tx['payroll.approve']" variant="primary" disabled :disabled-reason="tx['payroll.approve_blocked']"/>
+      <rx-button :label="tx['payroll.approve']" variant="primary" :disabled-reason="tx['payroll.approve_blocked']"/>
     </template>
     <template rx-if="exceptions">
       <rx-card :title="tx['payroll.exceptions']">

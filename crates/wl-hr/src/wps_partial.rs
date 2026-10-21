@@ -59,7 +59,7 @@ fn refuse(key: &str) -> Error {
 
 /// `record_partial`, as the user's transition or the system's.
 pub(crate) fn record_partial(by_system: bool) -> Transition<PayrollRun> {
-    let transition = if by_system {
+    let transition: Transition<PayrollRun> = if by_system {
         Transition::new(RECORD_PARTIAL_BY_SYSTEM).system()
     } else {
         Transition::new(RECORD_PARTIAL)
@@ -133,7 +133,7 @@ pub(crate) fn record_partial(by_system: bool) -> Transition<PayrollRun> {
 
 /// `regenerate`, as the user's transition or the system's.
 pub(crate) fn regenerate(by_system: bool) -> Transition<PayrollRun> {
-    let transition = if by_system {
+    let transition: Transition<PayrollRun> = if by_system {
         Transition::new(REGENERATE_BY_SYSTEM).system()
     } else {
         Transition::new(REGENERATE)
