@@ -21,3 +21,6 @@ wl-attendance = { path = "../wl-attendance" }
 # The real ticketing module in the tests that open the labour case, the
 # security task and the HR tasks.
 wl-ticketing = { path = "../wl-ticketing" }
+# The real notify module in the test that stops the messages to an employee
+# who died.
+wl-notify = { path = "../wl-notify" }

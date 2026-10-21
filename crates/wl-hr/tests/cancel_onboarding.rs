@@ -11,7 +11,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use sql_check::count_of;
 use wl_hr::{Adjustment, Employee, EmployeeStatus, Receivable, SettlementStatus, VisaCaseStatus};
-use wl_kernel::approvals::{self, ApprovalRequest};
+use wl_kernel::approvals::{self, ApprovalEnd, ApprovalRequest, ApprovalStatus};
 use wl_kernel::invoicing::{PostCost, cost_poster};
 use wl_kernel::workforce::workforce;
 
@@ -177,6 +177,44 @@ async fn hrm05_ac2_a_new_case_still_in_progress_refuses_the_request() {
         .unwrap();
     approve(&t, &md, &e, nov(10)).await;
     assert_eq!(t.employee(&e).await.status, EmployeeStatus::Onboarding);
+}
+
+/// AC2: a *new* case in `in_progress` (a step is done) or `on_hold` is live
+/// as well: the request is refused with 422 and no approval request exists;
+/// when the case is closed, the request is accepted.
+#[renox::test]
+async fn hrm05_ac2_a_new_case_in_progress_or_on_hold_refuses_the_request() {
+    for live in [VisaCaseStatus::InProgress, VisaCaseStatus::OnHold] {
+        let t = support::boot().await;
+        let hr = t.user_with("Hana", "hr").await;
+        let e = t.employee_in(60, EmployeeStatus::Onboarding).await;
+        let case = t.visa_in(&e, "new", live, |_| {}).await;
+
+        let refused = ask(&t, &hr, &e, nov(10), &[("reason", "visa refused")]).await;
+        refused.assert_status(422);
+        assert!(
+            refused.text().contains("still open"),
+            "{live:?}: {}",
+            refused.text()
+        );
+        assert!(
+            ApprovalRequest::pending_about(t.db(), &e.subject())
+                .await
+                .unwrap()
+                .is_empty(),
+            "{live:?}"
+        );
+        assert_eq!(t.employee(&e).await.status, EmployeeStatus::Onboarding);
+
+        renox::db::sql("UPDATE wl_hr_visa_cases SET status = 'rejected' WHERE id = ?")
+            .bind(case.id)
+            .execute(t.db())
+            .await
+            .unwrap();
+        ask(&t, &hr, &e, nov(10), &[("reason", "visa refused")])
+            .await
+            .assert_ok();
+    }
 }
 
 /// AC3: a work permit issued and no completed cancellation case and no
@@ -360,4 +398,110 @@ async fn hrm05_ac5_visa_fees_stay_on_the_employee_and_nothing_is_recovered() {
         count_of::<Receivable>(t.db(), Receivable::EMPLOYEE_ID, e.id).await,
         0
     );
+}
+
+/// AC4 with the real wl-attendance: E has attendance records of 3, 4 and 5
+/// November saved by the attendance service, and no paid settlement: the
+/// request is refused; after the settlement (reason *onboarding cancelled*,
+/// AED 300) is drafted, approved and paid, it succeeds.
+#[renox::test]
+async fn hrm05_ac4_three_days_of_real_attendance_need_a_paid_onboarding_cancelled_settlement() {
+    let t = support::boot_with_attendance().await;
+    let hr = t.user_with("Hana", "hr").await;
+    let md = t.user_with("Basel", "md").await;
+    let approver = t.user_with("Basma", "settle_appr").await;
+    let payer = t.user_with("Pia", "settle_pay").await;
+    let e = t.employee_in(60, EmployeeStatus::Onboarding).await;
+    t.visa_in(&e, "new", VisaCaseStatus::Rejected, |_| {}).await;
+    for d in 3..=5 {
+        t.check_in(&e, nov(d)).await;
+    }
+    let history = wl_kernel::attendance::attendance_history(t.state())
+        .attended_days(t.state(), e.employee_id(), nov(2), nov(5))
+        .await
+        .unwrap();
+    assert_eq!(history, [nov(3), nov(4), nov(5)], "the days are recorded");
+
+    ask(&t, &hr, &e, nov(10), &[("reason", "medically unfit")])
+        .await
+        .assert_status(422);
+    assert!(
+        ApprovalRequest::pending_about(t.db(), &e.subject())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let settlement = t
+        .settlement_in(&e, SettlementStatus::Draft, |s| {
+            s.reason = "onboarding_cancelled".into();
+            s.unpaid_salary = 30_000;
+            s.net = 30_000;
+        })
+        .await;
+    t.settle_transition(&approver, &settlement, "approve")
+        .await
+        .assert_status(303);
+    t.settle(
+        &payer,
+        &settlement,
+        "pay",
+        &[
+            ("amount", "300"),
+            ("method", "transfer"),
+            ("reference", "TRF-3"),
+        ],
+    )
+    .await
+    .assert_status(303);
+
+    ask(&t, &hr, &e, nov(10), &[("reason", "medically unfit")])
+        .await
+        .assert_ok();
+    approve(&t, &md, &e, nov(10)).await;
+    assert_eq!(
+        t.employee(&e).await.status,
+        EmployeeStatus::OnboardingCancelled
+    );
+}
+
+/// AC4, checked again at the approval: E had no attendance when HR asked, so
+/// the request was accepted; E then checks in (a record saved by the real
+/// wl-attendance) before the MD approves, and the approval fails the request:
+/// E stays in `onboarding` and the days worked need the paid settlement.
+#[renox::test]
+async fn hrm05_ac4_a_check_in_between_the_request_and_the_approval_fails_the_approval() {
+    let t = support::boot_with_attendance().await;
+    let hr = t.user_with("Hana", "hr").await;
+    let md = t.user_with("Basel", "md").await;
+    let e = t.employee_in(60, EmployeeStatus::Onboarding).await;
+    t.visa_in(&e, "new", VisaCaseStatus::Rejected, |_| {}).await;
+
+    ask(&t, &hr, &e, nov(10), &[("reason", "medically unfit")])
+        .await
+        .assert_ok();
+    let request = ApprovalRequest::pending_about(t.db(), &e.subject())
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        request.payload.0["has_attendance"],
+        renox::serde_json::json!(false),
+        "no attendance at the request"
+    );
+
+    t.check_in(&e, nov(11)).await;
+
+    let decided = t
+        .on(nov(11), approvals::approve(t.state(), request.id, &md, ""))
+        .await
+        .unwrap()
+        .expect("the request ends");
+    assert_eq!(decided.decision, ApprovalEnd::Failed);
+    let after = ApprovalRequest::find_or_404(t.db(), request.id)
+        .await
+        .unwrap();
+    assert_eq!(after.status, ApprovalStatus::Failed);
+    assert_eq!(t.employee(&e).await.status, EmployeeStatus::Onboarding);
+    assert!(t.onboarding_cancelled.all().is_empty());
 }

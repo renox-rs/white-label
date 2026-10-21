@@ -3516,6 +3516,7 @@ dependencies = [
  "tempfile",
  "wl-attendance",
  "wl-kernel",
+ "wl-notify",
  "wl-payments",
  "wl-ticketing",
 ]

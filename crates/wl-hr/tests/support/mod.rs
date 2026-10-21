@@ -592,6 +592,8 @@ struct Real {
     attendance: bool,
     /// wl-ticketing provides the `TaskCreator`.
     ticketing: bool,
+    /// wl-notify provides the `Notifier`.
+    notify: bool,
 }
 
 /// Records the events and provides the fakes.
@@ -825,7 +827,9 @@ impl Module for Fakes {
     }
 
     fn register(&self, app: &mut Registry) {
-        provide_notifier(app, self.notices.clone());
+        if !self.real.notify {
+            provide_notifier(app, self.notices.clone());
+        }
         provide_checklists(app, self.checklists.clone());
         provide_sop_acknowledgements(app, self.sops.clone());
         provide_guard(app, self.docs.clone());
@@ -997,6 +1001,42 @@ impl Booted {
         .unwrap();
         tx.commit().await.unwrap();
         employee
+    }
+
+    /// `employee` is recorded present on `day` (07:00 to 15:00) through the
+    /// real wl-attendance (`boot_with_attendance`): the record is saved by the
+    /// service, so `AttendanceRecorded` is emitted, with the clock on `day`.
+    pub async fn check_in(&self, employee: &Employee, day: NaiveDate) {
+        let site = match wl_attendance::WorkLocation::query()
+            .first(self.db())
+            .await
+            .unwrap()
+        {
+            Some(site) => site,
+            None => wl_attendance::WorkLocation::create(
+                self.db(),
+                wl_attendance::WorkLocation::named("Site 1"),
+            )
+            .await
+            .unwrap(),
+        };
+        let at = |hour| {
+            wl_kernel::BusinessCalendar::default().from_local(day.and_hms_opt(hour, 0, 0).unwrap())
+        };
+        self.on(day, async {
+            wl_attendance::service::record(
+                self.state(),
+                wl_attendance::NewRecord::import(
+                    employee.employee_id(),
+                    site.id,
+                    at(7),
+                    Some(at(15)),
+                ),
+            )
+            .await
+            .unwrap();
+        })
+        .await;
     }
 
     /// Runs `work` with the clock on `day` (Asia/Dubai), moved forward from
@@ -1683,6 +1723,17 @@ pub async fn boot_with_ticketing() -> Booted {
     boot_full(WlHr::new(), true, real, None).await
 }
 
+/// [`boot`] with the real wl-notify module in place of the recording
+/// `Notifier`: a message asked for is a stored `Message`, and
+/// `stop_messages_to` cancels the waiting ones (`notices` records nothing).
+pub async fn boot_with_notify() -> Booted {
+    let real = Real {
+        notify: true,
+        ..Real::default()
+    };
+    boot_full(WlHr::new(), true, real, None).await
+}
+
 async fn boot_full(
     module: WlHr,
     induction: bool,
@@ -1785,6 +1836,11 @@ async fn boot_full(
     } else {
         app
     };
+    let app = if real.notify {
+        app.module(wl_notify::WlNotify::new())
+    } else {
+        app
+    };
     let mut modules = vec!["parties", "hr"];
     if real.payments {
         modules.extend(["invoicing", "payments"]);
@@ -1794,6 +1850,9 @@ async fn boot_full(
     }
     if real.ticketing {
         modules.push("ticketing");
+    }
+    if real.notify {
+        modules.push("notify");
     }
     let listed = modules
         .iter()
