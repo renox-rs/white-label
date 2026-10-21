@@ -30,7 +30,7 @@ use wl_kernel::documents::{
 };
 use wl_kernel::inventory::{
     GoodsReceived, LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
-    PreferredSupplierChanged, PurchaseOrderRevised, StockHoldClosed, StockHoldPlaced,
+    PreferredSupplierChanged, PurchaseOrderRevised, RecallOpened, StockHoldClosed, StockHoldPlaced,
     StockNegative, SupplierReturnCredited, SupplierReturnDispatched, SupplierScoreBelowThreshold,
 };
 use wl_kernel::invoicing::{
@@ -537,6 +537,7 @@ struct Fakes {
     closed: Arc<Mutex<Vec<StockHoldClosed>>>,
     released: Arc<Mutex<Vec<LotReleased>>>,
     discarded: Arc<Mutex<Vec<LotDiscarded>>>,
+    recalls: Arc<Mutex<Vec<RecallOpened>>>,
 }
 
 impl Module for Fakes {
@@ -570,6 +571,7 @@ impl Module for Fakes {
         record(app, &self.closed);
         record(app, &self.released);
         record(app, &self.discarded);
+        record(app, &self.recalls);
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
@@ -624,6 +626,8 @@ pub struct Booted {
     pub released: Recorded<LotReleased>,
     /// Every `LotDiscarded`.
     pub discarded: Recorded<LotDiscarded>,
+    /// Every `RecallOpened`.
+    pub recalls: Recorded<RecallOpened>,
     /// The days the clock was moved forward.
     clock_days: std::sync::atomic::AtomicI64,
 }
@@ -711,6 +715,26 @@ impl Booted {
     /// A user who decides the lines of a hold (`lots.release`) everywhere.
     pub async fn releaser(&self, name: &str) -> User {
         self.user_with(name, "lot_releaser").await
+    }
+
+    /// A user who opens recalls (`recalls.manage`) everywhere.
+    pub async fn recaller(&self, name: &str) -> User {
+        self.user_with(name, "recall_manager").await
+    }
+
+    /// `POST /recalls` as `by` with `form`.
+    pub async fn recall_as(&self, by: &User, form: &[(&str, &str)]) -> TestResponse {
+        self.app.acting_as(by);
+        self.app.htmx().post("/recalls", form).await
+    }
+
+    /// The recalls opened, oldest first.
+    pub async fn all_recalls(&self) -> Vec<wl_inventory::Recall> {
+        wl_inventory::Recall::query()
+            .order_by(wl_inventory::Recall::ID)
+            .get(self.db())
+            .await
+            .unwrap()
     }
 
     /// A storekeeper who clears pending issues (`stock.adjust`).
@@ -1424,6 +1448,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let closed = Arc::new(Mutex::new(Vec::new()));
     let released = Arc::new(Mutex::new(Vec::new()));
     let discarded = Arc::new(Mutex::new(Vec::new()));
+    let recalls = Arc::new(Mutex::new(Vec::new()));
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1463,6 +1488,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         closed: closed.clone(),
         released: released.clone(),
         discarded: discarded.clone(),
+        recalls: recalls.clone(),
     });
     let client = if with_invoicing {
         CLIENT_WITH_INVOICING
@@ -1553,6 +1579,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     permissions::define_role(app.db(), "stock_clerk", &[perm::STOCK_ADJUST])
         .await
         .unwrap();
+    permissions::define_role(app.db(), "recall_manager", &[perm::RECALLS_MANAGE])
+        .await
+        .unwrap();
     Booted {
         app,
         received: Recorded(received),
@@ -1577,6 +1606,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         closed: Recorded(closed),
         released: Recorded(released),
         discarded: Recorded(discarded),
+        recalls: Recorded(recalls),
         clock_days: std::sync::atomic::AtomicI64::new(0),
     }
 }
