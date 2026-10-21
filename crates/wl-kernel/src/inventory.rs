@@ -1301,6 +1301,22 @@ pub trait LotTrace: Send + Sync + 'static {
     ) -> TraceFuture<'a, Vec<TracedPlace>> {
         Box::pin(async { Ok(Vec::new()) })
     }
+    /// A vertical that sends its own notice (05: a neutral text with no
+    /// product) tells the recall which line it told: `sent` marks the
+    /// `pending` line `line` (`inventory.recall_line:7`) as sent, and `false`
+    /// takes a `sent` line back to `pending` (the notice gave up). `by` is
+    /// the user who sent it. Returns whether the line changed; a line that
+    /// was waived, a closed recall or a line in the other state change
+    /// nothing.
+    fn set_notice<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _line: &'a Subject,
+        _sent: bool,
+        _by: Option<i64>,
+    ) -> TraceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 }
 
 /// The trace when `inventory` is off: nothing is known.

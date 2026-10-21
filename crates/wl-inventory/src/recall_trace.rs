@@ -48,7 +48,8 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::inventory::{
-    LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotTrace, RECALL_SUBJECT_TYPE, RecallTraced,
+    LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotTrace, RECALL_LINE_SUBJECT_TYPE,
+    RECALL_SUBJECT_TYPE, RecallTraced,
     TraceFuture, TraceParty, TracePartyResolver, TracedHolder, TracedPlace, trace_party_resolver,
 };
 use wl_kernel::{PartyId, Subject};
@@ -675,6 +676,21 @@ impl LotTrace for InventoryTrace {
                 .iter()
                 .map(RecallLine::holder)
                 .collect())
+        })
+    }
+
+    fn set_notice<'a>(
+        &'a self,
+        state: &'a AppState,
+        line: &'a Subject,
+        sent: bool,
+        by: Option<i64>,
+    ) -> TraceFuture<'a, bool> {
+        Box::pin(async move {
+            if line.subject_type != RECALL_LINE_SUBJECT_TYPE {
+                return Ok(false);
+            }
+            crate::recall_notice::set_notice(state, line.subject_id, sent, by).await
         })
     }
 

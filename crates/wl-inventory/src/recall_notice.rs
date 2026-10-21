@@ -279,6 +279,67 @@ pub async fn waive(
     RecallLine::find_or_404(&state.db, line.id).await
 }
 
+/// The template stored on a line a vertical told with a notice of its own.
+pub const VERTICAL_TEMPLATE: &str = "vertical";
+
+/// A vertical that sends its own notice marks the line it told (`sent`
+/// true: `pending` to `sent`) or takes it back when the notice gave up
+/// (`sent` false: `sent` to `pending`), through the kernel's
+/// [`LotTrace::set_notice`](wl_kernel::inventory::LotTrace::set_notice).
+/// Returns whether the line changed; a waived line, a line of a closed recall
+/// and a line already in that state change nothing.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn set_notice(
+    state: &AppState,
+    line_id: i64,
+    sent: bool,
+    by: Option<i64>,
+) -> Result<bool> {
+    let Some(line) = RecallLine::find(&state.db, line_id).await? else {
+        return Ok(false);
+    };
+    let recall = Recall::find_or_404(&state.db, line.recall_id).await?;
+    if recall.status != RecallStatus::Traced {
+        return Ok(false);
+    }
+    let now = renox::db::now();
+    let changed = if sent {
+        RecallLine::query()
+            .where_(RecallLine::ID.eq(line.id))
+            .where_(RecallLine::NOTICE_STATUS.eq(NoticeStatus::Pending))
+            .update(
+                &state.db,
+                &[
+                    ("notice_status", &NoticeStatus::Sent.as_str().to_owned()),
+                    ("template", &Some(VERTICAL_TEMPLATE.to_owned())),
+                    ("sent_at", &Some(now)),
+                    ("sent_by", &by),
+                    ("updated_at", &now),
+                ],
+            )
+            .await?
+    } else {
+        RecallLine::query()
+            .where_(RecallLine::ID.eq(line.id))
+            .where_(RecallLine::NOTICE_STATUS.eq(NoticeStatus::Sent))
+            .update(
+                &state.db,
+                &[
+                    ("notice_status", &NoticeStatus::Pending.as_str().to_owned()),
+                    ("template", &None::<String>),
+                    ("sent_at", &None::<DateTime>),
+                    ("sent_by", &None::<i64>),
+                    ("updated_at", &now),
+                ],
+            )
+            .await?
+    };
+    Ok(changed > 0)
+}
+
 /// A notice of a recall line could not be delivered: the line is `pending`
 /// again and the recall owner gets a task (one open task per line).
 ///
