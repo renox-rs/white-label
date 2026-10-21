@@ -135,6 +135,9 @@ pub struct CashHandover {
     pub period_date: NaiveDate,
     /// When the period ends; a day ends at 23:59 Asia/Dubai of its date.
     pub period_end: Option<DateTime>,
+    /// When the record that is the period ended it (a run's return or abort);
+    /// none while it has not.
+    pub period_ended_at: Option<DateTime>,
     /// Whether `FIN.RUL.22` escalates it when left open.
     pub escalate: bool,
     /// What the holder is expected to hand over.
@@ -246,6 +249,8 @@ impl CashHandover {
             counted: self.counted,
             difference: self.difference,
             recovered: self.recovered,
+            ended_at: self.period_ended_at,
+            escalate: self.escalate,
         }
     }
 

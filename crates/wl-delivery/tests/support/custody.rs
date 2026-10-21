@@ -132,6 +132,8 @@ impl FakeCustody {
                 0
             },
             recovered: 0,
+            ended_at: None,
+            escalate: true,
         })
     }
 }

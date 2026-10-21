@@ -5,6 +5,7 @@ pub mod adjustment;
 pub mod billing;
 pub mod booking;
 pub mod cancel;
+pub mod cash_watch;
 mod claim;
 pub mod cod;
 mod credit;
@@ -48,6 +49,7 @@ pub use shipment::{
     ShipmentDelivered, ShipmentLost, ShipmentStatus, TrackingEvent,
 };
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
+pub use cash_watch::CashWatch;
 pub use cod::{CodLoss, CodRule};
 pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
 pub use trace::TraceTask;
@@ -111,7 +113,8 @@ impl Module for Logistics {
             .model::<AdjustmentLine>()
             .model::<CodLoss>()
             .model::<Reversal>()
-            .model::<TraceTask>();
+            .model::<TraceTask>()
+            .model::<CashWatch>();
         // The shipment's rule on who absorbs a COD difference.
         wl_kernel::delivery::provide_cod_rule(app, CodRule);
         // A refund to a recipient who is no party is paid by hand.
@@ -123,6 +126,9 @@ impl Module for Logistics {
         remit::register(app);
         // `LOG.RUL.12`, daily at 02:00, and the approval of `LOG.ACL.14`.
         trace::register(app);
+        // `LOG.RUL.13`, every 15 minutes: a driver who does not hand over the
+        // cash (replaces `FIN.RUL.22` for drivers).
+        cash_watch::register(app);
         // The approval of `LOG.ACL.14` for disposal.
         disposal::register();
         // The shipment's machine, and its place in the kernel's void pattern.

@@ -260,6 +260,15 @@ pub struct HandoverSummary {
     pub difference: i64,
     /// Recorded recoveries, in fils.
     pub recovered: i64,
+    /// When the period was ended by the record that is it (a run's return to
+    /// the depot or its abort, [`CashCustody::end_period`]); `None` while it
+    /// has not ended, whatever its planned end says.
+    #[serde(default)]
+    pub ended_at: Option<DateTime>,
+    /// Whether `FIN.RUL.22` escalates it when left open; `false` when a
+    /// vertical rule replaces it (03: `LOG.RUL.13`).
+    #[serde(default)]
+    pub escalate: bool,
 }
 
 /// The holder's cash for a period was counted (`count`, `recount`): a run
@@ -374,6 +383,14 @@ pub trait CashCustody: Send + Sync + 'static {
         _period: &'a Subject,
     ) -> CustodyFuture<'a, Option<HandoverSummary>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// The `open` handovers of a run (a period record of the vertical) with
+    /// cash expected whose escalation a vertical rule replaces
+    /// ([`HandoverPeriod::replaced_escalation`]), oldest first: what 03's
+    /// `LOG.RUL.13` watches. The default has none.
+    fn replaced_open<'a>(&'a self, _db: &'a Db) -> CustodyFuture<'a, Vec<HandoverSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 
     /// The handover with this id.

@@ -630,6 +630,43 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.disposal_requested",
         "The request waits for an operations manager other than you to approve it.",
     ),
+    // A driver who does not hand over the cash (`LOG.RUL.13`, BL-LOG-13).
+    (
+        "logistics.cash.task_title",
+        "Call {{ driver }}: cash of run {{ run }} ({{ amount }}) is not handed over",
+    ),
+    (
+        "logistics.cash.task_out",
+        "{{ driver }} has not come back with run {{ run }} and {{ amount }} of cash on delivery is unaccounted for. Call the driver and abort the run (reason: driver unreachable), which opens the cash handover for the count.",
+    ),
+    (
+        "logistics.cash.task_returned",
+        "{{ driver }} is back from run {{ run }} but has not handed over {{ amount }} of cash on delivery. Call the driver and have the cash counted.",
+    ),
+    (
+        "logistics.cash.admin_title",
+        "{{ driver }} did not hand over the cash of run {{ run }}",
+    ),
+    (
+        "logistics.cash.admin_body",
+        "Two days after the start, {{ amount }} of cash on delivery of run {{ run }} is still with {{ driver }}. The operations manager counts what was received; the shortfall is a shortage. The client is still paid in full.",
+    ),
+    (
+        "logistics.cash.count_title",
+        "Count the cash of run {{ run }} at what was received ({{ driver }}, {{ amount }} expected)",
+    ),
+    (
+        "logistics.cash.count_out",
+        "Abort run {{ run }} if it is still out (reason: driver unreachable), then count the handover at what was received, often nothing: the whole {{ amount }} is a shortage. Recover it in cash or write it off with approval.",
+    ),
+    (
+        "logistics.cash.count_returned",
+        "Count the handover of run {{ run }} at what was received, often nothing: the whole {{ amount }} is a shortage. Recover it in cash or write it off with approval.",
+    ),
+    (
+        "logistics.cash.closed",
+        "The cash was counted.",
+    ),
     // A reversed delivery (`WRK.ACL.10`, `LOG.ACL.12`, BL-LOG-10).
     (
         "logistics.reversal.event_needed",

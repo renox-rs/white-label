@@ -23,7 +23,7 @@ use renox::state_machine::StateMachine;
 use wl_kernel::Subject;
 use wl_kernel::custody::{
     CashCollection, CashCustody, CustodyFuture, HandoverId, HandoverKind, HandoverStatus,
-    HandoverSummary,
+    HandoverSummary, PeriodKind,
 };
 
 use crate::cash_handover::{CashEntry, CashHandover, CashHolder};
@@ -69,6 +69,23 @@ impl CashCustody for Custody {
             Ok(CashHandover::of_period_record(db, holder_user, period)
                 .await?
                 .map(|handover| handover.summary()))
+        })
+    }
+
+    fn replaced_open<'a>(&'a self, db: &'a Db) -> CustodyFuture<'a, Vec<HandoverSummary>> {
+        Box::pin(async move {
+            Ok(CashHandover::query()
+                .where_(CashHandover::STATUS.eq(HandoverStatus::Open))
+                .where_(CashHandover::KIND.eq(HandoverKind::Period))
+                .where_(CashHandover::PERIOD_KIND.eq(PeriodKind::Run))
+                .where_(CashHandover::ESCALATE.eq(false))
+                .where_(CashHandover::EXPECTED.gt(0))
+                .order_by(CashHandover::ID)
+                .get(db)
+                .await?
+                .iter()
+                .map(CashHandover::summary)
+                .collect())
         })
     }
 
@@ -232,9 +249,15 @@ pub async fn end_period(
         Some(recorded) if recorded <= ends_at => recorded,
         _ => ends_at,
     };
+    // The first end by the record that is the period stays (a run returned,
+    // then closed later does not move it).
+    let ended = handover.period_ended_at.or(Some(ends_at));
     CashHandover::query()
         .where_(CashHandover::ID.eq(handover.id))
-        .update(&state.db, &[("period_end", &Some(end))])
+        .update(
+            &state.db,
+            &[("period_end", &Some(end)), ("period_ended_at", &ended)],
+        )
         .await?;
     Ok(())
 }
