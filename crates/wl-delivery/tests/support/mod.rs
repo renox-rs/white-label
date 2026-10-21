@@ -536,7 +536,22 @@ enum Custody {
     Real,
 }
 
+/// `module` booted with the real `wl-ticketing` as the ticket service (the
+/// client has `ticketing` on). `tickets` of the world is the idle fake then.
+pub async fn boot_with_real_tickets(module: WlDelivery) -> World {
+    boot_full(module, Documents::logistics(), Custody::Off, true).await
+}
+
 async fn boot_inner(module: WlDelivery, docs: Documents, custody_from: Custody) -> World {
+    boot_full(module, docs, custody_from, false).await
+}
+
+async fn boot_full(
+    module: WlDelivery,
+    docs: Documents,
+    custody_from: Custody,
+    real_tickets: bool,
+) -> World {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -572,8 +587,12 @@ async fn boot_inner(module: WlDelivery, docs: Documents, custody_from: Custody) 
         .module(module)
         .provide(guard)
         .provide(workforce)
-        .provide(creator)
         .provide(notifier);
+    let app = if real_tickets {
+        app.module(wl_ticketing::WlTicketing::new())
+    } else {
+        app.provide(creator)
+    };
     let app = match custody_from {
         Custody::Fake => {
             let held: Arc<dyn CashCustody> = Arc::new(custody.clone());
@@ -597,14 +616,22 @@ async fn boot_inner(module: WlDelivery, docs: Documents, custody_from: Custody) 
     let app = record(app, &run_closed);
     let app = record(app, &handed_over);
     let app = record(app, &aborted);
-    let client = if custody_from == Custody::Real {
-        CLIENT.replace(
-            "[\"parties\", \"delivery\"]",
-            "[\"parties\", \"invoicing\", \"delivery\", \"payments\"]",
-        )
-    } else {
-        CLIENT.to_owned()
-    };
+    let mut modules = vec!["parties"];
+    if custody_from == Custody::Real {
+        modules.push("invoicing");
+    }
+    if real_tickets {
+        modules.push("ticketing");
+    }
+    modules.push("delivery");
+    if custody_from == Custody::Real {
+        modules.push("payments");
+    }
+    let listed: Vec<String> = modules.iter().map(|m| format!("\"{m}\"")).collect();
+    let client = CLIENT.replace(
+        "[\"parties\", \"delivery\"]",
+        &format!("[{}]", listed.join(", ")),
+    );
     let config = ClientConfig::parse(&client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -613,6 +640,12 @@ async fn boot_inner(module: WlDelivery, docs: Documents, custody_from: Custody) 
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    if real_tickets {
+        app.kernel()
+            .call("ticketing:install", Vec::<String>::new())
+            .await
+            .expect("ticketing:install runs");
+    }
     seed::install(app.db()).await.expect("the defaults seed");
 
     let dispatcher = make_user(

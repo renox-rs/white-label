@@ -18,3 +18,5 @@ wl-payments = { path = "../wl-payments" }
 # The real documents guard and workforce in the dispatch documents test.
 wl-documents = { path = "../wl-documents" }
 wl-hr = { path = "../wl-hr" }
+# The real ticket service in the claim and missing item task tests.
+wl-ticketing = { path = "../wl-ticketing" }

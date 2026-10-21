@@ -3508,6 +3508,7 @@ dependencies = [
  "wl-hr",
  "wl-kernel",
  "wl-payments",
+ "wl-ticketing",
 ]
 
 [[package]]
