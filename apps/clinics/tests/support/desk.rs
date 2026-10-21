@@ -71,6 +71,16 @@ impl Desk {
         service
     }
 
+    /// Sets the deposit of the consultation to `fils` (for the bookings made
+    /// after).
+    pub async fn deposit(&self, fils: i64) {
+        let mut consultation = ServiceType::find_or_404(self.t.db(), self.consultation.id)
+            .await
+            .unwrap();
+        consultation.deposit_amount = fils;
+        consultation.save(self.t.db()).await.unwrap();
+    }
+
     /// A policy of the patient with the payer `payer`, valid for months.
     pub async fn policy(&self, plan: &str, payer: PartyId) -> InsurancePolicy {
         policies::create(
