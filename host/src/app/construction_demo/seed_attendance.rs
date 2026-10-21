@@ -7,10 +7,10 @@
 //! expired is flagged on every record, and one worker stopped coming and has
 //! an open absence case.
 
+use super::at;
 use construction::absence;
 use renox::chrono::{Datelike, Days, NaiveDate, Weekday};
 use renox::prelude::*;
-use super::at;
 use wl_attendance::{AttendanceRecord, AttendanceStatus, WorkLocation};
 
 use super::people::email_of;
@@ -108,7 +108,9 @@ impl Seed {
         let employee = self.employees[key].to_string();
         let site = site.to_string();
         let check_in = format!("{}T{from}", text(date));
-        let check_out = to.map(|to| format!("{}T{to}", text(date))).unwrap_or_default();
+        let check_out = to
+            .map(|to| format!("{}T{to}", text(date)))
+            .unwrap_or_default();
         self.driver
             .post(
                 email_of(SUPERVISOR),
@@ -196,10 +198,19 @@ impl Seed {
             .get(self.db())
             .await?;
         for record in records {
-            let when = super::upto(record.date.checked_add_days(Days::new(2)).unwrap_or(record.date));
+            let when = super::upto(
+                record
+                    .date
+                    .checked_add_days(Days::new(2))
+                    .unwrap_or(record.date),
+            );
             at!(self, when, {
                 self.driver
-                    .post(hr, &format!("/attendance/records/{}/accept", record.id), &[])
+                    .post(
+                        hr,
+                        &format!("/attendance/records/{}/accept", record.id),
+                        &[],
+                    )
                     .await
             })?;
             self.report.add("attendance records accepted", 1);

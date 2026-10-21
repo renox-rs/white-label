@@ -13,6 +13,7 @@ use wl_parties::{
     create,
 };
 
+use super::at;
 use super::people::{FIRMS, LOGINS, email_of};
 use super::roles::ADMIN;
 use super::{Seed, day};
@@ -195,6 +196,34 @@ impl Seed {
             )
             .await?;
         }
+        Ok(())
+    }
+
+    /// Two documents uploaded and waiting for review: a client's contractor
+    /// registration and the performance bond document of a project.
+    pub(crate) async fn pending_documents(&mut self) -> Result {
+        let client = self.party(super::people::FESTIVAL_PLAZA).id;
+        let project = self.project(super::seed_hr::TWR).await?;
+        at!(self, day(-2), {
+            self.attach_document(
+                Subject::new(PARTY_SUBJECT_TYPE, client),
+                "client_contractor_registration",
+                "Festival Plaza contractor registration",
+                Some("FP-CR-2291".to_owned()),
+                Some(day(330)),
+                Some(day(-35)),
+            )
+            .await?;
+            self.attach_document(
+                project.subject(),
+                "performance_bond_document",
+                "Performance bond, Marina Tower level 14",
+                Some("PB-TWR-01".to_owned()),
+                Some(day(25)),
+                Some(day(-146)),
+            )
+            .await
+        })?;
         Ok(())
     }
 }

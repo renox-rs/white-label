@@ -232,7 +232,10 @@ pub const VARIATIONS: &[Var] = &[
         185_000,
         -40,
         Some(2),
-        End::Rejected(20, "Lead lining was included in the medical equipment contract"),
+        End::Rejected(
+            20,
+            "Lead lining was included in the medical equipment contract",
+        ),
     ),
 ];
 
@@ -316,19 +319,31 @@ impl Seed {
             // it was sent; this one was sent first.
             at!(self, submitted, {
                 self.driver
-                    .post(pm, &format!("/construction/variations/{}/submit", made.id), &[])
+                    .post(
+                        pm,
+                        &format!("/construction/variations/{}/submit", made.id),
+                        &[],
+                    )
                     .await
             })?;
             at!(self, after(submitted, days), {
                 self.driver
-                    .post(pm, &format!("/construction/variations/{}/withdraw", made.id), &[])
+                    .post(
+                        pm,
+                        &format!("/construction/variations/{}/withdraw", made.id),
+                        &[],
+                    )
                     .await
             })?;
             return Ok(());
         }
         at!(self, submitted, {
             self.driver
-                .post(pm, &format!("/construction/variations/{}/submit", made.id), &[])
+                .post(
+                    pm,
+                    &format!("/construction/variations/{}/submit", made.id),
+                    &[],
+                )
                 .await
         })?;
         let reference = format!("{}-{}-{}", v.code, "CVR", made.id);
@@ -355,8 +370,7 @@ impl Seed {
                         .await
                 })?;
             }
-            End::Rejected(days, reason)
-            | End::Resubmitted(days, reason) => {
+            End::Rejected(days, reason) | End::Resubmitted(days, reason) => {
                 let on = after(submitted, days);
                 at!(self, on, {
                     self.driver
@@ -395,7 +409,11 @@ impl Seed {
                 if matches!(v.end, End::Claimed(..)) {
                     at!(self, then, {
                         self.driver
-                            .post(pm, &format!("/construction/variations/{}/claim", made.id), &[])
+                            .post(
+                                pm,
+                                &format!("/construction/variations/{}/claim", made.id),
+                                &[],
+                            )
                             .await
                     })?;
                 } else {

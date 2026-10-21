@@ -89,4 +89,32 @@ impl Seed {
         })?;
         Ok(())
     }
+
+    /// Receivables invoices the `part` of the retention of project `code` on
+    /// `offset`.
+    pub(crate) async fn invoice_retention(
+        &mut self,
+        code: &str,
+        part: RetentionPart,
+        offset: i64,
+    ) -> Result {
+        let project = self.project(code).await?;
+        let held = Retention::query()
+            .where_(Retention::PROJECT_ID.eq(project.id))
+            .where_(Retention::PART.eq(part))
+            .first(self.db())
+            .await?
+            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no retention of {code}"))?;
+        at!(self, day(offset), {
+            self.driver
+                .post(
+                    email_of(RECEIVABLES),
+                    &format!("/construction/retentions/{}/invoice", held.id),
+                    &[],
+                )
+                .await
+        })?;
+        self.report.add("retention parts invoiced", 1);
+        Ok(())
+    }
 }

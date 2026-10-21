@@ -243,9 +243,11 @@ pub const ORDERS: &[Order] = &[
                 lines: &[(1, 300, 300), (2, 60, 60)],
                 refused_at_door: false,
             },
+            // Twelve tiles came broken and wait aside for the supplier to
+            // collect them.
             Receipt {
                 day: -58,
-                lines: &[(2, 60, 60), (3, 200, 200)],
+                lines: &[(2, 60, 60), (3, 212, 200)],
                 refused_at_door: false,
             },
             Receipt {
@@ -430,7 +432,11 @@ impl Seed {
             // in its first state, the draft.
             let mut tx = self.db().begin().await?;
             order
-                .insert_in_state(&mut tx, PurchaseOrderStatus::Draft, "Written by procurement")
+                .insert_in_state(
+                    &mut tx,
+                    PurchaseOrderStatus::Draft,
+                    "Written by procurement",
+                )
                 .await?;
             tx.commit().await?;
             for (position, (code, units, price)) in (1..).zip(plan.lines) {
@@ -542,7 +548,11 @@ impl Seed {
             .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no preferred request"))?;
         at!(self, day(-12), {
             self.driver
-                .post(admin, &format!("/preferred-requests/{}/approve", request.id), &[])
+                .post(
+                    admin,
+                    &format!("/preferred-requests/{}/approve", request.id),
+                    &[],
+                )
                 .await
         })?;
         // A material request above AED 50,000 waits for the MD. The request

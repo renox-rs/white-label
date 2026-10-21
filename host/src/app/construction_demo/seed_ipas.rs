@@ -118,16 +118,70 @@ const fn cycle(
 
 /// The IPAs of the cut-offs of the office fit-out that was completed.
 pub const COMPLETED: &[Cycle] = &[
-    cycle("OFC-06", 1, -210, 1_800, 3, Some((14, 95)), Some(2), paid(20, 100)),
-    cycle("OFC-06", 2, -179, 5_000, 3, Some((14, 96)), Some(2), paid(20, 100)),
-    cycle("OFC-06", 3, -149, 9_600, 3, Some((14, 97)), Some(2), paid(25, 100)),
+    cycle(
+        "OFC-06",
+        1,
+        -210,
+        1_800,
+        3,
+        Some((14, 95)),
+        Some(2),
+        paid(20, 100),
+    ),
+    cycle(
+        "OFC-06",
+        2,
+        -179,
+        5_000,
+        3,
+        Some((14, 96)),
+        Some(2),
+        paid(20, 100),
+    ),
+    cycle(
+        "OFC-06",
+        3,
+        -149,
+        9_600,
+        3,
+        Some((14, 97)),
+        Some(2),
+        paid(25, 100),
+    ),
 ];
 
 /// The IPAs of the cut-off of day -118.
 pub const JUNE: &[Cycle] = &[
-    cycle("TRM-07", 1, -118, 2_200, 2, Some((12, 95)), Some(2), paid(25, 100)),
-    cycle("TWR-01", 1, -118, 1_400, 3, Some((16, 94)), Some(2), paid(25, 100)),
-    cycle("MALL-02", 1, -118, 1_000, 3, Some((12, 100)), Some(2), paid(20, 100)),
+    cycle(
+        "TRM-07",
+        1,
+        -118,
+        2_200,
+        2,
+        Some((12, 95)),
+        Some(2),
+        paid(25, 100),
+    ),
+    cycle(
+        "TWR-01",
+        1,
+        -118,
+        1_400,
+        3,
+        Some((16, 94)),
+        Some(2),
+        paid(25, 100),
+    ),
+    cycle(
+        "MALL-02",
+        1,
+        -118,
+        1_000,
+        3,
+        Some((12, 100)),
+        Some(2),
+        paid(20, 100),
+    ),
 ];
 
 /// The IPAs of the cut-off of day -88.
@@ -170,9 +224,27 @@ pub const JULY: &[Cycle] = &[
                 decide: Decide::Contest,
             },
         ],
-        ..cycle("TWR-01", 2, -88, 3_300, 3, Some((18, 96)), Some(2), paid(30, 55))
+        ..cycle(
+            "TWR-01",
+            2,
+            -88,
+            3_300,
+            3,
+            Some((18, 96)),
+            Some(2),
+            paid(30, 55),
+        )
     },
-    cycle("MALL-02", 2, -88, 3_000, 3, Some((14, 95)), Some(2), paid(30, 100)),
+    cycle(
+        "MALL-02",
+        2,
+        -88,
+        3_000,
+        3,
+        Some((14, 95)),
+        Some(2),
+        paid(30, 100),
+    ),
     // The client pays this one by cheque, which bounces.
     cycle("CLN-03", 1, -88, 1_100, 3, Some((15, 95)), Some(2), None),
 ];
@@ -184,7 +256,16 @@ pub const AUGUST: &[Cycle] = &[
     // Certified, and invoiced late: the invoice is issued and not yet due.
     cycle("MALL-02", 3, -57, 5_300, 3, Some((18, 96)), Some(32), None),
     cycle("CLN-03", 2, -57, 2_600, 3, Some((16, 95)), Some(2), None),
-    cycle("RST-04", 1, -57, 1_500, 3, Some((12, 96)), Some(2), paid(20, 100)),
+    cycle(
+        "RST-04",
+        1,
+        -57,
+        1_500,
+        3,
+        Some((12, 96)),
+        Some(2),
+        paid(20, 100),
+    ),
 ];
 
 /// The IPAs of the cut-off of day -26.
@@ -220,7 +301,13 @@ pub const FINAL_ACCOUNT: Cycle = cycle("TRM-07", 3, -57, 6_400, 17, Some((15, 96
 /// number, the description, the unit and the rate in dirhams.
 const BOQ: [(i64, &str, &str, &str, i64); 5] = [
     (3_000, "1.1", "Gypsum partitions and ceilings", "m2", 180),
-    (2_500, "2.1", "Joinery, doors and built-in units", "nr", 2_500),
+    (
+        2_500,
+        "2.1",
+        "Joinery, doors and built-in units",
+        "nr",
+        2_500,
+    ),
     (2_000, "3.1", "Flooring and wall finishes", "m2", 220),
     (1_000, "4.1", "Painting and decorative finishes", "m2", 38),
     (1_500, "5.1", "MEP first and second fix", "m", 95),
@@ -255,7 +342,9 @@ impl Seed {
     /// without a draft gets one.
     pub(crate) async fn cutoff(&mut self, offset: i64) -> Result {
         let date = day(offset);
-        let made = at!(self, date, { cutoff::run_on(&self.state, date, date.day()).await })?;
+        let made = at!(self, date, {
+            cutoff::run_on(&self.state, date, date.day()).await
+        })?;
         self.report.add("IPA drafts", made.drafts.len());
         Ok(())
     }
@@ -307,7 +396,9 @@ impl Seed {
         let qs = email_of(QUANTITY_SURVEYOR);
         let cutoff = day(c.cutoff);
         let ipa = self.ipa_of(c.code, c.number).await?;
-        at!(self, after(cutoff, 1), { self.progress(&ipa, c.claimed_bp).await })?;
+        at!(self, after(cutoff, 1), {
+            self.progress(&ipa, c.claimed_bp).await
+        })?;
         let submitted = after(cutoff, c.submit);
         let replaces = match c.replaces {
             Some(number) => self.ipa_of(c.code, number).await?.id.to_string(),
@@ -469,7 +560,10 @@ impl Seed {
                         ("amount", amount_text.as_str()),
                         ("payment_date", date.as_str()),
                         ("reference", reference),
-                        ("bank_account", "Gulf Demo Bank AE00 0000 0000 0000 0001 234"),
+                        (
+                            "bank_account",
+                            "Gulf Demo Bank AE00 0000 0000 0000 0001 234",
+                        ),
                     ],
                 )
                 .await?;

@@ -238,7 +238,11 @@ impl Seed {
         let party = self.party(supplier).clone();
         let price = format!("{net}.00");
         let date = text(entered);
-        let due = text(entered.checked_add_days(renox::chrono::Days::new(30)).unwrap_or(entered));
+        let due = text(
+            entered
+                .checked_add_days(renox::chrono::Days::new(30))
+                .unwrap_or(entered),
+        );
         let reply = at!(self, entered, {
             self.driver
                 .post(
@@ -272,7 +276,10 @@ impl Seed {
                 .post(
                     admin,
                     &format!("{path}/transitions/approve"),
-                    &[("reason", "Checked against the purchase order and the receipt")],
+                    &[(
+                        "reason",
+                        "Checked against the purchase order and the receipt",
+                    )],
                 )
                 .await
         })?;
@@ -530,7 +537,11 @@ impl Seed {
                 .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no refund"))?;
             // Approving a refund is its own transition (`FIN.ACL.04`): the
             // MD decides, never the user who asked.
-            let verb = if fate == "approve" { "approve" } else { "reject" };
+            let verb = if fate == "approve" {
+                "approve"
+            } else {
+                "reject"
+            };
             at!(self, after(on, 4), {
                 self.driver
                     .post(

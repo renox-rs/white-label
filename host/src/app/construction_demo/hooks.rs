@@ -37,16 +37,13 @@ async fn project_transition(
     allowed(&state)?;
     let project = construction::Project::find_or_404(&state.db, id).await?;
     let mut run = project.transition(&name).by(&user);
-    if let Some(reason) = form.reason.as_deref().map(str::trim) {
-        if !reason.is_empty() {
-            run = run.reason(reason);
-        }
+    if let Some(reason) = form.reason.as_deref().map(str::trim)
+        && !reason.is_empty()
+    {
+        run = run.reason(reason);
     }
     // `run` commits and emits the transition's event.
-    let _outcome = run
-        .run(&state)
-        .await
-        .map_err(TransitionError::into_error)?;
+    let _outcome = run.run(&state).await.map_err(TransitionError::into_error)?;
     Ok(name)
 }
 

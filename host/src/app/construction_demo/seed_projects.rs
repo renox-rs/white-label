@@ -4,10 +4,10 @@
 //! emirate and the project manager) is set on the project afterwards,
 //! because the setup screen that edits them comes with the BOQ issue.
 
-use construction::Project;
-use wl_inventory::Location;
-use renox::prelude::*;
 use super::at;
+use construction::Project;
+use renox::prelude::*;
+use wl_inventory::Location;
 
 use super::people::email_of;
 use super::roles::PROJECT_MANAGER;
@@ -200,11 +200,8 @@ impl Seed {
             .await?;
         self.report.add("projects", 1);
         // The store of the project: its goods are received and counted there.
-        let mut store = Location::new(
-            &format!("STORE-{code}"),
-            &format!("{code} site store"),
-        )
-        .in_scope(&project.subject());
+        let mut store = Location::new(&format!("STORE-{code}"), &format!("{code} site store"))
+            .in_scope(&project.subject());
         store.save(self.db()).await?;
         self.report.add("stores", 1);
         Ok(())

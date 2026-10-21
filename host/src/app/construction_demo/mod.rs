@@ -56,9 +56,7 @@ use super::demo_data::at;
 macro_rules! at_time {
     ($seed:ident, $day:expr, $hour:expr, $minute:expr, $body:expr) => {{
         let clock = $seed.clock.clone();
-        let when = $day
-            .and_hms_opt($hour, $minute, 0)
-            .unwrap_or_default();
+        let when = $day.and_hms_opt($hour, $minute, 0).unwrap_or_default();
         #[allow(unused_braces)]
         let step = Box::pin(async { $body });
         clock.at_time(when, step).await
@@ -89,6 +87,7 @@ use renox::prelude::*;
 use wl_kernel::documents::today;
 
 pub use people::{LOGINS, Login};
+pub use screens::{Screen, map as screen_map};
 
 use super::demo_data::clock::Clock;
 use super::demo_data::driver::Driver;
@@ -246,6 +245,10 @@ impl Seed {
         // The client terminated the showroom's subcontract; its third IPA
         // became the final account, which is submitted and certified.
         self.terminate("TRM-07", -45, -40).await?;
+        // The retention of the terminated project fell due; the first part is
+        // invoiced once the termination took effect.
+        self.invoice_retention("TRM-07", construction::retention::RetentionPart::First, -35)
+            .await?;
         self.cycle(&seed_ipas::FINAL_ACCOUNT).await?;
         self.month(-26, seed_ipas::SEPTEMBER).await?;
         // This month's drafts, and a project just awarded.
@@ -285,6 +288,7 @@ impl Seed {
         Box::pin(self.variations()).await?;
         lap("variations", self);
         Box::pin(self.guarantees()).await?;
+        self.pending_documents().await?;
         lap("guarantees", self);
         Box::pin(self.stock()).await?;
         Box::pin(self.stock_rules()).await?;

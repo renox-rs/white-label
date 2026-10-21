@@ -243,6 +243,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::LANDED_COSTS_POST,
             inventory::ITEM_SUPPLIERS_MANAGE,
             inventory::ITEM_SUPPLIERS_APPROVE,
+            // The last prices and the supplier scores (`STK.SUP.01`).
+            inventory::STOCK_COST_VIEW,
+            inventory::SUPPLIER_SCORES_VIEW,
             con::PROJECTS_VIEW,
             con::PROJECTS_MANAGE,
             con::PROJECTS_TERMINATE,
@@ -652,6 +655,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::SUPPLIER_RETURNS_MANAGE,
             inventory::LANDED_COSTS_POST,
             inventory::ITEM_SUPPLIERS_MANAGE,
+            inventory::STOCK_COST_VIEW,
+            inventory::SUPPLIER_SCORES_VIEW,
         ],
     ),
     (
@@ -690,6 +695,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::PURCHASE_ORDERS_ISSUE,
             inventory::ITEM_SUPPLIERS_MANAGE,
             inventory::ITEM_SUPPLIERS_APPROVE,
+            inventory::STOCK_COST_VIEW,
+            inventory::SUPPLIER_SCORES_VIEW,
         ],
     ),
     (

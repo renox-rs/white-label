@@ -3,9 +3,9 @@
 //! recently and are still in onboarding. Each has a work permit and a
 //! residence visa on file, one permit expires soon and one expired.
 
+use super::at;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use super::at;
 use wl_hr::OnboardingStep;
 use wl_hr::employees::create;
 use wl_hr::{Employee, EmployeeStatus, NewEmployee};
@@ -293,10 +293,9 @@ impl Seed {
             let party = match existing {
                 Some(party) => party,
                 None => {
-                    let email = member.login.map_or_else(
-                        || format!("{}@alwaha.example", member.key),
-                        str::to_owned,
-                    );
+                    let email = member
+                        .login
+                        .map_or_else(|| format!("{}@alwaha.example", member.key), str::to_owned);
                     let contact = |contact_type, value: String| ContactPoint {
                         contact_type,
                         value,
@@ -429,19 +428,15 @@ impl Seed {
             .get(self.db())
             .await?;
         for step in steps.into_iter().take(1) {
-            at!(
-                self,
-                upto(hired + renox::chrono::Duration::days(1)),
-                {
-                    self.driver
-                        .post(
-                            hr,
-                            &format!("/hr/steps/{}/done", step.id),
-                            &[("note", "Done on the first day")],
-                        )
-                        .await
-                }
-            )?;
+            at!(self, upto(hired + renox::chrono::Duration::days(1)), {
+                self.driver
+                    .post(
+                        hr,
+                        &format!("/hr/steps/{}/done", step.id),
+                        &[("note", "Done on the first day")],
+                    )
+                    .await
+            })?;
         }
         Ok(())
     }
