@@ -305,6 +305,30 @@ const TEXTS: &[(&str, &str)] = &[
         "Keep it: :accept\nPick another time: :pick\nCancel it: :cancel",
     ),
     (
+        "wl_scheduling.notices.escalated_subject",
+        "Booking {{ number }} is still in conflict",
+    ),
+    (
+        "wl_scheduling.notices.escalated_body",
+        "Booking {{ number }} on {{ when }} with {{ resource }} is still in conflict and starts soon. Reassign it, offer the party another time or cancel it from the list of conflicts.",
+    ),
+    (
+        "wl_scheduling.notices.no_show_subject",
+        "Booking {{ number }} was marked no-show",
+    ),
+    (
+        "wl_scheduling.notices.no_show_body",
+        "Booking {{ number }} on {{ when }} with {{ resource }} was marked no-show; its slot is free again.",
+    ),
+    (
+        "wl_scheduling.notices.reminder_subject",
+        "Reminder: your booking {{ number }}",
+    ),
+    (
+        "wl_scheduling.notices.reminder_body",
+        "This is a reminder of your booking {{ number }} on {{ when }} with {{ resource }}.\n\nCancel it: {{ cancel_url }}",
+    ),
+    (
         "wl_scheduling.link.accepted",
         "Thank you. Your booking stays as it is.",
     ),

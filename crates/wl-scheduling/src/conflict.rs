@@ -44,6 +44,7 @@ use crate::booking::{Booking, BookingResource, BookingStatus, default_initiator}
 use crate::config::config_of;
 use crate::notices::{self, ChangeEntry};
 use crate::refusal::Refusal;
+use crate::rules;
 use crate::resource::{AvailabilityBlock, Resource, ServiceType, eligible_resources};
 use crate::service::{self, Actor, CancelRequest};
 use crate::slots;
@@ -82,6 +83,8 @@ pub struct Conflict {
     pub cleared_by: Option<String>,
     /// When the party was last sent the offer of other times.
     pub offered_at: Option<DateTime>,
+    /// When the conflict was escalated (`SCH.RUL.06`); once per conflict.
+    pub escalated_at: Option<DateTime>,
 }
 
 impl Conflict {
@@ -199,6 +202,11 @@ pub async fn raise(
             earliest_start: earliest,
         })
         .await?;
+    // A conflict raised inside the escalation window is escalated at once
+    // (`SCH.RUL.06`).
+    for booking in &flagged {
+        rules::escalate(state, booking.id, at).await?;
+    }
     Ok(flagged)
 }
 

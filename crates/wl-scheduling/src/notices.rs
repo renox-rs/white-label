@@ -56,8 +56,48 @@ pub fn reschedule_offer_type() -> NotificationTypeDef {
         .template(NotifyChannel::Email, "en", Some(&subject), &body)
 }
 
+/// The branch manager is told that a conflict is still open shortly before
+/// the booking (`SCH.RUL.06`).
+pub const CONFLICT_ESCALATED: &str = "scheduling.conflict_escalated";
+
+/// The front desk is told that a booking was marked no-show (`SCH.RUL.02`).
+pub const NO_SHOW_MARKED: &str = "scheduling.no_show_marked";
+
+/// The party is reminded of a booking (`SCH.RUL.01`).
+pub const REMINDER: &str = "scheduling.booking_reminder";
+
+/// The notification type `scheduling.conflict_escalated`.
+pub fn conflict_escalated_type() -> NotificationTypeDef {
+    let subject = english("wl_scheduling.notices.escalated_subject", &[]);
+    let body = english("wl_scheduling.notices.escalated_body", &[]);
+    NotificationTypeDef::new(CONFLICT_ESCALATED, "scheduling")
+        .group("scheduling")
+        .template(NotifyChannel::Email, "en", Some(&subject), &body)
+}
+
+/// The notification type `scheduling.no_show_marked`.
+pub fn no_show_marked_type() -> NotificationTypeDef {
+    let subject = english("wl_scheduling.notices.no_show_subject", &[]);
+    let body = english("wl_scheduling.notices.no_show_body", &[]);
+    NotificationTypeDef::new(NO_SHOW_MARKED, "scheduling")
+        .group("scheduling")
+        .template(NotifyChannel::Email, "en", Some(&subject), &body)
+}
+
+/// The notification type `scheduling.booking_reminder`.
+pub fn reminder_type() -> NotificationTypeDef {
+    let subject = english("wl_scheduling.notices.reminder_subject", &[]);
+    let body = english("wl_scheduling.notices.reminder_body", &[]);
+    NotificationTypeDef::new(REMINDER, "scheduling")
+        .group("scheduling")
+        .template(NotifyChannel::Email, "en", Some(&subject), &body)
+}
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(conflict_escalated_type());
+    notify::register_type(no_show_marked_type());
+    notify::register_type(reminder_type());
     notify::register_type(reassigned_type());
     notify::register_type(changed_type());
     notify::register_type(reschedule_offer_type());
@@ -180,6 +220,76 @@ pub(crate) async fn changes(
         .to_party(party)
         .subject_label(&numbers)
         .data(data);
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the branch manager) that `booking` is still in conflict.
+pub(crate) async fn escalated(
+    state: &AppState,
+    booking: &Booking,
+    resources: &str,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(CONFLICT_ESCALATED, booking.subject())
+        .subject_label(&booking.number)
+        .data(json!({
+            "number": booking.number,
+            "when": dubai_text(booking.starts_at),
+            "resource": resources,
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the front desk) that `booking` was marked no-show.
+pub(crate) async fn no_show(
+    state: &AppState,
+    booking: &Booking,
+    resources: &str,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(NO_SHOW_MARKED, booking.subject())
+        .subject_label(&booking.number)
+        .data(json!({
+            "number": booking.number,
+            "when": dubai_text(booking.starts_at),
+            "resource": resources,
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Reminds the party of `booking` with `resources`; the link cancels as the
+/// party (`party_request`, before the cut-off).
+pub(crate) async fn reminder(
+    state: &AppState,
+    booking: &Booking,
+    resources: &str,
+    at: DateTime,
+) -> Result {
+    let ttl = link_lifetime(booking, at);
+    let request = NotifyRequest::new(REMINDER, booking.subject())
+        .to_party(booking.party())
+        .subject_label(&booking.number)
+        .data(json!({
+            "number": booking.number,
+            "when": dubai_text(booking.starts_at),
+            "resource": resources,
+            "cancel_url": links::cancel_url(state, booking.id, ttl)?,
+        }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }

@@ -19,6 +19,10 @@ pub const DEFAULT_HORIZON_DAYS: i64 = 60;
 pub const DEFAULT_MIN_NOTICE_HOURS: i64 = 2;
 /// The step of the slot grid (§7).
 pub const DEFAULT_SLOT_STEP_MINUTES: i64 = 15;
+/// Hours before the start at which an open conflict is escalated (`SCH.RUL.06`).
+pub const DEFAULT_ESCALATION_HOURS: i64 = 2;
+/// Hours before a booking at which a reminder goes out (`SCH.RUL.01`; 05, 10).
+pub const DEFAULT_REMINDER_HOURS: [i64; 2] = [24, 2];
 /// How many nearest free slots a refused booker is shown (§3).
 pub const NEAREST_SLOTS: usize = 3;
 
@@ -39,6 +43,14 @@ pub struct SchedulingConfig {
     pub min_notice_hours: i64,
     /// Slot step, in minutes.
     pub slot_step_minutes: i64,
+    /// Hours before the start at which an open conflict is escalated.
+    pub escalation_hours: i64,
+    /// Hours before a booking at which a reminder goes out.
+    pub reminder_hours: Vec<i64>,
+    /// The vertical's manager role, whose holders in the booking's location
+    /// are told of an open conflict (`SCH.RUL.06`); the users with
+    /// `bookings.manage` there when nobody holds it or none is set.
+    pub manager_role: Option<String>,
     /// Cancellation reason codes a vertical added, with their default
     /// *initiated by*.
     pub extra_reason_codes: Vec<(String, Initiator)>,
@@ -54,6 +66,9 @@ impl Default for SchedulingConfig {
             horizon_days: DEFAULT_HORIZON_DAYS,
             min_notice_hours: DEFAULT_MIN_NOTICE_HOURS,
             slot_step_minutes: DEFAULT_SLOT_STEP_MINUTES,
+            escalation_hours: DEFAULT_ESCALATION_HOURS,
+            reminder_hours: DEFAULT_REMINDER_HOURS.to_vec(),
+            manager_role: None,
             extra_reason_codes: Vec::new(),
         }
     }

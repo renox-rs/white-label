@@ -14,6 +14,7 @@ pub mod pages;
 pub mod prepaid;
 pub mod refusal;
 pub mod resource;
+pub mod rules;
 pub mod service;
 pub mod slots;
 mod texts;
@@ -30,6 +31,7 @@ pub use booking_machine::{ActorKind, BookingInput};
 pub use conflict::{BulkAction, BulkResult, Conflict};
 pub use config::{SchedulingConfig, config_of};
 pub use refusal::Refusal;
+pub use rules::Reminder;
 pub use resource::{
     AvailabilityBlock, AvailabilityRule, Resource, ResourceType, ServiceResource, ServiceType,
 };
@@ -144,6 +146,31 @@ impl WlScheduling {
         self
     }
 
+    /// Hours before the start at which an open conflict is escalated to the
+    /// branch manager (`SCH.RUL.06`).
+    pub fn escalation_hours(mut self, hours: i64) -> Self {
+        assert!(hours >= 0, "the escalation cannot be negative");
+        self.config.escalation_hours = hours;
+        self
+    }
+
+    /// Hours before a booking at which a reminder goes out (`SCH.RUL.01`).
+    pub fn reminder_hours(mut self, hours: &[i64]) -> Self {
+        assert!(
+            hours.iter().all(|h| *h >= 1),
+            "a reminder is at least an hour before"
+        );
+        self.config.reminder_hours = hours.to_vec();
+        self
+    }
+
+    /// The vertical's manager role: its holders in the booking's location are
+    /// told of a conflict that is still open (`SCH.RUL.06`).
+    pub fn manager_role(mut self, role: &str) -> Self {
+        self.config.manager_role = Some(role.to_owned());
+        self
+    }
+
     /// Adds a cancellation reason code with its default *initiated by*. The
     /// codes of the module stay (wl-scheduling §4.1).
     pub fn reason_code(mut self, code: &str, initiated_by: Initiator) -> Self {
@@ -178,7 +205,8 @@ impl Module for WlScheduling {
             .model::<Booking>()
             .model::<BookingResource>()
             .model::<WaitingEntry>()
-            .model::<Conflict>();
+            .model::<Conflict>()
+            .model::<Reminder>();
         renox::state_machine::register::<Booking>();
         renox::state_machine::register::<WaitingEntry>();
         app.view_data::<pages::IndexPage>()
@@ -196,6 +224,7 @@ impl Module for WlScheduling {
             }
         });
         notices::register_types();
+        rules::schedule(app);
         // Sick leave and other leave block the employee's resources and flag
         // the bookings they overlap; a cancelled leave takes its blocks away.
         app.listen(|event: LeaveApproved, state: AppState| async move {
