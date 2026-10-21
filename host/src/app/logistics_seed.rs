@@ -50,7 +50,7 @@ use wl_kernel::{COMPANY_ADMIN_ROLE, Manifest, PartyKind, Subject};
 use wl_payments::WlPayments;
 use wl_sales::{LeadSource, WlSales};
 
-use super::roles::{ACCOUNTANT, ADMIN, DISPATCHER, OPERATIONS_MANAGER};
+use super::roles::{ACCOUNTANT, ADMIN, DISPATCHER, MARKETING_MANAGER, OPERATIONS_MANAGER};
 
 /// The client app these values are for.
 pub const LOGISTICS: &str = "logistics";
@@ -383,11 +383,18 @@ async fn install_late_entry_limits(db: &Db) -> Result<usize> {
     Ok(1)
 }
 
-/// The accountant owns every budget category that has no owner role yet.
+/// The accountant owns every budget category that has no owner role yet, and
+/// the *Marketing* category too: its default owner, the marketing manager,
+/// is a role 03 does not have (the categories of 03 are the accountant's,
+/// §5 *Budget categories and approval*).
 async fn install_budget_categories(db: &Db) -> Result<usize> {
     let mut changed = 0;
     for mut category in BudgetCategory::listed(db, true).await? {
-        if category.owner_role.is_none() && !category.is_drawings() {
+        let ownerless = category
+            .owner_role
+            .as_deref()
+            .is_none_or(|role| role == MARKETING_MANAGER);
+        if ownerless && !category.is_drawings() {
             category.owner_role = Some(ACCOUNTANT.to_owned());
             category.save(db).await?;
             changed += 1;
