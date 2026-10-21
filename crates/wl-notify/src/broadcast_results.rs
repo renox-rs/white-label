@@ -7,6 +7,11 @@ use renox::prelude::*;
 use crate::broadcast::{BroadcastResults, ExcludedCounts};
 use crate::broadcast_recipients::OPTED_OUT;
 use crate::message::{FREQUENCY_CAP, Message, MessageStatus};
+use crate::stale::{BROADCAST_STOPPED, EXPIRED};
+
+/// The reasons a message gets after the broadcast completed (at send time or
+/// by `NTF.RUL.03`), which join the excluded counts.
+const SEND_TIME_REASONS: [&str; 3] = [FREQUENCY_CAP, EXPIRED, BROADCAST_STOPPED];
 
 /// The results for messages with the given statuses (and suppress reasons).
 pub fn tally<'a>(
@@ -45,15 +50,21 @@ pub fn excluded_with_cap<'a>(
     stored: &ExcludedCounts,
     messages: impl IntoIterator<Item = (MessageStatus, Option<&'a str>)>,
 ) -> ExcludedCounts {
-    let capped = messages
-        .into_iter()
-        .filter(|(status, reason)| {
-            *status == MessageStatus::Suppressed && *reason == Some(FREQUENCY_CAP)
-        })
-        .count() as i64;
     let mut counts = stored.clone();
-    if capped > 0 {
-        counts.0.insert(FREQUENCY_CAP.to_owned(), capped);
+    let mut later: Vec<&str> = Vec::new();
+    for (status, reason) in messages {
+        if status == MessageStatus::Suppressed
+            && let Some(reason) = reason
+            && SEND_TIME_REASONS.contains(&reason)
+        {
+            later.push(reason);
+        }
+    }
+    for reason in &SEND_TIME_REASONS {
+        let n = later.iter().filter(|r| *r == reason).count() as i64;
+        if n > 0 {
+            counts.0.insert((*reason).to_owned(), n);
+        }
     }
     counts
 }
@@ -113,6 +124,23 @@ mod tests {
                 opted_out: 1
             }
         );
+    }
+
+    #[test]
+    fn stale_and_stopped_messages_join_the_excluded_counts() {
+        use MessageStatus::*;
+        let counts = excluded_with_cap(
+            &ExcludedCounts::default(),
+            [
+                (Suppressed, Some("expired")),
+                (Suppressed, Some("expired")),
+                (Suppressed, Some("broadcast_stopped")),
+                (Sent, None),
+            ],
+        );
+        assert_eq!(counts.of("expired"), 2);
+        assert_eq!(counts.of("broadcast_stopped"), 1);
+        assert_eq!(counts.total(), 3);
     }
 
     #[test]

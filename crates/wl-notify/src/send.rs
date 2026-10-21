@@ -135,6 +135,10 @@ pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOut
         outcome.emit(state).await?;
         return Ok(SendOutcome::Skipped);
     }
+    if let Some(outcome) = crate::stale::send_guard(state, &message, now).await? {
+        outcome.emit(state).await?;
+        return Ok(SendOutcome::Skipped);
+    }
     if let Some(until) = hold_until(state, &message, now).await? {
         defer(state, &message, until).await?;
         return Ok(SendOutcome::Deferred(until));

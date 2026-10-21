@@ -30,6 +30,7 @@ pub mod release;
 pub mod render;
 pub mod send;
 pub mod send_window;
+pub mod stale;
 pub mod staff_task;
 pub mod statutory_notice;
 pub mod suppressions;
@@ -145,6 +146,7 @@ pub struct WlNotify {
     reactions: Reactions,
     broadcast: BroadcastSettings,
     cap: cap::CapSettings,
+    stale: stale::StaleSettings,
 }
 
 impl WlNotify {
@@ -172,6 +174,23 @@ impl WlNotify {
     /// `frequency_cap` (default 2).
     pub fn marketing_frequency_cap(mut self, n: i64) -> Self {
         self.cap.max = n;
+        self
+    }
+
+    /// A broadcast still waiting for its approval `hours` after its send time
+    /// is cancelled by `NTF.RUL.03` (default 24).
+    pub fn broadcast_expiry_hours(mut self, hours: i64) -> Self {
+        assert!(hours >= 1, "the approval expiry is at least one hour");
+        self.stale.approval_expiry_hours = hours;
+        self
+    }
+
+    /// A marketing message of a broadcast still queued or deferred `hours`
+    /// after the broadcast started is suppressed as `expired` by `NTF.RUL.03`
+    /// (default 48).
+    pub fn stale_message_hours(mut self, hours: i64) -> Self {
+        assert!(hours >= 1, "the stale limit is at least one hour");
+        self.stale.stale_hours = hours;
         self
     }
 
@@ -234,6 +253,10 @@ impl Module for WlNotify {
         app.provide(self.broadcast.clone());
         // The marketing frequency cap.
         app.provide(self.cap);
+        // Stale broadcasts and messages (`NTF.RUL.03`), every 15 minutes.
+        app.provide(self.stale);
+        stale::register_type();
+        stale::schedule(app);
         broadcast_machine::register();
         // Above the limit: the approval policy, its re-check and listener.
         broadcast_approval::register(app);
