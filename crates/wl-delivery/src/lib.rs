@@ -173,6 +173,14 @@ impl WlDelivery {
         self
     }
 
+    /// Names the role that gets the dispatcher's tasks, such as the one for
+    /// an item reported missing at run close (default `dispatcher`); the
+    /// company admin gets it when nobody holds the role.
+    pub fn dispatcher_role(mut self, role: &str) -> Self {
+        self.settings.set_dispatcher_role(role);
+        self
+    }
+
     /// Sets the days a delivery may go untraced before `WRK.RUL.17` marks
     /// it lost (§7: 7).
     pub fn untraced_days(mut self, days: i64) -> Self {

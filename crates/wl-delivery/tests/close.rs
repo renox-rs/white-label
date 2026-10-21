@@ -8,12 +8,13 @@ mod support;
 
 use renox::prelude::*;
 use wl_delivery::{
-    Delivery, DeliveryLine, DeliveryStatus, NewRun, Run, RunStatus, Trace, VehicleType,
+    Delivery, DeliveryLine, DeliveryStatus, NewRun, Run, RunStatus, Trace, VehicleType, WlDelivery,
 };
 use wl_kernel::documents::today;
-use wl_kernel::tickets::TASK_CATEGORY;
+use wl_kernel::tickets::{Assignee, TASK_CATEGORY};
 
-use support::{VAN, World, boot, stop_fields, user_with};
+use support::documents::Documents;
+use support::{VAN, World, boot, boot_with, stop_fields, user_with};
 
 /// A run of `driver` with `deliveries` on it, dispatched today.
 async fn dispatched_run(w: &World, driver: &renox::prelude::User, deliveries: &[&Delivery]) -> Run {
@@ -235,6 +236,10 @@ async fn an_undelivered_delivery_reported_missing_gets_a_task_and_stays_attempte
     assert_eq!(tasks[0].category_key, TASK_CATEGORY);
     assert!(tasks[0].title.contains(&s.first.number));
     assert_eq!(tasks[0].subject, s.first.delivery_id().subject());
+    assert_eq!(
+        tasks[0].source_key.as_deref(),
+        Some(format!("delivery.missing:{}:0", s.first.id).as_str())
+    );
     let first_receipts = Trace::query()
         .where_(Trace::DELIVERY_ID.eq(s.first.id))
         .where_(Trace::KIND.eq("depot_receipt"))
@@ -494,4 +499,78 @@ async fn the_run_page_lists_the_items_to_account_for() {
         .assert_see("At the depot")
         .assert_see(&s.first.number)
         .assert_see("Tiles");
+}
+
+/// AC3: the task for an item reported missing is assigned to a holder of the
+/// dispatcher role the client names (`dispatcher_role`), not left without an
+/// owner.
+#[renox::test]
+async fn the_task_for_a_missing_item_is_assigned_to_the_dispatcher_role() {
+    let w = boot_with(
+        WlDelivery::new().dispatcher_role("role_dina"),
+        Documents::logistics(),
+    )
+    .await;
+    let s = back_at_the_depot(&w, 0).await;
+    let (a, b) = (
+        format!("item_{}_0", s.first.id),
+        format!("item_{}_0", s.second.id),
+    );
+    let line = format!("received_{}_{}", s.refused.id, s.refused_line.id);
+
+    w.post(
+        &w.dispatcher,
+        &receipts_path(&s.run),
+        &[
+            (a.as_str(), "missing"),
+            (b.as_str(), "received"),
+            (line.as_str(), "3"),
+        ],
+    )
+    .await
+    .assert_ok();
+
+    let tasks = w.tickets.opened();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(
+        tasks[0].assignee,
+        Some(Assignee::user(w.dispatcher.id)),
+        "the dispatcher holds the role"
+    );
+}
+
+/// AC3: with nobody holding the dispatcher role the task falls back to the
+/// company admin.
+#[renox::test]
+async fn a_missing_item_task_falls_back_to_the_company_admin() {
+    let w = boot().await;
+    let admin = user_with(&w, "Boss", &[]).await;
+    renox::auth::permissions::define_role(w.db(), wl_kernel::COMPANY_ADMIN_ROLE, &[])
+        .await
+        .unwrap();
+    admin
+        .assign_role(w.db(), wl_kernel::COMPANY_ADMIN_ROLE)
+        .await
+        .unwrap();
+    let s = back_at_the_depot(&w, 0).await;
+    let (a, b) = (
+        format!("item_{}_0", s.first.id),
+        format!("item_{}_0", s.second.id),
+    );
+    let line = format!("received_{}_{}", s.refused.id, s.refused_line.id);
+
+    w.post(
+        &w.dispatcher,
+        &receipts_path(&s.run),
+        &[
+            (a.as_str(), "missing"),
+            (b.as_str(), "received"),
+            (line.as_str(), "3"),
+        ],
+    )
+    .await
+    .assert_ok();
+
+    let tasks = w.tickets.opened();
+    assert_eq!(tasks[0].assignee, Some(Assignee::user(admin.id)));
 }

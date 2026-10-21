@@ -61,7 +61,13 @@ pub struct DeliverySettings {
     /// The abort reasons a vertical adds to breakdown, accident, driver
     /// unwell, weather and other (03: `driver_unreachable`).
     extra_abort_reasons: Vec<String>,
+    /// The role that gets the dispatcher's tasks (a missing item at run
+    /// close); the company admin when nobody holds it.
+    dispatcher_role: String,
 }
+
+/// The role of the dispatcher's tasks unless a client names another.
+pub const DEFAULT_DISPATCHER_ROLE: &str = "dispatcher";
 
 impl Default for DeliverySettings {
     fn default() -> Self {
@@ -76,6 +82,7 @@ impl Default for DeliverySettings {
             replace_cash_escalation: false,
             hand_over_counts_cash: true,
             extra_abort_reasons: Vec::new(),
+            dispatcher_role: DEFAULT_DISPATCHER_ROLE.to_owned(),
         }
     }
 }
@@ -134,6 +141,16 @@ impl DeliverySettings {
     /// Adds abort reasons beyond the five of the spec.
     pub fn set_extra_abort_reasons(&mut self, reasons: &[&str]) {
         self.extra_abort_reasons = reasons.iter().map(|r| (*r).to_owned()).collect();
+    }
+
+    /// Sets the role that gets the dispatcher's tasks.
+    pub fn set_dispatcher_role(&mut self, role: &str) {
+        self.dispatcher_role = role.to_owned();
+    }
+
+    /// The role that gets the dispatcher's tasks.
+    pub fn dispatcher_role(&self) -> &str {
+        &self.dispatcher_role
     }
 
     /// Whether the receiving driver counts the cash at a hand-over.

@@ -40,11 +40,12 @@ use wl_kernel::custody::{
 use wl_kernel::delivery::{
     DeliveryRefusedReceived, RUN_SUBJECT_TYPE, RefusedLineReceived, RunClosed,
 };
-use wl_kernel::tickets::{self, OpenTicket, TASK_CATEGORY};
+use wl_kernel::role_tasks::{self, RoleTask};
 
 use crate::delivery::{Delivery, DeliveryLine, DeliveryStatus};
 use crate::permissions;
 use crate::run::{Run, RunStatus};
+use crate::settings::settings;
 use crate::texts::english;
 use crate::trace;
 
@@ -728,8 +729,10 @@ async fn announce_close(state: &AppState, run_id: i64, cash_collected: i64) -> R
         .await
 }
 
-/// The dispatcher's task for an item reported missing: a ticket of the
-/// kernel's task category on the delivery, once per item. An undelivered
+/// The dispatcher's task for an item reported missing: a task of the kernel
+/// (`role_tasks`) on the delivery, assigned to a holder of the dispatcher
+/// role (the `dispatcher_role` setting; the company admin when nobody holds
+/// it), once per item. An undelivered
 /// delivery is traced by `WRK.RUL.17` from then on.
 async fn open_missing_task(state: &AppState, run: &Run, item: &Item) -> Result<()> {
     let subject = wl_kernel::delivery::DeliveryId(item.delivery_id).subject();
@@ -743,14 +746,14 @@ async fn open_missing_task(state: &AppState, run: &Run, item: &Item) -> Result<(
     })
     .replace("{run}", &run.number)
     .replace("{quantity}", &crate::proof::milli_text(item.missing_milli));
-    let ticket = OpenTicket::new(subject, TASK_CATEGORY, &title)
-        .description(&description)
-        .source(run.subject())
-        .source_key(&format!(
-            "delivery.missing:{}:{}",
-            item.delivery_id, item.line_id
-        ));
-    tickets::task_creator(state).open(state, ticket).await?;
+    let task = RoleTask::new(
+        subject,
+        settings(state).dispatcher_role(),
+        &title,
+        &format!("delivery.missing:{}:{}", item.delivery_id, item.line_id),
+    )
+    .description(&description);
+    role_tasks::open(state, task).await?;
     Ok(())
 }
 
