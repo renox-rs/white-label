@@ -15,7 +15,8 @@
 mod support;
 
 use host::roles::{ACCOUNTANT, CLINIC_MANAGER, OWNER, RECEIVABLES, RECEPTIONIST};
-use renox::chrono::{Datelike, Days, NaiveDate, TimeDelta, Weekday};
+use renox::chrono::{Datelike, Days, NaiveDate, Weekday};
+use std::time::Duration;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
@@ -33,7 +34,7 @@ use wl_invoicing::{
     reminders,
 };
 use wl_kernel::approvals::{self, ApprovalPolicy, ApprovalRequest, ConditionKind, Step};
-use wl_kernel::documents::{dubai_date, today};
+use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     DisputeBy, DisputeRequest, InvoiceId, InvoiceStatus, ReopenReason, Unallocate, VatCategory,
     invoicer,
@@ -50,7 +51,7 @@ use wl_payments::gateway::{FakeGateway, GatewayPaymentStatus, RefundOutcome};
 use wl_payments::online;
 use wl_payments::payment_link::{self, NewLink};
 use wl_payments::refund::{RefundStatus, gateway_refund_outcome};
-use wl_payments::refund_recover::{failed_at, retries_of};
+use wl_payments::refund_recover::retries_of;
 use wl_payments::refund_retry;
 use wl_payments::{Payment, Refund, RefundAttempt};
 use wl_sales::Package;
@@ -101,6 +102,12 @@ async fn every_patient_invoice_write_off_creates_an_approval_request() {
     }
 }
 
+/// The reminders made so far, before and after the due date.
+async fn reminders_sent(app: &TestApp) -> usize {
+    count_messages(app, reminders::BEFORE_DUE).await
+        + count_messages(app, reminders::AFTER_DUE).await
+}
+
 /// Done when (invoices and disputes), 2: a patient disputes invoice INV-0042
 /// (the call the portal's *billing* complaint form makes, `DisputeBy::Party`):
 /// the invoice is `disputed`, a billing ticket is linked and the clinic
@@ -147,22 +154,31 @@ async fn a_patient_dispute_stops_reminders_and_is_escalated_after_14_days() {
         .unwrap();
     assert_eq!(ticket.assignee_user_id, Some(mona.id));
 
-    for n in [-5, 0, 1, 7, 14, 20] {
-        assert_eq!(
-            reminders::run(app.state(), day(n)).await.unwrap(),
-            0,
-            "no reminder on day {n}"
-        );
+    // The daily tasks run as the scheduler runs them, day by day: no
+    // reminder while the invoice is disputed, and the escalation tells the
+    // owner after 14 days and not on day 13.
+    let day = 24 * 3600;
+    for (travel, label) in [(5, 5), (3, 8), (4, 12)] {
+        app.travel(Duration::from_secs(travel * day));
+        app.run_scheduled(reminders::TASK).await.unwrap();
+        assert_eq!(reminders_sent(&app).await, 0, "no reminder on day {label}");
     }
-
-    let raised_on = dubai_date(stored.raised_at);
-    let early = raised_on + Days::new(13);
-    assert_eq!(escalation::run(app.state(), early).await.unwrap(), 0);
-    let due = raised_on + Days::new(14);
-    assert!(
-        escalation::run(app.state(), due).await.unwrap() >= 1,
-        "the escalation runs after 14 days"
+    app.travel(Duration::from_secs(day));
+    app.run_scheduled(escalation::TASK).await.unwrap();
+    assert_eq!(
+        count_messages(&app, escalation::ESCALATED).await,
+        0,
+        "not on day 13"
     );
+    app.travel(Duration::from_secs(day));
+    app.run_scheduled(escalation::TASK).await.unwrap();
+    assert!(
+        count_messages(&app, escalation::ESCALATED).await >= 1,
+        "the invoice's owner is told after 14 days"
+    );
+    app.travel(Duration::from_secs(6 * day));
+    app.run_scheduled(reminders::TASK).await.unwrap();
+    assert_eq!(reminders_sent(&app).await, 0, "no reminder on day 20");
 }
 
 /// The limits that live on a stored approval policy are the company
@@ -415,19 +431,15 @@ async fn a_deposit_payment_pending_for_30_minutes_is_checked_with_the_gateway() 
             reason: "Card declined".to_owned(),
         },
     );
-    let since = payment.created_at.expect("a creation time");
-
-    let early = online::check_pending(app.state(), since + TimeDelta::minutes(29))
-        .await
-        .unwrap();
-    assert_eq!((early.confirmed, early.failed), (0, 0));
+    // The scheduled check runs every 5 minutes: at 29 minutes it leaves the
+    // payment alone, at 30 it asks the gateway.
+    app.travel(Duration::from_secs(29 * 60));
+    app.run_scheduled(online::TASK).await.unwrap();
     let still = Payment::find_or_404(app.db(), payment.id).await.unwrap();
     assert_eq!(still.status, PaymentStatus::Pending);
 
-    let report = online::check_pending(app.state(), since + TimeDelta::minutes(30))
-        .await
-        .unwrap();
-    assert_eq!((report.confirmed, report.failed), (0, 1));
+    app.travel(Duration::from_secs(60));
+    app.run_scheduled(online::TASK).await.unwrap();
     let failed = Payment::find_or_404(app.db(), payment.id).await.unwrap();
     assert_eq!(failed.status, PaymentStatus::Failed);
     assert_eq!(
@@ -486,24 +498,16 @@ async fn a_failed_refund_is_retried_once_after_24_hours() {
     .expect("the outcome is applied");
     assert_eq!(failed.status, RefundStatus::Failed);
 
-    let at = failed_at(app.db(), id)
-        .await
-        .unwrap()
-        .expect("a failure time");
-    let early = refund_retry::run(
-        app.state(),
-        at + TimeDelta::hours(24) - TimeDelta::minutes(1),
-    )
-    .await
-    .unwrap();
-    assert_eq!(early.retried, 0);
+    // The scheduled retry (every 15 minutes): not 1 minute before 24 hours
+    // after the failure, once after it.
+    app.travel(Duration::from_secs(24 * 3600 - 120));
+    app.run_scheduled(refund_retry::TASK).await.unwrap();
+    assert!(retries_of(app.db(), id).await.unwrap() == 0);
     let refund = Refund::find_or_404(app.db(), id).await.unwrap();
     assert_eq!(refund.status, RefundStatus::Failed);
 
-    let report = refund_retry::run(app.state(), at + TimeDelta::hours(24))
-        .await
-        .unwrap();
-    assert_eq!(report.retried, 1);
+    app.travel(Duration::from_secs(300));
+    app.run_scheduled(refund_retry::TASK).await.unwrap();
     let refund = Refund::find_or_404(app.db(), id).await.unwrap();
     assert_eq!(refund.status, RefundStatus::Approved);
     assert_eq!(retries_of(app.db(), id).await.unwrap(), 1);
@@ -525,10 +529,9 @@ async fn a_failed_refund_is_retried_once_after_24_hours() {
     )
     .await
     .unwrap();
-    let later = refund_retry::run(app.state(), at + TimeDelta::hours(200))
-        .await
-        .unwrap();
-    assert_eq!(later.retried, 0);
+    app.travel(Duration::from_secs(200 * 3600));
+    app.run_scheduled(refund_retry::TASK).await.unwrap();
+    assert_eq!(retries_of(app.db(), id).await.unwrap(), 1, "no third attempt");
     assert_eq!(
         RefundAttempt::of_refund(app.db(), id).await.unwrap().len(),
         2
