@@ -453,6 +453,27 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.deployment.suspended_staff_body",
         "The deployment of {{ worker }} at {{ site }} is suspended from {{ from }}: {{ reasons }}. Attendance is refused and the days are not billed until it resumes.",
     ),
+    // Resume (§7.1 `resume`, `MPW.RUL.12`).
+    (
+        "manpower.deployment.resume_contract_ended",
+        "The client contract has ended: a deployment under it does not resume.",
+    ),
+    (
+        "manpower.deployment.resumed_title",
+        "{{ worker }} is available again",
+    ),
+    (
+        "manpower.deployment.resumed_body",
+        "{{ worker }} is available again at {{ site }} from {{ on }}.",
+    ),
+    (
+        "manpower.deployment.resume_failing_title",
+        "Deployment of {{ worker }} stays suspended",
+    ),
+    (
+        "manpower.deployment.resume_failing_body",
+        "The renewed document is accepted, but {{ worker }} cannot resume yet:\n{{ problems }}",
+    ),
     // Cover (`MPW.DEP.02`, `MPW.RUL.06`).
     (
         "manpower.cover.history",

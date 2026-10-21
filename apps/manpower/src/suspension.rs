@@ -527,16 +527,35 @@ pub async fn retry(state: &AppState) -> Result {
         .await?;
     let mut failure = None;
     for waiting_run in waiting {
-        // `MPW.RUL.12:<kind>:<expiry date>`.
-        let mut parts = waiting_run.occurrence_key.splitn(3, ':');
-        let (Some(_rule), Some(kind), Some(date)) = (parts.next(), parts.next(), parts.next())
-        else {
-            continue;
+        // `MPW.RUL.12:<kind>:<expiry date>` for an expiry,
+        // `MPW.RUL.12:resume:<kind>:<document>:<expiry date or ->` for an
+        // accepted renewal.
+        let key = waiting_run.occurrence_key.clone();
+        let parts: Vec<&str> = key.splitn(5, ':').collect();
+        let done = match parts.as_slice() {
+            [_, "resume", kind, document, expiry] => {
+                let Ok(document) = document.parse::<i64>() else {
+                    continue;
+                };
+                let expires_on = expiry.parse::<NaiveDate>().ok();
+                crate::resumption::run_accepted(
+                    state,
+                    waiting_run.subject_id,
+                    kind,
+                    document,
+                    expires_on,
+                )
+                .await
+            }
+            [_, kind, date, ..] => {
+                let Ok(expires_on) = date.parse::<NaiveDate>() else {
+                    continue;
+                };
+                run(state, waiting_run.subject_id, kind, expires_on).await
+            }
+            _ => continue,
         };
-        let Ok(expires_on) = date.parse::<NaiveDate>() else {
-            continue;
-        };
-        if let Err(error) = run(state, waiting_run.subject_id, kind, expires_on).await {
+        if let Err(error) = done {
             failure.get_or_insert(error);
         }
     }

@@ -15,7 +15,7 @@
 //!   nothing unless the client contract requires cover (`cover_required`) or
 //!   an account manager asks by hand, and it never makes a second request for
 //!   the same cause (`cause_ref`), so a repeated event changes nothing. The
-//!   account manager is told. **BL-MPW-11 (suspension) and BL-MPW-14 (client
+//!   account manager is told. **BL-MPW-11 (suspension, built) and BL-MPW-14 (client
 //!   rejection) call it; the notice of cover not found in time, `MPW.RUL.13`,
 //!   is BL-MPW-16.**
 //! - `MPW.RUL.06`: when a leave request is approved (the kernel's

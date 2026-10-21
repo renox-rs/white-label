@@ -26,6 +26,7 @@ pub mod release;
 pub mod renewal;
 pub mod request;
 pub mod requests;
+pub mod resumption;
 pub mod site;
 pub mod suspension;
 pub mod termination;
@@ -39,7 +40,7 @@ pub use contract::{BillingCycle, ClientContract, ContractStatus};
 pub use deployment::{Deployment, DeploymentKind, DeploymentStatus};
 pub use events::{
     ContractActivated, ContractEnded, ContractRenewed, CoverRequested, DeploymentActivated,
-    DeploymentCancelled, DeploymentEnded, DeploymentSuspended,
+    DeploymentCancelled, DeploymentEnded, DeploymentResumed, DeploymentSuspended,
 };
 pub use hold::{ContractHold, HoldReason};
 pub use request::{ManpowerRequest, RequestKind, RequestStatus};
@@ -145,6 +146,7 @@ impl Module for Manpower {
         // Attendance at a site is refused while the deployment is suspended.
         wl_kernel::attendance::provide_context_closure(app, attendance::SuspendedDeployments);
         suspension::listen(app);
+        resumption::listen(app);
         notices::register_types();
         // Deployments whose end date has passed end by themselves: daily at
         // 02:00 Asia/Dubai.

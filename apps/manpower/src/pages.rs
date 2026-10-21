@@ -22,6 +22,7 @@
 //! | `POST /manpower/deployments/{id}/activate` | `manpower.deployment_activate` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/extend` | `manpower.deployment_extend` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/suspend` | `manpower.deployment_suspend` | `deployments.manage` for the client |
+//! | `POST /manpower/deployments/{id}/resume` | `manpower.deployment_resume` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/end` | `manpower.deployment_end` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/cancel` | `manpower.deployment_cancel` | `deployments.manage` for the client |
 //!
@@ -49,6 +50,7 @@ use crate::permissions;
 use crate::renewal::RenewAsk;
 use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
 use crate::requests::{self, NewRequest};
+use crate::resumption;
 use crate::site::{self, Site};
 use crate::suspension::{self, DeploymentSuspension};
 use crate::termination::TerminateAsk;
@@ -97,6 +99,8 @@ pub fn routes() -> Routes {
         .name("manpower.deployment_extend")
         .post("/manpower/deployments/{id}/suspend", suspend_deployment)
         .name("manpower.deployment_suspend")
+        .post("/manpower/deployments/{id}/resume", resume_deployment)
+        .name("manpower.deployment_resume")
         .post("/manpower/deployments/{id}/end", end_deployment)
         .name("manpower.deployment_end")
         .post("/manpower/deployments/{id}/cancel", cancel_deployment)
@@ -893,6 +897,17 @@ async fn suspend_deployment(
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     suspension::suspend(&state, &user, id, &field(&form, "reason"), &lang.locale).await?;
+    Ok(back("/manpower/deployments"))
+}
+
+/// `POST /manpower/deployments/{id}/resume`.
+async fn resume_deployment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    resumption::resume(&state, &user, id, &lang.locale).await?;
     Ok(back("/manpower/deployments"))
 }
 

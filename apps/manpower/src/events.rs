@@ -105,6 +105,21 @@ pub struct DeploymentSuspended {
 
 impl Event for DeploymentSuspended {}
 
+/// A suspended deployment `resume`d (BL-MPW-12): the worker is back on site.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeploymentResumed {
+    /// The deployment.
+    pub deployment: Subject,
+    /// The worker.
+    pub employee: EmployeeId,
+    /// The client company.
+    pub client: PartyId,
+    /// The first day back.
+    pub on: NaiveDate,
+}
+
+impl Event for DeploymentResumed {}
+
 /// A cover request was opened for a deployment (`MPW.DEP.02`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoverRequested {

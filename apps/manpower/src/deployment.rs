@@ -4,18 +4,22 @@
 //! ```text
 //! planned --activate--> active
 //! active --extend--> active
+//! active --suspend--> suspended              (a user, or auto_suspend: MPW.RUL.12)
+//! suspended --resume--> active               (a user, or auto_resume: MPW.RUL.12)
+//! suspended --extend_suspended--> suspended  (extend of a suspended deployment)
 //! active, suspended --end--> ended              (a user: end date, replaced)
 //! active, suspended --auto_end--> ended         (the system: the end-date run)
 //! planned --cancel--> cancelled                 (a user)
 //! planned --auto_cancel--> cancelled            (the system: the request was cancelled)
-//! active --suspend--> suspended --resume--> active   (BL-MPW-11, BL-MPW-12)
-//! suspended --extend--> suspended                    (with BL-MPW-11)
 //! ```
 //!
-//! Built here: the five states and `activate`, `extend`, `end`, `auto_end`,
-//! `cancel` and `auto_cancel`. `suspended` is declared (and `end` and `auto_end`
-//! leave it) so **`suspend` and `resume` come with BL-MPW-11 and BL-MPW-12**,
-//! which also add `extend` of a suspended deployment.
+//! Built here: the five states and `activate`, `extend`, `suspend`,
+//! `auto_suspend`, `resume`, `auto_resume`, `end`, `auto_end`, `cancel` and
+//! `auto_cancel`. A Renox transition has one `to`, so `extend` of a suspended
+//! deployment is `extend_suspended`. `suspend` and `resume` are in
+//! [`crate::suspension`] and [`crate::resumption`] (BL-MPW-11, BL-MPW-12): the
+//! reasons are rows, the days suspended (`suspended_on`, `resumed_on`,
+//! `suspended_days`) are not billed.
 //!
 //! - `activate` (`deployments.manage` for the client) needs the employee
 //!   `active` in HR (the kernel's `Workforce`), the contract `active` or
@@ -29,7 +33,8 @@
 //!   **No overlap (`MPW.ACL.15`, BL-MPW-10, [`crate::overlap`]):** the worker
 //!   has no `active` or `suspended` deployment whose shift times overlap, for
 //!   `activate` and for `extend`.
-//! - `extend` moves the end date later, within the contract, while the
+//! - `extend` (`extend_suspended` for a suspended deployment, which stays
+//!   suspended) moves the end date later, within the contract, while the
 //!   contract takes deployments (`active` or `terminating`, not `on_hold`) and
 //!   the documents and licences are valid on today plus 30 days, or the new end
 //!   date if earlier (`MPW.ACL.07`).
@@ -73,6 +78,10 @@ pub const SUSPEND: &str = "suspend";
 pub const AUTO_SUSPEND: &str = "auto_suspend";
 /// `extend` of a suspended deployment: it stays suspended.
 pub const EXTEND_SUSPENDED: &str = "extend_suspended";
+/// The `resume` transition's name.
+pub const RESUME: &str = "resume";
+/// The system's `resume` (`MPW.RUL.12`, a renewed document accepted).
+pub const AUTO_RESUME: &str = "auto_resume";
 /// The `end` transition's name.
 pub const END: &str = "end";
 /// The system's `end`.
@@ -387,6 +396,30 @@ fn suspended(transition: Transition<Deployment>) -> Transition<Deployment> {
         })
 }
 
+/// `resume` and `auto_resume`: back to `active`; the day is kept and the
+/// calendar days of the suspension are added to the days not billed.
+fn resumed(transition: Transition<Deployment>) -> Transition<Deployment> {
+    transition
+        .from([DeploymentStatus::Suspended])
+        .to(DeploymentStatus::Active)
+        .effect(|deployment: &Deployment, ctx, tx| {
+            let id = deployment.id;
+            let on = input_of(ctx).on.unwrap_or_else(today);
+            let days = deployment
+                .suspended_on
+                .map_or(0, |since| (on - since).num_days().max(0));
+            let total = deployment.suspended_days + days;
+            Box::pin(async move {
+                set_deployment(
+                    &mut *tx,
+                    id,
+                    &[("resumed_on", &Some(on)), ("suspended_days", &total)],
+                )
+                .await
+            })
+        })
+}
+
 /// `cancel` and `auto_cancel`: a reason, kept.
 fn cancelled(transition: Transition<Deployment>) -> Transition<Deployment> {
     transition
@@ -462,6 +495,10 @@ impl StateMachine for Deployment {
                         })
                     }),
             )
+            .transition(ready(resumed(user(RESUME, "Resume").tone("primary"))))
+            .transition(resumed(
+                Transition::new(AUTO_RESUME).label("Resume").system(),
+            ))
             .transition(ready(ended(user(END, "End").tone("danger"), reasons::USER)))
             .transition(ended(
                 Transition::new(AUTO_END).label("End").system(),
@@ -495,12 +532,14 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_that_is_built_is_declared() {
         let machine = Deployment::machine();
-        let table: [(&str, &[&str], &str, bool); 9] = [
+        let table: [(&str, &[&str], &str, bool); 11] = [
             (ACTIVATE, &["planned"], "active", false),
             (EXTEND, &["active"], "active", false),
             (SUSPEND, &["active"], "suspended", false),
             (AUTO_SUSPEND, &["active"], "suspended", true),
             (EXTEND_SUSPENDED, &["suspended"], "suspended", false),
+            (RESUME, &["suspended"], "active", false),
+            (AUTO_RESUME, &["suspended"], "active", true),
             (END, &["active", "suspended"], "ended", false),
             (AUTO_END, &["active", "suspended"], "ended", true),
             (CANCEL, &["planned"], "cancelled", false),
