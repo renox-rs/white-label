@@ -1196,6 +1196,129 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.recall.call_recorded", "The call is recorded."),
     ("clinics.recall.call_days", "Visit days"),
     ("clinics.recall.call_gave_up", "Gave up"),
+    // The advertising permit of a campaign (CLN.ACL.13).
+    ("clinics.permit.title", "Advertising permits"),
+    (
+        "clinics.permit.subtitle",
+        "A campaign that promotes services is activated and sends only with the regulator's permit number and validity recorded and approved by the medical director.",
+    ),
+    ("clinics.permit.record", "Record a permit"),
+    (
+        "clinics.permit.record_description",
+        "Record the regulator's permit for a campaign, or that the campaign promotes no service. Recording again renews it.",
+    ),
+    ("clinics.permit.campaign", "Campaign"),
+    ("clinics.permit.promotes", "Promotes services"),
+    ("clinics.permit.promotes_yes", "Yes"),
+    ("clinics.permit.promotes_no", "No"),
+    ("clinics.permit.number", "Permit number"),
+    ("clinics.permit.valid_to", "Valid to"),
+    ("clinics.permit.approved_by", "Approved by"),
+    ("clinics.permit.valid", "Valid"),
+    ("clinics.permit.empty", "No permit is recorded yet."),
+    ("clinics.permit.recorded", "The permit is recorded."),
+    (
+        "clinics.permit.problem.campaign",
+        "Give the number of the campaign.",
+    ),
+    (
+        "clinics.permit.problem.missing",
+        "The campaign promotes services and has no advertising permit recorded.",
+    ),
+    (
+        "clinics.permit.problem.no_number",
+        "The advertising permit needs its number.",
+    ),
+    (
+        "clinics.permit.problem.no_validity",
+        "The advertising permit needs the last day it is valid.",
+    ),
+    (
+        "clinics.permit.problem.lapsed",
+        "The advertising permit is no longer valid.",
+    ),
+    // Late entry after an outage (PLT.ACL.10).
+    ("clinics.late.title", "Times from the paper sheet"),
+    ("clinics.late.enter", "Enter a time"),
+    (
+        "clinics.late.enter_description",
+        "A check-in, a check-out or a consumable written on paper during an outage: give the time it really happened. A time more than 30 minutes behind needs a reason.",
+    ),
+    ("clinics.late.kind", "What"),
+    ("clinics.late.kind.check_in", "Check-in"),
+    ("clinics.late.kind.check_out", "Check-out"),
+    ("clinics.late.kind.consumable", "Consumable"),
+    ("clinics.late.time", "Time"),
+    ("clinics.late.entered_at", "Entered"),
+    ("clinics.late.flag", "Late entry"),
+    ("clinics.late.reason", "Reason"),
+    (
+        "clinics.late.reason_hint",
+        "Why it is entered late, for example the outage.",
+    ),
+    ("clinics.late.line", "Consumable line (for a consumable)"),
+    ("clinics.late.entered", "The time is entered."),
+    (
+        "clinics.late.sent_for_approval",
+        "The time is sent for approval.",
+    ),
+    (
+        "clinics.late.problem.time",
+        "Give the time as date and hour.",
+    ),
+    (
+        "clinics.late.problem.kind",
+        "Choose a check-in, a check-out or a consumable.",
+    ),
+    (
+        "clinics.late.problem.future",
+        "A time in the future cannot be entered.",
+    ),
+    (
+        "clinics.late.problem.not_completed",
+        "A check-out time is entered for a visit that is completed.",
+    ),
+    (
+        "clinics.late.problem.line",
+        "Choose a consumable line of this visit.",
+    ),
+    // The call list while the SMS or WhatsApp connection is down (05 section 8).
+    ("clinics.call_list.title", "Appointments to call"),
+    (
+        "clinics.call_list.subtitle",
+        "While SMS or WhatsApp is down: the appointments of the next 24 hours, per branch. Phone each patient and tick the row.",
+    ),
+    ("clinics.call_list.phone", "Mobile"),
+    ("clinics.call_list.starts", "Starts"),
+    ("clinics.call_list.called", "Called"),
+    ("clinics.call_list.tick", "Called"),
+    (
+        "clinics.call_list.tick_message",
+        "Tick this appointment as called?",
+    ),
+    (
+        "clinics.call_list.ticked",
+        "The appointment is ticked as called.",
+    ),
+    (
+        "clinics.call_list.empty",
+        "Nobody to call: SMS and WhatsApp are working, or nothing starts in the next 24 hours.",
+    ),
+    ("clinics.call_list.since", "The connection went down at"),
+    (
+        "clinics.call_list.problem.none_down",
+        "SMS and WhatsApp are working: there is no list to tick.",
+    ),
+    (
+        "clinics.call_list.problem.not_listed",
+        "This appointment is not on the call list.",
+    ),
+    // The recall invitation (CLN.RUL.02).
+    ("clinics.recall_invite.subject", "Time for your next visit"),
+    (
+        "clinics.recall_invite.body",
+        "It is time to book your next visit. Call us or use the link to choose a time.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the

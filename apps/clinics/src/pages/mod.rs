@@ -4,8 +4,10 @@
 
 pub mod appointments;
 pub mod authorisations;
+pub mod call_list;
 pub mod claims;
 pub mod contracts;
+pub mod permits;
 pub mod policies;
 pub mod recalls;
 pub mod visits;
@@ -28,8 +30,10 @@ pub fn routes() -> Routes {
         .merge(policies::routes())
         .merge(appointments::routes())
         .merge(authorisations::routes())
+        .merge(call_list::routes())
         .merge(claims::routes())
         .merge(contracts::routes())
+        .merge(permits::routes())
         .merge(recalls::routes())
         .merge(visits::routes())
 }
@@ -81,6 +85,18 @@ pub(crate) async fn user_name(db: &Db, id: i64) -> String {
         .map_or_else(|| format!("#{id}"), |u| u.name)
 }
 
+/// A moment typed in a form (`2026-11-10T09:30`, Asia/Dubai wall time).
+pub(crate) fn parse_moment(text: &str) -> Option<renox::db::DateTime> {
+    let naive = renox::chrono::NaiveDateTime::parse_from_str(text.trim(), "%Y-%m-%dT%H:%M").ok()?;
+    Some(
+        (naive
+            - renox::chrono::Duration::seconds(i64::from(
+                wl_kernel::documents::DUBAI_OFFSET_SECONDS,
+            )))
+        .and_utc(),
+    )
+}
+
 /// An id typed in a form.
 pub(crate) fn parse_id(text: &str) -> Option<i64> {
     text.trim().parse().ok()
@@ -109,5 +125,12 @@ mod tests {
             NaiveDate::from_ymd_opt(2026, 11, 10)
         );
         assert!(parse_date("10/11/2026").is_err());
+    }
+
+    #[test]
+    fn a_dubai_wall_time_is_four_hours_ahead_of_utc() {
+        let at = parse_moment("2026-11-10T09:30").expect("a moment");
+        assert_eq!(at.to_rfc3339(), "2026-11-10T05:30:00+00:00");
+        assert!(parse_moment("yesterday").is_none());
     }
 }

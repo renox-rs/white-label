@@ -52,6 +52,8 @@
     "payer_contracts": "Payer contracts",
     "claims": "Claims",
     "recall_calls": "Recall calls",
+    "call_list": "Appointments to call",
+    "campaign_permits": "Advertising permits",
     "negative_flow": "Money settings",
     "compliance_settings": "Compliance settings",
     "tickets": "Tickets",

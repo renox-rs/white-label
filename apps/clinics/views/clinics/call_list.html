@@ -1,0 +1,24 @@
+{#- clinics: the appointments of the next 24 hours, per branch, to phone while
+    the SMS or WhatsApp connection is down, each with a called tick. Replace
+    it with resources/views/clinics/call_list.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['call_list.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['call_list.title']" :subtitle="tx['call_list.subtitle']"/>
+    <rx-include template="wl-kernel/integration_banner.html"/>
+    <rx-alert rx-if="down" kind="info" :message="tx['call_list.since'] ~ ' ' ~ since"/>
+    <rx-table :rows="rows" as="row" :key="row.booking" :caption="tx['call_list.title']" card>
+      <rx-column :label="tx['recall.branch']">{{ row.branch }}</rx-column>
+      <rx-column :label="tx['appointments.patient']">{{ row.patient }}</rx-column>
+      <rx-column :label="tx['call_list.phone']">{{ row.phone }}</rx-column>
+      <rx-column :label="tx['call_list.starts']">{{ row.starts }}</rx-column>
+      <rx-column :label="tx['call_list.called']" hide-narrow>{{ row.called_text }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="not row.called">
+          <rx-confirm :id="'call-tick-' ~ row.booking" :label="tx['call_list.tick']" :action="route('clinics.call_list_tick', row.booking)" method="POST"
+                      :title="tx['call_list.tick']" :message="tx['call_list.tick_message']" :confirm-label="tx['call_list.tick']" :cancel-label="tx['button_cancel']" icon="phone"/>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['call_list.empty']" icon="phone"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -77,6 +77,7 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
+    <rx-include template="wl-kernel/integration_banner.html"/>
     <rx-alert rx-if="held" kind="warning" :message="held_text"/>
     <rx-alert rx-if="held_result" kind="info" :message="held_result"/>
     <rx-alert rx-if="void_info" kind="warning" :message="void_info"/>

@@ -433,11 +433,23 @@ struct Harness {
     docs: Docs,
     tasks: Tasks,
     prices: Prices,
+    who: Arc<Mutex<Option<renox::AuthUser>>>,
 }
 
 impl Module for Harness {
     fn name(&self) -> &'static str {
         "clinics-test-harness"
+    }
+
+    fn routes(&self) -> Routes {
+        let who = self.who.clone();
+        Routes::new().get("/t/whoami", move |user: renox::AuthUser| {
+            let who = who.clone();
+            async move {
+                *who.lock().unwrap() = Some(user);
+                "ok"
+            }
+        })
     }
 
     fn register(&self, app: &mut Registry) {
@@ -494,6 +506,7 @@ pub struct Clinic {
     pub money: bool,
     /// The `QualificationExpired` events wl-hr emitted.
     pub expired: Recorded<QualificationExpired>,
+    who: Arc<Mutex<Option<renox::AuthUser>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
 }
@@ -567,6 +580,7 @@ async fn boot_with(real_notify: bool, stock: bool, money: bool) -> Clinic {
     let guardians = Guardians::default();
     let outbox = Outbox::default();
     let expired = Recorded::<QualificationExpired>::default();
+    let who = Arc::new(Mutex::new(None));
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in clinics::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -591,6 +605,7 @@ async fn boot_with(real_notify: bool, stock: bool, money: bool) -> Clinic {
             docs: docs.clone(),
             tasks: tasks.clone(),
             prices: prices.clone(),
+            who: who.clone(),
         });
     let app = if real_notify {
         app.module(wl_notify::WlNotify::new().provider(outbox.clone()))
@@ -648,11 +663,24 @@ async fn boot_with(real_notify: bool, stock: bool, money: bool) -> Clinic {
         guardians,
         money,
         expired,
+        who,
         _views: views,
     }
 }
 
 impl Clinic {
+    /// `user` as the signed-in user the services take: what a request of
+    /// theirs carries now (their roles as they are at this call).
+    pub async fn auth(&self, user: &User) -> renox::AuthUser {
+        self.app.acting_as(user);
+        self.app.get("/t/whoami").await.assert_ok();
+        self.who
+            .lock()
+            .unwrap()
+            .take()
+            .expect("the probe route saw the signed-in user")
+    }
+
     /// The database.
     pub fn db(&self) -> &Db {
         self.app.db()

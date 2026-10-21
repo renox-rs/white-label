@@ -8,6 +8,7 @@ pub mod authorisation;
 pub mod authorisation_machine;
 pub mod authorisations;
 pub mod billing;
+pub mod call_list;
 pub mod card_requests;
 pub mod charge;
 pub mod charges;
@@ -26,10 +27,13 @@ pub mod contracts;
 pub mod coverage;
 mod db;
 pub mod flags;
+pub mod late_times;
 pub mod licences;
 pub mod lots;
+pub mod notices;
 pub mod pages;
 pub mod permissions;
+pub mod permits;
 pub mod policies;
 pub mod policy;
 pub mod prior_auth_rules;
@@ -49,6 +53,7 @@ use renox::prelude::*;
 
 pub use appointment::Appointment;
 pub use authorisation::{AuthStatus, AuthorisationHold, PriorAuthService, PriorAuthorisation};
+pub use call_list::CallTick;
 pub use charge::{ChargeKind, ChargeLine};
 pub use claim::{
     AnswerKind, AttemptKind, Claim, ClaimAttempt, ClaimError, ClaimLine, ClaimRemittance,
@@ -59,7 +64,9 @@ pub use consumable_issue::ConsumableIssue;
 pub use contract::{PayerContract, PayerTariff};
 pub use coverage::{CoverageOutcome, PendingCheckIn};
 pub use flags::{AppointmentFlag, FlagCause};
+pub use late_times::VisitTime;
 pub use licences::LicenceAlert;
+pub use permits::AdvertisingPermit;
 pub use policy::{EligibilityCheck, InsurancePolicy};
 pub use recall_notice::{RecallNotice, RecallNoticeStatus};
 pub use visit::{Visit, VisitStatus};
@@ -111,6 +118,14 @@ const VIEWS: &[(&str, &str)] = &[
         "clinics/recall_calls.html",
         include_str!("../views/clinics/recall_calls.html"),
     ),
+    (
+        "clinics/permits.html",
+        include_str!("../views/clinics/permits.html"),
+    ),
+    (
+        "clinics/call_list.html",
+        include_str!("../views/clinics/call_list.html"),
+    ),
 ];
 
 /// Dirhams as text from fils: `AED 450.00`.
@@ -155,7 +170,9 @@ impl Module for Clinics {
             .view_data::<pages::claims::IndexPage>()
             .view_data::<pages::claims::ShowPage>()
             .view_data::<pages::recalls::ShowPage>()
-            .view_data::<pages::recalls::CallsPage>();
+            .view_data::<pages::recalls::CallsPage>()
+            .view_data::<pages::permits::IndexPage>()
+            .view_data::<pages::call_list::IndexPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -179,6 +196,9 @@ impl Module for Clinics {
             .model::<ChargeLine>()
             .model::<ConsumableIssue>()
             .model::<RecallNotice>()
+            .model::<AdvertisingPermit>()
+            .model::<VisitTime>()
+            .model::<CallTick>()
             .model::<PayerContract>()
             .model::<PayerTariff>()
             .model::<Claim>()
@@ -230,6 +250,11 @@ impl Module for Clinics {
         // task when it gives up (BL-CLN-14).
         lots::register(app);
         recalls::register(app);
+        // The recall invitation's notification type (`CLN.RUL.02`) and the
+        // business time of a check-in, check-out or consumable entered after
+        // an outage (BL-CLN-15).
+        notices::register();
+        late_times::register();
         // In the app group of the staff sidebar; the label is the host's
         // `nav.insurance_policies` text.
         app.nav(
@@ -271,6 +296,22 @@ impl Module for Clinics {
                 .group("nav.app")
                 .order(75)
                 .permission(permissions::RECALLS_CALL),
+        );
+        app.nav(
+            "app",
+            NavLink::route("clinics.call_list", "nav.call_list")
+                .icon("phone")
+                .group("nav.app")
+                .order(76)
+                .permission(permissions::APPOINTMENTS_CALL),
+        );
+        app.nav(
+            "app",
+            NavLink::route("clinics.campaign_permits", "nav.campaign_permits")
+                .icon("shield-check")
+                .group("nav.app")
+                .order(77)
+                .permission(permissions::PERMITS_VIEW),
         );
         app.nav(
             "app",

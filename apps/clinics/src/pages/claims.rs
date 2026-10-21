@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
+use wl_kernel::integrations::web::banner_for;
 use wl_kernel::payer_bills::payer_bills;
 
 use super::{Texts, invalid, parse_date, parse_id, party_name, require, text, text_with};
@@ -45,6 +46,12 @@ use crate::money_text;
 use crate::permissions;
 use crate::texts;
 use crate::visit::Visit;
+
+/// The screen of the claims list, which the claims channel registers so that
+/// it shows the manual way while the channel is down (05 §8).
+pub const CLAIMS_SCREEN: &str = "clinics.claims";
+/// The screen of one claim, registered the same way.
+pub const CLAIM_SCREEN: &str = "clinics.claim";
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
@@ -191,6 +198,7 @@ pub(crate) struct IndexPage {
     tx: Texts,
     claims: Vec<ClaimRow>,
     kpi: String,
+    integration_banner: Option<renox::serde_json::Value>,
 }
 
 /// How a closed claim reads in the list and on its page.
@@ -266,6 +274,7 @@ async fn index(
         tx: texts::all(&lang),
         claims: rows,
         kpi,
+        integration_banner: banner_for(&state.db, CLAIMS_SCREEN, &lang).await?,
     }))
 }
 
@@ -374,6 +383,7 @@ pub(crate) struct ShowPage {
     void_info: String,
     links: String,
     to_resolve: bool,
+    integration_banner: Option<renox::serde_json::Value>,
 }
 
 /// `GET /clinics/claims/{id}`.
@@ -597,6 +607,7 @@ async fn show(
         text_with(&lang, "claim.held.ended", &[("result", &r)])
     });
     Ok(View::typed(ShowPage {
+        integration_banner: banner_for(&state.db, CLAIM_SCREEN, &lang).await?,
         tx: texts::all(&lang),
         id: claim.id,
         number: claim.number(),

@@ -14,6 +14,7 @@
 //! | `POST /clinics/visits/{id}/lots` | `clinics.visit_lot` | `charges.desk` or `charges.capture` |
 //! | `POST /clinics/visits/{id}/issue` | `clinics.visit_issue` | `charges.desk` or `charges.capture` (issues the stock again) |
 //! | `GET /clinics/visits/{id}?code=X` | `clinics.visit` | the issue screen: the lot proposed for consumable `X` |
+//! | `POST /clinics/visits/{id}/times` | `clinics.visit_times` | `charges.desk` (a time from the paper sheet after an outage, with the late-entry flag) |
 //!
 //! The page shows the cover the check-in recorded. When the eligibility turns
 //! positive before the service starts, the receptionist changes the outcome
@@ -23,9 +24,10 @@ use renox::prelude::*;
 use renox::state_machine::history;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::dubai_text;
+use wl_kernel::integrations::web::banner_for;
 
 use super::appointments::{outcome_label, policy_label};
-use super::{Texts, invalid, parse_id, party_name, require, text, user_name};
+use super::{Texts, invalid, parse_id, parse_moment, party_name, require, text, user_name};
 use crate::authorisation::AuthorisationHold;
 use crate::billing::{self, Basis};
 use crate::charge::{ChargeKind, ChargeLine};
@@ -33,12 +35,17 @@ use crate::charges::{self, NewCharge};
 use crate::consent::{self, SelfPayConsent};
 use crate::consumable_issue::ConsumableIssue;
 use crate::coverage::{self, CoverageOutcome};
+use crate::late_times::{self, VisitTime};
 use crate::lots;
 use crate::money_text;
 use crate::permissions;
 use crate::policy::InsurancePolicy;
 use crate::texts;
 use crate::visit::{Visit, VisitStatus};
+
+/// The screen the payment gateway registers, so that it shows the banner
+/// while the gateway is down: the visit takes its payments at the desk.
+pub const SCREEN: &str = "clinics.visit";
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
@@ -57,6 +64,8 @@ pub fn routes() -> Routes {
         .name("clinics.visit_not_suitable")
         .post("/clinics/visits/{id}/refund-deposit", refund_deposit)
         .name("clinics.visit_refund_deposit")
+        .post("/clinics/visits/{id}/times", enter_time)
+        .name("clinics.visit_times")
         .post("/clinics/visits/{id}/consent", update_consent)
         .name("clinics.visit_consent")
         .post("/clinics/visits/{id}/bill", bill)
@@ -166,6 +175,25 @@ pub(crate) struct ShowPage {
     can_desk_only: bool,
     stock_issue: String,
     can_retry_issue: bool,
+    integration_banner: Option<renox::serde_json::Value>,
+    can_enter_time: bool,
+    time_kinds: Vec<[String; 2]>,
+    times: Vec<TimeRow>,
+}
+
+/// A time entered for the visit, as the page lists it.
+#[derive(Serialize, Debug, Clone)]
+pub struct TimeRow {
+    /// Check-in, check-out or consumable.
+    pub kind: String,
+    /// When it happened.
+    pub occurred: String,
+    /// When it was typed in.
+    pub entered: String,
+    /// The late-entry flag, or a dash.
+    pub flag: String,
+    /// Why it was late, or a dash.
+    pub reason: String,
 }
 
 /// The query of the visit page: `code` asks which lot the issue screen
@@ -380,6 +408,21 @@ async fn show(
     let dash = none.clone();
     let open = visit.status.is_open() && visit.billed_at.is_none();
     let option = |key: &str, label: &str| [key.to_owned(), text(&lang, label)];
+    let time_rows: Vec<TimeRow> = VisitTime::of_visit(&state.db, visit.id)
+        .await?
+        .iter()
+        .map(|t| TimeRow {
+            kind: text(&lang, &format!("late.kind.{}", t.kind)),
+            occurred: dubai_text(t.occurred_at),
+            entered: dubai_text(t.entered_at),
+            flag: if t.late {
+                text(&lang, "late.flag")
+            } else {
+                text(&lang, "none")
+            },
+            reason: t.late_reason.clone().unwrap_or_else(|| text(&lang, "none")),
+        })
+        .collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: visit.id,
@@ -456,6 +499,14 @@ async fn show(
         can_retry_issue: (can_capture || can_desk)
             && visit.issue_pending_at.is_some()
             && !visit.status.is_open(),
+        integration_banner: banner_for(&state.db, SCREEN, &lang).await?,
+        can_enter_time: can_desk,
+        time_kinds: vec![
+            option(late_times::CHECK_IN, "late.kind.check_in"),
+            option(late_times::CHECK_OUT, "late.kind.check_out"),
+            option(late_times::CONSUMABLE, "late.kind.consumable"),
+        ],
+        times: time_rows,
     }))
 }
 
@@ -543,6 +594,55 @@ async fn charge(
         charges::record_service(&state, Some(user.id), id, new).await?;
     }
     done(&lang, "charges.recorded")
+}
+
+/// The form that enters a time from the paper sheet.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TimeForm {
+    /// `check_in`, `check_out` or `consumable`.
+    #[serde(default)]
+    pub kind: String,
+    /// When it happened, Asia/Dubai wall time (`2026-11-10T09:30`).
+    #[serde(default)]
+    pub time: String,
+    /// Why it is entered late (asked when the time is behind the entry).
+    #[serde(default)]
+    pub reason: String,
+    /// The consumable line, for `consumable`.
+    #[serde(default)]
+    pub line: String,
+}
+
+/// `POST /clinics/visits/{id}/times`: a check-in, check-out or consumable
+/// time from the paper sheet, with the late-entry flag when it is late. A
+/// time beyond the kernel's limit waits for approval.
+async fn enter_time(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TimeForm>,
+) -> Result<Response> {
+    require(&user, permissions::CHARGES_DESK)?;
+    let at = parse_moment(&form.time).ok_or_else(|| invalid(&text(&lang, "late.problem.time")))?;
+    let entered = late_times::enter(
+        &state,
+        &user,
+        id,
+        form.kind.trim(),
+        at,
+        Some(form.reason.as_str()),
+        parse_id(&form.line),
+    )
+    .await?;
+    done(
+        &lang,
+        if entered.is_pending() {
+            "late.sent_for_approval"
+        } else {
+            "late.entered"
+        },
+    )
 }
 
 /// `POST /clinics/visits/{id}/none`.

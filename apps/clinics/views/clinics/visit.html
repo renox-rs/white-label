@@ -67,7 +67,17 @@
       <rx-confirm :id="'visit-bill-' ~ id" :label="tx['charges.bill']" :action="route('clinics.visit_bill', id)" method="POST"
                   :title="tx['charges.bill']" :message="tx['charges.bill']" :confirm-label="tx['charges.bill']" :cancel-label="tx['button_cancel']" icon="receipt"/>
     </template>
+      <template rx-if="can_enter_time">
+        <rx-action-sheet :id="'visit-times-' ~ id" :label="tx['late.enter']" :action="route('clinics.visit_times', id)"
+                         :title="tx['late.enter']" :description="tx['late.enter_description']" :submit-label="tx['late.enter']" icon="history">
+          <rx-select name="kind" :label="tx['late.kind']" :options="time_kinds" :selected="'check_in'" :id="'visit-times-kind-' ~ id"/>
+          <rx-input name="time" type="datetime-local" :label="tx['late.time']" :id="'visit-times-time-' ~ id" required/>
+          <rx-input name="reason" :label="tx['late.reason']" :hint="tx['late.reason_hint']" :id="'visit-times-reason-' ~ id"/>
+          <rx-input name="line" type="number" :label="tx['late.line']" :id="'visit-times-line-' ~ id"/>
+        </rx-action-sheet>
+      </template>
     </rx-page-header>
+    <rx-include template="wl-kernel/integration_banner.html"/>
     <rx-card :title="tx['visits.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['appointments.patient']" :value="patient"/>
@@ -116,6 +126,13 @@
       <rx-column :label="tx['lots.expiry']" hide-narrow>{{ row.expiry }}</rx-column>
       <rx-column :label="tx['lots.quantity']">{{ row.quantity }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['lots.none_yet']" icon="clipboard-list"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="times" :rows="times" as="row" :key="row.kind ~ row.occurred ~ row.entered" :caption="tx['late.title']" card>
+      <rx-column :label="tx['late.kind']">{{ row.kind }}</rx-column>
+      <rx-column :label="tx['late.time']">{{ row.occurred }}</rx-column>
+      <rx-column :label="tx['late.entered_at']" hide-narrow>{{ row.entered }}</rx-column>
+      <rx-column :label="tx['late.flag']" hide-narrow>{{ row.flag }}</rx-column>
+      <rx-column :label="tx['late.reason']" hide-narrow>{{ row.reason }}</rx-column>
     </rx-table>
     <rx-table :rows="history" as="row" :key="row.at ~ row.action" :caption="tx['visits.history']" card>
       <rx-column :label="tx['visits.history_at']">{{ row.at }}</rx-column>

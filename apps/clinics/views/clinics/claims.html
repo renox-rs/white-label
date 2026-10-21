@@ -4,6 +4,7 @@
 <rx-page layout="layouts/app.html" :title="tx['claim.title']">
   <rx-stack>
     <rx-page-header :title="tx['claim.title']" :subtitle="tx['claim.subtitle']"/>
+    <rx-include template="wl-kernel/integration_banner.html"/>
     <rx-alert kind="info" :message="kpi"/>
     <rx-table :rows="claims" as="row" :key="row.id" :caption="tx['claim.title']" card>
       <rx-column :label="tx['claim.number']"><a href="{{ route('clinics.claim', row.id) }}">{{ row.number }}</a></rx-column>

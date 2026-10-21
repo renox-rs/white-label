@@ -54,6 +54,19 @@ pub const RECALLS_NOTIFY: &str = "recalls.notify";
 /// be delivered (the front desk's, in the branch of the visit).
 pub const RECALLS_CALL: &str = "recalls.call";
 
+/// See the advertising permits recorded on campaigns (`CLN.ACL.13`): the
+/// marketing coordinator's, so a campaign that cannot be activated shows why.
+pub const PERMITS_VIEW: &str = "advertising_permits.view";
+/// Record, approve and change the regulator's advertising permit number and
+/// validity of a campaign that promotes services (`CLN.ACL.13`: the medical
+/// director's).
+pub const PERMITS_MANAGE: &str = "advertising_permits.manage";
+
+/// See, per branch, the appointments of the next 24 hours to call when the
+/// SMS or WhatsApp connection is down, and tick each as called (05 section 8:
+/// the front desk's).
+pub const APPOINTMENTS_CALL: &str = "appointments.call";
+
 /// The owner / medical director: told when a practitioner licence expires
 /// (`CLN.RUL.01`) and alerted when a compliance-critical rule fails.
 pub const OWNER_ROLE: &str = "owner";
@@ -70,3 +83,9 @@ pub const BILLING_COORDINATOR_ROLE: &str = "billing_coordinator";
 /// The practitioner (doctor, dentist, therapist): sees the own visits and
 /// records the charges of the services delivered (`CLN.ENC.01`).
 pub const PRACTITIONER_ROLE: &str = "practitioner";
+/// The call-centre agent: books and reschedules for all branches and follows
+/// up leads (05 §3.1).
+pub const CALL_CENTRE_ROLE: &str = "call_centre_agent";
+/// The nurse or assistant: prepares rooms, records the consumables used and
+/// helps with consent forms (05 §3.1).
+pub const NURSE_ROLE: &str = "nurse";
