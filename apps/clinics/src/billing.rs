@@ -149,6 +149,10 @@ pub async fn bill(state: &AppState, id: i64, basis: Basis) -> Result<Billed> {
             deposit_applied,
         } => (business, deposit_applied),
     };
+    // Decision: the basis of a cancelled visit (who stopped it, what the
+    // booking applied) is stored by the cancel transition itself, before any
+    // bill starts ([`crate::visit_machine`]); the write here only repeats it,
+    // so a bill that died early is run again on the same basis.
     let claimed = Visit::query()
         .where_(Visit::ID.eq(id))
         .where_(Visit::BILLED_AT.is_null())

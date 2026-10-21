@@ -112,7 +112,7 @@ async fn release(state: &AppState, visit: Option<&Visit>) -> Result {
 pub async fn on_started(state: &AppState, event: &BookingStarted) -> Result<Option<Visit>> {
     let input = VisitInput {
         at: Some(event.at),
-        reason: None,
+        ..VisitInput::default()
     };
     follow(state, event.booking.0, START, &input).await
 }
@@ -125,7 +125,7 @@ pub async fn on_started(state: &AppState, event: &BookingStarted) -> Result<Opti
 pub async fn on_completed(state: &AppState, event: &BookingCompleted) -> Result<Option<Visit>> {
     let input = VisitInput {
         at: Some(renox::db::now()),
-        reason: None,
+        ..VisitInput::default()
     };
     let visit = follow(state, event.booking.0, COMPLETE, &input).await?;
     release(state, visit.as_ref()).await?;
@@ -158,6 +158,8 @@ pub async fn on_cancelled(state: &AppState, event: &BookingCancelled) -> Result<
     let input = VisitInput {
         at: Some(renox::db::now()),
         reason: Some(event.reason_code.clone()),
+        clinic_stop: event.initiated_by == Initiator::Business,
+        deposit_applied: event.deposit_applied,
     };
     let visit = follow(state, event.booking.0, CANCEL, &input).await?;
     release(state, visit.as_ref()).await?;

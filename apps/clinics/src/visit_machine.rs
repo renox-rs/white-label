@@ -38,6 +38,13 @@ pub struct VisitInput {
     /// The booking's cancellation reason code (`cancel`).
     #[serde(default)]
     pub reason: Option<String>,
+    /// The cancellation was the clinic's side (`cancel`).
+    #[serde(default)]
+    pub clinic_stop: bool,
+    /// The part of the deposit wl-scheduling applied to the work done, in
+    /// fils (`cancel`).
+    #[serde(default)]
+    pub deposit_applied: i64,
 }
 
 fn input_of(ctx: &TransitionCtx) -> VisitInput {
@@ -102,6 +109,11 @@ fn complete() -> Transition<Visit> {
 
 /// `cancel`: the visit stopped after the check-in; the reason code is the
 /// booking's.
+///
+/// Decision: who stopped it and how much of the deposit wl-scheduling applied
+/// are stored in the same write as the new state, before any money moves, so
+/// that a bill which stopped early is run again on the same basis
+/// ([`crate::billing::Basis::of_visit`]).
 fn cancel() -> Transition<Visit> {
     Transition::new(CANCEL)
         .label("Cancel")
@@ -116,7 +128,12 @@ fn cancel() -> Transition<Visit> {
                 crate::db::set_visit(
                     &mut *tx,
                     id,
-                    &[("ended_at", &Some(at)), ("cancel_reason", &input.reason)],
+                    &[
+                        ("ended_at", &Some(at)),
+                        ("cancel_reason", &input.reason),
+                        ("clinic_stop", &input.clinic_stop),
+                        ("scheduling_applied", &input.deposit_applied),
+                    ],
                 )
                 .await
             })

@@ -344,3 +344,60 @@ async fn the_visit_page_shows_the_work_done_and_the_bill() {
         .assert_ok()
         .assert_see("AED 150.00");
 }
+
+/// The decision that the clinic stopped the visit is stored with the
+/// cancellation, before any bill starts: when the first attempt to bill never
+/// got as far as its own first write (here the process is gone right after
+/// the visit's cancel transition), billing it again from the visit page is
+/// still a clinic stop that charges nothing, not a walk-out billed as a
+/// normal visit.
+#[renox::test]
+async fn a_clinic_stop_is_still_a_clinic_stop_when_the_first_attempt_to_bill_died() {
+    use clinics::visit_machine::{CANCEL, VisitInput};
+    use renox::db::now;
+    use renox::state_machine::StateMachine;
+
+    let d = clinic().await;
+    let booking = d.booking(&d.consultation, 9).await;
+    let visit = d.check_in(&booking).await;
+    d.start(&booking).await;
+    d.issue(&visit, "filler_syringe", 1).await.assert_ok();
+
+    // What the listener of `BookingCancelled` runs first; its bill never starts.
+    let open = d.visit(visit.id).await;
+    let _ = open
+        .transition(CANCEL)
+        .by_system()
+        .input(&VisitInput {
+            at: Some(now()),
+            reason: Some("equipment_failure".to_owned()),
+            clinic_stop: true,
+            deposit_applied: 0,
+        })
+        .run(d.t.state())
+        .await
+        .expect("the visit is cancelled");
+    let stopped = d.visit(visit.id).await;
+    assert_eq!(stopped.status, VisitStatus::Cancelled);
+    assert!(stopped.billed_at.is_none(), "the first attempt never billed");
+    assert!(
+        stopped.clinic_stop,
+        "who stopped it is stored with the cancellation"
+    );
+
+    d.post(
+        &d.rita,
+        &format!("/clinics/visits/{}/bill", visit.id),
+        &[("x", "y")],
+    )
+    .await
+    .assert_ok();
+
+    let billed = d.visit(visit.id).await;
+    assert!(billed.billed_at.is_some());
+    assert_eq!((billed.patient_total, billed.payer_total), (0, 0));
+    assert!(d.t.books.all().is_empty(), "a clinic stop charges nothing");
+    let lines = ChargeLine::active_of(d.t.db(), visit.id).await.unwrap();
+    assert_eq!(lines[0].unit_price, 0);
+    assert_eq!(lines[0].reason.as_deref(), Some("clinic_stop"));
+}
