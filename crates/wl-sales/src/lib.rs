@@ -44,6 +44,7 @@ pub mod redeem;
 pub mod redemption;
 pub mod redemption_machine;
 pub mod report;
+pub mod retention;
 pub mod sale_line;
 pub mod sales_order;
 pub mod sales_order_machine;
@@ -52,6 +53,8 @@ pub mod sales_return;
 pub mod sales_return_machine;
 pub mod sales_returns;
 pub mod seed;
+pub mod segment;
+pub mod segments;
 mod texts;
 pub mod voids;
 
@@ -81,11 +84,14 @@ pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
 pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
 pub use redemption::{Redemption, RedemptionStatus};
+pub use retention::{BroadcastState, CampaignBroadcast, CampaignGuard, CampaignGuards};
 pub use sale_line::SaleLine;
 pub use sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
 pub use sales_return::{
     ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, SalesReturnLine,
 };
+pub use segment::{MatchMode, Rule, Segment, SegmentRefused};
+pub use segments::{SegmentRule, SegmentRules};
 
 /// The campaign services under the names of the plan: `campaigns::delete`
 /// and `campaigns::run_daily`.
@@ -165,6 +171,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-sales/liability.html",
         include_str!("../views/wl-sales/liability.html"),
     ),
+    (
+        "wl-sales/segments.html",
+        include_str!("../views/wl-sales/segments.html"),
+    ),
+    (
+        "wl-sales/segment.html",
+        include_str!("../views/wl-sales/segment.html"),
+    ),
 ];
 
 /// The module's permissions (wl-sales §6).
@@ -214,6 +228,11 @@ pub mod permissions {
     /// Turn the loyalty programme on, review accounts and approve a large
     /// adjustment.
     pub const LOYALTY_MANAGE: &str = "loyalty.manage";
+    /// Define customer segments and preview their size.
+    pub const SEGMENTS_MANAGE: &str = "segments.manage";
+    /// Export the members of a segment: a sensitive export, audited
+    /// (`NTF.ACL.01`).
+    pub const SEGMENTS_EXPORT: &str = "segments.export";
 }
 
 /// The sales module. The host adds it with
@@ -221,6 +240,8 @@ pub mod permissions {
 #[derive(Default)]
 pub struct WlSales {
     config: SalesConfig,
+    segment_rules: Vec<std::sync::Arc<dyn SegmentRule>>,
+    campaign_guards: Vec<std::sync::Arc<dyn CampaignGuard>>,
 }
 
 impl WlSales {
@@ -387,6 +408,41 @@ impl WlSales {
         self
     }
 
+    /// The days after a retention campaign's send within which a purchase
+    /// makes the member count as returned (§7, default 30).
+    pub fn retention_response_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "the response period is at least a day");
+        self.config.retention_response_days = days;
+        self
+    }
+
+    /// The item codes of clinical services (05). A segment rule on one is
+    /// refused and the segment editor does not offer them, unless
+    /// [`segment_clinical_rules`](Self::segment_clinical_rules) is on.
+    pub fn clinical_items(mut self, codes: &[&str]) -> Self {
+        self.config.clinical_items = codes.iter().map(|c| (*c).to_owned()).collect();
+        self
+    }
+
+    /// Whether segment rules may use clinical items (§7, off by default).
+    pub fn segment_clinical_rules(mut self, on: bool) -> Self {
+        self.config.segment_clinical_rules = on;
+        self
+    }
+
+    /// Adds a segment rule kind of the vertical (§8 `SegmentRule`).
+    pub fn segment_rule(mut self, rule: impl SegmentRule) -> Self {
+        self.segment_rules.push(std::sync::Arc::new(rule));
+        self
+    }
+
+    /// Adds a guard of the vertical that stops a retention campaign sending
+    /// (05 `CLN.ACL.13`).
+    pub fn campaign_guard(mut self, guard: impl CampaignGuard) -> Self {
+        self.campaign_guards.push(std::sync::Arc::new(guard));
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &SalesConfig {
         &self.config
@@ -422,7 +478,9 @@ impl Module for WlSales {
             .view_data::<pages::loyalty::IndexPage>()
             .view_data::<pages::loyalty::ReviewPage>()
             .view_data::<pages::adjustments::IndexPage>()
-            .view_data::<pages::liability::ShowPage>();
+            .view_data::<pages::liability::ShowPage>()
+            .view_data::<pages::segments::IndexPage>()
+            .view_data::<pages::segments::EditPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -459,9 +517,13 @@ impl Module for WlSales {
         app.model::<LoyaltyReview>();
         app.model::<Redemption>();
         app.model::<PointsAdjustment>();
+        app.model::<Segment>();
+        app.model::<CampaignBroadcast>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
+        app.provide(SegmentRules(self.segment_rules.clone()));
+        app.provide(CampaignGuards(self.campaign_guards.clone()));
         renox::state_machine::register::<Lead>();
         lead_events::register(app);
         acquisition_change::register(app);
@@ -485,6 +547,9 @@ impl Module for WlSales {
         // expiry and reminder (`SAL.RUL.08`).
         adjustments::register(app);
         expiry::schedule(app);
+        // Retention campaigns: the broadcast asked on `activate`, the
+        // segments for `wl-notify` and the campaign as a requester.
+        retention::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);
@@ -550,6 +615,14 @@ impl Module for WlSales {
                 .group("nav.app")
                 .order(54)
                 .permission(permissions::LOYALTY_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.segments", "nav.segments")
+                .icon("users")
+                .group("nav.app")
+                .order(55)
+                .permission(permissions::SEGMENTS_MANAGE),
         );
     }
 }
