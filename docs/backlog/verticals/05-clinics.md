@@ -1163,14 +1163,14 @@ movement."
 - Must not allow check-out with a lot-tracked line without lot or pending issue.
 
 #### Done when
-- [ ] Given filler lots L1 (expiry 2027-01-31) and L2 (2027-03-31) at Branch 1, the issue screen
+- [x] Given filler lots L1 (expiry 2027-01-31) and L2 (2027-03-31) at Branch 1, the issue screen
       proposes L1.
-- [ ] A line for filler without a lot blocks check-out with "lot required".
-- [ ] Given 1 unit at the store and 2 used, one line posts with L1 and 1 unit becomes a pending
+- [x] A line for filler without a lot blocks check-out with "lot required".
+- [x] Given 1 unit at the store and 2 used, one line posts with L1 and 1 unit becomes a pending
       issue shown as "lot uncertain"; check-out succeeds.
-- [ ] Given L1 with 1 unit and L2 with 1 unit and 3 used, lines post 1 unit from L1 and 1 unit
+- [x] Given L1 with 1 unit and L2 with 1 unit and 3 used, lines post 1 unit from L1 and 1 unit
       from L2, and 1 unit becomes a pending issue.
-- [ ] Scanning held lot L3 is refused.
+- [x] Scanning held lot L3 is refused.
 
 #### Out of scope
 Pending-issue mechanics and alerts (BL-STK-18, BL-STK-20); recalls (BL-CLN-14).
