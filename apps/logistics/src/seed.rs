@@ -10,6 +10,7 @@ use renox::prelude::*;
 use wl_kernel::PartyId;
 
 use crate::booking::{self, NewShipment};
+use crate::freight::{self, FreightJob, NewJob};
 use crate::rates;
 use crate::shipment::charge_kind;
 
@@ -90,4 +91,37 @@ pub async fn demo_shipments(state: &AppState, booked_by: i64, client: PartyId) -
         booked += 1;
     }
     Ok(booked)
+}
+
+/// The demo freight job of the client: a sea move from Shanghai to Jebel Ali
+/// with one container. It is opened through the app's own service; one that
+/// exists already is left alone. Returns whether it was new.
+///
+/// # Errors
+///
+/// The service's refusals, as errors.
+pub async fn demo_freight(state: &AppState, user: i64, client: PartyId) -> Result<bool> {
+    let description = "1 x 40HC of kitchenware, Shanghai to Jebel Ali";
+    let known = FreightJob::query()
+        .where_(FreightJob::CLIENT_PARTY_ID.eq(client.0))
+        .where_(FreightJob::DESCRIPTION.eq(description))
+        .first(&state.db)
+        .await?;
+    if known.is_some() {
+        return Ok(false);
+    }
+    let new = NewJob {
+        mode: "sea".to_owned(),
+        origin: "Shanghai".to_owned(),
+        destination: "Jebel Ali".to_owned(),
+        eta: None,
+        international: true,
+    };
+    let job = freight::create(state, Some(user), client, description, &new)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    freight::insert_container(state, job.id, "MSKU1234567", "40HC", [None, None, None])
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok(true)
 }

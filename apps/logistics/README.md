@@ -194,6 +194,16 @@ their own issues.
   held or disposed for another cause are left out and picked up by the first
   draft after they are billable again; a shipment and a charge line are billed
   once, and running the rule twice leaves one draft (`BillingRun`).
+- **The freight job** (`freight`, `freight_machine`, `freight_flow`,
+  `freight_costing`, `freight_pages`, `LOG.JOB.01`): a job of a client with its
+  mode, route, ETA, containers and their free-time end dates moves booked,
+  documents pending, in transit, customs clearance, ready for delivery,
+  delivered, closed (or cancelled before departure) by the documentation
+  officer (`jobs.manage`, `jobs.deliver`, `jobs.close`). `depart` needs the
+  BL/AWB, `clear` the declaration, duties and delivery order, `deliver` the
+  e-POD and `close` every cost allocated and the invoice issued; the margin at
+  each close is kept. Revenue and cost lines are the stand-in for job costing
+  (`FIN.CST.01`), supplier bills and disbursements until wl-invoicing has them.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
@@ -209,7 +219,7 @@ the reason when refused.
 ## Permissions
 
 `shipments.view`, `.book`, `.manage`, `.scan`, `.deliver`, `.void`,
-`.cancel`, `.approve_loss` and `.approve_disposal`, `freight.manage`, and `remittances.view`, `.prepare`, `.approve`, `.pay`, `.request_account` and `.dispute`
+`.cancel`, `.approve_loss` and `.approve_disposal`, `freight.manage`, `jobs.view`, `.manage`, `.deliver` and `.close`, and `remittances.view`, `.prepare`, `.approve`, `.pay`, `.request_account` and `.dispute`
 (`permissions`). The host maps them to the operations manager, the
 dispatcher, hub staff, the driver and the client user, and the remittances to
 the accountant.

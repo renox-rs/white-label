@@ -26,6 +26,19 @@ pub const SHIPMENTS_CANCEL: &str = "shipments.cancel";
 /// operations manager (BL-LOG-19).
 pub const FREIGHT_MANAGE: &str = "freight.manage";
 
+/// See freight jobs, their milestones and (for staff, `FIN.ACL.08`) their
+/// costs and margin: the documentation officer, the accountant and the
+/// operations manager (03 §3.1, `LOG.ACL.11`).
+pub const JOBS_VIEW: &str = "jobs.view";
+/// Work a freight job: request documents, depart, arrive, clear, hold and
+/// release, cancel before departure, and record its costs: the
+/// documentation officer (§7.1 *Freight job*).
+pub const JOBS_MANAGE: &str = "jobs.manage";
+/// Record the e-POD that delivers a freight job.
+pub const JOBS_DELIVER: &str = "jobs.deliver";
+/// Close a freight job and reopen a closed one for a late cost.
+pub const JOBS_CLOSE: &str = "jobs.close";
+
 /// Approve a request to mark a shipment off a delivery lost (`LOG.ACL.14`):
 /// the operations manager, and the company admin, who holds every permission.
 /// The requester never approves.
@@ -75,6 +88,10 @@ pub const ALL: &[&str] = &[
     REMITTANCES_REQUEST_ACCOUNT,
     REMITTANCES_DISPUTE,
     FREIGHT_MANAGE,
+    JOBS_VIEW,
+    JOBS_MANAGE,
+    JOBS_DELIVER,
+    JOBS_CLOSE,
 ];
 
 /// The operations manager runs a depot (§3.1). The host's
@@ -93,6 +110,10 @@ pub const CUSTOMER_SERVICE_ROLE: &str = "customer_service";
 /// A client user books, tracks and cancels its own shipments (§3.1). The
 /// host's `roles::SHIPPING_CLIENT`.
 pub const CLIENT_ROLE: &str = "shipping_client";
+
+/// The documentation officer works the freight jobs and their customs and
+/// shipping documents (§3.1). The host's `roles::DOCUMENTATION_OFFICER`.
+pub const DOCUMENTATION_OFFICER_ROLE: &str = "documentation_officer";
 
 /// The invoice owner: the role whose holders get the task to credit the
 /// charge of an invoiced shipment that was reversed or lost (BL-LOG-10,

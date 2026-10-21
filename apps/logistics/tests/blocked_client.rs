@@ -410,7 +410,7 @@ async fn a_new_freight_job_is_refused_and_an_open_one_continues() {
         .await
         .unwrap()
         .expect("the job is open");
-    assert_eq!(open.status, FreightStatus::Open);
+    assert_eq!(open.status, FreightStatus::Booked);
 
     w.block_party(client, "non_payment").await;
     w.post(
@@ -440,6 +440,6 @@ async fn a_new_freight_job_is_refused_and_an_open_one_continues() {
     .await
     .assert_status(303);
     let after = FreightJob::find(w.db(), open.id).await.unwrap().unwrap();
-    assert_eq!(after.status, FreightStatus::Open);
+    assert_eq!(after.status, FreightStatus::Booked);
     assert_eq!(after.notes, "Customs cleared");
 }

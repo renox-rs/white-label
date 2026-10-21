@@ -32,6 +32,7 @@ use wl_kernel::workforce::{AbsenceCaseOpened, Workforce};
 use wl_kernel::{ClientConfig, PartyId, RecordVoided};
 
 pub mod attendance;
+pub mod freight;
 pub mod invoices;
 pub mod notices;
 pub mod parties;
@@ -144,6 +145,11 @@ pub struct World {
     pub amal: User,
     /// Another accountant.
     pub bashar: User,
+    /// The documentation officer: works freight jobs, delivers them, and
+    /// closes and reopens them.
+    pub docs: User,
+    /// A user who can see freight jobs and work them but not close them.
+    pub docs_limited: User,
     /// The party directory (the real wl-payments knows the clients through
     /// it); blocking a client is done here. Not used when the real
     /// wl-parties is booted ([`boot_with_parties`]).
@@ -367,6 +373,20 @@ async fn boot_with(real_payments: bool, real_parties: bool) -> World {
     ];
     let amal = make_user(app.db(), "Amal", &accountant).await;
     let bashar = make_user(app.db(), "Bashar", &accountant).await;
+    let documentation = [
+        perm::JOBS_VIEW,
+        perm::JOBS_MANAGE,
+        perm::JOBS_DELIVER,
+        perm::JOBS_CLOSE,
+        perm::FREIGHT_MANAGE,
+    ];
+    let docs = make_user(app.db(), "Dalia", &documentation).await;
+    let docs_limited = make_user(
+        app.db(),
+        "Dima",
+        &[perm::JOBS_VIEW, perm::JOBS_MANAGE],
+    )
+    .await;
     portal.grant(noor.id, SOUQ.0);
     portal.grant(nadia.id, SOUQ.0);
     portal.grant(farah.id, OTHER_CLIENT.0);
@@ -389,6 +409,8 @@ async fn boot_with(real_payments: bool, real_parties: bool) -> World {
         farah,
         amal,
         bashar,
+        docs,
+        docs_limited,
         parties,
         portal,
         shifts,

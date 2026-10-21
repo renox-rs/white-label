@@ -136,3 +136,23 @@ fn the_logistics_client_has_the_company_admin_approve_the_block_exception() {
     let parties = host::parties_for("logistics");
     assert_eq!(parties.approver(), wl_kernel::COMPANY_ADMIN_ROLE);
 }
+
+#[test]
+fn the_documentation_officer_works_and_closes_freight_jobs() {
+    // `LOG.JOB.01`, BL-LOG-21 to BL-LOG-24: the documentation officer (and
+    // the company admin) hold, release, deliver, close and reopen jobs; the
+    // operations manager and the accountant only see them.
+    for role in [ADMIN, roles::DOCUMENTATION_OFFICER] {
+        for permission in [perm::JOBS_VIEW, perm::JOBS_MANAGE, perm::JOBS_DELIVER, perm::JOBS_CLOSE] {
+            assert!(holds(role, permission), "{role} {permission}");
+        }
+    }
+    for role in [OPERATIONS_MANAGER, roles::ACCOUNTANT] {
+        assert!(holds(role, perm::JOBS_VIEW), "{role}");
+        assert!(!holds(role, perm::JOBS_MANAGE), "{role}");
+        assert!(!holds(role, perm::JOBS_CLOSE), "{role}");
+    }
+    for role in [DISPATCHER, DRIVER, HUB_STAFF, SHIPPING_CLIENT] {
+        assert!(!holds(role, perm::JOBS_VIEW), "{role}");
+    }
+}

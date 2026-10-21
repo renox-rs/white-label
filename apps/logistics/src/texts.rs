@@ -948,6 +948,69 @@ const TEXTS: &[(&str, &str)] = &[
         "Say what is shipped.",
     ),
     ("logistics.freight.note_needed", "Give the note."),
+    (
+        "logistics.freight.mode_unknown",
+        "The mode is sea, air or road.",
+    ),
+    (
+        "logistics.freight.container_needed",
+        "Give the container number.",
+    ),
+    (
+        "logistics.freight.container_used",
+        "The job has this container already.",
+    ),
+    (
+        "logistics.freight.closed_no_costs",
+        "The job is closed: reopen it for a late cost.",
+    ),
+    (
+        "logistics.freight.line_needed",
+        "Give what it is and an amount above 0.",
+    ),
+    (
+        "logistics.freight.liability_needed",
+        "Allocate a cost with the liability client or company.",
+    ),
+    (
+        "logistics.freight.bl_needed",
+        "Record the bill of lading or air waybill first.",
+    ),
+    (
+        "logistics.freight.clearance_needed",
+        "Record the declaration number, the duties and the delivery order first.",
+    ),
+    (
+        "logistics.freight.pod_needed",
+        "Capture the proof of delivery first.",
+    ),
+    (
+        "logistics.freight.costs_open",
+        "Allocate every supplier bill and disbursement before closing the job.",
+    ),
+    (
+        "logistics.freight.invoice_needed",
+        "Issue the invoice before closing the job.",
+    ),
+    ("logistics.freight.reason_needed", "Give the reason."),
+    (
+        "logistics.freight.documents_title",
+        "Freight job {{ number }}: documents missing",
+    ),
+    (
+        "logistics.freight.documents_body",
+        "We are waiting for documents for freight job {{ number }}: {{ missing }}.",
+    ),
+    (
+        "logistics.freight.departed_title",
+        "Freight job {{ number }} has departed",
+    ),
+    (
+        "logistics.freight.departed_body",
+        "Freight job {{ number }} has departed ({{ bl }}).",
+    ),
+    ("logistics.freight_done", "Freight job updated."),
+    ("logistics.freight_container_added", "Container added."),
     ("logistics.freight_opened", "Freight job opened."),
     ("logistics.freight_noted", "Note added to the freight job."),
     (

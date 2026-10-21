@@ -99,6 +99,10 @@ pub const DISPATCHER: &str = "dispatcher";
 /// shortages off within the limit (wl-payments §6, 03 roles; the second
 /// approver of a write-off is another holder of `cash.write_off`).
 pub const OPERATIONS_MANAGER: &str = "operations_manager";
+/// The documentation officer of a logistics client: works the freight jobs
+/// and their customs and shipping documents, delivers, closes and reopens them
+/// (03 §3.1, `LOG.JOB.01`).
+pub const DOCUMENTATION_OFFICER: &str = log::DOCUMENTATION_OFFICER_ROLE;
 /// A driver or rider: sees today's stops of their own runs and records their
 /// outcomes (wl-delivery §6, `WRK.ACL.05`).
 pub const DRIVER: &str = "driver";
@@ -269,6 +273,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_APPROVE_LOSS,
             log::SHIPMENTS_APPROVE_DISPOSAL,
             log::FREIGHT_MANAGE,
+            log::JOBS_VIEW,
+            log::JOBS_MANAGE,
+            log::JOBS_DELIVER,
+            log::JOBS_CLOSE,
             log::REMITTANCES_VIEW,
             log::REMITTANCES_PREPARE,
             log::REMITTANCES_APPROVE,
@@ -609,6 +617,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // 03: prepares and pays COD remittances; a second accountant
             // approves them and the adjustment lines (`LOG.ACL.07`,
             // `LOG.ACL.12`).
+            log::JOBS_VIEW,
             log::REMITTANCES_VIEW,
             log::REMITTANCES_PREPARE,
             log::REMITTANCES_APPROVE,
@@ -853,6 +862,18 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_APPROVE_LOSS,
             log::SHIPMENTS_APPROVE_DISPOSAL,
             log::FREIGHT_MANAGE,
+            log::JOBS_VIEW,
+        ],
+    ),
+    (
+        DOCUMENTATION_OFFICER,
+        &[
+            log::SHIPMENTS_VIEW,
+            log::FREIGHT_MANAGE,
+            log::JOBS_VIEW,
+            log::JOBS_MANAGE,
+            log::JOBS_DELIVER,
+            log::JOBS_CLOSE,
         ],
     ),
     (

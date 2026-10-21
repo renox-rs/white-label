@@ -1,0 +1,439 @@
+//! The screens and actions of a freight job (03 Logistics §4.2, §7.1 *Freight
+//! job*): `GET /freight/{id}` shows the job with its milestones, containers,
+//! costs and margin to staff (`jobs.view`, `FIN.ACL.08`) and the status,
+//! milestones, containers and the hold reason with its note to a client user
+//! of the company (the portal screen proper is `POR.SLF.01`); every action is
+//! a POST that answers 303 with a toast, 422 with the reason when refused.
+
+use renox::prelude::*;
+use renox::state_machine::{StateMachine, TransitionError};
+use serde::Serialize;
+
+use crate::booking::{self, parse_dirhams};
+use crate::freight::{FreightJob, FreightStatus};
+use crate::freight_costing::{self, Figures};
+use crate::freight_flow as flow;
+use crate::freight_machine as machine;
+use crate::pages::{Fields, Texts, field, tx};
+use crate::permissions;
+use crate::texts::t;
+
+/// The templates, compiled in.
+pub(crate) const VIEWS: &[(&str, &str)] = &[(
+    "logistics/freight_job.html",
+    include_str!("../views/logistics/freight_job.html"),
+)];
+
+/// The routes.
+pub fn routes() -> Routes {
+    Routes::new()
+        .get("/freight/{id}", show)
+        .name("logistics.freight_job")
+        .post("/freight/{id}/{action}", act)
+        .name("logistics.freight_action")
+        .post("/freight/{id}/costs", cost)
+        .name("logistics.freight_cost")
+        .post("/freight/{id}/revenue", revenue)
+        .name("logistics.freight_revenue")
+        .post("/freight/lines/{line}/allocate", allocate)
+        .name("logistics.freight_allocate")
+        .require_auth()
+}
+
+/// The badge colour of a status.
+fn status_kind(status: FreightStatus) -> &'static str {
+    match status {
+        FreightStatus::Booked | FreightStatus::Cancelled => "info",
+        FreightStatus::DocumentsPending | FreightStatus::OnHold => "warning",
+        FreightStatus::InTransit
+        | FreightStatus::CustomsClearance
+        | FreightStatus::ReadyForDelivery => "info",
+        FreightStatus::Delivered | FreightStatus::Closed => "success",
+    }
+}
+
+/// The word of a status.
+pub(crate) fn status_word(lang: &Lang, status: FreightStatus) -> String {
+    t(
+        lang,
+        &format!("logistics.screen.job_status.{}", status.as_str()),
+    )
+}
+
+/// One milestone or event of the page.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct EventRow {
+    kind: String,
+    note: String,
+    at: String,
+}
+
+/// One container of the page.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ContainerRow {
+    number: String,
+    size: String,
+    port_storage_end: String,
+    demurrage_end: String,
+    detention_end: String,
+}
+
+/// One revenue or cost line of the page.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct LineRow {
+    id: i64,
+    kind: String,
+    description: String,
+    amount: i64,
+    liability: String,
+    allocated: bool,
+    rechargeable: bool,
+    issued: bool,
+    late: bool,
+}
+
+/// The margin at one close.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct MarginRow {
+    close_no: i64,
+    revenue: i64,
+    cost: i64,
+    margin: i64,
+    at: String,
+}
+
+/// One input of an action.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct FieldView {
+    name: &'static str,
+    label: String,
+}
+
+/// One action of the page the person may run.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ActionView {
+    slug: &'static str,
+    label: String,
+    url: String,
+    fields: Vec<FieldView>,
+}
+
+/// The actions: the transition (the first of its twins), the path segment,
+/// the text and the inputs.
+const ACTIONS: &[(&str, &str, &str, &[&str])] = &[
+    (
+        machine::REQUEST_DOCUMENTS,
+        "request-documents",
+        "logistics.screen.job_request_documents",
+        &["missing"],
+    ),
+    (machine::DEPART, "depart", "logistics.screen.job_depart", &["bl_awb"]),
+    (machine::ARRIVE, "arrive", "logistics.screen.job_arrive", &[]),
+    (
+        machine::CLEAR,
+        "clear",
+        "logistics.screen.job_clear",
+        &["declaration_no", "duties", "delivery_order"],
+    ),
+    (
+        machine::HOLD,
+        "hold",
+        "logistics.screen.job_hold",
+        &["reason", "note"],
+    ),
+    (
+        machine::RELEASE_IN_TRANSIT,
+        "release",
+        "logistics.screen.job_release",
+        &["note"],
+    ),
+    (
+        machine::RELEASE_CUSTOMS_CLEARANCE,
+        "release",
+        "logistics.screen.job_release",
+        &["note"],
+    ),
+    (
+        machine::RELEASE_READY_FOR_DELIVERY,
+        "release",
+        "logistics.screen.job_release",
+        &["note"],
+    ),
+    (machine::DELIVER, "deliver", "logistics.screen.job_deliver", &["pod_reference"]),
+    (machine::CLOSE, "close", "logistics.screen.job_close", &[]),
+    (
+        machine::REOPEN,
+        "reopen",
+        "logistics.screen.job_reopen",
+        &["reason", "note"],
+    ),
+    (machine::CANCEL, "cancel", "logistics.screen.job_cancel", &["reason"]),
+];
+
+/// What the job's page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "logistics/freight_job.html")]
+pub(crate) struct ShowPage {
+    tx: Texts,
+    job: FreightJob,
+    status_label: String,
+    status_kind: &'static str,
+    eta: String,
+    /// The label of the hold reason, with `job.hold_note` shown beside it.
+    hold_label: Option<String>,
+    events: Vec<EventRow>,
+    containers: Vec<ContainerRow>,
+    staff: bool,
+    lines: Vec<LineRow>,
+    figures: Option<Figures>,
+    margins: Vec<MarginRow>,
+    actions: Vec<ActionView>,
+}
+
+fn date_text(date: Option<renox::chrono::NaiveDate>) -> String {
+    date.map(|date| date.to_string()).unwrap_or_default()
+}
+
+/// `GET /freight/{id}`: staff with `jobs.view`, or a client user of the
+/// job's company.
+async fn show(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let job = FreightJob::find_or_404(&state.db, id).await?;
+    let staff = user.has_permission(permissions::JOBS_VIEW);
+    if !staff && !booking::acts_for(&state, &user, job.client()).await? {
+        return Err(Error::Forbidden);
+    }
+    let offered: Vec<String> = if staff {
+        job.available(&user, &state.db)
+            .await?
+            .into_iter()
+            .map(|action| action.name)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let actions = ACTIONS
+        .iter()
+        .filter(|(name, _, _, _)| offered.iter().any(|offered| offered.as_str() == *name))
+        .map(|(_, slug, label, fields)| ActionView {
+            slug: *slug,
+            label: t(&lang, label),
+            url: format!("/freight/{}/{slug}", job.id),
+            fields: fields
+                .iter()
+                .map(|name| FieldView {
+                    name: *name,
+                    label: t(&lang, &format!("logistics.screen.job_field.{name}")),
+                })
+                .collect(),
+        })
+        .collect();
+    let hold_label: Option<String> = None;
+    let lines = if staff {
+        freight_costing::lines_of(&state.db, job.id).await?
+    } else {
+        Vec::new()
+    };
+    let figures = staff.then(|| freight_costing::figures(&lines));
+    let margins = if staff {
+        freight_costing::margins_of(&state.db, job.id).await?
+    } else {
+        Vec::new()
+    };
+    let page = ShowPage {
+        tx: tx(&lang),
+        status_label: status_word(&lang, job.status),
+        status_kind: status_kind(job.status),
+        eta: date_text(job.eta),
+        hold_label,
+        events: job
+            .events(&state.db)
+            .await?
+            .into_iter()
+            .map(|e| EventRow {
+                kind: e.kind,
+                note: e.note,
+                at: e.occurred_at.to_string(),
+            })
+            .collect(),
+        containers: job
+            .containers(&state.db)
+            .await?
+            .into_iter()
+            .map(|c| ContainerRow {
+                number: c.number,
+                size: c.size,
+                port_storage_end: date_text(c.port_storage_end),
+                demurrage_end: date_text(c.demurrage_end),
+                detention_end: date_text(c.detention_end),
+            })
+            .collect(),
+        staff,
+        lines: lines
+            .into_iter()
+            .map(|l| LineRow {
+                id: l.id,
+                kind: l.kind,
+                description: l.description,
+                amount: l.amount,
+                liability: l.liability.unwrap_or_default(),
+                allocated: l.allocated,
+                rechargeable: l.rechargeable,
+                issued: l.issued,
+                late: l.late,
+            })
+            .collect(),
+        figures,
+        margins: margins
+            .into_iter()
+            .map(|m| MarginRow {
+                close_no: m.close_no,
+                revenue: m.revenue,
+                cost: m.cost,
+                margin: m.margin,
+                at: m.closed_at.to_string(),
+            })
+            .collect(),
+        actions,
+        job,
+    };
+    Ok(View::typed(page).into_response())
+}
+
+fn bad_input(lang: &Lang) -> Error {
+    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, t(lang, "logistics.bad_input"))
+}
+
+/// `POST /freight/{id}/{action}`: `request-documents` (`missing`), `depart`
+/// (`bl_awb`), `arrive`, `clear` (`declaration_no`, `duties` in dirhams,
+/// `delivery_order`), `hold` (`reason`, `note`), `release` (`note`),
+/// `deliver` (`pod_reference`), `close`, `reopen` (`reason`, `note`) and
+/// `cancel` (`reason`).
+async fn act(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((id, action)): Path<(i64, String)>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let done = match action.as_str() {
+        "request-documents" => {
+            flow::request_documents(&state, &user, id, &field(&form, "missing")).await
+        }
+        "depart" => flow::depart(&state, &user, id, &field(&form, "bl_awb")).await,
+        "arrive" => flow::arrive(&state, &user, id).await,
+        "clear" => {
+            let text = field(&form, "duties");
+            let duties = if text.trim().is_empty() {
+                None
+            } else {
+                Some(parse_dirhams(&text).ok_or_else(|| bad_input(&lang))?)
+            };
+            flow::clear(
+                &state,
+                &user,
+                id,
+                &field(&form, "declaration_no"),
+                duties,
+                &field(&form, "delivery_order"),
+            )
+            .await
+        }
+        "deliver" => flow::deliver(&state, &user, id, &field(&form, "pod_reference")).await,
+        "close" => flow::close(&state, &user, id).await,
+        "cancel" => flow::cancel(&state, &user, id, &field(&form, "reason")).await,
+        _ => return Err(Error::NotFound),
+    };
+    done.map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/{id}/costs`: `description`, `amount` in dirhams and
+/// `source_ref`.
+async fn cost(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let amount = parse_dirhams(&field(&form, "amount")).ok_or_else(|| bad_input(&lang))?;
+    freight_costing::add_cost(
+        &state,
+        &user,
+        id,
+        &field(&form, "description"),
+        amount,
+        Some(field(&form, "source_ref").as_str()),
+    )
+    .await
+    .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/{id}/revenue`: `description`, `amount` in dirhams and
+/// `issued` (`1` when the invoice is issued).
+async fn revenue(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let amount = parse_dirhams(&field(&form, "amount")).ok_or_else(|| bad_input(&lang))?;
+    let issued = matches!(field(&form, "issued").trim(), "1" | "on" | "true");
+    freight_costing::add_revenue(
+        &state,
+        &user,
+        id,
+        &field(&form, "description"),
+        amount,
+        issued,
+        None,
+    )
+    .await
+    .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/lines/{line}/allocate`: `liability` (`client` or `company`)
+/// and `rechargeable` (`1`).
+async fn allocate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(line): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let rechargeable = matches!(field(&form, "rechargeable").trim(), "1" | "on" | "true");
+    let allocated = freight_costing::allocate(
+        &state,
+        &user,
+        line,
+        field(&form, "liability").trim(),
+        rechargeable,
+    )
+    .await
+    .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&allocated.job_id])?,
+    )
+        .into_response())
+}

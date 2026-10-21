@@ -15,6 +15,10 @@ pub mod disposal;
 pub mod dispute;
 mod events;
 pub mod freight;
+pub mod freight_costing;
+pub mod freight_flow;
+pub mod freight_machine;
+mod freight_pages;
 pub mod hold;
 pub mod loss;
 mod loss_pages;
@@ -60,7 +64,9 @@ pub use billing::{BillingRun, Monthly};
 pub use cash_watch::CashWatch;
 pub use cod::{CodLoss, CodRule};
 pub use dispute::StatementDispute;
-pub use freight::{FreightJob, FreightStatus};
+pub use freight::{FreightContainer, FreightEvent, FreightJob, FreightStatus};
+pub use freight_costing::{FreightMargin, JobLine};
+pub use freight_machine::FreightInput;
 pub use netting::Offset;
 pub use statement::Statement;
 pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
@@ -86,6 +92,7 @@ impl Module for Logistics {
             .merge(account::routes())
             .merge(dispute::routes())
             .merge(freight::routes())
+            .merge(freight_pages::routes())
             .merge(cod::routes())
             .merge(reversal_pages::routes())
             .merge(loss_pages::routes())
@@ -102,12 +109,14 @@ impl Module for Logistics {
             .view_data::<remittance_pages::IndexPage>()
             .view_data::<remittance_pages::ShowPage>()
             .view_data::<cod::IndexPage>()
+            .view_data::<freight_pages::ShowPage>()
             .view_data::<reversal_pages::IndexPage>();
         app.templates(|env| {
             for (name, source) in pages::VIEWS
                 .iter()
                 .chain(remittance_pages::VIEWS)
                 .chain(cod::VIEWS)
+                .chain(freight_pages::VIEWS)
                 .chain(reversal_pages::VIEWS) {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
@@ -129,6 +138,10 @@ impl Module for Logistics {
             .model::<RemittanceLine>()
             .model::<AdjustmentLine>()
             .model::<FreightJob>()
+            .model::<FreightEvent>()
+            .model::<FreightContainer>()
+            .model::<JobLine>()
+            .model::<FreightMargin>()
             .model::<StatementDispute>()
             .model::<PaymentReturn>()
             .model::<AccountChange>()
@@ -143,6 +156,8 @@ impl Module for Logistics {
         wl_kernel::delivery::provide_cod_rule(app, CodRule);
         // A refund to a recipient who is no party is paid by hand.
         wl_kernel::delivery::provide_manual_refunds(app, ShipmentRefunds);
+        // The freight job has a machine of its own.
+        renox::state_machine::register::<FreightJob>();
         // The remittance and its adjustment lines have machines of their own.
         renox::state_machine::register::<Remittance>();
         // `pay` and `repay` are money out: a blocked client is refused and the

@@ -16,7 +16,8 @@ use wl_kernel::PartyId;
 use wl_kernel::PartyKind;
 
 use super::roles::{
-    self, CUSTOMER_SERVICE, DISPATCHER, DRIVER, HUB_STAFF, OPERATIONS_MANAGER, SHIPPING_CLIENT,
+    self, CUSTOMER_SERVICE, DISPATCHER, DOCUMENTATION_OFFICER, DRIVER, HUB_STAFF,
+    OPERATIONS_MANAGER, SHIPPING_CLIENT,
 };
 use super::seed::PASSWORD;
 
@@ -61,6 +62,12 @@ pub const LOGINS: &[Login] = &[
         email: "driver@najm.example",
         role: DRIVER,
         label: "Driver",
+    },
+    Login {
+        name: "Dalia Nasser",
+        email: "documentation@najm.example",
+        role: DOCUMENTATION_OFFICER,
+        label: "Documentation officer",
     },
     Login {
         name: "Layla Hamdan",
@@ -147,6 +154,9 @@ async fn run(state: AppState, forced: bool) -> Result {
     if let Some(booker) = booker {
         let booked = seed::demo_shipments(&state, booker, client).await?;
         println!("{booked} demo shipments booked for {DEMO_CLIENT}.");
+        if seed::demo_freight(&state, booker, client).await? {
+            println!("A demo freight job opened for {DEMO_CLIENT}.");
+        }
     }
     Ok(())
 }
