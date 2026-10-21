@@ -78,6 +78,56 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.pickup.missing_body",
         "Not handed over at pickup: {{ parcels }}. Shipment {{ number }} goes ahead with the parcels received: {{ weight }}, priced at {{ price }}. The cash to collect is not changed ({{ cod }}). Book a new shipment for the missing parcels.",
     ),
+    // The re-weigh at the hub (`LOG.HUB.01`, BL-LOG-04).
+    (
+        "logistics.reweigh.not_now",
+        "A shipment is measured once it was picked up or dropped off, and while it is not closed.",
+    ),
+    (
+        "logistics.reweigh.bad_values",
+        "Give the measured weight above zero; the dimensions cannot be negative.",
+    ),
+    (
+        "logistics.reweigh.photo_needed",
+        "Attach the photo of the scale: the measured weight is above the client's tolerance.",
+    ),
+    (
+        "logistics.reweigh.event",
+        "measured {{ weight }}, chargeable {{ chargeable }}, surcharge {{ surcharge }}",
+    ),
+    ("logistics.reweigh.charge_note", "re-weigh surcharge"),
+    (
+        "logistics.reweigh.notice_title",
+        "Shipment {{ number }} weighs more than booked",
+    ),
+    (
+        "logistics.reweigh.notice_body",
+        "Shipment {{ number }} was booked at {{ booked }} and measured at {{ measured }} at the hub. It is priced at {{ price }}; the re-weigh surcharge of {{ surcharge }} goes on your next invoice. You can dispute it from the shipment before the invoice is issued.",
+    ),
+    (
+        "logistics.reweigh.no_surcharge",
+        "There is no re-weigh surcharge to dispute. Once it is invoiced, dispute the invoice.",
+    ),
+    (
+        "logistics.reweigh.already_disputed",
+        "The surcharge is already disputed.",
+    ),
+    (
+        "logistics.reweigh.no_dispute",
+        "There is no open re-weigh dispute on this shipment.",
+    ),
+    (
+        "logistics.reweigh.ticket_title",
+        "Re-weigh surcharge of shipment {{ number }} disputed",
+    ),
+    (
+        "logistics.reweigh.resolved_confirmed",
+        "The surcharge is confirmed and goes on the next invoice.",
+    ),
+    (
+        "logistics.reweigh.resolved_removed",
+        "The surcharge is removed; the shipment is priced on the booked weight.",
+    ),
     // Void (`PLT.ACL.09`, BL-LOG-01).
     (
         "logistics.void.scanned",
@@ -143,6 +193,9 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.instruction_recorded", "Instruction recorded."),
     ("logistics.cancel_returned", "Shipment is going back to the client."),
     ("logistics.returned", "Shipment returned to the client."),
+    ("logistics.reweighed", "Measurement recorded."),
+    ("logistics.reweigh_disputed", "Surcharge disputed."),
+    ("logistics.reweigh_resolved", "Dispute resolved."),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

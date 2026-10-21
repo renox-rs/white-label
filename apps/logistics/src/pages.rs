@@ -14,6 +14,9 @@
 //! | `POST /shipments/{id}/instruction` | `logistics.shipment_instruction` | `shipments.manage` |
 //! | `POST /shipments/{id}/cancel-return` | `logistics.shipment_cancel_return` | `shipments.manage` |
 //! | `POST /shipments/{id}/returned` | `logistics.shipment_returned` | `shipments.deliver` |
+//! | `POST /shipments/{id}/reweigh` | `logistics.shipment_reweigh` | `shipments.scan` or `.manage` |
+//! | `POST /shipments/{id}/reweigh-dispute` | `logistics.shipment_reweigh_dispute` | `shipments.book` (own company) or `.manage` |
+//! | `POST /shipments/{id}/reweigh-dispute/resolve` | `logistics.shipment_reweigh_resolve` | `shipments.manage` |
 //!
 //! A successful action answers a redirect (303) with a toast. The import with
 //! `dry_run` answers the report as JSON and books nothing. A refused action
@@ -30,6 +33,7 @@ use wl_kernel::{PartyId, Subject};
 use crate::booking::{self, NewShipment};
 use crate::cancel;
 use crate::permissions;
+use crate::reweigh::{self, NewMeasurement};
 use crate::scan;
 use crate::screen_texts::SCREEN_TEXTS;
 use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentStatus};
@@ -111,6 +115,12 @@ pub fn routes() -> Routes {
         .name("logistics.shipment_cancel_return")
         .post("/shipments/{id}/returned", returned)
         .name("logistics.shipment_returned")
+        .post("/shipments/{id}/reweigh", reweigh)
+        .name("logistics.shipment_reweigh")
+        .post("/shipments/{id}/reweigh-dispute", reweigh_dispute)
+        .name("logistics.shipment_reweigh_dispute")
+        .post("/shipments/{id}/reweigh-dispute/resolve", reweigh_resolve)
+        .name("logistics.shipment_reweigh_resolve")
         .require_auth()
 }
 
@@ -236,6 +246,11 @@ pub(crate) struct ShowPage {
     can_cancel: bool,
     can_cancel_return: bool,
     can_return: bool,
+    can_reweigh: bool,
+    can_dispute: bool,
+    can_resolve_dispute: bool,
+    charged_price: i64,
+    outcomes: Vec<[String; 2]>,
     instruction: String,
 }
 
@@ -258,11 +273,24 @@ async fn show(
     let has = |name: &str| offered.iter().any(|offered| offered == name);
     let manages = user.has_permission(permissions::SHIPMENTS_MANAGE);
     let scans = user.has_permission(permissions::SHIPMENTS_SCAN);
-    use ShipmentStatus::{AtHub, Attempted, Created, OnHold, PickedUp, Returning};
+    use ShipmentStatus::{
+        AtHub, Attempted, Cancelled, Created, Disposed, OnHold, PickedUp, Returning, Voided,
+    };
     // A client user of the company cancels what a colleague booked.
     let cancel_for_company = shipment.status == Created
         && user.has_permission(permissions::SHIPMENTS_CANCEL)
         && booking::acts_for(&state, &user, shipment.client()).await?;
+    let surcharge = reweigh::surcharge_of(&state.db, &shipment)
+        .await?
+        .filter(|charge| charge.billed_on.is_none());
+    let can_dispute = match &surcharge {
+        Some(charge) if !charge.held => {
+            manages
+                || (user.has_permission(permissions::SHIPMENTS_BOOK)
+                    && booking::acts_for(&state, &user, shipment.client()).await?)
+        }
+        _ => false,
+    };
     let page = ShowPage {
         tx: tx(&lang),
         status_label: status_word(&lang, shipment.status),
@@ -313,6 +341,15 @@ async fn show(
         can_return: has("return_delivered")
             || (user.has_permission(permissions::SHIPMENTS_DELIVER)
                 && shipment.status == Returning),
+        can_reweigh: (scans || manages)
+            && !matches!(shipment.status, Created | Cancelled | Voided | Disposed),
+        can_dispute,
+        can_resolve_dispute: manages && surcharge.as_ref().is_some_and(|charge| charge.held),
+        charged_price: shipment.charged_price(),
+        outcomes: vec![
+            ["confirm".to_owned(), t(&lang, "logistics.screen.outcome_confirm")],
+            ["remove".to_owned(), t(&lang, "logistics.screen.outcome_remove")],
+        ],
         instruction: shipment.return_instruction.clone().unwrap_or_default(),
         shipment,
     };
@@ -518,4 +555,72 @@ async fn returned(
         .await
         .map_err(answer)?;
     back_to(&lang, "logistics.returned", id)
+}
+
+/// A number from a form, in whole units; blank is 0.
+fn whole(form: &BTreeMap<String, String>, name: &str) -> Option<i64> {
+    match field(form, name).trim() {
+        "" => Some(0),
+        text => text.parse::<i64>().ok(),
+    }
+}
+
+/// `POST /shipments/{id}/reweigh`: `weight_kg` (like 2.4), `length_cm`,
+/// `width_cm`, `height_cm` and `photo` (the reference of the photo of the
+/// scale).
+async fn reweigh(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let bad = || refused(t(&lang, "logistics.bad_input"));
+    // Kilograms to 0.01 kg as entered, in grams.
+    let weight_grams = booking::parse_dirhams(&field(&form, "weight_kg"))
+        .ok_or_else(bad)?
+        * 10;
+    let new = NewMeasurement {
+        weight_grams,
+        length_cm: whole(&form, "length_cm").ok_or_else(bad)?,
+        width_cm: whole(&form, "width_cm").ok_or_else(bad)?,
+        height_cm: whole(&form, "height_cm").ok_or_else(bad)?,
+        photo: Some(field(&form, "photo")),
+    };
+    reweigh::record(&state, &user, id, &new).await.map_err(answer)?;
+    back_to(&lang, "logistics.reweighed", id)
+}
+
+/// `POST /shipments/{id}/reweigh-dispute`: `note`.
+async fn reweigh_dispute(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    reweigh::open_dispute(&state, &user, id, &field(&form, "note"))
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.reweigh_disputed", id)
+}
+
+/// `POST /shipments/{id}/reweigh-dispute/resolve`: `outcome` (`confirm`, or
+/// `remove`).
+async fn reweigh_resolve(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let confirm = match field(&form, "outcome").trim() {
+        "confirm" => true,
+        "remove" => false,
+        _ => return Err(refused(t(&lang, "logistics.bad_input"))),
+    };
+    reweigh::resolve_dispute(&state, &user, id, confirm)
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.reweigh_resolved", id)
 }

@@ -97,6 +97,15 @@ pub struct Shipment {
     /// The price on that weight from the client's bands, in fils; 0 when the
     /// client has no band for the zone.
     pub price: i64,
+    /// The chargeable weight of the latest re-weigh at the hub, in grams
+    /// (BL-LOG-04); none before the first.
+    pub measured_weight_grams: Option<i64>,
+    /// The price on the measured values, in fils, when the latest re-weigh
+    /// is above the client's tolerance; none otherwise (the booked price
+    /// stands).
+    pub reweigh_price: Option<i64>,
+    /// When the shipment went on an issued monthly invoice (BL-LOG-20).
+    pub invoiced_on: Option<DateTime>,
     /// How many parcels were booked.
     pub parcel_count: i64,
     /// How many parcels were scanned.
@@ -124,6 +133,12 @@ impl Shipment {
     /// The shipment as a [`Subject`]: `logistics.shipment:3`.
     pub fn subject(&self) -> Subject {
         Subject::new(SUBJECT_TYPE, self.id)
+    }
+
+    /// The price the client is charged: the price on the measured values when
+    /// a re-weigh priced it higher, else the price on the weight received.
+    pub fn charged_price(&self) -> i64 {
+        self.reweigh_price.unwrap_or(self.price)
     }
 
     /// The client.
@@ -259,6 +274,9 @@ pub mod charge_kind {
     pub const CANCELLATION: &str = "cancellation";
     /// The return charge, once per shipment, whichever path sent it back.
     pub const RETURN: &str = "return";
+    /// The re-weigh surcharge (BL-LOG-04): the price on the measured values
+    /// less the price on the weight received, once per shipment.
+    pub const REWEIGH: &str = "reweigh";
 }
 
 /// A charge recorded for the client's next monthly invoice (`LOG.RUL.07`,
@@ -273,12 +291,18 @@ pub struct Charge {
     pub shipment_id: i64,
     /// The client charged.
     pub client_party_id: i64,
-    /// `cancellation` or `return` ([`charge_kind`]).
+    /// `cancellation`, `return` or `reweigh` ([`charge_kind`]).
     pub kind: String,
     /// The amount, in fils.
     pub amount: i64,
     /// A note for the accountant ("no return price for client 7").
     pub note: String,
+    /// Held out of the draft invoice while a re-weigh ticket is open.
+    pub held: bool,
+    /// The ticket that holds it.
+    pub ticket_id: Option<i64>,
+    /// When it went on an invoice; none while it waits for the next draft.
+    pub billed_on: Option<DateTime>,
     /// When it was recorded.
     pub recorded_at: DateTime,
     /// When the row was created.

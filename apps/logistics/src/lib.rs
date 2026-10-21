@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod billing;
 pub mod booking;
 pub mod cancel;
 mod events;
@@ -9,6 +10,7 @@ pub mod pages;
 pub mod permissions;
 pub mod pickup;
 pub mod rates;
+pub mod reweigh;
 pub mod scan;
 mod screen_texts;
 pub mod seed;
@@ -23,6 +25,7 @@ use renox::prelude::*;
 
 pub use booking::{ImportReport, NewShipment, RowResult};
 pub use rates::{ClientRate, WeightBand};
+pub use reweigh::{ClientTerms, Measurement};
 pub use shipment::{
     Charge, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment, ShipmentStatus, TrackingEvent,
 };
@@ -62,7 +65,9 @@ impl Module for Logistics {
             .model::<TrackingEvent>()
             .model::<Charge>()
             .model::<ClientRate>()
-            .model::<WeightBand>();
+            .model::<WeightBand>()
+            .model::<ClientTerms>()
+            .model::<Measurement>();
         // The shipment's machine, and its place in the kernel's void pattern.
         voiding::register();
         // The shipment follows its delivery and cancels it.
