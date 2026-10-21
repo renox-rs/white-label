@@ -150,7 +150,7 @@ async fn a_late_cost_the_company_carries_lowers_the_margin_and_drafts_no_invoice
     w.post(&w.docs, &format!("/freight/{}/supplementary", job.id), &[])
         .await
         .assert_status(422)
-        .assert_see("no late cost to recharge");
+        .assert_see("no cost to recharge");
     assert!(w.invoices.drafts().is_empty());
 
     w.job_action(&w.docs, &job, "close", &[])
