@@ -22,7 +22,7 @@ use wl_hr::{
     PayrollRunStatus, SalaryStructure, SettlementPayment, SettlementStatus, WlHr, employees,
     template::{self, StepInput, TemplateInput},
 };
-use wl_kernel::attendance::LabourFuture;
+use wl_kernel::attendance::{AttendanceHistory, LabourFuture, provide_attendance_history};
 use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag,
     SopAcknowledgements, SopFuture, SopStaff, Validity, provide_guard,
@@ -44,10 +44,11 @@ use wl_kernel::timesheets::{
     HoursLine, PayrollHours, PayrollPeriod, Timesheets, provide_timesheets,
 };
 use wl_kernel::workforce::{
-    AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
-    OnboardingCompleted, OnboardingStarted, PayAccountChanged, PayrollLinesFailed, PayrollRunPaid,
-    PayrollRunReturned, QualificationExpired, QualificationExpiring, SettlementDisputed,
-    SettlementPaid,
+    AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged, EmployeeId,
+    EmployeeNoticeWithdrawn, EmployeeOnboardingCancelled, EmployeeReinstated, OnboardingCompleted,
+    OnboardingStarted, PayAccountChanged, PayrollLinesFailed, PayrollRunPaid, PayrollRunReturned,
+    QualificationExpired, QualificationExpiring, SettlementDisputed, SettlementPaid,
+    VisaCaseRejected,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -500,6 +501,42 @@ impl DocumentGuard for DocDesk {
     }
 }
 
+/// The days employees attended, as wl-attendance would answer
+/// `AttendanceHistory`.
+#[derive(Clone, Default)]
+pub struct AttendanceDesk(Arc<Mutex<Vec<(i64, NaiveDate)>>>);
+
+impl AttendanceDesk {
+    /// `employee` attended on `day`.
+    pub fn attended(&self, employee: &Employee, day: NaiveDate) {
+        self.0.lock().unwrap().push((employee.id, day));
+    }
+}
+
+impl AttendanceHistory for AttendanceDesk {
+    fn attended_days<'a>(
+        &'a self,
+        _state: &'a AppState,
+        employee: EmployeeId,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> LabourFuture<'a, Vec<NaiveDate>> {
+        Box::pin(async move {
+            let mut days: Vec<NaiveDate> = self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(id, day)| *id == employee.0 && *day >= from && *day <= to)
+                .map(|(_, day)| *day)
+                .collect();
+            days.sort_unstable();
+            days.dedup();
+            Ok(days)
+        })
+    }
+}
+
 /// An event log.
 #[derive(Clone)]
 pub struct Recorded<E>(pub Arc<Mutex<Vec<E>>>);
@@ -540,6 +577,11 @@ struct Fakes {
     qualification_expired: Arc<Mutex<Vec<QualificationExpired>>>,
     qualification_expiring: Arc<Mutex<Vec<QualificationExpiring>>>,
     absconded: Arc<Mutex<Vec<EmployeeAbsconded>>>,
+    onboarding_cancelled: Arc<Mutex<Vec<EmployeeOnboardingCancelled>>>,
+    notice_withdrawn: Arc<Mutex<Vec<EmployeeNoticeWithdrawn>>>,
+    reinstated: Arc<Mutex<Vec<EmployeeReinstated>>>,
+    visa_rejected: Arc<Mutex<Vec<VisaCaseRejected>>>,
+    attendance: AttendanceDesk,
     returned: Arc<Mutex<Vec<PayrollRunReturned>>>,
     failed: Arc<Mutex<Vec<PayrollLinesFailed>>>,
     paid: Arc<Mutex<Vec<PayrollRunPaid>>>,
@@ -763,11 +805,18 @@ impl Module for Fakes {
         record(app, &self.qualification_expired);
         record(app, &self.qualification_expiring);
         record(app, &self.absconded);
+        record(app, &self.onboarding_cancelled);
+        record(app, &self.notice_withdrawn);
+        record(app, &self.reinstated);
+        record(app, &self.visa_rejected);
         record(app, &self.returned);
         record(app, &self.failed);
         record(app, &self.paid);
         record(app, &self.settlement_paid);
         record(app, &self.settlement_disputed);
+        if !self.real.attendance {
+            provide_attendance_history(app, self.attendance.clone());
+        }
         if !self.real.ticketing {
             provide_task_creator(app, self.tasks.clone());
         }
@@ -813,6 +862,16 @@ pub struct Booted {
     pub qualification_expiring: Recorded<QualificationExpiring>,
     /// `EmployeeAbsconded`.
     pub absconded: Recorded<EmployeeAbsconded>,
+    /// `EmployeeOnboardingCancelled`.
+    pub onboarding_cancelled: Recorded<EmployeeOnboardingCancelled>,
+    /// `EmployeeNoticeWithdrawn`.
+    pub notice_withdrawn: Recorded<EmployeeNoticeWithdrawn>,
+    /// `EmployeeReinstated`.
+    pub reinstated: Recorded<EmployeeReinstated>,
+    /// `VisaCaseRejected`.
+    pub visa_rejected: Recorded<VisaCaseRejected>,
+    /// The days employees attended.
+    pub attendance: AttendanceDesk,
     /// `PayrollRunReturned`.
     pub returned: Recorded<PayrollRunReturned>,
     /// `PayrollLinesFailed`.
@@ -1388,6 +1447,54 @@ impl Booted {
         settlement
     }
 
+    /// A visa case of `employee` of `case_type` in `status` with the fields
+    /// `set` gives it, inserted as a fixture (the machine would not take it
+    /// there).
+    pub async fn visa_in(
+        &self,
+        employee: &Employee,
+        case_type: &str,
+        status: wl_hr::VisaCaseStatus,
+        set: impl FnOnce(&mut wl_hr::VisaCase),
+    ) -> wl_hr::VisaCase {
+        let mut case = wl_hr::VisaCase {
+            employee_id: employee.id,
+            case_type: case_type.to_owned(),
+            variant: "standard".into(),
+            status,
+            ..wl_hr::VisaCase::default()
+        };
+        set(&mut case);
+        let mut tx = self.db().begin().await.unwrap();
+        case.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        case
+    }
+
+    /// Step `step_type` of `case` done on 2 Nov.
+    pub async fn step_done(&self, case: &wl_hr::VisaCase, step_type: &str) {
+        wl_hr::VisaCaseStep::create(
+            self.db(),
+            wl_hr::VisaCaseStep {
+                case_id: case.id,
+                step_type: step_type.to_owned(),
+                done_on: Some(nov(2)),
+                ..wl_hr::VisaCaseStep::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    /// `case`, as stored now.
+    pub async fn case(&self, case: &wl_hr::VisaCase) -> wl_hr::VisaCase {
+        wl_hr::VisaCase::find_or_404(self.db(), case.id)
+            .await
+            .unwrap()
+    }
+
     /// `settlement`, as stored now.
     pub async fn settlement(&self, settlement: &FinalSettlement) -> FinalSettlement {
         FinalSettlement::find_or_404(self.db(), settlement.id)
@@ -1560,6 +1667,11 @@ async fn boot_full(
         qualification_expired: Arc::default(),
         qualification_expiring: Arc::default(),
         absconded: Arc::default(),
+        onboarding_cancelled: Arc::default(),
+        notice_withdrawn: Arc::default(),
+        reinstated: Arc::default(),
+        visa_rejected: Arc::default(),
+        attendance: AttendanceDesk::default(),
         returned: Arc::default(),
         failed: Arc::default(),
         paid: Arc::default(),
@@ -1576,6 +1688,13 @@ async fn boot_full(
         Recorded(fakes.failed.clone()),
         Recorded(fakes.paid.clone()),
         fakes.tasks.clone(),
+    );
+    let (onboarding_cancelled, notice_withdrawn, reinstated, visa_rejected, attendance) = (
+        Recorded(fakes.onboarding_cancelled.clone()),
+        Recorded(fakes.notice_withdrawn.clone()),
+        Recorded(fakes.reinstated.clone()),
+        Recorded(fakes.visa_rejected.clone()),
+        fakes.attendance.clone(),
     );
     let (settlement_paid, settlement_disputed) = (
         Recorded(fakes.settlement_paid.clone()),
@@ -1737,6 +1856,10 @@ async fn boot_full(
     )
     .await
     .unwrap();
+    // The PRO runs the visa cases.
+    permissions::define_role(app.db(), "pro", &[perm::VISAS_MANAGE])
+        .await
+        .unwrap();
     permissions::define_role(app.db(), "accountant", &[perm::PAYROLL_VIEW])
         .await
         .unwrap();
@@ -1794,6 +1917,11 @@ async fn boot_full(
         qualification_expired,
         qualification_expiring,
         absconded,
+        onboarding_cancelled,
+        notice_withdrawn,
+        reinstated,
+        visa_rejected,
+        attendance,
         returned,
         failed,
         paid,

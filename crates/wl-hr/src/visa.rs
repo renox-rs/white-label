@@ -195,21 +195,6 @@ impl StateMachine for VisaCase {
                     .from([InProgress, OnHold])
                     .to(Rejected)
                     .reason_required()
-                    .guard("authority_reference", |_case: &VisaCase, ctx| {
-                        let given = !ctx
-                            .input_as::<RejectInput>()
-                            .unwrap_or_default()
-                            .reference
-                            .trim()
-                            .is_empty();
-                        Box::pin(async move {
-                            if given {
-                                Ok(())
-                            } else {
-                                Err(english("wl_hr.visa.reference_required", &[]))
-                            }
-                        })
-                    })
                     .effect(|case: &VisaCase, ctx, tx| {
                         let id = case.id;
                         let reference = ctx
@@ -220,6 +205,14 @@ impl StateMachine for VisaCase {
                             .to_owned();
                         let reason = ctx.reason().unwrap_or_default().trim().to_owned();
                         Box::pin(async move {
+                            // Not a guard: a guard reads no input when the page
+                            // asks which actions are offered.
+                            if reference.is_empty() {
+                                return Err(Error::Status(
+                                    StatusCode::UNPROCESSABLE_ENTITY,
+                                    english("wl_hr.visa.reference_required", &[]),
+                                ));
+                            }
                             VisaCase::query()
                                 .where_(VisaCase::ID.eq(id))
                                 .update(
