@@ -18,7 +18,8 @@
 //! [`QualificationExpiring`] and [`QualificationExpired`]. Its payroll runs
 //! are announced with [`PayrollRunReturned`] (a run sent back to draft) and
 //! [`PayrollLinesFailed`] (the bank rejected a SIF file, or lines of it) and
-//! [`PayrollRunPaid`] (payment confirmed).
+//! [`PayrollRunPaid`] (payment confirmed). A final settlement is announced with
+//! [`SettlementPaid`] and [`SettlementDisputed`].
 //!
 //! An employee is referred to by [`EmployeeId`] or as a [`Subject`] of type
 //! [`EMPLOYEE_SUBJECT_TYPE`]; a scope is a [`Subject`] too (a branch).
@@ -182,6 +183,65 @@ pub struct PayrollRunPaid {
 }
 
 impl Event for PayrollRunPaid {}
+
+/// The subject type of a final settlement, for [`Subject`] references.
+pub const SETTLEMENT_SUBJECT_TYPE: &str = "hr.settlement";
+
+/// The id of a final settlement.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct SettlementId(pub i64);
+
+impl SettlementId {
+    /// The settlement as a [`Subject`]: `hr.settlement:4`.
+    pub fn subject(self) -> Subject {
+        Subject::new(SETTLEMENT_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for SettlementId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for SettlementId {
+    fn from(id: i64) -> Self {
+        SettlementId(id)
+    }
+}
+
+/// A final settlement was paid (`pay`, wl-hr §4): the net is with the
+/// employee (or the estate) and the employee may `exit`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettlementPaid {
+    /// The settlement.
+    pub settlement: SettlementId,
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The sum paid against the settlement, AED fils.
+    pub amount: i64,
+}
+
+impl Event for SettlementPaid {}
+
+/// A final settlement was disputed by the worker, a MoHRE complaint or a
+/// court case (`dispute`, wl-hr §4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettlementDisputed {
+    /// The settlement.
+    pub settlement: SettlementId,
+    /// The employee.
+    pub employee: EmployeeId,
+    /// `worker`, `mohre_complaint` or `court`.
+    pub source: String,
+    /// The complaint or case reference.
+    pub reference: String,
+}
+
+impl Event for SettlementDisputed {}
 
 /// The subject type of a pay account, for [`Subject`] references.
 pub const PAY_ACCOUNT_SUBJECT_TYPE: &str = "hr.pay_account";

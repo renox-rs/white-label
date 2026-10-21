@@ -211,8 +211,8 @@ pub use workforce::{
     EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, FailedPayrollLine, NoWorkforce,
     ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted,
     PAY_ACCOUNT_SUBJECT_TYPE, PAYROLL_RUN_SUBJECT_TYPE, PayAccountChanged, PayrollLinesFailed,
-    PayrollRunId, PayrollRunPaid, PayrollRunReturned, StaffProfile, Workforce, provide_workforce,
-    workforce,
+    PayrollRunId, PayrollRunPaid, PayrollRunReturned, SETTLEMENT_SUBJECT_TYPE, SettlementDisputed,
+    SettlementId, SettlementPaid, StaffProfile, Workforce, provide_workforce, workforce,
 };
 
 /// The permission names the kernel declares.
