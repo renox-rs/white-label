@@ -12,7 +12,7 @@ use logistics::adjustment::{AdjustmentLine, AdjustmentStatus};
 use logistics::notices::CLIENT_NOTICE;
 use logistics::reversal::{Reversal, TASK_HR_CASE, TASK_NONE, TASK_OPEN, TASK_SHORTAGE};
 use logistics::shipment_machine::{REVERSE_DELIVERY, REVERSE_DELIVERY_ON_ROAD};
-use logistics::{RemittanceStatus, Shipment, ShipmentStatus};
+use logistics::{RemittanceStatus, Shipment, ShipmentStatus, billing, rates};
 use renox::auth::permissions;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
@@ -367,6 +367,19 @@ async fn the_task_can_open_an_hr_case_instead() {
     .assert_status(422);
 }
 
+/// The first day of the month after today: the monthly run bills what was
+/// delivered before it.
+fn first_of_next_month() -> renox::chrono::NaiveDate {
+    use renox::chrono::Datelike;
+    let today = wl_kernel::documents::today();
+    let (year, month) = if today.month() == 12 {
+        (today.year() + 1, 1)
+    } else {
+        (today.year(), today.month() + 1)
+    };
+    renox::chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap()
+}
+
 /// AC2: given a `delivered` shipment not yet invoiced, after the reversal it
 /// is not on the next monthly draft; once delivered again it is.
 #[renox::test]
@@ -375,6 +388,7 @@ async fn a_reversed_shipment_leaves_billing_until_it_is_delivered_again() {
     roles(&w).await;
     let boss = manager(&w, "Rana").await;
     let second = manager(&w, "Samir").await;
+    rates::set_band(w.db(), SOUQ, "", 5_000, 2_500).await.unwrap();
     let shipment = w.delivered(SOUQ, "ORD-1", "120").await;
     assert_eq!(Shipment::billable(w.db(), SOUQ).await.unwrap().len(), 1);
 
@@ -386,6 +400,11 @@ async fn a_reversed_shipment_leaves_billing_until_it_is_delivered_again() {
     assert_eq!(reversed.status, ShipmentStatus::OutForDelivery);
     assert!(reversed.delivered_at.is_none());
     assert!(Shipment::billable(w.db(), SOUQ).await.unwrap().is_empty());
+    // The monthly run of the next month has nothing to bill.
+    let next_month = first_of_next_month();
+    let none = billing::run_monthly(w.state(), next_month).await.unwrap();
+    assert!(none.is_empty(), "a reversed shipment is not on the draft");
+    assert!(w.invoices.drafts().is_empty());
     let events = reversed.events(w.db()).await.unwrap();
     assert!(events.iter().any(|e| e.kind == "reversed"));
 
@@ -399,6 +418,12 @@ async fn a_reversed_shipment_leaves_billing_until_it_is_delivered_again() {
     let billable = Shipment::billable(w.db(), SOUQ).await.unwrap();
     assert_eq!(billable.len(), 1);
     assert_eq!(billable[0].id, shipment.id);
+    // Delivered again, it is on the next draft of the monthly run.
+    let drafted = billing::run_monthly(w.state(), next_month).await.unwrap();
+    assert_eq!(drafted.len(), 1);
+    assert_eq!(drafted[0].lines, 1);
+    assert_eq!(w.invoices.drafts().len(), 1);
+    assert!(w.reload(&shipment).await.invoiced_on.is_some());
     // Each reversal is a row of its own in the history.
     let history = renox::state_machine::history(w.db(), Shipment::TABLE, shipment.id)
         .await
@@ -423,15 +448,15 @@ async fn an_invoiced_shipment_gets_a_credit_due_for_the_invoice_owner() {
         .unwrap();
     let boss = manager(&w, "Rana").await;
     let second = manager(&w, "Samir").await;
+    rates::set_band(w.db(), SOUQ, "", 5_000, 2_500).await.unwrap();
     let shipment = w.delivered(SOUQ, "ORD-1", "120").await;
-    Shipment::query()
-        .where_(Shipment::ID.eq(shipment.id))
-        .update(w.db(), &[("price", &2_500_i64)])
+    // The November run bills it (AED 25) on a real monthly draft.
+    let drafted = billing::run_monthly(w.state(), first_of_next_month())
         .await
         .unwrap();
-    logistics::billing::mark_shipment_invoiced(w.db(), shipment.id, renox::db::now())
-        .await
-        .unwrap();
+    assert_eq!(drafted.len(), 1);
+    assert_eq!(drafted[0].net, 2_500);
+    assert!(w.reload(&shipment).await.invoiced_on.is_some());
 
     ask(&w, &boss, &shipment, "none").await;
     approve(&w, &second, &shipment, "").await;

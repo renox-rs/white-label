@@ -17,12 +17,17 @@ use renox::state_machine::StateMachine;
 use wl_kernel::tickets::Assignee;
 
 use logistics::permissions as perm;
-use support::{SOUQ, World, boot};
+use support::{SOUQ, World, boot, boot_with_invoicing};
 
 /// A shipment with COD AED 100 that went out and whose visit failed.
 async fn attempted(w: &World) -> Shipment {
+    attempted_for(w, SOUQ).await
+}
+
+/// [`attempted`] for `client`.
+async fn attempted_for(w: &World, client: wl_kernel::PartyId) -> Shipment {
     let shipment = w
-        .book_with(&w.dispatcher, SOUQ, "ORD-1", &[("cod", "100")])
+        .book_with(&w.dispatcher, client, "ORD-1", &[("cod", "100")])
         .await;
     let (_out, delivery) = w.out_for_delivery(&shipment).await;
     w.fail_stop(&delivery, "not_home").await.assert_status(303);
@@ -112,6 +117,19 @@ async fn an_attempted_shipment_follows_its_lost_delivery_with_the_claim_ticket()
     assert!(tracked.iter().any(|e| e.kind == "lost"));
 }
 
+/// The first day of the month after today: the monthly run bills what was
+/// delivered before it.
+fn next_month() -> renox::chrono::NaiveDate {
+    use renox::chrono::Datelike;
+    let today = wl_kernel::documents::today();
+    let (year, month) = if today.month() == 12 {
+        (today.year() + 1, 1)
+    } else {
+        (today.year(), today.month() + 1)
+    };
+    renox::chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap()
+}
+
 /// AC2: given the shipment was on an issued invoice (charge AED 25), the
 /// invoice owner gets a task to credit AED 25.
 #[renox::test]
@@ -125,15 +143,24 @@ async fn an_invoiced_lost_shipment_gets_a_task_to_credit_its_charge() {
         .assign_role(w.db(), perm::INVOICE_OWNER_ROLE)
         .await
         .unwrap();
-    let shipment = attempted(&w).await;
-    Shipment::query()
-        .where_(Shipment::ID.eq(shipment.id))
-        .update(w.db(), &[("price", &2_500_i64)])
+    logistics::rates::set_band(w.db(), SOUQ, "", 5_000, 2_500)
         .await
         .unwrap();
-    logistics::billing::mark_shipment_invoiced(w.db(), shipment.id, renox::db::now())
+    let shipment = w.delivered(SOUQ, "ORD-1", "100").await;
+    // The monthly run bills it (AED 25) on a real draft.
+    let drafted = logistics::billing::run_monthly(w.state(), next_month())
         .await
         .unwrap();
+    assert_eq!(drafted.len(), 1);
+    assert!(w.reload(&shipment).await.invoiced_on.is_some());
+    // The recipient denies the delivery; nothing is traced for 7 days.
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/dispute", shipment.id),
+        &[("reason", "The recipient denies the delivery")],
+    )
+    .await
+    .assert_status(303);
 
     untraced(&w).await;
 
@@ -452,4 +479,57 @@ async fn a_found_delivery_brings_the_shipment_back_to_the_hub() {
             .await
             .contains(&FOUND_SYSTEM.to_owned())
     );
+}
+
+/// AC5 on the real wl-invoicing: the draft of AED 400 the client's choice
+/// makes is a real draft invoice of the client with the one line, billed for
+/// the shipment, and the shipment links it.
+#[renox::test]
+async fn the_claim_choice_drafts_a_real_invoice_of_400() {
+    use wl_invoicing::Invoice;
+    use wl_kernel::invoicing::InvoiceStatus;
+    let w = boot_with_invoicing().await;
+    let client = w.client_party("Najm Client LLC").await;
+    let shipment = attempted_for(&w, client).await;
+    untraced(&w).await;
+    assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Lost);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/claim-settled", shipment.id),
+        &[("amount", "400")],
+    )
+    .await
+    .assert_status(303);
+    w.post(
+        &w.hub,
+        &format!("/shipments/{}/found", shipment.id),
+        &[("depot", "Depot B")],
+    )
+    .await
+    .assert_status(303);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/claim-choice", shipment.id),
+        &[("choice", "delivery")],
+    )
+    .await
+    .assert_status(303);
+
+    let released = w.reload(&shipment).await;
+    assert_eq!(released.status, ShipmentStatus::AtHub);
+    let id = released.claim_invoice_id.expect("the draft is linked");
+    let invoice = Invoice::find_or_404(w.db(), id).await.unwrap();
+    assert_eq!(invoice.status, InvoiceStatus::Draft);
+    assert_eq!(invoice.party().0, client.0);
+    assert_eq!(invoice.net_total, 40_000);
+    // The repayment of a compensation is out of scope of VAT.
+    assert_eq!(invoice.vat_total, 0);
+    let lines = wl_invoicing::InvoiceLine::query()
+        .where_(wl_invoicing::InvoiceLine::INVOICE_ID.eq(invoice.id))
+        .get(w.db())
+        .await
+        .unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].description, "Claim reversed, goods found");
+    assert_eq!(lines[0].origin(), Some(released.subject()));
 }
