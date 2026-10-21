@@ -22,6 +22,7 @@ use wl_kernel::parties::{
     provide_directory,
 };
 use wl_kernel::payer_bills::{NewPayerBill, NewPayerBillLine, payer_bills};
+use wl_kernel::notify::provide_notifier;
 use wl_kernel::tickets::provide_task_creator;
 use wl_kernel::{LegalEntity, PartyId};
 
@@ -29,7 +30,7 @@ use clinics::contracts::{self, NewContract};
 use clinics::visit_machine::CHECK_IN;
 use clinics::{ChargeKind, ChargeLine, Claim, PayerContract, Visit, VisitStatus, claims};
 
-use super::{PATIENT, Tasks, day};
+use super::{Messages, PATIENT, Tasks, day};
 
 /// The payer of the claims.
 pub const PAYER: PartyId = PartyId(900);
@@ -116,6 +117,7 @@ impl PartyDirectory for AnyParty {
 /// Provides the stand-ins.
 struct Harness {
     tasks: Tasks,
+    messages: Messages,
 }
 
 impl Module for Harness {
@@ -126,6 +128,7 @@ impl Module for Harness {
     fn register(&self, app: &mut Registry) {
         provide_directory(app, AnyParty);
         provide_task_creator(app, self.tasks.clone());
+        provide_notifier(app, self.messages.clone());
     }
 }
 
@@ -135,6 +138,8 @@ pub struct Real {
     pub app: TestApp,
     /// The staff tasks opened (by the clinic and by wl-invoicing).
     pub tasks: Tasks,
+    /// The notifications asked of the notifier.
+    pub messages: Messages,
     /// The payer agreement the claims are billed under: 30 days to send,
     /// 30 to resubmit, twice at most.
     pub agreement: PayerAgreement,
@@ -151,6 +156,7 @@ pub async fn boot_real() -> Real {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
     let tasks = Tasks::default();
+    let messages = Messages::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -159,6 +165,7 @@ pub async fn boot_real() -> Real {
         .module(clinics::Clinics)
         .module(Harness {
             tasks: tasks.clone(),
+            messages: messages.clone(),
         });
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -197,6 +204,7 @@ pub async fn boot_real() -> Real {
     Real {
         app,
         tasks,
+        messages,
         agreement,
         contract,
         _views: views,
@@ -268,10 +276,54 @@ impl Real {
             .await
     }
 
+    /// The clinic manager: holds the role the window tasks go to.
+    pub async fn clinic_manager(&self) -> User {
+        let grants = [clinics::permissions::VISITS_VIEW];
+        let user = self.user("Mia", &grants).await;
+        permissions::define_role(
+            self.db(),
+            clinics::permissions::CLINIC_MANAGER_ROLE,
+            &grants,
+        )
+        .await
+        .unwrap();
+        user.assign_role(self.db(), clinics::permissions::CLINIC_MANAGER_ROLE)
+            .await
+            .unwrap();
+        user
+    }
+
+    /// The owner / medical director: told when a compliance-critical rule
+    /// fails or misses its run.
+    pub async fn owner(&self) -> User {
+        let user = self.user("Olga", &[clinics::permissions::VISITS_VIEW]).await;
+        permissions::define_role(
+            self.db(),
+            clinics::permissions::OWNER_ROLE,
+            &[clinics::permissions::VISITS_VIEW],
+        )
+        .await
+        .unwrap();
+        user.assign_role(self.db(), clinics::permissions::OWNER_ROLE)
+            .await
+            .unwrap();
+        user
+    }
+
     /// A draft claim for a completed visit on `visit_date`, with one payer
     /// line per `(code, claimed fils)`, made as billing makes it: the visit
     /// and its charge lines, the real draft payer bill, the claim around it.
     pub async fn claim(&self, visit_date: NaiveDate, lines: &[(&str, i64)]) -> Claim {
+        self.claim_under(&self.contract, visit_date, lines).await
+    }
+
+    /// Like [`Real::claim`], under another payer contract.
+    pub async fn claim_under(
+        &self,
+        contract: &PayerContract,
+        visit_date: NaiveDate,
+        lines: &[(&str, i64)],
+    ) -> Claim {
         let mut visit = Visit {
             booking_id: next_booking(),
             patient_party_id: Some(PATIENT.0),
@@ -311,7 +363,13 @@ impl Real {
             .create(self.state(), request, None)
             .await
             .expect("the payer bill is made");
-        claims::create_for_visit(self.state(), &visit, bill, Some(&self.contract), None, None)
+        Visit::query()
+            .where_(Visit::ID.eq(visit.id))
+            .update(self.db(), &[("payer_bill_id", &Some(bill.0))])
+            .await
+            .unwrap();
+        visit.payer_bill_id = Some(bill.0);
+        claims::create_for_visit(self.state(), &visit, bill, Some(contract), None, None)
             .await
             .expect("the claim is made")
     }
