@@ -7,6 +7,7 @@
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
+use wl_kernel::documents::today;
 use wl_kernel::{
     EmployeeId, FailedPayrollLine, PayrollLinesFailed, PayrollRunId, PayrollRunPaid,
     PayrollRunReturned,
@@ -113,6 +114,8 @@ pub(crate) async fn failed(state: &AppState, run_id: i64) -> Result {
     )
     .await?;
     wps_alerts::open_tasks(state, &run).await?;
+    // A rejection recorded after the escalation day is escalated at once.
+    wps_alerts::escalate_if_due(state, &run, today()).await?;
     state
         .emit(PayrollLinesFailed {
             run: PayrollRunId(run.id),

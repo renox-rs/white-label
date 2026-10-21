@@ -48,6 +48,7 @@
 //! `included` in runs not yet `submitted` (`draft`, `calculated`, `approved`)
 //! become `held` with a reason; a line in a file already sent stays.
 
+use renox::chrono::NaiveDate;
 use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
@@ -144,6 +145,9 @@ pub struct PayrollRun {
     pub rejection_notice: Option<String>,
     /// The note on the fix entered at `resubmit`.
     pub resubmit_note: Option<String>,
+    /// The day the MD and the accountant were told that the rejection is
+    /// still open before the WPS due date (`HRM.RUL.11`, once per run).
+    pub escalated_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

@@ -630,6 +630,14 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ count }} line(s) of the salary file of payroll {{ period }} failed: {{ reasons }}. See the run and fix them before the WPS due date.",
     ),
     (
+        "wl_hr.notices.payroll_escalated_subject",
+        "WPS file of payroll {{ period }} is still not paid",
+    ),
+    (
+        "wl_hr.notices.payroll_escalated_body",
+        "The salary file of payroll {{ period }} was rejected by the bank and the run is still {{ status }} ({{ count }} failed line(s)). The WPS due date is {{ due }}.",
+    ),
+    (
         "wl_hr.notices.step_escalated_subject",
         "Onboarding step of {{ employee }} is {{ days }} days overdue",
     ),

@@ -153,6 +153,25 @@ impl WlHr {
         self
     }
 
+    /// The role told, with the accountant, of a WPS rejection still open before
+    /// the due date (`HRM.RUL.11`; default `owner`, the MD).
+    pub fn md_role(mut self, role: &str) -> Self {
+        self.config.md_role = role.to_owned();
+        self
+    }
+
+    /// The accountant role told of it (default `accountant`).
+    pub fn accountant_role(mut self, role: &str) -> Self {
+        self.config.accountant_role = role.to_owned();
+        self
+    }
+
+    /// N of `HRM.RUL.11`: days before the WPS due date (default 1).
+    pub fn wps_escalation_days(mut self, days: i64) -> Self {
+        self.config.wps_escalation_days = days;
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &HrConfig {
         &self.config
@@ -222,6 +241,8 @@ impl Module for WlHr {
         notices::register_types();
         // `HRM.RUL.17`: the daily reminders of overdue onboarding steps.
         reminders::schedule(app);
+        // `HRM.RUL.11`: the daily escalation of WPS rejections still open.
+        wps_alerts::schedule(app);
         wl_kernel::workforce::provide_workforce(app, workforce::Staff);
         wl_kernel::workforce::provide_leave_calendar(app, workforce::Staff);
         wl_kernel::qualifications::provide_qualifications(app, Quals);
@@ -259,6 +280,9 @@ mod tests {
         assert_eq!(module.config().manager_role, "manager");
         assert_eq!(module.config().owner_role, "owner");
         assert_eq!(module.config().absence_days, 7);
+        assert_eq!(module.config().md_role, "owner");
+        assert_eq!(module.config().accountant_role, "accountant");
+        assert_eq!(module.config().wps_escalation_days, 1);
     }
 
     #[test]

@@ -37,6 +37,10 @@ pub const PAYROLL_RETURNED: &str = "hr.payroll_returned";
 /// failed (`HRM.RUL.11`).
 pub const PAYROLL_FAILED: &str = "hr.payroll_failed";
 
+/// The MD and the accountant are told that a WPS rejection is still open
+/// before the due date (`HRM.RUL.11`).
+pub const PAYROLL_ESCALATED: &str = "hr.payroll_escalated";
+
 /// `date` as `9 Nov 2026`.
 fn date_text(date: NaiveDate) -> String {
     date.format("%-d %b %Y").to_string()
@@ -69,6 +73,7 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(QUALIFICATION_EXPIRED, "qualification_expired"));
     notify::register_type(english_type(PAYROLL_RETURNED, "payroll_returned"));
     notify::register_type(english_type(PAYROLL_FAILED, "payroll_failed"));
+    notify::register_type(english_type(PAYROLL_ESCALATED, "payroll_escalated"));
     // The employee's own channel: SMS to the number on record.
     let body = english("wl_hr.notices.in_person_body", &[]);
     notify::register_type(
@@ -311,6 +316,33 @@ pub(crate) async fn payroll_failed(
             "period": run.period,
             "count": count,
             "reasons": reasons,
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the MD and the accountant) that payroll run `run` is still
+/// `status` with `count` failed lines, and the WPS file is due on `due`.
+pub(crate) async fn payroll_escalated(
+    state: &AppState,
+    run: &PayrollRun,
+    due: NaiveDate,
+    count: usize,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(PAYROLL_ESCALATED, run.subject())
+        .subject_label(&run.period)
+        .data(json!({
+            "period": run.period,
+            "status": run.status.as_str(),
+            "due": date_text(due),
+            "count": count,
         }));
     for user in users {
         request = request.to_user(*user);

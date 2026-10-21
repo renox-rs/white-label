@@ -15,6 +15,17 @@ pub const DEFAULT_OWNER_ROLE: &str = "owner";
 /// this many consecutive calendar days (ER Art. 28).
 pub const DEFAULT_ABSENCE_DAYS: i64 = 7;
 
+/// The role whose holders are told of a WPS rejection that is still open
+/// before the due date (`HRM.RUL.11`): the MD, which the host's `owner` role is.
+pub const DEFAULT_MD_ROLE: &str = "owner";
+
+/// The accountant role, told with the MD (`HRM.RUL.11`).
+pub const DEFAULT_ACCOUNTANT_ROLE: &str = "accountant";
+
+/// N of `HRM.RUL.11` (wl-hr §6, §7 *WPS rejection escalation*): days before the
+/// WPS due date at which a rejection still open is escalated.
+pub const DEFAULT_WPS_ESCALATION_DAYS: i64 = 1;
+
 /// The settings of the HR module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HrConfig {
@@ -24,6 +35,12 @@ pub struct HrConfig {
     pub owner_role: String,
     /// Absence days before `report_absconding` is allowed.
     pub absence_days: i64,
+    /// The role of the MD (`HRM.RUL.11`).
+    pub md_role: String,
+    /// The role of the accountant (`HRM.RUL.11`).
+    pub accountant_role: String,
+    /// N of `HRM.RUL.11`: days before the WPS due date.
+    pub wps_escalation_days: i64,
 }
 
 impl Default for HrConfig {
@@ -32,6 +49,9 @@ impl Default for HrConfig {
             manager_role: DEFAULT_MANAGER_ROLE.to_owned(),
             owner_role: DEFAULT_OWNER_ROLE.to_owned(),
             absence_days: DEFAULT_ABSENCE_DAYS,
+            md_role: DEFAULT_MD_ROLE.to_owned(),
+            accountant_role: DEFAULT_ACCOUNTANT_ROLE.to_owned(),
+            wps_escalation_days: DEFAULT_WPS_ESCALATION_DAYS,
         }
     }
 }
