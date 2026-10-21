@@ -62,6 +62,8 @@ pub const STEP_ENTRY_PERMIT: &str = "entry_permit";
 pub const VARIANT_STANDARD: &str = "standard";
 /// The *absconding* variant: it starts from the MoHRE absence report.
 pub const VARIANT_ABSCONDING: &str = "absconding";
+/// The *death* variant: it starts from the death certificate.
+pub const VARIANT_DEATH: &str = "death";
 
 /// Abandoned (the exit was reversed).
 pub const CANCEL: &str = "cancel";
@@ -255,6 +257,31 @@ pub async fn open_absconding_in(
     report_number: &str,
     report_date: NaiveDate,
 ) -> Result<VisaCase> {
+    open_variant_in(
+        tx,
+        employee_id,
+        VARIANT_ABSCONDING,
+        Some(report_number),
+        Some(report_date),
+    )
+    .await
+}
+
+/// Opens the *cancellation* case of `employee_id` from the *death* variant of
+/// the step template (it starts from the death certificate), inside `tx`.
+/// An open cancellation case (the one `give_notice` or `report_absconding`
+/// opened) becomes the death variant; no second one is opened.
+pub async fn open_death_in(tx: &mut Transaction, employee_id: i64) -> Result<VisaCase> {
+    open_variant_in(tx, employee_id, VARIANT_DEATH, None, None).await
+}
+
+async fn open_variant_in(
+    tx: &mut Transaction,
+    employee_id: i64,
+    variant: &str,
+    report_number: Option<&str>,
+    report_date: Option<NaiveDate>,
+) -> Result<VisaCase> {
     let open = VisaCase::query()
         .where_(VisaCase::EMPLOYEE_ID.eq(employee_id))
         .where_(VisaCase::CASE_TYPE.eq(TYPE_CANCELLATION))
@@ -267,30 +294,34 @@ pub async fn open_absconding_in(
         .first(&mut *tx)
         .await?;
     if let Some(mut case) = open {
+        let number = report_number
+            .map(str::to_owned)
+            .or(case.report_number.clone());
+        let date = report_date.or(case.report_date);
         VisaCase::query()
             .where_(VisaCase::ID.eq(case.id))
             .update(
                 &mut *tx,
                 &[
-                    ("variant", &VARIANT_ABSCONDING.to_owned()),
-                    ("report_number", &Some(report_number.to_owned())),
-                    ("report_date", &Some(report_date)),
+                    ("variant", &variant.to_owned()),
+                    ("report_number", &number),
+                    ("report_date", &date),
                     ("updated_at", &now()),
                 ],
             )
             .await?;
-        case.variant = VARIANT_ABSCONDING.to_owned();
-        case.report_number = Some(report_number.to_owned());
-        case.report_date = Some(report_date);
+        case.variant = variant.to_owned();
+        case.report_number = number;
+        case.report_date = date;
         return Ok(case);
     }
     let mut case = VisaCase {
         employee_id,
         case_type: TYPE_CANCELLATION.to_owned(),
-        variant: VARIANT_ABSCONDING.to_owned(),
+        variant: variant.to_owned(),
         status: VisaCaseStatus::Open,
-        report_number: Some(report_number.to_owned()),
-        report_date: Some(report_date),
+        report_number: report_number.map(str::to_owned),
+        report_date,
         ..VisaCase::default()
     };
     case.insert(&mut *tx).await?;

@@ -459,6 +459,38 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_hr.exits.transition.reinstate", "Reinstate"),
     ("wl_hr.exits.transition.record_death", "Record death"),
+    (
+        "wl_hr.exits.death_date_future",
+        "The date of death cannot be in the future.",
+    ),
+    (
+        "wl_hr.payroll.settled_in_settlement",
+        "The line was settled in the final settlement of a death: it is not released.",
+    ),
+    (
+        "wl_hr.death.task_visa_cancellation",
+        "Cancel the residence visa of :name (died in service)",
+    ),
+    (
+        "wl_hr.death.task_visa_cancellation_description",
+        "Complete the cancellation visa case that starts from the death certificate.",
+    ),
+    (
+        "wl_hr.death.task_insurance_claim",
+        "File the insurance claim for :name (died in service)",
+    ),
+    (
+        "wl_hr.death.task_insurance_claim_description",
+        "File the claim with the insurer of the employee.",
+    ),
+    (
+        "wl_hr.death.task_repatriation",
+        "Arrange the repatriation of :name (died in service)",
+    ),
+    (
+        "wl_hr.death.task_repatriation_description",
+        "Arrange the return of the body and the belongings; whether the employer bears the cost is open (L-25).",
+    ),
     ("wl_hr.exits.reason_required", "Give the reason."),
     (
         "wl_hr.exits.agreement_required",

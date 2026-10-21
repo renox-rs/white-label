@@ -192,6 +192,9 @@ pub async fn line_fixed(state: &AppState, line_id: i64) -> Result<Cleared> {
     if line.status != LineStatus::Held {
         return Err(refuse("wl_hr.payroll.line_not_held"));
     }
+    if line.settled_in_settlement.is_some() {
+        return Err(refuse("wl_hr.payroll.settled_in_settlement"));
+    }
     if line.released_into.is_some() {
         return Err(refuse("wl_hr.payroll.already_released"));
     }

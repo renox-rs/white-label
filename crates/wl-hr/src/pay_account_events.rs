@@ -103,6 +103,13 @@ async fn approved(state: &AppState, id: i64) -> Result {
     let Some(account) = PayAccount::find(&state.db, id).await? else {
         return Ok(());
     };
+    // No message goes to an employee who died (`record_death`).
+    if Employee::find(&state.db, account.employee_id)
+        .await?
+        .is_some_and(|e| e.status == crate::employee::EmployeeStatus::Deceased)
+    {
+        return Ok(());
+    }
     let (Some(number), Some(ends)) = (account.notice_to.clone(), account.cooling_ends_on) else {
         return reach_task(state, &account).await;
     };

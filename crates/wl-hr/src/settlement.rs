@@ -53,6 +53,9 @@ pub(crate) fn refuse(key: &str) -> Error {
 /// The reason of the settlement of an absconded employee.
 pub const REASON_ABSCONDING: &str = "absconding";
 
+/// The reason of the settlement of an employee who died in service.
+pub const REASON_DEATH: &str = "death";
+
 /// The reason of the settlement that pays the days worked by an employee whose
 /// onboarding was cancelled.
 pub const REASON_ONBOARDING_CANCELLED: &str = "onboarding_cancelled";
@@ -324,8 +327,9 @@ impl FinalSettlement {
 }
 
 /// Drafts the settlement of `employee_id` with `reason` and `payee`, inside
-/// `tx`; when one is already open, it gets `reason` and no second one is
-/// drafted. Returns the settlement.
+/// `tx`; when one is already open, it gets `reason` and `payee` (an
+/// absconded worker who dies: the estate) and no second one is drafted.
+/// Returns the settlement.
 pub async fn draft_or_relabel_in(
     tx: &mut Transaction,
     employee_id: i64,
@@ -337,10 +341,15 @@ pub async fn draft_or_relabel_in(
             .where_(FinalSettlement::ID.eq(open.id))
             .update(
                 &mut *tx,
-                &[("reason", &reason.to_owned()), ("updated_at", &now())],
+                &[
+                    ("reason", &reason.to_owned()),
+                    ("payee", &payee.to_owned()),
+                    ("updated_at", &now()),
+                ],
             )
             .await?;
         open.reason = reason.to_owned();
+        open.payee = payee.to_owned();
         return Ok(open);
     }
     let mut settlement = FinalSettlement {

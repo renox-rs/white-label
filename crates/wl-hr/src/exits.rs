@@ -31,7 +31,7 @@
 //! The checks that read the database and the effects of each exit live with the
 //! exit: `report_absconding` in [`crate::absconding`] (#197), `cancel_onboarding`,
 //! `withdraw_notice` and `reinstate` in [`crate::exit_effects`] (#195, #196,
-//! #198); `record_death` comes with its own issue.
+//! #198) and `record_death` in [`crate::death`] (#199).
 
 use renox::auth::permissions::users_with_permission_in;
 use renox::chrono::NaiveDate;
@@ -179,7 +179,8 @@ impl ExitInput {
 /// other party's written agreement; `report_absconding` the MoHRE absence
 /// report number and date; `reinstate` the withdrawal or cancellation
 /// reference and the day the worker returned (not in the future);
-/// `record_death` the death certificate or the authority's notice.
+/// `record_death` the death certificate or the authority's notice (and a
+/// date of death, when given, not in the future).
 pub fn missing(transition: &str, input: &ExitInput) -> Option<String> {
     if input.reason.trim().is_empty() {
         return Some(english("wl_hr.exits.reason_required", &[]));
@@ -192,6 +193,7 @@ pub fn missing(transition: &str, input: &ExitInput) -> Option<String> {
         REINSTATE if blank(&input.withdrawal_reference) => "reference_required",
         REINSTATE if input.return_date.is_none() => "return_date_required",
         REINSTATE if input.return_date.is_some_and(|day| day > today()) => "return_date_future",
+        RECORD_DEATH if input.death_date.is_some_and(|day| day > today()) => "death_date_future",
         RECORD_DEATH
             if !(input.has_document(KIND_DEATH_CERTIFICATE)
                 || input.has_document(KIND_AUTHORITY_NOTICE)) =>

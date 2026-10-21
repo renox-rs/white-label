@@ -72,6 +72,10 @@ pub const HELD_ACCOUNT_CLOSED: &str = "account closed";
 /// (wl-hr §4 *Payroll run* `calculate`).
 pub const HELD_ABSENCE_CASE: &str = "absence case";
 
+/// The reason of a line held because the employee died (`record_death`): never
+/// released, the salary it owes goes into the final settlement.
+pub const HELD_DEATH: &str = "death";
+
 /// The preparer calculates the lines of the run.
 pub const CALCULATE: &str = "calculate";
 /// A second user approves the calculated run.
@@ -243,6 +247,11 @@ pub struct PayrollLine {
     /// On a carried line: the warning that it pays after the WPS due date of
     /// its period; empty for a line held by a valid absence report.
     pub late_warning: Option<String>,
+    /// On a line held for a death: the final settlement that took the salary
+    /// it owes up to the date of death (*settled in the final settlement*).
+    pub settled_in_settlement: Option<i64>,
+    /// On such a line: the amount moved into that settlement, AED fils.
+    pub settled_amount: i64,
     /// The approver's comment on this line to fix (`return`); cleared by the
     /// next `calculate`.
     pub approver_comment: Option<String>,
@@ -281,6 +290,76 @@ impl PayrollRun {
             .get(db)
             .await
     }
+}
+
+/// The salary of a line of period `period` (`2026-11`) that is owed up to
+/// `death`, AED fils: the whole net when the period ended on or before the
+/// day of death, nothing when it began after it, else the net pro rata over
+/// the calendar days of the period (rounded down). Decision: the spec says
+/// "the salary they owe up to the date of death" without a method; calendar
+/// days are the simplest one and the preparer can still revise the figure
+/// while the settlement is a draft.
+pub fn owed_until(net: i64, period: &str, death: NaiveDate) -> i64 {
+    let Some((from, to)) = crate::hours::period_bounds(period) else {
+        return 0;
+    };
+    if death >= to {
+        return net.max(0);
+    }
+    if death < from {
+        return 0;
+    }
+    let days = (to - from).num_days() + 1;
+    let owed = (death - from).num_days() + 1;
+    net.max(0) * owed / days
+}
+
+/// Holds the lines of `employee_id` in runs not yet `submitted` for a death,
+/// inside `tx`: `included` lines and lines held for an absence case or an
+/// absence report (the worker will not come back, so nothing releases them)
+/// become `held` with [`HELD_DEATH`]. Returns them with the period of their
+/// run; lines already settled are left. A line in a file already sent stays.
+pub async fn hold_for_death_in(
+    tx: &mut Transaction,
+    employee_id: i64,
+) -> Result<Vec<(PayrollLine, String)>> {
+    let lines = PayrollLine::query()
+        .where_(PayrollLine::EMPLOYEE_ID.eq(employee_id))
+        .where_(PayrollLine::STATUS.is_in([LineStatus::Included, LineStatus::Held]))
+        .where_(PayrollLine::SETTLED_IN_SETTLEMENT.is_null())
+        .where_(PayrollLine::RELEASED_INTO.is_null())
+        .order_by(PayrollLine::ID)
+        .get(&mut *tx)
+        .await?;
+    let mut held = Vec::new();
+    for line in lines {
+        let ours = line.status == LineStatus::Included
+            || [HELD_ABSENCE_CASE, HELD_ABSENCE_REPORT]
+                .contains(&line.held_reason.as_deref().unwrap_or_default());
+        if !ours {
+            continue;
+        }
+        let Some(run) = PayrollRun::find(&mut *tx, line.run_id)
+            .await?
+            .filter(|run| run.status.is_unsent())
+        else {
+            continue;
+        };
+        PayrollLine::query()
+            .where_(PayrollLine::ID.eq(line.id))
+            .update(
+                &mut *tx,
+                &[
+                    ("status", &LineStatus::Held.as_str().to_owned()),
+                    ("held_reason", &Some(HELD_DEATH.to_owned())),
+                    ("hold_cleared_on", &None::<NaiveDate>),
+                    ("updated_at", &now()),
+                ],
+            )
+            .await?;
+        held.push((line, run.period));
+    }
+    Ok(held)
 }
 
 /// A line the bank failed, with the reason from its result file.

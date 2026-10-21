@@ -103,8 +103,16 @@ pub struct Employee {
     pub last_working_day: Option<NaiveDate>,
     /// How the employment ended: `onboarding_cancelled`, `absconding`, ...
     pub exit_route: Option<String>,
-    /// When the portal account was closed (`cancel_onboarding`).
+    /// When the portal account was closed (`cancel_onboarding`, `record_death`).
     pub portal_closed_at: Option<DateTime>,
+    /// The date of death (`record_death`).
+    pub date_of_death: Option<NaiveDate>,
+    /// The day the employee exited (`exit`): the portal is read-only from
+    /// then and closes after the setting's number of days.
+    pub exited_on: Option<NaiveDate>,
+    /// The authority's reference of the cancellation of the residence visa,
+    /// recorded when no *cancellation* case was completed (`exit`).
+    pub cancellation_reference: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

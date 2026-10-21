@@ -151,8 +151,10 @@ impl Workforce for Staff {
             for employee in employees {
                 // Absconded, or the portal account was closed when the
                 // onboarding was cancelled.
-                if employee.status == EmployeeStatus::Absconded
-                    || employee.portal_closed_at.is_some()
+                if matches!(
+                    employee.status,
+                    EmployeeStatus::Absconded | EmployeeStatus::Deceased
+                ) || employee.portal_closed_at.is_some()
                 {
                     return Ok(true);
                 }

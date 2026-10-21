@@ -24,8 +24,8 @@
 //! request and again at the approval. The effects of `report_absconding` are
 //! in [`crate::absconding`], those of `cancel_onboarding`, `withdraw_notice`
 //! and `reinstate` in [`crate::exit_effects`] and the listener below
-//! (settlement and cancellation case cancelled, the events); `record_death`
-//! comes with its own issue.
+//! (settlement and cancellation case cancelled, the events); those of
+//! `record_death` in [`crate::death`] (#199).
 //!
 //! `activate` (`employees.manage`) is for a record created in `onboarding`.
 //! A minimal record has no statutory items to check (§2). A template that
@@ -47,6 +47,7 @@ use wl_kernel::workforce::{
 use crate::absconding;
 use crate::absence::AbsenceReport;
 use crate::activation;
+use crate::death;
 use crate::employee::{Employee, EmployeeStatus};
 use crate::exit_effects;
 use crate::exits::{self, ExitInput};
@@ -113,12 +114,18 @@ fn exit_pair<const N: usize>(
         // checks that read the database, then the report, the held pay, the
         // settlement and the visa case; those of `cancel_onboarding`,
         // `withdraw_notice` and `reinstate` are in `exit_effects` (#195, #196,
-        // #198); `record_death` comes with its own issue.
+        // #198); `record_death`'s are in `death` (#199).
         if name == REPORT_ABSCONDING {
             transition.effect(|employee: &Employee, ctx, tx| {
                 let id = employee.id;
                 let input = ctx.input_as::<ExitInput>().unwrap_or_default();
                 Box::pin(async move { absconding::apply(tx, id, &input).await })
+            })
+        } else if name == RECORD_DEATH {
+            transition.effect(|employee: &Employee, ctx, tx| {
+                let employee = employee.clone();
+                let input = ctx.input_as::<ExitInput>().unwrap_or_default();
+                Box::pin(async move { death::apply(tx, &employee, &input).await })
             })
         } else if exit_effects::has_checks(name) {
             transition.effect(move |employee: &Employee, ctx, tx| {
@@ -293,6 +300,9 @@ pub(crate) fn register(app: &mut Registry) {
                             return_date: returned.unwrap_or_else(today),
                         })
                         .await
+                }
+                RECORD_DEATH | RECORD_DEATH_APPROVED => {
+                    death::after_commit(&state, event.key).await
                 }
                 REPORT_ABSCONDING | REPORT_ABSCONDING_APPROVED => {
                     let Some(report) = AbsenceReport::valid_for(&state.db, event.key).await? else {

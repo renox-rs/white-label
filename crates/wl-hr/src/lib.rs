@@ -9,6 +9,7 @@ pub mod assignees;
 pub mod calculation;
 pub mod caps;
 pub mod config;
+pub mod death;
 pub mod differences;
 pub mod employee;
 pub mod employee_machine;

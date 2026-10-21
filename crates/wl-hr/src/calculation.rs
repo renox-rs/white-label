@@ -53,7 +53,9 @@ use crate::config::config_of;
 use crate::differences::{self, HourDifference};
 use crate::employee::{Employee, EmployeeStatus, EmploymentType};
 use crate::hours::{self, NORMAL};
-use crate::payroll::{HELD_ABSENCE_CASE, HELD_ABSENCE_REPORT, LineStatus, PayrollLine, PayrollRun};
+use crate::payroll::{
+    HELD_ABSENCE_CASE, HELD_ABSENCE_REPORT, HELD_DEATH, LineStatus, PayrollLine, PayrollRun,
+};
 use crate::salary::SalaryStructure;
 use crate::texts::english;
 
@@ -265,6 +267,9 @@ fn hold_of(
     employee: &Employee,
     open_case: bool,
 ) -> (LineStatus, Option<String>) {
+    if employee.status == EmployeeStatus::Deceased {
+        return (LineStatus::Held, Some(HELD_DEATH.to_owned()));
+    }
     if employee.status == EmployeeStatus::Absconded {
         return (LineStatus::Held, Some(HELD_ABSENCE_REPORT.to_owned()));
     }
