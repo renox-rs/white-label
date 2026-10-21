@@ -13,7 +13,10 @@ use wl_kernel::custody::HandoverStatus;
 use wl_kernel::documents::today;
 use wl_kernel::notify::NotifyRecipient;
 
-use support::{VAN, World, boot_custody_with, boot_with_custody, stop_fields};
+use support::{
+    VAN, World, boot_custody_with, boot_with_custody, boot_with_real_payments, stop_fields,
+    user_with,
+};
 
 async fn dispatched_run(w: &World, driver: &User, deliveries: &[&Delivery]) -> Run {
     w.valid_documents_for(driver.id, "2099-12-31");
@@ -368,4 +371,47 @@ async fn a_vertical_adds_driver_unreachable_to_the_reasons() {
         w.reload_run(&run).await.abort_reason.as_deref(),
         Some("driver_unreachable")
     );
+}
+
+/// AC2 of #164 on the real `wl-payments`: AED 400 collected, the abort leaves
+/// the driver's real handover `open` for AED 400 with the period ended, and the
+/// depot's count of AED 400 makes it `counted`.
+#[renox::test]
+async fn an_aborted_run_leaves_a_real_open_handover_that_the_depot_counts() {
+    use wl_payments::permissions as pay;
+    let w = boot_with_real_payments().await;
+    let cash = w.request(&[("Tiles", 10_000, None)], 40_000).await;
+    let open = w.simple_delivery().await;
+    let run = dispatched_run(&w, &w.driver, &[&cash, &open]).await;
+    deliver_cash(&w, &cash, "400.00").await;
+
+    abort(&w, &run, &[("reason", "accident")]).await.assert_ok();
+
+    let back = w.reload_run(&run).await;
+    assert_eq!(back.status, RunStatus::ReturnedToDepot);
+    let handover = wl_delivery::close::handover_of(w.state(), &back)
+        .await
+        .unwrap()
+        .expect("the driver's handover of the run");
+    assert_eq!(handover.status, HandoverStatus::Open);
+    assert_eq!(handover.expected, 40_000);
+    assert_eq!(handover.holder_user, w.driver.id);
+    let row = wl_payments::cash_handover::CashHandover::find_or_404(w.db(), handover.id.0)
+        .await
+        .unwrap();
+    assert!(row.period_end.is_some(), "the period ended with the abort");
+    let counter = user_with(&w, "Chandra", &[pay::CASH_VIEW, pay::CASH_COUNT]).await;
+    w.post(
+        &counter,
+        &format!("/cash/{}/count", handover.id.0),
+        &[("counted", "400.00")],
+    )
+    .await
+    .assert_ok();
+    let counted = wl_delivery::close::handover_of(w.state(), &back)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(counted.status, HandoverStatus::Counted);
+    assert_eq!(counted.counted, 40_000);
 }
