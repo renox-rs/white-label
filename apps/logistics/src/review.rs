@@ -25,7 +25,7 @@
 //! leaves it out. The invoice flag (`disputed`) is wl-invoicing's.
 
 use renox::prelude::*;
-use renox::state_machine::TransitionError;
+use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::delivery::DeliveryId;
 
 use crate::notices::{tell_client, tell_reopened};
