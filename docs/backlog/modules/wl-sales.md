@@ -2381,18 +2381,18 @@ Earn lots are consumed oldest expiry first by `redeem` and `expire`.
 - Must not show the real block reason to counter staff.
 
 #### Done when
-- [ ] Given P2 (300 points, lot expiring 2027-03-01) merged into P (200 points), P has 500 points
+- [x] Given P2 (300 points, lot expiring 2027-03-01) merged into P (200 points), P has 500 points
       and the moved lot keeps 2027-03-01; P2's account is closed *merged into*; no `adjust`.
-- [ ] Given P2 with an account and P without one, after the merge the account belongs to P.
-- [ ] M asks to leave with 450 points: after M confirms, the account closes with an `adjust` of
+- [x] Given P2 with an account and P without one, after the merge the account belongs to P.
+- [x] M asks to leave with 450 points: after M confirms, the account closes with an `adjust` of
       −450 and no approval.
-- [ ] M's party is blocked: a counter sale earns nothing and redemption is refused with *on
+- [x] M's party is blocked: a counter sale earns nothing and redemption is refused with *on
       hold*; after `unblock`, the next sale earns.
-- [ ] Changing the earn rate on 1 Nov with effect 15 Nov is refused; with effect 1 Dec, members
+- [x] Changing the earn rate on 1 Nov with effect 15 Nov is refused; with effect 1 Dec, members
       are told on 1 Nov; a sale on 30 Nov earns at the old rate and one on 1 Dec at the new rate.
-- [ ] Turning the programme off on 1 Dec sets the closing date to 1 Mar; redemptions on 1 Mar
+- [x] Turning the programme off on 1 Dec sets the closing date to 1 Mar; redemptions on 1 Mar
       still work; at 02:00 on 2 Mar every open lot expires.
-- [ ] Given survivor P blocked, merging P2 (300 points) into P moves the 300 points paused:
+- [x] Given survivor P blocked, merging P2 (300 points) into P moves the 300 points paused:
       redemption is refused *on hold* until P is unblocked.
 
 #### Out of scope
