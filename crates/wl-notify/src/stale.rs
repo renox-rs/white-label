@@ -125,7 +125,7 @@ pub async fn expire_unapproved(state: &AppState, now: DateTime) -> Result<usize>
     let mut expired = 0;
     for broadcast in due {
         let ended = match broadcast.approval_request_id {
-            Some(request) => end_request(state, broadcast.id, request).await?,
+            Some(request) => end_request(state, &broadcast, request).await?,
             None => expire_direct(state, broadcast.id).await?,
         };
         if ended {
@@ -135,9 +135,22 @@ pub async fn expire_unapproved(state: &AppState, now: DateTime) -> Result<usize>
     Ok(expired)
 }
 
-/// Ends approval request `request` of broadcast `id` as expired. `false`
+/// Ends approval request `request` of `broadcast` as expired. `false`
 /// when an approval (or a rejection) got there first.
-async fn end_request(state: &AppState, id: i64, request: i64) -> Result<bool> {
+///
+/// Decision: the request has no expiry of its own (see
+/// [`crate::broadcast_approval::policy`]) and the kernel only expires a
+/// request past its `expires_at`, so the limit of `NTF.RUL.03` (send time
+/// plus [`StaleSettings::approval_expiry_hours`]) is stored on the request
+/// just before it is expired.
+async fn end_request(state: &AppState, broadcast: &Broadcast, request: i64) -> Result<bool> {
+    let id = broadcast.id;
+    let limit = broadcast.send_at + TimeDelta::hours(settings(state).approval_expiry_hours);
+    approvals::ApprovalRequest::query()
+        .where_(approvals::ApprovalRequest::ID.eq(request))
+        .where_(approvals::ApprovalRequest::STATUS.eq(approvals::ApprovalStatus::Pending))
+        .update(&state.db, &[("expires_at", &Some(limit))])
+        .await?;
     match approvals::expire(state, request).await {
         Ok(_) => Ok(true),
         Err(error) => {
