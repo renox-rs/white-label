@@ -27,6 +27,8 @@ pub mod registration;
 pub mod release;
 pub mod retention;
 pub mod retention_deduction;
+mod screen_texts;
+mod screens;
 pub mod seed;
 pub mod submission;
 mod tasks;
@@ -35,8 +37,10 @@ mod texts;
 pub mod variation;
 mod variation_pages;
 pub mod vat_notice;
+pub mod watch;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 
@@ -89,6 +93,29 @@ impl Module for Construction {
     }
 
     fn register(&self, app: &mut Registry) {
+        app.view_data::<screens::projects::ProjectsPage>()
+            .view_data::<screens::ipa::IpaPage>()
+            .view_data::<screens::closing::ClosingPage>()
+            .view_data::<screens::variations::VariationReportPage>();
+        app.templates(|env| {
+            for (name, source) in screens::VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
+        // The projects list in the app group of the sidebar; the label is the
+        // app's `nav.projects` text.
+        app.nav(
+            "app",
+            NavLink::route("construction.projects", "nav.projects")
+                .icon("hard-hat")
+                .group("nav.app")
+                .order(9)
+                .permission(permissions::PROJECTS_VIEW),
+        );
         app.model::<Project>()
             .model::<Ipa>()
             .model::<IpaDeduction>()

@@ -38,6 +38,7 @@
 //! request is rejected or withdrawn and asked again. The module has no item
 //! archive yet, so [`cancel_for_item`] is what the archive will call.
 
+use renox::axum::http::HeaderMap;
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::serde_json::json;
@@ -737,28 +738,28 @@ pub async fn cancel_for_item(state: &AppState, item_id: i64) -> Result<()> {
 
 /// One supplier of a request as the approver reads it.
 #[derive(Debug, Serialize)]
-struct SideView {
-    supplier_party_id: i64,
-    lead_time_days: Option<i64>,
-    on_hold: bool,
-    score: Option<i64>,
-    band: &'static str,
-    last_price: Option<LastPrice>,
+pub(crate) struct SideView {
+    pub(crate) supplier_party_id: i64,
+    pub(crate) lead_time_days: Option<i64>,
+    pub(crate) on_hold: bool,
+    pub(crate) score: Option<i64>,
+    pub(crate) band: &'static str,
+    pub(crate) last_price: Option<LastPrice>,
 }
 
 /// A request as the back office reads it.
 #[derive(Debug, Serialize)]
-struct RequestView {
-    id: i64,
-    item_id: i64,
-    kind: String,
-    status: &'static str,
-    requested_by: Option<i64>,
-    decided_by: Option<i64>,
-    decision_reason: Option<String>,
-    returned_note: Option<String>,
-    from: Option<SideView>,
-    to: Option<SideView>,
+pub(crate) struct RequestView {
+    pub(crate) id: i64,
+    pub(crate) item_id: i64,
+    pub(crate) kind: String,
+    pub(crate) status: &'static str,
+    pub(crate) requested_by: Option<i64>,
+    pub(crate) decided_by: Option<i64>,
+    pub(crate) decision_reason: Option<String>,
+    pub(crate) returned_note: Option<String>,
+    pub(crate) from: Option<SideView>,
+    pub(crate) to: Option<SideView>,
 }
 
 /// `supplier` of `item_id` with its score, lead time and last price; the
@@ -822,7 +823,7 @@ async fn view_of(
 }
 
 /// Whether `user` may read the requests: approves or manages suppliers.
-async fn may_read(state: &AppState, user: &AuthUser) -> Result<bool> {
+pub(crate) async fn may_read(state: &AppState, user: &AuthUser) -> Result<bool> {
     Ok(
         holds(state, user, permissions::ITEM_SUPPLIERS_APPROVE).await?
             || holds(state, user, permissions::ITEM_SUPPLIERS_MANAGE).await?,
@@ -892,7 +893,12 @@ async fn open_request(
 }
 
 /// `GET /preferred-requests`: the pending requests, oldest first.
-async fn list_requests(State(state): State<AppState>, user: AuthUser) -> Result<Response> {
+async fn list_requests(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
+) -> Result<Response> {
     if !may_read(&state, &user).await? {
         return Err(Error::Forbidden);
     }
@@ -906,6 +912,9 @@ async fn list_requests(State(state): State<AppState>, user: AuthUser) -> Result<
     for request in &pending {
         views.push(view_of(&state, request, costs).await?);
     }
+    if wl_kernel::negotiate::wants_html(&headers) {
+        return crate::screens::requests(&state, &lang, &views).await;
+    }
     json_response(&views)
 }
 
@@ -914,6 +923,8 @@ async fn list_requests(State(state): State<AppState>, user: AuthUser) -> Result<
 async fn show_request(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response> {
     if !may_read(&state, &user).await? {
@@ -921,7 +932,19 @@ async fn show_request(
     }
     let costs = holds(&state, &user, permissions::STOCK_COST_VIEW).await?;
     let request = PreferredSupplierRequest::find_or_404(&state.db, id).await?;
-    json_response(&view_of(&state, &request, costs).await?)
+    let view = view_of(&state, &request, costs).await?;
+    if wl_kernel::negotiate::wants_html(&headers) {
+        let reach = crate::screens::Reach {
+            scores: holds(&state, &user, permissions::SUPPLIER_SCORES_VIEW).await?,
+            costs,
+            request: None,
+        };
+        // Never the requester (`STK.ACL.07`): the buttons are for another approver.
+        let can_decide = request.requested_by != Some(user.id)
+            && holds(&state, &user, permissions::ITEM_SUPPLIERS_APPROVE).await?;
+        return crate::screens::request(&state, &lang, &view, &reach, can_decide).await;
+    }
+    json_response(&view)
 }
 
 /// `POST /preferred-requests/{id}/approve`.

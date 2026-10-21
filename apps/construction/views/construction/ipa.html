@@ -1,0 +1,45 @@
+{#- construction: an IPA (interim payment application): its status, the
+    amounts claimed and certified, the deductions the client made and the
+    records that follow from it (the project's closing screen and variation
+    report, the tax invoice, the credit note, the dispute, the supplier bill).
+    Replace it with resources/views/construction/ipa.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="subtitle" :back="back_url" :back-label="tx['ipa.back']" :badge="status" :badge-kind="status_kind"/>
+    <rx-alert rx-if="previous_pending" kind="info" :message="tx['ipa.previous_pending']"/>
+    <rx-card :title="tx['ipa.summary']" :subtitle="kind">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['ipa.valuation_on']" :value="valuation_on" format="date" :placeholder="tx['ipa.no_value']"/>
+        <rx-entry :label="tx['ipa.claimed']" :value="claimed_amount" format="money" currency="AED"/>
+        <rx-entry :label="tx['ipa.certified']" :value="certified_amount" format="money" currency="AED" :placeholder="tx['ipa.no_value']"/>
+        <rx-entry :label="tx['ipa.claim_gap']" :value="claim_gap" format="money" currency="AED" :placeholder="tx['ipa.no_value']"/>
+        <rx-entry :label="tx['ipa.previous_certified']" :value="previous_certified" format="money" currency="AED"/>
+        <rx-entry :label="tx['ipa.submitted_on']" :value="submitted_on" format="date" :placeholder="tx['ipa.no_value']"/>
+        <rx-entry :label="tx['ipa.certified_on']" :value="certified_on" format="date" :placeholder="tx['ipa.no_value']"/>
+        <rx-entry :label="tx['ipa.certificate']" :value="certificate" :placeholder="tx['ipa.no_value']"/>
+        <rx-entry rx-if="late_certificate" :label="tx['ipa.late_certificate']" :value="late_certificate"/>
+        <rx-entry rx-if="decision_reference" :label="tx['ipa.decision']" :value="decision_reference"/>
+        <rx-entry rx-if="decided_amount" :label="tx['ipa.decided']" :value="decided_amount" format="money" currency="AED"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['related']">
+      <rx-row>
+        <rx-link-button rx-if="replaces" :href="replaces.url" :label="replaces.label" :icon="replaces.icon" variant="secondary"/>
+        <rx-link-button rx-for="link in links" :href="link.url" :label="link.label" :icon="link.icon" variant="secondary"/>
+      </rx-row>
+    </rx-card>
+    <rx-card :title="tx['ipa.deductions']" :subtitle="tx['ipa.deductions_hint']">
+      <rx-table :rows="deductions" as="line" :key="line.reference" :caption="tx['ipa.deductions']">
+        <rx-column :label="tx['kind']">
+          <rx-stack>
+            <span>{{ line.kind }} <span class="rx-subtitle">{{ line.reference }}</span></span>
+            <span><rx-badge :kind="line.status_kind" :text="line.status"/></span>
+          </rx-stack>
+        </rx-column>
+        <rx-column :label="tx['description']" hide-narrow>{{ line.description }}</rx-column>
+        <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['ipa.no_deductions']" icon="minus"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

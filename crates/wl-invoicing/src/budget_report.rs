@@ -93,6 +93,61 @@ pub fn unfavourable(kind: BudgetKind, variance: i64) -> bool {
     }
 }
 
+/// How many expense categories have used at least `threshold_bp` basis points
+/// (9 000 is 90 %) of this month's budget, over the legal entities `user` may
+/// see the budget report of (`budgets.view`); `None` when the person may see
+/// it for none. A category with no budget never counts. The dashboard's tile
+/// of the cost codes near their budget.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn categories_near_limit(
+    state: &AppState,
+    user: &AuthUser,
+    today: NaiveDate,
+    threshold_bp: i64,
+) -> Result<Option<usize>> {
+    use crate::permissions::BUDGETS_VIEW;
+    if !user.has_permission_anywhere(BUDGETS_VIEW) {
+        return Ok(None);
+    }
+    let scope = user.scopes_with::<wl_kernel::LegalEntity>(BUDGETS_VIEW);
+    let entities: Vec<i64> = wl_kernel::LegalEntity::query()
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .map(|entity| entity.id)
+        .filter(|id| scope.contains(id))
+        .collect();
+    if entities.is_empty() {
+        return Ok(None);
+    }
+    let report = build(
+        &state.db,
+        &crate::config_of(state),
+        &ReportQuery {
+            entities,
+            month: month_start(today),
+            ytd: false,
+            drawings_lines: false,
+            uncategorised: String::new(),
+        },
+    )
+    .await?;
+    Ok(Some(
+        report
+            .expense
+            .iter()
+            .filter(|row| {
+                row.budget > 0
+                    && i128::from(row.actual) * 10_000
+                        >= i128::from(row.budget) * i128::from(threshold_bp)
+            })
+            .count(),
+    ))
+}
+
 /// The report.
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Report {

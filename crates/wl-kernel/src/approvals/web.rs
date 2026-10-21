@@ -531,7 +531,10 @@ pub async fn needs_action_items(db: &Db, user: &User, lang: &Lang) -> Result<Vec
             title: texts::t_with(
                 lang,
                 "wl_kernel.approvals.needs_action.item",
-                &[("action", &request.action)],
+                &[(
+                    "action",
+                    &super::awaiting::action_label(lang, &request.action),
+                )],
             ),
             comment,
             subject_type: request.subject_type.clone(),

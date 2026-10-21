@@ -1,0 +1,42 @@
+{#- construction: the projects the person may see, with their status, contract
+    value, IPAs and the links to the closing screen and the variation report.
+    What waits on a project (an IPA or a variation the client has not
+    answered, a guarantee about to end) is a badge in its row. Replace it with
+    resources/views/construction/projects.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['projects.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['projects.title']" :subtitle="tx['projects.subtitle']"/>
+    <rx-stats columns="3" rx-if="projects">
+      <rx-stat :label="tx['projects.in_progress']" :value="in_progress" icon="hard-hat"/>
+      <rx-stat :label="tx['projects.contract_total']" :value="contract_total | money(currency='AED')" icon="banknote"/>
+      <rx-stat :label="tx['projects.attention']" :value="waiting" icon="clock"/>
+    </rx-stats>
+    <rx-alert rx-if="projects" kind="info" :message="waiting_hint"/>
+    <rx-table :rows="projects" as="project" :key="project.id" :caption="tx['projects.title']">
+      <rx-column :label="tx['projects.name']">
+        <rx-stack>
+          <span><a href="{{ project.closing_url }}">{{ project.code }}</a> {{ project.name }}</span>
+          <span class="rx-subtitle">{{ project.client }}</span>
+          <span>
+            <rx-badge :kind="project.status_kind" :text="project.status"/>
+            <template rx-for="flag in project.flags"> <rx-badge kind="warning" :text="flag"/></template>
+          </span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['projects.contract_value']" align="num" hide-narrow>{{ project.contract_value | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['projects.ipas']" hide-narrow>
+        <span>
+          <template rx-for="ipa in project.ipas"><a href="{{ ipa.url }}">{{ ipa.number }}</a> </template>
+          <span rx-if="not project.ipas">{{ tx['projects.no_ipas'] }}</span>
+        </span>
+      </rx-column>
+      <rx-column :label="tx['projects.reports']">
+        <rx-stack>
+          <a href="{{ project.closing_url }}">{{ tx['projects.closing'] }}</a>
+          <a href="{{ project.variations_url }}">{{ tx['projects.variations'] }}</a>
+        </rx-stack>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['projects.empty']" :message="tx['projects.empty_text']" icon="hard-hat"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

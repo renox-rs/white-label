@@ -33,8 +33,11 @@ macro_rules! at {
     }};
 }
 
-mod clock;
-mod driver;
+// The Construction demo runs its steps the same way.
+pub(crate) use at;
+
+pub(crate) mod clock;
+pub(crate) mod driver;
 mod finance;
 mod hooks;
 mod leases;
@@ -54,7 +57,7 @@ mod seed_sales;
 mod seed_service;
 mod seed_tail;
 mod service;
-mod specimen;
+pub(crate) mod specimen;
 
 use std::collections::BTreeMap;
 
@@ -94,7 +97,7 @@ impl Report {
 /// The real today, which the seed's dates are relative to. Inside a step
 /// that runs at a day in the past, `today()` is that day, so the seed keeps
 /// its own.
-static REAL_TODAY: std::sync::Mutex<Option<NaiveDate>> = std::sync::Mutex::new(None);
+pub(crate) static REAL_TODAY: std::sync::Mutex<Option<NaiveDate>> = std::sync::Mutex::new(None);
 
 /// The real today.
 pub fn real_today() -> NaiveDate {

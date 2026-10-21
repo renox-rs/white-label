@@ -1,12 +1,20 @@
-//! The page people land on after logging in: a welcome card, the property
-//! figures (units available and leased, leases ending within 90 days,
-//! cheques due and bounced, overdue invoices, open tickets, the person's own
-//! tasks, compliance flags), what waits for the person's decision, and what
-//! they did lately (the activity log). Every figure links to its page, and a
-//! tile is left out when the person lacks the permission of its page or the
+//! The page people land on after logging in: a welcome card, the figures of
+//! the client's business, what waits for the person's decision, and what they
+//! did lately (the activity log). Every figure links to its page, and a tile
+//! is left out when the person lacks the permission of its page or the
 //! client's `client.toml` does not enable the module. The template is
 //! `resources/views/dashboard/show.html`, made of the app's page patterns
 //! (`resources/views/components/`).
+//!
+//! The figures depend on the client's vertical app (`[client] app`):
+//! [`property_tiles`] (units, leases, compliance), [`construction_tiles`]
+//! (projects, IPAs, guarantees, variations, absence, permits, orders, budget)
+//! and, for any other app, [`generic_tiles`] (the shared modules' figures
+//! only: no Property table is read). The decisions and the activity are the same for all.
+
+mod construction_tiles;
+mod generic_tiles;
+mod property_tiles;
 
 use std::sync::Arc;
 
@@ -15,11 +23,10 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 use serde::Serialize;
 use wl_invoicing::Invoice;
-use wl_kernel::Manifest;
 use wl_kernel::approvals;
 use wl_kernel::cheques::ChequeStatus;
-use wl_kernel::documents::today;
 use wl_kernel::invoicing::InvoiceStatus;
+use wl_kernel::{ClientConfig, Manifest};
 use wl_payments::Cheque;
 use wl_ticketing::ticket::{Ticket, TicketStatus};
 
@@ -71,13 +78,35 @@ pub struct Tile {
     pub count: Option<u64>,
 }
 
+impl Tile {
+    /// A tile with the accent colour and no record count.
+    fn new(label: &'static str, value: String, url: &str, icon: &'static str) -> Self {
+        Tile {
+            label,
+            value,
+            url: url.to_owned(),
+            icon,
+            tone: None,
+            count: None,
+        }
+    }
+
+    /// With the colour of the icon's disc.
+    fn toned(mut self, tone: &'static str) -> Self {
+        self.tone = Some(tone);
+        self
+    }
+}
+
 /// What the home page of a person shows of the business.
 #[derive(Serialize, Debug, Clone, Default)]
 pub struct Figures {
+    /// The text key of the welcome card's line.
+    pub lead: &'static str,
     /// The tiles the person may open, in the order shown.
     pub tiles: Vec<Tile>,
-    /// The leases that end soonest, with the link to each.
-    pub expiring: Vec<property::dashboard::ExpiringLease>,
+    /// The leases that end soonest, with the link to each (Property).
+    pub expiring: Vec<::property::dashboard::ExpiringLease>,
     /// The person's open tasks (tickets assigned to them), newest first.
     pub tasks: Vec<TaskRow>,
 }
@@ -101,145 +130,154 @@ const OPEN_TICKETS: [TicketStatus; 4] = [
     TicketStatus::OnHold,
 ];
 
+/// The page of the open tickets.
+const OPEN_TICKETS_URL: &str =
+    "/tickets?in.status=open&in.status=assigned&in.status=in_progress&in.status=on_hold";
+
+/// The vertical app of the client (`[client] app`), `property` when the
+/// configuration is not provided.
+fn app_of(state: &AppState) -> String {
+    state
+        .provided::<Arc<ClientConfig>>()
+        .map_or_else(|| "property".to_owned(), |config| config.client.app.clone())
+}
+
+/// Whether the client's `client.toml` enables the module `name`.
+fn module_on(state: &AppState, name: &str) -> bool {
+    state
+        .provided::<Arc<Manifest>>()
+        .as_ref()
+        .is_some_and(|manifest| manifest.is_enabled(name))
+}
+
 /// The figures `user` may see: each module's counts are read through its own
 /// models and only when its page is open to the person (`require_permission`
-/// of the route) and the module is enabled for the client.
+/// of the route) and the module is enabled for the client. Which figures there
+/// are depends on the client's vertical app.
 ///
 /// # Errors
 ///
 /// The database's errors.
 pub async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures> {
-    let manifest = state.provided::<Arc<Manifest>>();
-    let on = |name: &str| manifest.as_ref().is_some_and(|m| m.is_enabled(name));
-    let mut out = Figures::default();
-    let tile = |label, value: String, url: &str, icon, tone| Tile {
-        label,
-        value,
-        url: url.to_owned(),
-        icon,
-        tone,
-        count: None,
+    match app_of(state).as_str() {
+        "property" => property_tiles::figures(state, user).await,
+        "construction" => construction_tiles::figures(state, user).await,
+        _ => generic_tiles::figures(state, user).await,
+    }
+}
+
+/// The cheques tiles of the payments module: the bounced ones and, with
+/// `due`, those due for deposit.
+async fn cheque_tiles(
+    state: &AppState,
+    user: &AuthUser,
+    due: bool,
+    out: &mut Vec<Tile>,
+) -> Result<()> {
+    if !(module_on(state, "payments")
+        && user.has_permission(wl_payments::permissions::CHEQUES_VIEW))
+    {
+        return Ok(());
+    }
+    let count = |status: ChequeStatus| {
+        Cheque::query()
+            .where_(Cheque::STATUS.eq(status))
+            .count(&state.db)
     };
-
-    // The vertical's own: units, leases, compliance (per building).
-    let property = property::dashboard::figures(state, user, today()).await?;
-    if let Some(n) = property.units_available {
-        out.tiles.push(tile(
-            "dashboard.tiles.units_available",
-            number(n),
-            "/property",
-            "building-2",
-            None,
-        ));
-    }
-    if let Some(n) = property.units_leased {
-        out.tiles.push(tile(
-            "dashboard.tiles.units_leased",
-            number(n),
-            "/property",
-            "house",
-            Some("clay"),
-        ));
-    }
-    if let Some(n) = property.leases_expiring {
-        out.tiles.push(tile(
-            "dashboard.tiles.leases_expiring",
-            number(n),
-            "/property/leases",
-            "calendar-days",
-            Some("sand"),
-        ));
-    }
-    out.expiring = property.expiring;
-
-    if on("payments") && user.has_permission(wl_payments::permissions::CHEQUES_VIEW) {
-        let count = |status: ChequeStatus| {
-            Cheque::query()
-                .where_(Cheque::STATUS.eq(status))
-                .count(&state.db)
-        };
+    if due {
         let due = count(ChequeStatus::DueForDeposit).await?;
-        let bounced = count(ChequeStatus::Bounced).await?;
-        out.tiles.push(tile(
+        out.push(Tile::new(
             "dashboard.tiles.cheques_due",
             number(due),
             "/cheques?in.status=due_for_deposit",
             "banknote",
-            None,
         ));
-        out.tiles.push(tile(
+    }
+    let bounced = count(ChequeStatus::Bounced).await?;
+    out.push(
+        Tile::new(
             "dashboard.tiles.cheques_bounced",
             number(bounced),
             "/cheques?in.status=bounced",
             "triangle-alert",
-            Some("clay"),
-        ));
-    }
+        )
+        .toned("clay"),
+    );
+    Ok(())
+}
 
-    if on("invoicing") && user.has_permission(wl_invoicing::permissions::VIEW) {
-        let overdue = || {
-            Invoice::query()
-                .where_(Invoice::STATUS.eq(InvoiceStatus::Overdue))
-                .where_(Invoice::CURRENCY.eq("AED"))
-        };
-        let count = overdue().count(&state.db).await?;
-        let total: i64 = overdue().sum::<i64, _>(&state.db, "balance").await?;
-        let mut card = tile(
-            "dashboard.tiles.invoices_overdue",
-            property::money_text(total),
-            "/invoices?in.status=overdue",
-            "receipt",
-            Some("clay"),
-        );
-        card.count = Some(count);
-        out.tiles.push(card);
+/// The overdue invoices tile of the invoicing module: their balance, and how
+/// many they are.
+async fn invoice_tile(state: &AppState, user: &AuthUser, out: &mut Vec<Tile>) -> Result<()> {
+    if !(module_on(state, "invoicing") && user.has_permission(wl_invoicing::permissions::VIEW)) {
+        return Ok(());
     }
+    let overdue = || {
+        Invoice::query()
+            .where_(Invoice::STATUS.eq(InvoiceStatus::Overdue))
+            .where_(Invoice::CURRENCY.eq("AED"))
+    };
+    let count = overdue().count(&state.db).await?;
+    let total: i64 = overdue().sum::<i64, _>(&state.db, "balance").await?;
+    let mut card = Tile::new(
+        "dashboard.tiles.invoices_overdue",
+        ::property::money_text(total),
+        "/invoices?in.status=overdue",
+        "receipt",
+    )
+    .toned("clay");
+    card.count = Some(count);
+    out.push(card);
+    Ok(())
+}
 
-    if on("ticketing") && user.has_permission(wl_ticketing::permissions::VIEW) {
+/// The tickets of the ticketing module: with `open`, the tile of the open
+/// ones; always the tile and the list of the person's own tasks.
+async fn ticket_tiles(
+    state: &AppState,
+    user: &AuthUser,
+    open: bool,
+    out: &mut Figures,
+) -> Result<()> {
+    if !(module_on(state, "ticketing") && user.has_permission(wl_ticketing::permissions::VIEW)) {
+        return Ok(());
+    }
+    if open {
         let open = wl_ticketing::visibility::visible_to(Ticket::query(), user)
             .where_(Ticket::STATUS.is_in(OPEN_TICKETS))
             .count(&state.db)
             .await?;
-        out.tiles.push(tile(
+        out.tiles.push(Tile::new(
             "dashboard.tiles.tickets_open",
             number(open),
-            "/tickets?in.status=open&in.status=assigned&in.status=in_progress&in.status=on_hold",
+            OPEN_TICKETS_URL,
             "clipboard-list",
-            None,
         ));
-        let mine = wl_ticketing::visibility::visible_to(Ticket::query(), user)
-            .where_(Ticket::STATUS.is_in(OPEN_TICKETS))
-            .where_(Ticket::ASSIGNEE_USER_ID.eq(user.id))
-            .order_by_desc(Ticket::ID);
-        let tasks = mine.clone().limit(5).get(&state.db).await?;
-        let total = mine.count(&state.db).await?;
-        out.tiles.push(tile(
+    }
+    let mine = wl_ticketing::visibility::visible_to(Ticket::query(), user)
+        .where_(Ticket::STATUS.is_in(OPEN_TICKETS))
+        .where_(Ticket::ASSIGNEE_USER_ID.eq(user.id))
+        .order_by_desc(Ticket::ID);
+    let tasks = mine.clone().limit(5).get(&state.db).await?;
+    let total = mine.count(&state.db).await?;
+    out.tiles.push(
+        Tile::new(
             "dashboard.tiles.my_tasks",
             number(total),
-            "/tickets?in.status=open&in.status=assigned&in.status=in_progress&in.status=on_hold",
+            OPEN_TICKETS_URL,
             "circle-check",
-            Some("sand"),
-        ));
-        out.tasks = tasks
-            .into_iter()
-            .map(|t| TaskRow {
-                id: t.id,
-                number: t.number,
-                title: t.title,
-            })
-            .collect();
-    }
-
-    if let Some(n) = property.buildings_flagged {
-        out.tiles.push(tile(
-            "dashboard.tiles.compliance_flags",
-            number(n),
-            "/property/compliance",
-            "shield",
-            Some("clay"),
-        ));
-    }
-    Ok(out)
+        )
+        .toned("sand"),
+    );
+    out.tasks = tasks
+        .into_iter()
+        .map(|t| TaskRow {
+            id: t.id,
+            number: t.number,
+            title: t.title,
+        })
+        .collect();
+    Ok(())
 }
 
 fn number(n: u64) -> String {
@@ -272,6 +310,7 @@ async fn show(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Resu
             needs_action,
             awaiting,
             awaiting_count,
+            lead => figures.lead,
             tiles => figures.tiles,
             expiring => figures.expiring,
             tasks => figures.tasks,

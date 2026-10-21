@@ -1,0 +1,33 @@
+{#- wl-inventory: a reorder suggestion: the item and location, the quantity
+    to buy (and what it was rounded from), the supplier it goes to, the
+    certificates to check and the other suppliers of the item. Replace it with
+    resources/views/wl-inventory/reorder_suggestion.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="subtitle" :badge="status" :badge-kind="status_kind">
+      <rx-link-button :href="item_url" :label="tx['reorder.suppliers']" icon="truck" variant="secondary"/>
+    </rx-page-header>
+    <rx-alert rx-for="warning in warnings" kind="warning" :title="tx['reorder.warnings']" :message="warning"/>
+    <rx-card>
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['reorder.location']" :value="location"/>
+        <rx-entry :label="tx['reorder.quantity']" :value="quantity"/>
+        <rx-entry rx-if="rounded_from" :label="tx['reorder.rounded']" :value="rounded_from"/>
+        <rx-entry :label="tx['reorder.supplier']" :value="supplier" :placeholder="tx['no_value']"/>
+        <rx-entry rx-if="supplier_role" :label="tx['role']" :value="supplier_role"/>
+        <rx-entry :label="tx['lead_time']" :value="lead_time_days" :placeholder="tx['no_value']"/>
+        <rx-entry rx-if="reason" :label="tx['reorder.reason']" :value="reason" span="full"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['reorder.alternatives']">
+      <rx-table :rows="alternatives" as="row" :key="row.name" :caption="tx['reorder.alternatives']">
+        <rx-column :label="tx['supplier']"><a rx-if="row.score_url" href="{{ row.score_url }}">{{ row.name }}</a><span rx-else>{{ row.name }}</span> <rx-badge rx-if="row.on_hold" kind="error" :text="tx['suppliers.on_hold']"/></rx-column>
+        <rx-column :label="tx['role']" hide-narrow>{{ row.role }}</rx-column>
+        <rx-column :label="tx['lead_time']" align="num">{{ row.lead_time_days }}</rx-column>
+        <rx-column :label="tx['last_price']" align="num" hide-narrow>{{ row.price.unit_price | money(currency=row.price.currency) if row.price else tx['no_value'] }}</rx-column>
+        <rx-column :label="tx['score']" align="num" hide-narrow>{{ row.score if row.score is not none else tx['no_value'] }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['reorder.no_alternatives']" icon="truck"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

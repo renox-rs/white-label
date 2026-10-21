@@ -31,6 +31,9 @@
     "bank_statements": "Bank statements",
     "campaigns": "Campaigns",
     "employees": "Employees",
+    "projects": "Projects",
+    "crew": "Crew list",
+    "preferred_requests": "Preferred suppliers",
     "property": "Property",
     "leases": "Leases",
     "statements": "Owner statements",
@@ -79,6 +82,8 @@
     "title": "Dashboard",
     "welcome": "Welcome back,",
     "lead": "Where the portfolio stands today, and what waits for you.",
+    "lead_construction": "Where your projects stand today, and what waits for you.",
+    "lead_generic": "What waits for you today.",
     "account": "Your account",
     "users": "Manage users",
     "needs_action": {
@@ -97,7 +102,15 @@
       "invoices_many": ":count invoices",
       "tickets_open": "Open tickets",
       "my_tasks": "My tasks",
-      "compliance_flags": "Buildings flagged"
+      "compliance_flags": "Buildings flagged",
+      "projects_in_progress": "Projects in progress",
+      "ipas_waiting": "Payment applications waiting over 14 days",
+      "variations_waiting": "Variations unanswered over 14 days",
+      "guarantees_expiring": "Guarantees ending in 60 days",
+      "purchase_orders_waiting": "Orders awaiting approval",
+      "budget_near_limit": "Cost codes at 90% of budget",
+      "absence_open": "Open absence cases",
+      "permits_expiring": "Permits ending in 30 days"
     },
     "expiring": {
       "title": "Leases ending soon",

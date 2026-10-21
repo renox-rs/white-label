@@ -45,6 +45,7 @@ What is here so far:
 | The IPA, the Retention and the Guarantee with their states | §6, §7.1 | `ipa`, `retention`, `guarantee` |
 | The event `ProjectTerminated` | §7.1 | `events` |
 | The back-office actions (terminate, closing screen, settle, cancel, complete, close, the retention bond, make due, invoice, the retention deductions, the dispute of the retention invoice, dismissing the VAT notice, the guarantee steps and the call on a guarantee) | §7.1 | `pages` |
+| The screens: the projects list (`GET /construction/projects`) and the HTML of the IPA, the closing screen and the variation report. Those three routes answer a page when the request names `text/html` in `Accept` and the same JSON as before otherwise (`wl_kernel::negotiate::wants_html`); the templates are compiled in (`views/construction/`) and an app replaces one under `resources/views/construction/`. `watch` counts what waits on the projects (IPAs and variations unanswered for over 14 days, guarantees ending within 60 days) for the list and the dashboard | §7.1 | `screens`, `watch` |
 
 Not built yet: sites and geofences, the BOQ, the calculation, `revise` and `CON.RUL.04` of the IPA, advance recovery, crews and their assignments (the reassign
 task stands for ending them), the project pages and the client portal (read-only after the final
