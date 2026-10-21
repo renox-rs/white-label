@@ -492,8 +492,8 @@ async fn after_the_unblock_the_planned_deployment_activates() {
 /// The block effect of a deployment is `continue`, decided by the MD.
 #[renox::test]
 async fn the_deployment_block_effect_is_continue_and_the_md_decides() {
-    let app = boot().await;
-    let _ = &app;
+    // The effect is registered when the agency boots.
+    let _agency = boot().await;
     let rule = wl_kernel::block_effects::effect_for(
         "deployment",
         &renox::auth::permissions::Scope::global(),

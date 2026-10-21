@@ -226,15 +226,14 @@ async fn nobody_without_an_active_deployment_gets_a_case() {
         .await
         .unwrap();
     let bench = w.t.staff.employ(&w.t.parties, 8, "Omar Said", true);
-    let suspended =
-        w.t.deployment(
-            &w.contract,
-            &w.site,
-            bench,
-            None,
-            DeploymentStatus::Suspended,
-        )
-        .await;
+    w.t.deployment(
+        &w.contract,
+        &w.site,
+        bench,
+        None,
+        DeploymentStatus::Suspended,
+    )
+    .await;
     let gone = w.t.staff.employ(&w.t.parties, 9, "Sami Aziz", false);
     w.t.deployment(&w.contract, &w.site, gone, None, DeploymentStatus::Active)
         .await;
@@ -242,7 +241,6 @@ async fn nobody_without_an_active_deployment_gets_a_case() {
     let run = w.run(date(2027, 3, 14)).await;
     assert!(run.opened.is_empty(), "{:?}", run.opened);
     assert!(w.t.tickets.all().is_empty());
-    let _ = suspended;
 }
 
 /// Approved leave counts as present: the days are counted from the end of the

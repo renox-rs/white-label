@@ -30,7 +30,7 @@ use wl_invoicing::{
     Invoice, StartChoice, cash_forecast_load, escalation,
 };
 use wl_kernel::approvals::{self, ApprovalRequest};
-use wl_kernel::cheques::{ChequeId, ChequeStatus, RegisterCheque, cheques};
+use wl_kernel::cheques::{ChequeStatus, RegisterCheque, cheques};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{DisputeBy, DisputeRequest, InvoiceId, InvoiceStatus, VatCategory};
 use wl_kernel::{LegalEntity, Subject};
@@ -177,7 +177,6 @@ async fn a_bounced_client_cheque_offers_the_three_paths_and_adds_no_fee() {
             "{path} is offered from bounced"
         );
     }
-    let _ = ChequeId(0);
 }
 
 // ---- Attendance -------------------------------------------------------------
@@ -338,7 +337,6 @@ async fn at_the_cut_off_an_unapproved_timesheet_is_paid_on_provisional_attendanc
             .is_err(),
         "payroll never waits for the client"
     );
-    let _ = (Weekday::Mon, Datelike::year(&nov(1)));
 }
 
 // ---- HR ---------------------------------------------------------------------

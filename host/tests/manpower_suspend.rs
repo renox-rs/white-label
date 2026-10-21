@@ -19,18 +19,14 @@ use wl_attendance::{AttendanceRecord, WorkLocation};
 use wl_documents::expiry;
 use wl_kernel::Subject;
 
-/// The client's notices about the suspension: the cover starts today, so the
-/// client is also told that cover is not found yet (`MPW.RUL.13`, BL-MPW-16),
-/// which has its own tests.
+/// The client's neutral notices about the suspension. The notice that cover is
+/// not found yet (`MPW.RUL.13`, BL-MPW-16) has its own type and is not among
+/// them.
 async fn about_the_suspension(
     app: &renox::testing::TestApp,
     a: &manpower_support::Account,
 ) -> Vec<wl_notify::Message> {
-    messages_to_party(app, "manpower.client_notice", a.client)
-        .await
-        .into_iter()
-        .filter(|m| !m.data.0.to_string().contains("Cover not found yet"))
-        .collect()
+    messages_to_party(app, "manpower.client_notice", a.client).await
 }
 
 /// AC1, AC3, AC4 and the refused check-in: W's work permit and health

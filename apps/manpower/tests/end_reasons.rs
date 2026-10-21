@@ -25,7 +25,6 @@ struct World {
     t: Booted,
     amal: User,
     md: User,
-    contract: ClientContract,
     d: Deployment,
     w: EmployeeId,
 }
@@ -60,14 +59,7 @@ async fn world(cover: bool) -> World {
             DeploymentStatus::Active,
         )
         .await;
-    World {
-        t,
-        amal,
-        md,
-        contract,
-        d,
-        w,
-    }
+    World { t, amal, md, d, w }
 }
 
 impl World {
@@ -291,7 +283,6 @@ async fn a_waiver_lets_the_md_withdraw_the_worker_now() {
     assert_eq!(d.end_reason.as_deref(), Some("client_non_payment"));
     assert_eq!(d.end_waiver.as_deref(), Some("WAIVER-7.pdf"));
     assert_eq!(d.ended_on, Some(date(2027, 3, 10)));
-    let _ = w.contract.id;
 }
 
 /// AC5: a deployment entered in error is ended with that reason and the
