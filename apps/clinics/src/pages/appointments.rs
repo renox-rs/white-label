@@ -333,12 +333,10 @@ async fn show(
                 line
             },
         ),
-        estimate: consent
-            .as_ref()
-            .map_or_else(
-                || none.clone(),
-                |c| format!("{} ({})", money_text(c.estimated_fils), c.lines_text()),
-            ),
+        estimate: consent.as_ref().map_or_else(
+            || none.clone(),
+            |c| format!("{} ({})", money_text(c.estimated_fils), c.lines_text()),
+        ),
         checked_in: visit.is_some(),
         visit_id: visit.as_ref().map_or(0, |v| v.id),
         can_record: user.has_permission(permissions::COVERAGE_RECORD)

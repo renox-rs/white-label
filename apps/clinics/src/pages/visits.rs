@@ -159,12 +159,10 @@ async fn show(
             || none.clone(),
             |c| format!("{} — {}", c.signer_name, c.signed_on),
         ),
-        estimate: consent
-            .as_ref()
-            .map_or_else(
-                || none.clone(),
-                |c| format!("{} ({})", money_text(c.estimated_fils), c.lines_text()),
-            ),
+        estimate: consent.as_ref().map_or_else(
+            || none.clone(),
+            |c| format!("{} ({})", money_text(c.estimated_fils), c.lines_text()),
+        ),
         holds,
         can_insure: user.has_permission(permissions::COVERAGE_RECORD)
             && visit.is_insured()

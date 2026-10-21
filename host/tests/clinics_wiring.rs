@@ -122,6 +122,10 @@ async fn doc_rul_03_tells_the_manager_and_not_the_owner() {
         .await
         .unwrap();
     let told: Vec<i64> = notices.iter().filter_map(|m| m.user_id).collect();
-    assert_eq!(told, [manager.id], "the manager is told once, the owner never");
+    assert_eq!(
+        told,
+        [manager.id],
+        "the manager is told once, the owner never"
+    );
     assert!(!told.contains(&owner.id));
 }

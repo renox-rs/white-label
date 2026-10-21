@@ -378,24 +378,33 @@ async fn a_card_request_queued_at_night_is_held_until_08_00() {
     let date = day(3).to_string();
 
     clock_at(&s.t, dubai(&date, 22, 15));
-    let ran = s
-        .t
-        .app
-        .at_travelled_time(card_requests::run_daily(s.t.state(), dubai(&date, 22, 15)))
-        .await
-        .unwrap();
+    let ran =
+        s.t.app
+            .at_travelled_time(card_requests::run_daily(s.t.state(), dubai(&date, 22, 15)))
+            .await
+            .unwrap();
     assert_eq!(ran, [booking.id]);
     s.t.app.run_jobs().await;
 
-    let messages = Message::query().order_by(Message::ID).get(s.t.db()).await.unwrap();
+    let messages = Message::query()
+        .order_by(Message::ID)
+        .get(s.t.db())
+        .await
+        .unwrap();
     let asked: Vec<_> = messages
         .iter()
         .filter(|m| m.type_key == CARD_UPLOAD_REQUEST)
         .collect();
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].status, MessageStatus::Deferred);
-    assert_eq!(asked[0].scheduled_for, Some(dubai(&day(4).to_string(), 8, 0)));
-    assert!(s.t.outbox.sent().is_empty(), "nothing sent in the quiet hours");
+    assert_eq!(
+        asked[0].scheduled_for,
+        Some(dubai(&day(4).to_string(), 8, 0))
+    );
+    assert!(
+        s.t.outbox.sent().is_empty(),
+        "nothing sent in the quiet hours"
+    );
 
     // Still held one minute before 08:00.
     clock_at(&s.t, dubai(&day(4).to_string(), 7, 59));

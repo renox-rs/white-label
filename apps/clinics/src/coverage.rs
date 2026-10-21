@@ -450,10 +450,8 @@ pub async fn choose(
         Choice::SelfPay => {
             // The price first: a service with none cannot be on a consent.
             let services = auth_check::services_of(&appointment, Some(&pending));
-            let wanted: Vec<(String, i64)> = services
-                .iter()
-                .map(|s| (s.code.clone(), s.units))
-                .collect();
+            let wanted: Vec<(String, i64)> =
+                services.iter().map(|s| (s.code.clone(), s.units)).collect();
             consent::price_lines(state, &wanted, appointment.visit_date).await?;
             let signed = SelfPayConsent::current(&state.db, booking)
                 .await?
@@ -524,8 +522,7 @@ pub async fn sign_consent(
             .map_or(1, |s| s.units);
         wanted.push((code.to_owned(), units));
     }
-    let signed =
-        consent::sign_lines(state, by, &appointment, signer_name, ip, &wanted, at).await?;
+    let signed = consent::sign_lines(state, by, &appointment, signer_name, ip, &wanted, at).await?;
     SelfPayConsent::query()
         .where_(SelfPayConsent::ID.eq(signed.id))
         .update(

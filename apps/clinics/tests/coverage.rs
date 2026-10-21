@@ -768,7 +768,11 @@ async fn a_self_pay_check_in_checks_every_service_of_the_visit() {
     .unwrap();
     let res = s.check_in(&s.booking).await;
     res.assert_status(422);
-    assert!(res.text().contains("signed self-pay consent"), "{}", res.text());
+    assert!(
+        res.text().contains("signed self-pay consent"),
+        "{}",
+        res.text()
+    );
     let res = s.outcome(&s.booking, "self_pay", None).await;
     res.assert_status(422);
 

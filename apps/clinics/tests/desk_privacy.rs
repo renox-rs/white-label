@@ -46,7 +46,10 @@ async fn the_desk_screens_show_no_visit_reason() {
     let booking = service::book(t.state(), new, Actor::staff(1), scheduling::now())
         .await
         .expect("the booking is made");
-    assert_eq!(booking.notes.as_deref(), Some("Chest pain, suspected angina (I20.9)"));
+    assert_eq!(
+        booking.notes.as_deref(),
+        Some("Chest pain, suspected angina (I20.9)")
+    );
     appointments::attach_policy(t.state(), booking.id, policy.id)
         .await
         .unwrap();
@@ -63,7 +66,10 @@ async fn the_desk_screens_show_no_visit_reason() {
         .assert_ok();
     for (page, path) in [
         ("appointments", "/clinics/appointments".to_owned()),
-        ("appointment", format!("/clinics/appointments/{}", booking.id)),
+        (
+            "appointment",
+            format!("/clinics/appointments/{}", booking.id),
+        ),
         ("policies", "/clinics/policies".to_owned()),
     ] {
         let res = t.app.get(&path).await;

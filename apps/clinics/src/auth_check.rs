@@ -162,7 +162,11 @@ pub fn shortfalls(needs: &[Need]) -> Vec<&Need> {
 /// The database's errors.
 pub async fn consented(state: &AppState, booking: i64, short: &[&Need]) -> Result<bool> {
     let current = SelfPayConsent::current(&state.db, booking).await?;
-    Ok(current.is_some_and(|c| short.iter().all(|need| c.units_of(&need.code) >= need.self_pay)))
+    Ok(current.is_some_and(|c| {
+        short
+            .iter()
+            .all(|need| c.units_of(&need.code) >= need.self_pay)
+    }))
 }
 
 /// Whether `consent` lists every one of `services` for at least its units:
