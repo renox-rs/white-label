@@ -512,7 +512,8 @@ async fn after_end(state: &AppState, id: i64, outcome: ChargebackOutcome) -> Res
 ///
 /// # Errors
 ///
-/// The database's errors.
+/// The database's errors. A payment that errors does not stop the run: the
+/// others are closed, and the first error is returned after the batch.
 pub async fn run_deadlines(state: &AppState, on: NaiveDate) -> Result<usize> {
     let late = Payment::query()
         .where_(Payment::STATUS.eq(PaymentStatus::ChargedBack))
@@ -522,14 +523,27 @@ pub async fn run_deadlines(state: &AppState, on: NaiveDate) -> Result<usize> {
         .get(&state.db)
         .await?;
     let mut closed = 0;
+    let mut first_error = None;
     for payment in late {
         match lose_by_system(state, &payment).await {
             Ok(Some(_)) => closed += 1,
             Ok(None) => {}
-            Err(other) => return Err(other.into_error()),
+            Err(other) => {
+                // One payment that errors must not stop (or starve) the
+                // others: log it and return the first error after the batch.
+                let error = other.into_error();
+                eprintln!(
+                    "payments:chargeback_deadlines: payment {} failed: {error}",
+                    payment.id
+                );
+                first_error.get_or_insert(error);
+            }
         }
     }
-    Ok(closed)
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(closed),
+    }
 }
 
 /// The final re-check of an approval about a payment, run before the kernel

@@ -237,6 +237,29 @@ async fn charged_back_again(t: &Booted) -> (Payment, InvoiceId) {
     (charged, invoice)
 }
 
+/// One charged-back payment that errors when the deadline closes it does not
+/// stop the others: the second is lost, the error is returned after the batch.
+#[renox::test]
+async fn a_payment_that_errors_does_not_stop_the_deadline_run() {
+    let t = boot_with_gateway(&FakeGateway::new()).await;
+    let (bad, _) = charged_back(&t).await;
+    let (good, _) = charged_back_again(&t).await;
+    assert!(bad.id < good.id, "the failing one is handled first");
+    renox::db::sql(format!(
+        "CREATE TRIGGER poison_payment BEFORE UPDATE ON wl_payments_payments \
+         WHEN NEW.id = {} BEGIN SELECT RAISE(ABORT, 'poisoned for the test'); END",
+        bad.id
+    ))
+    .execute(t.db())
+    .await
+    .unwrap();
+
+    let ran = chargeback_close::run_deadlines(t.state(), day(2027, 2, 11)).await;
+    assert!(ran.is_err(), "the error is reported after the batch");
+    assert_eq!(t.reload(&bad).await.status, PaymentStatus::ChargedBack);
+    assert_eq!(t.reload(&good).await.status, PaymentStatus::Reversed);
+}
+
 /// Lost by the gateway's webhook, and by hand for N-Genius.
 #[renox::test]
 async fn a_lost_dispute_reverses_the_payment_whoever_records_it() {
