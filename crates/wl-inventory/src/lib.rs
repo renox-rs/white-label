@@ -9,6 +9,7 @@ mod events;
 pub mod goods_receipt;
 pub mod hold_decide;
 pub mod hold_line;
+pub mod hold_reminder;
 pub mod hold_service;
 pub mod item;
 pub mod item_supplier;
@@ -210,6 +211,70 @@ impl WlInventory {
     pub fn hold_second_person_reasons(mut self, reasons: &[&str]) -> Self {
         self.config.hold_second_person_reasons =
             reasons.iter().map(|reason| (*reason).trim().to_lowercase()).collect();
+        self
+    }
+
+    /// H, the hours between two reminders of an open stock hold to the
+    /// people who decide it, and half the hours between two notices to the
+    /// escalation role (default 24; a vertical may set fewer for food, 06:
+    /// 2; `STK.RUL.07`).
+    pub fn hold_reminder_hours(mut self, hours: i64) -> Self {
+        self.config.hold_reminder_hours = hours.max(1);
+        self
+    }
+
+    /// H for the holds with `reason`; it wins over the default.
+    pub fn hold_reminder_hours_for_reason(mut self, reason: &str, hours: i64) -> Self {
+        let reason = reason.trim().to_lowercase();
+        self.config
+            .hold_reminder_hours_by_reason
+            .retain(|(listed, _)| *listed != reason);
+        self.config
+            .hold_reminder_hours_by_reason
+            .push((reason, hours.max(1)));
+        self
+    }
+
+    /// H for the holds on the location with `code`; it wins over the reason.
+    pub fn hold_reminder_hours_at(mut self, code: &str, hours: i64) -> Self {
+        let code = code.trim().to_owned();
+        self.config
+            .hold_reminder_hours_by_location
+            .retain(|(listed, _)| *listed != code);
+        self.config
+            .hold_reminder_hours_by_location
+            .push((code, hours.max(1)));
+        self
+    }
+
+    /// The role told every 2 x H about a hold nobody has decided (default
+    /// the business owner; 06: the kitchen manager).
+    pub fn hold_escalation_role(mut self, role: &str) -> Self {
+        self.config.hold_escalation_role = Some(role.trim().to_owned());
+        self
+    }
+
+    /// The escalation role for the holds with `reason`.
+    pub fn hold_escalation_role_for_reason(mut self, reason: &str, role: &str) -> Self {
+        let reason = reason.trim().to_lowercase();
+        self.config
+            .hold_escalation_role_by_reason
+            .retain(|(listed, _)| *listed != reason);
+        self.config
+            .hold_escalation_role_by_reason
+            .push((reason, role.trim().to_owned()));
+        self
+    }
+
+    /// The escalation role for the holds on the location with `code`.
+    pub fn hold_escalation_role_at(mut self, code: &str, role: &str) -> Self {
+        let code = code.trim().to_owned();
+        self.config
+            .hold_escalation_role_by_location
+            .retain(|(listed, _)| *listed != code);
+        self.config
+            .hold_escalation_role_by_location
+            .push((code, role.trim().to_owned()));
         self
     }
 
@@ -453,6 +518,10 @@ impl Module for WlInventory {
             .register();
         events::register(app);
         hold_decide::register(app);
+        // `STK.RUL.07`: the deciders of an open hold are reminded every H
+        // hours and the escalation role told every 2 x H.
+        hold_reminder::register_types();
+        hold_reminder::schedule(app);
         // `STK.RUL.08`: the notice type and the daily chase of the returns
         // that stay `dispatched`.
         chase::register_types();

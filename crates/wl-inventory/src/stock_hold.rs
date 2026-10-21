@@ -140,6 +140,14 @@ pub struct StockHold {
     pub cancelled_by: Option<i64>,
     /// When it closed or was cancelled.
     pub closed_at: Option<DateTime>,
+    /// The reminders to the deciders sent so far (`STK.RUL.07`).
+    pub reminders_sent: i64,
+    /// When the last reminder went out.
+    pub last_reminded_at: Option<DateTime>,
+    /// The notices to the escalation role sent so far.
+    pub escalations_sent: i64,
+    /// When the last escalation went out.
+    pub last_escalated_at: Option<DateTime>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

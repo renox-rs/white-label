@@ -838,6 +838,23 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.hold.cancel_reason",
         "placed in error",
     ),
+    // `STK.RUL.07`: the reminder and the escalation of an open hold.
+    (
+        "wl_inventory.hold.reminder_subject",
+        "Stock hold {{ number }} still waits for a decision",
+    ),
+    (
+        "wl_inventory.hold.reminder_body",
+        "Stock hold {{ number }} ({{ reason }}) has {{ lines }} line(s) nobody has decided, {{ hours }} hours after it was placed. Release, discard or return the stock.",
+    ),
+    (
+        "wl_inventory.hold.escalation_subject",
+        "Stock hold {{ number }} has waited {{ hours }} hours",
+    ),
+    (
+        "wl_inventory.hold.escalation_body",
+        "Stock hold {{ number }} ({{ reason }}) still has {{ lines }} line(s) to decide, {{ hours }} hours after it was placed. The people who decide it have been reminded.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

@@ -77,6 +77,10 @@ pub const DEFAULT_PENDING_ALERT_HOURS: i64 = 24;
 /// `STK.ACL.05`).
 pub const DEFAULT_SECOND_PERSON_REASONS: &[&str] = &["recall"];
 
+/// The hours between two reminders of an open stock hold by default (§6
+/// `STK.RUL.07`, H = 24).
+pub const DEFAULT_HOLD_REMINDER_HOURS: i64 = 24;
+
 /// The rejection reasons by default (§7).
 pub const DEFAULT_REASONS: &[&str] = &[
     "temperature",
@@ -136,6 +140,19 @@ pub struct InventoryConfig {
     /// The hold reasons whose release (a hold line decided `release`) needs
     /// a second holder of `lots.release` (`STK.ACL.05`, default `recall`).
     pub hold_second_person_reasons: Vec<String>,
+    /// The hours between two reminders of an open stock hold, H
+    /// (`STK.RUL.07`, default 24).
+    pub hold_reminder_hours: i64,
+    /// H for the holds of a reason: `(reason, hours)`.
+    pub hold_reminder_hours_by_reason: Vec<(String, i64)>,
+    /// H for the holds on a location: `(location code, hours)`.
+    pub hold_reminder_hours_by_location: Vec<(String, i64)>,
+    /// The role told every 2 x H, `None` for the business owner.
+    pub hold_escalation_role: Option<String>,
+    /// The role told for the holds of a reason: `(reason, role)`.
+    pub hold_escalation_role_by_reason: Vec<(String, String)>,
+    /// The role told for the holds on a location: `(location code, role)`.
+    pub hold_escalation_role_by_location: Vec<(String, String)>,
 }
 
 impl InventoryConfig {
@@ -145,6 +162,43 @@ impl InventoryConfig {
         self.hold_second_person_reasons
             .iter()
             .any(|listed| listed == reason)
+    }
+
+    /// H, the hours between two reminders of an open hold with `reason` on
+    /// the location with `location_code` (if any): the most specific
+    /// setting wins, the location over the reason over the default.
+    pub fn reminder_hours(&self, reason: &str, location_code: Option<&str>) -> i64 {
+        location_code
+            .and_then(|code| {
+                self.hold_reminder_hours_by_location
+                    .iter()
+                    .find(|(listed, _)| listed == code)
+            })
+            .or_else(|| {
+                self.hold_reminder_hours_by_reason
+                    .iter()
+                    .find(|(listed, _)| listed == reason)
+            })
+            .map_or(self.hold_reminder_hours, |(_, hours)| *hours)
+    }
+
+    /// The role told every 2 x H about an open hold with `reason` on the
+    /// location with `location_code` (if any), the most specific setting
+    /// first; `None` when none is set (the business owner is told).
+    pub fn escalation_role(&self, reason: &str, location_code: Option<&str>) -> Option<&str> {
+        location_code
+            .and_then(|code| {
+                self.hold_escalation_role_by_location
+                    .iter()
+                    .find(|(listed, _)| listed == code)
+            })
+            .or_else(|| {
+                self.hold_escalation_role_by_reason
+                    .iter()
+                    .find(|(listed, _)| listed == reason)
+            })
+            .map(|(_, role)| role.as_str())
+            .or(self.hold_escalation_role.as_deref())
     }
 
     /// The reason with `code`, if it is configured.
@@ -169,6 +223,12 @@ impl Default for InventoryConfig {
                 .iter()
                 .map(|reason| (*reason).to_owned())
                 .collect(),
+            hold_reminder_hours: DEFAULT_HOLD_REMINDER_HOURS,
+            hold_reminder_hours_by_reason: Vec::new(),
+            hold_reminder_hours_by_location: Vec::new(),
+            hold_escalation_role: None,
+            hold_escalation_role_by_reason: Vec::new(),
+            hold_escalation_role_by_location: Vec::new(),
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {
@@ -207,5 +267,32 @@ mod tests {
         assert_eq!(config.pending_alert_hours, 24);
         assert!(config.release_needs_second_person("recall"));
         assert!(!config.release_needs_second_person("quality"));
+        assert_eq!(config.hold_reminder_hours, 24);
+        assert_eq!(config.reminder_hours("quality", Some("FRIDGE-2")), 24);
+        assert_eq!(config.escalation_role("quality", None), None);
+    }
+
+    #[test]
+    fn the_most_specific_hours_and_role_win() {
+        let config = InventoryConfig {
+            hold_reminder_hours: 24,
+            hold_reminder_hours_by_reason: vec![("temperature".into(), 6)],
+            hold_reminder_hours_by_location: vec![("FRIDGE-2".into(), 2)],
+            hold_escalation_role: Some("owner".into()),
+            hold_escalation_role_by_reason: vec![("temperature".into(), "chef".into())],
+            hold_escalation_role_by_location: vec![("FRIDGE-2".into(), "kitchen_manager".into())],
+            ..InventoryConfig::default()
+        };
+        assert_eq!(config.reminder_hours("temperature", Some("FRIDGE-2")), 2);
+        assert_eq!(config.reminder_hours("temperature", Some("OTHER")), 6);
+        assert_eq!(config.reminder_hours("temperature", None), 6);
+        assert_eq!(config.reminder_hours("quality", Some("FRIDGE-2")), 2);
+        assert_eq!(config.reminder_hours("quality", None), 24);
+        assert_eq!(
+            config.escalation_role("temperature", Some("FRIDGE-2")),
+            Some("kitchen_manager")
+        );
+        assert_eq!(config.escalation_role("temperature", None), Some("chef"));
+        assert_eq!(config.escalation_role("quality", None), Some("owner"));
     }
 }

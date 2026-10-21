@@ -230,7 +230,7 @@ async fn deciders(db: &Db, locations: &BTreeSet<i64>) -> Result<Vec<i64>> {
 
 /// Tells the deciders of `locations` about `hold` with the notification
 /// `kind` and `data`.
-async fn tell_deciders(
+pub(crate) async fn tell_deciders(
     state: &AppState,
     hold: &StockHold,
     kind: &str,
