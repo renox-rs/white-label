@@ -21,9 +21,14 @@ use wl_kernel::scheduling::{
 };
 use wl_kernel::{PartyId, Subject};
 use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
+use wl_kernel::notify::{
+    self, MessageId, NotificationTypeDef, Notifier, NotifyChannel, NotifyFuture, NotifyRequest,
+    provide_notifier,
+};
 use wl_kernel::scheduling::{
     BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted, BookingNoShow,
-    BookingRescheduled, SlotReleased,
+    BookingReassigned, BookingRescheduled, Eligibility, EligibilityQuery, ResourceEligibility,
+    SlotReleased, provide_resource_eligibility,
 };
 use wl_scheduling::permissions as perm;
 use wl_scheduling::service::{self, Actor, NewBooking};
@@ -90,6 +95,7 @@ pub struct Events {
     pub completed: Recorded<BookingCompleted>,
     pub no_show: Recorded<BookingNoShow>,
     pub cancelled: Recorded<BookingCancelled>,
+    pub reassigned: Recorded<BookingReassigned>,
     pub released: Recorded<SlotReleased>,
 }
 
@@ -260,11 +266,80 @@ impl WorkDoneStatus for Work {
     }
 }
 
+/// `wl-notify` as the module sees it: the notifications asked of it.
+#[derive(Clone, Default)]
+pub struct Messages(Arc<Mutex<Vec<NotifyRequest>>>);
+
+impl Messages {
+    /// The notifications sent so far.
+    pub fn sent(&self) -> Vec<NotifyRequest> {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// The English e-mail body of `request`, filled in as `wl-notify` does.
+    pub fn body(request: &NotifyRequest) -> String {
+        let def: Arc<NotificationTypeDef> =
+            notify::notification_type(&request.type_key).expect("the type is registered");
+        let template = def
+            .template_for(NotifyChannel::Email, "en")
+            .expect("an English e-mail text");
+        notify::fill(&template.body, &request.data)
+    }
+}
+
+impl Notifier for Messages {
+    fn notify<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: NotifyRequest,
+    ) -> NotifyFuture<'a, Vec<MessageId>> {
+        Box::pin(async move {
+            let mut sent = self.0.lock().unwrap();
+            sent.push(request);
+            Ok(vec![MessageId(sent.len() as i64)])
+        })
+    }
+}
+
+/// The vertical's licence check: the resources it refuses.
+#[derive(Clone, Default)]
+pub struct Licences(Arc<Mutex<Vec<i64>>>);
+
+impl Licences {
+    /// From now on `resource` may not deliver the service (or may again).
+    pub fn refuse(&self, resource: i64, refused: bool) {
+        let mut all = self.0.lock().unwrap();
+        all.retain(|id| *id != resource);
+        if refused {
+            all.push(resource);
+        }
+    }
+}
+
+impl ResourceEligibility for Licences {
+    fn check<'a>(
+        &'a self,
+        _state: &'a AppState,
+        query: EligibilityQuery,
+    ) -> SchedulingFuture<'a, Eligibility> {
+        Box::pin(async move {
+            let refused = self.0.lock().unwrap().contains(&query.resource_id);
+            Ok(if refused {
+                Eligibility::Refused("the licence has expired".to_owned())
+            } else {
+                Eligibility::Eligible
+            })
+        })
+    }
+}
+
 /// Provides the fakes.
 struct Harness {
     portal: Portal,
     refunds: Refunds,
     work: Work,
+    messages: Messages,
+    licences: Licences,
 }
 
 impl Module for Harness {
@@ -276,6 +351,8 @@ impl Module for Harness {
         provide_portal_users(app, self.portal.clone());
         provide_payment_recorder(app, self.refunds.clone());
         provide_work_done_status(app, self.work.clone());
+        provide_notifier(app, self.messages.clone());
+        provide_resource_eligibility(app, self.licences.clone());
     }
 }
 
@@ -291,6 +368,10 @@ pub struct Booked {
     pub refunds: Refunds,
     /// The work done the vertical reports.
     pub work: Work,
+    /// The notifications the module sent.
+    pub messages: Messages,
+    /// The resources the vertical's licence check refuses.
+    pub licences: Licences,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
 }
@@ -516,6 +597,8 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
     let portal = Portal::default();
     let refunds = Refunds::default();
     let work = Work::default();
+    let messages = Messages::default();
+    let licences = Licences::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -525,6 +608,8 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
             portal: portal.clone(),
             refunds: refunds.clone(),
             work: work.clone(),
+            messages: messages.clone(),
+            licences: licences.clone(),
         });
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
@@ -532,6 +617,7 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
     let app = record(app, &events.completed);
     let app = record(app, &events.no_show);
     let app = record(app, &events.cancelled);
+    let app = record(app, &events.reassigned);
     let app = record(app, &events.released);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -547,6 +633,8 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
         portal,
         refunds,
         work,
+        messages,
+        licences,
         _views: views,
     }
 }
