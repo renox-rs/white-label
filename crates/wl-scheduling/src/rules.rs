@@ -103,7 +103,7 @@ async fn resource_names(db: &Db, booking: &Booking) -> Result<String> {
 }
 
 /// The scope of the location of `booking`, or of its first resource.
-async fn scope_of(db: &Db, booking: &Booking) -> Result<Scope> {
+pub(crate) async fn scope_of(db: &Db, booking: &Booking) -> Result<Scope> {
     if let Some(location) = booking.location() {
         return scopes::scope_of(db, &location).await;
     }

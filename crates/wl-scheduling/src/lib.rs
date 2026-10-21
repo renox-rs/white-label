@@ -258,6 +258,19 @@ impl Module for WlScheduling {
             conflict::leave_cancelled(&state, &event, renox::db::now()).await
         });
         app.provide(self.config.clone());
+        // A booking lies in the scope of its location (its branch), so that a
+        // vertical can tell which branch a booking named by an event is at.
+        wl_kernel::scopes::register(
+            wl_kernel::scheduling::BOOKING_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    match Booking::find(db, id).await? {
+                        Some(booking) => rules::scope_of(db, &booking).await,
+                        None => Ok(renox::auth::permissions::Scope::global()),
+                    }
+                })
+            },
+        );
         // wl-payments asks whether a booking still waits for its money.
         wl_kernel::payments::provide_prepaid_subjects(app, prepaid::PrepaidBookings);
         // In the app group of the staff sidebar; the label is the app's
