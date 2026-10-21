@@ -173,8 +173,9 @@ pub use payer_bills::{
 };
 pub use payments::{
     AllocationTarget, BankPayment, ChargebackClosed, ChargebackOutcome, DEPOSIT_SUBJECT_TYPE,
-    DepositId, Direction, NoPayments, NoPrepaidSubjects, PAYMENT_LINK_SUBJECT_TYPE, PaymentFailed,
-    PaymentFailureKind, PaymentId, PaymentLinkExpired, PaymentMethod, PaymentReceived,
+    DepositId, Direction, NoPaymentLinks, NoPayments, NoPrepaidSubjects, PAYMENT_LINK_SUBJECT_TYPE,
+    PaymentFailed, PaymentFailureKind, PaymentId, PaymentLinkExpired, PaymentLinkRef,
+    PaymentLinkRequest, PaymentLinks, PaymentMethod, PaymentReceived,
     PaymentRecorder, PaymentReversed, PaymentSource, PaymentStatus, PaymentSummary,
     PrepaidSubjects, RecordPayment, RefundApproved, RefundAttemptRef, RefundFailed,
     RefundFailedFrom, RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource,

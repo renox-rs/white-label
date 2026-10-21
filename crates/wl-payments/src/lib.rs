@@ -657,6 +657,7 @@ impl Module for WlPayments {
         payment_link::register(app);
         // How other modules record, allocate and read payments.
         wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
+        wl_kernel::payments::provide_payment_links(app, payment_link::Links);
         // How a vertical registers the post-dated cheques of an agreement.
         wl_kernel::cheques::provide_cheques(app, chequer::ChequeBook);
         // The latest closing balance of each bank account (`FIN.CFL.01`).

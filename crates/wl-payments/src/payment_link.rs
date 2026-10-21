@@ -22,7 +22,10 @@ use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::payments::{PAYMENT_LINK_SUBJECT_TYPE, PaymentLinkExpired};
+use wl_kernel::payments::{
+    PAYMENT_LINK_SUBJECT_TYPE, PaymentFuture, PaymentLinkExpired, PaymentLinkRef,
+    PaymentLinkRequest, PaymentLinks,
+};
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
 use crate::config_of;
@@ -494,6 +497,42 @@ pub fn id_of(state: &AppState, token: &str) -> Option<i64> {
 /// The path of the public page of link `id`, e.g. `/pay/ab12…`.
 pub fn path(state: &AppState, id: i64) -> String {
     format!("/pay/{}", token(state, id))
+}
+
+/// The links other modules ask for through the kernel's
+/// [`PaymentLinks`]: wl-scheduling's prepayment of a self-booking, expiring
+/// when the hold does. Decision: without a gateway there is no online
+/// payment, so the answer is `None` and the asking module decides.
+pub struct Links;
+
+impl PaymentLinks for Links {
+    fn create<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: PaymentLinkRequest,
+    ) -> PaymentFuture<'a, Option<PaymentLinkRef>> {
+        Box::pin(async move {
+            if installed_gateway(state).is_none() {
+                return Ok(None);
+            }
+            let mut new = NewLink::new(
+                request.party,
+                request.legal_entity_id,
+                request.amount,
+                &request.currency,
+            )
+            .prepaid(request.prepaid)
+            .expires_at(request.expires_at);
+            if let Some(user) = request.created_by {
+                new = new.created_by(user);
+            }
+            let link = create(state, new).await.map_err(TransitionError::into_error)?;
+            Ok(Some(PaymentLinkRef {
+                link: link.subject(),
+                path: path(state, link.id),
+            }))
+        })
+    }
 }
 
 /// Registers the listener that emits `PaymentLinkExpired` after an `expire`

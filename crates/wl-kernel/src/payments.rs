@@ -27,6 +27,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use renox::chrono::NaiveDate;
+use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -1063,6 +1064,74 @@ pub struct PaymentLinkExpired {
 }
 
 impl Event for PaymentLinkExpired {}
+
+/// A payment link another module asks of `wl-payments`: the party pays
+/// `amount` in advance for `prepaid` (a booking) until `expires_at`
+/// (wl-scheduling §5.2: the prepayment hold and the link's expiry are one
+/// timer).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentLinkRequest {
+    /// Who is asked to pay.
+    pub party: PartyId,
+    /// The legal entity whose books it belongs to.
+    pub legal_entity_id: i64,
+    /// The amount, in fils; above 0.
+    pub amount: i64,
+    /// The ISO currency code, e.g. `AED`.
+    pub currency: String,
+    /// The record paid in advance for (a booking).
+    pub prepaid: Subject,
+    /// When the link expires.
+    pub expires_at: DateTime,
+    /// The staff user who asked, when a user did.
+    pub created_by: Option<i64>,
+}
+
+/// A payment link that was made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentLinkRef {
+    /// The link (`payments.payment_link`).
+    pub link: Subject,
+    /// The path of its public page, e.g. `/pay/ab12…`.
+    pub path: String,
+}
+
+/// Makes payment links for other modules. `wl-payments` provides it; without
+/// that module, [`payment_links`] gives [`NoPaymentLinks`].
+pub trait PaymentLinks: Send + Sync + 'static {
+    /// Makes an `open` link for `request`. `None` when online payment is not
+    /// available (the module is off or no gateway is installed); the default.
+    /// An error when the request is refused (an unknown party, an amount of 0
+    /// or less, an expiry in the past).
+    fn create<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: PaymentLinkRequest,
+    ) -> PaymentFuture<'a, Option<PaymentLinkRef>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The links when `payments` is off: none can be made.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPaymentLinks;
+
+impl PaymentLinks for NoPaymentLinks {}
+
+/// Makes `links` the app's [`PaymentLinks`]; `wl-payments` calls it in
+/// `register`.
+pub fn provide_payment_links(app: &mut Registry, links: impl PaymentLinks) {
+    let links: Arc<dyn PaymentLinks> = Arc::new(links);
+    app.provide(links);
+}
+
+/// The app's [`PaymentLinks`], or [`NoPaymentLinks`] when none is provided.
+pub fn payment_links(state: &AppState) -> Arc<dyn PaymentLinks> {
+    match state.provided::<Arc<dyn PaymentLinks>>() {
+        Some(links) => Arc::clone(&links),
+        None => Arc::new(NoPaymentLinks),
+    }
+}
 
 /// How a chargeback that was not won ended (wl-payments §4).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
