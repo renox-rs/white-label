@@ -9,11 +9,13 @@ use renox::state_machine::TransitionError;
 use wl_kernel::Subject;
 use wl_kernel::payer_bills::{
     NewPayerBill, PayerBillFuture, PayerBillId, PayerBillStatus, PayerBillSummary, PayerBills,
+    RejectionDeadline, SubmissionError,
 };
 
 use crate::credit_notes::By;
 use crate::payer_bill::PayerBill;
 use crate::payer_issue;
+use crate::payer_rejection;
 use crate::payer_split;
 
 /// The module's [`PayerBills`].
@@ -93,6 +95,22 @@ impl PayerBills for PayerBilling {
                 .await
                 .map(|_| ())
                 .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn submission_rejected<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: PayerBillId,
+        errors: Vec<SubmissionError>,
+        by: Option<&'a AuthUser>,
+    ) -> PayerBillFuture<'a, RejectionDeadline> {
+        Box::pin(async move {
+            let (_, deadline) =
+                payer_rejection::submission_rejected(state, by_of(by), id.0, errors)
+                    .await
+                    .map_err(TransitionError::into_error)?;
+            Ok(RejectionDeadline { deadline })
         })
     }
 

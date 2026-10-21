@@ -28,11 +28,13 @@ use wl_kernel::payer_bills::PayerBillStatus;
 
 use crate::payer_bill::{PayerBill, SUBJECT_TYPE};
 use crate::payer_issue;
+use crate::payer_rejection;
 
 /// Every transition of the machine, in a stable order.
 fn all_transitions() -> Vec<Transition<PayerBill>> {
     let mut all = Vec::new();
     all.extend(payer_issue::transitions());
+    all.extend(payer_rejection::transitions());
     all
 }
 
@@ -76,7 +78,8 @@ pub(crate) fn register() {
 /// payer bill: the tax documents, the tasks, the notices and the events.
 pub(crate) fn register_events(app: &mut Registry) {
     app.listen(|event: Transitioned<PayerBill>, state: AppState| async move {
-        payer_issue::on_transition(&state, &event).await
+        payer_issue::on_transition(&state, &event).await?;
+        payer_rejection::on_transition(&state, &event).await
     });
 }
 

@@ -85,6 +85,7 @@ pub mod payer_bill_machine;
 mod payer_bill_pages;
 pub mod payer_contract;
 pub mod payer_issue;
+pub mod payer_rejection;
 pub mod payer_split;
 pub mod payer_tax;
 mod payer_texts;
@@ -1011,6 +1012,7 @@ impl Module for WlInvoicing {
             .model::<PayerAgreement>()
             .model::<PayerBill>()
             .model::<PayerBillLine>()
+            .model::<payer_rejection::PayerSubmissionError>()
             .view_data::<subscription_pages::IndexPage>()
             .view_data::<subscription_pages::ShowPage>()
             .view_data::<payer_bill_pages::IndexPage>()

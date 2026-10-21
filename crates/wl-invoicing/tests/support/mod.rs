@@ -5,6 +5,7 @@
 
 #![allow(dead_code)]
 
+pub mod payer;
 pub mod subscriptions;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -880,6 +881,8 @@ pub struct Booted {
     pub sub_settled: Recorded<SubscriptionSettled>,
     /// `SubscriptionCancelled`.
     pub sub_cancelled: Recorded<SubscriptionCancelled>,
+    /// The events of the payer bills.
+    pub payer: payer::PayerEvents,
 }
 
 impl Booted {
@@ -1703,6 +1706,7 @@ pub async fn boot_all(
     let sub_suspended = Recorded::new();
     let sub_settled = Recorded::new();
     let sub_cancelled = Recorded::new();
+    let payer_events = payer::PayerEvents::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let contracts = ContractDesk::default();
@@ -1761,6 +1765,7 @@ pub async fn boot_all(
     let app = record(app, &sub_suspended);
     let app = record(app, &sub_settled);
     let app = record(app, &sub_cancelled);
+    let app = payer_events.record(app);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1795,6 +1800,10 @@ pub async fn boot_all(
         perm::CASHFLOW_MANAGE,
         perm::SUBSCRIPTIONS_VIEW,
         perm::SUBSCRIPTIONS_MANAGE,
+        perm::PAYER_BILLS_VIEW,
+        perm::PAYER_BILLS_ISSUE,
+        perm::PAYER_BILLS_RECONCILE,
+        perm::PAYER_BILLS_WRITE_OFF,
     ];
     permissions::define_role(app.db(), "admin", &all)
         .await
@@ -1881,6 +1890,7 @@ pub async fn boot_all(
         sub_suspended,
         sub_settled,
         sub_cancelled,
+        payer: payer_events,
     }
 }
 

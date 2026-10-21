@@ -11,6 +11,10 @@
                        :title="tx['payer_bill.resubmit.title']" :description="tx['payer_bill.resubmit.description']" :submit-label="tx['payer_bill.resubmit.submit']" icon="send">
         <rx-textarea name="corrections" :label="tx['payer_bill.resubmit.corrections']" :id="'resubmit-payer-bill-corrections-' ~ bill.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_reject" :id="'reject-payer-bill-' ~ bill.id" :label="tx['payer_bill.reject.action']" :action="route('wl_invoicing.payer_bill_rejected', bill.id)"
+                       :title="tx['payer_bill.reject.title']" :description="tx['payer_bill.reject.description']" :submit-label="tx['payer_bill.reject.submit']" icon="x">
+        <rx-textarea name="errors" :label="tx['payer_bill.reject.errors']" :id="'reject-payer-bill-errors-' ~ bill.id" required/>
+      </rx-action-sheet>
     </rx-page-header>
     <rx-card :title="tx['payer_bill.sections.summary']">
       <rx-infolist columns="2">
@@ -38,6 +42,12 @@
       <rx-column :label="tx['payer_bill.lines.open']">{{ line.open }}</rx-column>
       <rx-column :label="tx['payer_bill.lines.code']" hide-narrow>{{ line.code }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['payer_bill.lines.empty']" icon="list"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="errors" :rows="errors" as="error" :key="error.id" :caption="tx['payer_bill.sections.errors']" card>
+      <rx-column :label="tx['payer_bill.errors_table.attempt']" hide-narrow>{{ error.attempt }}</rx-column>
+      <rx-column :label="tx['payer_bill.errors_table.code']">{{ error.code }}</rx-column>
+      <rx-column :label="tx['payer_bill.errors_table.message']">{{ error.message }}</rx-column>
+      <rx-column :label="tx['payer_bill.errors_table.date']" hide-narrow>{{ error.date }}</rx-column>
     </rx-table>
   </rx-stack>
 </rx-page>

@@ -6,6 +6,7 @@
 //! | `GET /payer-bills/{id}` | `wl_invoicing.payer_bill` | `payer_bills.view` |
 //! | `POST /payer-bills/{id}/issue` | `wl_invoicing.payer_bill_issue` | `payer_bills.issue` |
 //! | `POST /payer-bills/{id}/resubmit` | `wl_invoicing.payer_bill_resubmit` | `payer_bills.issue` |
+//! | `POST /payer-bills/{id}/submission-rejected` | `wl_invoicing.payer_bill_rejected` | `payer_bills.issue` |
 //! | `POST /payer-bills/{id}/transitions/{name}` | `wl_invoicing.payer_bill_transitions.*` | `payer_bills.view` and the transition's permission |
 //!
 //! The list shows each payer bill's number, payer, customer, source, state
@@ -31,6 +32,7 @@ use crate::credit_notes::By;
 use crate::payer_agreement::PayerAgreement;
 use crate::payer_bill::{PayerBill, lines_of};
 use crate::payer_issue;
+use crate::payer_rejection::{self, PayerSubmissionError};
 use crate::permissions;
 use crate::texts;
 
@@ -64,6 +66,8 @@ pub fn routes() -> Routes {
                 .name("wl_invoicing.payer_bill_issue")
                 .post("/payer-bills/{id}/resubmit", resubmit)
                 .name("wl_invoicing.payer_bill_resubmit")
+                .post("/payer-bills/{id}/submission-rejected", rejected)
+                .name("wl_invoicing.payer_bill_rejected")
                 .require_permission(permissions::PAYER_BILLS_ISSUE),
         )
 }
@@ -169,6 +173,16 @@ pub(crate) struct LineRow {
     code: String,
 }
 
+/// One error the channel gave.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ErrorRow {
+    id: i64,
+    attempt: i64,
+    code: String,
+    message: String,
+    date: String,
+}
+
 /// What a payer bill's page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-invoicing/payer_bill.html")]
@@ -190,8 +204,10 @@ pub(crate) struct ShowPage {
     denied: String,
     open: String,
     lines: Vec<LineRow>,
+    errors: Vec<ErrorRow>,
     can_issue: bool,
     can_resubmit: bool,
+    can_reject: bool,
 }
 
 /// `GET /payer-bills/{id}`: the bill's terms, lines and actions.
@@ -220,6 +236,17 @@ async fn show(
                 .unwrap_or_default(),
         })
         .collect();
+    let errors = PayerSubmissionError::of_bill(&state.db, bill.id)
+        .await?
+        .into_iter()
+        .map(|error| ErrorRow {
+            id: error.id,
+            attempt: error.attempt,
+            code: error.code,
+            message: error.message,
+            date: day(Some(error.recorded_on)),
+        })
+        .collect();
     let can_issue = user.has_permission(permissions::PAYER_BILLS_ISSUE);
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -244,6 +271,8 @@ async fn show(
         denied: amount_text(&bill.currency, bill.denied_total),
         open: amount_text(&bill.currency, bill.balance),
         lines,
+        errors,
+        can_reject: can_issue && bill.status == PayerBillStatus::Issued,
         can_issue: can_issue && bill.status == PayerBillStatus::Draft,
         can_resubmit: can_issue
             && matches!(
@@ -259,20 +288,16 @@ fn back(bill: &PayerBill) -> Result<Redirect> {
     Redirect::route("wl_invoicing.payer_bill", &[&bill.id])
 }
 
-/// The answer of an action: the success toast, or the guard's message as an
-/// error toast; any other refusal goes back as its status.
+/// The answer of an action: the success toast and the bill's page, or the
+/// refusal as its status (a guard's message is a 422 the page shows).
 fn answered(
     lang: &Lang,
     bill: &PayerBill,
     done: std::result::Result<PayerBill, TransitionError>,
     key: &str,
 ) -> Result<Response> {
-    let toast = match done {
-        Ok(_) => Toast::success(text(lang, key)),
-        Err(TransitionError::Guard(message)) => Toast::error(message),
-        Err(other) => return Err(other.into_error()),
-    };
-    Ok((toast, back(bill)?).into_response())
+    done.map_err(TransitionError::into_error)?;
+    Ok((Toast::success(text(lang, key)), back(bill)?).into_response())
 }
 
 /// `POST /payer-bills/{id}/issue`: issues the draft.
@@ -298,4 +323,20 @@ async fn resubmit(
     let corrections = form.get("corrections").map_or("", |c| c.trim());
     let done = payer_issue::resubmit(&state, By::User(&user), bill.id, corrections).await;
     answered(&lang, &bill, done, "payer_bill.resubmit.done")
+}
+
+/// `POST /payer-bills/{id}/submission-rejected`: records the channel's
+/// `errors` (one `CODE: message` per line) and sends the bill back to draft.
+async fn rejected(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(bill): Found<PayerBill>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let errors = payer_rejection::parse_errors(form.get("errors").map_or("", String::as_str));
+    let done = payer_rejection::submission_rejected(&state, By::User(&user), bill.id, errors)
+        .await
+        .map(|(rejected, _)| rejected);
+    answered(&lang, &bill, done, "payer_bill.reject.done")
 }

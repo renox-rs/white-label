@@ -76,6 +76,41 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "The payer bill is sent again.",
     ),
     (
+        "wl_invoicing.payer_bill.no_deadline",
+        "the agreement gives no deadline",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.rejection_errors",
+        "Give at least one error from the channel, each with its code and message.",
+    ),
+    (
+        "wl_invoicing.payer_bill.errors.rejection_after_remittance",
+        "A remittance is already recorded on this payer bill: it cannot go back to draft.",
+    ),
+    (
+        "wl_invoicing.payer_bill.reject.action",
+        "Record rejection",
+    ),
+    (
+        "wl_invoicing.payer_bill.reject.title",
+        "The channel rejected the submission",
+    ),
+    (
+        "wl_invoicing.payer_bill.reject.description",
+        "One error per line, as CODE: message. The bill goes back to draft with the same number; this is not a resubmission.",
+    ),
+    ("wl_invoicing.payer_bill.reject.submit", "Record rejection"),
+    ("wl_invoicing.payer_bill.reject.errors", "Channel errors"),
+    (
+        "wl_invoicing.payer_bill.reject.done",
+        "The rejection is recorded and the bill is a draft again.",
+    ),
+    ("wl_invoicing.payer_bill.sections.errors", "Submission errors"),
+    ("wl_invoicing.payer_bill.errors_table.attempt", "Attempt"),
+    ("wl_invoicing.payer_bill.errors_table.code", "Code"),
+    ("wl_invoicing.payer_bill.errors_table.message", "Message"),
+    ("wl_invoicing.payer_bill.errors_table.date", "Date"),
+    (
         "wl_invoicing.payer_bill.errors.agreement_inactive",
         "The payer agreement is not active.",
     ),

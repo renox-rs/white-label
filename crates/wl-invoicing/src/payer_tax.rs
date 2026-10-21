@@ -11,6 +11,14 @@
 //!   already carries the payer lines; the payer bill only records the payer
 //!   receivable share on it and no tax document is made here.
 //!
+//! - **A corrected amount** (a bill sent back by `submission_rejected` and
+//!   issued again with other claimed amounts) never edits the payer's tax
+//!   invoice and never issues it again in full (`FIN.ACL.01`): a lower
+//!   amount is a credit note for the difference against the invoice, a
+//!   higher one an extra tax invoice for the difference only. The invoice
+//!   keeps what it billed (`PayerBillLine::invoiced`), so each difference
+//!   is documented once.
+//!
 //! The documents are made after the transition has committed, by
 //! [`settle`], because a transition's effect cannot call another module's
 //! contract. The transition leaves `tax_document_pending` on the bill until
@@ -22,15 +30,19 @@
 use renox::prelude::*;
 use wl_kernel::LegalEntity;
 use wl_kernel::entities::is_trn;
-use wl_kernel::invoicing::{DraftLine, InvoiceDraft, VatCategory};
+use wl_kernel::invoicing::{CreditLine, DraftLine, InvoiceDraft, VatCategory};
 
+use crate::credit_notes::{self, By};
 use crate::invoicer::create_draft;
 use crate::payer_bill::{PayerBill, PayerBillLine, lines_of};
 use crate::texts::english;
 
-/// Whether `bill`, as it stands with `lines`, still needs a tax document.
-pub(crate) fn needs_documents(bill: &PayerBill, _lines: &[PayerBillLine]) -> bool {
-    bill.payer_is_recipient() && bill.payer_invoice_id.is_none()
+/// Whether `bill`, as it stands with `lines`, still needs a tax document:
+/// the payer's invoice is not issued yet, or a line claims another amount
+/// than the invoice billed for it.
+pub(crate) fn needs_documents(bill: &PayerBill, lines: &[PayerBillLine]) -> bool {
+    bill.payer_is_recipient()
+        && (bill.payer_invoice_id.is_none() || lines.iter().any(|l| l.invoiced != l.claimed))
 }
 
 /// Why the payer's tax invoice for `bill` could not be issued now, if it
@@ -86,10 +98,73 @@ pub(crate) async fn settle(state: &AppState, bill_id: i64) -> Result {
         return Ok(());
     }
     let lines = lines_of(&state.db, bill.id).await?;
-    if bill.payer_is_recipient() && bill.payer_invoice_id.is_none() {
-        issue_first(state, &bill, &lines).await?;
-    } else {
-        clear_flag(state, bill.id).await?;
+    match bill.payer_invoice_id {
+        None if bill.payer_is_recipient() => issue_first(state, &bill, &lines).await?,
+        Some(invoice_id) if bill.payer_is_recipient() => {
+            adjust(state, &bill, invoice_id, &lines).await?;
+            clear_flag(state, bill.id).await?;
+        }
+        _ => clear_flag(state, bill.id).await?,
+    }
+    Ok(())
+}
+
+/// Writes `invoiced = claimed` on `lines`.
+async fn mark_invoiced(state: &AppState, lines: &[&PayerBillLine]) -> Result {
+    for line in lines {
+        PayerBillLine::query()
+            .where_(PayerBillLine::ID.eq(line.id))
+            .update(
+                &state.db,
+                &[
+                    ("invoiced", &line.claimed),
+                    ("updated_at", &renox::db::now()),
+                ],
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+/// Documents a corrected amount against the payer's tax invoice
+/// `invoice_id`: a credit note for the lines that now claim less, an extra
+/// tax invoice for the lines that now claim more, each only for the
+/// difference. A step is recorded on the lines as soon as it is made, so a
+/// retry after a failure of the next step makes nothing twice.
+async fn adjust(
+    state: &AppState,
+    bill: &PayerBill,
+    invoice_id: i64,
+    lines: &[PayerBillLine],
+) -> Result {
+    let lower: Vec<&PayerBillLine> = lines.iter().filter(|l| l.invoiced > l.claimed).collect();
+    let credit: Vec<CreditLine> = lower
+        .iter()
+        .filter_map(|l| Some(CreditLine::new(l.invoice_line_position?, l.invoiced - l.claimed)))
+        .collect();
+    if !credit.is_empty() {
+        let reason = format!(
+            "Payer bill {}: corrected amount",
+            bill.number.as_deref().unwrap_or("-")
+        );
+        credit_notes::credit_partly(state, invoice_id, &credit, &reason, By::System(None))
+            .await
+            .map_err(renox::state_machine::TransitionError::into_error)?;
+        mark_invoiced(state, &lower).await?;
+    }
+    let higher: Vec<&PayerBillLine> = lines.iter().filter(|l| l.claimed > l.invoiced).collect();
+    if !higher.is_empty() {
+        let extra: Vec<(&PayerBillLine, i64)> =
+            higher.iter().map(|l| (*l, l.claimed - l.invoiced)).collect();
+        let invoice = create_draft(
+            &state.db,
+            draft_for(bill, &extra, " (additional amount)"),
+        )
+        .await?;
+        crate::issue::issue_for_payer_bill(state, &invoice)
+            .await
+            .map_err(renox::state_machine::TransitionError::into_error)?;
+        mark_invoiced(state, &higher).await?;
     }
     Ok(())
 }
