@@ -629,6 +629,30 @@ mod tests {
     }
 
     #[test]
+    fn a_traced_holder_round_trips_through_json_with_its_mark() {
+        let holder = TracedHolder {
+            line: Subject::new(RECALL_LINE_SUBJECT_TYPE, 7),
+            subject: Some(Subject::new("clinics.visit", 3)),
+            party: Some(PartyId(11)),
+            lot: Some(Subject::new(LOT_SUBJECT_TYPE, 9)),
+            location: None,
+            quantity_milli: 2_000,
+            on: None,
+            kind: "possible".into(),
+            mark: TraceMark::Possible,
+            sales: 1,
+            delivery_status: None,
+            notice: "pending".into(),
+        };
+        let json = renox::serde_json::to_string(&holder).unwrap();
+        assert!(json.contains("\"possible\""), "{json}");
+        assert_eq!(
+            renox::serde_json::from_str::<TracedHolder>(&json).unwrap(),
+            holder
+        );
+    }
+
+    #[test]
     fn the_dispatched_event_round_trips_through_json() {
         let dispatched = SupplierReturnDispatched {
             supplier_return: Subject::new(SUPPLIER_RETURN_SUBJECT_TYPE, 4),
