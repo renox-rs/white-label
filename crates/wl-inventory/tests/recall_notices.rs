@@ -192,6 +192,67 @@ async fn a_notice_needs_a_template_lines_and_a_party() {
     );
 }
 
+/// A line whose party is unknown cannot be told, so it stays `pending` and
+/// refuses the close until it is waived with a reason.
+#[renox::test]
+async fn a_line_with_the_party_unknown_blocks_the_close_until_it_is_waived() {
+    let t = boot().await;
+    let (recall, serum, l9) = traced_recall(&t, 1).await;
+    let manager = t.recaller("Rita").await;
+    let releaser = t.releaser("Ann").await;
+    let branch = t.named_location("BRANCH-2", "Branch 2").await;
+    t.stock_in(&serum, &branch, Some(&l9), 1_000, 1_000).await;
+    let job = Subject::new("clinics.job", 4);
+    t.movement(
+        MovementType::Issue,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        500,
+        &job,
+        Some(&job),
+        at(9),
+        false,
+    )
+    .await;
+    t.trace_as(&manager, &recall).await.assert_ok();
+    let lines = t.recall_lines(&recall).await;
+    let unknown = lines
+        .iter()
+        .find(|l| l.party_id.is_none())
+        .expect("a line with the party unknown")
+        .clone();
+    let known = lines.iter().find(|l| l.party_id.is_some()).unwrap();
+    t.notices_as(&manager, &recall, "patient", &[known])
+        .await
+        .assert_ok();
+    // The held stock is decided, so only the unknown line is left.
+    let hold = t.all_holds().await.pop().unwrap();
+    let held = t.hold_lines(&hold).await.remove(0);
+    t.decide_as(&releaser, &held, "discard").await.assert_ok();
+    assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Closed);
+
+    let refused = t.close_recall_as(&manager, &recall).await;
+    refused.assert_status(422);
+    assert!(refused.text().contains("pending"), "{}", refused.text());
+    assert_eq!(t.recall_now(&recall).await.status, RecallStatus::Traced);
+    assert!(t.recall_closed.all().is_empty());
+
+    t.waive_as(&manager, &unknown, "")
+        .await
+        .assert_status(422);
+    t.close_recall_as(&manager, &recall)
+        .await
+        .assert_status(422);
+    t.waive_as(&manager, &unknown, "Patient not on record")
+        .await
+        .assert_ok();
+    t.close_recall_as(&manager, &recall).await.assert_ok();
+    assert_eq!(t.recall_now(&recall).await.status, RecallStatus::Closed);
+    assert_eq!(t.recall_closed.all().len(), 1);
+}
+
 /// Done when 2: `MessageGaveUp` for line 2 returns it to `pending` and the
 /// recall owner gets one task for it; it can be sent again.
 #[renox::test]
