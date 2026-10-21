@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use wl_kernel::documents::dubai_date;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::scheduling::{ConflictCause, Initiator, SourceBlock};
 use wl_kernel::workforce::{EmployeeId, LeaveApproved, LeaveCancelled};
@@ -19,7 +20,7 @@ use wl_scheduling::{
     WlScheduling, conflict, links,
 };
 
-use support::{Booked, Messages, OTHER_PATIENT, PATIENT, boot, boot_with, dubai, now};
+use support::{Booked, Messages, OTHER_PATIENT, PATIENT, boot, boot_hr, boot_with, dubai, now};
 
 const HOUR: Duration = Duration::from_secs(3600);
 const DAY: &str = "2030-03-12";
@@ -141,6 +142,70 @@ async fn sick_leave_flags_the_bookings_of_the_day_and_cancels_none() {
     assert_eq!(blocks[0].source_ref.as_deref(), Some("501"));
     // Dr B is not Dr A's employee: no block, no conflict for their calendar.
     assert_eq!(blocks[0].resource_id, s.a.id);
+}
+
+/// #172 point 1 with the real `wl-hr`: a manager records Dr A's same-day sick
+/// leave at 10:30 (`sick_leave::record`, which emits `LeaveApproved` itself);
+/// the bookings from 10:30 on are flagged and none is cancelled, the one before
+/// is not. The clock is moved to the day, as `record` only takes today.
+#[renox::test]
+async fn the_sick_leave_recorded_in_hr_flags_the_bookings_of_the_day() {
+    let t = boot_hr().await;
+    let doctor = t.practitioner("Dr A", 61, None).await;
+    let service = t.service(&doctor).await;
+    let employee = doctor.employee_id.expect("an employee");
+    let day = dubai_date(now()) + renox::chrono::TimeDelta::days(3);
+    let day_text = day.to_string();
+    let before = t
+        .booking(&service, &[&doctor], dubai(&day_text, 10, 0))
+        .await;
+    let at_11 = t
+        .booking(&service, &[&doctor], dubai(&day_text, 11, 0))
+        .await;
+    let at_15 = t
+        .booking(&service, &[&doctor], dubai(&day_text, 15, 0))
+        .await;
+    let manager = t
+        .user("Hanan", &[wl_hr::permissions::LEAVE_APPROVE])
+        .await;
+
+    t.app
+        .travel((dubai(&day_text, 10, 30) - now()).to_std().expect("ahead"));
+    t.app
+        .at_travelled_time(async {
+            wl_hr::sick_leave::record(t.state(), manager.id, employee, day, day)
+                .await
+                .expect("the sick leave is recorded")
+        })
+        .await;
+
+    for flagged in [&at_11, &at_15] {
+        let row = t.reload(flagged.id).await;
+        assert!(row.conflict_block, "{} is flagged", row.number);
+        assert_eq!(row.status, BookingStatus::Booked, "nothing is cancelled");
+    }
+    assert!(!t.reload(before.id).await.has_conflict(), "it ended at 10:30");
+    assert!(t.events.cancelled.all().is_empty());
+    let raised = t.events.conflicts.all();
+    assert_eq!(raised.len(), 1);
+    assert_eq!(raised[0].resource, doctor.id);
+    assert_eq!(raised[0].cause, ConflictCause::Block);
+    assert_eq!(raised[0].earliest_start, dubai(&day_text, 11, 0));
+    let listed = conflict::conflicts(t.db(), Some(doctor.id), Some(conflict::day_bounds(day)))
+        .await
+        .unwrap();
+    assert_eq!(
+        listed.iter().map(|b| b.id).collect::<Vec<_>>(),
+        ids(&[&at_11, &at_15])
+    );
+    let block = AvailabilityBlock::query().first(t.db()).await.unwrap().unwrap();
+    assert_eq!(block.source, "leave");
+    assert_eq!(block.reason, "sick");
+    let late = block.starts_at - dubai(&day_text, 10, 30);
+    assert!(
+        late >= renox::chrono::TimeDelta::zero() && late < renox::chrono::TimeDelta::minutes(5),
+        "the block starts when the leave is recorded"
+    );
 }
 
 /// "The rest of their day": sick leave recorded at 10:30 blocks Dr A from
