@@ -166,7 +166,8 @@ pub fn payments_for(client_app: &str) -> WlPayments {
 /// 03 offers *client*, *business* and *driver* to the approver of a cash
 /// difference (never the customer, none preselected, `WRK.ACL.09`), and its
 /// drivers' cash escalation is the vertical's own rule (`LOG.RUL.13`, which
-/// replaces `FIN.RUL.22`).
+/// replaces `FIN.RUL.22`), and a run can be aborted for *driver unreachable*
+/// (the reason `LOG.RUL.13` uses, BL-DLV-08).
 pub fn delivery_for(client_app: &str) -> wl_delivery::WlDelivery {
     let module = wl_delivery::WlDelivery::new();
     match client_app {
@@ -176,7 +177,8 @@ pub fn delivery_for(client_app: &str) -> wl_delivery::WlDelivery {
                 CodAbsorber::Business,
                 CodAbsorber::Driver,
             ])
-            .replace_cash_escalation(true),
+            .replace_cash_escalation(true)
+            .abort_reasons(&["driver_unreachable"]),
         _ => module,
     }
 }

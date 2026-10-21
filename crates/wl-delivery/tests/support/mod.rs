@@ -505,21 +505,39 @@ pub async fn boot() -> World {
 
 /// `module` booted with the document guard `docs`.
 pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
-    boot_inner(module, docs, false).await
+    boot_inner(module, docs, Custody::Off).await
 }
 
 /// wl-delivery booted with the 03 document blocks and a cash custody, as when
 /// the payments module is on.
 pub async fn boot_with_custody() -> World {
-    boot_inner(WlDelivery::new(), Documents::logistics(), true).await
+    boot_inner(WlDelivery::new(), Documents::logistics(), Custody::Fake).await
+}
+
+/// wl-delivery booted with the real `wl-payments` as the cash custody (the
+/// client has `payments` on). `custody` and `payments` of the world are the
+/// idle fakes then.
+pub async fn boot_with_real_payments() -> World {
+    boot_inner(WlDelivery::new(), Documents::logistics(), Custody::Real).await
 }
 
 /// `module` booted with a cash custody.
 pub async fn boot_custody_with(module: WlDelivery) -> World {
-    boot_inner(module, Documents::logistics(), true).await
+    boot_inner(module, Documents::logistics(), Custody::Fake).await
 }
 
-async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> World {
+/// Where the cash custody comes from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Custody {
+    /// None: the payments module is off.
+    Off,
+    /// The recording fake of the delivery tests.
+    Fake,
+    /// The real `wl-payments`.
+    Real,
+}
+
+async fn boot_inner(module: WlDelivery, docs: Documents, custody_from: Custody) -> World {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -557,12 +575,14 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
         .provide(workforce)
         .provide(creator)
         .provide(notifier);
-    let app = if with_custody {
-        let held: Arc<dyn CashCustody> = Arc::new(custody.clone());
-        let recorder: Arc<dyn PaymentRecorder> = Arc::new(payments.clone());
-        app.provide(held).provide(recorder)
-    } else {
-        app
+    let app = match custody_from {
+        Custody::Fake => {
+            let held: Arc<dyn CashCustody> = Arc::new(custody.clone());
+            let recorder: Arc<dyn PaymentRecorder> = Arc::new(payments.clone());
+            app.provide(held).provide(recorder)
+        }
+        Custody::Real => app.module(wl_payments::WlPayments::new()),
+        Custody::Off => app,
     };
     let app = record(app, &assigned);
     let app = record(app, &out);
@@ -578,7 +598,12 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
     let app = record(app, &run_closed);
     let app = record(app, &handed_over);
     let app = record(app, &aborted);
-    let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let client = if custody_from == Custody::Real {
+        CLIENT.replace("[\"parties\", \"delivery\"]", "[\"parties\", \"invoicing\", \"delivery\", \"payments\"]")
+    } else {
+        CLIENT.to_owned()
+    };
+    let config = ClientConfig::parse(&client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
