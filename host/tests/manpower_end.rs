@@ -19,6 +19,7 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use support::{company, noon_clock, person, scoped_person, tenant};
+use wl_attendance::timesheet::{ApprovalBasis, ApproverKind};
 use wl_attendance::{Timesheet, TimesheetStatus};
 use wl_hr::{EmployeeStatus, NewEmployee, employees};
 use wl_kernel::ClientConfig;
@@ -176,4 +177,127 @@ async fn the_run_after_the_end_date_closes_the_last_timesheets_and_sends_the_wor
 
     assert!(is_on_bench(app.state(), w1).await.unwrap(), "active in HR");
     assert!(!is_on_bench(app.state(), w2).await.unwrap(), "in notice");
+}
+
+/// AC2, approval half: the client approver approves D1's closed and submitted
+/// timesheet after the contract is `ended` (and the deployment with it): the
+/// sheet is `approved` by them, the contract and the deployment stay `ended`.
+/// The next `MPW.RUL.05` run that bills those hours is deferred (see the
+/// header).
+#[renox::test]
+async fn the_client_approves_the_closed_timesheet_after_the_contract_has_ended() {
+    let config = ClientConfig::parse(CLIENT).unwrap();
+    let app = TestApp::new(host::app_for(config).unwrap().provide(noon_clock())).await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    renox::auth::permissions::define_role(app.db(), "client_approver", &[])
+        .await
+        .unwrap();
+    let carl = person(&app, "Carl", "client_approver").await;
+    let client = company(&app, "Gulf Tower LLC").await;
+    let last_day = today().checked_sub_days(Days::new(1)).unwrap();
+    let mut contract = ClientContract {
+        reference: "CC-0001".into(),
+        client_party_id: client.0,
+        start_date: today().checked_sub_days(Days::new(200)).unwrap(),
+        end_date: last_day,
+        payment_terms_days: 30,
+        notice_period_days: 30,
+        status: ContractStatus::Terminating,
+        ..ClientContract::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    contract
+        .insert_in_state(&mut tx, ContractStatus::Terminating, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let site = Site::create(
+        app.db(),
+        Site {
+            client_party_id: client.0,
+            name: "Tower A".into(),
+            active: true,
+            ..Site::default()
+        },
+    )
+    .await
+    .unwrap();
+    let worker = employee(&app, "Wasim Khan", EmployeeStatus::Active).await;
+    let mut deployment = Deployment {
+        employee_id: worker.0,
+        client_contract_id: contract.id,
+        client_party_id: client.0,
+        site_id: site.id,
+        role: "security_guard".into(),
+        shift_type: "day".into(),
+        start_date: today().checked_sub_days(Days::new(100)).unwrap(),
+        status: DeploymentStatus::Active,
+        ..Deployment::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    deployment
+        .insert_in_state(&mut tx, DeploymentStatus::Active, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let mut new = Timesheet::regular(
+        worker,
+        last_day.checked_sub_days(Days::new(6)).unwrap(),
+        today().checked_add_days(Days::new(2)).unwrap(),
+    )
+    .in_context(&deployment.subject());
+    new.approver_kind = ApproverKind::External;
+    new.approver_role = Some("client_approver".into());
+    let open = Timesheet::create(app.db(), new).await.unwrap();
+
+    app.run_scheduled(manpower::CONTRACT_END_TASK)
+        .await
+        .unwrap();
+    assert_eq!(
+        ClientContract::find_or_404(app.db(), contract.id)
+            .await
+            .unwrap()
+            .status,
+        ContractStatus::Ended
+    );
+    assert_eq!(
+        Timesheet::find_or_404(app.db(), open.id)
+            .await
+            .unwrap()
+            .status,
+        TimesheetStatus::Submitted
+    );
+
+    app.acting_as(&carl);
+    app.htmx()
+        .post(&format!("/timesheets/{}/approve", open.id), &[])
+        .await
+        .assert_ok();
+
+    let approved = Timesheet::find_or_404(app.db(), open.id).await.unwrap();
+    assert_eq!(approved.status, TimesheetStatus::Approved);
+    assert_eq!(approved.approval_basis, Some(ApprovalBasis::Approved));
+    assert_eq!(approved.approved_by, Some(carl.id));
+    assert_eq!(
+        approved.period_to, last_day,
+        "the hours stop at the end date"
+    );
+    assert_eq!(
+        ClientContract::find_or_404(app.db(), contract.id)
+            .await
+            .unwrap()
+            .status,
+        ContractStatus::Ended
+    );
+    assert_eq!(
+        Deployment::find_or_404(app.db(), deployment.id)
+            .await
+            .unwrap()
+            .status,
+        DeploymentStatus::Ended
+    );
 }
