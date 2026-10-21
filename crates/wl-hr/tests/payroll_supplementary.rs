@@ -7,7 +7,6 @@
 mod support;
 
 use renox::prelude::*;
-use renox::state_machine::StateMachine;
 use wl_hr::{
     Adjustment, AdjustmentKind, Employee, EmployeeStatus, FinalSettlement, LineStatus, PayrollLine,
     PayrollRun, PayrollRunStatus, Receivable, SettlementStatus, SifFile,
@@ -314,18 +313,7 @@ async fn hrm17_ac5_an_employee_who_left_is_recovered_from_the_settlement_or_owes
         (&g, SettlementStatus::Approved),
         (&h, SettlementStatus::Paid),
     ] {
-        let mut settlement = FinalSettlement {
-            employee_id: employee.id,
-            reason: "resignation".into(),
-            payee: "employee".into(),
-            ..FinalSettlement::default()
-        };
-        let mut tx = w.t.db().begin().await.unwrap();
-        settlement
-            .insert_in_state(&mut tx, status, "fixture")
-            .await
-            .unwrap();
-        tx.commit().await.unwrap();
+        w.t.settlement_in(employee, status, |_| {}).await;
         w.t.paid_line(&w.r, employee, WAGE, aed(1_300), &w.project_e)
             .await;
     }
