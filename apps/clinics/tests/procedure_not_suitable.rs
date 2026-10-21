@@ -6,6 +6,7 @@
 
 mod support;
 
+use renox::prelude::Model;
 use clinics::{AuthStatus, ChargeLine, PriorAuthorisation, VisitStatus};
 use support::desk::{Desk, PAYER, desk};
 use support::{PATIENT, day};

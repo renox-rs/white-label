@@ -9,6 +9,7 @@ mod support;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::AuthUser;
 use wl_invoicing::{PayerAgreement, VatRecipient};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
@@ -62,7 +63,7 @@ async fn payer_y(t: &Real) -> InsurancePolicy {
 }
 
 /// A `ready` claim of AED 400.00 for a visit on 2026-11-01.
-async fn ready(t: &Real, by: &User) -> Claim {
+async fn ready(t: &Real, by: &AuthUser) -> Claim {
     let claim = t.claim(d("2026-11-01"), &[("consultation", 40_000)]).await;
     claims::validate(t.state(), by, claim.id, None, dubai("2026-11-02", 9, 0))
         .await
@@ -133,7 +134,8 @@ async fn a_ready_claim_is_voided_and_the_visit_is_split_again_to_the_right_payer
     assert_eq!(t.bill_of(made).await.status, PayerBillStatus::Draft);
 
     // It stays in the list, marked void; its page points at the new claim.
-    let list = t.get(&cora, "/clinics/claims").await.assert_ok();
+    let response = t.get(&cora, "/clinics/claims").await;
+    let list = response.assert_ok();
     list.assert_see(&claim.number());
     list.assert_see("Void");
     t.get(&cora, &format!("/clinics/claims/{}", claim.id))
@@ -322,10 +324,10 @@ async fn a_duplicate_names_the_claim_it_duplicates() {
 
     // The picker: the other claim of the same patient, not the stranger's
     // nor the void one.
-    let page = t
+    let response = t
         .get(&cora, &format!("/clinics/claims/{}", second.id))
-        .await
-        .assert_ok();
+        .await;
+    let page = response.assert_ok();
     page.assert_see(&first.number());
     page.assert_dont_see(&stranger.number());
     page.assert_dont_see(&gone.number());

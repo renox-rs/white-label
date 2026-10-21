@@ -10,11 +10,14 @@
 #![allow(dead_code)]
 
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use renox::auth::{Auth, Permissions, permissions};
 use renox::chrono::NaiveDate;
 use renox::db::now;
 use renox::prelude::*;
+use renox::AuthUser;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_invoicing::{PayerAgreement, VatRecipient, WlInvoicing, permissions as inv};
 use wl_kernel::parties::{
@@ -118,6 +121,7 @@ impl PartyDirectory for AnyParty {
 struct Harness {
     tasks: Tasks,
     messages: Messages,
+    who: Arc<Mutex<Option<AuthUser>>>,
 }
 
 impl Module for Harness {
@@ -129,6 +133,17 @@ impl Module for Harness {
         provide_directory(app, AnyParty);
         provide_task_creator(app, self.tasks.clone());
         provide_notifier(app, self.messages.clone());
+    }
+
+    fn routes(&self) -> Routes {
+        let who = self.who.clone();
+        Routes::new().get("/t/whoami", move |user: AuthUser| {
+            let who = who.clone();
+            async move {
+                *who.lock().unwrap() = Some(user);
+                "ok"
+            }
+        })
     }
 }
 
@@ -145,6 +160,7 @@ pub struct Real {
     pub agreement: PayerAgreement,
     /// The payer contract with the same windows.
     pub contract: PayerContract,
+    who: Arc<Mutex<Option<AuthUser>>>,
     _views: tempfile::TempDir,
 }
 
@@ -157,6 +173,7 @@ pub async fn boot_real() -> Real {
     std::fs::write(&path, LAYOUT).unwrap();
     let tasks = Tasks::default();
     let messages = Messages::default();
+    let who = Arc::new(Mutex::new(None));
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -166,6 +183,7 @@ pub async fn boot_real() -> Real {
         .module(Harness {
             tasks: tasks.clone(),
             messages: messages.clone(),
+            who: who.clone(),
         });
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -207,6 +225,7 @@ pub async fn boot_real() -> Real {
         messages,
         agreement,
         contract,
+        who,
         _views: views,
     }
 }
@@ -228,9 +247,27 @@ impl Real {
         self.app.state()
     }
 
+    /// `user` as the signed-in user the services take: what a request of
+    /// theirs carries now (their roles as they are at this call).
+    pub async fn auth(&self, user: &User) -> AuthUser {
+        self.app.acting_as(user);
+        self.app.get("/t/whoami").await.assert_ok();
+        self.who
+            .lock()
+            .unwrap()
+            .take()
+            .expect("the probe route saw the signed-in user")
+    }
+
     /// A user holding exactly `grants` (through a role of their own). The
     /// same name gives the same user.
-    pub async fn user(&self, name: &str, grants: &[&str]) -> User {
+    pub async fn user(&self, name: &str, grants: &[&str]) -> AuthUser {
+        let user = self.user_row(name, grants).await;
+        self.auth(&user).await
+    }
+
+    /// The user row behind [`Real::user`].
+    async fn user_row(&self, name: &str, grants: &[&str]) -> User {
         let email = format!("{}@example.com", name.to_lowercase());
         if let Some(found) = User::find_by_email(self.db(), &email).await.unwrap() {
             return found;
@@ -248,7 +285,7 @@ impl Real {
 
     /// The billing coordinator: manages claims and records the payer's
     /// money; holds the role the claim tasks go to.
-    pub async fn coordinator(&self) -> User {
+    pub async fn coordinator(&self) -> AuthUser {
         let grants = [
             clinics::permissions::VISITS_VIEW,
             clinics::permissions::CLAIMS_MANAGE,
@@ -256,7 +293,7 @@ impl Real {
             inv::PAYER_BILLS_ISSUE,
             inv::PAYER_BILLS_RECONCILE,
         ];
-        let user = self.user("Cora", &grants).await;
+        let user = self.user_row("Cora", &grants).await;
         permissions::define_role(
             self.db(),
             clinics::permissions::BILLING_COORDINATOR_ROLE,
@@ -267,19 +304,19 @@ impl Real {
         user.assign_role(self.db(), clinics::permissions::BILLING_COORDINATOR_ROLE)
             .await
             .unwrap();
-        user
+        self.auth(&user).await
     }
 
     /// The second person who approves an overpayment or a recoupment.
-    pub async fn approver(&self) -> User {
+    pub async fn approver(&self) -> AuthUser {
         self.user("Bea", &[inv::PAYER_BILLS_VIEW, inv::PAYER_BILLS_RECONCILE])
             .await
     }
 
     /// The clinic manager: holds the role the window tasks go to.
-    pub async fn clinic_manager(&self) -> User {
+    pub async fn clinic_manager(&self) -> AuthUser {
         let grants = [clinics::permissions::VISITS_VIEW];
-        let user = self.user("Mia", &grants).await;
+        let user = self.user_row("Mia", &grants).await;
         permissions::define_role(
             self.db(),
             clinics::permissions::CLINIC_MANAGER_ROLE,
@@ -290,30 +327,30 @@ impl Real {
         user.assign_role(self.db(), clinics::permissions::CLINIC_MANAGER_ROLE)
             .await
             .unwrap();
-        user
+        self.auth(&user).await
     }
 
     /// The owner / medical director: told when a compliance-critical rule
     /// fails or misses its run.
-    pub async fn owner(&self) -> User {
+    pub async fn owner(&self) -> AuthUser {
         let grants = [
             clinics::permissions::VISITS_VIEW,
             clinics::permissions::MISSED_WINDOW_BILLING,
         ];
-        let user = self.user("Olga", &grants).await;
+        let user = self.user_row("Olga", &grants).await;
         permissions::define_role(self.db(), clinics::permissions::OWNER_ROLE, &grants)
         .await
         .unwrap();
         user.assign_role(self.db(), clinics::permissions::OWNER_ROLE)
             .await
             .unwrap();
-        user
+        self.auth(&user).await
     }
 
     /// A clinic manager called `name`: closes claims (`claims.writeoff`) and
     /// holds what the payer bill asks of the signed-in user. The same name
     /// gives the same user.
-    pub async fn manager(&self, name: &str) -> User {
+    pub async fn manager(&self, name: &str) -> AuthUser {
         self.user(
             name,
             &[

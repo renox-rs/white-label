@@ -86,7 +86,8 @@ async fn a_draft_claim_that_missed_its_window_is_written_off_and_reported() {
         .await
         .unwrap();
     assert_eq!((kpi.claims, kpi.amount), (1, 60_000));
-    let page = t.get(&cora, "/clinics/claims").await.assert_ok();
+    let response = t.get(&cora, "/clinics/claims").await;
+    let page = response.assert_ok();
     page.assert_see("AED 600.00");
     page.assert_see("not submitted in time");
     t.get(&cora, &format!("/clinics/claims/{}", claim.id))

@@ -6,6 +6,7 @@
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_inventory::item::value_of;
 use wl_inventory::{Item, Location, Lot, LotStatus, StockMovement};
 use wl_kernel::{PartyId, Subject};
