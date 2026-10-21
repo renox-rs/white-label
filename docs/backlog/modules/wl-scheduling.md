@@ -392,14 +392,14 @@ guard on `confirm`, `book` and `reassign`."
 - Must not leave the conflict flag set after a successful reassign.
 
 #### Done when
-- [ ] Given booking K with Dr A at 10:00 and an open conflict, when staff reassign to Dr B (free,
+- [x] Given booking K with Dr A at 10:00 and an open conflict, when staff reassign to Dr B (free,
       licensed) with `resource_unavailable`, K keeps its state, has Dr B, the conflict is cleared,
       Dr A's 10:00 slot is released and `BookingReassigned` is emitted.
-- [ ] The party message names Dr B, has accept / pick another time / cancel links, and does not
+- [x] The party message names Dr B, has accept / pick another time / cancel links, and does not
       contain the reason.
-- [ ] When the party cancels from that message, the code is `resource_unavailable`, initiated by
+- [x] When the party cancels from that message, the code is `resource_unavailable`, initiated by
       is `business` and the AED 200 deposit is refunded in full.
-- [ ] Reassigning to a resource busy at 10:00, or not eligible on that date, is refused.
+- [x] Reassigning to a resource busy at 10:00, or not eligible on that date, is refused.
 
 #### Out of scope
 Bulk actions (BL-SCH-05).
