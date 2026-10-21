@@ -29,6 +29,7 @@ use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceId, VatCategory, invo
 use wl_kernel::late_entries::{Assessment, assess, limits_for};
 use wl_kernel::notify::{GiveUpReaction, notification_type};
 use wl_kernel::{PartyId, PartyKind, Subject};
+use wl_parties::{CompanyDetails, NewParty, create};
 use wl_sales::LeadSource;
 
 use support::{
@@ -908,4 +909,73 @@ async fn the_claim_and_the_reweigh_dispute_open_in_the_real_ticket_desk() {
     )
     .await;
     assert!(refused.is_err(), "the real desk refuses an unknown category");
+}
+
+/// AC5 (ASP half): with the e-invoicing ASP out of reach (no adapter answers)
+/// the invoice is issued all the same, its transmission stays queued, and
+/// 24 hours after the issue `FIN.RUL.16` raises one task: not before, not
+/// twice.
+#[renox::test]
+async fn an_asp_that_is_down_for_24_hours_leaves_the_invoice_issued_and_raises_the_task() {
+    use wl_invoicing::EInvoiceTransmission;
+    use wl_invoicing::task::{InvoicingTask, TaskKind};
+    let app = logistics_booted_with(
+        host::Tuning::default().invoicing(|m| m.einvoicing("NEC", day(-10), "asp")),
+    )
+    .await;
+    let clerk = person(&app, "Ibrahim", ADMIN).await;
+    let client = create(
+        app.state(),
+        NewParty {
+            kind: PartyKind::Company,
+            legal_name_en: "Souq Express Trading LLC".into(),
+            company: Some(CompanyDetails {
+                einvoice_recipient_id: Some("0235:100000000000011".into()),
+                ..CompanyDetails::default()
+            }),
+            source: "back_office".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .party_id();
+    let invoice = support::issued_invoice(
+        &app,
+        &clerk,
+        client,
+        100_000,
+        wl_kernel::invoicing::VatCategory::Standard,
+        day(30),
+    )
+    .await;
+    assert_eq!(invoice.status, wl_kernel::invoicing::InvoiceStatus::Issued);
+    let queued = EInvoiceTransmission::query().get(app.db()).await.unwrap();
+    assert_eq!(queued.len(), 1, "the transmission waits for the ASP");
+
+    let stuck = |app: &TestApp| {
+        let db = app.db().clone();
+        async move {
+            InvoicingTask::query()
+                .where_(InvoicingTask::KIND.eq(TaskKind::EinvoiceStuck))
+                .get(&db)
+                .await
+                .unwrap()
+        }
+    };
+    app.travel(std::time::Duration::from_secs(23 * 3600));
+    app.at_travelled_time(wl_invoicing::einvoice_send::run_due(app.state()))
+        .await
+        .unwrap();
+    assert!(stuck(&app).await.is_empty(), "not before 24 hours");
+
+    app.travel(std::time::Duration::from_secs(2 * 3600));
+    for _ in 0..2 {
+        app.at_travelled_time(wl_invoicing::einvoice_send::run_due(app.state()))
+            .await
+            .unwrap();
+    }
+    let tasks = stuck(&app).await;
+    assert_eq!(tasks.len(), 1, "one task, once");
+    assert!(tasks[0].message.contains("24 hours"), "{}", tasks[0].message);
 }
