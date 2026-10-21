@@ -11,9 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use manpower::permissions as perm;
 use manpower::{
-    ClientContract, ContractActivated, ContractRenewed, ContractStatus, CoverRequested, Deployment,
-    DeploymentActivated, DeploymentCancelled, DeploymentEnded, DeploymentStatus, Manpower,
-    ManpowerRequest, RequestStatus, Site,
+    ClientContract, ContractActivated, ContractEnded, ContractRenewed, ContractStatus,
+    CoverRequested, Deployment, DeploymentActivated, DeploymentCancelled, DeploymentEnded,
+    DeploymentStatus, Manpower, ManpowerRequest, RequestStatus, Site,
 };
 use renox::auth::{Permissions, permissions};
 use renox::chrono::NaiveDate;
@@ -36,6 +36,7 @@ use wl_kernel::parties::{PartyDirectory, PartyFuture, provide_directory};
 use wl_kernel::payments::Direction;
 use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::rate_cards::{RateCardFuture, RateCardVersion, RateCards, provide_rate_cards};
+use wl_kernel::timesheets::{TimesheetClosing, TimesheetClosure, provide_timesheet_closing};
 use wl_kernel::workforce::{
     EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
 };
@@ -357,6 +358,42 @@ impl RateCards for Cards {
     }
 }
 
+/// The closing of timesheets of wl-attendance, as the vertical asks for it:
+/// it records each call and answers that the worker's open timesheet was
+/// submitted.
+#[derive(Clone, Default)]
+pub struct Closings(Arc<Mutex<Vec<(Subject, EmployeeId, NaiveDate)>>>);
+
+impl Closings {
+    /// Every call so far, oldest first: the context, the owner and the last day.
+    pub fn all(&self) -> Vec<(Subject, EmployeeId, NaiveDate)> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl TimesheetClosing for Closings {
+    fn close_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        context: &'a Subject,
+        owner: EmployeeId,
+        last_day: NaiveDate,
+    ) -> wl_kernel::attendance::LabourFuture<'a, Vec<TimesheetClosure>> {
+        self.0
+            .lock()
+            .unwrap()
+            .push((context.clone(), owner, last_day));
+        Box::pin(async move {
+            Ok(vec![TimesheetClosure {
+                timesheet: Subject::new("attendance.timesheet", owner.0),
+                period_to: last_day,
+                submitted: true,
+                message: None,
+            }])
+        })
+    }
+}
+
 /// A notifier that records every request and queues nothing.
 #[derive(Clone, Default)]
 pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
@@ -637,6 +674,8 @@ struct Fakes {
     cancelled: Recorded<DeploymentCancelled>,
     covers: Recorded<CoverRequested>,
     renewed: Recorded<ContractRenewed>,
+    contracts_ended: Recorded<ContractEnded>,
+    closings: Closings,
 }
 
 impl Module for Fakes {
@@ -658,6 +697,8 @@ impl Module for Fakes {
         record(app, &self.cancelled);
         record(app, &self.covers);
         record(app, &self.renewed);
+        record(app, &self.contracts_ended);
+        provide_timesheet_closing(app, self.closings.clone());
     }
 }
 
@@ -691,6 +732,10 @@ pub struct Booted {
     pub covers: Recorded<CoverRequested>,
     /// The events `ContractRenewed`.
     pub renewed: Recorded<ContractRenewed>,
+    /// `ContractEnded`.
+    pub contracts_ended: Recorded<ContractEnded>,
+    /// The calls to close an open timesheet.
+    pub closings: Closings,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// The contracts made, for their references.
@@ -938,6 +983,8 @@ pub async fn boot() -> Booted {
     let cancelled = Recorded::default();
     let covers = Recorded::default();
     let renewed = Recorded::default();
+    let contracts_ended = Recorded::default();
+    let closings = Closings::default();
     let invoices = Invoices::default();
     let register = Register::default();
     let fakes = Fakes {
@@ -954,6 +1001,8 @@ pub async fn boot() -> Booted {
         cancelled: cancelled.clone(),
         covers: covers.clone(),
         renewed: renewed.clone(),
+        contracts_ended: contracts_ended.clone(),
+        closings: closings.clone(),
     };
     let app = App::new()
         .module(Auth::new())
@@ -1017,6 +1066,8 @@ pub async fn boot() -> Booted {
         cancelled,
         covers,
         renewed,
+        contracts_ended,
+        closings,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),
         _views: views,

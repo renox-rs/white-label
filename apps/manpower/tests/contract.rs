@@ -2,7 +2,7 @@
 //! a client company, signed, and `activate`d once the signed contract and a
 //! rate card version accepted by the client are in place; `cancel` ends a
 //! draft that never came into force. The account manager acts only in their
-//! client companies. `hold`, `release`, `terminate`, `renew` and `end` come
+//! client companies. `hold`, `release`, `terminate`, `renew` and `end` (built later) come
 //! with BL-MPW-01, -03, -04, -05 and -06.
 
 mod support;
