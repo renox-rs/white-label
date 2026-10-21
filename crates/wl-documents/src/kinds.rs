@@ -584,7 +584,9 @@ pub async fn install(db: &Db) -> Result<usize> {
 /// client's changes and entries, but a legal block is locked again: legal
 /// block, override `never`, compliance-critical and review on, and each of
 /// its seeded entries is put back with its seeded mode and condition and
-/// locked. Returns how many kinds were created.
+/// locked. A kind whose override mode is fixed ([`KindSeed::override_fixed`])
+/// also gets back a seeded entry an administrator removed. Returns how many
+/// kinds were created.
 pub async fn install_seeds<'s>(
     db: &Db,
     seeds: impl IntoIterator<Item = &'s KindSeed>,
@@ -621,6 +623,29 @@ pub async fn install_seeds<'s>(
             kind.save(&mut tx).await?;
         }
         if !seed.legal_block {
+            // A kind with a fixed override mode keeps the entries that guard
+            // its transitions: one an administrator removed is put back
+            // (unlocked, the others are left as the client changed them).
+            if seed.override_fixed {
+                for block in &seed.blocks {
+                    let there = KindBlock::query()
+                        .where_(KindBlock::KIND_ID.eq(kind.id))
+                        .where_(KindBlock::GUARDED.eq(block.guarded.as_str()))
+                        .exists(&mut tx)
+                        .await?;
+                    if !there {
+                        let mut row = KindBlock {
+                            kind_id: kind.id,
+                            guarded: block.guarded.clone(),
+                            mode: block.mode,
+                            locked: false,
+                            ..KindBlock::default()
+                        };
+                        row.set_condition(block.condition.as_ref());
+                        KindBlock::create(&mut tx, row).await?;
+                    }
+                }
+            }
             continue;
         }
         let mut kind = kind;

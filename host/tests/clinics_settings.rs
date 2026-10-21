@@ -104,6 +104,40 @@ async fn the_practitioner_kinds_block_three_steps_and_their_override_mode_is_fix
         .assert_status(422);
 }
 
+/// An administrator who removed the three `blocks` entries of a practitioner
+/// kind loses nothing for good: the next install puts them back, with the
+/// seeded mode, and leaves the others as they are.
+#[renox::test]
+async fn install_restores_the_blocks_of_a_fixed_kind() {
+    use wl_documents::KindBlock;
+
+    let app = clinics_booted().await;
+    let kind = DocumentKind::by_key(app.db(), LICENCE_KIND)
+        .await
+        .unwrap()
+        .expect("seeded");
+    let guarded = |db| KindBlock::query().where_(KindBlock::KIND_ID.eq(kind.id)).count(db);
+    assert_eq!(guarded(app.db()).await.unwrap(), 3);
+    KindBlock::query()
+        .where_(KindBlock::KIND_ID.eq(kind.id))
+        .delete(app.db())
+        .await
+        .unwrap();
+    assert_eq!(guarded(app.db()).await.unwrap(), 0);
+
+    kinds::install(app.db()).await.unwrap();
+    assert_eq!(guarded(app.db()).await.unwrap(), 3, "put back");
+    let entries = guard(app.state())
+        .blocks_for(app.db(), "booking.start")
+        .await
+        .unwrap();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.kind == LICENCE_KIND && e.mode == BlockMode::Block)
+    );
+}
+
 /// Done when (licences and bookings), 3: the facility licence is the
 /// owner's, compliance-critical and blocks nothing; the Emirates ID and the
 /// insurance card are the receptionist's and tell the patient as the party.
