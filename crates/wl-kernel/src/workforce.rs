@@ -274,6 +274,26 @@ pub struct EmployeeActivated {
 
 impl Event for EmployeeActivated {}
 
+/// A leave request was approved (wl-hr §4 *Leave request* `approve`): 09
+/// Manpower opens the cover request for the leave period when the client
+/// contract requires cover (`MPW.RUL.06`). `wl-hr` emits it once the leave
+/// lifecycle is built.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeaveApproved {
+    /// The leave request, `hr.leave_request:5`.
+    pub leave: Subject,
+    /// The employee on leave.
+    pub employee: EmployeeId,
+    /// The first day of the leave.
+    pub from: NaiveDate,
+    /// The last day of the leave.
+    pub to: NaiveDate,
+    /// Whether the leave is unpaid.
+    pub unpaid: bool,
+}
+
+impl Event for LeaveApproved {}
+
 /// An onboarding was cancelled before the employee started
 /// (`cancel_onboarding`, approved under `HRM.ACL.07`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -452,6 +472,18 @@ pub trait Workforce: Send + Sync + 'static {
     /// portal access is switched off: one reported as absconded (`HRM.RUL.14`).
     /// The default switches nobody off.
     fn access_disabled<'a>(&'a self, _db: &'a Db, _user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Whether `employee` is `active` now: not in onboarding, on leave, in
+    /// notice or gone. A deployment starts only for such an employee (09
+    /// Manpower §7.1 *Deployment* `activate`). The default is no: a guard that
+    /// cannot find the employee does not let the work through.
+    fn is_active<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+    ) -> WorkforceFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
 

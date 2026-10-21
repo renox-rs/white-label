@@ -40,6 +40,7 @@ pub mod payments;
 pub mod payroll_calendar;
 pub mod portal;
 pub mod qualifications;
+pub mod rate_cards;
 pub mod role_tasks;
 pub mod sales;
 pub mod scopes;
@@ -171,6 +172,7 @@ pub use payments::{
     UnpaidRefund,
 };
 pub use qualifications::{NoQualifications, QualificationStatus, Qualifications};
+pub use rate_cards::{NoRateCards, RateCardVersion, RateCards};
 pub use sales::{
     Attribute, AttributionTarget, CampaignActivated, CampaignAttribution, CampaignEnded,
     CampaignId, CustomerAcquired, CustomerAcquisitionChanged, FirstSale, LEAD_SUBJECT_TYPE,
@@ -209,8 +211,8 @@ pub use workforce::{
 /// The kernel's permissions (wl-kernel §6).
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
-    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, FailedPayrollLine, NoWorkforce,
-    ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted,
+    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, FailedPayrollLine, LeaveApproved,
+    NoWorkforce, ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted,
     PAY_ACCOUNT_SUBJECT_TYPE, PAYROLL_RUN_SUBJECT_TYPE, PayAccountChanged, PayrollLinesFailed,
     PayrollRunId, PayrollRunPaid, PayrollRunReturned, SETTLEMENT_SUBJECT_TYPE, SettlementDisputed,
     SettlementId, SettlementPaid, StaffProfile, Workforce, provide_workforce, workforce,

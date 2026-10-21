@@ -130,6 +130,18 @@ impl Workforce for Staff {
         })
     }
 
+    fn is_active<'a>(
+        &'a self,
+        state: &'a AppState,
+        employee: EmployeeId,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(Employee::find(&state.db, employee.0)
+                .await?
+                .is_some_and(|row| row.status == EmployeeStatus::Active))
+        })
+    }
+
     fn access_disabled<'a>(&'a self, db: &'a Db, user_id: i64) -> WorkforceFuture<'a, bool> {
         Box::pin(async move {
             let employees = Employee::query()
