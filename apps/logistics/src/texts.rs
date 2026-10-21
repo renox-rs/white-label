@@ -814,6 +814,18 @@ const TEXTS: &[(&str, &str)] = &[
         "A request was made to pay your cash on delivery remittances to a new bank account ending {{ last4 }}. If you asked for it, confirm it with this link: {{ link }} If you did not, ignore this message: nothing changes without your confirmation.",
     ),
     (
+        "logistics.account.confirm_page_title",
+        "Confirm the new bank account",
+    ),
+    (
+        "logistics.account.confirm_page_body",
+        "A request was made to pay your cash on delivery remittances to a new bank account ending {{ last4 }}. If you asked for it, press the button. If you did not, close this page: nothing changes without your confirmation.",
+    ),
+    (
+        "logistics.account.confirm_page_button",
+        "Confirm the new bank account",
+    ),
+    (
         "logistics.account.confirmed_page",
         "Thank you. The new bank account is confirmed. It is used for your payments once our team has approved it too.",
     ),

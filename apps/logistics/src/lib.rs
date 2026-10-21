@@ -123,6 +123,7 @@ impl Module for Logistics {
             .view_data::<pages::ShowPage>()
             .view_data::<remittance_pages::IndexPage>()
             .view_data::<remittance_pages::ShowPage>()
+            .view_data::<account::ConfirmPage>()
             .view_data::<cod::IndexPage>()
             .view_data::<freight_pages::ShowPage>()
             .view_data::<reversal_pages::IndexPage>();
@@ -130,6 +131,7 @@ impl Module for Logistics {
             for (name, source) in pages::VIEWS
                 .iter()
                 .chain(remittance_pages::VIEWS)
+                .chain(account::VIEWS)
                 .chain(cod::VIEWS)
                 .chain(freight_pages::VIEWS)
                 .chain(reversal_pages::VIEWS)

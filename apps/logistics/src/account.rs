@@ -18,8 +18,10 @@
 //!   the requester. The decision is a guard of the change's own machine, as
 //!   for the adjustment lines, not a kernel approval request.
 //! - **Confirmation** ([`confirm`]): the signed link
-//!   `GET /remittances/accounts/{id}/confirm` (public: the signature is the
-//!   credential; opening it confirms, as the portal's signed links do).
+//!   `/remittances/accounts/{id}/confirm` (public: the signature is the
+//!   credential). Opening it (`GET`) only shows a page with a button: a mail
+//!   scanner or a prefetch opens links and must not move money. The button
+//!   posts to the same signed address (`POST`), which confirms.
 //! - **Active.** The second of the two makes the change `active`: the
 //!   account becomes the client's remittance account
 //!   ([`crate::reweigh::ClientTerms::bank_account`]). Until then remittances
@@ -717,12 +719,84 @@ pub(crate) fn register(app: &mut Registry) {
 /// requests of the staff and of a client user.
 pub fn routes() -> Routes {
     Routes::new()
-        .get("/remittances/accounts/{id}/confirm", confirm_link)
+        .get("/remittances/accounts/{id}/confirm", confirm_page)
         .name(CONFIRM_ROUTE)
+        .post("/remittances/accounts/{id}/confirm", confirm_link)
+        .name("logistics.account_confirm_post")
 }
 
-/// `GET /remittances/accounts/{id}/confirm`: the signed link; opening it
-/// confirms the change. An altered or expired signature answers 403.
+/// The templates, compiled in.
+pub(crate) const VIEWS: &[(&str, &str)] = &[(
+    "logistics/account_confirm.html",
+    include_str!("../views/logistics/account_confirm.html"),
+)];
+
+/// The page the confirmation link opens.
+#[derive(Serialize, ViewData)]
+#[view(template = "logistics/account_confirm.html")]
+pub(crate) struct ConfirmPage {
+    tx: std::collections::BTreeMap<&'static str, String>,
+    /// The address the button posts to: the signed link itself.
+    action: String,
+    /// Whether the change still waits for the client.
+    can_confirm: bool,
+}
+
+/// `GET /remittances/accounts/{id}/confirm`: the signed link opens a page that
+/// says which account is to be confirmed and has the button. It changes
+/// nothing. An altered or expired signature answers 403, a link that no
+/// longer works 422.
+async fn confirm_page(
+    _signature: ValidSignature,
+    State(state): State<AppState>,
+    lang: Lang,
+    renox::axum::extract::OriginalUri(uri): renox::axum::extract::OriginalUri,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    let change = load(&state, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    let waiting = matches!(
+        change.status,
+        AccountChangeStatus::Pending | AccountChangeStatus::Approved
+    ) && change.expires_at > renox::db::now();
+    let done = matches!(
+        change.status,
+        AccountChangeStatus::Confirmed | AccountChangeStatus::Active
+    );
+    if !waiting && !done {
+        return Err(guard(english("logistics.account.link_dead", &[])).into_error());
+    }
+    let last = change
+        .account
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    let mut tx = std::collections::BTreeMap::new();
+    tx.insert("title", t(&lang, "logistics.account.confirm_page_title"));
+    tx.insert(
+        "body",
+        if waiting {
+            english("logistics.account.confirm_page_body", &[("last4", &last)])
+        } else {
+            t(&lang, "logistics.account.confirmed_page")
+        },
+    );
+    tx.insert("button", t(&lang, "logistics.account.confirm_page_button"));
+    Ok(View::typed(ConfirmPage {
+        tx,
+        action: uri.to_string(),
+        can_confirm: waiting,
+    }))
+}
+
+/// `POST /remittances/accounts/{id}/confirm`: the button of the page. The
+/// signature of the address is the credential; the confirmation is
+/// recorded. An altered or expired signature answers 403.
 async fn confirm_link(
     _signature: ValidSignature,
     State(state): State<AppState>,

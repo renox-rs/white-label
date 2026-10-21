@@ -78,6 +78,23 @@ fn confirmation_path(w: &World) -> String {
     link[at..].to_owned()
 }
 
+/// The client opens the link of its e-mail and presses the button: opening
+/// only shows the page, the button posts to the same signed address.
+async fn confirm_by_link(w: &World) {
+    let before = the_change(w).await.status;
+    let path = confirmation_path(w);
+    w.get(&w.noor, &path)
+        .await
+        .assert_ok()
+        .assert_see("Confirm the new bank account");
+    assert_eq!(
+        the_change(w).await.status,
+        before,
+        "opening the link changes nothing"
+    );
+    w.post(&w.noor, &path, &[]).await.assert_ok();
+}
+
 async fn the_change(w: &World) -> AccountChange {
     AccountChange::query()
         .order_by_desc(AccountChange::ID)
@@ -198,12 +215,36 @@ async fn a_new_account_is_active_after_a_second_user_approves_and_the_client_con
     );
     assert_eq!(the_account(&w).await.as_deref(), Some(OLD));
 
-    w.get(&w.noor, &confirmation_path(&w)).await.assert_ok();
+    confirm_by_link(&w).await;
     let active = the_change(&w).await;
     assert_eq!(active.status, AccountChangeStatus::Active);
     assert_eq!(active.approved_by, Some(w.bashar.id));
     assert!(active.confirmed_at.is_some());
     assert_eq!(the_account(&w).await.as_deref(), Some(NEW));
+}
+
+/// LOG.ACL.13: a mail scanner or a prefetch opens (GET) the link of the
+/// e-mail: nothing is confirmed. The altered link is refused, also by POST.
+#[renox::test]
+async fn opening_the_confirmation_link_does_not_confirm_the_account() {
+    let (w, _r12) = paid().await;
+    ask(&w, &w.amal, NEW).await.assert_status(303);
+    let path = confirmation_path(&w);
+    for _ in 0..2 {
+        w.get(&w.noor, &path).await.assert_ok();
+    }
+    let change = the_change(&w).await;
+    assert_eq!(change.status, AccountChangeStatus::Pending);
+    assert_eq!(change.confirmed_at, None);
+    assert_eq!(the_account(&w).await.as_deref(), Some(OLD));
+
+    let altered = path.replace("signature=", "signature=0");
+    w.get(&w.noor, &altered).await.assert_status(403);
+    w.post(&w.noor, &altered, &[]).await.assert_status(403);
+    assert_eq!(the_change(&w).await.status, AccountChangeStatus::Pending);
+
+    w.post(&w.noor, &path, &[]).await.assert_ok();
+    assert_eq!(the_change(&w).await.status, AccountChangeStatus::Confirmed);
 }
 
 /// The two conditions are met in either order.
@@ -212,7 +253,7 @@ async fn the_client_may_confirm_before_the_approval() {
     let (w, _r12) = paid().await;
     ask(&w, &w.amal, NEW).await.assert_status(303);
     let change = the_change(&w).await;
-    w.get(&w.noor, &confirmation_path(&w)).await.assert_ok();
+    confirm_by_link(&w).await;
     assert_eq!(the_change(&w).await.status, AccountChangeStatus::Confirmed);
     assert_eq!(the_account(&w).await.as_deref(), Some(OLD));
     w.post(
@@ -283,7 +324,7 @@ async fn repay_waits_for_the_new_account_and_then_shows_the_new_reference() {
         .await
         .assert_status(422);
 
-    w.get(&w.noor, &confirmation_path(&w)).await.assert_ok();
+    confirm_by_link(&w).await;
     // The reference must be a new one, and the permission is needed.
     w.post(&w.amal, &repay, &[("payment_reference", "TRF-1")])
         .await
@@ -466,6 +507,10 @@ async fn a_change_not_approved_and_confirmed_in_14_days_lapses() {
         .await
         .assert_status(422)
         .assert_see("This link no longer works.");
+    w.post(&w.noor, &confirmation_path(&w), &[])
+        .await
+        .assert_status(422)
+        .assert_see("This link no longer works.");
     assert_eq!(the_account(&w).await.as_deref(), Some(OLD));
     // The requester is told.
     assert!(w.notices.users_of_type(STAFF_NOTICE).contains(&w.amal.id));
@@ -519,4 +564,26 @@ async fn an_account_that_is_no_iban_or_is_the_one_on_file_is_refused() {
         1,
         "nothing was changed"
     );
+}
+
+/// AC5: the daily 03:00 job is on the scheduler and lapses a change that was
+/// not approved and confirmed within 14 days.
+#[renox::test]
+async fn the_scheduled_job_lapses_a_change_after_14_days() {
+    let (w, _r12) = paid().await;
+    ask(&w, &w.amal, NEW).await.assert_status(303);
+    w.app.kernel().run_scheduled(account::TASK).await.unwrap();
+    assert_eq!(
+        the_change(&w).await.status,
+        AccountChangeStatus::Pending,
+        "not yet due"
+    );
+    w.app
+        .travel(std::time::Duration::from_secs(14 * 24 * 3600 + 3_600));
+    w.app
+        .at_travelled_time(w.app.kernel().run_scheduled(account::TASK))
+        .await
+        .expect("the task is registered and runs");
+    assert_eq!(the_change(&w).await.status, AccountChangeStatus::Lapsed);
+    assert_eq!(the_account(&w).await.as_deref(), Some(OLD));
 }
