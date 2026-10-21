@@ -216,13 +216,22 @@ async fn a_denied_claim_is_resubmitted_within_the_window_and_the_limit() {
 async fn resubmit_is_refused_beyond_the_limit_and_the_window() {
     let b = billed().await;
     b.send().await;
+    // Two resubmissions through the route, each after the payer's answer.
+    for round in 1..=2 {
+        b.answered(ClaimStatus::Denied, day(0)).await;
+        b.act("resubmit", &[("corrections", "fixed")])
+            .await
+            .assert_ok();
+        assert_eq!(b.claim().await.resubmission_count, round);
+    }
     b.answered(ClaimStatus::Denied, day(0)).await;
-    b.set(&[("resubmission_count", &2_i64)]).await;
+    let before = b.bill().resubmissions;
+    assert_eq!(before, 2);
     let res = b.act("resubmit", &[("corrections", "fixed again")]).await;
     res.assert_status(422);
     assert!(res.text().contains("2 resubmissions"), "{}", res.text());
     assert_eq!(b.claim().await.status, ClaimStatus::Denied);
-    assert_eq!(b.bill().resubmissions, 0, "the payer bill was not called");
+    assert_eq!(b.bill().resubmissions, 2, "the payer bill was not called");
 
     b.set(&[
         ("resubmission_count", &0_i64),
