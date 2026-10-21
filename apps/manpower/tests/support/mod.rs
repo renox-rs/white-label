@@ -6,7 +6,8 @@
 
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use manpower::permissions as perm;
@@ -24,6 +25,10 @@ use renox::testing::{TestApp, TestResponse};
 use wl_kernel::cheques::{
     ChequeBounceResolved, ChequeBounced, ChequeFuture, ChequeId, ChequeOutcome, ChequeStatus,
     ChequeSummary, Cheques, NoCheques, provide_cheques,
+};
+use wl_kernel::documents::{
+    BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, InvalidReason,
+    RecordFlag, Validity, provide_guard,
 };
 use wl_kernel::invoicing::{
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
@@ -394,11 +399,123 @@ impl TimesheetClosing for Closings {
     }
 }
 
+/// The document guard of wl-documents, as the vertical asks it: a kind is
+/// valid unless a test expired it for the employee; no kind blocks anything
+/// (the guard of `MPW.ACL.07` is tested with the real module in the host).
+#[derive(Clone, Default)]
+pub struct Documents(Arc<Mutex<BTreeSet<(i64, String)>>>);
+
+impl Documents {
+    /// The `kind` of employee `employee` is expired from now on.
+    pub fn expire(&self, employee: i64, kind: &str) {
+        self.0.lock().unwrap().insert((employee, kind.to_owned()));
+    }
+
+    /// A renewed `kind` of employee `employee` is accepted.
+    pub fn renew(&self, employee: i64, kind: &str) {
+        self.0.lock().unwrap().remove(&(employee, kind.to_owned()));
+    }
+}
+
+impl DocumentGuard for Documents {
+    fn blocks_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+    ) -> DocumentFuture<'a, Vec<BlockEntry>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn is_valid<'a>(
+        &'a self,
+        _db: &'a Db,
+        subject: &'a Subject,
+        kind: &'a str,
+        _on_date: NaiveDate,
+    ) -> DocumentFuture<'a, Validity> {
+        let expired = self
+            .0
+            .lock()
+            .unwrap()
+            .contains(&(subject.subject_id, kind.to_owned()));
+        Box::pin(async move {
+            Ok(if expired {
+                Validity::Invalid {
+                    reason: InvalidReason::Expired,
+                    document: None,
+                    expired_on: None,
+                    pending: None,
+                }
+            } else {
+                Validity::Valid {
+                    document: None,
+                    expires_on: None,
+                }
+            })
+        })
+    }
+
+    fn check_as<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _guarded: &'a str,
+        _record_id: i64,
+        _on_date: NaiveDate,
+        _actor: Option<i64>,
+    ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, wl_kernel::documents::BlockRefusal>>
+    {
+        Box::pin(async { Ok(Ok(CheckOutcome::default())) })
+    }
+
+    fn record_flags<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+        _record_id: i64,
+        _flags: &'a [FlagFailure],
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn flags_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_flag_counts<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _ids: &'a [i64],
+    ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
+        Box::pin(async { Ok(BTreeMap::new()) })
+    }
+
+    fn review_flag<'a>(
+        &'a self,
+        _db: &'a Db,
+        _flag_id: i64,
+        _reviewer: i64,
+        _note: &'a str,
+    ) -> DocumentFuture<'a, RecordFlag> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+}
+
 /// A notifier that records every request and queues nothing.
 #[derive(Clone, Default)]
-pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>, Arc<AtomicBool>);
 
 impl Recording {
+    /// Makes every further request fail (or work again).
+    pub fn fail(&self, failing: bool) {
+        self.1.store(failing, Ordering::SeqCst);
+    }
+
     /// Every request so far, oldest first.
     pub fn all(&self) -> Vec<NotifyRequest> {
         self.0.lock().unwrap().clone()
@@ -431,6 +548,9 @@ impl Notifier for Recording {
         _state: &'a AppState,
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
+        if self.1.load(Ordering::SeqCst) {
+            return Box::pin(async { Err(Error::permanent_message("the notifier is down")) });
+        }
         self.0.lock().unwrap().push(request);
         Box::pin(async { Ok(Vec::new()) })
     }
@@ -676,6 +796,7 @@ struct Fakes {
     renewed: Recorded<ContractRenewed>,
     contracts_ended: Recorded<ContractEnded>,
     closings: Closings,
+    documents: Documents,
 }
 
 impl Module for Fakes {
@@ -699,6 +820,7 @@ impl Module for Fakes {
         record(app, &self.renewed);
         record(app, &self.contracts_ended);
         provide_timesheet_closing(app, self.closings.clone());
+        provide_guard(app, self.documents.clone());
     }
 }
 
@@ -736,6 +858,8 @@ pub struct Booted {
     pub contracts_ended: Recorded<ContractEnded>,
     /// The calls to close an open timesheet.
     pub closings: Closings,
+    /// The documents of the employees.
+    pub documents: Documents,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// The contracts made, for their references.
@@ -985,6 +1109,7 @@ pub async fn boot() -> Booted {
     let renewed = Recorded::default();
     let contracts_ended = Recorded::default();
     let closings = Closings::default();
+    let documents = Documents::default();
     let invoices = Invoices::default();
     let register = Register::default();
     let fakes = Fakes {
@@ -1003,6 +1128,7 @@ pub async fn boot() -> Booted {
         renewed: renewed.clone(),
         contracts_ended: contracts_ended.clone(),
         closings: closings.clone(),
+        documents: documents.clone(),
     };
     let app = App::new()
         .module(Auth::new())
@@ -1068,6 +1194,7 @@ pub async fn boot() -> Booted {
         renewed,
         contracts_ended,
         closings,
+        documents,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),
         _views: views,
