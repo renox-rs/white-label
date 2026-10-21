@@ -57,6 +57,15 @@ pub const LANDED_COST_ADJUSTMENT_SUBJECT_TYPE: &str = "inventory.landed_cost_adj
 /// The subject type of a Return to supplier.
 pub const SUPPLIER_RETURN_SUBJECT_TYPE: &str = "inventory.supplier_return";
 
+/// The subject type of a stock hold.
+pub const STOCK_HOLD_SUBJECT_TYPE: &str = "inventory.stock_hold";
+
+/// The subject type of a transfer between two locations.
+pub const TRANSFER_SUBJECT_TYPE: &str = "inventory.transfer";
+
+/// The subject type of a pending issue.
+pub const PENDING_ISSUE_SUBJECT_TYPE: &str = "inventory.pending_issue";
+
 /// One line of a posted goods receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GoodsReceivedLine {
@@ -716,5 +725,217 @@ mod tests {
             renox::serde_json::from_str::<GoodsReceived>(&json).unwrap(),
             received
         );
+    }
+}
+
+/// One line of a stock hold: a quantity of an item at a location, of a lot
+/// when the item is lot-tracked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeldLine {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location the quantity is at, `inventory.location:2`.
+    pub location: Subject,
+    /// The lot, `inventory.lot:4`.
+    pub lot: Option<Subject>,
+    /// The quantity held, in thousandths of the base unit.
+    pub quantity_milli: i64,
+}
+
+/// A stock hold was placed (wl-inventory §6 `StockHoldPlaced`): the quantity
+/// in its scope is blocked until someone decides it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockHoldPlaced {
+    /// The hold, `inventory.stock_hold:3`.
+    pub hold: Subject,
+    /// Its number, `HLD-2026-0001`.
+    pub number: String,
+    /// `recall`, `quality`, `temperature`, `complaint` or `other`.
+    pub reason: String,
+    /// The record that caused it: a recall, a ticket, an NCR, a reading.
+    pub reference: Option<Subject>,
+    /// The lines the hold was placed with.
+    pub lines: Vec<HeldLine>,
+}
+
+impl Event for StockHoldPlaced {}
+
+/// A whole lot was put on hold (wl-inventory §6 `LotHeld`, §4 *Lot* `hold`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LotHeld {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// Why: the reason of the hold.
+    pub reason: String,
+    /// What is left of the lot in all locations, in thousandths.
+    pub quantity_milli: i64,
+}
+
+impl Event for LotHeld {}
+
+/// Automatic consumption was short, or a balance went below zero (wl-inventory
+/// §6 `StockNegative`): a pending issue was recorded for the short quantity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockNegative {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location, `inventory.location:2`.
+    pub location: Subject,
+    /// The short quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The record that consumed: a visit, a sale, a work order.
+    pub source: Option<Subject>,
+    /// The pending issue that holds the short quantity.
+    pub pending_issue: Option<Subject>,
+}
+
+impl Event for StockNegative {}
+
+/// The future a [`StockService`] or [`StockHoldService`] method returns.
+pub type StockFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// Consumption another module posts automatically (wl-inventory §3 *Negative
+/// stock*, the `ConsumptionSource` extension): a clinic visit, an F&B sale, a
+/// work order backflush.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsumeRequest {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location it is taken from, `inventory.location:2`.
+    pub location: Subject,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The record that consumes: a visit, a sale, a work order.
+    pub source: Subject,
+    /// The record the cost is charged to.
+    pub cost_object: Option<Subject>,
+    /// When the consumption happened; now when `None`.
+    pub at: Option<renox::db::DateTime>,
+}
+
+impl ConsumeRequest {
+    /// `quantity_milli` of `item` taken from `location` for `source`.
+    pub fn new(item: Subject, location: Subject, quantity_milli: i64, source: Subject) -> Self {
+        ConsumeRequest {
+            item,
+            location,
+            quantity_milli,
+            source,
+            cost_object: None,
+            at: None,
+        }
+    }
+
+    /// Charged to `cost_object`.
+    pub fn cost_object(mut self, cost_object: Subject) -> Self {
+        self.cost_object = Some(cost_object);
+        self
+    }
+
+    /// Happened at `at`.
+    pub fn at(mut self, at: renox::db::DateTime) -> Self {
+        self.at = Some(at);
+        self
+    }
+}
+
+/// What a consumption did: the part that posted now, and the pending issue
+/// for the short part.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Consumed {
+    /// The quantity that posted now, in thousandths.
+    pub posted_milli: i64,
+    /// The quantity that became a pending issue, in thousandths.
+    pub short_milli: i64,
+    /// The pending issue, `inventory.pending_issue:5`, when part was short.
+    pub pending_issue: Option<Subject>,
+}
+
+/// The stock service other modules call (wl-inventory §6 `StockService`).
+/// Without the inventory module [`stock_service`] gives [`NoStockService`],
+/// which posts nothing.
+pub trait StockService: Send + Sync + 'static {
+    /// Consumes automatically: posts what is available and records a pending
+    /// issue for the short part, so the business event is never blocked.
+    fn consume<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ConsumeRequest,
+    ) -> StockFuture<'a, Consumed> {
+        Box::pin(async { Ok(Consumed::default()) })
+    }
+}
+
+/// The stock service when `inventory` is off: nothing is posted.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoStockService;
+
+impl StockService for NoStockService {}
+
+/// Makes `service` the app's [`StockService`]; `wl-inventory` calls it in
+/// `register`.
+pub fn provide_stock_service(app: &mut Registry, service: impl StockService) {
+    let service: Arc<dyn StockService> = Arc::new(service);
+    app.provide(service);
+}
+
+/// The app's [`StockService`], or [`NoStockService`] when none is provided.
+pub fn stock_service(state: &AppState) -> Arc<dyn StockService> {
+    match state.provided::<Arc<dyn StockService>>() {
+        Some(service) => Arc::clone(&service),
+        None => Arc::new(NoStockService),
+    }
+}
+
+/// A hold a vertical automation (06: the out-of-range reading) places on the
+/// stock at one location.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlaceHold {
+    /// `recall`, `quality`, `temperature`, `complaint` or `other`.
+    pub reason: String,
+    /// The record that caused it: a checklist reading, a ticket.
+    pub reference: Subject,
+    /// The location whose stock is held, `inventory.location:2`.
+    pub location: Subject,
+    /// The items held; every item at the location when empty.
+    pub items: Vec<Subject>,
+}
+
+/// The stock hold service (wl-inventory §6 `StockHoldService`). Without the
+/// inventory module [`stock_hold_service`] gives [`NoStockHoldService`],
+/// which holds nothing.
+pub trait StockHoldService: Send + Sync + 'static {
+    /// Places a hold on the stock at a location as the system. Returns the
+    /// hold, or `None` when the module is off.
+    fn place<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _hold: PlaceHold,
+    ) -> StockFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The hold service when `inventory` is off: nothing is held.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoStockHoldService;
+
+impl StockHoldService for NoStockHoldService {}
+
+/// Makes `service` the app's [`StockHoldService`]; `wl-inventory` calls it in
+/// `register`.
+pub fn provide_stock_hold_service(app: &mut Registry, service: impl StockHoldService) {
+    let service: Arc<dyn StockHoldService> = Arc::new(service);
+    app.provide(service);
+}
+
+/// The app's [`StockHoldService`], or [`NoStockHoldService`] when none is
+/// provided.
+pub fn stock_hold_service(state: &AppState) -> Arc<dyn StockHoldService> {
+    match state.provided::<Arc<dyn StockHoldService>>() {
+        Some(service) => Arc::clone(&service),
+        None => Arc::new(NoStockHoldService),
     }
 }
