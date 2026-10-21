@@ -539,3 +539,21 @@ async fn a_manager_without_the_reverse_permission_cannot_approve_a_loss() {
     assert!(w.lost.all().is_empty());
     assert!(w.notices.of_type("delivery.lost").is_empty());
 }
+
+/// AC1 (schedule): the rule is on the scheduler under its task name: running
+/// the scheduled task marks a delivery untraced for years as lost.
+#[renox::test]
+async fn the_rule_is_scheduled_and_the_scheduled_task_marks_a_delivery_lost() {
+    let w = boot().await;
+    let delivery = attempted(&w).await;
+    touched_at(&w, &delivery, at("2020-01-01T06:00:00Z")).await;
+
+    w.app
+        .kernel()
+        .run_scheduled(lost::TASK)
+        .await
+        .expect("the task is registered and runs");
+
+    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Lost);
+    assert_eq!(w.lost.all().len(), 1);
+}
