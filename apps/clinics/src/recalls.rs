@@ -68,6 +68,14 @@ use crate::visit::{VISIT_SUBJECT_TYPE, Visit};
 /// The audit action of a view of the trace list (`CLN.ACL.01`).
 pub const VIEWED: &str = "clinics.recall_viewed";
 
+/// The audit action of a notice sent to a patient (`CLN.ACL.01`): who told
+/// whom, never what the recall was about.
+pub const SENT: &str = "clinics.recall_notice_sent";
+
+/// The audit action of a notice shown on the call list of the front desk
+/// (`CLN.ACL.01`: the list shows a patient's name and visit days).
+pub const CALL_VIEWED: &str = "clinics.recall_call_viewed";
+
 /// The Arabic subject of the notice.
 const SUBJECT_AR: &str = "رسالة من {{ clinic }}";
 
@@ -193,6 +201,25 @@ pub async fn audit_view(state: &AppState, user: &AuthUser, recall: i64) -> Resul
     .await
 }
 
+/// Records that `user` looked at the notices `notices` on the call list, one
+/// entry for each (`CLN.ACL.01`).
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn audit_calls_view(state: &AppState, user: &AuthUser, notices: &[i64]) -> Result {
+    for notice in notices {
+        renox::audit::record(
+            &state.db,
+            renox::audit::Entry::new(CALL_VIEWED)
+                .user(user.id)
+                .subject(RECALL_NOTICE_SUBJECT_TYPE, *notice),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 /// The clinic's name and the way to reach it, for the text of a notice.
 fn clinic_contact(state: &AppState) -> (String, String) {
     let Some(config) = state.provided::<Arc<ClientConfig>>() else {
@@ -283,6 +310,16 @@ pub async fn send(state: &AppState, by: &AuthUser, recall_id: i64) -> Result<Vec
                 .set_notice(state, line, true, Some(by.id))
                 .await?;
         }
+        // Who told whom, and when: the notice names the recall and the
+        // number of visits, nothing of the patient's health.
+        renox::audit::record(
+            &state.db,
+            renox::audit::Entry::new(SENT)
+                .user(by.id)
+                .subject(RECALL_NOTICE_SUBJECT_TYPE, notice.id)
+                .data(json!({ "recall": recall_id, "visits": group.visits.len() })),
+        )
+        .await?;
         made.push(notice);
     }
     Ok(made)

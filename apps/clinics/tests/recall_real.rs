@@ -186,6 +186,18 @@ async fn a_receptionist_cannot_open_the_trace_list() {
     );
 }
 
+/// The audit entries of `action` about the notice `notice`, as
+/// (the user, the data).
+async fn audited(d: &Desk, notice: i64, action: &str) -> Vec<(Option<i64>, String)> {
+    renox::audit::for_subject(d.t.db(), "clinics.recall_notice", notice, 20)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|entry| entry.action == action)
+        .map(|entry| (entry.user_id, entry.data.to_string()))
+        .collect()
+}
+
 /// Moves the clock of the app `minutes` ahead: what follows is recorded
 /// after what went before, by the clock, not by a rewritten column.
 fn pass(d: &Desk, minutes: u64) {
@@ -407,6 +419,22 @@ async fn a_patient_gets_one_neutral_notice_for_all_their_visits() {
     assert_eq!(made.len(), 2);
     assert!(made.iter().all(|n| n.status == RecallNoticeStatus::Sent));
 
+    // Who sent each notice is audited, with the recall and the number of
+    // visits, nothing about the patient's health.
+    for notice in &made {
+        let entries = audited(&d, notice.id, clinics::recalls::SENT).await;
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert_eq!(entries[0].0, Some(mia.id));
+        for secret in ["Filler", "filler", "L1", REASON, "Chest pain"] {
+            assert!(!entries[0].1.contains(secret), "{}", entries[0].1);
+        }
+        assert!(
+            entries[0].1.contains(&format!("\"recall\":{}", recall.id)),
+            "{}",
+            entries[0].1
+        );
+    }
+
     let again = d
         .post(
             &mia,
@@ -416,6 +444,13 @@ async fn a_patient_gets_one_neutral_notice_for_all_their_visits() {
         .await;
     again.assert_status(422);
     assert_eq!(notices(&d).len(), 2, "nobody is told twice");
+    for notice in &made {
+        assert_eq!(
+            audited(&d, notice.id, clinics::recalls::SENT).await.len(),
+            1,
+            "a refused send is not a send"
+        );
+    }
 }
 
 /// Done when 5: for a dependant the notice goes to the guardian, and the
@@ -565,6 +600,7 @@ async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch(
     }
 
     // The front desk of the branch sees the call; the other branch does not.
+    // Each view of a notice is audited for the user who saw it.
     d.get(&fay, "/clinics/recall-calls")
         .await
         .assert_ok()
@@ -572,6 +608,22 @@ async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch(
     let other = d.get(&elsewhere, "/clinics/recall-calls").await;
     other.assert_ok();
     assert!(!other.text().contains("Omar Saleh"), "{}", other.text());
+    let viewed = audited(&d, notice.id, clinics::recalls::CALL_VIEWED).await;
+    assert_eq!(
+        viewed.iter().map(|(user, _)| *user).collect::<Vec<_>>(),
+        vec![Some(fay.id)],
+        "Fay saw it, Zed did not"
+    );
+    d.get(&d.rita, "/clinics/recall-calls")
+        .await
+        .assert_forbidden();
+    assert_eq!(
+        audited(&d, notice.id, clinics::recalls::CALL_VIEWED)
+            .await
+            .len(),
+        1,
+        "a refused view is not a view"
+    );
     let path = format!("/clinics/recall-calls/{}", notice.id);
     d.post(&elsewhere, &path, &[("outcome", "Reached")])
         .await

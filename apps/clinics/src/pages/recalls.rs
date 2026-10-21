@@ -153,6 +153,7 @@ async fn calls(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         return Err(Error::Forbidden);
     }
     let mut rows = Vec::new();
+    let mut shown = Vec::new();
     for notice in RecallNotice::waiting_for_a_call(&state.db).await? {
         let scope = recalls::notice_scope(&state.db, &notice).await?;
         if !user.has_permission_in(permissions::RECALLS_CALL, &scope) {
@@ -164,6 +165,7 @@ async fn calls(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             PartyId(notice.patient_party_id.unwrap_or(notice.party_id)),
         )
         .await;
+        shown.push(notice.id);
         rows.push(CallRow {
             id: notice.id,
             patient,
@@ -174,6 +176,8 @@ async fn calls(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
                 .map_or_else(|| text(&lang, "none"), wl_kernel::documents::dubai_text),
         });
     }
+    // The list shows names and visit days: every view is audited.
+    recalls::audit_calls_view(&state, &user, &shown).await?;
     Ok(View::typed(CallsPage {
         tx: texts::all(&lang),
         calls: rows,
