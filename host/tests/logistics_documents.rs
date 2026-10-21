@@ -979,3 +979,88 @@ async fn an_asp_that_is_down_for_24_hours_leaves_the_invoice_issued_and_raises_t
     assert_eq!(tasks.len(), 1, "one task, once");
     assert!(tasks[0].message.contains("24 hours"), "{}", tasks[0].message);
 }
+
+/// Sends the notice `type_key` to `party` with a bouncing mailbox, runs the
+/// queued jobs, and answers the staff tasks of the give-up (tickets whose
+/// source key is that of a give-up about the shipment).
+async fn gives_up(
+    app: &TestApp,
+    type_key: &str,
+    party: PartyId,
+) -> Vec<wl_ticketing::Ticket> {
+    use wl_kernel::notify::{self, NotifyRequest};
+    let request = NotifyRequest::new(type_key, Subject::new("logistics.shipment", 1))
+        .subject_label("S-1")
+        .to_party(party)
+        .data(renox::serde_json::json!({ "title": "Notice", "body": "Please note" }));
+    notify::notifier(app.state())
+        .notify(app.state(), request)
+        .await
+        .unwrap();
+    app.run_all_jobs().await;
+    wl_ticketing::Ticket::query()
+        .order_by(wl_ticketing::Ticket::ID)
+        .get(app.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|t| {
+            t.source_key
+                .as_deref()
+                .is_some_and(|k| k.starts_with("notify.give_up:logistics.shipment:"))
+        })
+        .collect()
+}
+
+/// The status of the e-mail contact point of `party`.
+async fn email_status(app: &TestApp, party: PartyId) -> wl_parties::ContactStatus {
+    wl_parties::ContactPoint::query()
+        .where_(wl_parties::ContactPoint::PARTY_ID.eq(party.0))
+        .where_(wl_parties::ContactPoint::CONTACT_TYPE.eq(wl_parties::ContactType::Email))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("an e-mail contact")
+        .status
+}
+
+/// AC3 (behaviour): a COD statement e-mail that gives up marks the contact
+/// invalid and opens a task for the accountant; a failed-attempt notice that
+/// gives up does nothing more; an address-confirmation request that gives up
+/// marks the contact invalid and opens a task for the dispatcher.
+#[renox::test]
+async fn a_notice_that_gives_up_is_followed_by_the_reaction_of_its_group() {
+    use host::roles::ACCOUNTANT;
+    let mail = support::BouncingMail::default();
+    let app = logistics_booted_with(host::Tuning::default().notify({
+        let mail = mail.clone();
+        move |n| n.provider(mail)
+    }))
+    .await;
+    let accountant = person(&app, "Amal", ACCOUNTANT).await;
+    let dispatcher = person(&app, "Dina", host::roles::DISPATCHER).await;
+
+    // A failed-attempt notice (tracking group): nothing follows.
+    let tracked = company(&app, "Tracked Trading LLC").await;
+    let tasks = gives_up(&app, logistics::notices::CLIENT_NOTICE, tracked).await;
+    assert!(!mail.attempts().is_empty(), "the notice was e-mailed");
+    assert!(tasks.is_empty(), "a tracking notice that gives up opens no task");
+
+    // The COD statement (invoices group): the contact is invalid and the
+    // accountant has the task.
+    let billed = company(&app, "Billed Trading LLC").await;
+    let tasks = gives_up(&app, logistics::notices::STATEMENT_NOTICE, billed).await;
+    assert_eq!(email_status(&app, billed).await, wl_parties::ContactStatus::Invalid);
+    assert_eq!(tasks.len(), 1, "one task for the accountant");
+    assert_eq!(tasks[0].assignee_user_id, Some(accountant.id));
+
+    // The address confirmation (portal group): the dispatcher has the task.
+    let asked = company(&app, "Asked Trading LLC").await;
+    let tasks = gives_up(&app, logistics::notices::ACTION_REQUEST_DISPATCHER, asked).await;
+    assert_eq!(email_status(&app, asked).await, wl_parties::ContactStatus::Invalid);
+    let for_dispatcher: Vec<_> = tasks
+        .iter()
+        .filter(|t| t.assignee_user_id == Some(dispatcher.id))
+        .collect();
+    assert_eq!(for_dispatcher.len(), 1, "one task for the dispatcher");
+}
