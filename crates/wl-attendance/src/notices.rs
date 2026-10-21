@@ -49,8 +49,19 @@ pub const ADJUSTMENT_DISPUTE_UPHELD: &str = "attendance.adjustment_dispute_uphel
 /// that a timesheet has had no answer (`HRM.RUL.15` at E days).
 pub const TIMESHEET_ESCALATED: &str = "attendance.timesheet_escalated";
 
+/// The client's approvers and the account manager are told the hours and
+/// that an unanswered timesheet was deemed approved (`HRM.RUL.15` at N).
+pub const TIMESHEET_DEEMED: &str = "attendance.timesheet_deemed";
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
+    let subject = english("wl_attendance.notices.deemed_subject", &[]);
+    let body = english("wl_attendance.notices.deemed_body", &[]);
+    notify::register_type(
+        NotificationTypeDef::new(TIMESHEET_DEEMED, "attendance")
+            .group("attendance")
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+    );
     let subject = english("wl_attendance.notices.escalated_subject", &[]);
     let body = english("wl_attendance.notices.escalated_body", &[]);
     notify::register_type(
@@ -310,6 +321,60 @@ pub(crate) async fn timesheet_escalated(
     if request.recipients.is_empty() {
         return Ok(());
     }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// The hours of `totals` in words: `152 h normal, 8 h overtime`.
+fn hours_summary(totals: &[wl_kernel::attendance::CategoryMinutes]) -> String {
+    if totals.is_empty() {
+        return english("wl_attendance.deem.no_hours", &[]);
+    }
+    totals
+        .iter()
+        .map(|total| {
+            format!(
+                "{} {}",
+                crate::entry::hours_text(total.minutes),
+                total.category
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Tells the client's approvers and the account manager the hours of `sheet`,
+/// that they were deemed approved after `days` days without an answer, and
+/// the dispute route. Nobody is told when the resolver knows nobody.
+pub(crate) async fn timesheet_deemed(
+    state: &AppState,
+    sheet: &crate::timesheet::Timesheet,
+    days: i64,
+) -> Result {
+    let context = sheet.context();
+    let resolver = wl_kernel::timesheets::approver_resolver(state);
+    let mut request = NotifyRequest::new(TIMESHEET_DEEMED, sheet.subject());
+    for client in resolver.client_approvers(state, context.as_ref()).await? {
+        request = request.to(client);
+    }
+    if let Some(user) = resolver.account_manager(state, context.as_ref()).await? {
+        request = request.to_user(user);
+    }
+    if request.recipients.is_empty() {
+        return Ok(());
+    }
+    let employee = employee_name(state, sheet.owner()).await?;
+    let totals = crate::approval::totals_of(&state.db, sheet).await?;
+    let request = request
+        .subject_label(&format!("{employee} {}", sheet.period_from))
+        .data(json!({
+            "employee": employee,
+            "from": sheet.period_from.to_string(),
+            "to": sheet.period_to.to_string(),
+            "days": days,
+            "hours": hours_summary(&totals),
+            "dispute_route": english("wl_attendance.deem.dispute_route", &[]),
+        }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }

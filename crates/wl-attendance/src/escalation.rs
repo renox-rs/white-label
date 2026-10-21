@@ -21,9 +21,9 @@
 //! a new `submit` after a `reject` clears it and the clock restarts. A failure
 //! after the claim releases it, so that the next run tries again.
 //!
-//! The deemed approval at N days (BL-ATT-11) belongs to the same daily run and
-//! comes first, so that with N at or below E the escalation finds nothing
-//! `submitted`.
+//! The deemed approval at N days ([`crate::deem`], BL-ATT-11) belongs to the
+//! same daily run and comes first, so that with N at or below E the escalation
+//! finds nothing `submitted`.
 //!
 //! Decisions:
 //!
@@ -53,6 +53,7 @@ use wl_kernel::workforce::workforce;
 
 use crate::access;
 use crate::config::config_of;
+use crate::deem;
 use crate::notices;
 use crate::permissions;
 use crate::texts::english;
@@ -70,6 +71,8 @@ pub const TASK_ZONE: &str = "Asia/Dubai";
 /// What a run did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Report {
+    /// Timesheets deemed approved at N days ([`crate::deem`]).
+    pub deemed: usize,
     /// Timesheets whose approver was escalated to.
     pub escalated: usize,
     /// Timesheets that failed; the run moves on and the next run tries
@@ -259,13 +262,19 @@ pub async fn escalate(state: &AppState, on: NaiveDate) -> Result<Report> {
     Ok(report)
 }
 
-/// The daily run of `HRM.RUL.15` on `on`.
+/// The daily run of `HRM.RUL.15` on `on`: first the deemed approval at N
+/// ([`crate::deem`]), so that with N at or below E the escalation finds
+/// nothing `submitted`, then the escalation at E.
 ///
 /// # Errors
 ///
 /// A database error while listing the timesheets.
 pub async fn run(state: &AppState, on: NaiveDate) -> Result<Report> {
-    escalate(state, on).await
+    let deemed = deem::run(state, on).await?;
+    let mut report = escalate(state, on).await?;
+    report.deemed = deemed.deemed;
+    report.failed += deemed.failed;
+    Ok(report)
 }
 
 /// Closes the task to collect a signed sheet for `timesheet_id`, if it is
@@ -292,7 +301,7 @@ pub(crate) fn schedule(app: &mut Registry) {
         .timezone(TASK_ZONE);
     app.command(
         TASK,
-        "Escalate the external timesheets nobody answers (--date YYYY-MM-DD checks another day)",
+        "Deem approved or escalate the external timesheets nobody answers (--date YYYY-MM-DD checks another day)",
         |args, state: AppState| async move {
             let on = match args.value("--date") {
                 None => today(),
@@ -304,7 +313,10 @@ pub(crate) fn schedule(app: &mut Registry) {
                 })?,
             };
             let report = run(&state, on).await?;
-            println!("{} escalated, {} failed.", report.escalated, report.failed);
+            println!(
+                "{} deemed approved, {} escalated, {} failed.",
+                report.deemed, report.escalated, report.failed
+            );
             Ok(())
         },
     );

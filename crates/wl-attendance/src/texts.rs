@@ -292,6 +292,28 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.notices.escalated_body",
         "The timesheet of {{ employee }} for {{ from }} to {{ to }} was sent for approval on {{ submitted }} and has had no answer for {{ days }} days. Please approve it, or send it back with a reason.",
     ),
+    // Deemed approval (`HRM.RUL.15` at N, BL-ATT-11).
+    (
+        "wl_attendance.deem.not_external",
+        "Only a timesheet that an external approver approves can be deemed approved.",
+    ),
+    (
+        "wl_attendance.deem.not_due",
+        "The contract has no deemed-approval clause for this timesheet, or its days have not passed since it was submitted.",
+    ),
+    ("wl_attendance.deem.no_hours", "no hours"),
+    (
+        "wl_attendance.deem.dispute_route",
+        "If you do not agree with these hours, tell your account manager. A correction after approval is made as an adjustment timesheet.",
+    ),
+    (
+        "wl_attendance.notices.deemed_subject",
+        "Timesheet deemed approved: {{ employee }}",
+    ),
+    (
+        "wl_attendance.notices.deemed_body",
+        "The timesheet of {{ employee }} for {{ from }} to {{ to }} ({{ hours }}) had no answer for {{ days }} days and is deemed approved, as the contract says. {{ dispute_route }}",
+    ),
     (
         "wl_attendance.notices.dispute_upheld_subject",
         "Dispute upheld: adjustment cannot be submitted",

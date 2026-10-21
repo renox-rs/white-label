@@ -5,15 +5,15 @@
 //! [*] --create--> open
 //! [*] --open_adjustment--> open          (kind adjustment, BL-ATT-07)
 //! open --submit--> submitted
-//! submitted --approve | approve_on_behalf--> approved
+//! submitted --approve | approve_on_behalf | deem_approve--> approved
 //! submitted --reject--> open
 //! approved --reopen--> open
 //! approved --lock--> locked
 //! ```
 //!
-//! `approve`, `approve_on_behalf` and `reject` (submitted to open) are in
-//! [`crate::approval`] (BL-ATT-08); `deem_approve` comes with the deemed
-//! approval issue.
+//! `approve`, `approve_on_behalf`, `reject` (submitted to open) and
+//! `deem_approve` are in [`crate::approval`] (BL-ATT-08, BL-ATT-11), with the
+//! system approval of a reconciliation adjustment (BL-ATT-13).
 //!
 //! The status moves only through the machine. `locked` is terminal: a locked
 //! timesheet is never edited or reopened (`HRM.ACL.08`), and is corrected by

@@ -9,6 +9,7 @@ pub mod checks;
 pub mod config;
 pub mod crew;
 pub mod crews_affected;
+pub mod deem;
 pub mod dispute;
 pub mod entry;
 pub mod escalation;
