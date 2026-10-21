@@ -6,6 +6,7 @@
 //! [*] --> pending             (start_online)
 //! pending --confirm--> received
 //! pending --fail--> failed --late_confirm--> received
+//! received --charge_back--> charged_back
 //! received --reverse--> reversed (terminal)
 //! ```
 //!
@@ -15,7 +16,7 @@
 //! `record_by_system` ([`crate::record`]); `reverse` and
 //! `reverse_by_system` ([`crate::reverse`]); the online payment ones,
 //! `confirm`, `fail` and `late_confirm` ([`crate::online`]); and the
-//! chargeback ones later. `Payment` is
+//! chargeback ones, `charge_back` ([`crate::chargeback`]). `Payment` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
 use renox::state_machine::{Machine, StateMachine};
@@ -46,6 +47,7 @@ impl StateMachine for Payment {
             .into_iter()
             .chain(crate::reverse::transitions())
             .chain(crate::online::transitions())
+            .chain(crate::chargeback::transitions())
             .fold(machine, Machine::transition)
     }
 }

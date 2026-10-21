@@ -8,6 +8,7 @@
 //! the accountant raises the charge and marks the task done. The task is
 //! unique per kind and payment.
 
+use renox::chrono::NaiveDate;
 use renox::db::Json;
 use renox::prelude::*;
 use renox::serde_json::{self, Value};
@@ -63,6 +64,9 @@ pub enum FollowupKind {
     /// The gateway reported another amount than the payment's: look at it
     /// in the gateway (`late_confirm`, `confirm`).
     AmountMismatch,
+    /// Submit the evidence of a chargeback by the gateway's deadline
+    /// (`FIN.RUL.20`).
+    ChargebackEvidence,
 }
 
 /// Whether a follow-up task is still to do.
@@ -104,6 +108,10 @@ pub struct FollowupTask {
     /// The user a task is assigned to (the case owner of a legal case); the
     /// role still sees it.
     pub assignee_id: Option<i64>,
+    /// The day the task is due: the evidence deadline of a chargeback.
+    pub due_on: Option<NaiveDate>,
+    /// The day the accountant was reminded of the deadline.
+    pub reminded_on: Option<NaiveDate>,
     /// What a task carries for its reader: the evidence pack of a legal case.
     pub evidence: Json<Value>,
     /// The text shown to the role.
@@ -166,6 +174,30 @@ impl FollowupTask {
     /// Whether it is still to do.
     pub fn is_open(&self) -> bool {
         self.status == FollowupStatus::Open
+    }
+
+    /// The evidence task of the chargeback on `payment` (`FIN.RUL.20`): due
+    /// `due_on`, the links to what the platform holds in `evidence`, `text`
+    /// says what to do.
+    pub fn chargeback_evidence(
+        payment: &Payment,
+        due_on: NaiveDate,
+        evidence: Value,
+        text: String,
+    ) -> Self {
+        FollowupTask {
+            kind: FollowupKind::ChargebackEvidence,
+            party_id: payment.party_id,
+            payment_id: Some(payment.id),
+            amount: payment.amount,
+            currency: payment.currency.clone(),
+            evidence: Json(evidence),
+            text,
+            role: ACCOUNTANT_ROLE.to_owned(),
+            status: FollowupStatus::Open,
+            due_on: Some(due_on),
+            ..Default::default()
+        }
     }
 
     /// The task to look into a gateway confirmation of `reported` fils that

@@ -82,6 +82,16 @@ pub struct Payment {
     pub dispute_status: Option<String>,
     /// When the dispute's evidence is due.
     pub dispute_evidence_due: Option<NaiveDate>,
+    /// The day the dispute was recorded (Asia/Dubai).
+    pub dispute_opened_on: Option<NaiveDate>,
+    /// The gateway's dispute fee, in fils of the payment's currency.
+    pub dispute_fee: Option<i64>,
+    /// The outgoing payment that records the dispute fee.
+    pub dispute_fee_payment_id: Option<i64>,
+    /// The day the evidence was submitted in the gateway.
+    pub dispute_evidence_submitted_on: Option<NaiveDate>,
+    /// How the dispute ended: `won`, `lost` or `accepted`.
+    pub dispute_outcome: Option<String>,
     /// Why it was reversed.
     pub reversal_reason: Option<ReversalReason>,
     /// The note given with the reversal.

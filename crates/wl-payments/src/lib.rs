@@ -9,6 +9,8 @@ pub mod bank_statement_line;
 mod bank_statement_machine;
 pub mod bank_statement_pages;
 pub mod bank_statement_parse;
+pub mod chargeback;
+pub mod chargeback_pages;
 pub mod cheque;
 pub mod cheque_bounce;
 pub mod cheque_chase;
@@ -203,6 +205,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/pay.html",
         include_str!("../views/wl-payments/pay.html"),
+    ),
+    (
+        "wl-payments/_chargeback_sheet.html",
+        include_str!("../views/wl-payments/_chargeback_sheet.html"),
+    ),
+    (
+        "wl-payments/_evidence_sheet.html",
+        include_str!("../views/wl-payments/_evidence_sheet.html"),
     ),
 ];
 
@@ -421,6 +431,26 @@ impl WlPayments {
         self
     }
 
+    /// Names the party the gateway's dispute fees are paid to: the gateway
+    /// provider as a supplier party (`charge_back` records the fee as an
+    /// outgoing payment to it). Without one the fee stays on the payment.
+    pub fn gateway_party(mut self, party: wl_kernel::PartyId) -> Self {
+        self.config.gateway_party = Some(party.0);
+        self
+    }
+
+    /// Sets how many days before the evidence deadline of a chargeback the
+    /// accountant is reminded (`FIN.RUL.20`, §7: 2).
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one day: a programming error.
+    pub fn chargeback_reminder(mut self, days: i64) -> Self {
+        assert!(days >= 1, "a reminder comes at least one day before");
+        self.config.chargeback_reminder_days = days;
+        self
+    }
+
     /// Turns on or off the automatic approval of the refund of a late payment
     /// that equals the payment, goes back to the same card and whose prepaid
     /// record is no longer active (§7, on unless set).
@@ -459,6 +489,7 @@ impl Module for WlPayments {
             .merge(bank_statement_pages::routes())
             .merge(expense_claim_pages::routes())
             .merge(online_pages::routes())
+            .merge(chargeback_pages::routes())
     }
 
     fn register(&self, app: &mut Registry) {
@@ -606,6 +637,8 @@ impl Module for WlPayments {
         // `confirm`, `fail` and `late_confirm` of an online payment, and
         // `FIN.RUL.19`; the expiry of payment links.
         online::register(app);
+        // `charge_back` and `FIN.RUL.20`.
+        chargeback::register(app);
         payment_link::register(app);
         // How other modules record, allocate and read payments.
         wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
