@@ -8,8 +8,9 @@ use renox::auth::permissions;
 use renox::prelude::*;
 use wl_inventory::permissions as perm;
 use wl_inventory::recall::{self, OPENED_NOTICE};
-use wl_inventory::{HoldScope, HoldStatus, Lot, LotStatus, RecallSource, RecallStatus};
+use wl_inventory::{HoldScope, HoldStatus, Item, Lot, LotStatus, RecallSource, RecallStatus};
 use wl_kernel::Subject;
+use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::notify::NotifyRecipient;
 
 use support::{Booted, boot};
@@ -484,6 +485,67 @@ async fn recalled_stock_cannot_move_and_the_hold_cannot_be_cancelled() {
             .unwrap(),
         5_000
     );
+}
+
+/// The lines of a recall's hold are decided like any other: a discard posts
+/// the wastage to the recall as cost object, and a release waits for a second
+/// holder of `lots.release` (`STK.ACL.05`).
+#[renox::test]
+async fn the_lines_of_a_recalls_hold_are_decided_with_a_second_person_for_a_release() {
+    let t = boot().await;
+    let manager = t.recaller("Rita").await;
+    let ann = t.releaser("Ann").await;
+    let ben = t.releaser("Ben").await;
+    let item = t.tracked_item("SERUM").await;
+    let lot = t.lot(&item, "L9", LotStatus::Released).await;
+    let other = t.lot(&item, "L10", LotStatus::Released).await;
+    let branch = t.named_location("BRANCH-1", "Branch 1").await;
+    let mut priced = Item::find_or_404(t.db(), item.id).await.unwrap();
+    priced.average_cost = 2_000;
+    priced.save(t.db()).await.unwrap();
+    t.stock_in(&item, &branch, Some(&lot), 5_000, 2_000).await;
+    t.stock_in(&item, &branch, Some(&other), 3_000, 2_000).await;
+    let item_id = item.id.to_string();
+    t.recall_as(
+        &manager,
+        &[
+            ("source", "supplier"),
+            ("reason", "Contamination"),
+            ("items", item_id.as_str()),
+            ("lot_numbers", "L9, L10"),
+        ],
+    )
+    .await
+    .assert_ok();
+    let opened = t.all_recalls().await.remove(0);
+    let hold = t.all_holds().await.remove(0);
+    let lines = t.hold_lines(&hold).await;
+    assert_eq!(lines.len(), 2);
+
+    // L9 is discarded: the wastage is the recall's cost.
+    t.decide_as(&ann, &lines[0], "discard").await.assert_ok();
+    let costs = t.costs.posted();
+    assert_eq!(costs.len(), 1);
+    assert_eq!(costs[0].cost_object, opened.subject());
+    assert_eq!(costs[0].amount_aed, 10_000);
+
+    // L10 is released: Ann asks, Ben approves, Ann cannot.
+    t.decide_as(&ann, &lines[1], "release").await.assert_ok();
+    let request = ApprovalRequest::pending_about(t.db(), &lines[1].subject())
+        .await
+        .unwrap()
+        .remove(0);
+    let refused = approvals::approve(t.state(), request.id, &ann, "").await;
+    assert!(matches!(refused, Err(Error::Forbidden)), "{refused:?}");
+    assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Open);
+    approvals::approve(t.state(), request.id, &ben, "checked")
+        .await
+        .unwrap();
+
+    assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Closed);
+    assert_eq!(t.lot_now(&lot).await.status, LotStatus::Rejected);
+    assert_eq!(t.lot_now(&other).await.status, LotStatus::Released);
+    assert_eq!(t.available(&item, &branch, Some(&other)).await, 3_000);
 }
 
 /// The package keeps its schema in step with the models.
