@@ -599,6 +599,11 @@ impl World {
             .expect("the terms are set");
     }
 
+    /// A new user who holds `grants`.
+    pub async fn user_with(&self, name: &str, grants: &[&str]) -> User {
+        make_user(self.db(), name, grants).await
+    }
+
     /// The names of the transitions `user` is offered on `shipment`.
     pub async fn offered(&self, user: &User, shipment: &Shipment) -> Vec<String> {
         let response = self
