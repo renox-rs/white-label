@@ -23,10 +23,12 @@
 //! BL-STK-19, which will emit [`StockNegative`] without a pending issue
 //! ([`on_negative`] already starts the alert for such an event) and extend
 //! [`still_short`] with the balance check at the same time. Until then the
-//! balance branch would be dead code, so it is not here. The storekeeper is whoever holds `stock.adjust` in the
-//! location's scope and the manager whoever holds `stock.approve`; the task
-//! goes to the first storekeeper; the hours count from when the oldest open
-//! pending issue was recorded.
+//! balance branch would be dead code, so it is not here.
+//!
+//! The storekeeper is whoever holds `stock.adjust` in the location's scope
+//! and the manager whoever holds `stock.approve`; the task goes to the first
+//! storekeeper; the hours count from when the oldest open pending issue was
+//! recorded.
 
 use renox::auth::permissions::users_with_permission_in;
 use renox::chrono::Duration;
