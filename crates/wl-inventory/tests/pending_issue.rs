@@ -439,3 +439,81 @@ async fn a_cancelled_source_clears_its_pending_issues_without_a_movement() {
         2_000
     );
 }
+
+/// A transfer received at the location posts its pending issues the same
+/// way a receipt does.
+#[renox::test]
+async fn a_received_transfer_posts_the_pending_issue() {
+    let t = boot().await;
+    let item = t.item("GAUZE").await;
+    let branch = t.location("BRANCH-1", None).await;
+    let store = t.location("STORE-A", None).await;
+    t.stock_in(&item, &store, None, 10_000, 500).await;
+    t.consume(&item, &branch, 3_000, &visit(1)).await;
+    let mover = t.mover("Mo").await;
+    let transfer = t
+        .transfer(
+            &store,
+            &branch,
+            vec![wl_inventory::transfer::NewTransferLine::of(item.id, 4_000)],
+        )
+        .await;
+    t.send_as(&mover, &transfer).await.assert_ok();
+    // On its way the stock does not cover the pending issue.
+    assert_eq!(t.open_pending().await.len(), 1);
+
+    t.receive_as(&mover, &transfer, false).await.assert_ok();
+
+    let posted = PendingIssue::query().first(t.db()).await.unwrap().unwrap();
+    assert_eq!(posted.status, PendingStatus::Posted);
+    assert_eq!(posted.resolved_by.as_deref(), Some("transfer"));
+    assert_eq!(t.available(&item, &branch, None).await, 1_000);
+    assert_eq!(t.available(&item, &store, None).await, 6_000);
+}
+
+/// Held quantity is not consumed: stock arriving at a held location joins the
+/// hold, so it does not cover a pending issue either.
+#[renox::test]
+async fn stock_that_joins_a_hold_does_not_cover_a_pending_issue() {
+    let t = boot().await;
+    let item = t.item("VIAL").await;
+    let branch = t.named_location("BRANCH-1", "Branch 1").await;
+    let store = t.location("STORE-A", None).await;
+    t.stock_in(&item, &branch, None, 2_000, 500).await;
+    t.stock_in(&item, &store, None, 10_000, 500).await;
+    let holder = t.holder("Hal").await;
+    let mover = t.mover("Mo").await;
+    let branch_id = branch.id.to_string();
+    t.hold_as(
+        &holder,
+        &[
+            ("reason", "temperature"),
+            ("reference", "clinics.checklist_reading:3"),
+            ("location", branch_id.as_str()),
+        ],
+    )
+    .await
+    .assert_ok();
+    // The 2 on hand are held: the visit gets nothing and the rest is pending.
+    let done = t.consume(&item, &branch, 3_000, &visit(1)).await;
+    assert_eq!((done.posted_milli, done.short_milli), (0, 3_000));
+    let transfer = t
+        .transfer(
+            &store,
+            &branch,
+            vec![wl_inventory::transfer::NewTransferLine::of(item.id, 4_000)],
+        )
+        .await;
+    t.send_as(&mover, &transfer).await.assert_ok();
+
+    t.receive_as(&mover, &transfer, true).await.assert_ok();
+
+    assert_eq!(t.open_pending().await.len(), 1);
+    assert_eq!(t.available(&item, &branch, None).await, 0);
+    let hold = wl_inventory::StockHold::query().first(t.db()).await.unwrap().unwrap();
+    let held = wl_inventory::stock_hold::lines_of(t.db(), hold.id).await.unwrap();
+    assert_eq!(
+        held.iter().map(|l| l.quantity_milli).collect::<Vec<_>>(),
+        vec![2_000, 4_000]
+    );
+}
