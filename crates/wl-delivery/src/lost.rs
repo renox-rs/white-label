@@ -65,6 +65,9 @@ pub const MARK_LOST_APPROVED: &str = "mark_lost_approved";
 pub const MARK_LOST_SYSTEM: &str = "mark_lost_system";
 /// `found`: lost → attempted.
 pub const FOUND: &str = "found";
+/// `found`, run by the system when the source found the goods (a lost
+/// shipment scanned at a depot).
+pub const FOUND_SYSTEM: &str = "found_system";
 
 /// The approval policy's action key of a manual `mark_lost` (`WRK.ACL.10`).
 pub const ACTION: &str = "delivery.mark_lost";
@@ -215,17 +218,25 @@ pub(crate) fn transitions() -> Vec<Transition<Delivery>> {
                 .system()
                 .reason_required(),
         ),
-        found_transition(),
+        found_transition(FOUND),
+        found_transition(FOUND_SYSTEM),
     ]
 }
 
-fn found_transition() -> Transition<Delivery> {
-    Transition::new(FOUND)
+/// `found`: by a holder of `deliveries.manage`, or by the system
+/// (`found_system`).
+fn found_transition(name: &'static str) -> Transition<Delivery> {
+    let transition = Transition::new(name)
         .label("Found")
         .tone("success")
         .from([DeliveryStatus::Lost])
-        .to(DeliveryStatus::Attempted)
-        .permission(permissions::MANAGE)
+        .to(DeliveryStatus::Attempted);
+    let transition = if name == FOUND {
+        transition.permission(permissions::MANAGE)
+    } else {
+        transition.system()
+    };
+    transition
         .guard("depot_given", |_delivery: &Delivery, ctx| {
             let given = ctx
                 .input_as::<FoundInput>()
@@ -409,18 +420,56 @@ pub async fn found(
     delivery: &Delivery,
     depot: &str,
 ) -> std::result::Result<(), TransitionError> {
-    let input = FoundInput {
-        depot: depot.trim().to_owned(),
-        attempt_number: next_attempt_number(&state.db, delivery)
-            .await
-            .map_err(TransitionError::Failed)?,
-    };
+    let input = found_input(state, delivery, depot).await?;
     let _outcome = delivery
         .transition(FOUND)
         .by(user)
         .input(&input)
         .run(state)
         .await?;
+    after_found(state, delivery, input).await
+}
+
+/// Puts the lost `delivery` back to `attempted` as the system: its source
+/// found the goods at `depot` (`found_system`).
+///
+/// # Errors
+///
+/// `Guard` (422) without a depot; `NotFrom` unless the delivery is `lost`.
+pub async fn found_as_system(
+    state: &AppState,
+    delivery: &Delivery,
+    depot: &str,
+) -> std::result::Result<(), TransitionError> {
+    let input = found_input(state, delivery, depot).await?;
+    let _outcome = delivery
+        .transition(FOUND_SYSTEM)
+        .by_system()
+        .input(&input)
+        .run(state)
+        .await?;
+    after_found(state, delivery, input).await
+}
+
+async fn found_input(
+    state: &AppState,
+    delivery: &Delivery,
+    depot: &str,
+) -> std::result::Result<FoundInput, TransitionError> {
+    Ok(FoundInput {
+        depot: depot.trim().to_owned(),
+        attempt_number: next_attempt_number(&state.db, delivery)
+            .await
+            .map_err(TransitionError::Failed)?,
+    })
+}
+
+/// After a `found`: the comment on the claim ticket and `DeliveryFound`.
+async fn after_found(
+    state: &AppState,
+    delivery: &Delivery,
+    input: FoundInput,
+) -> std::result::Result<(), TransitionError> {
     let claim = delivery.claim_ticket_id.map(TicketId);
     if let Some(ticket) = claim {
         let text = english("wl_delivery.lost.found_comment").replace("{depot}", &input.depot);

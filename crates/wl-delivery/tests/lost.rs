@@ -389,6 +389,43 @@ async fn a_found_delivery_is_attempted_again_with_a_visit_that_does_not_count() 
     );
 }
 
+/// AC5 through the requester: the source of a lost delivery (a shipment
+/// scanned at a depot) finds the goods as the system: the delivery is
+/// `attempted` again with the same non-counting visit, `DeliveryFound` is
+/// emitted once, and a delivery that is not lost is left as it is.
+#[renox::test]
+async fn the_source_finds_the_goods_of_a_lost_delivery_as_the_system() {
+    use wl_kernel::delivery::requester;
+    let w = boot().await;
+    let delivery = attempted(&w).await;
+    // Not lost: nothing happens.
+    requester(w.state())
+        .found(w.state(), delivery.delivery_id(), "Sharjah depot")
+        .await
+        .unwrap();
+    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Attempted);
+    assert!(w.found.all().is_empty());
+
+    ask_loss(&w, &w.ops_a, &delivery, "none").await.assert_ok();
+    let request = pending_request(&w, &delivery).await;
+    approvals::approve(w.state(), request.id, &w.ops_b, "agreed")
+        .await
+        .unwrap();
+    let counted = w.reload(&delivery).await.attempts;
+
+    requester(w.state())
+        .found(w.state(), delivery.delivery_id(), "Sharjah depot")
+        .await
+        .unwrap();
+
+    let after = w.reload(&delivery).await;
+    assert_eq!(after.status, DeliveryStatus::Attempted);
+    assert_eq!(after.attempts, counted);
+    let events = w.found.all();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].depot, "Sharjah depot");
+}
+
 /// AC6: a `delivered` delivery is never picked by the rule, however old, and
 /// cannot be marked lost directly: it goes through a review first.
 #[renox::test]

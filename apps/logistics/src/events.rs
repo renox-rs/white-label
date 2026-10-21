@@ -132,6 +132,31 @@ async fn hold_delivery(state: &AppState, id: i64, held: bool) -> Result {
     Ok(())
 }
 
+/// Tells wl-delivery that the goods of shipment `id` were found at the depot
+/// of the scan: its lost delivery is `attempted` again and can go on a run. A
+/// refusal is written to the tracking events and the shipment stays found.
+async fn found_delivery(state: &AppState, id: i64) -> Result {
+    let shipment = Shipment::find_or_404(&state.db, id).await?;
+    let Some(delivery) = shipment.delivery_id else {
+        return Ok(());
+    };
+    if state
+        .provided::<std::sync::Arc<dyn DeliveryRequester>>()
+        .is_none()
+    {
+        return Ok(());
+    }
+    let depot = shipment.found_depot.clone().unwrap_or_default();
+    if let Err(error) = wl_kernel::delivery::requester(state)
+        .found(state, DeliveryId(delivery), &depot)
+        .await
+    {
+        let note = format!("{error:?}");
+        track(&state.db, id, "delivery_found_failed", &note, None).await?;
+    }
+    Ok(())
+}
+
 /// Tells the client which parcels were not handed over, when some were
 /// (BL-LOG-03): the shipment goes ahead with the parcels received, the COD
 /// amount is unchanged.
@@ -344,6 +369,11 @@ pub(crate) fn register(app: &mut Registry) {
             }
             if name == FOUND || name == FOUND_SYSTEM {
                 hold_delivery(&state, event.key, false).await?;
+                if name == FOUND {
+                    // The scan found the goods: the delivery is no longer
+                    // lost either (a system `found` follows the delivery).
+                    found_delivery(&state, event.key).await?;
+                }
                 return crate::loss::found_settled(&state, event.key).await;
             }
             if name == REVERSE_DELIVERY || name == REVERSE_DELIVERY_ON_ROAD {

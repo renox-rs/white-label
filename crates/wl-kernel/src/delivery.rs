@@ -337,6 +337,19 @@ pub trait DeliveryRequester: Send + Sync + 'static {
         Box::pin(async { Err(Error::NotFound) })
     }
 
+    /// Puts the `lost` delivery back to `attempted` as the system: its source
+    /// found the goods at `depot` (a lost shipment scanned at a depot). A
+    /// delivery that is not `lost` is left as it is. `DeliveryFound` follows
+    /// the change, as for a user's `found`. The default does nothing.
+    fn found<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _delivery: DeliveryId,
+        _depot: &'a str,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
     /// Whether the delivery is frozen: under review (or lost after a
     /// review), so its cash on delivery is held out of remittances and
     /// settlements and its source must not bill it. The default is `false`.

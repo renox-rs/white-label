@@ -210,6 +210,23 @@ impl DeliveryRequester for Deliveries {
         })
     }
 
+    fn found<'a>(
+        &'a self,
+        state: &'a AppState,
+        delivery: DeliveryId,
+        depot: &'a str,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async move {
+            let delivery = Delivery::find_or_404(&state.db, delivery.0).await?;
+            if delivery.status != DeliveryStatus::Lost {
+                return Ok(());
+            }
+            crate::lost::found_as_system(state, &delivery, depot)
+                .await
+                .map_err(TransitionError::into_error)
+        })
+    }
+
     fn is_frozen<'a>(
         &'a self,
         state: &'a AppState,

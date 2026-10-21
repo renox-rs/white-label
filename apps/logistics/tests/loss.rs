@@ -212,6 +212,10 @@ async fn a_lost_shipment_scanned_at_a_depot_is_back_at_the_hub() {
     let found = w.reload(&shipment).await;
     assert_eq!(found.status, ShipmentStatus::AtHub);
     assert_eq!(found.found_depot.as_deref(), Some("Depot B"));
+    // wl-delivery agrees: the delivery is no longer lost, it is attempted
+    // again and can go on a run.
+    let delivery = w.delivery_of(&found).await;
+    assert_eq!(delivery.status, wl_delivery::DeliveryStatus::Attempted);
     // The COD is expected again.
     assert_eq!(found.cod_amount, 10_000);
     assert_eq!(found.lost_cod, 0);

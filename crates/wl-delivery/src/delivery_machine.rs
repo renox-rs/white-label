@@ -157,6 +157,7 @@ mod tests {
                 true,
             ),
             ("found", vec!["lost"], "attempted", false),
+            ("found_system", vec!["lost"], "attempted", true),
             (
                 "reverse_delivery",
                 vec!["delivered", "under_review"],
