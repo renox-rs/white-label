@@ -125,7 +125,38 @@
       "title": "Your recent activity",
       "more": "See all",
       "empty": "Nothing yet",
-      "empty_text": "Logins and account changes show up here."
+      "empty_text": "Logins and account changes show up here.",
+      "action": {
+        "auth": {
+          "login": "Signed in",
+          "logout": "Signed out",
+          "login_failed": "A sign-in attempt failed",
+          "locked_out": "Account locked after failed sign-ins",
+          "registered": "Account created",
+          "email_verified": "Email address verified",
+          "password_changed": "Password changed",
+          "password_reset": "Password reset",
+          "profile_updated": "Profile updated"
+        },
+        "user": {
+          "roles_changed": "Roles changed",
+          "invited": "Invited a user"
+        },
+        "document": {
+          "updated": "Document updated",
+          "corrected": "Document corrected",
+          "correction_submitted": "Document correction submitted"
+        },
+        "construction": {
+          "final_account_settled": "Final account settled",
+          "retention_notice_dismissed": "Retention notice dismissed"
+        },
+        "inventory": {
+          "item_supplier_added": "Supplier added to an item",
+          "preferred_supplier_requested": "Change of preferred supplier requested",
+          "preferred_supplier_changed": "Preferred supplier changed"
+        }
+      }
     }
   },
   "users": {

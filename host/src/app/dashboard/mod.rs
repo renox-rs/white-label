@@ -12,6 +12,7 @@
 //! and, for any other app, [`generic_tiles`] (the shared modules' figures
 //! only: no Property table is read). The decisions and the activity are the same for all.
 
+mod activity_label;
 mod construction_tiles;
 mod generic_tiles;
 mod property_tiles;
@@ -286,7 +287,15 @@ fn number(n: u64) -> String {
 
 async fn show(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     let figures = figures(&state, &user).await?;
-    let activity = audit::for_user(&state.db, user.id, 8).await?;
+    // The person's last actions, each with its words (the log keeps a key).
+    let activity: Vec<_> = audit::for_user(&state.db, user.id, 8)
+        .await?
+        .into_iter()
+        .map(|entry| {
+            let label = activity_label::label(&lang, &entry.action);
+            context! { action => entry.action, label, created_at => entry.created_at, ip => entry.ip }
+        })
+        .collect();
     // What this person must fix and resubmit (wl-kernel approvals).
     let needs_action: Vec<_> = approvals::needs_action_items(&state.db, &user, &lang)
         .await?
