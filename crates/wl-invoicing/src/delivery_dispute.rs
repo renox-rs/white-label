@@ -130,8 +130,8 @@ pub(crate) async fn held_by_review(db: &Db, lines: &[InvoiceLine]) -> Result<boo
 }
 
 /// Stores the review of the delivery of `event`, or keeps the one that is
-/// open (a repeated event).
-async fn record_review(state: &AppState, event: &DeliveryDisputed) -> Result {
+/// open (a repeated event). Answers whether the review is new.
+async fn record_review(state: &AppState, event: &DeliveryDisputed) -> Result<bool> {
     let delivery = event.delivery.subject();
     let open = DeliveryReview::query()
         .where_(DeliveryReview::DELIVERY_TYPE.eq(delivery.subject_type.clone()))
@@ -140,7 +140,7 @@ async fn record_review(state: &AppState, event: &DeliveryDisputed) -> Result {
         .first(&state.db)
         .await?;
     if open.is_some() {
-        return Ok(());
+        return Ok(false);
     }
     let mut review = DeliveryReview {
         delivery_type: delivery.subject_type.clone(),
@@ -150,7 +150,8 @@ async fn record_review(state: &AppState, event: &DeliveryDisputed) -> Result {
         active: true,
         ..DeliveryReview::default()
     };
-    review.insert(&state.db).await
+    review.insert(&state.db).await?;
+    Ok(true)
 }
 
 /// Ends the open reviews of `delivery`.
@@ -300,7 +301,7 @@ async fn link_to_open_dispute(
 /// `DeliveryDisputed`: flags the issued invoices, tasks the drafts.
 async fn on_disputed(state: &AppState, event: &DeliveryDisputed) -> Result {
     let delivery = event.delivery.subject();
-    record_review(state, event).await?;
+    let new_review = record_review(state, event).await?;
     let mut by_invoice: BTreeMap<i64, Vec<InvoiceLine>> = BTreeMap::new();
     for line in lines_billing(&state.db, &event.lines).await? {
         by_invoice.entry(line.invoice_id).or_default().push(line);
@@ -325,7 +326,10 @@ async fn on_disputed(state: &AppState, event: &DeliveryDisputed) -> Result {
             continue;
         }
         if invoice.disputed {
-            link_to_open_dispute(state, &invoice, event).await?;
+            // An event received again would add the same note again.
+            if new_review {
+                link_to_open_dispute(state, &invoice, event).await?;
+            }
             continue;
         }
         let gross: i64 = lines.iter().map(|line| line.gross_amount).sum();

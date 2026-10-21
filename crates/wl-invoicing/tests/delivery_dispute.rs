@@ -402,6 +402,34 @@ async fn the_same_event_twice_flags_the_invoice_once() {
     assert!(t.tickets.comments().is_empty());
 }
 
+/// Received twice, the event adds the note to a user's dispute once, not
+/// twice; a review that was closed and opened again adds its note.
+#[renox::test]
+async fn the_same_event_twice_notes_a_users_dispute_once() {
+    let t = boot().await;
+    let a = t.user_a().await;
+    let invoice = issued_of(&t, &[(11, 80_000)], &a).await;
+    dispute::raise(
+        t.state(),
+        DisputeRequest::new(
+            InvoiceId(invoice.id),
+            "wrong price",
+            DisputeBy::User { id: a.id },
+        )
+        .amount(10_000),
+    )
+    .await
+    .unwrap();
+
+    t.state().emit(disputed(&[11], Some(7))).await.unwrap();
+    t.state().emit(disputed(&[11], Some(7))).await.unwrap();
+    assert_eq!(t.tickets.comments().len(), 1, "one note for one review");
+
+    t.state().emit(closed(&[11], Some(7))).await.unwrap();
+    t.state().emit(disputed(&[11], Some(7))).await.unwrap();
+    assert_eq!(t.tickets.comments().len(), 2, "a new review is a new note");
+}
+
 /// `DeliveryDisputeClosed` for an invoice whose dispute a user already
 /// resolved: nothing happens.
 #[renox::test]
