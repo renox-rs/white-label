@@ -175,6 +175,7 @@ mod tests {
                 "out_for_delivery",
                 true,
             ),
+            ("fail_aborted", vec!["out_for_delivery"], "attempted", true),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to, system) in expected {

@@ -179,7 +179,7 @@ async fn release_needs_the_clients_recorded_instruction() {
 
     let refused = w.post(&w.dispatcher, &release, &[]).await;
     refused.assert_status(422);
-    refused.assert_see("Record the client's instruction");
+    refused.assert_see("instruction first: who asked");
     assert_eq!(w.reload(&held).await.status, ShipmentStatus::OnHold);
 
     let path = format!("/shipments/{}/hold-instruction", held.id);

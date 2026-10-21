@@ -142,7 +142,7 @@ async fn cancel_return_without_an_instruction_is_refused() {
         )
         .await;
     refused.assert_status(422);
-    refused.assert_see("Record the client's instruction");
+    refused.assert_see("instruction first: who asked");
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::PickedUp);
     assert!(charges(&w, &shipment).await.is_empty());
     assert!(w.notices.of_type("logistics.client_notice").is_empty());
