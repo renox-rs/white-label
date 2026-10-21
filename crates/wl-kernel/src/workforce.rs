@@ -20,7 +20,7 @@
 //! [`PayrollLinesFailed`] (the bank rejected a SIF file, or lines of it) and
 //! [`PayrollRunPaid`] (payment confirmed). A final settlement is announced with
 //! [`SettlementPaid`] and [`SettlementDisputed`]. The non-standard exits are
-//! announced with [`EmployeeOnboardingCancelled`], [`EmployeeNoticeWithdrawn`],
+//! announced with [`EmployeeOnboardingCancelled`], [`EmployeeNoticeGiven`], [`EmployeeNoticeWithdrawn`],
 //! [`EmployeeAbsconded`] and [`EmployeeReinstated`]; a refused visa with
 //! [`VisaCaseRejected`].
 //!
@@ -382,6 +382,21 @@ pub struct EmployeeAbsconded {
 }
 
 impl Event for EmployeeAbsconded {}
+
+/// Notice was given to an employee or by one (`give_notice`, wl-hr §4): the
+/// last working day is set. 09 Manpower caps the end date of the employee's
+/// deployments at it and keeps the end date it replaced, which
+/// [`EmployeeNoticeWithdrawn`] restores (`MPW.RUL.12`). `wl-hr` emits it with
+/// `give_notice`, which is not built yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeNoticeGiven {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The last working day.
+    pub last_working_day: NaiveDate,
+}
+
+impl Event for EmployeeNoticeGiven {}
 
 /// A notice was withdrawn by agreement (`withdraw_notice`, approved under
 /// `HRM.ACL.07`): the employee is `active` again, the settlement and the

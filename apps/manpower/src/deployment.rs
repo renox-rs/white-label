@@ -41,7 +41,7 @@
 //! - `end` is the user's, with a reason: for now *end date* (the date has
 //!   come) and *replaced*; **the other reasons come with their issues:
 //!   *client rejected* and *client non-payment* and *entered in error* with
-//!   BL-MPW-14, *exit*, *absconded* and *deceased* with BL-MPW-13;
+//!   BL-MPW-14, *exit*, *absconded* and *deceased* are the system's on the exits of the worker ([`crate::exits`], BL-MPW-13);
 //!   *contract end* is the contract's `end`, BL-MPW-06.** `auto_end` is the
 //!   system's and takes any reason, so those issues only call it. The daily
 //!   run ends the deployments whose end date has passed
@@ -210,6 +210,15 @@ pub struct Deployment {
     /// When the client, the account manager and the cover request were taken
     /// care of after the current suspension began; none while still to do.
     pub suspension_announced_at: Option<DateTime>,
+    /// The last working day that notice set as the end date (`MPW.RUL.12`);
+    /// none while no notice caps it.
+    pub notice_last_day: Option<NaiveDate>,
+    /// The end date the notice replaced; none if there was none. Meaningful
+    /// while `notice_last_day` is set.
+    pub end_date_before_notice: Option<NaiveDate>,
+    /// When the client and the account manager were told after the system
+    /// ended or cancelled it for an exit (`MPW.RUL.12`); none while to do.
+    pub exit_announced_at: Option<DateTime>,
     /// Why it ended, one of [`reasons`].
     pub end_reason: Option<String>,
     /// The day it ended.

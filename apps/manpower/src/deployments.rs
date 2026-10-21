@@ -393,7 +393,12 @@ async fn fill_in(tx: &mut Transaction, request_id: i64) -> Result<Outcome<Manpow
 
 /// Tells the client company about `deployment` with the texts of `key`
 /// (`<key>_title`, `<key>_body`).
-async fn tell_client(state: &AppState, deployment: &Deployment, key: &str, worker: &str) -> Result {
+pub(crate) async fn tell_client(
+    state: &AppState,
+    deployment: &Deployment,
+    key: &str,
+    worker: &str,
+) -> Result {
     let site = Site::find(&state.db, deployment.site_id)
         .await?
         .map(|site| site.name)
@@ -567,6 +572,18 @@ pub(crate) async fn finish_end(
     id: i64,
     lang: &str,
 ) -> Result<(Deployment, Vec<TimesheetClosure>)> {
+    finish_end_as(state, id, lang, "manpower.deployment.ended").await
+}
+
+/// [`finish_end`] with the client told by the texts of `client_key`
+/// (`<key>_title`, `<key>_body`): an exit of the worker tells the client only
+/// that the worker is no longer available (`MPW.RUL.12`).
+pub(crate) async fn finish_end_as(
+    state: &AppState,
+    id: i64,
+    lang: &str,
+    client_key: &str,
+) -> Result<(Deployment, Vec<TimesheetClosure>)> {
     let ended = load(state, id).await?;
     let last_day = ended.ended_on.unwrap_or_else(today);
     let closed = timesheet_closing(state)
@@ -587,7 +604,7 @@ pub(crate) async fn finish_end(
         })
         .await?;
     let worker = worker_name(state, lang, ended.employee()).await;
-    tell_client(state, &ended, "manpower.deployment.ended", &worker).await?;
+    tell_client(state, &ended, client_key, &worker).await?;
     Ok((ended, closed))
 }
 
@@ -619,7 +636,11 @@ pub async fn cancel(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> R
 }
 
 /// Emits [`DeploymentCancelled`] for `deployment`.
-async fn announce_cancelled(state: &AppState, deployment: &Deployment, reason: &str) -> Result {
+pub(crate) async fn announce_cancelled(
+    state: &AppState,
+    deployment: &Deployment,
+    reason: &str,
+) -> Result {
     state
         .emit(DeploymentCancelled {
             deployment: deployment.subject(),

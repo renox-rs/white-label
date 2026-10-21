@@ -211,13 +211,13 @@ pub use workforce::{
 /// The kernel's permissions (wl-kernel §6).
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
-    EmployeeExited, EmployeeId, EmployeeNoticeWithdrawn, EmployeeOnboardingCancelled,
-    EmployeeReinstated, FailedPayrollLine, LeaveApproved, NoWorkforce, ONBOARDING_SUBJECT_TYPE,
-    OnboardingCompleted, OnboardingId, OnboardingStarted, PAY_ACCOUNT_SUBJECT_TYPE,
-    PAYROLL_RUN_SUBJECT_TYPE, PayAccountChanged, PayrollLinesFailed, PayrollRunId, PayrollRunPaid,
-    PayrollRunReturned, SETTLEMENT_SUBJECT_TYPE, SettlementDisputed, SettlementId, SettlementPaid,
-    StaffProfile, VISA_CASE_SUBJECT_TYPE, VisaCaseRejected, Workforce, provide_workforce,
-    workforce,
+    EmployeeExited, EmployeeId, EmployeeNoticeGiven, EmployeeNoticeWithdrawn,
+    EmployeeOnboardingCancelled, EmployeeReinstated, FailedPayrollLine, LeaveApproved, NoWorkforce,
+    ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted,
+    PAY_ACCOUNT_SUBJECT_TYPE, PAYROLL_RUN_SUBJECT_TYPE, PayAccountChanged, PayrollLinesFailed,
+    PayrollRunId, PayrollRunPaid, PayrollRunReturned, SETTLEMENT_SUBJECT_TYPE, SettlementDisputed,
+    SettlementId, SettlementPaid, StaffProfile, VISA_CASE_SUBJECT_TYPE, VisaCaseRejected,
+    Workforce, provide_workforce, workforce,
 };
 
 /// The permission names the kernel declares.

@@ -15,6 +15,7 @@ pub mod deployments;
 pub mod documents;
 pub mod ending;
 pub mod events;
+pub mod exits;
 pub mod expiry;
 pub mod guard;
 pub mod hold;
@@ -146,6 +147,8 @@ impl Module for Manpower {
         // Attendance at a site is refused while the deployment is suspended.
         wl_kernel::attendance::provide_context_closure(app, attendance::SuspendedDeployments);
         suspension::listen(app);
+        // `MPW.RUL.12`: the exits of the worker end or cancel the deployments.
+        exits::listen(app);
         resumption::listen(app);
         notices::register_types();
         // Deployments whose end date has passed end by themselves: daily at

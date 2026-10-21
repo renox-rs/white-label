@@ -547,6 +547,12 @@ pub async fn retry(state: &AppState) -> Result {
                 )
                 .await
             }
+            [_, "exit", what, employee, date] => {
+                let Ok(employee) = employee.parse::<i64>() else {
+                    continue;
+                };
+                crate::exits::retry(state, what, employee, date).await
+            }
             [_, kind, date, ..] => {
                 let Ok(expires_on) = date.parse::<NaiveDate>() else {
                     continue;

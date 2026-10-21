@@ -419,6 +419,75 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.deployment.ended_body",
         "The deployment of {{ worker }} as {{ role }} at {{ site }} ends. The last day is {{ until }}.",
     ),
+    // The exits of the worker (`MPW.RUL.12`, BL-MPW-13). The client is told
+    // only that the worker is no longer available.
+    (
+        "manpower.deployment.unavailable_title",
+        "{{ worker }} is no longer available",
+    ),
+    (
+        "manpower.deployment.unavailable_body",
+        "{{ worker }} is no longer available for {{ role }} at {{ site }}. The deployment runs from {{ from }} to {{ until }}.",
+    ),
+    (
+        "manpower.deployment.notice_withdrawn_title",
+        "{{ worker }} stays at {{ site }}",
+    ),
+    (
+        "manpower.deployment.notice_withdrawn_body",
+        "The deployment of {{ worker }} as {{ role }} at {{ site }} continues until {{ until }}.",
+    ),
+    ("manpower.exit.reason.absconded", "worker absconded"),
+    ("manpower.exit.reason.deceased", "worker deceased"),
+    ("manpower.exit.reason.exited", "worker left the company"),
+    (
+        "manpower.exit.reason.onboarding_cancelled",
+        "onboarding cancelled",
+    ),
+    (
+        "manpower.exit.staff_title",
+        "{{ worker }}: {{ what }} ({{ contract }})",
+    ),
+    (
+        "manpower.exit.staff_body",
+        "{{ worker }}: {{ what }}.\n{{ lines }}",
+    ),
+    (
+        "manpower.exit.line_ended",
+        "Deployment ended at {{ site }} as {{ role }}, last day {{ until }}.",
+    ),
+    (
+        "manpower.exit.line_cancelled",
+        "Planned deployment at {{ site }} as {{ role }} cancelled (it was to start on {{ from }}).",
+    ),
+    (
+        "manpower.exit.line_request",
+        "Request #{{ request }} stays unfilled by this worker ({{ filled }} of {{ headcount }} filled). It does not reopen: create a replacement if the client still needs one.",
+    ),
+    (
+        "manpower.exit.notice_restored_title",
+        "Notice withdrawn: {{ worker }} ({{ contract }})",
+    ),
+    (
+        "manpower.exit.notice_restored_body",
+        "{{ worker }}: the notice was withdrawn.\n{{ lines }}",
+    ),
+    (
+        "manpower.exit.line_restored",
+        "{{ site }} as {{ role }}: the end date is {{ until }} again (the notice had set {{ was }}).",
+    ),
+    (
+        "manpower.exit.visa_title",
+        "Renewal visa of {{ worker }} rejected",
+    ),
+    (
+        "manpower.exit.visa_body",
+        "The renewal of the residence visa of {{ worker }} was rejected. The current visa expires on {{ expiry }}. These deployments run past it:\n{{ lines }}",
+    ),
+    (
+        "manpower.exit.line_visa",
+        "{{ contract }}: {{ site }} as {{ role }}, {{ status }}, ends {{ until }}.",
+    ),
     // Suspension (§7.1 `suspend`, `MPW.RUL.12`).
     (
         "manpower.attendance.suspended",
