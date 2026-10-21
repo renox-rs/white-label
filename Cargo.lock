@@ -1457,6 +1457,7 @@ dependencies = [
  "serde",
  "tempfile",
  "wl-delivery",
+ "wl-invoicing",
  "wl-kernel",
  "wl-parties",
  "wl-payments",
