@@ -180,7 +180,10 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
                 let upheld = sheet.dispute_upheld_at.is_some();
                 Box::pin(async move {
                     if upheld {
-                        Err(english("wl_attendance.adjustment.dispute_upheld_approve", &[]))
+                        Err(english(
+                            "wl_attendance.adjustment.dispute_upheld_approve",
+                            &[],
+                        ))
                     } else {
                         Ok(())
                     }
@@ -229,7 +232,10 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
                 let upheld = sheet.dispute_upheld_at.is_some();
                 Box::pin(async move {
                     if upheld {
-                        Err(english("wl_attendance.adjustment.dispute_upheld_approve", &[]))
+                        Err(english(
+                            "wl_attendance.adjustment.dispute_upheld_approve",
+                            &[],
+                        ))
                     } else {
                         Ok(())
                     }

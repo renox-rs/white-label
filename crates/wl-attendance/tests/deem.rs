@@ -7,7 +7,9 @@ mod support;
 use renox::db::DateTime;
 use renox::prelude::*;
 use wl_attendance::escalation;
-use wl_attendance::timesheet::{ApprovalBasis, ApproverKind};
+use wl_attendance::timesheet::{
+    AdjustmentOrigin, Affects, ApprovalBasis, ApproverKind, TimesheetKind,
+};
 use wl_attendance::{AttendanceStatus, Timesheet, TimesheetEntry, TimesheetStatus};
 use wl_kernel::Subject;
 use wl_kernel::attendance::CategoryMinutes;
@@ -192,7 +194,18 @@ async fn att11_without_a_clause_or_with_an_internal_approver_nothing_is_deemed()
         })
         .run(t.state())
         .await;
-    assert!(refused.is_err());
+    let refusal = match refused {
+        Err(error) => format!("{error:?}"),
+        Ok(_) => panic!("an internal timesheet is never deemed"),
+    };
+    assert!(
+        refusal.contains("Only a timesheet that an external approver approves"),
+        "refused by the external-only guard, got {refusal}"
+    );
+    assert_eq!(
+        t.reload_sheet(&internal).await.status,
+        TimesheetStatus::Submitted
+    );
 }
 
 /// AC5: with N = 6 and a timesheet submitted 2026-11-01, on 2026-11-07 it is
@@ -324,4 +337,74 @@ async fn att11_a_deemed_approval_reconciles_the_provisional_hours() {
     let events = t.approved.all();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].approval_basis, "deemed");
+}
+
+/// AC1 and AC5: the rule is registered as a daily scheduled task, with the
+/// zone of Asia/Dubai, at 08:00 local (04:00 UTC), whatever the zone of the
+/// app.
+#[test]
+fn att10_att11_the_daily_task_is_registered_at_eight_in_dubai() {
+    use renox::Module;
+    use renox::timezone::Zone;
+    let mut registry = renox::Registry::default();
+    wl_attendance::WlAttendance::new().register(&mut registry);
+    let runs = registry.schedule().upcoming(Zone::UTC);
+    let run = runs
+        .iter()
+        .find(|run| run.name == escalation::TASK)
+        .expect("the escalation task is registered");
+    assert_eq!(run.zone.to_string(), "Asia/Dubai");
+    let at = run.at.expect("it has a next run");
+    assert_eq!(at.format("%H:%M").to_string(), "04:00");
+}
+
+/// Edge case: an adjustment timesheet whose original has the clause is deemed
+/// approved too, on the days of the clause counted from its own `submit`, with
+/// the basis `deemed`; `TimesheetApproved` says it is an adjustment.
+#[renox::test]
+async fn att11_an_adjustment_of_a_timesheet_with_the_clause_is_deemed_approved() {
+    let t = boot().await;
+    cast(&t, Some(10)).await;
+    let worker = t.employee(1, &[]);
+    let original = client_timesheet(&t, worker, TimesheetStatus::Locked).await;
+    let adjustment = Timesheet {
+        owner_employee_id: worker.0,
+        period_from: nov(1),
+        period_to: nov(30),
+        kind: TimesheetKind::Adjustment,
+        adjusts_id: Some(original.id),
+        reason: Some("hours on site were 8 less".into()),
+        origin: Some(AdjustmentOrigin::AttendanceError),
+        affects: Some(Affects::Billing),
+        approver_kind: ApproverKind::External,
+        approver_role: Some("client_approver".into()),
+        submitted_at: Some(at(1, 9, 0)),
+        context_type: original.context_type.clone(),
+        context_id: original.context_id,
+        ..Timesheet::default()
+    };
+    let adjustment = t.sheet_in(adjustment, TimesheetStatus::Submitted).await;
+    TimesheetEntry::create(
+        t.db(),
+        TimesheetEntry {
+            timesheet_id: adjustment.id,
+            employee_id: worker.0,
+            date: nov(2),
+            normal_minutes: -480,
+            ..TimesheetEntry::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(run_on(&t, 10).await.deemed, 0);
+    assert_eq!(run_on(&t, 11).await.deemed, 1);
+    let stored = t.reload_sheet(&adjustment).await;
+    assert_eq!(stored.status, TimesheetStatus::Approved);
+    assert_eq!(stored.approval_basis, Some(ApprovalBasis::Deemed));
+    let events = t.approved.all();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].kind, "adjustment");
+    assert_eq!(events[0].approval_basis, "deemed");
+    assert_eq!(events[0].adjusts, Some(original.subject()));
 }
