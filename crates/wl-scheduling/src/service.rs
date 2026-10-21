@@ -244,7 +244,7 @@ async fn check_eligible(
 }
 
 /// What the refused booker is told: the slot is closed, blocked or taken.
-fn refusal_for(unfit: Unfit) -> Refusal {
+pub(crate) fn refusal_for(unfit: Unfit) -> Refusal {
     match unfit {
         Unfit::Taken => Refusal::Taken {
             nearest: Vec::new(),
@@ -280,7 +280,7 @@ pub async fn book(
     actor: Actor,
     at: DateTime,
 ) -> std::result::Result<Booking, Refusal> {
-    create(state, new, actor, at, Kind::Book).await
+    create(state, new, actor, at, Kind::Book, Exclude::default()).await
 }
 
 /// A request for a service that needs staff acceptance (`request`). It holds
@@ -291,7 +291,23 @@ pub async fn request(
     actor: Actor,
     at: DateTime,
 ) -> std::result::Result<Booking, Refusal> {
-    create(state, new, actor, at, Kind::Request).await
+    create(state, new, actor, at, Kind::Request, Exclude::default()).await
+}
+
+/// A party takes the slot a waiting-list entry was offered (§4.2 `accept`):
+/// the offer's own hold does not stop its own booking.
+pub(crate) async fn book_from_offer(
+    state: &AppState,
+    new: NewBooking,
+    entry_id: i64,
+    actor: Actor,
+    at: DateTime,
+) -> std::result::Result<Booking, Refusal> {
+    let exclude = Exclude {
+        entry: Some(entry_id),
+        ..Exclude::default()
+    };
+    create(state, new, actor, at, Kind::Book, exclude).await
 }
 
 async fn create(
@@ -300,6 +316,7 @@ async fn create(
     actor: Actor,
     at: DateTime,
     kind: Kind,
+    exclude: Exclude,
 ) -> std::result::Result<Booking, Refusal> {
     let cfg = config_of(state);
     let service = ServiceType::find(&state.db, new.service_type_id)
@@ -340,7 +357,7 @@ async fn create(
     let mut tx = state.db.begin().await?;
     let locked = slots::lock(&mut tx, &ids).await?;
     if let Err(unfit) =
-        slots::check_free(&mut tx, &service, &locked, start, end, at, Exclude::default()).await?
+        slots::check_free(&mut tx, &service, &locked, start, end, at, exclude).await?
     {
         tx.rollback().await?;
         return Err(refusal_for(unfit));
@@ -445,6 +462,7 @@ pub async fn accept(
     let locked = slots::lock(&mut tx, &ids).await?;
     let exclude = Exclude {
         booking: Some(booking.id),
+        ..Exclude::default()
     };
     if let Err(unfit) = slots::check_free(
         &mut tx,
@@ -550,6 +568,7 @@ pub async fn reschedule(
     let locked = slots::lock(&mut tx, &ids).await?;
     let exclude = Exclude {
         booking: Some(old.id),
+        ..Exclude::default()
     };
     if let Err(unfit) =
         slots::check_free(&mut tx, &service, &locked, new_start, end, at, exclude).await?

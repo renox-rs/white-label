@@ -120,6 +120,13 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.link.title", "Your booking"),
     ("wl_scheduling.link.cancel", "Cancel this booking"),
     ("wl_scheduling.link.cancelled", "The booking is cancelled."),
+    (
+        "wl_scheduling.problem.offer_mismatch",
+        "That slot does not match what the entry waits for.",
+    ),
+    ("wl_scheduling.problem.offer_expired", "The offer has expired."),
+    ("wl_scheduling.problem.offer_still_held", "The offer is still held."),
+    ("wl_scheduling.problem.not_expired", "The entry has not expired."),
     ("wl_scheduling.problem.too_far", "That is further ahead than bookings are taken."),
 ];
 

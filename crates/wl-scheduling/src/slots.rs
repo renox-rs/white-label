@@ -45,6 +45,9 @@ pub struct FreeSlot {
 pub struct Exclude {
     /// A booking whose own rows do not count.
     pub booking: Option<i64>,
+    /// A waiting-list entry whose offer does not count (the entry that takes
+    /// its own slot).
+    pub entry: Option<i64>,
 }
 
 /// Why a time cannot be booked.

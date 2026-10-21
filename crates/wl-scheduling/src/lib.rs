@@ -13,6 +13,7 @@ pub mod resource;
 pub mod service;
 pub mod slots;
 mod texts;
+pub mod waiting;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -27,6 +28,7 @@ pub use resource::{
     AvailabilityBlock, AvailabilityRule, Resource, ResourceType, ServiceResource, ServiceType,
 };
 pub use service::{Actor, CancelRequest, NewBooking};
+pub use waiting::{WaitingEntry, WaitingStatus};
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
@@ -158,8 +160,10 @@ impl Module for WlScheduling {
             .model::<AvailabilityRule>()
             .model::<AvailabilityBlock>()
             .model::<Booking>()
-            .model::<BookingResource>();
+            .model::<BookingResource>()
+            .model::<WaitingEntry>();
         renox::state_machine::register::<Booking>();
+        renox::state_machine::register::<WaitingEntry>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<links::LinkPage>();
