@@ -81,4 +81,4 @@ CREATE INDEX "wl_hr_hour_differences_employee" ON "wl_hr_hour_differences" (empl
 CREATE INDEX "wl_hr_hour_differences_run" ON "wl_hr_hour_differences" (run_id);
 
 -- The recovery a negative difference became (or the plan it was turned into).
-ALTER TABLE "wl_hr_adjustments" ADD COLUMN difference_id INTEGER REFERENCES "wl_hr_hour_differences" (id);
+ALTER TABLE "wl_hr_adjustments" ADD COLUMN difference_id INTEGER;
