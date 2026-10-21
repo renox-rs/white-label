@@ -17,7 +17,8 @@
 //! `wl-hr` also provides [`Qualifications`](crate::qualifications::Qualifications) (`qualification_valid`) and emits
 //! [`QualificationExpiring`] and [`QualificationExpired`]. Its payroll runs
 //! are announced with [`PayrollRunReturned`] (a run sent back to draft) and
-//! [`PayrollLinesFailed`] (the bank rejected a SIF file, or lines of it).
+//! [`PayrollLinesFailed`] (the bank rejected a SIF file, or lines of it) and
+//! [`PayrollRunPaid`] (payment confirmed).
 //!
 //! An employee is referred to by [`EmployeeId`] or as a [`Subject`] of type
 //! [`EMPLOYEE_SUBJECT_TYPE`]; a scope is a [`Subject`] too (a branch).
@@ -165,6 +166,22 @@ pub struct PayrollLinesFailed {
 }
 
 impl Event for PayrollLinesFailed {}
+
+/// Payment of a payroll run was confirmed (`confirm_paid`): the payslips are
+/// published. Held lines wait for a later run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayrollRunPaid {
+    /// The run.
+    pub run: PayrollRunId,
+    /// Its period, e.g. `2026-11`.
+    pub period: String,
+    /// The sum of the nets of the lines paid, AED fils.
+    pub total: i64,
+    /// The employees paid.
+    pub employees: Vec<EmployeeId>,
+}
+
+impl Event for PayrollRunPaid {}
 
 /// An employee became `active` (`activate`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

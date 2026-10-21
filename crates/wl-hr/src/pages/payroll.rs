@@ -7,6 +7,10 @@
 //! | `POST /hr/payroll/{id}/transitions/{name}` | `wl_hr.payroll_transitions.*` | `payroll.view` and the transition's permission |
 //! | `POST /hr/payroll/{id}/rejection` | `wl_hr.payroll_rejection` | `payroll.prepare` |
 //! | `POST /hr/payroll/{id}/resubmit` | `wl_hr.payroll_resubmit` | `payroll.prepare` |
+//! | `POST /hr/payroll/{id}/partial` | `wl_hr.payroll_partial` | `payroll.prepare` |
+//! | `POST /hr/payroll/{id}/confirm` | `wl_hr.payroll_confirm` | `payroll.approve` |
+//! | `POST /hr/payroll/lines/{id}/hold` | `wl_hr.payroll_line_hold` | `payroll.prepare` |
+//! | `POST /hr/payroll/lines/{id}/pay-other` | `wl_hr.payroll_line_pay_other` | `payroll.prepare` |
 //! | `POST /hr/payroll/lines/{id}/comment` | `wl_hr.payroll_line_comment` | `payroll.approve`, not the preparer |
 //!
 //! The page lists the lines, the lines above the Art. 25 caps (the
@@ -21,8 +25,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::caps;
 use crate::employee::Employee;
-use crate::payroll::{LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
+use crate::payroll::{
+    ConfirmInput, FailedLine, LineStatus, PartialInput, PayrollLine, PayrollRun, PayrollRunStatus,
+};
 use crate::sif::SifFile;
+use crate::wps_partial::{self, OTHER_METHODS};
 use crate::wps_rejection::{REASON_FILE_FORMAT, REASONS, RejectionInput, ResubmitInput};
 use crate::{permissions, texts};
 
@@ -51,6 +58,14 @@ pub fn routes() -> Routes {
                 .name("wl_hr.payroll_rejection")
                 .post("/hr/payroll/{id}/resubmit", resubmit)
                 .name("wl_hr.payroll_resubmit")
+                .post("/hr/payroll/{id}/partial", record_partial)
+                .name("wl_hr.payroll_partial")
+                .post("/hr/payroll/{id}/confirm", confirm_paid)
+                .name("wl_hr.payroll_confirm")
+                .post("/hr/payroll/lines/{id}/hold", hold_line)
+                .name("wl_hr.payroll_line_hold")
+                .post("/hr/payroll/lines/{id}/pay-other", pay_other)
+                .name("wl_hr.payroll_line_pay_other")
                 .require_auth(),
         )
 }
@@ -108,6 +123,10 @@ pub struct LineView {
     pub reason: String,
     /// The approver's comment on the line.
     pub comment: String,
+    /// Whether the line failed (it can be held or paid another way).
+    pub failed: bool,
+    /// Whether its payslip is published.
+    pub payslip: bool,
 }
 
 /// A line above a cap (`HRM.ACL.06`).
@@ -151,6 +170,11 @@ pub(crate) struct ShowPage {
     sif_files: Vec<SifView>,
     can_record_rejection: bool,
     can_resubmit: bool,
+    can_record_partial: bool,
+    can_confirm: bool,
+    can_move_out: bool,
+    other_methods: Vec<(String, String)>,
+    other_selected: String,
     rejection_reasons: Vec<(String, String)>,
     rejection_selected: String,
 }
@@ -258,6 +282,18 @@ async fn show(
             .collect(),
         can_record_rejection: prepares && run.status == PayrollRunStatus::Submitted,
         can_resubmit: prepares && run.status == PayrollRunStatus::Rejected,
+        can_record_partial: prepares && run.status == PayrollRunStatus::Submitted,
+        can_confirm: user.has_permission(permissions::PAYROLL_APPROVE)
+            && matches!(
+                run.status,
+                PayrollRunStatus::Submitted | PayrollRunStatus::PartiallyRejected
+            ),
+        can_move_out: prepares && run.status == PayrollRunStatus::PartiallyRejected,
+        other_methods: OTHER_METHODS
+            .iter()
+            .map(|m| ((*m).to_owned(), text(&lang, &format!("payroll.method.{m}"))))
+            .collect(),
+        other_selected: OTHER_METHODS[0].to_owned(),
         rejection_reasons: REASONS
             .iter()
             .map(|r| {
@@ -273,10 +309,11 @@ async fn show(
 
 /// The transitions the generic button row runs: they need no input beyond a
 /// reason. The others have a form of their own.
-const GENERIC: [&str; 3] = [
+const GENERIC: [&str; 4] = [
     crate::payroll::CALCULATE,
     crate::payroll::APPROVE,
     crate::payroll::RETURN,
+    crate::payroll::REGENERATE,
 ];
 
 /// Whether `user` may comment on the lines of `run`: an approver who is not
@@ -304,6 +341,8 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
             .or_else(|| line.failure_reason.clone())
             .unwrap_or_default(),
         comment: line.approver_comment.clone().unwrap_or_default(),
+        failed: line.status == LineStatus::Failed,
+        payslip: line.payslip_published_at.is_some(),
     }
 }
 
@@ -416,4 +455,144 @@ async fn resubmit(
     let input = ResubmitInput { note: form.note };
     run_as(&state, &user, id, crate::payroll::RESUBMIT, &input).await?;
     Ok((Toast::success(text(&lang, "payroll.resubmitted")), back).into_response())
+}
+
+/// The form that records the bank's result file.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct PartialForm {
+    /// The bank's result file.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub result_file: String,
+    /// The failed lines, one per row: `<line id>=<reason from the file>`.
+    #[validate(max = 5000)]
+    #[serde(default)]
+    pub failed: String,
+}
+
+/// The failed lines of a form: `12=invalid IBAN`, one per row.
+fn parse_failed(text: &str) -> Result<Vec<FailedLine>> {
+    let mut failed = Vec::new();
+    for row in text.lines().map(str::trim).filter(|r| !r.is_empty()) {
+        let (line, reason) = row
+            .split_once('=')
+            .ok_or_else(|| Error::BadRequest("failed".to_owned()))?;
+        failed.push(FailedLine {
+            line_id: line
+                .trim()
+                .parse()
+                .map_err(|_| Error::BadRequest("failed".to_owned()))?,
+            reason: reason.trim().to_owned(),
+        });
+    }
+    Ok(failed)
+}
+
+/// `POST /hr/payroll/{id}/partial`: the preparer records the bank's result.
+async fn record_partial(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path(id): Path<i64>,
+    Valid(form): Valid<PartialForm>,
+) -> Result<Response> {
+    let input = PartialInput {
+        failed: parse_failed(&form.failed)?,
+        result_file: form.result_file,
+    };
+    run_as(&state, &user, id, crate::payroll::RECORD_PARTIAL, &input).await?;
+    Ok((
+        Toast::success(text(&lang, "payroll.partial_recorded")),
+        back,
+    )
+        .into_response())
+}
+
+/// The form that confirms payment.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ConfirmForm {
+    /// The bank's confirmation of the latest SIF version.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub confirmation: String,
+}
+
+/// `POST /hr/payroll/{id}/confirm`: the approver confirms payment.
+async fn confirm_paid(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ConfirmForm>,
+) -> Result<Response> {
+    let input = ConfirmInput {
+        confirmation: form.confirmation,
+    };
+    run_as(&state, &user, id, crate::payroll::CONFIRM_PAID, &input).await?;
+    Ok((Toast::success(text(&lang, "payroll.paid_confirmed")), back).into_response())
+}
+
+/// The form that holds a failed line.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct HoldForm {
+    /// Why the line is held.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// Loads line `id` and its run, and checks that `user` may prepare it.
+async fn failed_line_of(state: &AppState, user: &AuthUser, id: i64) -> Result<PayrollRun> {
+    if !user.has_permission(permissions::PAYROLL_PREPARE) {
+        return Err(Error::Forbidden);
+    }
+    let line = PayrollLine::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    PayrollRun::find_or_404(&state.db, line.run_id).await
+}
+
+/// `POST /hr/payroll/lines/{id}/hold`: a failed line is held, to be paid later
+/// off-cycle.
+async fn hold_line(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path(id): Path<i64>,
+    Valid(form): Valid<HoldForm>,
+) -> Result<Response> {
+    failed_line_of(&state, &user, id).await?;
+    wps_partial::hold_line(&state.db, id, &form.reason).await?;
+    Ok((Toast::success(text(&lang, "payroll.held")), back).into_response())
+}
+
+/// The form that records a failed line paid another approved way.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct PayOtherForm {
+    /// `transfer`, `cheque` or `cash`.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub method: String,
+    /// The payment's reference.
+    #[validate(max = 200)]
+    #[serde(default)]
+    pub reference: String,
+}
+
+/// `POST /hr/payroll/lines/{id}/pay-other`: a failed line is paid another
+/// approved way and needs no bank confirmation.
+async fn pay_other(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path(id): Path<i64>,
+    Valid(form): Valid<PayOtherForm>,
+) -> Result<Response> {
+    failed_line_of(&state, &user, id).await?;
+    wps_partial::pay_line_other_way(&state.db, id, &form.method, &form.reference).await?;
+    Ok((Toast::success(text(&lang, "payroll.other_paid")), back).into_response())
 }

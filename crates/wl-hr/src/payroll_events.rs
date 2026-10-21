@@ -8,17 +8,24 @@
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::{
-    EmployeeId, FailedPayrollLine, PayrollLinesFailed, PayrollRunId, PayrollRunReturned,
+    EmployeeId, FailedPayrollLine, PayrollLinesFailed, PayrollRunId, PayrollRunPaid,
+    PayrollRunReturned,
 };
 
-use crate::notices;
-use crate::payroll::{LineStatus, PayrollLine, PayrollRun, RECORD_REJECTION, RETURN};
+use crate::payroll::{
+    CONFIRM_PAID, LineStatus, PayrollLine, PayrollRun, RECORD_PARTIAL, RECORD_PARTIAL_BY_SYSTEM,
+    RECORD_REJECTION, RETURN,
+};
+use crate::{notices, wps_alerts};
 
 /// The listener registered by [`crate::events`].
 pub(crate) async fn on_transitioned(state: &AppState, event: &Transitioned<PayrollRun>) -> Result {
     match event.transition.as_str() {
         RETURN => returned(state, event.key).await,
-        RECORD_REJECTION => failed(state, event.key).await,
+        RECORD_REJECTION | RECORD_PARTIAL | RECORD_PARTIAL_BY_SYSTEM => {
+            failed(state, event.key).await
+        }
+        CONFIRM_PAID => paid(state, event.key).await,
         _ => Ok(()),
     }
 }
@@ -105,11 +112,33 @@ pub(crate) async fn failed(state: &AppState, run_id: i64) -> Result {
         &staff_of(&run),
     )
     .await?;
+    wps_alerts::open_tasks(state, &run).await?;
     state
         .emit(PayrollLinesFailed {
             run: PayrollRunId(run.id),
             period: run.period.clone(),
             lines,
+        })
+        .await
+}
+
+/// `confirm_paid`: `PayrollRunPaid` with the employees paid and the total.
+async fn paid(state: &AppState, run_id: i64) -> Result {
+    let Some(run) = PayrollRun::find(&state.db, run_id).await? else {
+        return Ok(());
+    };
+    let paid: Vec<PayrollLine> = run
+        .lines(&state.db)
+        .await?
+        .into_iter()
+        .filter(|l| l.status == LineStatus::Paid)
+        .collect();
+    state
+        .emit(PayrollRunPaid {
+            run: PayrollRunId(run.id),
+            period: run.period.clone(),
+            total: paid.iter().map(|l| l.net_amount).sum(),
+            employees: paid.iter().map(|l| EmployeeId(l.employee_id)).collect(),
         })
         .await
 }

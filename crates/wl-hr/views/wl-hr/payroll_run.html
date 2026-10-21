@@ -22,6 +22,19 @@
         <rx-textarea name="note" :label="tx['payroll.fix_note']" id="resubmit-note" required/>
       </rx-action-sheet>
     </template>
+    <template rx-if="can_record_partial">
+      <rx-action-sheet id="record-partial" :label="tx['payroll.record_partial']" :action="route('wl_hr.payroll_partial', run.id)"
+                       :title="tx['payroll.record_partial']" :description="tx['payroll.partial_hint']" :submit-label="tx['payroll.record_partial']" icon="list-checks">
+        <rx-input name="result_file" :label="tx['payroll.result_file']" id="record-partial-file" required/>
+        <rx-textarea name="failed" :label="tx['payroll.failed_lines']" id="record-partial-failed" required/>
+      </rx-action-sheet>
+    </template>
+    <template rx-if="can_confirm">
+      <rx-action-sheet id="confirm-paid" :label="tx['payroll.confirm_paid']" :action="route('wl_hr.payroll_confirm', run.id)"
+                       :title="tx['payroll.confirm_paid']" :submit-label="tx['payroll.confirm_paid']" variant="primary" icon="check">
+        <rx-input name="confirmation" :label="tx['payroll.confirmation']" id="confirm-paid-confirmation"/>
+      </rx-action-sheet>
+    </template>
     <template rx-if="approve_blocked and can_approve">
       <rx-button :label="tx['payroll.approve']" variant="primary" disabled :disabled-reason="tx['payroll.approve_blocked']"/>
     </template>
@@ -52,8 +65,22 @@
       <rx-column :label="tx['payroll.net']">{{ line.net }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="line.status_kind" :text="line.status"/></rx-column>
       <rx-column :label="tx['payroll.reason']" hide-narrow>{{ line.reason }}</rx-column>
+      <rx-column :label="tx['payroll.payslip']" hide-narrow>
+        <template rx-if="line.payslip">{{ tx['payroll.payslip_published'] }}</template>
+      </rx-column>
       <rx-column :label="tx['payroll.comment']">
         {{ line.comment }}
+        <template rx-if="can_move_out and line.failed">
+          <rx-action-sheet :id="'hold-line-' ~ line.id" :label="tx['payroll.hold']" :action="route('wl_hr.payroll_line_hold', line.id)"
+                           :title="tx['payroll.hold_line']" :submit-label="tx['payroll.hold']" icon="ban">
+            <rx-input name="reason" :label="tx['payroll.hold_reason']" :id="'hold-reason-' ~ line.id" required/>
+          </rx-action-sheet>
+          <rx-action-sheet :id="'pay-other-' ~ line.id" :label="tx['payroll.pay_other']" :action="route('wl_hr.payroll_line_pay_other', line.id)"
+                           :title="tx['payroll.pay_other_line']" :submit-label="tx['payroll.pay_other']" icon="wallet">
+            <rx-select name="method" :label="tx['payroll.other_method']" :options="other_methods" :selected="other_selected"/>
+            <rx-input name="reference" :label="tx['payroll.other_reference']" :id="'pay-other-ref-' ~ line.id" required/>
+          </rx-action-sheet>
+        </template>
         <template rx-if="can_comment">
           <rx-action-sheet :id="'comment-line-' ~ line.id" :label="tx['payroll.comment_line']" :action="route('wl_hr.payroll_line_comment', line.id)"
                            :title="tx['payroll.comment_line']" :submit-label="tx['payroll.comment_submit']" icon="pencil">

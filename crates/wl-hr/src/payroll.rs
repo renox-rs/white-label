@@ -15,6 +15,8 @@
 //!   ([`comment_line`]); the approver is cleared and the preparer told
 //!   ([`crate::payroll_events`]). Not possible once the file was sent.
 //!
+//! - `confirm_paid` (submitted, partially_rejected -> paid, `payroll.approve`)
+//!   and the partly failed file: see [`crate::wps_partial`].
 //! - `record_rejection` (submitted -> rejected) and `resubmit` (rejected ->
 //!   submitted), `payroll.prepare`: the bank rejects the whole file and the
 //!   preparer sends a new version for the same lines ([`crate::wps_rejection`]);
@@ -34,10 +36,13 @@
 //!   only the lines that were fixed and are `included` again
 //!   ([`fix_line`]); a `failed` line left refuses it, a `held` line stays out.
 //!
-//! The three are `system` transitions run by [`submit`], [`record_partial`]
-//! and [`regenerate`]; the user-facing ones, with `payroll.prepare`, replace
-//! them with BL-HRM-11 to 14 (decision: this issue builds the base only as
-//! far as the held lines need).
+//! `submit` is a `system` transition run by [`submit`] (the user-facing one
+//! comes with the submit guard of the payroll base). `record_partial` and
+//! `regenerate` are user transitions of `payroll.prepare` since BL-HRM-13
+//! ([`crate::wps_partial`], which also holds `confirm_paid`); the functions
+//! [`record_partial`] and [`regenerate`] run their system twins
+//! ([`RECORD_PARTIAL_BY_SYSTEM`], [`REGENERATE_BY_SYSTEM`]) with the same
+//! effects.
 //!
 //! [`hold_open_lines_in`] is what the exits use: the lines that are
 //! `included` in runs not yet `submitted` (`draft`, `calculated`, `approved`)
@@ -50,7 +55,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::employee::{Employee, EmployeeStatus};
 use crate::texts::english;
-use crate::{adjustment, caps, permissions, sif, wps_rejection};
+use crate::{adjustment, caps, permissions, sif, wps_partial, wps_rejection};
 
 /// The reason of a line held by the absence report.
 pub const HELD_ABSENCE_REPORT: &str = "absence report";
@@ -67,10 +72,18 @@ pub const RECORD_REJECTION: &str = "record_rejection";
 pub const RESUBMIT: &str = "resubmit";
 /// The run is ready to be sent.
 pub const SUBMIT: &str = "submit";
-/// The bank's result file shows failed lines.
+/// The bank's result file shows failed lines (`payroll.prepare`).
 pub const RECORD_PARTIAL: &str = "record_partial";
-/// A new SIF file with the fixed lines.
+/// The same as [`RECORD_PARTIAL`], run by the system (a bank result that
+/// arrives without a user, and the tests of the exits): it needs no result
+/// file.
+pub const RECORD_PARTIAL_BY_SYSTEM: &str = "record_partial_by_system";
+/// A new SIF file with the fixed lines (`payroll.prepare`).
 pub const REGENERATE: &str = "regenerate";
+/// The same as [`REGENERATE`], run by the system.
+pub const REGENERATE_BY_SYSTEM: &str = "regenerate_by_system";
+/// Payment is confirmed for every line not held (`payroll.approve`).
+pub const CONFIRM_PAID: &str = "confirm_paid";
 
 /// Where a payroll run stands (§4).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -184,6 +197,13 @@ pub struct PayrollLine {
     pub failure_reason: Option<String>,
     /// The SIF version that carries it; empty when it is in none.
     pub sif_version: Option<i64>,
+    /// When its payslip was published to the employee portal (once).
+    pub payslip_published_at: Option<DateTime>,
+    /// The approved non-WPS way a failed line was paid instead
+    /// (`transfer`, `cheque`, `cash`).
+    pub paid_method: Option<String>,
+    /// That payment's reference, e.g. `TR-88`.
+    pub paid_reference: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -221,6 +241,20 @@ pub struct FailedLine {
 pub struct PartialInput {
     /// The lines the result file shows failed.
     pub failed: Vec<FailedLine>,
+    /// The bank's result file: a reference to the attached file. It is the
+    /// confirmation for the lines it shows paid. The user transition needs
+    /// it; the system one does not.
+    pub result_file: String,
+}
+
+/// The input of `confirm_paid`.
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct ConfirmInput {
+    /// The bank or exchange-house confirmation of the latest SIF version: a
+    /// reference to the attached file. Earlier versions were confirmed by
+    /// the result file of `record_partial`.
+    pub confirmation: String,
 }
 
 impl StateMachine for PayrollRun {
@@ -264,53 +298,11 @@ impl StateMachine for PayrollRun {
                         Box::pin(async move { generate_sif_in(tx, id).await })
                     }),
             )
-            .transition(
-                Transition::new(RECORD_PARTIAL)
-                    .label("Record partial rejection")
-                    .system()
-                    .from([Submitted])
-                    .to(PartiallyRejected)
-                    .guard("reasons_given", |_run: &PayrollRun, ctx| {
-                        let input = ctx.input_as::<PartialInput>().unwrap_or_default();
-                        let blank = input.failed.iter().any(|f| f.reason.trim().is_empty());
-                        Box::pin(async move {
-                            if blank {
-                                Err(english("wl_hr.payroll.reason_required", &[]))
-                            } else {
-                                Ok(())
-                            }
-                        })
-                    })
-                    .effect(|run: &PayrollRun, ctx, tx| {
-                        let id = run.id;
-                        let input = ctx.input_as::<PartialInput>().unwrap_or_default();
-                        Box::pin(async move { record_result_in(tx, id, &input).await })
-                    }),
-            )
-            .transition(
-                Transition::new(REGENERATE)
-                    .label("Regenerate")
-                    .system()
-                    .from([PartiallyRejected])
-                    .to(Submitted)
-                    .effect(|run: &PayrollRun, _ctx, tx| {
-                        let id = run.id;
-                        Box::pin(async move {
-                            let failed = PayrollLine::query()
-                                .where_(PayrollLine::RUN_ID.eq(id))
-                                .where_(PayrollLine::STATUS.eq(LineStatus::Failed))
-                                .count(&mut *tx)
-                                .await?;
-                            if failed > 0 {
-                                return Err(Error::Status(
-                                    StatusCode::UNPROCESSABLE_ENTITY,
-                                    english("wl_hr.payroll.failed_lines_left", &[]),
-                                ));
-                            }
-                            generate_sif_in(tx, id).await
-                        })
-                    }),
-            )
+            .transition(wps_partial::record_partial(false))
+            .transition(wps_partial::record_partial(true))
+            .transition(wps_partial::regenerate(false))
+            .transition(wps_partial::regenerate(true))
+            .transition(wps_partial::confirm_paid())
     }
 }
 
@@ -477,7 +469,11 @@ async fn generate_sif_in(tx: &mut Transaction, run_id: i64) -> Result {
 /// their reason, except the line of an `absconded` employee, which is `held`
 /// with *absence report* and not regenerated; every other line of the file
 /// is `paid`.
-async fn record_result_in(tx: &mut Transaction, run_id: i64, input: &PartialInput) -> Result {
+pub(crate) async fn record_result_in(
+    tx: &mut Transaction,
+    run_id: i64,
+    input: &PartialInput,
+) -> Result {
     let lines = PayrollLine::query()
         .where_(PayrollLine::RUN_ID.eq(run_id))
         .where_(PayrollLine::STATUS.eq(LineStatus::Included))
@@ -519,7 +515,30 @@ async fn record_result_in(tx: &mut Transaction, run_id: i64, input: &PartialInpu
                 ],
             )
             .await?;
+        if status == LineStatus::Paid {
+            publish_payslip_in(tx, line.id).await?;
+        }
     }
+    Ok(())
+}
+
+/// Publishes the payslip of line `line_id` to the employee portal, once: a
+/// line whose payslip is published keeps the time it was. Decision: the
+/// payslip document itself (`DOC.GEN.01`) is made by wl-documents when it
+/// provides the contract; here the line records that it is published, which
+/// is what the portal and `confirm_paid` read.
+pub(crate) async fn publish_payslip_in(tx: &mut Transaction, line_id: i64) -> Result {
+    PayrollLine::query()
+        .where_(PayrollLine::ID.eq(line_id))
+        .where_(PayrollLine::PAYSLIP_PUBLISHED_AT.is_null())
+        .update(
+            &mut *tx,
+            &[
+                ("payslip_published_at", &Some(now())),
+                ("updated_at", &now()),
+            ],
+        )
+        .await?;
     Ok(())
 }
 
@@ -611,7 +630,16 @@ pub async fn record_partial(
     id: i64,
     failed: Vec<FailedLine>,
 ) -> std::result::Result<PayrollRun, TransitionError> {
-    run_system(state, id, RECORD_PARTIAL, &PartialInput { failed }).await
+    run_system(
+        state,
+        id,
+        RECORD_PARTIAL_BY_SYSTEM,
+        &PartialInput {
+            failed,
+            ..PartialInput::default()
+        },
+    )
+    .await
 }
 
 /// A new SIF version of run `id` with only the fixed lines.
@@ -619,7 +647,7 @@ pub async fn regenerate(
     state: &AppState,
     id: i64,
 ) -> std::result::Result<PayrollRun, TransitionError> {
-    run_system(state, id, REGENERATE, &PartialInput::default()).await
+    run_system(state, id, REGENERATE_BY_SYSTEM, &PartialInput::default()).await
 }
 
 #[cfg(test)]
@@ -646,11 +674,14 @@ mod tests {
 
     #[test]
     fn the_three_transitions_are_system_transitions_of_the_spec() {
+        // `record_partial` and `regenerate` are user transitions of
+        // `payroll.prepare` since BL-HRM-13 ([`crate::wps_partial`]); the
+        // system runs their twins, with the same states.
         let machine = PayrollRun::machine();
         let table = [
             (SUBMIT, "approved", "submitted"),
-            (RECORD_PARTIAL, "submitted", "partially_rejected"),
-            (REGENERATE, "partially_rejected", "submitted"),
+            (RECORD_PARTIAL_BY_SYSTEM, "submitted", "partially_rejected"),
+            (REGENERATE_BY_SYSTEM, "partially_rejected", "submitted"),
         ];
         for (name, from, to) in table {
             let transition = machine.find(name).unwrap();

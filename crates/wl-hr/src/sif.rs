@@ -44,6 +44,9 @@ pub struct SifFile {
     pub line_count: i64,
     /// The sum of their nets, AED fils.
     pub total: i64,
+    /// The bank's result or confirmation file of this version (a reference
+    /// to the attached file), once attached.
+    pub confirmation: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

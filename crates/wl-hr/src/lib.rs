@@ -31,6 +31,8 @@ pub mod template;
 mod texts;
 pub mod visa;
 pub mod workforce;
+pub mod wps_alerts;
+pub mod wps_partial;
 pub mod wps_rejection;
 
 use renox::db::Migration;

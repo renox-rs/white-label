@@ -35,7 +35,7 @@ use wl_kernel::tickets::{
 };
 use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
-    OnboardingCompleted, OnboardingStarted, PayrollLinesFailed, PayrollRunReturned,
+    OnboardingCompleted, OnboardingStarted, PayrollLinesFailed, PayrollRunPaid, PayrollRunReturned,
     QualificationExpired, QualificationExpiring,
 };
 use wl_kernel::{PartyId, SopId, Subject};
@@ -406,6 +406,7 @@ struct Fakes {
     absconded: Arc<Mutex<Vec<EmployeeAbsconded>>>,
     returned: Arc<Mutex<Vec<PayrollRunReturned>>>,
     failed: Arc<Mutex<Vec<PayrollLinesFailed>>>,
+    paid: Arc<Mutex<Vec<PayrollRunPaid>>>,
     tasks: TicketDesk,
 }
 
@@ -501,6 +502,7 @@ impl Module for Fakes {
         record(app, &self.absconded);
         record(app, &self.returned);
         record(app, &self.failed);
+        record(app, &self.paid);
         provide_task_creator(app, self.tasks.clone());
     }
 }
@@ -537,6 +539,8 @@ pub struct Booted {
     pub returned: Recorded<PayrollRunReturned>,
     /// `PayrollLinesFailed`.
     pub failed: Recorded<PayrollLinesFailed>,
+    /// `PayrollRunPaid`.
+    pub paid: Recorded<PayrollRunPaid>,
     /// The tasks (tickets) opened for staff.
     pub tasks: TicketDesk,
     /// Days the clock was moved forward from the real one.
@@ -832,6 +836,84 @@ impl Booted {
             .await
     }
 
+    /// `user` records the bank's result of `run`: `result_file` and the failed
+    /// lines as `<line id>=<reason>` rows.
+    pub async fn partial(
+        &self,
+        user: &User,
+        run: &PayrollRun,
+        result_file: &str,
+        failed: &[(&PayrollLine, &str)],
+    ) -> renox::testing::TestResponse {
+        let rows: Vec<String> = failed
+            .iter()
+            .map(|(line, reason)| format!("{}={reason}", line.id))
+            .collect();
+        self.app.acting_as(user);
+        self.app
+            .post(
+                &format!("/hr/payroll/{}/partial", run.id),
+                &[("result_file", result_file), ("failed", &rows.join("\n"))],
+            )
+            .await
+    }
+
+    /// `user` confirms payment of `run` with `confirmation`.
+    pub async fn confirm(
+        &self,
+        user: &User,
+        run: &PayrollRun,
+        confirmation: &str,
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app
+            .post(
+                &format!("/hr/payroll/{}/confirm", run.id),
+                &[("confirmation", confirmation)],
+            )
+            .await
+    }
+
+    /// `user` runs an action of a failed `line`: `hold` or `pay-other`.
+    pub async fn line_action(
+        &self,
+        user: &User,
+        line: &PayrollLine,
+        action: &str,
+        fields: &[(&str, &str)],
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app
+            .post(&format!("/hr/payroll/lines/{}/{action}", line.id), fields)
+            .await
+    }
+
+    /// A run of `period` for `employees` with a net of `net` fils each,
+    /// calculated by `prep`, approved by `appr` and sent (SIF version 1).
+    pub async fn sent_run(
+        &self,
+        prep: &User,
+        appr: &User,
+        period: &str,
+        employees: &[Employee],
+        net: i64,
+    ) -> (PayrollRun, Vec<PayrollLine>) {
+        let run = self.payroll_run(period, PayrollRunStatus::Draft).await;
+        for employee in employees {
+            self.payroll_line(&run, employee, net, net).await;
+        }
+        self.transition(prep, &run, "calculate", "")
+            .await
+            .assert_status(303);
+        self.transition(appr, &run, "approve", "")
+            .await
+            .assert_status(303);
+        wl_hr::payroll::submit(self.state(), run.id).await.unwrap();
+        let run = self.run(&run).await;
+        let lines = run.lines(self.db()).await.unwrap();
+        (run, lines)
+    }
+
     /// `user` comments on `line` (the approver, before `return`).
     pub async fn comment(
         &self,
@@ -913,14 +995,16 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         absconded: Arc::default(),
         returned: Arc::default(),
         failed: Arc::default(),
+        paid: Arc::default(),
         tasks: TicketDesk::default(),
     };
-    let (qualification_expired, qualification_expiring, absconded, returned, failed, tasks) = (
+    let (qualification_expired, qualification_expiring, absconded, returned, failed, paid, tasks) = (
         Recorded(fakes.qualification_expired.clone()),
         Recorded(fakes.qualification_expiring.clone()),
         Recorded(fakes.absconded.clone()),
         Recorded(fakes.returned.clone()),
         Recorded(fakes.failed.clone()),
+        Recorded(fakes.paid.clone()),
         fakes.tasks.clone(),
     );
     let (notices, checklists, sops, docs) = (
@@ -1047,6 +1131,7 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         absconded,
         returned,
         failed,
+        paid,
         tasks,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         cases: std::sync::atomic::AtomicI64::new(0),
