@@ -41,6 +41,14 @@
         </div>
       </rx-card>
     </rx-form>
+    <rx-form rx-if="can_stop" action="{{ route('wl_notify.broadcast_stop', broadcast.id) }}" novalidate>
+      <rx-card :title="tx['broadcasts.stop']">
+        <p>{{ tx['broadcasts.stop_hint'] }}</p>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['broadcasts.stop']" kind="danger"/>
+        </div>
+      </rx-card>
+    </rx-form>
     <a href="{{ route('wl_notify.broadcasts') }}">{{ tx['broadcasts.back'] }}</a>
   </rx-stack>
 </rx-page>

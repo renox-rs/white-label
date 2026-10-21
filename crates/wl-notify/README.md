@@ -30,6 +30,7 @@ What is here so far:
 | The `statutory_notice` give-up reaction and its task | §5.4 | `statutory_notice` |
 | Proof of delivery: form, attachment, `StatutoryNoticeProofRecorded` (`notifications.notices.record_proof`) | §5.4 | `pages` |
 | Marketing frequency cap: `WlNotify::marketing_frequency_cap(n)` (default 2 per 7 days, any channel and broadcast), `FREQUENCY_CAP` suppression under a lock per party | §6 `NTF.RUL.02`, §7 | `cap`, `send` |
+| Stale broadcasts (`NTF.RUL.03`, every 15 minutes): an unapproved broadcast is cancelled 24 hours after its send time, marketing messages still queued or deferred 48 hours after the start are suppressed `expired`; the stop of a sending or completed broadcast with `BroadcastStopped` (`WlNotify::broadcast_expiry_hours`, `stale_message_hours`) | §4.3, §6 `NTF.RUL.03` | `stale`, `pages` |
 
 `types::install` also fills the default give-up reaction (kernel `default_give_up`, §5.4) into a
 stored type whose reactions are empty and which the client never edited; edited rows are kept.
