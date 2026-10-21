@@ -82,9 +82,8 @@ async fn sold(t: &Booted) -> Package {
     packages::sell(t.state(), new).await.unwrap()
 }
 
-/// The package after its invoice was paid, as `wl-invoicing` announces it.
-async fn paid(t: &Booted) -> Package {
-    let package = sold(t).await;
+/// `package` after its invoice was paid, as `wl-invoicing` announces it.
+async fn pay(t: &Booted, package: &Package) -> Package {
     t.state()
         .emit(InvoicePaid {
             invoice: InvoiceId(55),
@@ -94,6 +93,12 @@ async fn paid(t: &Booted) -> Package {
         .await
         .unwrap();
     Package::find_or_404(t.db(), package.id).await.unwrap()
+}
+
+/// A package sold for invoice 55, and paid.
+async fn paid(t: &Booted) -> Package {
+    let package = sold(t).await;
+    pay(t, &package).await
 }
 
 async fn reload(t: &Booted, package: &Package) -> Package {
@@ -111,7 +116,7 @@ async fn a_package_waits_for_payment_and_activates_when_its_invoice_is_paid() {
     assert_eq!(package.status, PackageStatus::PendingPayment);
     assert_eq!(package.valid_to, None);
 
-    let package = paid(&t).await;
+    let package = pay(&t, &package).await;
     assert_eq!(package.status, PackageStatus::Active);
     assert_eq!(package.valid_from, Some(today()));
     assert_eq!(
