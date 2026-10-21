@@ -26,8 +26,10 @@ async fn scene() -> (World, InvoiceId, InvoiceId) {
     remit::set_netting_allowed(w.db(), SOUQ, true)
         .await
         .unwrap();
-    let first = w.invoices.open(SOUQ, "INV-1", 50_000, (2026, 10, 1));
-    let second = w.invoices.open(SOUQ, "INV-2", 180_000, (2026, 11, 1));
+    let first = w.delivery_invoice(SOUQ, "INV-1", 50_000, (2026, 10, 1)).await;
+    let second = w
+        .delivery_invoice(SOUQ, "INV-2", 180_000, (2026, 11, 1))
+        .await;
     w.delivered(SOUQ, "ORD-1", "2000").await;
     (w, first, second)
 }
@@ -271,7 +273,7 @@ async fn an_invoice_written_off_meanwhile_is_removed_with_its_reason() {
 async fn without_netting_in_the_contract_no_offset_appears() {
     let w = boot_with_payments().await;
     w.cod_terms(SOUQ, 0, Some(ACCOUNT)).await;
-    w.invoices.open(SOUQ, "INV-1", 50_000, (2026, 10, 1));
+    w.delivery_invoice(SOUQ, "INV-1", 50_000, (2026, 10, 1)).await;
     w.delivered(SOUQ, "ORD-1", "2000").await;
     w.rule().await;
     let draft = w.the_remittance_of(SOUQ).await;
@@ -283,4 +285,22 @@ async fn without_netting_in_the_contract_no_offset_appears() {
         .assert_status(303);
     assert!(w.invoices.allocations().is_empty());
     assert_eq!(Payment::query().count(w.db()).await.unwrap(), 1);
+}
+
+/// AC1 (delivery invoices only): an open invoice of the client that is not
+/// an invoice of the monthly delivery run (a freight job's, say) is never
+/// set off against the COD.
+#[renox::test]
+async fn an_invoice_for_other_services_is_not_offset() {
+    let (w, _first, _second) = scene().await;
+    w.invoices.open(SOUQ, "FRT-1", 90_000, (2026, 9, 1));
+    w.rule().await;
+    let draft = w.the_remittance_of(SOUQ).await;
+    let taken = offsets(&w, &draft).await;
+    assert_eq!(
+        taken,
+        vec![("INV-1".to_owned(), 50_000), ("INV-2".to_owned(), 150_000)],
+        "FRT-1 is older but not a delivery invoice"
+    );
+    assert_eq!(draft.offset_total, 200_000);
 }

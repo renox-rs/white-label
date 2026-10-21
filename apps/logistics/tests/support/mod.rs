@@ -489,6 +489,26 @@ impl World {
         client
     }
 
+    /// An open delivery invoice of `party`: an issued invoice of the monthly
+    /// run of the period `number` (only those are netted against COD).
+    pub async fn delivery_invoice(
+        &self,
+        party: PartyId,
+        number: &str,
+        balance: i64,
+        due: (i32, u32, u32),
+    ) -> wl_kernel::invoicing::InvoiceId {
+        let id = self.invoices.open(party, number, balance, due);
+        let mut run = logistics::BillingRun {
+            client_party_id: party.0,
+            period: number.to_owned(),
+            invoice_id: Some(id.0),
+            ..logistics::BillingRun::default()
+        };
+        run.insert(self.db()).await.expect("the run is stored");
+        id
+    }
+
     /// The system blocks `party` for `code` (for example `non_payment`):
     /// the real wl-parties block.
     pub async fn block_party(&self, party: PartyId, code: &str) {

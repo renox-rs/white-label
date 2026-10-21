@@ -6,8 +6,11 @@
 //!   ([`crate::reweigh::ClientTerms::netting_allowed`], off unless set), the
 //!   draft offsets the client's open invoices that are not disputed: issued,
 //!   partly paid or overdue with a balance, read through the kernel's
-//!   `Invoicer::open_of`. The invoices of a logistics client are the delivery
-//!   invoices; the kernel summary has no source to tell them apart.
+//!   `Invoicer::open_of` and kept when they are delivery invoices: the
+//!   invoices of the monthly runs ([`crate::billing::BillingRun`]). The
+//!   kernel summary has no source, so the runs name them; an invoice for
+//!   other services (a freight job, a supplementary invoice) is never set
+//!   off against COD.
 //! - **Order and cap.** Oldest due date first, an invoice offset in part when
 //!   the amount before offsets runs out, so the net is never negative
 //!   ([`plan`]).
@@ -26,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, InvoiceSummary, invoicer};
 
+use crate::billing::BillingRun;
 use crate::remittance::Remittance;
 use crate::reweigh;
 
@@ -119,7 +123,17 @@ pub async fn open_invoices(state: &AppState, client: PartyId) -> Result<Vec<Invo
     if !terms.netting_allowed {
         return Ok(Vec::new());
     }
-    invoicer(state).open_of(&state.db, client).await
+    let delivery_invoices: Vec<i64> = BillingRun::query()
+        .where_(BillingRun::CLIENT_PARTY_ID.eq(client.0))
+        .where_(BillingRun::INVOICE_ID.is_not_null())
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .filter_map(|run| run.invoice_id)
+        .collect();
+    let mut open = invoicer(state).open_of(&state.db, client).await?;
+    open.retain(|invoice| delivery_invoices.contains(&invoice.id.0));
+    Ok(open)
 }
 
 /// Replaces the offsets of the draft `remittance` with `taken`, inside `tx`;
