@@ -1458,6 +1458,7 @@ dependencies = [
  "tempfile",
  "wl-delivery",
  "wl-kernel",
+ "wl-payments",
 ]
 
 [[package]]

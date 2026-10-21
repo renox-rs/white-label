@@ -1,0 +1,10 @@
+DROP TABLE "logistics_adjustment_lines";
+DROP TABLE "logistics_remittance_lines";
+DROP TABLE "logistics_remittances";
+ALTER TABLE "logistics_client_terms" DROP COLUMN bank_account;
+ALTER TABLE "logistics_client_terms" DROP COLUMN cod_fee_bp;
+ALTER TABLE "logistics_shipments" DROP COLUMN cod_already_remitted;
+ALTER TABLE "logistics_shipments" DROP COLUMN cod_absorbed_by;
+ALTER TABLE "logistics_shipments" DROP COLUMN cod_difference_reason;
+ALTER TABLE "logistics_shipments" DROP COLUMN cod_difference;
+ALTER TABLE "logistics_shipments" DROP COLUMN delivered_at;

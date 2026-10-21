@@ -267,6 +267,74 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.reweighed", "Measurement recorded."),
     ("logistics.reweigh_disputed", "Surcharge disputed."),
     ("logistics.reweigh_resolved", "Dispute resolved."),
+    ("logistics.remittance_built", "Draft remittance built."),
+    ("logistics.remittance_approved", "Remittance approved."),
+    ("logistics.remittance_reopened", "Remittance back to a draft."),
+    ("logistics.remittance_paid", "Remittance paid."),
+    // COD remittance (`LOG.RUL.06`, `LOG.ACL.07`, `LOG.ACL.12`; BL-LOG-14).
+    (
+        "logistics.remittance.notice_subject",
+        "COD remittance {{ number }} {{ what }}",
+    ),
+    ("logistics.remittance.notice_body", "{{ summary }}"),
+    ("logistics.remittance.notice_created", "was drafted"),
+    ("logistics.remittance.notice_rebuilt", "was rebuilt"),
+    (
+        "logistics.remittance.notice_summary",
+        "COD {{ cod }}, fees {{ fees }}, adjustments {{ adjustments }}, net {{ net }}.",
+    ),
+    (
+        "logistics.remittance.notice_carried",
+        "{{ carried }} is carried to the next draft as an adjustment line.",
+    ),
+    (
+        "logistics.remittance.carried_reason",
+        "Carried forward from {{ number }}: the adjustments were larger than the COD.",
+    ),
+    (
+        "logistics.remittance.carried_note",
+        "Derived by the weekly run from approved lines.",
+    ),
+    (
+        "logistics.remittance.nothing_to_draft",
+        "There is no delivered COD and no open adjustment line to put on a draft.",
+    ),
+    (
+        "logistics.remittance.own_draft",
+        "You prepared this remittance: another user approves it.",
+    ),
+    (
+        "logistics.remittance.unapproved_lines",
+        "{{ count }} adjustment line(s) on this remittance are not approved yet.",
+    ),
+    (
+        "logistics.remittance.reference_needed",
+        "Give the bank reference of the payment.",
+    ),
+    (
+        "logistics.remittance.account_needed",
+        "The client has no bank account on file for its remittances.",
+    ),
+    (
+        "logistics.remittance.client_blocked",
+        "This client is on hold: the remittance waits.",
+    ),
+    (
+        "logistics.remittance.nothing_to_pay",
+        "The net is AED 0.00: there is nothing to pay.",
+    ),
+    (
+        "logistics.remittance.payout_reversed",
+        "Payout of {{ number }} reversed: the remittance was not paid.",
+    ),
+    (
+        "logistics.adjustment.own_line",
+        "You prepared this adjustment line: another user approves it.",
+    ),
+    (
+        "logistics.adjustment.not_your_line",
+        "Only the user who prepared the line resubmits it.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

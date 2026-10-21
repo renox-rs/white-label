@@ -39,6 +39,9 @@ pub const DEMO_SHIPMENTS: [(&str, &str, &str, usize, i64); 4] = [
     ("ORD-1004", "Yousef Ibrahim", "Deira", 3, 0),
 ];
 
+/// The demo client's COD fee in basis points (2%) and its bank account.
+pub const DEMO_COD_TERMS: (i64, &str) = (200, "AE070331234567890123456");
+
 /// Sets the demo client's prices.
 ///
 /// # Errors
@@ -51,6 +54,8 @@ pub async fn demo_rates(db: &Db, client: PartyId) -> Result {
     for (up_to_grams, amount) in DEMO_BANDS {
         rates::set_band(db, client, "", up_to_grams, amount).await?;
     }
+    let (fee_bp, account) = DEMO_COD_TERMS;
+    crate::remit::set_cod_terms(db, client, fee_bp, Some(account)).await?;
     Ok(())
 }
 

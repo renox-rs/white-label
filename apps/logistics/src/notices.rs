@@ -3,13 +3,17 @@
 //! A client's message that gives up needs no reaction of its own; the
 //! tracking events keep the record.
 
+use renox::auth::permissions::users_with_permission;
 use renox::prelude::*;
 use wl_kernel::notify::{
     self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
 };
 
+use crate::permissions;
+use crate::rates::aed;
+use crate::remittance::Remittance;
 use crate::shipment::Shipment;
-use crate::texts::template;
+use crate::texts::{english, template};
 
 /// The notification type of a notice to a client.
 pub const CLIENT_NOTICE: &str = "logistics.client_notice";
@@ -28,9 +32,82 @@ pub fn client_notice_type() -> NotificationTypeDef {
         )
 }
 
-/// Registers the notification type.
+/// The notification type of the accountants' notice of a drafted COD
+/// remittance.
+pub const REMITTANCE_DRAFTED: &str = "logistics.remittance_drafted";
+
+/// The notification type: the draft's number and what is on it.
+pub fn remittance_drafted_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(REMITTANCE_DRAFTED, "logistics")
+        .group("remittances")
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(template("logistics.remittance.notice_subject")),
+            template("logistics.remittance.notice_body"),
+        )
+}
+
+/// Registers the notification types.
 pub(crate) fn register_types() {
     notify::register_type(client_notice_type());
+    notify::register_type(remittance_drafted_type());
+}
+
+/// Tells the accountants (the holders of `remittances.prepare`) that the
+/// draft COD remittance `remittance` was created, or rebuilt with new
+/// figures, and what is on it, with any amount carried to the next draft.
+/// Nobody is told when nobody holds the permission.
+///
+/// # Errors
+///
+/// Database errors and the notifier's.
+pub(crate) async fn tell_accountants(
+    state: &AppState,
+    remittance: &Remittance,
+    created: bool,
+) -> Result {
+    let mut summary = english(
+        "logistics.remittance.notice_summary",
+        &[
+            ("cod", &aed(remittance.cod_total)),
+            ("fees", &aed(remittance.fee_total)),
+            ("adjustments", &aed(remittance.adjustment_total)),
+            ("net", &aed(remittance.net)),
+        ],
+    );
+    if remittance.carried_forward > 0 {
+        summary.push(' ');
+        summary.push_str(&english(
+            "logistics.remittance.notice_carried",
+            &[("carried", &aed(remittance.carried_forward))],
+        ));
+    }
+    let what = english(
+        if created {
+            "logistics.remittance.notice_created"
+        } else {
+            "logistics.remittance.notice_rebuilt"
+        },
+        &[],
+    );
+    let mut request = NotifyRequest::new(REMITTANCE_DRAFTED, remittance.subject())
+        .subject_label(&remittance.number)
+        .data(renox::serde_json::json!({
+            "number": remittance.number,
+            "what": what,
+            "summary": summary,
+            "link": format!("/remittances/{}", remittance.id),
+        }));
+    let mut told = false;
+    for user in users_with_permission(&state.db, permissions::REMITTANCES_PREPARE).await? {
+        request = request.to_user(user.id);
+        told = true;
+    }
+    if told {
+        notify::notifier(state).notify(state, request).await?;
+    }
+    Ok(())
 }
 
 /// Tells the client of `shipment` with `title` and `body`.

@@ -143,6 +143,19 @@ pub struct Shipment {
     pub claim_ticket_id: Option<i64>,
     /// The number of that ticket.
     pub claim_ticket_number: Option<String>,
+    /// When the delivery delivered it (BL-LOG-14: the COD remittance takes
+    /// what was delivered by the period end).
+    pub delivered_at: Option<DateTime>,
+    /// The COD difference recorded at the stop (expected less collected), in
+    /// fils; 0 when the cash matched.
+    pub cod_difference: i64,
+    /// The reason of that difference.
+    pub cod_difference_reason: Option<String>,
+    /// Who absorbs it: `customer`, `client`, `business` or `driver`.
+    pub cod_absorbed_by: Option<String>,
+    /// Whether the COD is marked already remitted (BL-LOG-10): it is left
+    /// out of every draft.
+    pub cod_already_remitted: bool,
     /// The lifecycle state; changed only by a transition.
     pub status: ShipmentStatus,
     /// When the row was created.

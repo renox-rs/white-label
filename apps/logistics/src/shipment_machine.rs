@@ -100,6 +100,15 @@ pub struct ShipmentInput {
     /// portal says (`cancel` by a client user).
     #[serde(default)]
     pub client_acts: bool,
+    /// The COD difference recorded at the stop, in fils (`deliver`).
+    #[serde(default)]
+    pub cod_difference: i64,
+    /// The reason of that difference (`deliver`).
+    #[serde(default)]
+    pub cod_difference_reason: Option<String>,
+    /// Who absorbs the difference (`deliver`).
+    #[serde(default)]
+    pub absorbed_by: Option<String>,
 }
 
 /// The input of a run; the default without one (`available`).
@@ -228,13 +237,33 @@ fn followed(name: &'static str, from: ShipmentStatus, to: ShipmentStatus) -> Tra
         .to(to)
         .effect(move |shipment: &Shipment, ctx, tx| {
             let id = shipment.id;
-            let note = input_of(ctx).reason.unwrap_or_default();
+            let input = input_of(ctx);
+            let note = input.reason.clone().unwrap_or_default();
             let kind = match name {
                 DISPATCH => "dispatched",
                 DELIVER => "delivered",
                 _ => "attempt_failed",
             };
-            Box::pin(async move { track(&mut *tx, id, kind, &note, None).await })
+            Box::pin(async move {
+                if name == DELIVER {
+                    // What the COD remittance reads (BL-LOG-14): when it was
+                    // delivered and the difference with who absorbs it.
+                    let at = Some(renox::db::now());
+                    Shipment::query()
+                        .where_(Shipment::ID.eq(id))
+                        .update(
+                            &mut *tx,
+                            &[
+                                ("delivered_at", &at),
+                                ("cod_difference", &input.cod_difference),
+                                ("cod_difference_reason", &input.cod_difference_reason),
+                                ("cod_absorbed_by", &input.absorbed_by),
+                            ],
+                        )
+                        .await?;
+                }
+                track(&mut *tx, id, kind, &note, None).await
+            })
         })
 }
 

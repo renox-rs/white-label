@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod adjustment;
 pub mod billing;
 pub mod booking;
 pub mod cancel;
@@ -11,6 +12,10 @@ pub mod pages;
 pub mod permissions;
 pub mod pickup;
 pub mod rates;
+pub mod remit;
+pub mod remittance;
+pub mod remittance_machine;
+mod remittance_pages;
 pub mod reweigh;
 pub mod scan;
 mod screen_texts;
@@ -31,6 +36,9 @@ pub use shipment::{
     AddressChange, Charge, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment, ShipmentStatus,
     TrackingEvent,
 };
+pub use adjustment::{AdjustmentLine, AdjustmentStatus};
+pub use remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};
+pub use remittance_machine::RemittanceInput;
 pub use shipment_machine::ShipmentInput;
 
 /// The Logistics module. Add it to the app with
@@ -43,7 +51,7 @@ impl Module for Logistics {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        pages::routes().merge(remittance_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -52,9 +60,11 @@ impl Module for Logistics {
 
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::IndexPage>()
-            .view_data::<pages::ShowPage>();
+            .view_data::<pages::ShowPage>()
+            .view_data::<remittance_pages::IndexPage>()
+            .view_data::<remittance_pages::ShowPage>();
         app.templates(|env| {
-            for (name, source) in pages::VIEWS {
+            for (name, source) in pages::VIEWS.iter().chain(remittance_pages::VIEWS) {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
                     renox::view::add_template(env, *name, *source)
@@ -70,7 +80,15 @@ impl Module for Logistics {
             .model::<WeightBand>()
             .model::<ClientTerms>()
             .model::<Measurement>()
-            .model::<AddressChange>();
+            .model::<AddressChange>()
+            .model::<Remittance>()
+            .model::<RemittanceLine>()
+            .model::<AdjustmentLine>();
+        // The remittance and its adjustment lines have machines of their own.
+        renox::state_machine::register::<Remittance>();
+        renox::state_machine::register::<AdjustmentLine>();
+        // `LOG.RUL.06`, weekly on Monday.
+        remit::register(app);
         // The shipment's machine, and its place in the kernel's void pattern.
         voiding::register();
         // The shipment follows its delivery and cancels it.
@@ -85,6 +103,14 @@ impl Module for Logistics {
                 .group("nav.app")
                 .order(8)
                 .permission(permissions::SHIPMENTS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("logistics.remittances", "nav.remittances")
+                .icon("banknote")
+                .group("nav.app")
+                .order(9)
+                .permission(permissions::REMITTANCES_VIEW),
         );
     }
 }

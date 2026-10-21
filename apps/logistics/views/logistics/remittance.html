@@ -1,0 +1,49 @@
+{#- logistics: a COD remittance: what is on it (a line per delivered
+    shipment, the fees, the client-absorbed differences with their reason, the
+    adjustment lines) and the actions the person may run (approve, reopen,
+    pay). Replace it with resources/views/logistics/remittance.html in the
+    app. -#}
+<rx-page layout="layouts/app.html" :title="remittance.number">
+  <rx-stack>
+    <rx-page-header :title="remittance.number" :subtitle="tx['remit_title']" :back="route('logistics.remittances')" :back-label="tx['remit_title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-confirm rx-if="can_approve" :id="'approve-' ~ remittance.id" :label="tx['remit_approve']" :action="route('logistics.remittance_approve', remittance.id)" method="POST"
+                  :title="tx['remit_approve_title']" :message="tx['remit_approve_message']" :confirm-label="tx['remit_approve']"/>
+      <rx-confirm rx-if="can_reopen" :id="'reopen-' ~ remittance.id" :label="tx['remit_reopen']" :action="route('logistics.remittance_reopen', remittance.id)" method="POST"
+                  :title="tx['remit_reopen_title']" :message="tx['remit_reopen_message']" :confirm-label="tx['remit_reopen']"/>
+      <rx-action-sheet rx-if="can_pay" :id="'pay-' ~ remittance.id" :label="tx['remit_pay']" :action="route('logistics.remittance_pay', remittance.id)"
+                       :title="tx['remit_pay_title']" :description="tx['remit_pay_description']" :submit-label="tx['remit_pay']" icon="send">
+        <rx-input name="payment_reference" :label="tx['remit_reference']" :id="'pay-reference-' ~ remittance.id" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card :title="tx['details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['remit_number']" :value="remittance.number" copyable/>
+        <rx-entry :label="tx['client']" :value="remittance.client_party_id"/>
+        <rx-entry :label="tx['remit_cod']" :value="remittance.cod_total" format="money"/>
+        <rx-entry :label="tx['remit_fees']" :value="remittance.fee_total" format="money"/>
+        <rx-entry :label="tx['remit_adjustments']" :value="remittance.adjustment_total" format="money"/>
+        <rx-entry :label="tx['remit_net']" :value="remittance.net" format="money"/>
+        <rx-entry :label="tx['remit_carried']" rx-if="remittance.carried_forward" :value="remittance.carried_forward" format="money"/>
+        <rx-entry :label="tx['remit_payment']" rx-if="remittance.payment_number" :value="remittance.payment_number"/>
+        <rx-entry :label="tx['remit_reference']" rx-if="remittance.payment_reference" :value="remittance.payment_reference"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.shipment" :caption="tx['remit_lines']" card>
+      <rx-column :label="tx['number']"><a href="{{ line.shipment_url }}">{{ line.shipment }}</a></rx-column>
+      <rx-column :label="tx['cod']" align="num">{{ line.collected | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_absorbed']" align="num" hide-narrow>{{ line.absorbed | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_absorbed_reason']" hide-narrow>{{ line.absorbed_reason }}</rx-column>
+      <rx-column :label="tx['remit_fee']" align="num" hide-narrow>{{ line.fee | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['remit_no_lines']" icon="package"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="adjustments" as="adjustment" :key="adjustment.id" :caption="tx['remit_adjustment_lines']" card>
+      <rx-column :label="tx['amount']" align="num">{{ adjustment.amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['reason']">{{ adjustment.reason }}</rx-column>
+      <rx-column :label="tx['kind']" hide-narrow>{{ adjustment.source }}</rx-column>
+      <rx-column :label="tx['state']">{{ adjustment.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['remit_no_adjustments']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

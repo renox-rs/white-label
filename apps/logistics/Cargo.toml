@@ -17,3 +17,6 @@ tempfile = "3"
 # The real delivery module in the integration tests: a shipment is the source
 # of its delivery, and follows the delivery's events.
 wl-delivery = { path = "../../crates/wl-delivery" }
+# The real payments module in the remittance tests: the payout is an outgoing
+# transfer recorded through the kernel's payments contract.
+wl-payments = { path = "../../crates/wl-payments" }

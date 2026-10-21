@@ -22,6 +22,17 @@ pub const SHIPMENTS_VOID: &str = "shipments.void";
 /// user of the shipment's company (`LOG.ACL.09`).
 pub const SHIPMENTS_CANCEL: &str = "shipments.cancel";
 
+/// See COD remittances, their lines and their statements (`LOG.COD.01`).
+pub const REMITTANCES_VIEW: &str = "remittances.view";
+/// Build a draft COD remittance and prepare adjustment lines on it
+/// (`LOG.RUL.06`, `LOG.ACL.07`, `LOG.ACL.12`): the accountant.
+pub const REMITTANCES_PREPARE: &str = "remittances.prepare";
+/// Approve a remittance and its adjustment lines, and take an approved one
+/// back to a draft (`LOG.ACL.07`, `LOG.ACL.12`); never the preparer's own.
+pub const REMITTANCES_APPROVE: &str = "remittances.approve";
+/// Pay an approved remittance to the client (`pay`, `PTY.ACL.03`).
+pub const REMITTANCES_PAY: &str = "remittances.pay";
+
 /// Every permission of the app.
 pub const ALL: &[&str] = &[
     SHIPMENTS_VIEW,
@@ -31,6 +42,10 @@ pub const ALL: &[&str] = &[
     SHIPMENTS_DELIVER,
     SHIPMENTS_VOID,
     SHIPMENTS_CANCEL,
+    REMITTANCES_VIEW,
+    REMITTANCES_PREPARE,
+    REMITTANCES_APPROVE,
+    REMITTANCES_PAY,
 ];
 
 /// The operations manager runs a depot (§3.1). The host's

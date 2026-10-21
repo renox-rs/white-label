@@ -63,6 +63,12 @@ pub struct ClientTerms {
     pub tolerance_grams: i64,
     /// The volumetric divisor, when the card prices by volume.
     pub volumetric_divisor: Option<i64>,
+    /// The client's COD fee in basis points of the COD paid out (200 = 2%);
+    /// 0 when the card has none (BL-LOG-14).
+    pub cod_fee_bp: i64,
+    /// The bank account the client's remittances are paid to (BL-LOG-14;
+    /// the control of a change is BL-LOG-17, `LOG.ACL.13`).
+    pub bank_account: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

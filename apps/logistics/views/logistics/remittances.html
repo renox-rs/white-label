@@ -1,0 +1,23 @@
+{#- logistics: the COD remittances, newest first, with what is on them and
+    their status. Replace it with resources/views/logistics/remittances.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['remit_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['remit_title']" :subtitle="tx['remit_subtitle']">
+      <rx-action-sheet rx-if="can_build" id="build-remittance" :label="tx['remit_build']" :action="route('logistics.remittance_build')"
+                       :title="tx['remit_build_title']" :description="tx['remit_build_description']" :submit-label="tx['remit_build']" icon="banknote">
+        <rx-input name="client_party_id" :label="tx['client']" id="build-remittance-client" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-table :rows="remittances" as="remittance" :key="remittance.number" :caption="tx['remit_title']">
+      <rx-column :label="tx['remit_number']"><a href="{{ remittance.url }}">{{ remittance.number }}</a></rx-column>
+      <rx-column :label="tx['client']" hide-narrow>{{ remittance.client_party_id }}</rx-column>
+      <rx-column :label="tx['remit_cod']" align="num" hide-narrow>{{ remittance.cod_total | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_fees']" align="num" hide-narrow>{{ remittance.fee_total | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_adjustments']" align="num" hide-narrow>{{ remittance.adjustment_total | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_net']" align="num">{{ remittance.net | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['state']"><rx-badge :kind="remittance.status_kind" :text="remittance.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['remit_empty']" :message="tx['remit_empty_text']" icon="banknote"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -259,6 +259,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_DELIVER,
             log::SHIPMENTS_VOID,
             log::SHIPMENTS_CANCEL,
+            log::REMITTANCES_VIEW,
+            log::REMITTANCES_PREPARE,
+            log::REMITTANCES_APPROVE,
+            log::REMITTANCES_PAY,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -588,6 +592,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::EINVOICES_MANAGE,
             invoices::SUBSCRIPTIONS_VIEW,
             invoices::SUBSCRIPTIONS_MANAGE,
+            // 03: prepares and pays COD remittances; a second accountant
+            // approves them and the adjustment lines (`LOG.ACL.07`,
+            // `LOG.ACL.12`).
+            log::REMITTANCES_VIEW,
+            log::REMITTANCES_PREPARE,
+            log::REMITTANCES_APPROVE,
+            log::REMITTANCES_PAY,
             // The accountant works the deadline tasks (04 compliance
             // calendar, wl-ticketing §4.4).
             tickets::TASKS_VIEW,
@@ -814,6 +825,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::CASH_VIEW,
             payments::CASH_COUNT,
             payments::CASH_WRITE_OFF,
+            log::REMITTANCES_VIEW,
             log::SHIPMENTS_VIEW,
             log::SHIPMENTS_BOOK,
             log::SHIPMENTS_MANAGE,

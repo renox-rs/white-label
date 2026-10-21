@@ -165,7 +165,12 @@ pub(crate) fn register(app: &mut Registry) {
                 shipment,
                 ShipmentStatus::OutForDelivery,
                 DELIVER,
-                ShipmentInput::default(),
+                ShipmentInput {
+                    cod_difference: event.cod_difference,
+                    cod_difference_reason: event.cod_difference_reason.clone(),
+                    absorbed_by: event.absorbed_by.clone(),
+                    ..ShipmentInput::default()
+                },
             )
             .await?;
         }

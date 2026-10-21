@@ -155,9 +155,9 @@ fn answer(error: TransitionError) -> Error {
     error.into_error()
 }
 
-type Fields = Form<BTreeMap<String, String>>;
+pub(crate) type Fields = Form<BTreeMap<String, String>>;
 
-fn field(form: &BTreeMap<String, String>, name: &str) -> String {
+pub(crate) fn field(form: &BTreeMap<String, String>, name: &str) -> String {
     form.get(name).cloned().unwrap_or_default()
 }
 

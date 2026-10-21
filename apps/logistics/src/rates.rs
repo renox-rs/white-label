@@ -127,7 +127,8 @@ pub async fn band_price<'c, E: Executor<'c>>(
 
 /// Fils as text: `AED 25.00`.
 pub fn aed(fils: i64) -> String {
-    format!("AED {}.{:02}", fils / 100, fils.abs() % 100)
+    let sign = if fils < 0 { "-" } else { "" };
+    format!("AED {sign}{}.{:02}", fils.abs() / 100, fils.abs() % 100)
 }
 
 /// Sets the price of `kind` for `client`, replacing the one there is.
