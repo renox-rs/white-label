@@ -28,6 +28,15 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.appointments.problem.other_patient",
         "This policy belongs to another patient.",
     ),
+    // The licence expiry (CLN.RUL.01).
+    (
+        "clinics.licences.subject",
+        "{{ kind }} expired: {{ practitioner }}",
+    ),
+    (
+        "clinics.licences.body",
+        "The {{ kind }} of {{ practitioner }} expired on {{ expires_on }}. New bookings for them at {{ branches }} are refused and cannot be overridden. Appointments affected: {{ count }}; they are in conflict for the front desk to reassign or reschedule. Nothing was cancelled.",
+    ),
     // The insurance policies.
     ("clinics.policies.title", "Insurance policies"),
     (

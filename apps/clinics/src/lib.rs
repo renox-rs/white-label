@@ -4,6 +4,7 @@
 pub mod appointment;
 pub mod appointments;
 mod db;
+pub mod licences;
 pub mod pages;
 pub mod permissions;
 pub mod policies;
@@ -20,6 +21,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use appointment::Appointment;
+pub use licences::LicenceAlert;
 pub use policy::{EligibilityCheck, InsurancePolicy};
 pub use visit::{Visit, VisitStatus};
 
@@ -75,13 +77,17 @@ impl Module for Clinics {
         app.model::<Appointment>()
             .model::<Visit>()
             .model::<InsurancePolicy>()
-            .model::<EligibilityCheck>();
+            .model::<EligibilityCheck>()
+            .model::<LicenceAlert>();
         visit_machine::register();
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
         appointments::register(app);
         // The check-in opens the visit, which follows the booking.
         visits::register(app);
+        // `CLN.RUL.01`: an expired licence or set of privileges is told to
+        // the clinic manager of the branch and the owner (BL-CLN-12).
+        licences::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.insurance_policies` text.
         app.nav(
