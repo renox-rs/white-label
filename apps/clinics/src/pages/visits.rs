@@ -16,6 +16,7 @@ use wl_kernel::documents::dubai_text;
 
 use super::appointments::{outcome_label, policy_label};
 use super::{Texts, party_name, require, text, user_name};
+use crate::authorisation::AuthorisationHold;
 use crate::consent::SelfPayConsent;
 use crate::coverage::{self, CoverageOutcome};
 use crate::money_text;
@@ -73,6 +74,7 @@ pub(crate) struct ShowPage {
     split_policy: String,
     consent: String,
     estimate: String,
+    holds: String,
     can_insure: bool,
     history: Vec<HistoryRow>,
 }
@@ -105,6 +107,20 @@ async fn show(
     let consent = match visit.consent_id {
         Some(consent) => SelfPayConsent::find(&state.db, consent).await?,
         None => None,
+    };
+    let held = AuthorisationHold::of_visit(&state.db, visit.id).await?;
+    let holds = if held.is_empty() {
+        none.clone()
+    } else {
+        held.iter()
+            .map(|hold| {
+                format!(
+                    "{}: PA-{:04} ({})",
+                    hold.service_code, hold.authorisation_id, hold.units
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     };
     let mut rows = Vec::new();
     for row in history(&state.db, Visit::TABLE, visit.id).await? {
@@ -146,6 +162,7 @@ async fn show(
         estimate: consent
             .as_ref()
             .map_or_else(|| none.clone(), |c| money_text(c.estimated_fils)),
+        holds,
         can_insure: user.has_permission(permissions::COVERAGE_RECORD)
             && visit.is_insured()
             && visit.status == VisitStatus::CheckedIn

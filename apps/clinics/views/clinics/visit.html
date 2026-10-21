@@ -22,6 +22,7 @@
         <rx-entry :label="tx['coverage.split_policy']" :value="split_policy"/>
         <rx-entry :label="tx['consent.title']" :value="consent"/>
         <rx-entry :label="tx['consent.estimate']" :value="estimate"/>
+        <rx-entry :label="tx['authorisation.holds']" :value="holds"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="history" as="row" :key="row.at ~ row.action" :caption="tx['visits.history']" card>

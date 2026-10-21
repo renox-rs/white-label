@@ -9,6 +9,8 @@
 //! | `POST /clinics/appointments/{booking}/eligibility` | `clinics.appointment_eligibility` | `coverage.record` |
 //! | `POST /clinics/appointments/{booking}/outcome` | `clinics.appointment_outcome` | `coverage.record` |
 //! | `POST /clinics/appointments/{booking}/consent` | `clinics.appointment_consent` | `coverage.record` |
+//! | `POST /clinics/appointments/{booking}/services` | `clinics.appointment_services` | `coverage.record` |
+//! | `POST /clinics/appointments/{booking}/authorisation-consent` | `clinics.appointment_authorisation_consent` | `coverage.record` |
 //!
 //! The receptionist records the eligibility result and one coverage outcome
 //! here; Check in itself is wl-scheduling's route (`bookings.checkin`) and is
@@ -22,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use super::{Texts, invalid, parse_id, party_name, require, text};
 use crate::appointment::Appointment;
 use crate::appointments;
+use crate::auth_check;
 use crate::consent::SelfPayConsent;
 use crate::flags::AppointmentFlag;
 use crate::coverage::{self, Choice, CoverageOutcome, EligibilityInput, PendingCheckIn};
@@ -46,6 +49,13 @@ pub fn routes() -> Routes {
         .name("clinics.appointment_outcome")
         .post("/clinics/appointments/{booking}/consent", consent)
         .name("clinics.appointment_consent")
+        .post("/clinics/appointments/{booking}/services", services)
+        .name("clinics.appointment_services")
+        .post(
+            "/clinics/appointments/{booking}/authorisation-consent",
+            authorisation_consent,
+        )
+        .name("clinics.appointment_authorisation_consent")
         .require_auth()
 }
 
@@ -69,6 +79,28 @@ pub(crate) async fn flag_labels(state: &AppState, lang: &Lang, booking: i64) -> 
         .iter()
         .map(|flag| text(lang, &format!("flags.{}", flag.cause.key())))
         .collect())
+}
+
+/// What a prior authorisation gives one service, as a line for staff.
+fn auth_line(lang: &Lang, need: &auth_check::Need) -> String {
+    let numbers = need
+        .authorised
+        .iter()
+        .map(|(id, units)| format!("PA-{id:04} ({units})"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if need.self_pay == 0 {
+        text(lang, "authorisation.line_covered")
+            .replace(":service", &need.code)
+            .replace(":units", &need.units.to_string())
+            .replace(":numbers", &numbers)
+    } else {
+        text(lang, "authorisation.line_short")
+            .replace(":service", &need.code)
+            .replace(":units", &need.units.to_string())
+            .replace(":covered", &need.covered().to_string())
+            .replace(":self_pay", &need.self_pay.to_string())
+    }
 }
 
 /// One appointment of the list.
@@ -174,6 +206,9 @@ pub(crate) struct ShowPage {
     policy_selected: String,
     result_options: Vec<[String; 2]>,
     outcome_options: Vec<[String; 2]>,
+    auth_lines: Vec<String>,
+    services_text: String,
+    needs_consent: bool,
 }
 
 /// `GET /clinics/appointments/{booking}`.
@@ -235,6 +270,26 @@ async fn show(
         Some(id) => SelfPayConsent::find(&state.db, id).await?,
         None => None,
     };
+    let (auth_lines, needs_consent) = if visit.is_none()
+        && appointment.is_insured()
+        && !appointment.is_cancelled()
+    {
+        let needs = auth_check::plan(&state, &appointment, pending.as_ref()).await?;
+        let short = auth_check::shortfalls(&needs);
+        let unsigned = !short.is_empty() && !auth_check::consented(&state, booking, &short).await?;
+        let lines = needs
+            .iter()
+            .map(|need| auth_line(&lang, need))
+            .collect::<Vec<_>>();
+        (lines, unsigned)
+    } else {
+        (Vec::new(), false)
+    };
+    let services_text = auth_check::services_of(&appointment, pending.as_ref())
+        .iter()
+        .map(|s| format!("{}:{}", s.code, s.units))
+        .collect::<Vec<_>>()
+        .join(", ");
     let selected = appointment
         .policy_id
         .map(|id| id.to_string())
@@ -305,6 +360,9 @@ async fn show(
             .iter()
             .map(|o| [o.as_str().to_owned(), outcome_label(&lang, *o)])
             .collect(),
+        auth_lines,
+        services_text,
+        needs_consent,
     }))
 }
 
@@ -463,6 +521,70 @@ async fn consent(
     coverage::choose(&state, Some(user.id), booking, Choice::SelfPay, at).await?;
     Ok((
         Toast::success(text(&lang, "consent.signed")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that records the services of the visit.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ServicesForm {
+    /// `laser:2, consultation:1`.
+    #[serde(default)]
+    pub services: String,
+}
+
+/// `POST /clinics/appointments/{booking}/services`: the services the visit
+/// will use and the units of each (BL-CLN-02).
+async fn services(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(booking): Path<i64>,
+    Form(form): Form<ServicesForm>,
+) -> Result<Response> {
+    require(&user, permissions::COVERAGE_RECORD)?;
+    let services = coverage::parse_services(&form.services)?;
+    coverage::set_services(&state, Some(user.id), booking, services).await?;
+    Ok((
+        Toast::success(text(&lang, "authorisation.services_recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form of the consent for the services without authorisation.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct AuthorisationConsentForm {
+    /// The patient's name as they sign it.
+    #[serde(default)]
+    pub signer_name: String,
+}
+
+/// `POST /clinics/appointments/{booking}/authorisation-consent`: the patient
+/// signs the self-pay consent for the services a prior authorisation does not
+/// cover; the rest stays in the payer split.
+async fn authorisation_consent(
+    State(state): State<AppState>,
+    user: AuthUser,
+    renox::ClientIp(ip): renox::ClientIp,
+    lang: Lang,
+    Path(booking): Path<i64>,
+    Form(form): Form<AuthorisationConsentForm>,
+) -> Result<Response> {
+    require(&user, permissions::COVERAGE_RECORD)?;
+    let ip = ip.map(|ip| ip.to_string());
+    coverage::sign_authorisation_consent(
+        &state,
+        Some(user.id),
+        booking,
+        &form.signer_name,
+        ip.as_deref(),
+        renox::db::now(),
+    )
+    .await?;
+    Ok((
+        Toast::success(text(&lang, "authorisation.consent_signed")),
         renox::HxRefresh,
     )
         .into_response())

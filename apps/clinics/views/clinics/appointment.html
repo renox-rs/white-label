@@ -30,6 +30,18 @@
           <rx-input name="services" :label="tx['consent.more_services']" :id="'appointment-consent-services-' ~ booking"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_cover">
+        <rx-action-sheet :id="'appointment-services-' ~ booking" :label="tx['authorisation.services_action']" :action="route('clinics.appointment_services', booking)"
+                         :title="tx['authorisation.services_action']" :description="tx['authorisation.services_description']" :submit-label="tx['authorisation.services_action']" icon="clipboard-list">
+          <rx-input name="services" :label="tx['authorisation.services_field']" :value="services_text" :id="'appointment-services-input-' ~ booking" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="needs_consent">
+        <rx-action-sheet :id="'appointment-auth-consent-' ~ booking" :label="tx['authorisation.consent_action']" :action="route('clinics.appointment_authorisation_consent', booking)"
+                         :title="tx['authorisation.consent_action']" :description="tx['authorisation.consent_description']" :submit-label="tx['authorisation.consent_action']" icon="signature">
+          <rx-input name="signer_name" :label="tx['consent.signer']" :id="'appointment-auth-consent-name-' ~ booking" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_check_in">
         <rx-confirm :id="'appointment-check-in-' ~ booking" :label="tx['coverage.check_in']" :action="route('wl_scheduling.booking_check_in', booking)" method="POST"
                     :title="tx['coverage.check_in']" :message="tx['coverage.check_in_message']" :confirm-label="tx['coverage.check_in']" :cancel-label="tx['button_cancel']" icon="calendar-check"/>
@@ -37,6 +49,7 @@
     </rx-page-header>
     <rx-alert rx-if="cancelled" kind="warning" :message="tx['appointments.cancelled']"/>
     <rx-alert rx-for="flag in flags" kind="warning" :message="flag"/>
+    <rx-alert rx-for="line in auth_lines" kind="info" :message="line"/>
     <rx-card :title="tx['appointments.title']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['appointments.patient']" :value="patient"/>
