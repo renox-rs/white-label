@@ -46,7 +46,7 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::StateMachine;
 use wl_kernel::inventory::{
-    LotTrace, RECALL_SUBJECT_TYPE, TraceFuture, TraceMark, TraceParty, TracePartyResolver,
+    RECALL_SUBJECT_TYPE, TraceFuture, TraceMark, TraceParty, TracePartyResolver,
     lot_trace, provide_trace_party_resolver,
 };
 use wl_kernel::notify::{
