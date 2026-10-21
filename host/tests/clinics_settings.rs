@@ -441,6 +441,51 @@ async fn the_05_notification_types_have_their_groups_urgency_and_give_up() {
     assert_eq!(reminder.give_up, [GiveUpReaction::None]);
 }
 
+/// Done when (connections), 4: the reassignment, change, reschedule-offer,
+/// recall and the other patient templates carry no reason, in English or in
+/// Arabic.
+#[renox::test]
+async fn the_patient_change_messages_state_no_reason() {
+    use wl_scheduling::notices::{CHANGED, REASSIGNED, RESCHEDULE_OFFER};
+
+    let _app = clinics_booted().await;
+    for key in [
+        REASSIGNED,
+        CHANGED,
+        RESCHEDULE_OFFER,
+        "clinics.product_recall_notice",
+        "clinics.prior_auth_denied",
+        "clinics.recall_invite",
+    ] {
+        let def = notification_type(key).unwrap_or_else(|| panic!("{key} is registered"));
+        assert!(!def.templates.is_empty(), "{key} has a template");
+        for template in &def.templates {
+            let text = format!(
+                "{} {}",
+                template.subject.clone().unwrap_or_default(),
+                template.body
+            )
+            .to_lowercase();
+            for banned in ["reason", "سبب", "{{ reason", "{{ cancel_reason"] {
+                assert!(
+                    !text.contains(banned),
+                    "{key} ({}) states a reason: {text}",
+                    template.language
+                );
+            }
+        }
+    }
+    let recall = notification_type("clinics.product_recall_notice").unwrap();
+    let languages: Vec<&str> = recall
+        .templates
+        .iter()
+        .map(|t| t.language.as_str())
+        .collect();
+    assert_eq!(languages, ["en", "ar"]);
+    let invite = notification_type("clinics.recall_invite").unwrap();
+    assert_eq!(invite.templates.len(), 2);
+}
+
 /// A message of `type_key` to `party` about `subject`, sent and run through
 /// the jobs; the message.
 async fn bounce(

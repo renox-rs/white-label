@@ -22,6 +22,13 @@ use crate::texts::english;
 /// The notification type of the recall invitation (`CLN.RUL.02`).
 pub const RECALL_INVITE: &str = "clinics.recall_invite";
 
+/// The Arabic subject of the invitation.
+const SUBJECT_AR: &str = "حان وقت زيارتك القادمة";
+
+/// The Arabic body of the invitation: the clinic, the time and a way to book,
+/// nothing clinical.
+const BODY_AR: &str = "حان وقت حجز زيارتك القادمة. اتصل بنا أو استخدم الرابط لاختيار موعد.";
+
 /// The types of this module.
 pub fn notification_types() -> Vec<NotificationTypeDef> {
     let subject = english("clinics.recall_invite.subject", &[]);
@@ -29,7 +36,8 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
     vec![
         NotificationTypeDef::new(RECALL_INVITE, "clinics")
             .group(GROUP_BOOKINGS)
-            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+            .template(NotifyChannel::Email, "en", Some(&subject), &body)
+            .template(NotifyChannel::Email, "ar", Some(SUBJECT_AR), BODY_AR),
     ]
 }
 
