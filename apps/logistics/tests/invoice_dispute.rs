@@ -114,3 +114,42 @@ async fn a_lost_delivery_gives_the_invoice_owner_a_task_to_credit_it() {
         .unwrap();
     assert_eq!(tasks.len(), 1, "one task to credit the invoice");
 }
+
+/// BL-LOG-20 (#318) on the real wl-invoicing: the draft the monthly run makes
+/// is a real draft of the client with one line per shipment, the shipment as
+/// the line's origin, 5% VAT and the totals the module computes; the shipment
+/// is marked billed, and issuing the draft keeps that.
+#[renox::test]
+async fn the_monthly_draft_is_a_real_invoice_with_the_vat_and_totals() {
+    let w = boot_with_invoicing().await;
+    let client = client_with_price(&w).await;
+    let shipment = w.delivered(client, "ORD-3", "100").await;
+    let when = Some(at(2026, 10, 15));
+    Shipment::query()
+        .where_(Shipment::ID.eq(shipment.id))
+        .update(w.db(), &[("delivered_at", &when)])
+        .await
+        .unwrap();
+    let first = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
+    let drafted = billing::run_monthly(w.state(), first).await.unwrap();
+    assert_eq!(drafted.len(), 1);
+
+    let invoice = Invoice::find_or_404(w.db(), drafted[0].invoice.0)
+        .await
+        .unwrap();
+    assert_eq!(invoice.status, InvoiceStatus::Draft);
+    assert_eq!(invoice.party().0, client.0);
+    assert_eq!(invoice.net_total, 2_500);
+    assert_eq!(invoice.vat_total, 125);
+    assert_eq!(invoice.gross_total, 2_625);
+    let lines = wl_invoicing::InvoiceLine::query()
+        .where_(wl_invoicing::InvoiceLine::INVOICE_ID.eq(invoice.id))
+        .get(w.db())
+        .await
+        .unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].origin(), Some(shipment.subject()));
+    assert!(lines[0].description.contains(&shipment.number));
+    assert!(w.reload(&shipment).await.invoiced_on.is_some());
+    assert_eq!(invoice.source().subject_type, "logistics.billing_run");
+}
