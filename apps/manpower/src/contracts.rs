@@ -289,3 +289,18 @@ pub async fn hold(
 pub async fn release(state: &AppState, by: &AuthUser, id: i64) -> Result<crate::release::Released> {
     crate::release::release(state, by, id).await
 }
+
+/// `by` requests the early termination of contract `id`; the MD approves it.
+///
+/// # Errors
+///
+/// `Forbidden` without `contracts.manage` for the client; a 422 listing every
+/// failing check, or unless the contract is `active` or `on_hold`.
+pub async fn terminate(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    ask: crate::termination::TerminateAsk,
+) -> Result<crate::termination::Requested> {
+    crate::termination::request(state, by, id, ask).await
+}

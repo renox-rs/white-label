@@ -8,6 +8,7 @@
 //! | `POST /manpower/contracts/{id}/activate` | `manpower.contract_activate` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/cancel` | `manpower.contract_cancel` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/hold` | `manpower.contract_hold` | `contracts.manage` for the client |
+//! | `POST /manpower/contracts/{id}/terminate` | `manpower.contract_terminate` | `contracts.manage` for the client (the MD approves) |
 //! | `POST /manpower/contracts/{id}/release` | `manpower.contract_release` | `contracts.manage` for the client (the MD approves while a hold condition remains) |
 //! | `POST /manpower/sites` | `manpower.site_create` | `sites.manage` for the client |
 //! | `GET /manpower/requests` | `manpower.requests` | `requests.view`, `requests.create` or `requests.manage` for the client, or the client's portal access |
@@ -46,6 +47,7 @@ use crate::permissions;
 use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
 use crate::requests::{self, NewRequest};
 use crate::site::{self, Site};
+use crate::termination::TerminateAsk;
 use crate::texts::{screen_texts, t, word};
 
 /// The routes.
@@ -63,6 +65,8 @@ pub fn routes() -> Routes {
         .name("manpower.contract_cancel")
         .post("/manpower/contracts/{id}/hold", hold_contract)
         .name("manpower.contract_hold")
+        .post("/manpower/contracts/{id}/terminate", terminate_contract)
+        .name("manpower.contract_terminate")
         .post("/manpower/contracts/{id}/release", release_contract)
         .name("manpower.contract_release")
         .post("/manpower/sites", create_site)
@@ -349,6 +353,28 @@ async fn hold_contract(
         Some(text.as_str()).filter(|text| !text.is_empty()),
     )
     .await?;
+    Ok(back("/manpower/contracts"))
+}
+
+/// `POST /manpower/contracts/{id}/terminate`: `initiated_by` (`client` or
+/// `agency`), `reason`, `notice_on` (`2026-11-01`), `end_date` and, when the
+/// notice is short, the `waiver` document.
+async fn terminate_contract(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let bad = || refused(t(&lang, "manpower.bad_input"));
+    let ask = TerminateAsk {
+        initiated_by: field(&form, "initiated_by"),
+        reason: field(&form, "reason"),
+        notice_on: date(&lang, &form, "notice_on")?.ok_or_else(bad)?,
+        end_date: date(&lang, &form, "end_date")?.ok_or_else(bad)?,
+        waiver: Some(field(&form, "waiver")).filter(|waiver| !waiver.is_empty()),
+    };
+    contracts::terminate(&state, &user, id, ask).await?;
     Ok(back("/manpower/contracts"))
 }
 

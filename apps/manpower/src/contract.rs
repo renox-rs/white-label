@@ -11,12 +11,14 @@
 //! active, on_hold, terminating --end--> ended                              (BL-MPW-06)
 //! ```
 //!
-//! Built here: the six states and `activate`, `cancel`, `hold` and `release`. `ended` and
+//! Built here: the six states and `activate`, `cancel`, `hold`, `release` and `terminate`. `ended` and
 //! the transitions into and out of `terminating` are declared so the issues
-//! that add `terminate`, `renew` and `end` only add transitions:
-//! **`terminate` comes with BL-MPW-04, `renew` with BL-MPW-05, `end` with
-//! BL-MPW-06.**
+//! that add `renew` and `end` only add transitions: **`renew` comes with
+//! BL-MPW-05, `end` with BL-MPW-06.**
 //!
+//! - `terminate` (`contracts.manage`, the MD approves, `MPW.ACL.17`) and its
+//!   `terminate_approved` twin move an `active` or `on_hold` contract to
+//!   `terminating` with a new end date ([`crate::termination`]).
 //! - `release` (and `release_terminating`, back to the other state; the system's
 //!   `auto_release` pair and the kernel's `*_approved` twins) ends the hold
 //!   ([`crate::release`]).
@@ -47,6 +49,7 @@ use crate::db::set_contract;
 use crate::hold::{hold_effects, hold_input, hold_problem};
 use crate::permissions;
 use crate::release::{release_effects, release_input, release_policy, release_problem};
+use crate::termination::{terminate_effects, terminate_input, terminate_policy, terminate_problem};
 
 /// The subject type of a client contract.
 pub const SUBJECT_TYPE: &str = "manpower.client_contract";
@@ -60,6 +63,9 @@ pub const CANCEL: &str = "cancel";
 pub const HOLD: &str = "hold";
 /// The system's `hold` (`MPW.RUL.10`).
 pub const AUTO_HOLD: &str = "auto_hold";
+/// The `terminate` transition's name: the account manager's request to end the
+/// contract early, which the MD approves (`MPW.ACL.17`).
+pub const TERMINATE: &str = "terminate";
 /// `release` back to `active`, the account manager's, approved by the MD while
 /// a hold condition remains (`MPW.ACL.14`).
 pub const RELEASE: &str = "release";
@@ -155,6 +161,22 @@ pub struct ClientContract {
     pub held_at: Option<DateTime>,
     /// The user who held it; none when the rule did or it is not on hold.
     pub held_by: Option<i64>,
+    /// The end date before an early termination moved it.
+    pub original_end_date: Option<NaiveDate>,
+    /// Who started the early termination: `client` or `agency`.
+    pub termination_initiated_by: Option<String>,
+    /// Why it was terminated.
+    pub termination_reason: Option<String>,
+    /// The day the notice of termination was given.
+    pub termination_notice_on: Option<NaiveDate>,
+    /// The waiver of a notice shorter than the notice period, a document.
+    pub termination_waiver: Option<String>,
+    /// The user who asked for the termination.
+    pub termination_requested_by: Option<i64>,
+    /// When the MD's approval made the contract `terminating`.
+    pub terminated_at: Option<DateTime>,
+    /// When the client was sent the confirmation of the termination.
+    pub termination_announced_at: Option<DateTime>,
     /// The user who created it.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -211,6 +233,23 @@ fn user(name: &str, label: &str, permission: &'static str) -> Transition<ClientC
     Transition::new(name)
         .label(label)
         .permission_in(permission, |contract: &ClientContract| contract.scope())
+}
+
+/// `terminate` and `terminate_approved`: the guard and the effect they share
+/// ([`crate::termination`]).
+fn terminating(transition: Transition<ClientContract>) -> Transition<ClientContract> {
+    transition
+        .from([ContractStatus::Active, ContractStatus::OnHold])
+        .to(ContractStatus::Terminating)
+        .guard("notice_and_date", |contract: &ClientContract, ctx| {
+            let problem = terminate_problem(contract, &terminate_input(ctx));
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|contract: &ClientContract, ctx, tx| {
+            let contract = contract.clone();
+            let input = terminate_input(ctx);
+            Box::pin(async move { terminate_effects(&mut *tx, &contract, &input).await })
+        })
 }
 
 /// A release back to `target`: the state before the hold must be `target`; the
@@ -336,6 +375,14 @@ impl StateMachine for ClientContract {
                     .system(),
                 Terminating,
             ))
+            .transition(terminating(
+                user(TERMINATE, "Terminate", permissions::CONTRACTS_MANAGE).tone("danger"),
+            ))
+            .transition(terminating(
+                Transition::new(&approved(TERMINATE))
+                    .label("Terminate (approved)")
+                    .system(),
+            ))
             .transition(
                 user(CANCEL, "Cancel", permissions::CONTRACTS_MANAGE)
                     .tone("danger")
@@ -367,6 +414,7 @@ pub(crate) fn register() {
     subject_machine().register();
     renox::state_machine::register::<ClientContract>();
     release_policy().register();
+    terminate_policy().register();
 }
 
 #[cfg(test)]
@@ -376,7 +424,7 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_that_is_built_is_declared() {
         let machine = ClientContract::machine();
-        let table: [(&str, &[&str], &str, bool); 10] = [
+        let table: [(&str, &[&str], &str, bool); 12] = [
             (ACTIVATE, &["draft"], "active", false),
             (CANCEL, &["draft"], "cancelled", false),
             (HOLD, &["active", "terminating"], "on_hold", false),
@@ -387,6 +435,13 @@ mod tests {
             (
                 "release_terminating_approved",
                 &["on_hold"],
+                "terminating",
+                true,
+            ),
+            (TERMINATE, &["active", "on_hold"], "terminating", false),
+            (
+                "terminate_approved",
+                &["active", "on_hold"],
                 "terminating",
                 true,
             ),

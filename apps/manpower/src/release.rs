@@ -328,8 +328,11 @@ pub async fn release(state: &AppState, by: &AuthUser, id: i64) -> Result<Release
     })
 }
 
-/// The pending manual release request of `contract`, if any.
-async fn pending_release(state: &AppState, contract: &ClientContract) -> Result<Vec<i64>> {
+/// The ids of the pending manual release requests of `contract`.
+pub(crate) async fn pending_release_ids(
+    state: &AppState,
+    contract: &ClientContract,
+) -> Result<Vec<i64>> {
     Ok(
         ApprovalRequest::pending_about(&state.db, &contract.subject())
             .await?
@@ -359,7 +362,7 @@ pub async fn settle(state: &AppState, id: i64, on: NaiveDate) -> Result<bool> {
         return Ok(false);
     }
     let name = transition_for(&contract, true)?;
-    let pending = pending_release(state, &contract).await?;
+    let pending = pending_release_ids(state, &contract).await?;
     let mut tx = state.db.begin().await?;
     let outcome = match contract
         .transition(name)

@@ -105,6 +105,60 @@ const TEXTS: &[(&str, &str)] = &[
         "Bounced cheque {{ cheque }}: {{ amount }}.",
     ),
     ("manpower.hold.line_other", "Other: {{ text }}."),
+    // The early termination (§7.1 `terminate`, `MPW.ACL.17`, BL-MPW-04).
+    (
+        "manpower.terminate.initiated_by",
+        "Say who ended the contract: the client or the agency.",
+    ),
+    (
+        "manpower.terminate.reason",
+        "Give the reason for ending the contract early.",
+    ),
+    (
+        "manpower.terminate.dates",
+        "Give the day the notice was given and the new end date.",
+    ),
+    (
+        "manpower.terminate.later",
+        "The new end date is later than the end date of the contract: that is a renewal.",
+    ),
+    (
+        "manpower.terminate.before_notice",
+        "The new end date is before the day the notice was given.",
+    ),
+    (
+        "manpower.terminate.short_notice",
+        "The notice period of the contract is {{ days }} days: the contract can end on {{ earliest }} at the earliest, unless the other side's waiver is attached.",
+    ),
+    ("manpower.terminate.cancel_reason", "contract terminated"),
+    (
+        "manpower.terminate.history",
+        "Early termination started by the {{ by }}: {{ reason }}",
+    ),
+    (
+        "manpower.terminate.approved_title",
+        "Contract {{ contract }} ends early on {{ date }}",
+    ),
+    (
+        "manpower.terminate.approved_body",
+        "The MD approved the early termination of contract {{ contract }} (started by the {{ by }}, notice given on {{ notice }}: {{ reason }}). It ends on {{ date }}. The deployments end on that day at the latest; the later ones are cancelled and the client has the confirmation.",
+    ),
+    (
+        "manpower.terminate.letter_title",
+        "Confirmation: contract {{ contract }} ends on {{ date }}",
+    ),
+    (
+        "manpower.terminate.letter_body",
+        "We confirm the early termination of contract {{ contract }}, notice given on {{ notice }}. The contract ends on {{ date }}. The workers stay on site until then.",
+    ),
+    (
+        "manpower.terminate.withdrawn_title",
+        "Termination of {{ contract }} withdrawn",
+    ),
+    (
+        "manpower.terminate.withdrawn_body",
+        "The request to end contract {{ contract }} early was withdrawn: {{ reason }}.",
+    ),
     (
         "manpower.release.not_on_hold",
         "Only a contract on credit hold can be released.",
