@@ -127,6 +127,8 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.deposit.refunded", "refunded"),
     ("wl_scheduling.deposit.forfeited", "forfeited"),
     ("wl_scheduling.deposit.applied_to_work_done", "applied to the work done"),
+    ("wl_scheduling.deposit.applied_part", ":amount applied to the work done"),
+    ("wl_scheduling.booking.work_done", "Work done"),
     ("wl_scheduling.deposit.waive", "Waive forfeiture"),
     ("wl_scheduling.deposit.waived", "The forfeiture is waived and the deposit is refunded."),
     (

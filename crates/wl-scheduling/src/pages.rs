@@ -236,6 +236,7 @@ pub(crate) struct ShowPage {
     can_cancel: bool,
     starts_input: String,
     deposit: String,
+    work_done: String,
     can_waive: bool,
 }
 
@@ -300,6 +301,7 @@ async fn show(
         can_cancel: manage && status.is_open(),
         starts_input: local_text(booking.starts_at),
         deposit: deposit_text(&lang, &booking),
+        work_done: work_done_text(&booking),
         can_waive: user.has_permission(permissions::WAIVE_DEPOSIT) && booking.deposit_forfeited > 0,
     }))
 }
@@ -314,7 +316,29 @@ fn deposit_text(lang: &Lang, booking: &Booking) -> String {
         Some(outcome) => text(lang, &format!("deposit.{outcome}")),
         None => text(lang, "deposit.held"),
     };
-    format!("{} · {state}", money_text(booking.deposit_amount))
+    let mut line = format!("{} · {state}", money_text(booking.deposit_amount));
+    if booking.deposit_applied > 0 {
+        line.push_str(" · ");
+        line.push_str(&texts::t_with(
+            lang,
+            "wl_scheduling.deposit.applied_part",
+            &[("amount", &money_text(booking.deposit_applied))],
+        ));
+    }
+    line
+}
+
+/// The work done before a cancellation after the check-in, empty otherwise.
+fn work_done_text(booking: &Booking) -> String {
+    let after_check_in = matches!(
+        booking.cancel_stage.as_deref(),
+        Some("checked_in" | "in_progress")
+    );
+    if after_check_in {
+        money_text(booking.work_done_amount)
+    } else {
+        String::new()
+    }
 }
 
 fn done(lang: &Lang, key: &str, id: i64) -> Result<Response> {
