@@ -1017,13 +1017,13 @@ and `DOC.RUL.03` for practitioner licences and the facility licence."
 - Must not be switchable off by the client (compliance-critical, set by us).
 
 #### Done when
-- [ ] Given a visit on 2026-11-01 with a draft claim and a 30-day window, on 2026-11-08 the
+- [x] Given a visit on 2026-11-01 with a draft claim and a 30-day window, on 2026-11-08 the
       coordinator is notified; on 2026-11-29 the clinic manager gets a task.
-- [ ] A claim submitted on 2026-11-05 gets neither.
-- [ ] Saving a payer contract with a 30-day window and N = 30 is refused.
-- [ ] Given a payer contract with a 1-day window and N = 0, and a visit on 2026-11-01, the
+- [x] A claim submitted on 2026-11-05 gets neither.
+- [x] Saving a payer contract with a 30-day window and N = 30 is refused.
+- [x] Given a payer contract with a 1-day window and N = 0, and a visit on 2026-11-01, the
       2026-11-02 02:00 run notifies the coordinator and creates the clinic manager task.
-- [ ] Given the 2026-11-08 02:00 run ends `failed` (test: a forced error in the rule job), the owner
+- [x] Given the 2026-11-08 02:00 run ends `failed` (test: a forced error in the rule job), the owner
       / medical director gets the owner alert at once; given no run exists for 02:00 (test: the
       scheduler paused until 03:00), the alert comes at the 03:00 missed-run check (BL-KRN-08).
 
