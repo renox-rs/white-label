@@ -182,6 +182,35 @@ pub struct PayerBillSummary {
     pub not_submitted_in_time: bool,
 }
 
+/// What other modules see of one line of a payer bill: its id (what a
+/// remittance or a recoupment names) and where the payer left it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PayerBillLineSummary {
+    /// The line's id, the one [`RemittanceLine::line`] and
+    /// [`RecoupedLine::line`] name.
+    pub id: i64,
+    /// The order on the bill, from 1.
+    pub position: i64,
+    /// What is claimed.
+    pub description: String,
+    /// What the payer is asked to pay, in fils.
+    pub claimed: i64,
+    /// What the payer paid and kept.
+    pub paid: i64,
+    /// What the payer denied and is still open.
+    pub denied: i64,
+    /// What was written off.
+    pub written_off: i64,
+    /// What moved to the customer.
+    pub transferred: i64,
+    /// The payer's last denial code.
+    pub denial_code: Option<String>,
+    /// The payer's last denial reason.
+    pub denial_reason: Option<String>,
+    /// The payer's last recoupment code.
+    pub recoupment_code: Option<String>,
+}
+
 /// One line of a payer bill to make: what the payer is asked to pay.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewPayerBillLine {
@@ -614,6 +643,16 @@ pub trait PayerBills: Send + Sync + 'static {
         _db: &'a Db,
         _source: &'a Subject,
     ) -> PayerBillFuture<'a, Vec<PayerBillSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The lines of payer bill `id`, in order, with what the payer paid,
+    /// denied and recouped on each (a vertical matches a remittance to them).
+    fn lines<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: PayerBillId,
+    ) -> PayerBillFuture<'a, Vec<PayerBillLineSummary>> {
         Box::pin(async { Ok(Vec::new()) })
     }
 

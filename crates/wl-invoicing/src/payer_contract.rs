@@ -8,12 +8,12 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::Subject;
 use wl_kernel::payer_bills::{
-    NewPayerBill, PayerAnswer, PayerBillFuture, PayerBillId, PayerBillStatus, PayerBillSummary,
-    PayerBills, Recoupment, RejectionDeadline, Remittance, SubmissionError,
+    NewPayerBill, PayerAnswer, PayerBillFuture, PayerBillId, PayerBillLineSummary, PayerBillStatus,
+    PayerBillSummary, PayerBills, Recoupment, RejectionDeadline, Remittance, SubmissionError,
 };
 
 use crate::credit_notes::By;
-use crate::payer_bill::PayerBill;
+use crate::payer_bill::{PayerBill, lines_of};
 use crate::payer_closing;
 use crate::payer_issue;
 use crate::payer_recoupment;
@@ -57,6 +57,32 @@ impl PayerBills for PayerBilling {
                 .await?
                 .iter()
                 .map(PayerBill::summary)
+                .collect())
+        })
+    }
+
+    fn lines<'a>(
+        &'a self,
+        db: &'a Db,
+        id: PayerBillId,
+    ) -> PayerBillFuture<'a, Vec<PayerBillLineSummary>> {
+        Box::pin(async move {
+            Ok(lines_of(db, id.0)
+                .await?
+                .into_iter()
+                .map(|line| PayerBillLineSummary {
+                    id: line.id,
+                    position: line.position,
+                    description: line.description,
+                    claimed: line.claimed,
+                    paid: line.paid,
+                    denied: line.denied,
+                    written_off: line.written_off,
+                    transferred: line.transferred,
+                    denial_code: line.denial_code,
+                    denial_reason: line.denial_reason,
+                    recoupment_code: line.recoupment_code,
+                })
                 .collect())
         })
     }
