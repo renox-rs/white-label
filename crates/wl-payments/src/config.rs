@@ -44,6 +44,17 @@ pub const DEFAULT_CRIMINAL_GROUNDS: &[&str] = &[
     "signature or alteration irregular",
 ];
 
+/// Minutes after an online payment became `pending` when `FIN.RUL.19` asks
+/// the gateway for its final state (§7).
+pub const DEFAULT_PENDING_TIMEOUT_MINUTES: i64 = 30;
+
+/// Days a payment link stays open (§7).
+pub const DEFAULT_LINK_EXPIRY_DAYS: i64 = 7;
+
+/// Days before the evidence deadline of a chargeback when `FIN.RUL.20`
+/// reminds the accountant (§7).
+pub const DEFAULT_CHARGEBACK_REMINDER_DAYS: i64 = 2;
+
 /// The bounce fee of a received cheque (§7): the charge type of the client's
 /// charge catalogue and the amount before VAT, in fils.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,6 +118,21 @@ pub struct PaymentsConfig {
     pub criminal_grounds: Vec<String>,
     /// The open amount a legal case needs to be above, in fils (§7: 0, any).
     pub legal_minimum_amount: i64,
+    /// Minutes after an online payment became `pending` when the gateway is
+    /// asked for its final state (`FIN.RUL.19`, M).
+    pub pending_timeout_minutes: i64,
+    /// Days a payment link stays open.
+    pub link_expiry_days: i64,
+    /// Whether a late payment refund the system requests is approved at once
+    /// when it equals the payment, goes back to the same card and the
+    /// prepaid record is no longer active (§7, on by default).
+    pub late_refund_auto: bool,
+    /// Days before the evidence deadline that the accountant is reminded
+    /// (`FIN.RUL.20`, K).
+    pub chargeback_reminder_days: i64,
+    /// The party the gateway's dispute fee is paid to: the gateway provider
+    /// as a supplier party. `None` records the fee on the payment only.
+    pub gateway_party: Option<i64>,
 }
 
 impl PaymentsConfig {
@@ -146,6 +172,11 @@ impl Default for PaymentsConfig {
                 .map(|r| (*r).to_owned())
                 .collect(),
             legal_minimum_amount: 0,
+            pending_timeout_minutes: DEFAULT_PENDING_TIMEOUT_MINUTES,
+            link_expiry_days: DEFAULT_LINK_EXPIRY_DAYS,
+            late_refund_auto: true,
+            chargeback_reminder_days: DEFAULT_CHARGEBACK_REMINDER_DAYS,
+            gateway_party: None,
         }
     }
 }

@@ -1,0 +1,41 @@
+{#- wl-payments: the public page behind a payment link. After a payment on
+    the link failed it shows the reason and a retry button; the link stays
+    open until it is paid, expires or is cancelled. Replace it with
+    resources/views/wl-payments/pay.html in the app. -#}
+<rx-page layout="layouts/public.html" :title="tx['pay.title']">
+  <rx-stack>
+    <rx-alert rx-if="problem" kind="warning" :title="tx['pay.problem']" :message="problem"/>
+    <rx-card rx-if="step == 'open'" :title="brand">
+      <rx-page-header :title="tx['pay.title']" :subtitle="amount"/>
+      <rx-form :action="start_action" novalidate>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['pay.pay']"/>
+        </div>
+      </rx-form>
+    </rx-card>
+    <rx-card rx-if="step == 'retry'" :title="brand">
+      <rx-page-header :title="tx['pay.title']" :subtitle="amount"/>
+      <rx-alert kind="error" :title="tx['pay.failed']" :message="failure"/>
+      <rx-form :action="start_action" novalidate>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['pay.retry']"/>
+        </div>
+      </rx-form>
+    </rx-card>
+    <rx-card rx-if="step == 'waiting'" :title="brand">
+      <rx-alert kind="info" :title="tx['pay.waiting_title']" :message="tx['pay.waiting']"/>
+    </rx-card>
+    <rx-card rx-if="step == 'paid'" :title="brand">
+      <rx-alert kind="success" :title="tx['pay.paid_title']" :message="tx['pay.paid']"/>
+    </rx-card>
+    <rx-card rx-if="step == 'expired'" :title="brand">
+      <rx-alert kind="warning" :title="tx['pay.expired_title']" :message="tx['pay.expired']"/>
+    </rx-card>
+    <rx-card rx-if="step == 'cancelled'" :title="brand">
+      <rx-alert kind="warning" :title="tx['pay.cancelled_title']" :message="tx['pay.cancelled']"/>
+    </rx-card>
+    <rx-card rx-if="step == 'invalid'">
+      <rx-alert kind="warning" :title="tx['pay.invalid_title']" :message="tx['pay.invalid']"/>
+    </rx-card>
+  </rx-stack>
+</rx-page>

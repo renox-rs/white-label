@@ -35,6 +35,12 @@
 //!   (transactional, e-mail, EN; the default template, content pending
 //!   `⚠ open: lawyer L-21`).
 //!
+//! - `payments.online_task`: staff are told about an online payment or a
+//!   chargeback: a late payment that arrived after it had failed, a
+//!   confirmation whose amount does not match, a chargeback with its evidence
+//!   deadline and its reminder, and how a chargeback ended. The text says
+//!   what, the link opens the payment.
+//!
 //! While `notify` is off the kernel's `NoNotifier` sends nothing to a party
 //! and a bell notice to each user.
 
@@ -115,6 +121,9 @@ pub const DEPOSIT_TRANSFERRED: &str = "payments.deposit_transferred";
 /// The type of the accountants' notice of a deposit task.
 pub const DEPOSIT_TASK: &str = "payments.deposit_task";
 
+/// The type of the staff's notice about an online payment or a chargeback.
+pub const ONLINE_TASK: &str = "payments.online_task";
+
 /// The uploader is told that a statement file was not recognised.
 pub const BANK_IMPORT_FAILED: &str = "payments.bank_import_failed";
 /// The accountant is told that a statement line marked as an owner drawing
@@ -146,6 +155,19 @@ fn followup_data(payment: &Payment, task: &FollowupTask) -> renox::serde_json::V
         "amount": money_text(&task.currency, task.amount),
         "link": "/payments/tasks",
     })
+}
+
+/// The notification type [`ONLINE_TASK`].
+pub fn online_task_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(ONLINE_TASK, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.online_task.subject")),
+            english("wl_payments.online_task.body"),
+        )
 }
 
 /// The notification type [`BANK_IMPORT_FAILED`].
@@ -436,6 +458,7 @@ pub fn deposit_task_type() -> NotificationTypeDef {
 
 /// Registers the types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(online_task_type());
     notify::register_type(bank_import_failed_type());
     notify::register_type(bank_line_drawing_rejected_type());
     notify::register_type(deposit_task_type());
@@ -636,6 +659,49 @@ pub(crate) async fn payment_returned(state: &AppState, payment: &Payment) -> Res
         .data(returned_data(payment));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
+}
+
+/// The ids of the holders of the accountant role, each once.
+pub(crate) async fn accountant_ids(state: &AppState) -> Result<Vec<i64>> {
+    let mut ids: Vec<i64> = users_with_role_in(&state.db, ACCOUNTANT_ROLE, &Scope::global())
+        .await?
+        .iter()
+        .map(|user| user.id)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    Ok(ids)
+}
+
+/// Tells `users` (each once) `text` about `payment`, as [`ONLINE_TASK`].
+/// Nothing is sent to nobody.
+pub(crate) async fn online_notice(
+    state: &AppState,
+    payment: &Payment,
+    users: &[i64],
+    text: &str,
+) -> Result {
+    let mut ids = users.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(ONLINE_TASK, payment.subject()).data(json!({
+        "text": text,
+        "link": format!("/payments/{}", payment.id),
+    }));
+    for id in ids {
+        request = request.to_user(id);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the accountants `text` about `payment`.
+pub(crate) async fn accountants_told(state: &AppState, payment: &Payment, text: &str) -> Result {
+    let ids = accountant_ids(state).await?;
+    online_notice(state, payment, &ids, text).await
 }
 
 /// Tells each holder of the accountant role about `task`, one message per

@@ -1186,6 +1186,42 @@ const TEXTS: &[(&str, &str)] = &[
         "Written off",
     ),
     ("wl_payments.cheques.write_off.status.failed", "Failed"),
+    ("wl_payments.online.failure", "Why it failed"),
+    ("wl_payments.pay.title", "Pay online"),
+    ("wl_payments.pay.pay", "Pay now"),
+    ("wl_payments.pay.retry", "Try again"),
+    ("wl_payments.pay.failed", "Your payment did not go through"),
+    ("wl_payments.pay.problem", "We could not start the payment"),
+    ("wl_payments.pay.waiting_title", "Your payment is being processed"),
+    (
+        "wl_payments.pay.waiting",
+        "We are waiting for the answer of the payment provider. Open this page again in a few minutes.",
+    ),
+    ("wl_payments.pay.paid_title", "Paid"),
+    (
+        "wl_payments.pay.paid",
+        "Thank you, this payment has been received.",
+    ),
+    ("wl_payments.pay.expired_title", "This payment link has expired"),
+    (
+        "wl_payments.pay.expired",
+        "Ask us for a new payment link.",
+    ),
+    ("wl_payments.pay.cancelled_title", "This payment link was withdrawn"),
+    (
+        "wl_payments.pay.cancelled",
+        "Ask us for a new payment link.",
+    ),
+    ("wl_payments.pay.invalid_title", "This link does not open"),
+    (
+        "wl_payments.pay.invalid",
+        "Check the link you were sent, or ask us for a new one.",
+    ),
+    ("wl_payments.online_task.subject", "{{ text }}"),
+    (
+        "wl_payments.online_task.body",
+        "{{ text }}. See {{ link }}.",
+    ),
     ("wl_payments.followup.subject", "{{ text }}"),
     (
         "wl_payments.followup.body",

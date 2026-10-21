@@ -60,6 +60,9 @@ pub enum FollowupKind {
     /// Raise the top-up charge of a deposit whose amount grew: nothing could
     /// schedule it (`adjust`).
     RaiseTopUp,
+    /// The gateway reported another amount than the payment's: look at it
+    /// in the gateway (`late_confirm`, `confirm`).
+    AmountMismatch,
 }
 
 /// Whether a follow-up task is still to do.
@@ -163,6 +166,27 @@ impl FollowupTask {
     /// Whether it is still to do.
     pub fn is_open(&self) -> bool {
         self.status == FollowupStatus::Open
+    }
+
+    /// The task to look into a gateway confirmation of `reported` fils that
+    /// does not match `payment`.
+    pub fn amount_mismatch(payment: &Payment, reported: i64) -> Self {
+        FollowupTask {
+            kind: FollowupKind::AmountMismatch,
+            party_id: payment.party_id,
+            payment_id: Some(payment.id),
+            amount: reported,
+            currency: payment.currency.clone(),
+            text: format!(
+                "The gateway confirmed {} for payment #{} of {}",
+                money_text(&payment.currency, reported),
+                payment.id,
+                money_text(&payment.currency, payment.amount)
+            ),
+            role: ACCOUNTANT_ROLE.to_owned(),
+            status: FollowupStatus::Open,
+            ..Default::default()
+        }
     }
 
     /// An open `change_method` task for the failed `refund`, for the

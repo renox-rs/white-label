@@ -43,8 +43,11 @@ pub mod followup;
 pub mod gateway;
 mod machine;
 pub mod notices;
+pub mod online;
+pub mod online_pages;
 pub mod pages;
 pub mod payment;
+pub mod payment_link;
 pub mod record;
 pub mod recorder;
 pub mod refund;
@@ -196,6 +199,10 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-payments/_write_off_sheet.html",
         include_str!("../views/wl-payments/_write_off_sheet.html"),
     ),
+    (
+        "wl-payments/pay.html",
+        include_str!("../views/wl-payments/pay.html"),
+    ),
 ];
 
 /// The module's settings in `state`: those `register` provided, else the
@@ -216,6 +223,8 @@ pub mod permissions {
     pub const REVERSE: &str = "payments.reverse";
     /// Handle chargebacks.
     pub const CHARGEBACK: &str = "payments.chargeback";
+    /// Cancel a payment link.
+    pub const LINKS: &str = "payments.links";
     /// Request a refund.
     pub const REFUNDS_REQUEST: &str = "refunds.request";
     /// Approve or reject a refund (`FIN.ACL.04`).
@@ -388,6 +397,29 @@ impl WlPayments {
         self
     }
 
+    /// Sets how long an online payment may stay `pending` before the gateway
+    /// is asked for its final state (`FIN.RUL.19`, §7: 30 minutes).
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one minute: a programming error.
+    pub fn pending_timeout(mut self, minutes: i64) -> Self {
+        assert!(minutes >= 1, "the timeout is at least one minute");
+        self.config.pending_timeout_minutes = minutes;
+        self
+    }
+
+    /// Sets how many days a payment link stays open (§7: 7).
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one day: a programming error.
+    pub fn link_expiry_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "a link stays open at least one day");
+        self.config.link_expiry_days = days;
+        self
+    }
+
     /// Installs the payment gateway; without one, [`NoGateway`] knows no
     /// disputes.
     pub fn gateway(mut self, gateway: impl Gateway) -> Self {
@@ -417,6 +449,7 @@ impl Module for WlPayments {
             .merge(cheque_pages::routes())
             .merge(bank_statement_pages::routes())
             .merge(expense_claim_pages::routes())
+            .merge(online_pages::routes())
     }
 
     fn register(&self, app: &mut Registry) {
@@ -443,6 +476,7 @@ impl Module for WlPayments {
             )
             .register();
         app.model::<Payment>();
+        app.model::<payment_link::PaymentLink>();
         app.model::<Allocation>();
         app.model::<Refund>();
         app.model::<RefundAttempt>();
@@ -467,6 +501,7 @@ impl Module for WlPayments {
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<pages::DrawingPage>()
+            .view_data::<online_pages::PayPage>()
             .view_data::<pages::TasksPage>()
             .view_data::<refund_pages::IndexPage>()
             .view_data::<refund_pages::ShowPage>()
@@ -544,6 +579,7 @@ impl Module for WlPayments {
         );
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
+        renox::state_machine::register::<payment_link::PaymentLink>();
         renox::state_machine::register::<Refund>();
         renox::state_machine::register::<Deposit>();
         renox::state_machine::register::<Cheque>();
@@ -555,8 +591,13 @@ impl Module for WlPayments {
         app.provide(self.config.clone());
         // The gateway the services ask about disputes (`gateway::gateway_of`).
         if let Some(gateway) = &self.gateway {
+            gateway::remember(gateway);
             app.provide(gateway::Installed(gateway.clone()));
         }
+        // `confirm`, `fail` and `late_confirm` of an online payment, and
+        // `FIN.RUL.19`; the expiry of payment links.
+        online::register(app);
+        payment_link::register(app);
         // How other modules record, allocate and read payments.
         wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
         // How a vertical registers the post-dated cheques of an agreement.

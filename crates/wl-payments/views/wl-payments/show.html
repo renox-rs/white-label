@@ -25,6 +25,7 @@
         <rx-entry :label="tx['fields.unallocated']" :value="amounts['unallocated']"/>
         <rx-entry :label="tx['fields.reference']" :value="payment.reference" copyable/>
         <rx-entry :label="tx['fields.source']" :value="source_label"/>
+        <rx-entry rx-if="payment.failure_reason" :label="tx['online.failure']" :value="payment.failure_reason"/>
       </rx-infolist>
     </rx-card>
     <rx-card rx-if="payment.reversed_on" :title="tx['sections.reversal']">

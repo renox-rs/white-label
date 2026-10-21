@@ -164,28 +164,41 @@ fn with_rules(transition: Transition<Payment>) -> Transition<Payment> {
         })
         .effect(|payment: &Payment, _ctx, tx| {
             let payment = payment.clone();
-            Box::pin(async move {
-                let entity = LegalEntity::find_or_404(&mut *tx, payment.legal_entity_id).await?;
-                let active = LegalEntity::query()
-                    .where_(LegalEntity::STATUS.eq("active"))
-                    .count(&mut *tx)
-                    .await?;
-                let active = usize::try_from(active).unwrap_or(usize::MAX);
-                let series = match payment.direction {
-                    Direction::In => receipt_series(active),
-                    Direction::Out => payment_voucher_series(active),
-                };
-                // Inside the record transaction only: a rollback gives the
-                // number back, so the series stays gapless.
-                let number = series.next(&mut *tx, None, Some(&entity), today()).await?;
-                // Not the status column, so outside the machine's guard.
-                Payment::query()
-                    .where_(Payment::ID.eq(payment.id))
-                    .update(&mut *tx, &[("number", &number)])
-                    .await?;
-                Ok(())
-            })
+            Box::pin(async move { assign_number(&mut *tx, &payment).await })
         })
+}
+
+/// Gives `payment` its receipt (incoming) or voucher (outgoing) number, from
+/// the kernel's series: gapless, per entity, taken only inside the
+/// transaction of the transition that makes the payment `received`, so a
+/// rollback gives the number back. The status column is not written.
+///
+/// # Errors
+///
+/// The database's errors; 404 for an unknown legal entity.
+pub(crate) async fn assign_number(
+    tx: &mut renox::db::Transaction,
+    payment: &Payment,
+) -> Result {
+    let entity = LegalEntity::find_or_404(&mut *tx, payment.legal_entity_id).await?;
+    let active = LegalEntity::query()
+        .where_(LegalEntity::STATUS.eq("active"))
+        .count(&mut *tx)
+        .await?;
+    let active = usize::try_from(active).unwrap_or(usize::MAX);
+    let series = match payment.direction {
+        Direction::In => receipt_series(active),
+        Direction::Out => payment_voucher_series(active),
+    };
+    // Inside the record transaction only: a rollback gives the number back,
+    // so the series stays gapless.
+    let number = series.next(&mut *tx, None, Some(&entity), today()).await?;
+    // Not the status column, so outside the machine's guard.
+    Payment::query()
+        .where_(Payment::ID.eq(payment.id))
+        .update(&mut *tx, &[("number", &number)])
+        .await?;
+    Ok(())
 }
 
 /// What a set-off adds to the record rules: the payment is of method
