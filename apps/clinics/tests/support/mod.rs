@@ -302,6 +302,16 @@ pub fn at(date: NaiveDate, hour: u32) -> DateTime {
     dubai(&date.to_string(), hour, 0)
 }
 
+/// Moves the clock of the app to a second after the Asia/Dubai instant `to`
+/// (the travel counts whole seconds from the real clock, which keeps running),
+/// for `run_scheduled` and `at_travelled_time`.
+pub fn clock_at(t: &Clinic, to: DateTime) {
+    t.app.travel_back();
+    let ahead = (to - renox::db::now()).to_std().expect("ahead");
+    t.app
+        .travel(std::time::Duration::from_secs(ahead.as_secs() + 1));
+}
+
 /// Boots the clinics app: scheduling, HR and the fakes, with the 05 reason
 /// codes and a self-pay price of AED 450.00 for the consultation.
 pub async fn boot() -> Clinic {

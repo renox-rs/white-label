@@ -19,7 +19,7 @@ use clinics::flags::{AppointmentFlag, FlagCause};
 use clinics::policies::{self, NewPolicy};
 use clinics::{InsurancePolicy, appointments};
 use renox::chrono::NaiveDate;
-use support::{Clinic, PATIENT, PATIENT_EMAIL, at, boot, boot_real_notify, day, dubai};
+use support::{Clinic, PATIENT, PATIENT_EMAIL, at, boot, boot_real_notify, clock_at, day, dubai};
 
 const PAYER: PartyId = PartyId(900);
 
@@ -363,15 +363,6 @@ async fn booking_rescheduling_cancelling_and_dependants() {
     assert!(support::Messages::body(last).contains("/portal/link/80/document_upload"));
 }
 
-/// Moves the clock of the app to a second after the instant `to` (the travel
-/// counts whole seconds from the real clock, which keeps running).
-fn clock_at(t: &Clinic, to: renox::db::DateTime) {
-    t.app.travel_back();
-    let ahead = (to - renox::db::now()).to_std().expect("ahead");
-    t.app
-        .travel(std::time::Duration::from_secs(ahead.as_secs() + 1));
-}
-
 /// Done when 1, with the real wl-notify: the request is made at 22:15, inside
 /// the quiet hours (21:00-08:00) of a normal message to a patient, so it is
 /// deferred, nothing reaches the provider, and the release at 08:00 sends it.
@@ -425,4 +416,40 @@ async fn a_card_request_queued_at_night_is_held_until_08_00() {
     assert_eq!(sent[0].address, PATIENT_EMAIL);
     let message = Message::find(s.t.db(), asked[0].id).await.unwrap().unwrap();
     assert_eq!(message.status, MessageStatus::Sent);
+}
+
+/// Done when 1, through the registered entry: the task is the 02:00
+/// Asia/Dubai one; run with the clock moved to 02:00 of day 3 it flags the
+/// appointment and asks the patient once, and run at 02:00 of day 1 (the visit
+/// is four days away) it does nothing.
+#[renox::test]
+async fn the_registered_nightly_task_asks_for_the_card_at_the_moved_clock() {
+    let s = scene().await;
+    assert_eq!(card_requests::TASK_AT, "02:00");
+    assert_eq!(card_requests::TASK_ZONE, "Asia/Dubai");
+    let policy = s.policy(3, None).await;
+    let booking = s.insured(5, &policy).await;
+
+    clock_at(&s.t, at(day(1), 2));
+    s.t.app
+        .run_scheduled(card_requests::TASK)
+        .await
+        .expect("the task runs");
+    assert!(s.flags(&booking).await.is_empty());
+    assert!(s.asked().is_empty());
+
+    clock_at(&s.t, at(day(3), 2));
+    s.t.app
+        .run_scheduled(card_requests::TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(s.flags(&booking).await.len(), 1);
+    assert_eq!(s.asked().len(), 1);
+
+    // The same night again: still one message.
+    s.t.app
+        .run_scheduled(card_requests::TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(s.asked().len(), 1);
 }

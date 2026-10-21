@@ -20,7 +20,7 @@ use wl_scheduling::{Booking, BookingStatus, Refusal};
 use clinics::coverage::{self, CoverageOutcome, PendingCheckIn};
 use clinics::policies::{self, NewPolicy};
 use clinics::{Appointment, InsurancePolicy, SelfPayConsent, Visit, appointments, consent};
-use support::{Clinic, PATIENT, at, boot, day, dubai};
+use support::{Clinic, PATIENT, at, boot, clock_at, day, dubai};
 
 const PAYER: PartyId = PartyId(900);
 
@@ -388,6 +388,45 @@ async fn the_pending_data_is_discarded_at_the_end_of_the_day() {
         .call(coverage::TASK, Vec::<String>::new())
         .await
         .expect("the discard command runs");
+}
+
+/// Done when 6, through the registered entry: the task is the 23:59
+/// Asia/Dubai one; run with the clock moved to 23:58 of the visit day it keeps
+/// the data, and at 23:59 it discards it.
+#[renox::test]
+async fn the_registered_end_of_day_task_discards_at_23_59_dubai() {
+    let s = scene().await;
+    assert_eq!(coverage::DAY_ENDS_AT, "23:59");
+    s.eligibility(&s.booking, "negative", None).await;
+    let visit_day = day(1).to_string();
+
+    clock_at(&s.t, dubai(&visit_day, 23, 58));
+    s.t.app
+        .run_scheduled(coverage::TASK)
+        .await
+        .expect("the task runs");
+    assert!(
+        PendingCheckIn::active_of(s.t.db(), s.booking.id)
+            .await
+            .unwrap()
+            .is_some(),
+        "23:58 keeps it"
+    );
+
+    clock_at(&s.t, dubai(&visit_day, 23, 59));
+    s.t.app
+        .run_scheduled(coverage::TASK)
+        .await
+        .expect("the task runs");
+    assert!(
+        PendingCheckIn::active_of(s.t.db(), s.booking.id)
+            .await
+            .unwrap()
+            .is_none(),
+        "23:59 discards it"
+    );
+    let discarded = s.pending(&s.booking).await;
+    assert_eq!(discarded.discard_reason.as_deref(), Some("lapsed"));
 }
 
 /// Done when 7: a deposit of AED 100.00. Cancelled with

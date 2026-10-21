@@ -18,7 +18,7 @@ use clinics::flags::AppointmentFlag;
 use clinics::policies::{self, NewPolicy};
 use clinics::prior_auth_rules::{Trigger, run_for, task_key};
 use clinics::{AuthStatus, InsurancePolicy, PriorAuthorisation, appointments};
-use support::{Clinic, PATIENT, at, boot, day};
+use support::{Clinic, PATIENT, at, boot, clock_at, day};
 
 const PAYER: PartyId = PartyId(900);
 
@@ -329,4 +329,36 @@ async fn a_new_authorisation_clears_the_flag() {
         .unwrap();
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].clear_reason.as_deref(), Some("covered"));
+}
+
+/// Done when 2, through the registered entry: the task is the 02:00
+/// Asia/Dubai one; run with the clock moved to 02:00 of day 6 it flags
+/// nothing, and at 02:00 of day 7 (three days before A1's last valid day) it
+/// flags the appointment after it and not the one inside the validity.
+#[renox::test]
+async fn the_registered_nightly_task_looks_ahead_at_the_moved_clock() {
+    let s = scene().await;
+    assert_eq!(authorisations::TASK_AT, "02:00");
+    assert_eq!(authorisations::TASK_ZONE, "Asia/Dubai");
+    let a1 = s.t.authorisation(&s.policy, "laser", 3, day(10)).await;
+    let inside = s.laser_on(8).await;
+    let after = s.laser_on(14).await;
+
+    clock_at(&s.t, at(day(6), 2));
+    s.t.app
+        .run_scheduled(authorisations::TASK)
+        .await
+        .expect("the task runs");
+    assert!(s.flags(after).await.is_empty());
+
+    clock_at(&s.t, at(day(7), 2));
+    s.t.app
+        .run_scheduled(authorisations::TASK)
+        .await
+        .expect("the task runs");
+    assert!(s.flags(inside).await.is_empty(), "still covered");
+    let flags = s.flags(after).await;
+    assert_eq!(flags.len(), 1);
+    assert_eq!(flags[0].origin, "look_ahead");
+    assert_eq!(s.task(&a1, Trigger::LookAhead).len(), 1);
 }
