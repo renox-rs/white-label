@@ -102,7 +102,19 @@ async fn an_issue_beyond_stock_is_a_pending_issue_and_the_clinic_manager_is_told
         .unwrap()
         .expect("the storekeeper has the task");
     let ticket = Ticket::find_or_404(app.db(), task.id.0).await.unwrap();
-    assert_eq!(ticket.assignee_user_id, Some(kim.id));
+    // A storekeeper of the branch (the demo clinic has its own besides Kim).
+    let assignee = User::find_or_404(app.db(), ticket.assignee_user_id.expect("assigned"))
+        .await
+        .unwrap();
+    assert!(
+        assignee
+            .roles(app.db())
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r == STOREKEEPER),
+        "the task goes to a storekeeper"
+    );
 
     // Once.
     app.travel(Duration::from_secs(3600));

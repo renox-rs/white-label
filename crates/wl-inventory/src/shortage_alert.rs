@@ -133,6 +133,22 @@ async fn holders(db: &Db, permission: &str, location: &Location) -> Result<Vec<i
         .collect())
 }
 
+/// The first of `ids` who does not hold the company administrator role.
+async fn first_not_admin(db: &Db, ids: &[i64]) -> Result<Option<i64>> {
+    for id in ids {
+        let user = renox::auth::User::find_or_404(db, *id).await?;
+        if !user
+            .roles(db)
+            .await?
+            .iter()
+            .any(|role| role == wl_kernel::COMPANY_ADMIN_ROLE)
+        {
+            return Ok(Some(*id));
+        }
+    }
+    Ok(None)
+}
+
 /// Whether `item_id` is still short at `location_id`: a pending issue is
 /// `open` (see the module docs for the balance below zero).
 async fn still_short(db: &Db, item_id: i64, location_id: i64) -> Result<bool> {
@@ -259,8 +275,14 @@ pub async fn run(state: &AppState, at: DateTime) -> Result<usize> {
             let mut ticket = OpenTicket::new(location.subject(), TASK_CATEGORY, &title)
                 .description(&description)
                 .source_key(&key);
-            if let Some(first) = storekeepers.first().or(managers.first()) {
-                ticket = ticket.assign_to(Assignee::user(*first));
+            // A storekeeper who is not the company administrator (who holds
+            // every permission) has the task before anyone else.
+            let first = match first_not_admin(&state.db, &storekeepers).await? {
+                Some(id) => Some(id),
+                None => storekeepers.first().or(managers.first()).copied(),
+            };
+            if let Some(first) = first {
+                ticket = ticket.assign_to(Assignee::user(first));
             }
             creator.open(state, ticket).await?;
         }
