@@ -38,7 +38,8 @@ async fn allow_customer_billing(t: &Real) {
 /// Done when 1: a draft claim of AED 600.00 for a visit on 2026-09-01, a
 /// 30-day window (ended 2026-10-01), a payer that does not accept late claims
 /// and the flag off (the agreement would allow billing the patient): clinic
-/// manager A writes it off with "missed window" on 2026-10-05; it is
+/// manager A writes it off with "missed window" through the route (today is
+/// past the window); it is
 /// `written_off`, the payer bill's `write_off` ran (nothing moved to the
 /// patient) and the KPI shows AED 600.00 *not submitted in time*.
 #[renox::test]
@@ -49,23 +50,21 @@ async fn a_draft_claim_that_missed_its_window_is_written_off_and_reported() {
     let cora = t.coordinator().await;
     let claim = t.claim(d("2026-09-01"), &[("consultation", 60_000)]).await;
 
-    let closed = claim_closing::write_off(
-        t.state(),
+    // Through the route the clinic manager uses, on today's clock: the window
+    // of the visit of 2026-09-01 ended on 2026-10-01.
+    t.post(
         &mona,
-        claim.id,
-        "missed window",
-        dubai("2026-10-05", 9, 0),
+        &format!("/clinics/claims/{}/write-off", claim.id),
+        &[("reason", "missed window")],
     )
     .await
-    .expect("the claim is closed");
-    let Closed::Done(done) = closed else {
-        panic!("a write-off of AED 600.00 is not held");
-    };
+    .assert_ok();
+    let done = t.claim_now(claim.id).await;
     assert_eq!(done.status, ClaimStatus::WrittenOff);
     assert_eq!(done.close_how.as_deref(), Some("written_off"));
     assert_eq!(done.close_reason.as_deref(), Some("missed window"));
     assert_eq!(done.close_amount, 60_000);
-    assert_eq!(done.closed_on, Some(d("2026-10-05")));
+    assert_eq!(done.closed_on, Some(wl_kernel::documents::today()));
     assert_eq!(done.closed_by, Some(mona.id));
     assert!(done.not_submitted_in_time);
 
