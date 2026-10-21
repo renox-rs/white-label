@@ -9,6 +9,7 @@
 //! | `POST /stock-holds/{id}/cancel` | `wl_inventory.hold_cancel` | `lots.release` in the hold's scope |
 //! | `POST /recalls` | `wl_inventory.recall_open` | `recalls.manage` |
 //! | `POST /stock-issues` | `wl_inventory.stock_issue` | `stock.issue` at the location |
+//! | `GET /pending-issues` | `wl_inventory.pending_list` | `stock.adjust` (the pending issues at the locations in its scope) |
 //! | `POST /pending-issues/{id}/clear` | `wl_inventory.pending_clear` | `stock.adjust` at the location |
 //! | `POST /transfers/{id}/send` | `wl_inventory.transfer_send` | `stock.transfer` at the source |
 //! | `POST /transfers/{id}/receive` | `wl_inventory.transfer_receive` | `stock.transfer` at the destination |
@@ -52,6 +53,8 @@ pub fn routes() -> Routes {
         .name("wl_inventory.recall_open")
         .post("/stock-issues", issue_stock)
         .name("wl_inventory.stock_issue")
+        .get("/pending-issues", list_pending_issues)
+        .name("wl_inventory.pending_list")
         .post("/pending-issues/{id}/clear", clear_pending_issue)
         .name("wl_inventory.pending_clear")
         .post("/transfers/{id}/send", send_transfer)
@@ -412,6 +415,51 @@ pub struct ClearForm {
     /// The id of the lot to enter the stock in, for a lot-tracked item.
     #[validate(max = 20)]
     pub lot: Option<String>,
+}
+
+/// One open pending issue as the storekeeper's page lists it.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct PendingRow {
+    /// The pending issue's id (the clear form posts to it).
+    pub id: i64,
+    /// The item's code.
+    pub item: String,
+    /// The location's code.
+    pub location: String,
+    /// The short quantity, in thousandths.
+    pub quantity_milli: i64,
+    /// The record that consumed, like `clinics.visit:12`.
+    pub source: String,
+    /// When it was recorded.
+    pub recorded_at: String,
+}
+
+/// `GET /pending-issues`: the open pending issues, oldest first, at the
+/// locations where the user holds `stock.adjust`, as JSON. Decision: the
+/// storekeeper's page lists only what the storekeeper may clear.
+async fn list_pending_issues(State(state): State<AppState>, user: AuthUser) -> Result<Response> {
+    if !user.has_permission_anywhere(permissions::STOCK_ADJUST) {
+        return Err(Error::Forbidden);
+    }
+    let mut rows = Vec::new();
+    for pending in crate::pending_issue::open_of(&state.db).await? {
+        if !user.has_permission_in(permissions::STOCK_ADJUST, &pending.scope()) {
+            continue;
+        }
+        let item = crate::item::Item::find_or_404(&state.db, pending.item_id).await?;
+        let location = crate::location::Location::find_or_404(&state.db, pending.location_id).await?;
+        rows.push(PendingRow {
+            id: pending.id,
+            item: item.code.clone(),
+            location: location.code.clone(),
+            quantity_milli: pending.quantity_milli,
+            source: format!("{}:{}", pending.source_type, pending.source_id),
+            recorded_at: pending.recorded_at.to_string(),
+        });
+    }
+    let body = renox::serde_json::to_string(&rows)
+        .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
+    Ok(([("content-type", "application/json")], body).into_response())
 }
 
 /// `POST /pending-issues/{id}/clear`: clears a pending issue with a reason.

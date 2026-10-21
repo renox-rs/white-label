@@ -310,6 +310,71 @@ async fn clearing_within_the_limit_enters_the_stock_and_posts_the_consumption() 
     );
 }
 
+/// Surface: the storekeeper's page lists the open pending issues, oldest
+/// first, at the locations where the user holds `stock.adjust`; a posted or
+/// cleared one is gone from it, and a user without the permission is refused.
+#[renox::test]
+async fn the_storekeepers_page_lists_the_open_pending_issues_in_their_scope() {
+    let t = boot().await;
+    let item = t.item("SUTURE").await;
+    let site_1 = Subject::new("construction.site", 1);
+    let site_2 = Subject::new("construction.site", 2);
+    let store_1 = t.location("STORE-1", Some(&site_1)).await;
+    let store_2 = t.location("STORE-2", Some(&site_2)).await;
+    t.consume(&item, &store_1, 3_000, &visit(1)).await;
+    t.consume(&item, &store_2, 2_000, &visit(2)).await;
+    t.consume(&item, &store_1, 1_000, &visit(3)).await;
+
+    let list = |by: &User| {
+        t.app.acting_as(by);
+        t.app.get("/pending-issues")
+    };
+    // Everywhere: all three, oldest first, with what the page shows.
+    let clerk = t.clerk("Cass").await;
+    let all: Vec<wl_inventory::PendingRow> = list(&clerk).await.assert_ok().json();
+    assert_eq!(
+        all.iter()
+            .map(|row| (row.location.as_str(), row.quantity_milli, row.source.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("STORE-1", 3_000, "clinics.visit:1"),
+            ("STORE-2", 2_000, "clinics.visit:2"),
+            ("STORE-1", 1_000, "clinics.visit:3"),
+        ]
+    );
+    assert!(all.iter().all(|row| row.item == "SUTURE"));
+
+    // A storekeeper of site 1 sees the two pending issues of its store.
+    let user = User::register(t.db(), "Sam", "sam@example.com", "password123")
+        .await
+        .unwrap();
+    user.assign_role_in(
+        t.db(),
+        "stock_clerk",
+        &renox::auth::permissions::Scope::new(&site_1.subject_type, site_1.subject_id),
+    )
+    .await
+    .unwrap();
+    let mine: Vec<wl_inventory::PendingRow> = list(&user).await.assert_ok().json();
+    assert_eq!(
+        mine.iter().map(|row| row.location.as_str()).collect::<Vec<_>>(),
+        vec!["STORE-1", "STORE-1"]
+    );
+
+    // Without `stock.adjust` the page is refused.
+    let holder = t.holder("Hal").await;
+    list(&holder).await.assert_status(403);
+
+    // A cleared pending issue leaves the list.
+    let first = t.open_pending().await.remove(0);
+    t.clear_as(&clerk, &first, "used from sample stock", None)
+        .await
+        .assert_ok();
+    let rest: Vec<wl_inventory::PendingRow> = list(&clerk).await.assert_ok().json();
+    assert_eq!(rest.len(), 2);
+    assert!(rest.iter().all(|row| row.id != first.id));
+}
+
 /// Done when 6: a pending issue of 30 units (AED 1,200) asks for approval;
 /// the storekeeper cannot approve; nothing posts until it is approved.
 #[renox::test]

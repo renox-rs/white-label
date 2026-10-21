@@ -82,6 +82,7 @@ pub use reorder::{ReorderSuggestion, SuggestionStatus};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
 pub use shortage_alert::ShortageAlert;
+pub use stock_pages::PendingRow;
 pub use stock_count::{StockCount, StockCountStatus};
 pub use stock_hold::{
     HoldLineStatus, HoldScope, HoldStatus, StockHold, StockHoldItem, StockHoldLine,
