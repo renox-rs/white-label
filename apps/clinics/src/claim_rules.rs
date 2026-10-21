@@ -55,7 +55,7 @@ pub fn denied_key(claim: i64, answers: usize) -> String {
 
 /// The end of `day` in Asia/Dubai, as an instant: when a deadline task is
 /// due.
-fn end_of(day: NaiveDate) -> Option<DateTime> {
+pub(crate) fn end_of(day: NaiveDate) -> Option<DateTime> {
     let local = day.and_hms_opt(23, 59, 0)?;
     Some(BusinessCalendar::default().from_local(local))
 }
