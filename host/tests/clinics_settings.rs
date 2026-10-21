@@ -116,7 +116,11 @@ async fn install_restores_the_blocks_of_a_fixed_kind() {
         .await
         .unwrap()
         .expect("seeded");
-    let guarded = |db| KindBlock::query().where_(KindBlock::KIND_ID.eq(kind.id)).count(db);
+    let guarded = |db| {
+        KindBlock::query()
+            .where_(KindBlock::KIND_ID.eq(kind.id))
+            .count(db)
+    };
     assert_eq!(guarded(app.db()).await.unwrap(), 3);
     KindBlock::query()
         .where_(KindBlock::KIND_ID.eq(kind.id))
@@ -599,6 +603,49 @@ async fn a_reminder_that_gives_up_opens_no_task_and_a_card_request_opens_one_for
     assert_eq!(request.status, MessageStatus::Abandoned);
     let tasks = give_up_tasks(&app, "clinics.insurance_policy").await;
     assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].assignee_user_id, Some(receptionist.id));
+}
+
+/// Done when (connections), 3: a recall notice that gives up goes back to
+/// *gave up* and opens a call task for the front desk (the receptionist),
+/// through the real notifier with an e-mail that bounces.
+#[renox::test]
+async fn a_recall_notice_that_gives_up_opens_a_call_task_for_the_front_desk() {
+    use clinics::recall_notice::{
+        NOTICE_TYPE, RECALL_NOTICE_SUBJECT_TYPE, RecallNotice, RecallNoticeStatus,
+    };
+    use renox::state_machine::StateMachine;
+
+    let mail = BouncingMail::default();
+    let app = clinics_booted_with_mail(mail.clone()).await;
+    let receptionist = person(&app, "Rita", RECEPTIONIST).await;
+    let patient = tenant(&app, "Pat Lane").await;
+    let mut notice = RecallNotice {
+        recall_id: 1,
+        party_id: patient.0,
+        visit_dates: "2026-10-01".to_owned(),
+        status: RecallNoticeStatus::Sent,
+        ..RecallNotice::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    notice
+        .insert_in_state(&mut tx, RecallNoticeStatus::Sent, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let message = bounce(
+        &app,
+        NOTICE_TYPE,
+        Subject::new(RECALL_NOTICE_SUBJECT_TYPE, notice.id),
+        patient,
+    )
+    .await;
+    assert_eq!(message.status, MessageStatus::Abandoned);
+    let now = RecallNotice::find_or_404(app.db(), notice.id).await.unwrap();
+    assert_eq!(now.status, RecallNoticeStatus::GaveUp);
+    let tasks = give_up_tasks(&app, RECALL_NOTICE_SUBJECT_TYPE).await;
+    assert_eq!(tasks.len(), 1, "one call task");
     assert_eq!(tasks[0].assignee_user_id, Some(receptionist.id));
 }
 
