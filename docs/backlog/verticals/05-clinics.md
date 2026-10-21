@@ -1246,15 +1246,15 @@ becomes a call task for the front desk."
 - Must not show the trace list to roles without health data access.
 
 #### Done when
-- [ ] Given lot L9 issued to visits V1 (patient P1, 2026-10-02) and V2 (P2, 2026-10-09), opening a
+- [x] Given lot L9 issued to visits V1 (patient P1, 2026-10-02) and V2 (P2, 2026-10-09), opening a
       recall lists V1/P1 and V2/P2.
-- [ ] Given L9 received at Branch 1 on 2026-10-01 and held by the recall on 2026-10-12, a pending
+- [x] Given L9 received at Branch 1 on 2026-10-01 and held by the recall on 2026-10-12, a pending
       issue of the item at Branch 1 on 2026-10-05 for P3 is listed *possible*, "lot uncertain";
       one on 2026-09-28 for P5 is not listed.
-- [ ] P1 gets one notice with the clinic name and phone and no product name.
-- [ ] When P2's notice gives up, the Branch 1 front desk gets a call task due next working day.
-- [ ] For dependant P4 the notice goes to the guardian.
-- [ ] A receptionist without health data access cannot open the trace list.
+- [x] P1 gets one notice with the clinic name and phone and no product name.
+- [x] When P2's notice gives up, the Branch 1 front desk gets a call task due next working day.
+- [x] For dependant P4 the notice goes to the guardian.
+- [x] A receptionist without health data access cannot open the trace list.
 
 #### Out of scope
 Recall opening, holds and decisions (BL-STK-14, BL-STK-12, BL-STK-16); authority notification
