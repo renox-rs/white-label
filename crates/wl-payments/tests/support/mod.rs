@@ -36,12 +36,13 @@ use wl_kernel::invoicing::{
     InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
     WriteOffAnswer,
 };
+use wl_kernel::payer_bills::{PayerBillFuture, PayerCredits};
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::payments::{
     AllocationTarget, ChargebackClosed, PaymentFailed, PaymentFuture, PaymentId, PaymentLinkExpired, PaymentMethod,
     PaymentReceived, PaymentReversed, PaymentSummary, PrepaidSubjects, RecordPayment, RefundFailed,
-    RefundFailureKind, RefundPaid, payment_recorder,
+    RefundApproved, RefundFailureKind, RefundPaid, payment_recorder,
 };
 use wl_kernel::{ClientConfig, LegalEntity, PartyId, Subject};
 use wl_payments::deposit::HoldDeposit;
@@ -593,6 +594,40 @@ impl PrepaidSubjects for PrepaidBook {
     }
 }
 
+/// The payer credit balances wl-invoicing holds, scripted by the test:
+/// (payer, legal entity, balance in fils of AED).
+#[derive(Clone, Default)]
+pub struct PayerCreditBook(Arc<Mutex<Vec<(PartyId, i64, i64)>>>);
+
+impl PayerCreditBook {
+    /// The payer has `balance` fils of credit with the legal entity.
+    pub fn set(&self, payer: PartyId, legal_entity_id: i64, balance: i64) {
+        let mut book = self.0.lock().unwrap();
+        book.retain(|(p, e, _)| (*p, *e) != (payer, legal_entity_id));
+        book.push((payer, legal_entity_id, balance));
+    }
+}
+
+impl PayerCredits for PayerCreditBook {
+    fn balance<'a>(
+        &'a self,
+        _db: &'a Db,
+        payer: PartyId,
+        legal_entity_id: i64,
+        currency: &'a str,
+    ) -> PayerBillFuture<'a, i64> {
+        let balance = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(p, e, _)| (*p, *e) == (payer, legal_entity_id))
+            .filter(|_| currency == "AED")
+            .map_or(0, |(_, _, balance)| *balance);
+        Box::pin(async move { Ok(balance) })
+    }
+}
+
 /// The owner drawings approval wl-invoicing provides, scripted by the test: the
 /// category `owner_drawings` has an owner party (Quiet Sands unless changed),
 /// and a request waits for the approvers unless the desk approves at once.
@@ -1003,6 +1038,10 @@ pub struct Booted {
     pub prepaid: PrepaidBook,
     /// `ChargebackClosed`.
     pub chargeback_closed: Recorded<ChargebackClosed>,
+    /// `RefundApproved`.
+    pub refund_approved: Recorded<RefundApproved>,
+    /// The payer credit balances.
+    pub payer_credits: PayerCreditBook,
 }
 
 impl Booted {
@@ -1884,6 +1923,9 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let failed = Recorded::new();
     let link_expired = Recorded::new();
     let chargeback_closed = Recorded::new();
+    let refund_approved = Recorded::new();
+    let payer_credits = PayerCreditBook::default();
+    let payer_credit_provider: Arc<dyn PayerCredits> = Arc::new(payer_credits.clone());
     let prepaid = PrepaidBook::default();
     let prepaid_subjects: Arc<dyn PrepaidSubjects> = Arc::new(prepaid.clone());
     let blocked = BlockedParties::default();
@@ -1908,6 +1950,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         .provide(top_up_provider)
         .provide(owner_drawings)
         .provide(prepaid_subjects)
+        .provide(payer_credit_provider)
         .provide(block_guard);
     let app = record(app, &received);
     let app = record(app, &reversed);
@@ -1921,6 +1964,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let app = record(app, &failed);
     let app = record(app, &link_expired);
     let app = record(app, &chargeback_closed);
+    let app = record(app, &refund_approved);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1966,5 +2010,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         link_expired,
         prepaid,
         chargeback_closed,
+        refund_approved,
+        payer_credits,
     }
 }
