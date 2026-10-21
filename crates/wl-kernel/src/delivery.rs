@@ -284,6 +284,19 @@ pub trait DeliveryRequester: Send + Sync + 'static {
         reason: &'a str,
     ) -> DeliveryFuture<'a, ()>;
 
+    /// Corrects the address and area of a delivery that is not out on a
+    /// run (`pending`, `assigned` or `attempted`); a delivery in any other
+    /// state is left as it is. The default does nothing.
+    fn update_address<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _delivery: DeliveryId,
+        _address: &'a str,
+        _area: &'a str,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
     /// Puts the `delivered` delivery under review as the system (`open_review`
     /// by a dispute ticket from the recipient or the client). `ticket` is
     /// the dispute ticket that raised it and becomes the review's ticket; with

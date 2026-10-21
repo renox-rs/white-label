@@ -154,6 +154,30 @@ impl DeliveryRequester for Deliveries {
         })
     }
 
+    fn update_address<'a>(
+        &'a self,
+        state: &'a AppState,
+        delivery: DeliveryId,
+        address: &'a str,
+        area: &'a str,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async move {
+            let delivery = Delivery::find_or_404(&state.db, delivery.0).await?;
+            if !matches!(
+                delivery.status,
+                DeliveryStatus::Pending | DeliveryStatus::Assigned | DeliveryStatus::Attempted
+            ) {
+                return Ok(());
+            }
+            let (address, area) = (address.to_owned(), area.to_owned());
+            Delivery::query()
+                .where_(Delivery::ID.eq(delivery.id))
+                .update(&state.db, &[("address", &address), ("area", &area)])
+                .await?;
+            Ok(())
+        })
+    }
+
     fn open_review<'a>(
         &'a self,
         state: &'a AppState,
