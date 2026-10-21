@@ -595,9 +595,22 @@ async fn ask_lost(w: &World, shipment: &Shipment) {
 async fn disposal_is_offered_only_on_a_held_shipment_to_staff() {
     let w = boot().await;
     let shipment = held(&w, "ORD-1").await;
-    let staff = w.offered(&w.dispatcher, &shipment).await;
-    assert!(staff.contains(&"dispose".to_owned()));
-    assert!(!staff.contains(&"dispose_approved".to_owned()));
+    // Offered is what the shipment page draws: the form of the dispose route.
+    let link = format!("/shipments/{}/dispose", shipment.id);
+    w.get(&w.dispatcher, &format!("/shipments/{}", shipment.id))
+        .await
+        .assert_ok()
+        .assert_see(&link);
+    // The kernel's run after an approval is never a button.
+    assert!(
+        !w.offered(&w.dispatcher, &shipment)
+            .await
+            .contains(&"dispose_approved".to_owned())
+    );
+    // The client has no such page at all, so nothing to dispose of from it.
+    w.get(&w.noor, &format!("/shipments/{}", shipment.id))
+        .await
+        .assert_forbidden();
     assert!(
         !w.offered(&w.noor, &shipment)
             .await
@@ -605,9 +618,8 @@ async fn disposal_is_offered_only_on_a_held_shipment_to_staff() {
     );
     let other = w.book_as(&w.noor, SOUQ, "ORD-2").await;
     let at_hub = w.at_hub(&w.pick_up(&other).await).await;
-    assert!(
-        !w.offered(&w.dispatcher, &at_hub)
-            .await
-            .contains(&"dispose".to_owned())
-    );
+    w.get(&w.dispatcher, &format!("/shipments/{}", at_hub.id))
+        .await
+        .assert_ok()
+        .assert_dont_see(&format!("/shipments/{}/dispose", at_hub.id));
 }
