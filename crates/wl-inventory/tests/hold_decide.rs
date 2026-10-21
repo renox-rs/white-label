@@ -370,9 +370,35 @@ async fn a_lot_with_nothing_left_is_discarded() {
     let discarded = t.discarded.all();
     assert_eq!(discarded.len(), 1);
     assert_eq!(discarded[0].reason, "quality");
-    // The line's wastage took it all; the lot's own discard found nothing.
-    assert_eq!(discarded[0].quantity_milli, 0);
+    // The line's wastage took all 3; the lot's own discard found nothing, and
+    // the event still reports what was discarded.
+    assert_eq!(discarded[0].quantity_milli, 3_000);
     assert_eq!(wastage_of(&t, &item).await.len(), 1);
+}
+
+/// Regression: `LotDiscarded` reports everything of the lot that went to
+/// wastage, also when it left through the lines of the hold at two
+/// locations (it was 0 before, as the lot's own discard found nothing).
+#[renox::test]
+async fn the_lot_discarded_event_reports_what_every_line_discarded() {
+    let t = boot_outlet().await;
+    let item = t.tracked_item("VACCINE").await;
+    let lot = t.lot(&item, "L1", LotStatus::Released).await;
+    let store_a = t.location("STORE-A", None).await;
+    let store_b = t.location("STORE-B", None).await;
+    t.stock_in(&item, &store_a, Some(&lot), 3_000, 1_000).await;
+    t.stock_in(&item, &store_b, Some(&lot), 2_000, 1_000).await;
+    let holder = t.holder("Hal").await;
+    let rae = t.releaser("Rae").await;
+    let hold = hold_lots(&t, &holder, &[&lot], "quality").await;
+    for line in t.hold_lines(&hold).await {
+        t.decide_as(&rae, &line, "discard").await.assert_ok();
+    }
+
+    assert_eq!(t.lot_now(&lot).await.status, LotStatus::Rejected);
+    let discarded = t.discarded.all();
+    assert_eq!(discarded.len(), 1);
+    assert_eq!(discarded[0].quantity_milli, 5_000);
 }
 
 /// Done when 5: `return_to_supplier` moves the quantity to quarantine and a

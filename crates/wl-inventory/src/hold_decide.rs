@@ -354,11 +354,15 @@ pub fn closed_event(hold: &StockHold, lines: &[StockHoldLine]) -> StockHoldClose
     }
 }
 
-/// The quantity the discard of lot `lot_id` took out.
+/// The quantity of lot `lot_id` that went to wastage, in thousandths: what
+/// the lines of its hold discarded one by one and what the lot's own
+/// `discard` wrote off after them. Decision: `LotDiscarded` reports the whole
+/// quantity the lot cost the business, not only the last step. A discard
+/// through the lines leaves nothing for the lot's own step, and the event
+/// still names what was discarded.
 async fn discarded_quantity(db: &Db, lot_id: i64) -> Result<i64> {
     Ok(StockMovement::query()
-        .where_(StockMovement::SOURCE_TYPE.eq(LOT_SUBJECT_TYPE))
-        .where_(StockMovement::SOURCE_ID.eq(lot_id))
+        .where_(StockMovement::LOT_ID.eq(Some(lot_id)))
         .where_(StockMovement::MOVEMENT_TYPE.eq(MovementType::Wastage))
         .get(db)
         .await?

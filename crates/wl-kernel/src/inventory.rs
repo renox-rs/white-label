@@ -1051,8 +1051,9 @@ pub struct LotDiscarded {
     pub item: Subject,
     /// Why: the hold or expiry reason.
     pub reason: String,
-    /// The quantity the discard took out, in thousandths (0 when the lines
-    /// of the hold had taken it all already).
+    /// The quantity of the lot that went to wastage, in thousandths: what
+    /// the lines of the hold discarded and what the lot's own discard wrote
+    /// off after them.
     pub quantity_milli: i64,
 }
 
