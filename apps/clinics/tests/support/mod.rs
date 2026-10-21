@@ -26,9 +26,13 @@ use wl_kernel::notify::{
 use wl_kernel::parties::{
     PartyDirectory, PartyFuture, PartyStatus, PartySummary, provide_directory,
 };
+use wl_kernel::invoicing::provide_invoicer;
+use wl_kernel::payer_bills::provide_payer_bills;
 use wl_kernel::payments::provide_payment_recorder;
-use wl_kernel::sales::{SalesFuture, SelfPayPrices, provide_self_pay_prices};
-use wl_kernel::scheduling::{BookingId, Initiator, provide_work_done_status};
+use wl_kernel::sales::{
+    SalesFuture, SelfPayPrices, provide_package_ledger, provide_self_pay_prices,
+};
+use wl_kernel::scheduling::{BookingId, Initiator};
 use wl_kernel::tickets::provide_task_creator;
 use wl_kernel::workforce::{EmployeeId, QualificationExpired};
 use wl_kernel::{PartyId, Subject};
@@ -42,7 +46,13 @@ use wl_scheduling::{
 #[path = "../../../../crates/wl-scheduling/tests/support/mod.rs"]
 pub mod scheduling;
 
-pub use scheduling::{Docs, Events, Messages, Recorded, Refunds, Tasks, Work, dubai, record};
+/// The money side of a visit: invoices, payer bills, packages, deposits.
+pub mod billing;
+/// A day at the clinic for the charge capture tests.
+pub mod desk;
+
+pub use billing::{Books, Claims, Deposits, Packages};
+pub use scheduling::{Docs, Events, Messages, Recorded, Refunds, Tasks, dubai, record};
 
 /// The kind of the practitioner's licence.
 pub const LICENCE: &str = clinics::seed::LICENCE_KIND;
@@ -252,7 +262,10 @@ struct Harness {
     real_notify: bool,
     guardians: Guardians,
     refunds: Refunds,
-    work: Work,
+    deposits: Deposits,
+    books: Books,
+    claims: Claims,
+    packages: Packages,
     messages: Messages,
     docs: Docs,
     tasks: Tasks,
@@ -265,8 +278,10 @@ impl Module for Harness {
     }
 
     fn register(&self, app: &mut Registry) {
-        provide_payment_recorder(app, self.refunds.clone());
-        provide_work_done_status(app, self.work.clone());
+        provide_payment_recorder(app, self.deposits.clone());
+        provide_invoicer(app, self.books.clone());
+        provide_payer_bills(app, self.claims.clone());
+        provide_package_ledger(app, self.packages.clone());
         if !self.real_notify {
             provide_notifier(app, self.messages.clone());
         }
@@ -285,6 +300,14 @@ pub struct Clinic {
     pub events: Events,
     /// The refunds asked of the payment recorder.
     pub refunds: Refunds,
+    /// The deposits held for bookings and the allocations asked.
+    pub deposits: Deposits,
+    /// The invoices the clinic drafted and issued.
+    pub books: Books,
+    /// The payer bills the clinic made.
+    pub claims: Claims,
+    /// The prepaid packages of the patients.
+    pub packages: Packages,
     /// The notifications sent.
     pub messages: Messages,
     /// The documents the employees hold.
@@ -342,7 +365,10 @@ async fn boot_with(real_notify: bool) -> Clinic {
     std::fs::write(&path, LAYOUT).unwrap();
     let events = Events::default();
     let refunds = Refunds::default();
-    let work = Work::default();
+    let deposits = Deposits::new(refunds.clone());
+    let books = Books::default();
+    let claims = Claims::default();
+    let packages = Packages::default();
     let messages = Messages::default();
     let docs = Docs::default();
     let tasks = Tasks::default();
@@ -365,7 +391,10 @@ async fn boot_with(real_notify: bool) -> Clinic {
             real_notify,
             guardians: guardians.clone(),
             refunds: refunds.clone(),
-            work,
+            deposits: deposits.clone(),
+            books: books.clone(),
+            claims: claims.clone(),
+            packages: packages.clone(),
             messages: messages.clone(),
             docs: docs.clone(),
             tasks: tasks.clone(),
@@ -395,6 +424,10 @@ async fn boot_with(real_notify: bool) -> Clinic {
         app,
         events,
         refunds,
+        deposits,
+        books,
+        claims,
+        packages,
         messages,
         docs,
         tasks,
@@ -447,6 +480,22 @@ impl Clinic {
                 clinics::permissions::POLICIES_VIEW,
                 clinics::permissions::POLICIES_MANAGE,
                 clinics::permissions::COVERAGE_RECORD,
+                clinics::permissions::CHARGES_DESK,
+            ],
+        )
+        .await
+    }
+
+    /// The practitioner: records the services delivered and the consumables
+    /// used on the visits.
+    pub async fn doctor_user(&self) -> User {
+        self.user(
+            "Dana",
+            &[
+                wl_scheduling::permissions::VIEW,
+                clinics::permissions::VISITS_VIEW,
+                clinics::permissions::CHARGES_CAPTURE,
+                clinics::permissions::CHARGES_DESK,
             ],
         )
         .await
