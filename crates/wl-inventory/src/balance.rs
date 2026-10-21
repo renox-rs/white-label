@@ -250,6 +250,10 @@ pub async fn balance<'c>(
 /// its `released` lots with something available, first expiry first, then
 /// the oldest lot (§3 *Picking order*). Held quantity is never offered.
 ///
+/// This is the picking source. The route-level pick (a dispatch refused for
+/// held quantity) belongs to BL-STK-21; until it exists the test
+/// `the_picking_source_never_offers_held_quantity` proves the source.
+///
 /// # Errors
 ///
 /// A database error.

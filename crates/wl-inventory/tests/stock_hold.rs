@@ -47,6 +47,16 @@ fn told(t: &Booted, kind: &str) -> Vec<i64> {
         .collect()
 }
 
+/// What a pick may take of `item` at `location`: `(lot, available)`.
+async fn offered(t: &Booted, item: &wl_inventory::Item, location: &Location) -> Vec<(Option<i64>, i64)> {
+    wl_inventory::balance::candidates(t.db(), item, location.id)
+        .await
+        .unwrap()
+        .iter()
+        .map(|c| (c.lot_id, c.available_milli))
+        .collect()
+}
+
 /// Done when 1: lot L1 has 40 at Store A and 10 in transit; a whole-lot hold
 /// *quality* makes lines of 40 and 10, puts L1 `on_hold`, leaves nothing
 /// available, and emits `StockHoldPlaced` and `LotHeld`.
@@ -209,6 +219,66 @@ async fn a_hold_on_named_items_leaves_the_others_available() {
     assert_eq!(lines(&t, &hold).await, vec![(fridge.id, x.id, 5_000)]);
     assert_eq!(t.available(&x, &fridge, None).await, 0);
     assert_eq!(t.available(&y, &fridge, None).await, 3_000);
+}
+
+/// Done when 3, the picking source: `balance::candidates` is what a pick
+/// reads, and it never offers held quantity, whether the hold is on a lot or
+/// on a location. The route-level pick (a dispatch refused for held stock) is
+/// BL-STK-21 and has no route yet.
+#[renox::test]
+async fn the_picking_source_never_offers_held_quantity() {
+    let t = boot().await;
+    let holder = t.holder("Hal").await;
+    let item = t.tracked_item("VACCINE").await;
+    let fridge = t.named_location("FRIDGE-2", "Fridge 2").await;
+    let lot_a = t.lot(&item, "LA", LotStatus::Released).await;
+    let lot_b = t.lot(&item, "LB", LotStatus::Released).await;
+    t.stock_in(&item, &fridge, Some(&lot_a), 6_000, 100).await;
+    t.stock_in(&item, &fridge, Some(&lot_b), 4_000, 100).await;
+    assert_eq!(
+        offered(&t, &item, &fridge).await,
+        vec![(Some(lot_a.id), 6_000), (Some(lot_b.id), 4_000)]
+    );
+
+    // A hold on lot A: the lot is on hold and no longer offered.
+    let lot_id = lot_a.id.to_string();
+    t.hold_as(
+        &holder,
+        &[
+            ("reason", "quality"),
+            ("reference", "ticketing.ticket:9"),
+            ("lots", lot_id.as_str()),
+        ],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(offered(&t, &item, &fridge).await, vec![(Some(lot_b.id), 4_000)]);
+
+    // A hold on the location: lot B is held too, and 3 more of it that arrive
+    // afterwards are the only quantity offered.
+    let fridge_id = fridge.id.to_string();
+    t.hold_as(
+        &holder,
+        &[
+            ("reason", "temperature"),
+            ("reference", "clinics.checklist_reading:3"),
+            ("location", fridge_id.as_str()),
+        ],
+    )
+    .await
+    .assert_ok();
+    assert!(offered(&t, &item, &fridge).await.is_empty());
+    t.stock_in(&item, &fridge, Some(&lot_b), 3_000, 100).await;
+    assert_eq!(offered(&t, &item, &fridge).await, vec![(Some(lot_b.id), 3_000)]);
+
+    // An item that is not lot-tracked has one candidate, less the held part.
+    let plain = t.item("PLAIN").await;
+    t.stock_in(&plain, &fridge, None, 5_000, 100).await;
+    let found = wl_inventory::balance::candidates(t.db(), &plain, fridge.id)
+        .await
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].available_milli, 5_000);
 }
 
 /// Done when 3: a transfer and a manual issue of held quantity are refused,
