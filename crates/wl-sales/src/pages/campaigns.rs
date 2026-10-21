@@ -44,7 +44,7 @@ use crate::campaign::{self, Campaign, CampaignRefused, CampaignStatus, Marketing
 use crate::cost_entry::{CostEntry, CostStatus};
 use crate::costs::{self, CostInput};
 use crate::lead_source::LeadSource;
-use crate::machine::{REOPEN, ReopenInput};
+use crate::machine::{ACTIVATE, REOPEN, ReopenInput};
 use crate::notices::aed;
 use crate::promo_code::PromoCode;
 use crate::retention::{self, BroadcastState};
@@ -63,6 +63,10 @@ pub fn routes() -> Routes {
                 .name("wl_sales.campaigns")
                 .get("/campaigns/{id}", show)
                 .name("wl_sales.campaign")
+                // `activate` asks the vertical's guards first (`CLN.ACL.13`);
+                // the other transitions are the kernel's route.
+                .post("/campaigns/{id}/transitions/activate", activate)
+                .name("wl_sales.campaign_activate")
                 .group(
                     "/campaigns",
                     "wl_sales.campaign_transitions.",
@@ -916,6 +920,29 @@ async fn destroy(
         Redirect::route("wl_sales.campaigns", &[])?,
     )
         .into_response())
+}
+
+/// `POST /campaigns/{id}/transitions/activate`: makes a draft campaign
+/// active unless a guard of the vertical refuses (05: no advertising permit
+/// recorded, `CLN.ACL.13`), in which case the answer is a 422 with the
+/// guard's words and the campaign stays a draft.
+async fn activate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    back: renox::Back,
+    Found(campaign): Found<Campaign>,
+) -> Result<Response> {
+    if let Some(why) = retention::activation_refusal(&state, &campaign).await? {
+        return Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, why));
+    }
+    let outcome = campaign
+        .transition(ACTIVATE)
+        .by(&user)
+        .run(&state)
+        .await
+        .map_err(state_machine::TransitionError::into_error)?;
+    wl_kernel::approvals::announce(&state, &outcome).await?;
+    Ok(back.into_response())
 }
 
 /// `POST /campaigns/{id}/reopen`: an ended campaign runs again until the

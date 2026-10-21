@@ -33,6 +33,10 @@ pub const ACTIVATE_ON_START: &str = "activate_on_start";
 pub const END: &str = "end";
 /// The system ends an active campaign past its end date.
 pub const END_ON_END_DATE: &str = "end_on_end_date";
+/// The system ends an active campaign because a rule of the vertical says it
+/// may not run any more (05: the advertising permit's validity ended,
+/// `CLN.ACL.13`). The run's metadata names the reason.
+pub const END_BY_RULE: &str = "end_by_rule";
 /// A manager runs an ended campaign again until a new end date.
 pub const REOPEN: &str = "reopen";
 
@@ -46,6 +50,12 @@ pub struct ReopenInput {
 /// The run's metadata that tells the machine the date.
 pub fn today_meta(today: NaiveDate) -> renox::serde_json::Value {
     renox::serde_json::json!({ "today": today.to_string() })
+}
+
+/// [`today_meta`] with the `reason` a rule of the vertical ends the campaign
+/// ([`END_BY_RULE`]).
+pub fn rule_meta(today: NaiveDate, reason: &str) -> renox::serde_json::Value {
+    renox::serde_json::json!({ "today": today.to_string(), "reason": reason })
 }
 
 /// The date of the run: the metadata's `today`, else today in Asia/Dubai.
@@ -126,6 +136,7 @@ impl StateMachine for Campaign {
             .transition(activate(ACTIVATE_ON_START, true))
             .transition(end(END, false))
             .transition(end(END_ON_END_DATE, true))
+            .transition(end(END_BY_RULE, true))
             .transition(reopen())
     }
 }
@@ -174,7 +185,22 @@ fn end(name: &'static str, system: bool) -> Transition<Campaign> {
             let (id, today) = (c.id, today_of(ctx));
             Box::pin(async move { PromoCode::set_valid_to(tx, id, Some(today)).await })
         });
-    if system {
+    if system && name == END_BY_RULE {
+        t.system().guard("rule_reason", |_c: &Campaign, ctx| {
+            let given = ctx
+                .meta()
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .is_some_and(|r| !r.trim().is_empty());
+            Box::pin(async move {
+                if given {
+                    Ok(())
+                } else {
+                    Err("A rule ends a campaign with a reason.".to_owned())
+                }
+            })
+        })
+    } else if system {
         t.system().guard("end_date_passed", |c: &Campaign, ctx| {
             let passed = c.end_date.is_some_and(|e| e < today_of(ctx));
             Box::pin(async move {
@@ -295,7 +321,7 @@ mod tests {
         for name in [ACTIVATE, END, REOPEN] {
             assert!(!machine.find(name).unwrap().is_system(), "{name}");
         }
-        for name in [ACTIVATE_ON_START, END_ON_END_DATE] {
+        for name in [ACTIVATE_ON_START, END_ON_END_DATE, END_BY_RULE] {
             assert!(machine.find(name).unwrap().is_system(), "{name}");
         }
         assert_eq!(machine.initial_states(), ["draft"]);

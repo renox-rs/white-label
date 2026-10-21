@@ -36,7 +36,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use renox::chrono::TimeDelta;
+use renox::chrono::{NaiveDate, TimeDelta};
 use renox::db::{DateTime, now};
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
@@ -53,7 +53,7 @@ use wl_kernel::{SegmentId, Subject};
 use crate::campaign::{Campaign, CampaignStatus, Purpose};
 use crate::config::config_of;
 use crate::costs;
-use crate::machine::{ACTIVATE, ACTIVATE_ON_START, END, END_ON_END_DATE};
+use crate::machine::{ACTIVATE, ACTIVATE_ON_START, END, END_BY_RULE, END_ON_END_DATE};
 use crate::segments::{RuleFuture, spend_between};
 use crate::texts::english;
 
@@ -169,6 +169,76 @@ pub trait CampaignGuard: Send + Sync + 'static {
         state: &'a AppState,
         campaign: &'a Campaign,
     ) -> RuleFuture<'a, Option<String>>;
+
+    /// A code for why `campaign` may not be activated, or `None` (the
+    /// default: activation is not guarded). 05 answers with the same code as
+    /// [`check`](CampaignGuard::check) when the advertising permit is missing
+    /// (`CLN.ACL.13`).
+    fn activation<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _campaign: &'a Campaign,
+    ) -> RuleFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The words for a `code` this guard answered, shown to the person who
+    /// tries to activate the campaign. The code itself by default.
+    fn describe(&self, code: &str) -> String {
+        code.to_owned()
+    }
+
+    /// The last day `campaign` may run according to the vertical (05: the
+    /// day the advertising permit's validity ends), if the vertical limits
+    /// it. The daily run ends an active campaign the day after
+    /// ([`END_BY_RULE`]). No limit by default.
+    fn last_day<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _campaign: &'a Campaign,
+    ) -> RuleFuture<'a, Option<NaiveDate>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+fn guards_of(state: &AppState) -> CampaignGuards {
+    state
+        .provided::<CampaignGuards>()
+        .map(|g| (*g).clone())
+        .unwrap_or_default()
+}
+
+/// Why a vertical's guard refuses to activate `campaign`, in words, or
+/// `None` when every guard agrees (05 `CLN.ACL.13`: a campaign that promotes
+/// services needs the advertising permit before it is activated). Asked by
+/// the activation route and by the daily run that activates on the start
+/// date.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn activation_refusal(state: &AppState, campaign: &Campaign) -> Result<Option<String>> {
+    for guard in &guards_of(state).0 {
+        if let Some(code) = guard.activation(state, campaign).await? {
+            return Ok(Some(guard.describe(&code)));
+        }
+    }
+    Ok(None)
+}
+
+/// The earliest last day any guard of the vertical gives `campaign`.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn last_day(state: &AppState, campaign: &Campaign) -> Result<Option<NaiveDate>> {
+    let mut earliest: Option<NaiveDate> = None;
+    for guard in &guards_of(state).0 {
+        if let Some(day) = guard.last_day(state, campaign).await? {
+            earliest = Some(earliest.map_or(day, |e| e.min(day)));
+        }
+    }
+    Ok(earliest)
 }
 
 /// The vertical's campaign guards, provided by the module.
@@ -197,10 +267,7 @@ impl BroadcastRequesters for CampaignRequesters {
             if campaign.status != CampaignStatus::Active {
                 return Ok(RequesterCheck::Ended);
             }
-            let guards = state
-                .provided::<CampaignGuards>()
-                .map(|g| (*g).clone())
-                .unwrap_or_default();
+            let guards = guards_of(state);
             for guard in &guards.0 {
                 if let Some(code) = guard.check(state, &campaign).await? {
                     return Ok(RequesterCheck::GuardFailed(code));
@@ -356,7 +423,7 @@ async fn mark_cancelled(state: &AppState, broadcast: i64, reason: &str) -> Resul
 async fn on_campaign(state: &AppState, event: &Transitioned<Campaign>) -> Result {
     let name = event.transition.as_str();
     let activated = name == ACTIVATE || name == ACTIVATE_ON_START;
-    let ended = name == END || name == END_ON_END_DATE;
+    let ended = name == END || name == END_ON_END_DATE || name == END_BY_RULE;
     if !activated && !ended {
         return Ok(());
     }

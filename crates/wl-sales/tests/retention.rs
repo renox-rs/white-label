@@ -558,3 +558,103 @@ async fn the_campaign_answers_wl_notify_only_while_it_is_active_and_the_vertical
         RequesterCheck::GuardFailed("advertising_permit".to_owned())
     );
 }
+
+/// Refuses to activate a campaign and says why, as a missing permit would
+/// (05 `CLN.ACL.13`), and gives every campaign a last day.
+struct PermitUntil {
+    activate: bool,
+    last: Option<NaiveDate>,
+}
+
+impl CampaignGuard for PermitUntil {
+    fn check<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _campaign: &'a Campaign,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>>> + Send + 'a>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn activation<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _campaign: &'a Campaign,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>>> + Send + 'a>> {
+        let refuse = !self.activate;
+        Box::pin(async move { Ok(refuse.then(|| "permit_missing".to_owned())) })
+    }
+
+    fn describe(&self, code: &str) -> String {
+        format!("Cannot activate: {code}")
+    }
+
+    fn last_day<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _campaign: &'a Campaign,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<NaiveDate>>> + Send + 'a>> {
+        let last = self.last;
+        Box::pin(async move { Ok(last) })
+    }
+}
+
+#[renox::test]
+async fn a_guard_of_the_vertical_keeps_a_draft_from_activating_by_the_route_and_by_the_start_date()
+{
+    let w = world_with(WlSales::new().campaign_guard(PermitUntil {
+        activate: false,
+        last: None,
+    }))
+    .await;
+    w.t.app.acting_as(&w.b);
+    let refused =
+        w.t.app
+            .post(
+                &format!("/campaigns/{}/transitions/activate", w.r.id),
+                &[("x", "")],
+            )
+            .await;
+    refused.assert_status(422);
+    refused.assert_see("Cannot activate: permit_missing");
+    assert_eq!(w.reload().await.status, CampaignStatus::Draft);
+
+    // The start date does not activate it either; it stays a draft.
+    let report = campaigns::run_daily(w.t.state(), today()).await.unwrap();
+    assert_eq!((report.activated, report.failed), (0, 1));
+    assert_eq!(w.reload().await.status, CampaignStatus::Draft);
+    assert!(w.stage.gate.asked().is_empty());
+}
+
+#[renox::test]
+async fn the_day_after_the_last_day_of_a_guard_the_daily_run_ends_the_campaign_and_cancels_its_broadcast()
+ {
+    let last = today() + Duration::days(1);
+    let w = world_with(WlSales::new().campaign_guard(PermitUntil {
+        activate: true,
+        last: Some(last),
+    }))
+    .await;
+    w.t.app.acting_as(&w.b);
+    w.t.app
+        .post(
+            &format!("/campaigns/{}/transitions/activate", w.r.id),
+            &[("x", "")],
+        )
+        .await
+        .assert_status(303);
+    assert_eq!(w.reload().await.status, CampaignStatus::Active);
+    assert_eq!(w.rows().await.len(), 1);
+
+    // On the last day the campaign still runs.
+    let on_last = campaigns::run_daily(w.t.state(), last).await.unwrap();
+    assert_eq!(on_last.ended, 0);
+    assert_eq!(w.reload().await.status, CampaignStatus::Active);
+
+    // The day after, a rule ends it and the waiting broadcast is cancelled.
+    let after = campaigns::run_daily(w.t.state(), last + Duration::days(1))
+        .await
+        .unwrap();
+    assert_eq!((after.ended, after.failed), (1, 0));
+    assert_eq!(w.reload().await.status, CampaignStatus::Ended);
+    assert_eq!(w.rows().await[0].status, BroadcastState::Cancelled);
+}
