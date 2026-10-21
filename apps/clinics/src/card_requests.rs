@@ -257,7 +257,15 @@ pub struct Accepted {
 
 /// Staff accept the card of `policy`: valid through `card_valid_to` (`None`:
 /// it does not expire). A renewed card states the cover's last day, so the
-/// policy's own last day is extended to it when it is earlier. The flag of
+/// policy's own last day is extended to it when it is earlier.
+///
+/// Decision (05 §7.2, `CLN.RUL.10`, kept after review): the rule asks for a new
+/// card when *the policy ends before the appointment or the card has expired*,
+/// and the flag clears when staff accept "an uploaded card valid on the
+/// appointment date". The second half only makes sense for the first trigger
+/// if the accepted card carries the renewed cover with it, so accepting a card
+/// valid later than the policy's own end moves that end to the card's date
+/// (never earlier). The spec has no other renewal step for a policy. The flag of
 /// every appointment of the policy whose day the policy and the card now
 /// cover is cleared; one they do not cover stays.
 ///

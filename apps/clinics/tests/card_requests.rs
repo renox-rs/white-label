@@ -235,7 +235,9 @@ async fn only_a_card_that_staff_accept_and_that_covers_the_day_clears_the_flag()
     // A card valid to day 4 does not reach the day of the visit.
     s.accept(&policy, 4).await.assert_ok();
     assert_eq!(s.flags(&booking).await.len(), 1);
-    // One valid to next year does; the policy's own end moves with it.
+    // One valid to next year does; the policy's own end moves with it (05 §7.2,
+    // CLN.RUL.10: the flag clears on an accepted card valid on the day, which
+    // for an ended policy means the card carries the renewed cover).
     s.accept(&policy, 365).await.assert_ok();
     assert!(s.flags(&booking).await.is_empty());
     let all = AppointmentFlag::of_booking(s.t.db(), booking.id)
