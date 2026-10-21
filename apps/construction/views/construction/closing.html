@@ -1,0 +1,97 @@
+{#- construction: the closing screen of a project: the termination, the final
+    account, what is still open, and the claims the final account has to
+    settle (contested deductions, disputed guarantee calls, variations).
+    Replace it with resources/views/construction/closing.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="subtitle" :back="back_url" :back-label="tx['closing.back']" :badge="status" :badge-kind="status_kind">
+      <rx-link-button :href="variations_url" :label="tx['variations.title']" icon="file-text" variant="secondary"/>
+    </rx-page-header>
+
+    <rx-card :title="tx['closing.warnings']">
+      <rx-stack>
+        <rx-alert rx-for="warning in warnings" kind="warning" :message="warning"/>
+        <rx-alert rx-if="not warnings" kind="success" :message="tx['closing.nothing_open']"/>
+      </rx-stack>
+    </rx-card>
+
+    <rx-card rx-if="termination_reason" :title="tx['closing.termination']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['closing.reason']" :value="termination_reason"/>
+        <rx-entry :label="tx['closing.effective_on']" :value="effective_on" format="date" :placeholder="tx['ipa.no_value']"/>
+      </rx-infolist>
+    </rx-card>
+
+    <rx-card rx-if="final_account" :title="tx['closing.final_account']">
+      <rx-stack>
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['status']"><rx-badge :kind="final_account.status_kind" :text="final_account.status"/></rx-entry>
+          <rx-entry :label="tx['closing.valuation_on']" :value="final_account.valuation_on" format="date" :placeholder="tx['ipa.no_value']"/>
+          <rx-entry :label="tx['closing.certified']" :value="final_account.certified_amount" format="money" currency="AED" :placeholder="tx['ipa.no_value']"/>
+          <rx-entry :label="tx['closing.decided']" :value="final_account.decided_amount" format="money" currency="AED" :placeholder="tx['ipa.no_value']"/>
+          <rx-entry :label="tx['closing.decision']" :value="final_account.decision_reference" :placeholder="tx['ipa.no_value']"/>
+        </rx-infolist>
+        <rx-row>
+          <rx-link-button :href="final_account.url" :label="tx['closing.open_final']" icon="file-text" variant="secondary"/>
+          <rx-link-button rx-if="final_account.invoice_url" :href="final_account.invoice_url" :label="tx['closing.invoice']" icon="receipt" variant="secondary"/>
+        </rx-row>
+      </rx-stack>
+    </rx-card>
+
+    <rx-card rx-if="deductions" :title="tx['closing.deductions']">
+      <rx-table :rows="deductions" as="line" :key="line.reference" :caption="tx['closing.deductions']">
+        <rx-column :label="tx['closing.deduction']">
+          <rx-stack>
+            <span><a href="{{ line.ipa_url }}">{{ line.reference }}</a> <span class="rx-subtitle">{{ line.kind }}</span></span>
+            <span><rx-badge :kind="line.status_kind" :text="line.status"/></span>
+          </rx-stack>
+        </rx-column>
+        <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
+      </rx-table>
+    </rx-card>
+
+    <rx-card rx-if="retention_deductions" :title="tx['closing.retention_deductions']">
+      <rx-table :rows="retention_deductions" as="line" :key="line.reference" :caption="tx['closing.retention_deductions']">
+        <rx-column :label="tx['closing.deduction']">
+          <rx-stack>
+            <span>{{ line.reference }} <span class="rx-subtitle">{{ line.reason }}</span></span>
+            <span><rx-badge :kind="line.status_kind" :text="line.status"/></span>
+          </rx-stack>
+        </rx-column>
+        <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
+      </rx-table>
+    </rx-card>
+
+    <rx-card rx-if="calls" :title="tx['closing.calls']">
+      <rx-table :rows="calls" as="call" :key="call.demand_notice" :caption="tx['closing.calls']">
+        <rx-column :label="tx['closing.demand']">{{ call.demand_notice }}</rx-column>
+        <rx-column :label="tx['closing.paid']" align="num">{{ call.amount_paid | money(currency='AED') }}</rx-column>
+      </rx-table>
+    </rx-card>
+
+    <rx-card rx-if="claims" :title="tx['closing.claims']">
+      <rx-table :rows="claims" as="variation" :key="variation.label" :caption="tx['closing.claims']">
+        <rx-column :label="tx['closing.variation']">
+          <rx-stack>
+            <span>{{ variation.label }}</span>
+            <span><rx-badge :kind="variation.status_kind" :text="variation.status"/></span>
+          </rx-stack>
+        </rx-column>
+        <rx-column :label="tx['closing.approved']" align="num" hide-narrow>{{ variation.approved_amount | money(currency='AED') if variation.approved_amount is not none else '' }}</rx-column>
+        <rx-column :label="tx['closing.unrecovered_cost']" align="num">{{ variation.unrecovered_amount | money(currency='AED') }}</rx-column>
+      </rx-table>
+    </rx-card>
+
+    <rx-card rx-if="unrecovered" :title="tx['closing.unrecovered']">
+      <rx-table :rows="unrecovered" as="variation" :key="variation.label" :caption="tx['closing.unrecovered']">
+        <rx-column :label="tx['closing.variation']">
+          <rx-stack>
+            <span>{{ variation.label }}</span>
+            <span><rx-badge :kind="variation.status_kind" :text="variation.status"/></span>
+          </rx-stack>
+        </rx-column>
+        <rx-column :label="tx['closing.unrecovered_cost']" align="num">{{ variation.unrecovered_amount | money(currency='AED') }}</rx-column>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

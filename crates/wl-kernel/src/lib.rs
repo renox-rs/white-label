@@ -33,6 +33,7 @@ pub mod invoicing;
 pub mod late_entries;
 pub mod machines;
 pub mod manifest;
+pub mod negotiate;
 pub mod notify;
 pub mod numbering;
 pub mod parties;

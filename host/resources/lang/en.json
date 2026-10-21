@@ -31,6 +31,9 @@
     "bank_statements": "Bank statements",
     "campaigns": "Campaigns",
     "employees": "Employees",
+    "projects": "Projects",
+    "crew": "Crew list",
+    "preferred_requests": "Preferred suppliers",
     "property": "Property",
     "leases": "Leases",
     "statements": "Owner statements",
@@ -83,6 +86,8 @@
     "title": "Dashboard",
     "welcome": "Welcome back,",
     "lead": "Where the portfolio stands today, and what waits for you.",
+    "lead_construction": "Where your projects stand today, and what waits for you.",
+    "lead_generic": "What waits for you today.",
     "account": "Your account",
     "users": "Manage users",
     "needs_action": {
@@ -101,7 +106,15 @@
       "invoices_many": ":count invoices",
       "tickets_open": "Open tickets",
       "my_tasks": "My tasks",
-      "compliance_flags": "Buildings flagged"
+      "compliance_flags": "Buildings flagged",
+      "projects_in_progress": "Projects in progress",
+      "ipas_waiting": "Payment applications waiting over 14 days",
+      "variations_waiting": "Variations unanswered over 14 days",
+      "guarantees_expiring": "Guarantees ending in 60 days",
+      "purchase_orders_waiting": "Orders awaiting approval",
+      "budget_near_limit": "Cost codes at 90% of budget",
+      "absence_open": "Open absence cases",
+      "permits_expiring": "Permits ending in 30 days"
     },
     "expiring": {
       "title": "Leases ending soon",
@@ -116,7 +129,38 @@
       "title": "Your recent activity",
       "more": "See all",
       "empty": "Nothing yet",
-      "empty_text": "Logins and account changes show up here."
+      "empty_text": "Logins and account changes show up here.",
+      "action": {
+        "auth": {
+          "login": "Signed in",
+          "logout": "Signed out",
+          "login_failed": "A sign-in attempt failed",
+          "locked_out": "Account locked after failed sign-ins",
+          "registered": "Account created",
+          "email_verified": "Email address verified",
+          "password_changed": "Password changed",
+          "password_reset": "Password reset",
+          "profile_updated": "Profile updated"
+        },
+        "user": {
+          "roles_changed": "Roles changed",
+          "invited": "Invited a user"
+        },
+        "document": {
+          "updated": "Document updated",
+          "corrected": "Document corrected",
+          "correction_submitted": "Document correction submitted"
+        },
+        "construction": {
+          "final_account_settled": "Final account settled",
+          "retention_notice_dismissed": "Retention notice dismissed"
+        },
+        "inventory": {
+          "item_supplier_added": "Supplier added to an item",
+          "preferred_supplier_requested": "Change of preferred supplier requested",
+          "preferred_supplier_changed": "Preferred supplier changed"
+        }
+      }
     }
   },
   "users": {

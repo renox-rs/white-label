@@ -1,0 +1,38 @@
+{#- wl-inventory: a supplier's score: the live window and the monthly
+    snapshots with on-time and rejected shares, incidents, debit notes and
+    price variance; the values need the stock cost permission. Replace it with
+    resources/views/wl-inventory/supplier_score.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="subtitle" :badge="live.band" :badge-kind="live.band_kind"/>
+    <rx-alert rx-if="review_open" kind="warning" :message="tx['score.review_open']"/>
+    <rx-alert rx-if="watched" kind="info" :message="tx['score.watched']"/>
+    <rx-card :title="tx['score.live']" :subtitle="live.window">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['score']" :value="live.score" :placeholder="tx['no_value']"/>
+        <rx-entry :label="tx['score.receipts']" :value="live.receipts"/>
+        <rx-entry :label="tx['score.on_time']" :value="live.on_time"/>
+        <rx-entry :label="tx['score.rejected']" :value="live.rejected"/>
+        <rx-entry :label="tx['score.incidents']" :value="live.incidents"/>
+        <rx-entry :label="tx['score.debit_notes']" :value="live.debit_notes"/>
+        <rx-entry :label="tx['score.price_variance']" :value="live.price_variance"/>
+        <rx-entry rx-if="costs" :label="tx['score.received_value']" :value="live.received_value" format="money" currency="AED"/>
+        <rx-entry rx-if="costs" :label="tx['score.rejected_value']" :value="live.rejected_value" format="money" currency="AED"/>
+        <rx-entry rx-if="costs" :label="tx['score.debit_value']" :value="live.debit_note_value" format="money" currency="AED"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['score.snapshots']">
+      <rx-table :rows="snapshots" as="row" :key="row.label" :caption="tx['score.snapshots']">
+        <rx-column :label="tx['score.window']">{{ row.label }}</rx-column>
+        <rx-column :label="tx['score']" align="num">{{ row.score if row.score is not none else tx['no_value'] }}</rx-column>
+        <rx-column :label="tx['status']"><rx-badge :kind="row.band_kind" :text="row.band"/></rx-column>
+        <rx-column :label="tx['score.on_time']" hide-narrow>{{ row.on_time }}</rx-column>
+        <rx-column :label="tx['score.rejected']" align="num" hide-narrow>{{ row.rejected }}</rx-column>
+        <rx-column :label="tx['score.incidents']" align="num" hide-narrow>{{ row.incidents }}</rx-column>
+        <rx-column :label="tx['score.received_value']" align="num" hide-narrow>{{ row.received_value | money(currency='AED') if row.received_value is not none else '' }}</rx-column>
+        <rx-column :label="tx['score.notes']" hide-narrow>{{ row.notes | join(' · ') }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['score.no_snapshots']" icon="chart-line"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

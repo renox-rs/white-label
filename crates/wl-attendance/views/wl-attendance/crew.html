@@ -3,13 +3,15 @@
     resources/views/wl-attendance/crew.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['title']">
   <rx-stack>
-    <rx-page-header :title="tx['title']" :subtitle="location"/>
+    <rx-page-header :title="tx['title']" :subtitle="location ~ ' · ' ~ date">
+      <rx-link-button :href="route('wl_attendance.crew')" :label="tx['change']" icon="calendar-days" variant="secondary"/>
+    </rx-page-header>
     <rx-alert kind="info" :message="break_text"/>
     <rx-table :rows="rows" as="row" :key="row.employee" :caption="tx['subtitle']">
-      <rx-column :label="tx['employee']">{{ row.employee }}</rx-column>
+      <rx-column :label="tx['employee']">{{ row.name }}</rx-column>
       <rx-column :label="tx['status']"><rx-badge :kind="row.kind" :text="row.status"/></rx-column>
       <rx-column :label="tx['clashes']" hide-narrow>{{ row.clashes | join(", ") }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['empty']" icon="users"/></rx-slot>
     </rx-table>
-    <rx-empty rx-if="not rows" :title="tx['empty']" icon="users"/>
   </rx-stack>
 </rx-page>

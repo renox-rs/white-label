@@ -24,6 +24,7 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
 pub use app::negative_flow::{invoicing_for, payments_for};
@@ -62,7 +63,12 @@ pub fn try_app() -> Result<renox::App, ConfigError> {
 /// they are refused before anything is booted (`main.rs`): `migrate:fresh`
 /// drops every table, `db:seed` and `property:demo` make the demo logins
 /// (admin@example.com / password123).
-pub const DEMO_COMMANDS: &[&str] = &["migrate:fresh", "db:seed", demo_data::COMMAND];
+pub const DEMO_COMMANDS: &[&str] = &[
+    "migrate:fresh",
+    "db:seed",
+    demo_data::COMMAND,
+    construction_demo::COMMAND,
+];
 
 /// The refusal for `command` when `app_env` is a production environment.
 ///
@@ -168,7 +174,7 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         app = app.module(app::property_seed::PropertySeed);
         // The demo company, after the installs: `property:demo`, and `db:seed`
         // in local (never in production).
-        app = app.module(app::demo_data::DemoSeed::new(demo_client));
+        app = app.module(app::demo_data::DemoSeed::new(demo_client.clone()));
     }
     // The 04 client's lead sources, checklists and SOPs (BL-ACC-23).
     if client_app == "accounting" {
@@ -178,6 +184,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // BL-CON-18).
     if client_app == app::construction_seed::CONSTRUCTION {
         app = app.module(app::construction_seed::ConstructionSeed);
+        // The demo company, after the installs: `construction:demo`, and
+        // `db:seed` in local (never in production).
+        app = app.module(app::construction_demo::DemoSeed::new(demo_client));
     }
     // The page that shows the shared modules' settings of this client.
     let app = app
