@@ -221,6 +221,12 @@ async fn an_advice_reference_is_recorded_once_per_payer() {
 /// `denied`, the line shows code R07, the payer credit balance of AED 50.00
 /// is used first and AED 350.00 is deducted from the remittance,
 /// `PayerRecoupmentRecorded` is emitted.
+///
+/// Seam: the spec's entry is a negative line on an imported remittance
+/// advice. The remittance import is "Later" (`payer_remittance.rs`), so the
+/// recoupment form of the bill page (`recoupment` with its carrier
+/// reference) is the only entry until the import exists; this test drives
+/// that form and the import must call the same service.
 #[renox::test]
 async fn a_recoupment_reopens_the_line_as_denied_and_uses_the_credit_first() {
     let t = boot().await;
