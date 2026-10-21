@@ -51,7 +51,7 @@ use renox::db::{DateTime, now};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
-use wl_kernel::LegalEntity;
+use wl_kernel::{LegalEntity, Subject};
 use wl_kernel::payments::{
     DEFAULT_CURRENCY, PAYMENT_LINK_SUBJECT_TYPE, PaymentLinkExpired, PaymentLinkRequest,
     PaymentReceived, RefundRequest, RefundSource, payment_links, payment_recorder,
@@ -190,6 +190,7 @@ pub async fn cancel_unpaid(state: &AppState, id: i64, at: DateTime, tell: bool) 
     .await
     {
         Ok(done) => {
+            withdraw_link(state, &done).await;
             if tell {
                 notices::unpaid_released(state, &done).await?;
             }
@@ -202,6 +203,32 @@ pub async fn cancel_unpaid(state: &AppState, id: i64, at: DateTime, tell: bool) 
             StatusCode::UNPROCESSABLE_ENTITY,
             other.plain(),
         )),
+    }
+}
+
+/// Closes the payment link of the released `booking`, so a party who still has
+/// the page open cannot pay for a slot that is gone (`SCH.RUL.04`). A link
+/// that already expired (the link-expiry path) or was paid is not open and is
+/// left as it is. The booking stays cancelled whatever happens here: a failure
+/// is logged, and a payment that still arrives is refunded.
+async fn withdraw_link(state: &AppState, booking: &Booking) {
+    let (Some(subject_type), Some(subject_id)) =
+        (booking.prepayment_type.clone(), booking.prepayment_id)
+    else {
+        return;
+    };
+    if subject_type != PAYMENT_LINK_SUBJECT_TYPE {
+        return;
+    }
+    let link = Subject {
+        subject_type,
+        subject_id,
+    };
+    if let Err(error) = payment_links(state).cancel(state, &link).await {
+        eprintln!(
+            "scheduling: the payment link of booking {} was not withdrawn: {error}",
+            booking.number
+        );
     }
 }
 

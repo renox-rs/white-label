@@ -375,6 +375,54 @@ async fn a_requested_unpaid_booking_is_cancelled_once_when_the_rule_runs_first()
     );
 }
 
+/// `SCH.RUL.04` (#177): the rule that releases an unpaid hold also closes its
+/// payment link, so the party cannot start paying for a slot that is gone; the
+/// link's own expiry afterwards finds nothing to do, and a release by the
+/// link's expiry leaves the (already expired) link as it is.
+#[renox::test]
+async fn the_rule_that_releases_a_hold_closes_its_payment_link() {
+    let t = boot_paid().await;
+    let party = patient(&t).await;
+    let (doctor, service) = clinic(&t, false).await;
+    let at = now();
+    let booking = self_book(&t, party, &service, &doctor, in_hours(30), at)
+        .await
+        .unwrap();
+    let link = link_of(&t, &booking).await;
+    assert_eq!(link.status, LinkStatus::Open);
+
+    let swept = rules::run(t.state(), link.expires_at).await.unwrap();
+    assert_eq!(swept.released, 1);
+    assert_eq!(t.reload(booking.id).await.status, BookingStatus::Cancelled);
+    let closed = PaymentLink::find_or_404(t.db(), link.id).await.unwrap();
+    assert_eq!(closed.status, LinkStatus::Cancelled);
+    assert!(
+        online::start_online(t.state(), link.id).await.is_err(),
+        "the party can no longer pay on it"
+    );
+    assert_eq!(
+        payment_link::expire_due(t.state(), link.expires_at)
+            .await
+            .unwrap(),
+        0,
+        "a closed link does not expire"
+    );
+    assert_eq!(t.events.cancelled.all().len(), 1, "one BookingCancelled");
+
+    // The other way round: the link's expiry cancels the booking and the
+    // link stays `expired`.
+    let other = self_book(&t, party, &service, &doctor, in_hours(40), at)
+        .await
+        .unwrap();
+    let second = link_of(&t, &other).await;
+    payment_link::expire_due(t.state(), second.expires_at)
+        .await
+        .unwrap();
+    assert_eq!(t.reload(other.id).await.status, BookingStatus::Cancelled);
+    let expired = PaymentLink::find_or_404(t.db(), second.id).await.unwrap();
+    assert_eq!(expired.status, LinkStatus::Expired);
+}
+
 /// Staff who accept an unpaid request keep the unpaid hold: the booking is
 /// `booked`, still awaiting its payment, and released when the link expires.
 #[renox::test]
