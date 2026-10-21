@@ -49,7 +49,7 @@ pub const TASK_AT: &str = "02:00";
 /// The time zone of [`TASK`].
 pub const TASK_ZONE: &str = "Asia/Dubai";
 /// The notification type that tells the patient an authorisation was denied.
-pub const DENIED_NOTICE: &str = "clinic.prior_auth_denied";
+pub const DENIED_NOTICE: &str = "clinics.prior_auth_denied";
 
 /// A prior authorisation to prepare.
 #[derive(Debug, Clone)]

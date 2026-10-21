@@ -510,8 +510,11 @@ async fn bounce(
         .expect("a message")
 }
 
-/// The tasks opened for messages that gave up.
-async fn give_up_tasks(app: &renox::testing::TestApp) -> Vec<Ticket> {
+/// The tasks opened for messages about `subject_type` that gave up (the
+/// notice of a new task that bounces opens a task of its own, about the
+/// ticket).
+async fn give_up_tasks(app: &renox::testing::TestApp, subject_type: &str) -> Vec<Ticket> {
+    let prefix = format!("notify.give_up:{subject_type}:");
     Ticket::query()
         .get(app.db())
         .await
@@ -520,7 +523,7 @@ async fn give_up_tasks(app: &renox::testing::TestApp) -> Vec<Ticket> {
         .filter(|t| {
             t.source_key
                 .as_deref()
-                .is_some_and(|key| key.starts_with("notify.give_up:"))
+                .is_some_and(|key| key.starts_with(&prefix))
         })
         .collect()
 }
@@ -546,19 +549,21 @@ async fn a_reminder_that_gives_up_opens_no_task_and_a_card_request_opens_one_for
     assert!(!mail.attempts().is_empty(), "the reminder was e-mailed");
     assert_eq!(reminder.status, MessageStatus::Abandoned);
     assert!(
-        give_up_tasks(&app).await.is_empty(),
+        give_up_tasks(&app, "scheduling.booking").await.is_empty(),
         "a reminder needs no action"
     );
 
+    // The bounced address is on the suppression list now: another patient.
+    let other = tenant(&app, "Dan Lane").await;
     let request = bounce(
         &app,
         "clinics.card_upload_request",
         Subject::new("clinics.insurance_policy", 1),
-        patient,
+        other,
     )
     .await;
     assert_eq!(request.status, MessageStatus::Abandoned);
-    let tasks = give_up_tasks(&app).await;
+    let tasks = give_up_tasks(&app, "clinics.insurance_policy").await;
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].assignee_user_id, Some(receptionist.id));
 }

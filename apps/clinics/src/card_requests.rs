@@ -66,7 +66,7 @@ pub const TASK_AT: &str = "02:00";
 /// The time zone of [`TASK`].
 pub const TASK_ZONE: &str = "Asia/Dubai";
 /// The notification type of the message.
-pub const CARD_UPLOAD_REQUEST: &str = "clinic.card_upload_request";
+pub const CARD_UPLOAD_REQUEST: &str = "clinics.card_upload_request";
 /// The wl-documents kind of the insurance card; its subject is the policy.
 pub const CARD_KIND: &str = "insurance_card";
 /// wl-portal's action key for a document upload.
