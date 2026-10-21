@@ -14,3 +14,5 @@ wl-kernel = { path = "../wl-kernel" }
 
 [dev-dependencies]
 tempfile = "3"
+# The real invoicing module in the reopened-package test (no cycle: wl-invoicing does not use wl-sales).
+wl-invoicing = { path = "../wl-invoicing" }
