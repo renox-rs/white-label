@@ -9,13 +9,14 @@ mod support;
 use renox::prelude::*;
 use wl_hr::payroll::{self, FailedLine};
 use wl_hr::{
-    Employee, EmployeeStatus, LineStatus, PayrollLine, PayrollRun, PayrollRunStatus, SifFile,
+    Employee, EmployeeStatus, LineStatus, PayAccountStatus, PayrollLine, PayrollRun,
+    PayrollRunStatus, SifFile, pay_account,
 };
 use wl_kernel::payments::{Direction, PaymentMethod, PaymentStatus};
 use wl_kernel::tickets::Assignee;
 use wl_payments::payment::Payment;
 
-use support::{Booted, users};
+use support::{Booted, nov, users};
 
 const NET: i64 = 300_000;
 
@@ -177,6 +178,87 @@ async fn hrm13_ac2_regenerate_sends_only_the_fixed_lines() {
     expected.sort_unstable();
     assert_eq!(line_ids_of(&all[1], &d).await, expected);
     assert_eq!(line_ids_of(&all[0], &d).await.len(), 50, "v1 is kept");
+    assert_eq!(d.t.line(&d.lines[2]).await.sif_version, Some(1));
+}
+
+/// AC2, through the real flow: two of three failed lines get a new pay account
+/// requested by HR and approved by a second user; the cooling ends and the
+/// daily job `hr:pay-accounts` activates both accounts, which fixes the two
+/// lines; the third line is held; `regenerate` then builds SIF v2 with exactly
+/// those two lines.
+#[renox::test]
+async fn hrm13_ac2_regenerate_after_two_pay_accounts_were_activated() {
+    let d = desk(5).await;
+    let hr = d.t.user_with("Hana", "hr_pay").await;
+    let approver = d.t.user_with("Basel", "pay_approver").await;
+    let failed: Vec<(&PayrollLine, &str)> =
+        d.lines[..3].iter().map(|l| (l, "invalid IBAN")).collect();
+    d.t.partial(&d.a, &d.run, "RESULT-1", &failed)
+        .await
+        .assert_status(303);
+
+    let ibans = ["AE550331234567890121234", "AE560331234567890125678"];
+    let mut accounts = Vec::new();
+    for (n, iban) in ibans.iter().enumerate() {
+        let employee = Employee::find_or_404(d.t.db(), d.lines[n].employee_id)
+            .await
+            .unwrap();
+        let name = format!("Worker {n}");
+        d.t.parties.name(employee.party_id, &name);
+        d.t.parties
+            .mobile(employee.party_id, &format!("+97150000010{n}"));
+        let form = [
+            ("channel", "bank_account"),
+            ("account_number", *iban),
+            ("routing_code", "123456789"),
+            ("holder_name", name.as_str()),
+        ];
+        d.t.request_account(&hr, &employee, &form)
+            .await
+            .assert_status(303);
+        let account = d.t.accounts_of(&employee).await.pop().unwrap();
+        d.t.on(
+            nov(2),
+            d.t.pay_transition(&approver, &account, "approve", ""),
+        )
+        .await
+        .assert_status(303);
+        accounts.push(account);
+    }
+    d.t.line_action(&d.a, &d.lines[2], "hold", &[("reason", "account closed")])
+        .await
+        .assert_status(303);
+
+    // Cooling: nothing is fixed yet, regenerate is refused.
+    d.t.on(nov(6), async {}).await;
+    d.t.app.run_scheduled(pay_account::TASK).await.unwrap();
+    assert_eq!(d.t.line(&d.lines[0]).await.status, LineStatus::Failed);
+    d.t.transition(&d.a, &d.run, "regenerate", "")
+        .await
+        .assert_status(422);
+
+    d.t.on(nov(7), async {}).await;
+    d.t.app.run_scheduled(pay_account::TASK).await.unwrap();
+    for account in &accounts {
+        assert_eq!(d.t.account(account).await.status, PayAccountStatus::Active);
+    }
+    assert_eq!(d.t.line(&d.lines[0]).await.status, LineStatus::Included);
+    assert_eq!(d.t.line(&d.lines[1]).await.status, LineStatus::Included);
+    assert_eq!(d.t.line(&d.lines[2]).await.status, LineStatus::Held);
+
+    d.t.transition(&d.a, &d.run, "regenerate", "")
+        .await
+        .assert_status(303);
+
+    let run = d.t.run(&d.run).await;
+    assert_eq!(run.status, PayrollRunStatus::Submitted);
+    assert_eq!(run.sif_version, 2);
+    let all = files(&d).await;
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[1].line_count, 2);
+    let mut expected = vec![d.lines[0].id, d.lines[1].id];
+    expected.sort_unstable();
+    assert_eq!(line_ids_of(&all[1], &d).await, expected);
     assert_eq!(d.t.line(&d.lines[2]).await.sif_version, Some(1));
 }
 
