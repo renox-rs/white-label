@@ -16,7 +16,7 @@ use renox::chrono::TimeDelta;
 use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
 use renox::serde_json::json;
-use renox::state_machine::{StateMachine, TransitionError};
+use renox::state_machine::{StateMachine, TransitionError, TransitionRecord};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::scheduling::{
     CancelStage, CancelledBy, Eligibility, EligibilityQuery, Initiator, WorkDone,
@@ -413,7 +413,15 @@ async fn create(
         deposit_amount: service.deposit_amount,
         ..Booking::default()
     };
-    booking.insert_in_state(&mut tx, status, reason).await?;
+    // A booking starts in `booked` or `requested`, both initial states of the
+    // machine: its history names the way it began (`book`, `request`) where
+    // `insert_in_state` would write the framework's `insert`.
+    booking.insert(&mut tx).await?;
+    let mut began = TransitionRecord::new(Booking::TABLE, booking.id, status.to_string(), reason);
+    if let Some(user) = actor.user {
+        began = began.actor(user);
+    }
+    began.record(&mut tx).await?;
     insert_rows(&mut tx, booking.id, &occupy_rows(&service, &locked, start, end)).await?;
     tx.commit().await?;
     let booking = Booking::find_or_404(&state.db, booking.id).await?;

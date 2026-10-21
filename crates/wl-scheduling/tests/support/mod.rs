@@ -456,9 +456,22 @@ impl Booked {
         resources: &[&Resource],
         change: impl FnOnce(&mut ServiceType),
     ) -> ServiceType {
-        let mut service = ServiceType::new(code, "Consultation", 30);
-        change(&mut service);
-        service.save(self.db()).await.unwrap();
+        // A test that builds its scene twice gets the service of that code
+        // again (the code is unique) with the new resources offering it.
+        let existing = ServiceType::query()
+            .where_(ServiceType::CODE.eq(code))
+            .first(self.db())
+            .await
+            .unwrap();
+        let service = match existing {
+            Some(service) => service,
+            None => {
+                let mut service = ServiceType::new(code, "Consultation", 30);
+                change(&mut service);
+                service.save(self.db()).await.unwrap();
+                service
+            }
+        };
         for resource in resources {
             resource::offer(self.db(), service.id, resource.id)
                 .await
