@@ -31,6 +31,9 @@ pub const LOYALTY_REWARD: &str = "sales.loyalty_reward";
 /// A member is told that earned points were taken back (`SAL.RUL.09`).
 pub const LOYALTY_REVERSED: &str = "sales.loyalty_reversed";
 
+/// A member is told that redeemed points were given back.
+pub const LOYALTY_GIVEN_BACK: &str = "sales.loyalty_given_back";
+
 /// The owner of a lead is told that its win was reverted.
 pub const LEAD_WIN_REVERTED: &str = "sales.lead_win_reverted";
 
@@ -68,6 +71,7 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(PACKAGE_BALANCE_DUE, "package_balance_due"));
     notify::register_type(english_type(LOYALTY_REWARD, "loyalty_reward"));
     notify::register_type(english_type(LOYALTY_REVERSED, "loyalty_reversed"));
+    notify::register_type(english_type(LOYALTY_GIVEN_BACK, "loyalty_given_back"));
 }
 
 /// `fils` as `4,000.00`.
@@ -223,6 +227,26 @@ pub(crate) async fn loyalty_reversed(
     why: &str,
 ) -> Result {
     let request = NotifyRequest::new(LOYALTY_REVERSED, account.subject())
+        .to_party(account.notify_party())
+        .subject_label(&account.code)
+        .data(json!({
+            "code": account.code,
+            "points": points,
+            "why": why,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the member of `account` that `points` they redeemed were given back
+/// for `why` (the guardian for a minor).
+pub(crate) async fn loyalty_given_back(
+    state: &AppState,
+    account: &crate::loyalty_account::LoyaltyAccount,
+    points: i64,
+    why: &str,
+) -> Result {
+    let request = NotifyRequest::new(LOYALTY_GIVEN_BACK, account.subject())
         .to_party(account.notify_party())
         .subject_label(&account.code)
         .data(json!({

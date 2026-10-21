@@ -35,6 +35,9 @@ pub mod packages;
 pub mod pages;
 pub mod policy;
 pub mod promo_code;
+pub mod redeem;
+pub mod redemption;
+pub mod redemption_machine;
 pub mod report;
 pub mod sale_line;
 pub mod sales_order;
@@ -71,6 +74,7 @@ pub use loyalty_programme::{EarnKind, LoyaltyProgramme, NewProgramme};
 pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
 pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
+pub use redemption::{Redemption, RedemptionStatus};
 pub use sale_line::SaleLine;
 pub use sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
 pub use sales_return::{
@@ -189,7 +193,12 @@ pub mod permissions {
     pub const LOYALTY_VIEW: &str = "loyalty.view";
     /// Enrol a member and attach a member to a sale.
     pub const LOYALTY_ENROL: &str = "loyalty.enrol";
-    /// Turn the loyalty programme on and review accounts.
+    /// Redeem a member's points on a sale (the cashier asks for the code).
+    pub const LOYALTY_REDEEM: &str = "loyalty.redeem";
+    /// Correct a member's points by hand, with a reason (`SAL.ACL.07`).
+    pub const LOYALTY_ADJUST: &str = "loyalty.adjust";
+    /// Turn the loyalty programme on, review accounts and approve a large
+    /// adjustment.
     pub const LOYALTY_MANAGE: &str = "loyalty.manage";
 }
 
@@ -318,6 +327,44 @@ impl WlSales {
         self
     }
 
+    /// Whether a redemption is confirmed by a one-time code to the member's
+    /// mobile (§7, default on).
+    pub fn confirm_redemption_by_code(mut self, on: bool) -> Self {
+        self.config.confirm_redemption_by_code = on;
+        self
+    }
+
+    /// The minutes points are held for an open sale (§7, default 30).
+    pub fn redemption_hold_minutes(mut self, minutes: i64) -> Self {
+        assert!(minutes >= 1, "a hold lasts at least a minute");
+        self.config.redemption_hold_minutes = minutes;
+        self
+    }
+
+    /// The days points given back after their expiry are valid (§7, default
+    /// 30).
+    pub fn give_back_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "given back points are valid for at least a day");
+        self.config.give_back_days = days;
+        self
+    }
+
+    /// The days before an earn lot expires that its member is reminded
+    /// (`SAL.RUL.08`, default 30).
+    pub fn expiry_reminder_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "the reminder goes at least a day ahead");
+        self.config.expiry_reminder_days = days;
+        self
+    }
+
+    /// The points above which a manual adjustment needs a manager
+    /// (`SAL.ACL.07`, default 500).
+    pub fn adjustment_limit(mut self, points: i64) -> Self {
+        assert!(points >= 0, "the limit cannot be negative");
+        self.config.adjustment_limit = points;
+        self
+    }
+
     /// The days after a sale within which goods can come back (§7, default
     /// 14).
     pub fn return_window_days(mut self, days: i64) -> Self {
@@ -394,6 +441,7 @@ impl Module for WlSales {
         app.model::<LoyaltyEarning>();
         app.model::<PointsMovement>();
         app.model::<LoyaltyReview>();
+        app.model::<Redemption>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
@@ -413,6 +461,9 @@ impl Module for WlSales {
         sales_returns::register(app);
         // Loyalty points: `SAL.RUL.07` earning and `SAL.RUL.09` reversals.
         loyalty_rules::register(app);
+        // Redeeming points on a sale: the code, the hold, the spending and the
+        // giving back; and the module's `DiscountEngine`.
+        redeem::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);

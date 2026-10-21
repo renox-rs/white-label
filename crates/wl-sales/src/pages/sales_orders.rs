@@ -193,6 +193,7 @@ pub(crate) struct ShowPage {
     can_edit: bool,
     can_attach: bool,
     can_cancel_line: bool,
+    redeem: crate::pages::redeem::RedeemView,
 }
 
 /// `1.5` for 1500 thousandths, `2` for 2000.
@@ -244,6 +245,15 @@ async fn show(
         })
         .collect();
     let member = crate::loyalty_account::label_of(&state.db, order.loyalty_account_id).await?;
+    let redeem = crate::pages::redeem::view_of(
+        &state,
+        &user,
+        &lang,
+        &order.subject(),
+        order.is_draft(),
+        order.loyalty_account_id.is_some(),
+    )
+    .await?;
     let attachable = !matches!(
         order.status,
         SalesOrderStatus::Fulfilled
@@ -263,6 +273,7 @@ async fn show(
         actions,
         member,
         can_attach: attachable && user.has_permission(permissions::LOYALTY_ENROL),
+        redeem,
         can_cancel_line: matches!(
             order.status,
             SalesOrderStatus::Confirmed | SalesOrderStatus::PartiallyFulfilled

@@ -206,6 +206,7 @@ pub(crate) struct ShowPage {
     member: Option<String>,
     can_edit: bool,
     can_attach: bool,
+    redeem: crate::pages::redeem::RedeemView,
 }
 
 /// `1.5` for 1500 thousandths, `2` for 2000.
@@ -249,6 +250,15 @@ async fn show(
         })
         .collect();
     let member = crate::loyalty_account::label_of(&state.db, sale.loyalty_account_id).await?;
+    let redeem = crate::pages::redeem::view_of(
+        &state,
+        &user,
+        &lang,
+        &sale.subject(),
+        sale.is_open(),
+        sale.loyalty_account_id.is_some(),
+    )
+    .await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: sale.number.clone(),
@@ -262,6 +272,7 @@ async fn show(
         member,
         can_edit: sale.is_open(),
         can_attach: sale.is_open() && user.has_permission(permissions::LOYALTY_ENROL),
+        redeem,
         sale,
     }))
 }

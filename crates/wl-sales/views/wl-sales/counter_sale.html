@@ -5,6 +5,14 @@
   <rx-stack>
     <rx-page-header :title="title" :subtitle="tx['counter.subtitle']" :back="route('wl_sales.counter_sales')" :back-label="tx['counter.title']"
                     :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="redeem.can_redeem" id="redeem-counter_sale" :label="tx['redeem.redeem']" :action="route('wl_sales.counter_sale_redeem', sale.id)"
+                       :title="tx['redeem.redeem']" :description="tx['redeem.redeem_description']" :submit-label="tx['redeem.redeem']" icon="gift">
+        <rx-input name="points" :label="tx['redeem.points']" id="redeem-counter_sale-points" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="redeem.can_confirm" id="redeem-counter_sale-confirm" :label="tx['redeem.confirm']" :action="route('wl_sales.counter_sale_redeem_confirm', sale.id)"
+                       :title="tx['redeem.confirm']" :submit-label="tx['redeem.confirm']" variant="primary" icon="check">
+        <rx-input name="code" :label="tx['redeem.code']" id="redeem-counter_sale-code" required/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_attach" id="attach-counter-member" :label="tx['loyalty.attach']" :action="route('wl_sales.counter_sale_member', sale.id)"
                        :title="tx['loyalty.attach']" :description="tx['loyalty.attach_description']" :submit-label="tx['loyalty.attach']" icon="gift">
         <rx-input name="code" :label="tx['loyalty.code']" id="attach-counter-member-code"/>
@@ -43,6 +51,7 @@
         <rx-entry :label="tx['counter.vat']" :value="vat"/>
         <rx-entry :label="tx['counter.total']" :value="gross"/>
         <rx-entry rx-if="member" :label="tx['loyalty.member']" :value="member"/>
+        <rx-entry rx-if="redeem.summary" :label="tx['redeem.redeem']" :value="redeem.summary"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="payments" as="payment" :key="payment.id" :caption="tx['counter.payments']" card>

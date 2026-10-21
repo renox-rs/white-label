@@ -7,26 +7,78 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use renox::chrono::TimeDelta;
+use renox::db::{DateTime, now};
 use renox::prelude::*;
 use wl_kernel::invoicing::{
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
 };
-use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
+use wl_kernel::notify::{
+    MessageId, Notifier, NotifyFuture, NotifyRequest, OTP_VALIDITY_MINUTES, OTP_WRONG_TRIES,
+    OtpRequest, OtpSent, OtpVerdict,
+};
 use wl_kernel::payer_bills::{PayerBillId, PayerBillStatus, PayerBillSummary, PayerBills};
-use wl_kernel::sales::{PointsEarned, PointsReversed};
+use wl_kernel::sales::{PointsEarned, PointsGivenBack, PointsRedeemed, PointsReversed};
 use wl_kernel::workforce::{EmployeeId, StaffProfile, Workforce, WorkforceFuture};
 use wl_kernel::{PartyId, Subject};
 
-/// Every notification asked for.
+/// One code the fake notifier sent: the wl-notify defaults (5 minutes, 3
+/// wrong tries) are the real module's, tested in its own crate; the fake keeps
+/// them so the redemption flow sees every verdict.
+#[derive(Clone)]
+struct Code {
+    code: String,
+    expires: DateTime,
+    tries: i64,
+    locked: bool,
+}
+
+/// Every notification asked for, and the one-time codes sent.
 #[derive(Clone, Default)]
-pub struct Mail(Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Mail {
+    sent: Arc<Mutex<Vec<NotifyRequest>>>,
+    codes: Arc<Mutex<HashMap<String, Code>>>,
+    otp_requests: Arc<Mutex<Vec<OtpRequest>>>,
+    serial: Arc<AtomicI64>,
+    cannot_send: Arc<AtomicBool>,
+}
 
 impl Mail {
+    /// Makes the next codes fail to send (or work again).
+    pub fn cannot_send_codes(&self, on: bool) {
+        self.cannot_send.store(on, Ordering::SeqCst);
+    }
+
+    /// The codes asked for so far, oldest first.
+    pub fn otp_requests(&self) -> Vec<OtpRequest> {
+        self.otp_requests.lock().unwrap().clone()
+    }
+
+    /// The live code sent for `subject`.
+    pub fn code_for(&self, subject: &Subject) -> String {
+        self.codes
+            .lock()
+            .unwrap()
+            .get(&subject.to_string())
+            .map(|c| c.code.clone())
+            .expect("a code was sent for the sale")
+    }
+
+    /// A code that is not the one sent for `subject`.
+    pub fn wrong_code(&self, subject: &Subject) -> String {
+        if self.code_for(subject) == "000000" {
+            "111111".to_owned()
+        } else {
+            "000000".to_owned()
+        }
+    }
+
     /// The notifications of the type `key`.
     pub fn of_type(&self, key: &str) -> Vec<NotifyRequest> {
-        self.0
+        self.sent
             .lock()
             .unwrap()
             .iter()
@@ -43,8 +95,72 @@ impl Notifier for Mail {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         Box::pin(async move {
-            self.0.lock().unwrap().push(request);
+            self.sent.lock().unwrap().push(request);
             Ok(vec![MessageId(1)])
+        })
+    }
+
+    fn send_otp<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: OtpRequest,
+    ) -> NotifyFuture<'a, OtpSent> {
+        Box::pin(async move {
+            self.otp_requests.lock().unwrap().push(request.clone());
+            if self.cannot_send.load(Ordering::SeqCst) {
+                return Ok(OtpSent::NotSent {
+                    text: "Code could not be sent".to_owned(),
+                });
+            }
+            let n = self.serial.fetch_add(1, Ordering::SeqCst);
+            let expires = now() + TimeDelta::minutes(OTP_VALIDITY_MINUTES);
+            self.codes.lock().unwrap().insert(
+                request.subject.to_string(),
+                Code {
+                    code: format!("{:06}", 424_242 + n),
+                    expires,
+                    tries: 0,
+                    locked: false,
+                },
+            );
+            Ok(OtpSent::Sent {
+                message: MessageId(1),
+                expires_at: expires,
+            })
+        })
+    }
+
+    fn verify_otp<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _purpose: &'a str,
+        subject: &'a Subject,
+        code: &'a str,
+    ) -> NotifyFuture<'a, OtpVerdict> {
+        Box::pin(async move {
+            let mut codes = self.codes.lock().unwrap();
+            let key = subject.to_string();
+            let Some(live) = codes.get_mut(&key) else {
+                return Ok(OtpVerdict::Expired);
+            };
+            if live.locked {
+                return Ok(OtpVerdict::Locked);
+            }
+            if live.expires <= now() {
+                return Ok(OtpVerdict::Expired);
+            }
+            if live.code == code {
+                codes.remove(&key);
+                return Ok(OtpVerdict::Valid);
+            }
+            live.tries += 1;
+            if live.tries >= OTP_WRONG_TRIES {
+                live.locked = true;
+                return Ok(OtpVerdict::Locked);
+            }
+            Ok(OtpVerdict::Wrong {
+                tries_left: OTP_WRONG_TRIES - live.tries,
+            })
         })
     }
 }
@@ -219,6 +335,10 @@ pub struct Points {
     pub earned: Arc<Mutex<Vec<PointsEarned>>>,
     /// `PointsReversed`.
     pub reversed: Arc<Mutex<Vec<PointsReversed>>>,
+    /// `PointsRedeemed`.
+    pub redeemed: Arc<Mutex<Vec<PointsRedeemed>>>,
+    /// `PointsGivenBack`.
+    pub given_back: Arc<Mutex<Vec<PointsGivenBack>>>,
 }
 
 /// The fakes of the other modules, handed to the test.
@@ -256,6 +376,22 @@ impl Module for Shop {
         });
         let log = self.points.reversed.clone();
         app.listen(move |event: PointsReversed, _state: AppState| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().push(event);
+                Ok(())
+            }
+        });
+        let log = self.points.redeemed.clone();
+        app.listen(move |event: PointsRedeemed, _state: AppState| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().push(event);
+                Ok(())
+            }
+        });
+        let log = self.points.given_back.clone();
+        app.listen(move |event: PointsGivenBack, _state: AppState| {
             let log = log.clone();
             async move {
                 log.lock().unwrap().push(event);

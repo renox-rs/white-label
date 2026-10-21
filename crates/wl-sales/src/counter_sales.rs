@@ -14,7 +14,8 @@
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
-use wl_kernel::sales::CounterSaleCompleted;
+use wl_kernel::Subject;
+use wl_kernel::sales::{COUNTER_SALE_SUBJECT_TYPE, CounterSaleCompleted};
 use wl_kernel::PartyId;
 
 use crate::config::config_of;
@@ -86,7 +87,7 @@ pub async fn open(state: &AppState, cashier: i64, new: NewCounterSale) -> Result
 }
 
 /// Makes the stored totals of the open sale `sale` those of its lines.
-async fn refresh_totals(state: &AppState, sale: &CounterSale) -> Result<CounterSale> {
+pub(crate) async fn refresh_totals(state: &AppState, sale: &CounterSale) -> Result<CounterSale> {
     let lines = SaleLine::of(&state.db, &sale.subject()).await?;
     let t = totals(&lines);
     CounterSale::query()
@@ -135,6 +136,9 @@ pub async fn complete(
     id: i64,
     tenders: Vec<Tender>,
 ) -> Result<CounterSale> {
+    // The hold on the member's points is checked again; a lapsed hold or a
+    // shortfall takes the redemption line off before the total is read.
+    crate::redeem::prepare(state, &Subject::new(COUNTER_SALE_SUBJECT_TYPE, id)).await?;
     let sale = CounterSale::find_or_404(&state.db, id).await?;
     let lines = SaleLine::of(&state.db, &sale.subject()).await?;
     let t = totals(&lines);

@@ -25,11 +25,11 @@
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::Transitioned;
-use wl_kernel::PartyId;
+use wl_kernel::{PartyId, Subject};
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
     FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment, ReverseFulfilment,
-    SalesFuture, SalesOrderCancelled, SalesOrderClosed, SalesOrderConfirmed, SalesOrderFulfilled,
+    SALES_ORDER_SUBJECT_TYPE, SalesFuture, SalesOrderCancelled, SalesOrderClosed, SalesOrderConfirmed, SalesOrderFulfilled,
     SalesOrderFulfilmentReversed, SalesOrderLineCancelled, SalesOrderRejected,
 };
 
@@ -152,6 +152,9 @@ pub async fn add_line(state: &AppState, id: i64, line: NewLine) -> Result<SalesO
 /// payment, `pending_acceptance` for a channel that needs acceptance, else
 /// `confirmed`.
 pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrder> {
+    // A redemption that was not confirmed, or whose hold lapsed, goes before
+    // the total is read.
+    crate::redeem::prepare(state, &Subject::new(SALES_ORDER_SUBJECT_TYPE, id)).await?;
     let order = SalesOrder::find_or_404(&state.db, id).await?;
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
     let t = totals(&lines);
@@ -176,6 +179,8 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
+    // The points held for the order stay held until it resolves.
+    crate::redeem::order_placed(state, &Subject::new(SALES_ORDER_SUBJECT_TYPE, id)).await?;
     SalesOrder::find_or_404(&state.db, id).await
 }
 

@@ -29,6 +29,7 @@ impl Floor {
                     perm::POS_SELL,
                     perm::LOYALTY_VIEW,
                     perm::LOYALTY_ENROL,
+                    perm::LOYALTY_REDEEM,
                     perm::RETURNS_REQUEST,
                     perm::RETURNS_HANDLE,
                     perm::SALES_ORDERS_VIEW,
@@ -82,15 +83,13 @@ impl Floor {
             .expect("the member was enrolled")
     }
 
-    /// Rings up a counter sale of `lines` (item code, price in AED before
-    /// VAT, quantity), attaches `member` (a code) when given, and completes
-    /// it with `tenders` (method, amount in AED, payment id or empty).
-    pub async fn ring_up(
+    /// Opens a counter sale with `lines` (item code, price in AED before VAT,
+    /// quantity) and attaches `member` (a code) when given; it stays open.
+    pub async fn open_cart(
         &self,
         t: &Booted,
         lines: &[(&str, &str, &str)],
         member: Option<&str>,
-        tenders: &[(&str, &str)],
     ) -> CounterSale {
         t.app.acting_as(&self.cora);
         t.app
@@ -125,6 +124,20 @@ impl Floor {
                 .await
                 .assert_status(303);
         }
+        CounterSale::find_or_404(t.db(), sale.id).await.unwrap()
+    }
+
+    /// Rings up a counter sale of `lines` (item code, price in AED before
+    /// VAT, quantity), attaches `member` (a code) when given, and completes
+    /// it with `tenders` (method, amount in AED, payment id or empty).
+    pub async fn ring_up(
+        &self,
+        t: &Booted,
+        lines: &[(&str, &str, &str)],
+        member: Option<&str>,
+        tenders: &[(&str, &str)],
+    ) -> CounterSale {
+        let sale = self.open_cart(t, lines, member).await;
         t.app
             .post(&format!("/counter-sales/{}/complete", sale.id), tenders)
             .await

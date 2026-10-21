@@ -172,8 +172,9 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
 /// `POST /loyalty/programme`: turns the programme on. Fields: `name`,
 /// `earn_kind` (`per_aed` or `per_visit`), `earn_rate`, `minimum` and
 /// `point_value` (AED), `validity_months`, `terms_version`, `terms_en`,
-/// `terms_ar`, `brand`, `excluded_items` (codes separated by commas) and
-/// `visit_reward`.
+/// `terms_ar`, `brand`, `excluded_items` (codes separated by commas),
+/// `visit_reward`, `min_redeem_points` and `max_share_percent` (the largest
+/// part of a sale points may pay).
 async fn create_programme(
     State(state): State<AppState>,
     lang: Lang,
@@ -215,6 +216,8 @@ async fn create_programme(
     new.minimum_amount = fils("minimum", 0)?;
     new.point_value = fils("point_value", 1)?;
     new.validity_months = number("validity_months", 12)?;
+    new.min_redeem_points = number("min_redeem_points", 500)?;
+    new.max_share_bps = number("max_share_percent", 100)?.saturating_mul(100);
     if !get("terms_version").is_empty() {
         new.terms_version = get("terms_version").to_owned();
     }

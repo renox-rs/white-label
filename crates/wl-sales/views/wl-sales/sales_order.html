@@ -17,6 +17,14 @@
         <rx-confirm :id="'submit-order-' ~ order.id" :label="tx['orders.submit']" :action="route('wl_sales.sales_order_submit', order.id)" method="POST"
                     :title="tx['orders.submit']" :message="tx['orders.submit_message']" :confirm-label="tx['orders.submit']" :cancel-label="tx['cancel']" icon="check"/>
       </template>
+      <rx-action-sheet rx-if="redeem.can_redeem" id="redeem-sales_order" :label="tx['redeem.redeem']" :action="route('wl_sales.sales_order_redeem', order.id)"
+                       :title="tx['redeem.redeem']" :description="tx['redeem.redeem_description']" :submit-label="tx['redeem.redeem']" icon="gift">
+        <rx-input name="points" :label="tx['redeem.points']" id="redeem-sales_order-points" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="redeem.can_confirm" id="redeem-sales_order-confirm" :label="tx['redeem.confirm']" :action="route('wl_sales.sales_order_redeem_confirm', order.id)"
+                       :title="tx['redeem.confirm']" :submit-label="tx['redeem.confirm']" variant="primary" icon="check">
+        <rx-input name="code" :label="tx['redeem.code']" id="redeem-sales_order-code" required/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_attach" id="attach-order-member" :label="tx['loyalty.attach']" :action="route('wl_sales.sales_order_member', order.id)"
                        :title="tx['loyalty.attach']" :description="tx['loyalty.attach_description']" :submit-label="tx['loyalty.attach']" icon="gift">
         <rx-input name="code" :label="tx['loyalty.code']" id="attach-order-member-code"/>
@@ -50,6 +58,7 @@
         <rx-entry :label="tx['orders.payment_mode']" :value="order.payment_mode"/>
         <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>
         <rx-entry rx-if="member" :label="tx['loyalty.member']" :value="member"/>
+        <rx-entry rx-if="redeem.summary" :label="tx['redeem.redeem']" :value="redeem.summary"/>
       </rx-infolist>
     </rx-card>
   </rx-stack>

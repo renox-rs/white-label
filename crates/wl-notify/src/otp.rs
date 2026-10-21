@@ -47,7 +47,7 @@ use crate::message::{Message, MessageStatus};
 use crate::texts::{english, english_with};
 
 /// The notification type of the message that carries a code.
-pub const OTP_TYPE: &str = "notify.otp_code";
+pub const OTP_TYPE: &str = notify::OTP_TYPE_KEY;
 
 /// The OTP settings (§7), set on [`WlNotify`](crate::WlNotify) with
 /// `otp_validity_minutes` and `otp_wrong_tries`.
