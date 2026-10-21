@@ -180,6 +180,81 @@ pub async fn boot_seeded_probe() -> TestApp {
     app
 }
 
+/// The notifier of a test that can be switched off. While it is down the
+/// notices of the vertical (`manpower.*`) fail and everything else, the notices
+/// of wl-hr and the owner alert of a compliance-critical failure among them, is
+/// recorded; while it is up everything is recorded. Nothing is delivered either
+/// way.
+#[derive(Clone, Default)]
+pub struct SwitchNotifier {
+    down: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    sent: std::sync::Arc<std::sync::Mutex<Vec<wl_kernel::notify::NotifyRequest>>>,
+}
+
+impl SwitchNotifier {
+    /// Switches the notifier off or on.
+    pub fn set_down(&self, down: bool) {
+        self.down.store(down, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// What it was asked to send and accepted, in order.
+    pub fn sent(&self) -> Vec<wl_kernel::notify::NotifyRequest> {
+        self.sent.lock().unwrap().clone()
+    }
+}
+
+impl wl_kernel::notify::Notifier for SwitchNotifier {
+    fn notify<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: wl_kernel::notify::NotifyRequest,
+    ) -> wl_kernel::notify::NotifyFuture<'a, Vec<wl_kernel::notify::MessageId>> {
+        Box::pin(async move {
+            let down = self.down.load(std::sync::atomic::Ordering::SeqCst);
+            if down && request.type_key.starts_with("manpower.") {
+                return Err(Error::Internal(renox::anyhow::anyhow!(
+                    "the notifier is down"
+                )));
+            }
+            self.sent.lock().unwrap().push(request);
+            Ok(Vec::new())
+        })
+    }
+}
+
+/// Provides a [`SwitchNotifier`] after the modules of the host.
+struct SwitchModule(SwitchNotifier);
+
+impl Module for SwitchModule {
+    fn name(&self) -> &'static str {
+        "switch_notifier"
+    }
+
+    fn register(&self, app: &mut Registry) {
+        wl_kernel::notify::provide_notifier(app, self.0.clone());
+    }
+}
+
+/// [`boot_seeded`] with the notifier of the host replaced by a
+/// [`SwitchNotifier`], so a rule run of the agency can be made to fail.
+pub async fn boot_seeded_switch() -> (TestApp, SwitchNotifier) {
+    let switch = SwitchNotifier::default();
+    let config = ClientConfig::parse(SEEDED_CLIENT).unwrap();
+    let app = TestApp::new(
+        host::app_for(config)
+            .unwrap()
+            .provide(noon_clock())
+            .module(SwitchModule(switch.clone())),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    (app, switch)
+}
+
 /// An employee `active` in HR.
 pub async fn worker(app: &TestApp, name: &str) -> EmployeeId {
     let party = tenant(app, name).await;

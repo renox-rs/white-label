@@ -649,36 +649,106 @@ async fn a_failed_deployment_notice_gives_the_account_manager_a_task_and_the_typ
     }
 }
 
-/// AC9 (Alerts), the alert itself: a compliance-critical run of `MPW.RUL.12`
-/// that fails raises an alert whose owner is the MD role, and the MD's role and
-/// the company admins are the people told.
+/// AC8 (Alerts): a real `MPW.RUL.12` run fails. A worker dies in service
+/// (wl-hr's approved `record_death`) while the notifier is down: the
+/// deployment is ended, but telling the client fails, and the run is tried
+/// again by the nightly run. After the fifth failure the MD (the rule's
+/// owner) and the company admin are alerted and the MD role gets a task.
 #[renox::test]
-async fn a_failed_critical_run_alerts_the_md_and_the_company_admin() {
-    use wl_kernel::compliance::service::recipients;
-    use wl_kernel::compliance::{AlertKind, Raised, raise};
+async fn a_failing_exit_run_alerts_the_md_and_the_company_admin() {
+    use manpower::DeploymentStatus;
+    use manpower_support::boot_seeded_switch;
+    use wl_kernel::approvals::{self, ApprovalRequest};
+    use wl_kernel::compliance::{AlertKind, AlertStatus, ComplianceAlert};
 
-    let app = boot_seeded().await;
-    let ada = person(&app, "Ada", ADMIN).await;
-    let alert = raise(
-        app.state(),
-        Raised::new(
-            "MPW.RUL.12",
-            Subject::new("manpower.deployment", 4),
-            "MPW.RUL.12:work_permit:2026-11-01",
-            AlertKind::Failed,
-        )
-        .error("the notifier is down"),
+    let (app, notifier) = boot_seeded_switch().await;
+    let a = account(&app).await;
+    let hr = person(&app, "Hana", HR).await;
+    let md = person(&app, "Basel", host::roles::OWNER).await;
+    let ada = renox::auth::permissions::users_with_role(app.db(), ADMIN)
+        .await
+        .unwrap()
+        .remove(0);
+    let w = worker(&app, "Wasim Khan").await;
+    let d = deployment(
+        &app,
+        &a,
+        &a.site,
+        w,
+        "security_guard",
+        DeploymentStatus::Active,
+        day(-60),
+        Some(day(200)),
     )
-    .await
-    .unwrap();
-    let stored = alert.expect("an alert was raised");
-    assert_eq!(stored.owner_role, "md");
-    assert!(
-        recipients(app.db(), &stored.owner_role)
+    .await;
+
+    notifier.set_down(true);
+    let died = day(-1).to_string();
+    app.acting_as(&hr);
+    app.htmx()
+        .post(
+            &format!("/hr/employees/{}/exits", w.0),
+            &[
+                ("transition", "record_death"),
+                ("reason", "died in service"),
+                ("death_certificate", "DC-9"),
+                ("death_date", died.as_str()),
+            ],
+        )
+        .await
+        .assert_ok();
+    let request = ApprovalRequest::pending_about(app.db(), &Subject::new("hr.employee", w.0))
+        .await
+        .unwrap()
+        .remove(0);
+    approvals::approve(app.state(), request.id, &md, "")
+        .await
+        .unwrap();
+    let alerts = || async {
+        ComplianceAlert::query()
+            .where_(ComplianceAlert::RULE.eq("MPW.RUL.12"))
+            .get(app.db())
             .await
             .unwrap()
-            .contains(&ada.id),
-        "the company admin is told"
+    };
+    assert_eq!(
+        manpower_support::reload(&app, d.id).await.status,
+        DeploymentStatus::Ended,
+        "the end is committed before the notice fails"
+    );
+    assert!(alerts().await.is_empty(), "one failure alerts nobody");
+
+    // The nightly run tries again; the fifth failure alerts.
+    for _ in 0..4 {
+        app.travel(std::time::Duration::from_secs(2 * 60 * 60));
+        let _ = app
+            .at_travelled_time(manpower::deployments::daily(app.state()))
+            .await;
+    }
+    let raised = alerts().await;
+    assert_eq!(raised.len(), 1, "{raised:?}");
+    assert_eq!(raised[0].kind, AlertKind::Failed);
+    assert_eq!(raised[0].subject_type, "hr.employee");
+    assert_eq!(raised[0].owner_role, "md");
+    assert_eq!(
+        raised[0].error.as_deref(),
+        Some("the notifier is down"),
+        "the failure of the run"
+    );
+    assert_eq!(raised[0].status, AlertStatus::Open);
+    assert!(raised[0].ticket_id.is_some(), "a task for the MD role");
+    let alert_notice = notifier
+        .sent()
+        .into_iter()
+        .find(|n| n.type_key == "kernel.compliance_alert")
+        .expect("the owner alert was sent");
+    assert!(
+        alert_notice
+            .recipients
+            .iter()
+            .any(|r| matches!(r, wl_kernel::notify::NotifyRecipient::User { id } if *id == ada.id)),
+        "the company admin is told: {:?}",
+        alert_notice.recipients
     );
 }
 
