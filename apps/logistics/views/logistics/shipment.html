@@ -1,0 +1,66 @@
+{#- logistics: a shipment's page: details, parcels with their labels, the
+    tracking events and the charges recorded for the next invoice, and the
+    actions the person may run (pick up, receive at the hub, void, cancel,
+    cancel and return, returned). Replace it with
+    resources/views/logistics/shipment.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="shipment.number">
+  <rx-stack>
+    <rx-page-header :title="shipment.number" :subtitle="shipment.recipient_name" :back="route('logistics.shipments')" :back-label="tx['title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="can_pickup" :id="'pickup-' ~ shipment.id" :label="tx['pickup']" :action="route('logistics.shipment_pickup', shipment.id)"
+                       :title="tx['pickup_title']" :description="tx['pickup_description']" :submit-label="tx['pickup']" icon="package-check">
+        <rx-textarea name="barcodes" :label="tx['barcodes']" :id="'pickup-barcodes-' ~ shipment.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_hub" :id="'hub-' ~ shipment.id" :label="tx['hub']" :action="route('logistics.shipment_hub', shipment.id)"
+                       :title="tx['hub_title']" :description="tx['hub_description']" :submit-label="tx['hub']" icon="warehouse">
+        <rx-textarea name="barcodes" :label="tx['barcodes']" :id="'hub-barcodes-' ~ shipment.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_void" :id="'void-' ~ shipment.id" :label="tx['void']" :action="route('logistics.shipment_void', shipment.id)"
+                       :title="tx['void_title']" :description="tx['void_description']" :submit-label="tx['void']" icon="ban" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['reason']" :id="'void-reason-' ~ shipment.id" required/>
+      </rx-action-sheet>
+      <rx-confirm rx-if="can_cancel" :id="'cancel-' ~ shipment.id" :label="tx['cancel']" :action="route('logistics.shipment_cancel', shipment.id)" method="POST"
+                  :title="tx['cancel_title']" :message="tx['cancel_message']" :confirm-label="tx['cancel']"/>
+      <rx-action-sheet rx-if="can_cancel_return" :id="'cancel-return-' ~ shipment.id" :label="tx['cancel_return']" :action="route('logistics.shipment_cancel_return', shipment.id)"
+                       :title="tx['cancel_return_title']" :description="tx['cancel_return_description']" :submit-label="tx['cancel_return']" icon="undo-2" variant="danger" danger>
+        <rx-textarea name="instruction" :label="tx['instruction']" :placeholder="tx['instruction_hint']" :id="'cancel-return-instruction-' ~ shipment.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_return" :id="'returned-' ~ shipment.id" :label="tx['returned']" :action="route('logistics.shipment_returned', shipment.id)"
+                       :title="tx['returned']" :description="tx['returned_description']" :submit-label="tx['returned']" icon="check">
+        <rx-input name="pod_reference" :label="tx['pod']" :id="'returned-pod-' ~ shipment.id" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card :title="tx['details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['number']" :value="shipment.number" copyable/>
+        <rx-entry :label="tx['reference']" :value="shipment.client_reference" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['client']" :value="shipment.client_party_id"/>
+        <rx-entry :label="tx['recipient']" :value="shipment.recipient_name"/>
+        <rx-entry :label="tx['phone']" :value="shipment.recipient_phone" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['address']" :value="shipment.address" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['area']" :value="shipment.area" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['cod']" :value="shipment.cod_amount" format="money"/>
+        <rx-entry :label="tx['weight']" :value="shipment.booked_weight_grams"/>
+        <rx-entry :label="tx['delivery']" rx-if="delivery_url" :value="delivery_url" :url="delivery_url"/>
+        <rx-entry :label="tx['instruction']" :value="instruction" span="full" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="parcels" as="parcel" :key="parcel.barcode" :caption="tx['parcels']" card>
+      <rx-column :label="tx['barcode']">{{ parcel.barcode }}</rx-column>
+      <rx-column :label="tx['weight']" align="num">{{ parcel.weight_grams }}</rx-column>
+      <rx-column :label="tx['state']">{{ parcel.state }}</rx-column>
+    </rx-table>
+    <rx-table :rows="events" as="event" :key="event.at" :caption="tx['events']" card>
+      <rx-column :label="tx['when']">{{ event.at }}</rx-column>
+      <rx-column :label="tx['what']">{{ event.kind }}</rx-column>
+      <rx-column :label="tx['note']" hide-narrow>{{ event.note }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_events']" icon="history"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="charges" as="charge" :key="charge.kind" :caption="tx['charges']" card>
+      <rx-column :label="tx['kind']">{{ charge.kind }}</rx-column>
+      <rx-column :label="tx['amount']" align="num">{{ charge.amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['note']" hide-narrow>{{ charge.note }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_charges']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -1,0 +1,26 @@
+{#- logistics: the shipments, newest first, with their status, client
+    reference, recipient and cash on delivery. Replace it with
+    resources/views/logistics/shipments.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-stack>
+    <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']"/>
+    <rx-table :rows="shipments" as="shipment" :key="shipment.id" :caption="tx['title']">
+      <rx-column :label="tx['number']">
+        <rx-stack>
+          <span><a href="{{ shipment.url }}">{{ shipment.number }}</a></span>
+          <span class="rx-subtitle">{{ shipment.client_reference }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['recipient']">
+        <rx-stack>
+          <span>{{ shipment.recipient }}</span>
+          <span class="rx-subtitle">{{ shipment.area }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['parcels']" align="num" hide-narrow>{{ shipment.parcels }}</rx-column>
+      <rx-column :label="tx['cod']" align="num" hide-narrow>{{ shipment.cod_amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['state']"><rx-badge :kind="shipment.status_kind" :text="shipment.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['empty']" :message="tx['empty_text']" icon="package"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

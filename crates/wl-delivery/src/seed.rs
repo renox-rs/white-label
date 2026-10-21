@@ -1,6 +1,7 @@
 //! The idempotent seeder with the §7 defaults: the failure reasons (not
 //! home, refused, refused to pay, wrong address, no cash, access denied, and
-//! the three that do not count) and the refusal reasons (damaged, wrong
+//! the four that do not count: not attempted, run aborted, reversed and
+//! cancelled by client) and the refusal reasons (damaged, wrong
 //! item, not ordered, short-dated, temperature, other) and the cash difference
 //! reasons (recipient short of cash, disputes the amount, agreed discount, no
 //! change).
@@ -14,7 +15,7 @@ use crate::reasons::{CodReason, FailureReason, RefusalReason};
 
 /// The failure reasons as (code, English name, Arabic name, counts, allows a
 /// reattempt).
-pub const FAILURE_REASONS: [(&str, &str, &str, bool, bool); 9] = [
+pub const FAILURE_REASONS: [(&str, &str, &str, bool, bool); 10] = [
     ("not_home", "Not home", "غير موجود", true, true),
     ("refused", "Refused", "رفض الاستلام", true, true),
     ("refused_to_pay", "Refused to pay", "رفض الدفع", true, true),
@@ -30,6 +31,16 @@ pub const FAILURE_REASONS: [(&str, &str, &str, bool, bool); 9] = [
     ),
     ("run_aborted", "Run aborted", "أُلغيت الرحلة", false, true),
     ("reversed", "Reversed", "تم التراجع", false, true),
+    // 03 (BL-LOG-26, `LOG.ACL.09`): the client cancelled while the shipment
+    // was out for delivery. Not counted as an attempt; the goods go back
+    // (`cancel_return`), so no reattempt.
+    (
+        "cancelled_by_client",
+        "Cancelled by client",
+        "ألغى العميل",
+        false,
+        false,
+    ),
 ];
 
 /// The refusal reasons as (code, English name, Arabic name).

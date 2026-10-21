@@ -68,6 +68,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     "db:seed",
     demo_data::COMMAND,
     construction_demo::COMMAND,
+    app::logistics_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.
@@ -188,6 +189,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         // `db:seed` in local (never in production).
         app = app.module(app::construction_demo::DemoSeed::new(demo_client));
     }
+    // The Logistics client's demo company, in local only (`logistics:demo`,
+    // and `db:seed`).
+    if client_app == "logistics" {
+        app = app.module(app::logistics_demo::LogisticsDemo);
+    }
     // The page that shows the shared modules' settings of this client.
     let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
@@ -221,12 +227,12 @@ fn with_brand(app: renox::App, name: &str) -> renox::App {
 }
 
 /// The vertical apps built so far, as `[client] app` names them.
-pub const VERTICALS: &[&str] = &["property", "accounting", "construction"];
+pub const VERTICALS: &[&str] = &["property", "accounting", "construction", "logistics"];
 
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting` and `construction`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction` and `logistics`"
     ))
 }
 
@@ -246,6 +252,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "property" => Ok(app.module(property::Property)),
         "accounting" => Ok(app.module(accounting::Accounting)),
         "construction" => Ok(app.module(construction::Construction)),
+        "logistics" => Ok(app.module(logistics::Logistics)),
         other => Err(unbuilt_vertical(other)),
     }
 }

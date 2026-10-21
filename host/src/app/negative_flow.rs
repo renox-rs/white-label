@@ -178,6 +178,9 @@ pub fn delivery_for(client_app: &str) -> wl_delivery::WlDelivery {
                 CodAbsorber::Driver,
             ])
             .replace_cash_escalation(true)
+            // 03: a shipment is one consignment to one recipient; partial
+            // acceptance is off (a refused parcel of several is BL-LOG-07).
+            .partial_acceptance(logistics::SUBJECT_TYPE, false)
             .abort_reasons(&["driver_unreachable"]),
         _ => module,
     }

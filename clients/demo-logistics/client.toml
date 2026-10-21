@@ -1,0 +1,46 @@
+# The demo client of F3 (03 Logistics): a Dubai last-mile courier. Data is
+# fictional. Boot it with CLIENT_CONFIG=clients/demo-logistics/client.toml;
+# `logistics:demo` (and `db:seed` in local) fills it with the demo company.
+
+[client]
+name    = "Najm Express Cargo LLC"
+app     = "logistics"
+domain  = "demo.najmexpress.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#0F766E"
+second       = "#B45309"
+display_font = "Poppins"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "delivery", "portal"]
+
+[roles]
+# `PLT.RUL.04`: a compliance-critical rule that fails alerts the operations
+# manager (this vertical's owner role) and the company admin.
+owner = "operations_manager"
+
+[[legal_entities]]
+code      = "NEC"
+name_en   = "Najm Express Cargo LLC"
+emirate   = "dubai"
+licensing_authority = "Dubai Department of Economy and Tourism"
+trade_licence_no = "7654321"
+trn       = "100000000000003"
+address_en = "Warehouse 14, Al Quoz Industrial 4, Dubai"
+default   = true
+
+# The UAE public holidays the business-day counts skip. Fixed dates are
+# listed; the moon-sighted ones follow the official announcement and are
+# amended here each year.
+[calendar]
+holidays = [
+  "2026-01-01",
+  "2026-03-20", "2026-03-21", "2026-03-22",
+  "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29",
+  "2026-06-16",
+  "2026-08-25",
+  "2026-12-02", "2026-12-03",
+  "2027-01-01",
+]

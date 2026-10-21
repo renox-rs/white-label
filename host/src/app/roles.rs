@@ -5,6 +5,7 @@
 
 use accounting::permissions as acc;
 use construction::permissions as con;
+use logistics::permissions as log;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
@@ -101,6 +102,11 @@ pub const OPERATIONS_MANAGER: &str = "operations_manager";
 /// A driver or rider: sees today's stops of their own runs and records their
 /// outcomes (wl-delivery §6, `WRK.ACL.05`).
 pub const DRIVER: &str = "driver";
+/// Hub staff: scan parcels in and out of a depot (03 §3.1, `LOG.HUB.01`).
+pub const HUB_STAFF: &str = log::HUB_STAFF_ROLE;
+/// A client user of a logistics company: books, tracks, voids and cancels its
+/// own shipments in the portal (03 §3.1, `LOG.ACL.02`, `LOG.ACL.09`).
+pub const SHIPPING_CLIENT: &str = log::CLIENT_ROLE;
 /// A site supervisor: marks attendance of the crews and people of their
 /// location and corrects it within the window (wl-attendance §6, `HRM.ACL.01`).
 pub const SUPERVISOR: &str = "supervisor";
@@ -246,6 +252,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
             delivery::POD_VIEW,
             delivery::REVERSE,
             delivery::APPROVE_COD_DIFFERENCE,
+            log::SHIPMENTS_VIEW,
+            log::SHIPMENTS_BOOK,
+            log::SHIPMENTS_MANAGE,
+            log::SHIPMENTS_SCAN,
+            log::SHIPMENTS_DELIVER,
+            log::SHIPMENTS_VOID,
+            log::SHIPMENTS_CANCEL,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -779,6 +792,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             delivery::RUNS_VIEW,
             delivery::RUNS_DISPATCH,
             delivery::POD_VIEW,
+            log::SHIPMENTS_VIEW,
+            log::SHIPMENTS_BOOK,
+            log::SHIPMENTS_MANAGE,
+            log::SHIPMENTS_VOID,
+            log::SHIPMENTS_CANCEL,
         ],
     ),
     (
@@ -796,9 +814,31 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::CASH_VIEW,
             payments::CASH_COUNT,
             payments::CASH_WRITE_OFF,
+            log::SHIPMENTS_VIEW,
+            log::SHIPMENTS_BOOK,
+            log::SHIPMENTS_MANAGE,
+            log::SHIPMENTS_VOID,
+            log::SHIPMENTS_CANCEL,
         ],
     ),
-    (DRIVER, &[delivery::RUNS_DRIVE, delivery::COMPLETE]),
+    (
+        DRIVER,
+        &[
+            delivery::RUNS_DRIVE,
+            delivery::COMPLETE,
+            log::SHIPMENTS_SCAN,
+            log::SHIPMENTS_DELIVER,
+        ],
+    ),
+    (HUB_STAFF, &[log::SHIPMENTS_VIEW, log::SHIPMENTS_SCAN]),
+    (
+        SHIPPING_CLIENT,
+        &[
+            log::SHIPMENTS_BOOK,
+            log::SHIPMENTS_VOID,
+            log::SHIPMENTS_CANCEL,
+        ],
+    ),
     (HSE_OFFICER, &[attendance::VIEW]),
     (MEMBER, &[]),
 ];

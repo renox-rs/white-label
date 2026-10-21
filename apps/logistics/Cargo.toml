@@ -1,0 +1,19 @@
+[package]
+name = "logistics"
+description = "Logistics: the vertical app for courier and freight companies (shipments, parcels, hub scans, COD remittance, freight jobs)."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real delivery module in the integration tests: a shipment is the source
+# of its delivery, and follows the delivery's events.
+wl-delivery = { path = "../../crates/wl-delivery" }
