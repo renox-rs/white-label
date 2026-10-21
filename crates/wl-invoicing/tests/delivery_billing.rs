@@ -269,9 +269,9 @@ async fn a_difference_the_business_absorbs_is_a_negative_line_on_a_draft() {
 async fn a_difference_the_business_or_driver_absorbs_is_a_credit_note_on_an_issued_invoice() {
     let t = boot().await;
     let a = t.user_a().await;
-    let invoice = t
-        .issued(&[(100_000, VatCategory::Standard)], None, &a)
-        .await;
+    // The invoice is made from the sales order the delivery came from.
+    let draft = draft_of(&t, &[(1, 1_000, 100_000)]).await;
+    let invoice = t.issue(&draft, &a).await;
     t.pay(&invoice, 1, 102_000).await;
 
     t.state()
