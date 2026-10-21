@@ -30,9 +30,15 @@ use super::Booted;
 #[derive(Clone, Default)]
 pub struct Directory {
     status: Arc<Mutex<HashMap<i64, PartyStatus>>>,
+    emails: Arc<Mutex<HashMap<i64, String>>>,
 }
 
 impl Directory {
+    /// Gives `party` an e-mail address besides its mobile number.
+    pub fn set_email(&self, party: i64, address: &str) {
+        self.emails.lock().unwrap().insert(party, address.to_owned());
+    }
+
     /// Sets the state of `party`.
     pub fn set(&self, party: i64, status: PartyStatus) {
         self.status.lock().unwrap().insert(party, status);
@@ -89,18 +95,29 @@ impl PartyDirectory for Directory {
         party: PartyId,
     ) -> PartyFuture<'a, Option<PartyContacts>> {
         Box::pin(async move {
+            let mut points = vec![PartyContactPoint {
+                id: party.0,
+                kind: ContactKind::Mobile,
+                address: format!("+9715{:08}", party.0),
+                primary: true,
+                verified: true,
+                valid: true,
+            }];
+            if let Some(address) = self.emails.lock().unwrap().get(&party.0) {
+                points.push(PartyContactPoint {
+                    id: 1_000 + party.0,
+                    kind: ContactKind::Email,
+                    address: address.clone(),
+                    primary: true,
+                    verified: true,
+                    valid: true,
+                });
+            }
             Ok(Some(PartyContacts {
                 party,
                 language: "en".into(),
                 preferred_channel: None,
-                points: vec![PartyContactPoint {
-                    id: party.0,
-                    kind: ContactKind::Mobile,
-                    address: format!("+9715{:08}", party.0),
-                    primary: true,
-                    verified: true,
-                    valid: true,
-                }],
+                points,
             }))
         })
     }
