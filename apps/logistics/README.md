@@ -56,6 +56,22 @@ their own issues.
   *wrong address* holds the shipment. The address is corrected with an audit
   until the shipment is out for delivery, and "company liable" links a claim
   ticket.
+- **COD remittance** (`remit`, `remittance_machine`, BL-LOG-14, BL-LOG-15):
+  the payout of the COD collected to a client, `draft`, `approve` (another
+  user than the preparer, every adjustment line approved), `reopen` and `pay`
+  (the payout is an outgoing transfer recorded through the kernel's payments
+  contract; a blocked client, no bank account or a net of 0 stops it);
+  `payment_returned` is declared and comes with BL-LOG-17. `LOG.RUL.06`
+  (`remit::run_weekly`, scheduled on Monday) creates or rebuilds one draft per
+  client from the delivered shipments with COD recorded, delivered before the
+  period end, on no remittance, not frozen by the delivery module (under
+  review) and not marked already remitted, less the client's COD fee and the
+  differences the client absorbed; the cash handovers are never read. An
+  **adjustment line** (`adjustment`, `LOG.ACL.12`) is a signed correction
+  with a reason: prepared by one user, approved or rejected by another;
+  only an approved line counts; a paid remittance is never edited, a line goes
+  on the next draft; a negative net is set to 0 and the rest carried as an
+  open line.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
@@ -64,14 +80,17 @@ their own issues.
 
 ## Routes
 
-See `pages`. Staff list and page at `/shipments`; every action is a POST that
-answers 303 with a toast, 422 with the reason when refused.
+See `pages` and `remittance_pages`. Staff list and page at `/shipments` and
+`/remittances`; every action is a POST that answers 303 with a toast, 422 with
+the reason when refused.
 
 ## Permissions
 
 `shipments.view`, `.book`, `.manage`, `.scan`, `.deliver`, `.void` and
-`.cancel` (`permissions`). The host maps them to the operations manager, the
-dispatcher, hub staff, the driver and the client user.
+`.cancel`, and `remittances.view`, `.prepare`, `.approve` and `.pay`
+(`permissions`). The host maps them to the operations manager, the
+dispatcher, hub staff, the driver and the client user, and the remittances to
+the accountant.
 
 ## Tests
 

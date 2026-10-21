@@ -52,6 +52,25 @@ fn the_roles_hold_the_shipment_permissions() {
     assert!(holds(DRIVER, perm::SHIPMENTS_DELIVER));
 }
 
+#[test]
+fn the_accountant_prepares_approves_and_pays_remittances_and_nobody_in_operations_does() {
+    for permission in [
+        perm::REMITTANCES_VIEW,
+        perm::REMITTANCES_PREPARE,
+        perm::REMITTANCES_APPROVE,
+        perm::REMITTANCES_PAY,
+    ] {
+        assert!(holds(roles::ACCOUNTANT, permission), "{permission}");
+        assert!(holds(ADMIN, permission), "{permission}");
+        assert!(!holds(DISPATCHER, permission), "{permission}");
+        assert!(!holds(DRIVER, permission), "{permission}");
+        assert!(!holds(SHIPPING_CLIENT, permission), "{permission}");
+    }
+    assert!(holds(OPERATIONS_MANAGER, perm::REMITTANCES_VIEW));
+    assert!(!holds(OPERATIONS_MANAGER, perm::REMITTANCES_APPROVE));
+    assert!(!holds(OPERATIONS_MANAGER, perm::REMITTANCES_PAY));
+}
+
 #[renox::test]
 async fn the_demo_logistics_client_boots_and_the_demo_company_is_made_once() {
     let config = ClientConfig::load(DEMO).expect("the demo client");
