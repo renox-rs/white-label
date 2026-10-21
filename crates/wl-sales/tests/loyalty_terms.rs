@@ -8,12 +8,14 @@
 
 mod support;
 
-use renox::chrono::{Duration, NaiveDate};
+use std::time::Duration as StdDuration;
+
+use renox::chrono::Duration;
 use renox::prelude::*;
 use wl_kernel::documents::today;
 use wl_sales::expiry::TASK;
 use wl_sales::notices::{LOYALTY_PROGRAMME_OFF, LOYALTY_TERMS_CHANGED};
-use wl_sales::{LoyaltyProgramme, LoyaltyTermsChange, PointsKind};
+use wl_sales::{LoyaltyProgramme, LoyaltyTermsChange, PointsKind, Redemption};
 
 use support::floor::{Floor, account, movements};
 use support::shop::Shop;
@@ -24,15 +26,6 @@ async fn world(extra: &[(&str, &str)]) -> (Booted, Shop, Floor) {
     let floor = Floor::new(&t).await;
     floor.turn_on(&t, extra).await;
     (t, shop, floor)
-}
-
-/// Runs the real expiry command for the day `on`.
-async fn run(t: &Booted, on: NaiveDate) {
-    t.app
-        .kernel()
-        .call(TASK, vec!["--date".to_owned(), on.to_string()])
-        .await
-        .expect("the expiry task runs");
 }
 
 #[renox::test]
@@ -95,44 +88,40 @@ async fn a_change_with_less_than_30_days_notice_is_refused_and_one_with_30_tells
 }
 
 #[renox::test]
-async fn a_sale_from_the_effective_date_earns_on_the_new_rate_and_the_old_lots_stay() {
+async fn a_sale_the_day_before_the_effective_date_earns_the_old_rate_and_one_on_it_the_new_rate() {
     let (t, _shop, floor) = world(&[]).await;
     let m = floor.enrol(&t, 7, "0501234567").await;
     floor.earn(&t, &m, 100).await;
     let first_lot = movements(&t, &m, PointsKind::Earn).await.remove(0);
 
-    // One change took effect yesterday, another is still ahead.
-    for (from, rate) in [
-        (today() - Duration::days(1), 3),
-        (today() + Duration::days(30), 9),
-    ] {
-        LoyaltyTermsChange::create(
-            t.db(),
-            LoyaltyTermsChange {
-                programme_id: first_lot_programme(&t).await,
-                effective_from: from,
-                earn_rate: Some(rate),
-                ..LoyaltyTermsChange::default()
-            },
-        )
-        .await
-        .unwrap();
+    // Two changes saved through the page: 3 points per AED in 30 days and
+    // 9 in 60 days (the notice is counted from the day they are saved).
+    t.app.acting_as(&floor.mia);
+    for (days, rate) in [(30, "3"), (60, "9")] {
+        let from = (today() + Duration::days(days)).to_string();
+        t.app
+            .post(
+                "/loyalty/programme/changes",
+                &[("effective_from", from.as_str()), ("earn_rate", rate)],
+            )
+            .await
+            .assert_status(303);
     }
+    assert_eq!(LoyaltyTermsChange::query().count(t.db()).await.unwrap(), 2);
+
+    // The day before the first date (29 days on): still one point per AED.
+    t.app.travel(StdDuration::from_secs(29 * 24 * 60 * 60));
     floor.earn(&t, &m, 10).await;
-    // 3 points per AED from the first change, not 9 from the one ahead.
-    assert_eq!(account(&t, &m).await.points_balance, 130);
+    assert_eq!(account(&t, &m).await.points_balance, 110);
+
+    // On the date: 3 points per AED, not the 9 of the change still ahead.
+    t.app.travel(StdDuration::from_secs(24 * 60 * 60));
+    floor.earn(&t, &m, 10).await;
+    assert_eq!(account(&t, &m).await.points_balance, 140);
     let lots = movements(&t, &m, PointsKind::Earn).await;
     assert_eq!(lots[0].points, first_lot.points);
     assert_eq!(lots[0].lot_expires_on, first_lot.lot_expires_on);
-    assert_eq!(lots[1].points, 30);
-}
-
-async fn first_lot_programme(t: &Booted) -> i64 {
-    LoyaltyProgramme::first_active(t.db())
-        .await
-        .unwrap()
-        .unwrap()
-        .id
+    assert_eq!((lots[1].points, lots[2].points), (10, 30));
 }
 
 #[renox::test]
@@ -186,7 +175,11 @@ async fn turning_the_programme_off_sets_the_closing_date_and_expires_every_lot_a
         .await
         .assert_status(422);
 
-    // Redeeming still works through the closing date.
+    // Redeeming still works on the closing day itself: the clock moves
+    // there and the redemption is asked, confirmed and the sale completed.
+    t.app.travel(StdDuration::from_secs(90 * 24 * 60 * 60));
+    assert_eq!(t.app.at_travelled_time(async { today() }).await, closing);
+    t.app.acting_as(&floor.cora);
     let cart = floor
         .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
         .await;
@@ -197,16 +190,52 @@ async fn turning_the_programme_off_sets_the_closing_date_and_expires_every_lot_a
         )
         .await
         .assert_status(303);
-
-    // The run on the closing day expires nothing; the one the morning after
-    // expires every open lot.
-    run(&t, closing).await;
-    assert_eq!(account(&t, &m).await.points_balance, 600);
+    t.app
+        .post(
+            &format!("/counter-sales/{}/redeem/confirm", cart.id),
+            &[("code", &shop.mail.code_for(&cart.subject()))],
+        )
+        .await
+        .assert_status(303);
+    t.app
+        .post(
+            &format!("/counter-sales/{}/complete", cart.id),
+            &[("cash", "16.00")],
+        )
+        .await
+        .assert_status(303);
+    assert_eq!(account(&t, &m).await.points_balance, 100);
+    // The job of the closing day itself expires nothing.
+    t.app.run_scheduled(TASK).await.unwrap();
+    assert_eq!(account(&t, &m).await.points_balance, 100);
     assert!(shop.points.expired.lock().unwrap().is_empty());
-    run(&t, closing + Duration::days(1)).await;
+
+    // A cart left open over midnight: the day after the closing day
+    // redeeming on it is refused (the member could not be attached then).
+    let late = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
+    t.app.travel(StdDuration::from_secs(24 * 60 * 60));
+    t.app.acting_as(&floor.cora);
+    t.app
+        .htmx()
+        .post(
+            &format!("/counter-sales/{}/redeem", late.id),
+            &[("points", "100")],
+        )
+        .await
+        .assert_status(422);
+    assert!(Redemption::of_sale(t.db(), &late.subject())
+        .await
+        .unwrap()
+        .is_empty());
+
+    // The expiry job of 02:00 that morning expires what is left. (The closing
+    // day's own run, before, expired nothing.)
+    t.app.run_scheduled(TASK).await.unwrap();
     assert_eq!(account(&t, &m).await.points_balance, 0);
     let expired = shop.points.expired.lock().unwrap().clone();
-    assert_eq!(expired.iter().map(|e| e.points).sum::<i64>(), 600);
+    assert_eq!(expired.iter().map(|e| e.points).sum::<i64>(), 100);
     // The programme is over once its lots are.
     let ended = LoyaltyProgramme::find_or_404(t.db(), programme.id)
         .await
