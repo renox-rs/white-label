@@ -49,6 +49,7 @@ use wl_kernel::late_entries::{LateEntryLimits, Limits, set_limits};
 use wl_kernel::{COMPANY_ADMIN_ROLE, Manifest, PartyKind, Subject};
 use wl_payments::WlPayments;
 use wl_sales::{LeadSource, WlSales};
+use wl_ticketing::{Category, Priority, SlaPolicy};
 
 use super::roles::{ACCOUNTANT, ADMIN, DISPATCHER, MARKETING_MANAGER, OPERATIONS_MANAGER};
 
@@ -319,6 +320,8 @@ pub struct Installed {
     pub sops: usize,
     /// Budget categories given the accountant as owner role.
     pub budget_categories: usize,
+    /// Ticket categories created (the claim and the billing dispute of 03).
+    pub ticket_categories: usize,
 }
 
 impl Installed {
@@ -329,6 +332,7 @@ impl Installed {
             + self.checklists
             + self.sops
             + self.budget_categories
+            + self.ticket_categories
     }
 }
 
@@ -354,10 +358,47 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     if on("documents") {
         installed.sops = install_sops(&state.db).await?;
     }
+    if on("ticketing") {
+        installed.ticket_categories = install_ticket_categories(&state.db).await?;
+    }
     if on("invoicing") {
         installed.budget_categories = install_budget_categories(&state.db).await?;
     }
     Ok(installed)
+}
+
+/// The ticket categories the app opens tickets in (BL-TKT-11: a category only
+/// the vertical uses comes from the vertical's starter data): the claim of a
+/// loss, disposal or hold (`claim`) and the dispute of a re-weigh (`billing`).
+/// `Ticket::open` refuses an unknown category, so without these rows every
+/// claim ticket of 03 would fail. A row the client changed is kept.
+async fn install_ticket_categories(db: &Db) -> Result<usize> {
+    let policy = SlaPolicy::by_key(db, wl_ticketing::seed::STANDARD_POLICY).await?;
+    let mut created = 0;
+    for (key, name_en, name_ar) in [
+        (logistics::hold::CLAIM_CATEGORY, "Claim", "مطالبة"),
+        (logistics::reweigh::DISPUTE_CATEGORY, "Billing", "الفوترة"),
+    ] {
+        if Category::by_key(db, key).await?.is_some() {
+            continue;
+        }
+        Category::create(
+            db,
+            Category {
+                key: key.to_owned(),
+                name_en: name_en.to_owned(),
+                name_ar: name_ar.to_owned(),
+                default_priority: Priority::Normal,
+                sla_policy_id: policy.as_ref().map(|p| p.id),
+                requires_signoff: false,
+                active: true,
+                ..Category::default()
+            },
+        )
+        .await?;
+        created += 1;
+    }
+    Ok(created)
 }
 
 /// M and N of a driver's e-POD entered after the stop (`PLT.ACL.10`): flagged

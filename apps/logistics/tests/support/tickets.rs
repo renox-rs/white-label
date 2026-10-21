@@ -11,6 +11,21 @@ use std::sync::{Arc, Mutex};
 use renox::prelude::*;
 use wl_kernel::tickets::{OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef};
 
+/// The categories a real 03 deployment has: the ones wl-ticketing seeds (the
+/// platform categories of the modules 03 turns on) and the two the host's
+/// `logistics:install` adds. Like `Ticket::open`, the desk refuses any other
+/// key, so a typo in a category fails a test here and not in production.
+pub const KNOWN_CATEGORIES: [&str; 8] = [
+    "general",
+    "task",
+    "confidential_task",
+    "billing_dispute",
+    "labour_case",
+    "delivery_claim",
+    "claim",
+    "billing",
+];
+
 /// The recording `TaskCreator`.
 #[derive(Clone, Default)]
 pub struct TicketDesk {
@@ -57,6 +72,12 @@ impl TaskCreator for TicketDesk {
         Box::pin(async move {
             if self.off.load(Ordering::SeqCst) {
                 return Ok(None);
+            }
+            if !KNOWN_CATEGORIES.contains(&ticket.category_key.trim()) {
+                return Err(abort(StatusCode::UNPROCESSABLE_ENTITY, format!(
+                    "`{}` is not a ticket category.",
+                    ticket.category_key
+                )));
             }
             let mut opened = self.opened.lock().unwrap();
             opened.push(ticket);

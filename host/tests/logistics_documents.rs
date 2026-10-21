@@ -861,3 +861,35 @@ async fn an_admin_sees_the_03_compliance_settings_and_a_member_does_not() {
     app.acting_as(&client);
     app.get("/settings/compliance").await.assert_forbidden();
 }
+
+/// BL-LOG-11 (#309), BL-LOG-06 (#304), BL-LOG-09: the claim ticket of a loss,
+/// disposal or hold and the re-weigh dispute open in a fresh 03 deployment.
+/// The app opens them in `hold::CLAIM_CATEGORY` and
+/// `reweigh::DISPUTE_CATEGORY`; the real wl-ticketing refuses a category it
+/// does not have, so a missing seed would end every claim as a failed ticket.
+#[renox::test]
+async fn the_claim_and_the_reweigh_dispute_open_in_the_real_ticket_desk() {
+    use wl_kernel::tickets::OpenTicket;
+    let app = logistics_booted().await;
+    let subject = Subject::new("logistics.shipment", 1);
+    for category in [
+        logistics::hold::CLAIM_CATEGORY,
+        logistics::reweigh::DISPUTE_CATEGORY,
+    ] {
+        let ticket = wl_ticketing::Tickets::open_at(
+            app.state(),
+            OpenTicket::new(subject.clone(), category, "A claim"),
+            renox::db::now(),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{category} is a ticket category of 03: {e:?}"));
+        assert!(ticket.id.0 > 0);
+    }
+    let refused = wl_ticketing::Tickets::open_at(
+        app.state(),
+        OpenTicket::new(subject, "no_such_category", "A claim"),
+        renox::db::now(),
+    )
+    .await;
+    assert!(refused.is_err(), "the real desk refuses an unknown category");
+}
