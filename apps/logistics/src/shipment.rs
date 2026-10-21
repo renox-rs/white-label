@@ -210,6 +210,17 @@ pub struct Shipment {
     pub claim_choice: Option<String>,
     /// The draft invoice that takes the claim credit back.
     pub claim_invoice_id: Option<i64>,
+    /// Why the goods were destroyed (BL-LOG-06).
+    pub disposal_reason: Option<String>,
+    /// The references of the photos of the goods, one per line.
+    pub disposal_photos: Option<String>,
+    /// The reference of the client's written instruction to destroy them.
+    pub disposal_instruction: Option<String>,
+    /// Whether the hub classed the goods as dangerous: the instruction is
+    /// then optional.
+    pub disposal_dangerous: bool,
+    /// When the shipment was disposed of.
+    pub disposed_at: Option<DateTime>,
     /// The lifecycle state; changed only by a transition.
     pub status: ShipmentStatus,
     /// When the row was created.
@@ -312,7 +323,9 @@ impl Shipment {
     /// The shipments of `client` a monthly invoice may bill: never a voided
     /// one, and none whose delivery is under review until the review is
     /// closed (`LOG.RUL.07`, BL-LOG-09), none that is lost (BL-LOG-11) and
-    /// none whose delivery was reversed until it is made again (BL-LOG-10);
+    /// none whose delivery was reversed until it is made again (BL-LOG-10),
+    /// and a disposed one only when the client caused the disposal
+    /// (BL-LOG-06);
     /// BL-LOG-20 adds the held and cancelled ones and wires this to the usage
     /// billing run.
     ///
@@ -320,7 +333,7 @@ impl Shipment {
     ///
     /// Database errors.
     pub async fn billable(db: &Db, client: PartyId) -> Result<Vec<Shipment>> {
-        wl_kernel::voids::exclude_voided(
+        let shipments = wl_kernel::voids::exclude_voided(
             Shipment::query()
                 .where_(Shipment::CLIENT_PARTY_ID.eq(client.0))
                 .where_(Shipment::STATUS.ne(ShipmentStatus::UnderReview))
@@ -332,7 +345,16 @@ impl Shipment {
         )
         .order_by(Shipment::ID)
         .get(db)
-        .await
+        .await?;
+        // A disposed shipment is billed only when the client caused it
+        // (`LOG.RUL.07`, BL-LOG-06).
+        Ok(shipments
+            .into_iter()
+            .filter(|shipment| {
+                shipment.status != ShipmentStatus::Disposed
+                    || shipment.liability.as_deref() == Some("client")
+            })
+            .collect())
     }
 }
 
@@ -496,6 +518,10 @@ pub mod charge_kind {
     /// The re-weigh surcharge (BL-LOG-04): the price on the measured values
     /// less the price on the weight received, once per shipment.
     pub const REWEIGH: &str = "reweigh";
+    /// The disposal charge of goods destroyed because of the client's
+    /// packing or contents (BL-LOG-06); 0 with a note when the rate card has
+    /// no disposal line.
+    pub const DISPOSAL: &str = "disposal";
 }
 
 /// A charge recorded for the client's next monthly invoice (`LOG.RUL.07`,
@@ -510,7 +536,7 @@ pub struct Charge {
     pub shipment_id: i64,
     /// The client charged.
     pub client_party_id: i64,
-    /// `cancellation`, `return` or `reweigh` ([`charge_kind`]).
+    /// `cancellation`, `return`, `reweigh` or `disposal` ([`charge_kind`]).
     pub kind: String,
     /// The amount, in fils.
     pub amount: i64,

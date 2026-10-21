@@ -571,6 +571,65 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("logistics.depot_scanned", "Scan recorded."),
     ("logistics.noted", "Note added."),
+    // Disposing of goods on the client's written instruction (`LOG.ACL.14`,
+    // BL-LOG-06).
+    (
+        "logistics.disposal.not_prepared",
+        "A disposal is requested with its reason, photos, instruction and liability.",
+    ),
+    (
+        "logistics.disposal.reason_needed",
+        "Give the reason the goods are destroyed.",
+    ),
+    (
+        "logistics.disposal.photo_needed",
+        "Add at least one photo of the goods.",
+    ),
+    (
+        "logistics.disposal.instruction_needed",
+        "Attach the client's written instruction, or tick that the goods are dangerous.",
+    ),
+    (
+        "logistics.disposal.liability_needed",
+        "Choose who bears the disposal: the client, the business or no one.",
+    ),
+    (
+        "logistics.disposal.no_price",
+        "No disposal price for client {{ client }}: charged AED 0.",
+    ),
+    (
+        "logistics.disposal.delivery_reason",
+        "Shipment disposed of",
+    ),
+    (
+        "logistics.disposal.claim_title",
+        "Claim: shipment {{ number }} was destroyed",
+    ),
+    (
+        "logistics.disposal.claim_description",
+        "Shipment {{ number }} was destroyed ({{ reason }}) and the company is liable.",
+    ),
+    (
+        "logistics.disposal.accountant_title",
+        "No disposal price for shipment {{ number }}",
+    ),
+    (
+        "logistics.disposal.accountant_description",
+        "Shipment {{ number }} was destroyed because of the client and the client's prices have no disposal line, so AED 0 is on the next invoice. Add the charge by hand if one is due.",
+    ),
+    (
+        "logistics.disposal.title",
+        "Shipment {{ number }} was disposed of",
+    ),
+    (
+        "logistics.disposal.body",
+        "Shipment {{ number }} was destroyed as instructed. It will not be delivered.",
+    ),
+    ("logistics.disposed", "Shipment disposed of."),
+    (
+        "logistics.disposal_requested",
+        "The request waits for an operations manager other than you to approve it.",
+    ),
     // A reversed delivery (`WRK.ACL.10`, `LOG.ACL.12`, BL-LOG-10).
     (
         "logistics.reversal.event_needed",

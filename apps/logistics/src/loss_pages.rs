@@ -17,8 +17,10 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 
 use crate::booking::parse_dirhams;
+use crate::disposal::{DisposalInput, DisposeRequest};
+use crate::hold::NewHold;
 use crate::loss;
-use crate::pages::{Fields, field};
+use crate::pages::{Fields, checked, field};
 use crate::trace::{self, LostRequest};
 use crate::texts::{english, t};
 
@@ -88,7 +90,10 @@ async fn claim_settled(
     back_to(&lang, "logistics.loss_claim_settled", id)
 }
 
-/// `POST /shipments/{id}/claim-choice`: `choice` (`delivery` or `keep`).
+/// `POST /shipments/{id}/claim-choice`: `choice` (`delivery` or `keep`). With
+/// `keep`, `then=dispose` carries it out as a disposal on the client's
+/// instruction, with the fields of `POST /shipments/{id}/dispose`; the
+/// disposal then waits for an operations manager's approval.
 async fn claim_choice(
     State(state): State<AppState>,
     user: AuthUser,
@@ -96,7 +101,25 @@ async fn claim_choice(
     Path(id): Path<i64>,
     Form(form): Fields,
 ) -> Result<Response> {
-    loss::choose(&state, &user, id, &field(&form, "choice"))
+    let choice = field(&form, "choice");
+    if choice.trim() == loss::CHOICE_KEEP && field(&form, "then").trim() == "dispose" {
+        let input = DisposalInput {
+            reason: field(&form, "reason"),
+            photos: NewHold::photos_in(&field(&form, "photos")),
+            instruction: Some(field(&form, "instruction")),
+            dangerous: checked(&form, "dangerous"),
+            liability: field(&form, "liability"),
+        };
+        let asked = loss::choose_keep_and_dispose(&state, &user, id, &input)
+            .await
+            .map_err(answer)?;
+        let key = match asked {
+            DisposeRequest::Disposed => "logistics.disposed",
+            DisposeRequest::Requested(_) => "logistics.disposal_requested",
+        };
+        return back_to(&lang, key, id);
+    }
+    loss::choose(&state, &user, id, &choice)
         .await
         .map_err(answer)?;
     back_to(&lang, "logistics.loss_claim_chosen", id)

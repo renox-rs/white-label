@@ -354,6 +354,22 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("logistics.screen.liability_business", "The business"),
     ("logistics.screen.liability_client", "The client"),
     ("logistics.screen.liability_none", "No one"),
+    ("logistics.screen.dispose", "Dispose"),
+    ("logistics.screen.dispose_title", "Request that the goods are disposed of"),
+    (
+        "logistics.screen.dispose_description",
+        "The goods are destroyed on the client's written instruction, after an operations manager other than you approves. Until then the shipment stays on hold.",
+    ),
+    ("logistics.screen.disposal_instruction", "The client's written instruction"),
+    (
+        "logistics.screen.disposal_instruction_hint",
+        "The reference of the attached e-mail or letter. Not needed for dangerous goods.",
+    ),
+    ("logistics.screen.dangerous", "The goods are dangerous"),
+    ("logistics.screen.disposal_liability", "Who bears the disposal"),
+    ("logistics.screen.disposal_liability_client", "The client (charged)"),
+    ("logistics.screen.disposal_liability_business", "The business (claim)"),
+    ("logistics.screen.disposal_liability_none", "No one"),
     ("logistics.screen.depot_scan", "Scan at a depot"),
     ("logistics.screen.depot_scan_title", "Scan at a depot"),
     (

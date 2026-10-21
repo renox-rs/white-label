@@ -260,6 +260,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_VOID,
             log::SHIPMENTS_CANCEL,
             log::SHIPMENTS_APPROVE_LOSS,
+            log::SHIPMENTS_APPROVE_DISPOSAL,
             log::REMITTANCES_VIEW,
             log::REMITTANCES_PREPARE,
             log::REMITTANCES_APPROVE,
@@ -833,6 +834,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_VOID,
             log::SHIPMENTS_CANCEL,
             log::SHIPMENTS_APPROVE_LOSS,
+            log::SHIPMENTS_APPROVE_DISPOSAL,
         ],
     ),
     (

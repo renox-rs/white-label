@@ -28,6 +28,24 @@ pub async fn unbilled_surcharges(db: &Db, client: PartyId) -> Result<Vec<Charge>
         .await
 }
 
+/// The disposal charges of `client` still to be billed on its next draft:
+/// the shipments destroyed because of the client (`LOG.RUL.07`, BL-LOG-06),
+/// not on an invoice yet.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn unbilled_disposals(db: &Db, client: PartyId) -> Result<Vec<Charge>> {
+    Charge::query()
+        .where_(Charge::CLIENT_PARTY_ID.eq(client.0))
+        .where_(Charge::KIND.eq(charge_kind::DISPOSAL))
+        .where_(Charge::HELD.eq(false))
+        .where_(Charge::BILLED_ON.is_null())
+        .order_by(Charge::ID)
+        .get(db)
+        .await
+}
+
 /// Marks the charge lines `ids` as billed `at` (the draft they went on).
 ///
 /// # Errors

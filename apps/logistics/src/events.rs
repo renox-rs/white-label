@@ -43,7 +43,7 @@ use wl_kernel::{Subject, voids};
 use crate::notices::tell_client;
 use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentDelivered, ShipmentStatus, track};
 use crate::shipment_machine::{
-    CANCEL, CANCEL_RETURN, CLOSE_REVIEW, DELIVER, DISPATCH, FAIL_ATTEMPT, FOUND, FOUND_SYSTEM, HOLD,
+    CANCEL, CANCEL_RETURN, CLOSE_REVIEW, DELIVER, DISPATCH, DISPOSE, DISPOSE_APPROVED, FAIL_ATTEMPT, FOUND, FOUND_SYSTEM, HOLD,
     HOLD_SYSTEM, MARK_LOST, MARK_LOST_APPROVED, MARK_LOST_SYSTEM, OPEN_REVIEW, PICK_UP, RECEIVE_AT_HUB, RELEASE, RETURN, REVERSE_DELIVERY,
     REVERSE_DELIVERY_ON_ROAD, ShipmentInput,
 };
@@ -79,7 +79,7 @@ async fn follow(
 }
 
 /// Cancels the open delivery of `shipment`, when it has one.
-async fn cancel_delivery(state: &AppState, shipment: &Shipment, reason: &str) -> Result {
+pub(crate) async fn cancel_delivery(state: &AppState, shipment: &Shipment, reason: &str) -> Result {
     let Some(id) = shipment.delivery_id else {
         return Ok(());
     };
@@ -333,6 +333,11 @@ pub(crate) fn register(app: &mut Registry) {
                     hold_delivery(&state, event.key, true).await?;
                 }
                 return crate::loss::settled(&state, event.key).await;
+            }
+            if name == DISPOSE || name == DISPOSE_APPROVED {
+                // The held delivery is cancelled, the claim opened and the
+                // client told (BL-LOG-06).
+                return crate::disposal::settled(&state, event.key).await;
             }
             if name == FOUND || name == FOUND_SYSTEM {
                 hold_delivery(&state, event.key, false).await?;

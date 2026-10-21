@@ -126,6 +126,19 @@ their own issues.
   company admin) other than the requester decides; a scan or note after the
   request fails it at the final approval. The effects are those of a loss on a
   delivery.
+- **Disposal** (`disposal`, `LOG.ACL.14`, `LOG.RUL.07`): a user with
+  `shipments.manage` requests `dispose` on an `on_hold` shipment with a reason,
+  a photo, the reference of the client's written instruction (not needed when
+  *dangerous* is ticked) and a liability (*client*, *business* or *none*). The
+  kernel defers it as an approval that a holder of
+  `shipments.approve_disposal` other than the requester decides, also for
+  dangerous goods; the shipment stays `on_hold` while it waits and after a
+  rejection. On approval it is `disposed`, expects no COD, its delivery is
+  cancelled and the client is told. *Business* opens one claim ticket;
+  *client* records a disposal charge from the client's prices (AED 0 and a
+  task for the accountant without a disposal line) and the shipment stays
+  billable; *none* records the liability only. After a settled claim, *keep the
+  settlement* with `then=dispose` on `/claim-choice` makes the same request.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
@@ -141,7 +154,7 @@ the reason when refused.
 ## Permissions
 
 `shipments.view`, `.book`, `.manage`, `.scan`, `.deliver`, `.void`,
-`.cancel` and `.approve_loss`, and `remittances.view`, `.prepare`, `.approve` and `.pay`
+`.cancel`, `.approve_loss` and `.approve_disposal`, and `remittances.view`, `.prepare`, `.approve` and `.pay`
 (`permissions`). The host maps them to the operations manager, the
 dispatcher, hub staff, the driver and the client user, and the remittances to
 the accountant.

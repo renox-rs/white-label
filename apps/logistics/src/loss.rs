@@ -24,7 +24,8 @@
 //!   and the system holds the shipment (`hold_system`, *client instruction*)
 //!   until the client chooses ([`choose`]): *delivery* drafts an invoice for
 //!   the claim credit and releases the shipment, *keep the settlement* sends
-//!   it back to the client.
+//!   it back to the client, or, as the client instructs, disposes of it
+//!   ([`choose_keep_and_dispose`], BL-LOG-06).
 
 use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
@@ -36,6 +37,7 @@ use wl_kernel::tickets::{self, TaskComment, TicketId};
 
 use crate::claim;
 use crate::credit;
+use crate::disposal::{DisposalInput, DisposeRequest};
 use crate::hold;
 use crate::notices::tell_client;
 use crate::permissions;
@@ -430,18 +432,9 @@ pub async fn settle_claim(
     load(state, id).await
 }
 
-/// `user` (`shipments.manage`, for the client) records the client's choice for
-/// the shipment `id`, held after the goods were found following a settled
-/// claim: `delivery` drafts the invoice that takes the claim credit back and
-/// releases the shipment; `keep` sends the goods back to the client (disposal
-/// on the client's instruction is BL-LOG-06).
-///
-/// # Errors
-///
-/// `Forbidden` without `shipments.manage`; `Guard` (422) unless the shipment
-/// is held for the client's instruction after a settled claim, or for an
-/// unknown choice.
-pub async fn choose(
+/// The checks of the client's choice for the held shipment `id`: staff acts,
+/// the shipment waits for the choice, and the choice is known.
+async fn choice_due(
     state: &AppState,
     user: &AuthUser,
     id: i64,
@@ -458,10 +451,20 @@ pub async fn choose(
     if !waiting {
         return Err(guard(english("logistics.loss.no_choice_due", &[])));
     }
-    let choice = choice.trim();
     if choice != CHOICE_DELIVERY && choice != CHOICE_KEEP {
         return Err(guard(english("logistics.loss.choice_unknown", &[])));
     }
+    Ok(shipment)
+}
+
+/// Records the client's `choice` on `shipment` as the hold's instruction.
+async fn record_choice(
+    state: &AppState,
+    user: &AuthUser,
+    shipment: &Shipment,
+    choice: &str,
+) -> std::result::Result<(), TransitionError> {
+    let id = shipment.id;
     let chosen = Some(choice.to_owned());
     Shipment::query()
         .where_(Shipment::ID.eq(id))
@@ -473,6 +476,30 @@ pub async fn choose(
         &[("amount", &aed(shipment.claim_settled_amount))],
     );
     hold::record_instruction(state, user, id, &note).await?;
+    Ok(())
+}
+
+/// `user` (`shipments.manage`, for the client) records the client's choice for
+/// the shipment `id`, held after the goods were found following a settled
+/// claim: `delivery` drafts the invoice that takes the claim credit back and
+/// releases the shipment; `keep` sends the goods back to the client (a
+/// disposal on the client's instruction is
+/// [`choose_keep_and_dispose`]).
+///
+/// # Errors
+///
+/// `Forbidden` without `shipments.manage`; `Guard` (422) unless the shipment
+/// is held for the client's instruction after a settled claim, or for an
+/// unknown choice.
+pub async fn choose(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    choice: &str,
+) -> std::result::Result<Shipment, TransitionError> {
+    let choice = choice.trim();
+    let shipment = choice_due(state, user, id, choice).await?;
+    record_choice(state, user, &shipment, choice).await?;
     if choice == CHOICE_DELIVERY {
         // The claim credit is reversed by an invoice (§4.4 step 4).
         let draft = InvoiceDraft::new(shipment.client(), shipment.subject()).line(
@@ -503,4 +530,27 @@ pub async fn choose(
     } else {
         hold::send_back(state, user, id).await
     }
+}
+
+/// `user` (`shipments.manage`) records the client's choice *keep the
+/// settlement* for the shipment `id` and, as the client instructed, asks to
+/// dispose of the goods instead of returning them (03 §4.4 step 4). The
+/// disposal is the same request as [`crate::disposal::request`]: it waits for
+/// an operations manager's approval and the shipment stays held until then.
+/// The request is checked first, so a refused one records nothing.
+///
+/// # Errors
+///
+/// As [`choose`], and `Guard` (422) when the disposal lacks a reason, a photo,
+/// the client's instruction (unless dangerous) or a liability.
+pub async fn choose_keep_and_dispose(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    disposal: &DisposalInput,
+) -> std::result::Result<DisposeRequest, TransitionError> {
+    let shipment = choice_due(state, user, id, CHOICE_KEEP).await?;
+    crate::disposal::check(Some(disposal)).map_err(guard)?;
+    record_choice(state, user, &shipment, CHOICE_KEEP).await?;
+    crate::disposal::request(state, user, id, disposal).await
 }

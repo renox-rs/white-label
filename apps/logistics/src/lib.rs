@@ -8,6 +8,7 @@ pub mod cancel;
 mod claim;
 pub mod cod;
 mod credit;
+pub mod disposal;
 mod events;
 pub mod hold;
 pub mod loss;
@@ -69,6 +70,7 @@ impl Module for Logistics {
             .merge(cod::routes())
             .merge(reversal_pages::routes())
             .merge(loss_pages::routes())
+            .merge(disposal::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -121,6 +123,8 @@ impl Module for Logistics {
         remit::register(app);
         // `LOG.RUL.12`, daily at 02:00, and the approval of `LOG.ACL.14`.
         trace::register(app);
+        // The approval of `LOG.ACL.14` for disposal.
+        disposal::register();
         // The shipment's machine, and its place in the kernel's void pattern.
         voiding::register();
         // The shipment follows its delivery and cancels it.

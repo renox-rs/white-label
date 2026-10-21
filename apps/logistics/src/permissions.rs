@@ -27,6 +27,11 @@ pub const SHIPMENTS_CANCEL: &str = "shipments.cancel";
 /// The requester never approves.
 pub const SHIPMENTS_APPROVE_LOSS: &str = "shipments.approve_loss";
 
+/// Approve a request to dispose of a held shipment (`LOG.ACL.14`): the
+/// operations manager, and the company admin, who holds every permission.
+/// The requester never approves.
+pub const SHIPMENTS_APPROVE_DISPOSAL: &str = "shipments.approve_disposal";
+
 /// See COD remittances, their lines and their statements (`LOG.COD.01`).
 pub const REMITTANCES_VIEW: &str = "remittances.view";
 /// Build a draft COD remittance and prepare adjustment lines on it
@@ -48,6 +53,7 @@ pub const ALL: &[&str] = &[
     SHIPMENTS_VOID,
     SHIPMENTS_CANCEL,
     SHIPMENTS_APPROVE_LOSS,
+    SHIPMENTS_APPROVE_DISPOSAL,
     REMITTANCES_VIEW,
     REMITTANCES_PREPARE,
     REMITTANCES_APPROVE,

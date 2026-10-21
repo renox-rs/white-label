@@ -18,6 +18,7 @@
 //! picked_up | at_hub | on_hold | returning --mark_lost (approved)--> lost
 //! out_for_delivery | attempted | under_review | (the above) --mark_lost_system--> lost
 //! lost --found (scan, or system on DeliveryFound)--> at_hub
+//! on_hold --dispose (approved)--> disposed
 //! ```
 //!
 //! Every state of §7.1 is declared with its tone, so the diagram is whole;
@@ -39,6 +40,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::voids;
 
 use crate::permissions;
+use crate::disposal::{self, DisposalInput};
 use crate::loss::{self, LossInput};
 use crate::rates;
 use crate::reversal::ReversalInput;
@@ -99,6 +101,11 @@ pub const MARK_LOST_SYSTEM: &str = "mark_lost_system";
 pub const FOUND: &str = "found";
 /// `found`, run by the system on `DeliveryFound`.
 pub const FOUND_SYSTEM: &str = "found_system";
+/// `dispose`: on_hold → disposed, a user's request that the kernel defers
+/// into an approval (`LOG.ACL.14`, BL-LOG-06).
+pub const DISPOSE: &str = "dispose";
+/// `dispose`, run by the kernel once the request is approved.
+pub const DISPOSE_APPROVED: &str = "dispose_approved";
 /// `void`: created → voided (the kernel's void pattern).
 pub const VOID: &str = voids::VOID;
 
@@ -169,6 +176,10 @@ pub struct ShipmentInput {
     /// The depot where the goods were scanned (`found`).
     #[serde(default)]
     pub depot: Option<String>,
+    /// The reason, photos, instruction and liability of a disposal
+    /// (`dispose`).
+    #[serde(default)]
+    pub disposal: Option<DisposalInput>,
 }
 
 /// A parcel the recipient refused, with the refusal reason's code.
@@ -849,6 +860,34 @@ fn found(name: &'static str) -> Transition<Shipment> {
     })
 }
 
+/// `dispose` (§7.1, `LOG.ACL.14`): `name` is the user's request, or the run
+/// the kernel makes once it is approved. Both need a reason, a photo, the
+/// client's written instruction (unless the goods are dangerous) and a
+/// liability, and run only from `on_hold`. The effects are shared
+/// ([`crate::disposal`]).
+fn dispose(name: &'static str) -> Transition<Shipment> {
+    let transition = Transition::new(name)
+        .label("Dispose")
+        .tone("danger")
+        .from([ShipmentStatus::OnHold])
+        .to(ShipmentStatus::Disposed)
+        .guard("reason_photo_instruction_and_liability", |_s: &Shipment, ctx| {
+            let checked = disposal::check(input_of(ctx).disposal.as_ref());
+            Box::pin(async move { checked })
+        });
+    let transition = if name == DISPOSE {
+        transition.permission(permissions::SHIPMENTS_MANAGE)
+    } else {
+        transition.system()
+    };
+    transition.effect(|shipment: &Shipment, ctx, tx| {
+        let shipment = shipment.clone();
+        let input = input_of(ctx).disposal.unwrap_or_default();
+        let actor = ctx.actor().map(|user| user.id);
+        Box::pin(async move { disposal::record(&mut *tx, &shipment, &input, actor).await })
+    })
+}
+
 /// What `void` adds to the kernel's guards (BL-LOG-01): no parcel scanned
 /// (`PLT.ACL.09`: a safety check for a scan recorded without a state
 /// change), and a client user voids only the shipment they booked
@@ -905,6 +944,8 @@ pub fn transitions() -> Vec<Transition<Shipment>> {
         mark_lost(MARK_LOST_SYSTEM),
         found(FOUND),
         found(FOUND_SYSTEM),
+        dispose(DISPOSE),
+        dispose(DISPOSE_APPROVED),
     ];
     all.extend(
         voids::transitions::<Shipment, _>(SUBJECT_TYPE, [Created])
@@ -991,6 +1032,8 @@ mod tests {
             MARK_LOST_SYSTEM,
             FOUND,
             FOUND_SYSTEM,
+            DISPOSE,
+            DISPOSE_APPROVED,
             voids::VOID,
             voids::VOID_APPROVED,
         ] {
@@ -1008,6 +1051,8 @@ mod tests {
         assert!(machine.find(MARK_LOST_SYSTEM).unwrap().is_system());
         assert!(!machine.find(MARK_LOST).unwrap().is_system());
         assert!(machine.find(FOUND_SYSTEM).unwrap().is_system());
+        assert!(machine.find(DISPOSE_APPROVED).unwrap().is_system());
+        assert!(!machine.find(DISPOSE).unwrap().is_system());
         assert!(machine.find(REVERSE_DELIVERY).unwrap().is_system());
         assert!(machine.find(REVERSE_DELIVERY_ON_ROAD).unwrap().is_system());
     }

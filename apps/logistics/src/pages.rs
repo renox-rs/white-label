@@ -290,6 +290,8 @@ pub(crate) struct ShowPage {
     can_cod_instruction: bool,
     can_found: bool,
     can_mark_lost: bool,
+    can_dispose: bool,
+    disposal_liabilities: Vec<[String; 2]>,
     can_depot_scan: bool,
     can_note: bool,
     liabilities: Vec<[String; 2]>,
@@ -437,6 +439,19 @@ async fn show(
         can_cod_instruction: manages && shipment.status == OutForDelivery,
         can_found: scans && shipment.status == ShipmentStatus::Lost,
         can_mark_lost: manages && crate::trace::requestable(shipment.status),
+        can_dispose: manages && crate::disposal::requestable(shipment.status),
+        disposal_liabilities: crate::disposal::LIABILITIES
+            .iter()
+            .map(|liability| {
+                [
+                    (*liability).to_owned(),
+                    t(
+                        &lang,
+                        &format!("logistics.screen.disposal_liability_{liability}"),
+                    ),
+                ]
+            })
+            .collect(),
         can_depot_scan: scans
             && matches!(shipment.status, PickedUp | AtHub | OnHold | Returning),
         can_note: manages
@@ -800,7 +815,7 @@ async fn dispute_delivery(
 }
 
 /// Whether a checkbox of the form is ticked.
-fn checked(form: &BTreeMap<String, String>, name: &str) -> bool {
+pub(crate) fn checked(form: &BTreeMap<String, String>, name: &str) -> bool {
     matches!(field(form, name).trim(), "1" | "true" | "on")
 }
 

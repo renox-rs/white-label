@@ -89,6 +89,14 @@
         <rx-textarea name="reason" :label="tx['reason']" :id="'mark-lost-reason-' ~ shipment.id" required/>
         <rx-select name="liability" :label="tx['liability']" :id="'mark-lost-liability-' ~ shipment.id" :selected="'none'" :options="liabilities"/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_dispose" :id="'dispose-' ~ shipment.id" :label="tx['dispose']" :action="route('logistics.shipment_dispose', shipment.id)"
+                       :title="tx['dispose_title']" :description="tx['dispose_description']" :submit-label="tx['dispose']" icon="trash-2" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['reason']" :id="'dispose-reason-' ~ shipment.id" required/>
+        <rx-textarea name="photos" :label="tx['photos']" :placeholder="tx['photos_hint']" :id="'dispose-photos-' ~ shipment.id" required/>
+        <rx-input name="instruction" :label="tx['disposal_instruction']" :placeholder="tx['disposal_instruction_hint']" :id="'dispose-instruction-' ~ shipment.id"/>
+        <rx-checkbox name="dangerous" :label="tx['dangerous']" :id="'dispose-dangerous-' ~ shipment.id"/>
+        <rx-select name="liability" :label="tx['disposal_liability']" :id="'dispose-liability-' ~ shipment.id" :selected="'none'" :options="disposal_liabilities"/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_depot_scan" :id="'depot-scan-' ~ shipment.id" :label="tx['depot_scan']" :action="route('logistics.shipment_depot_scan', shipment.id)"
                        :title="tx['depot_scan_title']" :description="tx['depot_scan_description']" :submit-label="tx['depot_scan']" icon="scan-line">
         <rx-input name="depot" :label="tx['depot']" :id="'depot-scan-depot-' ~ shipment.id" required/>
