@@ -398,6 +398,50 @@ async fn reassign_to_a_lapsing_resource_is_refused() {
     );
 }
 
+/// Done when 4, `reassign`, through the route: staff who pick a resource whose
+/// licence ends before the start get a refusal that names the expiry and the
+/// booking stays with Dr A; once Dr B holds the licence the route moves it.
+#[renox::test]
+async fn the_reassign_route_refuses_a_lapsing_resource_and_names_the_expiry() {
+    let t = boot_hr().await;
+    let (a, b, service) = two_doctors(&t).await;
+    let desk = t.front_desk().await;
+    let booking = t
+        .booking(&service, &[&a], dubai(&day(24).to_string(), 10, 0))
+        .await;
+    licence_until(&t, &b, day(19));
+    t.app.acting_as(&desk);
+    let form = [
+        ("from", a.id.to_string()),
+        ("to", b.id.to_string()),
+        ("reason_code", "resource_unavailable".to_owned()),
+    ];
+    let fields: Vec<(&str, &str)> = form.iter().map(|(k, v)| (*k, v.as_str())).collect();
+
+    t.app
+        .htmx()
+        .post(&path(booking.id, "reassign"), &fields)
+        .await
+        .assert_status(422)
+        .assert_see(&said(day(19)));
+    assert_eq!(
+        t.reload(booking.id).await.resource_ids(t.db()).await.unwrap(),
+        vec![a.id]
+    );
+    assert!(t.events.reassigned.all().is_empty());
+
+    licence_until(&t, &b, day(400));
+    t.app
+        .htmx()
+        .post(&path(booking.id, "reassign"), &fields)
+        .await
+        .assert_status(303);
+    assert_eq!(
+        t.reload(booking.id).await.resource_ids(t.db()).await.unwrap(),
+        vec![b.id]
+    );
+}
+
 /// A licence that is missing altogether is named as missing, and a service
 /// that requires nothing is not refused.
 #[renox::test]
