@@ -117,6 +117,9 @@ pub struct PendingIssue {
     pub cost_object_type: Option<String>,
     /// The id of the cost object charged.
     pub cost_object_id: Option<i64>,
+    /// The consumption was derived from a recipe or bill of materials
+    /// without a scan; the movement that posts it is theoretical too.
+    pub theoretical: bool,
     /// When it was recorded.
     pub recorded_at: DateTime,
     /// The lifecycle state; changed only by a transition.
@@ -229,6 +232,7 @@ async fn consume_in(
     moved.moved_at = at;
     moved.cost_object_type = pending.cost_object_type.clone();
     moved.cost_object_id = pending.cost_object_id;
+    moved.theoretical = pending.theoretical;
     moved.insert(&mut *tx).await?;
     Ok(())
 }
@@ -412,6 +416,7 @@ pub(crate) async fn record_in(
     short_milli: i64,
     source: &Subject,
     cost_object: Option<&Subject>,
+    theoretical: bool,
     at: DateTime,
 ) -> Result<PendingIssue> {
     let mut pending = PendingIssue {
@@ -424,6 +429,7 @@ pub(crate) async fn record_in(
         source_id: source.subject_id,
         cost_object_type: cost_object.map(|c| c.subject_type.clone()),
         cost_object_id: cost_object.map(|c| c.subject_id),
+        theoretical,
         recorded_at: at,
         status: PendingStatus::Open,
         ..PendingIssue::default()

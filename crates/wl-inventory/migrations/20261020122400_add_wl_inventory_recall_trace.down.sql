@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS "wl_inventory_recall_lines_subject";
+DROP INDEX IF EXISTS "wl_inventory_recall_lines_key";
+DROP TABLE IF EXISTS "wl_inventory_recall_lines";
+ALTER TABLE "wl_inventory_recalls" DROP COLUMN report;
+ALTER TABLE "wl_inventory_recalls" DROP COLUMN closed_by;
+ALTER TABLE "wl_inventory_recalls" DROP COLUMN closed_at;
+ALTER TABLE "wl_inventory_recalls" DROP COLUMN trace_runs;
+ALTER TABLE "wl_inventory_recalls" DROP COLUMN traced_at;
+ALTER TABLE "wl_inventory_pending_issues" DROP COLUMN theoretical;
+ALTER TABLE "wl_inventory_stock_movements" DROP COLUMN theoretical;

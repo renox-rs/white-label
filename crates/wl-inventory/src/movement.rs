@@ -80,6 +80,10 @@ pub struct StockMovement {
     pub source_id: i64,
     /// Why, when it needs a reason.
     pub reason: Option<String>,
+    /// Consumption derived from a recipe or bill of materials without a
+    /// scan: the lot keeps the lot balances right but proves nothing about
+    /// what was used (a recall trace lists it as *possible*).
+    pub theoretical: bool,
     /// The user who caused it; `None` for the system.
     pub user_id: Option<i64>,
     /// When it happened.

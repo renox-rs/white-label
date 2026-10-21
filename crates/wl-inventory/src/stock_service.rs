@@ -226,6 +226,7 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
             .as_ref()
             .map(|subject| subject.subject_type.clone());
         moved.cost_object_id = request.cost_object.as_ref().map(|subject| subject.subject_id);
+        moved.theoretical = request.theoretical;
         moved.insert(&mut tx).await?;
         posted += quantity;
     }
@@ -238,6 +239,7 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
                 short,
                 &request.source,
                 request.cost_object.as_ref(),
+                request.theoretical,
                 at,
             )
             .await?,
