@@ -223,6 +223,29 @@ async fn the_limits_are_stored_policies() {
     );
 }
 
+/// A payer write-off policy that is still wl-invoicing's default (a database
+/// made before the clinic's seed) is brought to the owner by the invoicing
+/// part of the install, whether or not scheduling is on.
+#[renox::test]
+async fn the_payer_write_off_policy_follows_invoicing_not_scheduling() {
+    let app = clinics_booted().await;
+    let default = Step::one_of(["admin"]).or_permission("payer_bills.write_off");
+    let mut policy = ApprovalPolicy::query()
+        .where_(ApprovalPolicy::ACTION.eq("invoicing.payer_write_off"))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("the policy is stored");
+    policy.steps = renox::db::Json(vec![default]);
+    policy.save(app.db()).await.unwrap();
+
+    host::clinics_seed::install_for(app.state(), &|module| module == "invoicing")
+        .await
+        .unwrap();
+    let again = ApprovalPolicy::find_or_404(app.db(), policy.id).await.unwrap();
+    assert_eq!(again.steps.0, [Step::one_of(["owner", "admin"])]);
+}
+
 // ---- claims ---------------------------------------------------------------------
 
 /// A draft payer bill of `claimed` fils under `agreement` for visit `visit`,

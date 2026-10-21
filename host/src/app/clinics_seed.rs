@@ -426,12 +426,23 @@ impl Installed {
 ///
 /// The database's errors.
 pub async fn install(state: &AppState) -> Result<Installed> {
-    let mut installed = Installed::default();
     let manifest = state.provided::<Arc<Manifest>>();
-    let on = |name: &str| manifest.as_ref().is_some_and(|m| m.is_enabled(name));
+    install_for(state, &|name: &str| {
+        manifest.as_ref().is_some_and(|m| m.is_enabled(name))
+    })
+    .await
+}
+
+/// [`install`] for the modules `on` says are enabled: each step runs only
+/// when the module it belongs to is on.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn install_for(state: &AppState, on: &(dyn Fn(&str) -> bool + Sync)) -> Result<Installed> {
+    let mut installed = Installed::default();
     if on("scheduling") {
         installed.service_types = install_service_types(state).await?;
-        keep_write_off_with_the_owner(state).await?;
     }
     if on("hr") {
         installed.checklists = install_checklists(&state.db).await?;
@@ -445,6 +456,8 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     if on("invoicing") {
         installed.budget_categories =
             super::clinics_money::install_budget_categories(&state.db).await?;
+        // The payer write-off policy belongs to invoicing, not scheduling.
+        keep_write_off_with_the_owner(state).await?;
     }
     if on("sales") {
         installed.loyalty = install_loyalty(&state.db).await?;
