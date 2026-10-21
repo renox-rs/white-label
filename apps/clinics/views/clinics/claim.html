@@ -48,6 +48,12 @@
           </rx-stack>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_write_off">
+        <rx-action-sheet :id="'claim-write-off-' ~ id" :label="tx['claim.write_off']" :action="route('clinics.claim_write_off', id)"
+                         :title="tx['claim.write_off']" :description="tx['claim.write_off_description']" :submit-label="tx['claim.write_off']" icon="x">
+          <rx-textarea name="reason" :label="tx['claim.close_reason']" :id="'claim-write-off-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_resubmit">
         <rx-action-sheet :id="'claim-resubmit-' ~ id" :label="tx['claim.resubmit']" :action="route('clinics.claim_resubmit', id)"
                          :title="tx['claim.resubmit']" :description="tx['claim.resubmit_description']" :submit-label="tx['claim.resubmit']" icon="send">
@@ -70,6 +76,7 @@
         <rx-entry :label="tx['claim.paid']" :value="paid"/>
         <rx-entry :label="tx['claim.denied']" :value="denied"/>
         <rx-entry :label="tx['claim.written_off']" :value="written_off"/>
+        <rx-entry :label="tx['claim.closed']" :value="closed"/>
         <rx-entry :label="tx['claim.resubmissions']" :value="resubmissions"/>
         <rx-entry :label="tx['claim.submission_reference']" :value="submission_reference"/>
         <rx-entry :label="tx['claim.submitted_on']" :value="submitted_on"/>

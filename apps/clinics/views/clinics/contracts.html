@@ -29,6 +29,13 @@
           <rx-select name="covered" :label="tx['contract.covered']" :options="covered_options" :selected="'yes'" id="contract-tariff-covered"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_set_missed_billing">
+        <rx-action-sheet id="contract-missed-window" :label="tx['contract.missed_billing']" :action="route('clinics.contract_missed_window')"
+                         :title="tx['contract.missed_billing']" :description="tx['contract.missed_billing_description']" :submit-label="tx['contract.missed_billing']" icon="receipt">
+          <rx-select name="contract" :label="tx['contract.contract']" :options="contract_options" :selected="contract_selected" id="contract-missed-contract"/>
+          <rx-select name="allowed" :label="tx['contract.missed_billing']" :options="allowed_options" :selected="'no'" id="contract-missed-allowed"/>
+        </rx-action-sheet>
+      </template>
     </rx-page-header>
     <rx-table :rows="contracts" as="row" :key="row.id" :caption="tx['contract.title']" card>
       <rx-column :label="tx['policies.payer']">{{ row.payer }}</rx-column>
@@ -39,6 +46,7 @@
       <rx-column :label="tx['contract.valid_from']" hide-narrow>{{ row.valid_from }}</rx-column>
       <rx-column :label="tx['contract.valid_to']" hide-narrow>{{ row.valid_to }}</rx-column>
       <rx-column :label="tx['contract.windows']" hide-narrow>{{ row.windows }}</rx-column>
+      <rx-column :label="tx['contract.missed_billing']" hide-narrow>{{ row.missed_billing }}</rx-column>
       <rx-column :label="tx['contract.tariffs']" hide-narrow>{{ row.tariffs }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['contract.empty']" icon="receipt"/></rx-slot>
     </rx-table>

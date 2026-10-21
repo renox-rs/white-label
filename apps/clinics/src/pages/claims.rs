@@ -10,6 +10,7 @@
 //! | `POST /clinics/claims/{id}/resubmit` | `clinics.claim_resubmit` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/remittance` | `clinics.claim_remittance` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/recoupment` | `clinics.claim_recoupment` | `claims.manage` |
+//! | `POST /clinics/claims/{id}/write-off` | `clinics.claim_write_off` | `claims.writeoff` |
 //!
 //! The pages only read the form and call the services of
 //! [`crate::claims`] and [`crate::claim_money`]; the transitions are the
@@ -33,6 +34,7 @@ use crate::claim::{
     AnswerKind, AttemptKind, Claim, ClaimAttempt, ClaimError, ClaimLine, ClaimRemittance,
     ClaimStatus,
 };
+use crate::claim_closing::{self, Closed};
 use crate::claim_money::{self, Advice, AdviceLine, Recorded, Takeback};
 use crate::claims::{self, attempt_deadline, resubmission_deadline};
 use crate::contract::PayerContract;
@@ -59,6 +61,8 @@ pub fn routes() -> Routes {
         .name("clinics.claim_remittance")
         .post("/clinics/claims/{id}/recoupment", recoupment)
         .name("clinics.claim_recoupment")
+        .post("/clinics/claims/{id}/write-off", write_off)
+        .name("clinics.claim_write_off")
         .require_auth()
 }
 
@@ -158,6 +162,18 @@ pub struct ClaimRow {
     pub status: String,
     /// The badge kind.
     pub status_kind: &'static str,
+    /// How it was closed, or a dash: `Written off AED 600.00, not submitted
+    /// in time`.
+    pub closed: String,
+}
+
+/// The filter of the list.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct IndexFilter {
+    /// `not_submitted_in_time` lists only the claims closed after the
+    /// payer's first-submission window.
+    #[serde(default)]
+    pub closed: String,
 }
 
 /// What the list page needs.
@@ -166,15 +182,51 @@ pub struct ClaimRow {
 pub(crate) struct IndexPage {
     tx: Texts,
     claims: Vec<ClaimRow>,
+    kpi: String,
 }
 
-/// `GET /clinics/claims`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// How a closed claim reads in the list and on its page.
+fn closed_text(lang: &Lang, claim: &Claim) -> Option<String> {
+    let how = claim.close_how.as_deref()?;
+    let key = if how == "transferred" {
+        "claim.closed.transferred"
+    } else {
+        "claim.closed.written_off"
+    };
+    let mut shown = text_with(lang, key, &[("amount", &money_text(claim.close_amount))]);
+    if claim.not_submitted_in_time {
+        shown.push_str(", ");
+        shown.push_str(&text(lang, "claim.not_submitted_in_time"));
+    }
+    Some(shown)
+}
+
+/// `GET /clinics/claims` (`?closed=not_submitted_in_time` lists the claims
+/// closed after the payer's window).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Query(filter): Query<IndexFilter>,
+) -> Result<View> {
     require(&user, permissions::CLAIMS_MANAGE)?;
-    let all = Claim::query()
+    let only_missed = filter.closed == "not_submitted_in_time";
+    let mut all = Claim::query()
         .order_by_desc(Claim::ID)
         .get(&state.db)
         .await?;
+    if only_missed {
+        all.retain(|claim| claim.not_submitted_in_time);
+    }
+    let missed = claim_closing::not_submitted_in_time(&state.db, None, None).await?;
+    let kpi = text_with(
+        &lang,
+        "claim.kpi",
+        &[
+            ("amount", &money_text(missed.amount)),
+            ("claims", &missed.claims.to_string()),
+        ],
+    );
     let dash = text(&lang, "none");
     let mut rows = Vec::with_capacity(all.len());
     for claim in &all {
@@ -199,11 +251,13 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             deadline: deadline.map_or_else(|| dash.clone(), |d| d.to_string()),
             status: status_text(&lang, claim.status),
             status_kind: status_kind(claim.status),
+            closed: closed_text(&lang, claim).unwrap_or_else(|| dash.clone()),
         });
     }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         claims: rows,
+        kpi,
     }))
 }
 
@@ -293,6 +347,7 @@ pub(crate) struct ShowPage {
     held_text: String,
     held_result: String,
     written_off: String,
+    closed: String,
     lines: Vec<LineRow>,
     attempts: Vec<AttemptRow>,
     answers: Vec<AnswerRow>,
@@ -303,6 +358,7 @@ pub(crate) struct ShowPage {
     can_resubmit: bool,
     can_remit: bool,
     can_recoup: bool,
+    can_write_off: bool,
 }
 
 /// `GET /clinics/claims/{id}`.
@@ -406,6 +462,11 @@ async fn show(
     } else {
         dash.clone()
     };
+    let can_write_off = user.has_permission(permissions::CLAIMS_WRITEOFF)
+        && claim_closing::closable(
+            &claim,
+            &claim_closing::facts(&state, &claim, now(), Some(user.id)).await?,
+        );
     let held = claim.is_held();
     let held_text = match (&claim.held_kind, claim.held_reference.as_deref()) {
         (Some(kind), reference) if held => text_with(
@@ -450,6 +511,7 @@ async fn show(
         held_text,
         held_result,
         written_off,
+        closed: closed_text(&lang, &claim).unwrap_or_else(|| dash.clone()),
         lines,
         attempts,
         answers,
@@ -466,6 +528,7 @@ async fn show(
             claim.status,
             ClaimStatus::Paid | ClaimStatus::PartiallyPaid | ClaimStatus::WrittenOff
         ) && !held,
+        can_write_off,
     }))
 }
 
@@ -571,6 +634,36 @@ async fn resubmit(
         .await
         .map_err(refusal)?;
     done(&lang, "claim.resubmitted")
+}
+
+/// The form of `write_off`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct WriteOffForm {
+    /// Why the claim is closed.
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// `POST /clinics/claims/{id}/write-off`: writes the claim off, or moves it
+/// to the patient where the payer contract allows it; above the limit the
+/// owner is asked first.
+async fn write_off(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<WriteOffForm>,
+) -> Result<Response> {
+    let closed = claim_closing::write_off(&state, &user, id, &form.reason, now())
+        .await
+        .map_err(refusal)?;
+    done(
+        &lang,
+        match closed {
+            Closed::Done(_) => "claim.closed_done",
+            Closed::Held(_) => "claim.close_held",
+        },
+    )
 }
 
 /// The advice date typed in a form, today when blank.

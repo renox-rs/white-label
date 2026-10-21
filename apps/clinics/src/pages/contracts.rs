@@ -5,6 +5,7 @@
 //! | `GET /clinics/contracts` | `clinics.contracts` | `insurance_policies.view` |
 //! | `POST /clinics/contracts` | `clinics.contract_create` | `insurance.manage` |
 //! | `POST /clinics/contract-tariffs` | `clinics.contract_tariff` | `insurance.manage` |
+//! | `POST /clinics/contract-missed-window` | `clinics.contract_missed_window` | `contracts.missed_window_billing` (the owner's) |
 //!
 //! The list shows each contract with the terms the charge split reads and the
 //! tariff of its services.
@@ -15,6 +16,7 @@ use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 
 use super::{Texts, invalid, parse_date, parse_id, party_name, require, text, text_with};
+use crate::claim_closing;
 use crate::contract::{PayerContract, PayerTariff};
 use crate::contracts::{self, NewContract};
 use crate::money_text;
@@ -30,6 +32,8 @@ pub fn routes() -> Routes {
         .name("clinics.contract_create")
         .post("/clinics/contract-tariffs", tariff)
         .name("clinics.contract_tariff")
+        .post("/clinics/contract-missed-window", missed_window)
+        .name("clinics.contract_missed_window")
         .require_auth()
 }
 
@@ -56,6 +60,8 @@ pub struct ContractRow {
     pub tariffs: String,
     /// The windows: `30 days to send, 30 to resubmit (2 times)`.
     pub windows: String,
+    /// Whether the patient may be billed for a share not submitted in time.
+    pub missed_billing: String,
 }
 
 /// What the list page needs.
@@ -68,8 +74,10 @@ pub(crate) struct IndexPage {
     contract_selected: String,
     covered_options: Vec<[String; 2]>,
     late_options: Vec<[String; 2]>,
+    allowed_options: Vec<[String; 2]>,
     today: String,
     can_manage: bool,
+    can_set_missed_billing: bool,
 }
 
 /// A copay in basis points as a percentage: `20%`, `12.5%`.
@@ -137,6 +145,14 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
                     ("limit", &c.resubmission_limit),
                 ],
             ),
+            missed_billing: text(
+                &lang,
+                if c.bill_missed_to_patient {
+                    "contract.missed_billing_yes"
+                } else {
+                    "contract.missed_billing_no"
+                },
+            ),
             tariffs: if tariffs.is_empty() {
                 dash.clone()
             } else {
@@ -161,8 +177,13 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             ["no".to_owned(), text(&lang, "contract.late_no")],
             ["yes".to_owned(), text(&lang, "contract.late_yes")],
         ],
+        allowed_options: vec![
+            ["no".to_owned(), text(&lang, "contract.missed_billing_no")],
+            ["yes".to_owned(), text(&lang, "contract.missed_billing_yes")],
+        ],
         today: today().to_string(),
         can_manage: user.has_permission(permissions::AUTHORISATIONS_MANAGE),
+        can_set_missed_billing: user.has_permission(permissions::MISSED_WINDOW_BILLING),
     }))
 }
 
@@ -293,6 +314,36 @@ async fn tariff(
     contracts::set_tariff(&state, id, &form.code, price, form.covered != "no").await?;
     Ok((
         Toast::success(text(&lang, "contract.tariff_set")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that sets the owner's flag.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct MissedWindowForm {
+    /// The contract's id.
+    #[serde(default)]
+    pub contract: String,
+    /// `yes` or `no`.
+    #[serde(default)]
+    pub allowed: String,
+}
+
+/// `POST /clinics/contract-missed-window`: whether the patient may be billed
+/// for a payer share the clinic did not submit in time (`CLN.ACL.16`); the
+/// owner's alone.
+async fn missed_window(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Form(form): Form<MissedWindowForm>,
+) -> Result<Response> {
+    require(&user, permissions::MISSED_WINDOW_BILLING)?;
+    let id = parse_id(&form.contract).ok_or_else(|| invalid("contract: 1, 2, 3 ..."))?;
+    claim_closing::set_missed_window_billing(&state, &user, id, form.allowed == "yes").await?;
+    Ok((
+        Toast::success(text(&lang, "contract.missed_billing_set")),
         renox::HxRefresh,
     )
         .into_response())

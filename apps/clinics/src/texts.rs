@@ -671,6 +671,17 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.contract.late_yes", "Yes, with a late reason"),
     ("clinics.contract.windows", "Windows"),
     (
+        "clinics.contract.missed_billing",
+        "Missed-window share may be billed to the patient",
+    ),
+    (
+        "clinics.contract.missed_billing_description",
+        "Whether the patient may be billed for a payer share the clinic did not submit in time. Off unless the owner allows it; whether it is lawful depends on the payer contract and the emirate's rules.",
+    ),
+    ("clinics.contract.missed_billing_no", "No"),
+    ("clinics.contract.missed_billing_yes", "Yes"),
+    ("clinics.contract.missed_billing_set", "Setting saved."),
+    (
         "clinics.contract.windows_text",
         "Send within :first days (coordinator told after :reminder), resubmit within :again days, :limit times at most",
     ),
@@ -723,6 +734,31 @@ const TEXTS: &[(&str, &str)] = &[
         "Written off or moved to the patient",
     ),
     ("clinics.claim.deadline", "Last day to send"),
+    ("clinics.claim.closed", "Closed as"),
+    (
+        "clinics.claim.closed.written_off",
+        "Written off :amount",
+    ),
+    (
+        "clinics.claim.closed.transferred",
+        "Moved to the patient :amount",
+    ),
+    ("clinics.claim.not_submitted_in_time", "not submitted in time"),
+    (
+        "clinics.claim.kpi",
+        "Not submitted in time: :amount in :claims claims closed after the payer's first-submission window.",
+    ),
+    ("clinics.claim.write_off", "Write off"),
+    (
+        "clinics.claim.write_off_description",
+        "Close the claim: the open amount is written off, or moved to the patient where the payer contract allows it. Above the limit the owner approves first.",
+    ),
+    ("clinics.claim.close_reason", "Reason"),
+    ("clinics.claim.closed_done", "Claim closed."),
+    (
+        "clinics.claim.close_held",
+        "The write-off waits for the owner's approval.",
+    ),
     ("clinics.claim.resubmissions", "Resubmissions"),
     ("clinics.claim.submission_reference", "Submission reference"),
     ("clinics.claim.submitted_on", "Submitted on"),
