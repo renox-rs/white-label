@@ -947,14 +947,14 @@ A claim that was ever submitted is never voided.
 - Must not void a claim with any recorded submission attempt.
 
 #### Done when
-- [ ] Given claim CLM-0300 `ready` for visit V1 with payer X, when coordinator A voids it with
+- [x] Given claim CLM-0300 `ready` for visit V1 with payer X, when coordinator A voids it with
       `wrong_payer` and V1 is re-split to payer Y, CLM-0300 is `voided`, its payer bill is
       `voided`, and a new claim exists for payer Y.
-- [ ] Given CLM-0301 back in `draft` after a technical rejection, `void` is refused.
-- [ ] Given no other policy, V1 has no payer split and the coordinator gets a "coverage to
+- [x] Given CLM-0301 back in `draft` after a technical rejection, `void` is refused.
+- [x] Given no other policy, V1 has no payer split and the coordinator gets a "coverage to
       resolve" task.
-- [ ] CLM-0300 still appears in lists, marked void.
-- [ ] Voiding CLM-0302 with `duplicate` without picking a claim is refused; the picker lists only
+- [x] CLM-0300 still appears in lists, marked void.
+- [x] Voiding CLM-0302 with `duplicate` without picking a claim is refused; the picker lists only
       the same patient's claims that are not `voided`.
 
 #### Out of scope
