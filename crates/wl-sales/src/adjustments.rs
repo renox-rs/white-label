@@ -114,10 +114,7 @@ pub async fn request(
 
 /// Submits `saved`; when the transition fails (a manager is missing, the
 /// points are gone) the saved row is removed so nothing half-done stays.
-async fn submit_or_discard(
-    state: &AppState,
-    saved: PointsAdjustment,
-) -> Result<PointsAdjustment> {
+async fn submit_or_discard(state: &AppState, saved: PointsAdjustment) -> Result<PointsAdjustment> {
     let id = saved.id;
     match submit(state, saved).await {
         Ok(done) => Ok(done),
@@ -282,7 +279,7 @@ pub(crate) fn register(app: &mut Registry) {
             announce(&state, &event).await
         },
     );
-    app.listen(|event: ApprovalDecided, state: AppState| async move {
-        decided(&state, &event).await
-    });
+    app.listen(
+        |event: ApprovalDecided, state: AppState| async move { decided(&state, &event).await },
+    );
 }

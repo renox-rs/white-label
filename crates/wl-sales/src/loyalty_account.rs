@@ -350,10 +350,22 @@ mod tests {
 
     #[test]
     fn a_mobile_number_has_one_international_form() {
-        assert_eq!(normalize_mobile("050 123 4567").as_deref(), Some("+971501234567"));
-        assert_eq!(normalize_mobile("+971 50 123 4567").as_deref(), Some("+971501234567"));
-        assert_eq!(normalize_mobile("00971501234567").as_deref(), Some("+971501234567"));
-        assert_eq!(normalize_mobile("971501234567").as_deref(), Some("+971501234567"));
+        assert_eq!(
+            normalize_mobile("050 123 4567").as_deref(),
+            Some("+971501234567")
+        );
+        assert_eq!(
+            normalize_mobile("+971 50 123 4567").as_deref(),
+            Some("+971501234567")
+        );
+        assert_eq!(
+            normalize_mobile("00971501234567").as_deref(),
+            Some("+971501234567")
+        );
+        assert_eq!(
+            normalize_mobile("971501234567").as_deref(),
+            Some("+971501234567")
+        );
         assert_eq!(normalize_mobile("12345"), None);
         assert_eq!(normalize_mobile(""), None);
     }

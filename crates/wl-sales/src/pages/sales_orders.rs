@@ -327,7 +327,11 @@ async fn add_line(
 ) -> Result<Response> {
     let get = |key: &str| form.get(key).map_or("", |v| v.trim());
     if get("item_code").is_empty() {
-        return Err(invalid("item_code", text(&lang, "orders.errors.item"), &form));
+        return Err(invalid(
+            "item_code",
+            text(&lang, "orders.errors.item"),
+            &form,
+        ));
     }
     let quantity = match get("quantity") {
         "" => 1000,
@@ -394,7 +398,11 @@ async fn cancel_line(
         .filter(|q| *q > 0)
         .ok_or_else(|| invalid("quantity", text(&lang, "orders.errors.number"), &form))?;
     if get("reason").is_empty() {
-        return Err(invalid("reason", text(&lang, "orders.errors.reason"), &form));
+        return Err(invalid(
+            "reason",
+            text(&lang, "orders.errors.reason"),
+            &form,
+        ));
     }
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
     let line = lines

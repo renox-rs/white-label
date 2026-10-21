@@ -76,7 +76,10 @@ async fn merging_moves_the_lots_with_their_expiry_and_closes_the_merged_account(
     assert_eq!(moved[0].lot_expires_on, Some(march));
     assert!(moved[0].is_lot());
     let lots = PointsMovement::lots(t.db(), p.id, None).await.unwrap();
-    assert_eq!(lots.iter().map(PointsMovement::lot_remaining).sum::<i64>(), 500);
+    assert_eq!(
+        lots.iter().map(PointsMovement::lot_remaining).sum::<i64>(),
+        500
+    );
     assert!(lots.iter().any(|l| l.lot_expires_on == Some(march)));
 
     // P2's account is closed *merged into* P, with the points out as a
@@ -161,12 +164,18 @@ async fn a_blocked_member_earns_nothing_is_refused_on_hold_and_earns_again_after
 
     // Redemption is refused with the neutral text, never the reason.
     t.app
-        .post(&format!("/counter-sales/{}/redeem", open.id), &[("points", "600")])
+        .post(
+            &format!("/counter-sales/{}/redeem", open.id),
+            &[("points", "600")],
+        )
         .await
         .assert_status(422);
     // The sale completes and earns nothing.
     t.app
-        .post(&format!("/counter-sales/{}/complete", open.id), &[("cash", "21.00")])
+        .post(
+            &format!("/counter-sales/{}/complete", open.id),
+            &[("cash", "21.00")],
+        )
         .await
         .assert_status(303);
     assert_eq!(account(&t, &m).await.points_balance, 800);
@@ -213,7 +222,10 @@ async fn merging_into_a_blocked_survivor_moves_the_points_paused() {
     assert_eq!(p.points_balance, 500);
     assert!(p.paused);
     t.app
-        .post(&format!("/counter-sales/{}/redeem", cart.id), &[("points", "500")])
+        .post(
+            &format!("/counter-sales/{}/redeem", cart.id),
+            &[("points", "500")],
+        )
         .await
         .assert_status(422);
     assert!(shop.mail.otp_requests().is_empty());
@@ -228,7 +240,10 @@ async fn merging_into_a_blocked_survivor_moves_the_points_paused() {
         .await
         .unwrap();
     t.app
-        .post(&format!("/counter-sales/{}/redeem", cart.id), &[("points", "500")])
+        .post(
+            &format!("/counter-sales/{}/redeem", cart.id),
+            &[("points", "500")],
+        )
         .await
         .assert_status(303);
 }

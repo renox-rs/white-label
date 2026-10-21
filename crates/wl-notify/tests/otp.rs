@@ -8,10 +8,8 @@ mod support;
 
 use std::time::Duration;
 
-use wl_kernel::notify::{
-    self, NotifyChannel, NotifyRecipient, OtpRequest, OtpSent, OtpVerdict,
-};
 use wl_kernel::Subject;
+use wl_kernel::notify::{self, NotifyChannel, NotifyRecipient, OtpRequest, OtpSent, OtpVerdict};
 use wl_notify::{OtpCode, OtpStatus};
 
 use support::{Booted, boot, boot_providers};
@@ -95,8 +93,14 @@ async fn three_wrong_codes_void_the_code_even_for_the_right_one() {
     let t = boot().await;
     let code = send(&t, sale(7)).await;
     let wrong = wrong_of(&code);
-    assert_eq!(verify(&t, &sale(7), &wrong).await, OtpVerdict::Wrong { tries_left: 2 });
-    assert_eq!(verify(&t, &sale(7), &wrong).await, OtpVerdict::Wrong { tries_left: 1 });
+    assert_eq!(
+        verify(&t, &sale(7), &wrong).await,
+        OtpVerdict::Wrong { tries_left: 2 }
+    );
+    assert_eq!(
+        verify(&t, &sale(7), &wrong).await,
+        OtpVerdict::Wrong { tries_left: 1 }
+    );
     assert_eq!(verify(&t, &sale(7), &wrong).await, OtpVerdict::Locked);
     assert_eq!(verify(&t, &sale(7), &code).await, OtpVerdict::Locked);
     let row = OtpCode::latest(t.db(), "loyalty_redemption", &sale(7))
@@ -154,10 +158,7 @@ async fn a_code_that_cannot_be_sent_says_so_at_once_and_keeps_nothing() {
         address: MOBILE.to_owned(),
     };
     let sent = notify::notifier(state)
-        .send_otp(
-            state,
-            OtpRequest::new("loyalty_redemption", sale(7), to),
-        )
+        .send_otp(state, OtpRequest::new("loyalty_redemption", sale(7), to))
         .await
         .unwrap();
     match sent {
@@ -171,7 +172,12 @@ async fn a_code_that_cannot_be_sent_says_so_at_once_and_keeps_nothing() {
 
 #[renox::test]
 async fn the_validity_and_the_wrong_tries_are_settings_of_the_module() {
-    let t = boot_providers(None, |m| m.otp_wrong_tries(2).otp_validity_minutes(10), |app| app).await;
+    let t = boot_providers(
+        None,
+        |m| m.otp_wrong_tries(2).otp_validity_minutes(10),
+        |app| app,
+    )
+    .await;
     let state = t.app.state();
     let sent = notify::notifier(state)
         .send_otp(state, request(sale(7)))

@@ -104,7 +104,14 @@ pub async fn forfeit_and_close(
             user_id: by,
             ..PointsMovement::default()
         };
-        consume_lots(&mut tx, &template, forfeit.points, None, programme.point_value).await?;
+        consume_lots(
+            &mut tx,
+            &template,
+            forfeit.points,
+            None,
+            programme.point_value,
+        )
+        .await?;
     }
     LoyaltyAccount::query()
         .where_(LoyaltyAccount::ID.eq(account.id))

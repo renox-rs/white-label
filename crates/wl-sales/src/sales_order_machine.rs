@@ -301,7 +301,10 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
         .guard("has_lines", |_o: &SalesOrder, ctx| {
             let lines = ctx.input_as::<SubmitInput>().map(|i| i.line_count);
             Box::pin(async move {
-                check(lines.is_ok_and(|n| n > 0), "wl_sales.orders.problem.no_lines")
+                check(
+                    lines.is_ok_and(|n| n > 0),
+                    "wl_sales.orders.problem.no_lines",
+                )
             })
         })
         .effect(move |order: &SalesOrder, ctx, tx| {
@@ -407,7 +410,12 @@ fn accept() -> Transition<SalesOrder> {
 }
 
 /// A transition that ends an order with the reason given.
-fn ending(name: &str, label: &str, permission: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
+fn ending(
+    name: &str,
+    label: &str,
+    permission: &str,
+    to: SalesOrderStatus,
+) -> Transition<SalesOrder> {
     Transition::new(name)
         .label(label)
         .tone("danger")
@@ -473,15 +481,18 @@ fn fulfil(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
             };
             Box::pin(async move { problem.map_or(Ok(()), Err) })
         })
-        .guard("completes_only_when_nothing_is_open", move |_o: &SalesOrder, ctx| {
-            let complete = ctx.input_as::<FulfilInput>().map(|i| i.complete);
-            Box::pin(async move {
-                check(
-                    complete.is_ok_and(|c| c == last),
-                    "wl_sales.orders.problem.completeness",
-                )
-            })
-        })
+        .guard(
+            "completes_only_when_nothing_is_open",
+            move |_o: &SalesOrder, ctx| {
+                let complete = ctx.input_as::<FulfilInput>().map(|i| i.complete);
+                Box::pin(async move {
+                    check(
+                        complete.is_ok_and(|c| c == last),
+                        "wl_sales.orders.problem.completeness",
+                    )
+                })
+            },
+        )
         .effect(move |order: &SalesOrder, ctx, tx| {
             let id = order.id;
             let input = ctx.input_as::<FulfilInput>().ok();
@@ -533,15 +544,18 @@ fn reverse(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
             };
             Box::pin(async move { problem.map_or(Ok(()), Err) })
         })
-        .guard("confirmed_only_when_nothing_stays", move |_o: &SalesOrder, ctx| {
-            let left = ctx.input_as::<ReverseInput>().map(|i| i.none_left);
-            Box::pin(async move {
-                check(
-                    left.is_ok_and(|l| l == none_left),
-                    "wl_sales.orders.problem.completeness",
-                )
-            })
-        })
+        .guard(
+            "confirmed_only_when_nothing_stays",
+            move |_o: &SalesOrder, ctx| {
+                let left = ctx.input_as::<ReverseInput>().map(|i| i.none_left);
+                Box::pin(async move {
+                    check(
+                        left.is_ok_and(|l| l == none_left),
+                        "wl_sales.orders.problem.completeness",
+                    )
+                })
+            },
+        )
         .effect(|order: &SalesOrder, ctx, tx| {
             let id = order.id;
             let input = ctx.input_as::<ReverseInput>().ok();
@@ -621,7 +635,12 @@ mod tests {
         let table = [
             (SUBMIT, vec!["draft"], "confirmed", false),
             (SUBMIT_ONLINE, vec!["draft"], "awaiting_payment", false),
-            (SUBMIT_FOR_ACCEPTANCE, vec!["draft"], "pending_acceptance", false),
+            (
+                SUBMIT_FOR_ACCEPTANCE,
+                vec!["draft"],
+                "pending_acceptance",
+                false,
+            ),
             (CONFIRM_PAYMENT, vec!["awaiting_payment"], "confirmed", true),
             (
                 CONFIRM_PAYMENT_FOR_ACCEPTANCE,

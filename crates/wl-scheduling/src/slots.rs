@@ -19,7 +19,9 @@ use wl_kernel::calendar::BusinessCalendar;
 
 use crate::booking::{Booking, BookingResource, BookingStatus};
 use crate::config::{NEAREST_SLOTS, config_of};
-use crate::resource::{AvailabilityBlock, AvailabilityRule, Resource, ServiceType, eligible_resources};
+use crate::resource::{
+    AvailabilityBlock, AvailabilityRule, Resource, ServiceType, eligible_resources,
+};
 use crate::waiting::{WaitingEntry, WaitingStatus};
 
 /// A stretch of time.
@@ -281,7 +283,12 @@ pub async fn check_free(
             return Ok(Err(Unfit::Blocked(resource.name.clone())));
         }
         let taken = busy(tx, resource.id, occupied.from, occupied.until, now, exclude).await?;
-        if !fits(&taken, occupied.from, occupied.until, capacity_of(resource, service)) {
+        if !fits(
+            &taken,
+            occupied.from,
+            occupied.until,
+            capacity_of(resource, service),
+        ) {
             return Ok(Err(Unfit::Taken));
         }
     }
@@ -314,9 +321,7 @@ pub async fn free_in(
 ) -> Result<Vec<FreeSlot>> {
     let duration = TimeDelta::minutes(service.duration_minutes);
     let reach_from = from - TimeDelta::minutes(service.buffer_before_minutes);
-    let reach_until = until
-        + duration
-        + TimeDelta::minutes(service.buffer_after_minutes);
+    let reach_until = until + duration + TimeDelta::minutes(service.buffer_after_minutes);
     let mut loaded = Vec::new();
     for resource in resources {
         let rules = AvailabilityRule::query()
@@ -329,7 +334,15 @@ pub async fn free_in(
             .where_(AvailabilityBlock::ENDS_AT.gt(reach_from))
             .get(&mut *tx)
             .await?;
-        let taken = busy(tx, resource.id, reach_from, reach_until, now, Exclude::default()).await?;
+        let taken = busy(
+            tx,
+            resource.id,
+            reach_from,
+            reach_until,
+            now,
+            Exclude::default(),
+        )
+        .await?;
         loaded.push((resource, rules, blocks, taken));
     }
     let step = TimeDelta::minutes(step_minutes.max(1));
@@ -341,7 +354,12 @@ pub async fn free_in(
         let free = loaded.iter().all(|(resource, rules, blocks, taken)| {
             covered(rules, service.id, candidate, end)
                 && !blocked(blocks, candidate, end)
-                && fits(taken, occupied.from, occupied.until, capacity_of(resource, service))
+                && fits(
+                    taken,
+                    occupied.from,
+                    occupied.until,
+                    capacity_of(resource, service),
+                )
         });
         if free {
             out.push(FreeSlot {
@@ -571,16 +589,33 @@ mod tests {
             .map(|weekday| AvailabilityRule::new(1, weekday, 0, 1440))
             .collect();
         assert!(covered(&all_week, 7, at(2, 23, 45), at(3, 0, 15)));
-        assert!(!covered(&monday_nine_to_five(), 7, at(2, 16, 45), at(3, 0, 15)));
+        assert!(!covered(
+            &monday_nine_to_five(),
+            7,
+            at(2, 16, 45),
+            at(3, 0, 15)
+        ));
         assert_eq!(segments(at(2, 23, 45), at(3, 0, 15)).len(), 2);
     }
 
     #[test]
     fn a_block_overlaps_only_the_time_it_covers() {
         let block = AvailabilityBlock::manual(1, at(2, 10, 0), at(2, 11, 0), "sick");
-        assert!(blocked(std::slice::from_ref(&block), at(2, 10, 30), at(2, 11, 30)));
-        assert!(blocked(std::slice::from_ref(&block), at(2, 9, 30), at(2, 10, 1)));
-        assert!(!blocked(std::slice::from_ref(&block), at(2, 11, 0), at(2, 11, 30)));
+        assert!(blocked(
+            std::slice::from_ref(&block),
+            at(2, 10, 30),
+            at(2, 11, 30)
+        ));
+        assert!(blocked(
+            std::slice::from_ref(&block),
+            at(2, 9, 30),
+            at(2, 10, 1)
+        ));
+        assert!(!blocked(
+            std::slice::from_ref(&block),
+            at(2, 11, 0),
+            at(2, 11, 30)
+        ));
         assert!(!blocked(&[block], at(2, 9, 0), at(2, 10, 0)));
     }
 

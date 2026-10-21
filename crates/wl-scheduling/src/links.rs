@@ -147,9 +147,8 @@ async fn page(
 ) -> Result<View> {
     let booking = Booking::find_or_404(&state.db, id).await?;
     let service = ServiceType::find_or_404(&state.db, booking.service_type_id).await?;
-    let can_cancel = message.is_none()
-        && booking.status.is_open()
-        && !booking.status.is_after_check_in();
+    let can_cancel =
+        message.is_none() && booking.status.is_open() && !booking.status.is_after_check_in();
     Ok(View::typed(LinkPage {
         tx: texts::all(lang),
         summary: format!("{} · {}", service.name_en, dubai_text(booking.starts_at)),
@@ -287,8 +286,15 @@ async fn slots_page(
         }
         let now = renox::db::now();
         // Up to three times of the same resources, as the party was told.
-        for slot in slots::nearest(state, &service, &resources, booking.starts_at, now, slots::SHOWN)
-            .await?
+        for slot in slots::nearest(
+            state,
+            &service,
+            &resources,
+            booking.starts_at,
+            now,
+            slots::SHOWN,
+        )
+        .await?
         {
             let mut same = slot.resource_ids.clone();
             same.sort_unstable();

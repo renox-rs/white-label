@@ -107,7 +107,10 @@ async fn a_walk_out_applies_the_deposit_to_the_work_and_forfeits_the_rest() {
         .await
         .assert_status(303);
     let done = t.reload(booking.id).await;
-    assert_eq!(done.deposit_outcome.as_deref(), Some("applied_to_work_done"));
+    assert_eq!(
+        done.deposit_outcome.as_deref(),
+        Some("applied_to_work_done")
+    );
     assert_eq!(done.deposit_applied, 8_000);
     assert_eq!(done.deposit_forfeited, 12_000);
     assert_eq!(done.deposit_refunded, 0);
@@ -117,7 +120,10 @@ async fn a_walk_out_applies_the_deposit_to_the_work_and_forfeits_the_rest() {
     assert_eq!(event.stage, CancelStage::InProgress);
     assert_eq!(event.work_done_amount, 8_000);
     assert_eq!(event.deposit_applied, 8_000);
-    assert_eq!(event.deposit_outcome, Some(DepositOutcome::AppliedToWorkDone));
+    assert_eq!(
+        event.deposit_outcome,
+        Some(DepositOutcome::AppliedToWorkDone)
+    );
 }
 
 /// With a setting that refunds, the rest after the work is paid back.
@@ -181,17 +187,17 @@ async fn a_party_who_asks_to_stop_is_treated_as_a_walk_out() {
 
     t.app
         .htmx()
-        .post(&cancel_path(booking.id), &[("reason_code", "party_request")])
+        .post(
+            &cancel_path(booking.id),
+            &[("reason_code", "party_request")],
+        )
         .await
         .assert_status(303);
     let done = t.reload(booking.id).await;
     assert_eq!(done.cancel_initiated_by.as_deref(), Some("party"));
     assert_eq!(done.deposit_applied, 8_000);
     assert_eq!(done.deposit_forfeited, 12_000);
-    assert_eq!(
-        t.events.cancelled.all()[0].initiated_by,
-        Initiator::Party
-    );
+    assert_eq!(t.events.cancelled.all()[0].initiated_by, Initiator::Party);
 }
 
 /// The party has no way to cancel once checked in: the link in the
@@ -203,8 +209,16 @@ async fn the_party_cannot_cancel_after_the_check_in() {
     let url = links::cancel_url(t.state(), booking.id, HOUR).unwrap();
     let path = t.path_of(&url);
 
-    t.app.get(&path).await.assert_ok().assert_dont_see("Cancel this booking");
-    t.app.htmx().post(&path, &[("x", "y")]).await.assert_status(422);
+    t.app
+        .get(&path)
+        .await
+        .assert_ok()
+        .assert_dont_see("Cancel this booking");
+    t.app
+        .htmx()
+        .post(&path, &[("x", "y")])
+        .await
+        .assert_status(422);
 
     let change = links::change_cancel_url(t.state(), booking.id, "site_closed", HOUR).unwrap();
     t.app
@@ -218,7 +232,10 @@ async fn the_party_cannot_cancel_after_the_check_in() {
     t.app.acting_as(&rita);
     t.app
         .htmx()
-        .post(&format!("/scheduling/portal/bookings/{}/cancel", booking.id), &[("x", "y")])
+        .post(
+            &format!("/scheduling/portal/bookings/{}/cancel", booking.id),
+            &[("x", "y")],
+        )
         .await
         .assert_status(422);
     assert_eq!(t.reload(booking.id).await.status, BookingStatus::CheckedIn);

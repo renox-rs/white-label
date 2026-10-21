@@ -433,9 +433,15 @@ mod tests {
 
     #[test]
     fn the_stored_names_round_trip() {
-        assert_eq!(Initiator::parse(Initiator::Business.as_str()), Some(Initiator::Business));
+        assert_eq!(
+            Initiator::parse(Initiator::Business.as_str()),
+            Some(Initiator::Business)
+        );
         assert_eq!(Initiator::parse("nobody"), None);
         assert_eq!(CancelStage::CheckedIn.as_str(), "checked_in");
-        assert_eq!(DepositOutcome::AppliedToWorkDone.as_str(), "applied_to_work_done");
+        assert_eq!(
+            DepositOutcome::AppliedToWorkDone.as_str(),
+            "applied_to_work_done"
+        );
     }
 }

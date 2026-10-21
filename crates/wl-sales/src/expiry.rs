@@ -147,7 +147,14 @@ async fn remind(
         .where_(LoyaltyAccount::ID.eq(account.id))
         .update(&state.db, &[("expiry_reminder_failed_at", &none)])
         .await?;
-    notices::loyalty_expiry(state, account, points, points * programme.point_value, first).await?;
+    notices::loyalty_expiry(
+        state,
+        account,
+        points,
+        points * programme.point_value,
+        first,
+    )
+    .await?;
     for lot in &lots {
         PointsMovement::query()
             .where_(PointsMovement::ID.eq(lot.id))

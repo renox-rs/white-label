@@ -12,7 +12,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.none", "—"),
     ("wl_scheduling.fields.status", "Status"),
     ("wl_scheduling.bookings.title", "Bookings"),
-    ("wl_scheduling.bookings.subtitle", "Appointments and slots, newest first."),
+    (
+        "wl_scheduling.bookings.subtitle",
+        "Appointments and slots, newest first.",
+    ),
     ("wl_scheduling.bookings.empty", "No bookings yet"),
     ("wl_scheduling.bookings.number", "Number"),
     ("wl_scheduling.bookings.party", "Booked by"),
@@ -58,49 +61,124 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.status.completed", "Completed"),
     ("wl_scheduling.status.no_show", "No-show"),
     ("wl_scheduling.status.cancelled", "Cancelled"),
-    ("wl_scheduling.reason.party_request", "The party asked to cancel"),
-    ("wl_scheduling.reason.walked_out", "The party left after check-in"),
+    (
+        "wl_scheduling.reason.party_request",
+        "The party asked to cancel",
+    ),
+    (
+        "wl_scheduling.reason.walked_out",
+        "The party left after check-in",
+    ),
     ("wl_scheduling.reason.unpaid", "The prepayment was not made"),
-    ("wl_scheduling.reason.resource_unavailable", "The resource is unavailable"),
-    ("wl_scheduling.reason.resource_ineligible", "The resource may not deliver the service"),
+    (
+        "wl_scheduling.reason.resource_unavailable",
+        "The resource is unavailable",
+    ),
+    (
+        "wl_scheduling.reason.resource_ineligible",
+        "The resource may not deliver the service",
+    ),
     ("wl_scheduling.reason.site_closed", "The site is closed"),
-    ("wl_scheduling.reason.equipment_failure", "Equipment failure"),
-    ("wl_scheduling.reason.service_not_suitable", "The service is not suitable"),
+    (
+        "wl_scheduling.reason.equipment_failure",
+        "Equipment failure",
+    ),
+    (
+        "wl_scheduling.reason.service_not_suitable",
+        "The service is not suitable",
+    ),
     ("wl_scheduling.reason.other", "Other"),
     ("wl_scheduling.problem.reason_needed", "Give a reason."),
-    ("wl_scheduling.problem.no_check_in", "This service does not need a check-in."),
-    ("wl_scheduling.problem.no_in_progress", "This service is not tracked while it runs."),
-    ("wl_scheduling.problem.not_started", "The booking has not started yet."),
-    ("wl_scheduling.problem.check_in_first", "Check the party in first."),
-    ("wl_scheduling.problem.grace_not_over", "The grace period after the start has not passed."),
-    ("wl_scheduling.problem.conflict_open", "The booking has an open conflict; resolve it first."),
+    (
+        "wl_scheduling.problem.no_check_in",
+        "This service does not need a check-in.",
+    ),
+    (
+        "wl_scheduling.problem.no_in_progress",
+        "This service is not tracked while it runs.",
+    ),
+    (
+        "wl_scheduling.problem.not_started",
+        "The booking has not started yet.",
+    ),
+    (
+        "wl_scheduling.problem.check_in_first",
+        "Check the party in first.",
+    ),
+    (
+        "wl_scheduling.problem.grace_not_over",
+        "The grace period after the start has not passed.",
+    ),
+    (
+        "wl_scheduling.problem.conflict_open",
+        "The booking has an open conflict; resolve it first.",
+    ),
     (
         "wl_scheduling.problem.after_cutoff",
         "It is too late to change this booking yourself; ask the clinic.",
     ),
     ("wl_scheduling.problem.taken", "That slot was just taken."),
-    ("wl_scheduling.problem.nearest", "The nearest free times are :slots."),
-    ("wl_scheduling.problem.waiting_list", "You can join the waiting list."),
-    ("wl_scheduling.problem.closed", ":name is not open at that time."),
-    ("wl_scheduling.problem.blocked", ":name is not available at that time."),
-    ("wl_scheduling.problem.no_resource", "Choose who or what to book."),
-    ("wl_scheduling.problem.unknown_resource", "That resource cannot be booked."),
-    ("wl_scheduling.problem.not_offered", "That resource does not deliver this service."),
+    (
+        "wl_scheduling.problem.nearest",
+        "The nearest free times are :slots.",
+    ),
+    (
+        "wl_scheduling.problem.waiting_list",
+        "You can join the waiting list.",
+    ),
+    (
+        "wl_scheduling.problem.closed",
+        ":name is not open at that time.",
+    ),
+    (
+        "wl_scheduling.problem.blocked",
+        ":name is not available at that time.",
+    ),
+    (
+        "wl_scheduling.problem.no_resource",
+        "Choose who or what to book.",
+    ),
+    (
+        "wl_scheduling.problem.unknown_resource",
+        "That resource cannot be booked.",
+    ),
+    (
+        "wl_scheduling.problem.not_offered",
+        "That resource does not deliver this service.",
+    ),
     (
         "wl_scheduling.problem.wrong_resources",
         "Choose one resource of each type the service needs.",
     ),
-    ("wl_scheduling.problem.unknown_service", "That service cannot be booked."),
-    ("wl_scheduling.problem.no_request_needed", "This service needs no request; book it."),
+    (
+        "wl_scheduling.problem.unknown_service",
+        "That service cannot be booked.",
+    ),
+    (
+        "wl_scheduling.problem.no_request_needed",
+        "This service needs no request; book it.",
+    ),
     (
         "wl_scheduling.problem.request_needed",
         "This service needs the clinic to accept it; send a request.",
     ),
-    ("wl_scheduling.problem.not_self_bookable", "This service cannot be booked online."),
+    (
+        "wl_scheduling.problem.not_self_bookable",
+        "This service cannot be booked online.",
+    ),
     ("wl_scheduling.problem.in_the_past", "That time has passed."),
-    ("wl_scheduling.problem.too_soon", "That is too soon to book online; call the clinic."),
-    ("wl_scheduling.problem.unknown_reason", "That is not a cancellation reason."),
-    ("wl_scheduling.problem.walked_out_early", "A party can only walk out after check-in."),
+    (
+        "wl_scheduling.problem.too_soon",
+        "That is too soon to book online; call the clinic.",
+    ),
+    (
+        "wl_scheduling.problem.unknown_reason",
+        "That is not a cancellation reason.",
+    ),
+    (
+        "wl_scheduling.problem.walked_out_early",
+        "A party can only walk out after check-in.",
+    ),
     (
         "wl_scheduling.problem.staff_after_check_in",
         "Only staff can cancel once the party is checked in.",
@@ -121,32 +199,62 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_scheduling.problem.work_done_pending",
         "Record the work done first, or mark that none was done.",
     ),
-    ("wl_scheduling.problem.staff_only", "Only staff can do this."),
-    ("wl_scheduling.problem.not_on_booking", "That resource is not on this booking."),
-    ("wl_scheduling.problem.already_on_booking", "That resource is already on this booking."),
-    ("wl_scheduling.notices.reassigned_subject", "Your booking {{ number }} has a new resource"),
+    (
+        "wl_scheduling.problem.staff_only",
+        "Only staff can do this.",
+    ),
+    (
+        "wl_scheduling.problem.not_on_booking",
+        "That resource is not on this booking.",
+    ),
+    (
+        "wl_scheduling.problem.already_on_booking",
+        "That resource is already on this booking.",
+    ),
+    (
+        "wl_scheduling.notices.reassigned_subject",
+        "Your booking {{ number }} has a new resource",
+    ),
     (
         "wl_scheduling.notices.reassigned_body",
         "Your booking {{ number }} on {{ when }} is now with {{ resource }}.\n\nKeep it: {{ accept_url }}\nPick another time: {{ reschedule_url }}\nCancel it: {{ cancel_url }}",
     ),
-    ("wl_scheduling.link.accepted", "Thank you. Your booking stays as it is."),
+    (
+        "wl_scheduling.link.accepted",
+        "Thank you. Your booking stays as it is.",
+    ),
     ("wl_scheduling.link.rescheduled", "Your booking is moved."),
     ("wl_scheduling.link.pick_title", "Pick another time"),
-    ("wl_scheduling.link.no_slots", "No other time is free right now. Call the clinic."),
+    (
+        "wl_scheduling.link.no_slots",
+        "No other time is free right now. Call the clinic.",
+    ),
     ("wl_scheduling.booking.reassign", "Reassign"),
     ("wl_scheduling.booking.reassigned", "Booking reassigned."),
     ("wl_scheduling.booking.reassign_from", "Replace"),
     ("wl_scheduling.booking.reassign_to", "With"),
-    ("wl_scheduling.problem.nothing_to_waive", "There is no forfeited deposit to waive."),
+    (
+        "wl_scheduling.problem.nothing_to_waive",
+        "There is no forfeited deposit to waive.",
+    ),
     ("wl_scheduling.deposit.title", "Deposit"),
     ("wl_scheduling.deposit.held", "held"),
     ("wl_scheduling.deposit.refunded", "refunded"),
     ("wl_scheduling.deposit.forfeited", "forfeited"),
-    ("wl_scheduling.deposit.applied_to_work_done", "applied to the work done"),
-    ("wl_scheduling.deposit.applied_part", ":amount applied to the work done"),
+    (
+        "wl_scheduling.deposit.applied_to_work_done",
+        "applied to the work done",
+    ),
+    (
+        "wl_scheduling.deposit.applied_part",
+        ":amount applied to the work done",
+    ),
     ("wl_scheduling.booking.work_done", "Work done"),
     ("wl_scheduling.deposit.waive", "Waive forfeiture"),
-    ("wl_scheduling.deposit.waived", "The forfeiture is waived and the deposit is refunded."),
+    (
+        "wl_scheduling.deposit.waived",
+        "The forfeiture is waived and the deposit is refunded.",
+    ),
     (
         "wl_scheduling.deposit.refund_cancelled",
         "Deposit of booking :number paid back.",
@@ -155,8 +263,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_scheduling.deposit.refund_waived",
         "Deposit of booking :number paid back: the forfeiture was waived.",
     ),
-    ("wl_scheduling.waiting.joined", "You are on the waiting list."),
-    ("wl_scheduling.waiting.withdrawn", "You are off the waiting list."),
+    (
+        "wl_scheduling.waiting.joined",
+        "You are on the waiting list.",
+    ),
+    (
+        "wl_scheduling.waiting.withdrawn",
+        "You are off the waiting list.",
+    ),
     ("wl_scheduling.link.title", "Your booking"),
     ("wl_scheduling.link.cancel", "Cancel this booking"),
     ("wl_scheduling.link.cancelled", "The booking is cancelled."),
@@ -164,14 +278,26 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_scheduling.problem.offer_mismatch",
         "That slot does not match what the entry waits for.",
     ),
-    ("wl_scheduling.problem.offer_expired", "The offer has expired."),
-    ("wl_scheduling.problem.offer_still_held", "The offer is still held."),
-    ("wl_scheduling.problem.not_expired", "The entry has not expired."),
+    (
+        "wl_scheduling.problem.offer_expired",
+        "The offer has expired.",
+    ),
+    (
+        "wl_scheduling.problem.offer_still_held",
+        "The offer is still held.",
+    ),
+    (
+        "wl_scheduling.problem.not_expired",
+        "The entry has not expired.",
+    ),
     (
         "wl_scheduling.problem.choose_resource",
         "Choose who or what to book.",
     ),
-    ("wl_scheduling.problem.too_far", "That is further ahead than bookings are taken."),
+    (
+        "wl_scheduling.problem.too_far",
+        "That is further ahead than bookings are taken.",
+    ),
 ];
 
 /// The package text `key` in `lang`: the app's translation if it has one,
@@ -225,6 +351,9 @@ mod tests {
 
     #[test]
     fn a_missing_key_answers_itself() {
-        assert_eq!(english("wl_scheduling.nothing", &[]), "wl_scheduling.nothing");
+        assert_eq!(
+            english("wl_scheduling.nothing", &[]),
+            "wl_scheduling.nothing"
+        );
     }
 }

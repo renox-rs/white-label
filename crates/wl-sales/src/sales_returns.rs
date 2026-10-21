@@ -17,12 +17,8 @@ use crate::config::config_of;
 use crate::counter_sale::{CounterSale, CounterSaleStatus};
 use crate::sale_line::{KIND_ITEM, SaleLine, ratio_half_up};
 use crate::sales_order::{SalesOrder, SalesOrderStatus};
-use crate::sales_return::{
-    RETURN_SERIES, ReturnKind, ReturnStatus, SalesReturn, SalesReturnLine,
-};
-use crate::sales_return_machine::{
-    RECEIVE, REJECT, RESOLVE, REVERSE, ReceiveInput, ResolveInput,
-};
+use crate::sales_return::{RETURN_SERIES, ReturnKind, ReturnStatus, SalesReturn, SalesReturnLine};
+use crate::sales_return_machine::{RECEIVE, REJECT, RESOLVE, REVERSE, ReceiveInput, ResolveInput};
 use crate::texts::english;
 
 /// A 422 with the English text `key`.
@@ -264,7 +260,12 @@ pub async fn reject(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> R
 }
 
 /// Reverses the *refunded by the channel* return `id` (`reverse`).
-pub async fn reverse(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Result<SalesReturn> {
+pub async fn reverse(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    reason: &str,
+) -> Result<SalesReturn> {
     let r = SalesReturn::find_or_404(&state.db, id).await?;
     let _ = r
         .transition(REVERSE)
@@ -291,7 +292,10 @@ async fn announce(state: &AppState, event: &Transitioned<SalesReturn>) -> Result
                 sales_return: r.return_id(),
                 kind: r.kind.as_str().to_owned(),
                 sale: r.sale(),
-                resolution: r.resolution.map(|x| x.as_str().to_owned()).unwrap_or_default(),
+                resolution: r
+                    .resolution
+                    .map(|x| x.as_str().to_owned())
+                    .unwrap_or_default(),
                 value: r.gross_value,
                 credit_note: r.credit_note_id,
             })
@@ -311,7 +315,9 @@ async fn announce(state: &AppState, event: &Transitioned<SalesReturn>) -> Result
 /// Registers the machine and the listener.
 pub(crate) fn register(app: &mut Registry) {
     renox::state_machine::register::<SalesReturn>();
-    app.listen(|event: Transitioned<SalesReturn>, state: AppState| async move {
-        announce(&state, &event).await
-    });
+    app.listen(
+        |event: Transitioned<SalesReturn>, state: AppState| async move {
+            announce(&state, &event).await
+        },
+    );
 }

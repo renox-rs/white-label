@@ -37,9 +37,8 @@ use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::notify::{
-    self, Category, GiveUpReaction, MessageId, NotificationTypeDef, NotifyChannel,
-    NotifyRecipient, NotifyRequest, OTP_VALIDITY_MINUTES, OTP_WRONG_TRIES, OtpRequest, OtpSent,
-    OtpVerdict, Urgency,
+    self, Category, GiveUpReaction, MessageId, NotificationTypeDef, NotifyChannel, NotifyRecipient,
+    NotifyRequest, OTP_VALIDITY_MINUTES, OTP_WRONG_TRIES, OtpRequest, OtpSent, OtpVerdict, Urgency,
 };
 
 use crate::channels::open_channels;
@@ -92,7 +91,10 @@ pub enum OtpStatus {
 
 /// A one-time code that was sent.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_notify_otp_codes", index(purpose, subject_type, subject_id))]
+#[model(
+    table = "wl_notify_otp_codes",
+    index(purpose, subject_type, subject_id)
+)]
 pub struct OtpCode {
     /// The primary key.
     pub id: i64,
@@ -263,7 +265,11 @@ pub async fn verify(
         .where_(OtpCode::ID.eq(row.id))
         .update(
             &state.db,
-            &[("status", &status), ("tries", &tries), ("updated_at", &now())],
+            &[
+                ("status", &status),
+                ("tries", &tries),
+                ("updated_at", &now()),
+            ],
         )
         .await?;
     Ok(verdict)

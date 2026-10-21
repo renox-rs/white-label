@@ -111,7 +111,11 @@ async fn status_of(t: &Booted, sale: &CounterSale) -> RedemptionStatus {
 async fn the_real_code_reaches_the_phone_and_confirms_the_redemption_on_the_sale() {
     let (t, floor, phone, m) = start().await;
     let sale = floor
-        .open_cart(&t, &[("tee", "19.05", "1"), ("cap", "19.05", "1")], Some(&m.code))
+        .open_cart(
+            &t,
+            &[("tee", "19.05", "1"), ("cap", "19.05", "1")],
+            Some(&m.code),
+        )
         .await;
     ask(&t, &sale, "800").await;
     // The real message reached M's mobile with a six-digit code.
@@ -128,7 +132,10 @@ async fn the_real_code_reaches_the_phone_and_confirms_the_redemption_on_the_sale
     enter(&t, &sale, &code, 303).await;
     assert_eq!(status_of(&t, &sale).await, RedemptionStatus::Held);
     t.app
-        .post(&format!("/counter-sales/{}/complete", sale.id), &[("cash", "32.00")])
+        .post(
+            &format!("/counter-sales/{}/complete", sale.id),
+            &[("cash", "32.00")],
+        )
         .await
         .assert_status(303);
     assert_eq!(status_of(&t, &sale).await, RedemptionStatus::Applied);
@@ -139,7 +146,9 @@ async fn the_real_code_reaches_the_phone_and_confirms_the_redemption_on_the_sale
 #[renox::test]
 async fn three_wrong_real_codes_lock_the_redemption_and_an_old_code_is_expired() {
     let (t, floor, phone, m) = start().await;
-    let locked = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let locked = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     ask(&t, &locked, "600").await;
     let code = phone.last_code();
     for _ in 0..3 {
@@ -159,7 +168,9 @@ async fn three_wrong_real_codes_lock_the_redemption_and_an_old_code_is_expired()
     assert_eq!(phone.count(), 1);
 
     // Six minutes after sending the code is expired; a new one works.
-    let late = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let late = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     ask(&t, &late, "600").await;
     let first = phone.last_code();
     t.app.travel(Duration::from_secs(6 * 60));

@@ -123,7 +123,10 @@ async fn a_time_taken_meanwhile_is_refused() {
 
     t.app
         .htmx()
-        .post(&t.path_of(&url), &[("starts_at", local_text(later).as_str())])
+        .post(
+            &t.path_of(&url),
+            &[("starts_at", local_text(later).as_str())],
+        )
         .await
         .assert_status(409);
     assert_eq!(t.reload(booking.id).await.starts_at, booking.starts_at);

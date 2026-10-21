@@ -30,8 +30,8 @@ use crate::loyalty_attach::{self, MemberRef};
 use crate::loyalty_points::LoyaltyReview;
 use crate::loyalty_programme::{self, EarnKind, LoyaltyProgramme, NewProgramme};
 use crate::notices::aed;
-use crate::sales_order::SalesOrder;
 use crate::pages::campaigns::parse_fils;
+use crate::sales_order::SalesOrder;
 use crate::{permissions, texts};
 
 /// The texts a template reads as `tx['loyalty.title']`.
@@ -163,7 +163,11 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
             code: a.code.clone(),
             party: a.party_id,
             mobile: a.mobile.clone(),
-            balance: if per_visit { a.visits } else { a.points_balance },
+            balance: if per_visit {
+                a.visits
+            } else {
+                a.points_balance
+            },
             status_label: text(&lang, &format!("loyalty.status.{}", a.status.as_str())),
             status_kind: if a.is_active() { "success" } else { "info" },
             reminder_note: if a.expiry_reminder_failed_at.is_some() {

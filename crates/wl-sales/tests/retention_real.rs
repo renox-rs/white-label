@@ -157,7 +157,8 @@ async fn world(members: i64, tune: impl FnOnce(WlNotify) -> WlNotify) -> World {
     .await
     .unwrap()
     .unwrap();
-    let send = DateTime::from_timestamp((at + Duration::hours(2)).timestamp() / 60 * 60, 0).unwrap();
+    let send =
+        DateTime::from_timestamp((at + Duration::hours(2)).timestamp() / 60 * 60, 0).unwrap();
     let r = Campaign {
         name: "Win back".into(),
         code: "WINBACK".into(),
@@ -203,7 +204,10 @@ impl World {
     }
 
     async fn reload(&self) -> Campaign {
-        Campaign::find(self.t.db(), self.r.id).await.unwrap().unwrap()
+        Campaign::find(self.t.db(), self.r.id)
+            .await
+            .unwrap()
+            .unwrap()
     }
 
     /// The send time passes: wl-notify queues the messages and the jobs
@@ -244,7 +248,9 @@ async fn the_broadcast_is_estimated_by_consent_scheduled_without_approval_and_re
     let rows = w.rows().await;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].status, BroadcastState::Requested);
-    let b = w.broadcast(rows[0].broadcast_id.expect("wl-notify took it")).await;
+    let b = w
+        .broadcast(rows[0].broadcast_id.expect("wl-notify took it"))
+        .await;
     // The estimate counts only members who pass the checks: 180, within the
     // limit of 200, so no approval.
     assert_eq!(b.estimate, 180);
@@ -264,7 +270,9 @@ async fn the_broadcast_is_estimated_by_consent_scheduled_without_approval_and_re
     sale_at(&w.t, 21, day_after, 15_000, "tee").await;
     sale_at(&w.t, 250, day_after, 8_000, "tee").await;
 
-    let report = retention::report(w.t.state(), &w.reload().await).await.unwrap();
+    let report = retention::report(w.t.state(), &w.reload().await)
+        .await
+        .unwrap();
     assert_eq!(report.status.as_deref(), Some("completed"));
     assert_eq!(report.recipients, Some(180));
     assert_eq!(report.excluded.get("no_consent"), Some(&120));
@@ -281,9 +289,8 @@ async fn above_the_limit_the_user_who_set_the_campaign_cannot_approve_and_a_reje
     for party in 1..=60 {
         w.fakes.parties.consent.give(party);
     }
-    let b_user = w
-        .t
-        .user(
+    let b_user =
+        w.t.user(
             "Bilal",
             &[
                 perm::CAMPAIGNS_VIEW,
@@ -292,10 +299,9 @@ async fn above_the_limit_the_user_who_set_the_campaign_cannot_approve_and_a_reje
             ],
         )
         .await;
-    let c_user = w
-        .t
-        .user("Chen", &[perm::CAMPAIGNS_VIEW, notify_perm::MARKETING_SEND])
-        .await;
+    let c_user =
+        w.t.user("Chen", &[perm::CAMPAIGNS_VIEW, notify_perm::MARKETING_SEND])
+            .await;
 
     w.start().await;
     let first = w.rows().await[0].broadcast_id.unwrap();
@@ -350,9 +356,15 @@ async fn above_the_limit_the_user_who_set_the_campaign_cannot_approve_and_a_reje
     )
     .await
     .unwrap();
-    assert_eq!(w.broadcast(second.id).await.status, BroadcastStatus::Scheduled);
+    assert_eq!(
+        w.broadcast(second.id).await.status,
+        BroadcastStatus::Scheduled
+    );
     w.send(second.send_at).await;
-    assert_eq!(w.broadcast(second.id).await.status, BroadcastStatus::Completed);
+    assert_eq!(
+        w.broadcast(second.id).await.status,
+        BroadcastStatus::Completed
+    );
     assert_eq!(w.rows().await[1].status, BroadcastState::Completed);
     assert_eq!(w.phone.count(), 60);
 
@@ -375,13 +387,15 @@ async fn ending_the_campaign_before_the_send_time_cancels_the_scheduled_broadcas
     let b = w.broadcast(id).await;
     assert_eq!(b.status, BroadcastStatus::Scheduled);
 
-    let boss = w
-        .t
-        .user("Bilal", &[perm::CAMPAIGNS_VIEW, perm::CAMPAIGNS_MANAGE])
-        .await;
+    let boss =
+        w.t.user("Bilal", &[perm::CAMPAIGNS_VIEW, perm::CAMPAIGNS_MANAGE])
+            .await;
     w.t.app.acting_as(&boss);
     w.t.app
-        .post(&format!("/campaigns/{}/transitions/end", w.r.id), &[("x", "")])
+        .post(
+            &format!("/campaigns/{}/transitions/end", w.r.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     let cancelled = w.broadcast(id).await;

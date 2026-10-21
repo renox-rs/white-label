@@ -62,7 +62,11 @@ pub async fn cashier_party(state: &AppState, user_id: i64) -> Result<Option<Part
 
 /// The account `member` names, checked for `SAL.ACL.08`: it exists, its
 /// programme earns today, and it is not the cashier's own.
-async fn account_for(state: &AppState, by: &AuthUser, member: &MemberRef) -> Result<LoyaltyAccount> {
+async fn account_for(
+    state: &AppState,
+    by: &AuthUser,
+    member: &MemberRef,
+) -> Result<LoyaltyAccount> {
     let Some(account) = find_member(&state.db, member).await? else {
         return Err(refused("wl_sales.loyalty.problem.no_member"));
     };

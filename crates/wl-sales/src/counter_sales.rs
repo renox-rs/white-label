@@ -13,10 +13,10 @@
 
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transitioned};
-use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
-use wl_kernel::Subject;
-use wl_kernel::sales::{COUNTER_SALE_SUBJECT_TYPE, CounterSaleCompleted};
 use wl_kernel::PartyId;
+use wl_kernel::Subject;
+use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
+use wl_kernel::sales::{COUNTER_SALE_SUBJECT_TYPE, CounterSaleCompleted};
 
 use crate::config::config_of;
 use crate::counter_sale::{CounterSale, RECEIPT_SERIES};
@@ -213,7 +213,9 @@ async fn announce(state: &AppState, event: &Transitioned<CounterSale>) -> Result
 /// Registers the machine and the listener.
 pub(crate) fn register(app: &mut Registry) {
     renox::state_machine::register::<CounterSale>();
-    app.listen(|event: Transitioned<CounterSale>, state: AppState| async move {
-        announce(&state, &event).await
-    });
+    app.listen(
+        |event: Transitioned<CounterSale>, state: AppState| async move {
+            announce(&state, &event).await
+        },
+    );
 }

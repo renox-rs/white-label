@@ -347,7 +347,10 @@ mod tests {
         }
         assert_eq!(machine.initial_states(), ["pending"]);
         let states: Vec<&str> = machine.states().iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(states, ["pending", "held", "applied", "released", "refused"]);
+        assert_eq!(
+            states,
+            ["pending", "held", "applied", "released", "refused"]
+        );
     }
 
     #[test]

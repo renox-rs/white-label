@@ -222,7 +222,12 @@ mod tests {
         );
         assert_eq!(
             names(ReturnResolution::ALL.iter().map(|s| s.as_str()).collect()),
-            ["credit_note", "refund", "replacement", "refunded_by_channel"]
+            [
+                "credit_note",
+                "refund",
+                "replacement",
+                "refunded_by_channel"
+            ]
         );
     }
 

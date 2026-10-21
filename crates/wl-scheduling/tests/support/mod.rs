@@ -12,24 +12,24 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::calendar::BusinessCalendar;
-use wl_kernel::payments::{
-    AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
-    RefundId, RefundRequest, ReversalReason, provide_payment_recorder,
-};
-use wl_kernel::scheduling::{
-    BookingId, SchedulingFuture, WorkDone, WorkDoneStatus, provide_work_done_status,
-};
-use wl_kernel::{PartyId, Subject};
-use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::notify::{
     self, MessageId, NotificationTypeDef, Notifier, NotifyChannel, NotifyFuture, NotifyRequest,
     provide_notifier,
 };
+use wl_kernel::payments::{
+    AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
+    RefundId, RefundRequest, ReversalReason, provide_payment_recorder,
+};
+use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::scheduling::{
     BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted, BookingNoShow,
     BookingReassigned, BookingRescheduled, Eligibility, EligibilityQuery, ResourceEligibility,
     SlotReleased, provide_resource_eligibility,
 };
+use wl_kernel::scheduling::{
+    BookingId, SchedulingFuture, WorkDone, WorkDoneStatus, provide_work_done_status,
+};
+use wl_kernel::{PartyId, Subject};
 use wl_scheduling::permissions as perm;
 use wl_scheduling::service::{self, Actor, NewBooking};
 use wl_scheduling::{
@@ -149,12 +149,16 @@ impl Refunds {
 
     /// The amounts asked so far, in fils.
     pub fn amounts(&self) -> Vec<i64> {
-        self.asked().iter().map(|(request, _)| request.amount).collect()
+        self.asked()
+            .iter()
+            .map(|(request, _)| request.amount)
+            .collect()
     }
 
     /// From now on every refund is refused (or accepted again).
     pub fn refuse(&self, refuse: bool) {
-        self.refuse.store(refuse, std::sync::atomic::Ordering::SeqCst);
+        self.refuse
+            .store(refuse, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -417,7 +421,12 @@ impl Booked {
     pub async fn front_desk(&self) -> User {
         self.user(
             "Fatima",
-            &[perm::VIEW, perm::MANAGE, perm::CHECKIN, perm::RESOURCES_MANAGE],
+            &[
+                perm::VIEW,
+                perm::MANAGE,
+                perm::CHECKIN,
+                perm::RESOURCES_MANAGE,
+            ],
         )
         .await
     }

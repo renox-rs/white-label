@@ -223,9 +223,9 @@ impl StateMachine for PointsAdjustment {
                             .or_else(|| a.outcome_reason.clone())
                             .unwrap_or_else(|| REJECTED.to_owned());
                         let id = a.id;
-                        Box::pin(async move {
-                            set(tx, id, &[("outcome_reason", &Some(reason))]).await
-                        })
+                        Box::pin(
+                            async move { set(tx, id, &[("outcome_reason", &Some(reason))]).await },
+                        )
                     }),
             )
     }

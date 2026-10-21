@@ -95,7 +95,11 @@ type GroupKey = (String, Option<i64>, &'static str, String);
 /// The points liability as at `as_at`.
 pub async fn report(db: &Db, as_at: NaiveDate) -> Result<Liability> {
     let mut grouped: BTreeMap<GroupKey, (i64, i64)> = BTreeMap::new();
-    for account in LoyaltyAccount::query().order_by(LoyaltyAccount::ID).get(db).await? {
+    for account in LoyaltyAccount::query()
+        .order_by(LoyaltyAccount::ID)
+        .get(db)
+        .await?
+    {
         let Some(programme) = LoyaltyProgramme::find(db, account.programme_id).await? else {
             continue;
         };
@@ -140,14 +144,16 @@ pub async fn report(db: &Db, as_at: NaiveDate) -> Result<Liability> {
     }
     let rows: Vec<LiabilityRow> = grouped
         .into_iter()
-        .map(|((brand, entity, age, expiry_month), (points, value))| LiabilityRow {
-            brand,
-            entity,
-            age,
-            expiry_month,
-            points,
-            value,
-        })
+        .map(
+            |((brand, entity, age, expiry_month), (points, value))| LiabilityRow {
+                brand,
+                entity,
+                age,
+                expiry_month,
+                points,
+                value,
+            },
+        )
         .collect();
     Ok(Liability {
         as_at,

@@ -14,9 +14,7 @@ use wl_kernel::approvals::{self, ApprovalRequest, ApprovalStatus};
 use wl_kernel::notify::NotifyRecipient;
 use wl_sales::notices::{ADJUSTMENT_REJECTED, ADJUSTMENT_RETURNED};
 use wl_sales::permissions as perm;
-use wl_sales::{
-    AccountStatus, AdjustmentStatus, LoyaltyAccount, PointsAdjustment, PointsKind,
-};
+use wl_sales::{AccountStatus, AdjustmentStatus, LoyaltyAccount, PointsAdjustment, PointsKind};
 
 use support::floor::{Floor, account, movements};
 use support::shop::Shop;
@@ -47,7 +45,11 @@ async fn world(points: i64) -> (Booted, Shop, Floor, LoyaltyAccount, User) {
 async fn adjust(t: &Booted, m: &LoyaltyAccount, points: &str, reason: &str, status: u16) {
     // A validation error answers a plain form post with a redirect back; the
     // 422 is what an htmx request sees.
-    let request = if status == 422 { t.app.htmx() } else { t.app.request() };
+    let request = if status == 422 {
+        t.app.htmx()
+    } else {
+        t.app.request()
+    };
     request
         .post(
             &format!("/loyalty/accounts/{}/adjust", m.id),
@@ -58,7 +60,10 @@ async fn adjust(t: &Booted, m: &LoyaltyAccount, points: &str, reason: &str, stat
 }
 
 async fn latest(t: &Booted, m: &LoyaltyAccount) -> PointsAdjustment {
-    PointsAdjustment::of_account(t.db(), m.id).await.unwrap().remove(0)
+    PointsAdjustment::of_account(t.db(), m.id)
+        .await
+        .unwrap()
+        .remove(0)
 }
 
 #[renox::test]
@@ -72,28 +77,47 @@ async fn plus_400_is_saved_and_minus_900_waits_for_another_person_who_approves()
     let made = movements(&t, &m, PointsKind::Adjust).await;
     assert_eq!(made.len(), 1);
     assert_eq!((made[0].points, made[0].value), (400, 400));
-    assert_eq!(made[0].reason.as_deref(), Some("Goodwill after a complaint"));
+    assert_eq!(
+        made[0].reason.as_deref(),
+        Some("Goodwill after a complaint")
+    );
     assert_eq!(made[0].user_id, Some(ana.id));
     let on = wl_kernel::documents::today();
-    assert_eq!(made[0].lot_expires_on, on.checked_add_months(Months::new(12)));
+    assert_eq!(
+        made[0].lot_expires_on,
+        on.checked_add_months(Months::new(12))
+    );
     assert_eq!(account(&t, &m).await.points_balance, 1400);
     let events = shop.points.adjusted.lock().unwrap().clone();
     assert_eq!(events.len(), 1);
-    assert_eq!((events[0].points, events[0].reason.as_str()), (400, "Goodwill after a complaint"));
+    assert_eq!(
+        (events[0].points, events[0].reason.as_str()),
+        (400, "Goodwill after a complaint")
+    );
 
     // -900 is above the limit: nothing is written, a request waits.
     adjust(&t, &m, "-900", "Abuse of the programme", 303).await;
     let big = latest(&t, &m).await;
     assert_eq!(big.status, AdjustmentStatus::PendingApproval);
     let request = big.approval_request_id.expect("a kernel request");
-    let stored = ApprovalRequest::find(t.db(), request).await.unwrap().unwrap();
+    let stored = ApprovalRequest::find(t.db(), request)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(stored.status, ApprovalStatus::Pending);
     assert_eq!(movements(&t, &m, PointsKind::Adjust).await.len(), 1);
     assert_eq!(account(&t, &m).await.points_balance, 1400);
 
     // The requester cannot approve it.
-    assert!(approvals::approve(t.state(), request, &ana, "").await.is_err());
-    assert_eq!(latest(&t, &m).await.status, AdjustmentStatus::PendingApproval);
+    assert!(
+        approvals::approve(t.state(), request, &ana, "")
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        latest(&t, &m).await.status,
+        AdjustmentStatus::PendingApproval
+    );
 
     // Another person with `loyalty.manage` can.
     approvals::approve(t.state(), request, &floor.mia, "")
@@ -130,16 +154,31 @@ async fn staff_closing_an_account_with_50_points_need_approval_and_write_an_adju
     assert!(closing.closes_account);
     // Nothing happened yet: the member still has the account and the points.
     let waiting = account(&t, &m).await;
-    assert_eq!((waiting.status, waiting.points_balance), (AccountStatus::Active, 50));
+    assert_eq!(
+        (waiting.status, waiting.points_balance),
+        (AccountStatus::Active, 50)
+    );
     let request = closing.approval_request_id.unwrap();
-    assert!(approvals::approve(t.state(), request, &ana, "").await.is_err());
+    assert!(
+        approvals::approve(t.state(), request, &ana, "")
+            .await
+            .is_err()
+    );
 
     approvals::approve(t.state(), request, &floor.mia, "")
         .await
         .unwrap();
     let closed = account(&t, &m).await;
-    assert_eq!((closed.status, closed.points_balance), (AccountStatus::Closed, 0));
-    assert!(closed.closed_reason.unwrap().contains("Abuse of the programme"));
+    assert_eq!(
+        (closed.status, closed.points_balance),
+        (AccountStatus::Closed, 0)
+    );
+    assert!(
+        closed
+            .closed_reason
+            .unwrap()
+            .contains("Abuse of the programme")
+    );
     let made = movements(&t, &m, PointsKind::Adjust).await;
     assert_eq!(made.len(), 1);
     assert_eq!(made[0].points, -50);
@@ -168,18 +207,28 @@ async fn a_rejected_adjustment_writes_nothing_and_the_requester_is_told() {
     adjust(&t, &m, "-900", "Abuse of the programme", 303).await;
     let request = latest(&t, &m).await.approval_request_id.unwrap();
     // A comment is required to reject.
-    assert!(approvals::reject(t.state(), request, &floor.mia, " ").await.is_err());
+    assert!(
+        approvals::reject(t.state(), request, &floor.mia, " ")
+            .await
+            .is_err()
+    );
     approvals::reject(t.state(), request, &floor.mia, "No evidence of abuse")
         .await
         .unwrap();
     let rejected = latest(&t, &m).await;
     assert_eq!(rejected.status, AdjustmentStatus::Rejected);
-    assert_eq!(rejected.outcome_reason.as_deref(), Some("No evidence of abuse"));
+    assert_eq!(
+        rejected.outcome_reason.as_deref(),
+        Some("No evidence of abuse")
+    );
     assert!(movements(&t, &m, PointsKind::Adjust).await.is_empty());
     assert_eq!(account(&t, &m).await.points_balance, 1000);
     let told = shop.mail.of_type(ADJUSTMENT_REJECTED);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, vec![NotifyRecipient::User { id: ana.id }]);
+    assert_eq!(
+        told[0].recipients,
+        vec![NotifyRecipient::User { id: ana.id }]
+    );
     assert_eq!(told[0].data["reason"], "No evidence of abuse");
 }
 
@@ -198,12 +247,19 @@ async fn a_returned_adjustment_is_changed_by_its_requester_and_submitted_again()
     .unwrap();
     let returned = latest(&t, &m).await;
     assert_eq!(returned.status, AdjustmentStatus::Draft);
-    assert!(returned.outcome_reason.unwrap_or_default().contains("Take off less"));
+    assert!(
+        returned
+            .outcome_reason
+            .unwrap_or_default()
+            .contains("Take off less")
+    );
     assert_eq!(shop.mail.of_type(ADJUSTMENT_RETURNED).len(), 1);
     assert!(movements(&t, &m, PointsKind::Adjust).await.is_empty());
 
     // Someone else cannot change it; the requester can, within the limit.
-    let other = t.user("Olga", &[perm::LOYALTY_VIEW, perm::LOYALTY_ADJUST]).await;
+    let other = t
+        .user("Olga", &[perm::LOYALTY_VIEW, perm::LOYALTY_ADJUST])
+        .await;
     t.app.acting_as(&other);
     let url = format!("/loyalty/adjustments/{}/resubmit", returned.id);
     t.app
@@ -238,7 +294,12 @@ async fn an_adjustment_needs_a_reason_points_the_member_has_and_the_permission()
     adjust(&t, &m, "lots", "Typed wrong", 422).await;
     // More than the member has.
     adjust(&t, &m, "-101", "Too many", 422).await;
-    assert!(PointsAdjustment::of_account(t.db(), m.id).await.unwrap().is_empty());
+    assert!(
+        PointsAdjustment::of_account(t.db(), m.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(account(&t, &m).await.points_balance, 100);
 
     // The cashier does not hold `loyalty.adjust`.

@@ -134,7 +134,8 @@ impl Consents for Consent {
         _channel: NotifyChannel,
     ) -> ConsentFuture<'a, bool> {
         let yes = purpose == "marketing"
-            && (self.everyone.load(Ordering::SeqCst) || self.given.lock().unwrap().contains(&party.0));
+            && (self.everyone.load(Ordering::SeqCst)
+                || self.given.lock().unwrap().contains(&party.0));
         Box::pin(async move { Ok(yes) })
     }
 
@@ -288,7 +289,10 @@ impl Notifier for Gate {
         reason: &'a str,
     ) -> NotifyFuture<'a, bool> {
         Box::pin(async move {
-            self.cancelled.lock().unwrap().push((id.0, reason.to_owned()));
+            self.cancelled
+                .lock()
+                .unwrap()
+                .push((id.0, reason.to_owned()));
             Ok(true)
         })
     }

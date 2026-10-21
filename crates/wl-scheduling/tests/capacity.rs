@@ -12,7 +12,9 @@ use renox::tokio::sync::Barrier;
 use wl_kernel::PartyId;
 use wl_scheduling::service::{self, Actor, NewBooking};
 use wl_scheduling::waiting::{self, NewEntry, WaitingStatus};
-use wl_scheduling::{Booking, BookingStatus, Refusal, Resource, ResourceType, ServiceType, WaitingEntry};
+use wl_scheduling::{
+    Booking, BookingStatus, Refusal, Resource, ResourceType, ServiceType, WaitingEntry,
+};
 
 use support::{Booked, PATIENT, boot, in_hours, now};
 
@@ -90,10 +92,7 @@ async fn two_bookers_for_the_last_seat_one_wins() {
         let won = answers.iter().filter(|a| a.is_ok()).count();
         assert_eq!(won, 1, "run {run}: exactly one wins");
         assert_eq!(seats_at(&t, start).await, 5, "run {run}: five seats");
-        let lost = answers
-            .into_iter()
-            .find_map(Result::err)
-            .expect("one lost");
+        let lost = answers.into_iter().find_map(Result::err).expect("one lost");
         let Refusal::Taken {
             nearest,
             waiting_list,
@@ -110,8 +109,14 @@ async fn two_bookers_for_the_last_seat_one_wins() {
             "run {run}: {:?}",
             nearest[0].start
         );
-        assert!(nearest.windows(2).all(|w| w[0].start < w[1].start), "run {run}");
-        assert!(nearest.iter().all(|s| s.resource_ids == [studio.id]), "run {run}");
+        assert!(
+            nearest.windows(2).all(|w| w[0].start < w[1].start),
+            "run {run}"
+        );
+        assert!(
+            nearest.iter().all(|s| s.resource_ids == [studio.id]),
+            "run {run}"
+        );
     }
 }
 
@@ -127,7 +132,10 @@ async fn ten_bookers_for_the_last_seat_one_wins() {
     }
     let answers = together(&t, &class, &studio, start, 10).await;
     let won = answers.iter().filter(|a| a.is_ok()).count();
-    let taken = answers.iter().filter(|a| matches!(a, Err(Refusal::Taken { .. }))).count();
+    let taken = answers
+        .iter()
+        .filter(|a| matches!(a, Err(Refusal::Taken { .. })))
+        .count();
     assert_eq!((won, taken), (1, 9));
     assert_eq!(seats_at(&t, start).await, 5);
 }
@@ -176,10 +184,18 @@ async fn a_request_holds_the_slot_only_for_its_hold_time() {
     let held = book(10).await;
     assert!(matches!(held, Err(Refusal::Taken { .. })), "{held:?}");
     // Hold made at t0 lasts to t0 + 15: at 15 minutes it is over.
-    let lapsed = book(16).await.expect("the lapsed hold no longer protects the slot");
+    let lapsed = book(16)
+        .await
+        .expect("the lapsed hold no longer protects the slot");
     assert_eq!(lapsed.status, BookingStatus::Booked);
 
-    let late = service::accept(t.state(), request.id, Actor::staff(1), t0 + TimeDelta::minutes(16)).await;
+    let late = service::accept(
+        t.state(),
+        request.id,
+        Actor::staff(1),
+        t0 + TimeDelta::minutes(16),
+    )
+    .await;
     assert!(matches!(late, Err(Refusal::Taken { .. })), "{late:?}");
     assert_eq!(t.reload(request.id).await.status, BookingStatus::Requested);
 }
@@ -266,9 +282,17 @@ async fn an_offered_slot_is_held_until_the_offer_lapses() {
     let entry = waiting::join(t.state(), NewEntry::new(PATIENT, service.id))
         .await
         .unwrap();
-    let offered = waiting::offer(t.state(), entry.id, doctor.id, start, end, Actor::staff(1), t0)
-        .await
-        .unwrap();
+    let offered = waiting::offer(
+        t.state(),
+        entry.id,
+        doctor.id,
+        start,
+        end,
+        Actor::staff(1),
+        t0,
+    )
+    .await
+    .unwrap();
     assert_eq!(offered.status, WaitingStatus::Offered);
     assert_eq!(offered.offer_hold_until, Some(t0 + TimeDelta::minutes(30)));
 
@@ -284,7 +308,10 @@ async fn an_offered_slot_is_held_until_the_offer_lapses() {
     assert!(matches!(held, Err(Refusal::Taken { .. })), "{held:?}");
     // Not lapsed by any job, and still free once the hold time is over.
     assert_eq!(
-        WaitingEntry::find_or_404(t.db(), entry.id).await.unwrap().status,
+        WaitingEntry::find_or_404(t.db(), entry.id)
+            .await
+            .unwrap()
+            .status,
         WaitingStatus::Offered
     );
     assert!(book(31).await.is_ok());
@@ -303,15 +330,34 @@ async fn the_offered_entry_takes_its_own_slot() {
     let entry = waiting::join(t.state(), NewEntry::new(PATIENT, service.id))
         .await
         .unwrap();
-    waiting::offer(t.state(), entry.id, doctor.id, start, end, Actor::staff(1), t0)
-        .await
-        .unwrap();
+    waiting::offer(
+        t.state(),
+        entry.id,
+        doctor.id,
+        start,
+        end,
+        Actor::staff(1),
+        t0,
+    )
+    .await
+    .unwrap();
 
-    let late = waiting::accept(t.state(), entry.id, Actor::party(None), t0 + TimeDelta::minutes(31)).await;
+    let late = waiting::accept(
+        t.state(),
+        entry.id,
+        Actor::party(None),
+        t0 + TimeDelta::minutes(31),
+    )
+    .await;
     assert!(late.is_err());
-    let booking = waiting::accept(t.state(), entry.id, Actor::party(None), t0 + TimeDelta::minutes(10))
-        .await
-        .unwrap();
+    let booking = waiting::accept(
+        t.state(),
+        entry.id,
+        Actor::party(None),
+        t0 + TimeDelta::minutes(10),
+    )
+    .await
+    .unwrap();
     assert_eq!(booking.status, BookingStatus::Booked);
     assert_eq!(booking.starts_at, start);
     assert_eq!(booking.party_id, PATIENT.0);
@@ -334,10 +380,22 @@ async fn offers_lapse_entries_expire_and_withdrawing_frees_the_slot() {
     let entry = waiting::join(t.state(), NewEntry::new(PATIENT, service.id))
         .await
         .unwrap();
-    waiting::offer(t.state(), entry.id, doctor.id, start, end, Actor::staff(1), t0)
-        .await
-        .unwrap();
-    assert!(waiting::lapse(t.state(), entry.id, t0 + TimeDelta::minutes(29)).await.is_err());
+    waiting::offer(
+        t.state(),
+        entry.id,
+        doctor.id,
+        start,
+        end,
+        Actor::staff(1),
+        t0,
+    )
+    .await
+    .unwrap();
+    assert!(
+        waiting::lapse(t.state(), entry.id, t0 + TimeDelta::minutes(29))
+            .await
+            .is_err()
+    );
     let back = waiting::lapse(t.state(), entry.id, t0 + TimeDelta::minutes(30))
         .await
         .unwrap();
@@ -347,48 +405,77 @@ async fn offers_lapse_entries_expire_and_withdrawing_frees_the_slot() {
     // An offer that does not fit what the entry waits for is refused.
     let picky = waiting::join(
         t.state(),
-        NewEntry::new(PATIENT, service.id).between(start + TimeDelta::hours(5), start + TimeDelta::hours(8)),
+        NewEntry::new(PATIENT, service.id)
+            .between(start + TimeDelta::hours(5), start + TimeDelta::hours(8)),
     )
     .await
     .unwrap();
     assert!(
-        waiting::offer(t.state(), picky.id, doctor.id, start, end, Actor::staff(1), t0)
-            .await
-            .is_err()
+        waiting::offer(
+            t.state(),
+            picky.id,
+            doctor.id,
+            start,
+            end,
+            Actor::staff(1),
+            t0
+        )
+        .await
+        .is_err()
     );
 
     // Withdrawing an offered entry frees its slot at once.
     let offered = waiting::join(t.state(), NewEntry::new(PATIENT, service.id))
         .await
         .unwrap();
-    waiting::offer(t.state(), offered.id, doctor.id, start, end, Actor::staff(1), now())
+    waiting::offer(
+        t.state(),
+        offered.id,
+        doctor.id,
+        start,
+        end,
+        Actor::staff(1),
+        now(),
+    )
+    .await
+    .unwrap();
+    assert!(
+        service::book(
+            t.state(),
+            NewBooking::new(support::OTHER_PATIENT, service.id, &[doctor.id], start),
+            Actor::staff(1),
+            now()
+        )
+        .await
+        .is_err()
+    );
+    waiting::withdraw(t.state(), offered.id, Actor::staff(1))
         .await
         .unwrap();
-    assert!(service::book(
-        t.state(),
-        NewBooking::new(support::OTHER_PATIENT, service.id, &[doctor.id], start),
-        Actor::staff(1),
-        now()
-    )
-    .await
-    .is_err());
-    waiting::withdraw(t.state(), offered.id, Actor::staff(1)).await.unwrap();
-    assert!(service::book(
-        t.state(),
-        NewBooking::new(support::OTHER_PATIENT, service.id, &[doctor.id], start),
-        Actor::staff(1),
-        now()
-    )
-    .await
-    .is_ok());
+    assert!(
+        service::book(
+            t.state(),
+            NewBooking::new(support::OTHER_PATIENT, service.id, &[doctor.id], start),
+            Actor::staff(1),
+            now()
+        )
+        .await
+        .is_ok()
+    );
 
     // Expiry needs the last day to have passed.
     let mut dated = NewEntry::new(PATIENT, service.id);
     dated.expires_on = Some(wl_kernel::documents::today());
     let dated = waiting::join(t.state(), dated).await.unwrap();
-    assert!(waiting::expire(t.state(), dated.id, wl_kernel::documents::today()).await.is_err());
+    assert!(
+        waiting::expire(t.state(), dated.id, wl_kernel::documents::today())
+            .await
+            .is_err()
+    );
     let tomorrow = wl_kernel::documents::today().succ_opt().unwrap();
-    let gone = waiting::expire(t.state(), dated.id, tomorrow).await.unwrap();
+    let gone = waiting::expire(t.state(), dated.id, tomorrow)
+        .await
+        .unwrap();
     assert_eq!(gone.status, WaitingStatus::Expired);
 }
 
@@ -406,7 +493,9 @@ async fn a_busy_resource_leaves_the_others_free() {
         })
         .await;
     let just_room = t
-        .service_with("room_only", &[&room], |s| s.required_types = "room".to_owned())
+        .service_with("room_only", &[&room], |s| {
+            s.required_types = "room".to_owned()
+        })
         .await;
     let start = in_hours(48);
     t.booking(&just_room, &[&room], start).await;
@@ -431,7 +520,9 @@ async fn the_portal_books_the_first_free_resource_and_joins_the_waiting_list() {
     let t = boot().await;
     let first = t.doctor("Dr A").await;
     let second = t.doctor("Dr B").await;
-    let service = t.service_with("consultation", &[&first, &second], |_| {}).await;
+    let service = t
+        .service_with("consultation", &[&first, &second], |_| {})
+        .await;
     let sara = t.user("Sara", &[]).await;
     t.portal.allow(sara.id, PATIENT);
     let start = in_hours(48);
@@ -444,16 +535,32 @@ async fn the_portal_books_the_first_free_resource_and_joins_the_waiting_list() {
     ];
     t.app.acting_as(&sara);
 
-    t.app.htmx().post("/scheduling/portal/bookings", &form).await.assert_ok();
-    t.app.htmx().post("/scheduling/portal/bookings", &form).await.assert_ok();
-    let booked = Booking::query().order_by(Booking::ID).get(t.db()).await.unwrap();
+    t.app
+        .htmx()
+        .post("/scheduling/portal/bookings", &form)
+        .await
+        .assert_ok();
+    t.app
+        .htmx()
+        .post("/scheduling/portal/bookings", &form)
+        .await
+        .assert_ok();
+    let booked = Booking::query()
+        .order_by(Booking::ID)
+        .get(t.db())
+        .await
+        .unwrap();
     assert_eq!(booked.len(), 2);
     let mut ids = Vec::new();
     for booking in &booked {
         assert_eq!(booking.source, "portal");
         ids.extend(booking.resource_ids(t.db()).await.unwrap());
     }
-    assert_eq!(ids, [first.id, second.id], "the first free resource each time");
+    assert_eq!(
+        ids,
+        [first.id, second.id],
+        "the first free resource each time"
+    );
 
     // Both doctors are busy now: just taken.
     t.app
@@ -474,7 +581,10 @@ async fn the_portal_books_the_first_free_resource_and_joins_the_waiting_list() {
     assert_eq!(entry.party_id, PATIENT.0);
     t.app
         .htmx()
-        .post(&format!("/scheduling/portal/waiting-list/{}/withdraw", entry.id), &[("x", "y")])
+        .post(
+            &format!("/scheduling/portal/waiting-list/{}/withdraw", entry.id),
+            &[("x", "y")],
+        )
         .await
         .assert_ok();
     let gone = WaitingEntry::find_or_404(t.db(), entry.id).await.unwrap();
@@ -486,7 +596,11 @@ async fn the_portal_books_the_first_free_resource_and_joins_the_waiting_list() {
         .htmx()
         .post(
             "/scheduling/portal/bookings",
-            &[("party", other.as_str()), ("service", svc.as_str()), ("starts_at", at.as_str())],
+            &[
+                ("party", other.as_str()),
+                ("service", svc.as_str()),
+                ("starts_at", at.as_str()),
+            ],
         )
         .await
         .assert_not_found();
@@ -511,7 +625,11 @@ async fn the_portal_requests_a_service_that_needs_acceptance() {
         .htmx()
         .post(
             "/scheduling/portal/bookings",
-            &[("party", party.as_str()), ("service", svc.as_str()), ("starts_at", at.as_str())],
+            &[
+                ("party", party.as_str()),
+                ("service", svc.as_str()),
+                ("starts_at", at.as_str()),
+            ],
         )
         .await
         .assert_ok();

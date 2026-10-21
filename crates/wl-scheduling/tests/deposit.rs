@@ -100,7 +100,10 @@ async fn a_business_cancellation_refunds_the_deposit_in_full() {
     t.app.acting_as(&desk);
     t.app
         .htmx()
-        .post(&cancel_path(booking.id), &[("reason_code", "equipment_failure")])
+        .post(
+            &cancel_path(booking.id),
+            &[("reason_code", "equipment_failure")],
+        )
         .await
         .assert_status(303);
 
@@ -122,7 +125,8 @@ async fn cancelling_from_a_change_message_refunds_the_deposit() {
     let service = t.deposit_service(&doctor, true).await;
     let booking = t.booking(&service, &[&doctor], in_hours(10)).await;
 
-    let url = links::change_cancel_url(t.state(), booking.id, "resource_unavailable", HOUR).unwrap();
+    let url =
+        links::change_cancel_url(t.state(), booking.id, "resource_unavailable", HOUR).unwrap();
     t.app
         .htmx()
         .post(&t.path_of(&url), &[("x", "y")])

@@ -483,7 +483,11 @@ async fn retention_card(
     let not_sent = report.not_sent.as_ref().map(|reason| {
         let known = format!("retention.reason.{reason}");
         let shown = text(lang, &known);
-        if shown.ends_with(&known) { reason.clone() } else { shown }
+        if shown.ends_with(&known) {
+            reason.clone()
+        } else {
+            shown
+        }
     });
     let excluded = report
         .excluded
@@ -491,7 +495,14 @@ async fn retention_card(
         .map(|(reason, count)| {
             let key = format!("retention.excluded.{reason}");
             let shown = text(lang, &key);
-            (if shown.ends_with(&key) { reason.clone() } else { shown }, *count)
+            (
+                if shown.ends_with(&key) {
+                    reason.clone()
+                } else {
+                    shown
+                },
+                *count,
+            )
         })
         .collect();
     let can_request = !matches!(
@@ -829,10 +840,8 @@ async fn campaign_of_form(
         minute(c.send_at),
     );
     if before != after {
-        let retention_set = after.0.is_some()
-            || after.1.is_some()
-            || after.2.is_some()
-            || after.3.is_some();
+        let retention_set =
+            after.0.is_some() || after.1.is_some() || after.2.is_some() || after.3.is_some();
         c.retention_set_by = retention_set.then_some(user.id);
     }
     Ok(c)
@@ -953,7 +962,11 @@ async fn request_again(
     } else {
         Toast::success(text(&lang, "retention.requested"))
     };
-    Ok((toast, Redirect::route("wl_sales.campaign", &[&campaign.id])?).into_response())
+    Ok((
+        toast,
+        Redirect::route("wl_sales.campaign", &[&campaign.id])?,
+    )
+        .into_response())
 }
 
 /// `POST /campaigns/{id}/costs`: adds a cost entry. With a `line_id` it is

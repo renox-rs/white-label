@@ -297,13 +297,7 @@ mod tests {
             )
             .is_err()
         );
-        assert!(
-            check_rule(
-                &Rule::SalesAtLeast { count: 0, days: 30 },
-                &config
-            )
-            .is_err()
-        );
+        assert!(check_rule(&Rule::SalesAtLeast { count: 0, days: 30 }, &config).is_err());
     }
 
     #[test]

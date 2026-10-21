@@ -109,7 +109,10 @@ fn complete() -> Transition<CounterSale> {
         .guard("has_lines", |_s: &CounterSale, ctx| {
             let lines = ctx.input_as::<CompleteInput>().map(|i| i.line_count);
             Box::pin(async move {
-                check(lines.is_ok_and(|n| n > 0), "wl_sales.counter.problem.no_lines")
+                check(
+                    lines.is_ok_and(|n| n > 0),
+                    "wl_sales.counter.problem.no_lines",
+                )
             })
         })
         .guard("tenders_match_total", |_s: &CounterSale, ctx| {

@@ -181,10 +181,8 @@ async fn transfer(
 
 /// `PartiesMerged`: the merged party's accounts go to the survivor.
 async fn on_merged(state: &AppState, event: &PartiesMerged) -> Result {
-    let survivor_blocked = directory(state)
-        .status(&state.db, event.survivor)
-        .await?
-        == Some(PartyStatus::Blocked);
+    let survivor_blocked =
+        directory(state).status(&state.db, event.survivor).await? == Some(PartyStatus::Blocked);
     let accounts = LoyaltyAccount::query()
         .where_(LoyaltyAccount::PARTY_ID.eq(event.merged.0))
         .where_(LoyaltyAccount::STATUS.eq(AccountStatus::Active))
@@ -219,7 +217,7 @@ async fn on_merged(state: &AppState, event: &PartiesMerged) -> Result {
 
 /// Registers the listener.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: PartiesMerged, state: AppState| async move {
-        on_merged(&state, &event).await
-    });
+    app.listen(
+        |event: PartiesMerged, state: AppState| async move { on_merged(&state, &event).await },
+    );
 }

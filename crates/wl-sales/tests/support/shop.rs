@@ -182,7 +182,10 @@ pub struct Books(Arc<Mutex<HashMap<i64, Entry>>>);
 impl Books {
     /// An invoice `id` for `party`, `net` before VAT and `gross` with it.
     pub fn add(&self, id: i64, party: PartyId, net: i64, gross: i64) {
-        self.0.lock().unwrap().insert(id, Entry { party, net, gross });
+        self.0
+            .lock()
+            .unwrap()
+            .insert(id, Entry { party, net, gross });
     }
 }
 
@@ -207,11 +210,7 @@ impl Invoicer for Books {
         })
     }
 
-    fn find<'a>(
-        &'a self,
-        _db: &'a Db,
-        id: InvoiceId,
-    ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+    fn find<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
         Box::pin(async move {
             Ok(self.0.lock().unwrap().get(&id.0).map(|e| InvoiceSummary {
                 id,
@@ -324,18 +323,23 @@ impl Workforce for Staff {
         employee: EmployeeId,
     ) -> WorkforceFuture<'a, Option<StaffProfile>> {
         Box::pin(async move {
-            Ok(self.0.lock().unwrap().get(&employee.0).map(|party| StaffProfile {
-                employee,
-                party: PartyId(*party),
-                user_id: Some(employee.0),
-                role: "cashier".to_owned(),
-                scopes: Vec::new(),
-                legal_entity_id: None,
-                listed: true,
-                on_leave: false,
-                returns_on: None,
-                managers: Vec::new(),
-            }))
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .get(&employee.0)
+                .map(|party| StaffProfile {
+                    employee,
+                    party: PartyId(*party),
+                    user_id: Some(employee.0),
+                    role: "cashier".to_owned(),
+                    scopes: Vec::new(),
+                    legal_entity_id: None,
+                    listed: true,
+                    on_leave: false,
+                    returns_on: None,
+                    managers: Vec::new(),
+                }))
         })
     }
 }

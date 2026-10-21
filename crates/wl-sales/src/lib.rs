@@ -2,14 +2,14 @@
 #![warn(missing_docs)]
 
 pub mod acquisition;
+pub mod acquisition_change;
+pub mod acquisition_daily;
 pub mod adjustment;
 pub mod adjustment_machine;
 pub mod adjustments;
-pub mod block;
-pub mod acquisition_change;
-pub mod acquisition_daily;
 pub mod attribution;
 pub mod bill_links;
+pub mod block;
 pub mod budget;
 pub mod campaign;
 pub mod closure;
@@ -67,10 +67,10 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use acquisition::{AcquisitionRefused, AcquisitionSale, PartyAcquisition};
-pub use adjustment::{AdjustmentStatus, PointsAdjustment};
 pub use acquisition_change::{
     AcquisitionChange, ChangeRefused, ChangeRequest, ChangeStatus, ChangeTarget,
 };
+pub use adjustment::{AdjustmentStatus, PointsAdjustment};
 pub use budget::BudgetAlert;
 pub use campaign::{
     Campaign, CampaignCode, CampaignRefused, CampaignStatus, MarketingChannel, Purpose,
@@ -90,13 +90,11 @@ pub use promo_code::PromoCode;
 pub use redemption::{Redemption, RedemptionStatus};
 pub use retention::{BroadcastState, CampaignBroadcast, CampaignGuard, CampaignGuards};
 pub use sale_line::SaleLine;
-pub use terms::{LoyaltyTermsChange, TermsChange};
 pub use sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
-pub use sales_return::{
-    ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, SalesReturnLine,
-};
+pub use sales_return::{ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, SalesReturnLine};
 pub use segment::{MatchMode, Rule, Segment, SegmentRefused};
 pub use segments::{SegmentRule, SegmentRules};
+pub use terms::{LoyaltyTermsChange, TermsChange};
 
 /// The campaign services under the names of the plan: `campaigns::delete`
 /// and `campaigns::run_daily`.
@@ -358,8 +356,7 @@ impl WlSales {
     /// The order channels that wait for the seller to accept an order (§7,
     /// default `website` and `portal`).
     pub fn order_acceptance_channels(mut self, channels: &[&str]) -> Self {
-        self.config.order_acceptance_channels =
-            channels.iter().map(|c| (*c).to_owned()).collect();
+        self.config.order_acceptance_channels = channels.iter().map(|c| (*c).to_owned()).collect();
         self
     }
 

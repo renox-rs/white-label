@@ -25,13 +25,14 @@
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, Transitioned};
-use wl_kernel::{PartyId, Subject};
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
     FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment, ReverseFulfilment,
-    SALES_ORDER_SUBJECT_TYPE, SalesFuture, SalesOrderCancelled, SalesOrderClosed, SalesOrderConfirmed, SalesOrderFulfilled,
-    SalesOrderFulfilmentReversed, SalesOrderLineCancelled, SalesOrderRejected,
+    SALES_ORDER_SUBJECT_TYPE, SalesFuture, SalesOrderCancelled, SalesOrderClosed,
+    SalesOrderConfirmed, SalesOrderFulfilled, SalesOrderFulfilmentReversed,
+    SalesOrderLineCancelled, SalesOrderRejected,
 };
+use wl_kernel::{PartyId, Subject};
 
 use crate::config::config_of;
 use crate::sale_line::{KIND_ITEM, NewLine, SaleLine, totals};
@@ -39,10 +40,10 @@ use crate::sales_order::{
     FulfilmentRecord, ORDER_SERIES, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
 };
 use crate::sales_order_machine::{
-    ACCEPT, CANCEL, CANCEL_LINE, CANCEL_LINE_PARTLY, CLOSE, CancelLineInput, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, CloseInput, FULFIL,
-    FULFIL_LAST, FulfilInput, PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT,
-    REVERSE_FULFILMENT_ALL, ReverseInput, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE,
-    SubmitInput,
+    ACCEPT, CANCEL, CANCEL_LINE, CANCEL_LINE_PARTLY, CLOSE, CONFIRM_PAYMENT,
+    CONFIRM_PAYMENT_FOR_ACCEPTANCE, CancelLineInput, CloseInput, FULFIL, FULFIL_LAST, FulfilInput,
+    PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT, REVERSE_FULFILMENT_ALL, ReverseInput,
+    SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE, SubmitInput,
 };
 use crate::texts::english;
 
@@ -442,8 +443,7 @@ async fn draft_invoice(state: &AppState, id: i64) -> Result {
         return Ok(());
     }
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
-    let mut draft =
-        InvoiceDraft::new(order.party(), order.subject()).currency(&order.currency);
+    let mut draft = InvoiceDraft::new(order.party(), order.subject()).currency(&order.currency);
     if let Some(entity) = order.legal_entity_id {
         draft = draft.legal_entity(entity);
     }

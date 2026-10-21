@@ -161,14 +161,10 @@ async fn a_segment_without_rules_or_with_bad_numbers_is_not_saved() {
         .await
         .unwrap();
     assert_eq!(empty.unwrap_err(), SegmentRefused::NoRules);
-    let bad = Segment::of(
-        "Bad",
-        MatchMode::All,
-        &[Rule::NoSaleForDays { days: 0 }],
-    )
-    .store(t.db(), &config)
-    .await
-    .unwrap();
+    let bad = Segment::of("Bad", MatchMode::All, &[Rule::NoSaleForDays { days: 0 }])
+        .store(t.db(), &config)
+        .await
+        .unwrap();
     assert!(matches!(bad.unwrap_err(), SegmentRefused::BadRule(_)));
     let first = lapsed(&t).await;
     let again = Segment::of("Lapsed", MatchMode::Any, &[Rule::NoSaleForDays { days: 5 }])
@@ -176,7 +172,15 @@ async fn a_segment_without_rules_or_with_bad_numbers_is_not_saved() {
         .await
         .unwrap();
     assert_eq!(again.unwrap_err(), SegmentRefused::NameTaken);
-    assert_eq!(Segment::find(t.db(), first.id).await.unwrap().unwrap().rules().len(), 2);
+    assert_eq!(
+        Segment::find(t.db(), first.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .rules()
+            .len(),
+        2
+    );
 }
 
 async fn staff(t: &Booted) -> User {
@@ -193,7 +197,11 @@ async fn the_editor_saves_a_segment_and_previews_its_size_as_an_estimate() {
     let mia = staff(&t).await;
     t.app.acting_as(&mia);
 
-    t.app.get("/segments").await.assert_ok().assert_see("Customer segments");
+    t.app
+        .get("/segments")
+        .await
+        .assert_ok()
+        .assert_see("Customer segments");
     t.app.get("/segments/new").await.assert_ok();
     t.app
         .post(
@@ -304,7 +312,11 @@ async fn the_editor_does_not_offer_clinical_items_by_default() {
     sale_at(&t, 1, now() - Duration::days(5), 10_000, "XRAY").await;
     let mia = staff(&t).await;
     t.app.acting_as(&mia);
-    t.app.get("/segments/new").await.assert_ok().assert_see("XRAY");
+    t.app
+        .get("/segments/new")
+        .await
+        .assert_ok()
+        .assert_see("XRAY");
 }
 
 #[renox::test]
@@ -332,7 +344,9 @@ async fn exporting_the_members_needs_the_sensitive_export_permission_and_is_audi
         .await;
     t.app.acting_as(&boss);
     let csv = t.app.get(&format!("/segments/{}/export", s.id)).await;
-    csv.assert_ok().assert_see("party_id,name").assert_see("Party 1");
+    csv.assert_ok()
+        .assert_see("party_id,name")
+        .assert_see("Party 1");
     let log = renox::audit::for_subject(t.db(), Segment::TABLE, s.id, 10)
         .await
         .unwrap();

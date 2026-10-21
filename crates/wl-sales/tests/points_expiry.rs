@@ -13,7 +13,9 @@ use renox::chrono::{Datelike, Duration as Days, NaiveDate};
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
-use wl_kernel::notify::{ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyChannel, NotifyRecipient};
+use wl_kernel::notify::{
+    ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyChannel, NotifyRecipient,
+};
 use wl_sales::expiry::{self, TASK};
 use wl_sales::liability;
 use wl_sales::notices::LOYALTY_EXPIRY;
@@ -58,7 +60,8 @@ async fn end_on(t: &Booted, lot: &PointsMovement, last: NaiveDate) {
 }
 
 #[renox::test]
-async fn a_lot_of_300_with_100_used_gets_one_reminder_and_200_expire_the_morning_after_its_last_day() {
+async fn a_lot_of_300_with_100_used_gets_one_reminder_and_200_expire_the_morning_after_its_last_day()
+ {
     let (t, shop, floor, m) = world(300, &[("min_redeem_points", "100")]).await;
     let lot = movements(&t, &m, PointsKind::Earn).await.remove(0);
     // The lot ends 40 days from now (the plan's 30 Nov): the reminder is 30
@@ -67,9 +70,14 @@ async fn a_lot_of_300_with_100_used_gets_one_reminder_and_200_expire_the_morning
     end_on(&t, &lot, last).await;
 
     // 100 of the 300 are used by a redemption on a sale.
-    let sale = floor.open_cart(&t, &[("tee", "5.00", "1")], Some(&m.code)).await;
+    let sale = floor
+        .open_cart(&t, &[("tee", "5.00", "1")], Some(&m.code))
+        .await;
     t.app
-        .post(&format!("/counter-sales/{}/redeem", sale.id), &[("points", "100")])
+        .post(
+            &format!("/counter-sales/{}/redeem", sale.id),
+            &[("points", "100")],
+        )
         .await
         .assert_status(303);
     t.app
@@ -80,7 +88,10 @@ async fn a_lot_of_300_with_100_used_gets_one_reminder_and_200_expire_the_morning
         .await
         .assert_status(303);
     t.app
-        .post(&format!("/counter-sales/{}/complete", sale.id), &[("cash", "4.25")])
+        .post(
+            &format!("/counter-sales/{}/complete", sale.id),
+            &[("cash", "4.25")],
+        )
         .await
         .assert_status(303);
     let used = PointsMovement::find_or_404(t.db(), lot.id).await.unwrap();
@@ -95,7 +106,10 @@ async fn a_lot_of_300_with_100_used_gets_one_reminder_and_200_expire_the_morning
     run(&t, last - Days::days(30)).await;
     let told = shop.mail.of_type(LOYALTY_EXPIRY);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, vec![NotifyRecipient::Party { id: PartyId(M) }]);
+    assert_eq!(
+        told[0].recipients,
+        vec![NotifyRecipient::Party { id: PartyId(M) }]
+    );
     assert_eq!(told[0].data["points"], 200);
     assert_eq!(told[0].data["value"], "2.00");
     assert_eq!(
@@ -120,7 +134,12 @@ async fn a_lot_of_300_with_100_used_gets_one_reminder_and_200_expire_the_morning
     let events = shop.points.expired.lock().unwrap().clone();
     assert_eq!(events.len(), 1);
     assert_eq!(
-        (events[0].party, events[0].points, events[0].value, events[0].lot_expired_on),
+        (
+            events[0].party,
+            events[0].points,
+            events[0].value,
+            events[0].lot_expired_on
+        ),
         (PartyId(M), 200, 200, last)
     );
 
@@ -189,9 +208,14 @@ async fn a_lot_ending_at_midnight_is_not_expired_while_a_sale_holds_its_points()
     let lot = movements(&t, &m, PointsKind::Earn).await.remove(0);
     // The lot's last day is today; it can still be redeemed.
     end_on(&t, &lot, today()).await;
-    let sale = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let sale = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     t.app
-        .post(&format!("/counter-sales/{}/redeem", sale.id), &[("points", "800")])
+        .post(
+            &format!("/counter-sales/{}/redeem", sale.id),
+            &[("points", "800")],
+        )
         .await
         .assert_status(303);
     t.app
@@ -214,10 +238,7 @@ async fn a_lot_ending_at_midnight_is_not_expired_while_a_sale_holds_its_points()
 
     // The sale is abandoned: the hold ends, the next run expires the points.
     t.app.travel(Duration::from_secs(31 * 60));
-    let later = t
-        .app
-        .at_travelled_time(async { renox::db::now() })
-        .await;
+    let later = t.app.at_travelled_time(async { renox::db::now() }).await;
     let report = expiry::run_daily(t.state(), tomorrow, later).await.unwrap();
     assert_eq!(report.released, 1);
     assert_eq!((report.expired_lots, report.expired_points), (1, 800));
@@ -246,7 +267,12 @@ async fn a_negative_balance_has_nothing_to_expire() {
 
 /// Gives the account `account` a lot of `points` ending on `last`, as a
 /// fixture for the report.
-async fn lot_of(t: &Booted, account: &LoyaltyAccount, points: i64, last: NaiveDate) -> PointsMovement {
+async fn lot_of(
+    t: &Booted,
+    account: &LoyaltyAccount,
+    points: i64,
+    last: NaiveDate,
+) -> PointsMovement {
     PointsMovement::create(
         t.db(),
         PointsMovement {
@@ -266,7 +292,8 @@ async fn lot_of(t: &Booted, account: &LoyaltyAccount, points: i64, last: NaiveDa
 }
 
 #[renox::test]
-async fn the_liability_report_values_120000_points_at_aed_1200_and_counts_negative_balances_as_zero() {
+async fn the_liability_report_values_120000_points_at_aed_1200_and_counts_negative_balances_as_zero()
+ {
     let (t, _shop, floor, m) = world(0, &[]).await;
     let year = today().year();
     let as_at = NaiveDate::from_ymd_opt(year, 12, 31).unwrap();
@@ -298,7 +325,10 @@ async fn the_liability_report_values_120000_points_at_aed_1200_and_counts_negati
     assert_eq!(report.rows.len(), 1);
     assert_eq!(report.rows[0].expiry_month, format!("{}-06", year + 1));
     // The lot was created today, so its age is the days to the date.
-    assert_eq!(report.rows[0].age, liability::age_bucket((as_at - today()).num_days()));
+    assert_eq!(
+        report.rows[0].age,
+        liability::age_bucket((as_at - today()).num_days())
+    );
     assert_eq!(report.rows[0].brand, "");
 
     // The accountant's page shows AED 1,200.00.

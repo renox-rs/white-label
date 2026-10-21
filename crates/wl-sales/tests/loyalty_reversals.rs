@@ -42,7 +42,10 @@ async fn start() -> (Booted, Shop, Floor) {
 /// Returns `quantity` of the first line of `sale` through the pages: request,
 /// receive, inspect and refund. Returns the return.
 async fn give_back(t: &Booted, sale: &CounterSale, quantity: &str) -> SalesReturn {
-    let line = SaleLine::of(t.db(), &sale.subject()).await.unwrap().remove(0);
+    let line = SaleLine::of(t.db(), &sale.subject())
+        .await
+        .unwrap()
+        .remove(0);
     t.app
         .post(
             "/sales-returns",
@@ -84,7 +87,12 @@ async fn returning_half_of_the_eligible_amount_reverses_half_the_points_and_the_
     let m = floor.enrol(&t, M, "0501234567").await;
     // Two tees at AED 50: AED 100 before VAT earns 100 points.
     let sale = floor
-        .ring_up(&t, &[("tee", "50.00", "2")], Some(&m.code), &[("cash", "105.00")])
+        .ring_up(
+            &t,
+            &[("tee", "50.00", "2")],
+            Some(&m.code),
+            &[("cash", "105.00")],
+        )
         .await;
     assert_eq!(account(&t, &m).await.points_balance, 100);
     // 80 of the points were spent elsewhere: the balance is 20.
@@ -109,7 +117,10 @@ async fn returning_half_of_the_eligible_amount_reverses_half_the_points_and_the_
     assert_eq!((events[0].party, events[0].points), (PartyId(M), 50));
     let told = shop.mail.of_type(LOYALTY_REVERSED);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, vec![NotifyRecipient::Party { id: PartyId(M) }]);
+    assert_eq!(
+        told[0].recipients,
+        vec![NotifyRecipient::Party { id: PartyId(M) }]
+    );
 
     // The other half: the remaining 50 points, never more than earned.
     give_back(&t, &sale, "1").await;
@@ -152,7 +163,10 @@ async fn a_chargeback_reverses_the_points_once_and_winning_it_earns_them_again_i
     assert_eq!(account(&t, &m).await.points_balance, 0);
     let told = shop.mail.of_type(LOYALTY_REVERSED);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, vec![NotifyRecipient::Party { id: PartyId(M) }]);
+    assert_eq!(
+        told[0].recipients,
+        vec![NotifyRecipient::Party { id: PartyId(M) }]
+    );
 
     // The same reversal delivered twice takes nothing more.
     t.state().emit(reversed).await.unwrap();
@@ -180,7 +194,10 @@ async fn a_chargeback_reverses_the_points_once_and_winning_it_earns_them_again_i
         .await
         .unwrap()
         .unwrap();
-    assert_eq!((earning.reversed_points, earning.movement_id), (0, Some(lots[1].id)));
+    assert_eq!(
+        (earning.reversed_points, earning.movement_id),
+        (0, Some(lots[1].id))
+    );
     // Received again once more: nothing left to earn.
     t.state()
         .emit(PaymentReceived {
@@ -287,7 +304,10 @@ async fn fulfilled_order(t: &Booted, member: &str) -> (SalesOrder, SaleLine) {
         .post(&format!("/sales-orders/{}/submit", order.id), &[("x", "")])
         .await
         .assert_status(303);
-    let line = SaleLine::of(t.db(), &order.subject()).await.unwrap().remove(0);
+    let line = SaleLine::of(t.db(), &order.subject())
+        .await
+        .unwrap()
+        .remove(0);
     order_fulfilment(t.state())
         .fulfil(
             t.state(),
@@ -302,7 +322,10 @@ async fn fulfilled_order(t: &Booted, member: &str) -> (SalesOrder, SaleLine) {
         )
         .await
         .unwrap();
-    (SalesOrder::find_or_404(t.db(), order.id).await.unwrap(), line)
+    (
+        SalesOrder::find_or_404(t.db(), order.id).await.unwrap(),
+        line,
+    )
 }
 
 #[renox::test]
@@ -312,7 +335,9 @@ async fn writing_off_the_invoice_of_an_order_that_earned_takes_its_points_back()
     let m = floor.enrol(&t, M, "0501234567").await;
     let (order, _) = fulfilled_order(&t, &m.code).await;
     assert_eq!(account(&t, &m).await.points_balance, 300);
-    let invoice = order.invoice_id.expect("the invoice was drafted on fulfilment");
+    let invoice = order
+        .invoice_id
+        .expect("the invoice was drafted on fulfilment");
 
     // AED 315 with VAT is written off: the 300 points go.
     t.state()
@@ -328,7 +353,10 @@ async fn writing_off_the_invoice_of_an_order_that_earned_takes_its_points_back()
         .unwrap();
     assert_eq!(account(&t, &m).await.points_balance, 0);
     let taken = movements(&t, &m, PointsKind::ReverseEarn).await;
-    assert_eq!((taken[0].points, taken[0].cause.as_str()), (-300, "written_off"));
+    assert_eq!(
+        (taken[0].points, taken[0].cause.as_str()),
+        (-300, "written_off")
+    );
     assert_eq!(shop.mail.of_type(LOYALTY_REVERSED).len(), 1);
 }
 
@@ -432,7 +460,12 @@ async fn returning_the_tenth_sale_before_the_reward_is_used_withdraws_it_and_lea
     for _ in 0..10 {
         tenth = Some(
             floor
-                .ring_up(&t, &[("coffee", "10.00", "1")], Some(&m.code), &[("cash", "10.50")])
+                .ring_up(
+                    &t,
+                    &[("coffee", "10.00", "1")],
+                    Some(&m.code),
+                    &[("cash", "10.50")],
+                )
                 .await,
         );
     }
@@ -459,7 +492,12 @@ async fn nothing_is_reversed_on_a_closed_account_or_for_a_sale_that_never_earned
     floor.turn_on(&t, &[]).await;
     let m = floor.enrol(&t, M, "0501234567").await;
     let earned = floor
-        .ring_up(&t, &[("tee", "50.00", "2")], Some(&m.code), &[("cash", "105.00")])
+        .ring_up(
+            &t,
+            &[("tee", "50.00", "2")],
+            Some(&m.code),
+            &[("cash", "105.00")],
+        )
         .await;
     let never = floor
         .ring_up(&t, &[("tee", "50.00", "2")], None, &[("cash", "105.00")])

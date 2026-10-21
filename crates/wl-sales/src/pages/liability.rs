@@ -70,7 +70,11 @@ async fn show(
     lang: Lang,
     Query(query): Query<BTreeMap<String, String>>,
 ) -> Result<View> {
-    let as_at = match query.get("as_at").map(|v| v.trim()).filter(|v| !v.is_empty()) {
+    let as_at = match query
+        .get("as_at")
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+    {
         None => today(),
         Some(text_) => text_.parse::<NaiveDate>().map_err(|_| {
             let mut errors = Errors::new();

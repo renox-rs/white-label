@@ -114,7 +114,10 @@ impl LoyaltyTermsChange {
     pub fn summary(&self) -> String {
         let mut parts = Vec::new();
         if let Some(rate) = self.earn_rate {
-            parts.push(english("wl_sales.terms.summary.earn_rate", &[("rate", &rate)]));
+            parts.push(english(
+                "wl_sales.terms.summary.earn_rate",
+                &[("rate", &rate)],
+            ));
         }
         if let Some(minimum) = self.minimum_amount {
             let amount = notices::aed(minimum);
@@ -124,7 +127,10 @@ impl LoyaltyTermsChange {
             ));
         }
         if let Some(items) = &self.excluded_items {
-            parts.push(english("wl_sales.terms.summary.excluded", &[("items", items)]));
+            parts.push(english(
+                "wl_sales.terms.summary.excluded",
+                &[("items", items)],
+            ));
         }
         if let Some(months) = self.validity_months {
             parts.push(english(

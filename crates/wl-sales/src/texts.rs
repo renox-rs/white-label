@@ -651,9 +651,15 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.counter.item", "Item code"),
     ("wl_sales.counter.description", "Description"),
     ("wl_sales.counter.quantity", "Quantity"),
-    ("wl_sales.counter.unit_price", "Unit price (AED, before VAT)"),
+    (
+        "wl_sales.counter.unit_price",
+        "Unit price (AED, before VAT)",
+    ),
     ("wl_sales.counter.discount", "Discount (AED)"),
-    ("wl_sales.counter.loyalty_excluded", "Not counted by the loyalty programme"),
+    (
+        "wl_sales.counter.loyalty_excluded",
+        "Not counted by the loyalty programme",
+    ),
     ("wl_sales.counter.complete", "Complete the sale"),
     (
         "wl_sales.counter.complete_description",
@@ -677,20 +683,44 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.counter.status.open", "Open"),
     ("wl_sales.counter.status.completed", "Completed"),
     ("wl_sales.counter.errors.number", "Give a whole number."),
-    ("wl_sales.counter.errors.amount", "Give an amount such as 105.00."),
+    (
+        "wl_sales.counter.errors.amount",
+        "Give an amount such as 105.00.",
+    ),
     ("wl_sales.counter.errors.item", "Give the item code."),
-    ("wl_sales.counter.errors.choice", "Choose one of the offered values."),
-    ("wl_sales.counter.problem.no_lines", "The sale has no lines."),
-    ("wl_sales.counter.problem.tenders", "What was taken must add up to the total."),
-    ("wl_sales.counter.problem.method", "Use cash, card, account or other."),
+    (
+        "wl_sales.counter.errors.choice",
+        "Choose one of the offered values.",
+    ),
+    (
+        "wl_sales.counter.problem.no_lines",
+        "The sale has no lines.",
+    ),
+    (
+        "wl_sales.counter.problem.tenders",
+        "What was taken must add up to the total.",
+    ),
+    (
+        "wl_sales.counter.problem.method",
+        "Use cash, card, account or other.",
+    ),
     (
         "wl_sales.counter.problem.account",
         "Charging to the customer account needs a customer on the sale and the setting switched on.",
     ),
-    ("wl_sales.counter.problem.not_open", "The sale is completed and cannot change."),
-    ("wl_sales.counter.problem.line", "Give a quantity above zero and a price of zero or more."),
+    (
+        "wl_sales.counter.problem.not_open",
+        "The sale is completed and cannot change.",
+    ),
+    (
+        "wl_sales.counter.problem.line",
+        "Give a quantity above zero and a price of zero or more.",
+    ),
     ("wl_sales.orders.title", "Sales orders"),
-    ("wl_sales.orders.subtitle", "Orders from the customers, from the draft to closed."),
+    (
+        "wl_sales.orders.subtitle",
+        "Orders from the customers, from the draft to closed.",
+    ),
     ("wl_sales.orders.create", "Enter an order"),
     ("wl_sales.orders.customer", "Customer (party id)"),
     ("wl_sales.orders.channel", "Channel"),
@@ -702,30 +732,66 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.orders.add_line", "Add a line"),
     ("wl_sales.orders.line_added", "Line added."),
     ("wl_sales.orders.submit", "Submit the order"),
-    ("wl_sales.orders.submit_message", "The order is placed and its lines can no longer change."),
+    (
+        "wl_sales.orders.submit_message",
+        "The order is placed and its lines can no longer change.",
+    ),
     ("wl_sales.orders.submitted", "Order submitted."),
     ("wl_sales.orders.fulfilled", "Handed over"),
     ("wl_sales.orders.reason", "Reason"),
-    ("wl_sales.orders.payment_failed_reason", "The online payment failed."),
+    (
+        "wl_sales.orders.payment_failed_reason",
+        "The online payment failed.",
+    ),
     ("wl_sales.orders.status.draft", "Draft"),
-    ("wl_sales.orders.status.awaiting_payment", "Awaiting payment"),
-    ("wl_sales.orders.status.pending_acceptance", "Pending acceptance"),
+    (
+        "wl_sales.orders.status.awaiting_payment",
+        "Awaiting payment",
+    ),
+    (
+        "wl_sales.orders.status.pending_acceptance",
+        "Pending acceptance",
+    ),
     ("wl_sales.orders.status.credit_hold", "On credit hold"),
     ("wl_sales.orders.status.confirmed", "Confirmed"),
-    ("wl_sales.orders.status.partially_fulfilled", "Partially fulfilled"),
+    (
+        "wl_sales.orders.status.partially_fulfilled",
+        "Partially fulfilled",
+    ),
     ("wl_sales.orders.status.fulfilled", "Fulfilled"),
     ("wl_sales.orders.status.closed", "Closed"),
     ("wl_sales.orders.status.rejected", "Rejected"),
     ("wl_sales.orders.status.cancelled", "Cancelled"),
     ("wl_sales.orders.errors.number", "Give a whole number."),
-    ("wl_sales.orders.errors.amount", "Give an amount such as 105.00."),
+    (
+        "wl_sales.orders.errors.amount",
+        "Give an amount such as 105.00.",
+    ),
     ("wl_sales.orders.errors.item", "Give the item code."),
-    ("wl_sales.orders.errors.choice", "Choose one of the offered values."),
-    ("wl_sales.orders.problem.no_lines", "The order has no lines."),
-    ("wl_sales.orders.problem.not_draft", "Only a draft order can change."),
-    ("wl_sales.orders.problem.line", "Give a quantity above zero and a price of zero or more."),
-    ("wl_sales.orders.problem.amount", "The amount paid is not the order total."),
-    ("wl_sales.orders.problem.input", "The transition was run without what it needs."),
+    (
+        "wl_sales.orders.errors.choice",
+        "Choose one of the offered values.",
+    ),
+    (
+        "wl_sales.orders.problem.no_lines",
+        "The order has no lines.",
+    ),
+    (
+        "wl_sales.orders.problem.not_draft",
+        "Only a draft order can change.",
+    ),
+    (
+        "wl_sales.orders.problem.line",
+        "Give a quantity above zero and a price of zero or more.",
+    ),
+    (
+        "wl_sales.orders.problem.amount",
+        "The amount paid is not the order total.",
+    ),
+    (
+        "wl_sales.orders.problem.input",
+        "The transition was run without what it needs.",
+    ),
     (
         "wl_sales.orders.problem.quantity",
         "A quantity is not above zero, is repeated, or is more than is open or held.",
@@ -734,12 +800,27 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.orders.problem.completeness",
         "The order does not end in the state this transition leads to.",
     ),
-    ("wl_sales.orders.problem.not_invoiced", "What was fulfilled is not invoiced yet."),
-    ("wl_sales.orders.problem.unknown_line", "A line does not belong to the order."),
-    ("wl_sales.orders.problem.unknown_source", "The order was not fulfilled from this hand-over."),
-    ("wl_sales.orders.problem.no_quantities", "Give at least one quantity."),
+    (
+        "wl_sales.orders.problem.not_invoiced",
+        "What was fulfilled is not invoiced yet.",
+    ),
+    (
+        "wl_sales.orders.problem.unknown_line",
+        "A line does not belong to the order.",
+    ),
+    (
+        "wl_sales.orders.problem.unknown_source",
+        "The order was not fulfilled from this hand-over.",
+    ),
+    (
+        "wl_sales.orders.problem.no_quantities",
+        "Give at least one quantity.",
+    ),
     ("wl_sales.returns.title", "Sales returns"),
-    ("wl_sales.returns.subtitle", "Goods that come back, and refunds after completion."),
+    (
+        "wl_sales.returns.subtitle",
+        "Goods that come back, and refunds after completion.",
+    ),
     ("wl_sales.returns.request", "Request a return"),
     (
         "wl_sales.returns.request_description",
@@ -758,8 +839,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.returns.none", "None"),
     ("wl_sales.returns.details", "Details"),
     ("wl_sales.returns.receive", "Receive the goods"),
-    ("wl_sales.returns.receive_description", "The goods are back in quarantine."),
-    ("wl_sales.returns.approved", "Accept outside the return window"),
+    (
+        "wl_sales.returns.receive_description",
+        "The goods are back in quarantine.",
+    ),
+    (
+        "wl_sales.returns.approved",
+        "Accept outside the return window",
+    ),
     ("wl_sales.returns.resolve", "Resolve"),
     ("wl_sales.returns.resolution", "Resolution"),
     ("wl_sales.returns.credit_note", "Credit note id"),
@@ -780,12 +867,27 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.returns.resolution.credit_note", "Credit note"),
     ("wl_sales.returns.resolution.refund", "Refund"),
     ("wl_sales.returns.resolution.replacement", "Replacement"),
-    ("wl_sales.returns.resolution.refunded_by_channel", "Refunded by the channel"),
-    ("wl_sales.returns.errors.choice", "Choose one of the offered values."),
+    (
+        "wl_sales.returns.resolution.refunded_by_channel",
+        "Refunded by the channel",
+    ),
+    (
+        "wl_sales.returns.errors.choice",
+        "Choose one of the offered values.",
+    ),
     ("wl_sales.returns.errors.number", "Give a whole number."),
-    ("wl_sales.returns.errors.lines", "Give the lines as line id:quantity, separated by commas."),
-    ("wl_sales.returns.problem.no_lines", "Name at least one line to take back."),
-    ("wl_sales.returns.problem.not_completed", "Only a completed counter sale can be returned."),
+    (
+        "wl_sales.returns.errors.lines",
+        "Give the lines as line id:quantity, separated by commas.",
+    ),
+    (
+        "wl_sales.returns.problem.no_lines",
+        "Name at least one line to take back.",
+    ),
+    (
+        "wl_sales.returns.problem.not_completed",
+        "Only a completed counter sale can be returned.",
+    ),
     (
         "wl_sales.returns.problem.not_handed_over",
         "Only an order that was handed over can be returned.",
@@ -794,7 +896,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.returns.problem.sale_type",
         "Only a counter sale or a sales order can be returned.",
     ),
-    ("wl_sales.returns.problem.unknown_line", "A line does not belong to the sale."),
+    (
+        "wl_sales.returns.problem.unknown_line",
+        "A line does not belong to the sale.",
+    ),
     (
         "wl_sales.returns.problem.quantity",
         "A quantity is not above zero, is repeated, or is more than the sale holds.",
@@ -803,9 +908,18 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.returns.problem.no_goods_to_receive",
         "A return with no goods has nothing to receive.",
     ),
-    ("wl_sales.returns.problem.window", "The return window has passed; a manager must accept it."),
-    ("wl_sales.returns.problem.resolution", "Choose how the return is resolved."),
-    ("wl_sales.returns.problem.inspection", "Receive the goods and record the inspection first."),
+    (
+        "wl_sales.returns.problem.window",
+        "The return window has passed; a manager must accept it.",
+    ),
+    (
+        "wl_sales.returns.problem.resolution",
+        "Choose how the return is resolved.",
+    ),
+    (
+        "wl_sales.returns.problem.inspection",
+        "Receive the goods and record the inspection first.",
+    ),
     (
         "wl_sales.returns.problem.complaint",
         "Give the complaint category and the responsible party.",
@@ -814,13 +928,19 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.returns.problem.channel",
         "Only a return with no goods can be refunded by the channel.",
     ),
-    ("wl_sales.returns.problem.credit_note", "Name the credit note that was issued."),
+    (
+        "wl_sales.returns.problem.credit_note",
+        "Name the credit note that was issued.",
+    ),
     (
         "wl_sales.returns.problem.not_by_channel",
         "Only a refund made by the channel can be reversed.",
     ),
     ("wl_sales.loyalty.title", "Loyalty"),
-    ("wl_sales.loyalty.subtitle", "The loyalty programme, its members and their points."),
+    (
+        "wl_sales.loyalty.subtitle",
+        "The loyalty programme, its members and their points.",
+    ),
     ("wl_sales.loyalty.enrol", "Enrol a member"),
     (
         "wl_sales.loyalty.enrol_description",
@@ -828,41 +948,83 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_sales.loyalty.party", "Member (party id)"),
     ("wl_sales.loyalty.mobile", "Mobile number"),
-    ("wl_sales.loyalty.guardian", "Guardian (party id, for a minor)"),
-    ("wl_sales.loyalty.accept_terms", "The member accepted the terms"),
+    (
+        "wl_sales.loyalty.guardian",
+        "Guardian (party id, for a minor)",
+    ),
+    (
+        "wl_sales.loyalty.accept_terms",
+        "The member accepted the terms",
+    ),
     ("wl_sales.loyalty.turn_on", "Turn the programme on"),
     ("wl_sales.loyalty.name", "Name"),
     ("wl_sales.loyalty.earn_kind", "Earn (per_aed or per_visit)"),
-    ("wl_sales.loyalty.earn_rate", "Points per AED, or visits per reward"),
-    ("wl_sales.loyalty.minimum", "Minimum qualifying amount (AED, before VAT)"),
+    (
+        "wl_sales.loyalty.earn_rate",
+        "Points per AED, or visits per reward",
+    ),
+    (
+        "wl_sales.loyalty.minimum",
+        "Minimum qualifying amount (AED, before VAT)",
+    ),
     ("wl_sales.loyalty.point_value", "Point value (AED)"),
     ("wl_sales.loyalty.validity", "Points valid for (months)"),
     ("wl_sales.loyalty.terms_version", "Terms version"),
     ("wl_sales.loyalty.terms_en", "Terms in English"),
     ("wl_sales.loyalty.terms_ar", "Terms in Arabic"),
-    ("wl_sales.loyalty.no_programme", "There is no loyalty programme yet."),
+    (
+        "wl_sales.loyalty.no_programme",
+        "There is no loyalty programme yet.",
+    ),
     ("wl_sales.loyalty.accounts", "Members"),
     ("wl_sales.loyalty.code", "Code"),
     ("wl_sales.loyalty.balance", "Balance"),
     ("wl_sales.loyalty.no_accounts", "No members yet"),
     ("wl_sales.loyalty.status.active", "Active"),
     ("wl_sales.loyalty.status.closed", "Closed"),
-    ("wl_sales.loyalty.programme_created", "Loyalty programme turned on."),
+    (
+        "wl_sales.loyalty.programme_created",
+        "Loyalty programme turned on.",
+    ),
     ("wl_sales.loyalty.enrolled", "Member enrolled."),
     ("wl_sales.loyalty.earn.per_aed", "Points per AED 1: :rate"),
-    ("wl_sales.loyalty.earn.per_visit", "A reward after :rate visits"),
+    (
+        "wl_sales.loyalty.earn.per_visit",
+        "A reward after :rate visits",
+    ),
     ("wl_sales.loyalty.errors.number", "Give a whole number."),
-    ("wl_sales.loyalty.errors.amount", "Give an amount such as 0.01."),
-    ("wl_sales.loyalty.errors.choice", "Choose one of the offered values."),
-    ("wl_sales.loyalty.problem.name", "Give the programme a name."),
+    (
+        "wl_sales.loyalty.errors.amount",
+        "Give an amount such as 0.01.",
+    ),
+    (
+        "wl_sales.loyalty.errors.choice",
+        "Choose one of the offered values.",
+    ),
+    (
+        "wl_sales.loyalty.problem.name",
+        "Give the programme a name.",
+    ),
     (
         "wl_sales.loyalty.problem.terms",
         "The rate, the point value and the validity must be at least 1, and the minimum, the redemption terms and the share cannot be negative.",
     ),
-    ("wl_sales.loyalty.problem.brand_taken", "This brand already has a loyalty programme."),
-    ("wl_sales.loyalty.problem.no_programme", "There is no loyalty programme to enrol in."),
-    ("wl_sales.loyalty.problem.terms_not_accepted", "The member must accept the terms."),
-    ("wl_sales.loyalty.problem.mobile", "Give a mobile number with 8 to 15 digits."),
+    (
+        "wl_sales.loyalty.problem.brand_taken",
+        "This brand already has a loyalty programme.",
+    ),
+    (
+        "wl_sales.loyalty.problem.no_programme",
+        "There is no loyalty programme to enrol in.",
+    ),
+    (
+        "wl_sales.loyalty.problem.terms_not_accepted",
+        "The member must accept the terms.",
+    ),
+    (
+        "wl_sales.loyalty.problem.mobile",
+        "Give a mobile number with 8 to 15 digits.",
+    ),
     (
         "wl_sales.loyalty.problem.already_member",
         "The party is already a member of this programme.",
@@ -878,9 +1040,18 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_sales.loyalty.member", "Loyalty member"),
     ("wl_sales.loyalty.attached", "Member attached to the sale."),
-    ("wl_sales.loyalty.errors.member", "Give the member's code, mobile number or party."),
-    ("wl_sales.loyalty.problem.no_member", "There is no open loyalty account for this member."),
-    ("wl_sales.loyalty.problem.programme_off", "The loyalty programme is not earning."),
+    (
+        "wl_sales.loyalty.errors.member",
+        "Give the member's code, mobile number or party.",
+    ),
+    (
+        "wl_sales.loyalty.problem.no_member",
+        "There is no open loyalty account for this member.",
+    ),
+    (
+        "wl_sales.loyalty.problem.programme_off",
+        "The loyalty programme is not earning.",
+    ),
     (
         "wl_sales.loyalty.problem.own_account",
         "A cashier cannot attach a sale they process to their own loyalty account.",
@@ -889,21 +1060,39 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.loyalty.problem.sale_completed",
         "The sale is completed or ended; a member is attached before it completes.",
     ),
-    ("wl_sales.notices.loyalty_reward_subject", "A reward is waiting for you"),
+    (
+        "wl_sales.notices.loyalty_reward_subject",
+        "A reward is waiting for you",
+    ),
     (
         "wl_sales.notices.loyalty_reward_body",
         "You reached the visits for a reward ({{ reward }}). Show your code {{ code }} before {{ valid_until }}.",
     ),
-    ("wl_sales.notices.loyalty_reversed_subject", "Points were taken back"),
+    (
+        "wl_sales.notices.loyalty_reversed_subject",
+        "Points were taken back",
+    ),
     (
         "wl_sales.notices.loyalty_reversed_body",
         "{{ points }} points were taken back from your account {{ code }} because {{ why }}.",
     ),
     ("wl_sales.loyalty.why.return", "goods were returned"),
-    ("wl_sales.loyalty.why.credit_note", "a credit note was issued"),
-    ("wl_sales.loyalty.why.payment_reversed", "a payment was reversed"),
-    ("wl_sales.loyalty.why.written_off", "an invoice was written off"),
-    ("wl_sales.loyalty.why.fulfilment_reversed", "a delivery was reversed"),
+    (
+        "wl_sales.loyalty.why.credit_note",
+        "a credit note was issued",
+    ),
+    (
+        "wl_sales.loyalty.why.payment_reversed",
+        "a payment was reversed",
+    ),
+    (
+        "wl_sales.loyalty.why.written_off",
+        "an invoice was written off",
+    ),
+    (
+        "wl_sales.loyalty.why.fulfilment_reversed",
+        "a delivery was reversed",
+    ),
     ("wl_sales.loyalty.review.title", "Accounts to review"),
     (
         "wl_sales.loyalty.review.subtitle",
@@ -912,7 +1101,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.loyalty.review.day", "Day"),
     ("wl_sales.loyalty.review.sales", "Earning sales"),
     ("wl_sales.loyalty.review.resolve", "Mark as reviewed"),
-    ("wl_sales.loyalty.review.resolved", "Account marked as reviewed."),
+    (
+        "wl_sales.loyalty.review.resolved",
+        "Account marked as reviewed.",
+    ),
     ("wl_sales.loyalty.review.empty", "Nothing to review"),
     ("wl_sales.orders.cancel_line", "Cancel a line"),
     (
@@ -943,10 +1135,22 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.redeem.problem.programme_off",
         "The loyalty programme no longer takes redemptions.",
     ),
-    ("wl_sales.redeem.problem.visits", "A reward of a visit programme is not redeemed as points."),
-    ("wl_sales.redeem.problem.points", "Give a number of points above zero."),
-    ("wl_sales.redeem.problem.below_minimum", "The member needs to redeem at least :min points."),
-    ("wl_sales.redeem.problem.above_share", "At most :max points can pay for this sale."),
+    (
+        "wl_sales.redeem.problem.visits",
+        "A reward of a visit programme is not redeemed as points.",
+    ),
+    (
+        "wl_sales.redeem.problem.points",
+        "Give a number of points above zero.",
+    ),
+    (
+        "wl_sales.redeem.problem.below_minimum",
+        "The member needs to redeem at least :min points.",
+    ),
+    (
+        "wl_sales.redeem.problem.above_share",
+        "At most :max points can pay for this sale.",
+    ),
     (
         "wl_sales.redeem.problem.not_enough",
         "The member does not have :points points to spend now.",
@@ -959,13 +1163,34 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.redeem.problem.locked_now",
         "Three wrong codes: redemption is refused for this sale. The sale goes on without it.",
     ),
-    ("wl_sales.redeem.problem.already", "Points are already redeemed on this sale."),
-    ("wl_sales.redeem.problem.none_pending", "No redemption is waiting for a code on this sale."),
-    ("wl_sales.redeem.problem.no_code", "Give the code the member received."),
-    ("wl_sales.redeem.problem.wrong", "Wrong code. :left tries left."),
-    ("wl_sales.redeem.problem.expired", "The code expired. Ask for a new one."),
-    ("wl_sales.redeem.problem.short", "The member's points are not all there to spend."),
-    ("wl_sales.redeem.problem.input", "The transition was run without what it needs."),
+    (
+        "wl_sales.redeem.problem.already",
+        "Points are already redeemed on this sale.",
+    ),
+    (
+        "wl_sales.redeem.problem.none_pending",
+        "No redemption is waiting for a code on this sale.",
+    ),
+    (
+        "wl_sales.redeem.problem.no_code",
+        "Give the code the member received.",
+    ),
+    (
+        "wl_sales.redeem.problem.wrong",
+        "Wrong code. :left tries left.",
+    ),
+    (
+        "wl_sales.redeem.problem.expired",
+        "The code expired. Ask for a new one.",
+    ),
+    (
+        "wl_sales.redeem.problem.short",
+        "The member's points are not all there to spend.",
+    ),
+    (
+        "wl_sales.redeem.problem.input",
+        "The transition was run without what it needs.",
+    ),
     ("wl_sales.redeem.redeem", "Redeem points"),
     (
         "wl_sales.redeem.redeem_description",
@@ -974,14 +1199,29 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.redeem.points", "Points"),
     ("wl_sales.redeem.code", "Code the member received"),
     ("wl_sales.redeem.confirm", "Confirm with the code"),
-    ("wl_sales.redeem.code_sent", "Code sent to the member's mobile."),
+    (
+        "wl_sales.redeem.code_sent",
+        "Code sent to the member's mobile.",
+    ),
     ("wl_sales.redeem.held", "Points held for the sale."),
     ("wl_sales.redeem.confirmed", "Points redeemed on the sale."),
     ("wl_sales.redeem.waiting", "Waiting for the code"),
-    ("wl_sales.loyalty.why.cancel_line", "a line of the order was cancelled"),
-    ("wl_sales.loyalty.why.order_cancelled", "the order was cancelled"),
-    ("wl_sales.loyalty.why.order_rejected", "the order was rejected"),
-    ("wl_sales.notices.loyalty_given_back_subject", "Your points were given back"),
+    (
+        "wl_sales.loyalty.why.cancel_line",
+        "a line of the order was cancelled",
+    ),
+    (
+        "wl_sales.loyalty.why.order_cancelled",
+        "the order was cancelled",
+    ),
+    (
+        "wl_sales.loyalty.why.order_rejected",
+        "the order was rejected",
+    ),
+    (
+        "wl_sales.notices.loyalty_given_back_subject",
+        "Your points were given back",
+    ),
     (
         "wl_sales.notices.loyalty_given_back_body",
         "{{ points }} points were given back to your account {{ code }} because {{ why }}.",
@@ -992,43 +1232,76 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.redeem.status.released", "Released"),
     ("wl_sales.redeem.status.refused", "Refused"),
     ("wl_sales.loyalty.min_redeem", "Fewest points to redeem"),
-    ("wl_sales.loyalty.max_share", "Largest share of a sale points may pay (%)"),
-    ("wl_sales.notices.loyalty_expiry_subject", "Your points are about to expire"),
+    (
+        "wl_sales.loyalty.max_share",
+        "Largest share of a sale points may pay (%)",
+    ),
+    (
+        "wl_sales.notices.loyalty_expiry_subject",
+        "Your points are about to expire",
+    ),
     (
         "wl_sales.notices.loyalty_expiry_body",
         "{{ points }} points (AED {{ value }}) on your account {{ code }} expire on {{ expires_on }}. Use them before then.",
     ),
-    ("wl_sales.notices.adjustment_rejected_subject", "A points adjustment was rejected"),
+    (
+        "wl_sales.notices.adjustment_rejected_subject",
+        "A points adjustment was rejected",
+    ),
     (
         "wl_sales.notices.adjustment_rejected_body",
         "Your adjustment of {{ points }} points on account {{ code }} was rejected: {{ reason }}. Nothing was changed.",
     ),
-    ("wl_sales.notices.adjustment_returned_subject", "A points adjustment was returned to you"),
+    (
+        "wl_sales.notices.adjustment_returned_subject",
+        "A points adjustment was returned to you",
+    ),
     (
         "wl_sales.notices.adjustment_returned_body",
         "Your adjustment of {{ points }} points on account {{ code }} was returned: {{ reason }}. Change it and submit it again.",
     ),
     ("wl_sales.adjust.closed_by_staff", "Closed by staff:"),
-    ("wl_sales.adjust.problem.no_account", "There is no such loyalty account."),
-    ("wl_sales.adjust.problem.closed", "The loyalty account is closed."),
+    (
+        "wl_sales.adjust.problem.no_account",
+        "There is no such loyalty account.",
+    ),
+    (
+        "wl_sales.adjust.problem.closed",
+        "The loyalty account is closed.",
+    ),
     (
         "wl_sales.adjust.problem.more_than_held",
         "The member does not have that many points to take off.",
     ),
-    ("wl_sales.adjust.problem.needs_manager", "This adjustment needs a manager's approval."),
+    (
+        "wl_sales.adjust.problem.needs_manager",
+        "This adjustment needs a manager's approval.",
+    ),
     (
         "wl_sales.adjust.problem.within_limit",
         "This adjustment is within the limit and needs no approval.",
     ),
-    ("wl_sales.adjust.problem.no_limit", "The adjustment was run without the limit."),
-    ("wl_sales.adjust.problem.no_policy", "The approval policy of points adjustments is missing."),
+    (
+        "wl_sales.adjust.problem.no_limit",
+        "The adjustment was run without the limit.",
+    ),
+    (
+        "wl_sales.adjust.problem.no_policy",
+        "The approval policy of points adjustments is missing.",
+    ),
     ("wl_sales.adjust.problem.reason", "Give the reason."),
-    ("wl_sales.adjust.problem.points", "Give a number of points other than zero."),
+    (
+        "wl_sales.adjust.problem.points",
+        "Give a number of points other than zero.",
+    ),
     (
         "wl_sales.adjust.problem.not_requester",
         "Only the one who asked for the adjustment changes it.",
     ),
-    ("wl_sales.adjust.problem.not_draft", "Only an adjustment that was returned can be changed."),
+    (
+        "wl_sales.adjust.problem.not_draft",
+        "Only an adjustment that was returned can be changed.",
+    ),
     ("wl_sales.adjust.title", "Points adjustments"),
     (
         "wl_sales.adjust.subtitle",
@@ -1048,17 +1321,26 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_sales.adjust.resubmit", "Change and submit again"),
     ("wl_sales.adjust.requested", "Adjustment saved."),
-    ("wl_sales.adjust.waiting", "Adjustment sent to a manager for approval."),
+    (
+        "wl_sales.adjust.waiting",
+        "Adjustment sent to a manager for approval.",
+    ),
     ("wl_sales.adjust.closed", "Account closed."),
     ("wl_sales.adjust.resubmitted", "Adjustment submitted again."),
     ("wl_sales.adjust.empty", "No adjustments"),
     ("wl_sales.adjust.account", "Member"),
     ("wl_sales.adjust.outcome", "Outcome"),
     ("wl_sales.adjust.status.draft", "Returned"),
-    ("wl_sales.adjust.status.pending_approval", "Waiting for a manager"),
+    (
+        "wl_sales.adjust.status.pending_approval",
+        "Waiting for a manager",
+    ),
     ("wl_sales.adjust.status.applied", "Applied"),
     ("wl_sales.adjust.status.rejected", "Rejected"),
-    ("wl_sales.loyalty.reminder_not_delivered", "Reminder not delivered"),
+    (
+        "wl_sales.loyalty.reminder_not_delivered",
+        "Reminder not delivered",
+    ),
     ("wl_sales.loyalty.adjustments", "Adjustments"),
     ("wl_sales.liability.title", "Points liability"),
     (
@@ -1083,86 +1365,32 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.errors.date", "Give a date such as 2026-12-31."),
     ("wl_sales.loyalty.why.expire", "the points expired"),
     ("wl_sales.loyalty.reminder", "Expiry reminder"),
-    (
-        "wl_sales.segments.title",
-        "Customer segments",
-    ),
+    ("wl_sales.segments.title", "Customer segments"),
     (
         "wl_sales.segments.subtitle",
         "Saved rules that pick customers for a retention campaign. The members are worked out each time a segment is used.",
     ),
-    (
-        "wl_sales.segments.new_title",
-        "New segment",
-    ),
-    (
-        "wl_sales.segments.name",
-        "Name",
-    ),
-    (
-        "wl_sales.segments.match",
-        "Customers must meet",
-    ),
-    (
-        "wl_sales.segments.rules",
-        "Rules",
-    ),
-    (
-        "wl_sales.segments.count",
-        "Last count (estimate)",
-    ),
-    (
-        "wl_sales.segments.empty",
-        "No segments yet",
-    ),
-    (
-        "wl_sales.segments.saved",
-        "Segment saved.",
-    ),
+    ("wl_sales.segments.new_title", "New segment"),
+    ("wl_sales.segments.name", "Name"),
+    ("wl_sales.segments.match", "Customers must meet"),
+    ("wl_sales.segments.rules", "Rules"),
+    ("wl_sales.segments.count", "Last count (estimate)"),
+    ("wl_sales.segments.empty", "No segments yet"),
+    ("wl_sales.segments.saved", "Segment saved."),
     (
         "wl_sales.segments.previewed",
         "About :count customers match now. The count is an estimate; the segment is worked out again at send time.",
     ),
-    (
-        "wl_sales.segments.preview",
-        "Count the members now",
-    ),
-    (
-        "wl_sales.segments.export",
-        "Export the members",
-    ),
-    (
-        "wl_sales.segments.members",
-        "Members",
-    ),
-    (
-        "wl_sales.segments.estimate",
-        "Estimate at the last count:",
-    ),
-    (
-        "wl_sales.segments.save",
-        "Save the segment",
-    ),
-    (
-        "wl_sales.segments.mode.all",
-        "All of the rules",
-    ),
-    (
-        "wl_sales.segments.mode.any",
-        "Any of the rules",
-    ),
-    (
-        "wl_sales.segments.enrolled.yes",
-        "Enrolled in loyalty",
-    ),
-    (
-        "wl_sales.segments.enrolled.no",
-        "Not enrolled in loyalty",
-    ),
-    (
-        "wl_sales.segments.errors.number",
-        "Give a whole number.",
-    ),
+    ("wl_sales.segments.preview", "Count the members now"),
+    ("wl_sales.segments.export", "Export the members"),
+    ("wl_sales.segments.members", "Members"),
+    ("wl_sales.segments.estimate", "Estimate at the last count:"),
+    ("wl_sales.segments.save", "Save the segment"),
+    ("wl_sales.segments.mode.all", "All of the rules"),
+    ("wl_sales.segments.mode.any", "Any of the rules"),
+    ("wl_sales.segments.enrolled.yes", "Enrolled in loyalty"),
+    ("wl_sales.segments.enrolled.no", "Not enrolled in loyalty"),
+    ("wl_sales.segments.errors.number", "Give a whole number."),
     (
         "wl_sales.segments.errors.amount",
         "Give an amount such as 500 or 500.00.",
@@ -1187,10 +1415,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.segments.q.sales_days",
         "... in the last days (default 365)",
     ),
-    (
-        "wl_sales.segments.q.item",
-        "Bought the item",
-    ),
+    ("wl_sales.segments.q.item", "Bought the item"),
     (
         "wl_sales.segments.q.item_days",
         "... within the last days (empty: ever)",
@@ -1203,14 +1428,8 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.segments.q.credits",
         "Package credits left, at least",
     ),
-    (
-        "wl_sales.segments.q.enrolled",
-        "Loyalty membership",
-    ),
-    (
-        "wl_sales.segments.q.any",
-        "Not used",
-    ),
+    ("wl_sales.segments.q.enrolled", "Loyalty membership"),
+    ("wl_sales.segments.q.any", "Not used"),
     (
         "wl_sales.segments.rule.no_sale_for_days",
         "No sale for :days days or more",
@@ -1223,10 +1442,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.segments.rule.sales_at_least",
         "At least :count sales in the last :days days",
     ),
-    (
-        "wl_sales.segments.rule.bought_item",
-        "Bought :item",
-    ),
+    ("wl_sales.segments.rule.bought_item", "Bought :item"),
     (
         "wl_sales.segments.rule.bought_item_within",
         "Bought :item in the last :days days",
@@ -1239,22 +1455,13 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.segments.rule.package_credits",
         ":credits package credits or more left",
     ),
-    (
-        "wl_sales.segments.rule.enrolled",
-        "Enrolled in loyalty",
-    ),
+    ("wl_sales.segments.rule.enrolled", "Enrolled in loyalty"),
     (
         "wl_sales.segments.rule.not_enrolled",
         "Not enrolled in loyalty",
     ),
-    (
-        "wl_sales.segments.rule.vertical",
-        "Rule :name",
-    ),
-    (
-        "wl_sales.segments.problem.name",
-        "Give the segment a name.",
-    ),
+    ("wl_sales.segments.rule.vertical", "Rule :name"),
+    ("wl_sales.segments.problem.name", "Give the segment a name."),
     (
         "wl_sales.segments.problem.name_taken",
         "Another segment has this name.",
@@ -1299,86 +1506,32 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.segments.problem.not_found",
         "There is no such segment.",
     ),
-    (
-        "wl_sales.retention.title",
-        "Retention message",
-    ),
-    (
-        "wl_sales.retention.requester",
-        "Requested for",
-    ),
-    (
-        "wl_sales.retention.state",
-        "Broadcast",
-    ),
-    (
-        "wl_sales.retention.state.none",
-        "Not requested",
-    ),
+    ("wl_sales.retention.title", "Retention message"),
+    ("wl_sales.retention.requester", "Requested for"),
+    ("wl_sales.retention.state", "Broadcast"),
+    ("wl_sales.retention.state.none", "Not requested"),
     (
         "wl_sales.retention.state.requested",
         "Requested: waiting or scheduled",
     ),
-    (
-        "wl_sales.retention.state.completed",
-        "Sent",
-    ),
-    (
-        "wl_sales.retention.state.cancelled",
-        "Not sent",
-    ),
-    (
-        "wl_sales.retention.state.failed",
-        "Not sent",
-    ),
-    (
-        "wl_sales.retention.recipients",
-        "Recipients",
-    ),
-    (
-        "wl_sales.retention.delivered",
-        "Delivered",
-    ),
-    (
-        "wl_sales.retention.opted_out",
-        "Opted out",
-    ),
-    (
-        "wl_sales.retention.returned",
-        "Returned",
-    ),
-    (
-        "wl_sales.retention.days",
-        "days",
-    ),
+    ("wl_sales.retention.state.completed", "Sent"),
+    ("wl_sales.retention.state.cancelled", "Not sent"),
+    ("wl_sales.retention.state.failed", "Not sent"),
+    ("wl_sales.retention.recipients", "Recipients"),
+    ("wl_sales.retention.delivered", "Delivered"),
+    ("wl_sales.retention.opted_out", "Opted out"),
+    ("wl_sales.retention.returned", "Returned"),
+    ("wl_sales.retention.days", "days"),
     (
         "wl_sales.retention.returned_value",
         "Sales of returned customers before VAT",
     ),
-    (
-        "wl_sales.retention.cost",
-        "Campaign cost",
-    ),
-    (
-        "wl_sales.retention.excluded",
-        "Left out, by reason",
-    ),
-    (
-        "wl_sales.retention.reason",
-        "Reason",
-    ),
-    (
-        "wl_sales.retention.count",
-        "Customers",
-    ),
-    (
-        "wl_sales.retention.no_excluded",
-        "Nobody left out",
-    ),
-    (
-        "wl_sales.retention.not_sent",
-        "Not sent",
-    ),
+    ("wl_sales.retention.cost", "Campaign cost"),
+    ("wl_sales.retention.excluded", "Left out, by reason"),
+    ("wl_sales.retention.reason", "Reason"),
+    ("wl_sales.retention.count", "Customers"),
+    ("wl_sales.retention.no_excluded", "Nobody left out"),
+    ("wl_sales.retention.not_sent", "Not sent"),
     (
         "wl_sales.retention.request_again",
         "Request the broadcast again",
@@ -1403,22 +1556,13 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.retention.reason.approval_expired",
         "Nobody approved it in time",
     ),
-    (
-        "wl_sales.retention.reason.rejected",
-        "Rejected",
-    ),
-    (
-        "wl_sales.retention.reason.cancelled",
-        "Cancelled",
-    ),
+    ("wl_sales.retention.reason.rejected", "Rejected"),
+    ("wl_sales.retention.reason.cancelled", "Cancelled"),
     (
         "wl_sales.retention.excluded.no_consent",
         "No marketing consent",
     ),
-    (
-        "wl_sales.retention.excluded.opted_out",
-        "Opted out",
-    ),
+    ("wl_sales.retention.excluded.opted_out", "Opted out"),
     (
         "wl_sales.retention.excluded.blocked_party",
         "On hold, archived or merged",
@@ -1431,14 +1575,8 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.retention.excluded.no_contact_point",
         "No contact point",
     ),
-    (
-        "wl_sales.retention.excluded.frequency_cap",
-        "Frequency cap",
-    ),
-    (
-        "wl_sales.retention.excluded.expired",
-        "Too late to send",
-    ),
+    ("wl_sales.retention.excluded.frequency_cap", "Frequency cap"),
+    ("wl_sales.retention.excluded.expired", "Too late to send"),
     (
         "wl_sales.retention.excluded.broadcast_stopped",
         "Broadcast stopped",
@@ -1471,10 +1609,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.retention.problem.channel",
         "The message channel is not one wl-notify knows.",
     ),
-    (
-        "wl_sales.closure.member_request",
-        "Member request (:via)",
-    ),
+    ("wl_sales.closure.member_request", "Member request (:via)"),
     (
         "wl_sales.closure.problem.closed",
         "The account is closed already.",
@@ -1483,22 +1618,13 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.closure.errors.confirm",
         "The member must confirm before the points are forfeited.",
     ),
-    (
-        "wl_sales.closure.done",
-        "The account is closed.",
-    ),
+    ("wl_sales.closure.done", "The account is closed."),
     (
         "wl_sales.closure.portal_title",
         "Leave the loyalty programme",
     ),
-    (
-        "wl_sales.closure.leave",
-        "Leave the programme",
-    ),
-    (
-        "wl_sales.closure.forfeit",
-        "Points that will be forfeited:",
-    ),
+    ("wl_sales.closure.leave", "Leave the programme"),
+    ("wl_sales.closure.forfeit", "Points that will be forfeited:"),
     (
         "wl_sales.closure.confirm",
         "I understand that I lose these points and want to leave.",
@@ -1511,10 +1637,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.closure.closed",
         "This account is closed. Enrolling again starts with no points.",
     ),
-    (
-        "wl_sales.merge.closed_reason",
-        "Merged into :code",
-    ),
+    ("wl_sales.merge.closed_reason", "Merged into :code"),
     (
         "wl_sales.terms.summary.earn_rate",
         "the earn rate becomes :rate",
@@ -1523,10 +1646,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.terms.summary.minimum",
         "the least amount of a sale becomes AED :amount",
     ),
-    (
-        "wl_sales.terms.summary.excluded",
-        "items left out: :items",
-    ),
+    ("wl_sales.terms.summary.excluded", "items left out: :items"),
     (
         "wl_sales.terms.summary.validity",
         "new points are valid for :months months",
@@ -1559,38 +1679,23 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.terms.turned_off",
         "The programme is turned off. Points can be redeemed until :date.",
     ),
-    (
-        "wl_sales.terms.closing",
-        "Points can be redeemed until",
-    ),
-    (
-        "wl_sales.terms.change",
-        "Change the terms",
-    ),
+    ("wl_sales.terms.closing", "Points can be redeemed until"),
+    ("wl_sales.terms.change", "Change the terms"),
     (
         "wl_sales.terms.change_description",
         "The new terms apply to sales from the effective date, at least 30 days ahead. Points already earned keep their value and expiry. Members are told now.",
     ),
-    (
-        "wl_sales.terms.effective_from",
-        "Effective from",
-    ),
+    ("wl_sales.terms.effective_from", "Effective from"),
     (
         "wl_sales.terms.excluded",
         "Items left out (codes, separated by commas)",
     ),
-    (
-        "wl_sales.terms.turn_off",
-        "Turn the programme off",
-    ),
+    ("wl_sales.terms.turn_off", "Turn the programme off"),
     (
         "wl_sales.terms.turn_off_description",
         "Earning stops now. Members can redeem for 90 days and are told. The points left expire after that.",
     ),
-    (
-        "wl_sales.terms.turn_off_confirm",
-        "Turn the programme off",
-    ),
+    ("wl_sales.terms.turn_off_confirm", "Turn the programme off"),
     (
         "wl_sales.terms.errors.confirm",
         "Confirm that the programme is turned off.",

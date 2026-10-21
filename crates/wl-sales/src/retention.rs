@@ -234,10 +234,16 @@ pub async fn request_broadcast(
         return Ok(Err(RetentionRefused::NotActive));
     }
     let earlier = CampaignBroadcast::of_campaign(&state.db, campaign.id).await?;
-    if earlier.iter().any(|b| b.status == BroadcastState::Completed) {
+    if earlier
+        .iter()
+        .any(|b| b.status == BroadcastState::Completed)
+    {
         return Ok(Err(RetentionRefused::AlreadySent));
     }
-    if earlier.iter().any(|b| b.status == BroadcastState::Requested) {
+    if earlier
+        .iter()
+        .any(|b| b.status == BroadcastState::Requested)
+    {
         return Ok(Err(RetentionRefused::Open));
     }
     let (Some(by), Some(segment), Some(key), Some(channel), Some(send_at)) = (
@@ -452,7 +458,10 @@ pub async fn report(state: &AppState, campaign: &Campaign) -> Result<RetentionRe
     let Some(row) = current else {
         return Ok(out);
     };
-    if matches!(row.status, BroadcastState::Cancelled | BroadcastState::Failed) {
+    if matches!(
+        row.status,
+        BroadcastState::Cancelled | BroadcastState::Failed
+    ) {
         out.not_sent = Some(row.reason.clone().unwrap_or_default());
     }
     let Some(id) = row.broadcast_id else {

@@ -164,7 +164,10 @@ fn staff_only(actor: Actor) -> std::result::Result<(), Refusal> {
     }
 }
 
-async fn service_of(state: &AppState, booking: &Booking) -> std::result::Result<ServiceType, Refusal> {
+async fn service_of(
+    state: &AppState,
+    booking: &Booking,
+) -> std::result::Result<ServiceType, Refusal> {
     Ok(ServiceType::find_or_404(&state.db, booking.service_type_id).await?)
 }
 
@@ -422,7 +425,12 @@ async fn create(
         began = began.actor(user);
     }
     began.record(&mut tx).await?;
-    insert_rows(&mut tx, booking.id, &occupy_rows(&service, &locked, start, end)).await?;
+    insert_rows(
+        &mut tx,
+        booking.id,
+        &occupy_rows(&service, &locked, start, end),
+    )
+    .await?;
     tx.commit().await?;
     let booking = Booking::find_or_404(&state.db, booking.id).await?;
     if kind == Kind::Book {
@@ -1004,8 +1012,18 @@ pub async fn reassign(
     outcome.emit(state).await?;
     let moved = Booking::find_or_404(&state.db, id).await?;
     events::reassigned(state, &moved, old_ids, new_ids, reason_code).await?;
-    events::slot_released(state, &service, vec![from], booking.starts_at, booking.ends_at).await?;
-    let who = incoming.first().map(|resource| resource.name.clone()).unwrap_or_default();
+    events::slot_released(
+        state,
+        &service,
+        vec![from],
+        booking.starts_at,
+        booking.ends_at,
+    )
+    .await?;
+    let who = incoming
+        .first()
+        .map(|resource| resource.name.clone())
+        .unwrap_or_default();
     notices::reassigned(state, &moved, &who, reason_code, at).await?;
     Ok(moved)
 }

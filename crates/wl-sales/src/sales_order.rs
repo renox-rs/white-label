@@ -204,7 +204,11 @@ pub struct FulfilmentRecord {
 
 impl FulfilmentRecord {
     /// The record of the hand-over `source` on order `order`, if any.
-    pub async fn of_source(db: &Db, order: i64, source: &Subject) -> Result<Option<FulfilmentRecord>> {
+    pub async fn of_source(
+        db: &Db,
+        order: i64,
+        source: &Subject,
+    ) -> Result<Option<FulfilmentRecord>> {
         FulfilmentRecord::query()
             .where_(FulfilmentRecord::ORDER_ID.eq(order))
             .where_(FulfilmentRecord::SOURCE_TYPE.eq(source.subject_type.clone()))

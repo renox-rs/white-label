@@ -63,7 +63,11 @@ pub enum WaitingStatus {
 
 /// A request for an earlier or unavailable slot.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_scheduling_waiting_entries", state_machine, index(status, service_type_id))]
+#[model(
+    table = "wl_scheduling_waiting_entries",
+    state_machine,
+    index(status, service_type_id)
+)]
 pub struct WaitingEntry {
     /// The primary key.
     pub id: i64,
@@ -110,12 +114,19 @@ impl WaitingEntry {
 
     /// Whether the offer is still held at `at`.
     pub fn is_held(&self, at: DateTime) -> bool {
-        self.status == WaitingStatus::Offered && self.offer_hold_until.is_some_and(|until| until > at)
+        self.status == WaitingStatus::Offered
+            && self.offer_hold_until.is_some_and(|until| until > at)
     }
 
     /// Whether the slot `resource`, `start`..`end` of `service` fits what the
     /// entry waits for: the service, the preferred resource, the window.
-    pub fn matches(&self, service_type_id: i64, resource: i64, start: DateTime, end: DateTime) -> bool {
+    pub fn matches(
+        &self,
+        service_type_id: i64,
+        resource: i64,
+        start: DateTime,
+        end: DateTime,
+    ) -> bool {
         self.service_type_id == service_type_id
             && self.preferred_resource_id.is_none_or(|id| id == resource)
             && self.window_from.is_none_or(|from| from <= start)
@@ -420,7 +431,9 @@ pub async fn join(state: &AppState, new: NewEntry) -> std::result::Result<Waitin
         ..WaitingEntry::default()
     };
     let mut tx = state.db.begin().await?;
-    entry.insert_in_state(&mut tx, WaitingStatus::Waiting, "join").await?;
+    entry
+        .insert_in_state(&mut tx, WaitingStatus::Waiting, "join")
+        .await?;
     tx.commit().await?;
     Ok(WaitingEntry::find_or_404(&state.db, entry.id).await?)
 }
@@ -463,8 +476,16 @@ pub async fn offer(
     if locked.is_empty() {
         return Err(Refusal::invalid("wl_scheduling.problem.unknown_resource"));
     }
-    if let Err(unfit) =
-        slots::check_free(&mut tx, &service, &locked, start, end, at, Exclude::default()).await?
+    if let Err(unfit) = slots::check_free(
+        &mut tx,
+        &service,
+        &locked,
+        start,
+        end,
+        at,
+        Exclude::default(),
+    )
+    .await?
     {
         tx.rollback().await?;
         return Err(service::refusal_for(unfit));
@@ -604,18 +625,36 @@ mod tests {
     fn the_machine_has_the_states_and_transitions_of_the_spec() {
         let machine = WaitingEntry::machine();
         let states: Vec<&str> = machine.states().iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(states, ["waiting", "offered", "booked", "expired", "withdrawn"]);
+        assert_eq!(
+            states,
+            ["waiting", "offered", "booked", "expired", "withdrawn"]
+        );
         let row = |name: &str| {
             let t = machine.find(name).unwrap();
             (t.from_states().to_vec(), t.to_state().unwrap().to_owned())
         };
-        assert_eq!(row(OFFER), (vec!["waiting".to_owned()], "offered".to_owned()));
-        assert_eq!(row(ACCEPT), (vec!["offered".to_owned()], "booked".to_owned()));
-        assert_eq!(row(LAPSE), (vec!["offered".to_owned()], "waiting".to_owned()));
-        assert_eq!(row(EXPIRE), (vec!["waiting".to_owned()], "expired".to_owned()));
+        assert_eq!(
+            row(OFFER),
+            (vec!["waiting".to_owned()], "offered".to_owned())
+        );
+        assert_eq!(
+            row(ACCEPT),
+            (vec!["offered".to_owned()], "booked".to_owned())
+        );
+        assert_eq!(
+            row(LAPSE),
+            (vec!["offered".to_owned()], "waiting".to_owned())
+        );
+        assert_eq!(
+            row(EXPIRE),
+            (vec!["waiting".to_owned()], "expired".to_owned())
+        );
         assert_eq!(
             row(WITHDRAW),
-            (vec!["waiting".to_owned(), "offered".to_owned()], "withdrawn".to_owned())
+            (
+                vec!["waiting".to_owned(), "offered".to_owned()],
+                "withdrawn".to_owned()
+            )
         );
     }
 

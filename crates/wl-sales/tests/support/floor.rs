@@ -163,11 +163,17 @@ impl Floor {
 
 /// The account as it is now.
 pub async fn account(t: &Booted, account: &LoyaltyAccount) -> LoyaltyAccount {
-    LoyaltyAccount::find_or_404(t.db(), account.id).await.unwrap()
+    LoyaltyAccount::find_or_404(t.db(), account.id)
+        .await
+        .unwrap()
 }
 
 /// The movements of the account of one kind, oldest first.
-pub async fn movements(t: &Booted, account: &LoyaltyAccount, kind: PointsKind) -> Vec<PointsMovement> {
+pub async fn movements(
+    t: &Booted,
+    account: &LoyaltyAccount,
+    kind: PointsKind,
+) -> Vec<PointsMovement> {
     PointsMovement::of_account(t.db(), account.id)
         .await
         .unwrap()

@@ -11,9 +11,7 @@ use renox::prelude::*;
 use wl_kernel::consents::MARKETING;
 use wl_kernel::invoicing::{InvoiceId, InvoicePaid};
 use wl_kernel::notify::{NotifyChannel, NotifyRecipient};
-use wl_kernel::sales::{
-    FulfilOrder, FulfilledLine, SalesOrderId, order_fulfilment,
-};
+use wl_kernel::sales::{FulfilOrder, FulfilledLine, SalesOrderId, order_fulfilment};
 use wl_kernel::{PartyId, Subject};
 use wl_sales::notices::LOYALTY_REWARD;
 use wl_sales::{
@@ -40,7 +38,12 @@ async fn a_counter_sale_of_aed_105_with_vat_earns_100_points_expiring_12_months_
     let m = floor.enrol(&t, M, "050 123 4567").await;
 
     let sale = floor
-        .ring_up(&t, &[("tee", "100.00", "1")], Some(&m.code), &[("cash", "105.00")])
+        .ring_up(
+            &t,
+            &[("tee", "100.00", "1")],
+            Some(&m.code),
+            &[("cash", "105.00")],
+        )
         .await;
     assert_eq!(sale.gross_total, 10_500);
 
@@ -52,7 +55,10 @@ async fn a_counter_sale_of_aed_105_with_vat_earns_100_points_expiring_12_months_
     assert_eq!(lots[0].value, 100);
     assert_eq!(lots[0].source(), sale.subject());
     let on = wl_kernel::documents::dubai_date(sale.completed_at.unwrap());
-    assert_eq!(lots[0].lot_expires_on, on.checked_add_months(Months::new(12)));
+    assert_eq!(
+        lots[0].lot_expires_on,
+        on.checked_add_months(Months::new(12))
+    );
     let earned = shop.points.earned.lock().unwrap().clone();
     assert_eq!(earned.len(), 1);
     assert_eq!((earned[0].party, earned[0].points), (PartyId(M), 100));
@@ -62,7 +68,10 @@ async fn a_counter_sale_of_aed_105_with_vat_earns_100_points_expiring_12_months_
         .await
         .unwrap()
         .unwrap();
-    assert_eq!((earning.eligible_net, earning.basis_gross), (10_000, 10_500));
+    assert_eq!(
+        (earning.eligible_net, earning.basis_gross),
+        (10_000, 10_500)
+    );
 }
 
 #[renox::test]
@@ -86,7 +95,12 @@ async fn points_are_rounded_down_and_excluded_items_and_small_sales_do_not_count
 
     // Below the minimum nothing is earned.
     floor
-        .ring_up(&t, &[("pen", "20.00", "1")], Some(&m.code), &[("cash", "21.00")])
+        .ring_up(
+            &t,
+            &[("pen", "20.00", "1")],
+            Some(&m.code),
+            &[("cash", "21.00")],
+        )
         .await;
     assert_eq!(account(&t, &m).await.points_balance, 99);
     assert_eq!(movements(&t, &m, PointsKind::Earn).await.len(), 1);
@@ -110,7 +124,13 @@ async fn a_sale_with_no_member_attached_before_completion_earns_nothing() {
         )
         .await
         .assert_status(422);
-    assert_eq!(CounterSale::find_or_404(t.db(), sale.id).await.unwrap().loyalty_account_id, None);
+    assert_eq!(
+        CounterSale::find_or_404(t.db(), sale.id)
+            .await
+            .unwrap()
+            .loyalty_account_id,
+        None
+    );
 }
 
 #[renox::test]
@@ -138,7 +158,10 @@ async fn an_invoice_with_an_insurer_share_earns_on_the_members_share_only() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!((earning.eligible_net, earning.basis_gross), (20_000, 21_000));
+    assert_eq!(
+        (earning.eligible_net, earning.basis_gross),
+        (20_000, 21_000)
+    );
 
     // Paid again (an event delivered twice): it earns once.
     t.state()
@@ -157,7 +180,10 @@ async fn an_invoice_with_an_insurer_share_earns_on_the_members_share_only() {
 /// attached, confirmed; the id of its only line.
 async fn order(t: &Booted, member: &str) -> (SalesOrder, SaleLine) {
     t.app
-        .post("/sales-orders", &[("party_id", &M.to_string()), ("channel", "phone")])
+        .post(
+            "/sales-orders",
+            &[("party_id", &M.to_string()), ("channel", "phone")],
+        )
         .await
         .assert_status(303);
     let order = SalesOrder::query()
@@ -186,7 +212,10 @@ async fn order(t: &Booted, member: &str) -> (SalesOrder, SaleLine) {
         .assert_status(303);
     let order = SalesOrder::find_or_404(t.db(), order.id).await.unwrap();
     assert_eq!(order.status, SalesOrderStatus::Confirmed);
-    let line = SaleLine::of(t.db(), &order.subject()).await.unwrap().remove(0);
+    let line = SaleLine::of(t.db(), &order.subject())
+        .await
+        .unwrap()
+        .remove(0);
     (order, line)
 }
 
@@ -256,7 +285,12 @@ async fn a_per_visit_programme_makes_a_reward_available_on_the_tenth_sale_and_te
     let mut last = None;
     for n in 1..=10 {
         let sale = floor
-            .ring_up(&t, &[("coffee", "10.00", "1")], Some(&m.code), &[("cash", "10.50")])
+            .ring_up(
+                &t,
+                &[("coffee", "10.00", "1")],
+                Some(&m.code),
+                &[("cash", "10.50")],
+            )
             .await;
         last = Some(sale);
         let now = account(&t, &m).await;
@@ -270,7 +304,10 @@ async fn a_per_visit_programme_makes_a_reward_available_on_the_tenth_sale_and_te
     // The 10th sale made the reward available; visits restart at 0.
     assert_eq!(m.visits, 0);
     let on = wl_kernel::documents::dubai_date(last.unwrap().completed_at.unwrap());
-    assert_eq!(m.reward_available_until, on.checked_add_months(Months::new(12)));
+    assert_eq!(
+        m.reward_available_until,
+        on.checked_add_months(Months::new(12))
+    );
     let told = shop.mail.of_type(LOYALTY_REWARD);
     assert_eq!(told.len(), 1);
     assert_eq!(
@@ -280,7 +317,12 @@ async fn a_per_visit_programme_makes_a_reward_available_on_the_tenth_sale_and_te
     // A visit is a movement of one; the balance of points stays zero.
     assert_eq!(movements(&t, &m, PointsKind::Earn).await.len(), 10);
     assert_eq!(m.points_balance, 0);
-    let earning = LoyaltyEarning::query().order_by_desc(LoyaltyEarning::ID).first(t.db()).await.unwrap().unwrap();
+    let earning = LoyaltyEarning::query()
+        .order_by_desc(LoyaltyEarning::ID)
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(earning.earn_kind, EarnKind::PerVisit);
     assert!(earning.reward_made);
 }
@@ -300,7 +342,11 @@ async fn enrolment_records_the_terms_version_and_is_not_a_marketing_consent() {
     assert!(m.code.starts_with("LYL-"));
     // No consent was created or implied: PTY.CNS.01 asks for it separately.
     let consents = wl_kernel::consents::consents(t.state());
-    for channel in [NotifyChannel::Email, NotifyChannel::Sms, NotifyChannel::Whatsapp] {
+    for channel in [
+        NotifyChannel::Email,
+        NotifyChannel::Sms,
+        NotifyChannel::Whatsapp,
+    ] {
         assert!(
             !consents
                 .has_consent(t.db(), PartyId(M), MARKETING, channel)
@@ -348,7 +394,11 @@ async fn a_second_account_with_the_same_mobile_number_or_party_is_refused() {
     t.app
         .post(
             "/loyalty/accounts",
-            &[("party_id", "8"), ("mobile", "+971 50 123 4567"), ("terms", "1")],
+            &[
+                ("party_id", "8"),
+                ("mobile", "+971 50 123 4567"),
+                ("terms", "1"),
+            ],
         )
         .await
         .assert_status(422);
@@ -369,13 +419,19 @@ async fn a_second_account_with_the_same_mobile_number_or_party_is_refused() {
         .await
         .assert_status(422);
     assert_eq!(
-        wl_sales::LoyaltyAccount::query().count(t.db()).await.unwrap(),
+        wl_sales::LoyaltyAccount::query()
+            .count(t.db())
+            .await
+            .unwrap(),
         1
     );
     // Another party with another number is welcome.
     floor.enrol(&t, 8, "0508888888").await;
     assert_eq!(
-        wl_sales::LoyaltyAccount::query().count(t.db()).await.unwrap(),
+        wl_sales::LoyaltyAccount::query()
+            .count(t.db())
+            .await
+            .unwrap(),
         2
     );
 }
@@ -401,21 +457,42 @@ async fn a_cashier_cannot_attach_a_sale_to_their_own_account_nor_a_member_to_yes
         .unwrap();
     let url = format!("/counter-sales/{}/member", sale.id);
     // By code, by mobile number and by portal login: refused.
-    t.app.post(&url, &[("code", &own.code)]).await.assert_status(422);
-    t.app.post(&url, &[("mobile", "050 123 4567")]).await.assert_status(422);
-    t.app.post(&url, &[("party_id", "7")]).await.assert_status(422);
+    t.app
+        .post(&url, &[("code", &own.code)])
+        .await
+        .assert_status(422);
+    t.app
+        .post(&url, &[("mobile", "050 123 4567")])
+        .await
+        .assert_status(422);
+    t.app
+        .post(&url, &[("party_id", "7")])
+        .await
+        .assert_status(422);
     assert_eq!(
-        CounterSale::find_or_404(t.db(), sale.id).await.unwrap().loyalty_account_id,
+        CounterSale::find_or_404(t.db(), sale.id)
+            .await
+            .unwrap()
+            .loyalty_account_id,
         None
     );
     // Someone else's account is fine, by any of the three.
-    t.app.post(&url, &[("mobile", "0508888888")]).await.assert_status(303);
+    t.app
+        .post(&url, &[("mobile", "0508888888")])
+        .await
+        .assert_status(303);
     assert_eq!(
-        CounterSale::find_or_404(t.db(), sale.id).await.unwrap().loyalty_account_id,
+        CounterSale::find_or_404(t.db(), sale.id)
+            .await
+            .unwrap()
+            .loyalty_account_id,
         Some(other.id)
     );
     // An unknown code is refused.
-    t.app.post(&url, &[("code", "LYL-9999")]).await.assert_status(422);
+    t.app
+        .post(&url, &[("code", "LYL-9999")])
+        .await
+        .assert_status(422);
 
     // A sale completed yesterday takes no member.
     let done = floor
@@ -445,12 +522,28 @@ async fn the_sixth_earning_sale_of_a_day_still_earns_and_is_listed_for_the_manag
     let m = floor.enrol(&t, M, "0501234567").await;
     for _ in 0..5 {
         floor
-            .ring_up(&t, &[("tee", "10.00", "1")], Some(&m.code), &[("cash", "10.50")])
+            .ring_up(
+                &t,
+                &[("tee", "10.00", "1")],
+                Some(&m.code),
+                &[("cash", "10.50")],
+            )
             .await;
     }
-    assert!(LoyaltyReview::query().first(t.db()).await.unwrap().is_none());
+    assert!(
+        LoyaltyReview::query()
+            .first(t.db())
+            .await
+            .unwrap()
+            .is_none()
+    );
     floor
-        .ring_up(&t, &[("tee", "10.00", "1")], Some(&m.code), &[("cash", "10.50")])
+        .ring_up(
+            &t,
+            &[("tee", "10.00", "1")],
+            Some(&m.code),
+            &[("cash", "10.50")],
+        )
         .await;
     // The 6th still earns.
     assert_eq!(account(&t, &m).await.points_balance, 60);
@@ -469,7 +562,10 @@ async fn the_sixth_earning_sale_of_a_day_still_earns_and_is_listed_for_the_manag
         .assert_ok()
         .assert_see(&m.code);
     t.app
-        .post(&format!("/loyalty/review/{}/resolve", listed[0].id), &[("x", "")])
+        .post(
+            &format!("/loyalty/review/{}/resolve", listed[0].id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     t.app
@@ -488,8 +584,19 @@ async fn a_higher_daily_limit_lists_nobody() {
     let m = floor.enrol(&t, M, "0501234567").await;
     for _ in 0..6 {
         floor
-            .ring_up(&t, &[("tee", "10.00", "1")], Some(&m.code), &[("cash", "10.50")])
+            .ring_up(
+                &t,
+                &[("tee", "10.00", "1")],
+                Some(&m.code),
+                &[("cash", "10.50")],
+            )
             .await;
     }
-    assert!(LoyaltyReview::query().first(t.db()).await.unwrap().is_none());
+    assert!(
+        LoyaltyReview::query()
+            .first(t.db())
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

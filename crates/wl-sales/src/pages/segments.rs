@@ -97,7 +97,11 @@ pub fn describe(lang: &Lang, rule: &Rule) -> String {
                 "wl_sales.segments.rule.bought_item_within",
                 &[("item", item), ("days", days)],
             ),
-            None => texts::t_with(lang, "wl_sales.segments.rule.bought_item", &[("item", item)]),
+            None => texts::t_with(
+                lang,
+                "wl_sales.segments.rule.bought_item",
+                &[("item", item)],
+            ),
         },
         Rule::LoyaltyBalanceAtLeast { points } => texts::t_with(
             lang,
@@ -167,7 +171,10 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
                 .map(|r| describe(&lang, r))
                 .collect::<Vec<_>>()
                 .join("; "),
-            count: s.last_member_count.map(|c| c.to_string()).unwrap_or_default(),
+            count: s
+                .last_member_count
+                .map(|c| c.to_string())
+                .unwrap_or_default(),
             name: s.name,
         })
         .collect();
@@ -277,7 +284,9 @@ async fn editor(
         modes,
         items: offered_items(&state.db, state).await?,
         enrolled,
-        count: segment.and_then(|s| s.last_member_count).map(|c| c.to_string()),
+        count: segment
+            .and_then(|s| s.last_member_count)
+            .map(|c| c.to_string()),
         can_export: user.has_permission(permissions::SEGMENTS_EXPORT),
     }))
 }

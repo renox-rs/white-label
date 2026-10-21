@@ -181,7 +181,10 @@ async fn m_with_800_points_redeems_them_as_an_aed_8_line_after_entering_the_code
     let line = redemption_lines(&all);
     assert_eq!(line.len(), 1);
     assert_eq!(line[0].description, "Loyalty redemption");
-    assert_eq!((line[0].net(), line[0].vat(), line[0].gross()), (-762, -38, -800));
+    assert_eq!(
+        (line[0].net(), line[0].vat(), line[0].gross()),
+        (-762, -38, -800)
+    );
     assert_eq!(held.line_id, Some(line[0].id));
 
     // The VAT of the sale goes from AED 1.90 to AED 1.52.
@@ -224,7 +227,9 @@ async fn with_a_maximum_share_of_50_percent_a_sale_of_aed_10_accepts_500_points(
         .unwrap()
         .unwrap();
     assert_eq!(programme.max_share_bps, 5_000);
-    let sale = floor.open_cart(&t, &[("tee", "9.52", "1")], Some(&m.code)).await;
+    let sale = floor
+        .open_cart(&t, &[("tee", "9.52", "1")], Some(&m.code))
+        .await;
     assert_eq!(sale.gross_total, 1_000);
 
     // 600 points would pay AED 6.00, more than half: no code is sent.
@@ -242,7 +247,9 @@ async fn with_a_maximum_share_of_50_percent_a_sale_of_aed_10_accepts_500_points(
 #[renox::test]
 async fn m_with_400_points_cannot_redeem_below_the_minimum_of_500() {
     let (t, shop, floor, m) = world(400, &[]).await;
-    let sale = floor.open_cart(&t, &[("tee", "50.00", "1")], Some(&m.code)).await;
+    let sale = floor
+        .open_cart(&t, &[("tee", "50.00", "1")], Some(&m.code))
+        .await;
     ask(&t, &sale, 400, 422).await;
     assert!(shop.mail.otp_requests().is_empty());
     assert!(redemptions(&t, &sale.subject()).await.is_empty());
@@ -254,7 +261,9 @@ async fn m_with_400_points_cannot_redeem_below_the_minimum_of_500() {
 #[renox::test]
 async fn three_wrong_codes_refuse_the_redemption_for_the_sale_and_it_goes_on_without_it() {
     let (t, shop, floor, m) = world(800, &[]).await;
-    let sale = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let sale = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     ask(&t, &sale, 600, 303).await;
     let wrong = shop.mail.wrong_code(&sale.subject());
     for _ in 0..3 {
@@ -277,14 +286,18 @@ async fn three_wrong_codes_refuse_the_redemption_for_the_sale_and_it_goes_on_wit
     assert!(movements(&t, &m, PointsKind::Redeem).await.is_empty());
 
     // The refusal is for that sale only.
-    let other = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let other = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     ask(&t, &other, 600, 303).await;
 }
 
 #[renox::test]
 async fn a_code_entered_six_minutes_after_sending_is_expired_and_a_new_one_can_be_sent() {
     let (t, shop, floor, m) = world(800, &[]).await;
-    let sale = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let sale = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     ask(&t, &sale, 600, 303).await;
     let first = shop.mail.code_for(&sale.subject());
     t.app.travel(Duration::from_secs(6 * 60));
@@ -307,7 +320,9 @@ async fn a_code_entered_six_minutes_after_sending_is_expired_and_a_new_one_can_b
 #[renox::test]
 async fn a_code_that_cannot_be_sent_refuses_the_redemption_and_the_sale_goes_on() {
     let (t, shop, floor, m) = world(800, &[]).await;
-    let sale = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let sale = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     shop.mail.cannot_send_codes(true);
     ask(&t, &sale, 600, 422).await;
     let refused = &redemptions(&t, &sale.subject()).await[0];
@@ -318,7 +333,9 @@ async fn a_code_that_cannot_be_sent_refuses_the_redemption_and_the_sale_goes_on(
 
     // Another sale may try again once codes can be sent.
     shop.mail.cannot_send_codes(false);
-    let next = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let next = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     ask(&t, &next, 600, 303).await;
 }
 
@@ -326,7 +343,9 @@ async fn a_code_that_cannot_be_sent_refuses_the_redemption_and_the_sale_goes_on(
 async fn without_the_code_setting_the_points_are_held_at_once() {
     let sales = WlSales::new().confirm_redemption_by_code(false);
     let (t, shop, floor, m) = world_with(sales, 800, &[]).await;
-    let sale = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let sale = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     ask(&t, &sale, 600, 303).await;
     assert!(shop.mail.otp_requests().is_empty());
     let held = &redemptions(&t, &sale.subject()).await[0];
@@ -401,15 +420,24 @@ async fn returning_the_sale_gives_the_800_points_back_with_their_expiry_and_tell
     assert_eq!(row.returned_points, 800);
     let back = movements(&t, &m, PointsKind::ReverseRedeem).await;
     assert_eq!(back.iter().map(|x| x.points).sum::<i64>(), 800);
-    assert!(back.iter().all(|x| x.cause == "return" && x.source() == r.subject()));
+    assert!(
+        back.iter()
+            .all(|x| x.cause == "return" && x.source() == r.subject())
+    );
     // They keep the expiry of the lot they came from.
-    assert!(back.iter().all(|x| x.lot_expires_on == first_lot.lot_expires_on));
+    assert!(
+        back.iter()
+            .all(|x| x.lot_expires_on == first_lot.lot_expires_on)
+    );
     let events = shop.points.given_back.lock().unwrap().clone();
     assert_eq!(events.len(), 1);
     assert_eq!((events[0].party, events[0].points), (PartyId(M), 800));
     let told = shop.mail.of_type(LOYALTY_GIVEN_BACK);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, vec![NotifyRecipient::Party { id: PartyId(M) }]);
+    assert_eq!(
+        told[0].recipients,
+        vec![NotifyRecipient::Party { id: PartyId(M) }]
+    );
 }
 
 #[renox::test]
@@ -433,8 +461,12 @@ async fn a_lot_that_expired_gets_thirty_days_when_the_points_come_back() {
 #[renox::test]
 async fn points_confirmed_on_one_till_are_refused_on_another_until_the_hold_lapses() {
     let (t, shop, floor, m) = world(800, &[]).await;
-    let till1 = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
-    let till2 = floor.open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code)).await;
+    let till1 = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
+    let till2 = floor
+        .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
+        .await;
     ask(&t, &till1, 800, 303).await;
     enter_right(&t, &shop, &till1).await;
     assert_eq!(account(&t, &m).await.points_held, 800);
@@ -508,7 +540,11 @@ async fn draft_order(
     t.app
         .post(
             "/sales-orders",
-            &[("party_id", "7"), ("channel", channel), ("payment_mode", mode)],
+            &[
+                ("party_id", "7"),
+                ("channel", channel),
+                ("payment_mode", mode),
+            ],
         )
         .await
         .assert_status(303);
@@ -522,7 +558,11 @@ async fn draft_order(
         t.app
             .post(
                 &format!("/sales-orders/{}/lines", order.id),
-                &[("item_code", *code), ("unit_price", *price), ("quantity", "1")],
+                &[
+                    ("item_code", *code),
+                    ("unit_price", *price),
+                    ("quantity", "1"),
+                ],
             )
             .await
             .assert_status(303);
@@ -603,23 +643,34 @@ async fn an_online_order_paid_with_500_points_and_rejected_gives_them_back_and_a
         )
         .await
         .assert_status(303);
-    assert_eq!(order_now(&t, &order).await.status, SalesOrderStatus::Rejected);
+    assert_eq!(
+        order_now(&t, &order).await.status,
+        SalesOrderStatus::Rejected
+    );
     assert_eq!(account(&t, &m).await.points_balance, 1000);
     let back = movements(&t, &m, PointsKind::ReverseRedeem).await;
     assert_eq!(back.iter().map(|x| x.points).sum::<i64>(), 500);
     let told = shop.mail.of_type(LOYALTY_GIVEN_BACK);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, vec![NotifyRecipient::Party { id: PartyId(M) }]);
+    assert_eq!(
+        told[0].recipients,
+        vec![NotifyRecipient::Party { id: PartyId(M) }]
+    );
 
     // An order whose payment fails releases the hold and writes no movement.
     let failing = draft_order(&t, &floor, &m, "website", "online", &[("tee", "9.52")]).await;
     redeem_on_order(&t, &shop, &failing, 500).await;
     assert_eq!(account(&t, &m).await.points_held, 500);
     t.app
-        .post(&format!("/sales-orders/{}/submit", failing.id), &[("x", "")])
+        .post(
+            &format!("/sales-orders/{}/submit", failing.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
-    let failed = sales_orders::payment_failed(t.state(), failing.id).await.unwrap();
+    let failed = sales_orders::payment_failed(t.state(), failing.id)
+        .await
+        .unwrap();
     assert_eq!(failed.status, SalesOrderStatus::Cancelled);
     assert_eq!(
         redemptions(&t, &failing.subject()).await[0].status,
@@ -668,17 +719,31 @@ async fn cancelling_one_of_two_equal_lines_of_a_confirmed_order_gives_back_250_o
         .assert_status(422);
     t.app
         .htmx()
-        .post(&url, &[("line_no", "1"), ("quantity", "2"), ("reason", "Changed mind")])
+        .post(
+            &url,
+            &[
+                ("line_no", "1"),
+                ("quantity", "2"),
+                ("reason", "Changed mind"),
+            ],
+        )
         .await
         .assert_status(422);
     t.app
         .post(
             &url,
-            &[("line_no", "1"), ("quantity", "1"), ("reason", "Changed mind")],
+            &[
+                ("line_no", "1"),
+                ("quantity", "1"),
+                ("reason", "Changed mind"),
+            ],
         )
         .await
         .assert_status(303);
-    assert_eq!(order_now(&t, &order).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        order_now(&t, &order).await.status,
+        SalesOrderStatus::Confirmed
+    );
     let line = lines(&t, &order.subject()).await.remove(0);
     assert_eq!(line.cancelled_milli, 1000);
     // Half of the order's value is cancelled: 250 of the 500 points.
@@ -694,7 +759,11 @@ async fn cancelling_one_of_two_equal_lines_of_a_confirmed_order_gives_back_250_o
     t.app
         .post(
             &url,
-            &[("line_no", "2"), ("quantity", "1"), ("reason", "Changed mind")],
+            &[
+                ("line_no", "2"),
+                ("quantity", "1"),
+                ("reason", "Changed mind"),
+            ],
         )
         .await
         .assert_status(422);

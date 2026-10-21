@@ -36,6 +36,7 @@
 use renox::chrono::{Months, NaiveDate};
 use renox::db::Transaction;
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::invoicing::{
     CreditNoteIssued, INVOICE_SUBJECT_TYPE, InvoicePaid, InvoiceReopened, InvoiceWrittenOff,
     ReopenReason, invoicer,
@@ -46,15 +47,13 @@ use wl_kernel::sales::{
     COUNTER_SALE_SUBJECT_TYPE, CounterSaleCompleted, PointsEarned, PointsReversed, ReturnResolved,
     SALES_ORDER_SUBJECT_TYPE, SalesOrderFulfilled, SalesOrderFulfilmentReversed,
 };
-use wl_kernel::Subject;
 
 use crate::config::config_of;
 use crate::counter_sale::CounterSale;
 use crate::loyalty_account::LoyaltyAccount;
 use crate::loyalty_points::{
-    CAUSE_CREDIT_NOTE, CAUSE_EARN, CAUSE_FULFILMENT_REVERSED, CAUSE_PAYMENT_REVERSED,
-    CAUSE_REEARN, CAUSE_RETURN, CAUSE_WRITTEN_OFF, LoyaltyEarning, LoyaltyReview, PointsKind,
-    PointsMovement,
+    CAUSE_CREDIT_NOTE, CAUSE_EARN, CAUSE_FULFILMENT_REVERSED, CAUSE_PAYMENT_REVERSED, CAUSE_REEARN,
+    CAUSE_RETURN, CAUSE_WRITTEN_OFF, LoyaltyEarning, LoyaltyReview, PointsKind, PointsMovement,
 };
 use crate::loyalty_programme::{EarnKind, LoyaltyProgramme};
 use crate::notices;
@@ -238,7 +237,11 @@ async fn credit(
         account,
         kind: PointsKind::Earn,
         points,
-        value: if per_aed { points * programme.point_value } else { 0 },
+        value: if per_aed {
+            points * programme.point_value
+        } else {
+            0
+        },
         entity,
         source,
         earning,
@@ -268,10 +271,7 @@ async fn credit(
                 .where_(LoyaltyAccount::ID.eq(account.id))
                 .update(
                     &mut *tx,
-                    &[
-                        ("visits", &rest),
-                        ("reward_available_until", &Some(until)),
-                    ],
+                    &[("visits", &rest), ("reward_available_until", &Some(until))],
                 )
                 .await?;
             reward = Some(until);
@@ -284,12 +284,7 @@ async fn credit(
 }
 
 /// Records that the account earned on more sales today than the limit.
-async fn flag_for_review(
-    tx: &mut Transaction,
-    account: i64,
-    on: NaiveDate,
-    limit: i64,
-) -> Result {
+async fn flag_for_review(tx: &mut Transaction, account: i64, on: NaiveDate, limit: i64) -> Result {
     let today = LoyaltyEarning::query()
         .where_(LoyaltyEarning::ACCOUNT_ID.eq(account))
         .where_(LoyaltyEarning::EARNED_ON.eq(on))
@@ -477,7 +472,11 @@ pub async fn reverse_earn(
         account: &account,
         kind: PointsKind::ReverseEarn,
         points: -points,
-        value: if per_aed { points * programme.point_value } else { 0 },
+        value: if per_aed {
+            points * programme.point_value
+        } else {
+            0
+        },
         entity: None,
         source: cause_source,
         earning: earning.id,
@@ -649,9 +648,10 @@ async fn on_counter_sale(state: &AppState, event: &CounterSaleCompleted) -> Resu
     let Some(account) = LoyaltyAccount::find(&state.db, account_id).await? else {
         return Ok(());
     };
-    let on = sale
-        .completed_at
-        .map_or_else(wl_kernel::documents::today, wl_kernel::documents::dubai_date);
+    let on = sale.completed_at.map_or_else(
+        wl_kernel::documents::today,
+        wl_kernel::documents::dubai_date,
+    );
     let Some(programme) = programme_of(&state.db, &account, on).await? else {
         return Ok(());
     };
@@ -881,13 +881,7 @@ async fn on_payment_received(state: &AppState, event: &PaymentReceived) -> Resul
     let Some(earning) = LoyaltyEarning::of_source(&state.db, &sale.subject()).await? else {
         return Ok(());
     };
-    earn_again(
-        state,
-        &earning,
-        wl_kernel::documents::today(),
-        PAID_AGAIN,
-    )
-    .await?;
+    earn_again(state, &earning, wl_kernel::documents::today(), PAID_AGAIN).await?;
     Ok(())
 }
 
@@ -995,6 +989,9 @@ mod tests {
         let order = Subject::new("sales.sales_order", 4);
         assert_eq!(sale_of_invoice(&order, 9), order);
         let claim = Subject::new("clinics.visit", 4);
-        assert_eq!(sale_of_invoice(&claim, 9), Subject::new("invoicing.invoice", 9));
+        assert_eq!(
+            sale_of_invoice(&claim, 9),
+            Subject::new("invoicing.invoice", 9)
+        );
     }
 }

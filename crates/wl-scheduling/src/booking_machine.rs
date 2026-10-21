@@ -218,11 +218,7 @@ async fn take_rows(tx: &mut renox::db::Transaction, id: i64, rows: &[Occupy]) ->
 
 /// The effect of the reassign transitions: the replaced resource's slot is
 /// released, the new resource's slot taken, and the conflict is cleared.
-async fn swap_resource(
-    tx: &mut renox::db::Transaction,
-    id: i64,
-    input: &BookingInput,
-) -> Result {
+async fn swap_resource(tx: &mut renox::db::Transaction, id: i64, input: &BookingInput) -> Result {
     if let Some(from) = input.reassign_from {
         BookingResource::query()
             .where_(BookingResource::BOOKING_ID.eq(id))
@@ -286,7 +282,10 @@ fn reassign_transition(name: &str, state: BookingStatus) -> Transition<Booking> 
 
 /// A transition no user runs: the services check who may act.
 fn transition(name: &str, from: &[BookingStatus], to: BookingStatus) -> Transition<Booking> {
-    Transition::new(name).system().from(from.iter().copied()).to(to)
+    Transition::new(name)
+        .system()
+        .from(from.iter().copied())
+        .to(to)
 }
 
 fn guard_text(key: &str) -> String {
@@ -408,25 +407,27 @@ impl StateMachine for Booking {
                     }),
             )
             .transition(
-                transition(RESCHEDULE_REQUEST, &[Requested, Booked, Confirmed], Requested)
-                    .label("Reschedule")
-                    .guard("before_cutoff", |_b: &Booking, ctx| {
-                        let refused = party_after_cutoff(ctx);
-                        Box::pin(async move {
-                            if refused {
-                                Err(guard_text("wl_scheduling.problem.after_cutoff"))
-                            } else {
-                                Ok(())
-                            }
-                        })
+                transition(
+                    RESCHEDULE_REQUEST,
+                    &[Requested, Booked, Confirmed],
+                    Requested,
+                )
+                .label("Reschedule")
+                .guard("before_cutoff", |_b: &Booking, ctx| {
+                    let refused = party_after_cutoff(ctx);
+                    Box::pin(async move {
+                        if refused {
+                            Err(guard_text("wl_scheduling.problem.after_cutoff"))
+                        } else {
+                            Ok(())
+                        }
                     })
-                    .effect(|booking: &Booking, ctx, tx| {
-                        let (id, start, end) = (booking.id, booking.starts_at, booking.ends_at);
-                        let input = input_of(ctx);
-                        Box::pin(
-                            async move { move_booking(tx, id, start, end, &input, true).await },
-                        )
-                    }),
+                })
+                .effect(|booking: &Booking, ctx, tx| {
+                    let (id, start, end) = (booking.id, booking.starts_at, booking.ends_at);
+                    let input = input_of(ctx);
+                    Box::pin(async move { move_booking(tx, id, start, end, &input, true).await })
+                }),
             )
             .transition(
                 transition(CHECK_IN, &[Booked, Confirmed], CheckedIn)
@@ -467,38 +468,42 @@ impl StateMachine for Booking {
                     }),
             )
             .transition(
-                transition(COMPLETE, &[Booked, Confirmed, CheckedIn, InProgress], Completed)
-                    .label("Complete")
-                    .tone("success")
-                    .guard("start_passed", |booking: &Booking, ctx| {
-                        let passed = input_of(ctx).at() >= booking.starts_at;
-                        Box::pin(async move {
-                            if passed {
-                                Ok(())
-                            } else {
-                                Err(guard_text("wl_scheduling.problem.not_started"))
-                            }
-                        })
+                transition(
+                    COMPLETE,
+                    &[Booked, Confirmed, CheckedIn, InProgress],
+                    Completed,
+                )
+                .label("Complete")
+                .tone("success")
+                .guard("start_passed", |booking: &Booking, ctx| {
+                    let passed = input_of(ctx).at() >= booking.starts_at;
+                    Box::pin(async move {
+                        if passed {
+                            Ok(())
+                        } else {
+                            Err(guard_text("wl_scheduling.problem.not_started"))
+                        }
                     })
-                    .guard("checked_in_first", |booking: &Booking, ctx| {
-                        let must = input_of(ctx).check_in_required
-                            && matches!(booking.status, Booked | Confirmed);
-                        Box::pin(async move {
-                            if must {
-                                Err(guard_text("wl_scheduling.problem.check_in_first"))
-                            } else {
-                                Ok(())
-                            }
-                        })
+                })
+                .guard("checked_in_first", |booking: &Booking, ctx| {
+                    let must = input_of(ctx).check_in_required
+                        && matches!(booking.status, Booked | Confirmed);
+                    Box::pin(async move {
+                        if must {
+                            Err(guard_text("wl_scheduling.problem.check_in_first"))
+                        } else {
+                            Ok(())
+                        }
                     })
-                    .effect(|booking: &Booking, ctx, tx| {
-                        let id = booking.id;
-                        let at = Some(input_of(ctx).at());
-                        Box::pin(async move {
-                            set(tx, id, &[("completed_at", &at)]).await?;
-                            release_rows(tx, id).await
-                        })
-                    }),
+                })
+                .effect(|booking: &Booking, ctx, tx| {
+                    let id = booking.id;
+                    let at = Some(input_of(ctx).at());
+                    Box::pin(async move {
+                        set(tx, id, &[("completed_at", &at)]).await?;
+                        release_rows(tx, id).await
+                    })
+                }),
             )
             .transition(
                 transition(MARK_NO_SHOW, &[Booked, Confirmed], NoShow)
@@ -758,23 +763,57 @@ mod tests {
                 t.is_system(),
             )
         };
-        assert_eq!(row(ACCEPT), (vec!["requested".to_owned()], "booked".to_owned(), true));
-        assert_eq!(row(DECLINE), (vec!["requested".to_owned()], "cancelled".to_owned(), true));
-        assert_eq!(row(CONFIRM), (vec!["booked".to_owned()], "confirmed".to_owned(), true));
+        assert_eq!(
+            row(ACCEPT),
+            (vec!["requested".to_owned()], "booked".to_owned(), true)
+        );
+        assert_eq!(
+            row(DECLINE),
+            (vec!["requested".to_owned()], "cancelled".to_owned(), true)
+        );
+        assert_eq!(
+            row(CONFIRM),
+            (vec!["booked".to_owned()], "confirmed".to_owned(), true)
+        );
         assert_eq!(row(RESCHEDULE).1, "booked");
         assert_eq!(row(RESCHEDULE_REQUEST).1, "requested");
         assert_eq!(row(CHECK_IN).0, ["booked", "confirmed"]);
-        assert_eq!(row(START), (vec!["checked_in".to_owned()], "in_progress".to_owned(), true));
-        assert_eq!(row(COMPLETE).0, ["booked", "confirmed", "checked_in", "in_progress"]);
+        assert_eq!(
+            row(START),
+            (
+                vec!["checked_in".to_owned()],
+                "in_progress".to_owned(),
+                true
+            )
+        );
+        assert_eq!(
+            row(COMPLETE).0,
+            ["booked", "confirmed", "checked_in", "in_progress"]
+        );
         assert_eq!(row(MARK_NO_SHOW).1, "no_show");
         assert_eq!(
             row(CANCEL).0,
-            ["requested", "booked", "confirmed", "checked_in", "in_progress"]
+            [
+                "requested",
+                "booked",
+                "confirmed",
+                "checked_in",
+                "in_progress"
+            ]
         );
         // `reassign` keeps the state, whichever it is.
-        assert_eq!(row(REASSIGN_REQUESTED), (vec!["requested".to_owned()], "requested".to_owned(), true));
-        assert_eq!(row(REASSIGN), (vec!["booked".to_owned()], "booked".to_owned(), true));
-        assert_eq!(row(REASSIGN_CONFIRMED), (vec!["confirmed".to_owned()], "confirmed".to_owned(), true));
+        assert_eq!(
+            row(REASSIGN_REQUESTED),
+            (vec!["requested".to_owned()], "requested".to_owned(), true)
+        );
+        assert_eq!(
+            row(REASSIGN),
+            (vec!["booked".to_owned()], "booked".to_owned(), true)
+        );
+        assert_eq!(
+            row(REASSIGN_CONFIRMED),
+            (vec!["confirmed".to_owned()], "confirmed".to_owned(), true)
+        );
     }
 
     fn cancel_input(actor: ActorKind) -> BookingInput {

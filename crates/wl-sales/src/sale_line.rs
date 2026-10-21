@@ -234,11 +234,7 @@ impl SaleLine {
     /// nothing when the line is excluded. A redemption line is negative, so it
     /// takes the redeemed value off what the other lines earn.
     pub fn eligible_net(&self) -> i64 {
-        if self.loyalty_excluded {
-            0
-        } else {
-            self.net()
-        }
+        if self.loyalty_excluded { 0 } else { self.net() }
     }
 
     /// The loyalty-eligible net of `quantity_milli` of the line (a returned or

@@ -385,10 +385,7 @@ pub async fn waive(
                     &[
                         ("deposit_forfeited", &amount),
                         ("deposit_refunded", &booking.deposit_refunded),
-                        (
-                            "deposit_outcome",
-                            &booking.deposit_outcome.clone(),
-                        ),
+                        ("deposit_outcome", &booking.deposit_outcome.clone()),
                         ("deposit_waived_by", &none_user),
                         ("deposit_waived_at", &none_at),
                         ("deposit_waive_reason", &none_reason),

@@ -84,7 +84,10 @@ async fn the_side_can_be_overridden_only_with_a_note() {
         .assert_status(303);
     let done = t.reload(booking.id).await;
     assert_eq!(done.cancel_initiated_by.as_deref(), Some("party"));
-    assert_eq!(done.cancel_note.as_deref(), Some("patient asked to close early"));
+    assert_eq!(
+        done.cancel_note.as_deref(),
+        Some("patient asked to close early")
+    );
     assert_eq!(t.events.cancelled.all()[0].initiated_by, Initiator::Party);
 }
 

@@ -31,8 +31,8 @@ mod tests {
 
     #[test]
     fn an_adjustment_over_the_limit_is_decided_by_a_loyalty_manager() {
-        let expected = PolicyDefault::new("loyalty.adjustment_over_limit")
-            .step_permission("loyalty.manage");
+        let expected =
+            PolicyDefault::new("loyalty.adjustment_over_limit").step_permission("loyalty.manage");
         assert_eq!(adjustment_policy(), expected);
     }
 

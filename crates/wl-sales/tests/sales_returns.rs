@@ -79,7 +79,11 @@ async fn sold(t: &Booted) -> (CounterSale, Vec<SaleLine>) {
     t.app
         .post(
             &format!("/counter-sales/{}/lines", sale.id),
-            &[("item_code", "tee"), ("unit_price", "50.00"), ("quantity", "2")],
+            &[
+                ("item_code", "tee"),
+                ("unit_price", "50.00"),
+                ("quantity", "2"),
+            ],
         )
         .await
         .assert_status(303);
@@ -132,7 +136,10 @@ async fn half_of_a_sale_is_returned_received_inspected_and_resolved() {
     assert_eq!(r.status, ReturnStatus::Requested);
     assert_eq!(r.kind, ReturnKind::Goods);
     // One of the two tees: AED 50 before VAT, AED 2.50 VAT.
-    assert_eq!((r.net_value, r.vat_value, r.gross_value), (5_000, 250, 5_250));
+    assert_eq!(
+        (r.net_value, r.vat_value, r.gross_value),
+        (5_000, 250, 5_250)
+    );
     assert_eq!(r.eligible_net, 5_000);
     assert_eq!(r.party_id, None);
     let taken = r.lines(t.db()).await.unwrap();
@@ -161,7 +168,10 @@ async fn half_of_a_sale_is_returned_received_inspected_and_resolved() {
         .await
         .assert_status(422);
     t.app
-        .post(&resolve, &[("resolution", "credit_note"), ("inspected", "1")])
+        .post(
+            &resolve,
+            &[("resolution", "credit_note"), ("inspected", "1")],
+        )
         .await
         .assert_status(422);
     assert!(seen.resolved.lock().unwrap().is_empty());
@@ -213,7 +223,10 @@ async fn a_credit_note_resolution_names_the_credit_note() {
     let done = reload(&t, &r).await;
     assert_eq!(done.credit_note_id, Some(31));
     assert_eq!(
-        SalesReturn::of_credit_note(t.db(), 31).await.unwrap().map(|x| x.id),
+        SalesReturn::of_credit_note(t.db(), 31)
+            .await
+            .unwrap()
+            .map(|x| x.id),
         Some(r.id)
     );
     assert_eq!(seen.resolved.lock().unwrap()[0].credit_note, Some(31));
@@ -241,7 +254,10 @@ async fn a_request_asks_for_a_sale_that_was_completed_and_for_quantities_it_hold
         )
         .await
         .assert_status(303);
-    let cart_line = SaleLine::of(t.db(), &cart.subject()).await.unwrap().remove(0);
+    let cart_line = SaleLine::of(t.db(), &cart.subject())
+        .await
+        .unwrap()
+        .remove(0);
     let fields = |sale: i64, line: i64, quantity: &str| {
         vec![
             ("sale_type".to_owned(), "counter_sale".to_owned()),
@@ -259,22 +275,31 @@ async fn a_request_asks_for_a_sale_that_was_completed_and_for_quantities_it_hold
             t.app.htmx().post("/sales-returns", &borrowed).await
         }
     };
-    post(fields(cart.id, cart_line.id, "1")).await.assert_status(422);
+    post(fields(cart.id, cart_line.id, "1"))
+        .await
+        .assert_status(422);
 
     let (sale, lines) = sold(&t).await;
     // More than was sold, nothing, a line of another sale, a bad format.
-    post(fields(sale.id, lines[0].id, "3")).await.assert_status(422);
-    post(fields(sale.id, lines[0].id, "0")).await.assert_status(422);
-    post(fields(sale.id, cart_line.id, "1")).await.assert_status(422);
-    post(fields(sale.id, lines[0].id, "two")).await.assert_status(422);
+    post(fields(sale.id, lines[0].id, "3"))
+        .await
+        .assert_status(422);
+    post(fields(sale.id, lines[0].id, "0"))
+        .await
+        .assert_status(422);
+    post(fields(sale.id, cart_line.id, "1"))
+        .await
+        .assert_status(422);
+    post(fields(sale.id, lines[0].id, "two"))
+        .await
+        .assert_status(422);
     // Two tees were sold: one now, one later, but not a third.
     asked(&t, &sale, &lines[0], "1").await;
     asked(&t, &sale, &lines[0], "1").await;
-    post(fields(sale.id, lines[0].id, "1")).await.assert_status(422);
-    assert_eq!(
-        SalesReturnLine::query().count(t.db()).await.unwrap(),
-        2
-    );
+    post(fields(sale.id, lines[0].id, "1"))
+        .await
+        .assert_status(422);
+    assert_eq!(SalesReturnLine::query().count(t.db()).await.unwrap(), 2);
 }
 
 #[renox::test]
@@ -310,17 +335,27 @@ async fn a_return_is_rejected_with_a_reason_and_only_handlers_act() {
     let (sale, lines) = sold(&t).await;
     let r = asked(&t, &sale, &lines[0], "1").await;
     let reject = format!("/sales-returns/{}/transitions/reject", r.id);
-    t.app.post(&reject, &[("reason", "")]).await.assert_status(422);
+    t.app
+        .post(&reject, &[("reason", "")])
+        .await
+        .assert_status(422);
 
     // Someone who may request but not handle cannot reject.
     let asker = t.user("Ali", &[perm::RETURNS_REQUEST]).await;
     t.app.acting_as(&asker);
-    t.app.post(&reject, &[("reason", "no")]).await.assert_forbidden();
+    t.app
+        .post(&reject, &[("reason", "no")])
+        .await
+        .assert_forbidden();
     t.app
         .post(&format!("/sales-returns/{}/receive", r.id), &[("x", "")])
         .await
         .assert_forbidden();
-    t.app.get("/sales-returns").await.assert_ok().assert_see("RET-");
+    t.app
+        .get("/sales-returns")
+        .await
+        .assert_ok()
+        .assert_see("RET-");
 
     t.app.acting_as(&clara);
     t.app
@@ -388,7 +423,10 @@ async fn a_return_with_no_goods_is_resolved_from_requested_and_a_channel_refund_
     assert_eq!(done.responsible_party.as_deref(), Some("aggregator"));
 
     let reverse = format!("/sales-returns/{}/transitions/reverse", r.id);
-    t.app.post(&reverse, &[("reason", "")]).await.assert_status(422);
+    t.app
+        .post(&reverse, &[("reason", "")])
+        .await
+        .assert_status(422);
     t.app
         .post(&reverse, &[("reason", "Statement voided")])
         .await
@@ -403,7 +441,10 @@ async fn a_return_with_no_goods_is_resolved_from_requested_and_a_channel_refund_
     // cannot be refunded by the channel.
     let other = asked(&t, &sale, &lines[0], "1").await;
     t.app
-        .post(&format!("/sales-returns/{}/receive", other.id), &[("x", "")])
+        .post(
+            &format!("/sales-returns/{}/receive", other.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     let resolve = format!("/sales-returns/{}/resolve", other.id);

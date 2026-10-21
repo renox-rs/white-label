@@ -165,7 +165,8 @@ fn resolve() -> Transition<SalesReturn> {
             let no_goods = r.kind == ReturnKind::NoGoods;
             let input = ctx.input_as::<ResolveInput>().ok();
             Box::pin(async move {
-                let filled = |text: &Option<String>| text.as_deref().is_some_and(|t| !t.trim().is_empty());
+                let filled =
+                    |text: &Option<String>| text.as_deref().is_some_and(|t| !t.trim().is_empty());
                 let ok = !no_goods
                     || input.is_some_and(|i| {
                         filled(&i.complaint_category) && filled(&i.responsible_party)
@@ -173,13 +174,18 @@ fn resolve() -> Transition<SalesReturn> {
                 check(ok, "wl_sales.returns.problem.complaint")
             })
         })
-        .guard("channel_refund_for_no_goods_only", |r: &SalesReturn, ctx| {
-            let no_goods = r.kind == ReturnKind::NoGoods;
-            let by_channel = ctx
-                .input_as::<ResolveInput>()
-                .is_ok_and(|i| i.resolution == Some(ReturnResolution::RefundedByChannel));
-            Box::pin(async move { check(!by_channel || no_goods, "wl_sales.returns.problem.channel") })
-        })
+        .guard(
+            "channel_refund_for_no_goods_only",
+            |r: &SalesReturn, ctx| {
+                let no_goods = r.kind == ReturnKind::NoGoods;
+                let by_channel = ctx
+                    .input_as::<ResolveInput>()
+                    .is_ok_and(|i| i.resolution == Some(ReturnResolution::RefundedByChannel));
+                Box::pin(async move {
+                    check(!by_channel || no_goods, "wl_sales.returns.problem.channel")
+                })
+            },
+        )
         .guard("credit_note_named", |_r: &SalesReturn, ctx| {
             let input = ctx.input_as::<ResolveInput>().ok();
             Box::pin(async move {

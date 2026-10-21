@@ -43,6 +43,7 @@ use renox::chrono::{NaiveDate, TimeDelta};
 use renox::db::{DateTime, now};
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transitioned};
+use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{DraftLine, VatCategory};
 use wl_kernel::notify::{
@@ -51,10 +52,9 @@ use wl_kernel::notify::{
 };
 use wl_kernel::sales::{
     COUNTER_SALE_SUBJECT_TYPE, CounterSaleCompleted, DiscountEngine, PointsGivenBack,
-    QuoteRedemption, RedemptionQuote, ReturnResolved, SALES_ORDER_SUBJECT_TYPE,
-    SalesFuture, SalesOrderCancelled, SalesOrderLineCancelled, SalesOrderRejected,
+    QuoteRedemption, RedemptionQuote, ReturnResolved, SALES_ORDER_SUBJECT_TYPE, SalesFuture,
+    SalesOrderCancelled, SalesOrderLineCancelled, SalesOrderRejected,
 };
-use wl_kernel::Subject;
 
 use crate::config::config_of;
 use crate::counter_sale::CounterSale;
@@ -70,11 +70,11 @@ use crate::redemption::{
     VIA_PORTAL,
 };
 use crate::redemption_machine::{APPLY, ApplyInput, CONFIRM, ConfirmInput, REFUSE, RELEASE};
-use crate::sale_line::{KIND_ITEM, KIND_LOYALTY_REDEMPTION, NewLine, SaleLine, ratio_half_up, totals};
-use crate::sales_order::SalesOrder;
-use crate::sales_order_machine::{
-    ACCEPT, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, SUBMIT,
+use crate::sale_line::{
+    KIND_ITEM, KIND_LOYALTY_REDEMPTION, NewLine, SaleLine, ratio_half_up, totals,
 };
+use crate::sales_order::SalesOrder;
+use crate::sales_order_machine::{ACCEPT, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, SUBMIT};
 use crate::sales_return::SalesReturn;
 use crate::texts::english;
 
@@ -387,7 +387,10 @@ pub(crate) async fn release_account_holds(
         .await?;
     let mut released = 0;
     for row in rows {
-        if matches!(row.status, RedemptionStatus::Pending | RedemptionStatus::Held) {
+        if matches!(
+            row.status,
+            RedemptionStatus::Pending | RedemptionStatus::Held
+        ) {
             release_row(state, &row, why).await?;
             drop_line(&state.db, &row).await?;
             released += 1;
@@ -441,7 +444,15 @@ pub async fn request(state: &AppState, request: RedeemRequest) -> Result<Request
     {
         return Err(refused("wl_sales.redeem.problem.already"));
     }
-    let priced = quote(state, &view.subject, &account, &programme, request.points, None).await?;
+    let priced = quote(
+        state,
+        &view.subject,
+        &account,
+        &programme,
+        request.points,
+        None,
+    )
+    .await?;
     let pending = rows
         .into_iter()
         .rev()
@@ -799,8 +810,8 @@ async fn order_ended(state: &AppState, order: &Subject, cause: &str) -> Result {
 /// that the cancelled value makes of the order's value comes back.
 async fn line_cancelled(state: &AppState, event: &SalesOrderLineCancelled) -> Result {
     let order = event.order.subject();
-    let Some(row) = Redemption::latest_of_sale(&state.db, &order, RedemptionStatus::Applied)
-        .await?
+    let Some(row) =
+        Redemption::latest_of_sale(&state.db, &order, RedemptionStatus::Applied).await?
     else {
         return Ok(());
     };
@@ -964,9 +975,11 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: SalesOrderRejected, state: AppState| async move {
         order_ended(&state, &event.order.subject(), CAUSE_ORDER_REJECTED).await
     });
-    app.listen(|event: SalesOrderLineCancelled, state: AppState| async move {
-        line_cancelled(&state, &event).await
-    });
+    app.listen(
+        |event: SalesOrderLineCancelled, state: AppState| async move {
+            line_cancelled(&state, &event).await
+        },
+    );
     app.listen(|event: ReturnResolved, state: AppState| async move {
         return_resolved(&state, &event).await
     });

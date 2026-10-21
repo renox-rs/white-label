@@ -150,7 +150,16 @@ async fn redeem_counter_sale(
     Found(sale): Found<CounterSale>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    ask(&state, &user, &lang, sale.subject(), "wl_sales.counter_sale", sale.id, form).await
+    ask(
+        &state,
+        &user,
+        &lang,
+        sale.subject(),
+        "wl_sales.counter_sale",
+        sale.id,
+        form,
+    )
+    .await
 }
 
 /// `POST /counter-sales/{id}/redeem/confirm`.
@@ -160,7 +169,15 @@ async fn confirm_counter_sale(
     Found(sale): Found<CounterSale>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    confirm(&state, &lang, sale.subject(), "wl_sales.counter_sale", sale.id, form).await
+    confirm(
+        &state,
+        &lang,
+        sale.subject(),
+        "wl_sales.counter_sale",
+        sale.id,
+        form,
+    )
+    .await
 }
 
 /// `POST /sales-orders/{id}/redeem`.
@@ -171,7 +188,16 @@ async fn redeem_sales_order(
     Found(order): Found<SalesOrder>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    ask(&state, &user, &lang, order.subject(), "wl_sales.sales_order", order.id, form).await
+    ask(
+        &state,
+        &user,
+        &lang,
+        order.subject(),
+        "wl_sales.sales_order",
+        order.id,
+        form,
+    )
+    .await
 }
 
 /// `POST /sales-orders/{id}/redeem/confirm`.
@@ -181,5 +207,13 @@ async fn confirm_sales_order(
     Found(order): Found<SalesOrder>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    confirm(&state, &lang, order.subject(), "wl_sales.sales_order", order.id, form).await
+    confirm(
+        &state,
+        &lang,
+        order.subject(),
+        "wl_sales.sales_order",
+        order.id,
+        form,
+    )
+    .await
 }

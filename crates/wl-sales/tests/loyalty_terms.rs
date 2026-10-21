@@ -72,7 +72,11 @@ async fn a_change_with_less_than_30_days_notice_is_refused_and_one_with_30_tells
         )
         .await
         .assert_status(303);
-    let saved = LoyaltyTermsChange::query().first(t.db()).await.unwrap().unwrap();
+    let saved = LoyaltyTermsChange::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(saved.earn_rate, Some(2));
     assert_eq!(saved.created_by, Some(floor.mia.id));
     assert_eq!(saved.notified_members, 2);
@@ -98,7 +102,10 @@ async fn a_sale_from_the_effective_date_earns_on_the_new_rate_and_the_old_lots_s
     let first_lot = movements(&t, &m, PointsKind::Earn).await.remove(0);
 
     // One change took effect yesterday, another is still ahead.
-    for (from, rate) in [(today() - Duration::days(1), 3), (today() + Duration::days(30), 9)] {
+    for (from, rate) in [
+        (today() - Duration::days(1), 3),
+        (today() + Duration::days(30), 9),
+    ] {
         LoyaltyTermsChange::create(
             t.db(),
             LoyaltyTermsChange {
@@ -121,7 +128,11 @@ async fn a_sale_from_the_effective_date_earns_on_the_new_rate_and_the_old_lots_s
 }
 
 async fn first_lot_programme(t: &Booted) -> i64 {
-    LoyaltyProgramme::first_active(t.db()).await.unwrap().unwrap().id
+    LoyaltyProgramme::first_active(t.db())
+        .await
+        .unwrap()
+        .unwrap()
+        .id
 }
 
 #[renox::test]
@@ -136,13 +147,23 @@ async fn turning_the_programme_off_sets_the_closing_date_and_expires_every_lot_a
         .post("/loyalty/programme/off", &[("x", "")])
         .await
         .assert_status(422);
-    assert!(LoyaltyProgramme::first_active(t.db()).await.unwrap().unwrap().closing_date.is_none());
+    assert!(
+        LoyaltyProgramme::first_active(t.db())
+            .await
+            .unwrap()
+            .unwrap()
+            .closing_date
+            .is_none()
+    );
     t.app
         .post("/loyalty/programme/off", &[("confirm", "1")])
         .await
         .assert_status(303);
     let closing = today() + Duration::days(90);
-    let programme = LoyaltyProgramme::first_active(t.db()).await.unwrap().unwrap();
+    let programme = LoyaltyProgramme::first_active(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(programme.closing_date, Some(closing));
     assert_eq!(shop.mail.of_type(LOYALTY_PROGRAMME_OFF).len(), 1);
     // It cannot be turned off twice.
@@ -170,7 +191,10 @@ async fn turning_the_programme_off_sets_the_closing_date_and_expires_every_lot_a
         .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
         .await;
     t.app
-        .post(&format!("/counter-sales/{}/redeem", cart.id), &[("points", "500")])
+        .post(
+            &format!("/counter-sales/{}/redeem", cart.id),
+            &[("points", "500")],
+        )
         .await
         .assert_status(303);
 
@@ -184,6 +208,8 @@ async fn turning_the_programme_off_sets_the_closing_date_and_expires_every_lot_a
     let expired = shop.points.expired.lock().unwrap().clone();
     assert_eq!(expired.iter().map(|e| e.points).sum::<i64>(), 600);
     // The programme is over once its lots are.
-    let ended = LoyaltyProgramme::find_or_404(t.db(), programme.id).await.unwrap();
+    let ended = LoyaltyProgramme::find_or_404(t.db(), programme.id)
+        .await
+        .unwrap();
     assert!(!ended.active);
 }

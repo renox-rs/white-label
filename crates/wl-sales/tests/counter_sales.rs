@@ -8,10 +8,10 @@ mod support;
 use std::sync::{Arc, Mutex};
 
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::invoicing::{
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceSummary, Invoicer, provide_invoicer,
 };
-use wl_kernel::Subject;
 use wl_kernel::sales::CounterSaleCompleted;
 use wl_sales::permissions as perm;
 use wl_sales::{CounterSale, CounterSalePayment, CounterSaleStatus, WlSales};
@@ -99,7 +99,10 @@ async fn open(t: &Booted, party: &str) -> CounterSale {
     } else {
         vec![("party_id", party)]
     };
-    t.app.post("/counter-sales", &fields).await.assert_status(303);
+    t.app
+        .post("/counter-sales", &fields)
+        .await
+        .assert_status(303);
     CounterSale::query()
         .order_by_desc(CounterSale::ID)
         .first(t.db())
@@ -152,7 +155,10 @@ async fn a_cashier_completes_a_sale_with_a_card_and_the_event_follows() {
     assert_eq!((paid[0].method.as_str(), paid[0].amount), ("card", 10_500));
     assert_eq!(paid[0].payment_id, Some(77));
     assert_eq!(
-        CounterSale::of_payment(t.db(), 77).await.unwrap().map(|s| s.id),
+        CounterSale::of_payment(t.db(), 77)
+            .await
+            .unwrap()
+            .map(|s| s.id),
         Some(sale.id)
     );
 
@@ -205,11 +211,20 @@ async fn tenders_that_do_not_add_up_and_an_empty_cart_are_refused() {
     let sale = open(&t, "").await;
     let url = format!("/counter-sales/{}/complete", sale.id);
     // No lines yet.
-    t.app.post(&url, &[("cash", "10.00")]).await.assert_status(422);
+    t.app
+        .post(&url, &[("cash", "10.00")])
+        .await
+        .assert_status(422);
     add_line(&t, &sale, "100.00").await;
     // Short, over and mixed amounts.
-    t.app.post(&url, &[("cash", "100.00")]).await.assert_status(422);
-    t.app.post(&url, &[("cash", "200.00")]).await.assert_status(422);
+    t.app
+        .post(&url, &[("cash", "100.00")])
+        .await
+        .assert_status(422);
+    t.app
+        .post(&url, &[("cash", "200.00")])
+        .await
+        .assert_status(422);
     t.app
         .post(&url, &[("cash", "50.00"), ("card", "55.00")])
         .await
@@ -226,7 +241,10 @@ async fn charging_the_customer_account_needs_the_setting_and_a_customer() {
     add_line(&t, &sale, "100.00").await;
     let url = format!("/counter-sales/{}/complete", sale.id);
     // The default setting is off.
-    t.app.post(&url, &[("account", "105.00")]).await.assert_status(422);
+    t.app
+        .post(&url, &[("account", "105.00")])
+        .await
+        .assert_status(422);
     assert_eq!(reload(&t, &sale).await.status, CounterSaleStatus::Open);
 
     let (t, _) = boot_with_sales(WlSales::new().counter_sales_on_account(true)).await;
@@ -234,7 +252,10 @@ async fn charging_the_customer_account_needs_the_setting_and_a_customer() {
     let walk_in = open(&t, "").await;
     add_line(&t, &walk_in, "100.00").await;
     let url = format!("/counter-sales/{}/complete", walk_in.id);
-    t.app.post(&url, &[("account", "105.00")]).await.assert_status(422);
+    t.app
+        .post(&url, &[("account", "105.00")])
+        .await
+        .assert_status(422);
     let named = open(&t, "7").await;
     add_line(&t, &named, "100.00").await;
     t.app
@@ -244,7 +265,10 @@ async fn charging_the_customer_account_needs_the_setting_and_a_customer() {
         )
         .await
         .assert_status(303);
-    assert_eq!(reload(&t, &named).await.status, CounterSaleStatus::Completed);
+    assert_eq!(
+        reload(&t, &named).await.status,
+        CounterSaleStatus::Completed
+    );
 }
 
 #[renox::test]
@@ -282,5 +306,9 @@ async fn a_completed_sale_is_never_edited_and_the_till_needs_pos_sell() {
     t.app.acting_as(&nobody);
     t.app.get("/counter-sales").await.assert_forbidden();
     t.app.acting_as(&cora);
-    t.app.get("/counter-sales").await.assert_ok().assert_see("RCPT-");
+    t.app
+        .get("/counter-sales")
+        .await
+        .assert_ok()
+        .assert_see("RCPT-");
 }

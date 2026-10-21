@@ -91,7 +91,11 @@ async fn staff_leave(
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     if !confirmed(&form) {
-        return Err(invalid("confirm", text(&lang, "closure.errors.confirm"), &form));
+        return Err(invalid(
+            "confirm",
+            text(&lang, "closure.errors.confirm"),
+            &form,
+        ));
     }
     closure::leave(&state, account.id, Some(user.id), VIA_COUNTER).await?;
     Ok((
@@ -159,7 +163,11 @@ async fn portal_leave(
 ) -> Result<Response> {
     let account = own_account(&state, &user, id).await?;
     if !confirmed(&form) {
-        return Err(invalid("confirm", text(&lang, "closure.errors.confirm"), &form));
+        return Err(invalid(
+            "confirm",
+            text(&lang, "closure.errors.confirm"),
+            &form,
+        ));
     }
     closure::leave(&state, account.id, Some(user.id), VIA_PORTAL).await?;
     Ok((
@@ -228,7 +236,11 @@ async fn change_terms(
         "wl_sales.terms.saved",
         &[("members", &saved.notified_members)],
     );
-    Ok((Toast::success(message), Redirect::route("wl_sales.loyalty", &[])?).into_response())
+    Ok((
+        Toast::success(message),
+        Redirect::route("wl_sales.loyalty", &[])?,
+    )
+        .into_response())
 }
 
 /// `POST /loyalty/programme/off`: turns the programme off once `confirm` is
@@ -239,11 +251,19 @@ async fn turn_off(
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     if !confirmed(&form) {
-        return Err(invalid("confirm", text(&lang, "terms.errors.confirm"), &form));
+        return Err(invalid(
+            "confirm",
+            text(&lang, "terms.errors.confirm"),
+            &form,
+        ));
     }
     let programme = running(&state.db).await?;
     let off = terms::turn_off(&state, programme.id).await?;
     let closing = off.closing_date.map(|d| d.to_string()).unwrap_or_default();
     let message = texts::t_with(&lang, "wl_sales.terms.turned_off", &[("date", &closing)]);
-    Ok((Toast::success(message), Redirect::route("wl_sales.loyalty", &[])?).into_response())
+    Ok((
+        Toast::success(message),
+        Redirect::route("wl_sales.loyalty", &[])?,
+    )
+        .into_response())
 }

@@ -6,7 +6,8 @@
 use renox::prelude::*;
 use wl_kernel::scheduling::{
     BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted, BookingNoShow,
-    BookingReassigned, BookingRescheduled, CancelStage, CancelledBy, DepositOutcome, Initiator, SlotReleased,
+    BookingReassigned, BookingRescheduled, CancelStage, CancelledBy, DepositOutcome, Initiator,
+    SlotReleased,
 };
 
 use crate::booking::Booking;

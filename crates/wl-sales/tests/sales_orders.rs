@@ -124,7 +124,11 @@ async fn draft(t: &Booted, channel: &str, mode: &str) -> SalesOrder {
     t.app
         .post(
             "/sales-orders",
-            &[("party_id", "7"), ("channel", channel), ("payment_mode", mode)],
+            &[
+                ("party_id", "7"),
+                ("channel", channel),
+                ("payment_mode", mode),
+            ],
         )
         .await
         .assert_status(303);
@@ -138,7 +142,11 @@ async fn draft(t: &Booted, channel: &str, mode: &str) -> SalesOrder {
         t.app
             .post(
                 &format!("/sales-orders/{}/lines", order.id),
-                &[("item_code", code), ("unit_price", price), ("quantity", quantity)],
+                &[
+                    ("item_code", code),
+                    ("unit_price", price),
+                    ("quantity", quantity),
+                ],
             )
             .await
             .assert_status(303);
@@ -238,7 +246,10 @@ async fn a_website_order_waits_for_the_seller_who_accepts_or_rejects_it() {
     t.app.acting_as(&seller(&t).await);
     let accepted = draft(&t, "website", "on_account").await;
     t.app
-        .post(&format!("/sales-orders/{}/submit", accepted.id), &[("x", "")])
+        .post(
+            &format!("/sales-orders/{}/submit", accepted.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     assert_eq!(
@@ -261,7 +272,10 @@ async fn a_website_order_waits_for_the_seller_who_accepts_or_rejects_it() {
 
     let refused = draft(&t, "portal", "on_account").await;
     t.app
-        .post(&format!("/sales-orders/{}/submit", refused.id), &[("x", "")])
+        .post(
+            &format!("/sales-orders/{}/submit", refused.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     let url = format!("/sales-orders/{}/transitions/reject", refused.id);
@@ -293,7 +307,11 @@ async fn an_online_order_waits_for_the_exact_payment_or_is_cancelled() {
         SalesOrderStatus::AwaitingPayment
     );
     // A different amount cannot confirm it.
-    assert!(sales_orders::confirm_payment(t.state(), order.id, 5_000).await.is_err());
+    assert!(
+        sales_orders::confirm_payment(t.state(), order.id, 5_000)
+            .await
+            .is_err()
+    );
     assert_eq!(
         reload(&t, order.id).await.status,
         SalesOrderStatus::AwaitingPayment
@@ -310,7 +328,9 @@ async fn an_online_order_waits_for_the_exact_payment_or_is_cancelled() {
         .post(&format!("/sales-orders/{}/submit", failed.id), &[("x", "")])
         .await
         .assert_status(303);
-    let failed = sales_orders::payment_failed(t.state(), failed.id).await.unwrap();
+    let failed = sales_orders::payment_failed(t.state(), failed.id)
+        .await
+        .unwrap();
     assert_eq!(failed.status, SalesOrderStatus::Cancelled);
     assert_eq!(failed.reason.as_deref(), Some("The online payment failed."));
     assert_eq!(seen.cancelled.lock().unwrap().len(), 1);
@@ -569,7 +589,11 @@ async fn the_order_pages_need_their_permissions() {
         .assert_forbidden();
     let sam = seller(&t).await;
     t.app.acting_as(&sam);
-    t.app.get("/sales-orders").await.assert_ok().assert_see("Sales orders");
+    t.app
+        .get("/sales-orders")
+        .await
+        .assert_ok()
+        .assert_see("Sales orders");
     // An order that is not fulfilled has nothing to close.
     let order = confirmed(&t).await;
     assert!(!sales_orders::close(t.state(), order.id).await.unwrap());

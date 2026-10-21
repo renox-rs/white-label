@@ -7,7 +7,7 @@ mod support;
 
 use renox::prelude::*;
 use wl_kernel::PartyId;
-use wl_kernel::parties::{PartyStatus, PartyBlocked};
+use wl_kernel::parties::{PartyBlocked, PartyStatus};
 use wl_sales::notices::LOYALTY_CLOSED;
 use wl_sales::{AccountStatus, LoyaltyAccount, PointsAdjustment, PointsKind, Redemption, WlSales};
 
@@ -33,7 +33,11 @@ async fn the_cashier_records_a_member_leaving_and_the_450_points_are_forfeited_w
     let url = format!("/loyalty/accounts/{}/leave", m.id);
 
     // Without the member's confirmation nothing is forfeited.
-    t.app.htmx().post(&url, &[("x", "")]).await.assert_status(422);
+    t.app
+        .htmx()
+        .post(&url, &[("x", "")])
+        .await
+        .assert_status(422);
     assert_eq!(account(&t, &m).await.status, AccountStatus::Active);
 
     t.app
@@ -48,7 +52,10 @@ async fn the_cashier_records_a_member_leaving_and_the_450_points_are_forfeited_w
     let adjusts = movements(&t, &m, PointsKind::Adjust).await;
     assert_eq!(adjusts.iter().map(|a| a.points).sum::<i64>(), -450);
     assert_eq!(adjusts[0].user_id, Some(floor.cora.id));
-    assert_eq!(adjusts[0].reason.as_deref(), Some("Member request (counter)"));
+    assert_eq!(
+        adjusts[0].reason.as_deref(),
+        Some("Member request (counter)")
+    );
     assert_eq!(adjusts[0].approval_request_id, None);
     assert_eq!(PointsAdjustment::query().count(t.db()).await.unwrap(), 0);
     // The earn lot is used up, the member is told, and the event says -450.
@@ -57,7 +64,11 @@ async fn the_cashier_records_a_member_leaving_and_the_450_points_are_forfeited_w
     assert_eq!(events.last().map(|e| e.points), Some(-450));
 
     // It cannot be closed twice.
-    t.app.htmx().post(&url, &[("confirm", "1")]).await.assert_status(422);
+    t.app
+        .htmx()
+        .post(&url, &[("confirm", "1")])
+        .await
+        .assert_status(422);
 }
 
 #[renox::test]
@@ -69,7 +80,10 @@ async fn points_held_for_a_sale_in_progress_are_released_when_the_member_leaves(
         .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
         .await;
     t.app
-        .post(&format!("/counter-sales/{}/redeem", cart.id), &[("points", "600")])
+        .post(
+            &format!("/counter-sales/{}/redeem", cart.id),
+            &[("points", "600")],
+        )
         .await
         .assert_status(303);
     t.app
@@ -91,7 +105,10 @@ async fn points_held_for_a_sale_in_progress_are_released_when_the_member_leaves(
     assert_eq!(m.status, AccountStatus::Closed);
     assert_eq!(m.points_balance, 0);
     let rows = Redemption::of_sale(t.db(), &cart.subject()).await.unwrap();
-    assert!(rows.iter().all(|r| r.status != wl_sales::RedemptionStatus::Held));
+    assert!(
+        rows.iter()
+            .all(|r| r.status != wl_sales::RedemptionStatus::Held)
+    );
 }
 
 #[renox::test]
@@ -118,7 +135,10 @@ async fn the_member_leaves_in_the_portal_and_a_member_on_hold_may_too() {
     // Somebody who does not act for the member finds nothing.
     t.app.acting_as(&stranger);
     t.app.get(&page).await.assert_not_found();
-    t.app.post(&leave, &[("confirm", "1")]).await.assert_not_found();
+    t.app
+        .post(&leave, &[("confirm", "1")])
+        .await
+        .assert_not_found();
 
     // The member sees the points that will be forfeited and confirms.
     t.app.acting_as(&member);
@@ -128,7 +148,11 @@ async fn the_member_leaves_in_the_portal_and_a_member_on_hold_may_too() {
         .assert_ok()
         .assert_see("450")
         .assert_see("LYL-0001");
-    t.app.htmx().post(&leave, &[("x", "")]).await.assert_status(422);
+    t.app
+        .htmx()
+        .post(&leave, &[("x", "")])
+        .await
+        .assert_status(422);
     assert_eq!(account(&t, &m).await.status, AccountStatus::Active);
     t.app
         .post(&leave, &[("confirm", "on")])
@@ -136,7 +160,10 @@ async fn the_member_leaves_in_the_portal_and_a_member_on_hold_may_too() {
         .assert_status(303);
     let closed = LoyaltyAccount::find_or_404(t.db(), m.id).await.unwrap();
     assert_eq!(closed.status, AccountStatus::Closed);
-    assert_eq!(closed.closed_reason.as_deref(), Some("Member request (portal)"));
+    assert_eq!(
+        closed.closed_reason.as_deref(),
+        Some("Member request (portal)")
+    );
     let adjusts = movements(&t, &closed, PointsKind::Adjust).await;
     assert_eq!(adjusts.iter().map(|a| a.points).sum::<i64>(), -450);
     assert_eq!(adjusts[0].user_id, Some(member.id));

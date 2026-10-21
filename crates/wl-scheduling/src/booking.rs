@@ -313,10 +313,16 @@ mod tests {
 
     #[test]
     fn the_codes_map_to_who_initiated() {
-        assert_eq!(default_initiator("party_request", &[]), Some(Initiator::Party));
+        assert_eq!(
+            default_initiator("party_request", &[]),
+            Some(Initiator::Party)
+        );
         assert_eq!(default_initiator("walked_out", &[]), Some(Initiator::Party));
         assert_eq!(default_initiator("unpaid", &[]), Some(Initiator::Party));
-        assert_eq!(default_initiator("site_closed", &[]), Some(Initiator::Business));
+        assert_eq!(
+            default_initiator("site_closed", &[]),
+            Some(Initiator::Business)
+        );
         assert_eq!(default_initiator("other", &[]), Some(Initiator::Business));
         assert_eq!(default_initiator("nothing", &[]), None);
     }
@@ -331,7 +337,10 @@ mod tests {
             default_initiator("patient_deceased", &extra),
             Some(Initiator::Business)
         );
-        assert_eq!(default_initiator("site_closed", &extra), Some(Initiator::Business));
+        assert_eq!(
+            default_initiator("site_closed", &extra),
+            Some(Initiator::Business)
+        );
     }
 
     #[test]

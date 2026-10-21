@@ -217,7 +217,10 @@ pub struct ServiceResource {
 
 /// A recurring working pattern of a resource.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_scheduling_availability_rules", index(resource_id, weekday))]
+#[model(
+    table = "wl_scheduling_availability_rules",
+    index(resource_id, weekday)
+)]
 pub struct AvailabilityRule {
     /// The primary key.
     pub id: i64,
@@ -262,7 +265,10 @@ impl AvailabilityRule {
 
 /// Time a resource is not bookable.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_scheduling_availability_blocks", index(resource_id, starts_at))]
+#[model(
+    table = "wl_scheduling_availability_blocks",
+    index(resource_id, starts_at)
+)]
 pub struct AvailabilityBlock {
     /// The primary key.
     pub id: i64,

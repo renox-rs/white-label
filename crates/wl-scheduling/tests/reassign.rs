@@ -136,10 +136,13 @@ async fn the_message_names_the_new_resource_and_cancelling_from_it_refunds() {
     assert!(body.contains(&booking.number), "{body}");
     let url = |key: &str| request.data[key].as_str().expect("a link").to_owned();
     assert!(url("accept_url").contains(&format!("/scheduling/links/{}/accept", booking.id)));
-    assert!(url("reschedule_url").contains(&format!("/scheduling/links/{}/reschedule", booking.id)));
     assert!(
-        url("cancel_url").contains(&format!("/scheduling/links/{}/cancel/resource_unavailable", booking.id))
+        url("reschedule_url").contains(&format!("/scheduling/links/{}/reschedule", booking.id))
     );
+    assert!(url("cancel_url").contains(&format!(
+        "/scheduling/links/{}/cancel/resource_unavailable",
+        booking.id
+    )));
     for link in ["accept_url", "reschedule_url", "cancel_url"] {
         assert!(body.contains(&url(link)), "{link} is in the text");
     }
@@ -165,7 +168,10 @@ async fn the_message_names_the_new_resource_and_cancelling_from_it_refunds() {
     assert_eq!(done.cancel_initiated_by.as_deref(), Some("business"));
     assert_eq!(done.deposit_outcome.as_deref(), Some("refunded"));
     assert_eq!(t.refunds.amounts(), [20_000]);
-    assert_eq!(t.events.cancelled.all()[0].initiated_by, Initiator::Business);
+    assert_eq!(
+        t.events.cancelled.all()[0].initiated_by,
+        Initiator::Business
+    );
 }
 
 /// A resource that is busy then, or that is not eligible then, is refused;
@@ -176,7 +182,9 @@ async fn a_busy_or_ineligible_resource_is_refused() {
     let (a, b, service) = two_doctors(&t).await;
     let desk = t.front_desk().await;
     let c = t.doctor("Dr C").await;
-    wl_scheduling::resource::offer(t.db(), service.id, c.id).await.unwrap();
+    wl_scheduling::resource::offer(t.db(), service.id, c.id)
+        .await
+        .unwrap();
     let booking = t.booking(&service, &[&a], in_hours(30)).await;
     t.booking(&service, &[&b], booking.starts_at).await;
     t.licences.refuse(c.id, true);
@@ -218,7 +226,11 @@ async fn a_reassign_needs_a_known_reason_and_a_user_who_manages() {
             .htmx()
             .post(
                 &reassign_path(booking.id),
-                &[("from", from.as_str()), ("to", to.as_str()), ("reason_code", reason)],
+                &[
+                    ("from", from.as_str()),
+                    ("to", to.as_str()),
+                    ("reason_code", reason),
+                ],
             )
             .await
             .assert_status(422);
@@ -247,7 +259,9 @@ async fn only_the_replaced_resource_changes() {
     let t = boot().await;
     let a = t.doctor("Dr A").await;
     let b = t.doctor("Dr B").await;
-    let room = t.resource("Room 1", wl_scheduling::ResourceType::Room).await;
+    let room = t
+        .resource("Room 1", wl_scheduling::ResourceType::Room)
+        .await;
     t.open_all_week(&room).await;
     let service = t
         .service_with("procedure", &[&a, &b, &room], |service| {
@@ -270,7 +284,11 @@ async fn only_the_replaced_resource_changes() {
     let mut expected = vec![b.id, room.id];
     expected.sort_unstable();
     assert_eq!(
-        t.reload(booking.id).await.resource_ids(t.db()).await.unwrap(),
+        t.reload(booking.id)
+            .await
+            .resource_ids(t.db())
+            .await
+            .unwrap(),
         expected
     );
     assert_eq!(t.events.reassigned.all()[0].old_resources.len(), 2);
@@ -308,7 +326,10 @@ async fn a_confirmed_or_requested_booking_keeps_its_state() {
     )
     .await
     .unwrap();
-    assert_eq!(t.reload(confirmed.id).await.status, BookingStatus::Confirmed);
+    assert_eq!(
+        t.reload(confirmed.id).await.status,
+        BookingStatus::Confirmed
+    );
     assert_eq!(
         t.history(confirmed.id).await.last(),
         Some(&("reassign_confirmed".to_owned(), "confirmed".to_owned()))
@@ -340,9 +361,16 @@ async fn a_confirmed_or_requested_booking_keeps_its_state() {
     )
     .await
     .unwrap();
-    assert_eq!(t.reload(requested.id).await.status, BookingStatus::Requested);
     assert_eq!(
-        t.reload(requested.id).await.resource_ids(t.db()).await.unwrap(),
+        t.reload(requested.id).await.status,
+        BookingStatus::Requested
+    );
+    assert_eq!(
+        t.reload(requested.id)
+            .await
+            .resource_ids(t.db())
+            .await
+            .unwrap(),
         [d.id]
     );
 }
@@ -366,7 +394,10 @@ async fn a_checked_in_booking_is_not_reassigned() {
         support::now(),
     )
     .await;
-    assert!(matches!(refused, Err(Refusal::Transition(_))), "{refused:?}");
+    assert!(
+        matches!(refused, Err(Refusal::Transition(_))),
+        "{refused:?}"
+    );
 }
 
 /// The check-in asks the vertical again whether the resource may deliver the
@@ -382,7 +413,11 @@ async fn check_in_asks_the_licence_again_and_reassign_is_the_way_out() {
 
     t.app.acting_as(&desk);
     let check_in = format!("/scheduling/bookings/{}/check-in", booking.id);
-    t.app.htmx().post(&check_in, &[("x", "y")]).await.assert_status(422);
+    t.app
+        .htmx()
+        .post(&check_in, &[("x", "y")])
+        .await
+        .assert_status(422);
     assert_eq!(t.reload(booking.id).await.status, BookingStatus::Booked);
 
     service::reassign(
@@ -396,6 +431,10 @@ async fn check_in_asks_the_licence_again_and_reassign_is_the_way_out() {
     )
     .await
     .expect("Dr B holds a valid licence");
-    t.app.htmx().post(&check_in, &[("x", "y")]).await.assert_status(303);
+    t.app
+        .htmx()
+        .post(&check_in, &[("x", "y")])
+        .await
+        .assert_status(303);
     assert_eq!(t.reload(booking.id).await.status, BookingStatus::CheckedIn);
 }

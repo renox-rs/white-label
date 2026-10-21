@@ -177,9 +177,7 @@ async fn show(
         net: money(r.net_value),
         gross: money(r.gross_value),
         actions,
-        can_receive: handles
-            && r.status == ReturnStatus::Requested
-            && r.kind == ReturnKind::Goods,
+        can_receive: handles && r.status == ReturnStatus::Requested && r.kind == ReturnKind::Goods,
         can_resolve: handles
             && (r.status == ReturnStatus::Received
                 || (r.status == ReturnStatus::Requested && r.kind == ReturnKind::NoGoods)),

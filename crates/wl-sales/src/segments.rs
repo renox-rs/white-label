@@ -421,8 +421,14 @@ mod tests {
         let on = day(10, 20);
         let rule = Rule::NoSaleForDays { days: 60 };
         let standing = Standing::default();
-        assert_eq!(builtin(&rule, on, &activity(&[(day(8, 1), 100)]), &standing), Some(true));
-        assert_eq!(builtin(&rule, on, &activity(&[(day(9, 15), 100)]), &standing), Some(false));
+        assert_eq!(
+            builtin(&rule, on, &activity(&[(day(8, 1), 100)]), &standing),
+            Some(true)
+        );
+        assert_eq!(
+            builtin(&rule, on, &activity(&[(day(9, 15), 100)]), &standing),
+            Some(false)
+        );
         assert_eq!(builtin(&rule, on, &activity(&[]), &standing), Some(false));
     }
 
@@ -450,7 +456,10 @@ mod tests {
             balance: Some(10),
             ..Standing::default()
         };
-        assert_eq!(builtin(&rule, on, &Activity::default(), &enrolled), Some(true));
+        assert_eq!(
+            builtin(&rule, on, &Activity::default(), &enrolled),
+            Some(true)
+        );
         assert_eq!(
             builtin(&rule, on, &Activity::default(), &Standing::default()),
             Some(false)

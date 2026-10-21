@@ -39,15 +39,21 @@ fn whole_minute(at: DateTime) -> DateTime {
 
 /// A moment as the form shows it, Asia/Dubai wall time.
 fn form_time(at: DateTime) -> String {
-    (at + Duration::hours(4)).format("%Y-%m-%dT%H:%M").to_string()
+    (at + Duration::hours(4))
+        .format("%Y-%m-%dT%H:%M")
+        .to_string()
 }
 
 async fn lapsed(t: &Booted) -> Segment {
-    Segment::of("Lapsed", MatchMode::All, &[Rule::NoSaleForDays { days: 60 }])
-        .store(t.db(), &SalesConfig::default())
-        .await
-        .unwrap()
-        .unwrap()
+    Segment::of(
+        "Lapsed",
+        MatchMode::All,
+        &[Rule::NoSaleForDays { days: 60 }],
+    )
+    .store(t.db(), &SalesConfig::default())
+    .await
+    .unwrap()
+    .unwrap()
 }
 
 /// R of the plan: a retention campaign that starts today, set up by `by`.
@@ -116,12 +122,17 @@ impl World {
     }
 
     async fn reload(&self) -> Campaign {
-        Campaign::find(self.t.db(), self.r.id).await.unwrap().unwrap()
+        Campaign::find(self.t.db(), self.r.id)
+            .await
+            .unwrap()
+            .unwrap()
     }
 
     /// wl-notify rejected the broadcast with `comment`.
     async fn rejected(&self, broadcast: i64, comment: &str) {
-        self.stage.gate.report(broadcast, report_of(broadcast, "cancelled", Some(comment)));
+        self.stage
+            .gate
+            .report(broadcast, report_of(broadcast, "cancelled", Some(comment)));
         self.t
             .state()
             .emit(BroadcastCancelled {
@@ -204,12 +215,19 @@ async fn a_send_time_already_past_goes_at_once() {
     // before, so the past send time is inside the period.
     w.t.app.acting_as(&w.b);
     w.t.app
-        .post(&format!("/campaigns/{}/transitions/activate", w.r.id), &[("x", "")])
+        .post(
+            &format!("/campaigns/{}/transitions/activate", w.r.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     let asked = w.stage.gate.asked();
     assert_eq!(asked.len(), 1);
-    assert!(asked[0].send_at >= now() - Duration::minutes(1), "{}", asked[0].send_at);
+    assert!(
+        asked[0].send_at >= now() - Duration::minutes(1),
+        "{}",
+        asked[0].send_at
+    );
 }
 
 #[renox::test]
@@ -292,13 +310,19 @@ async fn a_rejected_broadcast_shows_not_sent_and_is_asked_once_more_after_a_fix(
         .await
         .assert_status(422);
     w.t.app
-        .post(&format!("/campaigns/{}/transitions/end", w.r.id), &[("x", "")])
+        .post(
+            &format!("/campaigns/{}/transitions/end", w.r.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     assert!(w.stage.gate.cancelled.lock().unwrap().is_empty());
     let later = (today() + Duration::days(40)).to_string();
     w.t.app
-        .post(&format!("/campaigns/{}/reopen", w.r.id), &[("end_date", later.as_str())])
+        .post(
+            &format!("/campaigns/{}/reopen", w.r.id),
+            &[("end_date", later.as_str())],
+        )
         .await
         .assert_status(303);
     assert_eq!(w.reload().await.status, CampaignStatus::Active);
@@ -315,7 +339,10 @@ async fn a_refusal_of_the_notifier_keeps_the_campaign_active_with_the_reason() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].status, BroadcastState::Failed);
     assert_eq!(rows[0].broadcast_id, None);
-    assert_eq!(rows[0].reason.as_deref(), Some("the template has no SMS text"));
+    assert_eq!(
+        rows[0].reason.as_deref(),
+        Some("the template has no SMS text")
+    );
     assert_eq!(w.reload().await.status, CampaignStatus::Active);
     w.t.app.acting_as(&w.b);
     w.t.app
@@ -340,7 +367,10 @@ async fn ending_the_campaign_before_the_send_cancels_the_waiting_broadcast() {
     w.start().await;
     w.t.app.acting_as(&w.b);
     w.t.app
-        .post(&format!("/campaigns/{}/transitions/end", w.r.id), &[("x", "")])
+        .post(
+            &format!("/campaigns/{}/transitions/end", w.r.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     assert_eq!(w.reload().await.status, CampaignStatus::Ended);
@@ -370,7 +400,10 @@ async fn the_report_counts_the_recipients_who_bought_within_the_response_days() 
     late.recipients = Some(180);
     late.delivered = 170;
     late.opted_out = 3;
-    late.excluded = BTreeMap::from([("no_consent".to_owned(), 120), ("frequency_cap".to_owned(), 20)]);
+    late.excluded = BTreeMap::from([
+        ("no_consent".to_owned(), 120),
+        ("frequency_cap".to_owned(), 20),
+    ]);
     late.reached = vec![PartyId(1), PartyId(2), PartyId(3), PartyId(5)];
     w.stage.gate.report(1, late);
     w.completed(1, 180).await;
@@ -425,7 +458,9 @@ async fn a_purchase_after_the_response_days_does_not_count() {
     w.completed(1, 2).await;
     sale_at(&w.t, 1, now() - Duration::days(15), 10_000, "tee").await;
     sale_at(&w.t, 2, now() - Duration::days(5), 10_000, "tee").await;
-    let report = retention::report(w.t.state(), &w.reload().await).await.unwrap();
+    let report = retention::report(w.t.state(), &w.reload().await)
+        .await
+        .unwrap();
     assert_eq!((report.returned, report.returned_value), (1, 10_000));
     assert_eq!(report.response_days, 7);
 }
@@ -463,7 +498,10 @@ async fn the_campaign_answers_wl_notify_only_while_it_is_active_and_the_vertical
     assert_eq!(check(&w.t).await, RequesterCheck::Active);
     w.t.app.acting_as(&w.b);
     w.t.app
-        .post(&format!("/campaigns/{}/transitions/end", w.r.id), &[("x", "")])
+        .post(
+            &format!("/campaigns/{}/transitions/end", w.r.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     assert_eq!(check(&w.t).await, RequesterCheck::Ended);

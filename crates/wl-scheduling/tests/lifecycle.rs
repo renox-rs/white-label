@@ -48,7 +48,12 @@ async fn a_slot_is_not_booked_twice() {
     t.booking(&service, &[&doctor], start).await;
     let overlap = service::book(
         t.state(),
-        NewBooking::new(PATIENT, service.id, &[doctor.id], start + TimeDelta::minutes(15)),
+        NewBooking::new(
+            PATIENT,
+            service.id,
+            &[doctor.id],
+            start + TimeDelta::minutes(15),
+        ),
         staff(),
         now(),
     )
@@ -62,7 +67,9 @@ async fn a_slot_is_not_booked_twice() {
 #[renox::test]
 async fn a_closed_or_blocked_resource_is_refused() {
     let t = boot().await;
-    let closed = t.resource("Dr C", wl_scheduling::ResourceType::Person).await;
+    let closed = t
+        .resource("Dr C", wl_scheduling::ResourceType::Person)
+        .await;
     let service = t.service(&closed).await;
     let refused = service::book(
         t.state(),
@@ -71,7 +78,10 @@ async fn a_closed_or_blocked_resource_is_refused() {
         now(),
     )
     .await;
-    assert!(matches!(refused, Err(Refusal::Unavailable(_))), "{refused:?}");
+    assert!(
+        matches!(refused, Err(Refusal::Unavailable(_))),
+        "{refused:?}"
+    );
 
     let open = t.doctor("Dr B").await;
     let service_b = t.service_with("follow_up", &[&open], |_| {}).await;
@@ -90,7 +100,10 @@ async fn a_closed_or_blocked_resource_is_refused() {
         now(),
     )
     .await;
-    assert!(matches!(blocked, Err(Refusal::Unavailable(_))), "{blocked:?}");
+    assert!(
+        matches!(blocked, Err(Refusal::Unavailable(_))),
+        "{blocked:?}"
+    );
 }
 
 /// A booking in the past, or for a resource that does not deliver the
@@ -135,7 +148,10 @@ async fn a_request_is_accepted_or_declined() {
         now(),
     )
     .await;
-    assert!(matches!(booked, Err(Refusal::Invalid(_))), "a party must request");
+    assert!(
+        matches!(booked, Err(Refusal::Invalid(_))),
+        "a party must request"
+    );
 
     let requested = service::request(
         t.state(),
@@ -157,7 +173,12 @@ async fn a_request_is_accepted_or_declined() {
 
     let later = service::request(
         t.state(),
-        NewBooking::new(PATIENT, service.id, &[doctor.id], start + TimeDelta::hours(2)),
+        NewBooking::new(
+            PATIENT,
+            service.id,
+            &[doctor.id],
+            start + TimeDelta::hours(2),
+        ),
         Actor::party(None),
         now(),
     )
@@ -281,11 +302,22 @@ async fn a_party_who_did_not_come_is_marked_no_show() {
         .await;
     let start = in_hours(3);
     let booking = t.booking(&service, &[&doctor], start).await;
-    let early = service::mark_no_show(t.state(), booking.id, staff(), start + TimeDelta::minutes(14)).await;
+    let early = service::mark_no_show(
+        t.state(),
+        booking.id,
+        staff(),
+        start + TimeDelta::minutes(14),
+    )
+    .await;
     assert!(early.is_err());
-    let done = service::mark_no_show(t.state(), booking.id, staff(), start + TimeDelta::minutes(15))
-        .await
-        .unwrap();
+    let done = service::mark_no_show(
+        t.state(),
+        booking.id,
+        staff(),
+        start + TimeDelta::minutes(15),
+    )
+    .await
+    .unwrap();
     assert_eq!(done.status, BookingStatus::NoShow);
     let event = &t.events.no_show.all()[0];
     assert!(event.fee_applicable);
@@ -322,7 +354,14 @@ async fn a_cancelled_booking_releases_its_slot() {
     let start = in_hours(48);
     let booking = t.booking(&service, &[&doctor], start).await;
 
-    let missing = service::cancel(t.state(), booking.id, CancelRequest::new(" "), staff(), now()).await;
+    let missing = service::cancel(
+        t.state(),
+        booking.id,
+        CancelRequest::new(" "),
+        staff(),
+        now(),
+    )
+    .await;
     assert!(missing.is_err());
     let done = service::cancel(
         t.state(),
@@ -355,9 +394,16 @@ async fn a_booking_is_rescheduled() {
     let start = in_hours(72);
     let booking = t.booking(&service, &[&doctor], start).await;
     let new_start = in_hours(96);
-    let moved = service::reschedule(t.state(), booking.id, new_start, None, Actor::party(None), now())
-        .await
-        .unwrap();
+    let moved = service::reschedule(
+        t.state(),
+        booking.id,
+        new_start,
+        None,
+        Actor::party(None),
+        now(),
+    )
+    .await
+    .unwrap();
     assert_eq!(moved.status, BookingStatus::Booked);
     assert_eq!(moved.starts_at, new_start);
     assert_eq!(moved.ends_at, new_start + TimeDelta::minutes(30));
@@ -416,7 +462,9 @@ async fn a_reschedule_returns_to_requested_when_acceptance_is_needed() {
 async fn every_required_resource_must_be_free() {
     let t = boot().await;
     let doctor = t.doctor("Dr A").await;
-    let room = t.resource("Room 1", wl_scheduling::ResourceType::Room).await;
+    let room = t
+        .resource("Room 1", wl_scheduling::ResourceType::Room)
+        .await;
     t.open_all_week(&room).await;
     let procedure = t
         .service_with("procedure", &[&doctor, &room], |s| {
@@ -460,7 +508,12 @@ async fn buffers_keep_the_neighbouring_slot_busy() {
     t.booking(&service, &[&doctor], start).await;
     let touching = service::book(
         t.state(),
-        NewBooking::new(PATIENT, service.id, &[doctor.id], start + TimeDelta::minutes(30)),
+        NewBooking::new(
+            PATIENT,
+            service.id,
+            &[doctor.id],
+            start + TimeDelta::minutes(30),
+        ),
         staff(),
         now(),
     )

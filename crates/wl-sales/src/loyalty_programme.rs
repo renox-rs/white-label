@@ -114,9 +114,9 @@ impl LoyaltyProgramme {
             .order_by(LoyaltyProgramme::ID)
             .get(db)
             .await?;
-        Ok(all.into_iter().find(|p| {
-            p.brand.as_deref().map(str::to_lowercase) == brand.map(str::to_lowercase)
-        }))
+        Ok(all
+            .into_iter()
+            .find(|p| p.brand.as_deref().map(str::to_lowercase) == brand.map(str::to_lowercase)))
     }
 
     /// The first active programme, whatever its brand.
@@ -258,7 +258,9 @@ pub async fn create(db: &Db, new: NewProgramme) -> Result<LoyaltyProgramme> {
     if new.earn_rate < 1 || new.point_value < 1 || new.validity_months < 1 {
         return Err(refused("wl_sales.loyalty.problem.terms"));
     }
-    if new.minimum_amount < 0 || new.min_redeem_points < 0 || !(0..=10_000).contains(&new.max_share_bps)
+    if new.minimum_amount < 0
+        || new.min_redeem_points < 0
+        || !(0..=10_000).contains(&new.max_share_bps)
     {
         return Err(refused("wl_sales.loyalty.problem.terms"));
     }
@@ -352,10 +354,18 @@ mod tests {
         let new = NewProgramme::new(" Friends ");
         assert_eq!(new.name, "Friends");
         assert_eq!(
-            (new.earn_rate, new.point_value, new.min_redeem_points, new.max_share_bps),
+            (
+                new.earn_rate,
+                new.point_value,
+                new.min_redeem_points,
+                new.max_share_bps
+            ),
             (1, 1, 500, 10_000)
         );
         assert_eq!(new.validity_months, 12);
-        assert_eq!(NewProgramme::new("x").per_visit(10, "free").earn_kind, EarnKind::PerVisit);
+        assert_eq!(
+            NewProgramme::new("x").per_visit(10, "free").earn_kind,
+            EarnKind::PerVisit
+        );
     }
 }
