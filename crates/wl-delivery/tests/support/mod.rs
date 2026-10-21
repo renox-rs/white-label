@@ -335,7 +335,7 @@ impl World {
         let line = self.lines(&out).await.remove(0);
         let cash = format!("{}.{:02}", collect / 100, collect % 100);
         let fields = stop_fields(&[(line.id, "10", "0", "", "")], &cash);
-        self.deliver(&self.driver, &out, &fields).await.assert_ok();
+        self.deliver(&self.driver, &out, &fields).await.assert_status(303);
         let after = self.reload(&out).await;
         assert_eq!(after.status.as_str(), "delivered");
         after

@@ -25,7 +25,7 @@ fn at(text: &str) -> DateTime {
 async fn attempted(w: &World) -> Delivery {
     let delivery = w.simple_delivery().await;
     let out = w.out_for_delivery(&delivery).await;
-    w.fail(&w.driver, &out, "not_home").await.assert_ok();
+    w.fail(&w.driver, &out, "not_home").await.assert_status(303);
     let after = w.reload(&delivery).await;
     assert_eq!(after.status, DeliveryStatus::Attempted);
     after
@@ -228,7 +228,7 @@ async fn the_runs_driver_cannot_request_and_the_request_is_checked() {
     let w = boot().await;
     // A chief driver holds `deliveries.reverse` besides driving.
     let chief = support::chief_driver(&w).await;
-    w.valid_documents("2099-12-31");
+    w.valid_documents_for(chief.id, "2099-12-31");
     let delivery = w.simple_delivery().await;
     let run = wl_delivery::plan::create_run(
         w.state(),

@@ -55,9 +55,9 @@ async fn back_at_the_depot(w: &World, collect: i64) -> Scene {
     let line = w.lines(&refused).await.remove(0);
     let cash = format!("{}.{:02}", collect / 100, collect % 100);
     let fields = stop_fields(&[(line.id, "7", "3", "damaged", "damage-photo-1")], &cash);
-    w.deliver(&w.driver, &refused, &fields).await.assert_ok();
-    w.fail(&w.driver, &first, "not_home").await.assert_ok();
-    w.fail(&w.driver, &second, "not_home").await.assert_ok();
+    w.deliver(&w.driver, &refused, &fields).await.assert_status(303);
+    w.fail(&w.driver, &first, "not_home").await.assert_status(303);
+    w.fail(&w.driver, &second, "not_home").await.assert_status(303);
     bring_back(w, &run).await.assert_ok();
     let run = w.reload_run(&run).await;
     assert_eq!(run.status, RunStatus::ReturnedToDepot);
@@ -272,7 +272,7 @@ async fn the_runs_driver_cannot_count_their_own_cash() {
     let run = dispatched_run(&w, &dora, &[&delivery]).await;
     let line = w.lines(&delivery).await.remove(0);
     let fields = stop_fields(&[(line.id, "10", "0", "", "")], "100.00");
-    w.deliver(&dora, &delivery, &fields).await.assert_ok();
+    w.deliver(&dora, &delivery, &fields).await.assert_status(303);
     w.post(&dora, &format!("/driver/runs/{}/return", run.id), &[]).await.assert_ok();
     assert_eq!(w.reload_run(&run).await.status, RunStatus::ReturnedToDepot);
 
@@ -292,7 +292,7 @@ async fn a_run_with_nothing_to_account_for_closes_when_it_is_back() {
     let run = dispatched_run(&w, &w.driver, &[&delivery]).await;
     let line = w.lines(&delivery).await.remove(0);
     let fields = stop_fields(&[(line.id, "10", "0", "", "")], "0");
-    w.deliver(&w.driver, &delivery, &fields).await.assert_ok();
+    w.deliver(&w.driver, &delivery, &fields).await.assert_status(303);
 
     bring_back(&w, &run).await.assert_ok();
 
@@ -309,7 +309,7 @@ async fn the_run_returns_only_with_every_stop_decided_and_by_its_driver() {
     let open = w.simple_delivery().await;
     let done = w.simple_delivery().await;
     let run = dispatched_run(&w, &w.driver, &[&open, &done]).await;
-    w.fail(&w.driver, &done, "not_home").await.assert_ok();
+    w.fail(&w.driver, &done, "not_home").await.assert_status(303);
 
     bring_back(&w, &run).await.assert_status(422).assert_see("no outcome");
     w.post(&w.other_driver, &format!("/driver/runs/{}/return", run.id), &[])
@@ -323,7 +323,7 @@ async fn the_run_returns_only_with_every_stop_decided_and_by_its_driver() {
         .assert_status(422);
     assert_eq!(w.reload_run(&run).await.status, RunStatus::Dispatched);
 
-    w.fail(&w.driver, &open, "not_home").await.assert_ok();
+    w.fail(&w.driver, &open, "not_home").await.assert_status(303);
     bring_back(&w, &run).await.assert_ok();
     let back = w.reload_run(&run).await;
     assert_eq!(back.status, RunStatus::ReturnedToDepot);
