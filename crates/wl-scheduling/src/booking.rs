@@ -265,6 +265,26 @@ impl Booking {
         ids.dedup();
         Ok(ids)
     }
+
+    /// The ids of every resource the booking took, released ones included
+    /// (a booking that is over has given its resources back but still lies
+    /// where it was held).
+    ///
+    /// # Errors
+    ///
+    /// A database error.
+    pub async fn held_resource_ids(&self, db: &Db) -> Result<Vec<i64>> {
+        let mut ids: Vec<i64> = BookingResource::query()
+            .where_(BookingResource::BOOKING_ID.eq(self.id))
+            .get(db)
+            .await?
+            .into_iter()
+            .map(|row| row.resource_id)
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(ids)
+    }
 }
 
 /// The reason codes of the module with their default *initiated by* (§4.1).

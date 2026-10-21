@@ -103,12 +103,15 @@ async fn resource_names(db: &Db, booking: &Booking) -> Result<String> {
     Ok(names.join(", "))
 }
 
-/// The location of `booking`, or of its first resource that has one.
+/// The location of `booking`, or of its first resource that has one. The
+/// resources count after they were released too: a completed or cancelled
+/// booking lies where it was held (a vertical reads its branch from the
+/// event it gets when the booking is over).
 pub(crate) async fn location_of(db: &Db, booking: &Booking) -> Result<Option<Subject>> {
     if let Some(location) = booking.location() {
         return Ok(Some(location));
     }
-    for id in booking.resource_ids(db).await? {
+    for id in booking.held_resource_ids(db).await? {
         if let Some(location) = Resource::find(db, id).await?.and_then(|r| r.location()) {
             return Ok(Some(location));
         }
