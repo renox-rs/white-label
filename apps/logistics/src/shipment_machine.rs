@@ -677,7 +677,10 @@ fn return_delivered() -> Transition<Shipment> {
         .from([ShipmentStatus::Returning])
         .to(ShipmentStatus::Returned)
         .guard("e_pod_from_the_client", |_s: &Shipment, ctx| {
-            let given = text_given(&input_of(ctx).pod_reference);
+            // `available` asks without any input: the driver is offered the
+            // action; the e-POD is then checked again by the effect, so a
+            // run without one never gets through.
+            let given = ctx.input().is_null() || text_given(&input_of(ctx).pod_reference);
             Box::pin(async move {
                 if given {
                     Ok(())
@@ -691,6 +694,12 @@ fn return_delivered() -> Transition<Shipment> {
             let reference = input_of(ctx).pod_reference.map(|r| r.trim().to_owned());
             let actor = ctx.actor().map(|user| user.id);
             Box::pin(async move {
+                if reference.as_deref().is_none_or(str::is_empty) {
+                    return Err(Error::Status(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        english("logistics.return.pod_needed", &[]),
+                    ));
+                }
                 // The month of this e-POD is the month its return charge is
                 // billed in (`LOG.RUL.07`, BL-LOG-20).
                 let at = Some(renox::db::now());
