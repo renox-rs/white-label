@@ -153,7 +153,7 @@ pub fn resubmission_deadline(claim: &Claim, contract: Option<&PayerContract>) ->
 }
 
 /// The contract of `claim`, if it has one.
-async fn contract_of(db: &Db, claim: &Claim) -> Result<Option<PayerContract>> {
+pub(crate) async fn contract_of(db: &Db, claim: &Claim) -> Result<Option<PayerContract>> {
     match claim.contract_id {
         Some(id) => PayerContract::find(db, id).await,
         None => Ok(None),

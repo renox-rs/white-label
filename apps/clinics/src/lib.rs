@@ -12,6 +12,7 @@ pub mod card_requests;
 pub mod charge;
 pub mod charges;
 pub mod claim;
+pub mod claim_closing;
 pub mod claim_machine;
 pub mod claim_money;
 pub mod claim_rules;
@@ -192,6 +193,9 @@ impl Module for Clinics {
         // BL-CLN-08).
         claim_money::register(app);
         claim_rules::register(app);
+        // `CLN.ACL.16`: the write-off of a claim, and the claim following the
+        // owner's approval of the payer bill's (BL-CLN-09).
+        claim_closing::register(app);
         // `CLN.RUL.03`: the claims not sent before the first-submission
         // window ends are chased (BL-CLN-11).
         claim_window::register(app);
