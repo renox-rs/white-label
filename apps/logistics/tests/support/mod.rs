@@ -10,7 +10,9 @@ use std::sync::{Arc, Mutex};
 
 use logistics::permissions as perm;
 use logistics::remit::{self, Built};
-use logistics::{Logistics, Remittance, RemittanceStatus, Shipment, ShipmentStatus};
+use logistics::{
+    Logistics, Remittance, RemittanceStatus, Shipment, ShipmentDelivered, ShipmentStatus,
+};
 use renox::auth::{Permissions, permissions};
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
@@ -108,6 +110,8 @@ pub struct World {
     pub tickets: TicketDesk,
     /// `RecordVoided`.
     pub voided: Recorded<RecordVoided>,
+    /// `ShipmentDelivered`.
+    pub shipment_delivered: Recorded<ShipmentDelivered>,
     /// The operations manager.
     pub ops: User,
     /// The dispatcher: manages shipments and plans runs.
@@ -202,6 +206,7 @@ async fn boot_with(real_payments: bool) -> World {
     let tickets = TicketDesk::default();
     let task_creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let voided = Recorded::new();
+    let shipment_delivered = Recorded::new();
     let parties = Parties::default();
     let app = App::new()
         .module(Auth::new())
@@ -222,6 +227,7 @@ async fn boot_with(real_payments: bool) -> World {
         app
     };
     let app = record(app, &voided);
+    let app = record(app, &shipment_delivered);
     let client = if real_payments {
         CLIENT.replace(
             "[\"parties\", \"delivery\"]",
@@ -303,6 +309,7 @@ async fn boot_with(real_payments: bool) -> World {
         notices,
         tickets,
         voided,
+        shipment_delivered,
         ops,
         dispatcher,
         dispatcher_b,
@@ -531,6 +538,59 @@ impl World {
             &self.driver,
             &format!("/driver/stops/{}/deliver", delivery.id),
             &fields,
+        )
+        .await
+    }
+
+    /// The driver delivers the stop of `delivery`, a delivery of one line per
+    /// parcel, with `cash` dirhams collected: every parcel is accepted except
+    /// those named in `refused` as `(position from 1, reason, photo)`.
+    pub async fn deliver_parcels(
+        &self,
+        delivery: &Delivery,
+        cash: &str,
+        refused: &[(usize, &str, &str)],
+        more: &[(&str, &str)],
+    ) -> TestResponse {
+        let lines = delivery.lines(self.db()).await.unwrap();
+        let mut fields: Vec<(String, String)> = vec![
+            ("recipient_name".into(), "Mariam Al Hosani".into()),
+            ("photo".into(), "photo-0001".into()),
+            ("signature".into(), "signature-0001".into()),
+            ("latitude".into(), "25.204849".into()),
+            ("longitude".into(), "55.270783".into()),
+            ("cash_collected".into(), cash.into()),
+        ];
+        for (at, line) in lines.iter().enumerate() {
+            let refusal = refused.iter().find(|(position, _, _)| *position == at + 1);
+            match refusal {
+                None => {
+                    fields.push((format!("delivered_{}", line.id), "1".into()));
+                    fields.push((format!("refused_{}", line.id), "0".into()));
+                }
+                Some((_, reason, photo)) => {
+                    fields.push((format!("delivered_{}", line.id), "0".into()));
+                    fields.push((format!("refused_{}", line.id), "1".into()));
+                    if !reason.is_empty() {
+                        fields.push((format!("reason_{}", line.id), (*reason).into()));
+                    }
+                    if !photo.is_empty() {
+                        fields.push((format!("photo_{}", line.id), (*photo).into()));
+                    }
+                }
+            }
+        }
+        for (name, value) in more {
+            fields.push(((*name).into(), (*value).into()));
+        }
+        let borrowed: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect();
+        self.post(
+            &self.driver,
+            &format!("/driver/stops/{}/deliver", delivery.id),
+            &borrowed,
         )
         .await
     }
