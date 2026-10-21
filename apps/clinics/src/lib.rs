@@ -167,7 +167,9 @@ impl Module for Clinics {
             .model::<ClaimAttempt>()
             .model::<ClaimRemittance>();
         visit_machine::register();
-        renox::state_machine::register::<Claim>();
+        // The claim: its machine, its subject (`clinics.claim`) with the
+        // void's own approval action, and voidable (`CLN.ACL.14`).
+        claim_machine::register();
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
         appointments::register(app);

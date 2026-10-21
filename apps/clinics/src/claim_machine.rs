@@ -12,10 +12,14 @@
 //! | [`WRITE_OFF`] | draft, ready, partially_paid, denied | written_off | `claims.writeoff` | reason given; from draft or ready only after the first-submission window passed and the payer does not accept late claims (`CLN.ACL.16`); something open |
 //! | [`WRITE_OFF_APPROVED`] | draft, ready, partially_paid, denied | written_off | system | reason given; something open (the owner approved the payer bill's write-off above the limit, `FIN.ACL.14`) |
 //!
-//! `void` is not here yet (BL-CLN-10): the state `voided` exists, and
-//! `record_recoupment` already leaves `written_off`. `write_off` is BL-CLN-09's
-//! and closes the claim the way the payer bill closes: it is written off, or,
-//! where the payer contract allows, moved to the patient.
+//! | `void` / `void_approved` | draft, ready | voided | `claims.manage` | reason given; never after a submission attempt (`CLN.ACL.14`, `PLT.ACL.09`) |
+//!
+//! `write_off` is BL-CLN-09's and closes the claim the way the payer bill
+//! closes: it is written off, or, where the payer contract allows, moved to the
+//! patient. `void` is BL-CLN-10's and the kernel's pattern (BL-KRN-03): the
+//! transitions come from `wl_kernel::voids::transitions`, the claim adds the
+//! guard that a claim with a stored submission attempt is never voided, and
+//! it has an approval action of its own ([`VOID_ACTION`]).
 //!
 //! Decisions:
 //!
@@ -37,13 +41,16 @@
 use renox::chrono::NaiveDate;
 use renox::db::{Json, ToDbValue, Transaction, now};
 use renox::prelude::*;
+use renox::serde_json::Value;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::dubai_date;
+use wl_kernel::machines::SubjectMachine;
+use wl_kernel::voids::{self, Voidable};
 
 use crate::claim::{
-    AnswerKind, AttemptKind, Claim, ClaimAttempt, ClaimError, ClaimLine, ClaimRemittance,
-    ClaimStatus,
+    AnswerKind, AttemptKind, CLAIM_SUBJECT_TYPE, Claim, ClaimAttempt, ClaimError, ClaimLine,
+    ClaimRemittance, ClaimStatus,
 };
 use crate::permissions;
 use crate::texts::english;
@@ -77,6 +84,12 @@ pub const WRITE_OFF: &str = "write_off";
 /// of [`WRITE_OFF`], run when the owner approved the write-off the payer bill
 /// held above the limit (`FIN.ACL.14`).
 pub const WRITE_OFF_APPROVED: &str = "write_off_approved";
+
+/// The approval policies' action key of the `void` of a claim. Decision: the
+/// claim has its own key, not the module's default `clinics.void`, so that the
+/// void policy of the claim (the kernel's default: money or stock posted)
+/// never meets another voidable type of the clinic app.
+pub const VOID_ACTION: &str = "clinics.claim_void";
 
 /// The states a close leaves.
 const CLOSABLE: [ClaimStatus; 4] = [
@@ -447,7 +460,7 @@ impl StateMachine for Claim {
         use ClaimStatus::{
             Denied, Draft, Paid, PartiallyPaid, Ready, Resubmitted, Submitted, Voided, WrittenOff,
         };
-        Machine::new()
+        let machine = Machine::new()
             .initial([Draft])
             .state(Draft)
             .tone("neutral")
@@ -478,7 +491,13 @@ impl StateMachine for Claim {
             .transition(recoupment(RECORD_RECOUPMENT_PARTIALLY_PAID, PartiallyPaid))
             .transition(recoupment(RECORD_RECOUPMENT_DENIED, Denied))
             .transition(write_off())
-            .transition(write_off_approved())
+            .transition(write_off_approved());
+        // `void` and `void_approved`, the kernel's, with the claim's rule on
+        // top (`CLN.ACL.14`).
+        voids::transitions::<Claim, _>(CLAIM_SUBJECT_TYPE, [Draft, Ready])
+            .into_iter()
+            .map(void_rules)
+            .fold(machine, Machine::transition)
     }
 }
 
@@ -800,6 +819,63 @@ async fn close_in(tx: &mut Transaction, claim: &Claim, input: &ClaimInput) -> Re
     .await
 }
 
+/// Whether the claim was ever sent: a stored submission attempt proves it,
+/// also for a claim back in `draft` after a technical rejection.
+///
+/// # Errors
+///
+/// The English text of the refusal.
+pub fn never_submitted(claim: &Claim) -> std::result::Result<(), String> {
+    if claim.attempts > 0 || claim.submitted_on.is_some() {
+        Err(english("clinics.claim.problem.void_submitted", &[]))
+    } else {
+        Ok(())
+    }
+}
+
+/// The claim's rule on top of the kernel's `void` (`CLN.ACL.14`): never after
+/// a submission attempt; and what `void` writes besides the Void record.
+fn void_rules(transition: Transition<Claim>) -> Transition<Claim> {
+    transition
+        .guard("never_submitted", |c: &Claim, _ctx| {
+            let result = never_submitted(c);
+            Box::pin(async move { result })
+        })
+        .effect(|c: &Claim, ctx, tx| {
+            let id = c.id;
+            let by = ctx
+                .actor()
+                .map(|user| user.id)
+                .or_else(|| ctx.meta().get("requester_id").and_then(Value::as_i64));
+            Box::pin(async move {
+                set(
+                    tx,
+                    id,
+                    &[
+                        ("voided_on", &Some(dubai_date(now()))),
+                        ("voided_by", &by),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
+/// Registers the claim as the subject `clinics.claim` with its own approval
+/// action for the void, as voidable (permission `claims.manage`, the number
+/// kept) and for `rnx state:diagram`.
+pub(crate) fn register() {
+    // Declared before the `Voidable`, so the void policy takes the key.
+    SubjectMachine::of::<Claim>(CLAIM_SUBJECT_TYPE)
+        .action(voids::VOID, VOID_ACTION)
+        .register();
+    renox::state_machine::register::<Claim>();
+    Voidable::of::<Claim>(CLAIM_SUBJECT_TYPE)
+        .permission(permissions::CLAIMS_MANAGE)
+        .number("claim", |claim: &Claim| Some(claim.number()))
+        .register();
+}
+
 /// What a remittance or a recoupment writes besides the status: the lines'
 /// paid, denied and recouped amounts with the payer's codes, the totals, the
 /// record of the advice, and the end of the hold.
@@ -901,8 +977,8 @@ mod tests {
                 ("voided", Some("neutral"), true),
             ]
         );
-        assert_eq!(machine.transitions().len(), 11);
-        let expected: [(&str, &[&str], &str, bool, &[&str]); 11] = [
+        assert_eq!(machine.transitions().len(), 13);
+        let expected: [(&str, &[&str], &str, bool, &[&str]); 13] = [
             (
                 VALIDATE,
                 &["draft"],
@@ -978,6 +1054,28 @@ mod tests {
                 true,
                 &["reason_given", "something_open"],
             ),
+            (
+                voids::VOID,
+                &["draft", "ready"],
+                "voided",
+                false,
+                &[
+                    "permission_held",
+                    "not_given_to_third_party",
+                    "never_submitted",
+                ],
+            ),
+            (
+                voids::VOID_APPROVED,
+                &["draft", "ready"],
+                "voided",
+                true,
+                &[
+                    "permission_held",
+                    "not_given_to_third_party",
+                    "never_submitted",
+                ],
+            ),
         ];
         for (name, from, to, system, guards) in expected {
             let transition = machine.find(name).expect("the transition exists");
@@ -1048,6 +1146,35 @@ mod tests {
             ..Claim::default()
         };
         assert!(window_missed(&ready, &open).is_err());
+    }
+
+    #[test]
+    fn a_claim_with_a_submission_attempt_is_never_voided() {
+        assert!(never_submitted(&Claim::default()).is_ok());
+        let sent = Claim {
+            attempts: 1,
+            ..Claim::default()
+        };
+        assert!(never_submitted(&sent).unwrap_err().contains("sent"));
+        let dated = Claim {
+            submitted_on: Some(day("2026-11-03")),
+            ..Claim::default()
+        };
+        assert!(never_submitted(&dated).is_err());
+    }
+
+    #[test]
+    fn a_voided_claim_is_left_by_no_transition_and_the_void_has_its_own_action() {
+        let machine = Claim::machine();
+        assert_eq!(machine.from_state("voided").count(), 0);
+        assert_eq!(VOID_ACTION, "clinics.claim_void");
+        assert_eq!(
+            SubjectMachine::of::<Claim>(CLAIM_SUBJECT_TYPE)
+                .action(voids::VOID, VOID_ACTION)
+                .build()
+                .action_key(voids::VOID),
+            "clinics.claim_void"
+        );
     }
 
     #[test]

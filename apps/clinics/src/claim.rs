@@ -163,6 +163,20 @@ pub struct Claim {
     /// first-submission window: reported as *not submitted in time* in the
     /// denial KPI.
     pub not_submitted_in_time: bool,
+    /// Why the claim was voided: `duplicate`, `wrong_payer` or
+    /// `wrong_policy` (`CLN.ACL.14`).
+    pub void_code: Option<String>,
+    /// The free text that went with the void reason.
+    pub void_note: Option<String>,
+    /// For a duplicate, the claim it duplicates.
+    pub void_duplicate_of: Option<i64>,
+    /// The day it was voided (Asia/Dubai).
+    pub voided_on: Option<NaiveDate>,
+    /// The user who voided it.
+    pub voided_by: Option<i64>,
+    /// For a claim made by a re-split after a void, the voided claim it
+    /// replaces.
+    pub replaces_claim_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: ClaimStatus,
     /// The user who made it, if any.
@@ -197,6 +211,11 @@ impl Claim {
     /// The patient as a [`PartyId`].
     pub fn patient(&self) -> PartyId {
         PartyId(self.patient_party_id)
+    }
+
+    /// Whether the claim was voided (number kept, never deleted).
+    pub fn is_void(&self) -> bool {
+        self.status == ClaimStatus::Voided
     }
 
     /// Whether a remittance or a recoupment waits for approval.

@@ -131,6 +131,10 @@ pub struct Visit {
     /// The part of the deposit wl-scheduling applied to the work done when
     /// it cancelled the booking, in fils.
     pub scheduling_applied: i64,
+    /// The payer split was taken away (the claim was voided) and no right
+    /// policy was named: the billing coordinator has to resolve the
+    /// coverage (`CLN.ACL.14`).
+    pub coverage_to_resolve: bool,
     /// The lifecycle state; changed only by a transition.
     pub status: VisitStatus,
     /// When the row was created.

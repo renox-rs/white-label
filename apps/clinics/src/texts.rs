@@ -754,6 +754,48 @@ const TEXTS: &[(&str, &str)] = &[
         "Close the claim: the open amount is written off, or moved to the patient where the payer contract allows it. Above the limit the owner approves first.",
     ),
     ("clinics.claim.close_reason", "Reason"),
+    ("clinics.claim.void", "Void"),
+    (
+        "clinics.claim.void_description",
+        "Void a claim made in error, before it was sent. The number is kept and shown as void; the payer bill is voided and the visit's payer split is removed.",
+    ),
+    ("clinics.claim.void_code", "Reason"),
+    ("clinics.claim.void_code.duplicate", "Duplicate"),
+    ("clinics.claim.void_code.wrong_payer", "Wrong payer"),
+    ("clinics.claim.void_code.wrong_policy", "Wrong policy"),
+    ("clinics.claim.void_note", "Note"),
+    (
+        "clinics.claim.void_duplicate_of",
+        "Duplicate of (a duplicate needs the claim)",
+    ),
+    (
+        "clinics.claim.void_policy",
+        "Right policy (blank: coverage to resolve)",
+    ),
+    ("clinics.claim.void_none", "—"),
+    ("clinics.claim.voided", "Claim voided."),
+    (
+        "clinics.claim.voided_resplit",
+        "Claim voided and the visit split again: :number.",
+    ),
+    (
+        "clinics.claim.voided_to_resolve",
+        "Claim voided. The visit has no payer split: coverage to resolve.",
+    ),
+    ("clinics.claim.void_info", "Voided on :date (:reason)"),
+    ("clinics.claim.duplicate_of", "Duplicate of"),
+    ("clinics.claim.replaces", "Replaces"),
+    ("clinics.claim.replaced_by", "Replaced by"),
+    (
+        "clinics.claim.coverage_to_resolve",
+        "The visit has no payer split: coverage to resolve. Choose the right policy to split it again.",
+    ),
+    ("clinics.claim.resolve", "Resolve coverage"),
+    (
+        "clinics.claim.resolve_description",
+        "Split the visit again under the right policy of the patient: a new claim is made.",
+    ),
+    ("clinics.claim.resolved", "The visit is split again."),
     ("clinics.claim.closed_done", "Claim closed."),
     (
         "clinics.claim.close_held",
@@ -955,6 +997,58 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "clinics.claim.problem.accepts_late",
         "This payer accepts late claims: validate the claim with a late reason instead of writing it off.",
+    ),
+    (
+        "clinics.claim.problem.void_submitted",
+        "This claim was sent to the payer (an attempt is recorded), so it is not voided: resubmit it or write it off.",
+    ),
+    (
+        "clinics.claim.problem.void_code",
+        "Give the reason: duplicate, wrong payer or wrong policy.",
+    ),
+    (
+        "clinics.claim.problem.void_duplicate_needed",
+        "A duplicate needs the claim it duplicates: pick it from the patient's other claims.",
+    ),
+    (
+        "clinics.claim.problem.void_duplicate_other",
+        "Pick a claim of the same patient that is not void.",
+    ),
+    (
+        "clinics.claim.problem.void_waits",
+        "The void waits for an approval and cannot go on from here.",
+    ),
+    (
+        "clinics.claim.problem.resplit_other_patient",
+        "This policy belongs to another patient.",
+    ),
+    (
+        "clinics.claim.problem.resplit_not_valid",
+        "This policy is not valid on the day of the visit.",
+    ),
+    (
+        "clinics.claim.problem.resplit_no_share",
+        "This policy gives no payer share for the visit: leave the policy out and resolve the coverage.",
+    ),
+    (
+        "clinics.claim.problem.resplit_patient_share",
+        "With this policy the patient's share would change, and it was invoiced already: resolve the coverage with the billing team.",
+    ),
+    (
+        "clinics.claim.problem.resolve_nothing",
+        "The visit of this claim has no coverage to resolve.",
+    ),
+    (
+        "clinics.claim.task.coverage_title",
+        "Visit :visit has no payer split: coverage to resolve",
+    ),
+    (
+        "clinics.claim.task.coverage_description",
+        "The claim :number of visit :visit was voided (:reason) and no right policy was named. Nothing moved to the patient. Find the right policy and split the visit again from the voided claim.",
+    ),
+    (
+        "clinics.claim.task.coverage_resolved",
+        "The visit was split again.",
     ),
     (
         "clinics.claim.task.rejected_title",
