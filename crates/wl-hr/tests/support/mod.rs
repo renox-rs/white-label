@@ -18,7 +18,8 @@ use renox::testing::TestApp;
 use wl_hr::permissions as perm;
 use wl_hr::{
     Adjustment, AdjustmentKind, Employee, EmploymentType, LineStatus, NewEmployee, Onboarding,
-    OnboardingStep, PayrollLine, PayrollRun, PayrollRunStatus, SalaryStructure, WlHr, employees,
+    OnboardingStep, PayAccount, PayAccountStatus, PayrollLine, PayrollRun, PayrollRunStatus,
+    SalaryStructure, WlHr, employees,
     template::{self, StepInput, TemplateInput},
 };
 use wl_kernel::attendance::LabourFuture;
@@ -29,7 +30,11 @@ use wl_kernel::documents::{
 };
 use wl_kernel::invoicing::{CostPoster, PostCost, SupplierBillFuture, provide_cost_poster};
 use wl_kernel::notify::{
-    MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
+    ContactKind, MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest,
+    PartyContactPoint, PartyContacts, provide_notifier,
+};
+use wl_kernel::parties::{
+    PartyDirectory, PartyFuture, PartyStatus, PartySummary, provide_directory,
 };
 use wl_kernel::tickets::{
     ChecklistRunId, Checklists, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef,
@@ -40,8 +45,8 @@ use wl_kernel::timesheets::{
 };
 use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
-    OnboardingCompleted, OnboardingStarted, PayrollLinesFailed, PayrollRunPaid, PayrollRunReturned,
-    QualificationExpired, QualificationExpiring,
+    OnboardingCompleted, OnboardingStarted, PayAccountChanged, PayrollLinesFailed, PayrollRunPaid,
+    PayrollRunReturned, QualificationExpired, QualificationExpiring,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -138,6 +143,101 @@ impl Notifier for Recording {
         Box::pin(async move {
             self.0.lock().unwrap().push(request);
             Ok(vec![MessageId(1)])
+        })
+    }
+}
+
+/// The party directory: the names and the contact points of the employees'
+/// parties, as wl-parties would answer.
+#[derive(Clone, Default)]
+pub struct PartyDesk {
+    names: Arc<Mutex<BTreeMap<i64, String>>>,
+    contacts: Arc<Mutex<BTreeMap<i64, Vec<PartyContactPoint>>>>,
+}
+
+impl PartyDesk {
+    /// Party `party` is called `name`.
+    pub fn name(&self, party: i64, name: &str) {
+        self.names.lock().unwrap().insert(party, name.to_owned());
+    }
+
+    /// Party `party` has the mobile number `number` on record (replacing the
+    /// one before).
+    pub fn mobile(&self, party: i64, number: &str) {
+        self.point(party, ContactKind::Mobile, number);
+    }
+
+    /// Party `party` has the e-mail address `address` on record.
+    pub fn email(&self, party: i64, address: &str) {
+        self.point(party, ContactKind::Email, address);
+    }
+
+    /// Party `party` has no mobile number on record.
+    pub fn no_mobile(&self, party: i64) {
+        if let Some(points) = self.contacts.lock().unwrap().get_mut(&party) {
+            points.retain(|p| p.kind != ContactKind::Mobile);
+        }
+    }
+
+    fn point(&self, party: i64, kind: ContactKind, address: &str) {
+        let mut all = self.contacts.lock().unwrap();
+        let points = all.entry(party).or_default();
+        points.retain(|p| p.kind != kind);
+        let id = i64::try_from(points.len()).unwrap_or(0) + party * 10 + 1;
+        points.push(PartyContactPoint {
+            id,
+            kind,
+            address: address.to_owned(),
+            primary: true,
+            verified: true,
+            valid: true,
+        });
+    }
+}
+
+impl PartyDirectory for PartyDesk {
+    fn find<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn find_by_code<'a>(
+        &'a self,
+        _db: &'a Db,
+        _code: &'a str,
+    ) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn display_name<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+        _lang: &'a str,
+    ) -> PartyFuture<'a, Option<String>> {
+        Box::pin(async move { Ok(self.names.lock().unwrap().get(&party.0).cloned()) })
+    }
+
+    fn status<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn contacts<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<PartyContacts>> {
+        Box::pin(async move {
+            Ok(self
+                .contacts
+                .lock()
+                .unwrap()
+                .get(&party.0)
+                .map(|points| PartyContacts {
+                    party,
+                    language: "en".into(),
+                    preferred_channel: None,
+                    points: points.clone(),
+                }))
         })
     }
 }
@@ -404,6 +504,8 @@ struct Fakes {
     docs: DocDesk,
     timesheets: TimesheetDesk,
     costs: CostDesk,
+    parties: PartyDesk,
+    pay_changed: Arc<Mutex<Vec<PayAccountChanged>>>,
     started: Arc<Mutex<Vec<OnboardingStarted>>>,
     completed: Arc<Mutex<Vec<OnboardingCompleted>>>,
     activated: Arc<Mutex<Vec<EmployeeActivated>>>,
@@ -596,6 +698,8 @@ impl Module for Fakes {
         provide_guard(app, self.docs.clone());
         provide_timesheets(app, self.timesheets.clone());
         provide_cost_poster(app, self.costs.clone());
+        provide_directory(app, self.parties.clone());
+        record(app, &self.pay_changed);
         record(app, &self.started);
         record(app, &self.completed);
         record(app, &self.activated);
@@ -628,6 +732,10 @@ pub struct Booted {
     pub timesheets: TimesheetDesk,
     /// The cost posted to cost objects.
     pub costs: CostDesk,
+    /// The names and contact points of the parties.
+    pub parties: PartyDesk,
+    /// `PayAccountChanged`.
+    pub pay_changed: Recorded<PayAccountChanged>,
     /// `OnboardingStarted`.
     pub started: Recorded<OnboardingStarted>,
     /// `OnboardingCompleted`.
@@ -1092,6 +1200,82 @@ impl Booted {
             .await
     }
 
+    /// A pay account of `employee` in `status` with the IBAN `iban`, inserted
+    /// as a fixture (the machine would not take it there).
+    pub async fn pay_account_in(
+        &self,
+        employee: &Employee,
+        status: PayAccountStatus,
+        iban: &str,
+    ) -> PayAccount {
+        let mut account = PayAccount {
+            employee_id: employee.id,
+            channel: "bank_account".into(),
+            routing_code: Some("123456789".into()),
+            account_number: iban.to_owned(),
+            last4: iban[iban.len() - 4..].to_owned(),
+            holder_name: "Ravi Kumar".into(),
+            cooling_days: 5,
+            status,
+            ..PayAccount::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        account
+            .insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        account
+    }
+
+    /// `user` asks for a new pay account of `employee` through the page route,
+    /// with the form `fields`.
+    pub async fn request_account(
+        &self,
+        user: &User,
+        employee: &Employee,
+        fields: &[(&str, &str)],
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app
+            .post(
+                &format!("/hr/employees/{}/pay-accounts", employee.id),
+                fields,
+            )
+            .await
+    }
+
+    /// `user` runs the transition `name` of `account` through its page route.
+    pub async fn pay_transition(
+        &self,
+        user: &User,
+        account: &PayAccount,
+        name: &str,
+        reason: &str,
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app
+            .post(
+                &format!("/hr/pay-accounts/{}/transitions/{name}", account.id),
+                &[("reason", reason)],
+            )
+            .await
+    }
+
+    /// `account`, as stored now.
+    pub async fn account(&self, account: &PayAccount) -> PayAccount {
+        PayAccount::find_or_404(self.db(), account.id)
+            .await
+            .unwrap()
+    }
+
+    /// The pay accounts of `employee`, oldest first.
+    pub async fn accounts_of(&self, employee: &Employee) -> Vec<PayAccount> {
+        PayAccount::of_employee(self.db(), employee.id)
+            .await
+            .unwrap()
+    }
+
     /// `run`, as stored now.
     pub async fn run(&self, run: &PayrollRun) -> PayrollRun {
         PayrollRun::find_or_404(self.db(), run.id).await.unwrap()
@@ -1150,6 +1334,8 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         docs: DocDesk::default(),
         timesheets: TimesheetDesk::default(),
         costs: CostDesk::default(),
+        parties: PartyDesk::default(),
+        pay_changed: Arc::default(),
         started: Arc::default(),
         completed: Arc::default(),
         activated: Arc::default(),
@@ -1171,6 +1357,7 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         Recorded(fakes.paid.clone()),
         fakes.tasks.clone(),
     );
+    let (parties, pay_changed) = (fakes.parties.clone(), Recorded(fakes.pay_changed.clone()));
     let (notices, checklists, sops, docs, timesheets, costs) = (
         fakes.notices.clone(),
         fakes.checklists.clone(),
@@ -1275,6 +1462,26 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
     )
     .await
     .unwrap();
+    // Pay accounts (`HRM.ACL.05`): one user approves what another asked for;
+    // `hr_pay` holds both permissions, to show the requester cannot approve.
+    permissions::define_role(
+        app.db(),
+        "pay_approver",
+        &[perm::EMPLOYEES_VIEW, perm::PAY_ACCOUNTS_APPROVE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(
+        app.db(),
+        "hr_pay",
+        &[
+            perm::EMPLOYEES_VIEW,
+            perm::EMPLOYEES_MANAGE,
+            perm::PAY_ACCOUNTS_APPROVE,
+        ],
+    )
+    .await
+    .unwrap();
     permissions::define_role(app.db(), "accountant", &[perm::PAYROLL_VIEW])
         .await
         .unwrap();
@@ -1290,6 +1497,8 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         docs,
         timesheets,
         costs,
+        parties,
+        pay_changed,
         started,
         completed,
         activated,

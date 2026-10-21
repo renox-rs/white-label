@@ -13,8 +13,10 @@
 //!   (`HRM.RUL.11`, [`crate::wps_alerts`]) and `PayrollLinesFailed` is emitted.
 //! - `regenerate` (partially_rejected -> submitted, `payroll.prepare`): a
 //!   new SIF version with only the lines that are `included` again. A line
-//!   still `failed` refuses it: it is fixed ([`crate::payroll::fix_line`],
-//!   which the change of the pay account under `HRM.ACL.05` calls), held
+//!   still `failed` refuses it: it is fixed (the activation of a new pay
+//!   account under `HRM.ACL.05` calls [`crate::release::line_fixed`], see
+//!   [`crate::pay_account_use`]; [`crate::payroll::fix_line`] does the same for
+//!   the bank-side fixes), held
 //!   ([`hold_line`]) or paid another approved way ([`pay_line_other_way`]).
 //!   When every failed line was moved out the SIF would be empty, so
 //!   `regenerate` is refused and the run goes straight to `confirm_paid`.

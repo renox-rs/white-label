@@ -218,6 +218,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
             hr::EMPLOYEES_EXIT_APPROVE,
+            hr::PAY_ACCOUNTS_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
             hr::PAYROLL_VIEW,
@@ -620,6 +621,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // the MD who approves the non-standard exits (`HRM.ACL.07`).
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_EXIT_APPROVE,
+            hr::PAY_ACCOUNTS_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
             hr::PAYROLL_VIEW,
