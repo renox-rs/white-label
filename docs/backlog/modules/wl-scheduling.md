@@ -496,20 +496,20 @@ staff to move (event `BookingConflict`, cause `block`)."
 - Must not disclose the reason (illness) to the party.
 
 #### Done when
-- [ ] Given Dr A with bookings at 11:00, 12:00 and 15:00 today, when same-day sick leave is
+- [x] Given Dr A with bookings at 11:00, 12:00 and 15:00 today, when same-day sick leave is
       recorded at 10:30 (`LeaveApproved`), then all three are flagged (cause `block`) and one
       `BookingConflict` lists them with earliest start 11:00.
-- [ ] `Bookings::conflicts(Dr A, today)` returns the three.
-- [ ] When staff bulk-reassign 11:00 and 12:00 to Dr B, both conflicts clear; each party gets one
+- [x] `Bookings::conflicts(Dr A, today)` returns the three.
+- [x] When staff bulk-reassign 11:00 and 12:00 to Dr B, both conflicts clear; each party gets one
       message with accept, pick another time and cancel links and no reason.
-- [ ] When staff bulk-cancel 15:00 with `resource_unavailable`, it is cancelled with initiated by
+- [x] When staff bulk-cancel 15:00 with `resource_unavailable`, it is cancelled with initiated by
       `business` and its AED 200 deposit refunded in full.
-- [ ] If Dr B became busy at 12:00 meanwhile, 11:00 succeeds and 12:00 is reported failed and
+- [x] If Dr B became busy at 12:00 meanwhile, 11:00 succeeds and 12:00 is reported failed and
       stays conflicted.
-- [ ] Given Dr A free tomorrow at 09:00, 09:30 and 10:00, when staff bulk-reschedule the 15:00
+- [x] Given Dr A free tomorrow at 09:00, 09:30 and 10:00, when staff bulk-reschedule the 15:00
       booking, its party gets those 3 slots, the booking is not moved and stays conflicted; when
       the party picks 09:30, it is rescheduled to 09:30 and the conflict clears.
-- [ ] Given a 15:00 booking with deposit AED 200 (forfeit window 24 h), when its party cancels
+- [x] Given a 15:00 booking with deposit AED 200 (forfeit window 24 h), when its party cancels
       from the conflict message at 10:45, it is cancelled with initiated by `business`, code
       `resource_unavailable`, and AED 200 is refunded.
 
