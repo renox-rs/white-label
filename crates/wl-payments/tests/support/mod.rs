@@ -39,7 +39,7 @@ use wl_kernel::invoicing::{
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::payments::{
-    AllocationTarget, PaymentFailed, PaymentFuture, PaymentId, PaymentLinkExpired, PaymentMethod,
+    AllocationTarget, ChargebackClosed, PaymentFailed, PaymentFuture, PaymentId, PaymentLinkExpired, PaymentMethod,
     PaymentReceived, PaymentReversed, PaymentSummary, PrepaidSubjects, RecordPayment, RefundFailed,
     RefundFailureKind, RefundPaid, payment_recorder,
 };
@@ -1001,6 +1001,8 @@ pub struct Booted {
     pub link_expired: Recorded<PaymentLinkExpired>,
     /// The records paid in advance for.
     pub prepaid: PrepaidBook,
+    /// `ChargebackClosed`.
+    pub chargeback_closed: Recorded<ChargebackClosed>,
 }
 
 impl Booted {
@@ -1881,6 +1883,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let owner_drawings: Arc<dyn OwnerDrawings> = Arc::new(drawings.clone());
     let failed = Recorded::new();
     let link_expired = Recorded::new();
+    let chargeback_closed = Recorded::new();
     let prepaid = PrepaidBook::default();
     let prepaid_subjects: Arc<dyn PrepaidSubjects> = Arc::new(prepaid.clone());
     let blocked = BlockedParties::default();
@@ -1917,6 +1920,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let app = record(app, &deposit_adjusted);
     let app = record(app, &failed);
     let app = record(app, &link_expired);
+    let app = record(app, &chargeback_closed);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1961,5 +1965,6 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         failed,
         link_expired,
         prepaid,
+        chargeback_closed,
     }
 }
