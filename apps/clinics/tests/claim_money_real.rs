@@ -303,8 +303,8 @@ async fn a_recoupment_is_approved_by_a_second_person_and_reopens_the_line() {
     assert_eq!(tasks[0].due_at, Some(dubai("2027-01-09", 23, 59)));
 }
 
-/// Done when 3 and 5: a `written_off` claim with a line paid AED 300.00 and
-/// AED 100.00 written off: a recoupment of AED 100.00 makes it
+/// Done when 3 and 5: a claim with a line paid AED 300.00 and AED 100.00
+/// written off through the real `write_off` route: a recoupment of AED 100.00 makes it
 /// `partially_paid` and the write-off amount is still recorded and shown;
 /// a recoupment above what the line was paid is refused, also by the payer
 /// bill.
@@ -322,34 +322,19 @@ async fn a_written_off_claim_is_left_by_a_recoupment() {
         ClaimStatus::PartiallyPaid
     );
 
-    // The AED 100.00 denied was written off (what BL-CLN-09 will do): the
-    // payer bill is `closed`, the claim `written_off`.
+    // The AED 100.00 denied is written off by the clinic manager through the
+    // route (BL-CLN-09): the payer bill is `closed`, the claim `written_off`.
     let bill = t.bill_of(&claim).await;
-    wl_invoicing::PayerBillLine::query()
-        .where_(wl_invoicing::PayerBillLine::PAYER_BILL_ID.eq(bill.id))
-        .update(t.db(), &[("denied", &0_i64), ("written_off", &10_000_i64)])
-        .await
-        .unwrap();
-    wl_invoicing::PayerBill::query()
-        .where_(wl_invoicing::PayerBill::ID.eq(bill.id))
-        .update(
-            t.db(),
-            &[
-                ("status", &"closed".to_owned()),
-                ("denied_total", &0_i64),
-                ("balance", &0_i64),
-            ],
-        )
-        .await
-        .unwrap();
-    Claim::query()
-        .where_(Claim::ID.eq(claim.id))
-        .update(
-            t.db(),
-            &[("status", &"written_off".to_owned()), ("denied", &0_i64)],
-        )
-        .await
-        .unwrap();
+    let mona = t.manager("Mona").await;
+    t.post(
+        &mona,
+        &path(&claim, "write-off"),
+        &[("reason", "payer will not pay")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::WrittenOff);
+    assert_eq!(t.bill_of(&claim).await.status, PayerBillStatus::Closed);
 
     // Above what the line was paid: refused before anything is held.
     recoup(&t, &ana, &claim, &day(0).to_string(), "500.00")
@@ -381,6 +366,38 @@ async fn a_written_off_claim_is_left_by_a_recoupment() {
         .await
         .assert_ok()
         .assert_see("Written off or moved to the patient");
+}
+
+/// Done when 6: a `paid` claim offers only the recoupment. The write-off is
+/// not on the page, even for the clinic manager who closes claims, and posting
+/// it is refused with a 422 that changes nothing.
+#[renox::test]
+async fn a_paid_claim_offers_no_write_off() {
+    let t = boot_real().await;
+    let ana = t.coordinator().await;
+    let mona = t.manager("Mona").await;
+    let claim = submitted(&t, &ana).await;
+    remit(&t, &ana, &claim, "ADV-1", "400.00", "", &[])
+        .await
+        .assert_ok();
+    assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::Paid);
+
+    let page = t.get(&mona, &format!("/clinics/claims/{}", claim.id)).await;
+    let page = page.assert_ok();
+    page.assert_dont_see(&format!("claim-write-off-{}", claim.id));
+    page.assert_see(&format!("claim-recoup-{}", claim.id));
+
+    let refused = t
+        .post(
+            &mona,
+            &path(&claim, "write-off"),
+            &[("reason", "payer will not pay")],
+        )
+        .await;
+    refused.assert_status(422);
+    let after = t.claim_now(claim.id).await;
+    assert_eq!(after.status, ClaimStatus::Paid);
+    assert_eq!(t.bill_of(&after).await.status, PayerBillStatus::Paid);
 }
 
 /// Done when 4: a `PaymentReversed` for a payment allocated to the claim's
