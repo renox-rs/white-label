@@ -200,7 +200,7 @@ pub async fn held_at<'c>(
             .where_(StockHoldLine::ITEM_ID.eq(item_id))
             .get(conn.reborrow())
             .await?;
-        match hold.scope {
+        match hold.scope_kind {
             HoldScope::Lots => {
                 whole_lots.extend(lines.iter().filter_map(|line| line.lot_id));
             }
