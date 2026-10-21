@@ -13,6 +13,7 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::PartyId;
 use wl_kernel::calendar::BusinessCalendar;
+use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::scheduling::{
     BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted, BookingNoShow,
     BookingRescheduled, SlotReleased,
@@ -85,12 +86,60 @@ pub struct Events {
     pub released: Recorded<SlotReleased>,
 }
 
+/// Who acts for whom in the portal: the portal module's grants, as a list.
+#[derive(Clone, Default)]
+pub struct Portal(Arc<Mutex<Vec<(i64, i64)>>>);
+
+impl Portal {
+    /// `user` acts for `party` from now on.
+    pub fn allow(&self, user: i64, party: PartyId) {
+        self.0.lock().unwrap().push((user, party.0));
+    }
+}
+
+impl PortalUsers for Portal {
+    fn acting_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        user: i64,
+        party: PartyId,
+        _on: NaiveDate,
+    ) -> PortalFuture<'a, Option<PortalUser>> {
+        Box::pin(async move {
+            let found = self.0.lock().unwrap().contains(&(user, party.0));
+            Ok(found.then(|| PortalUser {
+                user_id: user,
+                person: party,
+                acting_for: party,
+                roles: vec!["primary_contact".to_owned()],
+            }))
+        })
+    }
+}
+
+/// Provides the fakes.
+struct Harness {
+    portal: Portal,
+}
+
+impl Module for Harness {
+    fn name(&self) -> &'static str {
+        "scheduling-test-harness"
+    }
+
+    fn register(&self, app: &mut Registry) {
+        provide_portal_users(app, self.portal.clone());
+    }
+}
+
 /// The app under test.
 pub struct Booked {
     /// The app.
     pub app: TestApp,
     /// The events the module emitted.
     pub events: Events,
+    /// Who acts for whom in the portal.
+    pub portal: Portal,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
 }
@@ -217,6 +266,13 @@ impl Booked {
         .expect("the booking is made")
     }
 
+    /// The path and query of a signed URL (the origin cut off), as the test
+    /// client posts it.
+    pub fn path_of(&self, url: &str) -> String {
+        url.trim_start_matches(self.state().config.url.trim_end_matches('/'))
+            .to_owned()
+    }
+
     /// The booking, read again.
     pub async fn reload(&self, id: i64) -> Booking {
         Booking::find_or_404(self.db(), id).await.unwrap()
@@ -273,11 +329,15 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
     let events = Events::default();
+    let portal = Portal::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
         .module(renox::audit::Audit)
-        .module(module);
+        .module(module)
+        .module(Harness {
+            portal: portal.clone(),
+        });
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
     let app = record(app, &events.checked_in);
@@ -296,6 +356,7 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
     Booked {
         app,
         events,
+        portal,
         _views: views,
     }
 }
