@@ -382,7 +382,19 @@ async fn import(
         .into_response())
 }
 
-/// `POST /shipments/{id}/pickup`: `barcodes` (the labels scanned).
+/// The labels scanned, those marked not received and the reason of a failed
+/// pickup, from a form.
+fn handover_of(form: &BTreeMap<String, String>) -> scan::Handover {
+    scan::Handover {
+        barcodes: scan::barcodes_in(&field(form, "barcodes")),
+        not_received: scan::barcodes_in(&field(form, "not_received")),
+        failed_reason: field(form, "reason"),
+    }
+}
+
+/// `POST /shipments/{id}/pickup`: `barcodes` (the labels scanned),
+/// `not_received` (the labels of the parcels the client did not hand over)
+/// and `reason` (why nothing was handed over).
 async fn pickup(
     State(state): State<AppState>,
     user: AuthUser,
@@ -390,14 +402,14 @@ async fn pickup(
     Path(id): Path<i64>,
     Form(form): Fields,
 ) -> Result<Response> {
-    let codes = scan::barcodes_in(&field(&form, "barcodes"));
-    scan::pick_up(&state, &user, id, &codes)
+    scan::pick_up_handover(&state, &user, id, &handover_of(&form))
         .await
         .map_err(answer)?;
     back_to(&lang, "logistics.picked_up", id)
 }
 
-/// `POST /shipments/{id}/hub`: `barcodes` (the labels scanned).
+/// `POST /shipments/{id}/hub`: `barcodes` (the labels scanned), and from
+/// `created` (a drop-off) `not_received` and `reason` as at pickup.
 async fn hub(
     State(state): State<AppState>,
     user: AuthUser,
@@ -405,8 +417,7 @@ async fn hub(
     Path(id): Path<i64>,
     Form(form): Fields,
 ) -> Result<Response> {
-    let codes = scan::barcodes_in(&field(&form, "barcodes"));
-    scan::receive_at_hub(&state, &user, id, &codes)
+    scan::receive_handover(&state, &user, id, &handover_of(&form))
         .await
         .map_err(answer)?;
     back_to(&lang, "logistics.hub_scanned", id)

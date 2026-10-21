@@ -26,6 +26,10 @@ pub const DEMO_RATES: [(&str, i64); 2] = [
     (charge_kind::RETURN, 1_500),
 ];
 
+/// The demo client's weight bands in any zone: up to this many grams, the
+/// price in fils.
+pub const DEMO_BANDS: [(i64, i64); 3] = [(5_000, 2_000), (10_000, 2_500), (15_000, 3_000)];
+
 /// The demo shipments of the client: reference, recipient, area, parcels
 /// and the cash to collect in fils.
 pub const DEMO_SHIPMENTS: [(&str, &str, &str, usize, i64); 4] = [
@@ -43,6 +47,9 @@ pub const DEMO_SHIPMENTS: [(&str, &str, &str, usize, i64); 4] = [
 pub async fn demo_rates(db: &Db, client: PartyId) -> Result {
     for (kind, amount) in DEMO_RATES {
         rates::set_price(db, client, kind, amount).await?;
+    }
+    for (up_to_grams, amount) in DEMO_BANDS {
+        rates::set_band(db, client, "", up_to_grams, amount).await?;
     }
     Ok(())
 }

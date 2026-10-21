@@ -182,6 +182,10 @@ pub async fn create(
     let number = SHIPMENT_SERIES
         .next_allowing_gaps(&state.db, None, None, today())
         .await?;
+    let booked_weight: i64 = new.parcel_weights_grams.iter().sum();
+    let price = crate::rates::band_price(&state.db, new.client, new.area.trim(), booked_weight)
+        .await?
+        .unwrap_or(0);
     let mut shipment = Shipment {
         number: number.clone(),
         client_party_id: new.client.0,
@@ -192,7 +196,9 @@ pub async fn create(
         address: new.address.trim().to_owned(),
         area: new.area.trim().to_owned(),
         cod_amount: new.cod_amount,
-        booked_weight_grams: new.parcel_weights_grams.iter().sum(),
+        booked_weight_grams: booked_weight,
+        weight_grams: booked_weight,
+        price,
         parcel_count: i64::try_from(new.parcel_weights_grams.len()).unwrap_or(i64::MAX),
         status: ShipmentStatus::Created,
         ..Shipment::default()

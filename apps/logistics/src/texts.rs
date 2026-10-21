@@ -56,6 +56,28 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.scan.unknown_label",
         "The label {{ barcode }} is not a parcel of this shipment.",
     ),
+    (
+        "logistics.scan.not_received",
+        "The parcel {{ barcode }} was not handed over at pickup and cannot be scanned in for this shipment. The client books a new shipment for it.",
+    ),
+    (
+        "logistics.scan.both_lists",
+        "The parcel {{ barcode }} is both scanned and marked not received.",
+    ),
+    (
+        "logistics.scan.not_received_late",
+        "Parcels can be marked not received only at pickup or at a drop-off.",
+    ),
+    // Fewer parcels than booked (BL-LOG-03).
+    ("logistics.pickup.failed_default", "no reason given"),
+    (
+        "logistics.pickup.missing_title",
+        "Shipment {{ number }}: {{ count }} parcel(s) not received",
+    ),
+    (
+        "logistics.pickup.missing_body",
+        "Not handed over at pickup: {{ parcels }}. Shipment {{ number }} goes ahead with the parcels received: {{ weight }}, priced at {{ price }}. The cash to collect is not changed ({{ cod }}). Book a new shipment for the missing parcels.",
+    ),
     // Void (`PLT.ACL.09`, BL-LOG-01).
     (
         "logistics.void.scanned",

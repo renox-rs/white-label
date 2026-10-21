@@ -10,10 +10,13 @@
       <rx-action-sheet rx-if="can_pickup" :id="'pickup-' ~ shipment.id" :label="tx['pickup']" :action="route('logistics.shipment_pickup', shipment.id)"
                        :title="tx['pickup_title']" :description="tx['pickup_description']" :submit-label="tx['pickup']" icon="package-check">
         <rx-textarea name="barcodes" :label="tx['barcodes']" :id="'pickup-barcodes-' ~ shipment.id" required/>
+        <rx-textarea name="not_received" :label="tx['not_received']" :placeholder="tx['not_received_hint']" :id="'pickup-missing-' ~ shipment.id"/>
+        <rx-input name="reason" :label="tx['failed_reason']" :placeholder="tx['failed_reason_hint']" :id="'pickup-reason-' ~ shipment.id"/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_hub" :id="'hub-' ~ shipment.id" :label="tx['hub']" :action="route('logistics.shipment_hub', shipment.id)"
                        :title="tx['hub_title']" :description="tx['hub_description']" :submit-label="tx['hub']" icon="warehouse">
         <rx-textarea name="barcodes" :label="tx['barcodes']" :id="'hub-barcodes-' ~ shipment.id"/>
+        <rx-textarea rx-if="can_pickup" name="not_received" :label="tx['not_received']" :placeholder="tx['not_received_hint']" :id="'hub-missing-' ~ shipment.id"/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_void" :id="'void-' ~ shipment.id" :label="tx['void']" :action="route('logistics.shipment_void', shipment.id)"
                        :title="tx['void_title']" :description="tx['void_description']" :submit-label="tx['void']" icon="ban" variant="danger" danger>
@@ -41,6 +44,8 @@
         <rx-entry :label="tx['area']" :value="shipment.area" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cod']" :value="shipment.cod_amount" format="money"/>
         <rx-entry :label="tx['weight']" :value="shipment.booked_weight_grams"/>
+        <rx-entry :label="tx['charged_weight']" :value="shipment.weight_grams"/>
+        <rx-entry :label="tx['price']" :value="shipment.price" format="money"/>
         <rx-entry :label="tx['delivery']" rx-if="delivery_url" :value="delivery_url" :url="delivery_url"/>
         <rx-entry :label="tx['instruction']" :value="instruction" span="full" :placeholder="tx['none']"/>
       </rx-infolist>

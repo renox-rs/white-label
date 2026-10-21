@@ -14,7 +14,7 @@
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 
-use crate::shipment::{Parcel, Shipment, ShipmentStatus};
+use crate::shipment::{Parcel, Shipment, ShipmentStatus, parcel_state, track};
 use crate::shipment_machine::{PICK_UP, RECEIVE_AT_HUB, ShipmentInput};
 use crate::texts::english;
 
@@ -32,22 +32,66 @@ fn label_invalid() -> TransitionError {
     TransitionError::Guard(english("logistics.scan.label_invalid", &[]))
 }
 
-/// Checks the labels of `barcodes` against `shipment`.
+/// What the driver or hub staff hand in at a pickup or drop-off.
+#[derive(Debug, Clone, Default)]
+pub struct Handover {
+    /// The parcels scanned.
+    pub barcodes: Vec<String>,
+    /// The parcels the client did not hand over, marked *not received*. A
+    /// parcel neither scanned nor marked is not received either.
+    pub not_received: Vec<String>,
+    /// Why the pickup failed when no parcel was handed over (client absent,
+    /// nothing ready); only written in that case.
+    pub failed_reason: String,
+}
+
+impl Handover {
+    /// The parcels scanned, and nothing marked.
+    pub fn scanned(barcodes: &[String]) -> Self {
+        Handover {
+            barcodes: barcodes.to_vec(),
+            ..Handover::default()
+        }
+    }
+}
+
+/// Checks the labels of `handover` against `shipment`.
 async fn check_labels(
     state: &AppState,
     shipment: &Shipment,
-    barcodes: &[String],
+    handover: &Handover,
 ) -> std::result::Result<(), TransitionError> {
     if shipment.status == ShipmentStatus::Voided {
         return Err(label_invalid());
     }
-    for code in barcodes {
+    if !handover.not_received.is_empty() && shipment.status != ShipmentStatus::Created {
+        return Err(TransitionError::Guard(english(
+            "logistics.scan.not_received_late",
+            &[],
+        )));
+    }
+    for code in handover.barcodes.iter().chain(&handover.not_received) {
         let parcel = Parcel::query()
             .where_(Parcel::BARCODE.eq(code.as_str()))
             .first(&state.db)
             .await?;
         match parcel {
-            Some(parcel) if parcel.shipment_id == shipment.id => {}
+            Some(parcel) if parcel.shipment_id == shipment.id => {
+                if handover.barcodes.contains(code) {
+                    if parcel.state == parcel_state::NOT_RECEIVED {
+                        return Err(TransitionError::Guard(english(
+                            "logistics.scan.not_received",
+                            &[("barcode", code)],
+                        )));
+                    }
+                    if handover.not_received.contains(code) {
+                        return Err(TransitionError::Guard(english(
+                            "logistics.scan.both_lists",
+                            &[("barcode", code)],
+                        )));
+                    }
+                }
+            }
             _ => {
                 return Err(TransitionError::Guard(english(
                     "logistics.scan.unknown_label",
@@ -72,27 +116,41 @@ async fn scan(
     user: &AuthUser,
     id: i64,
     name: &str,
-    barcodes: &[String],
+    handover: &Handover,
 ) -> std::result::Result<Shipment, TransitionError> {
     let shipment = Shipment::find(&state.db, id)
         .await?
         .ok_or(TransitionError::Failed(Error::NotFound))?;
-    check_labels(state, &shipment, barcodes).await?;
-    let _outcome = shipment
+    check_labels(state, &shipment, handover).await?;
+    let result = shipment
         .transition(name)
         .by(user)
         .input(&ShipmentInput {
-            barcodes: barcodes.to_vec(),
+            barcodes: handover.barcodes.clone(),
+            not_received: handover.not_received.clone(),
             ..ShipmentInput::default()
         })
         .run(state)
-        .await
-        .map_err(refused)?;
+        .await;
+    if let Err(TransitionError::Guard(message)) = &result
+        && shipment.status == ShipmentStatus::Created
+        && handover.barcodes.is_empty()
+        && *message == english("logistics.scan.parcel_needed", &[])
+    {
+        // Nothing was handed over: the attempt failed, the shipment stays
+        // `created` and can be picked up again or cancelled.
+        let reason = match handover.failed_reason.trim() {
+            "" => english("logistics.pickup.failed_default", &[]),
+            text => text.to_owned(),
+        };
+        track(&state.db, id, "pickup_failed", &reason, Some(user.id)).await?;
+    }
+    let _outcome = result.map_err(refused)?;
     Ok(Shipment::find_or_404(&state.db, id).await?)
 }
 
 /// `user` (the driver, `shipments.scan`) picks up shipment `id` with the
-/// parcels `barcodes` scanned.
+/// parcels `barcodes` scanned; the rest of the parcels are not received.
 ///
 /// # Errors
 ///
@@ -105,7 +163,23 @@ pub async fn pick_up(
     id: i64,
     barcodes: &[String],
 ) -> std::result::Result<Shipment, TransitionError> {
-    scan(state, user, id, PICK_UP, barcodes).await
+    scan(state, user, id, PICK_UP, &Handover::scanned(barcodes)).await
+}
+
+/// [`pick_up`] with the parcels marked *not received* and the reason of a
+/// failed pickup (BL-LOG-03).
+///
+/// # Errors
+///
+/// As [`pick_up`]; also `Guard` (422) for a parcel both scanned and marked,
+/// and for a parcel already marked *not received* that is scanned.
+pub async fn pick_up_handover(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    handover: &Handover,
+) -> std::result::Result<Shipment, TransitionError> {
+    scan(state, user, id, PICK_UP, handover).await
 }
 
 /// `user` (hub staff, `shipments.scan`) scans shipment `id` in at the hub;
@@ -113,14 +187,29 @@ pub async fn pick_up(
 ///
 /// # Errors
 ///
-/// As [`pick_up`].
+/// As [`pick_up`]; a parcel marked *not received* cannot be scanned in.
 pub async fn receive_at_hub(
     state: &AppState,
     user: &AuthUser,
     id: i64,
     barcodes: &[String],
 ) -> std::result::Result<Shipment, TransitionError> {
-    scan(state, user, id, RECEIVE_AT_HUB, barcodes).await
+    scan(state, user, id, RECEIVE_AT_HUB, &Handover::scanned(barcodes)).await
+}
+
+/// [`receive_at_hub`] with the parcels marked *not received* (a drop-off
+/// from `created`) and the reason of a failed drop-off.
+///
+/// # Errors
+///
+/// As [`pick_up_handover`].
+pub async fn receive_handover(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    handover: &Handover,
+) -> std::result::Result<Shipment, TransitionError> {
+    scan(state, user, id, RECEIVE_AT_HUB, handover).await
 }
 
 /// `user` scans one label: the shipment it belongs to is picked up (`hub`

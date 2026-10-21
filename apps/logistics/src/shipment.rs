@@ -91,6 +91,12 @@ pub struct Shipment {
     pub cod_amount: i64,
     /// The weight booked, in grams.
     pub booked_weight_grams: i64,
+    /// The weight it is charged on, in grams: the booked weight, then the
+    /// weight of the parcels received once it is picked up (BL-LOG-03).
+    pub weight_grams: i64,
+    /// The price on that weight from the client's bands, in fils; 0 when the
+    /// client has no band for the zone.
+    pub price: i64,
     /// How many parcels were booked.
     pub parcel_count: i64,
     /// How many parcels were scanned.
@@ -194,7 +200,8 @@ pub mod parcel_state {
     pub const BOOKED: &str = "booked";
     /// Scanned at pickup or at a hub.
     pub const SCANNED: &str = "scanned";
-    /// The client did not hand it over (BL-LOG-03).
+    /// The client did not hand it over (BL-LOG-03): left out of the weight,
+    /// the price and the scans, and never picked up later on the shipment.
     pub const NOT_RECEIVED: &str = "not_received";
 }
 

@@ -55,6 +55,18 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "Scan the parcels that came in.",
     ),
     ("logistics.screen.barcodes", "Labels scanned"),
+    ("logistics.screen.not_received", "Labels not received"),
+    (
+        "logistics.screen.not_received_hint",
+        "The parcels the client did not hand over. Parcels neither scanned nor listed count as not received.",
+    ),
+    ("logistics.screen.failed_reason", "Reason if nothing was handed over"),
+    (
+        "logistics.screen.failed_reason_hint",
+        "Client absent, nothing ready.",
+    ),
+    ("logistics.screen.charged_weight", "Weight charged (g)"),
+    ("logistics.screen.price", "Price"),
     ("logistics.screen.void", "Void"),
     ("logistics.screen.void_title", "Void the shipment"),
     (

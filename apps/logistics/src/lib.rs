@@ -7,6 +7,7 @@ mod events;
 pub mod notices;
 pub mod pages;
 pub mod permissions;
+pub mod pickup;
 pub mod rates;
 pub mod scan;
 mod screen_texts;
@@ -21,7 +22,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use booking::{ImportReport, NewShipment, RowResult};
-pub use rates::ClientRate;
+pub use rates::{ClientRate, WeightBand};
 pub use shipment::{
     Charge, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment, ShipmentStatus, TrackingEvent,
 };
@@ -60,7 +61,8 @@ impl Module for Logistics {
             .model::<Parcel>()
             .model::<TrackingEvent>()
             .model::<Charge>()
-            .model::<ClientRate>();
+            .model::<ClientRate>()
+            .model::<WeightBand>();
         // The shipment's machine, and its place in the kernel's void pattern.
         voiding::register();
         // The shipment follows its delivery and cancels it.

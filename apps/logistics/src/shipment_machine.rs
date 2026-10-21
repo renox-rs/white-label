@@ -62,6 +62,10 @@ pub struct ShipmentInput {
     /// The barcodes scanned (`pick_up`, `receive_at_hub`).
     #[serde(default)]
     pub barcodes: Vec<String>,
+    /// The barcodes the driver marked *not received* (`pick_up`, and
+    /// `receive_at_hub` from `created`).
+    #[serde(default)]
+    pub not_received: Vec<String>,
     /// The failure reason's code (`fail_attempt`).
     #[serde(default)]
     pub reason: Option<String>,
@@ -118,12 +122,20 @@ async fn scan_effects(
         .where_(Shipment::ID.eq(shipment.id))
         .update(&mut *tx, &[("parcels_scanned", &scanned)])
         .await?;
-    let note = input.barcodes.join(", ");
+    let mut note = input.barcodes.join(", ");
+    if shipment.status == ShipmentStatus::Created {
+        // Pickup or drop-off: what was not handed over is settled now.
+        crate::pickup::settle(&mut *tx, shipment, input).await?;
+        if !input.not_received.is_empty() {
+            note = format!("{note}; not received: {}", input.not_received.join(", "));
+        }
+    }
     track(&mut *tx, shipment.id, kind, &note, actor).await
 }
 
-/// `pick_up`: at least one parcel scanned (BL-LOG-03 adds the parcels *not
-/// received* and the recalculation on top of it).
+/// `pick_up`: at least one parcel scanned; the parcels not handed over are
+/// marked *not received* and the weight and price are recalculated from the
+/// parcels received (BL-LOG-03). It is never refused for missing parcels.
 fn pick_up() -> Transition<Shipment> {
     Transition::new(PICK_UP)
         .label("Pick up")
@@ -152,7 +164,8 @@ fn pick_up() -> Transition<Shipment> {
 }
 
 /// `receive_at_hub` (`LOG.HUB.01`): from `created` it is a drop-off and needs
-/// a parcel scanned, as `pick_up` does.
+/// a parcel scanned, as `pick_up` does, and marks the parcels not handed over
+/// *not received* the same way.
 fn receive_at_hub() -> Transition<Shipment> {
     Transition::new(RECEIVE_AT_HUB)
         .label("Receive at the hub")

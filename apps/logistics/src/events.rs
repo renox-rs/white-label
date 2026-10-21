@@ -25,7 +25,8 @@ use wl_kernel::{Subject, voids};
 use crate::notices::tell_client;
 use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentStatus, track};
 use crate::shipment_machine::{
-    CANCEL, CANCEL_RETURN, DELIVER, DISPATCH, FAIL_ATTEMPT, ShipmentInput,
+    CANCEL, CANCEL_RETURN, DELIVER, DISPATCH, FAIL_ATTEMPT, PICK_UP, RECEIVE_AT_HUB,
+    ShipmentInput,
 };
 use crate::texts::english;
 
@@ -79,6 +80,33 @@ async fn cancel_delivery(state: &AppState, shipment: &Shipment, reason: &str) ->
     Ok(())
 }
 
+/// Tells the client which parcels were not handed over, when some were
+/// (BL-LOG-03): the shipment goes ahead with the parcels received, the COD
+/// amount is unchanged.
+async fn tell_of_missing_parcels(state: &AppState, id: i64) -> Result {
+    let shipment = Shipment::find_or_404(&state.db, id).await?;
+    let missing = crate::pickup::missing_parcels(&state.db, &shipment).await?;
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let (weight, price) = crate::pickup::weight_and_price(&shipment);
+    let title = english(
+        "logistics.pickup.missing_title",
+        &[("number", &shipment.number), ("count", &missing.len())],
+    );
+    let body = english(
+        "logistics.pickup.missing_body",
+        &[
+            ("number", &shipment.number),
+            ("parcels", &missing.join(", ")),
+            ("weight", &weight),
+            ("price", &price),
+            ("cod", &crate::rates::aed(shipment.cod_amount)),
+        ],
+    );
+    tell_client(state, &shipment, &title, &body).await
+}
+
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(
@@ -127,6 +155,9 @@ pub(crate) fn register(app: &mut Registry) {
     });
     app.listen(|event: Transitioned<Shipment>, state: AppState| async move {
         let name = event.transition.as_str();
+        if name == PICK_UP || (name == RECEIVE_AT_HUB && event.from == "created") {
+            return tell_of_missing_parcels(&state, event.key).await;
+        }
         let voided = name == voids::VOID || name == voids::VOID_APPROVED;
         if name != CANCEL && name != CANCEL_RETURN && !voided {
             return Ok(());
