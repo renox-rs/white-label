@@ -1,0 +1,46 @@
+{#- wl-sales: the loyalty programme and its accounts. A manager turns the
+    programme on; the cashier enrols a member and attaches the member to a
+    sale. Replace it with resources/views/wl-sales/loyalty.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['loyalty.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['loyalty.title']" :subtitle="tx['loyalty.subtitle']">
+      <rx-action-sheet rx-if="can_enrol" id="enrol-member" :label="tx['loyalty.enrol']" :action="route('wl_sales.loyalty_enrol')"
+                       :title="tx['loyalty.enrol']" :description="tx['loyalty.enrol_description']" :submit-label="tx['loyalty.enrol']" variant="primary" icon="plus">
+        <rx-input name="party_id" :label="tx['loyalty.party']" id="enrol-member-party" required/>
+        <rx-input name="mobile" :label="tx['loyalty.mobile']" id="enrol-member-mobile" required/>
+        <rx-input name="guardian_party_id" :label="tx['loyalty.guardian']" id="enrol-member-guardian"/>
+        <rx-checkbox name="terms" :label="tx['loyalty.accept_terms']" id="enrol-member-terms"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_manage" id="create-loyalty-programme" :label="tx['loyalty.turn_on']" :action="route('wl_sales.loyalty_programme')"
+                       :title="tx['loyalty.turn_on']" :submit-label="tx['loyalty.turn_on']" icon="gift">
+        <rx-input name="name" :label="tx['loyalty.name']" id="create-programme-name" required/>
+        <rx-input name="earn_kind" :label="tx['loyalty.earn_kind']" id="create-programme-kind"/>
+        <rx-input name="earn_rate" :label="tx['loyalty.earn_rate']" id="create-programme-rate"/>
+        <rx-input name="minimum" :label="tx['loyalty.minimum']" id="create-programme-minimum"/>
+        <rx-input name="point_value" :label="tx['loyalty.point_value']" id="create-programme-value"/>
+        <rx-input name="validity_months" :label="tx['loyalty.validity']" id="create-programme-validity"/>
+        <rx-input name="terms_version" :label="tx['loyalty.terms_version']" id="create-programme-version"/>
+        <rx-textarea name="terms_en" :label="tx['loyalty.terms_en']" id="create-programme-terms-en"/>
+        <rx-textarea name="terms_ar" :label="tx['loyalty.terms_ar']" id="create-programme-terms-ar"/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card rx-if="programme" :title="programme.name">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['loyalty.earn_kind']" :value="programme.earn"/>
+        <rx-entry :label="tx['loyalty.minimum']" :value="programme.minimum"/>
+        <rx-entry :label="tx['loyalty.point_value']" :value="programme.point_value"/>
+        <rx-entry :label="tx['loyalty.validity']" :value="programme.validity_months"/>
+        <rx-entry :label="tx['loyalty.terms_version']" :value="programme.terms_version"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-alert rx-else kind="info" :message="tx['loyalty.no_programme']"/>
+    <rx-table :rows="accounts" as="account" :key="account.id" :caption="tx['loyalty.accounts']" card>
+      <rx-column :label="tx['loyalty.code']">{{ account.code }}</rx-column>
+      <rx-column :label="tx['loyalty.party']" hide-narrow>{{ account.party }}</rx-column>
+      <rx-column :label="tx['loyalty.mobile']" hide-narrow>{{ account.mobile }}</rx-column>
+      <rx-column :label="tx['loyalty.balance']">{{ account.balance }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="account.status_kind" :text="account.status_label"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['loyalty.no_accounts']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -6,6 +6,7 @@ pub mod counter_sales;
 pub mod enquiry;
 pub mod lead_sources;
 pub mod leads;
+pub mod loyalty;
 pub mod report;
 pub mod sales_orders;
 pub mod sales_returns;
@@ -21,6 +22,7 @@ pub fn routes() -> Routes {
         .merge(enquiry::routes())
         .merge(lead_sources::routes())
         .merge(leads::routes())
+        .merge(loyalty::routes())
         .merge(report::routes())
         .merge(sales_orders::routes())
         .merge(sales_returns::routes())

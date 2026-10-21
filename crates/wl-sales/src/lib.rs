@@ -21,6 +21,9 @@ pub mod lead;
 mod lead_events;
 pub mod lead_machine;
 pub mod lead_source;
+pub mod loyalty_account;
+pub mod loyalty_points;
+pub mod loyalty_programme;
 pub mod machine;
 pub mod notices;
 pub mod package;
@@ -59,6 +62,9 @@ pub use cost_entry::{CostEntry, CostRefused, CostStatus};
 pub use counter_sale::{CounterSale, CounterSalePayment, CounterSaleStatus};
 pub use lead::{Captured, Lead, LeadNote, LeadRefused, LeadStatus, NewLead};
 pub use lead_source::{LeadSource, LeadSourceRefused};
+pub use loyalty_account::{AccountStatus, Enrolment, LoyaltyAccount};
+pub use loyalty_points::{LoyaltyEarning, LoyaltyReview, PointsKind, PointsMovement};
+pub use loyalty_programme::{EarnKind, LoyaltyProgramme, NewProgramme};
 pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
 pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
@@ -130,6 +136,10 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-sales/sales_return.html",
         include_str!("../views/wl-sales/sales_return.html"),
     ),
+    (
+        "wl-sales/loyalty.html",
+        include_str!("../views/wl-sales/loyalty.html"),
+    ),
 ];
 
 /// The module's permissions (wl-sales §6).
@@ -168,6 +178,12 @@ pub mod permissions {
     pub const RETURNS_REQUEST: &str = "returns.request";
     /// Receive, resolve, reject and reverse sales returns.
     pub const RETURNS_HANDLE: &str = "returns.handle";
+    /// See the loyalty programme, its accounts and the review list.
+    pub const LOYALTY_VIEW: &str = "loyalty.view";
+    /// Enrol a member and attach a member to a sale.
+    pub const LOYALTY_ENROL: &str = "loyalty.enrol";
+    /// Turn the loyalty programme on and review accounts.
+    pub const LOYALTY_MANAGE: &str = "loyalty.manage";
 }
 
 /// The sales module. The host adds it with
@@ -326,7 +342,8 @@ impl Module for WlSales {
             .view_data::<pages::sales_orders::IndexPage>()
             .view_data::<pages::sales_orders::ShowPage>()
             .view_data::<pages::sales_returns::IndexPage>()
-            .view_data::<pages::sales_returns::ShowPage>();
+            .view_data::<pages::sales_returns::ShowPage>()
+            .view_data::<pages::loyalty::IndexPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -356,6 +373,11 @@ impl Module for WlSales {
         app.model::<FulfilmentRecord>();
         app.model::<SalesReturn>();
         app.model::<SalesReturnLine>();
+        app.model::<LoyaltyProgramme>();
+        app.model::<LoyaltyAccount>();
+        app.model::<LoyaltyEarning>();
+        app.model::<PointsMovement>();
+        app.model::<LoyaltyReview>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
@@ -430,6 +452,14 @@ impl Module for WlSales {
                 .group("nav.app")
                 .order(53)
                 .permission(permissions::RETURNS_REQUEST),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.loyalty", "nav.loyalty")
+                .icon("gift")
+                .group("nav.app")
+                .order(54)
+                .permission(permissions::LOYALTY_VIEW),
         );
     }
 }
