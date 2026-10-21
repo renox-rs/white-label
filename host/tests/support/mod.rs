@@ -1006,3 +1006,50 @@ pub async fn clinics_booted_with(
     app.kernel().seed().await.unwrap();
     app
 }
+
+/// A provider for one channel that accepts everything and keeps what it was
+/// given (the SMS of a one-time code, the e-mail of a reminder).
+#[derive(Clone)]
+pub struct Wire {
+    channel: wl_kernel::notify::NotifyChannel,
+    sent: std::sync::Arc<std::sync::Mutex<Vec<wl_notify::Outgoing>>>,
+}
+
+impl Wire {
+    /// A provider for `channel`.
+    pub fn new(channel: wl_kernel::notify::NotifyChannel) -> Self {
+        Wire {
+            channel,
+            sent: std::sync::Arc::default(),
+        }
+    }
+
+    /// Everything it was given.
+    pub fn sent(&self) -> Vec<wl_notify::Outgoing> {
+        self.sent.lock().unwrap().clone()
+    }
+}
+
+impl wl_notify::ChannelProvider for Wire {
+    fn name(&self) -> &'static str {
+        "test-wire"
+    }
+
+    fn channel(&self) -> wl_kernel::notify::NotifyChannel {
+        self.channel
+    }
+
+    fn available(&self, _state: &AppState) -> bool {
+        true
+    }
+
+    fn send<'a>(
+        &'a self,
+        _state: &'a AppState,
+        outgoing: &'a wl_notify::Outgoing,
+    ) -> wl_notify::channels::ProviderFuture<'a, std::result::Result<String, wl_notify::SendError>>
+    {
+        self.sent.lock().unwrap().push(outgoing.clone());
+        Box::pin(async { Ok("wire-1".to_owned()) })
+    }
+}

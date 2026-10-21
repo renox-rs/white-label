@@ -8,9 +8,9 @@
 
 mod support;
 
-use host::roles::{ADMIN, CLINIC_MANAGER, MARKETING, MARKETING_MANAGER, OWNER, RECEPTIONIST};
 use clinics::AdvertisingPermit;
-use renox::chrono::{Days, Months, NaiveDate};
+use host::roles::{ADMIN, CLINIC_MANAGER, MARKETING, MARKETING_MANAGER, OWNER, RECEPTIONIST};
+use renox::chrono::{Days, NaiveDate};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use support::*;
@@ -348,7 +348,12 @@ async fn a_permit_needs_its_campaign_and_a_flip_to_no_services_keeps_the_end() {
         .post("/clinics/campaign-permits", &permit_form("9999"))
         .await
         .assert_status(422);
-    assert!(AdvertisingPermit::listed(app.db()).await.unwrap().is_empty());
+    assert!(
+        AdvertisingPermit::listed(app.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // Two records at once: both answer, one row.
     let form = permit_form(id.as_str());
@@ -388,16 +393,21 @@ async fn a_permit_needs_its_campaign_and_a_flip_to_no_services_keeps_the_end() {
         .await
         .unwrap();
     assert_eq!((after.ended, after.failed), (1, 0));
-    let ended = Campaign::find(app.db(), campaign.id).await.unwrap().unwrap();
+    let ended = Campaign::find(app.db(), campaign.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(ended.status, CampaignStatus::Ended);
 }
 
-/// `SAL.LOY.01`, `SAL.RUL.07`, `SAL.RUL.08`, `SAL.ACL.07`: the seeded
-/// programme earns 20 points on AED 200, 100 points are an AED 10 discount,
-/// points earned on 2026-11-01 expire on 2027-11-01 with a reminder on
-/// 2027-10-02, and an adjustment of 600 points needs a manager.
+/// `SAL.LOY.01`, `SAL.RUL.07`, `SAL.RUL.08`, `SAL.ACL.07`: the clinic starts
+/// with the 05 loyalty settings (1 point per AED 10, 100 points an AED 10
+/// line, 12 months, a reminder 30 days before, a manager above 500 points).
+/// The flows themselves (earning on a paid invoice, the redemption by code,
+/// the expiry and its reminder, the adjustment) are proved with real invoices
+/// and counter sales in `clinics_loyalty.rs`.
 #[renox::test]
-async fn the_loyalty_programme_earns_one_point_per_ten_dirhams_and_expires_after_a_year() {
+async fn the_clinic_starts_with_the_05_loyalty_settings() {
     let app = clinics_booted().await;
     let programme = LoyaltyProgramme::first_active(app.db())
         .await
@@ -417,20 +427,6 @@ async fn the_loyalty_programme_earns_one_point_per_ten_dirhams_and_expires_after
     let config = wl_sales::config::config_of(app.state());
     assert!(config.confirm_redemption_by_code);
     assert_eq!(config.expiry_reminder_days, 30);
-    let earned: NaiveDate = "2026-11-01".parse().unwrap();
-    let expires = earned
-        .checked_add_months(Months::new(
-            u32::try_from(programme.validity_months).unwrap(),
-        ))
-        .unwrap();
-    assert_eq!(expires.to_string(), "2027-11-01");
-    let reminder = expires
-        .checked_sub_days(Days::new(
-            u64::try_from(config.expiry_reminder_days).unwrap(),
-        ))
-        .unwrap();
-    assert_eq!(reminder.to_string(), "2027-10-02");
-
     let adjustment = |points| PointsAdjustment {
         points,
         ..PointsAdjustment::default()

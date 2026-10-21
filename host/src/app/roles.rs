@@ -886,6 +886,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             documents::SOPS_MANAGE,
             invoices::PAYER_BILLS_VIEW,
             invoices::PAYER_BILLS_WRITE_OFF,
+            // Adjusts points and decides an adjustment above 500 (`SAL.ACL.07`).
+            sales::LOYALTY_VIEW,
+            sales::LOYALTY_ADJUST,
+            sales::LOYALTY_MANAGE,
         ],
     ),
     (
@@ -924,6 +928,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::CHARGES_DESK,
             cln::RECALLS_CALL,
             cln::APPOINTMENTS_CALL,
+            // The desk enrols members, rings up counter sales and redeems points with the patient's code (`SAL.LOY.01`).
+            sales::LOYALTY_VIEW,
+            sales::LOYALTY_ENROL,
+            sales::LOYALTY_REDEEM,
+            sales::POS_SELL,
         ],
     ),
     (
