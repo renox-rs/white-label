@@ -405,12 +405,12 @@ expired card.
 - Must not show card images to roles without `patients.sensitive.view` (`CLN.ACL.12`).
 
 #### Done when
-- [ ] Given an insured appointment on 2026-11-12 and policy valid to 2026-11-10, on 2026-11-10 at
+- [x] Given an insured appointment on 2026-11-12 and policy valid to 2026-11-10, on 2026-11-10 at
       02:00 the appointment is flagged and the upload message is deferred and sent at 08:00.
-- [ ] Given a card expiring 2026-11-11 and a policy valid to 2027-06-30, the same happens.
-- [ ] Given a valid policy and card, nothing happens.
-- [ ] After staff accept an uploaded card valid to 2027-11-11, the flag is cleared.
-- [ ] The message text contains no service name.
+- [x] Given a card expiring 2026-11-11 and a policy valid to 2027-06-30, the same happens.
+- [x] Given a valid policy and card, nothing happens.
+- [x] After staff accept an uploaded card valid to 2027-11-11, the flag is cleared.
+- [x] The message text contains no service name.
 
 #### Out of scope
 What happens at the desk if the card is still expired (BL-CLN-01).
