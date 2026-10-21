@@ -10,6 +10,10 @@
 //! the employee is checked in at another location (naming it) or at the same
 //! one (a duplicate); nothing is created then.
 //!
+//! A supervisor's record for a day that is over carries a settled
+//! `late_entry` flag with the day it was entered (wl-attendance §5.1 point 5):
+//! it holds nothing, the record is `accepted` as any other.
+//!
 //! The overlap check and the insert of one employee and day run under one
 //! lock ([`crate::lock`]) and in one transaction; the checks of
 //! [`crate::checks`] flag through the `flag` transition and never refuse.
@@ -30,7 +34,7 @@ use wl_kernel::workforce::{EmployeeId, workforce};
 
 use crate::checks;
 use crate::config::{AttendanceConfig, config_of};
-use crate::flags::{AttendanceFlag, Pending};
+use crate::flags::{self, AttendanceFlag, FlagType, Pending};
 use crate::location::WorkLocation;
 use crate::lock;
 use crate::overlap;
@@ -285,6 +289,15 @@ pub async fn record(state: &AppState, input: NewRecord) -> Result<AttendanceReco
         ..AttendanceRecord::default()
     };
     record.insert(&mut tx).await?;
+    // A supervisor who enters a day that is over (HRM.ACL.01, up to the
+    // late-entry window) leaves the `late_entry` note; it holds nothing.
+    if input.method == AttendanceMethod::Supervisor && date < today() {
+        let note = english(
+            "wl_attendance.record.late_entry_note",
+            &[("entered", &dubai_date(now())), ("date", &date)],
+        );
+        flags::note_in(&mut tx, record.id, FlagType::LateEntry, &note, input.by).await?;
+    }
     let mut pending = Pending::default();
     checks::run_in(state, &mut tx, &record, &location, &prepared, &mut pending).await?;
     tx.commit().await?;

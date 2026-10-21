@@ -117,6 +117,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_attendance.flags.missing_checkout", "Missing check-out"),
     ("wl_attendance.flags.late", "Late"),
     ("wl_attendance.flags.late_entry", "Late entry"),
+    (
+        "wl_attendance.record.late_entry_note",
+        "Entered on :entered for :date",
+    ),
     ("wl_attendance.flags.manual_correction", "Manual correction"),
     ("wl_attendance.flags.duplicate", "Duplicate"),
     (

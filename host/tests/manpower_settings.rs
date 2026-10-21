@@ -684,7 +684,8 @@ async fn a_failed_critical_run_alerts_the_md_and_the_company_admin() {
 
 /// AC10 (Integrations): the SMS gateway, the WPS bank and the attendance import
 /// have their manual fallback; a supervisor enters yesterday's paper attendance
-/// (one day back) and an entry two days back is refused (`HRM.ACL.01`).
+/// (one day back, with the `late_entry` flag) and an entry two days back is
+/// refused (`HRM.ACL.01`).
 #[renox::test]
 async fn the_integrations_have_their_fallbacks_and_paper_attendance_is_one_day_back() {
     use wl_kernel::integrations::def;
@@ -738,6 +739,16 @@ async fn the_integrations_have_their_fallbacks_and_paper_attendance_is_one_day_b
         .unwrap();
     assert_eq!(saved.len(), 1);
     assert_eq!(saved[0].date, day(-1));
+    // The paper list entered a day late carries the `late_entry` note.
+    let flags = wl_attendance::AttendanceFlag::of_record(app.db(), saved[0].id)
+        .await
+        .unwrap();
+    assert!(
+        flags
+            .iter()
+            .any(|f| f.flag_type == wl_attendance::FlagType::LateEntry && f.resolved_at.is_some()),
+        "a settled late_entry note: {flags:?}"
+    );
     mark(2).await.assert_status(422);
     assert_eq!(
         wl_attendance::AttendanceRecord::query()

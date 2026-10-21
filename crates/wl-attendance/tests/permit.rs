@@ -171,7 +171,8 @@ async fn att04_the_permit_is_checked_on_the_attendance_date() {
         .unwrap();
         assert_eq!(late.date, nov(2));
         assert_eq!(late.status, AttendanceStatus::Recorded);
-        assert!(t.flags_of(&late).await.is_empty());
+        // Only the late-entry note (§5.1 point 5), no permit flag.
+        assert_eq!(t.flags_of(&late).await, ["late_entry"]);
 
         let today = service::record(
             t.state(),
