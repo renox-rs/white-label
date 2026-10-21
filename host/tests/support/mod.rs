@@ -104,6 +104,61 @@ async fn confirm_match(
     Ok("done".to_owned())
 }
 
+/// The signed-in user approves the refund `id` (what the refund page does).
+async fn approve_refund(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let refund = wl_payments::Refund::find_or_404(&state.db, id).await?;
+    let done = wl_payments::refund::approve(&state, &user, &refund)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok(format!("{:?}", done.status))
+}
+
+/// The signed-in user sends the approved gateway refund `id` to the gateway;
+/// the gateway's reference of the attempt.
+async fn send_refund(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let refund = wl_payments::Refund::find_or_404(&state.db, id).await?;
+    let attempt = wl_payments::refund::send_to_gateway(&state, &user, &refund)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok(attempt.gateway_ref.unwrap_or_default())
+}
+
+#[derive(serde::Deserialize)]
+struct WriteOffForm {
+    reason: String,
+}
+
+/// The signed-in user writes off the open amount of the payer bill `id`
+/// (what the claim page does through the kernel contract): `done`, or
+/// `pending:<approval request>` above the agreement's limit.
+async fn write_off_payer_bill(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<WriteOffForm>,
+) -> Result<String> {
+    let answer = wl_kernel::payer_bills::payer_bills(&state)
+        .write_off(
+            &state,
+            wl_kernel::payer_bills::PayerBillId(id),
+            &form.reason,
+            &user,
+        )
+        .await?;
+    Ok(match answer {
+        wl_kernel::payer_bills::PayerAnswer::Done => "done".to_owned(),
+        wl_kernel::payer_bills::PayerAnswer::Pending { request } => format!("pending:{request}"),
+    })
+}
+
 impl Module for Probe {
     fn name(&self) -> &'static str {
         "probe"
@@ -111,6 +166,9 @@ impl Module for Probe {
 
     fn routes(&self) -> Routes {
         Routes::new()
+            .post("/probe/refunds/{id}/approve", approve_refund)
+            .post("/probe/refunds/{id}/send", send_refund)
+            .post("/probe/payer-bills/{id}/write-off", write_off_payer_bill)
             .post("/probe/confirm/{id}", confirm_match)
             .post("/probe/deposits", hold_deposit)
             .post("/probe/deposits/{id}/start-settlement", start_settlement)
@@ -832,6 +890,28 @@ pub async fn clinics_booted_with_mail(mail: BouncingMail) -> TestApp {
         host::app_for_tuned(
             config,
             host::Tuning::default().notify(move |n| n.provider(mail)),
+        )
+        .expect("the app")
+        .provide(noon_clock())
+        .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+/// The clinics host with `gateway` as the payment gateway (the adapter of a
+/// real gateway is not built; online payments are off without one).
+pub async fn clinics_booted_with_gateway(gateway: wl_payments::gateway::FakeGateway) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(CLINICS_CLIENT).expect("the clinics client");
+    let app = TestApp::new(
+        host::app_for_tuned(
+            config,
+            host::Tuning::default().payments(move |p| p.gateway(gateway)),
         )
         .expect("the app")
         .provide(noon_clock())
