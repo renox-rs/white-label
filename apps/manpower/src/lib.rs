@@ -18,6 +18,7 @@ pub mod expiry;
 pub mod guard;
 pub mod hold;
 pub mod notices;
+pub mod overlap;
 pub mod pages;
 pub mod permissions;
 pub mod release;

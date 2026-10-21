@@ -24,9 +24,11 @@
 //!   request still taking workers; the request takes one position in the same
 //!   transaction (`fill_partly` or `fill`). The documents and licences must be
 //!   valid on the day of the action plus 30 days, or the end date if earlier
-//!   (`MPW.ACL.07`, BL-MPW-08, [`crate::guard`]). **The overlap check
-//!   (`MPW.ACL.15`) comes with BL-MPW-10. A blocked client (BL-MPW-15) is
-//!   refused `activate` and `extend` through [`crate::blocked`].**
+//!   (`MPW.ACL.07`, BL-MPW-08, [`crate::guard`]). A blocked client (BL-MPW-15) is
+//!   refused `activate` and `extend` through [`crate::blocked`].
+//!   **No overlap (`MPW.ACL.15`, BL-MPW-10, [`crate::overlap`]):** the worker
+//!   has no `active` or `suspended` deployment whose shift times overlap, for
+//!   `activate` and for `extend`.
 //! - `extend` moves the end date later, within the contract, while the
 //!   contract takes deployments (`active` or `terminating`, not `on_hold`) and
 //!   the documents and licences are valid on today plus 30 days, or the new end
@@ -169,6 +171,9 @@ pub struct Deployment {
     pub shift_start: Option<String>,
     /// The shift end as `HH:MM`.
     pub shift_end: Option<String>,
+    /// The weekdays of the shift, `mon,tue,wed,thu,fri,sat`; none: every day
+    /// (`MPW.ACL.15`).
+    pub work_days: Option<String>,
     /// The first day.
     pub start_date: NaiveDate,
     /// The last day; none while open-ended.

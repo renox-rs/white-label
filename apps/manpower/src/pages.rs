@@ -792,7 +792,8 @@ async fn deployments_index(
 
 /// `POST /manpower/deployments`: `employee_id`, `client_contract_id`,
 /// `site_id`, `role`, `shift_type`, `start_date` and, optionally,
-/// `request_id`, `shift_start`, `shift_end` and `end_date`.
+/// `request_id`, `shift_start`, `shift_end`, `work_days` (`mon,tue,fri`) and
+/// `end_date`.
 async fn plan_deployment(
     State(state): State<AppState>,
     user: AuthUser,
@@ -809,6 +810,7 @@ async fn plan_deployment(
         shift_type: field(&form, "shift_type"),
         shift_start: Some(field(&form, "shift_start")),
         shift_end: Some(field(&form, "shift_end")),
+        work_days: Some(field(&form, "work_days")),
         start_date: date(&lang, &form, "start_date")?.ok_or_else(bad)?,
         end_date: date(&lang, &form, "end_date")?,
     };

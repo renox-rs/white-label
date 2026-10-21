@@ -352,6 +352,14 @@ const TEXTS: &[(&str, &str)] = &[
         "Pick a request of this contract that is still open for the same role and site.",
     ),
     (
+        "manpower.deployment.shift",
+        "Give the shift times as HH:MM and the working days as a list such as mon,tue,wed.",
+    ),
+    (
+        "manpower.deployment.overlap",
+        "The worker already has deployment #{{ id }} ({{ status }}) as {{ role }} at {{ site }}, {{ from }} to {{ until }}, {{ shift }}, at overlapping hours.",
+    ),
+    (
         "manpower.deployment.end_reason",
         "Give a reason you may use: the end date has come, or another worker took the place.",
     ),

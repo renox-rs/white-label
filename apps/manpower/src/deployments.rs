@@ -29,6 +29,7 @@ use crate::events::{DeploymentActivated, DeploymentCancelled, DeploymentEnded};
 use crate::guard;
 use crate::hold;
 use crate::notices;
+use crate::overlap;
 use crate::permissions;
 use crate::request::{FILL, FILL_PARTLY, ManpowerRequest};
 use crate::site::Site;
@@ -53,6 +54,8 @@ pub struct NewDeployment {
     pub shift_start: Option<String>,
     /// The shift end as `HH:MM`.
     pub shift_end: Option<String>,
+    /// The weekdays of the shift (`mon,tue,fri`); none: every day.
+    pub work_days: Option<String>,
     /// The first day.
     pub start_date: NaiveDate,
     /// The last day; none while open-ended.
@@ -129,6 +132,24 @@ pub async fn plan_with_warning(
     if new.role.trim().is_empty() || new.shift_type.trim().is_empty() {
         return Err(refused(english("manpower.request.fields", &[])));
     }
+    let work_days = new
+        .work_days
+        .as_deref()
+        .map(str::trim)
+        .filter(|days| !days.is_empty())
+        .map(str::to_lowercase);
+    let shift_ok = [&new.shift_start, &new.shift_end]
+        .into_iter()
+        .flatten()
+        .filter(|time| !time.trim().is_empty())
+        .all(|time| overlap::parse_time(time).is_some());
+    if !shift_ok
+        || work_days
+            .as_deref()
+            .is_some_and(|d| overlap::parse_days(d).is_none())
+    {
+        return Err(refused(english("manpower.deployment.shift", &[])));
+    }
     if new.start_date < contract.start_date
         || new.start_date > contract.end_date
         || new
@@ -171,6 +192,7 @@ pub async fn plan_with_warning(
             shift_type: new.shift_type.trim().to_lowercase(),
             shift_start: new.shift_start.filter(|time| !time.trim().is_empty()),
             shift_end: new.shift_end.filter(|time| !time.trim().is_empty()),
+            work_days,
             start_date: new.start_date,
             end_date,
             kind,
@@ -281,6 +303,8 @@ async fn run_activate(
     on: NaiveDate,
 ) -> Result<Deployment> {
     let id = deployment.id;
+    // One activation or extension of the worker at a time (`MPW.ACL.15`).
+    let _worker = overlap::take(deployment.employee_id).await;
     let mut problems = activation_problems(state, deployment, on).await?;
     let mut tx = state.db.begin().await?;
     // The contract is read in the transaction of the transition, so a `hold`
@@ -288,6 +312,16 @@ async fn run_activate(
     let contract = lock_contract(&mut tx, deployment.client_contract_id).await?;
     if let Some(problem) = contract_problem(&mut tx, &contract).await? {
         problems.insert(0, problem);
+    }
+    if let Some(problem) = overlap::problem(
+        &mut tx,
+        deployment,
+        on.max(deployment.start_date),
+        deployment.end_date,
+    )
+    .await?
+    {
+        problems.push(problem);
     }
     let input = DeploymentInput {
         problems,
@@ -422,6 +456,8 @@ async fn run_extend(
     deployment: &Deployment,
     new_end: NaiveDate,
 ) -> Result<Deployment> {
+    // One activation or extension of the worker at a time (`MPW.ACL.15`).
+    let _worker = overlap::take(deployment.employee_id).await;
     let mut tx = state.db.begin().await?;
     // A blocked client extends nothing (BL-MPW-15).
     blocked::check(
@@ -448,6 +484,16 @@ async fn run_extend(
     }
     if new_end > contract.end_date {
         problems.push(english("manpower.deployment.beyond_contract", &[]));
+    }
+    if let Some(problem) = overlap::problem(
+        &mut tx,
+        deployment,
+        today().max(deployment.start_date),
+        Some(new_end),
+    )
+    .await?
+    {
+        problems.push(problem);
     }
     let input = DeploymentInput {
         problems,
