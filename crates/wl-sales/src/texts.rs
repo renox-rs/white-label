@@ -611,6 +611,30 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.packages.problem.not_pending",
         "Only a package waiting for payment can be linked to an invoice.",
     ),
+    (
+        "wl_sales.packages.problem.unpaid",
+        "A reopened balance on the package is unpaid; the credit was not consumed.",
+    ),
+    (
+        "wl_sales.packages.collect_title",
+        "Collect :balance before the next use of :package",
+    ),
+    (
+        "wl_sales.packages.collect_description",
+        "The payment for :package was reversed and its invoice is open again with :balance due. The package stays active and the credits used stay used. Collect the balance before the next use.",
+    ),
+    (
+        "wl_sales.packages.refused_comment",
+        "Credit not consumed: unpaid. :quantity for :source. Consume it by hand once the balance is paid.",
+    ),
+    (
+        "wl_sales.notices.package_balance_due_subject",
+        "A balance is due on your package",
+    ),
+    (
+        "wl_sales.notices.package_balance_due_body",
+        "The payment for your package {{ package }} was reversed. {{ balance }} AED is due again. Please pay it before your next visit.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

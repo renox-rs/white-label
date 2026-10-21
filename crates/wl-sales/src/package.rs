@@ -83,6 +83,13 @@ pub struct Package {
     pub sold_by: Option<i64>,
     /// When it activated.
     pub activated_at: Option<DateTime>,
+    /// The balance of its invoice reopened by a reversed payment, in fils;
+    /// zero when none is open (BL-SAL-16). The package keeps its state.
+    pub reopened_balance: i64,
+    /// When the balance was reopened.
+    pub reopened_at: Option<DateTime>,
+    /// The seller's "collect before next use" task.
+    pub collect_ticket_id: Option<i64>,
     /// Where it is; changed only by the machine.
     pub status: PackageStatus,
     /// When the row was created.
@@ -110,6 +117,11 @@ impl Package {
     /// The credits left.
     pub fn remaining(&self) -> i64 {
         self.credits_total - self.credits_used
+    }
+
+    /// Whether a reopened invoice balance is still unpaid.
+    pub fn has_unpaid_balance(&self) -> bool {
+        self.reopened_balance > 0
     }
 
     /// Whether its validity ended before `today`.
@@ -198,6 +210,14 @@ mod tests {
             ..Package::default()
         };
         assert_eq!(package.remaining(), 6);
+    }
+
+    #[test]
+    fn a_reopened_balance_is_unpaid_until_it_is_cleared() {
+        let mut package = Package::default();
+        assert!(!package.has_unpaid_balance());
+        package.reopened_balance = 30_000;
+        assert!(package.has_unpaid_balance());
     }
 
     #[test]

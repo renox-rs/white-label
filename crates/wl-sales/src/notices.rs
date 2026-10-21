@@ -22,6 +22,9 @@ pub const COST_REJECTED: &str = "sales.campaign_cost_rejected";
 /// The owner is told that a cost entry was voided with its supplier bill.
 pub const COST_BILL_VOIDED: &str = "sales.campaign_cost_bill_voided";
 
+/// The holder (and payer) of a package is told that a balance is due again.
+pub const PACKAGE_BALANCE_DUE: &str = "sales.package_balance_due";
+
 /// The owner of a lead is told that its win was reverted.
 pub const LEAD_WIN_REVERTED: &str = "sales.lead_win_reverted";
 
@@ -56,6 +59,7 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(COST_REJECTED, "cost_rejected"));
     notify::register_type(english_type(COST_BILL_VOIDED, "cost_bill_voided"));
     notify::register_type(english_type(LEAD_WIN_REVERTED, "lead_win_reverted"));
+    notify::register_type(english_type(PACKAGE_BALANCE_DUE, "package_balance_due"));
 }
 
 /// `fils` as `4,000.00`.

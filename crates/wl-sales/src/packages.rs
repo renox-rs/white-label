@@ -18,12 +18,13 @@ use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::invoicing::{InvoiceId, InvoicePaid, invoicer};
 use wl_kernel::sales::{
     ConsumePackage, PackageActivated, PackageConsumed, PackageConsumption, PackageExpired,
-    PackageExtended, PackageId, PackageLedger, SalesFuture,
+    PackageExtended, PackageLedger, SalesFuture,
 };
 use wl_kernel::{PartyId, Subject};
 
 use crate::config::config_of;
 use crate::package::{MovementKind, Package, PackageMovement, PackageStatus};
+use crate::package_reopen::record_refusal;
 use crate::package_machine::{
     ACTIVATE, ActivateInput, CANCEL, CONSUME, CONSUME_LAST, CancelInput, ConsumeInput, EXPIRE,
     EXTEND, ExpireInput, ExtendInput, REVERSE, REVERSE_SYSTEM, ReverseInput,
@@ -236,6 +237,16 @@ pub async fn consume(
             package: package.package_id(),
         });
     }
+    // BL-SAL-16: with the setting on, an unpaid reopened balance refuses the
+    // credit. The refusal is recorded for the seller's task; the source
+    // records "credit not consumed: unpaid" and decides what follows.
+    let suspend = config_of(state).suspend_package_consumption_while_unpaid;
+    if suspend && package.has_unpaid_balance() && package.status == PackageStatus::Active {
+        record_refusal(state, &package, &source, quantity).await?;
+        return Ok(PackageConsumption::Unpaid {
+            package: package.package_id(),
+        });
+    }
     let name = if quantity == package.remaining() {
         CONSUME_LAST
     } else {
@@ -245,7 +256,7 @@ pub async fn consume(
         quantity,
         source,
         today: wl_kernel::documents::today(),
-        suspend_while_unpaid: false,
+        suspend_while_unpaid: suspend,
     };
     package
         .transition(name)
@@ -552,6 +563,7 @@ pub(crate) fn register(app: &mut Registry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wl_kernel::sales::PackageId;
 
     #[test]
     fn the_builder_sets_the_sale() {

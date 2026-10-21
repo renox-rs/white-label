@@ -22,6 +22,9 @@
 //! - `completed` is not marked terminal in the machine, because `reverse`
 //!   leaves it (the spec's diagram).
 //! - `refund` is not built here.
+//! - `consume` has the guard `paid_up` (BL-SAL-16): with the setting *suspend
+//!   consumption while unpaid* on, a package with a reopened, unpaid balance
+//!   takes no credits.
 //!
 //! The inputs carry what a guard needs and an effect cannot fetch (no
 //! `AppState`): the day, the quantity, the settings.
@@ -290,6 +293,15 @@ fn consume(name: &str, label: &str, to: PackageStatus) -> Transition<Package> {
                     Err(_) => Err(english("wl_sales.packages.problem.credits", &[])),
                 }
             })
+        })
+        .guard("paid_up", |p: &Package, ctx| {
+            // With the setting on, a reopened balance that is unpaid
+            // suspends consumption (§4.4).
+            let suspended = p.has_unpaid_balance()
+                && ctx
+                    .input_as::<ConsumeInput>()
+                    .is_ok_and(|i| i.suspend_while_unpaid);
+            Box::pin(async move { check(!suspended, "wl_sales.packages.problem.unpaid") })
         })
         .guard("not_expired", |p: &Package, ctx| {
             let expired = ctx

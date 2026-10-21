@@ -30,6 +30,7 @@ What is here so far:
 | The acquisition report (`/sales/acquisition-report`, `.csv`): leads, conversion, new customers, cost (linked to bills and manual), cost per lead, CAC and ROAS per source, campaign, channel, brand, branch or month, within the viewer's branch scope, "—" for an undefined ratio | §5.8 step 5 | `report`, `pages::report` |
 | The kernel's `CampaignAttribution` and `LeadConversion` for the verticals | §6 | `attribution` |
 | Prepaid packages: `sell`, `activate` when the invoice is paid, `consume` / `consume_last` with a movement per source, `reverse`, the daily `expire` (`sales:packages`), `extend`, `cancel`; the kernel's `PackageLedger` and `PackageActivated`/`PackageConsumed`/`PackageExtended`/`PackageExpired`. The sale pages and `refund` come later | §3, §4.4, §5.5, §6 | `package`, `package_machine`, `packages` |
+| A reversed payment of a package (`InvoiceReopened`, `PaymentReversed`): the package stays active with its used credits, the seller gets a "collect before next use" task, the holder is told the balance is due, and `WlSales::suspend_package_consumption_while_unpaid` refuses `consume` until the invoice is paid | §4.4, §6, §7 | `package_reopen`, `packages` |
 
 The module owns `src/texts.rs`, the English texts (`wl_sales.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.

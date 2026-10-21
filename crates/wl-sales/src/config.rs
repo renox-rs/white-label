@@ -56,6 +56,13 @@ pub struct SalesConfig {
     pub package_validity_months: i64,
     /// How many times a package may be extended.
     pub package_extension_limit: i64,
+    /// Whether `consume` is refused while a reopened invoice balance of the
+    /// package is unpaid (§7: off; 05, 10: a task to collect only).
+    pub suspend_package_consumption_while_unpaid: bool,
+    /// The role told to collect a reopened balance when the package has no
+    /// seller user (05: front desk; 10: counsellor); the company admin when
+    /// empty.
+    pub package_seller_role: String,
 }
 
 impl Default for SalesConfig {
@@ -73,6 +80,8 @@ impl Default for SalesConfig {
             acquisition_change_approval: true,
             package_validity_months: DEFAULT_PACKAGE_VALIDITY_MONTHS,
             package_extension_limit: DEFAULT_PACKAGE_EXTENSION_LIMIT,
+            suspend_package_consumption_while_unpaid: false,
+            package_seller_role: String::new(),
         }
     }
 }

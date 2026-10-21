@@ -22,6 +22,7 @@ pub mod machine;
 pub mod notices;
 pub mod package;
 pub mod package_machine;
+pub mod package_reopen;
 pub mod packages;
 pub mod pages;
 pub mod policy;
@@ -48,6 +49,7 @@ pub use cost_entry::{CostEntry, CostRefused, CostStatus};
 pub use lead::{Captured, Lead, LeadNote, LeadRefused, LeadStatus, NewLead};
 pub use lead_source::{LeadSource, LeadSourceRefused};
 pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
+pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
 
 /// The campaign services under the names of the plan: `campaigns::delete`
@@ -201,6 +203,21 @@ impl WlSales {
         self
     }
 
+    /// Whether `consume` is refused while the reopened balance of the
+    /// package's invoice is unpaid (§7 *Package: suspend consumption…*, off by
+    /// default).
+    pub fn suspend_package_consumption_while_unpaid(mut self, on: bool) -> Self {
+        self.config.suspend_package_consumption_while_unpaid = on;
+        self
+    }
+
+    /// The role that gets the "collect before next use" task of a package
+    /// with no seller user (05: `front_desk`; 10: `counsellor`).
+    pub fn package_seller_role(mut self, role: &str) -> Self {
+        self.config.package_seller_role = role.to_owned();
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &SalesConfig {
         &self.config
@@ -247,6 +264,8 @@ impl Module for WlSales {
         app.model::<PromoCode>();
         app.model::<Package>();
         app.model::<PackageMovement>();
+        app.model::<PackageReopening>();
+        app.model::<PackageRefusal>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
@@ -256,6 +275,7 @@ impl Module for WlSales {
         acquisition_daily::schedule(app);
         // Prepaid packages: the ledger, the listeners and the daily expiry.
         packages::register(app);
+        package_reopen::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);
