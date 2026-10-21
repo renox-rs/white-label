@@ -18,16 +18,19 @@ use wl_delivery::{Delivery, NewRun, VehicleType, WlDelivery, permissions as dper
 use wl_kernel::documents::today;
 use wl_kernel::notify::Notifier;
 use wl_kernel::portal::PortalUsers;
+use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{ClientConfig, PartyId, RecordVoided};
 
 pub mod notices;
 pub mod portal;
 pub mod roster;
+pub mod tickets;
 
 use notices::Notices;
 use portal::Portal;
 use roster::Roster;
+use tickets::TicketDesk;
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -96,6 +99,8 @@ pub struct World {
     _views: tempfile::TempDir,
     /// The notices asked of the kernel's notifier.
     pub notices: Notices,
+    /// The tickets the module opened.
+    pub tickets: TicketDesk,
     /// `RecordVoided`.
     pub voided: Recorded<RecordVoided>,
     /// The operations manager.
@@ -172,6 +177,8 @@ pub async fn boot() -> World {
     let workforce: Arc<dyn Workforce> = Arc::new(roster);
     let portal = Portal::default();
     let portal_users: Arc<dyn PortalUsers> = Arc::new(portal.clone());
+    let tickets = TicketDesk::default();
+    let task_creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let voided = Recorded::new();
     let app = App::new()
         .module(Auth::new())
@@ -182,7 +189,8 @@ pub async fn boot() -> World {
         .module(Probe)
         .provide(workforce)
         .provide(notifier)
-        .provide(portal_users);
+        .provide(portal_users)
+        .provide(task_creator);
     let app = record(app, &voided);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -236,6 +244,7 @@ pub async fn boot() -> World {
         app,
         _views: views,
         notices,
+        tickets,
         voided,
         ops,
         dispatcher,
