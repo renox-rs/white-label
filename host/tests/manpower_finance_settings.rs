@@ -11,7 +11,7 @@
 mod manpower_support;
 mod support;
 
-use host::roles::{ACCOUNTANT, ADMIN, HR, OWNER, RECEIVABLES, SUPERVISOR};
+use host::roles::{ACCOUNTANT, ADMIN, HR, RECEIVABLES, SUPERVISOR};
 use manpower_support::{boot_seeded, worker};
 use renox::chrono::{Datelike, Days, NaiveDate, Weekday};
 use renox::prelude::*;
@@ -166,24 +166,21 @@ async fn a_bounced_client_cheque_offers_the_three_paths_and_adds_no_fee() {
     assert_eq!(returns[0].fee_amount, 0);
     assert_eq!(returns[0].fee_subject_id, None, "no fee charge was created");
 
-    // The three paths after `bounced`.
-    let machine = Cheque::machine();
-    for path in ["represent", "refer_to_legal", "write_off"] {
-        let transition = machine
-            .find(path)
-            .unwrap_or_else(|_| panic!("the transition {path}"));
-        assert!(
-            transition.from_states().iter().any(|s| s == "bounced"),
-            "{path} is offered from bounced"
-        );
-    }
+    // The three paths after `bounced`, offered on the cheque's page.
+    app.acting_as(&accountant);
+    app.get(&format!("/cheques/{}", cheque.id))
+        .await
+        .assert_ok()
+        .assert_see(&format!("/cheques/{}/represent", cheque.id))
+        .assert_see(&format!("/cheques/{}/refer", cheque.id))
+        .assert_see(&format!("/cheques/{}/write_off", cheque.id));
 }
 
 // ---- Attendance -------------------------------------------------------------
 
 /// AC3 (Attendance): 3 overtime hours on a day are flagged `overtime_cap`; the
 /// supervisor who marked the record cannot accept the flag, another reviewer
-/// can with a reason; the escalation goes at day 6.
+/// can with a reason (the escalation at day 6 is run in manpower_timesheets.rs).
 #[renox::test]
 async fn three_overtime_hours_are_flagged_and_the_marking_supervisor_cannot_accept_them() {
     use wl_attendance::service::{self, NewRecord};
@@ -251,13 +248,11 @@ async fn three_overtime_hours_are_flagged_and_the_marking_supervisor_cannot_acce
             .status,
         AttendanceStatus::Accepted
     );
-    let config = wl_attendance::config::config_of(app.state());
-    assert_eq!(config.escalation_days, 6, "the escalation goes at day 6");
 }
 
 // ---- Payroll ----------------------------------------------------------------
 
-/// AC4 (Payroll): the payroll cut-off is the 25th; at the cut-off a deployment
+/// AC4 (Payroll): at the cut-off (25th, run in manpower_hr_values.rs) a deployment
 /// with an unapproved timesheet is paid on provisional attendance; switching the
 /// payroll basis of an external approver to `wait` is refused.
 #[renox::test]
@@ -268,7 +263,6 @@ async fn at_the_cut_off_an_unapproved_timesheet_is_paid_on_provisional_attendanc
     use wl_kernel::timesheets::{PayrollPeriod, timesheets};
 
     let app = boot_seeded().await;
-    assert_eq!(wl_hr::config::config_of(app.state()).cut_off_day, 25);
 
     let w = worker(&app, "Wasim Khan").await;
     let site = wl_attendance::WorkLocation::create(
@@ -341,48 +335,9 @@ async fn at_the_cut_off_an_unapproved_timesheet_is_paid_on_provisional_attendanc
 
 // ---- HR ---------------------------------------------------------------------
 
-/// AC5 (HR): the new pay account cools for 5 days (`HRM.ACL.05`), a recovery of
-/// 25% of the wage is above the overpayment cap of 20% and the total of 50%
-/// stands (`HRM.ACL.06`), and the absconding report is approved by the MD
-/// (`HRM.ACL.07`).
-#[renox::test]
-async fn the_hr_values_are_in_force_cooling_five_days_and_the_deduction_caps() {
-    use wl_hr::AdjustmentKind;
-    use wl_hr::caps::{CapScope, check};
-
-    let app = boot_seeded().await;
-    let config = wl_hr::config::config_of(app.state());
-    assert_eq!(config.cooling_days, 5);
-    assert_eq!(config.absence_days, 7);
-    assert_eq!(config.settlement_alert_days, 10);
-    assert_eq!(config.wps_escalation_days, 1);
-    // A wage of AED 3,000: a recovery of 25% (AED 750) is above the cap of 20%
-    // (AED 600), and 51% together is above the total of 50%.
-    let wage = 300_000;
-    let problems = check(1, 7, wage, &[(AdjustmentKind::OverpaymentRecovery, 75_000)]);
-    assert_eq!(problems.len(), 1);
-    assert_eq!(problems[0].scope, CapScope::Overpayment);
-    assert_eq!((problems[0].amount, problems[0].cap), (75_000, 60_000));
-    assert!(
-        check(1, 7, wage, &[(AdjustmentKind::OverpaymentRecovery, 60_000)]).is_empty(),
-        "20% is within the cap"
-    );
-    let total = check(
-        1,
-        7,
-        wage,
-        &[
-            (AdjustmentKind::OverpaymentRecovery, 60_000),
-            (AdjustmentKind::AdvanceRecovery, 93_000),
-        ],
-    );
-    assert_eq!(total.len(), 1);
-    assert_eq!(total[0].scope, CapScope::Total);
-    // The MD who approves the non-standard exits is a role of the host.
-    assert!(host::roles::ROLES.iter().any(|(name, grants)| {
-        *name == OWNER && grants.contains(&wl_hr::permissions::EMPLOYEES_EXIT_APPROVE)
-    }));
-}
+// The pay account cooling, the recovery caps and the payroll cut-off of the
+// seed are run in manpower_hr_values.rs; the MD's approval of an absconding
+// report in manpower_absence.rs.
 
 /// AC6 (Settlement): given a last working day of 2026-11-30 and the settlement
 /// not `paid`, HR and the accountant are alerted on 2026-12-10 and the MD on

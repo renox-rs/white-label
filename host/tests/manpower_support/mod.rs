@@ -18,7 +18,8 @@ use wl_documents::{Document, DocumentKind, DocumentStatus};
 use wl_hr::{EmployeeStatus, NewEmployee, employees};
 use wl_kernel::documents::{BlockCondition, BlockMode, OverrideMode, today};
 use wl_kernel::workforce::EmployeeId;
-use wl_kernel::{ClientConfig, PartyId};
+use wl_kernel::{ClientConfig, PartyId, PartyKind};
+use wl_parties::{ContactPoint, ContactType, NewParty, PersonDetails, create};
 
 use crate::support::{company, day, noon_clock, scoped_person, tenant, without_document_kinds};
 
@@ -170,6 +171,121 @@ pub async fn worker(app: &TestApp, name: &str) -> EmployeeId {
     .await
     .unwrap();
     EmployeeId(employee.id)
+}
+
+/// An employee `active` in HR whose party has the mobile number `number`.
+pub async fn worker_with_mobile(app: &TestApp, name: &str, number: &str) -> EmployeeId {
+    let party = create(
+        app.state(),
+        NewParty {
+            kind: PartyKind::Person,
+            legal_name_en: name.into(),
+            person: Some(PersonDetails::default()),
+            contacts: vec![ContactPoint {
+                contact_type: ContactType::Mobile,
+                value: number.into(),
+                is_primary: true,
+                ..Default::default()
+            }],
+            source: "back_office".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .party_id();
+    let employee = employees::create(
+        app.state(),
+        NewEmployee::new(party, "security_guard", today()).status(EmployeeStatus::Active),
+    )
+    .await
+    .unwrap();
+    EmployeeId(employee.id)
+}
+
+/// A salary structure for `who` from 1 Jan 2026: a basic wage of `wage` fils.
+pub async fn salary(app: &TestApp, who: EmployeeId, wage: i64) {
+    wl_hr::SalaryStructure::create(
+        app.db(),
+        wl_hr::SalaryStructure {
+            employee_id: who.0,
+            effective_from: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            basic: wage,
+            hourly_rate: Some(wage / 240),
+            ..wl_hr::SalaryStructure::default()
+        },
+    )
+    .await
+    .unwrap();
+}
+
+/// A regular payroll run of `period` in `draft`, for the preparer to calculate.
+pub async fn draft_run(app: &TestApp, period: &str) -> wl_hr::PayrollRun {
+    let mut run = wl_hr::PayrollRun {
+        period: period.to_owned(),
+        run_type: "regular".into(),
+        status: wl_hr::PayrollRunStatus::Draft,
+        ..wl_hr::PayrollRun::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    run.insert_in_state(&mut tx, wl_hr::PayrollRunStatus::Draft, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    run
+}
+
+/// `by` runs the transition `name` of payroll run `run` (the page route).
+pub async fn run_transition(
+    app: &TestApp,
+    by: &User,
+    run: &wl_hr::PayrollRun,
+    name: &str,
+) -> TestResponse {
+    post(
+        app,
+        by,
+        &format!("/hr/payroll/{}/transitions/{name}", run.id),
+        &[("reason", "")],
+    )
+    .await
+}
+
+/// An SMS provider that delivers everything and records the numbers.
+#[derive(Clone, Default)]
+pub struct DeliveringSms {
+    sent: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl DeliveringSms {
+    /// The numbers it was asked to send to, in order.
+    pub fn numbers(&self) -> Vec<String> {
+        self.sent.lock().unwrap().clone()
+    }
+}
+
+impl wl_notify::ChannelProvider for DeliveringSms {
+    fn name(&self) -> &'static str {
+        "delivering-sms"
+    }
+
+    fn channel(&self) -> wl_kernel::notify::NotifyChannel {
+        wl_kernel::notify::NotifyChannel::Sms
+    }
+
+    fn available(&self, _state: &AppState) -> bool {
+        true
+    }
+
+    fn send<'a>(
+        &'a self,
+        _state: &'a AppState,
+        outgoing: &'a wl_notify::Outgoing,
+    ) -> wl_notify::channels::ProviderFuture<'a, std::result::Result<String, wl_notify::SendError>>
+    {
+        self.sent.lock().unwrap().push(outgoing.address.clone());
+        Box::pin(async { Ok("delivered".to_owned()) })
+    }
 }
 
 /// An accepted document of `kind` for `who`, valid through `until`.
