@@ -19,7 +19,9 @@ use wl_kernel::notify::{
 use wl_sales::expiry::TASK;
 use wl_sales::liability;
 use wl_sales::notices::LOYALTY_EXPIRY;
-use wl_sales::{LoyaltyAccount, PointsKind, PointsMovement, Redemption, RedemptionStatus};
+use wl_sales::{
+    LoyaltyAccount, LoyaltyProgramme, PointsKind, PointsMovement, Redemption, RedemptionStatus,
+};
 
 use support::floor::{Floor, account, movements};
 use support::shop::Shop;
@@ -353,4 +355,124 @@ async fn the_liability_report_values_120000_points_at_aed_1200_and_counts_negati
         .get("/loyalty/liability?as_at=31-12")
         .await
         .assert_status(422);
+}
+
+/// Puts the movement `id` in the legal entity `entity`.
+async fn in_entity(t: &Booted, id: i64, entity: i64) {
+    PointsMovement::query()
+        .where_(PointsMovement::ID.eq(id))
+        .update(t.db(), &[("legal_entity_id", &Some(entity))])
+        .await
+        .unwrap();
+}
+
+#[renox::test]
+async fn the_liability_report_groups_by_brand_entity_age_and_expiry_month() {
+    let (t, _shop, floor, m) = world(0, &[]).await;
+    let ends = today() + Days::days(40);
+
+    // Entity 5 earned 300 a hundred days ago; entity 6 earned 200 today.
+    let old = lot_of(&t, &m, 300, ends).await;
+    let long_ago = renox::db::now() - Days::days(100);
+    in_entity(&t, old.id, 5).await;
+    PointsMovement::query()
+        .where_(PointsMovement::ID.eq(old.id))
+        .update(t.db(), &[("created_at", &long_ago)])
+        .await
+        .unwrap();
+    let new = lot_of(&t, &m, 200, ends).await;
+    in_entity(&t, new.id, 6).await;
+    // 100 of entity 5's points were redeemed in entity 6: they leave the lot
+    // of entity 5, where they were earned.
+    PointsMovement::create(
+        t.db(),
+        PointsMovement {
+            account_id: m.id,
+            kind: PointsKind::Redeem,
+            points: -100,
+            value: -100,
+            legal_entity_id: Some(6),
+            source_type: "sales.counter_sale".to_owned(),
+            source_id: 100,
+            cause: "redeem".to_owned(),
+            lot_id: Some(old.id),
+            ..PointsMovement::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    // A member of the programme of the brand Gold, earned in entity 5.
+    let first = LoyaltyProgramme::first_active(t.db()).await.unwrap().unwrap();
+    let gold = LoyaltyProgramme::create(
+        t.db(),
+        LoyaltyProgramme {
+            id: 0,
+            name: "Gold".to_owned(),
+            brand: Some("Gold".to_owned()),
+            ..first.clone()
+        },
+    )
+    .await
+    .unwrap();
+    let member = LoyaltyAccount::create(
+        t.db(),
+        LoyaltyAccount {
+            id: 0,
+            programme_id: gold.id,
+            party_id: 8,
+            code: "GOLD-1".to_owned(),
+            mobile: "+971509999999".to_owned(),
+            points_balance: 0,
+            ..m.clone()
+        },
+    )
+    .await
+    .unwrap();
+    let gold_lot = lot_of(&t, &member, 50, ends).await;
+    in_entity(&t, gold_lot.id, 5).await;
+    // The balances the lots stand for.
+    for (id, balance) in [(m.id, 400), (member.id, 50)] {
+        LoyaltyAccount::query()
+            .where_(LoyaltyAccount::ID.eq(id))
+            .update(t.db(), &[("points_balance", &balance)])
+            .await
+            .unwrap();
+    }
+
+    let report = liability::report(t.db(), today()).await.unwrap();
+    let month = format!("{}-{:02}", ends.year(), ends.month());
+    let rows: Vec<_> = report
+        .rows
+        .iter()
+        .map(|r| {
+            (
+                r.brand.as_str(),
+                r.entity,
+                r.age,
+                r.expiry_month.as_str(),
+                r.points,
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("", Some(5), "91_180", month.as_str(), 200),
+            ("", Some(6), "0_90", month.as_str(), 200),
+            ("Gold", Some(5), "0_90", month.as_str(), 50),
+        ]
+    );
+    assert_eq!((report.points, report.value), (450, 450));
+
+    // The page shows the brand, the entity and the age of each line.
+    t.app.acting_as(&floor.cora);
+    t.app
+        .get("/loyalty/liability")
+        .await
+        .assert_ok()
+        .assert_see("Gold")
+        .assert_see("91 to 180 days")
+        .assert_see("Up to 90 days")
+        .assert_see(&month);
 }
