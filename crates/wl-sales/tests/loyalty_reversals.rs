@@ -12,6 +12,7 @@ use wl_kernel::invoicing::{
     CreditNoteId, CreditNoteIssued, InvoiceId, InvoicePaid, InvoiceReopened, InvoiceStatus,
     InvoiceWrittenOff, ReopenReason,
 };
+use wl_kernel::documents::today;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::payments::{
     PaymentId, PaymentMethod, PaymentReceived, PaymentReversed, PaymentSource, ReversalReason,
@@ -20,6 +21,7 @@ use wl_kernel::sales::{
     FulfilOrder, FulfilledLine, ReverseFulfilment, SalesOrderId, order_fulfilment,
 };
 use wl_kernel::{PartyId, Subject};
+use wl_sales::liability;
 use wl_sales::notices::{LOYALTY_REVERSED, LOYALTY_REWARD};
 use wl_sales::{
     CounterSale, LoyaltyAccount, LoyaltyEarning, PointsKind, ReturnStatus, SaleLine, SalesOrder,
@@ -516,4 +518,79 @@ async fn nothing_is_reversed_on_a_closed_account_or_for_a_sale_that_never_earned
     give_back(&t, &earned, "1").await;
     assert_eq!(account(&t, &m).await.points_balance, 100);
     assert!(shop.mail.of_type(LOYALTY_REVERSED).is_empty());
+}
+
+#[renox::test]
+async fn a_reversal_and_an_earn_again_stay_in_the_legal_entity_of_the_sale_in_the_liability_report() {
+    let (t, _shop, floor) = start().await;
+    floor.turn_on(&t, &[]).await;
+    let m = floor.enrol(&t, M, "0501234567").await;
+    // A card sale of AED 105 in the legal entity 5.
+    let cart = floor
+        .open_cart(&t, &[("tee", "100.00", "1")], Some(&m.code))
+        .await;
+    CounterSale::query()
+        .where_(CounterSale::ID.eq(cart.id))
+        .update(t.db(), &[("legal_entity_id", &Some(5_i64))])
+        .await
+        .unwrap();
+    t.app
+        .post(
+            &format!("/counter-sales/{}/complete", cart.id),
+            &[("card", "105.00"), ("card_payment", "77")],
+        )
+        .await
+        .assert_status(303);
+    let sale = CounterSale::find_or_404(t.db(), cart.id).await.unwrap();
+    let lots = movements(&t, &m, PointsKind::Earn).await;
+    assert_eq!(lots[0].legal_entity_id, Some(5));
+
+    // Half is returned: the reversal carries the entity of the lot.
+    give_back(&t, &sale, "0.5").await;
+    let taken = movements(&t, &m, PointsKind::ReverseEarn).await;
+    assert_eq!(taken.len(), 1);
+    assert_eq!(taken[0].legal_entity_id, Some(5));
+    let report = liability::report(t.db(), today()).await.unwrap();
+    assert_eq!(report.rows.len(), 1, "{:?}", report.rows);
+    assert_eq!(
+        (report.rows[0].entity, report.rows[0].points),
+        (Some(5), 50)
+    );
+
+    // The rest is charged back, then won: the new lot keeps the entity.
+    let reversed = PaymentReversed {
+        payment: PaymentId(77),
+        party: PartyId(M),
+        legal_entity_id: 5,
+        reason: ReversalReason::Chargeback,
+        source: PaymentSource::Gateway,
+        statement_line: None,
+        removed: Vec::new(),
+        prepaid: None,
+        reversed_on: today(),
+    };
+    t.state().emit(reversed).await.unwrap();
+    let report = liability::report(t.db(), today()).await.unwrap();
+    assert_eq!((report.points, report.rows.len()), (0, 0));
+    let taken = movements(&t, &m, PointsKind::ReverseEarn).await;
+    assert!(taken.iter().all(|r| r.legal_entity_id == Some(5)));
+    t.state()
+        .emit(PaymentReceived {
+            payment: PaymentId(77),
+            party: PartyId(M),
+            amount: 10_500,
+            method: PaymentMethod::Card,
+            allocations: Vec::new(),
+        })
+        .await
+        .unwrap();
+    let lots = movements(&t, &m, PointsKind::Earn).await;
+    assert_eq!(lots.len(), 2);
+    assert_eq!(lots[1].legal_entity_id, Some(5));
+    let report = liability::report(t.db(), today()).await.unwrap();
+    assert_eq!(report.rows.len(), 1, "{:?}", report.rows);
+    assert_eq!(
+        (report.rows[0].entity, report.rows[0].points),
+        (Some(5), 50)
+    );
 }

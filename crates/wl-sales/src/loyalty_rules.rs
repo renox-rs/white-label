@@ -210,6 +210,18 @@ impl NewMovement<'_> {
     }
 }
 
+/// The legal entity of the lot an earning put its points in: a reversal and
+/// an earn again belong to the entity of the sale, so the liability report
+/// nets them there.
+async fn lot_entity(db: &Db, earning: &LoyaltyEarning) -> Result<Option<i64>> {
+    let Some(lot) = earning.movement_id else {
+        return Ok(None);
+    };
+    Ok(PointsMovement::find(db, lot)
+        .await?
+        .and_then(|m| m.legal_entity_id))
+}
+
 /// What [`credit`] made.
 struct Credited {
     /// The earn movement: the lot.
@@ -467,6 +479,7 @@ pub async fn reverse_earn(
         return Ok(Reversed::Nothing);
     }
     let per_aed = earning.earn_kind == EarnKind::PerAed;
+    let entity = lot_entity(&state.db, &earning).await?;
     let mut tx = state.db.begin().await?;
     let mut row = NewMovement {
         account: &account,
@@ -477,7 +490,7 @@ pub async fn reverse_earn(
         } else {
             0
         },
-        entity: None,
+        entity,
         source: cause_source,
         earning: earning.id,
         cause,
@@ -573,6 +586,7 @@ pub async fn earn_again(
         return Ok(0);
     }
     let source = earning.source();
+    let entity = lot_entity(&state.db, earning).await?;
     let mut tx = state.db.begin().await?;
     let credited = credit(
         &mut tx,
@@ -583,7 +597,7 @@ pub async fn earn_again(
         earning.id,
         CAUSE_REEARN,
         on,
-        None,
+        entity,
     )
     .await?;
     for row in &rows {
