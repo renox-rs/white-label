@@ -44,9 +44,10 @@ use wl_kernel::timesheets::{
     HoursLine, PayrollHours, PayrollPeriod, Timesheets, provide_timesheets,
 };
 use wl_kernel::workforce::{
-    AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged, EmployeeId,
-    EmployeeNoticeWithdrawn, EmployeeOnboardingCancelled, EmployeeReinstated, OnboardingCompleted,
-    OnboardingStarted, PayAccountChanged, PayrollLinesFailed, PayrollRunPaid, PayrollRunReturned,
+    AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
+    EmployeeDeceased, EmployeeExited, EmployeeId, EmployeeNoticeWithdrawn,
+    EmployeeOnboardingCancelled, EmployeeReinstated, OnboardingCompleted, OnboardingStarted,
+    PayAccountChanged, PayrollLinesFailed, PayrollRunPaid, PayrollRunReturned,
     QualificationExpired, QualificationExpiring, SettlementDisputed, SettlementPaid,
     VisaCaseRejected,
 };
@@ -112,11 +113,33 @@ pub fn nov(day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 11, day).unwrap()
 }
 
+/// The recipients of one stop, with its reason.
+type Stop = (Vec<NotifyRecipient>, String);
+
 /// Records what the notifier is asked for.
 #[derive(Clone, Default)]
-pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>, Arc<Mutex<Vec<Stop>>>);
 
 impl Recording {
+    /// The recipients messages were stopped for, with the reason, in order.
+    pub fn stopped(&self) -> Vec<Stop> {
+        self.1.lock().unwrap().clone()
+    }
+
+    /// The requests not cancelled by a stop: those with no recipient that was
+    /// stopped afterwards.
+    pub fn waiting_of_type(&self, key: &str) -> Vec<NotifyRequest> {
+        let stopped: Vec<NotifyRecipient> = self
+            .stopped()
+            .into_iter()
+            .flat_map(|(recipients, _)| recipients)
+            .collect();
+        self.of_type(key)
+            .into_iter()
+            .filter(|r| !r.recipients.iter().any(|to| stopped.contains(to)))
+            .collect()
+    }
+
     /// Every request so far.
     pub fn all(&self) -> Vec<NotifyRequest> {
         self.0.lock().unwrap().clone()
@@ -145,6 +168,18 @@ impl Notifier for Recording {
         Box::pin(async move {
             self.0.lock().unwrap().push(request);
             Ok(vec![MessageId(1)])
+        })
+    }
+
+    fn stop_messages_to<'a>(
+        &'a self,
+        _state: &'a AppState,
+        recipients: Vec<NotifyRecipient>,
+        reason: &'a str,
+    ) -> NotifyFuture<'a, usize> {
+        Box::pin(async move {
+            self.1.lock().unwrap().push((recipients, reason.to_owned()));
+            Ok(0)
         })
     }
 }
@@ -580,6 +615,8 @@ struct Fakes {
     onboarding_cancelled: Arc<Mutex<Vec<EmployeeOnboardingCancelled>>>,
     notice_withdrawn: Arc<Mutex<Vec<EmployeeNoticeWithdrawn>>>,
     reinstated: Arc<Mutex<Vec<EmployeeReinstated>>>,
+    exited: Arc<Mutex<Vec<EmployeeExited>>>,
+    deceased: Arc<Mutex<Vec<EmployeeDeceased>>>,
     visa_rejected: Arc<Mutex<Vec<VisaCaseRejected>>>,
     attendance: AttendanceDesk,
     returned: Arc<Mutex<Vec<PayrollRunReturned>>>,
@@ -808,6 +845,8 @@ impl Module for Fakes {
         record(app, &self.onboarding_cancelled);
         record(app, &self.notice_withdrawn);
         record(app, &self.reinstated);
+        record(app, &self.exited);
+        record(app, &self.deceased);
         record(app, &self.visa_rejected);
         record(app, &self.returned);
         record(app, &self.failed);
@@ -868,6 +907,10 @@ pub struct Booted {
     pub notice_withdrawn: Recorded<EmployeeNoticeWithdrawn>,
     /// `EmployeeReinstated`.
     pub reinstated: Recorded<EmployeeReinstated>,
+    /// `EmployeeExited` events.
+    pub exited: Recorded<EmployeeExited>,
+    /// `EmployeeDeceased` events.
+    pub deceased: Recorded<EmployeeDeceased>,
     /// `VisaCaseRejected`.
     pub visa_rejected: Recorded<VisaCaseRejected>,
     /// The days employees attended.
@@ -1670,6 +1713,8 @@ async fn boot_full(
         onboarding_cancelled: Arc::default(),
         notice_withdrawn: Arc::default(),
         reinstated: Arc::default(),
+        exited: Arc::default(),
+        deceased: Arc::default(),
         visa_rejected: Arc::default(),
         attendance: AttendanceDesk::default(),
         returned: Arc::default(),
@@ -1688,6 +1733,10 @@ async fn boot_full(
         Recorded(fakes.failed.clone()),
         Recorded(fakes.paid.clone()),
         fakes.tasks.clone(),
+    );
+    let (deceased, exited) = (
+        Recorded(fakes.deceased.clone()),
+        Recorded(fakes.exited.clone()),
     );
     let (onboarding_cancelled, notice_withdrawn, reinstated, visa_rejected, attendance) = (
         Recorded(fakes.onboarding_cancelled.clone()),
@@ -1920,6 +1969,8 @@ async fn boot_full(
         onboarding_cancelled,
         notice_withdrawn,
         reinstated,
+        deceased,
+        exited,
         visa_rejected,
         attendance,
         returned,
