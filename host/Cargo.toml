@@ -15,6 +15,7 @@ wl-kernel = { path = "../crates/wl-kernel" }
 property = { path = "../apps/property" }
 construction = { path = "../apps/construction" }
 accounting = { path = "../apps/accounting" }
+clinics = { path = "../apps/clinics" }
 wl-parties = { path = "../crates/wl-parties" }
 wl-documents = { path = "../crates/wl-documents" }
 wl-notify = { path = "../crates/wl-notify" }

@@ -1,0 +1,27 @@
+//! The vertical's permissions (05 Clinics §3). Roles get them in
+//! `host/src/app/roles.rs`; the role names the rules use are the consts at
+//! the end. Bookings, check-in and the licence checks keep wl-scheduling's
+//! own permissions (`bookings.*`).
+
+/// See the clinic's appointments, visits and insurance policies in scope.
+pub const VISITS_VIEW: &str = "visits.view";
+/// See and record a patient's insurance policies and the eligibility results
+/// (`CLN.INS.02`).
+pub const POLICIES_MANAGE: &str = "insurance_policies.manage";
+/// See a patient's insurance policies (never the card image, which needs
+/// `patients.sensitive.view`, `CLN.ACL.12`).
+pub const POLICIES_VIEW: &str = "insurance_policies.view";
+/// Record, before check-in, the eligibility result and the coverage outcome
+/// of an insured visit, and have the patient sign the self-pay consent
+/// (`CLN.ACL.15`: the receptionist's).
+pub const COVERAGE_RECORD: &str = "coverage.record";
+
+/// The owner / medical director: told when a practitioner licence expires
+/// (`CLN.RUL.01`) and alerted when a compliance-critical rule fails.
+pub const OWNER_ROLE: &str = "owner";
+/// The clinic manager of a branch: the responsible role of the practitioner
+/// licence and branch privileges, told when one expires.
+pub const CLINIC_MANAGER_ROLE: &str = "clinic_manager";
+/// The receptionist of a branch: books, checks in, records the coverage
+/// outcome.
+pub const RECEPTIONIST_ROLE: &str = "receptionist";

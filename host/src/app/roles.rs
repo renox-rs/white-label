@@ -4,6 +4,7 @@
 //! (it runs on every sign-up, seed and `users:admin`).
 
 use accounting::permissions as acc;
+use clinics::permissions as cln;
 use construction::permissions as con;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
@@ -86,6 +87,13 @@ pub const TAX_SPECIALIST: &str = acc::TAX_SPECIALIST_ROLE;
 /// Billing and admin: proposals, retainers, invoices and collections
 /// (04 §3.1).
 pub const BILLING: &str = acc::BILLING_ROLE;
+/// The clinic manager of a branch (05 §3.1): runs the branch's bookings and
+/// deposits, sees its visits and insurance policies, and is told when a
+/// practitioner licence expires (`CLN.RUL.01`).
+pub const CLINIC_MANAGER: &str = cln::CLINIC_MANAGER_ROLE;
+/// The receptionist of a branch (05 §3.1): books, checks in and records the
+/// coverage outcome of an insured visit (`CLN.ACL.15`).
+pub const RECEPTIONIST: &str = cln::RECEPTIONIST_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
@@ -281,6 +289,12 @@ pub const ROLES: &[(&str, &[&str])] = &[
             scheduling::CHECKIN,
             scheduling::WAIVE_DEPOSIT,
             scheduling::RESOURCES_MANAGE,
+            // 05: the visits, the insurance policies and the coverage recorded
+            // before check-in (`CLN.ACL.15`).
+            cln::VISITS_VIEW,
+            cln::POLICIES_VIEW,
+            cln::POLICIES_MANAGE,
+            cln::COVERAGE_RECORD,
             inventory::RECALLS_MANAGE,
             con::PROJECTS_VIEW,
             con::PROJECTS_MANAGE,
@@ -660,6 +674,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_EXIT_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            scheduling::VIEW,
+            cln::VISITS_VIEW,
         ],
     ),
     (
@@ -789,6 +805,33 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LEADS_MANAGE,
             sales::SEGMENTS_MANAGE,
             sales::SEGMENTS_EXPORT,
+        ],
+    ),
+    (
+        CLINIC_MANAGER,
+        &[
+            scheduling::VIEW,
+            scheduling::VIEW_DETAILS,
+            scheduling::MANAGE,
+            scheduling::CHECKIN,
+            scheduling::WAIVE_DEPOSIT,
+            scheduling::RESOURCES_MANAGE,
+            cln::VISITS_VIEW,
+            cln::POLICIES_VIEW,
+            cln::POLICIES_MANAGE,
+            cln::COVERAGE_RECORD,
+        ],
+    ),
+    (
+        RECEPTIONIST,
+        &[
+            scheduling::VIEW,
+            scheduling::MANAGE,
+            scheduling::CHECKIN,
+            cln::VISITS_VIEW,
+            cln::POLICIES_VIEW,
+            cln::POLICIES_MANAGE,
+            cln::COVERAGE_RECORD,
         ],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),
