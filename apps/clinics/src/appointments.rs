@@ -11,6 +11,7 @@ use wl_kernel::scheduling::{BookingBooked, BookingCancelled, BookingRescheduled}
 
 use crate::appointment::Appointment;
 use crate::db::refused;
+use crate::card_requests;
 use crate::policy::InsurancePolicy;
 use crate::prior_auth_rules;
 use crate::texts::english;
@@ -46,6 +47,8 @@ pub async fn on_booked(state: &AppState, event: &BookingBooked) -> Result<Appoin
     // `CLN.RUL.07` (an appointment booked with a policy later is checked when
     // the policy is attached).
     prior_auth_rules::evaluate(state, &appointment, "booked").await?;
+    // `CLN.RUL.10` for an appointment booked inside the days it looks ahead.
+    card_requests::on_appointment(state, &appointment, "booked").await?;
     Ok(appointment)
 }
 
@@ -70,6 +73,7 @@ pub async fn on_rescheduled(state: &AppState, event: &BookingRescheduled) -> Res
     // `CLN.RUL.07`: the flag is checked again for the new day.
     if let Some(moved) = Appointment::of_booking(&state.db, event.booking.0).await? {
         prior_auth_rules::evaluate(state, &moved, "rescheduled").await?;
+        card_requests::on_appointment(state, &moved, "rescheduled").await?;
     }
     Ok(())
 }
@@ -144,6 +148,7 @@ pub async fn attach_policy(state: &AppState, booking: i64, policy: i64) -> Resul
     let attached = Appointment::find_or_404(&state.db, appointment.id).await?;
     // `CLN.RUL.07`: the payer is known now.
     prior_auth_rules::evaluate(state, &attached, "policy_attached").await?;
+    card_requests::on_appointment(state, &attached, "policy_attached").await?;
     Ok(attached)
 }
 

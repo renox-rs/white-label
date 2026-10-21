@@ -376,6 +376,19 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.flags.stopped_task",
         "Request a new prior authorisation: :number :cause",
     ),
+    ("clinics.cards.subject", "Please send us your new insurance card"),
+    (
+        "clinics.cards.body",
+        "Your insurance policy or card will not be valid on the day of your appointment at {{ clinic }} on {{ date }} at {{ time }}. Please upload your new insurance card here: {{ link }}",
+    ),
+    (
+        "clinics.flags.card_detail",
+        "The policy ends or the card expires before the visit on :date: a new card was asked for.",
+    ),
+    (
+        "clinics.policies.problem.card_expired",
+        "The card has already expired.",
+    ),
     // The insurance policies.
     ("clinics.policies.title", "Insurance policies"),
     (

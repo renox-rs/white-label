@@ -7,6 +7,7 @@ pub mod auth_check;
 pub mod authorisation;
 pub mod authorisation_machine;
 pub mod authorisations;
+pub mod card_requests;
 pub mod consent;
 pub mod coverage;
 mod db;
@@ -139,6 +140,9 @@ impl Module for Clinics {
         // `CLN.RUL.07`, `CLN.RUL.09`: the appointments that need an
         // authorisation are flagged (BL-CLN-03).
         prior_auth_rules::register(app);
+        // `CLN.RUL.10`: a policy that ends or a card that expired before the
+        // visit is asked for again (BL-CLN-04).
+        card_requests::register(app);
         // `CLN.RUL.01`: an expired licence or set of privileges is told to
         // the clinic manager of the branch and the owner (BL-CLN-12).
         licences::register(app);

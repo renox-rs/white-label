@@ -33,12 +33,14 @@
 
 use std::sync::Arc;
 
-use clinics::permissions::CLINIC_MANAGER_ROLE;
+use clinics::card_requests::CARD_KIND;
+use clinics::permissions::{CLINIC_MANAGER_ROLE, RECEPTIONIST_ROLE};
+use clinics::policy::POLICY_SUBJECT_TYPE;
 use clinics::seed::{
     self, LICENCE_KIND, LOOK_AHEAD_DAYS, PRIVILEGES_KIND, REMINDER_DAYS, REQUIRED_QUALIFICATIONS,
 };
 use renox::prelude::*;
-use wl_documents::{KindSeed, register_kind};
+use wl_documents::{KindSeed, Sensitivity, register_kind};
 use wl_kernel::Manifest;
 use wl_kernel::documents::{BlockMode, OverrideMode};
 use wl_kernel::workforce::EMPLOYEE_SUBJECT_TYPE;
@@ -78,6 +80,23 @@ pub fn privileges_kind() -> KindSeed {
     )
 }
 
+/// The insurance card as wl-documents' seed: an expiring document of the
+/// insurance policy that the patient may upload in the portal
+/// (`CLN.RUL.10`); the receptionist is the responsible role (05 §7.2
+/// *Settings for the shared negative flows*) and the class is personal data,
+/// so the image needs the permission of that class (`CLN.ACL.12`). When
+/// staff accept it, the app takes the expiry date as the card's last valid
+/// day (`clinics::card_requests::on_accepted`).
+pub fn insurance_card_kind() -> KindSeed {
+    KindSeed::new(CARD_KIND, "Insurance card")
+        .name_ar("بطاقة التأمين")
+        .subject_type(POLICY_SUBJECT_TYPE)
+        .expires()
+        .sensitivity(Sensitivity::Personal)
+        .portal_upload()
+        .responsible_role(RECEPTIONIST_ROLE)
+}
+
 /// Registers the 05 kinds with wl-documents (only for the Clinics client).
 pub fn register_documents(client_app: &str) {
     if client_app != CLINICS {
@@ -85,6 +104,7 @@ pub fn register_documents(client_app: &str) {
     }
     register_kind(licence_kind());
     register_kind(privileges_kind());
+    register_kind(insurance_card_kind());
 }
 
 /// The scheduling module with the Clinics client's values: the 05 reason

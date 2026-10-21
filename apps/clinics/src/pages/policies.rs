@@ -4,7 +4,7 @@
 //! |---|---|---|
 //! | `GET /clinics/policies` | `clinics.policies` | `insurance_policies.view` |
 //! | `POST /clinics/policies` | `clinics.policy_create` | `insurance_policies.manage` |
-//! | `POST /clinics/policies/{id}/card` | `clinics.policy_card` | `insurance_policies.manage` |
+//! | `POST /clinics/policies/{id}/card` | `clinics.policy_card` | `insurance_policies.manage` (staff accept the card; the flag of `CLN.RUL.10` clears) |
 //!
 //! The list shows the plan, the member id and the dates; the card image is
 //! not here (`CLN.ACL.12`).
@@ -15,6 +15,7 @@ use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 
 use super::{Texts, invalid, parse_date, parse_id, party_name, require, text};
+use crate::card_requests;
 use crate::permissions;
 use crate::policies::{self, NewPolicy};
 use crate::policy::InsurancePolicy;
@@ -187,7 +188,9 @@ async fn card(
 ) -> Result<Response> {
     require(&user, permissions::POLICIES_MANAGE)?;
     let valid_to = parse_date(&form.card_valid_to)?;
-    policies::update_card(&state, id, valid_to).await?;
+    // Accepting the card also clears the flag of the appointments it now
+    // covers (`CLN.RUL.10`).
+    card_requests::accept_card(&state, id, valid_to).await?;
     Ok((
         Toast::success(text(&lang, "policies.card_updated")),
         renox::HxRefresh,
