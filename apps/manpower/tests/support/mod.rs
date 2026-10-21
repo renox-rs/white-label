@@ -1071,7 +1071,7 @@ pub struct Booted {
     /// `AbsenceCaseClosed`.
     pub case_closed: Recorded<AbsenceCaseClosed>,
     /// Days the clock was moved forward from the real one.
-    clock_days: std::sync::atomic::AtomicI64,
+    clock_secs: std::sync::atomic::AtomicI64,
     /// The contracts made, for their references.
     made: std::sync::atomic::AtomicI64,
     /// Keeps the views directory alive.
@@ -1123,17 +1123,28 @@ impl Booted {
     }
 
     /// Runs `work` with the clock on `day` (Asia/Dubai) at midday, moved
-    /// forward from the real one; days only go forward within a test.
+    /// forward from the real one; days only go forward within a test. The
+    /// time of day is pinned too: a message sent in quiet hours would be
+    /// deferred, so a test that expects one at once must not depend on the
+    /// hour it runs.
     pub async fn on<F: std::future::Future>(&self, day: NaiveDate, work: F) -> F::Output {
+        use renox::chrono::Duration;
         use std::sync::atomic::Ordering;
-        let real = wl_kernel::documents::dubai_date(renox::db::now());
-        let wanted = (day - real).num_days();
-        let moved = self.clock_days.load(Ordering::SeqCst);
-        assert!(wanted >= moved, "the clock cannot go back to {day}");
-        if wanted > moved {
-            let seconds = u64::try_from(wanted - moved).unwrap() * 24 * 3600;
-            self.app.travel(std::time::Duration::from_secs(seconds));
-            self.clock_days.store(wanted, Ordering::SeqCst);
+        let moved = self.clock_secs.load(Ordering::SeqCst);
+        let now = renox::db::now() + Duration::seconds(moved);
+        // Midday in Asia/Dubai (UTC+4) is 08:00 UTC.
+        let midday = day.and_hms_opt(8, 0, 0).unwrap().and_utc();
+        let need = (midday - now).num_seconds();
+        if need > 0 {
+            self.app
+                .travel(std::time::Duration::from_secs(u64::try_from(need).unwrap()));
+            self.clock_secs.store(moved + need, Ordering::SeqCst);
+        } else {
+            assert_eq!(
+                wl_kernel::documents::dubai_date(now),
+                day,
+                "the clock cannot go back to {day}"
+            );
         }
         self.app.at_travelled_time(work).await
     }
@@ -1417,7 +1428,7 @@ pub async fn boot() -> Booted {
         tickets,
         case_opened,
         case_closed,
-        clock_days: std::sync::atomic::AtomicI64::new(0),
+        clock_secs: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),
         _views: views,
     }
