@@ -1,0 +1,13 @@
+{#- The page of the client's confirmation link (LOG.ACL.13). Opening the link
+    changes nothing; the button posts to the same signed address. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-stack>
+    <rx-page-header :title="tx['title']"/>
+    <rx-card>
+      <p>{{ tx['body'] }}</p>
+      <rx-form rx-if="can_confirm" :action="action">
+        <rx-button type="submit" variant="primary" :label="tx['button']"/>
+      </rx-form>
+    </rx-card>
+  </rx-stack>
+</rx-page>

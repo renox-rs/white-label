@@ -1,0 +1,7 @@
+{#- wl-delivery: the deliveries list, a renox::grid (search on number,
+    recipient and area; filter by status). Replace it with
+    resources/views/wl-delivery/index.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-page-header :title="tx['title']"/>
+  <rx-grid :page="deliveries"/>
+</rx-page>

@@ -9,6 +9,17 @@ pub mod bank_statement_line;
 mod bank_statement_machine;
 pub mod bank_statement_pages;
 pub mod bank_statement_parse;
+pub mod cash_count;
+pub mod cash_custody;
+pub mod cash_escalation;
+pub mod cash_hand_over;
+pub mod cash_handover;
+pub mod cash_later;
+mod cash_machine;
+pub mod cash_notices;
+pub mod cash_pages;
+pub mod cash_recovery;
+pub mod cash_settle;
 pub mod cheque;
 pub mod cheque_bounce;
 pub mod cheque_chase;
@@ -68,6 +79,8 @@ use renox::prelude::*;
 
 pub use allocation::Allocation;
 pub use bank_statement::BankStatementImport;
+pub use cash_handover::{CashHandover, CashHolder};
+pub use cash_recovery::CashRecovery;
 pub use cheque::{Cheque, ChequeLink, ChequeReturn};
 pub use config::PaymentsConfig;
 pub use deposit::Deposit;
@@ -196,6 +209,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-payments/_write_off_sheet.html",
         include_str!("../views/wl-payments/_write_off_sheet.html"),
     ),
+    (
+        "wl-payments/cash.html",
+        include_str!("../views/wl-payments/cash.html"),
+    ),
+    (
+        "wl-payments/cash_handover.html",
+        include_str!("../views/wl-payments/cash_handover.html"),
+    ),
 ];
 
 /// The module's settings in `state`: those `register` provided, else the
@@ -244,6 +265,14 @@ pub mod permissions {
     pub const EXPENSES_SUBMIT: &str = "expenses.submit";
     /// Approve, reject or return an expense claim (`FIN.ACL.11`).
     pub const EXPENSES_APPROVE: &str = "expenses.approve";
+    /// See cash handovers.
+    pub const CASH_VIEW: &str = "cash.view";
+    /// Count and recount a cash handover, record recoveries and raise a later
+    /// shortage (`FIN.ACL.05`: never the holder's own cash).
+    pub const CASH_COUNT: &str = "cash.count";
+    /// Write off a cash shortage (`FIN.ACL.06`) and approve another user's
+    /// write-off or salary deduction (`FIN.ACL.19`).
+    pub const CASH_WRITE_OFF: &str = "cash.write_off";
 }
 
 /// The payments module. The host adds it with
@@ -388,6 +417,50 @@ impl WlPayments {
         self
     }
 
+    /// Turns the recovery of a cash shortage by a salary deduction on or off
+    /// (`FIN.ACL.19`, off unless set: recovery in cash only; `⚠ open: lawyer
+    /// L-20`). When on, a deduction always needs the approval of another user
+    /// and the holder's acknowledgement, and is passed to wl-hr. Nothing in
+    /// the code turns it on.
+    pub fn cash_salary_deduction(mut self, on: bool) -> Self {
+        self.config.cash_salary_deduction = on;
+        self
+    }
+
+    /// Sets the cash shortage a user may write off without an approval, in
+    /// fils (`FIN.ACL.06`, §7: 0, always an approval; 03 sets AED 50).
+    pub fn cash_write_off_limit(mut self, fils: i64) -> Self {
+        self.config.cash_write_off_limit = fils.max(0);
+        self
+    }
+
+    /// Sets when a handover left open is escalated (`FIN.RUL.22`, §7: 12 and
+    /// 48 hours after the end of the holder's period): `task_hours` for the
+    /// manager's task to reach the holder, `admin_hours` for the notice to the
+    /// company admin and the count at what was received.
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one hour, or an admin notice before the task: a
+    /// programming error.
+    pub fn cash_escalation(mut self, task_hours: i64, admin_hours: i64) -> Self {
+        assert!(task_hours >= 1, "a task waits at least one hour");
+        assert!(
+            admin_hours >= task_hours,
+            "the admin is told with or after the task"
+        );
+        self.config.cash_escalate_hours = task_hours;
+        self.config.cash_admin_hours = admin_hours;
+        self
+    }
+
+    /// Names the manager role of a cash holder who has none recorded (default
+    /// `finance_manager`; 03: the operations manager).
+    pub fn cash_manager(mut self, role: &str) -> Self {
+        self.config.cash_manager_role = role.to_owned();
+        self
+    }
+
     /// Installs the payment gateway; without one, [`NoGateway`] knows no
     /// disputes.
     pub fn gateway(mut self, gateway: impl Gateway) -> Self {
@@ -417,6 +490,7 @@ impl Module for WlPayments {
             .merge(cheque_pages::routes())
             .merge(bank_statement_pages::routes())
             .merge(expense_claim_pages::routes())
+            .merge(cash_pages::routes())
     }
 
     fn register(&self, app: &mut Registry) {
@@ -458,6 +532,12 @@ impl Module for WlPayments {
         app.model::<ChequeReturn>();
         app.model::<cheque_settle::ChequeReplacement>();
         app.model::<cheque_write_off::ChequeWriteOff>();
+        app.model::<cash_handover::CashHolder>();
+        app.model::<CashHandover>();
+        app.model::<cash_handover::CashEntry>();
+        app.model::<cash_handover::CashCount>();
+        app.model::<cash_handover::CashPosting>();
+        app.model::<CashRecovery>();
         app.model::<FollowupTask>();
         app.model::<drawings::PaymentDrawing>();
         app.model::<expense_category::ExpenseCategory>();
@@ -476,7 +556,9 @@ impl Module for WlPayments {
             .view_data::<cheque_pages::ShowPage>()
             .view_data::<bank_statement_pages::IndexPage>()
             .view_data::<bank_statement_pages::ShowPage>()
-            .view_data::<expense_claim_pages::IndexPage>();
+            .view_data::<expense_claim_pages::IndexPage>()
+            .view_data::<cash_pages::IndexPage>()
+            .view_data::<cash_pages::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -542,6 +624,14 @@ impl Module for WlPayments {
                 .order(47)
                 .permission(permissions::EXPENSES_VIEW),
         );
+        app.nav(
+            "app",
+            NavLink::route("wl_payments.cash.index", "nav.cash")
+                .icon("banknote")
+                .group("nav.app")
+                .order(48)
+                .permission(permissions::CASH_VIEW),
+        );
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
         renox::state_machine::register::<Refund>();
@@ -549,6 +639,8 @@ impl Module for WlPayments {
         renox::state_machine::register::<Cheque>();
         renox::state_machine::register::<BankStatementImport>();
         renox::state_machine::register::<expense_claim::ExpenseClaim>();
+        renox::state_machine::register::<CashHandover>();
+        renox::state_machine::register::<CashRecovery>();
         // `BankStatementImported` and `BankStatementCompleted` after a commit.
         bank_statement_flow::register(app);
         // The settings the services read (`config_of`).
@@ -594,6 +686,23 @@ impl Module for WlPayments {
         refund_machine::register(app);
         // `RefundFailed` and its notices after a commit.
         refund_fail::register(app);
+        // Cash custody (`FIN.CSH.01`): how other modules put cash into a
+        // holder's handover.
+        wl_kernel::custody::provide_custody(app, cash_custody::Custody);
+        // How a vertical raises a later shortage against a holder (03: a
+        // delivery reversed with the driver liable).
+        wl_kernel::custody::provide_shortage_raiser(app, cash_later::Raiser);
+        cash_notices::register_types();
+        // `CashHandoverCounted` and `CashShortage` after a count.
+        cash_count::register(app);
+        // `RunHandedOver`: the cash moves between the drivers' handovers.
+        cash_hand_over::register(app);
+        // The write-off approval (`FIN.ACL.06`) and `CashShortageSettled`.
+        cash_settle::register(app, self.config.cash_write_off_limit);
+        // The salary deduction approval (`FIN.ACL.19`).
+        cash_recovery::register(app);
+        // `FIN.RUL.22`: a handover left open is escalated.
+        cash_escalation::register(app);
         // `FIN.RUL.21`: a failed gateway refund is retried once; otherwise
         // the accountant changes its method.
         refund_retry::register(app);

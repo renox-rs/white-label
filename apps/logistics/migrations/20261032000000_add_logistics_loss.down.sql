@@ -1,0 +1,10 @@
+DROP TABLE "logistics_trace_tasks";
+ALTER TABLE "logistics_shipments" DROP COLUMN claim_invoice_id;
+ALTER TABLE "logistics_shipments" DROP COLUMN claim_choice;
+ALTER TABLE "logistics_shipments" DROP COLUMN claim_settled_at;
+ALTER TABLE "logistics_shipments" DROP COLUMN claim_settled_amount;
+ALTER TABLE "logistics_shipments" DROP COLUMN lost_cod;
+ALTER TABLE "logistics_shipments" DROP COLUMN found_depot;
+ALTER TABLE "logistics_shipments" DROP COLUMN lost_from;
+ALTER TABLE "logistics_shipments" DROP COLUMN lost_at;
+ALTER TABLE "logistics_shipments" DROP COLUMN lost_reason;

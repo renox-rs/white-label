@@ -339,6 +339,19 @@ pub trait AttendanceHistory: Send + Sync + 'static {
     ) -> LabourFuture<'a, Vec<NaiveDate>> {
         Box::pin(async { Ok(Vec::new()) })
     }
+
+    /// Whether `employee` has an attendance record that counts (any but a
+    /// rejected one) whose check-in is after `since` (an instant): the
+    /// depot check-in `LOG.RUL.13` looks for after a run's clock started
+    /// (`HRM.ATT.01`). The default is no.
+    fn checked_in_since<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+        _since: renox::db::DateTime,
+    ) -> LabourFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 }
 
 /// The attendance history when none is provided: nobody attended.
@@ -359,6 +372,43 @@ pub fn attendance_history(state: &AppState) -> std::sync::Arc<dyn AttendanceHist
     match state.provided::<std::sync::Arc<dyn AttendanceHistory>>() {
         Some(history) => std::sync::Arc::clone(&history),
         None => std::sync::Arc::new(NoAttendanceHistory),
+    }
+}
+
+/// When a user's shift ends on a day (wl-attendance rosters, `HRM.ROS.01`):
+/// the clock `LOG.RUL.13` starts from for a run still out. The rosters are a
+/// later issue, so nothing provides it yet; without one [`shift_calendar`]
+/// gives [`NoShiftCalendar`] and the caller takes 23:59 of the day.
+pub trait ShiftCalendar: Send + Sync + 'static {
+    /// The end of the shift of `user_id` on `date` (Asia/Dubai), if one is
+    /// recorded. The default has none.
+    fn shift_end<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user_id: i64,
+        _date: NaiveDate,
+    ) -> LabourFuture<'a, Option<renox::db::DateTime>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The calendar when none is provided: no shift is recorded.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoShiftCalendar;
+
+impl ShiftCalendar for NoShiftCalendar {}
+
+/// Makes `calendar` the app's [`ShiftCalendar`].
+pub fn provide_shift_calendar(app: &mut Registry, calendar: impl ShiftCalendar) {
+    let calendar: std::sync::Arc<dyn ShiftCalendar> = std::sync::Arc::new(calendar);
+    app.provide(calendar);
+}
+
+/// The app's [`ShiftCalendar`], or [`NoShiftCalendar`] when none is provided.
+pub fn shift_calendar(state: &AppState) -> std::sync::Arc<dyn ShiftCalendar> {
+    match state.provided::<std::sync::Arc<dyn ShiftCalendar>>() {
+        Some(calendar) => std::sync::Arc::clone(&calendar),
+        None => std::sync::Arc::new(NoShiftCalendar),
     }
 }
 

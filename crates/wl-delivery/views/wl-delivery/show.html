@@ -1,0 +1,144 @@
+{#- wl-delivery: a delivery's page: details, lines with the delivered and
+    refused quantities, attempts, the saved proof (never edited), the
+    actions of the dispatcher (assign to a planned run, unassign, cancel)
+    and the history. Replace it with resources/views/wl-delivery/show.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="delivery.number">
+  <rx-stack>
+    <rx-page-header :title="delivery.number" :subtitle="delivery.recipient_name" :back="route('wl_delivery.index')" :back-label="tx['title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="can_assign" :id="'assign-delivery-' ~ delivery.id" :label="tx['actions.assign']" :action="route('wl_delivery.assign', delivery.id)"
+                       :title="tx['actions.assign_title']" :description="tx['actions.assign_description']" :submit-label="tx['actions.assign']" icon="truck">
+        <rx-select name="run_id" :label="tx['fields.run']" :options="planned_runs" :selected="''" :id="'assign-run-' ~ delivery.id" required/>
+      </rx-action-sheet>
+      <rx-confirm rx-if="can_unassign" :id="'unassign-delivery-' ~ delivery.id" :label="tx['actions.unassign']" :action="route('wl_delivery.unassign', delivery.id)" method="POST"
+                  :title="tx['actions.unassign']" :message="tx['actions.unassign_description']" :confirm-label="tx['actions.unassign']"/>
+      <rx-action-sheet rx-if="can_open_review" :id="'open-review-' ~ delivery.id" :label="tx['actions.open_review']" :action="route('wl_delivery.open_review', delivery.id)"
+                       :title="tx['actions.open_review_title']" :description="tx['actions.open_review_description']" :submit-label="tx['actions.open_review']" icon="flag" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['actions.open_review_reason']" :id="'open-review-reason-' ~ delivery.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_close_review" :id="'close-review-' ~ delivery.id" :label="tx['actions.close_review']" :action="route('wl_delivery.close_review', delivery.id)"
+                       :title="tx['actions.close_review_title']" :description="tx['actions.close_review_description']" :submit-label="tx['actions.close_review']" icon="check-check">
+        <rx-select name="outcome" :label="tx['actions.close_review_outcome']" :options="review_outcomes" :selected="'upheld'" :id="'close-review-outcome-' ~ delivery.id" required/>
+        <rx-textarea name="note" :label="tx['actions.close_review_note']" :id="'close-review-note-' ~ delivery.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_mark_lost" :id="'mark-lost-' ~ delivery.id" :label="tx['actions.mark_lost']" :action="route('wl_delivery.mark_lost', delivery.id)"
+                       :title="tx['actions.mark_lost_title']" :description="tx['actions.mark_lost_description']" :submit-label="tx['actions.mark_lost']" icon="package-x" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['actions.mark_lost_reason']" :id="'mark-lost-reason-' ~ delivery.id" required/>
+        <rx-select name="liability" :label="tx['actions.mark_lost_liability']" :options="liabilities" :selected="'none'" :id="'mark-lost-liability-' ~ delivery.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_reverse" :id="'reverse-' ~ delivery.id" :label="tx['reverse.action']" :action="route('wl_delivery.reverse', delivery.id)"
+                       :title="tx['reverse.title']" :description="tx['reverse.description']" :submit-label="tx['reverse.action']" icon="undo-2" variant="danger" danger>
+        <rx-select name="reason" :label="tx['reverse.reason']" :options="reversal_reasons" :selected="''" :id="'reverse-reason-' ~ delivery.id" required/>
+        <rx-select name="liability" :label="tx['reverse.liability']" :options="liabilities" :selected="'none'" :id="'reverse-liability-' ~ delivery.id" required/>
+        <rx-textarea name="note" :label="tx['reverse.note']" :id="'reverse-note-' ~ delivery.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_decide_reversal" :id="'reverse-approve-' ~ delivery.id" :label="tx['reverse.approve']" :action="route('wl_delivery.reverse_approve', delivery.id)"
+                       :title="tx['reverse.approve_title']" :description="tx['reverse.approve_description']" :submit-label="tx['reverse.approve']" icon="check">
+        <rx-select rx-if="reversal.handed_over" name="cash_treatment" :label="tx['reverse.cash']" :options="cash_choices" :selected="''" :id="'reverse-cash-' ~ delivery.id" required/>
+        <rx-textarea name="comment" :label="tx['reverse.comment']" :id="'reverse-approve-comment-' ~ delivery.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_decide_reversal" :id="'reverse-reject-' ~ delivery.id" :label="tx['reverse.reject']" :action="route('wl_delivery.reverse_reject', delivery.id)"
+                       :title="tx['reverse.reject_title']" :description="tx['reverse.reject_description']" :submit-label="tx['reverse.reject']" icon="x" variant="danger" danger>
+        <rx-textarea name="comment" :label="tx['reverse.comment']" :id="'reverse-reject-comment-' ~ delivery.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_find" :id="'found-' ~ delivery.id" :label="tx['actions.found']" :action="route('wl_delivery.found', delivery.id)"
+                       :title="tx['actions.found_title']" :description="tx['actions.found_description']" :submit-label="tx['actions.found']" icon="package-check">
+        <rx-input name="depot" :label="tx['actions.found_depot']" :id="'found-depot-' ~ delivery.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_decide_cod" :id="'cod-approve-' ~ delivery.id" :label="tx['cod.approve']" :action="route('wl_delivery.cod_approve', delivery.id)"
+                       :title="tx['cod.approve_title']" :description="tx['cod.approve_description']" :submit-label="tx['cod.approve']" icon="check">
+        <rx-select name="absorbed_by" :label="tx['cod.absorbed_by']" :options="cod_absorbers" :selected="''" :id="'cod-absorbed-' ~ delivery.id"/>
+        <rx-textarea name="instruction" :label="tx['cod.instruction']" :id="'cod-approve-instruction-' ~ delivery.id"/>
+        <rx-textarea name="comment" :label="tx['cod.comment']" :id="'cod-approve-comment-' ~ delivery.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_decide_cod" :id="'cod-reject-' ~ delivery.id" :label="tx['cod.reject']" :action="route('wl_delivery.cod_reject', delivery.id)"
+                       :title="tx['cod.reject_title']" :description="tx['cod.reject_description']" :submit-label="tx['cod.reject']" icon="x" variant="danger" danger>
+        <rx-textarea name="comment" :label="tx['cod.comment']" :id="'cod-reject-comment-' ~ delivery.id" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card rx-if="reversal" :title="tx['reverse.request_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['reverse.requested_by']" :value="reversal.requested_by"/>
+        <rx-entry :label="tx['reverse.reason']" :value="reversal.reason"/>
+        <rx-entry :label="tx['reverse.liability']" :value="reversal.liability"/>
+        <rx-entry :label="tx['reverse.handed_over']" :value="tx['yes'] if reversal.handed_over else tx['no']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="cod_request" :title="tx['cod.request_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['cod.requested_by']" :value="cod_request.requested_by"/>
+        <rx-entry :label="tx['proof.cash_expected']" :value="cod_request.expected"/>
+        <rx-entry :label="tx['proof.cash_collected']" :value="cod_request.collected"/>
+        <rx-entry :label="tx['cod.difference']" :value="cod_request.difference"/>
+        <rx-entry :label="tx['cod.reason']" :value="cod_request.reason"/>
+        <rx-entry :label="tx['cod.expires']" :value="cod_request.expires" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="lost" :title="tx['lost.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['lost.reason']" :value="lost.reason"/>
+        <rx-entry :label="tx['lost.liability']" :value="lost.liability"/>
+        <rx-entry :label="tx['lost.claim']" :value="lost.claim" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="review" :title="tx['review.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['review.reason']" :value="review.reason"/>
+        <rx-entry :label="tx['review.ticket']" :value="review.ticket" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['review.frozen']" :value="tx['yes'] if review.frozen else tx['no']"/>
+        <rx-entry :label="tx['review.note']" :value="review.note" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.number']" :value="delivery.number" copyable/>
+        <rx-entry :label="tx['fields.source']" :value="delivery.source_type ~ ' #' ~ delivery.source_id"/>
+        <rx-entry :label="tx['fields.recipient']" :value="delivery.recipient_name"/>
+        <rx-entry :label="tx['fields.phone']" :value="delivery.recipient_phone" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.address']" :value="delivery.address" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.area']" :value="delivery.area" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.window']" :value="card.window" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.run']" rx-if="card.run" :value="card.run" :url="'/runs/' ~ delivery.run_id"/>
+        <rx-entry :label="tx['fields.amount_to_collect']" :value="card.amount_to_collect"/>
+        <rx-entry :label="tx['fields.pod_required']" :value="card.pod_required"/>
+        <rx-entry :label="tx['fields.partial_acceptance']" :value="card.partial_acceptance"/>
+        <rx-entry :label="tx['fields.attempts']" :value="card.attempts"/>
+        <rx-entry :label="tx['fields.instructions']" :value="delivery.instructions" span="full" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['sections.lines']" card>
+      <rx-column :label="tx['lines.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['lines.quantity']">{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['lines.delivered']">{{ line.delivered }}</rx-column>
+      <rx-column :label="tx['lines.refused']">{{ line.refused }}</rx-column>
+      <rx-column :label="tx['lines.reason']" hide-narrow>{{ line.reason or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['lines.none']" icon="package"/></rx-slot>
+    </rx-table>
+    <rx-card rx-if="proof" :title="tx['sections.proof']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['proof.recipient']" :value="proof.recipient_name" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['proof.methods']" :value="proof.methods"/>
+        <rx-entry :label="tx['proof.at']" :value="proof.at"/>
+        <rx-entry :label="tx['proof.cash_expected']" :value="proof.cash_expected"/>
+        <rx-entry :label="tx['proof.cash_collected']" :value="proof.cash_collected"/>
+        <rx-entry :label="tx['cod.reason']" rx-if="proof.difference_reason" :value="proof.difference_reason"/>
+        <rx-entry :label="tx['cod.absorbed_by']" rx-if="proof.absorbed_by" :value="proof.absorbed_by"/>
+        <rx-entry :label="tx['proof.cheque']" :value="proof.cheque" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="attempts" as="attempt" :key="attempt.id" :caption="tx['sections.attempts']" card>
+      <rx-column :label="tx['attempts.number']">{{ attempt.number }}</rx-column>
+      <rx-column :label="tx['attempts.outcome']">{{ attempt.outcome }}</rx-column>
+      <rx-column :label="tx['attempts.reason']" hide-narrow>{{ attempt.reason or "" }}</rx-column>
+      <rx-column :label="tx['attempts.at']">{{ attempt.at }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['attempts.none']" icon="map-pin"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['history.none']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

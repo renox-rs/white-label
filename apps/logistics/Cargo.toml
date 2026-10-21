@@ -1,0 +1,33 @@
+[package]
+name = "logistics"
+description = "Logistics: the vertical app for courier and freight companies (shipments, parcels, hub scans, COD remittance, freight jobs)."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real delivery module in the integration tests: a shipment is the source
+# of its delivery, and follows the delivery's events.
+wl-delivery = { path = "../../crates/wl-delivery" }
+# The real payments module in the remittance tests: the payout is an outgoing
+# transfer recorded through the kernel's payments contract.
+wl-payments = { path = "../../crates/wl-payments" }
+# The real wl-parties in the blocked-client tests: the block and the exception
+# of `PTY.ACL.03` are its block guard's.
+wl-parties = { path = "../../crates/wl-parties" }
+# The real wl-invoicing in the freight tests: the supplementary invoice of a
+# reopened job is a real draft, issued by a user.
+wl-invoicing = { path = "../../crates/wl-invoicing" }
+# The real wl-hr and wl-attendance in the cash-watch tests: the absence note of
+# a driver is a real absence case on his HR record, and a check-in is a real
+# attendance record.
+wl-hr = { path = "../../crates/wl-hr" }
+wl-attendance = { path = "../../crates/wl-attendance" }

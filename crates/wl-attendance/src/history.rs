@@ -7,7 +7,8 @@
 
 use std::collections::BTreeSet;
 
-use renox::chrono::NaiveDate;
+use renox::chrono::{Duration, NaiveDate};
+use renox::db::DateTime;
 use renox::prelude::*;
 use wl_kernel::attendance::{AttendanceHistory, LabourFuture};
 use wl_kernel::workforce::EmployeeId;
@@ -39,6 +40,29 @@ pub async fn attended_days(
     Ok(days.into_iter().collect())
 }
 
+/// Whether `employee` has a record that counts whose check-in is after
+/// `since`.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn checked_in_since(
+    state: &AppState,
+    employee: EmployeeId,
+    since: DateTime,
+) -> Result<bool> {
+    // A record belongs to the day of its check-in (Asia/Dubai, UTC+4): a day
+    // before the day of `since`, less one for the offset, cannot hold one.
+    let from = (since - Duration::days(1)).date_naive();
+    let records = AttendanceRecord::query()
+        .where_(AttendanceRecord::EMPLOYEE_ID.eq(employee.0))
+        .where_(AttendanceRecord::DATE.gte(from))
+        .where_(AttendanceRecord::STATUS.is_in(AttendanceStatus::LIVE))
+        .get(&state.db)
+        .await?;
+    Ok(records.iter().any(|record| record.check_in > since))
+}
+
 /// The module's [`AttendanceHistory`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Attended;
@@ -52,5 +76,14 @@ impl AttendanceHistory for Attended {
         to: NaiveDate,
     ) -> LabourFuture<'a, Vec<NaiveDate>> {
         Box::pin(attended_days(state, employee, from, to))
+    }
+
+    fn checked_in_since<'a>(
+        &'a self,
+        state: &'a AppState,
+        employee: EmployeeId,
+        since: DateTime,
+    ) -> LabourFuture<'a, bool> {
+        Box::pin(checked_in_since(state, employee, since))
     }
 }
