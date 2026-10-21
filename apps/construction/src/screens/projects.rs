@@ -17,6 +17,7 @@ use crate::watch::{self, EXPIRY_DAYS, WAIT_DAYS};
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct IpaLink {
     label: String,
+    number: i64,
     url: String,
     status: String,
     status_kind: &'static str,
@@ -48,6 +49,7 @@ pub(crate) struct ProjectsPage {
     in_progress: usize,
     contract_total: i64,
     waiting: usize,
+    waiting_hint: String,
 }
 
 /// The page of the projects `user` may see.
@@ -109,6 +111,7 @@ pub(crate) async fn page(state: &AppState, user: &AuthUser, lang: &Lang) -> Resu
                         "construction.screen.projects.ipa_label",
                         &[("number", &ipa.number)],
                     ),
+                    number: ipa.number,
                     url: ipa_url(ipa.id),
                     status: word(lang, "status", ipa.status.as_str()),
                     status_kind: ipa_kind(ipa.status),
@@ -121,33 +124,15 @@ pub(crate) async fn page(state: &AppState, user: &AuthUser, lang: &Lang) -> Resu
     let contract_total = projects.iter().map(|project| project.contract_value).sum();
     let attention = waiting_ipas.len() + expiring.len() + waiting_variations.len();
     Ok(View::typed(ProjectsPage {
-        tx: tx(
-            lang,
-            &[
-                "projects.title",
-                "projects.subtitle",
-                "projects.code",
-                "projects.name",
-                "projects.client",
-                "status",
-                "projects.contract_value",
-                "projects.ipas",
-                "projects.reports",
-                "projects.waiting",
-                "projects.closing",
-                "projects.variations",
-                "projects.in_progress",
-                "projects.contract_total",
-                "projects.attention",
-                "projects.no_ipas",
-                "projects.empty",
-                "projects.empty_text",
-            ],
-        ),
+        tx: tx(lang),
         projects: rows,
         in_progress,
         contract_total,
         waiting: attention,
+        waiting_hint: english(
+            "construction.screen.projects.waiting_hint",
+            &[("days", &WAIT_DAYS), ("expiry", &EXPIRY_DAYS)],
+        ),
     })
     .into_response())
 }

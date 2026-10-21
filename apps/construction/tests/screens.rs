@@ -56,7 +56,7 @@ async fn the_projects_page_lists_the_projects_with_their_reports_and_ipas() {
     assert!(html.contains("Marina Tower fit-out"), "{html}");
     assert!(html.contains("In progress"), "the status in words: {html}");
     assert!(html.contains("AED 2,000,000.00"), "the contract value");
-    assert!(html.contains("IPA 3"), "the IPA label");
+    assert!(html.contains(">3</a>"), "the IPA number as a link: {html}");
     assert!(html.contains(&format!("/construction/ipas/{}", ipa.id)));
     assert!(html.contains(&format!("/construction/projects/{}/closing", project.id)));
     assert!(html.contains(&format!(

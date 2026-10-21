@@ -24,6 +24,7 @@ use wl_kernel::PartyId;
 
 use crate::ipa::IpaStatus;
 use crate::project::ProjectStatus;
+use crate::screen_texts::SCREEN_TEXTS;
 use crate::texts::t;
 use crate::variation::VariationStatus;
 
@@ -51,11 +52,16 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
 /// The texts a template reads as `tx['projects.title']`.
 pub(crate) type Texts = BTreeMap<&'static str, String>;
 
-/// The texts named `names`, from the keys `construction.screen.<name>`.
-pub(crate) fn tx(lang: &Lang, names: &[&'static str]) -> Texts {
-    names
+/// The prefix of the keys of the screens' texts.
+const PREFIX: &str = "construction.screen.";
+
+/// Every text of the screens, by the name a template reads (`tx['ipa.claimed']`
+/// is the key `construction.screen.ipa.claimed`). A page hands over all of
+/// them, so a template an app replaces may read any.
+pub(crate) fn tx(lang: &Lang) -> Texts {
+    SCREEN_TEXTS
         .iter()
-        .map(|name| (*name, t(lang, &format!("construction.screen.{name}"))))
+        .filter_map(|(key, _)| Some((key.strip_prefix(PREFIX)?, t(lang, key))))
         .collect()
 }
 
@@ -141,11 +147,9 @@ pub(crate) const PROJECTS_URL: &str = "/construction/projects";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen_texts::SCREEN_TEXTS;
 
-    /// Every `tx['name']` a template reads is a text of the crate, and every
-    /// name a page hands over (`tx(lang, &[...])`) is read by its template or
-    /// by none: a missing text would show as a raw key on the page.
+    /// Every `tx['name']` a template reads is a text of the crate: a missing
+    /// one would show as nothing, or as a raw key, on the page.
     #[test]
     fn every_text_a_template_reads_exists() {
         for (name, source) in VIEWS {

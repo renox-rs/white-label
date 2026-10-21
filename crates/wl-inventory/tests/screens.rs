@@ -92,7 +92,7 @@ async fn the_suppliers_of_an_item_are_a_page_with_flags_and_prices() {
     let page = t.browse(&manager, &path).await;
     page.assert_ok();
     let html = page.text();
-    assert!(html.contains("Suppliers of CEMENT"), "{html}");
+    assert!(html.contains("Suppliers of Cement 50 kg"), "{html}");
     assert!(html.contains("Cement 50 kg"));
     assert!(html.contains("Preferred") && html.contains("Alternative"));
     assert!(

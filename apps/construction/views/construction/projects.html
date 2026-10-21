@@ -9,30 +9,32 @@
     <rx-stats columns="3" rx-if="projects">
       <rx-stat :label="tx['projects.in_progress']" :value="in_progress" icon="hard-hat"/>
       <rx-stat :label="tx['projects.contract_total']" :value="contract_total | money(currency='AED')" icon="banknote"/>
-      <rx-stat :label="tx['projects.attention']" :value="waiting" icon="hourglass"/>
+      <rx-stat :label="tx['projects.attention']" :value="waiting" icon="clock"/>
     </rx-stats>
-    <rx-table :rows="projects" as="project" :key="project.id" :caption="tx['projects.title']" card>
-      <rx-column :label="tx['projects.code']"><a href="{{ project.closing_url }}">{{ project.code }}</a></rx-column>
-      <rx-column :label="tx['projects.name']">{{ project.name }}</rx-column>
-      <rx-column :label="tx['projects.client']" hide-narrow>{{ project.client }}</rx-column>
-      <rx-column :label="tx['status']"><rx-badge :kind="project.status_kind" :text="project.status"/></rx-column>
-      <rx-column :label="tx['projects.contract_value']" align="num" hide-narrow>{{ project.contract_value | money(currency='AED') }}</rx-column>
-      <rx-column :label="tx['projects.ipas']" hide-narrow>
-        <rx-row>
-          <a rx-for="ipa in project.ipas" href="{{ ipa.url }}">{{ ipa.label }}</a>
-          <span rx-if="not project.ipas">{{ tx['projects.no_ipas'] }}</span>
-        </rx-row>
-      </rx-column>
-      <rx-column :label="tx['projects.waiting']" hide-narrow>
+    <rx-alert rx-if="projects" kind="info" :message="waiting_hint"/>
+    <rx-table :rows="projects" as="project" :key="project.id" :caption="tx['projects.title']">
+      <rx-column :label="tx['projects.name']">
         <rx-stack>
-          <rx-badge rx-for="flag in project.flags" kind="warning" :text="flag"/>
+          <span><a href="{{ project.closing_url }}">{{ project.code }}</a> {{ project.name }}</span>
+          <span class="rx-subtitle">{{ project.client }}</span>
+          <span>
+            <rx-badge :kind="project.status_kind" :text="project.status"/>
+            <template rx-for="flag in project.flags"> <rx-badge kind="warning" :text="flag"/></template>
+          </span>
         </rx-stack>
       </rx-column>
+      <rx-column :label="tx['projects.contract_value']" align="num" hide-narrow>{{ project.contract_value | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['projects.ipas']" hide-narrow>
+        <span>
+          <template rx-for="ipa in project.ipas"><a href="{{ ipa.url }}">{{ ipa.number }}</a> </template>
+          <span rx-if="not project.ipas">{{ tx['projects.no_ipas'] }}</span>
+        </span>
+      </rx-column>
       <rx-column :label="tx['projects.reports']">
-        <rx-row>
+        <rx-stack>
           <a href="{{ project.closing_url }}">{{ tx['projects.closing'] }}</a>
           <a href="{{ project.variations_url }}">{{ tx['projects.variations'] }}</a>
-        </rx-row>
+        </rx-stack>
       </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['projects.empty']" :message="tx['projects.empty_text']" icon="hard-hat"/></rx-slot>
     </rx-table>

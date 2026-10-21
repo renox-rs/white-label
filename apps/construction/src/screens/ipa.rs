@@ -94,12 +94,12 @@ pub(crate) fn page(
         link(
             "construction.screen.ipa.closing",
             closing_url(project.id),
-            "clipboard-check",
+            "clipboard-list",
         ),
         link(
             "construction.screen.ipa.variations",
             variations_url(project.id),
-            "git-compare",
+            "file-text",
         ),
     ];
     if let Some(id) = ipa.invoice_id {
@@ -113,7 +113,7 @@ pub(crate) fn page(
         links.push(link(
             "construction.screen.ipa.credit_note",
             format!("/credit-notes/{id}"),
-            "file-minus",
+            "file-text",
         ));
     }
     if ipa.dispute_id.is_some() {
@@ -121,7 +121,11 @@ pub(crate) fn page(
         let url = ipa
             .invoice_id
             .map_or_else(|| ipa_url(ipa.id), |id| format!("/invoices/{id}"));
-        links.push(link("construction.screen.ipa.dispute", url, "scale"));
+        links.push(link(
+            "construction.screen.ipa.dispute",
+            url,
+            "triangle-alert",
+        ));
     }
     if let Some(id) = ipa.supplier_bill_id {
         links.push(link(
@@ -139,35 +143,7 @@ pub(crate) fn page(
         english("construction.screen.ipa.title", &[("number", &ipa.number)])
     };
     View::typed(IpaPage {
-        tx: tx(
-            lang,
-            &[
-                "ipa.back",
-                "ipa.summary",
-                "ipa.valuation_on",
-                "ipa.claimed",
-                "ipa.certified",
-                "ipa.claim_gap",
-                "ipa.previous_certified",
-                "ipa.submitted_on",
-                "ipa.certified_on",
-                "ipa.certificate",
-                "ipa.late_certificate",
-                "ipa.decision",
-                "ipa.decided",
-                "ipa.previous_pending",
-                "ipa.deductions",
-                "ipa.deductions_hint",
-                "ipa.no_deductions",
-                "ipa.no_value",
-                "kind",
-                "reference",
-                "description",
-                "amount",
-                "status",
-                "related",
-            ],
-        ),
+        tx: tx(lang),
         title,
         subtitle: format!("{} · {}", project.code, project.name),
         back_url: PROJECTS_URL.to_owned(),

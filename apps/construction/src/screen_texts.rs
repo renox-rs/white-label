@@ -80,19 +80,23 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("construction.screen.projects.ipas", "IPAs"),
     ("construction.screen.projects.reports", "Reports"),
     ("construction.screen.projects.waiting", "Needs attention"),
-    ("construction.screen.projects.closing", "Closing"),
     (
-        "construction.screen.projects.variations",
-        "Variation report",
+        "construction.screen.projects.waiting_hint",
+        "IPAs and variations the client has not answered in {{ days }} days; guarantees ending within {{ expiry }} days.",
     ),
-    ("construction.screen.projects.in_progress", "In progress"),
+    ("construction.screen.projects.closing", "Closing"),
+    ("construction.screen.projects.variations", "Variations"),
+    (
+        "construction.screen.projects.in_progress",
+        "Projects in progress",
+    ),
     (
         "construction.screen.projects.contract_total",
         "Contract value in total",
     ),
     (
         "construction.screen.projects.attention",
-        "Waiting for the client",
+        "Waiting on the client",
     ),
     ("construction.screen.projects.no_ipas", "No IPAs yet"),
     ("construction.screen.projects.empty", "No projects yet"),
@@ -102,15 +106,15 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ),
     (
         "construction.screen.projects.ipas_waiting",
-        "{{ count }} IPA(s) waiting over {{ days }} days",
+        "{{ count }} IPA(s) waiting",
     ),
     (
         "construction.screen.projects.guarantees_expiring",
-        "{{ count }} guarantee(s) ending within {{ days }} days",
+        "{{ count }} guarantee(s) ending",
     ),
     (
         "construction.screen.projects.variations_waiting",
-        "{{ count }} variation(s) unanswered over {{ days }} days",
+        "{{ count }} variation(s) unanswered",
     ),
     ("construction.screen.projects.ipa_label", "IPA {{ number }}"),
     // An IPA.
@@ -225,6 +229,7 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ),
     ("construction.screen.closing.approved", "Approved"),
     ("construction.screen.closing.ipa", "IPA"),
+    ("construction.screen.closing.deduction", "Deduction"),
     ("construction.screen.closing.reason_column", "Reason"),
     // The variation report.
     ("construction.screen.variations.title", "Variation report"),
@@ -233,12 +238,7 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("construction.screen.variations.priced", "Priced"),
     ("construction.screen.variations.approved", "Approved"),
     ("construction.screen.variations.gap", "Not approved"),
-    ("construction.screen.variations.days_asked", "Days asked"),
-    (
-        "construction.screen.variations.days_granted",
-        "Days granted",
-    ),
-    ("construction.screen.variations.days_gap", "Days refused"),
+    ("construction.screen.variations.days_unit", "days"),
     ("construction.screen.variations.unrecovered", "Unrecovered"),
     ("construction.screen.variations.late", "Notice late"),
     (

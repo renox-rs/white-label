@@ -30,12 +30,15 @@
     </rx-card>
     <rx-card :title="tx['ipa.deductions']" :subtitle="tx['ipa.deductions_hint']">
       <rx-table :rows="deductions" as="line" :key="line.reference" :caption="tx['ipa.deductions']">
-        <rx-column :label="tx['kind']">{{ line.kind }}</rx-column>
-        <rx-column :label="tx['reference']">{{ line.reference }}</rx-column>
+        <rx-column :label="tx['kind']">
+          <rx-stack>
+            <span>{{ line.kind }} <span class="rx-subtitle">{{ line.reference }}</span></span>
+            <span><rx-badge :kind="line.status_kind" :text="line.status"/></span>
+          </rx-stack>
+        </rx-column>
         <rx-column :label="tx['description']" hide-narrow>{{ line.description }}</rx-column>
         <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
-        <rx-column :label="tx['status']"><rx-badge :kind="line.status_kind" :text="line.status"/></rx-column>
-        <rx-slot name="empty"><rx-empty :title="tx['ipa.no_deductions']" icon="minus-circle"/></rx-slot>
+        <rx-slot name="empty"><rx-empty :title="tx['ipa.no_deductions']" icon="minus"/></rx-slot>
       </rx-table>
     </rx-card>
   </rx-stack>

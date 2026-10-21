@@ -5,24 +5,25 @@
 <rx-page layout="layouts/app.html" :title="title">
   <rx-stack>
     <rx-page-header :title="title" :subtitle="subtitle" :back="back_url" :back-label="tx['variations.back']">
-      <rx-link-button :href="closing_url" :label="tx['variations.closing']" icon="clipboard-check" variant="secondary"/>
+      <rx-link-button :href="closing_url" :label="tx['variations.closing']" icon="clipboard-list" variant="secondary"/>
     </rx-page-header>
     <rx-stats columns="3" rx-if="rows">
       <rx-stat :label="tx['variations.total_approved']" :value="total_approved | money(currency='AED')" icon="circle-check"/>
-      <rx-stat :label="tx['variations.total_gap']" :value="total_gap | money(currency='AED')" icon="scale"/>
+      <rx-stat :label="tx['variations.total_gap']" :value="total_gap | money(currency='AED')" icon="triangle-alert"/>
       <rx-stat :label="tx['variations.total_unrecovered']" :value="total_unrecovered | money(currency='AED')" icon="triangle-alert"/>
     </rx-stats>
-    <rx-table :rows="rows" as="line" :key="line.label" :caption="title" card>
-      <rx-column :label="tx['variations.variation']">{{ line.label }}</rx-column>
-      <rx-column :label="tx['kind']" hide-narrow>{{ line.kind }}</rx-column>
-      <rx-column :label="tx['status']"><rx-badge :kind="line.status_kind" :text="line.status"/> <rx-badge rx-if="line.notice_late" kind="error" :text="tx['variations.late']"/></rx-column>
-      <rx-column :label="tx['variations.priced']" align="num" hide-narrow>{{ '' if line.is_time else line.priced_amount | money(currency='AED') }}</rx-column>
-      <rx-column :label="tx['variations.approved']" align="num">{{ '' if line.is_time or line.approved_amount is none else line.approved_amount | money(currency='AED') }}</rx-column>
-      <rx-column :label="tx['variations.gap']" align="num" hide-narrow>{{ '' if line.gap is none else line.gap | money(currency='AED') }}</rx-column>
-      <rx-column :label="tx['variations.days_asked']" align="num" hide-narrow>{{ line.days_asked if line.days_asked is not none else '' }}</rx-column>
-      <rx-column :label="tx['variations.days_granted']" align="num" hide-narrow>{{ line.days_granted if line.days_granted is not none else '' }}</rx-column>
-      <rx-column :label="tx['variations.unrecovered']" align="num">{{ line.unrecovered_amount | money(currency='AED') if line.unrecovered_amount else '' }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['variations.empty']" :message="tx['variations.empty_text']" icon="git-compare"/></rx-slot>
+    <rx-table :rows="rows" as="line" :key="line.label" :caption="title">
+      <rx-column :label="tx['variations.variation']">
+        <rx-stack>
+          <span>{{ line.label }} <span class="rx-subtitle">{{ line.kind }}</span></span>
+          <span><rx-badge :kind="line.status_kind" :text="line.status"/><template rx-if="line.notice_late"> <rx-badge kind="error" :text="tx['variations.late']"/></template></span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['variations.priced']" align="num" hide-narrow>{{ (line.days_asked | string) ~ ' ' ~ tx['variations.days_unit'] if line.is_time and line.days_asked is not none else '' if line.is_time else line.priced_amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['variations.approved']" align="num">{{ (line.days_granted | string) ~ ' ' ~ tx['variations.days_unit'] if line.is_time and line.days_granted is not none else '' if line.is_time or line.approved_amount is none else line.approved_amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['variations.gap']" align="num" hide-narrow>{{ (line.days_gap | string) ~ ' ' ~ tx['variations.days_unit'] if line.is_time and line.days_gap is not none else '' if line.gap is none else line.gap | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['variations.unrecovered']" align="num" hide-narrow>{{ line.unrecovered_amount | money(currency='AED') if line.unrecovered_amount else '' }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['variations.empty']" :message="tx['variations.empty_text']" icon="file-text"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

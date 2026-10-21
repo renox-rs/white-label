@@ -83,30 +83,7 @@ pub(crate) fn page(lang: &Lang, project: &Project, lines: &[ReportLine]) -> Resp
         .collect();
     let money = |row: &&Row| !row.is_time;
     View::typed(VariationReportPage {
-        tx: tx(
-            lang,
-            &[
-                "variations.title",
-                "variations.back",
-                "variations.variation",
-                "variations.priced",
-                "variations.approved",
-                "variations.gap",
-                "variations.days_asked",
-                "variations.days_granted",
-                "variations.days_gap",
-                "variations.unrecovered",
-                "variations.late",
-                "variations.total_gap",
-                "variations.total_approved",
-                "variations.total_unrecovered",
-                "variations.empty",
-                "variations.empty_text",
-                "variations.closing",
-                "kind",
-                "status",
-            ],
-        ),
+        tx: tx(lang),
         title: word(lang, "variations", "title"),
         subtitle: format!("{} · {}", project.code, project.name),
         back_url: PROJECTS_URL.to_owned(),

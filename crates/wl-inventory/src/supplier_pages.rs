@@ -409,17 +409,14 @@ async fn show_score(
     let live = score_view(&live, None, None, costs, Vec::new());
     let watched = crate::supplier_review::is_watched(&state, party).await?;
     if wl_kernel::negotiate::wants_html(&headers) {
-        return Ok(screens::score(
-            &state,
-            &lang,
-            party,
-            &live,
-            &kept,
+        let facts = screens::ScoreFacts {
+            live: &live,
+            snapshots: &kept,
             watched,
-            review.is_some(),
+            review_open: review.is_some(),
             costs,
-        )
-        .await);
+        };
+        return Ok(screens::score(&state, &lang, party, &facts).await);
     }
     json_response(&renox::serde_json::json!({
         "live": live,

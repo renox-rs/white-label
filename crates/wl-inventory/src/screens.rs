@@ -24,6 +24,7 @@ use crate::item_supplier::LastPrice;
 use crate::location::Location;
 use crate::preferred_change::{RequestView, SideView};
 use crate::reorder::{ReorderSuggestion, SuggestionStatus};
+use crate::screen_texts::SCREEN_TEXTS;
 use crate::supplier_pages::{ScoreView, SuggestionView, SupplierView};
 use crate::texts::{said, t};
 
@@ -55,11 +56,16 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
 /// The texts a template reads as `tx['suppliers.rank']`.
 type Texts = BTreeMap<&'static str, String>;
 
-/// The texts named `names`, from the keys `wl_inventory.screen.<name>`.
-fn tx(lang: &Lang, names: &[&'static str]) -> Texts {
-    names
+/// The prefix of the keys of the screens' texts.
+const PREFIX: &str = "wl_inventory.screen.";
+
+/// Every text of the screens, by the name a template reads
+/// (`tx['suppliers.rank']` is the key `wl_inventory.screen.suppliers.rank`). A
+/// page hands over all of them, so a template an app replaces may read any.
+fn tx(lang: &Lang) -> Texts {
+    SCREEN_TEXTS
         .iter()
-        .map(|name| (*name, t(lang, &format!("wl_inventory.screen.{name}"))))
+        .filter_map(|(key, _)| Some((key.strip_prefix(PREFIX)?, t(lang, key))))
         .collect()
 }
 
@@ -240,40 +246,29 @@ pub(crate) async fn suppliers(
             },
             rank: view.rank,
             lead_time_days: view.lead_time_days,
-            min_order: format!("{} {}", quantity_text(view.min_order_qty_milli), unit)
-                .trim()
-                .to_owned(),
+            min_order: if view.min_order_qty_milli == 0 {
+                String::new()
+            } else {
+                format!("{} {}", quantity_text(view.min_order_qty_milli), unit)
+                    .trim()
+                    .to_owned()
+            },
             code: view.supplier_item_code.clone(),
             price: view.last_price.as_ref().map(Price::of),
             flags,
         });
     }
     View::typed(SuppliersPage {
-        tx: tx(
-            lang,
-            &[
-                "suppliers.subtitle",
-                "suppliers.rank",
-                "suppliers.code",
-                "suppliers.min_order",
-                "suppliers.flags",
-                "suppliers.score",
-                "suppliers.empty",
-                "suppliers.empty_text",
-                "suppliers.request",
-                "suppliers.price_hidden",
-                "supplier",
-                "role",
-                "lead_time",
-                "last_price",
-                "no_value",
-            ],
-        ),
+        tx: tx(lang),
         title: said(
             "wl_inventory.screen.suppliers.title",
-            &[("item", &format!("{} · {}", item.code, item.name_en))],
+            &[("item", &item.name_en)],
         ),
-        subtitle: t(lang, "wl_inventory.screen.suppliers.subtitle"),
+        subtitle: format!(
+            "{} · {}",
+            item.code,
+            t(lang, "wl_inventory.screen.suppliers.subtitle")
+        ),
         rows,
         request_url: reach.request.map(request_url),
         costs: reach.costs,
@@ -360,28 +355,7 @@ pub(crate) async fn reorder(
     };
     let unit = &item.base_unit;
     Ok(View::typed(ReorderPage {
-        tx: tx(
-            lang,
-            &[
-                "reorder.location",
-                "reorder.quantity",
-                "reorder.rounded",
-                "reorder.reason",
-                "reorder.supplier",
-                "reorder.suppliers",
-                "reorder.warnings",
-                "reorder.alternatives",
-                "reorder.no_alternatives",
-                "supplier",
-                "item",
-                "role",
-                "lead_time",
-                "last_price",
-                "score",
-                "no_value",
-                "suppliers.on_hold",
-            ],
-        ),
+        tx: tx(lang),
         title: said(
             "wl_inventory.screen.reorder.title",
             &[("id", &suggestion.id.to_string())],
@@ -434,12 +408,15 @@ impl Window {
             band: word(lang, "band", view.band),
             band_kind: band_kind(view.band),
             receipts: view.receipts,
-            on_time: format!(
-                "{} / {} ({})",
-                view.on_time,
-                view.receipts,
-                percent_text(view.on_time_bp)
-            ),
+            on_time: match view.on_time_bp {
+                Some(bp) => format!(
+                    "{} ({} / {})",
+                    percent_text(Some(bp)),
+                    view.on_time,
+                    view.receipts
+                ),
+                None => percent_text(None),
+            },
             rejected: percent_text(view.rejected_bp),
             incidents: view.incidents,
             debit_notes: view.debit_notes,
@@ -471,42 +448,37 @@ pub(crate) struct ScorePage {
     costs: bool,
 }
 
+/// What the score page shows of a supplier.
+pub(crate) struct ScoreFacts<'a> {
+    /// The live window.
+    pub live: &'a ScoreView,
+    /// The monthly snapshots, newest first.
+    pub snapshots: &'a [ScoreView],
+    /// Whether the supplier is on the watch list.
+    pub watched: bool,
+    /// Whether a review of the supplier is open.
+    pub review_open: bool,
+    /// Whether the person may see the values (`stock.cost.view`).
+    pub costs: bool,
+}
+
 /// The score page of `supplier`.
 pub(crate) async fn score(
     state: &AppState,
     lang: &Lang,
     supplier: i64,
-    live: &ScoreView,
-    snapshots: &[ScoreView],
-    watched: bool,
-    review_open: bool,
-    costs: bool,
+    facts: &ScoreFacts<'_>,
 ) -> Response {
+    let ScoreFacts {
+        live,
+        snapshots,
+        watched,
+        review_open,
+        costs,
+    } = *facts;
     let name = party_name(state, lang, supplier).await;
     View::typed(ScorePage {
-        tx: tx(
-            lang,
-            &[
-                "score.live",
-                "score.snapshots",
-                "score.window",
-                "score.receipts",
-                "score.on_time",
-                "score.rejected",
-                "score.incidents",
-                "score.debit_notes",
-                "score.price_variance",
-                "score.received_value",
-                "score.rejected_value",
-                "score.debit_value",
-                "score.notes",
-                "score.no_snapshots",
-                "score.watched",
-                "score.review_open",
-                "score",
-                "status",
-            ],
-        ),
+        tx: tx(lang),
         title: said("wl_inventory.screen.score.title", &[("supplier", &name)]),
         subtitle: t(lang, "wl_inventory.screen.score.subtitle"),
         live: Window::of(lang, live, t(lang, "wl_inventory.screen.score.live")),
@@ -594,25 +566,7 @@ pub(crate) async fn requests(
             status_kind,
         });
     }
-    Ok(View::typed(RequestsPage {
-        tx: tx(
-            lang,
-            &[
-                "requests.title",
-                "requests.subtitle",
-                "requests.kind",
-                "requests.from",
-                "requests.to",
-                "requests.number",
-                "requests.empty",
-                "requests.empty_text",
-                "item",
-                "status",
-            ],
-        ),
-        rows,
-    })
-    .into_response())
+    Ok(View::typed(RequestsPage { tx: tx(lang), rows }).into_response())
 }
 
 /// One side of a request.
@@ -707,34 +661,7 @@ pub(crate) async fn request(
         None => None,
     };
     Ok(View::typed(RequestPage {
-        tx: tx(
-            lang,
-            &[
-                "request.back",
-                "request.current",
-                "request.proposed",
-                "request.on_hold",
-                "request.decided_by",
-                "request.reason",
-                "request.returned",
-                "request.item",
-                "request.approve",
-                "request.approve_message",
-                "request.reject",
-                "request.reject_message",
-                "request.reject_reason",
-                "requests.kind",
-                "requests.requested_by",
-                "requests.title",
-                "supplier",
-                "score",
-                "lead_time",
-                "last_price",
-                "no_value",
-                "cancel",
-                "request.none",
-            ],
-        ),
+        tx: tx(lang),
         id: view.id,
         title: said(
             "wl_inventory.screen.request.title",
@@ -760,7 +687,6 @@ pub(crate) async fn request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen_texts::SCREEN_TEXTS;
 
     /// Every `tx['name']` a template reads is a text of the crate: a missing
     /// one would show as a raw key on the page.
