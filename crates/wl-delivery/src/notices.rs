@@ -11,6 +11,13 @@
 //! - `delivery.run_aborted`: the dispatchers (the holders of `runs.dispatch`;
 //!   the host has no separate depot manager role) are told that a run was
 //!   aborted and why.
+//! - `delivery.disputed` and `delivery.lost`: the dispatchers are told that a
+//!   delivery was put under review (#160) or is lost (#162), with the
+//!   reason, the liability and the ticket. The source of the delivery is
+//!   reached through the events (`DeliveryDisputed`, `DeliveryLost` carry
+//!   it); the kernel has no contract naming the owner of a source record, so
+//!   no notice goes to one here (the sources' own listeners, BL-SAL-13,
+//!   BL-LOG-07, tell theirs).
 
 use renox::auth::permissions::users_with_permission;
 use renox::prelude::*;
@@ -52,10 +59,99 @@ fn aborted_type() -> NotificationTypeDef {
         )
 }
 
+/// The dispatchers are told a delivery was put under review.
+pub const DELIVERY_DISPUTED: &str = "delivery.disputed";
+/// The dispatchers are told a delivery is lost.
+pub const DELIVERY_LOST: &str = "delivery.lost";
+
+fn disputed_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DELIVERY_DISPUTED, "delivery")
+        .group("delivery")
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_delivery.notices.disputed_subject")),
+            english("wl_delivery.notices.disputed_body"),
+        )
+}
+
+fn lost_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DELIVERY_LOST, "delivery")
+        .group("delivery")
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_delivery.notices.lost_subject")),
+            english("wl_delivery.notices.lost_body"),
+        )
+}
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
     notify::register_type(delayed_type());
     notify::register_type(aborted_type());
+    notify::register_type(disputed_type());
+    notify::register_type(lost_type());
+}
+
+/// Sends `request` to the holders of `runs.dispatch`; nothing when nobody
+/// holds it.
+async fn to_dispatchers(state: &AppState, mut request: NotifyRequest) -> Result<()> {
+    let mut told = false;
+    for user in users_with_permission(&state.db, permissions::RUNS_DISPATCH).await? {
+        request = request.to_user(user.id);
+        told = true;
+    }
+    if told {
+        notify::notifier(state).notify(state, request).await?;
+    }
+    Ok(())
+}
+
+/// Tells the dispatchers that `delivery` was put under review for `reason`.
+///
+/// # Errors
+///
+/// Database errors and the notifier's.
+pub(crate) async fn disputed(
+    state: &AppState,
+    delivery: &Delivery,
+    reason: &str,
+    ticket: Option<i64>,
+) -> Result<()> {
+    let request = NotifyRequest::new(DELIVERY_DISPUTED, delivery.delivery_id().subject())
+        .subject_label(&delivery.number)
+        .data(json!({
+            "number": delivery.number,
+            "reason": reason,
+            "ticket": ticket,
+            "link": format!("/deliveries/{}", delivery.id),
+        }));
+    to_dispatchers(state, request).await
+}
+
+/// Tells the dispatchers that `delivery` is lost, with the liability and the
+/// claim ticket.
+///
+/// # Errors
+///
+/// Database errors and the notifier's.
+pub(crate) async fn lost(
+    state: &AppState,
+    delivery: &Delivery,
+    liability: &str,
+    claim_ticket: Option<i64>,
+) -> Result<()> {
+    let request = NotifyRequest::new(DELIVERY_LOST, delivery.delivery_id().subject())
+        .subject_label(&delivery.number)
+        .data(json!({
+            "number": delivery.number,
+            "reason": delivery.lost_reason.clone().unwrap_or_default(),
+            "liability": liability,
+            "ticket": claim_ticket,
+            "link": format!("/deliveries/{}", delivery.id),
+        }));
+    to_dispatchers(state, request).await
 }
 
 /// Tells the recipient of `delivery` that its run was aborted.
@@ -92,22 +188,14 @@ pub(crate) async fn run_delayed(state: &AppState, delivery: &Delivery, run: &Run
 ///
 /// Database errors and the notifier's.
 pub(crate) async fn run_aborted(state: &AppState, run: &Run, reason: &str) -> Result<()> {
-    let mut request = NotifyRequest::new(RUN_ABORTED, run.subject())
+    let request = NotifyRequest::new(RUN_ABORTED, run.subject())
         .subject_label(&run.number)
         .data(json!({
             "run": run.number,
             "reason": reason,
             "link": format!("/runs/{}", run.id),
         }));
-    let mut told = false;
-    for user in users_with_permission(&state.db, permissions::RUNS_DISPATCH).await? {
-        request = request.to_user(user.id);
-        told = true;
-    }
-    if told {
-        notify::notifier(state).notify(state, request).await?;
-    }
-    Ok(())
+    to_dispatchers(state, request).await
 }
 
 #[cfg(test)]
@@ -116,7 +204,7 @@ mod tests {
 
     #[test]
     fn the_types_have_english_templates() {
-        for def in [delayed_type(), aborted_type()] {
+        for def in [delayed_type(), aborted_type(), disputed_type(), lost_type()] {
             assert!(def.template_for(NotifyChannel::Email, "en").is_some());
         }
         assert!(

@@ -372,3 +372,33 @@ async fn the_delivery_page_offers_the_review_actions_to_a_manager() {
         .assert_see("Close the review")
         .assert_see("recipient denies");
 }
+
+/// AC1 (notice): opening a review tells every dispatcher through the kernel
+/// notifier, naming the delivery, the reason and the review's ticket; a
+/// refused review tells nobody.
+#[renox::test]
+async fn opening_a_review_tells_the_dispatchers() {
+    let w = boot().await;
+    let delivery = w.delivered_cod(30_000).await;
+
+    w.open_review(&w.dispatcher, &delivery, "recipient denies")
+        .await
+        .assert_status(403);
+    assert!(w.notices.of_type("delivery.disputed").is_empty());
+
+    w.open_review(&w.manager, &delivery, "recipient denies")
+        .await
+        .assert_ok();
+
+    let sent = w.notices.of_type("delivery.disputed");
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].subject, delivery.delivery_id().subject());
+    assert_eq!(sent[0].data["number"], delivery.number.as_str());
+    assert_eq!(sent[0].data["reason"], "recipient denies");
+    assert_eq!(sent[0].data["ticket"], 1);
+    let mut told = w.notices.users_of_type("delivery.disputed");
+    told.sort_unstable();
+    let mut dispatchers = vec![w.dispatcher.id, w.manager.id];
+    dispatchers.sort_unstable();
+    assert_eq!(told, dispatchers);
+}

@@ -654,6 +654,22 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.notices.aborted_body",
         "Run {{ run }} was aborted: {{ reason }}. Its cash is counted at the depot: {{ link }}",
     ),
+    (
+        "wl_delivery.notices.disputed_subject",
+        "Delivery {{ number }} is under review",
+    ),
+    (
+        "wl_delivery.notices.disputed_body",
+        "Delivery {{ number }} was put under review: {{ reason }}. Its cash is held out of remittances and the sources stop billing it: {{ link }}",
+    ),
+    (
+        "wl_delivery.notices.lost_subject",
+        "Delivery {{ number }} is lost",
+    ),
+    (
+        "wl_delivery.notices.lost_body",
+        "Delivery {{ number }} is marked lost ({{ liability }} liable): {{ reason }}. A claim ticket was opened: {{ link }}",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

@@ -466,3 +466,76 @@ async fn the_untraced_days_are_a_setting() {
         1
     );
 }
+
+/// AC1 (notice): the rule marks a delivery lost: every dispatcher is told
+/// through the kernel notifier, with the delivery, the liability and the
+/// claim ticket in the data.
+#[renox::test]
+async fn the_dispatchers_are_told_when_the_rule_marks_a_delivery_lost() {
+    let w = boot().await;
+    let delivery = attempted(&w).await;
+    touched_at(&w, &delivery, at("2026-11-01T06:00:00Z")).await;
+    assert!(w.notices.of_type("delivery.lost").is_empty());
+
+    lost::run(w.state(), at("2026-11-08T22:00:00Z"))
+        .await
+        .unwrap();
+
+    let sent = w.notices.of_type("delivery.lost");
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].subject, delivery.delivery_id().subject());
+    assert_eq!(sent[0].data["number"], delivery.number.as_str());
+    assert_eq!(sent[0].data["liability"], "none");
+    assert_eq!(sent[0].data["ticket"], 1);
+    let mut told = w.notices.users_of_type("delivery.lost");
+    told.sort_unstable();
+    let mut dispatchers = vec![w.dispatcher.id, w.manager.id];
+    dispatchers.sort_unstable();
+    assert_eq!(told, dispatchers, "the holders of runs.dispatch");
+}
+
+/// AC1 (notice): a loss nobody approved yet tells nobody; the approved one
+/// does.
+#[renox::test]
+async fn a_manual_loss_tells_the_dispatchers_only_once_approved() {
+    let w = boot().await;
+    let delivery = attempted(&w).await;
+    ask_loss(&w, &w.ops_a, &delivery, "driver")
+        .await
+        .assert_ok();
+    assert!(w.notices.of_type("delivery.lost").is_empty());
+
+    let request = pending_request(&w, &delivery).await;
+    approvals::approve(w.state(), request.id, &w.ops_b, "agreed")
+        .await
+        .unwrap();
+
+    let sent = w.notices.of_type("delivery.lost");
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].data["liability"], "driver");
+    assert_eq!(sent[0].data["reason"], "Parcel untraced");
+}
+
+/// AC3 (denied): a manager who manages deliveries but does not hold
+/// `deliveries.reverse` cannot approve a loss; the delivery stays where it
+/// is.
+#[renox::test]
+async fn a_manager_without_the_reverse_permission_cannot_approve_a_loss() {
+    let w = boot().await;
+    let delivery = attempted(&w).await;
+    ask_loss(&w, &w.ops_a, &delivery, "driver")
+        .await
+        .assert_ok();
+    let request = pending_request(&w, &delivery).await;
+
+    assert!(
+        approvals::approve(w.state(), request.id, &w.manager, "no right")
+            .await
+            .is_err(),
+        "the step wants deliveries.reverse"
+    );
+
+    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Attempted);
+    assert!(w.lost.all().is_empty());
+    assert!(w.notices.of_type("delivery.lost").is_empty());
+}

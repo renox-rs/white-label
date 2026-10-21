@@ -479,6 +479,8 @@ async fn after_lost(state: &AppState, event: &Transitioned<Delivery>) -> Result 
             .await?;
     }
     let was_under_review = event.from == DeliveryStatus::UnderReview.as_str();
+    let claim_id = opened.as_ref().map(|t| t.id.0);
+    crate::notices::lost(state, &delivery, &liability, claim_id).await?;
     state
         .emit(DeliveryLost {
             delivery: delivery.delivery_id(),

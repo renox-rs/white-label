@@ -208,16 +208,20 @@ async fn emit_disputed(state: &AppState, id: i64) -> std::result::Result<(), Tra
     let delivery = Delivery::find_or_404(&state.db, id)
         .await
         .map_err(TransitionError::Failed)?;
+    let reason = delivery.review_reason.clone().unwrap_or_default();
     state
         .emit(DeliveryDisputed {
             delivery: delivery.delivery_id(),
             source: delivery.source(),
-            reason: delivery.review_reason.clone().unwrap_or_default(),
+            reason: reason.clone(),
             ticket: delivery.review_ticket_id.map(TicketId),
             lines: source_lines(&state.db, &delivery)
                 .await
                 .map_err(TransitionError::Failed)?,
         })
+        .await
+        .map_err(TransitionError::Failed)?;
+    crate::notices::disputed(state, &delivery, &reason, delivery.review_ticket_id)
         .await
         .map_err(TransitionError::Failed)
 }
