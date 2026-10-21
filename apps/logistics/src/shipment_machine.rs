@@ -15,6 +15,9 @@
 //! under_review --close_review (system, DeliveryDisputeClosed)--> delivered
 //! delivered | under_review --reverse_delivery (system, DeliveryReversed)--> attempted
 //! delivered | under_review --reverse_delivery_on_road (system)--> out_for_delivery
+//! picked_up | at_hub | on_hold | returning --mark_lost (approved)--> lost
+//! out_for_delivery | attempted | under_review | (the above) --mark_lost_system--> lost
+//! lost --found (scan, or system on DeliveryFound)--> at_hub
 //! ```
 //!
 //! Every state of §7.1 is declared with its tone, so the diagram is whole;
@@ -36,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::voids;
 
 use crate::permissions;
+use crate::loss::{self, LossInput};
 use crate::rates;
 use crate::reversal::ReversalInput;
 use crate::shipment::{
@@ -83,6 +87,18 @@ pub const REVERSE_DELIVERY: &str = "reverse_delivery";
 /// `reverse_delivery`, run by the system when wl-delivery put the delivery
 /// back on the road: delivered, under_review → out_for_delivery.
 pub const REVERSE_DELIVERY_ON_ROAD: &str = "reverse_delivery_on_road";
+/// `mark_lost`: picked_up, at_hub, on_hold, returning → lost, a user's
+/// request that the kernel defers into an approval (`LOG.ACL.14`).
+pub const MARK_LOST: &str = "mark_lost";
+/// `mark_lost`, run by the kernel once the request is approved.
+pub const MARK_LOST_APPROVED: &str = "mark_lost_approved";
+/// `mark_lost`, run by the system when the delivery is lost (`DeliveryLost`,
+/// `WRK.RUL.17`).
+pub const MARK_LOST_SYSTEM: &str = "mark_lost_system";
+/// `found`: lost → at_hub, scanned at a depot.
+pub const FOUND: &str = "found";
+/// `found`, run by the system on `DeliveryFound`.
+pub const FOUND_SYSTEM: &str = "found_system";
 /// `void`: created → voided (the kernel's void pattern).
 pub const VOID: &str = voids::VOID;
 
@@ -147,6 +163,12 @@ pub struct ShipmentInput {
     /// What the delivery's reversal says (`reverse_delivery`).
     #[serde(default)]
     pub reversal: Option<ReversalInput>,
+    /// The reason, liability and claim ticket of a loss (`mark_lost`).
+    #[serde(default)]
+    pub loss: Option<LossInput>,
+    /// The depot where the goods were scanned (`found`).
+    #[serde(default)]
+    pub depot: Option<String>,
 }
 
 /// A parcel the recipient refused, with the refusal reason's code.
@@ -756,6 +778,77 @@ fn reverse_delivery(name: &'static str, to: ShipmentStatus) -> Transition<Shipme
         })
 }
 
+/// `mark_lost` (§7.1, `LOG.ACL.14`): `name` is the user's request, the run the
+/// kernel makes once it is approved, or the system's on `DeliveryLost`. The
+/// two first need a reason and a liability and run off a delivery; the
+/// system's also runs from the states on one. The effects are shared
+/// ([`crate::loss`]).
+fn mark_lost(name: &'static str) -> Transition<Shipment> {
+    let system = name == MARK_LOST_SYSTEM;
+    let transition = Transition::new(name)
+        .label(if system {
+            "Lost (untraced)"
+        } else {
+            "Mark lost"
+        })
+        .tone("danger")
+        .from(if system {
+            loss::LOSABLE.to_vec()
+        } else {
+            loss::OFF_DELIVERY.to_vec()
+        })
+        .to(ShipmentStatus::Lost);
+    let transition = match name {
+        MARK_LOST => transition.permission(permissions::SHIPMENTS_MANAGE),
+        _ => transition.system(),
+    };
+    let transition = if system {
+        transition
+    } else {
+        transition.guard("reason_and_liability", |_s: &Shipment, ctx| {
+            let checked = loss::reason_and_liability(input_of(ctx).loss.as_ref());
+            Box::pin(async move { checked })
+        })
+    };
+    transition.effect(|shipment: &Shipment, ctx, tx| {
+        let shipment = shipment.clone();
+        let input = input_of(ctx).loss.unwrap_or_default();
+        let actor = ctx.actor().map(|user| user.id);
+        Box::pin(async move { loss::record(&mut *tx, &shipment, &input, actor).await })
+    })
+}
+
+/// `found` (§7.1): scanned at a depot by `shipments.scan`, or by the system on
+/// `DeliveryFound`. The shipment is `at_hub` again and expects its COD.
+fn found(name: &'static str) -> Transition<Shipment> {
+    let transition = Transition::new(name)
+        .label("Found")
+        .tone("success")
+        .from([ShipmentStatus::Lost])
+        .to(ShipmentStatus::AtHub)
+        .guard("scanned_at_a_depot", |_s: &Shipment, ctx| {
+            let given = text_given(&input_of(ctx).depot);
+            Box::pin(async move {
+                if given {
+                    Ok(())
+                } else {
+                    Err(english("logistics.loss.depot_needed", &[]))
+                }
+            })
+        });
+    let transition = if name == FOUND {
+        transition.permission(permissions::SHIPMENTS_SCAN)
+    } else {
+        transition.system()
+    };
+    transition.effect(|shipment: &Shipment, ctx, tx| {
+        let shipment = shipment.clone();
+        let depot = input_of(ctx).depot.unwrap_or_default();
+        let actor = ctx.actor().map(|user| user.id);
+        Box::pin(async move { loss::record_found(&mut *tx, &shipment, &depot, actor).await })
+    })
+}
+
 /// What `void` adds to the kernel's guards (BL-LOG-01): no parcel scanned
 /// (`PLT.ACL.09`: a safety check for a scan recorded without a state
 /// change), and a client user voids only the shipment they booked
@@ -807,6 +900,11 @@ pub fn transitions() -> Vec<Transition<Shipment>> {
         close_review(),
         reverse_delivery(REVERSE_DELIVERY, Attempted),
         reverse_delivery(REVERSE_DELIVERY_ON_ROAD, OutForDelivery),
+        mark_lost(MARK_LOST),
+        mark_lost(MARK_LOST_APPROVED),
+        mark_lost(MARK_LOST_SYSTEM),
+        found(FOUND),
+        found(FOUND_SYSTEM),
     ];
     all.extend(
         voids::transitions::<Shipment, _>(SUBJECT_TYPE, [Created])
@@ -888,6 +986,11 @@ mod tests {
             CLOSE_REVIEW,
             REVERSE_DELIVERY,
             REVERSE_DELIVERY_ON_ROAD,
+            MARK_LOST,
+            MARK_LOST_APPROVED,
+            MARK_LOST_SYSTEM,
+            FOUND,
+            FOUND_SYSTEM,
             voids::VOID,
             voids::VOID_APPROVED,
         ] {
@@ -901,6 +1004,10 @@ mod tests {
         assert!(machine.find(DISPATCH).unwrap().is_system());
         assert!(machine.find(OPEN_REVIEW).unwrap().is_system());
         assert!(machine.find(CLOSE_REVIEW).unwrap().is_system());
+        assert!(machine.find(MARK_LOST_APPROVED).unwrap().is_system());
+        assert!(machine.find(MARK_LOST_SYSTEM).unwrap().is_system());
+        assert!(!machine.find(MARK_LOST).unwrap().is_system());
+        assert!(machine.find(FOUND_SYSTEM).unwrap().is_system());
         assert!(machine.find(REVERSE_DELIVERY).unwrap().is_system());
         assert!(machine.find(REVERSE_DELIVERY_ON_ROAD).unwrap().is_system());
     }

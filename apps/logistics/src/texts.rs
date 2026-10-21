@@ -450,6 +450,87 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.adjustment_rejected", "Adjustment line rejected."),
     ("logistics.adjustment_resubmitted", "Adjustment line sent again."),
     ("logistics.adjustment_deleted", "Adjustment line deleted."),
+    // A lost shipment and the goods found again (`WRK.RUL.17`, `LOG.ACL.14`,
+    // BL-LOG-11).
+    (
+        "logistics.loss.not_prepared",
+        "The loss was not prepared by the loss service.",
+    ),
+    ("logistics.loss.reason_needed", "Give the reason the shipment is lost."),
+    (
+        "logistics.loss.liability_needed",
+        "Choose who bears the loss: driver, business, client or none.",
+    ),
+    (
+        "logistics.loss.untraced",
+        "Untraced on its delivery (WRK.RUL.17).",
+    ),
+    (
+        "logistics.loss.claim_title",
+        "Claim: shipment {{ number }} is lost",
+    ),
+    (
+        "logistics.loss.claim_description",
+        "Shipment {{ number }} is lost ({{ reason }}). Liability: {{ liability }}; customer service decides it on the claim.",
+    ),
+    ("logistics.loss.title", "Shipment {{ number }} is lost"),
+    (
+        "logistics.loss.body",
+        "Shipment {{ number }} could not be traced and is marked lost. It is not billed and no cash on delivery is expected.",
+    ),
+    (
+        "logistics.loss.body_claim",
+        "Shipment {{ number }} could not be traced and is marked lost. It is not billed and no cash on delivery is expected. Your claim is ticket {{ claim }}.",
+    ),
+    ("logistics.loss.found_title", "Shipment {{ number }} was found"),
+    (
+        "logistics.loss.found_body",
+        "Shipment {{ number }} was found at {{ depot }} and is back at the hub.",
+    ),
+    (
+        "logistics.loss.found_comment",
+        "Goods found at {{ depot }}.",
+    ),
+    (
+        "logistics.loss.found_comment_reopened",
+        "Goods found at {{ depot }} after the claim was settled with a credit of {{ amount }}: the claim is reopened and the client chooses delivery or keeping the settlement.",
+    ),
+    (
+        "logistics.loss.depot_needed",
+        "Name the depot where the goods were scanned.",
+    ),
+    (
+        "logistics.loss.not_lost",
+        "Only a lost shipment has a claim to settle.",
+    ),
+    ("logistics.loss.amount_needed", "Give the credit in dirhams, above 0."),
+    (
+        "logistics.loss.settled_comment",
+        "Claim settled with a credit of {{ amount }} for the client.",
+    ),
+    (
+        "logistics.loss.no_choice_due",
+        "The client chooses only for a shipment held after the goods were found following a settled claim.",
+    ),
+    (
+        "logistics.loss.choice_unknown",
+        "Choose delivery or keeping the settlement.",
+    ),
+    (
+        "logistics.loss.choice_note.delivery",
+        "The client chose delivery: the claim credit of {{ amount }} is reversed by an invoice.",
+    ),
+    (
+        "logistics.loss.choice_note.keep",
+        "The client keeps the settlement: the goods go back to the client.",
+    ),
+    (
+        "logistics.loss.claim_reversed",
+        "Claim reversed, goods found",
+    ),
+    ("logistics.loss_found", "Shipment found."),
+    ("logistics.loss_claim_settled", "Claim settled."),
+    ("logistics.loss_claim_chosen", "The client's choice is recorded."),
     // A reversed delivery (`WRK.ACL.10`, `LOG.ACL.12`, BL-LOG-10).
     (
         "logistics.reversal.event_needed",

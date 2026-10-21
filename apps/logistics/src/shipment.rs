@@ -189,6 +189,27 @@ pub struct Shipment {
     pub credit_due: i64,
     /// Whether the delivery was reversed and not made again: out of billing.
     pub reversed: bool,
+    /// Why it was marked lost (BL-LOG-11).
+    pub lost_reason: Option<String>,
+    /// When it was marked lost.
+    pub lost_at: Option<DateTime>,
+    /// The state it was lost from.
+    pub lost_from: Option<String>,
+    /// The depot where the goods were scanned when found.
+    pub found_depot: Option<String>,
+    /// The COD it expected when it was lost, in fils; expected again when it
+    /// is found.
+    pub lost_cod: i64,
+    /// The credit the settled claim gave the client, in fils; 0 until a claim
+    /// is settled.
+    pub claim_settled_amount: i64,
+    /// When the claim was settled.
+    pub claim_settled_at: Option<DateTime>,
+    /// What the client chose when the goods were found after a settled claim:
+    /// `delivery` or `keep`.
+    pub claim_choice: Option<String>,
+    /// The draft invoice that takes the claim credit back.
+    pub claim_invoice_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: ShipmentStatus,
     /// When the row was created.

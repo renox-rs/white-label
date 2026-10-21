@@ -80,6 +80,19 @@
                        :title="tx['cod_instruction_title']" :description="tx['cod_instruction_description']" :submit-label="tx['cod_instruction_action']" icon="message-square">
         <rx-textarea name="note" :label="tx['cod_instruction']" :placeholder="tx['instruction_hint']" :id="'cod-instruction-note-' ~ shipment.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_found" :id="'found-' ~ shipment.id" :label="tx['found']" :action="route('logistics.shipment_found', shipment.id)"
+                       :title="tx['found_title']" :description="tx['found_description']" :submit-label="tx['found']" icon="search-check">
+        <rx-input name="depot" :label="tx['depot']" :id="'found-depot-' ~ shipment.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_claim_settled" :id="'claim-settled-' ~ shipment.id" :label="tx['claim_settled']" :action="route('logistics.shipment_claim_settled', shipment.id)"
+                       :title="tx['claim_settled_title']" :description="tx['claim_settled_description']" :submit-label="tx['claim_settled']" icon="badge-check">
+        <rx-input name="amount" :label="tx['claim_amount']" :id="'claim-settled-amount-' ~ shipment.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_claim_choice" :id="'claim-choice-' ~ shipment.id" :label="tx['claim_choice']" :action="route('logistics.shipment_claim_choice', shipment.id)"
+                       :title="tx['claim_choice_title']" :description="tx['claim_choice_description']" :submit-label="tx['claim_choice']" icon="signpost">
+        <rx-select name="choice" :label="tx['claim_choice']" :id="'claim-choice-select-' ~ shipment.id" :selected="'delivery'"
+                   :options="claim_choices"/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_return" :id="'returned-' ~ shipment.id" :label="tx['returned']" :action="route('logistics.shipment_returned', shipment.id)"
                        :title="tx['returned']" :description="tx['returned_description']" :submit-label="tx['returned']" icon="check">
         <rx-input name="pod_reference" :label="tx['pod']" :id="'returned-pod-' ~ shipment.id" required/>
@@ -111,6 +124,10 @@
         <rx-entry :label="tx['cod_difference']" rx-if="shipment.cod_difference" :value="shipment.cod_difference" format="money"/>
         <rx-entry :label="tx['cod_absorbed_by']" rx-if="shipment.cod_absorbed_by" :value="shipment.cod_absorbed_by"/>
         <rx-entry :label="tx['cod_instruction']" rx-if="cod_instruction" :value="cod_instruction" span="full"/>
+        <rx-entry :label="tx['lost_reason']" rx-if="shipment.lost_reason" :value="shipment.lost_reason" span="full"/>
+        <rx-entry :label="tx['found_depot']" rx-if="shipment.found_depot" :value="shipment.found_depot"/>
+        <rx-entry :label="tx['claim_amount']" rx-if="shipment.claim_settled_amount" :value="shipment.claim_settled_amount" format="money"/>
+        <rx-entry :label="tx['credit_due']" rx-if="shipment.credit_due" :value="shipment.credit_due" format="money"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="parcels" as="parcel" :key="parcel.barcode" :caption="tx['parcels']" card>

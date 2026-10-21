@@ -10,6 +10,8 @@ pub mod cod;
 mod credit;
 mod events;
 pub mod hold;
+pub mod loss;
+mod loss_pages;
 pub mod notices;
 pub mod pages;
 pub mod partial;
@@ -64,6 +66,7 @@ impl Module for Logistics {
             .merge(remittance_pages::routes())
             .merge(cod::routes())
             .merge(reversal_pages::routes())
+            .merge(loss_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {

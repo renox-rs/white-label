@@ -288,6 +288,10 @@ pub(crate) struct ShowPage {
     can_resolve_dispute: bool,
     can_review: bool,
     can_cod_instruction: bool,
+    can_found: bool,
+    can_claim_settled: bool,
+    can_claim_choice: bool,
+    claim_choices: Vec<[String; 2]>,
     cod_instruction: String,
     review_ticket: String,
     linked: String,
@@ -427,6 +431,22 @@ async fn show(
             && shipment.status == ShipmentStatus::Delivered
             && shipment.delivery_id.is_some(),
         can_cod_instruction: manages && shipment.status == OutForDelivery,
+        can_found: scans && shipment.status == ShipmentStatus::Lost,
+        can_claim_settled: manages && shipment.status == ShipmentStatus::Lost,
+        can_claim_choice: manages
+            && held
+            && shipment.hold_reason.as_deref() == Some(hold_reason::CLIENT_INSTRUCTION)
+            && shipment.claim_settled_amount > 0
+            && shipment.claim_choice.is_none(),
+        claim_choices: ["delivery", "keep"]
+            .iter()
+            .map(|choice| {
+                [
+                    (*choice).to_owned(),
+                    t(&lang, &format!("logistics.screen.claim_choice_{choice}")),
+                ]
+            })
+            .collect(),
         cod_instruction: shipment.cod_instruction.clone().unwrap_or_default(),
         linked: linked_numbers(&state, &shipment).await?,
         review_ticket: shipment

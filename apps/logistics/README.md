@@ -102,6 +102,18 @@ their own issues.
   task (`/reversals`) to raise a later shortage against the driver
   (wl-payments, through the kernel's `ShortageRaiser`) or open an HR case;
   *business* records the loss; *client* and *none* post nothing.
+- **Lost shipments** (`loss`, `WRK.RUL.17`): when wl-delivery marks the
+  delivery lost the shipment runs the system's `mark_lost_system`; the same
+  effects serve a loss off a delivery (BL-LOG-12). The shipment is `lost`,
+  expects no COD (and expects it again when found), leaves billing (an
+  invoiced one gets a credit due and the invoice owner a task), is linked to
+  one claim ticket (the delivery's, else its own, whatever the liability), the
+  client is told once and `ShipmentLost` is emitted. Scanning it at a depot
+  (`found`, or the system on `DeliveryFound`) puts it `at_hub`, tells the
+  client and comments on the claim ticket. After a settled claim the system
+  holds it (*client instruction*) until the client chooses: delivery drafts an
+  invoice for the claim credit and releases it, keeping the settlement sends
+  it back.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
