@@ -304,11 +304,46 @@ async fn units_above_the_units_left_go_self_pay_with_consent() {
         .await
         .unwrap();
     assert!(consent.lists("procedure"));
+    // The patient signs the price of the one unit they pay themselves.
+    assert_eq!(consent.units_of("procedure"), 1);
+    assert_eq!(consent.estimated_fils, 120_000);
     s.t.app
         .get(&format!("/clinics/visits/{}", visit.id))
         .await
         .assert_ok()
-        .assert_see("procedure: PA-");
+        .assert_see("procedure: PA-")
+        .assert_see("procedure x 1");
+}
+
+/// The estimate is the price of one unit times the units that go self-pay:
+/// one authorised unit of three leaves two to pay, and the patient signs
+/// twice the price, not one.
+#[renox::test]
+async fn the_consent_estimate_multiplies_the_price_by_the_self_pay_units() {
+    let s = scene().await;
+    s.a1(1, 30).await;
+    let booking = s.insured(&s.procedure, 1, 9).await;
+    s.eligible(&booking).await;
+    s.services(&booking, "procedure:3").await;
+
+    s.t.app
+        .get(&format!("/clinics/appointments/{}", booking.id))
+        .await
+        .assert_ok()
+        .assert_see("1 of 3 units covered");
+    s.sign(&booking).await.assert_ok();
+    let consent = SelfPayConsent::current(s.t.db(), booking.id)
+        .await
+        .unwrap()
+        .expect("signed");
+    assert_eq!(consent.units_of("procedure"), 2);
+    assert_eq!(consent.lines.0[0].price, 120_000);
+    assert_eq!(consent.estimated_fils, 240_000);
+    s.t.app
+        .get(&format!("/clinics/appointments/{}", booking.id))
+        .await
+        .assert_ok()
+        .assert_see("procedure x 2");
 }
 
 /// Done when 5: a covered consultation and an unauthorised procedure: the

@@ -451,7 +451,7 @@ pub async fn choose(
             // The price first: a service with none cannot be on a consent.
             consent::price_lines(
                 state,
-                std::slice::from_ref(&appointment.service_code),
+                &[(appointment.service_code.clone(), 1)],
                 appointment.visit_date,
             )
             .await?;

@@ -35,13 +35,28 @@ use crate::visit::Visit;
 /// The subject type of a self-pay consent.
 pub const CONSENT_SUBJECT_TYPE: &str = "clinics.self_pay_consent";
 
-/// One service on a consent, with its estimated self-pay price.
+/// One service on a consent, with its units and estimated self-pay price.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConsentLine {
     /// The service code.
     pub code: String,
-    /// The self-pay price in fils on the visit day.
+    /// The units the patient pays for themselves (one for a consent signed
+    /// before units were kept).
+    #[serde(default = "one_unit")]
+    pub units: i64,
+    /// The self-pay price of one unit in fils on the visit day.
     pub price: i64,
+}
+
+fn one_unit() -> i64 {
+    1
+}
+
+impl ConsentLine {
+    /// What the line costs: the price of one unit times the units.
+    pub fn total(&self) -> i64 {
+        self.price * self.units
+    }
 }
 
 /// A self-pay consent the patient signed.
@@ -100,6 +115,33 @@ impl SelfPayConsent {
         self.lines.0.iter().any(|line| line.code == code)
     }
 
+    /// The units of `code` on it (zero when it is not listed).
+    pub fn units_of(&self, code: &str) -> i64 {
+        self.lines
+            .0
+            .iter()
+            .filter(|line| line.code == code)
+            .map(|line| line.units)
+            .sum()
+    }
+
+    /// The lines as the patient reads them: `procedure x 3 = AED 1,200.00`.
+    pub fn lines_text(&self) -> String {
+        self.lines
+            .0
+            .iter()
+            .map(|line| {
+                format!(
+                    "{} x {} = {}",
+                    line.code,
+                    line.units,
+                    crate::money_text(line.total())
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
     /// The codes on it.
     pub fn codes(&self) -> Vec<String> {
         self.lines.0.iter().map(|line| line.code.clone()).collect()
@@ -147,13 +189,14 @@ pub fn document_hash(text: &str) -> String {
 pub fn consent_text(booking: i64, priced_on: NaiveDate, lines: &[ConsentLine]) -> String {
     let rows: Vec<String> = lines
         .iter()
-        .map(|line| format!("{}:{}", line.code, line.price))
+        .map(|line| format!("{}:{}:{}", line.code, line.units, line.price))
         .collect();
-    let total: i64 = lines.iter().map(|line| line.price).sum();
+    let total: i64 = lines.iter().map(ConsentLine::total).sum();
     format!("SELF-PAY|{booking}|{priced_on}|{}|{total}", rows.join(","))
 }
 
-/// The lines for `codes` priced on `on`, each from the self-pay price list.
+/// The lines for `wanted` (a code and its units) priced on `on`, each from
+/// the self-pay price list: the price of one unit, shown with the units.
 ///
 /// # Errors
 ///
@@ -161,15 +204,16 @@ pub fn consent_text(booking: i64, priced_on: NaiveDate, lines: &[ConsentLine]) -
 /// no price for on that day; the price list's errors.
 pub async fn price_lines(
     state: &AppState,
-    codes: &[String],
+    wanted: &[(String, i64)],
     on: NaiveDate,
 ) -> Result<Vec<ConsentLine>> {
     let prices = self_pay_prices(state);
-    let mut lines = Vec::with_capacity(codes.len());
-    for code in codes {
+    let mut lines = Vec::with_capacity(wanted.len());
+    for (code, units) in wanted {
         match prices.price_on(&state.db, code, on).await? {
             Some(price) => lines.push(ConsentLine {
                 code: code.clone(),
+                units: (*units).max(1),
                 price,
             }),
             None => {
@@ -233,19 +277,40 @@ pub async fn sign_codes(
     codes: &[String],
     at: DateTime,
 ) -> Result<SelfPayConsent> {
+    let wanted: Vec<(String, i64)> = codes.iter().map(|code| (code.clone(), 1)).collect();
+    sign_lines(state, by, appointment, signer_name, ip, &wanted, at).await
+}
+
+/// Like [`sign_codes`] with the units of each service: the estimate is the
+/// price of one unit times the units, so the patient signs what they will be
+/// billed (BL-CLN-02, units a prior authorisation does not cover).
+///
+/// # Errors
+///
+/// A 422 when the signer's name is blank, no service is named or a service
+/// has no self-pay price.
+pub async fn sign_lines(
+    state: &AppState,
+    by: Option<i64>,
+    appointment: &Appointment,
+    signer_name: &str,
+    ip: Option<&str>,
+    wanted: &[(String, i64)],
+    at: DateTime,
+) -> Result<SelfPayConsent> {
     if signer_name.trim().is_empty() {
         return Err(refused(english("clinics.consent.problem.signer", &[])));
     }
-    if codes.is_empty() {
+    if wanted.is_empty() {
         return Err(refused(english("clinics.consent.problem.no_services", &[])));
     }
-    let lines = price_lines(state, codes, appointment.visit_date).await?;
+    let lines = price_lines(state, wanted, appointment.visit_date).await?;
     let text = consent_text(appointment.booking_id, appointment.visit_date, &lines);
     supersede_all(state, appointment.booking_id, dubai_date(at)).await?;
     let mut consent = SelfPayConsent {
         booking_id: appointment.booking_id,
         patient_party_id: appointment.patient_party_id,
-        estimated_fils: lines.iter().map(|line| line.price).sum(),
+        estimated_fils: lines.iter().map(ConsentLine::total).sum(),
         lines: Json(lines),
         priced_on: appointment.visit_date,
         document_hash: document_hash(&text),
@@ -376,17 +441,19 @@ mod tests {
         let lines = vec![
             ConsentLine {
                 code: "consultation".into(),
+                units: 1,
                 price: 45_000,
             },
             ConsentLine {
                 code: "x_ray".into(),
+                units: 3,
                 price: 12_000,
             },
         ];
         let text = consent_text(7, day, &lines);
         assert_eq!(
             text,
-            "SELF-PAY|7|2026-11-10|consultation:45000,x_ray:12000|57000"
+            "SELF-PAY|7|2026-11-10|consultation:1:45000,x_ray:3:12000|81000"
         );
         assert_eq!(document_hash(&text), document_hash(&text));
         assert_ne!(document_hash(&text), document_hash("SELF-PAY|8"));

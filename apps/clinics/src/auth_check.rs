@@ -182,14 +182,19 @@ pub async fn sign_consent(
     at: renox::db::DateTime,
 ) -> Result<SelfPayConsent> {
     let needs = plan(state, appointment, Some(pending)).await?;
-    let codes: Vec<String> = shortfalls(&needs).iter().map(|n| n.code.clone()).collect();
-    if codes.is_empty() {
+    // The units that go self-pay, not the units of the visit: the patient
+    // signs the price of what they will be billed.
+    let wanted: Vec<(String, i64)> = shortfalls(&needs)
+        .iter()
+        .map(|n| (n.code.clone(), n.self_pay))
+        .collect();
+    if wanted.is_empty() {
         return Err(refused(english(
             "clinics.authorisation.problem.nothing_to_sign",
             &[],
         )));
     }
-    consent::sign_codes(state, by, appointment, signer_name, ip, &codes, at).await
+    consent::sign_lines(state, by, appointment, signer_name, ip, &wanted, at).await
 }
 
 /// The visit `visit` was checked in with `pending`: the units of each

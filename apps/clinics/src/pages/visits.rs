@@ -161,7 +161,10 @@ async fn show(
         ),
         estimate: consent
             .as_ref()
-            .map_or_else(|| none.clone(), |c| money_text(c.estimated_fils)),
+            .map_or_else(
+                || none.clone(),
+                |c| format!("{} ({})", money_text(c.estimated_fils), c.lines_text()),
+            ),
         holds,
         can_insure: user.has_permission(permissions::COVERAGE_RECORD)
             && visit.is_insured()
