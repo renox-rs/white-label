@@ -6,18 +6,20 @@
 //! the role in the client company, else whom the kernel picks for the role
 //! ([`wl_kernel::role_tasks::assignee`]). The client company is reached by
 //! party: its contact points are wl-notify's. The staff keep the item on their
-//! task list when a message gives up, so the reaction is `none`; the
-//! reactions `09` sets for the client notices (§7.2, *Notification types*)
-//! come with BL-MPW-20.
+//! task list when a message gives up, so the reaction of a staff notice is
+//! `none`; the types and reactions 09 sets for the notices to the client and to
+//! workers (§7.2, *Notification types*) are defined here (BL-MPW-20).
 
 use renox::auth::permissions::users_with_role_in;
 use renox::prelude::*;
 use wl_kernel::notify::{
-    self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
+    self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest, ProofMethod,
+    Urgency,
 };
 use wl_kernel::{PartyId, Subject, role_tasks};
 
 use crate::permissions;
+use crate::seed;
 use crate::texts::template;
 
 /// The notification type of a notice to the staff of a client account.
@@ -26,10 +28,27 @@ pub const NOTICE: &str = "manpower.notice";
 /// The notification type of a notice to the client company.
 pub const CLIENT_NOTICE: &str = "manpower.client_notice";
 
-/// The staff notification type: a title and a body the caller fills in.
+/// The notification type of the notice that cover is not found in time
+/// (`MPW.RUL.13`): a deployment notice that is `urgent`.
+pub const CLIENT_NOTICE_URGENT: &str = "manpower.client_notice_urgent";
+
+/// The notification type of a statutory notice to the client company: the
+/// confirmation of a contract termination and the notice that workers are
+/// withdrawn for non-payment (09 §7.2 *Notification types*).
+pub const STATUTORY_NOTICE: &str = "manpower.statutory_notice";
+
+/// The notification type of a message to a worker by SMS (09 §7.2): the
+/// payslip, a document expiring, a leave decision, a shift change. A message
+/// that cannot be sent marks the number invalid and gives HR a task to reach
+/// the worker through the site supervisor.
+pub const WORKER_MESSAGE: &str = "manpower.worker_message";
+
+/// The staff notification type: a title and a body the caller fills in. It
+/// names no group and takes `none` on give-up: staff always also get the in-app
+/// notification (wl-notify §5.1).
 pub fn notice_type() -> NotificationTypeDef {
     NotificationTypeDef::new(NOTICE, "manpower")
-        .group("deployments")
+        .group("")
         .category(Category::Reminder)
         .give_up(&[GiveUpReaction::None])
         .template(
@@ -40,12 +59,26 @@ pub fn notice_type() -> NotificationTypeDef {
         )
 }
 
-/// The client notification type: a title and a body the caller fills in.
+/// The client notification type (deployment notices to the client: activated,
+/// extended, suspended, resumed, ended, cancelled, worker absent): no group,
+/// the contact is marked invalid and the account manager gets a task.
 pub fn client_notice_type() -> NotificationTypeDef {
-    NotificationTypeDef::new(CLIENT_NOTICE, "manpower")
-        .group("deployments")
+    client_type(CLIENT_NOTICE, Urgency::Normal)
+}
+
+/// The urgent client notification type: cover not found. It also alerts the
+/// holders of the task in the app.
+pub fn urgent_client_notice_type() -> NotificationTypeDef {
+    client_type(CLIENT_NOTICE_URGENT, Urgency::Urgent)
+}
+
+fn client_type(key: &str, urgency: Urgency) -> NotificationTypeDef {
+    NotificationTypeDef::new(key, "manpower")
+        .group("")
         .category(Category::Transactional)
-        .give_up(&[GiveUpReaction::None])
+        .urgency(urgency)
+        .give_up(&seed::CLIENT_GIVE_UP)
+        .staff_role(permissions::ACCOUNT_MANAGER_ROLE)
         .template(
             NotifyChannel::Email,
             "en",
@@ -54,10 +87,54 @@ pub fn client_notice_type() -> NotificationTypeDef {
         )
 }
 
+/// The statutory notice to the client: group *Statutory notices*, the contact
+/// is marked invalid and the statutory-notice task (deliver another way, record
+/// the proof) goes to the account manager.
+pub fn statutory_notice_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(STATUTORY_NOTICE, "manpower")
+        .group(seed::GROUP_STATUTORY)
+        .category(Category::Transactional)
+        .statutory(true)
+        .give_up(&seed::STATUTORY_GIVE_UP)
+        .staff_role(permissions::ACCOUNT_MANAGER_ROLE)
+        .proof_methods(&[
+            ProofMethod::Courier,
+            ProofMethod::RegisteredMail,
+            ProofMethod::HandDelivery,
+            ProofMethod::Call,
+        ])
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(template("manpower.notice.subject")),
+            template("manpower.notice.body"),
+        )
+}
+
+/// The SMS to a worker: no group, the number is marked invalid and HR gets a
+/// task to reach the worker through the site supervisor.
+pub fn worker_message_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(WORKER_MESSAGE, "manpower")
+        .group("")
+        .category(Category::Transactional)
+        .give_up(&seed::CLIENT_GIVE_UP)
+        .staff_role(permissions::HR_ROLE)
+        .channels(&[NotifyChannel::Sms])
+        .template(
+            NotifyChannel::Sms,
+            "en",
+            None,
+            template("manpower.notice.body"),
+        )
+}
+
 /// Registers the notification types.
 pub(crate) fn register_types() {
     notify::register_type(notice_type());
     notify::register_type(client_notice_type());
+    notify::register_type(urgent_client_notice_type());
+    notify::register_type(statutory_notice_type());
+    notify::register_type(worker_message_type());
 }
 
 /// The account manager of `client`: `named` when the contract names one, else
@@ -157,7 +234,25 @@ pub(crate) async fn tell_client(
     title: &str,
     body: &str,
 ) -> Result<()> {
-    let request = NotifyRequest::new(CLIENT_NOTICE, subject)
+    tell_client_as(state, CLIENT_NOTICE, subject, label, client, title, body).await
+}
+
+/// Tells the client company about `subject` with the notification type
+/// `type_key` ([`CLIENT_NOTICE_URGENT`], [`STATUTORY_NOTICE`]).
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub(crate) async fn tell_client_as(
+    state: &AppState,
+    type_key: &str,
+    subject: Subject,
+    label: &str,
+    client: PartyId,
+    title: &str,
+    body: &str,
+) -> Result<()> {
+    let request = NotifyRequest::new(type_key, subject)
         .subject_label(label)
         .to_party(client)
         .data(renox::serde_json::json!({ "title": title, "body": body }));

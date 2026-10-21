@@ -20,7 +20,7 @@ use wl_kernel::documents::{BlockCondition, BlockMode, OverrideMode, today};
 use wl_kernel::workforce::EmployeeId;
 use wl_kernel::{ClientConfig, PartyId};
 
-use crate::support::{company, day, noon_clock, scoped_person, tenant};
+use crate::support::{company, day, noon_clock, scoped_person, tenant, without_document_kinds};
 
 /// A manpower agency: the vertical on, with the shared modules it reaches.
 pub const CLIENT: &str = r#"
@@ -30,6 +30,22 @@ app = "manpower"
 
 [modules]
 enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "hr", "attendance", "portal"]
+
+[[legal_entities]]
+code = "GMS"
+name_en = "Gulf Manpower Services LLC"
+default = true
+"#;
+
+/// A manpower agency with the sales module too: what the seed of BL-MPW-20 and
+/// BL-MPW-21 reaches (`boot_seeded`).
+pub const SEEDED_CLIENT: &str = r#"
+[client]
+name = "Gulf Manpower Services LLC"
+app = "manpower"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "hr", "attendance", "portal", "sales"]
 
 [[legal_entities]]
 code = "GMS"
@@ -112,8 +128,35 @@ pub async fn boot_with(emirates_id: OverrideMode) -> TestApp {
         .await
         .unwrap();
     app.kernel().seed().await.unwrap();
+    // The fixtures of the spec replace the kinds the host seeded.
+    without_document_kinds(&app).await;
     let seeds = kinds(emirates_id);
     install_seeds(app.db(), seeds.iter()).await.unwrap();
+    app
+}
+
+/// The agency as the host seeds it for a manpower client: the kinds, ticket
+/// categories, checklists, SOPs and notification reactions of BL-MPW-20 and
+/// BL-MPW-21, with no fixture of a test.
+pub async fn boot_seeded() -> TestApp {
+    boot_seeded_with(host::Tuning::default()).await
+}
+
+/// [`boot_seeded`] with the shared modules changed by `tuning` (a failing
+/// channel provider).
+pub async fn boot_seeded_with(tuning: host::Tuning) -> TestApp {
+    let config = ClientConfig::parse(SEEDED_CLIENT).unwrap();
+    let app = TestApp::new(
+        host::app_for_tuned(config, tuning)
+            .unwrap()
+            .provide(noon_clock()),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
     app
 }
 

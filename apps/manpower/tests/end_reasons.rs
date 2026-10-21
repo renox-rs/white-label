@@ -135,9 +135,12 @@ async fn a_rejected_worker_is_ended_with_the_note_and_the_replacement_opens() {
     // tomorrow at 07:00, less than 24 hours away, that cover is not found yet
     // (`MPW.RUL.13`, BL-MPW-16).
     let told = w.t.notices.of_type("manpower.client_notice");
-    assert_eq!(told.len(), 2, "{told:?}");
+    assert_eq!(told.len(), 1, "{told:?}");
     assert!(told[0].data.to_string().contains("leaves"));
-    assert!(told[1].data.to_string().contains("Cover not found yet"));
+    // The cover notice is an urgent deployment notice (09 §7.2, BL-MPW-20).
+    let urgent = w.t.notices.of_type("manpower.client_notice_urgent");
+    assert_eq!(urgent.len(), 1, "{urgent:?}");
+    assert!(urgent[0].data.to_string().contains("Cover not found yet"));
     assert_eq!(w.t.ended.all().len(), 1);
     assert_eq!(w.t.ended.all()[0].reason, "client_rejected");
 }
@@ -247,7 +250,9 @@ async fn the_withdrawal_for_non_payment_ends_the_deployment_after_the_notice_per
         scheduled.planned_end_reason.as_deref(),
         Some("client_non_payment")
     );
-    let told = w.t.notices.of_type("manpower.client_notice");
+    // The notice that workers are withdrawn for non-payment is statutory.
+    assert!(w.t.notices.of_type("manpower.client_notice").is_empty());
+    let told = w.t.notices.of_type("manpower.statutory_notice");
     assert_eq!(told.len(), 1);
     assert!(
         told[0].data.to_string().contains("2027-04-09"),

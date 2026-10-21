@@ -130,8 +130,9 @@ async fn tell(state: &AppState, request: &ManpowerRequest) -> Result {
         &body,
     )
     .await?;
-    notices::tell_client(
+    notices::tell_client_as(
         state,
+        notices::CLIENT_NOTICE_URGENT,
         request.subject(),
         &contract.reference,
         request.client(),

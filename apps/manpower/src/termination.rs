@@ -464,8 +464,9 @@ pub async fn after_termination(state: &AppState, id: i64) -> Result<bool> {
         &english("manpower.terminate.approved_body", &params),
     )
     .await?;
-    notices::tell_client(
+    notices::tell_client_as(
         state,
+        notices::STATUTORY_NOTICE,
         contract.subject(),
         &contract.reference,
         contract.client(),

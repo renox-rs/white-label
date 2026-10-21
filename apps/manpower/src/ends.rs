@@ -49,7 +49,7 @@ use crate::contract::ClientContract;
 use crate::cover::{self, CoverAsk, causes};
 use crate::db::{answer, set_deployment};
 use crate::deployment::{Deployment, DeploymentInput, END, reasons};
-use crate::deployments::{after_end, load, require_manage, tell_client, worker_name};
+use crate::deployments::{after_end, load, require_manage, tell_client_as, worker_name};
 use crate::notices;
 use crate::permissions;
 use crate::site::{self, Site};
@@ -199,7 +199,15 @@ async fn withdraw_later(
     tx.commit().await?;
     let scheduled = load(state, deployment.id).await?;
     let worker = worker_name(state, lang, scheduled.employee()).await;
-    tell_client(state, &scheduled, "manpower.deployment.withdrawn", &worker).await?;
+    // The notice that workers are withdrawn for non-payment is statutory.
+    tell_client_as(
+        state,
+        crate::notices::STATUTORY_NOTICE,
+        &scheduled,
+        "manpower.deployment.withdrawn",
+        &worker,
+    )
+    .await?;
     Ok(scheduled)
 }
 

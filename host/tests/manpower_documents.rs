@@ -14,7 +14,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
-use support::{noon_clock, person, scoped_person};
+use support::{noon_clock, person, scoped_person, without_document_kinds};
 use wl_documents::expiry;
 use wl_documents::kinds::{KindSeed, blocks_for, install_seeds};
 use wl_documents::{Document, DocumentKind, DocumentStatus, Documents, NewDocument};
@@ -60,6 +60,8 @@ async fn boot() -> TestApp {
         .await
         .unwrap();
     app.kernel().seed().await.unwrap();
+    // The fixtures below replace the kinds the host seeded.
+    without_document_kinds(&app).await;
     let visa = KindSeed::new("residence_visa", "Residence visa")
         .subject_type("hr.employee")
         .expires()

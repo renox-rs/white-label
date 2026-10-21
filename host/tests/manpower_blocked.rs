@@ -18,7 +18,7 @@ use manpower::{
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
-use support::{company, noon_clock, person, scoped_person, tenant};
+use support::{company, noon_clock, person, scoped_person, tenant, without_document_kinds};
 use wl_attendance::{AttendanceRecord, WorkLocation};
 use wl_hr::{EmployeeStatus, NewEmployee, employees};
 use wl_kernel::block_guard::ActionKind;
@@ -50,6 +50,8 @@ async fn boot() -> TestApp {
         .await
         .unwrap();
     app.kernel().seed().await.unwrap();
+    // This test is about the block of a party, not about documents.
+    without_document_kinds(&app).await;
     app
 }
 

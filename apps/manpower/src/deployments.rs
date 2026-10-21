@@ -400,6 +400,17 @@ pub(crate) async fn tell_client(
     key: &str,
     worker: &str,
 ) -> Result {
+    tell_client_as(state, notices::CLIENT_NOTICE, deployment, key, worker).await
+}
+
+/// [`tell_client`] with the notification type `type_key`.
+pub(crate) async fn tell_client_as(
+    state: &AppState,
+    type_key: &str,
+    deployment: &Deployment,
+    key: &str,
+    worker: &str,
+) -> Result {
     let site = Site::find(&state.db, deployment.site_id)
         .await?
         .map(|site| site.name)
@@ -415,8 +426,9 @@ pub(crate) async fn tell_client(
         ("from", &deployment.start_date),
         ("until", &ends),
     ];
-    notices::tell_client(
+    notices::tell_client_as(
         state,
+        type_key,
         deployment.subject(),
         &contract.reference,
         deployment.client(),

@@ -68,7 +68,7 @@ impl World {
     }
 
     fn client(&self) -> Vec<NotifyRequest> {
-        self.missing(self.t.notices.of_type("manpower.client_notice"))
+        self.missing(self.t.notices.of_type("manpower.client_notice_urgent"))
     }
 
     fn staff(&self) -> Vec<NotifyRequest> {

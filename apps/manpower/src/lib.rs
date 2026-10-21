@@ -167,6 +167,8 @@ impl Module for Manpower {
         exits::listen(app);
         resumption::listen(app);
         notices::register_types();
+        // BL-MPW-20: the rules whose failed run alerts the owner (the MD).
+        seed::register_critical_rules();
         // BL-MPW-19: who approves a deployment's timesheets, who is told when
         // the client does not, and after how many days silence is approval.
         wl_kernel::timesheets::provide_approver_resolver(app, approvers::Approvers);

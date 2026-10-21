@@ -7,7 +7,7 @@
 
 mod support;
 
-use manpower::notices::{CLIENT_NOTICE, NOTICE};
+use manpower::notices::{CLIENT_NOTICE, NOTICE, STATUTORY_NOTICE};
 use manpower::termination::withdraw_pending;
 use manpower::{
     ClientContract, ContractHold, ContractStatus, Deployment, DeploymentStatus, RequestStatus, Site,
@@ -171,6 +171,7 @@ async fn the_md_approves_the_termination_and_the_deployments_are_cut() {
     );
     assert_eq!(t.reload_request(r.id).await.status, RequestStatus::Open);
     assert!(t.notices.of_type(CLIENT_NOTICE).is_empty());
+    assert!(t.notices.of_type(STATUTORY_NOTICE).is_empty());
 
     approve(t.state(), requests[0].id, &bader, "agreed")
         .await
@@ -231,7 +232,9 @@ async fn the_md_approves_the_termination_and_the_deployments_are_cut() {
     cancelled.sort_unstable();
     assert_eq!(cancelled, vec![d3.id, d6.id]);
     // The client has the confirmation, once; the account manager is told.
-    let letters = t.notices.of_type(CLIENT_NOTICE);
+    // The confirmation is a statutory notice (09 §7.2, BL-MPW-20).
+    assert!(t.notices.of_type(CLIENT_NOTICE).is_empty());
+    let letters = t.notices.of_type(STATUTORY_NOTICE);
     assert_eq!(letters.len(), 1);
     let title = letters[0].data["title"].as_str().unwrap();
     assert!(title.contains("2026-12-01"), "{title}");

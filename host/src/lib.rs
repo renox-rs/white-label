@@ -27,6 +27,7 @@ use renox::nav::NavLink;
 pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
+pub use app::manpower_seed;
 pub use app::negative_flow::{invoicing_for, payments_for};
 pub use app::roles;
 
@@ -149,6 +150,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::negative_flow::register_block_effects(&client_app);
     app::accounting_seed::register_block_effects(&client_app);
     app::accounting_seed::register_integrations(&client_app);
+    // The manual fallbacks of the integrations of a manpower agency (BL-MPW-20).
+    app::manpower_seed::register_integrations(&client_app);
+    // HR and the accountant see the confidential labour cases and grievances
+    // of a manpower agency (BL-MPW-20); the accountant of 04 does not.
+    app::manpower_seed::grant_roles(&client_app);
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
@@ -272,6 +278,9 @@ fn enable(
             app::accounting_seed::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
+            }
+            if client_app == app::manpower_seed::MANPOWER {
+                app::manpower_seed::register_documents();
             }
             Ok(app.module(wl_documents::WlDocuments))
         }

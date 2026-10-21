@@ -823,10 +823,43 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (MEMBER, &[]),
 ];
 
+/// What a vertical grants a role on top of [`ROLES`] for this deployment only
+/// (09: HR and the accountant see the confidential labour cases and grievances,
+/// which the accountant of 04 must not). Set once when the app is built.
+static EXTRA: std::sync::RwLock<Vec<(&'static str, &'static str)>> =
+    std::sync::RwLock::new(Vec::new());
+
+/// Grants `role` the `extra` permissions for this deployment, besides its row of
+/// [`ROLES`]; [`define`] keeps them. A repeat changes nothing.
+pub fn grant_extra(role: &'static str, extra: &[&'static str]) {
+    let mut found = EXTRA.write().unwrap_or_else(|e| e.into_inner());
+    for permission in extra {
+        if !found.contains(&(role, *permission)) {
+            found.push((role, permission));
+        }
+    }
+}
+
+/// What `role` holds in this deployment: its row of [`ROLES`] and the extra
+/// grants of the vertical ([`grant_extra`]).
+pub fn grants_of(role: &str) -> Vec<&'static str> {
+    let mut grants: Vec<&'static str> = ROLES
+        .iter()
+        .find(|(name, _)| *name == role)
+        .map(|(_, grants)| grants.to_vec())
+        .unwrap_or_default();
+    for (name, permission) in EXTRA.read().unwrap_or_else(|e| e.into_inner()).iter() {
+        if *name == role && !grants.contains(permission) {
+            grants.push(permission);
+        }
+    }
+    grants
+}
+
 /// Creates the roles, or brings their permissions up to date.
 pub async fn define(db: &Db) -> Result {
-    for (role, grants) in ROLES {
-        permissions::define_role(db, role, grants).await?;
+    for (role, _) in ROLES {
+        permissions::define_role(db, role, &grants_of(role)).await?;
     }
     Ok(())
 }
