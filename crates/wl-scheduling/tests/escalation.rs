@@ -234,6 +234,63 @@ async fn the_registered_five_minute_task_runs_the_rules_at_the_moved_clock() {
     assert_eq!(t.reload(conflicted.id).await.status, BookingStatus::Booked);
 }
 
+/// Two conflicted bookings of Dr A at 15:00 and 16:00, an ordinary one of Dr B
+/// at 16:00 and a missed one of Dr B at 11:00; the notifier fails for the
+/// escalation of the first.
+async fn failing_scene(t: &Booked) -> (Scene, Booking, Booking, Booking, Booking) {
+    let s = scene(t).await;
+    holder(t, "Mona", "branch_manager", &[perm::VIEW], &scope(BRANCH)).await;
+    let first = book_at(t, &s, &s.a, DAY, 15, 0, now()).await;
+    let second = book_at(t, &s, &s.a, DAY, 16, 0, now()).await;
+    let ordinary = book_at(t, &s, &s.b, DAY, 16, 0, now()).await;
+    let missed = book_at(t, &s, &s.b, DAY, 11, 0, now()).await;
+    t.state().emit(sick(605)).await.unwrap();
+    t.messages
+        .fail_for("scheduling.conflict_escalated", first.subject());
+    (s, first, second, ordinary, missed)
+}
+
+/// A booking whose escalation fails does not stop the later ones: they are
+/// escalated, the failure is logged, and the first error comes back after the
+/// batch.
+#[renox::test]
+async fn one_failing_escalation_does_not_stop_the_next() {
+    let t = boot_with(WlScheduling::new().manager_role("branch_manager")).await;
+    let (_, first, second, _, _) = failing_scene(&t).await;
+
+    let result = rules::escalate_due(t.state(), dubai(DAY, 14, 0)).await;
+
+    assert!(result.is_err(), "the first error is returned");
+    let told = of_type(&t, "scheduling.conflict_escalated");
+    assert_eq!(told.len(), 1);
+    assert_eq!(told[0].subject, second.subject());
+    let changes = of_type(&t, "scheduling.bookings_changed");
+    assert!(changes.iter().any(|c| c.subject == second.subject()));
+    assert!(changes.iter().all(|c| c.subject != first.subject()));
+}
+
+/// A failing escalation does not stop the rest of the five-minute run: the
+/// reminders still go, the missed booking is still marked no-show, and the
+/// run reports the error at the end.
+#[renox::test]
+async fn a_failing_step_does_not_stop_the_no_show_sweep_and_the_reminders() {
+    let t = boot_with(WlScheduling::new().manager_role("branch_manager")).await;
+    let (_, _, second, ordinary, missed) = failing_scene(&t).await;
+
+    let result = rules::run(t.state(), dubai(DAY, 14, 0)).await;
+
+    assert!(result.is_err(), "the failure is reported");
+    assert_eq!(t.reload(missed.id).await.status, BookingStatus::NoShow);
+    let reminders = of_type(&t, "scheduling.booking_reminder");
+    assert!(reminders.iter().any(|r| r.subject == ordinary.subject()));
+    assert!(
+        of_type(&t, "scheduling.conflict_escalated")
+            .iter()
+            .any(|r| r.subject == second.subject()),
+        "the next booking was escalated"
+    );
+}
+
 /// A conflict raised at 14:10 for 15:00 is already inside the two hours: it is
 /// escalated at 14:10 (the branch manager is told, the party gets the change
 /// message), and not again.

@@ -296,9 +296,18 @@ impl WorkDoneStatus for Work {
 
 /// `wl-notify` as the module sees it: the notifications asked of it.
 #[derive(Clone, Default)]
-pub struct Messages(Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Messages(
+    Arc<Mutex<Vec<NotifyRequest>>>,
+    Arc<Mutex<Vec<(String, Subject)>>>,
+);
 
 impl Messages {
+    /// From now on the notifier fails (and sends nothing) for a notification
+    /// of `type_key` about `subject`.
+    pub fn fail_for(&self, type_key: &str, subject: Subject) {
+        self.1.lock().unwrap().push((type_key.to_owned(), subject));
+    }
+
     /// The notifications sent so far.
     pub fn sent(&self) -> Vec<NotifyRequest> {
         self.0.lock().unwrap().clone()
@@ -322,6 +331,18 @@ impl Notifier for Messages {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         Box::pin(async move {
+            let failing = self
+                .1
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(key, subject)| *key == request.type_key && *subject == request.subject);
+            if failing {
+                return Err(Error::Status(
+                    StatusCode::BAD_GATEWAY,
+                    "the notifier is down".to_owned(),
+                ));
+            }
             let mut sent = self.0.lock().unwrap();
             sent.push(request);
             Ok(vec![MessageId(sent.len() as i64)])

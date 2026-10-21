@@ -202,11 +202,13 @@ pub async fn escalate(state: &AppState, booking_id: i64, at: DateTime) -> Result
 }
 
 /// Escalates every open conflict that is due at `at`. Returns how many
-/// bookings were escalated.
+/// bookings were escalated. Decision: each booking is independent: one that
+/// fails (the notifier, say) is logged and does not stop the later ones; the
+/// first error is returned after the batch.
 ///
 /// # Errors
 ///
-/// A database error or the notifier's.
+/// A database error or the notifier's, the first of the batch.
 pub async fn escalate_due(state: &AppState, at: DateTime) -> Result<usize> {
     let mut booking_ids: Vec<i64> = Conflict::query()
         .where_(Conflict::CLEARED_AT.is_null())
@@ -219,20 +221,31 @@ pub async fn escalate_due(state: &AppState, at: DateTime) -> Result<usize> {
         .collect();
     booking_ids.dedup();
     let mut escalated = 0;
+    let mut failure: Option<Error> = None;
     for id in booking_ids {
-        if escalate(state, id, at).await? {
-            escalated += 1;
+        match escalate(state, id, at).await {
+            Ok(true) => escalated += 1,
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!("scheduling: escalating the conflict of booking {id} failed: {error}");
+                failure.get_or_insert(error);
+            }
         }
     }
-    Ok(escalated)
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(escalated),
+    }
 }
 
 /// Sends the reminders due at `at` (`SCH.RUL.01`). A conflicted booking gets
-/// none. Returns `(sent, suppressed)`.
+/// none. Returns `(sent, suppressed)`. Each booking is independent: one that
+/// fails is logged and the others go on; the first error is returned after the
+/// batch.
 ///
 /// # Errors
 ///
-/// A database error or the notifier's.
+/// A database error or the notifier's, the first of the batch.
 pub async fn remind(state: &AppState, at: DateTime) -> Result<(usize, usize)> {
     let cfg = config_of(state);
     let Some(longest) = cfg.reminder_hours.iter().copied().max() else {
@@ -254,60 +267,96 @@ pub async fn remind(state: &AppState, at: DateTime) -> Result<(usize, usize)> {
         );
     }
     let (mut sent, mut suppressed) = (0, 0);
+    let mut failure: Option<Error> = None;
     for booking in bookings {
-        // A booking whose prepayment is awaited is not confirmed yet.
-        if booking.payment_pending {
-            continue;
-        }
-        let due: Vec<i64> = hours
-            .iter()
-            .copied()
-            .filter(|n| booking.starts_at - TimeDelta::hours(*n) <= at)
-            .collect();
-        // The latest due reminder is the one that matters.
-        let Some(latest) = due.first().copied() else {
-            continue;
-        };
-        let handled: Vec<i64> = Reminder::query()
-            .where_(Reminder::BOOKING_ID.eq(booking.id))
-            .where_(Reminder::FOR_START.eq(booking.starts_at))
-            .get(&state.db)
-            .await?
-            .into_iter()
-            .map(|row| row.hours_before)
-            .collect();
-        for n in due.iter().copied().filter(|n| !handled.contains(n)) {
-            let status = if n != latest {
-                "skipped"
-            } else if booking.has_conflict() {
-                "suppressed"
-            } else {
-                "sent"
-            };
-            // Marked before the message goes: a run that dies does not send
-            // it twice.
-            Reminder {
-                booking_id: booking.id,
-                hours_before: n,
-                for_start: booking.starts_at,
-                status: status.to_owned(),
-                handled_at: at,
-                ..Reminder::default()
+        match remind_booking(state, &booking, &hours, at).await {
+            Ok((one_sent, one_suppressed)) => {
+                sent += one_sent;
+                suppressed += one_suppressed;
             }
-            .save(&state.db)
-            .await?;
-            match status {
-                "sent" => {
-                    let names = resource_names(&state.db, &booking).await?;
-                    notices::reminder(state, &booking, &names, at).await?;
-                    sent += 1;
-                }
-                "suppressed" => suppressed += 1,
-                _ => {}
+            Err(error) => {
+                eprintln!(
+                    "scheduling: the reminder of booking {} failed: {error}",
+                    booking.number
+                );
+                failure.get_or_insert(error);
             }
         }
     }
+    match failure {
+        Some(error) => Err(error),
+        None => Ok((sent, suppressed)),
+    }
+}
+
+/// The reminders of one booking due at `at`, for the sorted `hours`. Returns
+/// `(sent, suppressed)`.
+async fn remind_booking(
+    state: &AppState,
+    booking: &Booking,
+    hours: &[i64],
+    at: DateTime,
+) -> Result<(usize, usize)> {
+    let (mut sent, mut suppressed) = (0, 0);
+    // A booking whose prepayment is awaited is not confirmed yet.
+    if booking.payment_pending {
+        return Ok((0, 0));
+    }
+    let due: Vec<i64> = hours
+        .iter()
+        .copied()
+        .filter(|n| booking.starts_at - TimeDelta::hours(*n) <= at)
+        .collect();
+    // The latest due reminder is the one that matters.
+    let Some(latest) = due.first().copied() else {
+        return Ok((0, 0));
+    };
+    let handled: Vec<i64> = Reminder::query()
+        .where_(Reminder::BOOKING_ID.eq(booking.id))
+        .where_(Reminder::FOR_START.eq(booking.starts_at))
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .map(|row| row.hours_before)
+        .collect();
+    for n in due.iter().copied().filter(|n| !handled.contains(n)) {
+        let status = if n != latest {
+            "skipped"
+        } else if booking.has_conflict() {
+            "suppressed"
+        } else {
+            "sent"
+        };
+        // Marked before the message goes: a run that dies does not send
+        // it twice.
+        Reminder {
+            booking_id: booking.id,
+            hours_before: n,
+            for_start: booking.starts_at,
+            status: status.to_owned(),
+            handled_at: at,
+            ..Reminder::default()
+        }
+        .save(&state.db)
+        .await?;
+        match status {
+            "sent" => {
+                let names = resource_names(&state.db, booking).await?;
+                notices::reminder(state, booking, &names, at).await?;
+                sent += 1;
+            }
+            "suppressed" => suppressed += 1,
+            _ => {}
+        }
+    }
     Ok((sent, suppressed))
+}
+
+/// Tells the front desk that `done` was marked no-show.
+async fn tell_no_show(state: &AppState, done: &Booking) -> Result {
+    let names = resource_names(&state.db, done).await?;
+    let users = front_desk(state, done).await?;
+    notices::no_show(state, done, &names, &users).await
 }
 
 /// Marks as no-show, as the system, the `booked` and `confirmed` bookings
@@ -335,9 +384,14 @@ pub async fn no_shows(state: &AppState, at: DateTime) -> Result<usize> {
             match service::mark_no_show(state, booking.id, Actor::system(), at).await {
                 Ok(done) => {
                     marked += 1;
-                    let names = resource_names(&state.db, &done).await?;
-                    let users = front_desk(state, &done).await?;
-                    notices::no_show(state, &done, &names, &users).await?;
+                    // The no-show stands; telling the front desk may fail.
+                    if let Err(error) = tell_no_show(state, &done).await {
+                        eprintln!(
+                            "scheduling: telling the front desk of the no-show of booking {} failed: {error}",
+                            done.number
+                        );
+                        failure.get_or_insert(error);
+                    }
                 }
                 Err(Refusal::Transition(_)) => {}
                 Err(other) => {
@@ -358,23 +412,48 @@ pub async fn no_shows(state: &AppState, at: DateTime) -> Result<usize> {
     }
 }
 
-/// Runs the three automations at `at`.
+/// Runs the automations at `at`.
 ///
 /// # Errors
 ///
-/// A database error or the notifier's.
+/// A database error or the notifier's, the first of the four steps that failed
+/// (the others have run).
 pub async fn run(state: &AppState, at: DateTime) -> Result<Sent> {
-    let escalations = escalate_due(state, at).await?;
-    let (reminders, suppressed) = remind(state, at).await?;
-    let no_shows = no_shows(state, at).await?;
-    let released = prepayment::release_due(state, at).await?;
-    Ok(Sent {
-        escalations,
-        reminders,
-        suppressed,
-        no_shows,
-        released,
-    })
+    // Decision: the four steps are independent. A step that fails (a notifier
+    // error in the escalation, say) is logged and the others still run, so
+    // that the no-show sweep and the release of unpaid holds (`SCH.RUL.04`)
+    // are never held back by it; the first error is returned at the end.
+    let mut failure: Option<Error> = None;
+    let mut note = |step: &str, error: Error| {
+        eprintln!("scheduling: the {step} step of the five-minute run failed: {error}");
+        failure.get_or_insert(error);
+    };
+    let escalations = escalate_due(state, at).await.unwrap_or_else(|error| {
+        note("escalation", error);
+        0
+    });
+    let (reminders, suppressed) = remind(state, at).await.unwrap_or_else(|error| {
+        note("reminder", error);
+        (0, 0)
+    });
+    let no_shows = no_shows(state, at).await.unwrap_or_else(|error| {
+        note("no-show", error);
+        0
+    });
+    let released = prepayment::release_due(state, at).await.unwrap_or_else(|error| {
+        note("release", error);
+        0
+    });
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(Sent {
+            escalations,
+            reminders,
+            suppressed,
+            no_shows,
+            released,
+        }),
+    }
 }
 
 /// Registers the five-minute task and its command.
