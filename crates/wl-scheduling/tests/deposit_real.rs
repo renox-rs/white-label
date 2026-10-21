@@ -12,9 +12,9 @@ use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::scheduling::WorkDone;
 use wl_parties::Party;
+use wl_payments::Refund;
 use wl_payments::permissions as pay_perm;
 use wl_payments::refund::RefundStatus;
-use wl_payments::Refund;
 use wl_scheduling::service::{self, Actor};
 use wl_scheduling::{Booking, BookingStatus, links};
 
@@ -83,9 +83,7 @@ async fn an_early_party_cancel_gives_a_real_refund_row() {
     let party = patient(&t).await;
     let doctor = t.doctor("Dr A").await;
     let service = t.deposit_service(&doctor, true).await;
-    let booking = t
-        .book_for(party, &service, &[&doctor], in_hours(30))
-        .await;
+    let booking = t.book_for(party, &service, &[&doctor], in_hours(30)).await;
 
     let url = links::cancel_url(t.state(), booking.id, HOUR).unwrap();
     t.app

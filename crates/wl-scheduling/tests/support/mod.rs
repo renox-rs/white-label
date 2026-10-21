@@ -687,13 +687,13 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
         app
     };
     let app = app.module(module).module(Harness {
-            real_payments: real,
-            portal: portal.clone(),
-            refunds: refunds.clone(),
-            work: work.clone(),
-            messages: messages.clone(),
-            licences: licences.clone(),
-        });
+        real_payments: real,
+        portal: portal.clone(),
+        refunds: refunds.clone(),
+        work: work.clone(),
+        messages: messages.clone(),
+        licences: licences.clone(),
+    });
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
     let app = record(app, &events.checked_in);
