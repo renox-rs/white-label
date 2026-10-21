@@ -9,25 +9,30 @@
 use std::sync::{Arc, Mutex};
 
 use logistics::permissions as perm;
-use logistics::{Logistics, Shipment, ShipmentStatus};
+use logistics::remit::{self, Built};
+use logistics::{Logistics, Remittance, RemittanceStatus, Shipment, ShipmentStatus};
 use renox::auth::{Permissions, permissions};
+use renox::chrono::TimeDelta;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
 use wl_delivery::{Delivery, NewRun, VehicleType, WlDelivery, permissions as dperm, seed};
 use wl_kernel::documents::today;
 use wl_kernel::notify::Notifier;
+use wl_kernel::parties::PartyDirectory;
 use wl_kernel::portal::PortalUsers;
 use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{ClientConfig, PartyId, RecordVoided};
 
 pub mod notices;
+pub mod parties;
 pub mod portal;
 pub mod roster;
 pub mod tickets;
 
 use notices::Notices;
+use parties::Parties;
 use portal::Portal;
 use roster::Roster;
 use tickets::TicketDesk;
@@ -119,6 +124,13 @@ pub struct World {
     pub nadia: User,
     /// A client user of another client.
     pub farah: User,
+    /// An accountant: prepares, approves and pays COD remittances.
+    pub amal: User,
+    /// Another accountant.
+    pub bashar: User,
+    /// The party directory (the real wl-payments knows the clients through
+    /// it); blocking a client is done here.
+    pub parties: Parties,
 }
 
 async fn make_user(db: &Db, name: &str, grants: &[&str]) -> User {
@@ -166,6 +178,16 @@ impl Module for Probe {
 
 /// The app booted with the real wl-delivery.
 pub async fn boot() -> World {
+    boot_with(false).await
+}
+
+/// The app booted with the real wl-delivery and the real wl-payments (the
+/// payout of a COD remittance is a voucher there).
+pub async fn boot_with_payments() -> World {
+    boot_with(true).await
+}
+
+async fn boot_with(real_payments: bool) -> World {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -180,6 +202,7 @@ pub async fn boot() -> World {
     let tickets = TicketDesk::default();
     let task_creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let voided = Recorded::new();
+    let parties = Parties::default();
     let app = App::new()
         .module(Auth::new())
         .module(renox::audit::Audit)
@@ -191,8 +214,23 @@ pub async fn boot() -> World {
         .provide(notifier)
         .provide(portal_users)
         .provide(task_creator);
+    let app = if real_payments {
+        let directory: Arc<dyn PartyDirectory> = Arc::new(parties.clone());
+        app.provide(directory)
+            .module(wl_payments::WlPayments::new())
+    } else {
+        app
+    };
     let app = record(app, &voided);
-    let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let client = if real_payments {
+        CLIENT.replace(
+            "[\"parties\", \"delivery\"]",
+            "[\"parties\", \"invoicing\", \"delivery\", \"payments\"]",
+        )
+    } else {
+        CLIENT.to_owned()
+    };
+    let config = ClientConfig::parse(&client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
@@ -216,6 +254,8 @@ pub async fn boot() -> World {
         dperm::RUNS_VIEW,
         dperm::RUNS_DISPATCH,
         dperm::POD_VIEW,
+        dperm::APPROVE_COD_DIFFERENCE,
+        perm::REMITTANCES_VIEW,
     ];
     let dispatcher_grants: Vec<&str> = manage.iter().chain(planning.iter()).copied().collect();
     let ops = make_user(app.db(), "Olivia", &dispatcher_grants).await;
@@ -246,6 +286,14 @@ pub async fn boot() -> World {
     let noor = make_user(app.db(), "Noor", &client_grants).await;
     let nadia = make_user(app.db(), "Nadia", &client_grants).await;
     let farah = make_user(app.db(), "Farah", &client_grants).await;
+    let accountant = [
+        perm::REMITTANCES_VIEW,
+        perm::REMITTANCES_PREPARE,
+        perm::REMITTANCES_APPROVE,
+        perm::REMITTANCES_PAY,
+    ];
+    let amal = make_user(app.db(), "Amal", &accountant).await;
+    let bashar = make_user(app.db(), "Bashar", &accountant).await;
     portal.grant(noor.id, SOUQ.0);
     portal.grant(nadia.id, SOUQ.0);
     portal.grant(farah.id, OTHER_CLIENT.0);
@@ -263,6 +311,9 @@ pub async fn boot() -> World {
         noor,
         nadia,
         farah,
+        amal,
+        bashar,
+        parties,
     }
 }
 
@@ -446,6 +497,106 @@ impl World {
             ],
         )
         .await
+    }
+
+    /// The driver delivers the stop of `delivery` with `cash` dirhams
+    /// collected ("300.00"); every line is delivered in full.
+    pub async fn deliver_stop(&self, delivery: &Delivery, cash: &str) -> TestResponse {
+        self.deliver_stop_with(delivery, cash, &[]).await
+    }
+
+    /// [`deliver_stop`](Self::deliver_stop) with more `fields` (a difference
+    /// reason, for instance).
+    pub async fn deliver_stop_with(
+        &self,
+        delivery: &Delivery,
+        cash: &str,
+        more: &[(&str, &str)],
+    ) -> TestResponse {
+        let line = delivery.lines(self.db()).await.unwrap().remove(0);
+        let delivered_field = format!("delivered_{}", line.id);
+        let refused_field = format!("refused_{}", line.id);
+        let mut fields: Vec<(&str, &str)> = vec![
+            ("recipient_name", "Mariam Al Hosani"),
+            ("photo", "photo-0001"),
+            ("signature", "signature-0001"),
+            ("latitude", "25.204849"),
+            ("longitude", "55.270783"),
+            ("cash_collected", cash),
+            (delivered_field.as_str(), "1"),
+            (refused_field.as_str(), "0"),
+        ];
+        fields.extend_from_slice(more);
+        self.post(
+            &self.driver,
+            &format!("/driver/stops/{}/deliver", delivery.id),
+            &fields,
+        )
+        .await
+    }
+
+    /// A shipment of `client` with `cod` dirhams to collect ("300"), booked,
+    /// picked up, taken to the hub, dispatched and delivered with the cash
+    /// collected in full: it is `delivered`.
+    pub async fn delivered(&self, client: PartyId, reference: &str, cod: &str) -> Shipment {
+        let shipment = self
+            .book_with(&self.dispatcher, client, reference, &[("cod", cod)])
+            .await;
+        let (_out, delivery) = self.out_for_delivery(&shipment).await;
+        let cash = format!("{cod}.00");
+        self.deliver_stop(&delivery, &cash).await.assert_status(303);
+        let after = self.reload(&shipment).await;
+        assert_eq!(after.status, ShipmentStatus::Delivered);
+        after
+    }
+
+    /// The weekly rule `LOG.RUL.06` for a period that ended an hour from
+    /// now: everything delivered so far is in the period.
+    pub async fn rule(&self) -> Vec<Built> {
+        self.rule_until(renox::db::now() + TimeDelta::hours(1)).await
+    }
+
+    /// The weekly rule for the period ending at `period_end`.
+    pub async fn rule_until(&self, period_end: renox::db::DateTime) -> Vec<Built> {
+        remit::run_weekly(self.state(), period_end)
+            .await
+            .expect("the weekly rule runs")
+    }
+
+    /// The remittances of `client`, oldest first.
+    pub async fn remittances_of(&self, client: PartyId) -> Vec<Remittance> {
+        Remittance::query()
+            .where_(Remittance::CLIENT_PARTY_ID.eq(client.0))
+            .order_by(Remittance::ID)
+            .get(self.db())
+            .await
+            .unwrap()
+    }
+
+    /// The only remittance of `client`.
+    pub async fn the_remittance_of(&self, client: PartyId) -> Remittance {
+        let mut all = self.remittances_of(client).await;
+        assert_eq!(all.len(), 1, "one remittance");
+        all.remove(0)
+    }
+
+    /// `remittance`, as stored now.
+    pub async fn remittance(&self, remittance: &Remittance) -> Remittance {
+        Remittance::find_or_404(self.db(), remittance.id)
+            .await
+            .unwrap()
+    }
+
+    /// The status of `remittance`, as stored now.
+    pub async fn remittance_status(&self, remittance: &Remittance) -> RemittanceStatus {
+        self.remittance(remittance).await.status
+    }
+
+    /// The client's COD terms: fee in basis points and the bank account.
+    pub async fn cod_terms(&self, client: PartyId, fee_bp: i64, account: Option<&str>) {
+        remit::set_cod_terms(self.db(), client, fee_bp, account)
+            .await
+            .expect("the terms are set");
     }
 
     /// The names of the transitions `user` is offered on `shipment`.
