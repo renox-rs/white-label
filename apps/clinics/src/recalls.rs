@@ -81,7 +81,10 @@ const SUBJECT_AR: &str = "رسالة من {{ clinic }}";
 
 /// The Arabic body of the notice.
 const BODY_AR: &str =
-    "{{ clinic }}: يرجى الاتصال بنا بخصوص منتج استُخدم خلال زيارتكم بتاريخ {{ dates }}. {{ contact }}";
+    "{{ clinic }}: يرجى الاتصال بنا{{ contact_ar }} بخصوص منتج استُخدم خلال زيارتكم بتاريخ {{ dates }}.";
+
+/// The Arabic way to give the phone number, ahead of its digits.
+const CALL_US_ON_AR: &str = " على الرقم ";
 
 /// The app's `TracePartyResolver`: a visit is its patient, or the guardian of
 /// a dependant.
@@ -220,10 +223,16 @@ pub async fn audit_calls_view(state: &AppState, user: &AuthUser, notices: &[i64]
     Ok(())
 }
 
-/// The clinic's name and the way to reach it, for the text of a notice.
-fn clinic_contact(state: &AppState) -> (String, String) {
+/// The clinic's name and the way to reach it, for the text of a notice: the
+/// English phrase, and the Arabic one (the Arabic text does not take an
+/// English phrase).
+fn clinic_contact(state: &AppState) -> (String, String, String) {
     let Some(config) = state.provided::<Arc<ClientConfig>>() else {
-        return (String::new(), english("clinics.recall.call_us", &[]));
+        return (
+            String::new(),
+            english("clinics.recall.call_us", &[]),
+            String::new(),
+        );
     };
     let phone = config
         .section("clinics")
@@ -235,7 +244,8 @@ fn clinic_contact(state: &AppState) -> (String, String) {
         Some(phone) => english("clinics.recall.call_us_on", &[("phone", &phone)]),
         None => english("clinics.recall.call_us", &[]),
     };
-    (config.client.name.clone(), contact)
+    let contact_ar = phone.map_or_else(String::new, |phone| format!("{CALL_US_ON_AR}{phone}"));
+    (config.client.name.clone(), contact, contact_ar)
 }
 
 /// The patients still to be told, by the party the notice goes to: their
@@ -272,7 +282,7 @@ pub async fn send(state: &AppState, by: &AuthUser, recall_id: i64) -> Result<Vec
     if groups.is_empty() {
         return Err(refused(english("clinics.recall.problem.nothing", &[])));
     }
-    let (clinic, contact) = clinic_contact(state);
+    let (clinic, contact, contact_ar) = clinic_contact(state);
     let trace_service = lot_trace(state);
     let mut made = Vec::new();
     for (party, group) in groups {
@@ -297,7 +307,12 @@ pub async fn send(state: &AppState, by: &AuthUser, recall_id: i64) -> Result<Vec
         let request = NotifyRequest::new(NOTICE_TYPE, notice.subject())
             .subject_label(&english("clinics.recall.label", &[]))
             .to_party(PartyId(party))
-            .data(json!({ "clinic": clinic, "contact": contact, "dates": dates }));
+            .data(json!({
+                "clinic": clinic,
+                "contact": contact,
+                "contact_ar": contact_ar,
+                "dates": dates
+            }));
         if let Err(error) = notify::notifier(state).notify(state, request).await {
             RecallNotice::query()
                 .where_(RecallNotice::ID.eq(notice.id))

@@ -10,7 +10,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use renox::auth::{Auth, Permissions, permissions};
@@ -180,14 +180,19 @@ impl SelfPayPrices for Prices {
 pub struct Guardians(
     Arc<Mutex<BTreeMap<i64, Vec<PartyId>>>>,
     Arc<Mutex<BTreeMap<i64, String>>>,
-    Arc<Mutex<BTreeSet<i64>>>,
+    Arc<Mutex<BTreeMap<i64, String>>>,
 );
 
 impl Guardians {
     /// The party `party` can be reached by e-mail at [`Guardians::email_of`]
     /// (the real notifier tests).
     pub fn reachable(&self, party: PartyId) {
-        self.2.lock().unwrap().insert(party.0);
+        self.reachable_in(party, "en");
+    }
+
+    /// Like [`reachable`](Guardians::reachable), the party reads `language`.
+    pub fn reachable_in(&self, party: PartyId, language: &str) {
+        self.2.lock().unwrap().insert(party.0, language.to_owned());
     }
 
     /// The e-mail address of a party made [`reachable`](Guardians::reachable).
@@ -245,18 +250,15 @@ impl PartyDirectory for Guardians {
     ) -> PartyFuture<'a, Option<PartyContacts>> {
         // Only the patient and the parties made reachable can be reached, by
         // e-mail (the real notifier tests).
+        let language = self.2.lock().unwrap().get(&party.0).cloned();
         let address = if party == PATIENT {
             Some(PATIENT_EMAIL.to_owned())
         } else {
-            self.2
-                .lock()
-                .unwrap()
-                .contains(&party.0)
-                .then(|| Guardians::email_of(party))
+            language.as_ref().map(|_| Guardians::email_of(party))
         };
         let found = address.map(|address| PartyContacts {
             party,
-            language: "en".to_owned(),
+            language: language.unwrap_or_else(|| "en".to_owned()),
             preferred_channel: None,
             points: vec![PartyContactPoint {
                 id: if party == PATIENT { 1 } else { party.0 },

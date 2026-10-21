@@ -652,3 +652,45 @@ async fn a_notice_that_gives_up_becomes_a_call_for_the_front_desk_of_the_branch(
         .unwrap();
     assert_eq!(line.notice_status, NoticeStatus::Sent);
 }
+
+/// The notice to a patient who reads Arabic is the Arabic text of the type,
+/// filled by the real wl-notify: the clinic's name, the phone number in
+/// Arabic, the visit days; no English phrase, no product, lot, reason or
+/// anything clinical, and no template placeholder left over.
+#[renox::test]
+async fn the_arabic_notice_is_filled_and_neutral() {
+    let d = desk_with_stock_and_notify().await;
+    name_patients(&d);
+    let s = store(&d, 10, 0).await;
+    let first = used_filler(&d, P2, 1, 9, 1, "L1").await;
+    let second = used_filler(&d, P2, 2, 9, 1, "L1").await;
+    d.t.guardians.reachable_in(P2, "ar");
+    let recall = open_recall(&d, s.item.id, "L1").await;
+    let mia = manager(&d).await;
+    d.post(
+        &mia,
+        &format!("/clinics/recalls/{}/notices", recall.id),
+        &[("x", "y")],
+    )
+    .await
+    .assert_ok();
+    while d.t.app.run_jobs().await > 0 {}
+
+    let sent = d.t.outbox.sent();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    let out = &sent[0];
+    assert_eq!(out.address, support::Guardians::email_of(P2));
+    assert_eq!(out.language, "ar");
+    assert_eq!(out.title, "رسالة من Palm Grove Clinic LLC");
+    let body = &out.body;
+    assert!(body.starts_with("Palm Grove Clinic LLC: يرجى الاتصال بنا على الرقم +971 4 555 0100"), "{body}");
+    assert!(body.contains(&first.visit_date.to_string()), "{body}");
+    assert!(body.contains(&second.visit_date.to_string()), "{body}");
+    assert!(!body.contains("{{"), "a placeholder is left: {body}");
+    for secret in [
+        "Filler", "filler", "L1", REASON, "Chest pain", "angina", "recall", "call us", "سحب",
+    ] {
+        assert!(!body.contains(secret), "the notice says `{secret}`: {body}");
+    }
+    assert!(!out.title.contains("Filler"), "{}", out.title);
+}
