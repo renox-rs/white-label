@@ -11,7 +11,9 @@ use wl_hr::payroll::{self, FailedLine};
 use wl_hr::{
     Employee, EmployeeStatus, LineStatus, PayrollLine, PayrollRun, PayrollRunStatus, SifFile,
 };
+use wl_kernel::payments::{Direction, PaymentMethod, PaymentStatus};
 use wl_kernel::tickets::Assignee;
+use wl_payments::payment::Payment;
 
 use support::{Booted, users};
 
@@ -27,7 +29,10 @@ struct Desk {
 }
 
 async fn desk(count: usize) -> Desk {
-    let t = support::boot().await;
+    desk_on(support::boot().await, count).await
+}
+
+async fn desk_on(t: Booted, count: usize) -> Desk {
     let a = t.user_with("Pia", "payroll_prep").await;
     let b = t.user_with("Ali", "payroll_appr").await;
     let mut employees: Vec<Employee> = Vec::new();
@@ -248,12 +253,19 @@ async fn hrm13_ac4_confirm_paid_is_refused_while_a_line_is_failed() {
 }
 
 /// AC5: a failed line instead marked paid by an approved transfer "TR-88":
-/// `confirm_paid` does not ask for a bank confirmation for it. With every
-/// failed line moved out `regenerate` would send an empty file and is refused,
-/// so the run goes straight to `confirm_paid` from `partially_rejected`.
+/// `confirm_paid` does not ask for a bank confirmation for it, and the transfer
+/// is recorded as an outgoing payment (a voucher) of the line's net to the
+/// employee through the kernel `PaymentRecorder` of the real wl-payments
+/// (`FIN.PAY.01`). With every failed line moved out `regenerate` would send
+/// an empty file and is refused, so the run goes straight to `confirm_paid`
+/// from `partially_rejected`.
 #[renox::test]
 async fn hrm13_ac5_a_line_paid_by_transfer_needs_no_bank_confirmation() {
-    let d = desk(5).await;
+    let t = support::boot_with_payments().await;
+    for n in 0..5 {
+        t.parties.name(100 + n, &format!("Worker {n}"));
+    }
+    let d = desk_on(t, 5).await;
     d.t.partial(&d.a, &d.run, "RESULT-1", &[(&d.lines[0], "invalid IBAN")])
         .await
         .assert_status(303);
@@ -270,6 +282,33 @@ async fn hrm13_ac5_a_line_paid_by_transfer_needs_no_bank_confirmation() {
     assert_eq!(moved.status, LineStatus::Paid);
     assert_eq!(moved.paid_method.as_deref(), Some("transfer"));
     assert_eq!(moved.paid_reference.as_deref(), Some("TR-88"));
+
+    let vouchers = Payment::query().get(d.t.db()).await.unwrap();
+    assert_eq!(vouchers.len(), 1, "one payment, for the one line moved out");
+    let voucher = &vouchers[0];
+    assert_eq!(voucher.direction, Direction::Out);
+    assert_eq!(voucher.method, PaymentMethod::Transfer);
+    assert_eq!(voucher.status, PaymentStatus::Received);
+    assert_eq!(voucher.amount, NET);
+    assert_eq!(voucher.currency, "AED");
+    assert_eq!(voucher.reference.as_deref(), Some("TR-88"));
+    let paid_employee = Employee::find_or_404(d.t.db(), moved.employee_id)
+        .await
+        .unwrap();
+    assert_eq!(voucher.party_id, paid_employee.party_id);
+    assert_eq!(voucher.recorded_by, Some(d.a.id));
+    assert!(voucher.number.is_some(), "a voucher number was allocated");
+
+    // The line is no longer failed: a second call records nothing more.
+    d.t.line_action(
+        &d.a,
+        &d.lines[0],
+        "pay-other",
+        &[("method", "transfer"), ("reference", "TR-88")],
+    )
+    .await
+    .assert_status(422);
+    assert_eq!(Payment::query().get(d.t.db()).await.unwrap().len(), 1);
 
     d.t.transition(&d.a, &d.run, "regenerate", "")
         .await

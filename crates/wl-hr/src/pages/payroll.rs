@@ -915,6 +915,7 @@ async fn pay_other(
     Valid(form): Valid<PayOtherForm>,
 ) -> Result<Response> {
     failed_line_of(&state, &user, id).await?;
-    wps_partial::pay_line_other_way(&state.db, id, &form.method, &form.reference).await?;
+    wps_partial::pay_line_other_way(&state, id, &form.method, &form.reference, Some(user.id))
+        .await?;
     Ok((Toast::success(text(&lang, "payroll.other_paid")), back).into_response())
 }

@@ -256,3 +256,22 @@ async fn hrm14_the_tasks_are_opened_once_per_failure() {
     assert_eq!(again, 0);
     assert_eq!(w.t.tasks.with_key("hr.payroll_line_failed:").len(), 2);
 }
+
+/// HRM.RUL.11: the escalation is registered as a daily scheduled task in
+/// Asia/Dubai at 00:00 local (20:00 UTC the day before), whatever the zone of
+/// the app.
+#[test]
+fn hrm14_the_daily_task_is_registered_at_midnight_in_dubai() {
+    use renox::Module;
+    use renox::timezone::Zone;
+    let mut registry = renox::Registry::default();
+    wl_hr::WlHr::new().register(&mut registry);
+    let runs = registry.schedule().upcoming(Zone::UTC);
+    let run = runs
+        .iter()
+        .find(|run| run.name == wps_alerts::TASK)
+        .expect("the escalation task is registered");
+    assert_eq!(run.zone.to_string(), "Asia/Dubai");
+    let at = run.at.expect("it has a next run");
+    assert_eq!(at.format("%H:%M").to_string(), "20:00");
+}

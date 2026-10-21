@@ -36,9 +36,9 @@
 //! ([`crate::supplementary`]) and the salary cost is posted to the cost objects
 //! after the commit ([`crate::payroll_events`]).
 //!
-//! Decisions on what is not built yet: the payment of a line moved out to a
-//! non-WPS method is recorded on the line (method and reference); recording it
-//! as a payment in wl-payments (`FIN.PAY.01`) comes with the payments contract.
+//! The payment of a line moved out to a non-WPS method is kept on the line
+//! (method and reference) and recorded as an outgoing payment through the
+//! kernel's `PaymentRecorder` (`FIN.PAY.01`, [`pay_line_other_way`]).
 //! The payslip document (`DOC.GEN.01`) is made by wl-documents; the line
 //! records that it is published.
 
@@ -46,6 +46,13 @@ use renox::db::{Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::Transition;
 
+use wl_kernel::documents::today;
+use wl_kernel::entities::LegalEntity;
+use wl_kernel::payments::{
+    PaymentMethod, PaymentRecorder, PaymentSource, RecordPayment, payment_recorder,
+};
+
+use crate::employee::Employee;
 use crate::payroll::{
     CONFIRM_PAID, ConfirmInput, LineStatus, PartialInput, PayrollLine, PayrollRun,
     PayrollRunStatus, RECORD_PARTIAL, RECORD_PARTIAL_BY_SYSTEM, REGENERATE, REGENERATE_BY_SYSTEM,
@@ -310,17 +317,45 @@ pub async fn hold_line(db: &Db, line_id: i64, reason: &str) -> Result {
 /// The failed line `line_id` is paid another approved way, with its
 /// `reference` (`TR-88`): it is `paid`, needs no bank confirmation, and its
 /// payslip is published at `confirm_paid`.
-pub async fn pay_line_other_way(db: &Db, line_id: i64, method: &str, reference: &str) -> Result {
+///
+/// The payment is recorded as an outgoing payment (a voucher) of the line's
+/// net through the kernel [`PaymentRecorder`](wl_kernel::payments::PaymentRecorder)
+/// (`FIN.PAY.01`), to the employee's party, in the run's legal entity (the
+/// default entity when the run has none), by user `by`. Decisions: a line with
+/// a net of zero or less moves no money and records no payment; a cheque is
+/// recorded with the reference as its number, the bank `payroll` and today as
+/// its date, because the form of the line takes no more; when the app has no
+/// payments module there is nothing to record into and only the line keeps the
+/// method and the reference.
+///
+/// # Errors
+///
+/// 422 for an unknown method or an empty reference, or a line that is not
+/// `failed`; whatever the payment recorder refuses.
+pub async fn pay_line_other_way(
+    state: &AppState,
+    line_id: i64,
+    method: &str,
+    reference: &str,
+    by: Option<i64>,
+) -> Result {
     let method = method.trim();
     let reference = reference.trim();
     if !OTHER_METHODS.contains(&method) || reference.is_empty() {
         return Err(refuse("wl_hr.payroll.other_payment_invalid"));
     }
-    failed_line(db, line_id).await?;
+    let line = failed_line(&state.db, line_id).await?;
+    if line.net_amount > 0
+        && state
+            .provided::<std::sync::Arc<dyn PaymentRecorder>>()
+            .is_some()
+    {
+        record_payment(state, &line, method, reference, by).await?;
+    }
     PayrollLine::query()
         .where_(PayrollLine::ID.eq(line_id))
         .update(
-            db,
+            &state.db,
             &[
                 ("status", &LineStatus::Paid.as_str().to_owned()),
                 ("paid_method", &Some(method.to_owned())),
@@ -332,15 +367,53 @@ pub async fn pay_line_other_way(db: &Db, line_id: i64, method: &str, reference: 
     Ok(())
 }
 
+/// Records the voucher of `line`, paid `method` with `reference`.
+async fn record_payment(
+    state: &AppState,
+    line: &PayrollLine,
+    method: &str,
+    reference: &str,
+    by: Option<i64>,
+) -> Result {
+    let run = PayrollRun::find_or_404(&state.db, line.run_id).await?;
+    let employee = Employee::find(&state.db, line.employee_id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let entity = match run.legal_entity_id {
+        Some(id) => id,
+        None => LegalEntity::default_entity(&state.db).await?.id,
+    };
+    let method = match method {
+        "cheque" => PaymentMethod::Cheque,
+        "cash" => PaymentMethod::Cash,
+        _ => PaymentMethod::Transfer,
+    };
+    let mut payment =
+        RecordPayment::new(employee.party(), entity, method, line.net_amount).outgoing();
+    payment.reference = Some(reference.to_owned());
+    payment.source = PaymentSource::System;
+    if method == PaymentMethod::Cheque {
+        payment.method_details = renox::serde_json::json!({
+            "number": reference,
+            "bank": "payroll",
+            "date": today().to_string(),
+        });
+    }
+    payment_recorder(state)
+        .record(state, payment, by)
+        .await
+        .map(|_| ())
+}
+
 /// Line `line_id` is `failed`, else 422.
-async fn failed_line(db: &Db, line_id: i64) -> Result {
+async fn failed_line(db: &Db, line_id: i64) -> Result<PayrollLine> {
     let line = PayrollLine::find(db, line_id)
         .await?
         .ok_or(Error::NotFound)?;
     if line.status != LineStatus::Failed {
         return Err(refuse("wl_hr.payroll.line_not_failed"));
     }
-    Ok(())
+    Ok(line)
 }
 
 #[cfg(test)]

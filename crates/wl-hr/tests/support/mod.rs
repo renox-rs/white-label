@@ -34,7 +34,7 @@ use wl_kernel::notify::{
     PartyContactPoint, PartyContacts, provide_notifier,
 };
 use wl_kernel::parties::{
-    PartyDirectory, PartyFuture, PartyStatus, PartySummary, provide_directory,
+    PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary, provide_directory,
 };
 use wl_kernel::tickets::{
     ChecklistRunId, Checklists, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef,
@@ -197,8 +197,22 @@ impl PartyDesk {
 }
 
 impl PartyDirectory for PartyDesk {
-    fn find<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
-        Box::pin(async { Ok(None) })
+    fn find<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async move {
+            Ok(self
+                .names
+                .lock()
+                .unwrap()
+                .get(&party.0)
+                .map(|name| PartySummary {
+                    id: party,
+                    code: format!("P-{:05}", party.0),
+                    kind: PartyKind::Person,
+                    display_name: name.clone(),
+                    status: PartyStatus::Active,
+                    display_block_reason: None,
+                }))
+        })
     }
 
     fn find_by_code<'a>(
@@ -1438,6 +1452,16 @@ pub async fn boot() -> Booted {
 /// [`boot`] with `module`, and the default induction template when
 /// `induction` is true.
 pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
+    boot_full(module, induction, false).await
+}
+
+/// [`boot`] with the real wl-payments module, to which the payments HR makes
+/// are recorded.
+pub async fn boot_with_payments() -> Booted {
+    boot_full(WlHr::new(), true, true).await
+}
+
+async fn boot_full(module: WlHr, induction: bool, payments: bool) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1499,7 +1523,17 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         .module(renox::audit::Audit)
         .module(module)
         .module(fakes);
-    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let app = if payments {
+        app.module(wl_payments::WlPayments::new())
+    } else {
+        app
+    };
+    let client = if payments {
+        CLIENT.replace(r#"["parties", "hr"]"#, r#"["parties", "hr", "invoicing", "payments"]"#)
+    } else {
+        CLIENT.to_owned()
+    };
+    let config = wl_kernel::ClientConfig::parse(&client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
