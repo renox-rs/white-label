@@ -21,7 +21,7 @@ use clinics::claim_window::{self, NOTICE, RULE};
 use clinics::claims;
 use clinics::contracts::{self, NewContract};
 use support::dubai;
-use support::real::{PAYER, boot_real};
+use support::real::{PAYER, Real, boot_real};
 
 fn d(text: &str) -> NaiveDate {
     text.parse().expect("a date")
@@ -37,6 +37,24 @@ fn users(request: &NotifyRequest) -> Vec<i64> {
             _ => None,
         })
         .collect()
+}
+
+/// The open alerts of the rule.
+async fn open_alerts(t: &Real) -> Vec<ComplianceAlert> {
+    ComplianceAlert::open(t.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|a| a.rule == RULE)
+        .collect()
+}
+
+/// Moves the clock to a second after the Asia/Dubai instant `to`.
+fn go_to(t: &Real, to: renox::db::DateTime) {
+    t.app.travel_back();
+    let ahead = (to - renox::db::now()).to_std().expect("ahead");
+    t.app
+        .travel(Duration::from_secs(ahead.as_secs() + 1));
 }
 
 /// Done when 1: a draft claim for a visit on 2026-11-01 under a 30-day
@@ -256,11 +274,23 @@ async fn a_failed_run_alerts_the_owner() {
     let claim = t.claim(d("2026-11-01"), &[("consultation", 40_000)]).await;
     t.messages.fail_for(NOTICE, claim.subject());
 
+    // Four failed attempts: the owner is not alerted yet.
     for wait in [60_u64, 300, 900, 3600] {
         t.app
             .at_travelled_time(claim_window::run(t.state(), d("2026-11-08")))
             .await
             .unwrap();
+        assert!(
+            open_alerts(&t).await.is_empty(),
+            "no alert before the fifth failure"
+        );
+        assert!(
+            !t.messages
+                .sent()
+                .iter()
+                .any(|r| r.type_key == NOTIFICATION_TYPE),
+            "and the owner is not told"
+        );
         t.app.travel(Duration::from_secs(wait));
     }
     t.app
@@ -287,27 +317,53 @@ async fn a_failed_run_alerts_the_owner() {
     assert_eq!(t.claim_now(claim.id).await.window_notified_on, None);
 }
 
-/// Done when 5 (missed): no run exists for the 02:00 occurrence; the
-/// kernel's missed-run check raises the owner alert for the rule.
+/// Done when 5 (missed): no run exists for the 02:00 occurrence of a day. At
+/// 02:30 (30 minutes late) the owner is not alerted; from 03:00 on (the
+/// kernel's missed-run check, 60 minutes after 02:00) the alert for that
+/// occurrence is raised and the owner is told.
 #[renox::test]
-async fn a_missed_run_alerts_the_owner() {
+async fn a_missed_run_alerts_the_owner_from_the_03_00_check() {
     let t = boot_real().await;
     let owner = t.owner().await;
-    t.app.travel(Duration::from_secs(2 * 24 * 3600));
-    let raised = t
-        .app
+    // The rule is watched, daily at 02:00 Asia/Dubai.
+    assert_eq!(
+        (claim_window::TASK_AT, claim_window::TASK_ZONE),
+        ("02:00", "Asia/Dubai")
+    );
+    let tomorrow = wl_kernel::documents::dubai_date(renox::db::now()) + renox::chrono::Days::new(1);
+    let occurrence = wl_kernel::compliance::occurrence_key(RULE, tomorrow);
+    let missed = |alerts: &[ComplianceAlert]| {
+        alerts
+            .iter()
+            .filter(|a| a.occurrence_key == occurrence)
+            .count()
+    };
+
+    // 02:30: only 30 minutes late.
+    go_to(&t, dubai(&tomorrow.to_string(), 2, 30));
+    t.app
         .at_travelled_time(check_missed(t.state()))
         .await
         .unwrap();
-    assert!(raised >= 1);
-    let alerts: Vec<_> = ComplianceAlert::open(t.db())
+    assert_eq!(missed(&open_alerts(&t).await), 0, "not yet at 02:30");
+    assert!(
+        !t.messages
+            .sent()
+            .iter()
+            .any(|r| r.type_key == NOTIFICATION_TYPE && users(r).contains(&owner.id)),
+        "the owner is not told at 02:30"
+    );
+
+    // 03:00 and a minute: 60 minutes late.
+    go_to(&t, dubai(&tomorrow.to_string(), 3, 0));
+    t.app
+        .at_travelled_time(check_missed(t.state()))
         .await
-        .unwrap()
-        .into_iter()
-        .filter(|a| a.rule == RULE)
-        .collect();
-    assert!(!alerts.is_empty());
+        .unwrap();
+    let alerts = open_alerts(&t).await;
+    assert_eq!(missed(&alerts), 1, "{alerts:?}");
     assert!(alerts.iter().all(|a| a.kind == AlertKind::Missed));
+    assert_eq!(alerts[0].owner_role, clinics::permissions::OWNER_ROLE);
     assert!(
         t.messages
             .sent()
@@ -315,4 +371,75 @@ async fn a_missed_run_alerts_the_owner() {
             .any(|r| r.type_key == NOTIFICATION_TYPE && users(r).contains(&owner.id)),
         "the owner is told"
     );
+}
+
+/// The manager's task (D) is not given up when ticketing is off: the step is
+/// open for the next run, and the task is opened once ticketing is on, once.
+#[renox::test]
+async fn the_clinic_managers_task_is_opened_once_ticketing_is_on() {
+    let t = boot_real().await;
+    t.coordinator().await;
+    let mia = t.clinic_manager().await;
+    let claim = t.claim(d("2026-11-01"), &[("consultation", 40_000)]).await;
+    t.tasks.set_off(true);
+
+    let off = claim_window::run(t.state(), d("2026-11-29")).await.unwrap();
+    assert_eq!((off.notified, off.tasked), (1, 0), "no task without ticketing");
+    assert!(t.tasks.with_key("clinics.claim_window:").is_empty());
+    let after = t.claim_now(claim.id).await;
+    assert_eq!(after.window_task_on, None, "the step is not marked done");
+    assert_eq!(after.window_notified_on, Some(d("2026-11-29")));
+
+    t.tasks.set_off(false);
+    let on = claim_window::run(t.state(), d("2026-11-30")).await.unwrap();
+    assert_eq!((on.notified, on.tasked), (0, 1));
+    let tasks = t.tasks.with_key("clinics.claim_window:");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].assignee, Some(Assignee::user(mia.id)));
+    assert_eq!(tasks[0].due_at, Some(dubai("2026-12-01", 23, 59)));
+    assert_eq!(
+        t.claim_now(claim.id).await.window_task_on,
+        Some(d("2026-11-30"))
+    );
+    let again = claim_window::run(t.state(), d("2026-12-01")).await.unwrap();
+    assert_eq!((again.notified, again.tasked), (0, 0));
+    assert_eq!(t.tasks.with_key("clinics.claim_window:").len(), 1);
+}
+
+/// A failure while telling leaves the step open, and the run that works
+/// again tells everybody once, in one message: nobody is told twice.
+#[renox::test]
+async fn a_notice_that_failed_is_sent_once_to_every_coordinator_when_it_works_again() {
+    let t = boot_real().await;
+    let cora = t.coordinator().await;
+    // A second coordinator.
+    let carl = t.user("Carl", &[clinics::permissions::VISITS_VIEW]).await;
+    User::find_or_404(t.db(), carl.id)
+        .await
+        .unwrap()
+        .assign_role(t.db(), clinics::permissions::BILLING_COORDINATOR_ROLE)
+        .await
+        .unwrap();
+    let claim = t.claim(d("2026-11-01"), &[("consultation", 40_000)]).await;
+    t.messages.fail_for(NOTICE, claim.subject());
+
+    claim_window::run(t.state(), d("2026-11-08")).await.unwrap();
+    assert_eq!(t.claim_now(claim.id).await.window_notified_on, None);
+    assert!(t.messages.sent().iter().all(|r| r.type_key != NOTICE));
+
+    t.messages.recover();
+    let ok = claim_window::run(t.state(), d("2026-11-09")).await.unwrap();
+    assert_eq!(ok.notified, 1);
+    let sent: Vec<_> = t
+        .messages
+        .sent()
+        .into_iter()
+        .filter(|r| r.type_key == NOTICE)
+        .collect();
+    assert_eq!(sent.len(), 1, "one message for all");
+    let mut told = users(&sent[0]);
+    told.sort_unstable();
+    let mut expected = vec![cora.id, carl.id];
+    expected.sort_unstable();
+    assert_eq!(told, expected);
 }

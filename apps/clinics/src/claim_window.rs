@@ -113,11 +113,42 @@ async fn coordinators(state: &AppState) -> Result<Vec<i64>> {
     Ok(users.into_iter().collect())
 }
 
-/// Sets the day a step of claim `id` fired.
-async fn mark(state: &AppState, id: i64, column: &str, day: NaiveDate) -> Result {
+/// Takes the step of claim `id` for `day`: sets the day it fired when no run
+/// did before. Returns whether this run took it.
+async fn take_notice(state: &AppState, id: i64, day: NaiveDate) -> Result<bool> {
+    let taken = Claim::query()
+        .where_(Claim::ID.eq(id))
+        .where_(Claim::WINDOW_NOTIFIED_ON.is_null())
+        .update(
+            &state.db,
+            &[("window_notified_on", &Some(day)), ("updated_at", &now())],
+        )
+        .await?;
+    Ok(taken > 0)
+}
+
+/// Like [`take_notice`] for the clinic manager's task.
+async fn take_task(state: &AppState, id: i64, day: NaiveDate) -> Result<bool> {
+    let taken = Claim::query()
+        .where_(Claim::ID.eq(id))
+        .where_(Claim::WINDOW_TASK_ON.is_null())
+        .update(
+            &state.db,
+            &[("window_task_on", &Some(day)), ("updated_at", &now())],
+        )
+        .await?;
+    Ok(taken > 0)
+}
+
+/// Gives the step back: nobody was told, or no task could be opened, so the
+/// next run does it.
+async fn give_back(state: &AppState, id: i64, column: &str) -> Result {
     Claim::query()
         .where_(Claim::ID.eq(id))
-        .update(&state.db, &[(column, &Some(day)), ("updated_at", &now())])
+        .update(
+            &state.db,
+            &[(column, &None::<NaiveDate>), ("updated_at", &now())],
+        )
         .await?;
     Ok(())
 }
@@ -129,19 +160,25 @@ async fn tell(state: &AppState, claim: &Claim, deadline: NaiveDate, day: NaiveDa
         &[],
     );
     let days_left = (deadline - day).num_days();
-    for user in coordinators(state).await? {
-        let request = NotifyRequest::new(NOTICE, claim.subject())
-            .subject_label(&claim.number())
-            .to_user(user)
-            .data(json!({
-                "number": claim.number(),
-                "visit_date": claim.visit_date.to_string(),
-                "status": status,
-                "deadline": deadline.to_string(),
-                "days_left": days_left,
-            }));
-        notifier(state).notify(state, request).await?;
+    let users = coordinators(state).await?;
+    if users.is_empty() {
+        return Ok(());
     }
+    // One request for all of them, so that a failure never leaves some told
+    // and the step open for the next run to tell them again.
+    let mut request = NotifyRequest::new(NOTICE, claim.subject())
+        .subject_label(&claim.number())
+        .data(json!({
+            "number": claim.number(),
+            "visit_date": claim.visit_date.to_string(),
+            "status": status,
+            "deadline": deadline.to_string(),
+            "days_left": days_left,
+        }));
+    for user in users {
+        request = request.to_user(user);
+    }
+    notifier(state).notify(state, request).await?;
     Ok(())
 }
 
@@ -195,20 +232,36 @@ async fn chase(state: &AppState, claim: &Claim, day: NaiveDate, report: &mut Rep
     if day > deadline {
         return Ok(());
     }
+    // Decision: the step is taken before anybody is told and given back
+        // when telling fails, so that two runs never tell twice and a failure
+        // is retried; the same for the task, which is also given back when
+        // ticketing is off (no task could be opened), so that it opens once
+        // ticketing is on.
     if claim.resubmission_count == 0
         && claim.window_notified_on.is_none()
         && contract
             .reminder_date(claim.visit_date)
             .is_some_and(|due| day >= due)
+        && take_notice(state, claim.id, day).await?
     {
-        tell(state, claim, deadline, day).await?;
-        mark(state, claim.id, "window_notified_on", day).await?;
+        if let Err(error) = tell(state, claim, deadline, day).await {
+            give_back(state, claim.id, "window_notified_on").await?;
+            return Err(error);
+        }
         report.notified += 1;
     }
-    if claim.window_task_on.is_none() && task_date(claim, &contract).is_some_and(|due| day >= due) {
-        let opened = open_task(state, claim, deadline).await?;
-        mark(state, claim.id, "window_task_on", day).await?;
-        report.tasked += usize::from(opened);
+    if claim.window_task_on.is_none()
+        && task_date(claim, &contract).is_some_and(|due| day >= due)
+        && take_task(state, claim.id, day).await?
+    {
+        match open_task(state, claim, deadline).await {
+            Ok(true) => report.tasked += 1,
+            Ok(false) => give_back(state, claim.id, "window_task_on").await?,
+            Err(error) => {
+                give_back(state, claim.id, "window_task_on").await?;
+                return Err(error);
+            }
+        }
     }
     Ok(())
 }

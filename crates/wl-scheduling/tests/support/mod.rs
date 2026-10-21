@@ -308,6 +308,11 @@ impl Messages {
         self.1.lock().unwrap().push((type_key.to_owned(), subject));
     }
 
+    /// From now on the notifier works again for every type.
+    pub fn recover(&self) {
+        self.1.lock().unwrap().clear();
+    }
+
     /// The notifications sent so far.
     pub fn sent(&self) -> Vec<NotifyRequest> {
         self.0.lock().unwrap().clone()
@@ -482,9 +487,16 @@ impl DocumentGuard for Docs {
 pub struct Tasks {
     opened: Arc<Mutex<Vec<OpenTicket>>>,
     resolved: Arc<Mutex<Vec<i64>>>,
+    off: Arc<Mutex<bool>>,
 }
 
 impl Tasks {
+    /// Ticketing is off (`true`: no task is opened, as without wl-ticketing)
+    /// or on again.
+    pub fn set_off(&self, off: bool) {
+        *self.off.lock().unwrap() = off;
+    }
+
     /// Every task opened so far.
     pub fn opened(&self) -> Vec<OpenTicket> {
         self.opened.lock().unwrap().clone()
@@ -522,6 +534,9 @@ impl TaskCreator for Tasks {
         ticket: OpenTicket,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(async move {
+            if *self.off.lock().unwrap() {
+                return Ok(None);
+            }
             let mut all = self.opened.lock().unwrap();
             all.push(ticket);
             Ok(Some(Tasks::reference(all.len())))
