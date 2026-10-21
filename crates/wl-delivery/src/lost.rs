@@ -492,6 +492,7 @@ async fn after_lost(state: &AppState, event: &Transitioned<Delivery>) -> Result 
                 .map(TicketId),
             liability,
             run: delivery.run_id.map(RunId),
+            claim_ticket: claim_id.map(TicketId),
             lines: source_lines(&state.db, &delivery).await?,
         })
         .await

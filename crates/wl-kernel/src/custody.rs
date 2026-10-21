@@ -475,6 +475,64 @@ pub fn shortage_recovery(state: &AppState) -> Arc<dyn ShortageRecovery> {
     }
 }
 
+/// A later shortage another module asks the cash custody to raise (03: a
+/// delivery reversed days later with the driver liable).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaterShortage {
+    /// The holder the shortage is raised against, a staff user.
+    pub holder_user: i64,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// Why.
+    pub reason: String,
+    /// The record that caused it (03: the shipment).
+    pub source: Subject,
+}
+
+/// How a vertical raises a later cash shortage against a holder on behalf of
+/// the user who decides it (`FIN.ACL.05`). `wl-payments` provides it; the
+/// default refuses, so a shortage is never recorded without the module that
+/// can carry it.
+pub trait ShortageRaiser: Send + Sync + 'static {
+    /// `user` raises `shortage`: a handover of kind *later shortage*, `short`
+    /// from the start; the user must hold the count permission and is never
+    /// the holder.
+    fn raise<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _shortage: LaterShortage,
+    ) -> CustodyFuture<'a, HandoverId> {
+        Box::pin(async {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "A later shortage needs the payments module.".to_owned(),
+            ))
+        })
+    }
+}
+
+/// The shortage raiser when the `payments` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoShortageRaiser;
+
+impl ShortageRaiser for NoShortageRaiser {}
+
+/// Makes `raiser` the app's [`ShortageRaiser`]; `wl-payments` calls it in
+/// `register`.
+pub fn provide_shortage_raiser(app: &mut Registry, raiser: impl ShortageRaiser) {
+    let raiser: Arc<dyn ShortageRaiser> = Arc::new(raiser);
+    app.provide(raiser);
+}
+
+/// The app's [`ShortageRaiser`], or [`NoShortageRaiser`].
+pub fn shortage_raiser(state: &AppState) -> Arc<dyn ShortageRaiser> {
+    match state.provided::<Arc<dyn ShortageRaiser>>() {
+        Some(raiser) => Arc::clone(&raiser),
+        None => Arc::new(NoShortageRaiser),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use renox::serde_json::{json, to_value};

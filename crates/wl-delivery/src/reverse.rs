@@ -490,9 +490,28 @@ async fn refund(
     proof: &Proof,
     approver: Option<i64>,
 ) -> Result<()> {
-    let party = delivery
-        .recipient()
-        .ok_or_else(|| unprocessable(english("wl_delivery.reverse.cannot_refund")))?;
+    let Some(party) = delivery.recipient() else {
+        // A payer who is no party (03: the recipient of a shipment): the
+        // source pays the refund by hand, so a task asks for it.
+        let by_hand = wl_kernel::delivery::manual_refunds(state)
+            .is_some_and(|refunds| refunds.accepts(&delivery.source()));
+        if !by_hand {
+            return Err(unprocessable(english("wl_delivery.reverse.cannot_refund")));
+        }
+        let title = english("wl_delivery.reverse.manual_refund_title")
+            .replace("{number}", &delivery.number);
+        let description = english("wl_delivery.reverse.manual_refund_description")
+            .replace("{number}", &delivery.number)
+            .replace("{amount}", &crate::proof::aed(proof.cash_collected))
+            .replace("{recipient}", &delivery.recipient_name)
+            .replace("{phone}", &delivery.recipient_phone);
+        let ticket = OpenTicket::new(delivery.delivery_id().subject(), TASK_CATEGORY, &title)
+            .description(&description)
+            .source(delivery.source())
+            .source_key(&format!("delivery.refund:{}:{}", delivery.id, proof.id));
+        tickets::task_creator(state).open(state, ticket).await?;
+        return Ok(());
+    };
     let entity = LegalEntity::default_entity(&state.db).await?;
     payment_recorder(state)
         .request_refund(
@@ -622,6 +641,9 @@ async fn after_reversed(state: &AppState, event: &Transitioned<Delivery>) -> Res
             proof: proof.as_ref().map(|p| p.id),
             cash_treatment,
             approver,
+            target_state: Some(delivery.status.as_str().to_owned()),
+            driver: Some(driver_of(&state.db, &delivery).await?).filter(|driver| *driver != 0),
+            cash_amount: proof.as_ref().map_or(0, |p| p.cash_collected),
             lines: source_lines(&state.db, &delivery).await?,
         })
         .await

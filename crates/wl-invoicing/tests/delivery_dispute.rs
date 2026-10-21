@@ -90,6 +90,9 @@ fn reversed(lines: &[i64]) -> DeliveryReversed {
         proof: None,
         cash_treatment: None,
         approver: None,
+        target_state: None,
+        driver: None,
+        cash_amount: 0,
         lines: lines.iter().map(|n| line(*n)).collect(),
     }
 }
@@ -102,6 +105,7 @@ fn lost(lines: &[i64], ticket: Option<i64>) -> DeliveryLost {
         ticket: ticket.map(TicketId),
         liability: "none".to_owned(),
         run: None,
+        claim_ticket: None,
         lines: lines.iter().map(|n| line(*n)).collect(),
     }
 }

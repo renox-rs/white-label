@@ -689,6 +689,9 @@ impl Module for WlPayments {
         // Cash custody (`FIN.CSH.01`): how other modules put cash into a
         // holder's handover.
         wl_kernel::custody::provide_custody(app, cash_custody::Custody);
+        // How a vertical raises a later shortage against a holder (03: a
+        // delivery reversed with the driver liable).
+        wl_kernel::custody::provide_shortage_raiser(app, cash_later::Raiser);
         cash_notices::register_types();
         // `CashHandoverCounted` and `CashShortage` after a count.
         cash_count::register(app);

@@ -392,6 +392,14 @@ const TEXTS: &[(&str, &str)] = &[
         "A refund to the payer needs the payments module and a recipient party on the delivery.",
     ),
     (
+        "wl_delivery.reverse.manual_refund_title",
+        "Refund the cash of reversed delivery {number} to the payer",
+    ),
+    (
+        "wl_delivery.reverse.manual_refund_description",
+        "Delivery {number} was reversed and its cash handed over. Pay {amount} back to {recipient} ({phone}); the payer is not a party, so payments cannot do it.",
+    ),
+    (
         "wl_delivery.reverse.refund_reason",
         "Delivery {number} was reversed.",
     ),

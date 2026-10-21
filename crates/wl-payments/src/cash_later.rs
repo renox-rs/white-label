@@ -175,6 +175,33 @@ pub async fn raise_shortage(
     Ok(CashHandover::find_or_404(db, created.id).await?)
 }
 
+/// The kernel contract's implementation: a vertical raises a later shortage
+/// through [`raise_shortage`], as the user who decides it.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Raiser;
+
+impl wl_kernel::custody::ShortageRaiser for Raiser {
+    fn raise<'a>(
+        &'a self,
+        state: &'a AppState,
+        user: &'a AuthUser,
+        shortage: wl_kernel::custody::LaterShortage,
+    ) -> wl_kernel::custody::CustodyFuture<'a, wl_kernel::custody::HandoverId> {
+        Box::pin(async move {
+            let request = RaiseShortage {
+                holder_user: shortage.holder_user,
+                amount: shortage.amount,
+                reason: shortage.reason,
+                source: shortage.source,
+            };
+            let handover = raise_shortage(state, user, &request)
+                .await
+                .map_err(TransitionError::into_error)?;
+            Ok(wl_kernel::custody::HandoverId(handover.id))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -443,6 +443,30 @@ pub fn cod_rule(state: &AppState) -> Option<Arc<dyn CodDifferenceRule>> {
         .map(|rule| Arc::clone(&rule))
 }
 
+/// A source module that pays back a payer who is no party itself (03: the
+/// recipient of a shipment is a person on the delivery, not a party record).
+/// `wl-delivery` cannot ask `wl-payments` for a refund without a party, so
+/// for a source that [accepts](ManualRefunds::accepts) it opens a task for the
+/// refund to be paid by hand instead of refusing the reversal.
+pub trait ManualRefunds: Send + Sync + 'static {
+    /// Whether refunds of deliveries requested for `source` are paid by hand.
+    fn accepts(&self, source: &Subject) -> bool;
+}
+
+/// Makes `refunds` the app's [`ManualRefunds`]; the source module calls it in
+/// `register`.
+pub fn provide_manual_refunds(app: &mut Registry, refunds: impl ManualRefunds) {
+    let refunds: Arc<dyn ManualRefunds> = Arc::new(refunds);
+    app.provide(refunds);
+}
+
+/// The app's [`ManualRefunds`], when a source module provides one.
+pub fn manual_refunds(state: &AppState) -> Option<Arc<dyn ManualRefunds>> {
+    state
+        .provided::<Arc<dyn ManualRefunds>>()
+        .map(|refunds| Arc::clone(&refunds))
+}
+
 /// A delivery was put on a run (`assign`, `DeliveryAssigned`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeliveryAssigned {
@@ -713,6 +737,17 @@ pub struct DeliveryReversed {
     pub cash_treatment: Option<String>,
     /// The user who approved the reversal (`WRK.ACL.10`).
     pub approver: Option<i64>,
+    /// The state the delivery is in after the reversal, decided at the final
+    /// approval: `out_for_delivery` when its run is still out, else
+    /// `attempted`. `None` from a sender that does not say.
+    #[serde(default)]
+    pub target_state: Option<String>,
+    /// The driver of the run the delivery was on (a user), if it was on one.
+    #[serde(default)]
+    pub driver: Option<i64>,
+    /// The cash recorded as collected on the reversed proof, in fils.
+    #[serde(default)]
+    pub cash_amount: i64,
     /// The source line references of the delivery's lines.
     pub lines: Vec<Subject>,
 }
@@ -735,6 +770,10 @@ pub struct DeliveryLost {
     pub liability: String,
     /// The run the delivery was last on, if it was on one.
     pub run: Option<RunId>,
+    /// The claim ticket the delivery module opened for the loss, when
+    /// ticketing is on: the source links it instead of opening a second.
+    #[serde(default)]
+    pub claim_ticket: Option<TicketId>,
     /// The source line references of the delivery's lines.
     pub lines: Vec<Subject>,
 }
@@ -914,6 +953,7 @@ mod tests {
             ticket: Some(TicketId(11)),
             liability: "none".to_owned(),
             run: Some(RunId(3)),
+            claim_ticket: Some(TicketId(12)),
             lines: vec![line.clone()],
         };
         let value = to_value(&lost).unwrap();
