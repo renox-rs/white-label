@@ -219,6 +219,7 @@ pub(crate) fn register(app: &mut Registry) {
                 ShipmentStatus::OutForDelivery,
                 DELIVER,
                 ShipmentInput {
+                    cod_collected: event.cash_collected,
                     cod_difference: event.cod_difference,
                     cod_difference_reason: event.cod_difference_reason.clone(),
                     absorbed_by: event.absorbed_by.clone(),

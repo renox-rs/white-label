@@ -118,6 +118,9 @@ pub struct ShipmentInput {
     /// Who absorbs the difference (`deliver`).
     #[serde(default)]
     pub absorbed_by: Option<String>,
+    /// The cash collected at the stop, in fils (`deliver`).
+    #[serde(default)]
+    pub cod_collected: i64,
     /// The parcels the recipient refused (`deliver`, BL-LOG-07).
     #[serde(default)]
     pub refused: Vec<RefusedParcel>,
@@ -324,12 +327,16 @@ fn followed(name: &'static str, from: ShipmentStatus, to: ShipmentStatus) -> Tra
                         &mut *tx,
                         &[
                             ("delivered_at", &at),
+                            ("cod_collected", &input.cod_collected),
                             ("cod_difference", &input.cod_difference),
                             ("cod_difference_reason", &input.cod_difference_reason),
                             ("cod_absorbed_by", &input.absorbed_by),
                         ],
                     )
                     .await?;
+                // A difference the business absorbs is a COD loss
+                // (BL-LOG-08).
+                crate::cod::record_loss(&mut *tx, &original, &input).await?;
                 if !input.refused.is_empty() {
                     // `create_return` (BL-LOG-07): the refused parcels go back
                     // on a linked return shipment.

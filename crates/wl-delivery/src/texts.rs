@@ -417,6 +417,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_delivery.cod.absorbed_by", "Absorbed by"),
     ("wl_delivery.cod.comment", "Comment"),
     (
+        "wl_delivery.cod.instruction",
+        "Instruction of the source's client (who, when, how)",
+    ),
+    (
         "wl_delivery.cod.request_title",
         "Cash difference waiting for approval",
     ),

@@ -5,6 +5,7 @@ pub mod adjustment;
 pub mod billing;
 pub mod booking;
 pub mod cancel;
+pub mod cod;
 mod events;
 pub mod hold;
 pub mod notices;
@@ -39,6 +40,7 @@ pub use shipment::{
     ShipmentDelivered, ShipmentStatus, TrackingEvent,
 };
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
+pub use cod::{CodLoss, CodRule};
 pub use remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};
 pub use remittance_machine::RemittanceInput;
 pub use shipment_machine::ShipmentInput;
@@ -53,7 +55,9 @@ impl Module for Logistics {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes().merge(remittance_pages::routes())
+        pages::routes()
+            .merge(remittance_pages::routes())
+            .merge(cod::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -64,9 +68,13 @@ impl Module for Logistics {
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<remittance_pages::IndexPage>()
-            .view_data::<remittance_pages::ShowPage>();
+            .view_data::<remittance_pages::ShowPage>()
+            .view_data::<cod::IndexPage>();
         app.templates(|env| {
-            for (name, source) in pages::VIEWS.iter().chain(remittance_pages::VIEWS) {
+            for (name, source) in pages::VIEWS
+                .iter()
+                .chain(remittance_pages::VIEWS)
+                .chain(cod::VIEWS) {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
                     renox::view::add_template(env, *name, *source)
@@ -85,7 +93,10 @@ impl Module for Logistics {
             .model::<AddressChange>()
             .model::<Remittance>()
             .model::<RemittanceLine>()
-            .model::<AdjustmentLine>();
+            .model::<AdjustmentLine>()
+            .model::<CodLoss>();
+        // The shipment's rule on who absorbs a COD difference.
+        wl_kernel::delivery::provide_cod_rule(app, CodRule);
         // The remittance and its adjustment lines have machines of their own.
         renox::state_machine::register::<Remittance>();
         renox::state_machine::register::<AdjustmentLine>();

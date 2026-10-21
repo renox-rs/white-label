@@ -49,6 +49,7 @@
       <rx-action-sheet rx-if="can_decide_cod" :id="'cod-approve-' ~ delivery.id" :label="tx['cod.approve']" :action="route('wl_delivery.cod_approve', delivery.id)"
                        :title="tx['cod.approve_title']" :description="tx['cod.approve_description']" :submit-label="tx['cod.approve']" icon="check">
         <rx-select name="absorbed_by" :label="tx['cod.absorbed_by']" :options="cod_absorbers" :selected="''" :id="'cod-absorbed-' ~ delivery.id"/>
+        <rx-textarea name="instruction" :label="tx['cod.instruction']" :id="'cod-approve-instruction-' ~ delivery.id"/>
         <rx-textarea name="comment" :label="tx['cod.comment']" :id="'cod-approve-comment-' ~ delivery.id"/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_decide_cod" :id="'cod-reject-' ~ delivery.id" :label="tx['cod.reject']" :action="route('wl_delivery.cod_reject', delivery.id)"

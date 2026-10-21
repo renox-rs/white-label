@@ -157,6 +157,15 @@ pub struct Shipment {
     pub cod_difference_reason: Option<String>,
     /// Who absorbs it: `customer`, `client`, `business` or `driver`.
     pub cod_absorbed_by: Option<String>,
+    /// The cash collected at the stop, in fils (BL-LOG-08).
+    pub cod_collected: i64,
+    /// The client's instruction to receive less: who asked, when and how.
+    /// The *client* absorbs a difference only with it.
+    pub cod_instruction: Option<String>,
+    /// The user who recorded it.
+    pub cod_instruction_by: Option<i64>,
+    /// The approver who chose who absorbs the difference.
+    pub cod_approved_by: Option<i64>,
     /// Whether the COD is marked already remitted (BL-LOG-10): it is left
     /// out of every draft.
     pub cod_already_remitted: bool,
@@ -194,6 +203,13 @@ impl Shipment {
     /// Whether the client's instruction for the hold is recorded.
     pub fn has_hold_instruction(&self) -> bool {
         self.hold_instruction
+            .as_deref()
+            .is_some_and(|text| !text.trim().is_empty())
+    }
+
+    /// Whether the client's instruction to receive less is recorded.
+    pub fn has_cod_instruction(&self) -> bool {
+        self.cod_instruction
             .as_deref()
             .is_some_and(|text| !text.trim().is_empty())
     }

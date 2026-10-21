@@ -72,6 +72,23 @@ their own issues.
   only an approved line counts; a paid remittance is never edited, a line goes
   on the next draft; a negative net is set to 0 and the rest carried as an
   open line.
+- **Review** (`review`, `WRK.ACL.06`): a disputed delivery runs the
+  shipment's `open_review` and an upheld review its `close_review`, both
+  the system's on the wl-delivery events. Under review the shipment is out of
+  the draft remittance (a line on a draft is removed, an approved remittance
+  goes back to a draft with `reopen_system` and the accountants are told, a
+  paid one is left), out of the billing (`Shipment::billable`), and the client
+  is told once. Staff raise the dispute from the shipment page.
+- **Partial delivery** (`partial`, `WRK.POD.01`): a shipment of several parcels
+  asks wl-delivery for partial acceptance; a refused parcel needs a reason.
+  `deliver` with refused parcels creates a linked return shipment directly in
+  `returning` (`create_return`: parcels moved with their barcodes, COD 0, the
+  return charge on it only) and emits `ShipmentDelivered`; the client's e-POD
+  makes it `returned`. The expected COD stays the full amount.
+- **COD differences** (`cod`, `WRK.ACL.09`): the shipment's rule on who absorbs
+  a difference the operations manager approves: never the customer, the client
+  only with its instruction, the business as a COD loss, the driver as cash
+  still expected in the handover. The report is at `/cod-differences`.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight

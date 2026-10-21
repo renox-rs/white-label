@@ -76,6 +76,10 @@
                        :title="tx['review_title']" :description="tx['review_description']" :submit-label="tx['review']" icon="message-circle-warning" variant="danger">
         <rx-textarea name="reason" :label="tx['reason']" :id="'review-reason-' ~ shipment.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_cod_instruction" :id="'cod-instruction-' ~ shipment.id" :label="tx['cod_instruction_action']" :action="route('logistics.shipment_cod_instruction', shipment.id)"
+                       :title="tx['cod_instruction_title']" :description="tx['cod_instruction_description']" :submit-label="tx['cod_instruction_action']" icon="message-square">
+        <rx-textarea name="note" :label="tx['cod_instruction']" :placeholder="tx['instruction_hint']" :id="'cod-instruction-note-' ~ shipment.id" required/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_return" :id="'returned-' ~ shipment.id" :label="tx['returned']" :action="route('logistics.shipment_returned', shipment.id)"
                        :title="tx['returned']" :description="tx['returned_description']" :submit-label="tx['returned']" icon="check">
         <rx-input name="pod_reference" :label="tx['pod']" :id="'returned-pod-' ~ shipment.id" required/>
@@ -102,6 +106,11 @@
         <rx-entry :label="tx['hold_instruction']" rx-if="hold_instruction" :value="hold_instruction" span="full"/>
         <rx-entry :label="tx['claim_ticket']" rx-if="claim_ticket" :value="claim_ticket"/>
         <rx-entry :label="tx['review_ticket']" rx-if="review_ticket" :value="review_ticket"/>
+        <rx-entry :label="tx['linked']" rx-if="linked" :value="linked"/>
+        <rx-entry :label="tx['cod_collected']" rx-if="shipment.cod_difference" :value="shipment.cod_collected" format="money"/>
+        <rx-entry :label="tx['cod_difference']" rx-if="shipment.cod_difference" :value="shipment.cod_difference" format="money"/>
+        <rx-entry :label="tx['cod_absorbed_by']" rx-if="shipment.cod_absorbed_by" :value="shipment.cod_absorbed_by"/>
+        <rx-entry :label="tx['cod_instruction']" rx-if="cod_instruction" :value="cod_instruction" span="full"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="parcels" as="parcel" :key="parcel.barcode" :caption="tx['parcels']" card>

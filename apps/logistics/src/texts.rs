@@ -271,6 +271,19 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.remittance_approved", "Remittance approved."),
     ("logistics.remittance_reopened", "Remittance back to a draft."),
     ("logistics.remittance_paid", "Remittance paid."),
+    // A COD difference (`WRK.ACL.09`, BL-LOG-08).
+    (
+        "logistics.cod.customer_not_offered",
+        "The customer cannot absorb a COD difference: choose the client, the business or the driver.",
+    ),
+    (
+        "logistics.cod.instruction_needed",
+        "The client absorbs a difference only on its instruction: give who asked, when and how.",
+    ),
+    (
+        "logistics.cod_instruction_recorded",
+        "The client's instruction is recorded.",
+    ),
     // Part of a multi-parcel shipment refused (`WRK.POD.01`, BL-LOG-07).
     (
         "logistics.partial.single_parcel",

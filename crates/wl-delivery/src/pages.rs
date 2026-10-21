@@ -32,7 +32,7 @@
 //! | `POST /deliveries/{id}/reverse` | `wl_delivery.reverse` | `deliveries.reverse`, not the run's driver (fields `reason`, `liability`, `note`) |
 //! | `POST /deliveries/{id}/reverse/approve` | `wl_delivery.reverse_approve` | `deliveries.reverse`, neither the requester nor the run's driver (fields `cash_treatment`, `comment`) |
 //! | `POST /deliveries/{id}/reverse/reject` | `wl_delivery.reverse_reject` | `deliveries.reverse` (field `comment`, required) |
-//! | `POST /deliveries/{id}/cod-difference/approve` | `wl_delivery.cod_approve` | `deliveries.approve_cod_difference`, not the driver (fields `absorbed_by`, `comment`) |
+//! | `POST /deliveries/{id}/cod-difference/approve` | `wl_delivery.cod_approve` | `deliveries.approve_cod_difference`, not the driver (fields `absorbed_by`, `comment`, `instruction`) |
 //! | `POST /deliveries/{id}/cod-difference/reject` | `wl_delivery.cod_reject` | `deliveries.approve_cod_difference` (field `comment`, required) |
 //!
 //! Every POST calls the services of [`crate::plan`] and [`crate::proof`]
@@ -1988,6 +1988,10 @@ pub struct CodDecisionForm {
     /// The approver's comment (required to reject).
     #[serde(default)]
     pub comment: String,
+    /// The note that goes with the choice of the absorber (03: the client's
+    /// instruction for *client*); read by the source's rule.
+    #[serde(default)]
+    pub instruction: String,
 }
 
 /// `POST /deliveries/{id}/cod-difference/approve`: approves the cash
@@ -2005,6 +2009,7 @@ async fn store_cod_approve(
         &delivery,
         Some(&form.absorbed_by),
         &form.comment,
+        &form.instruction,
     )
     .await?;
     Ok((

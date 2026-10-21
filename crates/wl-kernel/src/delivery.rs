@@ -403,6 +403,46 @@ pub fn requester(state: &AppState) -> Arc<dyn DeliveryRequester> {
     }
 }
 
+/// What the approver of a cash difference decided (`WRK.ACL.09`), as the
+/// source module sees it before the approval goes through.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodDecision {
+    /// The delivery.
+    pub delivery: DeliveryId,
+    /// The record the delivery was requested for.
+    pub source: Subject,
+    /// Who the approver chose to absorb the difference.
+    pub absorber: CodAbsorber,
+    /// The note the approver gave with the choice (the client's instruction,
+    /// for 03); blank when none.
+    pub instruction: String,
+    /// The approver.
+    pub approver: i64,
+}
+
+/// A source module's rule on who may absorb a cash difference of its
+/// deliveries (03: the *client* only on its recorded instruction, never the
+/// *customer*). `wl-delivery` asks it when the approver chooses, before the
+/// approval goes through; a refusal stops the approval with its message.
+pub trait CodDifferenceRule: Send + Sync + 'static {
+    /// Checks and records `decision`; an `Err` refuses it.
+    fn check<'a>(&'a self, state: &'a AppState, decision: CodDecision) -> DeliveryFuture<'a, ()>;
+}
+
+/// Makes `rule` the app's [`CodDifferenceRule`]; the source module calls it
+/// in `register`.
+pub fn provide_cod_rule(app: &mut Registry, rule: impl CodDifferenceRule) {
+    let rule: Arc<dyn CodDifferenceRule> = Arc::new(rule);
+    app.provide(rule);
+}
+
+/// The app's [`CodDifferenceRule`], when a source module provides one.
+pub fn cod_rule(state: &AppState) -> Option<Arc<dyn CodDifferenceRule>> {
+    state
+        .provided::<Arc<dyn CodDifferenceRule>>()
+        .map(|rule| Arc::clone(&rule))
+}
+
 /// A delivery was put on a run (`assign`, `DeliveryAssigned`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeliveryAssigned {

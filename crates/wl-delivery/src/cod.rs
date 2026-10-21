@@ -311,6 +311,7 @@ pub async fn approve(
     delivery: &Delivery,
     absorbed_by: Option<&str>,
     comment: &str,
+    instruction: &str,
 ) -> Result<()> {
     lapse_overdue(state, delivery.id).await?;
     let request = pending_request(&state.db, delivery.id, ACTION)
@@ -328,6 +329,23 @@ pub async fn approve(
             Some(absorber.as_str().to_owned())
         }
     };
+    // The source's own rule on the choice (03: the client only on its
+    // recorded instruction, never the customer).
+    if let (Some(key), Some(rule)) = (&chosen, wl_kernel::delivery::cod_rule(state))
+        && let Some(absorber) = CodAbsorber::parse(key)
+    {
+        rule.check(
+            state,
+            wl_kernel::delivery::CodDecision {
+                delivery: delivery.delivery_id(),
+                source: delivery.source(),
+                absorber,
+                instruction: instruction.trim().to_owned(),
+                approver: user.id,
+            },
+        )
+        .await?;
+    }
     ApprovalChoice::record(&state.db, request.id, chosen, None, user.id).await?;
     match approvals::approve(state, request.id, user, comment).await? {
         Some(decided) if decided.decision != ApprovalEnd::Approved => Err(unprocessable(

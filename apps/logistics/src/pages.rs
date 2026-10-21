@@ -24,6 +24,7 @@
 //! | `POST /shipments/{id}/reweigh` | `logistics.shipment_reweigh` | `shipments.scan` or `.manage` |
 //! | `POST /shipments/{id}/reweigh-dispute` | `logistics.shipment_reweigh_dispute` | `shipments.book` (own company) or `.manage` |
 //! | `POST /shipments/{id}/reweigh-dispute/resolve` | `logistics.shipment_reweigh_resolve` | `shipments.manage` |
+//! | `POST /shipments/{id}/cod-instruction` | `logistics.shipment_cod_instruction` | `shipments.manage` (field `note`; in [`crate::cod`]) |
 //! | `POST /shipments/{id}/dispute` | `logistics.shipment_dispute` | `shipments.manage` (field `reason`) |
 //!
 //! A successful action answers a redirect (303) with a toast. The import with
@@ -286,6 +287,8 @@ pub(crate) struct ShowPage {
     can_dispute: bool,
     can_resolve_dispute: bool,
     can_review: bool,
+    can_cod_instruction: bool,
+    cod_instruction: String,
     review_ticket: String,
     linked: String,
     charged_price: i64,
@@ -313,7 +316,8 @@ async fn show(
     let manages = user.has_permission(permissions::SHIPMENTS_MANAGE);
     let scans = user.has_permission(permissions::SHIPMENTS_SCAN);
     use ShipmentStatus::{
-        AtHub, Attempted, Cancelled, Created, Disposed, OnHold, PickedUp, Returning, Voided,
+        AtHub, Attempted, Cancelled, Created, Disposed, OnHold, OutForDelivery, PickedUp,
+        Returning, Voided,
     };
     // A client user of the company cancels what a colleague booked.
     let cancel_for_company = shipment.status == Created
@@ -422,6 +426,8 @@ async fn show(
         can_review: manages
             && shipment.status == ShipmentStatus::Delivered
             && shipment.delivery_id.is_some(),
+        can_cod_instruction: manages && shipment.status == OutForDelivery,
+        cod_instruction: shipment.cod_instruction.clone().unwrap_or_default(),
         linked: linked_numbers(&state, &shipment).await?,
         review_ticket: shipment
             .review_ticket_id
