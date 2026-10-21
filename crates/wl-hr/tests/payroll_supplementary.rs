@@ -7,6 +7,7 @@
 mod support;
 
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_hr::{
     Adjustment, AdjustmentKind, Employee, EmployeeStatus, FinalSettlement, LineStatus, PayrollLine,
     PayrollRun, PayrollRunStatus, Receivable, SettlementStatus, SifFile,
