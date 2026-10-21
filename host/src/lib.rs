@@ -221,12 +221,12 @@ fn with_brand(app: renox::App, name: &str) -> renox::App {
 }
 
 /// The vertical apps built so far, as `[client] app` names them.
-pub const VERTICALS: &[&str] = &["property", "accounting", "construction"];
+pub const VERTICALS: &[&str] = &["property", "accounting", "construction", "manpower"];
 
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting` and `construction`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction` and `manpower`"
     ))
 }
 
@@ -246,6 +246,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "property" => Ok(app.module(property::Property)),
         "accounting" => Ok(app.module(accounting::Accounting)),
         "construction" => Ok(app.module(construction::Construction)),
+        "manpower" => Ok(app.module(manpower::Manpower)),
         other => Err(unbuilt_vertical(other)),
     }
 }

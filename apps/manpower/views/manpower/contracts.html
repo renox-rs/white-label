@@ -1,0 +1,24 @@
+{#- manpower: the client contracts the person may see, with their status,
+    period, billing cycle and cover obligation. Replace it with
+    resources/views/manpower/contracts.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['contracts.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['contracts.title']" :subtitle="tx['contracts.subtitle']"/>
+    <rx-table :rows="contracts" as="contract" :key="contract.id" :caption="tx['contracts.title']">
+      <rx-column :label="tx['contracts.reference']">
+        <rx-stack>
+          <span>{{ contract.reference }}</span>
+          <span class="rx-subtitle">{{ contract.client }}</span>
+          <span><rx-badge :kind="contract.status_kind" :text="contract.status"/></span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['contracts.period']" hide-narrow>{{ contract.start_date }} - {{ contract.end_date }}</rx-column>
+      <rx-column :label="tx['contracts.billing']" hide-narrow>{{ contract.billing_cycle }}</rx-column>
+      <rx-column :label="tx['contracts.cover']" hide-narrow>
+        <span rx-if="contract.cover_required">{{ tx['contracts.cover_required'] }}</span>
+        <span rx-if="not contract.cover_required">{{ tx['none'] }}</span>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['contracts.empty']" :message="tx['contracts.empty_text']" icon="file-text"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

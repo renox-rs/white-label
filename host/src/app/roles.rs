@@ -5,6 +5,7 @@
 
 use accounting::permissions as acc;
 use construction::permissions as con;
+use manpower::permissions as mpw;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
@@ -111,6 +112,9 @@ pub const QUANTITY_SURVEYOR: &str = con::QS_ROLE;
 /// The HSE officer: told of a midday break flag (`HRM.RUL.13`) and the
 /// responsible role of the ISO certificate (02 §7.2).
 pub const HSE_OFFICER: &str = "hse";
+/// The account manager: owns client accounts, their contracts, requests and
+/// deployments (09 Manpower §3.1); assigned per client company (§3.2).
+pub const ACCOUNT_MANAGER: &str = mpw::ACCOUNT_MANAGER_ROLE;
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -263,6 +267,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             con::GUARANTEES_MANAGE,
             con::VARIATIONS_RECORD,
             con::VARIATIONS_SUBMIT,
+            mpw::CONTRACTS_VIEW,
+            mpw::CONTRACTS_MANAGE,
+            mpw::SITES_MANAGE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -659,6 +666,20 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         SUPERVISOR,
         &[attendance::VIEW, attendance::MARK, attendance::CORRECT],
+    ),
+    (
+        ACCOUNT_MANAGER,
+        &[
+            mpw::CONTRACTS_VIEW,
+            mpw::CONTRACTS_MANAGE,
+            mpw::SITES_MANAGE,
+            parties::VIEW,
+            documents::VIEW,
+            invoices::VIEW,
+            attendance::VIEW,
+            tickets::VIEW,
+            tickets::CREATE,
+        ],
     ),
     (
         STOREKEEPER,
