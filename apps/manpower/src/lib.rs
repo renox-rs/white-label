@@ -8,6 +8,7 @@ pub mod cover;
 mod db;
 pub mod deployment;
 pub mod deployments;
+pub mod documents;
 pub mod events;
 pub mod notices;
 pub mod pages;
@@ -92,13 +93,19 @@ impl Module for Manpower {
         app.model::<Site>()
             .model::<ClientContract>()
             .model::<ManpowerRequest>()
-            .model::<Deployment>();
+            .model::<Deployment>()
+            .model::<documents::DeploymentDocumentFlag>();
         contract::register();
         request::register();
         // `MPW.RUL.06`: an approved leave opens the cover requests the
         // contract requires.
         cover::listen(app);
         deployment::register();
+        // BL-MPW-09: what a deployment depends on (`BlockSubjects`), what an
+        // expiring document stops (`FutureWork`) and the flags the nightly
+        // look-ahead leaves.
+        documents::register();
+        documents::listen(app);
         notices::register_types();
         // Deployments whose end date has passed end by themselves: daily at
         // 02:00 Asia/Dubai.

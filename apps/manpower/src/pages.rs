@@ -38,6 +38,7 @@ use crate::contracts::{self, NewContract};
 use crate::db::refused;
 use crate::deployment::{Deployment, DeploymentKind, DeploymentStatus};
 use crate::deployments::{self, NewDeployment};
+use crate::documents::DeploymentDocumentFlag;
 use crate::permissions;
 use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
 use crate::requests::{self, NewRequest};
@@ -495,6 +496,9 @@ pub(crate) struct DeploymentRow {
     status: String,
     status_kind: &'static str,
     end_reason: Option<String>,
+    /// *document expiring <kind> <date>*, until the renewal is accepted
+    /// (BL-MPW-09).
+    document_flags: Vec<String>,
 }
 
 /// A deployment as a client user sees it (`MPW.ACL.01`, `MPW.ACL.02`): the
@@ -511,6 +515,8 @@ pub(crate) struct ClientDeploymentRow {
     end_date: Option<NaiveDate>,
     status: String,
     status_kind: &'static str,
+    /// What staff are warned of; empty for a client user.
+    flags: Vec<String>,
 }
 
 /// What the deployments page needs; both kinds of row have the keys the
@@ -589,6 +595,11 @@ async fn deployments_index(
                 status: status.clone(),
                 status_kind: kind,
                 end_reason: deployment.end_reason.clone(),
+                document_flags: DeploymentDocumentFlag::open_for(&state.db, deployment.id)
+                    .await?
+                    .iter()
+                    .map(DeploymentDocumentFlag::text)
+                    .collect(),
             });
         } else {
             clients.push(ClientDeploymentRow {
@@ -600,6 +611,7 @@ async fn deployments_index(
                 end_date: deployment.end_date,
                 status,
                 status_kind: kind,
+                flags: Vec::new(),
             });
         }
     }
@@ -631,6 +643,7 @@ async fn deployments_index(
                     end_date: row.end_date,
                     status: row.status.clone(),
                     status_kind: row.status_kind,
+                    flags: row.document_flags.clone(),
                 })
                 .collect()
         };

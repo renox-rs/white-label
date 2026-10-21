@@ -11,6 +11,7 @@
           <span>{{ deployment.worker }}</span>
           <span class="rx-subtitle">{{ deployment.role }} - {{ deployment.site }}</span>
           <span><rx-badge :kind="deployment.status_kind" :text="deployment.status"/></span>
+          {% for flag in deployment.flags %}<span><rx-badge kind="warning" :text="flag"/></span>{% endfor %}
         </rx-stack>
       </rx-column>
       <rx-column :label="tx['deployments.shift']" hide-narrow>{{ deployment.shift_type }}</rx-column>

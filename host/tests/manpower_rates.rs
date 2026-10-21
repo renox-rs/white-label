@@ -89,7 +89,13 @@ async fn the_wl_invoicing_rate_card_lets_the_contract_activate_and_the_request_s
     .assert_status(303);
 
     // No rate card yet: refused.
-    let refused = post(&app, &rana, &format!("/manpower/contracts/{id}/activate"), &[]).await;
+    let refused = post(
+        &app,
+        &rana,
+        &format!("/manpower/contracts/{id}/activate"),
+        &[],
+    )
+    .await;
     refused.assert_status(422);
 
     // A pending version is not enough.
@@ -106,9 +112,14 @@ async fn the_wl_invoicing_rate_card_lets_the_contract_activate_and_the_request_s
     )
     .await
     .unwrap();
-    post(&app, &rana, &format!("/manpower/contracts/{id}/activate"), &[])
-        .await
-        .assert_status(422);
+    post(
+        &app,
+        &rana,
+        &format!("/manpower/contracts/{id}/activate"),
+        &[],
+    )
+    .await
+    .assert_status(422);
 
     // The client's acceptance, recorded by the MD with the signed document.
     post(
@@ -119,11 +130,18 @@ async fn the_wl_invoicing_rate_card_lets_the_contract_activate_and_the_request_s
     )
     .await
     .assert_status(303);
-    let accepted = RateCardVersion::find_or_404(app.db(), version.id).await.unwrap();
-    assert_eq!(accepted.status, VersionStatus::Accepted);
-    post(&app, &rana, &format!("/manpower/contracts/{id}/activate"), &[])
+    let accepted = RateCardVersion::find_or_404(app.db(), version.id)
         .await
-        .assert_status(303);
+        .unwrap();
+    assert_eq!(accepted.status, VersionStatus::Accepted);
+    post(
+        &app,
+        &rana,
+        &format!("/manpower/contracts/{id}/activate"),
+        &[],
+    )
+    .await
+    .assert_status(303);
     let active = ClientContract::find_or_404(app.db(), id).await.unwrap();
     assert_eq!(active.status, ContractStatus::Active);
 

@@ -110,6 +110,15 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.request.cancelled_deployments",
         "request cancelled",
     ),
+    // The documents a deployment depends on (BL-MPW-09).
+    (
+        "manpower.deployment.document_expiring",
+        "document expiring {{ kind }} {{ date }}",
+    ),
+    (
+        "manpower.deployment.document_label",
+        "{{ role }} at {{ site }}, {{ from }} to {{ until }}",
+    ),
     // The deployment (§7.1).
     (
         "manpower.deployment.contract_unknown",
