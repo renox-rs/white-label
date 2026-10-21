@@ -654,6 +654,152 @@ async fn the_budget_is_approved_by_the_admin_and_the_drawings_by_someone_else() 
     }
 }
 
+/// AC8 (behaviour): the accountant prepares the 2026-27 budget of NEC and only
+/// the company admin approves it; a supplier bill coded to *marketing* that
+/// brings the month to 100% of its line warns the accountant (owner of the
+/// category and variance role) once; a bill coded to owner drawings waits for
+/// the admin, never for the user who entered it, and stays out of the operating
+/// cost.
+#[renox::test]
+async fn the_budget_is_approved_by_the_admin_and_overspending_warns_the_accountant_once() {
+    use wl_invoicing::bill_machine;
+    use wl_invoicing::bill_submit;
+    use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
+    use wl_invoicing::credit_notes::By;
+    use wl_invoicing::supplier_bill::{self, BillDraft};
+    use wl_invoicing::{
+        BillLineDraft, BudgetCategory, BudgetKind, CompanyBudget, DrawingApproval, DrawingStatus,
+        StartChoice,
+    };
+    let app = logistics_booted().await;
+    let accountant = person(&app, "Amal", ACCOUNTANT).await;
+    let admin = person(&app, "Ada", ADMIN).await;
+    let nec = entity(&app, "NEC").await;
+    let supplier = company(&app, "Ad Agency LLC").await;
+    let this_month = today().with_day(1).unwrap();
+
+    // The accountant prepares and submits; the request waits for the admin.
+    let draft = budget_lines::create(
+        app.state(),
+        NewBudget {
+            legal_entity_id: nec.id,
+            fiscal_year: i64::from(this_month.year()),
+            name: String::new(),
+            start: StartChoice::Empty,
+            revision_reason: None,
+        },
+        Some(accountant.id),
+    )
+    .await
+    .unwrap();
+    let marketing = BudgetCategory::by_code(app.db(), "marketing")
+        .await
+        .unwrap()
+        .expect("the marketing category");
+    let lines: Vec<LineInput> = draft
+        .months()
+        .into_iter()
+        .map(|month| LineInput {
+            category_id: marketing.id,
+            month,
+            amount: 1_000_000,
+            note: None,
+        })
+        .collect();
+    budget_lines::set_lines(app.db(), draft.id, &lines).await.unwrap();
+    app.acting_as(&accountant);
+    app.htmx()
+        .post(&format!("/budgets/{}/submit", draft.id), &[])
+        .await
+        .assert_redirect(&format!("/budgets/{}", draft.id));
+    let pending = approvals::pending_for(app.db(), &draft.subject())
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1);
+    assert!(
+        approvals::approve(app.state(), pending[0].id, &accountant, "")
+            .await
+            .is_err(),
+        "the preparer cannot approve the budget"
+    );
+    approvals::approve(app.state(), pending[0].id, &admin, "")
+        .await
+        .unwrap()
+        .expect("the admin approves");
+    let approved = CompanyBudget::find(app.db(), draft.id).await.unwrap().unwrap();
+    assert_eq!(approved.status, wl_invoicing::BudgetStatus::Approved);
+
+    // Two bills take March of the line (AED 10,000) to 100%: one warning.
+    let bill = |number: &'static str, price: i64, code: String| {
+        let (state, db) = (app.state().clone(), app.db().clone());
+        let (nec_id, by) = (nec.id, accountant.id);
+        async move {
+            let mut draft = BillDraft::new(supplier, number, today());
+            draft.legal_entity_id = Some(nec_id);
+            draft = draft.line(
+                BillLineDraft::new("Ads", price, VatCategory::Standard).cost_code(&code),
+            );
+            let bill = supplier_bill::create(&db, &draft, Some(by)).await.unwrap();
+            bill_submit::submit(&state, By::System(Some(by)), bill.id)
+                .await
+                .unwrap();
+            bill
+        }
+    };
+    let first = bill("SB-1", 600_000, "marketing".to_owned()).await;
+    bill_machine::approve(app.state(), By::System(Some(accountant.id)), first.id, "")
+        .await
+        .unwrap();
+    assert!(
+        messages_to(&app, "invoicing.budget_variance", &accountant)
+            .await
+            .is_empty(),
+        "60% of the line: no warning"
+    );
+    let second = bill("SB-2", 450_000, "marketing".to_owned()).await;
+    bill_machine::approve(app.state(), By::System(Some(accountant.id)), second.id, "")
+        .await
+        .unwrap();
+    let third = bill("SB-3", 100_000, "marketing".to_owned()).await;
+    bill_machine::approve(app.state(), By::System(Some(accountant.id)), third.id, "")
+        .await
+        .unwrap();
+    assert_eq!(
+        messages_to(&app, "invoicing.budget_variance", &accountant)
+            .await
+            .len(),
+        1,
+        "the accountant is warned once, however many bills follow"
+    );
+
+    // A drawing waits for the admin and is never approved by its requester.
+    let drawings = BudgetCategory::listed(app.db(), true)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|c| c.kind == BudgetKind::OwnerDrawings)
+        .expect("the drawings category");
+    let drawn = bill("SB-4", 200_000, drawings.code.clone()).await;
+    let requested = DrawingApproval::for_source(app.db(), &drawn.subject())
+        .await
+        .unwrap();
+    let request = requested
+        .iter()
+        .find(|d| d.status == DrawingStatus::Requested)
+        .and_then(|d| d.approval_request_id)
+        .expect("the drawing waits for an approval");
+    assert!(
+        approvals::approve(app.state(), request, &accountant, "")
+            .await
+            .is_err(),
+        "the requester cannot approve its own drawing"
+    );
+    approvals::approve(app.state(), request, &admin, "")
+        .await
+        .unwrap()
+        .expect("the admin approves the drawing");
+}
+
 /// The money page shows the 03 rows, each with its value and who set it; a
 /// member and a client user do not see it.
 #[renox::test]
