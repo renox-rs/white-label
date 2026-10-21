@@ -5,6 +5,8 @@
 //! |---|---|---|
 //! | `GET /hr/payroll/{id}` | `wl_hr.payroll_run` | `payroll.view` |
 //! | `POST /hr/payroll/{id}/transitions/{name}` | `wl_hr.payroll_transitions.*` | `payroll.view` and the transition's permission |
+//! | `POST /hr/payroll/{id}/rejection` | `wl_hr.payroll_rejection` | `payroll.prepare` |
+//! | `POST /hr/payroll/{id}/resubmit` | `wl_hr.payroll_resubmit` | `payroll.prepare` |
 //! | `POST /hr/payroll/lines/{id}/comment` | `wl_hr.payroll_line_comment` | `payroll.approve`, not the preparer |
 //!
 //! The page lists the lines, the lines above the Art. 25 caps (the
@@ -14,12 +16,14 @@
 use std::collections::BTreeMap;
 
 use renox::prelude::*;
-use renox::state_machine::StateMachine;
+use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 
 use crate::caps;
 use crate::employee::Employee;
 use crate::payroll::{LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
+use crate::sif::SifFile;
+use crate::wps_rejection::{REASON_FILE_FORMAT, REASONS, RejectionInput, ResubmitInput};
 use crate::{permissions, texts};
 
 /// The texts a template reads as `tx['payroll.title']`.
@@ -43,6 +47,10 @@ pub fn routes() -> Routes {
             Routes::new()
                 .post("/hr/payroll/lines/{id}/comment", comment_line)
                 .name("wl_hr.payroll_line_comment")
+                .post("/hr/payroll/{id}/rejection", record_rejection)
+                .name("wl_hr.payroll_rejection")
+                .post("/hr/payroll/{id}/resubmit", resubmit)
+                .name("wl_hr.payroll_resubmit")
                 .require_auth(),
         )
 }
@@ -65,6 +73,7 @@ fn run_kind(status: PayrollRunStatus) -> &'static str {
         PayrollRunStatus::Draft => "info",
         PayrollRunStatus::Calculated | PayrollRunStatus::Approved => "info",
         PayrollRunStatus::Submitted => "info",
+        PayrollRunStatus::Rejected => "error",
         PayrollRunStatus::PartiallyRejected => "warning",
         PayrollRunStatus::Paid => "success",
     }
@@ -139,6 +148,24 @@ pub(crate) struct ShowPage {
     approve_blocked: bool,
     can_approve: bool,
     can_comment: bool,
+    sif_files: Vec<SifView>,
+    can_record_rejection: bool,
+    can_resubmit: bool,
+    rejection_reasons: Vec<(String, String)>,
+    rejection_selected: String,
+}
+
+/// One SIF version.
+#[derive(Serialize, Debug, Clone)]
+pub struct SifView {
+    /// 1, 2, ...
+    pub version: i64,
+    /// The file's name.
+    pub name: String,
+    /// How many lines it carries.
+    pub lines: i64,
+    /// The sum of the nets, dirhams.
+    pub total: String,
 }
 
 /// The run's header.
@@ -188,6 +215,7 @@ async fn show(
         });
     }
     let approve_blocked = !exceptions.is_empty();
+    let prepares = user.has_permission(permissions::PAYROLL_PREPARE);
     let mut actions = Vec::new();
     for action in run.available(&user, &state.db).await? {
         if !GENERIC.contains(&action.name.as_str()) {
@@ -218,6 +246,28 @@ async fn show(
         approve_blocked: approve_blocked && run.status == PayrollRunStatus::Calculated,
         can_approve: user.has_permission(permissions::PAYROLL_APPROVE),
         can_comment: can_comment(&user, &run),
+        sif_files: SifFile::of_run(&state.db, id)
+            .await?
+            .into_iter()
+            .map(|f| SifView {
+                version: f.version,
+                name: f.file_name,
+                lines: f.line_count,
+                total: aed(f.total),
+            })
+            .collect(),
+        can_record_rejection: prepares && run.status == PayrollRunStatus::Submitted,
+        can_resubmit: prepares && run.status == PayrollRunStatus::Rejected,
+        rejection_reasons: REASONS
+            .iter()
+            .map(|r| {
+                (
+                    (*r).to_owned(),
+                    text(&lang, &format!("payroll.rejection.{r}")),
+                )
+            })
+            .collect(),
+        rejection_selected: REASON_FILE_FORMAT.to_owned(),
     }))
 }
 
@@ -291,4 +341,79 @@ async fn comment_line(
     }
     crate::payroll::comment_line(&state.db, id, &form.comment).await?;
     Ok((Toast::success(text(&lang, "payroll.comment_saved")), back).into_response())
+}
+
+/// Runs the user transition `name` of run `id` as `user` with `input`.
+async fn run_as<I: Serialize>(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    name: &str,
+    input: &I,
+) -> Result {
+    let run = PayrollRun::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let _outcome = run
+        .transition(name)
+        .by(user)
+        .input(input)
+        .run(state)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(())
+}
+
+/// The form that records the bank's rejection of the file.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct RejectionForm {
+    /// `file_format`, `establishment_id`, `funding` or `other`.
+    #[validate(max = 40)]
+    #[serde(default)]
+    pub reason: String,
+    /// The bank's rejection notice.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub notice: String,
+}
+
+/// `POST /hr/payroll/{id}/rejection`: the preparer records the rejection.
+async fn record_rejection(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path(id): Path<i64>,
+    Valid(form): Valid<RejectionForm>,
+) -> Result<Response> {
+    let input = RejectionInput {
+        reason: form.reason,
+        notice: form.notice,
+    };
+    run_as(&state, &user, id, crate::payroll::RECORD_REJECTION, &input).await?;
+    Ok((Toast::success(text(&lang, "payroll.rejected")), back).into_response())
+}
+
+/// The form that resubmits a rejected file.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ResubmitForm {
+    /// What was done to fix the cause.
+    #[validate(max = 1000)]
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /hr/payroll/{id}/resubmit`: the preparer resubmits the rejected
+/// file as a new version.
+async fn resubmit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ResubmitForm>,
+) -> Result<Response> {
+    let input = ResubmitInput { note: form.note };
+    run_as(&state, &user, id, crate::payroll::RESUBMIT, &input).await?;
+    Ok((Toast::success(text(&lang, "payroll.resubmitted")), back).into_response())
 }

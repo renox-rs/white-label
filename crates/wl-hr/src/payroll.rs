@@ -15,6 +15,11 @@
 //!   ([`comment_line`]); the approver is cleared and the preparer told
 //!   ([`crate::payroll_events`]). Not possible once the file was sent.
 //!
+//! - `record_rejection` (submitted -> rejected) and `resubmit` (rejected ->
+//!   submitted), `payroll.prepare`: the bank rejects the whole file and the
+//!   preparer sends a new version for the same lines ([`crate::wps_rejection`]);
+//!   the versions are [`crate::sif::SifFile`]s and are never overwritten.
+//!
 //! The transitions that decide which line goes into which SIF file:
 //!
 //! - `submit` (approved -> submitted): generates SIF version 1 from the lines
@@ -45,7 +50,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::employee::{Employee, EmployeeStatus};
 use crate::texts::english;
-use crate::{adjustment, caps, permissions};
+use crate::{adjustment, caps, permissions, sif, wps_rejection};
 
 /// The reason of a line held by the absence report.
 pub const HELD_ABSENCE_REPORT: &str = "absence report";
@@ -56,6 +61,10 @@ pub const CALCULATE: &str = "calculate";
 pub const APPROVE: &str = "approve";
 /// The approver sends a calculated or approved run back to draft.
 pub const RETURN: &str = "return";
+/// The bank rejected the whole file.
+pub const RECORD_REJECTION: &str = "record_rejection";
+/// A new version of the rejected file, once the cause is fixed.
+pub const RESUBMIT: &str = "resubmit";
 /// The run is ready to be sent.
 pub const SUBMIT: &str = "submit";
 /// The bank's result file shows failed lines.
@@ -75,6 +84,8 @@ pub enum PayrollRunStatus {
     Approved,
     /// The SIF file was sent.
     Submitted,
+    /// The bank or exchange house rejected the whole file.
+    Rejected,
     /// The bank paid some lines and failed others.
     PartiallyRejected,
     /// Payment confirmed.
@@ -113,6 +124,13 @@ pub struct PayrollRun {
     pub approved_by: Option<i64>,
     /// Why the approver last sent it back to `draft` (`return`).
     pub return_reason: Option<String>,
+    /// Why the bank rejected the whole file (`file_format`,
+    /// `establishment_id`, `funding`, `other`).
+    pub rejection_reason: Option<String>,
+    /// The bank's rejection notice (a reference to the attached file).
+    pub rejection_notice: Option<String>,
+    /// The note on the fix entered at `resubmit`.
+    pub resubmit_note: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -210,7 +228,9 @@ impl StateMachine for PayrollRun {
     const COLUMN: renox::db::Col<PayrollRun, PayrollRunStatus> = PayrollRun::STATUS;
 
     fn machine() -> Machine<Self> {
-        use PayrollRunStatus::{Approved, Calculated, Draft, Paid, PartiallyRejected, Submitted};
+        use PayrollRunStatus::{
+            Approved, Calculated, Draft, Paid, PartiallyRejected, Rejected, Submitted,
+        };
         Machine::new()
             .initial([Draft])
             .state(Draft)
@@ -221,6 +241,8 @@ impl StateMachine for PayrollRun {
             .tone("info")
             .state(Submitted)
             .tone("info")
+            .state(Rejected)
+            .tone("error")
             .state(PartiallyRejected)
             .tone("warning")
             .state(Paid)
@@ -229,6 +251,8 @@ impl StateMachine for PayrollRun {
             .transition(calculate())
             .transition(approve())
             .transition(return_run())
+            .transition(wps_rejection::record_rejection())
+            .transition(wps_rejection::resubmit())
             .transition(
                 Transition::new(SUBMIT)
                     .label("Submit")
@@ -444,28 +468,9 @@ pub async fn comment_line(db: &Db, line_id: i64, comment: &str) -> Result<()> {
 }
 
 /// The next SIF version of run `run_id`: every `included` line goes into it
-/// (a held, paid or failed line does not).
+/// (a held, paid or failed line does not), see [`sif::generate_in`].
 async fn generate_sif_in(tx: &mut Transaction, run_id: i64) -> Result {
-    let Some(run) = PayrollRun::find(&mut *tx, run_id).await? else {
-        return Ok(());
-    };
-    let version = run.sif_version + 1;
-    PayrollLine::query()
-        .where_(PayrollLine::RUN_ID.eq(run_id))
-        .where_(PayrollLine::STATUS.eq(LineStatus::Included))
-        .update(
-            &mut *tx,
-            &[("sif_version", &Some(version)), ("updated_at", &now())],
-        )
-        .await?;
-    PayrollRun::query()
-        .where_(PayrollRun::ID.eq(run_id))
-        .update(
-            &mut *tx,
-            &[("sif_version", &version), ("updated_at", &now())],
-        )
-        .await?;
-    Ok(())
+    sif::generate_in(tx, run_id, None).await
 }
 
 /// The bank's result for run `run_id`: the failed lines are `failed` with

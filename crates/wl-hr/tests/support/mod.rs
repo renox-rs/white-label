@@ -774,6 +774,64 @@ impl Booted {
             .await
     }
 
+    /// A run of `period` that was approved and submitted as SIF version 1, with
+    /// a line of `net` fils (and the same fixed wage) for each employee.
+    pub async fn submitted_run(
+        &self,
+        period: &str,
+        employees: &[&Employee],
+        net: i64,
+    ) -> (PayrollRun, Vec<PayrollLine>) {
+        let run = self.payroll_run(period, PayrollRunStatus::Approved).await;
+        let mut lines = Vec::new();
+        for employee in employees {
+            lines.push(self.payroll_line(&run, employee, net, net).await);
+        }
+        wl_hr::payroll::submit(self.state(), run.id).await.unwrap();
+        (self.run(&run).await, lines)
+    }
+
+    /// The default legal entity's id.
+    pub async fn entity_id(&self) -> i64 {
+        wl_kernel::entities::LegalEntity::default_entity(self.db())
+            .await
+            .unwrap()
+            .id
+    }
+
+    /// `user` records the bank's rejection of the file of `run`.
+    pub async fn reject(
+        &self,
+        user: &User,
+        run: &PayrollRun,
+        reason: &str,
+        notice: &str,
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app
+            .post(
+                &format!("/hr/payroll/{}/rejection", run.id),
+                &[("reason", reason), ("notice", notice)],
+            )
+            .await
+    }
+
+    /// `user` resubmits the rejected file of `run` with `note`.
+    pub async fn resubmit(
+        &self,
+        user: &User,
+        run: &PayrollRun,
+        note: &str,
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app
+            .post(
+                &format!("/hr/payroll/{}/resubmit", run.id),
+                &[("note", note)],
+            )
+            .await
+    }
+
     /// `user` comments on `line` (the approver, before `return`).
     pub async fn comment(
         &self,

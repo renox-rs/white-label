@@ -10,6 +10,7 @@ pub mod caps;
 pub mod config;
 pub mod employee;
 pub mod employee_machine;
+pub mod establishment;
 mod events;
 pub mod exits;
 pub mod leave;
@@ -24,11 +25,13 @@ pub mod qualification_expiry;
 pub mod reminders;
 pub mod seed;
 pub mod settlement;
+pub mod sif;
 pub mod steps;
 pub mod template;
 mod texts;
 pub mod visa;
 pub mod workforce;
+pub mod wps_rejection;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -41,6 +44,7 @@ pub use employee::{
     Employee, EmployeeScope, EmployeeStatus, EmploymentType, NewEmployee, change_job_role,
     correct_hire_date, set_scope,
 };
+pub use establishment::Establishment;
 pub use leave::{LeaveRequest, LeaveStatus};
 pub use onboarding::{
     AppliedTemplate, Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest,
@@ -50,6 +54,7 @@ pub use payroll::{LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
 pub use qualification::{NewQualification, Qualification, Quals};
 pub use qualification_expiry::QualificationExpiry;
 pub use settlement::{FinalSettlement, SettlementStatus};
+pub use sif::{SifFile, SifLine};
 pub use steps::{DoneInput, InPerson, StepRefused};
 pub use template::{
     OnboardingTemplate, StepInput, StepKind, TemplateInput, TemplateRefused, TemplateStep,
@@ -195,6 +200,9 @@ impl Module for WlHr {
         app.model::<AbsenceReport>();
         app.model::<PayrollRun>();
         app.model::<PayrollLine>();
+        app.model::<SifFile>();
+        app.model::<SifLine>();
+        app.model::<Establishment>();
         app.model::<Adjustment>();
         app.model::<FinalSettlement>();
         app.model::<VisaCase>();

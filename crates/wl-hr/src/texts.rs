@@ -143,6 +143,60 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_hr.payroll.return", "Return"),
     ("wl_hr.payroll.return_reason", "Returned because"),
+    (
+        "wl_hr.payroll.notice_required",
+        "Attach the bank's rejection notice.",
+    ),
+    (
+        "wl_hr.payroll.rejection_reason_invalid",
+        "Give the reason: file format, establishment ID, funding or other.",
+    ),
+    (
+        "wl_hr.payroll.fix_note_required",
+        "Enter a note on what was done to fix the cause.",
+    ),
+    (
+        "wl_hr.payroll.establishment_unchanged",
+        "The establishment ID of the legal entity is still the one the rejected file was named with. Correct it first.",
+    ),
+    (
+        "wl_hr.payroll.amounts_changed",
+        "A net amount differs from the rejected file. Amounts cannot change on resubmit: correct them after payment with a supplementary run.",
+    ),
+    (
+        "wl_hr.payroll.lines_changed",
+        "The lines of the rejected file must all still be failed and unchanged.",
+    ),
+    (
+        "wl_hr.payroll.no_file",
+        "The run has no SIF file to resubmit.",
+    ),
+    ("wl_hr.payroll.status.rejected", "Rejected"),
+    ("wl_hr.payroll.record_rejection", "Record rejection"),
+    ("wl_hr.payroll.resubmit", "Resubmit"),
+    ("wl_hr.payroll.rejection_reason", "Reason of the rejection"),
+    (
+        "wl_hr.payroll.rejection_notice",
+        "Bank's rejection notice (file or reference)",
+    ),
+    ("wl_hr.payroll.fix_note", "What was done to fix the cause"),
+    ("wl_hr.payroll.rejection.file_format", "File format"),
+    (
+        "wl_hr.payroll.rejection.establishment_id",
+        "Establishment ID",
+    ),
+    ("wl_hr.payroll.rejection.funding", "Funding"),
+    ("wl_hr.payroll.rejection.other", "Other"),
+    ("wl_hr.payroll.rejected", "Rejection recorded."),
+    (
+        "wl_hr.payroll.resubmitted",
+        "Resubmitted as a new SIF version.",
+    ),
+    ("wl_hr.payroll.files", "SIF files"),
+    ("wl_hr.payroll.file_version", "Version"),
+    ("wl_hr.payroll.file_name", "File"),
+    ("wl_hr.payroll.file_lines", "Lines"),
+    ("wl_hr.payroll.file_total", "Total (AED)"),
     ("wl_hr.payroll.status.draft", "Draft"),
     ("wl_hr.payroll.status.calculated", "Calculated"),
     ("wl_hr.payroll.status.approved", "Approved"),
@@ -489,6 +543,14 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_hr.notices.payroll_returned_body",
         "The payroll run {{ period }} was returned to draft: {{ reason }}. Lines to fix: {{ comments }}",
+    ),
+    (
+        "wl_hr.notices.payroll_failed_subject",
+        "WPS file of payroll {{ period }} failed",
+    ),
+    (
+        "wl_hr.notices.payroll_failed_body",
+        "{{ count }} line(s) of the salary file of payroll {{ period }} failed: {{ reasons }}. See the run and fix them before the WPS due date.",
     ),
     (
         "wl_hr.notices.step_escalated_subject",

@@ -7,15 +7,18 @@
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
-use wl_kernel::{PayrollRunId, PayrollRunReturned};
+use wl_kernel::{
+    EmployeeId, FailedPayrollLine, PayrollLinesFailed, PayrollRunId, PayrollRunReturned,
+};
 
 use crate::notices;
-use crate::payroll::{PayrollLine, PayrollRun, RETURN};
+use crate::payroll::{LineStatus, PayrollLine, PayrollRun, RECORD_REJECTION, RETURN};
 
 /// The listener registered by [`crate::events`].
 pub(crate) async fn on_transitioned(state: &AppState, event: &Transitioned<PayrollRun>) -> Result {
     match event.transition.as_str() {
         RETURN => returned(state, event.key).await,
+        RECORD_REJECTION => failed(state, event.key).await,
         _ => Ok(()),
     }
 }
@@ -58,4 +61,55 @@ pub(crate) async fn line_employee(state: &AppState, line: &PayrollLine) -> Strin
         Ok(Some(employee)) => notices::name_of(state, &employee).await,
         _ => format!("#{}", line.employee_id),
     }
+}
+
+/// The preparer and the approver of `run`, once each.
+pub(crate) fn staff_of(run: &PayrollRun) -> Vec<i64> {
+    let mut users: Vec<i64> = run.prepared_by.into_iter().chain(run.approved_by).collect();
+    users.sort_unstable();
+    users.dedup();
+    users
+}
+
+/// The lines of `run` that are `failed`, with their reasons, for the event.
+async fn failed_lines(state: &AppState, run: &PayrollRun) -> Result<Vec<FailedPayrollLine>> {
+    Ok(run
+        .lines(&state.db)
+        .await?
+        .into_iter()
+        .filter(|l| l.status == LineStatus::Failed)
+        .map(|l| FailedPayrollLine {
+            line: l.id,
+            employee: EmployeeId(l.employee_id),
+            reason: l.failure_reason.clone().unwrap_or_default(),
+        })
+        .collect())
+}
+
+/// `record_rejection` and `record_partial`: the preparer and the approver are
+/// told (`HRM.RUL.11`) and `PayrollLinesFailed` follows with the failed lines
+/// and their reasons.
+pub(crate) async fn failed(state: &AppState, run_id: i64) -> Result {
+    let Some(run) = PayrollRun::find(&state.db, run_id).await? else {
+        return Ok(());
+    };
+    let lines = failed_lines(state, &run).await?;
+    let mut reasons: Vec<String> = lines.iter().map(|l| l.reason.clone()).collect();
+    reasons.sort();
+    reasons.dedup();
+    notices::payroll_failed(
+        state,
+        &run,
+        lines.len(),
+        &reasons.join(", "),
+        &staff_of(&run),
+    )
+    .await?;
+    state
+        .emit(PayrollLinesFailed {
+            run: PayrollRunId(run.id),
+            period: run.period.clone(),
+            lines,
+        })
+        .await
 }

@@ -33,6 +33,10 @@ pub const QUALIFICATION_EXPIRED: &str = "hr.qualification_expired";
 /// The preparer is told that the approver sent a payroll run back to draft.
 pub const PAYROLL_RETURNED: &str = "hr.payroll_returned";
 
+/// The preparer and the approver are told that lines of the salary file
+/// failed (`HRM.RUL.11`).
+pub const PAYROLL_FAILED: &str = "hr.payroll_failed";
+
 /// `date` as `9 Nov 2026`.
 fn date_text(date: NaiveDate) -> String {
     date.format("%-d %b %Y").to_string()
@@ -64,6 +68,7 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(STEP_REOPENED, "step_reopened"));
     notify::register_type(english_type(QUALIFICATION_EXPIRED, "qualification_expired"));
     notify::register_type(english_type(PAYROLL_RETURNED, "payroll_returned"));
+    notify::register_type(english_type(PAYROLL_FAILED, "payroll_failed"));
     // The employee's own channel: SMS to the number on record.
     let body = english("wl_hr.notices.in_person_body", &[]);
     notify::register_type(
@@ -280,6 +285,32 @@ pub(crate) async fn payroll_returned(
             "period": run.period,
             "reason": reason,
             "comments": comments,
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the preparer and the approver) that `count` lines of the
+/// salary file of `run` failed, with the `reasons`.
+pub(crate) async fn payroll_failed(
+    state: &AppState,
+    run: &PayrollRun,
+    count: usize,
+    reasons: &str,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(PAYROLL_FAILED, run.subject())
+        .subject_label(&run.period)
+        .data(json!({
+            "period": run.period,
+            "count": count,
+            "reasons": reasons,
         }));
     for user in users {
         request = request.to_user(*user);
