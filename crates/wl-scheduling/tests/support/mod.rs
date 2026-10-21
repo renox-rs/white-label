@@ -687,6 +687,8 @@ pub struct Booked {
     pub docs: Docs,
     /// The staff tasks other modules opened.
     pub tasks: Tasks,
+    /// The payment gateway of `wl-payments` ([`boot_paid`] installs it).
+    pub gateway: wl_payments::gateway::FakeGateway,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
     /// Keeps the database file alive (when the test uses one).
@@ -1008,21 +1010,38 @@ pub async fn boot_real() -> Booked {
 /// [`boot`] on a SQLite file in a directory of its own, with ten
 /// connections, so that concurrent callers really use separate connections.
 pub async fn boot_file_backed() -> Booked {
-    boot_app_on(WlScheduling::new(), false, true, false).await
+    boot_app_on(WlScheduling::new(), false, true, false, false).await
 }
 
 async fn boot_app(module: WlScheduling, real: bool) -> Booked {
-    boot_app_on(module, real, false, false).await
+    boot_app_on(module, real, false, false, false).await
+}
+
+/// [`boot_real`] with a payment gateway installed in `wl-payments` (a fake,
+/// [`Booked::gateway`]), so that payment links can be made and paid.
+pub async fn boot_paid() -> Booked {
+    boot_app_on(WlScheduling::new(), true, false, false, true).await
+}
+
+/// [`boot_paid`] with `module`.
+pub async fn boot_paid_with(module: WlScheduling) -> Booked {
+    boot_app_on(module, true, false, false, true).await
 }
 
 /// [`boot`] with the real `wl-hr` mounted: `qualification_valid` is the real
 /// guard, answering through the documents of [`Booked::docs`], and the
 /// employees are real rows.
 pub async fn boot_hr() -> Booked {
-    boot_app_on(WlScheduling::new(), false, false, true).await
+    boot_app_on(WlScheduling::new(), false, false, true, false).await
 }
 
-async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool, hr: bool) -> Booked {
+async fn boot_app_on(
+    module: WlScheduling,
+    real: bool,
+    file_backed: bool,
+    hr: bool,
+    gateway_installed: bool,
+) -> Booked {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1036,13 +1055,18 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool, hr: bo
     let sources = Sources::default();
     let docs = Docs::default();
     let tasks = Tasks::default();
+    let gateway = wl_payments::gateway::FakeGateway::new();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
         .module(renox::audit::Audit);
     let app = if real {
-        app.module(wl_parties::WlParties::new())
-            .module(wl_payments::WlPayments::new())
+        let payments = if gateway_installed {
+            wl_payments::WlPayments::new().gateway(gateway.clone())
+        } else {
+            wl_payments::WlPayments::new()
+        };
+        app.module(wl_parties::WlParties::new()).module(payments)
     } else {
         app
     };
@@ -1117,6 +1141,7 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool, hr: bo
         sources,
         docs,
         tasks,
+        gateway,
         _views: views,
         _database: database,
     }
