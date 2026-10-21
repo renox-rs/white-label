@@ -868,15 +868,15 @@ payer."
 - Must not let the clinic manager approve above AED 1,000.
 
 #### Done when
-- [ ] Given a draft claim AED 600.00 for a visit on 2026-09-01, a 30-day window (ended 2026-10-01),
+- [x] Given a draft claim AED 600.00 for a visit on 2026-09-01, a 30-day window (ended 2026-10-01),
       a payer that does not accept late claims and the flag off, when clinic manager A writes it
       off with reason "missed window" on 2026-10-05, it is `written_off`, payer bill `write_off`
       ran and the KPI shows AED 600.00 *not submitted in time*.
-- [ ] With the flag on, the same action runs `transfer_to_customer` and the patient share rises by
+- [x] With the flag on, the same action runs `transfer_to_customer` and the patient share rises by
       AED 600.00.
-- [ ] AED 1,500.00 creates an approval request to the owner; the claim stays `draft` until approved.
-- [ ] On 2026-09-30 (window open) `write_off` from `draft` is refused.
-- [ ] For a payer that accepts late claims, `write_off` from `draft` is refused and `validate`
+- [x] AED 1,500.00 creates an approval request to the owner; the claim stays `draft` until approved.
+- [x] On 2026-09-30 (window open) `write_off` from `draft` is refused.
+- [x] For a payer that accepts late claims, `write_off` from `draft` is refused and `validate`
       without a late reason is refused; with "system outage" it passes.
 
 #### Out of scope
