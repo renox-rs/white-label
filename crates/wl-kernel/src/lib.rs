@@ -153,7 +153,8 @@ pub use machines::SubjectMachine;
 pub use manifest::Manifest;
 pub use notify::{
     GiveUpReaction, MessageFailed, MessageGaveUp, MessageId, MessageSuppressed, NoNotifier,
-    NotificationTypeDef, Notifier, NotifyChannel, NotifyRecipient, NotifyRequest, PartyContacts,
+    NotificationTypeDef, Notifier, NotifyChannel, NotifyRecipient, NotifyRequest, OtpRequest,
+    OtpSent, OtpVerdict, PartyContacts,
 };
 pub use numbering::{Reset, Series};
 pub use parties::{

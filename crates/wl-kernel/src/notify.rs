@@ -666,6 +666,107 @@ pub trait Notifier: Send + Sync + 'static {
     ) -> NotifyFuture<'a, BroadcastId> {
         Box::pin(async { Err(broadcasts_off()) })
     }
+
+    /// Sends a one-time code to `request.to` for `request.purpose` about
+    /// `request.subject` (wl-notify §6 `send_otp`). A new code for the same
+    /// purpose and subject replaces the live one. The default, and
+    /// [`NoNotifier`], refuse (422): one-time codes need the notify module.
+    fn send_otp<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: OtpRequest,
+    ) -> NotifyFuture<'a, OtpSent> {
+        Box::pin(async { Err(otp_off()) })
+    }
+
+    /// Checks the code a person typed against the live code for `purpose` and
+    /// `subject` (wl-notify §6 `verify_otp`). The default, and
+    /// [`NoNotifier`], refuse (422).
+    fn verify_otp<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _purpose: &'a str,
+        _subject: &'a Subject,
+        _code: &'a str,
+    ) -> NotifyFuture<'a, OtpVerdict> {
+        Box::pin(async { Err(otp_off()) })
+    }
+}
+
+/// The refusal of [`Notifier::send_otp`] and [`Notifier::verify_otp`]
+/// without the notify module.
+fn otp_off() -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "One-time codes need the notifications module.".to_owned(),
+    )
+}
+
+/// How long a one-time code is valid, in minutes (wl-notify §7).
+pub const OTP_VALIDITY_MINUTES: i64 = 5;
+
+/// How many wrong codes void a one-time code (wl-notify §7).
+pub const OTP_WRONG_TRIES: i64 = 3;
+
+/// A one-time code to send (wl-notify §6 `send_otp(contact_point, purpose)`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct OtpRequest {
+    /// What the code confirms, e.g. `loyalty_redemption`.
+    pub purpose: String,
+    /// The record the code confirms: a code for one record never confirms
+    /// another.
+    pub subject: Subject,
+    /// Where the code goes: a bare address on one channel, or a party.
+    pub to: NotifyRecipient,
+}
+
+impl OtpRequest {
+    /// A code for `purpose` about `subject`, to `to`.
+    pub fn new(purpose: &str, subject: Subject, to: NotifyRecipient) -> Self {
+        OtpRequest {
+            purpose: purpose.to_owned(),
+            subject,
+            to,
+        }
+    }
+}
+
+/// What [`Notifier::send_otp`] did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OtpSent {
+    /// The code was queued as a message.
+    Sent {
+        /// The message that carries it.
+        message: MessageId,
+        /// When the code stops being valid.
+        expires_at: DateTime,
+    },
+    /// Nothing could be sent now (no open channel, no address, the address is
+    /// suppressed): the person waiting sees `text` at once and may choose
+    /// another way. No code is kept.
+    NotSent {
+        /// The text to show.
+        text: String,
+    },
+}
+
+/// What [`Notifier::verify_otp`] found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OtpVerdict {
+    /// Right: the code is used up.
+    Valid,
+    /// Wrong, with this many wrong tries left. The code stays live.
+    Wrong {
+        /// Wrong tries left before the code is voided.
+        tries_left: i64,
+    },
+    /// There is no live code: it expired, was used, or none was sent. A new
+    /// one may be sent.
+    Expired,
+    /// The wrong tries are used up and the code is voided (the one that used
+    /// the last try gets this answer too).
+    Locked,
 }
 
 /// Whether a statutory notice was delivered (wl-notify §5.4). A requester

@@ -26,6 +26,7 @@ What is here so far:
 | The give-up reactions: `staff_task` (with an in-app alert when urgent), `alternative_recipient`, `mark_contact_invalid`, the OTP failure notice, the "not delivered" query for a record | §5.4 | `reactions`, `staff_task`, `alert`, `alternative`, `contact_invalid`, `otp`, `delivered`, `mask` |
 | Send windows and quiet hours (`NTF.RUL.02`), deferred messages released when the window opens (`notify:release`) | §4.1, §7 | `window`, `send_window`, `release` |
 | Broadcasts (`NTF.ACL.04`): one marketing message to a segment asked for by a campaign through `Notifier::broadcast`, approval above the size limit, the scheduled run every minute (`notify:broadcasts`), results, opt-out of marketing | §3, §4.3 | `broadcast`, `broadcast_machine`, `broadcasts`, `broadcast_approval`, `broadcast_recipients`, `broadcast_run`, `broadcast_results`, `opt_out` |
+| One-time codes: `Notifier::send_otp` and `verify_otp` (6 digits through Renox's `OneTimeCode`, 5 minutes and 3 wrong tries, `valid`/`wrong`/`expired`/`locked`; `WlNotify::otp_validity_minutes`, `otp_wrong_tries`) | §6, §7 | `otp` |
 | Statutory notice records, `notice_status`, `undelivered_notices` | §5.4, §6 | `notices` |
 | The `statutory_notice` give-up reaction and its task | §5.4 | `statutory_notice` |
 | Proof of delivery: form, attachment, `StatutoryNoticeProofRecorded` (`notifications.notices.record_proof`) | §5.4 | `pages` |
