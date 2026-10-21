@@ -5,6 +5,7 @@ pub mod billing;
 pub mod booking;
 pub mod cancel;
 mod events;
+pub mod hold;
 pub mod notices;
 pub mod pages;
 pub mod permissions;
@@ -27,7 +28,7 @@ pub use booking::{ImportReport, NewShipment, RowResult};
 pub use rates::{ClientRate, WeightBand};
 pub use reweigh::{ClientTerms, Measurement};
 pub use shipment::{
-    Charge, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment, ShipmentStatus, TrackingEvent,
+    AddressChange, Charge, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment, ShipmentStatus, TrackingEvent,
 };
 pub use shipment_machine::ShipmentInput;
 
@@ -67,7 +68,8 @@ impl Module for Logistics {
             .model::<ClientRate>()
             .model::<WeightBand>()
             .model::<ClientTerms>()
-            .model::<Measurement>();
+            .model::<Measurement>()
+            .model::<AddressChange>();
         // The shipment's machine, and its place in the kernel's void pattern.
         voiding::register();
         // The shipment follows its delivery and cancels it.

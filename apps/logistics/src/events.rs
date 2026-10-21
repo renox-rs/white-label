@@ -25,8 +25,8 @@ use wl_kernel::{Subject, voids};
 use crate::notices::tell_client;
 use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentStatus, track};
 use crate::shipment_machine::{
-    CANCEL, CANCEL_RETURN, DELIVER, DISPATCH, FAIL_ATTEMPT, PICK_UP, RECEIVE_AT_HUB,
-    ShipmentInput,
+    CANCEL, CANCEL_RETURN, DELIVER, DISPATCH, FAIL_ATTEMPT, HOLD, HOLD_SYSTEM, PICK_UP,
+    RECEIVE_AT_HUB, RETURN, ShipmentInput,
 };
 use crate::texts::english;
 
@@ -107,6 +107,9 @@ async fn tell_of_missing_parcels(state: &AppState, id: i64) -> Result {
     tell_client(state, &shipment, &title, &body).await
 }
 
+/// The failure reason that holds the shipment instead of a reattempt.
+const WRONG_ADDRESS: &str = "wrong_address";
+
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(
@@ -150,16 +153,25 @@ pub(crate) fn register(app: &mut Registry) {
                 },
             )
             .await?;
+            if event.reason == WRONG_ADDRESS {
+                // Not queued for a reattempt: held until the client confirms
+                // the address (BL-LOG-05).
+                crate::hold::hold_for_wrong_address(&state, event.source.subject_id).await?;
+            }
         }
         Ok(())
     });
     app.listen(|event: Transitioned<Shipment>, state: AppState| async move {
         let name = event.transition.as_str();
+        if name == HOLD || name == HOLD_SYSTEM {
+            crate::hold::tell_of_hold(&state, event.key).await?;
+            return crate::hold::open_claim(&state, event.key).await;
+        }
         if name == PICK_UP || (name == RECEIVE_AT_HUB && event.from == "created") {
             return tell_of_missing_parcels(&state, event.key).await;
         }
         let voided = name == voids::VOID || name == voids::VOID_APPROVED;
-        if name != CANCEL && name != CANCEL_RETURN && !voided {
+        if name != CANCEL && name != CANCEL_RETURN && name != RETURN && !voided {
             return Ok(());
         }
         let shipment = Shipment::find_or_404(&state.db, event.key).await?;

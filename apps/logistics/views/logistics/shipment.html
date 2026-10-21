@@ -28,6 +28,33 @@
                        :title="tx['cancel_return_title']" :description="tx['cancel_return_description']" :submit-label="tx['cancel_return']" icon="undo-2" variant="danger" danger>
         <rx-textarea name="instruction" :label="tx['instruction']" :placeholder="tx['instruction_hint']" :id="'cancel-return-instruction-' ~ shipment.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_hold" :id="'hold-' ~ shipment.id" :label="tx['hold']" :action="route('logistics.shipment_hold', shipment.id)"
+                       :title="tx['hold_title']" :description="tx['hold_description']" :submit-label="tx['hold']" icon="octagon-alert" variant="danger">
+        <rx-select name="reason" :label="tx['reason']" :id="'hold-reason-' ~ shipment.id" :selected="'damaged'" :options="hold_reasons"/>
+        <rx-textarea name="photos" :label="tx['photos']" :placeholder="tx['photos_hint']" :id="'hold-photos-' ~ shipment.id"/>
+        <rx-input name="barcode" :label="tx['scanned_label']" :id="'hold-barcode-' ~ shipment.id"/>
+        <rx-checkbox name="company_liable" :label="tx['company_liable']" :id="'hold-liable-' ~ shipment.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_hold_instruction" :id="'hold-instruction-' ~ shipment.id" :label="tx['hold_instruction']" :action="route('logistics.shipment_hold_instruction', shipment.id)"
+                       :title="tx['hold_instruction_title']" :description="tx['hold_instruction_description']" :submit-label="tx['hold_instruction']" icon="message-square">
+        <rx-textarea name="note" :label="tx['instruction']" :placeholder="tx['instruction_hint']" :id="'hold-instruction-note-' ~ shipment.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_address" :id="'address-' ~ shipment.id" :label="tx['correct_address']" :action="route('logistics.shipment_address', shipment.id)"
+                       :title="tx['correct_address_title']" :description="tx['correct_address_description']" :submit-label="tx['correct_address']" icon="map-pin">
+        <rx-textarea name="address" :label="tx['address']" :id="'address-text-' ~ shipment.id" required/>
+        <rx-input name="area" :label="tx['area']" :id="'address-area-' ~ shipment.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_confirm_address" :id="'address-confirm-' ~ shipment.id" :label="tx['confirm_address']" :action="route('logistics.shipment_address_confirm', shipment.id)"
+                       :title="tx['confirm_address_title']" :description="tx['confirm_address_description']" :submit-label="tx['confirm_address']" icon="map-pin-check">
+        <rx-textarea name="address" :label="tx['address']" :id="'address-confirm-text-' ~ shipment.id"/>
+        <rx-input name="area" :label="tx['area']" :id="'address-confirm-area-' ~ shipment.id"/>
+      </rx-action-sheet>
+      <rx-confirm rx-if="can_liable" :id="'liable-' ~ shipment.id" :label="tx['liable']" :action="route('logistics.shipment_liable', shipment.id)" method="POST"
+                  :title="tx['liable_title']" :message="tx['liable_message']" :confirm-label="tx['liable']"/>
+      <rx-confirm rx-if="can_release" :id="'release-' ~ shipment.id" :label="tx['release']" :action="route('logistics.shipment_release', shipment.id)" method="POST"
+                  :title="tx['release_title']" :message="tx['release_message']" :confirm-label="tx['release']"/>
+      <rx-confirm rx-if="can_send_back" :id="'return-' ~ shipment.id" :label="tx['send_back']" :action="route('logistics.shipment_return', shipment.id)" method="POST"
+                  :title="tx['send_back_title']" :message="tx['send_back_message']" :confirm-label="tx['send_back']"/>
       <rx-action-sheet rx-if="can_reweigh" :id="'reweigh-' ~ shipment.id" :label="tx['reweigh']" :action="route('logistics.shipment_reweigh', shipment.id)"
                        :title="tx['reweigh_title']" :description="tx['reweigh_description']" :submit-label="tx['reweigh']" icon="scale">
         <rx-input name="weight_kg" :label="tx['measured_weight']" :id="'reweigh-weight-' ~ shipment.id" required/>
@@ -67,6 +94,9 @@
         <rx-entry :label="tx['measured']" :value="shipment.measured_weight_grams" :placeholder="tx['none']"/>
         <rx-entry :label="tx['delivery']" rx-if="delivery_url" :value="delivery_url" :url="delivery_url"/>
         <rx-entry :label="tx['instruction']" :value="instruction" span="full" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['hold_reason']" rx-if="hold_reason" :value="hold_reason"/>
+        <rx-entry :label="tx['hold_instruction']" rx-if="hold_instruction" :value="hold_instruction" span="full"/>
+        <rx-entry :label="tx['claim_ticket']" rx-if="claim_ticket" :value="claim_ticket"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="parcels" as="parcel" :key="parcel.barcode" :caption="tx['parcels']" card>

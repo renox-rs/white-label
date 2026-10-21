@@ -128,6 +128,79 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.reweigh.resolved_removed",
         "The surcharge is removed; the shipment is priced on the booked weight.",
     ),
+    // Hold and release (BL-LOG-05).
+    (
+        "logistics.hold.reason_needed",
+        "Give the exception: damaged, address issue, client instruction or re-weigh dispute.",
+    ),
+    (
+        "logistics.hold.photos_needed",
+        "Attach photos of the damaged parcel to hold the shipment.",
+    ),
+    (
+        "logistics.hold.address_needed",
+        "The client has not confirmed the address yet: record the confirmed address first.",
+    ),
+    (
+        "logistics.hold.instruction_needed",
+        "Record the client's instruction first: who asked, when and how.",
+    ),
+    (
+        "logistics.hold.not_on_hold",
+        "The shipment is not on hold.",
+    ),
+    (
+        "logistics.hold.not_damaged",
+        "Company liability is for a shipment held as damaged.",
+    ),
+    (
+        "logistics.hold.not_address_hold",
+        "The shipment is not held for an address issue.",
+    ),
+    (
+        "logistics.hold.address_blank",
+        "Give the address.",
+    ),
+    (
+        "logistics.hold.address_locked",
+        "The address can be corrected until the shipment is out for delivery.",
+    ),
+    (
+        "logistics.hold.address_event",
+        "address: {{ address }}, area: {{ area }}",
+    ),
+    (
+        "logistics.hold.address_unchanged",
+        "address unchanged, confirmed by the client",
+    ),
+    (
+        "logistics.hold.title",
+        "Shipment {{ number }} is on hold",
+    ),
+    (
+        "logistics.hold.body.damaged",
+        "Shipment {{ number }} was damaged at the hub. Tell us what to do: deliver it as it is, return it to you, or dispose of it.",
+    ),
+    (
+        "logistics.hold.body.address_issue",
+        "We could not deliver shipment {{ number }}: the address needs your confirmation. Confirm or correct the address in the portal and we will deliver it.",
+    ),
+    (
+        "logistics.hold.body.client_instruction",
+        "Shipment {{ number }} is on hold until we have your instruction.",
+    ),
+    (
+        "logistics.hold.body.reweigh_dispute",
+        "Shipment {{ number }} is on hold while the re-weigh surcharge is disputed, as you asked.",
+    ),
+    (
+        "logistics.hold.claim_title",
+        "Claim: shipment {{ number }} damaged at the hub",
+    ),
+    (
+        "logistics.hold.claim_description",
+        "Shipment {{ number }} was damaged at the hub and the company is liable. Photos: {{ photos }}.",
+    ),
     // Void (`PLT.ACL.09`, BL-LOG-01).
     (
         "logistics.void.scanned",
@@ -193,6 +266,13 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.instruction_recorded", "Instruction recorded."),
     ("logistics.cancel_returned", "Shipment is going back to the client."),
     ("logistics.returned", "Shipment returned to the client."),
+    ("logistics.held", "Shipment put on hold."),
+    ("logistics.released", "Shipment released to the hub."),
+    ("logistics.hold_instruction", "Instruction recorded."),
+    ("logistics.address_corrected", "Address corrected."),
+    ("logistics.address_confirmed", "Address confirmed."),
+    ("logistics.liable", "Company liability recorded; the claim ticket is linked."),
+    ("logistics.sent_back", "Shipment is going back to the client."),
     ("logistics.reweighed", "Measurement recorded."),
     ("logistics.reweigh_disputed", "Surcharge disputed."),
     ("logistics.reweigh_resolved", "Dispute resolved."),

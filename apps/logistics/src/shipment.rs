@@ -121,6 +121,28 @@ pub struct Shipment {
     pub return_instruction_at: Option<DateTime>,
     /// The reference of the client's e-POD of the returned goods.
     pub return_pod_ref: Option<String>,
+    /// Why it is (or was last) held: one of [`hold_reason`].
+    pub hold_reason: Option<String>,
+    /// The state it was in when it was last held.
+    pub held_from: Option<String>,
+    /// The references of the photos of a damaged parcel, one per line.
+    pub hold_photos: Option<String>,
+    /// The client's instruction recorded for the hold.
+    pub hold_instruction: Option<String>,
+    /// The user who recorded it.
+    pub hold_instruction_by: Option<i64>,
+    /// When it was recorded.
+    pub hold_instruction_at: Option<DateTime>,
+    /// When the address of an *address issue* hold was confirmed.
+    pub address_confirmed_at: Option<DateTime>,
+    /// The user who confirmed it (the client's, or staff for it).
+    pub address_confirmed_by: Option<i64>,
+    /// Whether the company is liable for the damage.
+    pub company_liable: bool,
+    /// The claim ticket opened for the liability.
+    pub claim_ticket_id: Option<i64>,
+    /// The number of that ticket.
+    pub claim_ticket_number: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: ShipmentStatus,
     /// When the row was created.
@@ -144,6 +166,13 @@ impl Shipment {
     /// The client.
     pub fn client(&self) -> PartyId {
         PartyId(self.client_party_id)
+    }
+
+    /// Whether the client's instruction for the hold is recorded.
+    pub fn has_hold_instruction(&self) -> bool {
+        self.hold_instruction
+            .as_deref()
+            .is_some_and(|text| !text.trim().is_empty())
     }
 
     /// Whether the client's instruction to send it back is recorded.
@@ -207,6 +236,51 @@ impl Shipment {
         .get(db)
         .await
     }
+}
+
+/// Why a shipment is held (§7.1 state `on_hold`).
+pub mod hold_reason {
+    /// A damaged parcel; photos are required.
+    pub const DAMAGED: &str = "damaged";
+    /// A wrong or incomplete address; the client confirms it.
+    pub const ADDRESS_ISSUE: &str = "address_issue";
+    /// The client's instruction is awaited.
+    pub const CLIENT_INSTRUCTION: &str = "client_instruction";
+    /// The client disputes the re-weigh and asked to stop delivery.
+    pub const REWEIGH_DISPUTE: &str = "reweigh_dispute";
+    /// Every reason.
+    pub const ALL: [&str; 4] = [DAMAGED, ADDRESS_ISSUE, CLIENT_INSTRUCTION, REWEIGH_DISPUTE];
+}
+
+/// An address correction before dispatch, with the old and the new values.
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[model(table = "logistics_address_changes", index(shipment_id))]
+pub struct AddressChange {
+    /// The primary key.
+    pub id: i64,
+    /// The shipment.
+    #[model(references = "logistics_shipments")]
+    pub shipment_id: i64,
+    /// The address before.
+    pub old_address: String,
+    /// The area (zone) before.
+    pub old_area: String,
+    /// The address after.
+    pub new_address: String,
+    /// The area (zone) after.
+    pub new_area: String,
+    /// The price on the weight received before, in fils.
+    pub old_price: i64,
+    /// The price after (it changes with the zone), in fils.
+    pub new_price: i64,
+    /// The user who corrected it.
+    pub changed_by: Option<i64>,
+    /// When it was corrected.
+    pub changed_at: DateTime,
+    /// When the row was created.
+    pub created_at: Option<DateTime>,
+    /// When the row was last changed.
+    pub updated_at: Option<DateTime>,
 }
 
 /// What a parcel is in: booked, scanned or marked *not received*.

@@ -9,11 +9,12 @@
 //! created --cancel--> cancelled          created --void--> voided
 //! picked_up | at_hub | attempted | on_hold --cancel_return--> returning
 //! returning --return_delivered--> returned
+//! created | at_hub | attempted --hold--> on_hold --release--> at_hub
+//! attempted | on_hold --return--> returning
 //! ```
 //!
 //! Every state of §7.1 is declared with its tone, so the diagram is whole;
-//! the transitions that come with later issues (`hold`, `release`, `return`,
-//! `create_return`, `open_review`, `close_review`, `reverse_delivery`,
+//! the transitions that come with later issues (`create_return`, `open_review`, `close_review`, `reverse_delivery`,
 //! `mark_lost`, `found`, `dispose`) are added to [`transitions`] by them.
 //! `dispatch`, `deliver` and `fail_attempt` are the system's: they run when
 //! the shipment's delivery in wl-delivery does ([`crate::events`]).
@@ -32,7 +33,7 @@ use wl_kernel::voids;
 use crate::permissions;
 use crate::rates;
 use crate::shipment::{
-    Parcel, SUBJECT_TYPE, Shipment, ShipmentStatus, charge_kind, parcel_state, track,
+    Parcel, SUBJECT_TYPE, Shipment, ShipmentStatus, charge_kind, hold_reason, parcel_state, track,
 };
 use crate::texts::english;
 
@@ -53,6 +54,16 @@ pub const CANCEL: &str = "cancel";
 pub const CANCEL_RETURN: &str = "cancel_return";
 /// `return_delivered`: returning → returned.
 pub const RETURN_DELIVERED: &str = "return_delivered";
+/// `hold`: created, at_hub, attempted → on_hold, for an exception.
+pub const HOLD: &str = "hold";
+/// `hold_system`: `hold` run by the system, after a failed attempt with the
+/// reason *wrong address* (a transition is either a user's or the system's).
+pub const HOLD_SYSTEM: &str = "hold_system";
+/// `release`: on_hold → at_hub, once the confirmation or the instruction is
+/// recorded.
+pub const RELEASE: &str = "release";
+/// `return`: attempted, on_hold → returning.
+pub const RETURN: &str = "return";
 /// `void`: created → voided (the kernel's void pattern).
 pub const VOID: &str = voids::VOID;
 
@@ -66,6 +77,15 @@ pub struct ShipmentInput {
     /// `receive_at_hub` from `created`).
     #[serde(default)]
     pub not_received: Vec<String>,
+    /// Why it is held, one of [`crate::shipment::hold_reason`] (`hold`).
+    #[serde(default)]
+    pub hold_reason: Option<String>,
+    /// The references of the photos of a damaged parcel (`hold`).
+    #[serde(default)]
+    pub photos: Vec<String>,
+    /// Whether the company is liable for the damage (`hold`).
+    #[serde(default)]
+    pub company_liable: bool,
     /// The failure reason's code (`fail_attempt`).
     #[serde(default)]
     pub reason: Option<String>,
@@ -313,6 +333,159 @@ fn cancel_return() -> Transition<Shipment> {
         })
 }
 
+/// `hold` (§7.1; `hold_system` is the same run by the system): hub staff from a scan, or staff with `shipments.manage`, or
+/// the system after a failed attempt with *wrong address*. It needs one of
+/// the exception reasons, and photos when the parcel is damaged. The state it
+/// leaves is kept ([`Shipment::held_from`]); the instruction and the address
+/// confirmation of an earlier hold are forgotten.
+fn hold(name: &'static str, by_system: bool) -> Transition<Shipment> {
+    let transition = Transition::new(name)
+        .label("Hold")
+        .tone("warning")
+        .from([
+            ShipmentStatus::Created,
+            ShipmentStatus::AtHub,
+            ShipmentStatus::Attempted,
+        ])
+        .to(ShipmentStatus::OnHold)
+        .guard("manager_scanner_or_system", |_s: &Shipment, ctx| {
+            let allowed = ctx.actor().is_none_or(|user| {
+                user.has_permission(permissions::SHIPMENTS_MANAGE)
+                    || user.has_permission(permissions::SHIPMENTS_SCAN)
+            });
+            Box::pin(async move {
+                if allowed {
+                    Ok(())
+                } else {
+                    Err(english("logistics.forbidden", &[]))
+                }
+            })
+        })
+        .guard("exception_reason", |_s: &Shipment, ctx| {
+            let known = input_of(ctx)
+                .hold_reason
+                .is_some_and(|reason| hold_reason::ALL.contains(&reason.as_str()));
+            Box::pin(async move {
+                if known {
+                    Ok(())
+                } else {
+                    Err(english("logistics.hold.reason_needed", &[]))
+                }
+            })
+        })
+        .guard("photos_when_damaged", |_s: &Shipment, ctx| {
+            let input = input_of(ctx);
+            let missing = input.hold_reason.as_deref() == Some(hold_reason::DAMAGED)
+                && input.photos.iter().all(|photo| photo.trim().is_empty());
+            Box::pin(async move {
+                if missing {
+                    Err(english("logistics.hold.photos_needed", &[]))
+                } else {
+                    Ok(())
+                }
+            })
+        })
+        .effect(|shipment: &Shipment, ctx, tx| {
+            let shipment = shipment.clone();
+            let input = input_of(ctx);
+            let actor = ctx.actor().map(|user| user.id);
+            Box::pin(async move {
+                let reason = input.hold_reason.clone().unwrap_or_default();
+                let reason_value = Some(reason.clone());
+                let from = Some(shipment.status.as_str().to_owned());
+                let photos = Some(
+                    input
+                        .photos
+                        .iter()
+                        .map(|photo| photo.as_str().trim())
+                        .filter(|photo| !photo.is_empty())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+                let no_text: Option<String> = None;
+                let no_user: Option<i64> = None;
+                let no_time: Option<renox::db::DateTime> = None;
+                Shipment::query()
+                    .where_(Shipment::ID.eq(shipment.id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("hold_reason", &reason_value),
+                            ("held_from", &from),
+                            ("hold_photos", &photos),
+                            ("company_liable", &input.company_liable),
+                            ("hold_instruction", &no_text),
+                            ("hold_instruction_by", &no_user),
+                            ("hold_instruction_at", &no_time),
+                            ("address_confirmed_at", &no_time),
+                            ("address_confirmed_by", &no_user),
+                        ],
+                    )
+                    .await?;
+                track(&mut *tx, shipment.id, "held", &reason, actor).await
+            })
+        });
+    if by_system {
+        transition.system()
+    } else {
+        transition
+    }
+}
+
+/// `release` (§7.1): `shipments.manage`, back to `at_hub`, once the address
+/// of an *address issue* hold is confirmed, or the client's instruction is
+/// recorded for any other reason. (A shipment held from `created` or
+/// `attempted` also returns to `at_hub`, as the spec says; the state it was
+/// held from stays in [`Shipment::held_from`].)
+fn release() -> Transition<Shipment> {
+    Transition::new(RELEASE)
+        .label("Release")
+        .tone("primary")
+        .permission(permissions::SHIPMENTS_MANAGE)
+        .from([ShipmentStatus::OnHold])
+        .to(ShipmentStatus::AtHub)
+        .guard("confirmation_or_instruction_recorded", |s: &Shipment, _ctx| {
+            let recorded = if s.hold_reason.as_deref() == Some(hold_reason::ADDRESS_ISSUE) {
+                s.address_confirmed_at.is_some()
+            } else {
+                s.has_hold_instruction()
+            };
+            let address_issue = s.hold_reason.as_deref() == Some(hold_reason::ADDRESS_ISSUE);
+            Box::pin(async move {
+                if recorded {
+                    Ok(())
+                } else if address_issue {
+                    Err(english("logistics.hold.address_needed", &[]))
+                } else {
+                    Err(english("logistics.hold.instruction_needed", &[]))
+                }
+            })
+        })
+        .effect(|shipment: &Shipment, ctx, tx| {
+            let id = shipment.id;
+            let actor = ctx.actor().map(|user| user.id);
+            let note = shipment.hold_reason.clone().unwrap_or_default();
+            Box::pin(async move { track(&mut *tx, id, "released", &note, actor).await })
+        })
+}
+
+/// `return` (§7.1): `shipments.manage` sends an attempted or held shipment
+/// back; one return charge per rate card, whichever path sent it back. The
+/// client is told and the open delivery is cancelled after the commit.
+fn send_back() -> Transition<Shipment> {
+    Transition::new(RETURN)
+        .label("Return")
+        .tone("danger")
+        .permission(permissions::SHIPMENTS_MANAGE)
+        .from([ShipmentStatus::Attempted, ShipmentStatus::OnHold])
+        .to(ShipmentStatus::Returning)
+        .effect(|shipment: &Shipment, ctx, tx| {
+            let shipment = shipment.clone();
+            let actor = ctx.actor().map(|user| user.id);
+            Box::pin(async move { start_return(&mut *tx, &shipment, actor).await })
+        })
+}
+
 /// What starts a return, whichever path sent the shipment back: the return
 /// charge, once, and the tracking event.
 ///
@@ -421,6 +594,10 @@ pub fn transitions() -> Vec<Transition<Shipment>> {
         cancel(),
         cancel_return(),
         return_delivered(),
+        hold(HOLD, false),
+        hold(HOLD_SYSTEM, true),
+        release(),
+        send_back(),
     ];
     all.extend(
         voids::transitions::<Shipment, _>(SUBJECT_TYPE, [Created])
@@ -494,6 +671,10 @@ mod tests {
             CANCEL,
             CANCEL_RETURN,
             RETURN_DELIVERED,
+            HOLD,
+            HOLD_SYSTEM,
+            RELEASE,
+            RETURN,
             voids::VOID,
             voids::VOID_APPROVED,
         ] {

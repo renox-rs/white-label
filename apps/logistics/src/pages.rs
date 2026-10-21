@@ -14,6 +14,13 @@
 //! | `POST /shipments/{id}/instruction` | `logistics.shipment_instruction` | `shipments.manage` |
 //! | `POST /shipments/{id}/cancel-return` | `logistics.shipment_cancel_return` | `shipments.manage` |
 //! | `POST /shipments/{id}/returned` | `logistics.shipment_returned` | `shipments.deliver` |
+//! | `POST /shipments/{id}/hold` | `logistics.shipment_hold` | `shipments.manage` or `.scan` |
+//! | `POST /shipments/{id}/release` | `logistics.shipment_release` | `shipments.manage` |
+//! | `POST /shipments/{id}/hold-instruction` | `logistics.shipment_hold_instruction` | `shipments.manage`, or the client's user |
+//! | `POST /shipments/{id}/address` | `logistics.shipment_address` | `shipments.manage`, or the client's user |
+//! | `POST /shipments/{id}/address/confirm` | `logistics.shipment_address_confirm` | `shipments.manage`, or the client's user |
+//! | `POST /shipments/{id}/liable` | `logistics.shipment_liable` | `shipments.manage` |
+//! | `POST /shipments/{id}/return` | `logistics.shipment_return` | `shipments.manage` |
 //! | `POST /shipments/{id}/reweigh` | `logistics.shipment_reweigh` | `shipments.scan` or `.manage` |
 //! | `POST /shipments/{id}/reweigh-dispute` | `logistics.shipment_reweigh_dispute` | `shipments.book` (own company) or `.manage` |
 //! | `POST /shipments/{id}/reweigh-dispute/resolve` | `logistics.shipment_reweigh_resolve` | `shipments.manage` |
@@ -32,11 +39,12 @@ use wl_kernel::{PartyId, Subject};
 
 use crate::booking::{self, NewShipment};
 use crate::cancel;
+use crate::hold::{self, NewAddress, NewHold};
 use crate::permissions;
 use crate::reweigh::{self, NewMeasurement};
 use crate::scan;
 use crate::screen_texts::SCREEN_TEXTS;
-use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentStatus};
+use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentStatus, hold_reason};
 use crate::texts::t;
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -115,6 +123,20 @@ pub fn routes() -> Routes {
         .name("logistics.shipment_cancel_return")
         .post("/shipments/{id}/returned", returned)
         .name("logistics.shipment_returned")
+        .post("/shipments/{id}/hold", hold)
+        .name("logistics.shipment_hold")
+        .post("/shipments/{id}/release", release)
+        .name("logistics.shipment_release")
+        .post("/shipments/{id}/hold-instruction", hold_instruction)
+        .name("logistics.shipment_hold_instruction")
+        .post("/shipments/{id}/address", correct_address)
+        .name("logistics.shipment_address")
+        .post("/shipments/{id}/address/confirm", confirm_address)
+        .name("logistics.shipment_address_confirm")
+        .post("/shipments/{id}/liable", liable)
+        .name("logistics.shipment_liable")
+        .post("/shipments/{id}/return", send_back)
+        .name("logistics.shipment_return")
         .post("/shipments/{id}/reweigh", reweigh)
         .name("logistics.shipment_reweigh")
         .post("/shipments/{id}/reweigh-dispute", reweigh_dispute)
@@ -246,6 +268,17 @@ pub(crate) struct ShowPage {
     can_cancel: bool,
     can_cancel_return: bool,
     can_return: bool,
+    can_hold: bool,
+    can_release: bool,
+    can_hold_instruction: bool,
+    can_address: bool,
+    can_confirm_address: bool,
+    can_liable: bool,
+    can_send_back: bool,
+    hold_reasons: Vec<[String; 2]>,
+    hold_reason: String,
+    hold_instruction: String,
+    claim_ticket: String,
     can_reweigh: bool,
     can_dispute: bool,
     can_resolve_dispute: bool,
@@ -291,6 +324,13 @@ async fn show(
         }
         _ => false,
     };
+    // A client user of the company, or staff, may correct the address and
+    // record the client's answers on a hold.
+    let acts = manages
+        || (user.has_permission(permissions::SHIPMENTS_BOOK)
+            && booking::acts_for(&state, &user, shipment.client()).await?);
+    let held = shipment.status == OnHold;
+    let address_hold = held && shipment.hold_reason.as_deref() == Some(hold_reason::ADDRESS_ISSUE);
     let page = ShowPage {
         tx: tx(&lang),
         status_label: status_word(&lang, shipment.status),
@@ -341,6 +381,34 @@ async fn show(
         can_return: has("return_delivered")
             || (user.has_permission(permissions::SHIPMENTS_DELIVER)
                 && shipment.status == Returning),
+        can_hold: (scans || manages) && matches!(shipment.status, Created | AtHub | Attempted),
+        can_release: manages && held,
+        can_hold_instruction: acts && held,
+        can_address: acts
+            && matches!(shipment.status, Created | PickedUp | AtHub | Attempted | OnHold),
+        can_confirm_address: acts && address_hold,
+        can_liable: manages
+            && held
+            && shipment.hold_reason.as_deref() == Some(hold_reason::DAMAGED)
+            && !shipment.company_liable,
+        can_send_back: manages && matches!(shipment.status, Attempted | OnHold),
+        hold_reasons: hold_reason::ALL
+            .iter()
+            .map(|reason| {
+                [
+                    (*reason).to_owned(),
+                    t(&lang, &format!("logistics.screen.hold_reason.{reason}")),
+                ]
+            })
+            .collect(),
+        hold_reason: shipment
+            .hold_reason
+            .as_deref()
+            .filter(|_| held)
+            .map(|reason| t(&lang, &format!("logistics.screen.hold_reason.{reason}")))
+            .unwrap_or_default(),
+        hold_instruction: shipment.hold_instruction.clone().unwrap_or_default(),
+        claim_ticket: shipment.claim_ticket_number.clone().unwrap_or_default(),
         can_reweigh: (scans || manages)
             && !matches!(shipment.status, Created | Cancelled | Voided | Disposed),
         can_dispute,
@@ -602,6 +670,10 @@ async fn reweigh_dispute(
     reweigh::open_dispute(&state, &user, id, &field(&form, "note"))
         .await
         .map_err(answer)?;
+    if checked(&form, "stop_delivery") {
+        // The client asked to stop the delivery: held, reason re-weigh dispute.
+        hold::hold_for_reweigh_dispute(&state, id).await?;
+    }
     back_to(&lang, "logistics.reweigh_disputed", id)
 }
 
@@ -623,4 +695,116 @@ async fn reweigh_resolve(
         .await
         .map_err(answer)?;
     back_to(&lang, "logistics.reweigh_resolved", id)
+}
+
+/// Whether a checkbox of the form is ticked.
+fn checked(form: &BTreeMap<String, String>, name: &str) -> bool {
+    matches!(field(form, name).trim(), "1" | "true" | "on")
+}
+
+/// `POST /shipments/{id}/hold`: `reason` (`damaged`, `address_issue`,
+/// `client_instruction` or `reweigh_dispute`), `photos` (references, one per
+/// line), `company_liable` (ticked) and `barcode` (the label scanned).
+async fn hold(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let new = NewHold {
+        reason: field(&form, "reason"),
+        photos: NewHold::photos_in(&field(&form, "photos")),
+        company_liable: checked(&form, "company_liable"),
+        barcode: Some(field(&form, "barcode")),
+    };
+    hold::hold(&state, &user, id, &new).await.map_err(answer)?;
+    back_to(&lang, "logistics.held", id)
+}
+
+/// `POST /shipments/{id}/release`.
+async fn release(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    hold::release(&state, &user, id).await.map_err(answer)?;
+    back_to(&lang, "logistics.released", id)
+}
+
+/// `POST /shipments/{id}/hold-instruction`: `note`, the client's instruction.
+async fn hold_instruction(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    hold::record_instruction(&state, &user, id, &field(&form, "note"))
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.hold_instruction", id)
+}
+
+/// `POST /shipments/{id}/address`: `address` and `area`.
+async fn correct_address(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let new = NewAddress {
+        address: field(&form, "address"),
+        area: field(&form, "area"),
+    };
+    hold::correct_address(&state, &user, id, &new)
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.address_corrected", id)
+}
+
+/// `POST /shipments/{id}/address/confirm`: `address` and `area` of the
+/// corrected address; blank for "address unchanged, confirmed by the client".
+async fn confirm_address(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let new = NewAddress {
+        address: field(&form, "address"),
+        area: field(&form, "area"),
+    };
+    let corrected = (!new.address.trim().is_empty()).then_some(&new);
+    hold::confirm_address(&state, &user, id, corrected)
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.address_confirmed", id)
+}
+
+/// `POST /shipments/{id}/liable`: the company is liable for the damage.
+async fn liable(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    hold::set_company_liable(&state, &user, id)
+        .await
+        .map_err(answer)?;
+    back_to(&lang, "logistics.liable", id)
+}
+
+/// `POST /shipments/{id}/return`: send an attempted or held shipment back.
+async fn send_back(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    hold::send_back(&state, &user, id).await.map_err(answer)?;
+    back_to(&lang, "logistics.sent_back", id)
 }
