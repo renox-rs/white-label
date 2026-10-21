@@ -88,6 +88,16 @@ impl PortalAccess {
         workforce(state).access_disabled(&state.db, user).await
     }
 
+    /// Whether the portal is read-only for `user` because their account
+    /// belongs to an employee who has exited and the portal has not closed
+    /// yet (`POR.ACL.01`, `HRM-10`): pages and history can be read, no action
+    /// works ([`PortalGuard`](crate::PortalGuard) refuses it). Once the portal
+    /// closes, [`disabled`](PortalAccess::disabled) answers yes instead.
+    /// Without `wl-hr` nobody is read-only.
+    pub async fn read_only(state: &AppState, user: i64) -> Result<bool> {
+        workforce(state).read_only(&state.db, user).await
+    }
+
     /// The `active` grant of `user` for the party `acting_for` on `day`, if
     /// there is one.
     pub async fn active_grant(
