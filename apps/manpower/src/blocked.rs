@@ -11,7 +11,7 @@
 //!   ([`ActionKind::Start`]), `extend` of a deployment extends it
 //!   ([`ActionKind::Extend`]), and the contract's `renew` renews it
 //!   ([`ActionKind::Renew`]): the services ask the kernel's block guard and
-//!   refuse a blocked client. `renew` is BL-MPW-05's; it calls [`ensure`] with
+//!   refuse a blocked client. `renew` (BL-MPW-05) calls [`ensure`] with
 //!   `ActionKind::Renew`. A suspended deployment may still `resume` (resume
 //!   is not an extension) and a `planned` deployment may still be planned or
 //!   cancelled.

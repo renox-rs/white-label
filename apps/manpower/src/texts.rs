@@ -159,6 +159,39 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.terminate.withdrawn_body",
         "The request to end contract {{ contract }} early was withdrawn: {{ reason }}.",
     ),
+    // Renewing a contract and the warnings before it ends (`renew`, `MPW.RUL.11`, BL-MPW-05).
+    (
+        "manpower.renew.later",
+        "The new end date must be later than the current end date, {{ end }}.",
+    ),
+    ("manpower.renew.no_date", "Give the new end date."),
+    (
+        "manpower.renew.not_signed",
+        "Record the renewal signed by the client: the day it was signed, not in the future, and the document.",
+    ),
+    (
+        "manpower.renew.rates_date",
+        "The new rates must take effect after the contract starts ({{ start }}) and not after its new end date ({{ end }}).",
+    ),
+    (
+        "manpower.renew.rate_version",
+        "Changed rates need a new rate card version, accepted by the client, that takes effect on {{ date }}.",
+    ),
+    ("manpower.renew.history", "Renewed to {{ end }}"),
+    ("manpower.renew.withdraw_reason", "contract renewed"),
+    (
+        "manpower.expiry.title",
+        "Contract {{ contract }} ends on {{ end }}",
+    ),
+    (
+        "manpower.expiry.body",
+        "Contract {{ contract }} ends on {{ end }}, {{ days }} days from now, and is not renewed. {{ count }} workers on site end with it. Renew it, or plan their cover; the deployments:",
+    ),
+    (
+        "manpower.expiry.line",
+        "{{ worker }}, {{ role }}, {{ site }}, until {{ until }}",
+    ),
+    ("manpower.expiry.none", "No worker is on site."),
     (
         "manpower.release.not_on_hold",
         "Only a contract on credit hold can be released.",

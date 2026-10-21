@@ -40,6 +40,21 @@ pub struct DeploymentActivated {
 
 impl Event for DeploymentActivated {}
 
+/// A client contract was renewed (`renew`, BL-MPW-05).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContractRenewed {
+    /// The contract, `manpower.client_contract:4`.
+    pub contract: Subject,
+    /// The client company.
+    pub client: PartyId,
+    /// The end date before the renewal.
+    pub previous_end_date: NaiveDate,
+    /// The new end date.
+    pub end_date: NaiveDate,
+}
+
+impl Event for ContractRenewed {}
+
 /// A deployment `end`ed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeploymentEnded {

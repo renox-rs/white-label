@@ -304,3 +304,20 @@ pub async fn terminate(
 ) -> Result<crate::termination::Requested> {
     crate::termination::request(state, by, id, ask).await
 }
+
+/// `by` renews contract `id` with a later end date, the signed renewal and,
+/// for changed rates, a new rate card version.
+///
+/// # Errors
+///
+/// `Forbidden` without `contracts.manage` for the client; a 422 listing every
+/// failing check, for a blocked client, or unless the contract is `active` or
+/// `on_hold`.
+pub async fn renew(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    ask: crate::renewal::RenewAsk,
+) -> Result<ClientContract> {
+    crate::renewal::renew(state, by, id, ask).await
+}

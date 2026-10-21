@@ -5,3 +5,10 @@
 /// (today minus the due date, in Asia/Dubai) puts the client contract on
 /// credit hold.
 pub const DEFAULT_HOLD_OVERDUE_DAYS: i64 = 30;
+
+/// N of `MPW.RUL.11` (§7.2): the first notice before a client contract's end
+/// date, in days.
+pub const DEFAULT_END_NOTICE_FIRST_DAYS: i64 = 60;
+
+/// M of `MPW.RUL.11` (§7.2): the second notice, in days before the end date.
+pub const DEFAULT_END_NOTICE_SECOND_DAYS: i64 = 30;

@@ -12,11 +12,13 @@ pub mod deployment;
 pub mod deployments;
 pub mod documents;
 pub mod events;
+pub mod expiry;
 pub mod hold;
 pub mod notices;
 pub mod pages;
 pub mod permissions;
 pub mod release;
+pub mod renewal;
 pub mod request;
 pub mod requests;
 pub mod site;
@@ -30,7 +32,8 @@ use renox::prelude::*;
 pub use contract::{BillingCycle, ClientContract, ContractStatus};
 pub use deployment::{Deployment, DeploymentKind, DeploymentStatus};
 pub use events::{
-    ContractActivated, CoverRequested, DeploymentActivated, DeploymentCancelled, DeploymentEnded,
+    ContractActivated, ContractRenewed, CoverRequested, DeploymentActivated, DeploymentCancelled,
+    DeploymentEnded,
 };
 pub use hold::{ContractHold, HoldReason};
 pub use request::{ManpowerRequest, RequestKind, RequestStatus};
@@ -43,6 +46,10 @@ pub const END_DATE_TASK: &str = "manpower:deployment-end-daily";
 /// The name of the daily scheduled task of `MPW.RUL.10`: contracts with an
 /// invoice overdue more than 30 days go on credit hold.
 pub const CREDIT_HOLD_TASK: &str = "manpower:credit-hold-daily";
+
+/// The name of the daily scheduled task of `MPW.RUL.11`: the account manager is
+/// told 60 and 30 days before a client contract's end date.
+pub const CONTRACT_EXPIRY_TASK: &str = "manpower:contract-expiry-daily";
 
 /// The Manpower module. Add it to the app with
 /// `.module(manpower::Manpower)`.
@@ -105,7 +112,8 @@ impl Module for Manpower {
             .model::<ManpowerRequest>()
             .model::<Deployment>()
             .model::<documents::DeploymentDocumentFlag>()
-            .model::<ContractHold>();
+            .model::<ContractHold>()
+            .model::<expiry::ContractEndNotice>();
         contract::register();
         request::register();
         // `MPW.RUL.06`: an approved leave opens the cover requests the
@@ -135,6 +143,14 @@ impl Module for Manpower {
             .daily_at("02:00", CREDIT_HOLD_TASK, |state: AppState| async move {
                 hold::daily(&state).await
             })
+            .timezone("Asia/Dubai");
+        // `MPW.RUL.11`: the warnings before a contract ends, daily at 02:00.
+        app.schedule()
+            .daily_at(
+                "02:00",
+                CONTRACT_EXPIRY_TASK,
+                |state: AppState| async move { expiry::daily(&state).await },
+            )
             .timezone("Asia/Dubai");
         hold::listen(app);
         release::listen(app);

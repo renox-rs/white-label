@@ -11,11 +11,16 @@
 //! active, on_hold, terminating --end--> ended                              (BL-MPW-06)
 //! ```
 //!
-//! Built here: the six states and `activate`, `cancel`, `hold`, `release` and `terminate`. `ended` and
-//! the transitions into and out of `terminating` are declared so the issues
-//! that add `renew` and `end` only add transitions: **`renew` comes with
-//! BL-MPW-05, `end` with BL-MPW-06.**
+//! Built here: the six states and `activate`, `cancel`, `hold`, `release`, `terminate` and
+//! `renew`. `ended` and the transitions into and out of `terminating` are
+//! declared so the issue that adds `end` only adds a transition: **`end` comes
+//! with BL-MPW-06.**
 //!
+//! - `renew` (`contracts.manage`; `renew_on_hold` is its twin for a contract
+//!   on credit hold, because a transition has one target) moves the end date
+//!   later with a signed renewal and, for changed rates, a new rate card
+//!   version; the state stays ([`crate::renewal`]). The warnings before the end
+//!   date, `MPW.RUL.11`, are [`crate::expiry`].
 //! - `terminate` (`contracts.manage`, the MD approves, `MPW.ACL.17`) and its
 //!   `terminate_approved` twin move an `active` or `on_hold` contract to
 //!   `terminating` with a new end date ([`crate::termination`]).
@@ -49,6 +54,7 @@ use crate::db::set_contract;
 use crate::hold::{hold_effects, hold_input, hold_problem};
 use crate::permissions;
 use crate::release::{release_effects, release_input, release_policy, release_problem};
+use crate::renewal::{renew_effects, renew_input, renew_problem};
 use crate::termination::{terminate_effects, terminate_input, terminate_policy, terminate_problem};
 
 /// The subject type of a client contract.
@@ -66,6 +72,12 @@ pub const AUTO_HOLD: &str = "auto_hold";
 /// The `terminate` transition's name: the account manager's request to end the
 /// contract early, which the MD approves (`MPW.ACL.17`).
 pub const TERMINATE: &str = "terminate";
+/// The `renew` transition's name: the account manager renews an `active`
+/// contract with a later end date and a signed renewal (`MPW.RUL.11`).
+pub const RENEW: &str = "renew";
+/// `renew` for a contract `on_hold`: it stays on hold. A Renox transition has one
+/// target, so the pair of [`RENEW`].
+pub const RENEW_ON_HOLD: &str = "renew_on_hold";
 /// `release` back to `active`, the account manager's, approved by the MD while
 /// a hold condition remains (`MPW.ACL.14`).
 pub const RELEASE: &str = "release";
@@ -177,6 +189,19 @@ pub struct ClientContract {
     pub terminated_at: Option<DateTime>,
     /// When the client was sent the confirmation of the termination.
     pub termination_announced_at: Option<DateTime>,
+    /// When the latest renewal was made.
+    pub renewed_at: Option<DateTime>,
+    /// The user who renewed it.
+    pub renewed_by: Option<i64>,
+    /// The signed renewal, a document reference (`DOC.SIG.01`).
+    pub renewal_document: Option<String>,
+    /// The day the client signed the renewal.
+    pub renewal_signed_on: Option<NaiveDate>,
+    /// The end date before the latest renewal.
+    pub renewal_previous_end_date: Option<NaiveDate>,
+    /// The effective date of the rate card version that changed the rates with
+    /// the latest renewal; none when the rates stayed.
+    pub renewal_rates_from: Option<NaiveDate>,
     /// The user who created it.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -249,6 +274,26 @@ fn terminating(transition: Transition<ClientContract>) -> Transition<ClientContr
             let contract = contract.clone();
             let input = terminate_input(ctx);
             Box::pin(async move { terminate_effects(&mut *tx, &contract, &input).await })
+        })
+}
+
+/// `renew` and `renew_on_hold`: the contract stays in the state it is in, with a
+/// later end date and the signed renewal ([`crate::renewal`]).
+fn renewing(
+    transition: Transition<ClientContract>,
+    state: ContractStatus,
+) -> Transition<ClientContract> {
+    transition
+        .from([state])
+        .to(state)
+        .guard("renewal", |contract: &ClientContract, ctx| {
+            let problem = renew_problem(contract, &renew_input(ctx));
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|contract: &ClientContract, ctx, tx| {
+            let contract = contract.clone();
+            let input = renew_input(ctx);
+            Box::pin(async move { renew_effects(&mut *tx, &contract, &input).await })
         })
 }
 
@@ -375,6 +420,14 @@ impl StateMachine for ClientContract {
                     .system(),
                 Terminating,
             ))
+            .transition(renewing(
+                user(RENEW, "Renew", permissions::CONTRACTS_MANAGE).tone("primary"),
+                Active,
+            ))
+            .transition(renewing(
+                user(RENEW_ON_HOLD, "Renew", permissions::CONTRACTS_MANAGE).tone("primary"),
+                OnHold,
+            ))
             .transition(terminating(
                 user(TERMINATE, "Terminate", permissions::CONTRACTS_MANAGE).tone("danger"),
             ))
@@ -424,7 +477,9 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_that_is_built_is_declared() {
         let machine = ClientContract::machine();
-        let table: [(&str, &[&str], &str, bool); 12] = [
+        let table: [(&str, &[&str], &str, bool); 14] = [
+            (RENEW, &["active"], "active", false),
+            (RENEW_ON_HOLD, &["on_hold"], "on_hold", false),
             (ACTIVATE, &["draft"], "active", false),
             (CANCEL, &["draft"], "cancelled", false),
             (HOLD, &["active", "terminating"], "on_hold", false),
