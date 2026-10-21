@@ -1,10 +1,10 @@
 //! BL-MPW-06 (#420): the system ends a client contract at the first daily run
-//! after its end date (`end`, `MPW.RUL.05` still bills the hours). Its
-//! `active` and `suspended` deployments end with the reason *contract end* and
-//! the contract's end date, the planned ones and the open requests are
-//! cancelled, a hold is closed, each worker's open timesheet is closed through
-//! the kernel's contract (wl-attendance) and the workers `active` in HR are
-//! back on the bench.
+//! after its end date (`end`). Its `active` and `suspended` deployments end with
+//! the reason *contract end* and the contract's end date, the planned ones and
+//! the open requests are cancelled, a hold is closed, each worker's open
+//! timesheet is closed through the kernel's contract (wl-attendance) and the
+//! workers `active` in HR are back on the bench. The billing of the closed
+//! hours by `MPW.RUL.05` is not built: the feed to invoicing is deferred.
 
 mod support;
 
