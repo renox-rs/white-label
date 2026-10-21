@@ -331,6 +331,7 @@ async fn boot_with(real_payments: bool) -> World {
         perm::SHIPMENTS_VOID,
         perm::SHIPMENTS_CANCEL,
         perm::REMITTANCES_REQUEST_ACCOUNT,
+        perm::REMITTANCES_DISPUTE,
     ];
     let noor = make_user(app.db(), "Noor", &client_grants).await;
     let nadia = make_user(app.db(), "Nadia", &client_grants).await;
@@ -341,6 +342,7 @@ async fn boot_with(real_payments: bool) -> World {
         perm::REMITTANCES_APPROVE,
         perm::REMITTANCES_PAY,
         perm::REMITTANCES_REQUEST_ACCOUNT,
+        perm::REMITTANCES_DISPUTE,
     ];
     let amal = make_user(app.db(), "Amal", &accountant).await;
     let bashar = make_user(app.db(), "Bashar", &accountant).await;
