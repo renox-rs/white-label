@@ -83,6 +83,21 @@ impl Floor {
             .expect("the member was enrolled")
     }
 
+    /// Gives the member `m` that many points: one earning sale of
+    /// `points`.00 AED before VAT (one point per AED).
+    pub async fn earn(&self, t: &Booted, m: &LoyaltyAccount, points: i64) {
+        let price = format!("{points}.00");
+        let fils = points * 105;
+        let paid = format!("{}.{:02}", fils / 100, fils % 100);
+        self.ring_up(
+            t,
+            &[("gift", price.as_str(), "1")],
+            Some(&m.code),
+            &[("cash", paid.as_str())],
+        )
+        .await;
+    }
+
     /// Opens a counter sale with `lines` (item code, price in AED before VAT,
     /// quantity) and attaches `member` (a code) when given; it stays open.
     pub async fn open_cart(
