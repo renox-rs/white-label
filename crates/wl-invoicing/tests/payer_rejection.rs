@@ -180,7 +180,7 @@ async fn a_lower_corrected_amount_is_credited_by_the_difference() {
         &[("errors", "E104: invalid member ID")],
     )
     .await
-    .assert_ok();
+    .assert_redirect(&format!("/payer-bills/{}", bill.id));
     let line = t.bill_lines(&bill).await.remove(0);
     payer_bills(t.state())
         .correct_line(t.state(), PayerBillId(bill.id), line.id, 85_000)
@@ -222,7 +222,7 @@ async fn a_higher_corrected_amount_gets_an_extra_invoice_for_the_difference() {
         &[("errors", "E7: missing field")],
     )
     .await
-    .assert_ok();
+    .assert_redirect(&format!("/payer-bills/{}", bill.id));
     let line = t.bill_lines(&bill).await.remove(0);
     payer_bills(t.state())
         .correct_line(t.state(), PayerBillId(bill.id), line.id, 95_000)
@@ -254,7 +254,7 @@ async fn every_attempt_keeps_its_own_errors() {
     for errors in ["E104: invalid member ID", "E7: missing field\nE9: bad date"] {
         t.post_payer(&bill, &cora, "submission-rejected", &[("errors", errors)])
             .await
-            .assert_ok();
+            .assert_redirect(&format!("/payer-bills/{}", bill.id));
         t.issue_payer_bill(&bill, &cora).await;
     }
     let all = PayerSubmissionError::of_bill(t.db(), bill.id).await.unwrap();
@@ -334,7 +334,7 @@ async fn the_deadline_of_a_rejected_resubmission_counts_from_the_remittance() {
         &[("errors", "E104: invalid member ID")],
     )
     .await
-    .assert_ok();
+    .assert_redirect(&format!("/payer-bills/{}", bill.id));
     let rejected = t.reload_bill(&bill).await;
     assert_eq!(rejected.status, PayerBillStatus::Draft);
     assert_eq!(rejected.resubmission_count, 1, "the count stays");
