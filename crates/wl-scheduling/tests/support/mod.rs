@@ -139,6 +139,7 @@ type AskedRefund = (RefundRequest, Option<i64>);
 pub struct Refunds {
     asked: Arc<Mutex<Vec<AskedRefund>>>,
     refuse: Arc<std::sync::atomic::AtomicBool>,
+    crash: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Refunds {
@@ -153,6 +154,12 @@ impl Refunds {
             .iter()
             .map(|(request, _)| request.amount)
             .collect()
+    }
+
+    /// The next refund asked panics, as a process that dies between the claim
+    /// of the deposit and the refund's id; the ones after it are accepted.
+    pub fn crash_once(&self) {
+        self.crash.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// From now on every refund is refused (or accepted again).
@@ -232,6 +239,9 @@ impl PaymentRecorder for Refunds {
         by: Option<i64>,
     ) -> PaymentFuture<'a, RefundId> {
         Box::pin(async move {
+            if self.crash.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                panic!("the process dies while the refund is asked");
+            }
             if self.refuse.load(std::sync::atomic::Ordering::SeqCst) {
                 return Err(off());
             }

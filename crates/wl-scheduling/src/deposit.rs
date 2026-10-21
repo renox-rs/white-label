@@ -28,6 +28,12 @@
 //!   a refund that `wl-payments` refuses does not undo the cancellation. The
 //!   service reports the refusal, the booking shows no outcome, and
 //!   [`settle`] is safe to run again (it settles a booking once).
+//! - The deposit is claimed (the outcome column) before the refund is asked
+//!   and the refund's id is written after it. A process that dies between the
+//!   two leaves a *claimed* booking: an outcome with a refund amount and no
+//!   refund id. [`settle`] resumes it ([`unrefunded`]): it asks the refund
+//!   for the claimed amount and writes the id, and a booking with an id is
+//!   never asked again.
 //! - The currency is `AED` and the refund is asked of the default legal
 //!   entity.
 //! - A reschedule needs no action here: the booking is the same row at its
@@ -155,6 +161,35 @@ async fn request_refund(
     Ok(id.0)
 }
 
+/// Whether the deposit of `booking` was claimed for a refund that was never
+/// asked (or whose id was never written): an outcome with an amount to pay
+/// back and no refund id. [`settle`] resumes it.
+pub fn unrefunded(booking: &Booking) -> bool {
+    booking.deposit_outcome.is_some()
+        && booking.deposit_refunded > 0
+        && booking.deposit_refund_id.is_none()
+}
+
+/// Asks the refund of a claimed-but-unrefunded deposit and writes its id.
+/// A waived deposit is asked under the waiver's reason and user.
+async fn resume(
+    state: &AppState,
+    booking: &Booking,
+    by: Option<i64>,
+) -> std::result::Result<Booking, Refusal> {
+    let (reason_key, by) = match booking.deposit_waived_by {
+        Some(waiver) => ("wl_scheduling.deposit.refund_waived", Some(waiver)),
+        None => ("wl_scheduling.deposit.refund_cancelled", by),
+    };
+    let id = request_refund(state, booking, booking.deposit_refunded, reason_key, by).await?;
+    Booking::query()
+        .where_(Booking::ID.eq(booking.id))
+        .where_(Booking::DEPOSIT_REFUND_ID.is_null())
+        .update(&state.db, &[("deposit_refund_id", &Some(id))])
+        .await?;
+    Ok(Booking::find_or_404(&state.db, booking.id).await?)
+}
+
 /// Records `settlement` on the booking and asks the refund it needs. The
 /// deposit is claimed first (the outcome column is set only while empty), so
 /// two runs ask one refund.
@@ -231,6 +266,9 @@ pub(crate) async fn settle_cancelled(
     by: Option<i64>,
 ) -> std::result::Result<Booking, Refusal> {
     let held = booking.deposit_held();
+    if held > 0 && unrefunded(booking) {
+        return resume(state, booking, by).await;
+    }
     if held <= 0 || booking.deposit_outcome.is_some() {
         return Ok(booking.clone());
     }
@@ -268,6 +306,9 @@ pub(crate) async fn settle_no_show(
     booking: &Booking,
 ) -> std::result::Result<Booking, Refusal> {
     let held = booking.deposit_held();
+    if held > 0 && unrefunded(booking) {
+        return resume(state, booking, None).await;
+    }
     if held <= 0 || booking.deposit_outcome.is_some() {
         return Ok(booking.clone());
     }
@@ -283,7 +324,8 @@ pub(crate) async fn settle_no_show(
 
 /// Settles the deposit of a booking that is `cancelled` or `no_show` and has
 /// no outcome yet, for example because `wl-payments` refused the refund when
-/// it was cancelled. Anything else is left alone.
+/// it was cancelled, or whose claim was never followed by a refund
+/// ([`unrefunded`]). Anything else is left alone.
 ///
 /// # Errors
 ///

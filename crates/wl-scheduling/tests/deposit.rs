@@ -321,6 +321,89 @@ async fn a_refused_refund_leaves_the_cancellation_and_can_be_settled_again() {
     assert_eq!(t.refunds.amounts(), [20_000]);
 }
 
+/// The process dies after the deposit was claimed and before the refund's id
+/// was written: the booking shows the outcome and no refund. `settle` resumes
+/// it, asks the one refund and writes its id; a second `settle` asks nothing.
+#[renox::test]
+async fn a_claimed_deposit_without_a_refund_is_resumed_by_settle() {
+    let t = boot().await;
+    let doctor = t.doctor("Dr A").await;
+    let service = t.deposit_service(&doctor, true).await;
+    let booking = t.booking(&service, &[&doctor], in_hours(1)).await;
+
+    t.refunds.crash_once();
+    let state = t.state().clone();
+    let id = booking.id;
+    let crashed = renox::tokio::spawn(async move {
+        service::cancel(
+            &state,
+            id,
+            CancelRequest::new("site_closed"),
+            Actor::staff(1),
+            support::now(),
+        )
+        .await
+    })
+    .await;
+    assert!(crashed.is_err(), "the task died while the refund was asked");
+    let claimed = t.reload(booking.id).await;
+    assert_eq!(claimed.status, BookingStatus::Cancelled);
+    assert_eq!(claimed.deposit_outcome.as_deref(), Some("refunded"));
+    assert_eq!(claimed.deposit_refunded, 20_000);
+    assert_eq!(claimed.deposit_refund_id, None);
+    assert!(deposit::unrefunded(&claimed));
+    assert!(t.refunds.asked().is_empty());
+
+    let settled = deposit::settle(t.state(), booking.id, Actor::staff(1))
+        .await
+        .expect("the next settlement asks the refund");
+    assert_eq!(settled.deposit_refund_id, Some(901));
+    assert!(!deposit::unrefunded(&settled));
+    assert_eq!(t.refunds.amounts(), [20_000]);
+    deposit::settle(t.state(), booking.id, Actor::staff(1))
+        .await
+        .expect("a settled booking is left alone");
+    assert_eq!(t.refunds.amounts(), [20_000]);
+}
+
+/// A claimed forfeiture that a waiver turned into a refund, with the process
+/// dying before the id was written, is resumed under the waiver's name.
+#[renox::test]
+async fn a_claimed_waiver_without_a_refund_is_resumed_by_settle() {
+    let t = boot().await;
+    let doctor = t.doctor("Dr A").await;
+    let service = t.deposit_service(&doctor, true).await;
+    let start = in_hours(1);
+    let booking = t.booking(&service, &[&doctor], start).await;
+    service::mark_no_show(
+        t.state(),
+        booking.id,
+        Actor::staff(1),
+        start + TimeDelta::minutes(20),
+    )
+    .await
+    .expect("the grace period is over");
+    let waiver = t.waiver().await;
+
+    t.refunds.crash_once();
+    let state = t.state().clone();
+    let id = booking.id;
+    let waiver_id = waiver.id;
+    let crashed = renox::tokio::spawn(async move {
+        deposit::waive(&state, id, "was ill", Actor::staff(waiver_id)).await
+    })
+    .await;
+    assert!(crashed.is_err());
+    assert!(deposit::unrefunded(&t.reload(booking.id).await));
+
+    let settled = deposit::settle(t.state(), booking.id, Actor::staff(1))
+        .await
+        .expect("the next settlement asks the refund");
+    assert_eq!(settled.deposit_refund_id, Some(901));
+    assert_eq!(t.refunds.amounts(), [20_000]);
+    assert_eq!(t.refunds.asked()[0].1, Some(waiver.id));
+}
+
 /// A service type without a deposit has nothing to settle.
 #[renox::test]
 async fn a_booking_without_a_deposit_settles_nothing() {
