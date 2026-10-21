@@ -264,10 +264,23 @@ impl Module for WlScheduling {
             wl_kernel::scheduling::BOOKING_SUBJECT_TYPE,
             |db, id| {
                 Box::pin(async move {
-                    match Booking::find(db, id).await? {
-                        Some(booking) => rules::scope_of(db, &booking).await,
-                        None => Ok(renox::auth::permissions::Scope::global()),
-                    }
+                    use renox::auth::permissions::Scope;
+                    let Some(booking) = Booking::find(db, id).await? else {
+                        return Ok(Scope::global());
+                    };
+                    // The branch's own scope; a branch type with no resolver
+                    // is a scope of its own type and id.
+                    Ok(match rules::location_of(db, &booking).await? {
+                        Some(location) => {
+                            let registered = wl_kernel::scopes::scope_of(db, &location).await?;
+                            if registered.is_global() {
+                                Scope::new(&location.subject_type, location.subject_id)
+                            } else {
+                                registered
+                            }
+                        }
+                        None => Scope::global(),
+                    })
                 })
             },
         );

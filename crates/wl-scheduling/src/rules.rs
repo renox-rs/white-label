@@ -37,6 +37,7 @@ use renox::chrono::TimeDelta;
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::scheduling::ConflictCause;
 use wl_kernel::scopes::{self, COMPANY_ADMIN_ROLE};
 
@@ -102,17 +103,25 @@ async fn resource_names(db: &Db, booking: &Booking) -> Result<String> {
     Ok(names.join(", "))
 }
 
-/// The scope of the location of `booking`, or of its first resource.
-pub(crate) async fn scope_of(db: &Db, booking: &Booking) -> Result<Scope> {
+/// The location of `booking`, or of its first resource that has one.
+pub(crate) async fn location_of(db: &Db, booking: &Booking) -> Result<Option<Subject>> {
     if let Some(location) = booking.location() {
-        return scopes::scope_of(db, &location).await;
+        return Ok(Some(location));
     }
     for id in booking.resource_ids(db).await? {
         if let Some(location) = Resource::find(db, id).await?.and_then(|r| r.location()) {
-            return scopes::scope_of(db, &location).await;
+            return Ok(Some(location));
         }
     }
-    Ok(Scope::global())
+    Ok(None)
+}
+
+/// The scope of the location of `booking`, or of its first resource.
+pub(crate) async fn scope_of(db: &Db, booking: &Booking) -> Result<Scope> {
+    match location_of(db, booking).await? {
+        Some(location) => scopes::scope_of(db, &location).await,
+        None => Ok(Scope::global()),
+    }
 }
 
 /// The users `SCH.RUL.06` tells: the manager role in the booking's location,
