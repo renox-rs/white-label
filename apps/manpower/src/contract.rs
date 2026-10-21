@@ -354,13 +354,13 @@ impl StateMachine for ClientContract {
                 Terminating,
             ))
             .transition(releasing(
-                Transition::new(&approved(RELEASE))
+                Transition::new(approved(RELEASE))
                     .label("Release (approved)")
                     .system(),
                 Active,
             ))
             .transition(releasing(
-                Transition::new(&approved(RELEASE_TERMINATING))
+                Transition::new(approved(RELEASE_TERMINATING))
                     .label("Release (approved)")
                     .system(),
                 Terminating,
@@ -379,7 +379,7 @@ impl StateMachine for ClientContract {
                 user(TERMINATE, "Terminate", permissions::CONTRACTS_MANAGE).tone("danger"),
             ))
             .transition(terminating(
-                Transition::new(&approved(TERMINATE))
+                Transition::new(approved(TERMINATE))
                     .label("Terminate (approved)")
                     .system(),
             ))
