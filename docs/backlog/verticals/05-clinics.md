@@ -149,24 +149,24 @@ Visit fields (§6): "coverage outcome (insured, re-split, self-pay with consent 
 - Must not show the visit reason or codes to the receptionist while doing this (`CLN.ACL.02`).
 
 #### Done when
-- [ ] Given an insured appointment for 2026-11-10 09:00 and eligibility recorded *negative*, when
+- [x] Given an insured appointment for 2026-11-10 09:00 and eligibility recorded *negative*, when
       receptionist A tries `check_in` without an outcome, it is refused with "coverage outcome
       required".
 - [ ] Given policy P1 expired 2026-11-09 and policy P2 valid to 2027-03-31 with positive
       eligibility, when A records `re_split` to P2, `check_in` succeeds, the visit shows outcome
       `re_split` with P2 and the patient share is recalculated from P2's contract.
-- [ ] Given eligibility negative and the patient signs a self-pay consent showing estimated
+- [x] Given eligibility negative and the patient signs a self-pay consent showing estimated
       price AED 450.00, `check_in` succeeds with outcome `self_pay` and the consent reference.
-- [ ] `self_pay` without a signed consent is refused.
-- [ ] Given a service with no self-pay price on 2026-11-10, `self_pay` is refused with "no
+- [x] `self_pay` without a signed consent is refused.
+- [x] Given a service with no self-pay price on 2026-11-10, `self_pay` is refused with "no
       self-pay price for <service>".
-- [ ] Pending check-in data for an appointment not checked in by 23:59 on its day is discarded.
-- [ ] Given a deposit of AED 100.00, when A cancels with `coverage_not_confirmed`, initiated by is
+- [x] Pending check-in data for an appointment not checked in by 23:59 on its day is discarded.
+- [x] Given a deposit of AED 100.00, when A cancels with `coverage_not_confirmed`, initiated by is
       `business` and AED 100.00 is refunded; when A reschedules instead, the AED 100.00 is linked
       to the new appointment.
 - [ ] On a `self_pay` visit, adding a service not on the consent in charge capture is refused
       until an updated consent is signed.
-- [ ] Given a policy valid to 2026-11-10 and a visit on 2026-11-10, no outcome other than
+- [x] Given a policy valid to 2026-11-10 and a visit on 2026-11-10, no outcome other than
       `insured` is asked after a positive eligibility result.
 
 #### Out of scope
@@ -1091,12 +1091,12 @@ alerted when they expire with appointments affected (`DOC.RUL.03`)."
 - Must not offer an override of the block.
 
 #### Done when
-- [ ] Given Dr K's DHA licence expiring 2026-11-30 and 4 appointments in December, on 2026-12-01
+- [x] Given Dr K's DHA licence expiring 2026-11-30 and 4 appointments in December, on 2026-12-01
       a new booking for Dr K at Branch 1 is refused, the clinic manager of Branch 1 and the owner
       each get one message listing 4 affected appointments, and the 4 appointments have a conflict.
-- [ ] On 2026-11-30 Dr K can still be checked in.
-- [ ] Given privileges expired only at Branch 2, Branch 1 bookings still work.
-- [ ] If the run fails, the owner alert (`PLT.RUL.04`) is raised.
+- [x] On 2026-11-30 Dr K can still be checked in.
+- [x] Given privileges expired only at Branch 2, Branch 1 bookings still work.
+- [x] If the run fails, the owner alert (`PLT.RUL.04`) is raised.
 
 #### Out of scope
 Look-ahead 30 days before expiry (BL-SCH-07); check-in re-check (BL-SCH-08).
