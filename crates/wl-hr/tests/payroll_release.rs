@@ -186,6 +186,72 @@ async fn hrm18_an_absence_report_hold_clears_when_the_report_is_withdrawn() {
     assert!(d.t.line(&held).await.released_into.is_some());
 }
 
+/// AC1, end to end: the held line is not an UPDATE of the fixture but what
+/// `calculate` makes of an open absence case; the run goes through approve,
+/// submit and the bank's confirmation, and closing the case on 2026-12-03
+/// proposes the off-cycle run with E's line.
+#[renox::test]
+async fn hrm18_ac1_the_line_held_by_calculate_is_proposed_when_the_case_is_closed() {
+    let t = support::boot().await;
+    let prep = t.user_with("Pia", "payroll_prep").await;
+    let appr = t.user_with("Ali", "payroll_appr").await;
+    let e = t.employee_in(91, EmployeeStatus::Active).await;
+    let f = t.employee_in(92, EmployeeStatus::Active).await;
+    for (employee, timesheet) in [(&e, 3), (&f, 4)] {
+        t.salary(employee, WAGE, 1_500).await;
+        t.timesheets.give(support::hours_of(
+            employee,
+            timesheet,
+            false,
+            &[(2, "normal", 9_600)],
+        ));
+    }
+    t.open_case(&e, nov(10), nov(1)).await;
+    let november = t.payroll_run("2026-11", PayrollRunStatus::Draft).await;
+
+    t.transition(&prep, &november, "calculate", "")
+        .await
+        .assert_status(303);
+    let held = t.line_of(&november, &e).await;
+    assert_eq!(held.status, LineStatus::Held);
+    assert_eq!(held.held_reason.as_deref(), Some("absence case"));
+    t.transition(&appr, &november, "approve", "")
+        .await
+        .assert_status(303);
+    wl_hr::payroll::submit(t.state(), november.id)
+        .await
+        .unwrap();
+    t.confirm(&appr, &november, "BANK-1")
+        .await
+        .assert_status(303);
+    assert_eq!(t.run(&november).await.status, PayrollRunStatus::Paid);
+    assert_eq!(t.line_of(&november, &f).await.status, LineStatus::Paid);
+    assert_eq!(t.line(&held).await.status, LineStatus::Held);
+
+    t.state()
+        .emit(AbsenceCaseClosed {
+            employee: e.employee_id(),
+            case: Subject::new("ticketing.ticket", 1),
+            closed_on: dec(3),
+            reason: "returned".into(),
+        })
+        .await
+        .unwrap();
+
+    let off = PayrollRun::query()
+        .where_(PayrollRun::RUN_TYPE.eq("off_cycle"))
+        .get(t.db())
+        .await
+        .unwrap();
+    assert_eq!(off.len(), 1);
+    assert_eq!(off[0].status, PayrollRunStatus::Draft);
+    let lines = off[0].lines(t.db()).await.unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].employee_id, e.id);
+    assert_eq!(lines[0].source_line_id, Some(held.id));
+    assert_eq!(t.line(&held).await.released_into, Some(off[0].id));
+}
+
 /// AC2: carrying E's line into the December regular run asks for a reason and
 /// warns "pays after the WPS due date 2026-12-01" for a closed-account hold,
 /// but not for an absence-report hold.
