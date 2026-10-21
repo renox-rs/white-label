@@ -73,6 +73,29 @@ const TEXTS: &[(&str, &str)] = &[
         "Already marked at :location, :hours",
     ),
     ("wl_attendance.crew.empty", "No employees on the list."),
+    ("wl_attendance.crew.change", "Pick another day or crew"),
+    ("wl_attendance.crew.employee_number", "Employee {{ id }}"),
+    (
+        "wl_attendance.crew.form_subtitle",
+        "Pick the work location, the day and the crew to see who is already marked elsewhere.",
+    ),
+    ("wl_attendance.crew.location", "Work location"),
+    (
+        "wl_attendance.crew.pick_location",
+        "Choose a work location.",
+    ),
+    ("wl_attendance.crew.date", "Day"),
+    ("wl_attendance.crew.employees", "Crew"),
+    (
+        "wl_attendance.crew.employees_hint",
+        "Tick the employees of the crew.",
+    ),
+    ("wl_attendance.crew.show", "Show the crew list"),
+    (
+        "wl_attendance.crew.no_locations",
+        "You may not mark attendance at any work location.",
+    ),
+    ("wl_attendance.crew.bad_date", "Give the day as 2026-11-02."),
     (
         "wl_attendance.crew.break",
         "Midday break :from to :to is pre-filled: keep it, or remove it and the block is flagged.",

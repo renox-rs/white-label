@@ -1,0 +1,25 @@
+{#- wl-attendance: the form that opens a crew list: the work location the
+    person may mark at, the day and the crew. It submits to the crew list
+    itself. Replace it with resources/views/wl-attendance/crew_form.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-stack>
+    <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']"/>
+    <rx-alert rx-if="problem" kind="error" :message="problem"/>
+    <rx-alert rx-if="not locations" kind="warning" :message="tx['no_locations']"/>
+    <rx-card rx-if="locations">
+      <rx-form method="GET" :action="route('wl_attendance.crew')">
+        <rx-stack>
+          <rx-form-grid columns="2">
+            <rx-select name="location_id" :label="tx['location']" :options="locations" :selected="location" :placeholder="tx['pick_location']" required/>
+            <rx-input name="date" type="date" :label="tx['date']" :value="date" required/>
+          </rx-form-grid>
+          <rx-checkbox-list name="employees" :label="tx['employees']" :hint="tx['employees_hint']" :options="staff" :selected="ticked" :columns="2"/>
+          <rx-row>
+            <rx-button type="submit" :label="tx['show']" icon="users"/>
+          </rx-row>
+        </rx-stack>
+      </rx-form>
+    </rx-card>
+  </rx-stack>
+</rx-page>
