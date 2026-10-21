@@ -552,6 +552,31 @@ async fn a_bill_with_a_remittance_is_not_voided() {
         .payer_bill(&agreement, today(), &[("Consultation and tests", 60_000)])
         .await;
     let issued = t.issue_payer_bill(&bill, &cora).await;
+    // A real remittance, recorded by a reconciler through the page.
+    let rita = t.reconciler("Rita").await;
+    t.remit_first_line(&issued, &rita, "ADV-1", "200.00")
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", bill.id));
+    let remitted = t.reload_bill(&bill).await;
+    assert!(remitted.has_remittance);
+
+    post_void(&t, &bill, &cora, "wrong payer").await;
+    assert_eq!(t.reload_bill(&bill).await.status, remitted.status);
+    assert!(t.payer.closed.all().is_empty());
+}
+
+/// The void guard `given_to_third_party` on a draft flagged with a remittance.
+/// A real remittance always moves the bill out of `draft`, so the flag is set
+/// directly here: the defence in depth, the real flow is the test above.
+#[renox::test]
+async fn the_void_guard_refuses_a_draft_flagged_with_a_remittance() {
+    let t = boot().await;
+    let cora = t.coordinator_cora().await;
+    let agreement = agreement(&t).await;
+    let bill = t
+        .payer_bill(&agreement, today(), &[("Consultation and tests", 60_000)])
+        .await;
+    let issued = t.issue_payer_bill(&bill, &cora).await;
     t.post_payer(
         &issued,
         &cora,

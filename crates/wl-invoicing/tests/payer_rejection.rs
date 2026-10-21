@@ -276,10 +276,41 @@ async fn every_attempt_keeps_its_own_errors() {
     );
 }
 
-/// A rejection that arrives after a remittance was recorded is refused by
-/// the guard, and the coordinator gets a task.
+/// A rejection that arrives after a remittance was recorded is refused, and
+/// the coordinator gets a task. The remittance is a real one, recorded by a
+/// reconciler through the page.
 #[renox::test]
-async fn a_rejection_after_a_remittance_is_refused_with_a_task() {
+async fn a_rejection_after_a_real_remittance_is_refused() {
+    let t = boot().await;
+    let cora = t.coordinator_cora().await;
+    let bill = issued_bill(&t, &cora).await;
+    let rita = t.reconciler("Rita").await;
+    t.remit_first_line(&bill, &rita, "ADV-1", "300.00")
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", bill.id));
+    let remitted = t.reload_bill(&bill).await;
+    assert!(remitted.has_remittance);
+
+    t.post_payer(
+        &bill,
+        &cora,
+        "submission-rejected",
+        &[("errors", "E104: invalid member ID")],
+    )
+    .await
+    .assert_status(422);
+    assert_eq!(t.reload_bill(&bill).await.status, remitted.status);
+    assert!(t.payer.rejected.all().is_empty());
+    // The bill is not `issued` any more, so the machine refuses before the
+    // guard: no task (see the next test for the guard).
+}
+
+/// The guard `no_remittance_recorded` and the coordinator's task. The state
+/// (issued with a remittance) cannot be reached through the pages, because
+/// every remittance moves the bill out of `issued`, so the flag is set
+/// directly: this is the defence in depth, the real flow is the test above.
+#[renox::test]
+async fn the_guard_refuses_a_flagged_bill_and_opens_a_task() {
     let t = boot().await;
     let cora = t.coordinator_cora().await;
     let bill = issued_bill(&t, &cora).await;

@@ -128,6 +128,30 @@ impl Booted {
             .await
     }
 
+    /// `by` records a real remittance (reference `reference`, 2026-12-10)
+    /// paying `amount` on the first line of `bill`, through the page.
+    pub async fn remit_first_line(
+        &self,
+        bill: &PayerBill,
+        by: &User,
+        reference: &str,
+        amount: &str,
+    ) -> renox::testing::TestResponse {
+        let line = self.bill_lines(bill).await.remove(0);
+        let field = format!("line_{}_paid", line.id);
+        self.post_payer(
+            bill,
+            by,
+            "remittance",
+            &[
+                ("reference", reference),
+                ("date", "2026-12-10"),
+                (field.as_str(), amount),
+            ],
+        )
+        .await
+    }
+
     /// A user who writes off or moves the open amount of a payer bill.
     pub async fn payer_writer(&self, name: &str) -> User {
         self.user(
