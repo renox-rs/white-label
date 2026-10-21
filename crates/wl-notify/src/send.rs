@@ -196,18 +196,18 @@ pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOut
     }
 }
 
-/// Reports how the e-mail provider answered to the integration health
-/// ([`wl_kernel::integrations::EMAIL`]), when the app registered the
-/// connection: an accepted send is a success and a transient failure a
-/// failure. A permanent or hard error (a wrong address) says nothing about
-/// the connection, nor does a message no provider tried.
+/// Reports how the provider of the channel answered to the integration
+/// health ([`wl_kernel::integrations::EMAIL`], `SMS` or `WHATSAPP`), when the
+/// app registered the connection: an accepted send is a success and a
+/// transient failure a failure. A permanent or hard error (a wrong address)
+/// says nothing about the connection, nor does a message no provider tried.
 async fn report_health(
     state: &AppState,
     channel: NotifyChannel,
     provider: Option<&str>,
     result: &std::result::Result<String, SendError>,
 ) -> Result {
-    if channel != NotifyChannel::Email || provider.is_none() {
+    if provider.is_none() {
         return Ok(());
     }
     let outcome = match result {
@@ -215,7 +215,12 @@ async fn report_health(
         Err(error) if error.kind == SendErrorKind::Transient => Err(error.message.as_str()),
         Err(_) => return Ok(()),
     };
-    wl_kernel::integrations::report_outcome(state, wl_kernel::integrations::EMAIL, outcome).await
+    let key = match channel {
+        NotifyChannel::Email => wl_kernel::integrations::EMAIL,
+        NotifyChannel::Sms => wl_kernel::integrations::SMS,
+        NotifyChannel::Whatsapp => wl_kernel::integrations::WHATSAPP,
+    };
+    wl_kernel::integrations::report_outcome(state, key, outcome).await
 }
 
 /// The `send` guard "frequency cap" (§4.1, `NTF.RUL.02`): the message is

@@ -41,6 +41,18 @@ pub const SUBJECT_TYPE: &str = "kernel.integration_connection";
 /// each e-mail send to it.
 pub const EMAIL: &str = "email";
 
+/// The key an app registers its SMS connection under: `wl-notify` reports
+/// each SMS send to it.
+pub const SMS: &str = "sms";
+
+/// The key an app registers its WhatsApp connection under: `wl-notify`
+/// reports each WhatsApp send to it.
+pub const WHATSAPP: &str = "whatsapp";
+
+/// The key an app registers its payment gateway under; the gateway adapter
+/// of `wl-payments` reports each call to it.
+pub const PAYMENT_GATEWAY: &str = "payments.gateway";
+
 /// The key an app registers its sanctions list download under: `wl-parties`
 /// reports each download to it.
 pub const SANCTIONS_DOWNLOAD: &str = "sanctions.download";
