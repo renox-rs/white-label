@@ -94,3 +94,16 @@ async fn the_demo_logistics_client_boots_and_the_demo_company_is_made_once() {
         .expect("the demo command runs again");
     assert_eq!(Shipment::query().count(app.db()).await.unwrap(), first);
 }
+
+#[test]
+fn the_accountant_and_the_client_user_ask_for_a_bank_account_change_and_a_second_user_approves_it() {
+    // `LOG.ACL.13`: the accountant (and the company admin) and a client user
+    // in the portal ask; only the holders of `remittances.approve` decide.
+    assert!(holds(roles::ACCOUNTANT, perm::REMITTANCES_REQUEST_ACCOUNT));
+    assert!(holds(ADMIN, perm::REMITTANCES_REQUEST_ACCOUNT));
+    assert!(holds(SHIPPING_CLIENT, perm::REMITTANCES_REQUEST_ACCOUNT));
+    assert!(!holds(SHIPPING_CLIENT, perm::REMITTANCES_APPROVE));
+    for role in [DISPATCHER, DRIVER, HUB_STAFF, OPERATIONS_MANAGER] {
+        assert!(!holds(role, perm::REMITTANCES_REQUEST_ACCOUNT), "{role}");
+    }
+}

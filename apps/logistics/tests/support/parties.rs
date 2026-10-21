@@ -8,7 +8,11 @@ use std::sync::{Arc, Mutex};
 
 use renox::prelude::*;
 use wl_kernel::PartyId;
+use wl_kernel::notify::{ContactKind, PartyContactPoint, PartyContacts};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
+
+/// The primary e-mail on record of the clients.
+pub const KNOWN_EMAIL: &str = "accounts@souq.example";
 
 /// The directory: the clients 501 and 502 exist; the blocked ones answer
 /// `Blocked`.
@@ -68,6 +72,29 @@ impl PartyDirectory for Parties {
         _lang: &'a str,
     ) -> PartyFuture<'a, Option<String>> {
         Box::pin(async move { Ok(self.summary(party).map(|p| p.display_name)) })
+    }
+
+    fn contacts<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<PartyContacts>> {
+        let known = self.summary(party).is_some();
+        Box::pin(async move {
+            Ok(known.then(|| PartyContacts {
+                party,
+                language: "en".to_owned(),
+                preferred_channel: None,
+                points: vec![PartyContactPoint {
+                    id: party.0,
+                    kind: ContactKind::Email,
+                    address: KNOWN_EMAIL.to_owned(),
+                    primary: true,
+                    verified: true,
+                    valid: true,
+                }],
+            }))
+        })
     }
 
     fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
