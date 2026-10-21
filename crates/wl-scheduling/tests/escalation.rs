@@ -197,6 +197,43 @@ async fn an_open_conflict_is_escalated_two_hours_before_and_its_reminder_is_supp
     assert_eq!(of_type(&t, "scheduling.booking_reminder").len(), 2);
 }
 
+/// The five-minute task as the scheduler runs it (`scheduling:rules`, #173):
+/// with the clock moved to 13:00 it escalates the open conflict to the branch
+/// manager, reminds the ordinary booking, and marks the one that was missed as
+/// no-show: all three automations, through the registered entry.
+#[renox::test]
+async fn the_registered_five_minute_task_runs_the_rules_at_the_moved_clock() {
+    let t = boot_with(WlScheduling::new().manager_role("branch_manager")).await;
+    let s = scene(&t).await;
+    let manager = holder(&t, "Mona", "branch_manager", &[perm::VIEW], &scope(BRANCH)).await;
+    let conflicted = book_at(&t, &s, &s.a, DAY, 15, 0, now()).await;
+    let ordinary = book_at(&t, &s, &s.b, DAY, 15, 0, now()).await;
+    let missed = book_at(&t, &s, &s.b, DAY, 11, 0, now()).await;
+    t.state().emit(sick(604)).await.unwrap();
+    assert_eq!(rules::TASK, "scheduling:rules");
+
+    t.app
+        .travel((dubai(DAY, 13, 0) - now()).to_std().expect("ahead"));
+    t.app
+        .run_scheduled(rules::TASK)
+        .await
+        .expect("the task runs");
+
+    let told = of_type(&t, "scheduling.conflict_escalated");
+    assert_eq!(told.len(), 1);
+    assert_eq!(told[0].subject, conflicted.subject());
+    assert_eq!(
+        told[0].recipients,
+        [NotifyRecipient::User { id: manager.id }]
+    );
+    let reminders = of_type(&t, "scheduling.booking_reminder");
+    assert!(!reminders.is_empty());
+    assert!(reminders.iter().all(|r| r.subject == ordinary.subject()));
+    assert_eq!(t.reload(missed.id).await.status, BookingStatus::NoShow);
+    assert_eq!(t.reload(ordinary.id).await.status, BookingStatus::Booked);
+    assert_eq!(t.reload(conflicted.id).await.status, BookingStatus::Booked);
+}
+
 /// A conflict raised at 14:10 for 15:00 is already inside the two hours: it is
 /// escalated at 14:10 (the branch manager is told, the party gets the change
 /// message), and not again.

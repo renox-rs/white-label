@@ -202,6 +202,33 @@ async fn the_scheduled_command_runs_the_look_ahead() {
     assert!(!s.reload(&s.early).await.conflict_eligibility);
 }
 
+/// Done when 1 and 2, through the registered entry: the task is the 02:00
+/// Asia/Dubai one, and run with the clock moved to day 16 it reaches the
+/// booking of day 44 that was beyond the look-ahead on day 0, besides the one
+/// of day 24; the booking before the expiry stays.
+#[renox::test]
+async fn the_registered_nightly_task_runs_the_look_ahead_at_the_moved_clock() {
+    let s = scene().await;
+    s.licence_until(DOC, day(19));
+    assert_eq!(eligibility::TASK_AT, "02:00");
+    assert_eq!(eligibility::TASK_ZONE, "Asia/Dubai");
+
+    s.t.app
+        .travel((at(day(16), 2) - renox::db::now()).to_std().expect("ahead"));
+    s.t.app
+        .run_scheduled(eligibility::TASK)
+        .await
+        .expect("the task runs");
+
+    assert!(!s.reload(&s.early).await.conflict_eligibility);
+    assert!(s.reload(&s.late).await.conflict_eligibility);
+    assert!(
+        s.reload(&s.beyond).await.conflict_eligibility,
+        "day 44 entered the 30 day window on day 16"
+    );
+    assert_eq!(s.t.tasks.with_key("scheduling.eligibility:").len(), 2);
+}
+
 /// Done when 3: `DocumentExpiring` with the booking of day 24 in `affected`
 /// flags it once, and so does the real `wl-hr` re-emitting it as
 /// `QualificationExpiring`; the next nightly run does not flag it again.
