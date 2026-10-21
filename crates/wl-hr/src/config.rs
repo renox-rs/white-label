@@ -30,6 +30,13 @@ pub const DEFAULT_WPS_ESCALATION_DAYS: i64 = 1;
 /// attendance dated after it is not counted as provisional hours.
 pub const DEFAULT_CUT_OFF_DAY: u32 = 25;
 
+/// The role whose holders get the tasks for HR: reaching a worker whose pay
+/// account notice was not delivered (`HRM.ACL.05`, wl-hr §4 *Pay account*).
+pub const DEFAULT_HR_ROLE: &str = "hr";
+
+/// The cooling period of a new pay account in days (`HRM.ACL.05`, wl-hr §7).
+pub const DEFAULT_COOLING_DAYS: i64 = 5;
+
 /// The settings of the HR module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HrConfig {
@@ -47,6 +54,14 @@ pub struct HrConfig {
     pub wps_escalation_days: i64,
     /// The payroll cut-off day of the month (D of `HRM.RUL.02`).
     pub cut_off_day: u32,
+    /// The role whose holders get HR's tasks.
+    pub hr_role: String,
+    /// The cooling period of a new pay account, in days (`HRM.ACL.05`).
+    pub cooling_days: i64,
+    /// The routing codes of the banks and agents a pay account may name. Empty
+    /// accepts any code of the right form: the list comes with the salary
+    /// file formats.
+    pub routing_codes: Vec<String>,
 }
 
 impl Default for HrConfig {
@@ -59,6 +74,9 @@ impl Default for HrConfig {
             accountant_role: DEFAULT_ACCOUNTANT_ROLE.to_owned(),
             wps_escalation_days: DEFAULT_WPS_ESCALATION_DAYS,
             cut_off_day: DEFAULT_CUT_OFF_DAY,
+            hr_role: DEFAULT_HR_ROLE.to_owned(),
+            cooling_days: DEFAULT_COOLING_DAYS,
+            routing_codes: Vec::new(),
         }
     }
 }

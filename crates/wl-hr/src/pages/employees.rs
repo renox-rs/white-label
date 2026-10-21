@@ -319,6 +319,10 @@ pub(crate) struct ShowPage {
     can_manage: bool,
     can_activate: bool,
     today: String,
+    pay_accounts: Vec<crate::pages::pay_accounts::AccountView>,
+    can_request_pay_account: bool,
+    pay_channels: Vec<(String, String)>,
+    pay_channel_selected: String,
 }
 
 /// `GET /hr/employees/{id}`.
@@ -542,6 +546,12 @@ async fn show(
             | EmployeeStatus::Notice
             | EmployeeStatus::Absconded
     ) && exits::holds_manage(&state, user.id, &employee).await?;
+    let mut pay_accounts = Vec::new();
+    if can_manage || user.has_permission(permissions::PAY_ACCOUNTS_APPROVE) {
+        for account in crate::pay_account::PayAccount::of_employee(&state.db, id).await? {
+            pay_accounts.push(crate::pages::pay_accounts::view_of(&state, &lang, &account).await?);
+        }
+    }
     Ok(View::typed(ShowPage {
         attempts,
         report,
@@ -576,6 +586,21 @@ async fn show(
         can_activate: employee.status == EmployeeStatus::Onboarding
             && user.has_permission(permissions::EMPLOYEES_MANAGE),
         today: day.to_string(),
+        pay_accounts,
+        can_request_pay_account: can_manage,
+        pay_channels: [
+            crate::pay_account::BANK_ACCOUNT,
+            crate::pay_account::SALARY_CARD,
+        ]
+        .iter()
+        .map(|c| {
+            (
+                (*c).to_owned(),
+                text(&lang, &format!("pay_account.channel.{c}")),
+            )
+        })
+        .collect(),
+        pay_channel_selected: crate::pay_account::BANK_ACCOUNT.to_owned(),
     }))
 }
 

@@ -176,10 +176,19 @@ pub async fn report_withdrawn(state: &AppState, employee_id: i64) -> Result<Clea
 }
 
 /// The reason of the hold of line `line_id` is gone (a pay account was fixed,
-/// the preparer saw it was settled): the line is released. Refused when the
-/// line is not held, or is already released.
+/// the preparer saw it was settled): the line is released. A line the bank
+/// failed is made `included` again for the next SIF version. Refused when the
+/// line is neither held nor failed, or is already released.
 pub async fn line_fixed(state: &AppState, line_id: i64) -> Result<Cleared> {
     let line = PayrollLine::find_or_404(&state.db, line_id).await?;
+    // A failed line is fixed in place: `included` for the next SIF version.
+    if line.status == LineStatus::Failed {
+        crate::payroll::fix_line(&state.db, line_id).await?;
+        return Ok(Cleared {
+            unheld: 1,
+            waiting: 0,
+        });
+    }
     if line.status != LineStatus::Held {
         return Err(refuse("wl_hr.payroll.line_not_held"));
     }

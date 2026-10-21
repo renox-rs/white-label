@@ -12,6 +12,10 @@
 //! and one record per line); the layout of each bank or exchange house (a
 //! "SIF variant", §7) is not built.
 //!
+//! Each line keeps the pay account it was sent to: the one `active` when the
+//! version was generated ([`SifLine::pay_account_id`], BL-HRM-20). A `cooling`
+//! account is never used.
+//!
 //! Held lines and lines with a net of zero or less are left out. When no line
 //! is left no file is made and the run's version does not move (a
 //! supplementary run with only negative differences sends nothing).
@@ -21,6 +25,7 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::establishment;
+use crate::pay_account::PayAccount;
 use crate::payroll::{LineStatus, PayrollLine, PayrollRun};
 
 /// One version of the salary file of a run.
@@ -69,6 +74,12 @@ pub struct SifLine {
     pub employee_id: i64,
     /// The net sent, AED fils.
     pub net_amount: i64,
+    /// The pay account the line was sent to: the one `active` when the
+    /// version was generated (`None` when the employee has none recorded).
+    /// Later changes of the account do not alter it.
+    pub pay_account_id: Option<i64>,
+    /// Its last 4 digits.
+    pub account_last4: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -170,11 +181,14 @@ pub async fn generate_in(tx: &mut Transaction, run_id: i64, only: Option<&[i64]>
     };
     file.insert(&mut *tx).await?;
     for line in &lines {
+        let account = PayAccount::active_in(&mut *tx, line.employee_id).await?;
         let mut carried = SifLine {
             sif_file_id: file.id,
             line_id: line.id,
             employee_id: line.employee_id,
             net_amount: line.net_amount,
+            pay_account_id: account.as_ref().map(|a| a.id),
+            account_last4: account.map(|a| a.last4),
             ..SifLine::default()
         };
         carried.insert(&mut *tx).await?;

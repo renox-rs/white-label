@@ -779,6 +779,209 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.notices.step_escalated_body",
         "The step \"{{ step }}\" of the onboarding of {{ employee }} was due {{ due }} and is still open, {{ days }} days overdue. Its assignees were reminded.",
     ),
+    // Pay accounts (`HRM.ACL.05`, issues #209 to #211).
+    ("wl_hr.pay_account.title", "Pay account"),
+    ("wl_hr.pay_account.accounts", "Pay accounts"),
+    ("wl_hr.pay_account.number", "Account"),
+    ("wl_hr.pay_account.account_number", "IBAN or card number"),
+    ("wl_hr.pay_account.channel_label", "Type"),
+    (
+        "wl_hr.pay_account.channel.bank_account",
+        "Bank account (IBAN)",
+    ),
+    ("wl_hr.pay_account.channel.salary_card", "Salary card"),
+    ("wl_hr.pay_account.routing_code", "Routing code"),
+    ("wl_hr.pay_account.holder", "Account holder"),
+    ("wl_hr.pay_account.explanation", "Name mismatch explanation"),
+    ("wl_hr.pay_account.cooling_ends", "Used by payroll from"),
+    ("wl_hr.pay_account.notice", "Notice to the worker"),
+    (
+        "wl_hr.pay_account.notice_sent",
+        "Sent by SMS to the number on record",
+    ),
+    (
+        "wl_hr.pay_account.notice_undelivered_state",
+        "Not delivered: reach the worker another way",
+    ),
+    ("wl_hr.pay_account.reached_label", "Worker reached"),
+    ("wl_hr.pay_account.reason", "Reason"),
+    ("wl_hr.pay_account.request", "New pay account"),
+    (
+        "wl_hr.pay_account.request_hint",
+        "Another user approves it, the worker is told by SMS, and payroll uses it only after the cooling period.",
+    ),
+    (
+        "wl_hr.pay_account.requested",
+        "Pay account requested. Another user has to approve it.",
+    ),
+    (
+        "wl_hr.pay_account.status.pending_approval",
+        "Waiting for approval",
+    ),
+    ("wl_hr.pay_account.status.cooling", "Cooling"),
+    ("wl_hr.pay_account.status.active", "Active"),
+    ("wl_hr.pay_account.status.retired", "Retired"),
+    ("wl_hr.pay_account.status.rejected", "Rejected"),
+    ("wl_hr.pay_account.method.call", "Call"),
+    ("wl_hr.pay_account.method.visit", "Visit"),
+    ("wl_hr.pay_account.method.in_person", "In person"),
+    ("wl_hr.pay_account.waive", "Waive cooling"),
+    (
+        "wl_hr.pay_account.waive_hint",
+        "An MD has to approve it. Give the reason, e.g. a failed WPS line and the worker verified with their Emirates ID.",
+    ),
+    ("wl_hr.pay_account.waive_reason", "Reason"),
+    (
+        "wl_hr.pay_account.waive_pending",
+        "Waiting for an MD to approve the waiver of the cooling.",
+    ),
+    (
+        "wl_hr.pay_account.waive_sent",
+        "Sent to an MD for approval. The account stays cooling until then.",
+    ),
+    ("wl_hr.pay_account.reached", "Record worker reached"),
+    (
+        "wl_hr.pay_account.reached_hint",
+        "The notice was not delivered. Write down who reached the worker, how and when.",
+    ),
+    ("wl_hr.pay_account.reached_by", "Reached by"),
+    ("wl_hr.pay_account.reached_method", "How"),
+    ("wl_hr.pay_account.reached_on", "Date"),
+    (
+        "wl_hr.pay_account.reached_recorded",
+        "Worker reached recorded.",
+    ),
+    (
+        "wl_hr.pay_account.stopped",
+        "The change of pay account was stopped.",
+    ),
+    (
+        "wl_hr.pay_account.stop_title",
+        "Stop the change of your pay account",
+    ),
+    (
+        "wl_hr.pay_account.stop_hint",
+        "If you did not ask for this change, stop it. Your salary then keeps going to your current account. You can stop it until",
+    ),
+    ("wl_hr.pay_account.stop_button", "Stop the change"),
+    (
+        "wl_hr.pay_account.stop_confirm",
+        "Your current account stays in use and HR is told.",
+    ),
+    (
+        "wl_hr.pay_account.stop_done",
+        "The change was stopped. Your current account stays in use and the company was told.",
+    ),
+    (
+        "wl_hr.pay_account.stop_closed",
+        "This change can no longer be stopped with this link. Contact HR.",
+    ),
+    ("wl_hr.pay_account.stopped_by_worker", "the worker"),
+    ("wl_hr.pay_account.stopped_by_hr", "HR"),
+    (
+        "wl_hr.pay_account.security_title",
+        "Security: pay account change of :employee (…:last4) stopped",
+    ),
+    (
+        "wl_hr.pay_account.security_description",
+        "The change to the pay account ending :last4 was stopped by :by during the cooling period. The old account stays in use. Check whether the request was made without the worker's knowledge.",
+    ),
+    (
+        "wl_hr.pay_account.task_title",
+        "Reach :employee about the new pay account (…:last4)",
+    ),
+    (
+        "wl_hr.pay_account.task_description",
+        "The notice of the new pay account was not delivered (no mobile number on record, or the SMS gave up). The account stays cooling past :date until you reach the worker another way and record it: who, how and when.",
+    ),
+    (
+        "wl_hr.pay_account.iban_invalid",
+        "The IBAN is not valid. A UAE IBAN has 23 characters: AE, two check digits and 19 digits.",
+    ),
+    (
+        "wl_hr.pay_account.card_invalid",
+        "The salary card number is not valid. It has digits only.",
+    ),
+    (
+        "wl_hr.pay_account.channel_invalid",
+        "Choose a bank account or a salary card.",
+    ),
+    (
+        "wl_hr.pay_account.routing_invalid",
+        "The routing code is not valid. It has 9 digits and names a known bank or agent.",
+    ),
+    (
+        "wl_hr.pay_account.holder_required",
+        "Give the name of the account holder.",
+    ),
+    (
+        "wl_hr.pay_account.explanation_required",
+        "The account holder's name differs from the employee's. Explain why.",
+    ),
+    (
+        "wl_hr.pay_account.already_open",
+        "This employee already has a pay account waiting for approval or cooling.",
+    ),
+    (
+        "wl_hr.pay_account.same_user",
+        "The user who asked for the account cannot approve it.",
+    ),
+    (
+        "wl_hr.pay_account.cooling_not_ended",
+        "The cooling period has not ended.",
+    ),
+    (
+        "wl_hr.pay_account.notice_undelivered",
+        "The notice to the worker was not delivered. Reach the worker and record it first.",
+    ),
+    (
+        "wl_hr.pay_account.waive_reason_required",
+        "Give the reason for waiving the cooling.",
+    ),
+    (
+        "wl_hr.pay_account.not_cooling",
+        "The account is not cooling.",
+    ),
+    (
+        "wl_hr.pay_account.reached_invalid",
+        "Say who reached the worker, how (call, visit, in person) and when (not after today).",
+    ),
+    (
+        "wl_hr.notices.pay_account_requested_subject",
+        "New pay account of {{ employee }} waits for approval",
+    ),
+    (
+        "wl_hr.notices.pay_account_requested_body",
+        "A new pay account ending {{ last4 }} was requested for {{ employee }}. Name mismatch explanation: {{ explanation }}. Check it and approve or reject it; you cannot approve your own request.",
+    ),
+    (
+        "wl_hr.notices.pay_account_rejected_subject",
+        "Pay account of {{ employee }} was rejected",
+    ),
+    (
+        "wl_hr.notices.pay_account_rejected_body",
+        "The new pay account ending {{ last4 }} of {{ employee }} was rejected: {{ reason }}.",
+    ),
+    (
+        "wl_hr.notices.pay_account_stopped_subject",
+        "Pay account change of {{ employee }} was stopped",
+    ),
+    (
+        "wl_hr.notices.pay_account_stopped_body",
+        "The change to the pay account ending {{ last4 }} of {{ employee }} was stopped by {{ by }}. The old account stays in use and a security task was opened.",
+    ),
+    (
+        "wl_hr.notices.pay_account_change_sms",
+        "Your pay account ending {{ last4 }} takes effect on {{ date }}. If this was not you, stop it now: {{ link }}",
+    ),
+    (
+        "wl_hr.notices.pay_account_change_subject",
+        "Your pay account is changing",
+    ),
+    (
+        "wl_hr.notices.pay_account_change_body",
+        "A new pay account ending {{ last4 }} takes effect on {{ date }}. Until then your salary goes to your current account. If this was not you, stop the change: {{ link }}",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

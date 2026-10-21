@@ -1,0 +1,44 @@
+{#- wl-hr: a pay account change (`HRM.ACL.05`): the last 4 digits, the holder
+    and the explanation of a name mismatch the approver reads, the cooling,
+    the notice to the worker and what the signed-in user may do. The full
+    number is never shown. Replace it with
+    resources/views/wl-hr/pay_account.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['pay_account.title'] ~ ' ' ~ account.number">
+  <rx-stack>
+    <rx-page-header :title="tx['pay_account.title'] ~ ' ' ~ account.number" :subtitle="account.employee"
+                    :badge="account.status" :badge-kind="account.status_kind"/>
+    <template rx-if="actions">
+      <rx-transition-actions :actions="actions" :action="'/hr/pay-accounts/' ~ account.id ~ '/transitions'"/>
+    </template>
+    <template rx-if="can_waive">
+      <rx-action-sheet id="waive-cooling" :label="tx['pay_account.waive']" :action="route('wl_hr.pay_account_waive', account.id)"
+                       :title="tx['pay_account.waive']" :description="tx['pay_account.waive_hint']" :submit-label="tx['pay_account.waive']" variant="danger" icon="clock">
+        <rx-textarea name="reason" :label="tx['pay_account.waive_reason']" id="waive-cooling-reason" required/>
+      </rx-action-sheet>
+    </template>
+    <template rx-if="waive_pending">
+      <rx-alert kind="warning" :message="tx['pay_account.waive_pending']"/>
+    </template>
+    <template rx-if="can_record_reached">
+      <rx-action-sheet id="record-reached" :label="tx['pay_account.reached']" :action="route('wl_hr.pay_account_reached', account.id)"
+                       :title="tx['pay_account.reached']" :description="tx['pay_account.reached_hint']" :submit-label="tx['pay_account.reached']" icon="phone">
+        <rx-input name="by" :label="tx['pay_account.reached_by']" id="record-reached-by" required/>
+        <rx-select name="method" :label="tx['pay_account.reached_method']" :options="methods" :selected="method_selected"/>
+        <rx-input name="on" type="date" :label="tx['pay_account.reached_on']" :value="today" id="record-reached-on"/>
+      </rx-action-sheet>
+    </template>
+    <rx-card :title="tx['pay_account.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['pay_account.number']" :value="account.number"/>
+        <rx-entry :label="tx['pay_account.channel_label']" :value="account.channel"/>
+        <rx-entry :label="tx['pay_account.routing_code']" :value="account.routing_code" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['pay_account.holder']" :value="account.holder"/>
+        <rx-entry :label="tx['pay_account.explanation']" :value="account.explanation" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['pay_account.cooling_ends']" :value="account.cooling_ends" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['pay_account.notice']" :value="account.notice" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['pay_account.reached_label']" :value="account.reached" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['pay_account.reason']" :value="account.reason" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

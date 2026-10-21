@@ -64,6 +64,10 @@ use crate::{adjustment, caps, permissions, sif, wps_partial, wps_rejection};
 /// The reason of a line held by the absence report.
 pub const HELD_ABSENCE_REPORT: &str = "absence report";
 
+/// The reason of a line held because the bank reported the employee's active
+/// pay account closed while the new one is still cooling (BL-HRM-20).
+pub const HELD_ACCOUNT_CLOSED: &str = "account closed";
+
 /// The reason of a line held while the employee has an open absence case
 /// (wl-hr §4 *Payroll run* `calculate`).
 pub const HELD_ABSENCE_CASE: &str = "absence case";
@@ -348,7 +352,12 @@ impl StateMachine for PayrollRun {
                     .to(Submitted)
                     .effect(|run: &PayrollRun, _ctx, tx| {
                         let id = run.id;
-                        Box::pin(async move { generate_sif_in(tx, id).await })
+                        Box::pin(async move {
+                            // A line whose account is closed, with the new one
+                            // still cooling, goes into no file.
+                            crate::pay_account_use::hold_closed_in(tx, id).await?;
+                            generate_sif_in(tx, id).await
+                        })
                     }),
             )
             .transition(wps_partial::record_partial(false))
@@ -555,6 +564,9 @@ pub(crate) async fn record_result_in(
         let (status, held, failed) = match failure {
             None => (LineStatus::Paid, None, None),
             Some(failure) => {
+                if crate::pay_account_use::is_closed_reason(&failure.reason) {
+                    crate::pay_account_use::mark_closed_in(tx, line.employee_id).await?;
+                }
                 let absconded = Employee::find(&mut *tx, line.employee_id)
                     .await?
                     .is_some_and(|e| e.status == EmployeeStatus::Absconded);
@@ -650,8 +662,11 @@ pub async fn hold_open_lines_in(
     Ok(held)
 }
 
-/// A failed line was fixed (its pay account changed): it is `included`
-/// again, for the next SIF version.
+/// A failed line was fixed: it is `included` again, for the next SIF version.
+/// The change of a pay account does not call this directly: it goes through
+/// [`crate::release::line_fixed`], which does the same for a failed line and
+/// also releases a held one. This stays for the bank-side fixes and the tests
+/// of the WPS flows.
 pub async fn fix_line(db: &Db, line_id: i64) -> Result<()> {
     PayrollLine::query()
         .where_(PayrollLine::ID.eq(line_id))

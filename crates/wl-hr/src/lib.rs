@@ -21,6 +21,9 @@ mod notices;
 pub mod onboarding;
 pub mod onboarding_machine;
 pub mod pages;
+pub mod pay_account;
+mod pay_account_events;
+pub mod pay_account_use;
 pub mod payroll;
 mod payroll_events;
 pub mod qualification;
@@ -62,6 +65,7 @@ pub use onboarding::{
     AppliedTemplate, Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest,
     StartTrigger, StepAssignee, StepStatus,
 };
+pub use pay_account::{NewPayAccount, PayAccount, PayAccountStatus};
 pub use payroll::{LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
 pub use qualification::{NewQualification, Qualification, Quals};
 pub use qualification_expiry::QualificationExpiry;
@@ -99,6 +103,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-hr/templates.html",
         include_str!("../views/wl-hr/templates.html"),
     ),
+    (
+        "wl-hr/pay_account.html",
+        include_str!("../views/wl-hr/pay_account.html"),
+    ),
+    (
+        "wl-hr/pay_account_stop.html",
+        include_str!("../views/wl-hr/pay_account_stop.html"),
+    ),
 ];
 
 /// The module's permissions (wl-hr §6).
@@ -124,6 +136,8 @@ pub mod permissions {
     /// Approve or return a payroll run, comment on its lines and confirm
     /// payment (`HRM.ACL.04`).
     pub const PAYROLL_APPROVE: &str = "payroll.approve";
+    /// Approve or reject a new pay account (`HRM.ACL.05`: not the requester).
+    pub const PAY_ACCOUNTS_APPROVE: &str = "pay_accounts.approve";
     /// Add advances, recoveries and bonuses.
     pub const ADJUSTMENTS_MANAGE: &str = "adjustments.manage";
     /// Approve the non-standard exits `cancel_onboarding`, `withdraw_notice`,
@@ -184,6 +198,26 @@ impl WlHr {
         self
     }
 
+    /// The role whose holders get the tasks for HR (default `hr`).
+    pub fn hr_role(mut self, role: &str) -> Self {
+        self.config.hr_role = role.to_owned();
+        self
+    }
+
+    /// The cooling period of a new pay account in days (default 5,
+    /// `HRM.ACL.05`).
+    pub fn cooling_days(mut self, days: i64) -> Self {
+        self.config.cooling_days = days;
+        self
+    }
+
+    /// The routing codes a pay account may name; none listed accepts any code
+    /// of the right form.
+    pub fn routing_codes(mut self, codes: &[&str]) -> Self {
+        self.config.routing_codes = codes.iter().map(|c| (*c).to_owned()).collect();
+        self
+    }
+
     /// The payroll cut-off day of the month (default 25).
     pub fn cut_off_day(mut self, day: u32) -> Self {
         self.config.cut_off_day = day;
@@ -213,6 +247,8 @@ impl Module for WlHr {
         app.view_data::<pages::employees::IndexPage>()
             .view_data::<pages::employees::ShowPage>()
             .view_data::<pages::payroll::ShowPage>()
+            .view_data::<pages::pay_accounts::ShowPage>()
+            .view_data::<pages::pay_accounts::StopPage>()
             .view_data::<pages::templates::IndexPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
@@ -249,6 +285,7 @@ impl Module for WlHr {
         app.model::<Receivable>();
         app.model::<FinalSettlement>();
         app.model::<VisaCase>();
+        app.model::<PayAccount>();
         app.provide(self.config.clone());
         employee_machine::register(app);
         renox::state_machine::register::<Onboarding>();
@@ -257,6 +294,9 @@ impl Module for WlHr {
         renox::state_machine::register::<FinalSettlement>();
         renox::state_machine::register::<VisaCase>();
         events::register(app);
+        // `HRM.ACL.05`: the pay account's machine, the MD's waiver policy, its
+        // notices, the daily activation.
+        pay_account::register(app, &self.config.md_role);
         // `HRM.ACL.07`: the policies of the five non-standard exits and the
         // audit of their requests and decisions.
         exits::register(app);

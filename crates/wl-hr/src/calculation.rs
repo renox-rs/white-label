@@ -41,6 +41,7 @@
 
 use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use serde::{Deserialize, Serialize};
 use wl_kernel::EmployeeId;
 use wl_kernel::Subject;

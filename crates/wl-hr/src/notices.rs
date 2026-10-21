@@ -6,11 +6,15 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::json;
-use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
+use wl_kernel::notify::{
+    self, Category, GiveUpReaction, MessageId, NotificationTypeDef, NotifyChannel, NotifyRecipient,
+    NotifyRequest,
+};
 use wl_kernel::workforce::AffectedWork;
 
 use crate::employee::Employee;
 use crate::onboarding::{Onboarding, OnboardingStep};
+use crate::pay_account::PayAccount;
 use crate::payroll::PayrollRun;
 use crate::texts::english;
 
@@ -44,6 +48,19 @@ pub const PAYROLL_ESCALATED: &str = "hr.payroll_escalated";
 /// The payroll officers are told that held lines were released into a draft
 /// off-cycle run (`HRM.RUL.12`).
 pub const PAYROLL_RELEASED: &str = "hr.payroll_released";
+
+/// The approvers are told that a new pay account waits for them (`HRM.ACL.05`).
+pub const PAY_ACCOUNT_REQUESTED: &str = "hr.pay_account_requested";
+
+/// The requester is told that a new pay account was rejected.
+pub const PAY_ACCOUNT_REJECTED: &str = "hr.pay_account_rejected";
+
+/// The MD is told that the worker or HR stopped a pay account change.
+pub const PAY_ACCOUNT_STOPPED: &str = "hr.pay_account_stopped";
+
+/// The worker is told, by SMS on the number on record before the request (and
+/// by e-mail where known), that a new pay account takes effect on a date.
+pub const PAY_ACCOUNT_CHANGE: &str = "hr.pay_account_change";
 
 /// `date` as `9 Nov 2026`.
 fn date_text(date: NaiveDate) -> String {
@@ -79,6 +96,26 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(PAYROLL_FAILED, "payroll_failed"));
     notify::register_type(english_type(PAYROLL_ESCALATED, "payroll_escalated"));
     notify::register_type(english_type(PAYROLL_RELEASED, "payroll_released"));
+    notify::register_type(english_type(PAY_ACCOUNT_REQUESTED, "pay_account_requested"));
+    notify::register_type(english_type(PAY_ACCOUNT_REJECTED, "pay_account_rejected"));
+    notify::register_type(english_type(PAY_ACCOUNT_STOPPED, "pay_account_stopped"));
+    // The worker's change notice: the module itself reacts to a give-up
+    // (`MessageGaveUp`), so the type has no reaction of its own.
+    let sms = english("wl_hr.notices.pay_account_change_sms", &[]);
+    notify::register_type(
+        NotificationTypeDef::new(PAY_ACCOUNT_CHANGE, "hr")
+            .group("hr")
+            .category(Category::Security)
+            .give_up(&[GiveUpReaction::None])
+            .channels(&[NotifyChannel::Sms, NotifyChannel::Email])
+            .template(NotifyChannel::Sms, "en", None, &sms)
+            .template(
+                NotifyChannel::Email,
+                "en",
+                Some(&english("wl_hr.notices.pay_account_change_subject", &[])),
+                &english("wl_hr.notices.pay_account_change_body", &[]),
+            ),
+    );
     // The employee's own channel: SMS to the number on record.
     let body = english("wl_hr.notices.in_person_body", &[]);
     notify::register_type(
@@ -378,4 +415,109 @@ pub(crate) async fn payroll_released(
     }
     notify::notifier(state).notify(state, request).await?;
     Ok(())
+}
+
+/// Tells `users` (the approvers) that the new pay account `account` of
+/// `employee` waits for approval. The number is never in the text.
+pub(crate) async fn pay_account_requested(
+    state: &AppState,
+    employee: &Employee,
+    account: &PayAccount,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(PAY_ACCOUNT_REQUESTED, account.subject())
+        .subject_label(&account.masked())
+        .data(json!({
+            "employee": name_of(state, employee).await,
+            "last4": account.last4,
+            "explanation": account.mismatch_explanation.clone().unwrap_or_default(),
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the requester) that the new pay account was rejected.
+pub(crate) async fn pay_account_rejected(
+    state: &AppState,
+    employee: &Employee,
+    account: &PayAccount,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(PAY_ACCOUNT_REJECTED, account.subject())
+        .subject_label(&account.masked())
+        .data(json!({
+            "employee": name_of(state, employee).await,
+            "last4": account.last4,
+            "reason": account.reject_reason.clone().unwrap_or_default(),
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the MD) that the change to `account` was stopped by `by`.
+pub(crate) async fn pay_account_stopped(
+    state: &AppState,
+    employee: &Employee,
+    account: &PayAccount,
+    by: &str,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(PAY_ACCOUNT_STOPPED, account.subject())
+        .subject_label(&account.masked())
+        .data(json!({
+            "employee": name_of(state, employee).await,
+            "last4": account.last4,
+            "by": by,
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the worker of the change of `account`: an SMS to `number`, the one
+/// on record before the request, and an e-mail where one was on record. It
+/// names the last 4 digits, the day it takes effect (`ends`) and the signed
+/// `link` that stops it. Returns the messages queued.
+pub(crate) async fn pay_account_change(
+    state: &AppState,
+    account: &PayAccount,
+    number: &str,
+    link: &str,
+    ends: NaiveDate,
+) -> Result<Vec<MessageId>> {
+    let mut request = NotifyRequest::new(PAY_ACCOUNT_CHANGE, account.subject())
+        .subject_label(&account.masked())
+        .to(NotifyRecipient::Address {
+            channel: NotifyChannel::Sms,
+            address: number.to_owned(),
+        })
+        .data(json!({
+            "last4": account.last4,
+            "date": ends.to_string(),
+            "link": link,
+        }));
+    if let Some(email) = &account.notice_email {
+        request = request.to(NotifyRecipient::Address {
+            channel: NotifyChannel::Email,
+            address: email.clone(),
+        });
+    }
+    notify::notifier(state).notify(state, request).await
 }

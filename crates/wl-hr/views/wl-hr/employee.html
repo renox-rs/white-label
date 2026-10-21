@@ -28,6 +28,27 @@
         <rx-entry :label="tx['employees.scopes']" :value="scopes" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="pay_accounts or can_request_pay_account">
+      <rx-card :title="tx['pay_account.accounts']">
+        <rx-stack>
+          <rx-table :rows="pay_accounts" as="account" :key="account.id" :caption="tx['pay_account.accounts']" rx-if="pay_accounts">
+            <rx-column :label="tx['pay_account.number']"><a href="{{ route('wl_hr.pay_account', account.id) }}">{{ account.number }}</a></rx-column>
+            <rx-column :label="tx['pay_account.holder']" hide-narrow>{{ account.holder }}</rx-column>
+            <rx-column :label="tx['fields.status']"><rx-badge :kind="account.status_kind" :text="account.status"/></rx-column>
+          </rx-table>
+          <template rx-if="can_request_pay_account">
+            <rx-action-sheet id="request-pay-account" :label="tx['pay_account.request']" :action="route('wl_hr.pay_account_request', employee.id)"
+                             :title="tx['pay_account.request']" :description="tx['pay_account.request_hint']" :submit-label="tx['pay_account.request']" icon="plus">
+              <rx-select name="channel" :label="tx['pay_account.channel_label']" :options="pay_channels" :selected="pay_channel_selected"/>
+              <rx-input name="account_number" :label="tx['pay_account.account_number']" id="request-pay-account-number" required/>
+              <rx-input name="routing_code" :label="tx['pay_account.routing_code']" id="request-pay-account-routing" required/>
+              <rx-input name="holder_name" :label="tx['pay_account.holder']" id="request-pay-account-holder" required/>
+              <rx-textarea name="mismatch_explanation" :label="tx['pay_account.explanation']" id="request-pay-account-explanation"/>
+            </rx-action-sheet>
+          </template>
+        </rx-stack>
+      </rx-card>
+    </template>
     <template rx-if="attempts or report or can_record_attempt">
       <rx-card :title="tx['absence.title']">
         <rx-stack>
