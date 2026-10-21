@@ -495,6 +495,8 @@ async fn a_request_waiting_when_the_party_gets_blocked_fails_at_the_final_approv
 
 #[renox::test]
 async fn without_a_provided_guard_the_machine_still_runs_directly() {
+    // The machine registry is filled when the app boots, not before.
+    let _w = world().await;
     // The hook and the guard use the same declaration: an undeclared
     // transition is not guarded at all.
     let machine = wl_kernel::machines::get(PAYMENT).expect("registered");
