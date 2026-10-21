@@ -35,11 +35,13 @@ use crate::booking_machine::{
 use crate::config::config_of;
 use crate::conflict;
 use crate::deposit;
+use crate::eligibility;
 use crate::events;
 use crate::notices;
 use crate::refusal::Refusal;
 use crate::resource::{Resource, ServiceResource, ServiceType};
 use crate::slots::{self, Exclude, Unfit};
+use crate::texts::english;
 
 /// Who runs a service.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -226,17 +228,39 @@ async fn resolve_resources(
     Ok(found)
 }
 
-/// Asks the vertical's [`ResourceEligibility`](wl_kernel::scheduling::ResourceEligibility)
-/// for every resource at `at`: the booking's start, or now at check-in
-/// (`SCH.ACL.04`). The default says yes.
+/// Asks whether every resource may deliver the service at `at`: the booking's
+/// start, or now at check-in (`SCH.ACL.04`). First what the service type
+/// requires of it ([`eligibility::failures`]: the qualification kinds with
+/// `qualification_valid`, the document kinds with `document_valid`), then the
+/// vertical's [`ResourceEligibility`](wl_kernel::scheduling::ResourceEligibility)
+/// (the default says yes). There is no override.
 pub(crate) async fn check_eligible(
     state: &AppState,
     service: &ServiceType,
     resources: &[Resource],
     at: DateTime,
 ) -> std::result::Result<(), Refusal> {
+    check_eligible_with(state, service, resources, at, None).await
+}
+
+/// [`check_eligible`] whose refusal ends with the hint of the text `hint`
+/// (`reassign first` at check-in, `cancel with resource_ineligible and rebook`
+/// at start).
+pub(crate) async fn check_eligible_with(
+    state: &AppState,
+    service: &ServiceType,
+    resources: &[Resource],
+    at: DateTime,
+    hint: Option<&str>,
+) -> std::result::Result<(), Refusal> {
     let strategy = resource_eligibility(state);
     for resource in resources {
+        if let Some(first) = eligibility::failures(state, service, resource, at)
+            .await?
+            .first()
+        {
+            return Err(Refusal::Ineligible(with_hint(first.text(), hint)));
+        }
         let query = EligibilityQuery {
             resource_id: resource.id,
             employee_id: resource.employee_id,
@@ -245,10 +269,28 @@ pub(crate) async fn check_eligible(
             at,
         };
         if let Eligibility::Refused(text) = strategy.check(state, query).await? {
-            return Err(Refusal::Ineligible(text));
+            return Err(Refusal::Ineligible(with_hint(text, hint)));
         }
     }
     Ok(())
+}
+
+/// `text; hint`.
+fn with_hint(text: String, hint: Option<&str>) -> String {
+    match hint {
+        Some(key) => format!("{text}; {}", english(key, &[])),
+        None => text,
+    }
+}
+
+/// What a party may be told of an ineligible resource: nothing about why.
+fn neutral_for(actor: Actor, refusal: Refusal) -> Refusal {
+    match refusal {
+        Refusal::Ineligible(_) if actor.kind == ActorKind::Party => {
+            Refusal::invalid("wl_scheduling.problem.not_available")
+        }
+        other => other,
+    }
 }
 
 /// What the refused booker is told: the slot is closed, blocked or taken.
@@ -377,7 +419,9 @@ async fn create(
         }
     }
     let resources = resolve_resources(state, &service, &new.resource_ids).await?;
-    check_eligible(state, &service, &resources, start).await?;
+    check_eligible(state, &service, &resources, start)
+        .await
+        .map_err(|refusal| neutral_for(actor, refusal))?;
     let number = BOOKING_SERIES
         .next_allowing_gaps(&state.db, None, None, dubai_date(at))
         .await?;
@@ -629,7 +673,9 @@ async fn reschedule_with(
         }
     }
     let resources = resolve_resources(state, &service, &wanted).await?;
-    check_eligible(state, &service, &resources, new_start).await?;
+    check_eligible(state, &service, &resources, new_start)
+        .await
+        .map_err(|refusal| neutral_for(actor, refusal))?;
     let ids: Vec<i64> = resources.iter().map(|resource| resource.id).collect();
     let mut tx = state.db.begin_immediate().await?;
     let locked = slots::lock(&mut tx, &ids).await?;
@@ -674,14 +720,15 @@ async fn reschedule_with(
     Ok(moved)
 }
 
-/// Asks the vertical again whether the booking's resources may deliver the
-/// service at `at` (check-in and start, `SCH.ACL.04`): a licence may have
-/// lapsed since the booking was made.
+/// Asks again whether the booking's resources may deliver the service at `at`
+/// (check-in and start, `SCH.ACL.04`): a licence may have lapsed since the
+/// booking was made. `hint` says what staff do next.
 async fn recheck_eligible(
     state: &AppState,
     booking: &Booking,
     service: &ServiceType,
     at: DateTime,
+    hint: &str,
 ) -> std::result::Result<(), Refusal> {
     let ids = booking.resource_ids(&state.db).await?;
     let mut resources = Vec::new();
@@ -690,7 +737,7 @@ async fn recheck_eligible(
             resources.push(resource);
         }
     }
-    check_eligible(state, service, &resources, at).await
+    check_eligible_with(state, service, &resources, at, Some(hint)).await
 }
 
 /// Checks the party in (`check_in`); `bookings.checkin`.
@@ -704,7 +751,14 @@ pub async fn check_in(
     let booking = Booking::find_or_404(&state.db, id).await?;
     let service = service_of(state, &booking).await?;
     // The resource must be eligible now; otherwise reassign first.
-    recheck_eligible(state, &booking, &service, at).await?;
+    recheck_eligible(
+        state,
+        &booking,
+        &service,
+        at,
+        "wl_scheduling.eligibility.hint_reassign",
+    )
+    .await?;
     let input = input_for(state, actor, at, &service);
     let done = run_simple(state, &booking, CHECK_IN, &input, actor, None).await?;
     events::checked_in(state, &done).await?;
@@ -721,7 +775,15 @@ pub async fn start(
     staff_only(actor)?;
     let booking = Booking::find_or_404(&state.db, id).await?;
     let service = service_of(state, &booking).await?;
-    recheck_eligible(state, &booking, &service, at).await?;
+    // From `checked_in` there is no reassign: cancel and rebook.
+    recheck_eligible(
+        state,
+        &booking,
+        &service,
+        at,
+        "wl_scheduling.eligibility.hint_rebook",
+    )
+    .await?;
     let input = input_for(state, actor, at, &service);
     run_simple(state, &booking, START, &input, actor, None).await
 }

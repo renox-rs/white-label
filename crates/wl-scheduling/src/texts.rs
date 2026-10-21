@@ -408,6 +408,10 @@ const TEXTS: &[(&str, &str)] = &[
         "That is further ahead than bookings are taken.",
     ),
     (
+        "wl_scheduling.problem.not_available",
+        "That time cannot be booked. Please choose another.",
+    ),
+    (
         "wl_scheduling.eligibility.expired",
         ":item expired on :date",
     ),
