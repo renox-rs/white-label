@@ -8,7 +8,8 @@ mod support;
 
 use logistics::portal::{self, Access};
 use renox::chrono::TimeDelta;
-use support::{SOUQ, boot};
+use logistics::{Remittance, RemittanceStatus};
+use support::{SOUQ, boot, boot_with_payments};
 use wl_kernel::documents::today;
 
 /// `days` before today as `2026-11-01`.
@@ -111,4 +112,63 @@ async fn only_staff_who_manage_shipments_record_the_end_of_a_contract() {
     w.post(&w.ops, &path, &[("date", "next week")])
         .await
         .assert_status(422);
+}
+
+/// The COD statement of a paid remittance of Souq Express.
+async fn paid_statement() -> (support::World, Remittance) {
+    let w = boot_with_payments().await;
+    w.cod_terms(SOUQ, 0, Some("AE070331234567890123456")).await;
+    w.delivered(SOUQ, "ORD-1", "500").await;
+    w.rule().await;
+    let draft = w.the_remittance_of(SOUQ).await;
+    w.post(&w.bashar, &format!("/remittances/{}/approve", draft.id), &[])
+        .await
+        .assert_status(303);
+    w.post(
+        &w.amal,
+        &format!("/remittances/{}/pay", draft.id),
+        &[("payment_reference", "TRF-1")],
+    )
+    .await
+    .assert_status(303);
+    let paid = w.remittance(&draft).await;
+    assert_eq!(paid.status, RemittanceStatus::Paid);
+    (w, paid)
+}
+
+/// The COD statement is read-only for 90 days after the contract ends (the
+/// client user reads it and cannot dispute it nor confirm an account change),
+/// and closed from the day after.
+#[renox::test]
+async fn the_cod_statement_is_read_only_for_90_days_and_then_closed() {
+    let (w, paid) = paid_statement().await;
+    let statement = format!("/remittances/{}/statement", paid.id);
+    let dispute = format!("/remittances/{}/dispute", paid.id);
+
+    // Open: reads and disputes.
+    w.get(&w.noor, &statement).await.assert_ok();
+
+    // Day 90: read-only. The statement is read; disputing and asking for a
+    // new account are refused.
+    contract_ended(&w, &ago(90)).await;
+    w.get(&w.noor, &statement).await.assert_ok();
+    w.post(&w.noor, &dispute, &[("reason", "missing shipment")])
+        .await
+        .assert_forbidden();
+    w.post(
+        &w.noor,
+        "/remittances/accounts",
+        &[
+            ("client_party_id", "501"),
+            ("account", "AE580260001111111111111"),
+        ],
+    )
+    .await
+    .assert_forbidden();
+
+    // Day 91: closed.
+    contract_ended(&w, &ago(91)).await;
+    w.get(&w.noor, &statement).await.assert_forbidden();
+    // Staff are not affected.
+    w.get(&w.amal, &statement).await.assert_ok();
 }
