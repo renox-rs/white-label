@@ -211,3 +211,37 @@ async fn a_lot_tracked_line_without_a_store_is_flagged_to_the_desk() {
         vec![(Some("L1".to_owned()), 1, false)]
     );
 }
+
+/// A consumable line without a lot of a visit cancelled after the check-in
+/// takes first expiry first, also when the first run failed and the desk
+/// retries it: L1 (1 unit, expires first) then L2.
+#[renox::test]
+async fn a_cancelled_visit_without_a_lot_still_takes_first_expiry_first_on_retry() {
+    let d = desk_with_stock().await;
+    store(&d, 1, 2).await;
+    let (booking, visit) = open_visit(&d).await;
+    record(&d, &visit, 2, "").await.assert_ok();
+    stock_offline(&d).await;
+    d.cancel(&booking, "walked_out").await.assert_status(303);
+    assert!(issued(&d, &visit).await.is_empty());
+    stock_online(&d).await;
+    d.post(
+        &d.rita,
+        &format!("/clinics/visits/{}/issue", visit.id),
+        &[("x", "y")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(
+        issued(&d, &visit).await,
+        vec![
+            (Some("L1".to_owned()), 1, false),
+            (Some("L2".to_owned()), 1, false)
+        ]
+    );
+    let line = ChargeLine::active_of(d.t.db(), visit.id)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(line.lot_id, None, "the line never had a lot");
+}
