@@ -14,6 +14,9 @@ use wl_kernel::{PartyId, Subject};
 /// source of its delivery.
 pub const SUBJECT_TYPE: &str = "logistics.shipment";
 
+/// The subject type of a parcel: the source line of its delivery line.
+pub const PARCEL_SUBJECT_TYPE: &str = "logistics.parcel";
+
 /// `SHP-{0000}`: the number a shipment keeps, also when it is voided.
 pub const SHIPMENT_SERIES: Series = Series {
     key: "shipment",
@@ -66,7 +69,8 @@ pub enum ShipmentStatus {
     state_machine,
     unique(number),
     index(status),
-    index(delivery_id)
+    index(delivery_id),
+    index(return_of_id)
 )]
 pub struct Shipment {
     /// The primary key.
@@ -159,6 +163,9 @@ pub struct Shipment {
     /// The ticket of the dispute that put the shipment under review
     /// (BL-LOG-09); kept after the review closes.
     pub review_ticket_id: Option<i64>,
+    /// For a return shipment, the shipment whose refused parcels it carries
+    /// (BL-LOG-07).
+    pub return_of_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: ShipmentStatus,
     /// When the row was created.
@@ -207,6 +214,20 @@ impl Shipment {
         Parcel::query()
             .where_(Parcel::SHIPMENT_ID.eq(self.id))
             .order_by(Parcel::ID)
+            .get(db)
+            .await
+    }
+
+    /// The return shipments made from this one for refused parcels
+    /// (BL-LOG-07), oldest first.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn returns(&self, db: &Db) -> Result<Vec<Shipment>> {
+        Shipment::query()
+            .where_(Shipment::RETURN_OF_ID.eq(self.id))
+            .order_by(Shipment::ID)
             .get(db)
             .await
     }
@@ -328,6 +349,8 @@ pub struct Parcel {
     pub weight_grams: i64,
     /// `booked`, `scanned` or `not_received` ([`parcel_state`]).
     pub state: String,
+    /// The code of the reason the recipient refused it (BL-LOG-07).
+    pub refusal_reason: Option<String>,
     /// When it was scanned.
     pub scanned_at: Option<DateTime>,
     /// When the row was created.
@@ -335,6 +358,29 @@ pub struct Parcel {
     /// When the row was last changed.
     pub updated_at: Option<DateTime>,
 }
+
+/// A shipment was delivered (03 §7.1 row `deliver`, event `ShipmentDelivered`),
+/// whole or with refused parcels that went back on a linked return shipment.
+/// The expected COD stays the full amount.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShipmentDelivered {
+    /// The shipment.
+    pub shipment: i64,
+    /// Its number.
+    pub number: String,
+    /// The client.
+    pub client: PartyId,
+    /// The labels of the parcels the recipient accepted.
+    pub delivered_parcels: Vec<String>,
+    /// The labels of the parcels the recipient refused.
+    pub refused_parcels: Vec<String>,
+    /// The return shipment made for the refused parcels, if there are any.
+    pub return_shipment: Option<i64>,
+    /// The COD expected, in fils: the full amount, whatever was refused.
+    pub cod_expected: i64,
+}
+
+impl Event for ShipmentDelivered {}
 
 /// A status change or a scan (§6 *Tracking event*).
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]

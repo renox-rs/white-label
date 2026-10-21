@@ -118,6 +118,12 @@ pub struct ShipmentInput {
     /// Who absorbs the difference (`deliver`).
     #[serde(default)]
     pub absorbed_by: Option<String>,
+    /// The parcels the recipient refused (`deliver`, BL-LOG-07).
+    #[serde(default)]
+    pub refused: Vec<RefusedParcel>,
+    /// The return shipment to create for them (`deliver`, BL-LOG-07).
+    #[serde(default)]
+    pub return_plan: Option<ReturnPlan>,
     /// The dispute ticket linked to the review (`open_review`).
     #[serde(default)]
     pub review_ticket: Option<i64>,
@@ -125,6 +131,29 @@ pub struct ShipmentInput {
     /// (`open_review`).
     #[serde(default)]
     pub ticketing_off: bool,
+}
+
+/// A parcel the recipient refused, with the refusal reason's code.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefusedParcel {
+    /// The parcel.
+    pub parcel_id: i64,
+    /// The code of the reason; a refused parcel has one.
+    pub reason: String,
+}
+
+/// What the return shipment of the refused parcels is made of, worked out
+/// before the transition (its number is taken from the series).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReturnPlan {
+    /// The number of the return shipment.
+    pub number: String,
+    /// Who it goes to: the client.
+    pub recipient_name: String,
+    /// The client's pickup address.
+    pub address: String,
+    /// Its area.
+    pub area: String,
 }
 
 /// The input of a run; the default without one (`available`).
@@ -242,7 +271,7 @@ fn receive_at_hub() -> Transition<Shipment> {
 
 /// A system transition that only writes the tracking event `kind`.
 fn followed(name: &'static str, from: ShipmentStatus, to: ShipmentStatus) -> Transition<Shipment> {
-    Transition::new(name)
+    let transition = Transition::new(name)
         .label(match name {
             DISPATCH => "Out for delivery",
             DELIVER => "Delivered",
@@ -250,37 +279,66 @@ fn followed(name: &'static str, from: ShipmentStatus, to: ShipmentStatus) -> Tra
         })
         .system()
         .from([from])
-        .to(to)
-        .effect(move |shipment: &Shipment, ctx, tx| {
-            let id = shipment.id;
+        .to(to);
+    let transition = if name == DELIVER {
+        // §7.1 `deliver`: only a shipment of several parcels may have refused
+        // parcels (`WRK.POD.01`), and each has a reason.
+        transition.guard("refused_parcels_allowed_and_explained", |s: &Shipment, ctx| {
             let input = input_of(ctx);
-            let note = input.reason.clone().unwrap_or_default();
-            let kind = match name {
-                DISPATCH => "dispatched",
-                DELIVER => "delivered",
-                _ => "attempt_failed",
-            };
+            let single = s.parcel_count <= 1 && !input.refused.is_empty();
+            let unexplained = input
+                .refused
+                .iter()
+                .any(|refused| refused.reason.trim().is_empty());
             Box::pin(async move {
-                if name == DELIVER {
-                    // What the COD remittance reads (BL-LOG-14): when it was
-                    // delivered and the difference with who absorbs it.
-                    let at = Some(renox::db::now());
-                    Shipment::query()
-                        .where_(Shipment::ID.eq(id))
-                        .update(
-                            &mut *tx,
-                            &[
-                                ("delivered_at", &at),
-                                ("cod_difference", &input.cod_difference),
-                                ("cod_difference_reason", &input.cod_difference_reason),
-                                ("cod_absorbed_by", &input.absorbed_by),
-                            ],
-                        )
-                        .await?;
+                if single {
+                    Err(english("logistics.partial.single_parcel", &[]))
+                } else if unexplained {
+                    Err(english("logistics.partial.reason_needed", &[]))
+                } else {
+                    Ok(())
                 }
-                track(&mut *tx, id, kind, &note, None).await
             })
         })
+    } else {
+        transition
+    };
+    transition.effect(move |shipment: &Shipment, ctx, tx| {
+        let original = shipment.clone();
+        let id = shipment.id;
+        let input = input_of(ctx);
+        let note = input.reason.clone().unwrap_or_default();
+        let kind = match name {
+            DISPATCH => "dispatched",
+            DELIVER => "delivered",
+            _ => "attempt_failed",
+        };
+        Box::pin(async move {
+            if name == DELIVER {
+                // What the COD remittance reads (BL-LOG-14): when it was
+                // delivered and the difference with who absorbs it.
+                let at = Some(renox::db::now());
+                Shipment::query()
+                    .where_(Shipment::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("delivered_at", &at),
+                            ("cod_difference", &input.cod_difference),
+                            ("cod_difference_reason", &input.cod_difference_reason),
+                            ("cod_absorbed_by", &input.absorbed_by),
+                        ],
+                    )
+                    .await?;
+                if !input.refused.is_empty() {
+                    // `create_return` (BL-LOG-07): the refused parcels go back
+                    // on a linked return shipment.
+                    crate::partial::create_return(&mut *tx, &original, &input, None).await?;
+                }
+            }
+            track(&mut *tx, id, kind, &note, None).await
+        })
+    })
 }
 
 /// `cancel` (`LOG.ACL.09`): a client user of the company or staff with

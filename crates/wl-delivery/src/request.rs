@@ -83,7 +83,9 @@ impl Deliveries {
                 .collect::<Vec<_>>()
                 .join(","),
             pod_any: any,
-            partial_acceptance: settings.partial_acceptance(&request.source.subject_type),
+            partial_acceptance: request
+                .partial_acceptance
+                .unwrap_or_else(|| settings.partial_acceptance(&request.source.subject_type)),
             max_attempts: if request.perishable {
                 1
             } else {

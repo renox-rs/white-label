@@ -9,6 +9,7 @@ mod events;
 pub mod hold;
 pub mod notices;
 pub mod pages;
+pub mod partial;
 pub mod permissions;
 pub mod pickup;
 pub mod rates;
@@ -34,8 +35,8 @@ pub use booking::{ImportReport, NewShipment, RowResult};
 pub use rates::{ClientRate, WeightBand};
 pub use reweigh::{ClientTerms, Measurement};
 pub use shipment::{
-    AddressChange, Charge, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment, ShipmentStatus,
-    TrackingEvent,
+    AddressChange, Charge, PARCEL_SUBJECT_TYPE, Parcel, SHIPMENT_SERIES, SUBJECT_TYPE, Shipment,
+    ShipmentDelivered, ShipmentStatus, TrackingEvent,
 };
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
 pub use remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};

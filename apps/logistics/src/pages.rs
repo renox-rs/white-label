@@ -287,6 +287,7 @@ pub(crate) struct ShowPage {
     can_resolve_dispute: bool,
     can_review: bool,
     review_ticket: String,
+    linked: String,
     charged_price: i64,
     outcomes: Vec<[String; 2]>,
     instruction: String,
@@ -421,6 +422,7 @@ async fn show(
         can_review: manages
             && shipment.status == ShipmentStatus::Delivered
             && shipment.delivery_id.is_some(),
+        linked: linked_numbers(&state, &shipment).await?,
         review_ticket: shipment
             .review_ticket_id
             .map(|ticket| ticket.to_string())
@@ -440,6 +442,22 @@ async fn show(
         shipment,
     };
     Ok(View::typed(page).into_response())
+}
+
+/// The numbers of the shipments linked to `shipment`: the one a return
+/// shipment was made from, or the return shipments of one (BL-LOG-07).
+async fn linked_numbers(state: &AppState, shipment: &Shipment) -> Result<String> {
+    if let Some(original) = shipment.return_of_id {
+        let original = Shipment::find_or_404(&state.db, original).await?;
+        return Ok(original.number);
+    }
+    Ok(shipment
+        .returns(&state.db)
+        .await?
+        .into_iter()
+        .map(|ret| ret.number)
+        .collect::<Vec<_>>()
+        .join(", "))
 }
 
 /// `POST /shipments`: `client_party_id`, `client_reference`, `recipient_name`,

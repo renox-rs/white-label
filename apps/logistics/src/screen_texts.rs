@@ -168,6 +168,7 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "Opens a dispute ticket. The cash on delivery and the billing wait until the review is closed.",
     ),
     ("logistics.screen.review_ticket", "Dispute ticket"),
+    ("logistics.screen.linked", "Linked shipment"),
     ("logistics.screen.dispute", "Dispute the surcharge"),
     (
         "logistics.screen.dispute_title",

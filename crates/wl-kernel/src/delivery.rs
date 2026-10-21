@@ -193,6 +193,10 @@ pub struct DeliveryRequest {
     pub pod_methods: Vec<PodMethod>,
     /// Whether the goods are perishable.
     pub perishable: bool,
+    /// Whether the delivery may be partly accepted, when the source decides
+    /// it per record (03: a shipment of several parcels may be, a single
+    /// parcel may not); `None` takes the setting of the source type.
+    pub partial_acceptance: Option<bool>,
 }
 
 impl DeliveryRequest {
@@ -213,6 +217,7 @@ impl DeliveryRequest {
             collect_amount: 0,
             pod_methods: Vec::new(),
             perishable: false,
+            partial_acceptance: None,
         }
     }
 
@@ -257,6 +262,13 @@ impl DeliveryRequest {
     /// Flags the goods as perishable.
     pub fn perishable(mut self) -> Self {
         self.perishable = true;
+        self
+    }
+
+    /// Decides whether the delivery may be partly accepted, for this record,
+    /// instead of the setting of the source type.
+    pub fn partial_acceptance(mut self, allowed: bool) -> Self {
+        self.partial_acceptance = Some(allowed);
         self
     }
 }

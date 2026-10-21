@@ -271,6 +271,36 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.remittance_approved", "Remittance approved."),
     ("logistics.remittance_reopened", "Remittance back to a draft."),
     ("logistics.remittance_paid", "Remittance paid."),
+    // Part of a multi-parcel shipment refused (`WRK.POD.01`, BL-LOG-07).
+    (
+        "logistics.partial.single_parcel",
+        "A shipment of one parcel has no partial acceptance: refusing it is a failed attempt.",
+    ),
+    (
+        "logistics.partial.reason_needed",
+        "Every refused parcel needs a reason.",
+    ),
+    (
+        "logistics.partial.not_a_parcel",
+        "A refused parcel is not a parcel of this shipment.",
+    ),
+    (
+        "logistics.partial.plan_missing",
+        "The return shipment for the refused parcels could not be prepared.",
+    ),
+    ("logistics.partial.client_name", "Client {{ client }}"),
+    (
+        "logistics.partial.no_pickup_address",
+        "Pickup address of client {{ client }} (not on file)",
+    ),
+    (
+        "logistics.partial.created_note",
+        "Return of the refused parcels of {{ number }}: {{ parcels }}",
+    ),
+    (
+        "logistics.partial.refused_note",
+        "Refused parcels {{ parcels }} go back on {{ number }}",
+    ),
     // A delivery under review (`WRK.ACL.06`, BL-LOG-09).
     (
         "logistics.review.ticket_needed",

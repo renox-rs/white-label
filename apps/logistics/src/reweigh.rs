@@ -69,6 +69,11 @@ pub struct ClientTerms {
     /// The bank account the client's remittances are paid to (BL-LOG-14;
     /// the control of a change is BL-LOG-17, `LOG.ACL.13`).
     pub bank_account: Option<String>,
+    /// Where the client's refused parcels go back to (BL-LOG-07; a stand-in
+    /// for the address on the client's party record).
+    pub pickup_address: Option<String>,
+    /// The area of that address.
+    pub pickup_area: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

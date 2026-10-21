@@ -8,6 +8,10 @@
 //!   state the transition leaves is left alone (a delivery planned before the
 //!   shipment reached the hub is a gap of the planning, recorded in the
 //!   audit notes).
+//! - `DeliveryDelivered` with refused parcels also creates the linked return
+//!   shipment (`create_return`, inside `deliver`), and `ShipmentDelivered` is
+//!   emitted after the commit; `DeliveryRefusedReceived` writes what the depot
+//!   found on the return shipment ([`crate::partial`], BL-LOG-07).
 //! - `DeliveryDisputed` and `DeliveryDisputeClosed` (outcome *upheld*) run
 //!   `open_review` and `close_review` as the system (BL-LOG-09); after
 //!   `open_review` commits, the client is told and the COD comes off its
@@ -23,12 +27,12 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::delivery::{
     DeliveryAttemptFailed, DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId,
-    DeliveryOutForDelivery, DeliveryRequester, ReviewOutcome,
+    DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequester, ReviewOutcome,
 };
 use wl_kernel::{Subject, voids};
 
 use crate::notices::tell_client;
-use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentStatus, track};
+use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentDelivered, ShipmentStatus, track};
 use crate::shipment_machine::{
     CANCEL, CANCEL_RETURN, CLOSE_REVIEW, DELIVER, DISPATCH, FAIL_ATTEMPT, HOLD, HOLD_SYSTEM,
     OPEN_REVIEW, PICK_UP, RECEIVE_AT_HUB, RELEASE, RETURN, ShipmentInput,
@@ -144,6 +148,37 @@ async fn tell_of_missing_parcels(state: &AppState, id: i64) -> Result {
     tell_client(state, &shipment, &title, &body).await
 }
 
+/// Emits `ShipmentDelivered` for shipment `id`, which was just delivered: the
+/// parcels it kept, the parcels that went back and the return shipment.
+async fn emit_delivered(state: &AppState, id: i64) -> Result {
+    let shipment = Shipment::find_or_404(&state.db, id).await?;
+    let returns = shipment.returns(&state.db).await?;
+    let mut refused_parcels = Vec::new();
+    for ret in &returns {
+        for parcel in ret.parcels(&state.db).await? {
+            refused_parcels.push(parcel.barcode);
+        }
+    }
+    let delivered_parcels = shipment
+        .parcels(&state.db)
+        .await?
+        .into_iter()
+        .filter(|parcel| parcel.state != crate::shipment::parcel_state::NOT_RECEIVED)
+        .map(|parcel| parcel.barcode)
+        .collect();
+    state
+        .emit(ShipmentDelivered {
+            shipment: shipment.id,
+            number: shipment.number.clone(),
+            client: shipment.client(),
+            delivered_parcels,
+            refused_parcels,
+            return_shipment: returns.first().map(|ret| ret.id),
+            cod_expected: shipment.cod_amount,
+        })
+        .await
+}
+
 /// The failure reason that holds the shipment instead of a reattempt.
 const WRONG_ADDRESS: &str = "wrong_address";
 
@@ -166,6 +201,18 @@ pub(crate) fn register(app: &mut Registry) {
     );
     app.listen(|event: DeliveryDelivered, state: AppState| async move {
         if let Some(shipment) = shipment_of(&state, &event.source).await? {
+            // Refused parcels go back on a linked return shipment, whose
+            // number is taken before the transition (BL-LOG-07).
+            let refused = if shipment.status == ShipmentStatus::OutForDelivery {
+                crate::partial::refused_in(&event)
+            } else {
+                Vec::new()
+            };
+            let return_plan = if refused.is_empty() {
+                None
+            } else {
+                Some(crate::partial::plan_return(&state, &shipment).await?)
+            };
             follow(
                 &state,
                 shipment,
@@ -175,12 +222,17 @@ pub(crate) fn register(app: &mut Registry) {
                     cod_difference: event.cod_difference,
                     cod_difference_reason: event.cod_difference_reason.clone(),
                     absorbed_by: event.absorbed_by.clone(),
+                    refused,
+                    return_plan,
                     ..ShipmentInput::default()
                 },
             )
             .await?;
         }
         Ok(())
+    });
+    app.listen(|event: DeliveryRefusedReceived, state: AppState| async move {
+        crate::partial::note_received(&state, &event).await
     });
     app.listen(|event: DeliveryAttemptFailed, state: AppState| async move {
         if let Some(shipment) = shipment_of(&state, &event.source).await? {
@@ -241,6 +293,9 @@ pub(crate) fn register(app: &mut Registry) {
             let name = event.transition.as_str();
             if name == OPEN_REVIEW {
                 return crate::review::held(&state, event.key).await;
+            }
+            if name == DELIVER {
+                return emit_delivered(&state, event.key).await;
             }
             if name == HOLD || name == HOLD_SYSTEM {
                 hold_delivery(&state, event.key, true).await?;

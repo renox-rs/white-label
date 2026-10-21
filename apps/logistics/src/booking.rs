@@ -244,11 +244,15 @@ async fn request_delivery(state: &AppState, shipment: &mut Shipment, parcels: &[
     let mut request = DeliveryRequest::new(shipment.subject(), &shipment.recipient_name)
         .address(&shipment.address, &shipment.area)
         .phone(&shipment.recipient_phone)
-        .collect(shipment.cod_amount);
+        .collect(shipment.cod_amount)
+        // A recipient may refuse some parcels of several, never the only
+        // one: refusing a single parcel is a failed attempt (BL-LOG-07,
+        // `WRK.POD.01`).
+        .partial_acceptance(parcels.len() > 1);
     for parcel in parcels {
         request = request.item(
             DeliveryItem::new(&format!("Parcel {}", parcel.barcode), 1_000)
-                .source_line(Subject::new("logistics.parcel", parcel.id)),
+                .source_line(Subject::new(crate::shipment::PARCEL_SUBJECT_TYPE, parcel.id)),
         );
     }
     match wl_kernel::delivery::requester(state)
