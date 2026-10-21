@@ -389,3 +389,49 @@ async fn a_lot_put_on_hold_after_it_was_assigned_blocks_the_check_out() {
         vec![(Some("L2".to_owned()), 1, false)]
     );
 }
+
+/// The clinic's complete guard answers for visits only: a booking that was
+/// never checked in (no visit) and one that does not exist are not blocked,
+/// while the guard still refuses the visit with a line missing its lot.
+#[renox::test]
+async fn a_booking_that_is_not_a_clinic_visit_is_never_blocked_by_the_lot_guard() {
+    use clinics::lots::LotGuard;
+    use wl_kernel::scheduling::{BookingId, CheckInAnswer, CompleteGuard};
+
+    let d = desk_with_stock().await;
+    store(&d, 2, 2).await;
+    let plain = d.booking(&d.consultation, 11).await;
+    assert!(
+        clinics::Visit::of_booking(d.t.db(), plain.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let when = at(day(1), 18);
+    assert_eq!(
+        LotGuard
+            .check(d.t.state(), BookingId(plain.id), when)
+            .await
+            .unwrap(),
+        CheckInAnswer::Allowed
+    );
+    assert_eq!(
+        LotGuard
+            .check(d.t.state(), BookingId(9_999), when)
+            .await
+            .unwrap(),
+        CheckInAnswer::Allowed
+    );
+
+    // A visit with a line that lacks its lot is refused by the same guard.
+    let (booking, visit) = open_visit(&d).await;
+    record(&d, &visit, 1, "").await.assert_ok();
+    let answer = LotGuard
+        .check(d.t.state(), BookingId(booking.id), when)
+        .await
+        .unwrap();
+    assert!(
+        matches!(&answer, CheckInAnswer::Refused(text) if text.contains("Lot required")),
+        "{answer:?}"
+    );
+}
