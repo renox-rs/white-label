@@ -1360,25 +1360,25 @@ services keep the advertising permit guard (`CLN.ACL.13`).
 
 #### Done when
 - Licences and bookings
-  - [ ] A 05 deployment has practitioner licence and branch privileges kinds with the three
+  - [x] A 05 deployment has practitioner licence and branch privileges kinds with the three
         `blocks` entries and override `never`; the override action is not offered.
-  - [ ] `SCH.RUL.05` runs daily with D = 30; `SCH.RUL.06` with H = 2.
-  - [ ] The practitioner licence kind has responsible role clinic manager; the facility licence
+  - [x] `SCH.RUL.05` runs daily with D = 30; `SCH.RUL.06` with H = 2.
+  - [x] The practitioner licence kind has responsible role clinic manager; the facility licence
         kind, owner / medical director; the insurance card kind, receptionist with *notify party*.
 - Deposits and reason codes
-  - [ ] A walk-out refunds the deposit remainder; a waiver needs `bookings.waive_deposit` held by
+  - [x] A walk-out refunds the deposit remainder; a waiver needs `bookings.waive_deposit` held by
         the clinic manager.
-  - [ ] `coverage_not_confirmed` exists with initiator `business`.
+  - [x] `coverage_not_confirmed` exists with initiator `business`.
 - Alerts and void
-  - [ ] Failing `CLN.RUL.03` alerts the owner / medical director; the client cannot switch it off.
-  - [ ] `void` is offered on a draft claim and not on an appointment.
+  - [x] Failing `CLN.RUL.03` alerts the owner / medical director; the client cannot switch it off.
+  - [x] `void` is offered on a draft claim and not on an appointment.
 - Connections and messages
-  - [ ] With the SMS connection `down`, the front desk sees the 24-hour call list.
-  - [ ] With the claims channel `down`, the claim screen shows "submit through the payer portal
+  - [x] With the SMS connection `down`, the front desk sees the 24-hour call list.
+  - [x] With the claims channel `down`, the claim screen shows "submit through the payer portal
         and record the reference".
-  - [ ] A reminder that gives up creates no task; a recall notice that gives up creates a call task.
-  - [ ] The reassignment, clinic-cancel and recall templates (EN/AR) contain no reason field.
-  - [ ] The four 05 notification types are registered with the groups and urgency of §7.2; a
+  - [x] A reminder that gives up creates no task; a recall notice that gives up creates a call task.
+  - [x] The reassignment, clinic-cancel and recall templates (EN/AR) contain no reason field.
+  - [x] The four 05 notification types are registered with the groups and urgency of §7.2; a
         card upload request that gives up creates a task for the receptionist.
 - Late entry
   - [ ] Check-in time, check-out time, cash payments and consumables issued accept a business time
@@ -1398,13 +1398,13 @@ services keep the advertising permit guard (`CLN.ACL.13`).
         a campaign; a retention message queued at 22:00 is deferred to 07:00, a third marketing
         message in 7 days is suppressed (`NTF.RUL.02`); a send to 201 patients needs a second
         approver (`NTF.ACL.03`); a segment cannot use a clinical service as a rule.
-  - [ ] hiring a receptionist creates the receptionist checklist with tasks to the clinic manager,
+  - [x] hiring a receptionist creates the receptionist checklist with tasks to the clinic manager,
         the line manager and the employee, and the role is active before it is complete; a step
         still open on the first run after its due date reminds its assignees, and again 2 days later
         (`HRM.RUL.17`); a new version of an SOP owned by the clinic manager asks every required
         reader to acknowledge again within 7 days (`DOC.RUL.04`), and no one else can acknowledge
         for them (`HRM.ACL.10`).
-  - [ ] a fresh 05 deployment lists *Trademark registration* and *Other certification* with
+  - [x] a fresh 05 deployment lists *Trademark registration* and *Other certification* with
         responsible role owner / medical director; a trademark registration expiring in 90 days
         notifies the owner / medical director.
 
