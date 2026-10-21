@@ -14,6 +14,12 @@ pub const LOST_DUPLICATE: &str = "duplicate";
 /// See [`LOST_DUPLICATE`].
 pub const LOST_SPAM: &str = "spam_or_invalid";
 
+/// The months a package is valid after activation (§7: 6).
+pub const DEFAULT_PACKAGE_VALIDITY_MONTHS: i64 = 6;
+
+/// How many times a package may be extended (§7: one extension).
+pub const DEFAULT_PACKAGE_EXTENSION_LIMIT: i64 = 1;
+
 /// The lost reasons a lead can be closed with (§7: the starter list, always
 /// with *duplicate* and *spam or invalid*).
 pub const DEFAULT_LOST_REASONS: &[&str] = &[
@@ -46,6 +52,10 @@ pub struct SalesConfig {
     /// Whether changing the attribution of an acquired party or a won lead
     /// needs a second person (`SAL.ACL.09`).
     pub acquisition_change_approval: bool,
+    /// The months a package is valid after activation.
+    pub package_validity_months: i64,
+    /// How many times a package may be extended.
+    pub package_extension_limit: i64,
 }
 
 impl Default for SalesConfig {
@@ -61,6 +71,8 @@ impl Default for SalesConfig {
             campaign_required_sources: Vec::new(),
             attribution_window_months: None,
             acquisition_change_approval: true,
+            package_validity_months: DEFAULT_PACKAGE_VALIDITY_MONTHS,
+            package_extension_limit: DEFAULT_PACKAGE_EXTENSION_LIMIT,
         }
     }
 }

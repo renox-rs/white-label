@@ -555,6 +555,62 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.fields.status", "Status"),
     ("wl_sales.status.active", "Active"),
     ("wl_sales.status.inactive", "Inactive"),
+    (
+        "wl_sales.packages.problem.credits",
+        "The package does not have that many credits left.",
+    ),
+    (
+        "wl_sales.packages.problem.not_last",
+        "These credits do not use up the package.",
+    ),
+    (
+        "wl_sales.packages.problem.is_last",
+        "These credits use up the package.",
+    ),
+    (
+        "wl_sales.packages.problem.expired",
+        "The package has expired.",
+    ),
+    (
+        "wl_sales.packages.problem.not_paid",
+        "The package is not paid yet.",
+    ),
+    (
+        "wl_sales.packages.problem.reverse",
+        "Give back at least one credit and no more than were used.",
+    ),
+    (
+        "wl_sales.packages.problem.not_ended",
+        "The package is still valid.",
+    ),
+    (
+        "wl_sales.packages.problem.new_end",
+        "Give an end date after the current one.",
+    ),
+    (
+        "wl_sales.packages.problem.extension_limit",
+        "The package was extended as often as allowed.",
+    ),
+    (
+        "wl_sales.packages.problem.paid",
+        "Something was paid on this package; it cannot be cancelled.",
+    ),
+    (
+        "wl_sales.packages.problem.credits_total",
+        "A package holds at least one credit.",
+    ),
+    (
+        "wl_sales.packages.problem.price",
+        "The price cannot be negative.",
+    ),
+    (
+        "wl_sales.packages.problem.validity",
+        "A package is valid for at least one month.",
+    ),
+    (
+        "wl_sales.packages.problem.not_pending",
+        "Only a package waiting for payment can be linked to an invoice.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

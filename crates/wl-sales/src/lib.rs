@@ -20,6 +20,9 @@ pub mod lead_machine;
 pub mod lead_source;
 pub mod machine;
 pub mod notices;
+pub mod package;
+pub mod package_machine;
+pub mod packages;
 pub mod pages;
 pub mod policy;
 pub mod promo_code;
@@ -44,6 +47,7 @@ pub use config::SalesConfig;
 pub use cost_entry::{CostEntry, CostRefused, CostStatus};
 pub use lead::{Captured, Lead, LeadNote, LeadRefused, LeadStatus, NewLead};
 pub use lead_source::{LeadSource, LeadSourceRefused};
+pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
 pub use promo_code::PromoCode;
 
 /// The campaign services under the names of the plan: `campaigns::delete`
@@ -96,6 +100,14 @@ pub mod permissions {
     pub const CAMPAIGNS_COSTS_MANAGE: &str = "campaigns.costs.manage";
     /// See the acquisition reports.
     pub const ACQUISITION_REPORTS_VIEW: &str = "acquisition.reports.view";
+    /// See packages and their movements.
+    pub const PACKAGES_VIEW: &str = "packages.view";
+    /// Sell a package and cancel one nothing was paid for.
+    pub const PACKAGES_SELL: &str = "packages.sell";
+    /// Extend a package's end date.
+    pub const PACKAGES_EXTEND: &str = "packages.extend";
+    /// Give credits of a package back by hand.
+    pub const PACKAGES_ADJUST: &str = "packages.adjust";
     /// See leads.
     pub const LEADS_VIEW: &str = "leads.view";
     /// Contact, qualify, lose and reopen leads.
@@ -176,6 +188,19 @@ impl WlSales {
         self
     }
 
+    /// The months a package is valid after activation (§7, default 6).
+    pub fn package_validity_months(mut self, months: i64) -> Self {
+        assert!(months >= 1, "a package is valid for at least a month");
+        self.config.package_validity_months = months;
+        self
+    }
+
+    /// How many times a package may be extended (§7, default 1).
+    pub fn package_extension_limit(mut self, limit: i64) -> Self {
+        self.config.package_extension_limit = limit.max(0);
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &SalesConfig {
         &self.config
@@ -220,6 +245,8 @@ impl Module for WlSales {
         app.model::<Campaign>();
         app.model::<CampaignCode>();
         app.model::<PromoCode>();
+        app.model::<Package>();
+        app.model::<PackageMovement>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
@@ -227,6 +254,8 @@ impl Module for WlSales {
         lead_events::register(app);
         acquisition_change::register(app);
         acquisition_daily::schedule(app);
+        // Prepaid packages: the ledger, the listeners and the daily expiry.
+        packages::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);

@@ -29,6 +29,7 @@ What is here so far:
 | Changing an acquisition or a won lead (`SAL.ACL.09`): a reason, a second `campaigns.manage` holder, the audit record and `CustomerAcquisitionChanged`; the exceptions report page | §5.8, §6 | `acquisition_change`, `pages::acquisition` |
 | The acquisition report (`/sales/acquisition-report`, `.csv`): leads, conversion, new customers, cost (linked to bills and manual), cost per lead, CAC and ROAS per source, campaign, channel, brand, branch or month, within the viewer's branch scope, "—" for an undefined ratio | §5.8 step 5 | `report`, `pages::report` |
 | The kernel's `CampaignAttribution` and `LeadConversion` for the verticals | §6 | `attribution` |
+| Prepaid packages: `sell`, `activate` when the invoice is paid, `consume` / `consume_last` with a movement per source, `reverse`, the daily `expire` (`sales:packages`), `extend`, `cancel`; the kernel's `PackageLedger` and `PackageActivated`/`PackageConsumed`/`PackageExtended`/`PackageExpired`. The sale pages and `refund` come later | §3, §4.4, §5.5, §6 | `package`, `package_machine`, `packages` |
 
 The module owns `src/texts.rs`, the English texts (`wl_sales.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.

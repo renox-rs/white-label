@@ -445,6 +445,200 @@ pub fn lead_conversion(state: &AppState) -> Arc<dyn LeadConversion> {
     }
 }
 
+/// The subject type of a prepaid package, for [`Subject`] references.
+pub const PACKAGE_SUBJECT_TYPE: &str = "sales.package";
+
+/// The id of a prepaid package.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct PackageId(pub i64);
+
+impl PackageId {
+    /// The package as a [`Subject`]: `sales.package:9`.
+    pub fn subject(self) -> Subject {
+        Subject::new(PACKAGE_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for PackageId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for PackageId {
+    fn from(id: i64) -> Self {
+        PackageId(id)
+    }
+}
+
+/// A package became `active`: paid in full, or its first instalment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackageActivated {
+    /// The package.
+    pub package: PackageId,
+    /// The holder.
+    pub party: PartyId,
+    /// The credits it holds.
+    pub credits: i64,
+    /// The last day of validity.
+    pub valid_to: Option<NaiveDate>,
+}
+
+impl Event for PackageActivated {}
+
+/// Credits of a package were used (`consume`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackageConsumed {
+    /// The package.
+    pub package: PackageId,
+    /// The holder.
+    pub party: PartyId,
+    /// The credits used by this movement.
+    pub quantity: i64,
+    /// The credits left after it.
+    pub remaining: i64,
+    /// What consumed them (a booking, an attendance, a job card).
+    pub source: Subject,
+}
+
+impl Event for PackageConsumed {}
+
+/// A package's end date was moved (`extend`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackageExtended {
+    /// The package.
+    pub package: PackageId,
+    /// The holder.
+    pub party: PartyId,
+    /// The credits left.
+    pub remaining: i64,
+    /// The new last day of validity.
+    pub valid_to: NaiveDate,
+}
+
+impl Event for PackageExtended {}
+
+/// A package's validity ended with credits left (`expire`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackageExpired {
+    /// The package.
+    pub package: PackageId,
+    /// The holder.
+    pub party: PartyId,
+    /// The credits left unused.
+    pub remaining: i64,
+}
+
+impl Event for PackageExpired {}
+
+/// A request to use credits of a party's package (`PackageLedger::consume`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ConsumePackage {
+    /// The holder.
+    pub party: PartyId,
+    /// The catalogue item the package was sold for.
+    pub item: String,
+    /// The credits to use.
+    pub quantity: i64,
+    /// What consumes them (a booking, an attendance, a job card). A source
+    /// that consumed already changes nothing.
+    pub source: Subject,
+}
+
+impl ConsumePackage {
+    /// `quantity` credits of `party`'s package for `item`, used by `source`.
+    pub fn new(party: PartyId, item: &str, quantity: i64, source: Subject) -> Self {
+        ConsumePackage {
+            party,
+            item: item.to_owned(),
+            quantity,
+            source,
+        }
+    }
+}
+
+/// How a [`PackageLedger::consume`] ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PackageConsumption {
+    /// The credits were used; `remaining` are left.
+    Consumed {
+        /// The package.
+        package: PackageId,
+        /// The credits left.
+        remaining: i64,
+    },
+    /// The source consumed before; nothing changed.
+    Already {
+        /// The package.
+        package: PackageId,
+    },
+    /// The package has a reopened, unpaid balance and the module is set to
+    /// suspend consumption then: nothing was consumed. The source records
+    /// "credit not consumed: unpaid" and its vertical decides what follows.
+    Unpaid {
+        /// The package.
+        package: PackageId,
+    },
+    /// The party has no active package with enough credits for the item.
+    NoCredit,
+}
+
+/// What verticals and `wl-scheduling` ask of the prepaid packages
+/// (wl-sales §6). `wl-sales` provides it.
+pub trait PackageLedger: Send + Sync + 'static {
+    /// Uses `request.quantity` credits of the party's active package for the
+    /// item that expires first. The default has no package.
+    fn consume<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ConsumePackage,
+    ) -> SalesFuture<'a, PackageConsumption> {
+        Box::pin(async { Ok(PackageConsumption::NoCredit) })
+    }
+
+    /// Gives back the credits `source` consumed (the booking was cancelled).
+    /// Returns whether anything was given back. The default does nothing.
+    fn reverse<'a>(&'a self, _state: &'a AppState, _source: Subject) -> SalesFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// The credits `party` can still use for `item` in active packages. The
+    /// default is none.
+    fn balance<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _item: &'a str,
+    ) -> SalesFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+}
+
+/// The package ledger when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPackageLedger;
+
+impl PackageLedger for NoPackageLedger {}
+
+/// Makes `ledger` the app's [`PackageLedger`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_package_ledger(app: &mut Registry, ledger: impl PackageLedger) {
+    let ledger: Arc<dyn PackageLedger> = Arc::new(ledger);
+    app.provide(ledger);
+}
+
+/// The app's [`PackageLedger`], or [`NoPackageLedger`] when none is provided.
+pub fn package_ledger(state: &AppState) -> Arc<dyn PackageLedger> {
+    match state.provided::<Arc<dyn PackageLedger>>() {
+        Some(ledger) => Arc::clone(&ledger),
+        None => Arc::new(NoPackageLedger),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -456,6 +650,14 @@ mod tests {
         assert_eq!(id.subject(), Subject::new("sales.campaign", 12));
         assert_eq!(renox::serde_json::to_string(&id).unwrap(), "12");
         assert_eq!(CampaignId::default(), CampaignId(0));
+    }
+
+    #[test]
+    fn a_package_id_is_a_subject_and_a_plain_number() {
+        let id = PackageId::from(9);
+        assert_eq!(id.subject(), Subject::new("sales.package", 9));
+        assert_eq!(renox::serde_json::to_string(&id).unwrap(), "9");
+        assert_eq!(PACKAGE_SUBJECT_TYPE, "sales.package");
     }
 
     #[test]

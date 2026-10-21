@@ -185,6 +185,11 @@ pub use sales::{
     NoLeadConversion, campaign_attribution, lead_conversion, provide_campaign_attribution,
     provide_lead_conversion,
 };
+pub use sales::{
+    ConsumePackage, NoPackageLedger, PACKAGE_SUBJECT_TYPE, PackageActivated, PackageConsumed,
+    PackageConsumption, PackageExpired, PackageExtended, PackageId, PackageLedger, package_ledger,
+    provide_package_ledger,
+};
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
