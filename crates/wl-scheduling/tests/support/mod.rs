@@ -340,8 +340,25 @@ impl ResourceEligibility for Licences {
     }
 }
 
+/// A client with the real parties and payments modules on too.
+const CLIENT_REAL: &str = r#"
+[client]
+name = "Palm Grove Clinic LLC"
+app = "property"
+
+[modules]
+enabled = ["parties", "invoicing", "payments", "scheduling"]
+
+[[legal_entities]]
+code = "PGC"
+name_en = "Palm Grove Clinic LLC"
+default = true
+"#;
+
 /// Provides the fakes.
 struct Harness {
+    /// The real `wl-payments` is mounted: its recorder stays the kernel's.
+    real_payments: bool,
     portal: Portal,
     refunds: Refunds,
     work: Work,
@@ -356,7 +373,9 @@ impl Module for Harness {
 
     fn register(&self, app: &mut Registry) {
         provide_portal_users(app, self.portal.clone());
-        provide_payment_recorder(app, self.refunds.clone());
+        if !self.real_payments {
+            provide_payment_recorder(app, self.refunds.clone());
+        }
         provide_work_done_status(app, self.work.clone());
         provide_notifier(app, self.messages.clone());
         provide_resource_eligibility(app, self.licences.clone());
@@ -381,6 +400,8 @@ pub struct Booked {
     pub licences: Licences,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
+    /// Keeps the database file alive (when the test uses one).
+    _database: tempfile::TempDir,
 }
 
 /// The party that books in the tests.
@@ -614,6 +635,27 @@ pub async fn boot() -> Booked {
 
 /// [`boot`] with `module`.
 pub async fn boot_with(module: WlScheduling) -> Booked {
+    boot_app(module, false).await
+}
+
+/// [`boot`] with the real `wl-parties` and `wl-payments` mounted (the
+/// refunds are asked of the real module; `Booked::refunds` stays empty) and
+/// the demo parties seeded.
+pub async fn boot_real() -> Booked {
+    boot_app(WlScheduling::new(), true).await
+}
+
+/// [`boot`] on a SQLite file in a directory of its own, with ten
+/// connections, so that concurrent callers really use separate connections.
+pub async fn boot_file_backed() -> Booked {
+    boot_app_on(WlScheduling::new(), false, true).await
+}
+
+async fn boot_app(module: WlScheduling, real: bool) -> Booked {
+    boot_app_on(module, real, false).await
+}
+
+async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Booked {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -627,9 +669,15 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
-        .module(renox::audit::Audit)
-        .module(module)
-        .module(Harness {
+        .module(renox::audit::Audit);
+    let app = if real {
+        app.module(wl_parties::WlParties::new())
+            .module(wl_payments::WlPayments::new())
+    } else {
+        app
+    };
+    let app = app.module(module).module(Harness {
+            real_payments: real,
             portal: portal.clone(),
             refunds: refunds.clone(),
             work: work.clone(),
@@ -644,14 +692,29 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
     let app = record(app, &events.cancelled);
     let app = record(app, &events.reassigned);
     let app = record(app, &events.released);
-    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let client = if real { CLIENT_REAL } else { CLIENT };
+    let config = wl_kernel::ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
-    let app = TestApp::with_config(app, |c| c.views_path = dir).await;
+    let database = tempfile::tempdir().expect("a temporary database directory");
+    let url = format!("sqlite://{}", database.path().join("t.db").display());
+    let app = TestApp::with_config(app, |c| {
+        c.views_path = dir;
+        if file_backed {
+            c.database_url = url;
+            c.database_pool_size = 10;
+        }
+    })
+    .await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    if real {
+        wl_parties::seed::run(app.state())
+            .await
+            .expect("the demo parties seed");
+    }
     Booked {
         app,
         events,
@@ -661,5 +724,6 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
         messages,
         licences,
         _views: views,
+        _database: database,
     }
 }
