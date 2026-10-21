@@ -1668,6 +1668,17 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let traced = Arc::new(Mutex::new(Vec::new()));
     let recall_closed = Arc::new(Mutex::new(Vec::new()));
     let trace_parties = TraceParties::default();
+    // What wl-parties registers: an exception to a block is decided by the
+    // finance manager (screening off). The defaults are process-wide and
+    // `wl:install` stores the ones registered by then, so this comes before
+    // the install: after it, the first test of a binary to boot would find
+    // no policy and the request would answer 500.
+    wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
+        .with_step(
+            wl_kernel::approvals::Step::one_of(["finance_manager"])
+                .requiring(wl_kernel::BLOCK_EXCEPTION_ACTION),
+        )
+        .register();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1729,14 +1740,6 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
             .await
             .expect("the demo parties seed");
     }
-    // What wl-parties registers: an exception to a block is decided by the
-    // finance manager (screening off).
-    wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
-        .with_step(
-            wl_kernel::approvals::Step::one_of(["finance_manager"])
-                .requiring(wl_kernel::BLOCK_EXCEPTION_ACTION),
-        )
-        .register();
     permissions::define_role(
         app.db(),
         "finance_manager",
