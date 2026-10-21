@@ -18,6 +18,7 @@ use wl_kernel::notify::{
     PartyContactPoint, PartyContacts,
 };
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyStatus, PartySummary};
+use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers};
 use wl_kernel::{PartyId, Subject};
 use wl_sales::sale_line::KIND_ITEM;
 use wl_sales::{CounterSale, CounterSaleStatus, SaleLine};
@@ -148,13 +149,55 @@ impl Consents for Consent {
     }
 }
 
-/// The directory and the consents as a module.
+/// Who acts for which party in the portal.
+#[derive(Clone, Default)]
+pub struct Portal {
+    grants: Arc<Mutex<Vec<(i64, i64)>>>,
+}
+
+impl Portal {
+    /// The user `user` acts for the party `party`.
+    pub fn grant(&self, user: i64, party: i64) {
+        self.grants.lock().unwrap().push((user, party));
+    }
+}
+
+impl PortalUsers for Portal {
+    fn acting_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        user: i64,
+        party: PartyId,
+        _on: renox::chrono::NaiveDate,
+    ) -> PortalFuture<'a, Option<PortalUser>> {
+        let found = self
+            .grants
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(u, p)| *u == user && *p == party.0);
+        Box::pin(async move {
+            Ok(found.then(|| PortalUser {
+                user_id: user,
+                person: party,
+                acting_for: party,
+                roles: vec!["owner".to_owned()],
+            }))
+        })
+    }
+}
+
+/// The directory, the consents and the portal grants as a module.
 #[derive(Clone, Default)]
 pub struct Parties {
     /// The parties.
     pub directory: Directory,
     /// The consents.
     pub consent: Consent,
+    /// The portal grants.
+    pub portal: Portal,
+    /// The `PointsTransferred` events a merge emitted.
+    pub transferred: Arc<Mutex<Vec<wl_kernel::sales::PointsTransferred>>>,
 }
 
 impl Module for Parties {
@@ -165,6 +208,17 @@ impl Module for Parties {
     fn register(&self, app: &mut Registry) {
         wl_kernel::parties::provide_directory(app, self.directory.clone());
         wl_kernel::consents::provide_consents(app, self.consent.clone());
+        wl_kernel::portal::provide_portal_users(app, self.portal.clone());
+        let log = self.transferred.clone();
+        app.listen(
+            move |event: wl_kernel::sales::PointsTransferred, _state: AppState| {
+                let log = log.clone();
+                async move {
+                    log.lock().unwrap().push(event);
+                    Ok(())
+                }
+            },
+        );
     }
 }
 
