@@ -1,4 +1,4 @@
-//! BL-MPW-01 (#415) point 4 and 7 and BL-MPW-03 (#417) point 2, `MPW.RUL.10`,
+//! BL-MPW-01 (#415) point 4 and 7, BL-MPW-02 (#416) point 1 and BL-MPW-03 (#417) point 2, `MPW.RUL.10`,
 //! with the real wl-invoicing and wl-payments in the host of a manpower
 //! agency: the `FIN.RUL.01` reminder still goes to the client after the credit
 //! hold while manpower sends the client company nothing; a real cheque bounce
@@ -7,13 +7,15 @@
 
 mod support;
 
-use host::roles::{ACCOUNTANT, RECEIVABLES};
-use manpower::{ClientContract, ContractHold, ContractStatus, HoldReason};
+use host::roles::{ACCOUNTANT, MEMBER, RECEIVABLES};
+use manpower::{
+    ClientContract, ContractHold, ContractStatus, HoldReason, ManpowerRequest, RequestStatus, Site,
+};
 use renox::chrono::Days;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
-use support::{company, entity, messages_to_party, noon_clock, person};
+use support::{company, entity, messages_to_party, noon_clock, person, tenant};
 use wl_invoicing::Invoice;
 use wl_invoicing::reminders::AFTER_DUE;
 use wl_kernel::cheques::{ChequeStatus, RegisterCheque, cheques};
@@ -22,6 +24,7 @@ use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceId, VatCategory, invo
 use wl_kernel::{ClientConfig, PartyId, Subject};
 use wl_notify::Message;
 use wl_payments::Cheque;
+use wl_portal::{AccessGrant, GrantStatus};
 
 /// A manpower agency: the vertical on, with the shared modules it reaches.
 const CLIENT: &str = r#"
@@ -257,5 +260,98 @@ async fn a_real_bounced_cheque_holds_and_its_real_resolution_releases() {
             .await
             .unwrap()
             .is_empty()
+    );
+}
+
+/// MPW-02 AC1: Carl, the client approver with a real wl-portal grant, submits
+/// request R on a contract put on hold by the real rule: refused with the
+/// neutral message, no word of the hold or its reason, and R stays `draft`.
+#[renox::test]
+async fn a_portal_approver_is_refused_without_a_word_of_the_hold() {
+    let app = booted().await;
+    let clerk = person(&app, "Wendy", RECEIVABLES).await;
+    let client = company(&app, "Gulf Tower LLC").await;
+    let contract = active_contract(&app, client).await;
+    overdue_invoice(&app, &clerk, &contract).await;
+    app.run_scheduled(manpower::CREDIT_HOLD_TASK).await.unwrap();
+    assert_eq!(
+        ClientContract::find_or_404(app.db(), contract.id)
+            .await
+            .unwrap()
+            .status,
+        ContractStatus::OnHold
+    );
+    let carl = person(&app, "Carl", MEMBER).await;
+    let carl_party = tenant(&app, "Carl Client").await;
+    let mut grant = AccessGrant {
+        user_id: Some(carl.id),
+        person_party_id: carl_party.0,
+        party_id: client.0,
+        audience: "tenant".into(),
+        roles: "approver".into(),
+        source: "invitation".into(),
+        valid_from: today().checked_sub_days(Days::new(30)).unwrap(),
+        status: GrantStatus::Active,
+        ..AccessGrant::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    grant
+        .insert_in_state(&mut tx, GrantStatus::Active, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let site = Site::create(
+        app.db(),
+        Site {
+            client_party_id: client.0,
+            name: "Tower A".into(),
+            active: true,
+            ..Site::default()
+        },
+    )
+    .await
+    .unwrap();
+    let mut request = ManpowerRequest {
+        client_contract_id: contract.id,
+        client_party_id: client.0,
+        site_id: site.id,
+        role: "guard".into(),
+        headcount: 1,
+        shift_type: "day".into(),
+        shift_start: Some("07:00".into()),
+        shift_end: Some("19:00".into()),
+        start_date: today().checked_add_days(Days::new(30)).unwrap(),
+        end_date: today().checked_add_days(Days::new(120)),
+        status: RequestStatus::Draft,
+        ..ManpowerRequest::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    request
+        .insert_in_state(&mut tx, RequestStatus::Draft, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    app.acting_as(&carl);
+    let response = app
+        .htmx()
+        .post(&format!("/manpower/requests/{}/submit", request.id), &[])
+        .await;
+    response.assert_status(422);
+    let body = response.text();
+    assert!(
+        body.contains("This request cannot be submitted now. Please contact your account manager."),
+        "{body}"
+    );
+    let lower = body.to_lowercase();
+    for word in ["hold", "overdue", "inv-", "since"] {
+        assert!(!lower.contains(word), "{word} in {body}");
+    }
+    assert_eq!(
+        ManpowerRequest::find_or_404(app.db(), request.id)
+            .await
+            .unwrap()
+            .status,
+        RequestStatus::Draft
     );
 }
