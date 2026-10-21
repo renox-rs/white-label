@@ -90,9 +90,10 @@ pub async fn create_for_visit(
         .filter(|line| line.payer_share > 0)
         .collect();
     let bill_lines = payer_bills(state).lines(&state.db, bill).await?;
-    let claimed = summary
-        .as_ref()
-        .map_or_else(|| charges.iter().map(|c| c.payer_share).sum(), |s| s.claimed);
+    let claimed = summary.as_ref().map_or_else(
+        || charges.iter().map(|c| c.payer_share).sum(),
+        |s| s.claimed,
+    );
     let mut claim = Claim {
         visit_id: visit.id,
         payer_bill_id: bill.0,
@@ -161,7 +162,11 @@ async fn contract_of(db: &Db, claim: &Claim) -> Result<Option<PayerContract>> {
 
 /// The service codes of `claim` that the payer asks a prior authorisation
 /// for when the claim carries none.
-async fn missing_authorisations(db: &Db, claim: &Claim, lines: &[ClaimLine]) -> Result<Vec<String>> {
+async fn missing_authorisations(
+    db: &Db,
+    claim: &Claim,
+    lines: &[ClaimLine],
+) -> Result<Vec<String>> {
     if claim
         .payer_reference
         .as_deref()
@@ -181,7 +186,12 @@ async fn missing_authorisations(db: &Db, claim: &Claim, lines: &[ClaimLine]) -> 
 }
 
 /// What the guards of the claim's own transitions need, gathered once.
-async fn gather(state: &AppState, claim: &Claim, at: DateTime, by: Option<i64>) -> Result<ClaimInput> {
+async fn gather(
+    state: &AppState,
+    claim: &Claim,
+    at: DateTime,
+    by: Option<i64>,
+) -> Result<ClaimInput> {
     let contract = contract_of(&state.db, claim).await?;
     let lines = ClaimLine::of_claim(&state.db, claim.id).await?;
     Ok(ClaimInput {

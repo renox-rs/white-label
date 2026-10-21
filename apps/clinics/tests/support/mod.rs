@@ -20,13 +20,13 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_kernel::documents::{dubai_date, provide_guard};
+use wl_kernel::invoicing::provide_invoicer;
 use wl_kernel::notify::{
     ContactKind, NotifyChannel, PartyContactPoint, PartyContacts, provide_notifier,
 };
 use wl_kernel::parties::{
     PartyDirectory, PartyFuture, PartyStatus, PartySummary, provide_directory,
 };
-use wl_kernel::invoicing::provide_invoicer;
 use wl_kernel::payer_bills::provide_payer_bills;
 use wl_kernel::payments::provide_payment_recorder;
 use wl_kernel::sales::{
@@ -48,10 +48,10 @@ pub mod scheduling;
 
 /// The money side of a visit: invoices, payer bills, packages, deposits.
 pub mod billing;
-/// A day at the clinic for the charge capture tests.
-pub mod desk;
 /// A claim of an insured visit billed through the routes.
 pub mod claims;
+/// A day at the clinic for the charge capture tests.
+pub mod desk;
 /// The clinics app with the real wl-invoicing for the claim tests.
 pub mod real;
 

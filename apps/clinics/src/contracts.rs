@@ -224,7 +224,9 @@ mod tests {
     #[test]
     fn a_new_contract_has_no_plan_copay_or_deductible() {
         let day: NaiveDate = "2026-11-01".parse().unwrap();
-        let new = NewContract::new(PartyId(5), day).plan(" Gold ").copay_bp(2_000);
+        let new = NewContract::new(PartyId(5), day)
+            .plan(" Gold ")
+            .copay_bp(2_000);
         assert_eq!(new.plan.as_deref(), Some("Gold"));
         assert_eq!(new.copay_bp, 2_000);
         assert_eq!(new.deductible, 0);

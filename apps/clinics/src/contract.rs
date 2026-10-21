@@ -99,10 +99,7 @@ fn add_days(date: NaiveDate, days: i64) -> Option<NaiveDate> {
 
 /// What a contract says of one service.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(
-    table = "clinics_payer_tariffs",
-    unique(contract_id, service_code)
-)]
+#[model(table = "clinics_payer_tariffs", unique(contract_id, service_code))]
 pub struct PayerTariff {
     /// The primary key.
     pub id: i64,

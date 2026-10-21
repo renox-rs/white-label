@@ -102,13 +102,18 @@ async fn a_rejection_without_an_error_changes_nothing() {
             .assert_status(422);
     }
     assert_eq!(b.claim().await.status, ClaimStatus::Submitted);
-    assert_eq!(b.bill().status, wl_kernel::payer_bills::PayerBillStatus::Issued);
+    assert_eq!(
+        b.bill().status,
+        wl_kernel::payer_bills::PayerBillStatus::Issued
+    );
     assert!(b.bill().rejections.is_empty());
     assert!(b.d.t.tasks.with_key("clinics.claim_rejected:").is_empty());
-    assert!(ClaimAttempt::of_claim(b.db(), b.claim.id).await.unwrap()[0]
-        .errors
-        .0
-        .is_empty());
+    assert!(
+        ClaimAttempt::of_claim(b.db(), b.claim.id).await.unwrap()[0]
+            .errors
+            .0
+            .is_empty()
+    );
 }
 
 /// Each attempt keeps its own errors, the count never changes, and each
@@ -136,14 +141,13 @@ async fn repeated_rejections_keep_every_attempts_errors() {
     assert_eq!(codes, [vec!["E104"], vec!["E7", "E9"]]);
     assert_eq!(b.bill().resubmissions, 0);
     assert_eq!(b.bill().rejections.len(), 2);
-    let keys: Vec<_> = b
-        .d
-        .t
-        .tasks
-        .with_key("clinics.claim_rejected:")
-        .into_iter()
-        .map(|t| t.source_key.unwrap())
-        .collect();
+    let keys: Vec<_> =
+        b.d.t
+            .tasks
+            .with_key("clinics.claim_rejected:")
+            .into_iter()
+            .map(|t| t.source_key.unwrap())
+            .collect();
     assert_eq!(keys, [rejected_key(claim.id, 1), rejected_key(claim.id, 2)]);
 }
 
@@ -169,7 +173,11 @@ async fn a_rejected_resubmission_is_validated_against_the_resubmission_window() 
     assert_eq!(claim.resubmission_count, 1, "the count stays");
     assert_eq!(b.bill().resubmissions, 1);
     let deadline = day(0) + renox::chrono::Days::new(30);
-    assert_eq!(claim.fix_deadline, Some(deadline), "counted from the remittance");
+    assert_eq!(
+        claim.fix_deadline,
+        Some(deadline),
+        "counted from the remittance"
+    );
     let task = &b.d.t.tasks.with_key("clinics.claim_rejected:")[0];
     assert!(task.description.contains(&deadline.to_string()));
 
@@ -199,7 +207,11 @@ async fn a_rejected_resubmission_is_validated_against_the_resubmission_window() 
 /// Done when 5: a claim with a recorded remittance is not rejected.
 #[renox::test]
 async fn a_claim_with_a_recorded_remittance_is_not_rejected() {
-    for status in [ClaimStatus::Paid, ClaimStatus::PartiallyPaid, ClaimStatus::Denied] {
+    for status in [
+        ClaimStatus::Paid,
+        ClaimStatus::PartiallyPaid,
+        ClaimStatus::Denied,
+    ] {
         let b = billed().await;
         b.send().await;
         b.answered(status, day(0)).await;

@@ -13,8 +13,8 @@ use wl_kernel::payer_bills::PayerBillStatus;
 use clinics::authorisations;
 use clinics::{AttemptKind, Claim, ClaimAttempt, ClaimStatus, PayerContract};
 use support::claims::billed;
-use support::desk::PAYER;
 use support::day;
+use support::desk::PAYER;
 
 /// A billed insured visit has a draft claim around its draft payer bill: the
 /// payer's AED 360.00 of the AED 450.00 consultation, one line per payer bill
@@ -90,7 +90,9 @@ async fn a_claim_is_validated_submitted_and_then_locked() {
 
     // Locked: nothing validates, submits or resubmits it again.
     b.act("validate", &[]).await.assert_status(422);
-    b.act("submit", &[("reference", "CH-78")]).await.assert_status(422);
+    b.act("submit", &[("reference", "CH-78")])
+        .await
+        .assert_status(422);
     b.act("resubmit", &[("corrections", "fixed")])
         .await
         .assert_status(422);
@@ -188,9 +190,12 @@ async fn a_denied_claim_is_resubmitted_within_the_window_and_the_limit() {
         .assert_status(422);
     assert_eq!(b.claim().await.status, ClaimStatus::Denied);
 
-    b.act("resubmit", &[("corrections", "member ID fixed"), ("reference", "CH-2")])
-        .await
-        .assert_ok();
+    b.act(
+        "resubmit",
+        &[("corrections", "member ID fixed"), ("reference", "CH-2")],
+    )
+    .await
+    .assert_ok();
     let claim = b.claim().await;
     assert_eq!(claim.status, ClaimStatus::Resubmitted);
     assert_eq!(claim.resubmission_count, 1);
@@ -212,9 +217,7 @@ async fn resubmit_is_refused_beyond_the_limit_and_the_window() {
     b.send().await;
     b.answered(ClaimStatus::Denied, day(0)).await;
     b.set(&[("resubmission_count", &2_i64)]).await;
-    let res = b
-        .act("resubmit", &[("corrections", "fixed again")])
-        .await;
+    let res = b.act("resubmit", &[("corrections", "fixed again")]).await;
     res.assert_status(422);
     assert!(res.text().contains("2 resubmissions"), "{}", res.text());
     assert_eq!(b.claim().await.status, ClaimStatus::Denied);

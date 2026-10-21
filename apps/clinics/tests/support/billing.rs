@@ -9,17 +9,14 @@ use wl_kernel::invoicing::{
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
 };
 use wl_kernel::payer_bills::{
-    NewPayerBill, PayerAnswer, PayerBillFuture, PayerBillId, PayerBillLineSummary,
-    PayerBillStatus, PayerBillSummary, PayerBills, Recoupment, RejectionDeadline, Remittance,
-    SubmissionError,
+    NewPayerBill, PayerAnswer, PayerBillFuture, PayerBillId, PayerBillLineSummary, PayerBillStatus,
+    PayerBillSummary, PayerBills, Recoupment, RejectionDeadline, Remittance, SubmissionError,
 };
 use wl_kernel::payments::{
     AllocationTarget, Direction, PaymentFuture, PaymentId, PaymentMethod, PaymentRecorder,
     PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest, ReversalReason,
 };
-use wl_kernel::sales::{
-    ConsumePackage, PackageConsumption, PackageId, PackageLedger, SalesFuture,
-};
+use wl_kernel::sales::{ConsumePackage, PackageConsumption, PackageId, PackageLedger, SalesFuture};
 use wl_kernel::{PartyId, Subject};
 
 use super::scheduling::Refunds;
@@ -185,7 +182,12 @@ pub struct Claims(Arc<Mutex<Vec<Bill>>>);
 impl Claims {
     /// Every payer bill asked for, oldest first.
     pub fn all(&self) -> Vec<NewPayerBill> {
-        self.0.lock().unwrap().iter().map(|b| b.request.clone()).collect()
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|b| b.request.clone())
+            .collect()
     }
 
     /// What the payer is claimed for, over all bills, in fils.
@@ -481,10 +483,9 @@ impl PackageLedger for Packages {
         request: ConsumePackage,
     ) -> SalesFuture<'a, PackageConsumption> {
         let mut credits = self.credits.lock().unwrap();
-        let answer = match credits
-            .iter_mut()
-            .find(|(party, item, left)| *party == request.party.0 && *item == request.item && *left >= request.quantity)
-        {
+        let answer = match credits.iter_mut().find(|(party, item, left)| {
+            *party == request.party.0 && *item == request.item && *left >= request.quantity
+        }) {
             Some(found) => {
                 found.2 -= request.quantity;
                 self.used.lock().unwrap().push((
@@ -582,7 +583,10 @@ impl PaymentRecorder for Deposits {
                 summary.allocated += amount;
             }
         }
-        self.allocated.lock().unwrap().push((payment, target, amount));
+        self.allocated
+            .lock()
+            .unwrap()
+            .push((payment, target, amount));
         Box::pin(async { Ok(()) })
     }
 

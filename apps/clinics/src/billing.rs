@@ -34,7 +34,9 @@
 
 use renox::db::now;
 use renox::prelude::*;
-use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceId, InvoiceStatus, VatCategory, invoicer};
+use wl_kernel::invoicing::{
+    DraftLine, InvoiceDraft, InvoiceId, InvoiceStatus, VatCategory, invoicer,
+};
 use wl_kernel::payer_bills::{NewPayerBill, NewPayerBillLine, PayerBillId, payer_bills};
 use wl_kernel::payments::{
     AllocationTarget, PaymentStatus, RefundRequest, RefundSource, payment_recorder,
@@ -244,19 +246,20 @@ async fn run(state: &AppState, id: i64, basis: Basis) -> Result<Billed> {
     // The patient's share, as an invoice from the visit.
     let mut gross = 0;
     if quote.patient_total > 0 {
-        let mut draft = InvoiceDraft::new(patient, visit.subject())
-            .date_of_supply(visit.visit_date);
+        let mut draft =
+            InvoiceDraft::new(patient, visit.subject()).date_of_supply(visit.visit_date);
         for line in quote.lines.iter().filter(|l| l.patient_share > 0) {
             let (quantity, price, text) = if line.patient_share % line.units == 0 {
-                (line.units * 1000, line.patient_share / line.units, describe(line))
+                (
+                    line.units * 1000,
+                    line.patient_share / line.units,
+                    describe(line),
+                )
             } else {
                 (
                     1000,
                     line.patient_share,
-                    english(
-                        "clinics.billing.share_line",
-                        &[("line", &describe(line))],
-                    ),
+                    english("clinics.billing.share_line", &[("line", &describe(line))]),
                 )
             };
             let draft_line = DraftLine::new(&text, price, vat(line))
@@ -292,9 +295,8 @@ async fn run(state: &AppState, id: i64, basis: Basis) -> Result<Billed> {
             .as_ref()
             .and_then(|contract| contract.agreement_id)
             .ok_or_else(|| refused(english("clinics.billing.problem.no_agreement", &[])))?;
-        let mut request =
-            NewPayerBill::new(agreement, patient, visit.subject(), visit.visit_date)
-                .void_before_first_submission();
+        let mut request = NewPayerBill::new(agreement, patient, visit.subject(), visit.visit_date)
+            .void_before_first_submission();
         if let Some(reference) = first_reference(state, &quote).await? {
             request = request.payer_reference(&reference);
         }
@@ -336,10 +338,7 @@ async fn run(state: &AppState, id: i64, basis: Basis) -> Result<Billed> {
         }
         Visit::query()
             .where_(Visit::ID.eq(id))
-            .update(
-                &state.db,
-                &[("authorisations_consumed_at", &Some(at))],
-            )
+            .update(&state.db, &[("authorisations_consumed_at", &Some(at))])
             .await?;
     }
     settle_deposit(state, id, basis, gross).await?;
@@ -437,7 +436,12 @@ async fn settle_deposit(state: &AppState, id: i64, basis: Basis, gross: i64) -> 
             }
             let part = left.min(payment.unallocated);
             recorder
-                .allocate(state, payment.id, AllocationTarget::Invoice(InvoiceId(invoice)), part)
+                .allocate(
+                    state,
+                    payment.id,
+                    AllocationTarget::Invoice(InvoiceId(invoice)),
+                    part,
+                )
                 .await?;
             left -= part;
         }
@@ -446,7 +450,10 @@ async fn settle_deposit(state: &AppState, id: i64, basis: Basis, gross: i64) -> 
         && let Some(first) = payments.first()
     {
         let entity = LegalEntity::default_entity(&state.db).await?;
-        let reason = english("clinics.billing.deposit_refund", &[("number", &visit.number())]);
+        let reason = english(
+            "clinics.billing.deposit_refund",
+            &[("number", &visit.number())],
+        );
         recorder
             .request_refund(
                 state,

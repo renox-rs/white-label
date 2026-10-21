@@ -111,7 +111,11 @@ impl Billed {
         let claimed = self.claim.claimed;
         let (paid, denied, bill_status) = match status {
             ClaimStatus::Paid => (claimed, 0, PayerBillStatus::Paid),
-            ClaimStatus::PartiallyPaid => (claimed / 2, claimed - claimed / 2, PayerBillStatus::PartiallyPaid),
+            ClaimStatus::PartiallyPaid => (
+                claimed / 2,
+                claimed - claimed / 2,
+                PayerBillStatus::PartiallyPaid,
+            ),
             _ => (0, claimed, PayerBillStatus::Denied),
         };
         let shown = status.as_str().to_owned();

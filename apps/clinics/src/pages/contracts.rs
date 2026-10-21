@@ -221,9 +221,8 @@ async fn create(
         new = new.copay_bp(parse_id(&form.copay_bp).ok_or_else(|| invalid("copay: 0 to 10000"))?);
     }
     if !form.deductible.trim().is_empty() {
-        new = new.deductible(
-            parse_id(&form.deductible).ok_or_else(|| invalid("deductible: fils"))?,
-        );
+        new =
+            new.deductible(parse_id(&form.deductible).ok_or_else(|| invalid("deductible: fils"))?);
     }
     if let Some(to) = parse_date(&form.valid_to)? {
         new = new.valid_to(to);

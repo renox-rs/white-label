@@ -468,7 +468,10 @@ pub async fn follow(
     heard: Heard,
 ) -> std::result::Result<Claim, TransitionError> {
     let claim = Claim::find_or_404(&state.db, id).await?;
-    let Some(bill) = payer_bills(state).find(&state.db, claim.payer_bill()).await? else {
+    let Some(bill) = payer_bills(state)
+        .find(&state.db, claim.payer_bill())
+        .await?
+    else {
         return Ok(claim);
     };
     let kind_and_name = match claim.status {
@@ -497,7 +500,9 @@ pub async fn follow(
         return Ok(claim);
     };
     let claim_lines = ClaimLine::of_claim(&state.db, id).await?;
-    let bill_lines = payer_bills(state).lines(&state.db, claim.payer_bill()).await?;
+    let bill_lines = payer_bills(state)
+        .lines(&state.db, claim.payer_bill())
+        .await?;
     let mut lines = Vec::with_capacity(claim_lines.len());
     for line in &claim_lines {
         let Some(on_bill) = line

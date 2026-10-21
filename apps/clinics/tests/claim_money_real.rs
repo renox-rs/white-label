@@ -121,10 +121,23 @@ async fn an_overpayment_is_held_until_a_second_person_approves() {
     let bill = t.bill_of(&held).await;
     assert_eq!(bill.status, PayerBillStatus::Issued);
     assert!(!bill.has_remittance);
-    assert!(PayerRemittance::query().get(t.db()).await.unwrap().is_empty());
+    assert!(
+        PayerRemittance::query()
+            .get(t.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(credit(&t, &held).await, 0);
-    assert!(ClaimRemittance::of_claim(t.db(), claim.id).await.unwrap().is_empty());
-    let requests = approvals::pending_for(t.db(), &bill.subject()).await.unwrap();
+    assert!(
+        ClaimRemittance::of_claim(t.db(), claim.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let requests = approvals::pending_for(t.db(), &bill.subject())
+        .await
+        .unwrap();
     assert_eq!(requests.len(), 1);
     assert_eq!(held.held_request_id, Some(requests[0].id));
     assert_eq!(requests[0].action, "invoicing.payer_money");
@@ -136,7 +149,11 @@ async fn an_overpayment_is_held_until_a_second_person_approves() {
         .assert_see("Nothing is recorded until it is given");
 
     // The one who recorded it cannot approve it.
-    assert!(approvals::approve(t.state(), requests[0].id, &ana, "ok").await.is_err());
+    assert!(
+        approvals::approve(t.state(), requests[0].id, &ana, "ok")
+            .await
+            .is_err()
+    );
     assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::Submitted);
 
     approvals::approve(t.state(), requests[0].id, &bea, "ok")
@@ -148,7 +165,10 @@ async fn an_overpayment_is_held_until_a_second_person_approves() {
     assert_eq!((paid.paid, paid.denied), (40_000, 0));
     assert!(!paid.is_held());
     assert_eq!(paid.last_remittance_on, Some(day(0)));
-    let line = ClaimLine::of_claim(t.db(), claim.id).await.unwrap().remove(0);
+    let line = ClaimLine::of_claim(t.db(), claim.id)
+        .await
+        .unwrap()
+        .remove(0);
     assert_eq!(line.paid, 40_000);
     let bill = t.bill_of(&paid).await;
     assert_eq!(bill.status, PayerBillStatus::Paid);
@@ -197,7 +217,13 @@ async fn a_rejected_overpayment_records_nothing() {
     assert_eq!(after.held_result.as_deref(), Some("rejected"));
     assert!(!after.has_remittance);
     assert_eq!(t.bill_of(&after).await.status, PayerBillStatus::Issued);
-    assert!(PayerRemittance::query().get(t.db()).await.unwrap().is_empty());
+    assert!(
+        PayerRemittance::query()
+            .get(t.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(credit(&t, &after).await, 0);
 
     remit(&t, &ana, &claim, "ADV-1", "400.00", "", &[])
@@ -233,7 +259,11 @@ async fn a_recoupment_is_approved_by_a_second_person_and_reopens_the_line() {
     assert_eq!(held.held_date, Some("2026-12-10".parse().unwrap()));
     assert_eq!(t.bill_of(&held).await.status, PayerBillStatus::Paid);
     let request = held.held_request_id.expect("the recoupment is held");
-    assert!(approvals::approve(t.state(), request, &ana, "ok").await.is_err());
+    assert!(
+        approvals::approve(t.state(), request, &ana, "ok")
+            .await
+            .is_err()
+    );
 
     approvals::approve(t.state(), request, &bea, "ok")
         .await
@@ -247,7 +277,10 @@ async fn a_recoupment_is_approved_by_a_second_person_and_reopens_the_line() {
         Some("2026-12-10".parse().unwrap())
     );
     assert!(!denied.is_held());
-    let line = ClaimLine::of_claim(t.db(), claim.id).await.unwrap().remove(0);
+    let line = ClaimLine::of_claim(t.db(), claim.id)
+        .await
+        .unwrap()
+        .remove(0);
     assert_eq!((line.paid, line.denied, line.recouped), (0, 40_000, 40_000));
     assert_eq!(line.denial_code.as_deref(), Some("R07"));
     assert_eq!(t.bill_of(&denied).await.status, PayerBillStatus::Denied);
@@ -283,7 +316,10 @@ async fn a_written_off_claim_is_left_by_a_recoupment() {
     remit(&t, &ana, &claim, "ADV-1", "300.00", "100.00", &[])
         .await
         .assert_ok();
-    assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::PartiallyPaid);
+    assert_eq!(
+        t.claim_now(claim.id).await.status,
+        ClaimStatus::PartiallyPaid
+    );
 
     // The AED 100.00 denied was written off (what BL-CLN-09 will do): the
     // payer bill is `closed`, the claim `written_off`.
@@ -335,7 +371,9 @@ async fn a_written_off_claim_is_left_by_a_recoupment() {
     let after = t.claim_now(claim.id).await;
     assert_eq!(after.status, ClaimStatus::PartiallyPaid);
     assert_eq!((after.paid, after.denied), (20_000, 10_000));
-    let lines = wl_invoicing::payer_bill::lines_of(t.db(), bill.id).await.unwrap();
+    let lines = wl_invoicing::payer_bill::lines_of(t.db(), bill.id)
+        .await
+        .unwrap();
     assert_eq!(lines[0].written_off, 10_000, "the write-off stays recorded");
     assert_eq!(lines[0].paid, 20_000);
     t.get(&ana, &format!("/clinics/claims/{}", claim.id))
@@ -352,9 +390,17 @@ async fn a_reversed_payment_recoups_the_claim_without_approval() {
     let t = boot_real().await;
     let ana = t.coordinator().await;
     let claim = submitted(&t, &ana).await;
-    remit(&t, &ana, &claim, "ADV-1", "400.00", "", &[("payment", "77")])
-        .await
-        .assert_ok();
+    remit(
+        &t,
+        &ana,
+        &claim,
+        "ADV-1",
+        "400.00",
+        "",
+        &[("payment", "77")],
+    )
+    .await
+    .assert_ok();
     let paid = t.claim_now(claim.id).await;
     assert_eq!(paid.status, ClaimStatus::Paid);
     let bill = t.bill_of(&paid).await;
@@ -400,7 +446,10 @@ async fn a_reversed_payment_recoups_the_claim_without_approval() {
         .expect("the same event again is handled");
     assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::Denied);
     assert_eq!(
-        ClaimRemittance::of_claim(t.db(), claim.id).await.unwrap().len(),
+        ClaimRemittance::of_claim(t.db(), claim.id)
+            .await
+            .unwrap()
+            .len(),
         2
     );
 }
@@ -424,5 +473,10 @@ async fn the_same_advice_is_not_recorded_twice() {
     let after = t.claim_now(second.id).await;
     assert_eq!(after.status, ClaimStatus::Submitted);
     assert!(after.held_kind.is_none() && !after.is_held());
-    assert!(ClaimRemittance::of_claim(t.db(), second.id).await.unwrap().is_empty());
+    assert!(
+        ClaimRemittance::of_claim(t.db(), second.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }

@@ -264,11 +264,8 @@ impl Real {
 
     /// The second person who approves an overpayment or a recoupment.
     pub async fn approver(&self) -> User {
-        self.user(
-            "Bea",
-            &[inv::PAYER_BILLS_VIEW, inv::PAYER_BILLS_RECONCILE],
-        )
-        .await
+        self.user("Bea", &[inv::PAYER_BILLS_VIEW, inv::PAYER_BILLS_RECONCILE])
+            .await
     }
 
     /// A draft claim for a completed visit on `visit_date`, with one payer
@@ -291,13 +288,9 @@ impl Real {
             .await
             .unwrap();
         tx.commit().await.unwrap();
-        let mut request = NewPayerBill::new(
-            self.agreement.id,
-            PATIENT,
-            visit.subject(),
-            visit_date,
-        )
-        .void_before_first_submission();
+        let mut request =
+            NewPayerBill::new(self.agreement.id, PATIENT, visit.subject(), visit_date)
+                .void_before_first_submission();
         for (code, claimed) in lines {
             ChargeLine {
                 visit_id: visit.id,

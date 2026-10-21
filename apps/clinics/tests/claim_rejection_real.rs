@@ -28,15 +28,19 @@ fn d(text: &str) -> renox::chrono::NaiveDate {
 async fn the_real_payer_bill_is_rejected_and_sent_again_with_its_number() {
     let t = boot_real().await;
     let cora = t.coordinator().await;
-    let claim = t
-        .claim(d("2026-11-01"), &[("consultation", 40_000)])
-        .await;
+    let claim = t.claim(d("2026-11-01"), &[("consultation", 40_000)]).await;
     claims::validate(t.state(), &cora, claim.id, None, dubai("2026-11-02", 9, 0))
         .await
         .expect("the claim is valid");
-    claims::submit(t.state(), &cora, claim.id, Some("CH-1"), dubai("2026-11-03", 9, 0))
-        .await
-        .expect("the claim is submitted");
+    claims::submit(
+        t.state(),
+        &cora,
+        claim.id,
+        Some("CH-1"),
+        dubai("2026-11-03", 9, 0),
+    )
+    .await
+    .expect("the claim is submitted");
     let submitted = t.claim_now(claim.id).await;
     assert_eq!(submitted.status, ClaimStatus::Submitted);
     assert_eq!(submitted.submitted_on, Some(d("2026-11-03")));
@@ -63,7 +67,9 @@ async fn the_real_payer_bill_is_rejected_and_sent_again_with_its_number() {
     assert_eq!(bill.status, PayerBillStatus::Draft);
     assert_eq!(bill.resubmission_count, 0);
     assert_eq!(bill.number.as_deref(), Some(number.as_str()));
-    let errors = PayerSubmissionError::of_bill(t.db(), bill.id).await.unwrap();
+    let errors = PayerSubmissionError::of_bill(t.db(), bill.id)
+        .await
+        .unwrap();
     assert_eq!(errors.len(), 1);
     assert_eq!((errors[0].attempt, errors[0].code.as_str()), (1, "E104"));
 
@@ -80,9 +86,15 @@ async fn the_real_payer_bill_is_rejected_and_sent_again_with_its_number() {
     claims::validate(t.state(), &cora, claim.id, None, dubai("2026-11-04", 9, 0))
         .await
         .expect("it is validated again");
-    claims::submit(t.state(), &cora, claim.id, Some("CH-2"), dubai("2026-11-05", 9, 0))
-        .await
-        .expect("it is submitted again");
+    claims::submit(
+        t.state(),
+        &cora,
+        claim.id,
+        Some("CH-2"),
+        dubai("2026-11-05", 9, 0),
+    )
+    .await
+    .expect("it is submitted again");
     let again = t.claim_now(claim.id).await;
     assert_eq!(again.status, ClaimStatus::Submitted);
     assert_eq!(again.number(), submitted.number());
@@ -126,9 +138,13 @@ async fn a_rejected_resubmission_is_fixed_and_sent_again() {
     .assert_ok();
     assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::Denied);
 
-    t.post(&cora, &path("resubmit"), &[("corrections", "member ID fixed")])
-        .await
-        .assert_ok();
+    t.post(
+        &cora,
+        &path("resubmit"),
+        &[("corrections", "member ID fixed")],
+    )
+    .await
+    .assert_ok();
     let resubmitted = t.claim_now(claim.id).await;
     assert_eq!(resubmitted.status, ClaimStatus::Resubmitted);
     assert_eq!(t.bill_of(&resubmitted).await.resubmission_count, 1);

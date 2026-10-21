@@ -350,11 +350,7 @@ pub fn recoupment_code_given(input: &ClaimInput) -> std::result::Result<(), Stri
 
 /// Sets the columns of claim `id` other than the status, and stamps
 /// `updated_at`.
-async fn set(
-    tx: &mut Transaction,
-    id: i64,
-    columns: &[(&str, &(dyn ToDbValue + Sync))],
-) -> Result {
+async fn set(tx: &mut Transaction, id: i64, columns: &[(&str, &(dyn ToDbValue + Sync))]) -> Result {
     let mut all: Vec<(&str, &(dyn ToDbValue + Sync))> = columns.to_vec();
     let stamp = now();
     all.push(("updated_at", &stamp));
@@ -371,7 +367,7 @@ impl StateMachine for Claim {
 
     fn machine() -> Machine<Self> {
         use ClaimStatus::{
-            Denied, Draft, PartiallyPaid, Paid, Ready, Resubmitted, Submitted, Voided, WrittenOff,
+            Denied, Draft, Paid, PartiallyPaid, Ready, Resubmitted, Submitted, Voided, WrittenOff,
         };
         Machine::new()
             .initial([Draft])
@@ -399,10 +395,7 @@ impl StateMachine for Claim {
             .transition(reject_submission())
             .transition(resubmit())
             .transition(remittance(RECORD_REMITTANCE_PAID, Paid))
-            .transition(remittance(
-                RECORD_REMITTANCE_PARTIALLY_PAID,
-                PartiallyPaid,
-            ))
+            .transition(remittance(RECORD_REMITTANCE_PARTIALLY_PAID, PartiallyPaid))
             .transition(remittance(RECORD_REMITTANCE_DENIED, Denied))
             .transition(recoupment(RECORD_RECOUPMENT_PARTIALLY_PAID, PartiallyPaid))
             .transition(recoupment(RECORD_RECOUPMENT_DENIED, Denied))
@@ -460,9 +453,7 @@ fn submit() -> Transition<Claim> {
 /// Records one attempt to reach the payer: `submit`, or `resubmit` when
 /// `again` is set (the resubmission count goes up).
 async fn send_in(tx: &mut Transaction, claim: &Claim, input: &ClaimInput, again: bool) -> Result {
-    let on = input
-        .on
-        .unwrap_or_else(|| dubai_date(now()));
+    let on = input.on.unwrap_or_else(|| dubai_date(now()));
     let attempts = claim.attempts + 1;
     let count = claim.resubmission_count + i64::from(again);
     let reference = clean(&input.reference);
@@ -862,7 +853,11 @@ mod tests {
             accepts_late: true,
             ..late.clone()
         };
-        assert!(within_window(&accepting).unwrap_err().contains("late reason"));
+        assert!(
+            within_window(&accepting)
+                .unwrap_err()
+                .contains("late reason")
+        );
         let with_reason = ClaimInput {
             late_reason: Some(" payer portal was down ".to_owned()),
             ..accepting

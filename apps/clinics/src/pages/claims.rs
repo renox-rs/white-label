@@ -428,9 +428,7 @@ async fn show(
         visit_date: claim.visit_date.to_string(),
         status: status_text(&lang, claim.status),
         status_kind: status_kind(claim.status),
-        payer_bill: bill
-            .and_then(|b| b.number)
-            .unwrap_or_else(|| dash.clone()),
+        payer_bill: bill.and_then(|b| b.number).unwrap_or_else(|| dash.clone()),
         payer_reference: claim
             .payer_reference
             .clone()
@@ -459,7 +457,10 @@ async fn show(
         can_validate: claim.status == ClaimStatus::Draft,
         can_submit: claim.status == ClaimStatus::Ready,
         can_reject: claim.status.is_with_payer(),
-        can_resubmit: matches!(claim.status, ClaimStatus::PartiallyPaid | ClaimStatus::Denied),
+        can_resubmit: matches!(
+            claim.status,
+            ClaimStatus::PartiallyPaid | ClaimStatus::Denied
+        ),
         can_remit: claim.status.is_with_payer() && !held,
         can_recoup: matches!(
             claim.status,
@@ -622,7 +623,12 @@ async fn remittance(
     let recorded = claim_money::record_remittance(&state, &user, id, advice)
         .await
         .map_err(refusal)?;
-    answered(&lang, recorded, "claim.remittance_recorded", "claim.remittance_held")
+    answered(
+        &lang,
+        recorded,
+        "claim.remittance_recorded",
+        "claim.remittance_held",
+    )
 }
 
 /// `POST /clinics/claims/{id}/recoupment`. The form has the `code`, the
@@ -649,7 +655,12 @@ async fn recoupment(
     let recorded = claim_money::record_recoupment(&state, &user, id, takeback)
         .await
         .map_err(refusal)?;
-    answered(&lang, recorded, "claim.recoupment_recorded", "claim.recoupment_held")
+    answered(
+        &lang,
+        recorded,
+        "claim.recoupment_recorded",
+        "claim.recoupment_held",
+    )
 }
 
 #[cfg(test)]

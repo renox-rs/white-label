@@ -33,12 +33,7 @@ async fn advise(b: &Billed, reference: &str, paid: &str, denied: &str) {
 }
 
 /// The coordinator records a recoupment of `amount` on the only line.
-async fn recoup(
-    b: &Billed,
-    code: &str,
-    date: &str,
-    amount: &str,
-) -> renox::testing::TestResponse {
+async fn recoup(b: &Billed, code: &str, date: &str, amount: &str) -> renox::testing::TestResponse {
     let line = b.lines().await.remove(0);
     let field = format!("line_{}_recouped", line.id);
     b.act(
@@ -97,7 +92,10 @@ async fn a_recoupment_reopens_the_line_as_denied_with_the_payers_code() {
     let claim = b.claim().await;
     assert_eq!(claim.status, ClaimStatus::Denied);
     assert_eq!((claim.paid, claim.denied), (0, 36_000));
-    assert_eq!(claim.last_remittance_on, Some("2026-12-10".parse().unwrap()));
+    assert_eq!(
+        claim.last_remittance_on,
+        Some("2026-12-10".parse().unwrap())
+    );
     let line = b.lines().await.remove(0);
     assert_eq!((line.paid, line.denied, line.recouped), (0, 36_000, 36_000));
     assert_eq!(line.denial_code.as_deref(), Some("R07"));
@@ -135,14 +133,24 @@ async fn a_recoupment_above_what_was_paid_is_refused() {
     recoup(&b, "R07", "2026-12-10", "500.00")
         .await
         .assert_status(422);
-    recoup(&b, " ", "2026-12-10", "100.00").await.assert_status(422);
-    recoup(&b, "R07", "2026-12-10", "0").await.assert_status(422);
+    recoup(&b, " ", "2026-12-10", "100.00")
+        .await
+        .assert_status(422);
+    recoup(&b, "R07", "2026-12-10", "0")
+        .await
+        .assert_status(422);
     let claim = b.claim().await;
     assert_eq!(claim.status, ClaimStatus::Paid);
     assert_eq!(claim.paid, 36_000);
-    assert_eq!(b.bill().status, wl_kernel::payer_bills::PayerBillStatus::Paid);
     assert_eq!(
-        ClaimRemittance::of_claim(b.db(), claim.id).await.unwrap().len(),
+        b.bill().status,
+        wl_kernel::payer_bills::PayerBillStatus::Paid
+    );
+    assert_eq!(
+        ClaimRemittance::of_claim(b.db(), claim.id)
+            .await
+            .unwrap()
+            .len(),
         1
     );
 }

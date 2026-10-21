@@ -109,7 +109,12 @@ async fn an_overpayment_is_held_and_records_nothing() {
     assert_eq!(claim.held_by, Some(b.bea.id));
     assert!(!claim.has_remittance);
     assert_eq!(claim.paid, 0);
-    assert!(ClaimRemittance::of_claim(b.db(), claim.id).await.unwrap().is_empty());
+    assert!(
+        ClaimRemittance::of_claim(b.db(), claim.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(b.bill().status, PayerBillStatus::Issued);
     assert_eq!(b.lines().await[0].paid, 0);
 
@@ -146,7 +151,12 @@ async fn a_hold_that_ends_without_a_yes_records_nothing() {
     assert!(!claim.is_held());
     assert_eq!(claim.held_result.as_deref(), Some("rejected"));
     assert!(!claim.has_remittance);
-    assert!(ClaimRemittance::of_claim(b.db(), claim.id).await.unwrap().is_empty());
+    assert!(
+        ClaimRemittance::of_claim(b.db(), claim.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     b.d.get(&b.bea, &format!("/clinics/claims/{}", claim.id))
         .await
         .assert_ok()
@@ -176,5 +186,11 @@ async fn a_remittance_needs_a_claim_with_the_payer_and_the_permission() {
     .await
     .assert_forbidden();
     assert_eq!(b.claim().await.status, ClaimStatus::Submitted);
-    assert_eq!(Claim::of_visit(b.db(), b.claim.visit_id).await.unwrap().len(), 1);
+    assert_eq!(
+        Claim::of_visit(b.db(), b.claim.visit_id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
