@@ -883,6 +883,146 @@ pub struct PointsReversed {
 
 impl Event for PointsReversed {}
 
+/// Loyalty points were redeemed on a sale (`redeem`, BL-SAL-23).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PointsRedeemed {
+    /// The loyalty account.
+    pub account: LoyaltyAccountId,
+    /// The member.
+    pub party: PartyId,
+    /// The points spent, positive.
+    pub points: i64,
+    /// Their value in fils (points × the point value).
+    pub value: i64,
+    /// The sale they paid part of.
+    pub source: Subject,
+}
+
+impl Event for PointsRedeemed {}
+
+/// The rest of an earn lot expired after its date (`expire`, `SAL.RUL.08`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PointsExpired {
+    /// The loyalty account.
+    pub account: LoyaltyAccountId,
+    /// The member.
+    pub party: PartyId,
+    /// The points that expired, positive.
+    pub points: i64,
+    /// Their value in fils.
+    pub value: i64,
+    /// The last day the lot could be redeemed.
+    pub lot_expired_on: NaiveDate,
+}
+
+impl Event for PointsExpired {}
+
+/// A balance was corrected by hand (`adjust`, `SAL.ACL.07`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PointsAdjusted {
+    /// The loyalty account.
+    pub account: LoyaltyAccountId,
+    /// The member.
+    pub party: PartyId,
+    /// The points added (positive) or taken off (negative).
+    pub points: i64,
+    /// Their value in fils, signed like the points.
+    pub value: i64,
+    /// The reason given.
+    pub reason: String,
+}
+
+impl Event for PointsAdjusted {}
+
+/// A line of a sales order was cancelled (`cancel_line`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderLineCancelled {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The sale line (its id in `wl-sales`).
+    pub line: i64,
+    /// The quantity cancelled, in thousandths.
+    pub quantity_milli: i64,
+    /// The reason.
+    pub reason: String,
+}
+
+impl Event for SalesOrderLineCancelled {}
+
+/// A loyalty redemption to price (`DiscountEngine::quote_redemption`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuoteRedemption {
+    /// The member's loyalty account.
+    pub account: LoyaltyAccountId,
+    /// The counter sale or sales order the points would pay part of.
+    pub sale: Subject,
+    /// The points the member wants to spend.
+    pub points: i64,
+}
+
+/// What a loyalty redemption comes to: the discount line it adds to the sale.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RedemptionQuote {
+    /// The points the line is worth.
+    pub points: i64,
+    /// What the points are worth (points × the point value), in fils, with
+    /// VAT: the amount the sale's total goes down by.
+    pub value: i64,
+    /// The negative price of the line before VAT, in fils.
+    pub line_net: i64,
+    /// The VAT of the line (negative), in fils.
+    pub line_vat: i64,
+    /// The most points the programme's maximum share of this sale allows.
+    pub maximum_points: i64,
+}
+
+/// What the sales and POS flows ask of the discount rules (wl-sales §6
+/// `DiscountEngine`). `wl-sales` provides it; this base answers the loyalty
+/// redemption line (`SAL.DSC.01` rules and promo codes are BL-FNB / BL-EDU
+/// work and are not in the trait yet).
+pub trait DiscountEngine: Send + Sync + 'static {
+    /// Prices the redemption of `request.points` on the sale: the discount
+    /// line after the other discounts, within the minimum points, the maximum
+    /// share of the sale and the member's available points. Fails (422) with
+    /// the reason when it cannot be redeemed. The default has no engine.
+    fn quote_redemption<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: QuoteRedemption,
+    ) -> SalesFuture<'a, RedemptionQuote> {
+        Box::pin(async {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Loyalty redemption needs the sales module.".to_owned(),
+            ))
+        })
+    }
+}
+
+/// The discount engine when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDiscountEngine;
+
+impl DiscountEngine for NoDiscountEngine {}
+
+/// Makes `engine` the app's [`DiscountEngine`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_discount_engine(app: &mut Registry, engine: impl DiscountEngine) {
+    let engine: Arc<dyn DiscountEngine> = Arc::new(engine);
+    app.provide(engine);
+}
+
+/// The app's [`DiscountEngine`], or [`NoDiscountEngine`] when none is
+/// provided.
+pub fn discount_engine(state: &AppState) -> Arc<dyn DiscountEngine> {
+    match state.provided::<Arc<dyn DiscountEngine>>() {
+        Some(engine) => Arc::clone(&engine),
+        None => Arc::new(NoDiscountEngine),
+    }
+}
+
 /// A hand-over of an order's goods (`OrderFulfilment::fulfil`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FulfilOrder {
