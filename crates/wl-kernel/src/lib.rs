@@ -37,6 +37,7 @@ pub mod notify;
 pub mod numbering;
 pub mod parties;
 pub mod payments;
+pub mod payroll_calendar;
 pub mod portal;
 pub mod qualifications;
 pub mod role_tasks;

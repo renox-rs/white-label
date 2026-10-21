@@ -7,10 +7,12 @@
 
 mod support;
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_hr::payroll;
 use wl_hr::wps_alerts;
 use wl_hr::{Employee, EmployeeStatus, LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
+use wl_kernel::payroll_calendar::{CalendarFuture, PayrollCalendar};
 use wl_kernel::tickets::Assignee;
 
 use support::{Booted, nov, users};
@@ -31,7 +33,10 @@ struct World {
 }
 
 async fn world() -> World {
-    let t = support::boot().await;
+    world_on(support::boot().await).await
+}
+
+async fn world_on(t: Booted) -> World {
     let a = t.user_with("Pia", "payroll_prep").await;
     let b = t.user_with("Ali", "payroll_appr").await;
     let md = t.user_with("Basel", "owner").await;
@@ -274,4 +279,35 @@ fn hrm14_the_daily_task_is_registered_at_midnight_in_dubai() {
     assert_eq!(run.zone.to_string(), "Asia/Dubai");
     let at = run.at.expect("it has a next run");
     assert_eq!(at.format("%H:%M").to_string(), "20:00");
+}
+
+/// The WPS due date comes from the app's `PayrollCalendar`, not from the period:
+/// with a calendar that gives 2026-12-05 for November, a run still rejected on
+/// the 30th is not escalated (the default calendar would), and it is on the
+/// 4th, the day before the due date.
+#[renox::test]
+async fn hrm14_the_due_date_is_read_from_the_payroll_calendar() {
+    struct LateCalendar;
+    impl PayrollCalendar for LateCalendar {
+        fn wps_due_date<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _legal_entity_id: Option<i64>,
+            _period: &'a str,
+        ) -> CalendarFuture<'a, Option<NaiveDate>> {
+            Box::pin(async { Ok(NaiveDate::from_ymd_opt(2026, 12, 5)) })
+        }
+    }
+    let w = world_on(support::boot_with_calendar(LateCalendar).await).await;
+    reject_on(&w, nov(28)).await;
+
+    job_on(&w, nov(30)).await;
+    assert!(w.t.notices.of_type(ESCALATED).is_empty());
+
+    job_on(&w, NaiveDate::from_ymd_opt(2026, 12, 4).unwrap()).await;
+    assert_eq!(w.t.notices.of_type(ESCALATED).len(), 1);
+    assert_eq!(
+        w.t.run(&w.run).await.escalated_on,
+        NaiveDate::from_ymd_opt(2026, 12, 4)
+    );
 }

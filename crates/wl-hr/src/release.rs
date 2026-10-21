@@ -313,13 +313,13 @@ pub async fn propose(state: &AppState) -> Result<Proposed> {
 }
 
 /// The warning that carrying a line held for `reason`, from period `held_in`
-/// into the regular run of `into` (`2026-12`), pays after the WPS due date of
-/// `held_in`, with `cut_off_day` the day the run is paid from and `today` the
+/// into the regular run of `into` (`2026-12`), pays after `due`, the WPS due
+/// date of the period it was held in, with `cut_off_day` the day the run is paid from and `today` the
 /// day it is carried. `None` when it does not, and for a line held by a valid
 /// absence report: it is outside WPS.
 pub fn late_warning(
     reason: Option<&str>,
-    held_in: &str,
+    due: NaiveDate,
     into: &str,
     cut_off_day: u32,
     today: NaiveDate,
@@ -327,7 +327,6 @@ pub fn late_warning(
     if reason == Some(HELD_ABSENCE_REPORT) {
         return None;
     }
-    let due = wps_due_date(held_in)?;
     let paid_from = payroll_period(into, cut_off_day)?.cut_off.max(today);
     (paid_from > due).then(|| english("wl_hr.payroll.late_warning", &[("due", &due)]))
 }
@@ -351,9 +350,12 @@ pub async fn warning_for(
     let Some(run) = PayrollRun::find(&state.db, line.run_id).await? else {
         return Ok(None);
     };
+    let Some(due) = wps_due_date(state, run.legal_entity_id, &run.period).await? else {
+        return Ok(None);
+    };
     Ok(late_warning(
         line.held_reason.as_deref(),
-        &run.period,
+        due,
         &target.period,
         config_of(state).cut_off_day,
         today(),
@@ -517,7 +519,7 @@ mod tests {
     fn carrying_a_november_line_into_december_pays_after_the_due_date() {
         let warning = late_warning(
             Some("closed account"),
-            "2026-11",
+            day(2026, 12, 1),
             "2026-12",
             25,
             day(2026, 12, 3),
@@ -533,7 +535,7 @@ mod tests {
         assert_eq!(
             late_warning(
                 Some(HELD_ABSENCE_REPORT),
-                "2026-11",
+                day(2026, 12, 1),
                 "2026-12",
                 25,
                 day(2026, 12, 3)
@@ -547,7 +549,7 @@ mod tests {
         // A November line carried on 10 Nov into a run paid from its cut-off
         // on the 25th is paid before the WPS due date, 1 Dec.
         assert_eq!(
-            late_warning(None, "2026-11", "2026-11", 25, day(2026, 11, 10)),
+            late_warning(None, day(2026, 12, 1), "2026-11", 25, day(2026, 11, 10)),
             None
         );
     }

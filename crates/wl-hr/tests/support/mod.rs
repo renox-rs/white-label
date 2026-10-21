@@ -534,6 +534,7 @@ struct Fakes {
     settlement_paid: Arc<Mutex<Vec<SettlementPaid>>>,
     settlement_disputed: Arc<Mutex<Vec<SettlementDisputed>>>,
     tasks: TicketDesk,
+    calendar: Option<Arc<dyn wl_kernel::payroll_calendar::PayrollCalendar>>,
 }
 
 /// A `TaskCreator` that records the tickets it opens. A ticket opened with a
@@ -754,6 +755,9 @@ impl Module for Fakes {
         record(app, &self.settlement_paid);
         record(app, &self.settlement_disputed);
         provide_task_creator(app, self.tasks.clone());
+        if let Some(calendar) = &self.calendar {
+            app.provide(Arc::clone(calendar));
+        }
     }
 }
 
@@ -1452,16 +1456,28 @@ pub async fn boot() -> Booted {
 /// [`boot`] with `module`, and the default induction template when
 /// `induction` is true.
 pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
-    boot_full(module, induction, false).await
+    boot_full(module, induction, false, None).await
+}
+
+/// [`boot`] with `calendar` as the app's payroll calendar.
+pub async fn boot_with_calendar(
+    calendar: impl wl_kernel::payroll_calendar::PayrollCalendar,
+) -> Booted {
+    boot_full(WlHr::new(), true, false, Some(Arc::new(calendar))).await
 }
 
 /// [`boot`] with the real wl-payments module, to which the payments HR makes
 /// are recorded.
 pub async fn boot_with_payments() -> Booted {
-    boot_full(WlHr::new(), true, true).await
+    boot_full(WlHr::new(), true, true, None).await
 }
 
-async fn boot_full(module: WlHr, induction: bool, payments: bool) -> Booted {
+async fn boot_full(
+    module: WlHr,
+    induction: bool,
+    payments: bool,
+    calendar: Option<Arc<dyn wl_kernel::payroll_calendar::PayrollCalendar>>,
+) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1488,6 +1504,7 @@ async fn boot_full(module: WlHr, induction: bool, payments: bool) -> Booted {
         settlement_paid: Arc::default(),
         settlement_disputed: Arc::default(),
         tasks: TicketDesk::default(),
+        calendar,
     };
     let (qualification_expired, qualification_expiring, absconded, returned, failed, paid, tasks) = (
         Recorded(fakes.qualification_expired.clone()),
@@ -1529,7 +1546,10 @@ async fn boot_full(module: WlHr, induction: bool, payments: bool) -> Booted {
         app
     };
     let client = if payments {
-        CLIENT.replace(r#"["parties", "hr"]"#, r#"["parties", "hr", "invoicing", "payments"]"#)
+        CLIENT.replace(
+            r#"["parties", "hr"]"#,
+            r#"["parties", "hr", "invoicing", "payments"]"#,
+        )
     } else {
         CLIENT.to_owned()
     };

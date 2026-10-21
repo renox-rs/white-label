@@ -13,7 +13,7 @@
 //! - **The approver** is told by the notice of the transition
 //!   ([`crate::payroll_events`]).
 //! - **Escalation.** The WPS due date is the 1st of the month after the
-//!   period (MR 340/2026, [`wps_due_date`]). The daily job [`TASK`] at 00:00
+//!   period (MR 340/2026, [`wps_due_date`], from the kernel `PayrollCalendar`). The daily job [`TASK`] at 00:00
 //!   Asia/Dubai ([`run`]) escalates every run still `rejected` or
 //!   `partially_rejected` on the day N days before it (N =
 //!   [`HrConfig::wps_escalation_days`](crate::HrConfig), default 1), or later
@@ -30,6 +30,7 @@ use renox::chrono::{Duration, NaiveDate};
 use renox::db::now;
 use renox::prelude::*;
 use wl_kernel::documents::today;
+use wl_kernel::payroll_calendar::payroll_calendar;
 use wl_kernel::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY};
 
 use crate::config::config_of;
@@ -90,25 +91,30 @@ pub async fn open_tasks(state: &AppState, run: &PayrollRun) -> Result<usize> {
     Ok(opened)
 }
 
-/// The WPS due date of `period` (`2026-11`): the 1st of the following month
-/// (MR 340/2026). `None` when `period` is not a month.
-pub fn wps_due_date(period: &str) -> Option<NaiveDate> {
-    let (year, month) = period.split_once('-')?;
-    let (year, month): (i32, u32) = (year.parse().ok()?, month.parse().ok()?);
-    if !(1..=12).contains(&month) {
-        return None;
-    }
-    if month == 12 {
-        NaiveDate::from_ymd_opt(year + 1, 1, 1)
-    } else {
-        NaiveDate::from_ymd_opt(year, month + 1, 1)
-    }
+/// The WPS due date of `period` (`2026-11`) for `legal_entity_id`, from the
+/// app's kernel `PayrollCalendar` (by default the 1st of the following month,
+/// MR 340/2026). `None` when `period` is not a month.
+pub async fn wps_due_date(
+    state: &AppState,
+    legal_entity_id: Option<i64>,
+    period: &str,
+) -> Result<Option<NaiveDate>> {
+    payroll_calendar(state)
+        .wps_due_date(state, legal_entity_id, period)
+        .await
 }
 
 /// The day from which a run of `period` that is still rejected is escalated:
 /// `days` before the WPS due date.
-pub fn escalation_day(period: &str, days: i64) -> Option<NaiveDate> {
-    wps_due_date(period).map(|due| due - Duration::days(days))
+pub async fn escalation_day(
+    state: &AppState,
+    legal_entity_id: Option<i64>,
+    period: &str,
+    days: i64,
+) -> Result<Option<NaiveDate>> {
+    Ok(wps_due_date(state, legal_entity_id, period)
+        .await?
+        .map(|due| due - Duration::days(days)))
 }
 
 /// What a run of the job did.
@@ -162,7 +168,14 @@ pub async fn escalate_if_due(state: &AppState, run: &PayrollRun, day: NaiveDate)
         return Ok(false);
     }
     let config = config_of(state);
-    let Some(from) = escalation_day(&run.period, config.wps_escalation_days) else {
+    let Some(from) = escalation_day(
+        state,
+        run.legal_entity_id,
+        &run.period,
+        config.wps_escalation_days,
+    )
+    .await?
+    else {
         return Ok(false);
     };
     if day < from {
@@ -221,28 +234,4 @@ pub(crate) fn schedule(app: &mut Registry) {
             Ok(())
         },
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn day(y: i32, m: u32, d: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap()
-    }
-
-    #[test]
-    fn the_due_date_is_the_first_of_the_following_month() {
-        assert_eq!(wps_due_date("2026-11"), Some(day(2026, 12, 1)));
-        assert_eq!(wps_due_date("2026-12"), Some(day(2027, 1, 1)));
-        assert_eq!(wps_due_date("2026-13"), None);
-        assert_eq!(wps_due_date("november"), None);
-    }
-
-    #[test]
-    fn the_escalation_day_is_n_days_before_the_due_date() {
-        assert_eq!(escalation_day("2026-11", 1), Some(day(2026, 11, 30)));
-        assert_eq!(escalation_day("2026-11", 3), Some(day(2026, 11, 28)));
-        assert_eq!(escalation_day("2027-01", 1), Some(day(2027, 1, 31)));
-    }
 }
