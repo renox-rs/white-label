@@ -19,23 +19,27 @@ use wl_delivery::{
     seed,
 };
 use wl_kernel::custody::CashCustody;
+use wl_kernel::payments::PaymentRecorder;
 use wl_kernel::documents::{DocumentGuard, today};
 use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{
     ClientConfig, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered,
     DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryItem, DeliveryLost,
-    DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequest, PodMethod, RunClosed,
+    DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequest, DeliveryReversed, PodMethod,
+    RunClosed,
     RunDispatched, Subject,
 };
 
 pub mod custody;
 pub mod documents;
+pub mod payments;
 pub mod roster;
 pub mod tickets;
 
 use custody::FakeCustody;
 use documents::Documents;
+use payments::FakePayments;
 use roster::{Roster, employee_of};
 use tickets::TicketDesk;
 
@@ -125,6 +129,8 @@ pub struct World {
     pub lost: Recorded<DeliveryLost>,
     /// `DeliveryFound`.
     pub found: Recorded<DeliveryFound>,
+    /// `DeliveryReversed`.
+    pub reversed: Recorded<DeliveryReversed>,
     /// `DeliveryRefusedReceived`.
     pub refused_received: Recorded<DeliveryRefusedReceived>,
     /// `RunClosed`.
@@ -133,6 +139,8 @@ pub struct World {
     pub tickets: TicketDesk,
     /// The cash custody (provided only by [`boot_with_custody`]).
     pub custody: FakeCustody,
+    /// The payments recorder (provided with the custody): the refunds asked.
+    pub payments: FakePayments,
     /// Approves a cash difference (`deliveries.approve_cod_difference`).
     pub approver: User,
     /// Asks for a loss: holds `deliveries.reverse` and manages deliveries.
@@ -225,6 +233,33 @@ impl World {
                 .address("Villa 12, Al Barsha 2", "Al Barsha")
                 .phone("+971500000000")
                 .collect(collect);
+        for (description, quantity, amount) in items {
+            let mut item = DeliveryItem::new(description, *quantity);
+            if let Some(amount) = amount {
+                item = item.amount(*amount);
+            }
+            request = request.item(item);
+        }
+        Deliveries::request(self.state(), request)
+            .await
+            .expect("the delivery is requested")
+    }
+
+    /// [`request`](Self::request) with the recipient known as the party
+    /// `party` (so a refund can be paid back to them).
+    pub async fn request_for_party(
+        &self,
+        party: i64,
+        items: &[(&str, i64, Option<i64>)],
+        collect: i64,
+    ) -> Delivery {
+        let source = SOURCE.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let mut request =
+            DeliveryRequest::new(Subject::new("sales.order", source), "Mariam Al Hosani")
+                .address("Villa 12, Al Barsha 2", "Al Barsha")
+                .phone("+971500000000")
+                .collect(collect);
+        request.recipient_party = Some(wl_kernel::PartyId(party));
         for (description, quantity, amount) in items {
             let mut item = DeliveryItem::new(description, *quantity);
             if let Some(amount) = amount {
@@ -491,10 +526,12 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
     let dispute_closed = Recorded::new();
     let lost = Recorded::new();
     let found = Recorded::new();
+    let reversed = Recorded::new();
     let refused_received = Recorded::new();
     let run_closed = Recorded::new();
     let tickets = TicketDesk::default();
     let custody = FakeCustody::default();
+    let payments = FakePayments::default();
     let roster = Roster::default();
     let guard: Arc<dyn DocumentGuard> = Arc::new(docs.clone());
     let workforce: Arc<dyn Workforce> = Arc::new(roster.clone());
@@ -509,7 +546,8 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
         .provide(creator);
     let app = if with_custody {
         let held: Arc<dyn CashCustody> = Arc::new(custody.clone());
-        app.provide(held)
+        let recorder: Arc<dyn PaymentRecorder> = Arc::new(payments.clone());
+        app.provide(held).provide(recorder)
     } else {
         app
     };
@@ -522,6 +560,7 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
     let app = record(app, &dispute_closed);
     let app = record(app, &lost);
     let app = record(app, &found);
+    let app = record(app, &reversed);
     let app = record(app, &refused_received);
     let app = record(app, &run_closed);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
@@ -590,10 +629,12 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
         dispute_closed,
         lost,
         found,
+        reversed,
         refused_received,
         run_closed,
         tickets,
         custody,
+        payments,
         approver,
         ops_a,
         ops_b,
