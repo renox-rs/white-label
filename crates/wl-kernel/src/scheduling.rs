@@ -14,6 +14,9 @@
 //! booking?" (`SCH.ACL.06`): a booking that is checked in is cancelled only
 //! once the visit or job card has its work done captured or marked none.
 //!
+//! [`BookingConflict`] is emitted when a new block or a lapsing licence puts
+//! bookings in conflict; [`AvailabilitySource`] supplies other modules' blocks.
+//!
 //! [`ResourceEligibility`] answers "may this resource deliver this service at
 //! this time?" (`SCH.ACL.04`). The default says yes; a vertical provides its
 //! own with [`provide_resource_eligibility`] (05 adds the practitioner's
@@ -422,6 +425,101 @@ pub fn resource_eligibility(state: &AppState) -> Arc<dyn ResourceEligibility> {
     }
 }
 
+/// Why bookings conflict (wl-scheduling §3 *Booking: conflict*).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConflictCause {
+    /// A new availability block (leave, sick, roster, holiday) overlaps them.
+    Block,
+    /// The resource will not be eligible at their start (`SCH.RUL.05`).
+    Eligibility,
+}
+
+impl ConflictCause {
+    /// The stored name: `block` or `eligibility`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ConflictCause::Block => "block",
+            ConflictCause::Eligibility => "eligibility",
+        }
+    }
+}
+
+/// Bookings were flagged as conflicted: a new block overlaps them, or the
+/// resource will not be eligible at their start. Nothing is cancelled; staff
+/// move the bookings (wl-scheduling §5.5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookingConflict {
+    /// The resource that is not available.
+    pub resource: i64,
+    /// Why.
+    pub cause: ConflictCause,
+    /// The availability block, for the cause `block`.
+    pub block: Option<i64>,
+    /// The expiring qualification or document, for the cause `eligibility`.
+    pub item: Option<String>,
+    /// The bookings flagged.
+    pub bookings: Vec<BookingId>,
+    /// The earliest start among them.
+    pub earliest_start: DateTime,
+}
+
+impl Event for BookingConflict {}
+
+/// A stretch of time a source says a resource is not bookable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceBlock {
+    /// The start.
+    pub starts_at: DateTime,
+    /// The end.
+    pub ends_at: DateTime,
+    /// Why, e.g. `sick`, `annual`, `roster`.
+    pub reason: String,
+    /// `leave`, `roster`, `session` or `holiday`.
+    pub source: String,
+    /// The record that caused it (a leave request, a roster), as the source
+    /// names it; two blocks of one source and reference are one block.
+    pub reference: String,
+}
+
+/// Another module's blocks of a resource (wl-scheduling §8): leave from
+/// `wl-hr`, rosters from `wl-attendance`, sessions from an app. The default
+/// supplies none.
+pub trait AvailabilitySource: Send + Sync + 'static {
+    /// The blocks of the resource (and the employee behind it, if any) that
+    /// touch `from`..`until`.
+    fn blocks<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _resource_id: i64,
+        _employee_id: Option<i64>,
+        _from: DateTime,
+        _until: DateTime,
+    ) -> SchedulingFuture<'a, Vec<SourceBlock>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The source when no module provides one: no blocks.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoAvailabilitySource;
+
+impl AvailabilitySource for NoAvailabilitySource {}
+
+/// Makes `source` the app's [`AvailabilitySource`].
+pub fn provide_availability_source(app: &mut Registry, source: impl AvailabilitySource) {
+    let source: Arc<dyn AvailabilitySource> = Arc::new(source);
+    app.provide(source);
+}
+
+/// The app's [`AvailabilitySource`], or [`NoAvailabilitySource`].
+pub fn availability_source(state: &AppState) -> Arc<dyn AvailabilitySource> {
+    match state.provided::<Arc<dyn AvailabilitySource>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoAvailabilitySource),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,6 +537,8 @@ mod tests {
         );
         assert_eq!(Initiator::parse("nobody"), None);
         assert_eq!(CancelStage::CheckedIn.as_str(), "checked_in");
+        assert_eq!(ConflictCause::Block.as_str(), "block");
+        assert_eq!(ConflictCause::Eligibility.as_str(), "eligibility");
         assert_eq!(
             DepositOutcome::AppliedToWorkDone.as_str(),
             "applied_to_work_done"
