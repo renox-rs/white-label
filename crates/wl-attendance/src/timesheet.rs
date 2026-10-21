@@ -411,8 +411,11 @@ impl StateMachine for Timesheet {
                     .reason_required()
                     .guard("not_consumed", |sheet: &Timesheet, _ctx| {
                         let consumed = sheet.consumed();
+                        let provisional = sheet.paid_provisionally_by.is_some();
                         Box::pin(async move {
-                            if consumed {
+                            if provisional {
+                                Err(english("wl_attendance.timesheet.paid_provisionally", &[]))
+                            } else if consumed {
                                 Err(english("wl_attendance.timesheet.consumed", &[]))
                             } else {
                                 Ok(())

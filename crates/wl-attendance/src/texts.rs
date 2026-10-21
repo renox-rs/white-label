@@ -333,6 +333,30 @@ const TEXTS: &[(&str, &str)] = &[
         "Name what used the timesheet: a payroll run, an invoice or an export.",
     ),
     (
+        "wl_attendance.config.wait_for_external",
+        "The payroll basis `wait` is only for approvers who are the employer's own staff. A timesheet that an external approver approves is paid on the accepted attendance hours, so that salary does not wait for the client.",
+    ),
+    (
+        "wl_attendance.timesheet.paid_provisionally",
+        "Payroll paid this timesheet on provisional hours: it cannot be reopened. Correct it with an adjustment once it is approved.",
+    ),
+    (
+        "wl_attendance.payroll.not_a_timesheet",
+        "Payroll named :subject, which is not a timesheet.",
+    ),
+    (
+        "wl_attendance.payroll.already_paid",
+        "The timesheet :timesheet was already paid, so payroll run :run cannot pay it too.",
+    ),
+    (
+        "wl_attendance.payroll.not_approved",
+        "The timesheet :timesheet is not approved: payroll pays it on provisional hours, not as approved hours.",
+    ),
+    (
+        "wl_attendance.payroll.not_unapproved",
+        "The timesheet :timesheet is locked: payroll pays it as approved hours, not on provisional hours.",
+    ),
+    (
         "wl_attendance.timesheet.consumed",
         "A payroll run, an invoice or an export used this timesheet: it cannot be reopened.",
     ),

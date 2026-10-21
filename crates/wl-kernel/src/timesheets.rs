@@ -2,6 +2,13 @@
 //! verticals may ask of timesheets without depending on the `wl-attendance`
 //! crate.
 //!
+//! - [`Timesheets`] (§6 *Provides*): the hours payroll pays at its cut-off,
+//!   approved ones and, for timesheets the client has not yet approved, the
+//!   accepted attendance hours marked provisional (§5.7), and the mark that a
+//!   payroll run used them. `wl-attendance` provides it; `wl-hr` payroll asks
+//!   it at `calculate` ([`Timesheets::hours_for_payroll`]) and tells it at
+//!   `submit` ([`Timesheets::record_payroll_use`]). Without it,
+//!   [`timesheets`] gives [`NoTimesheets`]: there are no hours.
 //! - [`ApproverResolver`] (§8): who stands behind an externally approved
 //!   timesheet. The vertical provides it from the deployment's contract
 //!   (09 Manpower: the client approver, the escalation contact, the account
@@ -10,13 +17,160 @@
 //!   [`approver_resolver`] gives [`NoApprovers`]: nobody is known and no
 //!   contract has a deemed-approval clause.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use crate::attendance::LabourFuture;
+use crate::attendance::{CategoryMinutes, LabourFuture};
 use crate::notify::NotifyRecipient;
 use crate::subject::Subject;
+use crate::workforce::EmployeeId;
+
+/// The subject type of a timesheet, `attendance.timesheet:3`.
+pub const TIMESHEET_SUBJECT_TYPE: &str = "attendance.timesheet";
+
+/// The payroll period hours are asked for (wl-hr `PayrollCalendar`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayrollPeriod {
+    /// The first day of the period.
+    pub from: NaiveDate,
+    /// The last day of the period.
+    pub to: NaiveDate,
+    /// The payroll cut-off: attendance dated after it is not counted
+    /// provisionally, and what was not yet recorded is picked up by the
+    /// reconciliation when the timesheet is approved.
+    pub cut_off: NaiveDate,
+}
+
+impl PayrollPeriod {
+    /// The period from `from` to `to` with the cut-off on `cut_off`.
+    pub fn new(from: NaiveDate, to: NaiveDate, cut_off: NaiveDate) -> Self {
+        PayrollPeriod { from, to, cut_off }
+    }
+}
+
+/// Hours of one category on one day, in minutes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HoursLine {
+    /// The day.
+    pub date: NaiveDate,
+    /// `normal`, `overtime`, `night`, `rest_day` or `public_holiday`.
+    pub category: String,
+    /// The minutes.
+    pub minutes: i64,
+}
+
+/// The hours of one timesheet that payroll pays, as
+/// [`Timesheets::hours_for_payroll`] returns them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayrollHours {
+    /// The timesheet, `attendance.timesheet:3`.
+    pub timesheet: Subject,
+    /// The employee whose hours these are.
+    pub owner: EmployeeId,
+    /// The first day of the timesheet.
+    pub period_from: NaiveDate,
+    /// The last day of the timesheet.
+    pub period_to: NaiveDate,
+    /// The context (project, deployment...), if any.
+    pub context: Option<Subject>,
+    /// `internal` or `external`.
+    pub approver_kind: String,
+    /// Whether the hours are provisional: the timesheet is not approved yet
+    /// and these are the accepted attendance hours. Payroll shows them as
+    /// such.
+    pub provisional: bool,
+    /// The hours per day and category, oldest day first.
+    pub lines: Vec<HoursLine>,
+}
+
+impl PayrollHours {
+    /// The minutes per category, over all days; categories with no minutes
+    /// are left out.
+    pub fn totals(&self) -> Vec<CategoryMinutes> {
+        let mut sums: BTreeMap<&str, i64> = BTreeMap::new();
+        for line in &self.lines {
+            *sums.entry(line.category.as_str()).or_default() += line.minutes;
+        }
+        sums.into_iter()
+            .filter(|(_, minutes)| *minutes != 0)
+            .map(|(category, minutes)| CategoryMinutes {
+                category: category.to_owned(),
+                minutes,
+            })
+            .collect()
+    }
+
+    /// The minutes of every category.
+    pub fn total_minutes(&self) -> i64 {
+        self.lines.iter().map(|line| line.minutes).sum()
+    }
+}
+
+/// The timesheet service payroll uses (wl-attendance §6 `Timesheets`,
+/// §5.7). `wl-attendance` provides it with [`provide_timesheets`].
+///
+/// Payroll asks at `calculate`, as often as it recalculates; asking has no
+/// side effect and gives the same answer until the data changes. At `submit`
+/// it tells the service which hours the run used. A run that is returned or
+/// cancelled marks nothing.
+pub trait Timesheets: Send + Sync + 'static {
+    /// The hours payroll pays for `period`: those of the regular timesheets
+    /// whose last day lies in it. Approved (and locked) timesheets that no
+    /// payroll run used give their hours; a timesheet still `open` or
+    /// `submitted` gives the accepted attendance hours up to the cut-off,
+    /// marked provisional, unless the client's payroll basis for its approver
+    /// is `wait`. Attendance still `flagged` is left out. Adjustment
+    /// timesheets are not here: they reach payroll as `TimesheetApproved` of
+    /// kind `adjustment` and as `TimesheetReconciliationNeeded`. The default
+    /// has no hours.
+    fn hours_for_payroll<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _period: &'a PayrollPeriod,
+    ) -> LabourFuture<'a, Vec<PayrollHours>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The payroll run `run` (`hr.payroll_run:5`) used `used`, as returned
+    /// by [`Timesheets::hours_for_payroll`] and as paid: an approved
+    /// timesheet is `lock`ed with `paid_by` = the run; one paid on
+    /// provisional hours gets `paid_provisionally_by` = the run and keeps the
+    /// hours that were paid, for the reconciliation when it is approved. The
+    /// same run told twice changes nothing. The default does nothing.
+    fn record_payroll_use<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _run: &'a Subject,
+        _used: &'a [PayrollHours],
+    ) -> LabourFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// The service when `wl-attendance` is off: there are no hours.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoTimesheets;
+
+impl Timesheets for NoTimesheets {}
+
+/// Makes `timesheets` the app's [`Timesheets`]; `wl-attendance` calls it in
+/// `register`.
+pub fn provide_timesheets(app: &mut Registry, timesheets: impl Timesheets) {
+    let timesheets: Arc<dyn Timesheets> = Arc::new(timesheets);
+    app.provide(timesheets);
+}
+
+/// The app's [`Timesheets`], or [`NoTimesheets`] when none is provided.
+pub fn timesheets(state: &AppState) -> Arc<dyn Timesheets> {
+    match state.provided::<Arc<dyn Timesheets>>() {
+        Some(timesheets) => Arc::clone(&timesheets),
+        None => Arc::new(NoTimesheets),
+    }
+}
 
 /// Who stands behind the timesheets of a context (a deployment, a project...)
 /// that an external approver approves, as the context's contract says
@@ -86,5 +240,59 @@ pub fn approver_resolver(state: &AppState) -> Arc<dyn ApproverResolver> {
     match state.provided::<Arc<dyn ApproverResolver>>() {
         Some(resolver) => Arc::clone(&resolver),
         None => Arc::new(NoApprovers),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn day(d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 11, d).unwrap()
+    }
+
+    fn line(date: u32, category: &str, minutes: i64) -> HoursLine {
+        HoursLine {
+            date: day(date),
+            category: category.into(),
+            minutes,
+        }
+    }
+
+    #[test]
+    fn hours_add_up_per_category_and_leave_out_the_empty_ones() {
+        let hours = PayrollHours {
+            timesheet: Subject::new(TIMESHEET_SUBJECT_TYPE, 3),
+            owner: EmployeeId(1),
+            period_from: day(1),
+            period_to: day(30),
+            context: None,
+            approver_kind: "external".into(),
+            provisional: true,
+            lines: vec![
+                line(2, "normal", 480),
+                line(3, "normal", 480),
+                line(3, "overtime", 60),
+                line(4, "overtime", -60),
+            ],
+        };
+        assert_eq!(hours.total_minutes(), 960 + 60 - 60);
+        assert_eq!(
+            hours.totals(),
+            vec![CategoryMinutes {
+                category: "normal".into(),
+                minutes: 960
+            }]
+        );
+    }
+
+    #[test]
+    fn hours_and_periods_round_trip_through_json() {
+        let period = PayrollPeriod::new(day(1), day(30), day(25));
+        let json = renox::serde_json::to_string(&period).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<PayrollPeriod>(&json).unwrap(),
+            period
+        );
     }
 }

@@ -63,6 +63,7 @@ use crate::access;
 use crate::entry::{Category, TimesheetEntry};
 use crate::escalation;
 use crate::notices;
+use crate::payroll;
 use crate::permissions;
 use crate::record::{AttendanceRecord, AttendanceStatus};
 use crate::review;
@@ -226,7 +227,7 @@ fn check_creator(sheet: &Timesheet, ctx: &TransitionCtx) -> std::result::Result<
     }
 }
 
-fn kind_text(kind: ApproverKind) -> &'static str {
+pub(crate) fn kind_text(kind: ApproverKind) -> &'static str {
     match kind {
         ApproverKind::Internal => "internal",
         ApproverKind::External => "external",
@@ -461,6 +462,9 @@ pub async fn approved_event(state: &AppState, sheet: &Timesheet) -> Result<Times
 /// After the commit: the labour cost, then `TimesheetApproved`.
 async fn approved(state: &AppState, timesheet_id: i64) -> Result<Timesheet> {
     let sheet = Timesheet::find_or_404(&state.db, timesheet_id).await?;
+    // Paid on provisional hours: payroll is its first consumer, so it is
+    // locked at once (§5.7 step 3).
+    let sheet = payroll::lock_when_paid_provisionally(state, sheet).await?;
     post_labour_cost(state, &sheet).await?;
     let event = approved_event(state, &sheet).await?;
     state.emit(event).await?;

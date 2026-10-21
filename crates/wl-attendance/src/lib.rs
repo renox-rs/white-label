@@ -21,6 +21,7 @@ mod notices;
 pub mod overlap;
 pub mod overtime;
 pub mod pages;
+pub mod payroll;
 pub mod period_end;
 pub mod permit;
 pub mod proposal;
@@ -147,6 +148,23 @@ impl WlAttendance {
         self
     }
 
+    /// What payroll pays at the cut-off for a timesheet that an approver of
+    /// `kind` has not approved: `Attendance` (default, the accepted
+    /// attendance hours, provisional) or `Wait` (only for an internal
+    /// approver).
+    ///
+    /// # Errors
+    ///
+    /// [`config::SettingRefused`] for `Wait` with an external approver.
+    pub fn payroll_basis(
+        mut self,
+        kind: timesheet::ApproverKind,
+        basis: config::PayrollBasis,
+    ) -> Result<Self, config::SettingRefused> {
+        self.config.set_payroll_basis(kind, basis)?;
+        Ok(self)
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &AttendanceConfig {
         &self.config
@@ -196,8 +214,10 @@ impl Module for WlAttendance {
         app.model::<TimesheetEntry>();
         app.model::<approval::ApprovalEvidence>();
         app.model::<dispute::AdjustmentEvidence>();
+        app.model::<payroll::ProvisionalHours>();
         app.provide(self.config.clone());
         overtime::provide_entry_hours(app, entry::TimesheetEntryHours);
+        wl_kernel::timesheets::provide_timesheets(app, payroll::AttendanceTimesheets);
         wl_kernel::attendance::provide_attendance_review(app, after_last_day::Reviewer);
         wl_kernel::attendance::provide_attendance_history(app, history::Attended);
         renox::state_machine::register::<AttendanceRecord>();
