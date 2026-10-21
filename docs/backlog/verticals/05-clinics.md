@@ -1384,14 +1384,15 @@ services keep the advertising permit guard (`CLN.ACL.13`).
   - [ ] Check-in time, check-out time, cash payments and consumables issued accept a business time
         with the late-entry flag.
 - Sales, finance, staff and registrations
-  - [ ] a new lead or party offers the sources referral, walk-in, website, social, paid ads,
+  - [x] a new lead or party offers the sources referral, walk-in, website, social, paid ads,
         aggregator, partner, event and other; a campaign with channel *Instagram*, a budget and
         cost entries reports leads, conversion, cost per lead, CAC and ROAS; a lead with source
         *paid ads* and no campaign is refused; a cost entry over the budget waits for a manager
         (`SAL.ACL.07`); a campaign promoting services without a permit number cannot be
-        activated (`CLN.ACL.13`); one whose permit is valid to 2026-12-31 is ended on that day,
+        activated (`CLN.ACL.13`); one whose permit is valid to 2026-12-31 is ended on that day
+        (it runs through it; the first daily run after it ends it),
         and its retention broadcast scheduled for 2027-01-02 is cancelled (`NTF.ACL.04`).
-  - [ ] a self-pay invoice of AED 200 paid by the patient earns 20 points and the insurer's share
+  - [x] a self-pay invoice of AED 200 paid by the patient earns 20 points and the insurer's share
         earns none; redeeming 100 points adds an AED 10 discount line; points earned on 2026-11-01
         expire on 2027-11-01 with a reminder on 2027-10-02 (`SAL.RUL.08`); an adjustment of 600
         points needs a manager (`SAL.ACL.07`); a patient without marketing consent is left out of
