@@ -13,9 +13,9 @@ use renox::testing::TestApp;
 use wl_delivery::permissions as dlv;
 use wl_delivery::{Deliveries, Delivery, NewRun, VehicleType, WlDelivery};
 use wl_invoicing::dispute::Dispute;
-use wl_invoicing::{Invoice, WlInvoicing, issue};
+use wl_invoicing::{Invoice, InvoiceLine, WlInvoicing, issue};
 use wl_kernel::documents::today;
-use wl_kernel::invoicing::{DisputeOutcome, DraftLine, InvoiceDraft, VatCategory};
+use wl_kernel::invoicing::{DisputeOutcome, DraftLine, InvoiceDraft, InvoiceStatus, VatCategory};
 use wl_kernel::{ClientConfig, DeliveryItem, DeliveryRequest, Subject};
 use wl_ticketing::{Ticket, TicketStatus, WlTicketing};
 
@@ -256,4 +256,105 @@ async fn a_review_on_the_delivery_page_flags_the_invoice_and_closing_it_resolves
     assert_eq!(settled.outcome, Some(DisputeOutcome::Upheld));
     let ticket = Ticket::find_or_404(t.app.db(), ticket_id).await.unwrap();
     assert_eq!(ticket.status, TicketStatus::Resolved);
+}
+
+/// Billing the delivered quantity with the real wl-delivery (BL-INV-22 #85,
+/// BL-DLV-02 #158): order line 11 is 10 cartons at AED 50.00 and the draft
+/// invoice carries the order line as its origin. The delivery is requested
+/// with the same order line, the driver delivers 8 and refuses 2 (damaged,
+/// with a photo) on the stop screen, and the draft is trimmed to 8 cartons,
+/// AED 400.00 plus VAT AED 20.00. The trim only happens when the delivered
+/// line of the real event carries the order line the draft was made with.
+#[renox::test]
+async fn a_draft_is_trimmed_to_what_the_driver_delivered_through_the_real_stop_screen() {
+    let t = boot().await;
+    let dispatcher = user(
+        &t,
+        "Dina",
+        &[
+            dlv::VIEW,
+            dlv::DISPATCH,
+            dlv::MANAGE,
+            dlv::RUNS_VIEW,
+            dlv::RUNS_DISPATCH,
+        ],
+    )
+    .await;
+    let driver = user(&t, "Dev", &[dlv::RUNS_DRIVE, dlv::COMPLETE]).await;
+    let order_line = Subject::new("sales.order_line", 11);
+    let request = DeliveryRequest::new(Subject::new("sales.order", 9), "Mariam Al Hosani")
+        .address("Villa 12, Al Barsha 2", "Al Barsha")
+        .item(DeliveryItem::new("Cartons", 10_000).source_line(order_line.clone()));
+    let delivery = Deliveries::request(t.app.state(), request).await.unwrap();
+    let stored = delivery.lines(t.app.db()).await.unwrap();
+    assert_eq!(stored[0].source_line(), Some(order_line.clone()));
+
+    let draft = InvoiceDraft::new(BLUE_DUNES, Subject::new("sales.order", 9)).line(
+        DraftLine::new("Cartons", 5_000, VatCategory::Standard)
+            .quantity_milli(10_000)
+            .origin(order_line),
+    );
+    let id = wl_kernel::invoicing::invoicer(t.app.state())
+        .draft(t.app.db(), draft)
+        .await
+        .unwrap()
+        .unwrap();
+    let before = Invoice::find_or_404(t.app.db(), id.0).await.unwrap();
+    assert_eq!(before.gross_total, 52_500);
+
+    let run = wl_delivery::plan::create_run(
+        t.app.state(),
+        NewRun::new(today(), driver.id).vehicle(VehicleType::OnFoot, None),
+    )
+    .await
+    .unwrap();
+    let run_id = run.id.to_string();
+    post(
+        &t,
+        &dispatcher,
+        &format!("/deliveries/{}/assign", delivery.id),
+        &[("run_id", &run_id)],
+    )
+    .await
+    .assert_ok();
+    post(&t, &dispatcher, &format!("/runs/{}/dispatch", run.id), &[])
+        .await
+        .assert_ok();
+    let delivered = format!("delivered_{}", stored[0].id);
+    let refused = format!("refused_{}", stored[0].id);
+    let reason = format!("reason_{}", stored[0].id);
+    let photo = format!("photo_{}", stored[0].id);
+    post(
+        &t,
+        &driver,
+        &format!("/driver/stops/{}/deliver", delivery.id),
+        &[
+            ("recipient_name", "Mariam Al Hosani"),
+            ("photo", "photo-1"),
+            ("signature", "signature-1"),
+            ("latitude", "25.204849"),
+            ("longitude", "55.270783"),
+            ("cash_collected", "0"),
+            (&delivered, "8"),
+            (&refused, "2"),
+            (&reason, "damaged"),
+            (&photo, "damage-photo-1"),
+        ],
+    )
+    .await
+    .assert_status(303);
+
+    let after = Invoice::find_or_404(t.app.db(), id.0).await.unwrap();
+    let lines: Vec<InvoiceLine> = wl_invoicing::invoicer::lines_of(t.app.db(), after.id)
+        .await
+        .unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].quantity_milli, 8_000);
+    assert_eq!(lines[0].net_amount, 40_000);
+    assert_eq!(lines[0].vat_amount, 2_000);
+    assert_eq!(
+        (after.net_total, after.vat_total, after.gross_total),
+        (40_000, 2_000, 42_000)
+    );
+    assert_eq!(after.status, InvoiceStatus::Draft);
 }
