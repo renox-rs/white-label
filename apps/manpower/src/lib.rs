@@ -36,6 +36,7 @@ pub mod site;
 pub mod suspension;
 pub mod termination;
 mod texts;
+pub mod visa_steps;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -69,6 +70,10 @@ pub const CONTRACT_EXPIRY_TASK: &str = "manpower:contract-expiry-daily";
 
 /// The name of the daily scheduled task of `MPW.RUL.09`: the absence cases.
 pub const ABSENCE_TASK: &str = "manpower:absence-daily";
+
+/// The name of the daily scheduled task of `MPW.RUL.14`: a visa case step that
+/// passed its target.
+pub const VISA_STEP_TASK: &str = visa_steps::TASK;
 
 /// The Manpower module. Add it to the app with
 /// `.module(manpower::Manpower)`.
@@ -134,7 +139,8 @@ impl Module for Manpower {
             .model::<suspension::DeploymentSuspension>()
             .model::<ContractHold>()
             .model::<expiry::ContractEndNotice>()
-            .model::<absence::AbsenceCase>();
+            .model::<absence::AbsenceCase>()
+            .model::<visa_steps::VisaStepNotice>();
         contract::register();
         request::register();
         // `MPW.RUL.06`: an approved leave opens the cover requests the
@@ -202,6 +208,12 @@ impl Module for Manpower {
             .every_minutes(15, cover_notice::TASK, |state: AppState| async move {
                 cover_notice::run(&state).await
             });
+        // `MPW.RUL.14`: a visa case step that passed its target, daily at 02:00.
+        app.schedule()
+            .daily_at("02:00", visa_steps::TASK, |state: AppState| async move {
+                visa_steps::run(&state).await
+            })
+            .timezone("Asia/Dubai");
         hold::listen(app);
         release::listen(app);
         termination::listen(app);

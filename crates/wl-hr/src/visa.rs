@@ -4,7 +4,11 @@
 //! *absconding* variant of the cancellation step template (it starts from the
 //! MoHRE absence report and needs no worker signature), `cancel`, `reject` and
 //! *cancellation not needed*. The steps, fees and the other transitions
-//! (`start`, `hold`, `complete`) come with the visa issues.
+//! (`start`, `hold`, `complete`) come with the visa issues. A step carries its
+//! target number of days and an optional flag; [`OpenSteps`] lists the open
+//! steps with their start day for the vertical's late-step rule (09:
+//! `MPW.RUL.14`, BL-MPW-18). The step template that creates the steps with
+//! their targets comes with the visa lifecycle issue.
 //!
 //! - **`reject`** (`visas.manage`; `in_progress` or `on_hold` to `rejected`):
 //!   the authority's reference and the reason are recorded, fees already posted
@@ -34,8 +38,9 @@ use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionError, Transitioned};
 use serde::{Deserialize, Serialize};
-use wl_kernel::documents::{DUBAI_OFFSET_SECONDS, today};
+use wl_kernel::documents::{DUBAI_OFFSET_SECONDS, dubai_date, today};
 use wl_kernel::role_tasks::{self, RoleTask};
+use wl_kernel::visa_steps::{OpenVisaStep, VisaSteps, VisaStepsFuture};
 use wl_kernel::workforce::{EmployeeId, VISA_CASE_SUBJECT_TYPE};
 use wl_kernel::{Subject, VisaCaseRejected};
 
@@ -344,6 +349,13 @@ pub struct VisaCaseStep {
     pub done_on: Option<NaiveDate>,
     /// The reference number.
     pub reference: Option<String>,
+    /// The target number of days from the previous mandatory step (or the
+    /// case's creation); empty: no target, never late (`MPW.RUL.14`). The
+    /// targets are the configured ones, not statutory limits (`AU-21`).
+    pub target_days: Option<i64>,
+    /// Whether the step is optional: an optional step does not start the next
+    /// one when it is done.
+    pub optional: bool,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -503,6 +515,64 @@ pub(crate) async fn on_rejected(state: &AppState, id: i64) -> Result {
             visa_expiry,
         })
         .await
+}
+
+/// The open steps of the live cases (`MPW.RUL.14` reads them through the
+/// kernel's [`VisaSteps`]): a step that is not done and has a target, started on
+/// the day the previous mandatory step was done, or on the day the case was
+/// created (Asia/Dubai) for the first one. A step whose previous mandatory step
+/// is not done has not started and is not listed.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OpenSteps;
+
+impl OpenSteps {
+    async fn collect(db: &Db, only: Option<i64>) -> Result<Vec<OpenVisaStep>> {
+        let cases = VisaCase::query()
+            .where_(VisaCase::STATUS.is_in(LIVE))
+            .order_by(VisaCase::ID)
+            .get(db)
+            .await?;
+        let mut open = Vec::new();
+        for case in cases {
+            let steps = VisaCaseStep::query()
+                .where_(VisaCaseStep::CASE_ID.eq(case.id))
+                .order_by(VisaCaseStep::ID)
+                .get(db)
+                .await?;
+            let mut start = case.created_at.map(dubai_date);
+            for step in steps {
+                let Some(started_on) = start else { break };
+                if step.done_on.is_none()
+                    && let Some(target_days) = step.target_days
+                    && only.is_none_or(|id| id == step.id)
+                {
+                    open.push(OpenVisaStep {
+                        step: step.id,
+                        case: case.subject(),
+                        employee: EmployeeId(case.employee_id),
+                        case_type: case.case_type.clone(),
+                        step_type: step.step_type.clone(),
+                        started_on,
+                        target_days,
+                    });
+                }
+                if !step.optional {
+                    start = step.done_on;
+                }
+            }
+        }
+        Ok(open)
+    }
+}
+
+impl VisaSteps for OpenSteps {
+    fn open_steps<'a>(&'a self, state: &'a AppState) -> VisaStepsFuture<'a, Vec<OpenVisaStep>> {
+        Box::pin(async move { Self::collect(&state.db, None).await })
+    }
+
+    fn is_open<'a>(&'a self, state: &'a AppState, step: i64) -> VisaStepsFuture<'a, bool> {
+        Box::pin(async move { Ok(!Self::collect(&state.db, Some(step)).await?.is_empty()) })
+    }
 }
 
 /// The listener of the case's transitions.

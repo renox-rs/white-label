@@ -12,7 +12,7 @@ pub const CONDUCT_CATEGORY: &str = "conduct";
 pub const ABSENCE_CATEGORY: &str = "absence";
 
 /// The role whose holders look after absence cases.
-pub const ABSENCE_ROLE: &str = "hr";
+pub const ABSENCE_ROLE: &str = crate::permissions::HR_ROLE;
 
 /// A ticket category the vertical seeds.
 #[derive(Debug, Clone, Copy)]

@@ -372,6 +372,8 @@ impl Module for WlHr {
         wl_kernel::workforce::provide_workforce(app, staff);
         wl_kernel::workforce::provide_leave_calendar(app, staff);
         wl_kernel::qualifications::provide_qualifications(app, Quals);
+        // `MPW.RUL.14`: the vertical reads the steps of the live visa cases.
+        wl_kernel::visa_steps::provide_visa_steps(app, visa::OpenSteps);
         // The all staff induction template; a re-run keeps the client's changes.
         app.command(
             "hr:install",

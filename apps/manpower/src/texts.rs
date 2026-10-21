@@ -192,6 +192,24 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ worker }}, {{ role }}, {{ site }}, until {{ until }}",
     ),
     ("manpower.expiry.none", "No worker is on site."),
+    // A visa case step that is late (`MPW.RUL.14`, BL-MPW-18). The target is the
+    // configured one, not a legal deadline.
+    (
+        "manpower.visa_step.first_title",
+        "Visa step late: {{ step }} for {{ worker }}",
+    ),
+    (
+        "manpower.visa_step.first_body",
+        "The step {{ step }} of the {{ case }} visa case of {{ worker }} started on {{ started }} and has taken {{ days }} days against a target of {{ target }}. The target is the agency's own, not a legal deadline. Please follow it up.",
+    ),
+    (
+        "manpower.visa_step.second_title",
+        "Visa step still late: {{ step }} for {{ worker }}",
+    ),
+    (
+        "manpower.visa_step.second_body",
+        "The step {{ step }} of the {{ case }} visa case of {{ worker }} is still not done, {{ days }} days after it started on {{ started }} (target {{ target }} days). The PRO was told a week ago.",
+    ),
     // Ending a contract with its deployments, requests and timesheets (`end`, BL-MPW-06).
     (
         "manpower.end.not_yet",

@@ -115,6 +115,9 @@ pub const HSE_OFFICER: &str = "hse";
 /// The account manager: owns client accounts, their contracts, requests and
 /// deployments (09 Manpower §3.1); assigned per client company (§3.2).
 pub const ACCOUNT_MANAGER: &str = mpw::ACCOUNT_MANAGER_ROLE;
+/// The PRO (visa officer): works the visa cases of the workers and is told
+/// when a step passes its target (09 Manpower `MPW.RUL.14`).
+pub const PRO: &str = mpw::PRO_ROLE;
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -816,6 +819,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
         ],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),
+    (PRO, &[hr::EMPLOYEES_VIEW, hr::VISAS_MANAGE]),
     (MEMBER, &[]),
 ];
 

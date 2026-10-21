@@ -55,6 +55,14 @@ pub const ACCOUNT_MANAGER_ROLE: &str = "account_manager";
 /// admin when nobody holds it.
 pub const MD_ROLE: &str = "md";
 
+/// The role of the PRO (visa officer), who is told when a visa case step
+/// passes its target (`MPW.RUL.14`).
+pub const PRO_ROLE: &str = "pro";
+
+/// The role of HR, told of what passes its target twice (`MPW.RUL.14`) and
+/// who looks after absence cases.
+pub const HR_ROLE: &str = "hr";
+
 /// The role of the site supervisor, who sees the deployments of a site.
 pub const SUPERVISOR_ROLE: &str = "supervisor";
 
