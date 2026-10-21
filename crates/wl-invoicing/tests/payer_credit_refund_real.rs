@@ -8,9 +8,9 @@ mod support;
 use renox::auth::{Permissions, permissions};
 use renox::prelude::*;
 use renox::testing::TestApp;
-use wl_invoicing::WlInvoicing;
+use wl_invoicing::{PayerAgreement, VatRecipient, WlInvoicing, permissions as inv};
 use wl_invoicing::payer_credit::{self, OVERPAYMENT, PayerCreditMovement, REFUND, REFUND_RESTORED};
-use wl_kernel::payer_bills::payer_credit_subject;
+use wl_kernel::payer_bills::{NewPayerBill, NewPayerBillLine, payer_bills, payer_credit_subject};
 use wl_kernel::payments::{
     PaymentMethod, RefundAttemptRef, RefundFailed, RefundFailedFrom, RefundFailureKind, RefundId,
     RefundRequest, RefundSource, payment_recorder,
@@ -19,7 +19,7 @@ use wl_kernel::{ClientConfig, LegalEntity};
 use wl_payments::refund::{Refund, RefundStatus};
 use wl_payments::{WlPayments, permissions as pay};
 
-use support::{QUIET_SANDS, Recording, TestDirectory};
+use support::{OMAR, QUIET_SANDS, Recording, TestDirectory};
 
 const LAYOUT: &str = r#"<!doctype html>
 <html><body><rx-outlet name="content"/></body></html>
@@ -297,4 +297,65 @@ async fn a_failed_refund_gives_the_amount_back_to_the_balance() {
     t.app.state().emit(failed).await.unwrap();
     assert_eq!(movements(&t, id).await.len(), 2);
     assert_eq!(balance(&t, entity).await, 120_000);
+}
+
+/// The payer bill page of the payer lists the *refund* movement with the
+/// name of the user who approved it (#101, "Refund + approver").
+#[renox::test]
+async fn the_payer_bill_page_lists_the_refund_with_its_approver() {
+    let t = boot().await;
+    let entity = entity(&t).await;
+    overpaid(&t, entity).await;
+    let a = clerk(&t, "Amal").await;
+    let b = clerk(&t, "Bilal").await;
+    let id = payment_recorder(t.app.state())
+        .request_refund(t.app.state(), request(entity, 120_000), Some(a.id))
+        .await
+        .unwrap()
+        .0;
+    t.app.acting_as(&b);
+    t.app
+        .post(
+            &format!("/refunds/{id}/transitions/approve"),
+            &[("reason", "")],
+        )
+        .await
+        .assert_status(303);
+
+    // A payer bill of the same payer, so its page shows the payer's credit.
+    let mut agreement = PayerAgreement {
+        legal_entity_id: entity,
+        payer_party_id: QUIET_SANDS.0,
+        name: "Daman Gold".to_owned(),
+        active: true,
+        vat_recipient: VatRecipient::Customer,
+        first_submission_days: 30,
+        resubmission_days: 15,
+        resubmission_limit: 2,
+        write_off_limit: 100_000,
+        ..Default::default()
+    };
+    agreement.insert(t.app.db()).await.expect("the agreement");
+    let bill = payer_bills(t.app.state())
+        .create(
+            t.app.state(),
+            NewPayerBill::new(
+                agreement.id,
+                OMAR,
+                wl_kernel::Subject::new("clinics.claim", 1),
+                wl_kernel::documents::today(),
+            )
+            .line(NewPayerBillLine::new("Consultation", 40_000)),
+            None,
+        )
+        .await
+        .expect("the payer bill is made");
+
+    let viewer = user(&t, "Vera", &[inv::PAYER_BILLS_VIEW]).await;
+    t.app.acting_as(&viewer);
+    let page = t.app.get(&format!("/payer-bills/{}", bill.0)).await;
+    page.assert_ok()
+        .assert_see("Refund")
+        .assert_see("Bilal")
+        .assert_see("1,200.00");
 }
