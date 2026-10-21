@@ -20,6 +20,9 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::documents::{dubai_date, provide_guard};
 use wl_kernel::notify::provide_notifier;
+use wl_kernel::parties::{
+    PartyDirectory, PartyFuture, PartyStatus, PartySummary, provide_directory,
+};
 use wl_kernel::payments::provide_payment_recorder;
 use wl_kernel::sales::{SalesFuture, SelfPayPrices, provide_self_pay_prices};
 use wl_kernel::scheduling::{BookingId, Initiator, provide_work_done_status};
@@ -110,8 +113,60 @@ impl SelfPayPrices for Prices {
     }
 }
 
+/// The party directory as the clinic needs it: it knows nobody by name, and
+/// answers who the guardians of a dependant are (`PTY.REL.01`).
+#[derive(Clone, Default)]
+pub struct Guardians(Arc<Mutex<BTreeMap<i64, Vec<PartyId>>>>);
+
+impl Guardians {
+    /// `guardian` is a guardian of the dependant `child`.
+    pub fn set(&self, child: PartyId, guardian: PartyId) {
+        self.0.lock().unwrap().entry(child.0).or_default().push(guardian);
+    }
+}
+
+impl PartyDirectory for Guardians {
+    fn find<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn find_by_code<'a>(
+        &'a self,
+        _db: &'a Db,
+        _code: &'a str,
+    ) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn display_name<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _lang: &'a str,
+    ) -> PartyFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn status<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn guardians<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Vec<PartyId>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .get(&party.0)
+                .cloned()
+                .unwrap_or_default())
+        })
+    }
+}
+
 /// Provides the fakes.
 struct Harness {
+    guardians: Guardians,
     refunds: Refunds,
     work: Work,
     messages: Messages,
@@ -132,6 +187,7 @@ impl Module for Harness {
         provide_guard(app, self.docs.clone());
         provide_task_creator(app, self.tasks.clone());
         provide_self_pay_prices(app, self.prices.clone());
+        provide_directory(app, self.guardians.clone());
     }
 }
 
@@ -151,6 +207,8 @@ pub struct Clinic {
     pub tasks: Tasks,
     /// The self-pay price list.
     pub prices: Prices,
+    /// The guardians of the dependants.
+    pub guardians: Guardians,
     /// The `QualificationExpired` events wl-hr emitted.
     pub expired: Recorded<QualificationExpired>,
     /// Keeps the views directory alive.
@@ -181,6 +239,7 @@ pub async fn boot() -> Clinic {
     let docs = Docs::default();
     let tasks = Tasks::default();
     let prices = Prices::default();
+    let guardians = Guardians::default();
     let expired = Recorded::<QualificationExpired>::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in clinics::reasons::SCHEDULING_REASON_CODES {
@@ -194,6 +253,7 @@ pub async fn boot() -> Clinic {
         .module(scheduling_module)
         .module(clinics::Clinics)
         .module(Harness {
+            guardians: guardians.clone(),
             refunds: refunds.clone(),
             work,
             messages: messages.clone(),
@@ -224,6 +284,7 @@ pub async fn boot() -> Clinic {
         docs,
         tasks,
         prices,
+        guardians,
         expired,
         _views: views,
     }
