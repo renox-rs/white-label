@@ -60,7 +60,9 @@ async fn after_the_end_the_client_user_only_looks_for_90_days() {
     w.get(&w.noor, &format!("/freight/{}", job.id))
         .await
         .assert_ok();
-    w.try_book(&w.noor, SOUQ, "ORD-2").await.assert_forbidden();
+    w.try_book(&w.noor, SOUQ, "ORD-2", &[])
+        .await
+        .assert_forbidden();
     w.post(&w.noor, &format!("/shipments/{}/cancel", shipment.id), &[])
         .await
         .assert_forbidden();
@@ -90,7 +92,9 @@ async fn after_90_days_the_portal_is_closed() {
     w.get(&w.noor, &format!("/freight/{}", job.id))
         .await
         .assert_forbidden();
-    w.try_book(&w.noor, SOUQ, "ORD-9").await.assert_forbidden();
+    w.try_book(&w.noor, SOUQ, "ORD-9", &[])
+        .await
+        .assert_forbidden();
 }
 
 /// Only a holder of `shipments.manage` records the end; the date is checked.

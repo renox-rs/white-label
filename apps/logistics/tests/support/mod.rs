@@ -200,7 +200,24 @@ async fn probe_available(
     Ok(names.join(","))
 }
 
-/// Mounts [`probe_available`].
+/// Runs transition `name` of a shipment as the signed-in user (a test cannot
+/// build an `AuthUser`) and answers `ok`, `forbidden` or the error
+/// (`POST /probe/{id}/run/{name}`).
+async fn probe_run(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path((id, name)): Path<(i64, String)>,
+) -> Result<String> {
+    let shipment = Shipment::find_or_404(&state.db, id).await?;
+    let answer = match shipment.transition(&name).by(&user).run(&state).await {
+        Ok(_) => "ok".to_owned(),
+        Err(renox::state_machine::TransitionError::Forbidden) => "forbidden".to_owned(),
+        Err(other) => format!("error: {other}"),
+    };
+    Ok(answer)
+}
+
+/// Mounts [`probe_available`] and [`probe_run`].
 struct Probe;
 
 impl Module for Probe {
@@ -211,6 +228,7 @@ impl Module for Probe {
     fn routes(&self) -> Routes {
         Routes::new()
             .get("/probe/{id}/available", probe_available)
+            .post("/probe/{id}/run/{name}", probe_run)
             .require_auth()
     }
 }
@@ -822,6 +840,16 @@ impl World {
     /// A new user who holds `grants`.
     pub async fn user_with(&self, name: &str, grants: &[&str]) -> User {
         make_user(self.db(), name, grants).await
+    }
+
+    /// What happens when `user` runs transition `name` on `shipment`:
+    /// `ok`, `forbidden` or the error.
+    pub async fn try_run(&self, user: &User, shipment: &Shipment, name: &str) -> String {
+        let response = self
+            .post(user, &format!("/probe/{}/run/{}", shipment.id, name), &[])
+            .await;
+        response.assert_ok();
+        response.text()
     }
 
     /// The names of the transitions `user` is offered on `shipment`.

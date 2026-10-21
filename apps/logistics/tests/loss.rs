@@ -13,7 +13,7 @@ use logistics::{Shipment, ShipmentStatus};
 use renox::auth::permissions;
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError};
+use renox::state_machine::StateMachine;
 use wl_kernel::tickets::Assignee;
 
 use logistics::permissions as perm;
@@ -414,8 +414,11 @@ async fn no_user_runs_the_system_transitions_of_a_loss() {
     let shipment = attempted(&w).await;
     for user in [&w.ops, &w.dispatcher, &w.hub, &w.amal] {
         for name in [MARK_LOST_SYSTEM, MARK_LOST_APPROVED, FOUND_SYSTEM] {
-            let result = shipment.transition(name).by(user).run(w.state()).await;
-            assert!(matches!(result, Err(TransitionError::Forbidden)), "{name}");
+            assert_eq!(
+                w.try_run(user, &shipment, name).await,
+                "forbidden",
+                "{name}"
+            );
         }
     }
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Attempted);

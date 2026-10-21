@@ -13,7 +13,6 @@ use logistics::shipment::charge_kind;
 use logistics::{Shipment, ShipmentStatus, billing, rates};
 use renox::auth::permissions;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError};
 use wl_delivery::DeliveryStatus;
 use wl_kernel::approvals::{self, ApprovalRequest};
 
@@ -479,13 +478,9 @@ async fn no_user_runs_the_approved_disposal() {
     let w = boot().await;
     let shipment = held(&w, "ORD-1").await;
     for user in [&w.ops, &w.dispatcher, &w.hub, &w.amal] {
-        let result = shipment
-            .transition("dispose_approved")
-            .by(user)
-            .run(w.state())
-            .await;
-        assert!(
-            matches!(result, Err(TransitionError::Forbidden)),
+        assert_eq!(
+            w.try_run(user, &shipment, "dispose_approved").await,
+            "forbidden",
             "dispose_approved"
         );
     }

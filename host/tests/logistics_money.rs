@@ -17,6 +17,7 @@ use logistics::defaults;
 use logistics::portal::{self, Access};
 use renox::chrono::{Datelike, Days, NaiveDate, Weekday};
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_delivery::reasons::FailureReason;
 use wl_invoicing::Invoice;

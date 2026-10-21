@@ -43,9 +43,6 @@ pub const BOUNCE_REMIND_DAYS: i64 = 3;
 pub const BOUNCE_DECIDE_DAYS: i64 = 14;
 /// Hours a payment reversal request may wait before it can expire.
 pub const PAYMENT_REVERSAL_EXPIRY_HOURS: i64 = 168;
-/// The cash shortage an operations manager of a logistics client writes off
-/// without a second approver, in fils (`FIN.ACL.06`, 03: AED 50).
-pub const LOGISTICS_CASH_WRITE_OFF_LIMIT: i64 = logistics::defaults::CASH_WRITE_OFF_LIMIT;
 /// The projected balance below which `FIN.RUL.23` alerts, in fils (AED 50,000).
 pub const CASH_THRESHOLD: i64 = 5_000_000;
 

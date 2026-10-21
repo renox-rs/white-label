@@ -503,7 +503,7 @@ pub async fn delete_line(
     if !user.has_permission(permissions::REMITTANCES_PREPARE) {
         return Err(TransitionError::Forbidden);
     }
-    let line = load(state, id).await?;
+    let mut line = load(state, id).await?;
     if line.prepared_by != Some(user.id) {
         return Err(guard(english("logistics.adjustment.not_your_line", &[])));
     }

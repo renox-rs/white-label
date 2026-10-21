@@ -13,7 +13,6 @@ use logistics::notices::REMITTANCE_DRAFTED;
 use logistics::remit;
 use logistics::{Remittance, RemittanceLine, RemittanceStatus, Shipment, ShipmentStatus};
 use renox::prelude::*;
-use renox::state_machine::StateMachine;
 use wl_delivery::{Run, close};
 use wl_kernel::custody::HandoverStatus;
 use wl_payments::permissions as pay;
@@ -314,12 +313,13 @@ async fn a_rebuild_adds_the_released_shipment_and_keeps_the_approved_line() {
         ..AdjustmentLine::default()
     };
     line.insert(w.db()).await.unwrap();
-    let _outcome = line
-        .transition(adjustment::APPROVE)
-        .by(&w.bashar)
-        .run(w.state())
-        .await
-        .expect("the second user approves the line");
+    w.post(
+        &w.bashar,
+        &format!("/remittances/adjustments/{}/approve", line.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     w.rule().await;
     let attached = w.remittance(&draft).await;
     assert_eq!(attached.adjustment_total, 7_000);
@@ -355,12 +355,13 @@ async fn an_open_negative_line_makes_a_draft_of_zero_and_is_carried_forward() {
         ..AdjustmentLine::default()
     };
     line.insert(w.db()).await.unwrap();
-    let _outcome = line
-        .transition(adjustment::APPROVE)
-        .by(&w.bashar)
-        .run(w.state())
-        .await
-        .expect("the second user approves the line");
+    w.post(
+        &w.bashar,
+        &format!("/remittances/adjustments/{}/approve", line.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
     // The line starts no draft before the run.
     assert!(w.remittances_of(SOUQ).await.is_empty());
 

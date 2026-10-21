@@ -15,7 +15,7 @@ use logistics::shipment_machine::{REVERSE_DELIVERY, REVERSE_DELIVERY_ON_ROAD};
 use logistics::{RemittanceStatus, Shipment, ShipmentStatus};
 use renox::auth::permissions;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError};
+use renox::state_machine::StateMachine;
 use wl_delivery::permissions as dperm;
 use wl_kernel::custody::{HandoverKind, HandoverStatus};
 use wl_kernel::tickets::Assignee;
@@ -588,8 +588,11 @@ async fn no_user_can_run_reverse_delivery_on_a_shipment() {
                 .any(|n| n == REVERSE_DELIVERY || n == REVERSE_DELIVERY_ON_ROAD)
         );
         for name in [REVERSE_DELIVERY, REVERSE_DELIVERY_ON_ROAD] {
-            let result = shipment.transition(name).by(user).run(w.state()).await;
-            assert!(matches!(result, Err(TransitionError::Forbidden)));
+            assert_eq!(
+                w.try_run(user, &shipment, name).await,
+                "forbidden",
+                "{name}"
+            );
         }
     }
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Delivered);

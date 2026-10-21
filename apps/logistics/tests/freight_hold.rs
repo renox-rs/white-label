@@ -9,12 +9,10 @@
 mod support;
 
 use logistics::freight_hold::{self, FreightHold};
-use logistics::freight_machine::{FreightInput, RELEASE_IN_TRANSIT};
 use logistics::notices::STAFF_NOTICE;
 use logistics::{FreightJob, FreightStatus};
 use renox::chrono::{NaiveDate, TimeDelta};
 use renox::prelude::*;
-use renox::state_machine::StateMachine;
 use wl_kernel::documents::today;
 
 use support::{World, boot};
@@ -184,16 +182,15 @@ async fn release_cannot_go_to_a_state_other_than_the_stored_one() {
     .await
     .assert_status(303);
     let held = w.job(job.id).await;
-    let outcome = held
-        .transition(RELEASE_IN_TRANSIT)
-        .by(&w.docs)
-        .input(&FreightInput {
-            note: Some("resolved".into()),
-            ..FreightInput::default()
-        })
-        .run(w.state())
+    let refused = w
+        .job_action(
+            &w.docs,
+            &held,
+            "release_in_transit",
+            &[("note", "resolved")],
+        )
         .await;
-    assert!(outcome.is_err());
+    assert_ne!(refused.status.as_u16(), 303);
     assert_eq!(w.job(job.id).await.status, FreightStatus::OnHold);
 }
 

@@ -283,13 +283,13 @@ async fn show(
         .iter()
         .filter(|(name, _, _, _)| offered.iter().any(|offered| offered.as_str() == *name))
         .map(|(_, slug, label, fields)| ActionView {
-            slug: *slug,
+            slug,
             label: t(&lang, label),
             url: format!("/freight/{}/{slug}", job.id),
             fields: fields
                 .iter()
                 .map(|name| FieldView {
-                    name: *name,
+                    name,
                     label: t(&lang, &format!("logistics.screen.job_field.{name}")),
                 })
                 .collect(),

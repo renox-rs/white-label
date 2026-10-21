@@ -440,7 +440,7 @@ pub fn provide_cod_rule(app: &mut Registry, rule: impl CodDifferenceRule) {
 pub fn cod_rule(state: &AppState) -> Option<Arc<dyn CodDifferenceRule>> {
     state
         .provided::<Arc<dyn CodDifferenceRule>>()
-        .map(|rule| Arc::clone(&rule))
+        .map(|rule| Arc::clone(&*rule))
 }
 
 /// A source module that pays back a payer who is no party itself (03: the
@@ -464,7 +464,7 @@ pub fn provide_manual_refunds(app: &mut Registry, refunds: impl ManualRefunds) {
 pub fn manual_refunds(state: &AppState) -> Option<Arc<dyn ManualRefunds>> {
     state
         .provided::<Arc<dyn ManualRefunds>>()
-        .map(|refunds| Arc::clone(&refunds))
+        .map(|refunds| Arc::clone(&*refunds))
 }
 
 /// A delivery was put on a run (`assign`, `DeliveryAssigned`).

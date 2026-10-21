@@ -278,9 +278,10 @@ async fn entries(db: &Db, client: PartyId, period_end: DateTime) -> Result<Vec<E
             charge_kind::CANCELLATION => {
                 // The fee of a shipment cancelled before pickup (it has no
                 // delivery, so it is not among the billable ones).
-                if !cancelled.contains_key(&charge.shipment_id) {
-                    let found = Shipment::find(db, charge.shipment_id).await?;
-                    cancelled.insert(charge.shipment_id, found);
+                if let std::collections::btree_map::Entry::Vacant(slot) =
+                    cancelled.entry(charge.shipment_id)
+                {
+                    slot.insert(Shipment::find(db, charge.shipment_id).await?);
                 }
                 let found = cancelled.get(&charge.shipment_id).cloned().flatten();
                 match found {

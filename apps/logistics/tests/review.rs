@@ -11,7 +11,7 @@ use logistics::notices::REMITTANCE_REOPENED;
 use logistics::shipment_machine::{CLOSE_REVIEW, OPEN_REVIEW};
 use logistics::{RemittanceStatus, Shipment, ShipmentStatus};
 use renox::prelude::*;
-use renox::state_machine::{self, StateMachine, TransitionError};
+use renox::state_machine::{self, StateMachine};
 use renox::testing::TestResponse;
 use wl_kernel::notify::NotifyRecipient;
 
@@ -225,12 +225,7 @@ async fn no_user_can_open_or_close_a_review_of_a_shipment() {
                 .iter()
                 .any(|n| n == OPEN_REVIEW || n == CLOSE_REVIEW)
         );
-        let result = shipment
-            .transition(OPEN_REVIEW)
-            .by(user)
-            .run(w.state())
-            .await;
-        assert!(matches!(result, Err(TransitionError::Forbidden)));
+        assert_eq!(w.try_run(user, &shipment, OPEN_REVIEW).await, "forbidden");
     }
     assert_eq!(w.reload(&shipment).await.status, ShipmentStatus::Delivered);
 
@@ -246,12 +241,7 @@ async fn no_user_can_open_or_close_a_review_of_a_shipment() {
                 .iter()
                 .any(|n| n == OPEN_REVIEW || n == CLOSE_REVIEW)
         );
-        let result = reviewed
-            .transition(CLOSE_REVIEW)
-            .by(user)
-            .run(w.state())
-            .await;
-        assert!(matches!(result, Err(TransitionError::Forbidden)));
+        assert_eq!(w.try_run(user, &reviewed, CLOSE_REVIEW).await, "forbidden");
     }
     assert_eq!(
         w.reload(&shipment).await.status,

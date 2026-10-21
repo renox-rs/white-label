@@ -106,7 +106,7 @@ pub(crate) async fn held(state: &AppState, id: i64) -> Result {
 /// remittance is not paid: a draft is rebuilt, an approved one is sent back
 /// to a draft first and the accountants are told.
 pub(crate) async fn take_off_remittance(state: &AppState, shipment: &Shipment) -> Result {
-    let Some(line) = RemittanceLine::query()
+    let Some(mut line) = RemittanceLine::query()
         .where_(RemittanceLine::SHIPMENT_ID.eq(shipment.id))
         .first(&state.db)
         .await?

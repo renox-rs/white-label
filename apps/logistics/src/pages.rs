@@ -217,9 +217,8 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .iter()
         .filter(|s| s.status == ShipmentStatus::Created)
     {
-        if !on_hold.contains_key(&s.client_party_id) {
-            let blocked = crate::block::on_hold(&state, s.client()).await?;
-            on_hold.insert(s.client_party_id, blocked);
+        if let std::collections::btree_map::Entry::Vacant(slot) = on_hold.entry(s.client_party_id) {
+            slot.insert(crate::block::on_hold(&state, s.client()).await?);
         }
     }
     let shipments = shipments
