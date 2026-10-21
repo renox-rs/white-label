@@ -20,8 +20,9 @@
 //!    kernel's `Invoicer` and issued at once (the host lets the system issue
 //!    the `clinics.visit` source), so that the deposit can be allocated.
 //! 5. The payer's share becomes a draft payer bill (`PayerBills::create`)
-//!    under the payer agreement of the contract: the claim to prepare
-//!    (`CLN.CLM.01`).
+//!    under the payer agreement of the contract, and the clinic's claim wraps
+//!    it ([`crate::claims::create_for_visit`], `CLN.CLM.01`): the claim to
+//!    prepare, validate and submit.
 //! 6. The units of the prior authorisations the covered services used are
 //!    consumed ([`crate::authorisations::consume`]).
 //! 7. The deposit: on a cancellation wl-scheduling decided (`SCH.ACL.05`) how
@@ -45,6 +46,8 @@ use crate::authorisation::PriorAuthorisation;
 use crate::authorisations;
 use crate::charge::{ChargeKind, ChargeLine};
 use crate::charges;
+use crate::claim::Claim;
+use crate::claims;
 use crate::db::refused;
 use crate::texts::english;
 use crate::visit::Visit;
@@ -305,6 +308,23 @@ async fn run(state: &AppState, id: i64, basis: Basis) -> Result<Billed> {
             .where_(Visit::ID.eq(id))
             .update(&state.db, &[("payer_bill_id", &Some(made.0))])
             .await?;
+        visit.payer_bill_id = Some(made.0);
+    }
+    // The claim that wraps the payer bill; a bill that stopped before it was
+    // made finishes it.
+    if let Some(bill) = visit.payer_bill_id
+        && Claim::of_payer_bill(&state.db, bill).await?.is_none()
+    {
+        let reference = first_reference(state, &quote).await?;
+        claims::create_for_visit(
+            state,
+            &visit,
+            PayerBillId(bill),
+            quote.contract.as_ref(),
+            reference,
+            None,
+        )
+        .await?;
     }
     // The units of the authorisations the covered services used.
     if visit.authorisations_consumed_at.is_none() {

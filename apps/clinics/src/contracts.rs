@@ -32,6 +32,14 @@ pub struct NewContract {
     pub valid_from: NaiveDate,
     /// The last day.
     pub valid_to: Option<NaiveDate>,
+    /// Days after the visit a first claim is accepted.
+    pub first_submission_days: i64,
+    /// Days after a remittance a resubmission is accepted.
+    pub resubmission_days: i64,
+    /// How many resubmissions of one claim the payer accepts.
+    pub resubmission_limit: i64,
+    /// Whether a first claim after the window is accepted with a late reason.
+    pub accepts_late_claims: bool,
 }
 
 impl NewContract {
@@ -46,6 +54,10 @@ impl NewContract {
             deductible: 0,
             valid_from,
             valid_to: None,
+            first_submission_days: DEFAULT_FIRST_SUBMISSION_DAYS,
+            resubmission_days: DEFAULT_RESUBMISSION_DAYS,
+            resubmission_limit: DEFAULT_RESUBMISSION_LIMIT,
+            accepts_late_claims: false,
         }
     }
 
@@ -78,17 +90,46 @@ impl NewContract {
         self.valid_to = Some(day);
         self
     }
+
+    /// With a first-submission window of `first` days after the visit, a
+    /// resubmission window of `resubmission` days after the remittance and
+    /// at most `limit` resubmissions of a claim.
+    pub fn windows(mut self, first: i64, resubmission: i64, limit: i64) -> Self {
+        self.first_submission_days = first;
+        self.resubmission_days = resubmission;
+        self.resubmission_limit = limit;
+        self
+    }
+
+    /// The payer accepts a first claim after its window, with a late reason.
+    pub fn accepts_late_claims(mut self) -> Self {
+        self.accepts_late_claims = true;
+        self
+    }
 }
+
+/// Decision: the window of a contract that does not give one (spec: the
+/// first-submission window is required, a full contract setting comes with
+/// `CLN.INS.01`): 30 days to send a claim, 30 days to resubmit, twice.
+pub const DEFAULT_FIRST_SUBMISSION_DAYS: i64 = 30;
+/// See [`DEFAULT_FIRST_SUBMISSION_DAYS`].
+pub const DEFAULT_RESUBMISSION_DAYS: i64 = 30;
+/// See [`DEFAULT_FIRST_SUBMISSION_DAYS`].
+pub const DEFAULT_RESUBMISSION_LIMIT: i64 = 2;
 
 /// Records a contract.
 ///
 /// # Errors
 ///
 /// A 422 for a copay outside 0 to 10,000 basis points, a negative
-/// deductible, or an end before the start.
+/// deductible, an end before the start, a first-submission window below one
+/// day, or a resubmission window or limit that is negative.
 pub async fn create(state: &AppState, by: Option<i64>, new: NewContract) -> Result<PayerContract> {
     if !(0..=10_000).contains(&new.copay_bp)
         || new.deductible < 0
+        || new.first_submission_days < 1
+        || new.resubmission_days < 0
+        || new.resubmission_limit < 0
         || new.valid_to.is_some_and(|to| to < new.valid_from)
     {
         return Err(refused(english("clinics.contract.problem.terms", &[])));
@@ -99,6 +140,10 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewContract) -> Resu
         agreement_id: new.agreement,
         copay_bp: new.copay_bp,
         deductible: new.deductible,
+        first_submission_days: new.first_submission_days,
+        resubmission_days: new.resubmission_days,
+        resubmission_limit: new.resubmission_limit,
+        accepts_late_claims: new.accepts_late_claims,
         valid_from: new.valid_from,
         valid_to: new.valid_to,
         created_by: by,
@@ -184,5 +229,15 @@ mod tests {
         assert_eq!(new.copay_bp, 2_000);
         assert_eq!(new.deductible, 0);
         assert_eq!(NewContract::new(PartyId(5), day).plan("  ").plan, None);
+        let windows = NewContract::new(PartyId(5), day).windows(15, 20, 1);
+        assert_eq!(
+            (
+                windows.first_submission_days,
+                windows.resubmission_days,
+                windows.resubmission_limit
+            ),
+            (15, 20, 1)
+        );
+        assert!(!windows.accepts_late_claims);
     }
 }

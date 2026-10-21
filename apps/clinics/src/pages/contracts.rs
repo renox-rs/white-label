@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 
-use super::{Texts, invalid, parse_date, parse_id, party_name, require, text};
+use super::{Texts, invalid, parse_date, parse_id, party_name, require, text, text_with};
 use crate::contract::{PayerContract, PayerTariff};
 use crate::contracts::{self, NewContract};
 use crate::money_text;
@@ -54,6 +54,8 @@ pub struct ContractRow {
     pub valid_to: String,
     /// The tariff: `laser AED 450.00, peel excluded`.
     pub tariffs: String,
+    /// The windows: `30 days to send, 30 to resubmit (2 times)`.
+    pub windows: String,
 }
 
 /// What the list page needs.
@@ -65,6 +67,7 @@ pub(crate) struct IndexPage {
     contract_options: Vec<[String; 2]>,
     contract_selected: String,
     covered_options: Vec<[String; 2]>,
+    late_options: Vec<[String; 2]>,
     today: String,
     can_manage: bool,
 }
@@ -124,6 +127,15 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             deductible: money_text(c.deductible),
             valid_from: c.valid_from.to_string(),
             valid_to: c.valid_to.map_or_else(|| dash.clone(), |d| d.to_string()),
+            windows: text_with(
+                &lang,
+                "contract.windows_text",
+                &[
+                    ("first", &c.first_submission_days),
+                    ("again", &c.resubmission_days),
+                    ("limit", &c.resubmission_limit),
+                ],
+            ),
             tariffs: if tariffs.is_empty() {
                 dash.clone()
             } else {
@@ -143,6 +155,10 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         covered_options: vec![
             ["yes".to_owned(), text(&lang, "contract.covered_yes")],
             ["no".to_owned(), text(&lang, "contract.covered_no")],
+        ],
+        late_options: vec![
+            ["no".to_owned(), text(&lang, "contract.late_no")],
+            ["yes".to_owned(), text(&lang, "contract.late_yes")],
         ],
         today: today().to_string(),
         can_manage: user.has_permission(permissions::AUTHORISATIONS_MANAGE),
@@ -173,6 +189,18 @@ pub struct ContractForm {
     /// The last day.
     #[serde(default)]
     pub valid_to: String,
+    /// Days after the visit a first claim is accepted; blank = 30.
+    #[serde(default)]
+    pub first_submission_days: String,
+    /// Days after a remittance a resubmission is accepted; blank = 30.
+    #[serde(default)]
+    pub resubmission_days: String,
+    /// How many resubmissions of a claim are accepted; blank = 2.
+    #[serde(default)]
+    pub resubmission_limit: String,
+    /// `yes` when a late first claim is accepted with a late reason.
+    #[serde(default)]
+    pub accepts_late_claims: String,
 }
 
 /// `POST /clinics/contracts`.
@@ -199,6 +227,20 @@ async fn create(
     }
     if let Some(to) = parse_date(&form.valid_to)? {
         new = new.valid_to(to);
+    }
+    let days = |text: &str, default: i64| -> std::result::Result<i64, Error> {
+        if text.trim().is_empty() {
+            Ok(default)
+        } else {
+            parse_id(text).ok_or_else(|| invalid("windows: days"))
+        }
+    };
+    let first = days(&form.first_submission_days, new.first_submission_days)?;
+    let resubmission = days(&form.resubmission_days, new.resubmission_days)?;
+    let limit = days(&form.resubmission_limit, new.resubmission_limit)?;
+    new = new.windows(first, resubmission, limit);
+    if form.accepts_late_claims == "yes" {
+        new = new.accepts_late_claims();
     }
     contracts::create(&state, Some(user.id), new).await?;
     Ok((

@@ -15,6 +15,10 @@
           <rx-input name="deductible" type="number" :label="tx['contract.deductible']" value="0" id="contract-new-deductible"/>
           <rx-input name="valid_from" type="date" :label="tx['contract.valid_from']" :value="today" id="contract-new-from"/>
           <rx-input name="valid_to" type="date" :label="tx['contract.valid_to']" id="contract-new-to"/>
+          <rx-input name="first_submission_days" type="number" :label="tx['contract.first_submission_days']" value="30" id="contract-new-first-days"/>
+          <rx-input name="resubmission_days" type="number" :label="tx['contract.resubmission_days']" value="30" id="contract-new-resubmission-days"/>
+          <rx-input name="resubmission_limit" type="number" :label="tx['contract.resubmission_limit']" value="2" id="contract-new-resubmission-limit"/>
+          <rx-select name="accepts_late_claims" :label="tx['contract.accepts_late_claims']" :options="late_options" :selected="'no'" id="contract-new-late"/>
         </rx-action-sheet>
         <rx-action-sheet id="contract-tariff" :label="tx['contract.tariff']" :action="route('clinics.contract_tariff')"
                          :title="tx['contract.tariff']" :description="tx['contract.tariff_description']" :submit-label="tx['contract.tariff']" icon="receipt">
@@ -33,6 +37,7 @@
       <rx-column :label="tx['contract.deductible']" hide-narrow>{{ row.deductible }}</rx-column>
       <rx-column :label="tx['contract.valid_from']" hide-narrow>{{ row.valid_from }}</rx-column>
       <rx-column :label="tx['contract.valid_to']" hide-narrow>{{ row.valid_to }}</rx-column>
+      <rx-column :label="tx['contract.windows']" hide-narrow>{{ row.windows }}</rx-column>
       <rx-column :label="tx['contract.tariffs']" hide-narrow>{{ row.tariffs }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['contract.empty']" icon="receipt"/></rx-slot>
     </rx-table>

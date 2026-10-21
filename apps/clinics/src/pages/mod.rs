@@ -4,6 +4,7 @@
 
 pub mod appointments;
 pub mod authorisations;
+pub mod claims;
 pub mod contracts;
 pub mod policies;
 pub mod visits;
@@ -26,6 +27,7 @@ pub fn routes() -> Routes {
         .merge(policies::routes())
         .merge(appointments::routes())
         .merge(authorisations::routes())
+        .merge(claims::routes())
         .merge(contracts::routes())
         .merge(visits::routes())
 }
@@ -33,6 +35,15 @@ pub fn routes() -> Routes {
 /// The app text `key` (without the `clinics.` prefix).
 pub(crate) fn text(lang: &Lang, key: &str) -> String {
     texts::t(lang, &format!("clinics.{key}"))
+}
+
+/// The app text `key` with `:name` placeholders filled in from `params`.
+pub(crate) fn text_with(
+    lang: &Lang,
+    key: &str,
+    params: &[(&str, &dyn std::fmt::Display)],
+) -> String {
+    texts::t_with(lang, &format!("clinics.{key}"), params)
 }
 
 /// A 422 with `message`.

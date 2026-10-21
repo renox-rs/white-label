@@ -50,6 +50,10 @@ pub mod scheduling;
 pub mod billing;
 /// A day at the clinic for the charge capture tests.
 pub mod desk;
+/// A claim of an insured visit billed through the routes.
+pub mod claims;
+/// The clinics app with the real wl-invoicing for the claim tests.
+pub mod real;
 
 pub use billing::{Books, Claims, Deposits, Packages};
 pub use scheduling::{Docs, Events, Messages, Recorded, Refunds, Tasks, dubai, record};
@@ -510,6 +514,7 @@ impl Clinic {
             clinics::permissions::POLICIES_VIEW,
             clinics::permissions::POLICIES_MANAGE,
             clinics::permissions::AUTHORISATIONS_MANAGE,
+            clinics::permissions::CLAIMS_MANAGE,
         ];
         let email = "bea@example.com";
         if let Some(found) = User::find_by_email(self.db(), email).await.unwrap() {

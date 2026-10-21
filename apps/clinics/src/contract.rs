@@ -41,6 +41,17 @@ pub struct PayerContract {
     pub valid_from: NaiveDate,
     /// The last day it applies; `None` while open ended.
     pub valid_to: Option<NaiveDate>,
+    /// Days after the visit in which the payer accepts a first claim
+    /// (`CLN.CLM.01`); the claim is validated against the day it ends.
+    pub first_submission_days: i64,
+    /// Days after the remittance that denied a claim in which the payer
+    /// accepts a resubmission.
+    pub resubmission_days: i64,
+    /// How many resubmissions the payer accepts of one claim.
+    pub resubmission_limit: i64,
+    /// Whether the payer still accepts a first claim after its window, with
+    /// a late reason recorded on the claim.
+    pub accepts_late_claims: bool,
     /// The user who recorded it.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -60,6 +71,18 @@ impl PayerContract {
         self.valid_from <= day && self.valid_to.is_none_or(|to| to >= day)
     }
 
+    /// The last day a first claim for a visit on `visit_date` is accepted
+    /// (Asia/Dubai, inclusive); `None` for a window that cannot be counted.
+    pub fn first_submission_deadline(&self, visit_date: NaiveDate) -> Option<NaiveDate> {
+        add_days(visit_date, self.first_submission_days)
+    }
+
+    /// The last day a resubmission is accepted after a remittance dated
+    /// `remitted_on` (Asia/Dubai, inclusive).
+    pub fn resubmission_deadline(&self, remitted_on: NaiveDate) -> Option<NaiveDate> {
+        add_days(remitted_on, self.resubmission_days)
+    }
+
     /// The terms the split reads.
     pub fn terms(&self) -> Terms {
         Terms {
@@ -67,6 +90,11 @@ impl PayerContract {
             deductible: self.deductible,
         }
     }
+}
+
+/// `date` plus `days` days; `None` for a negative count or an overflow.
+fn add_days(date: NaiveDate, days: i64) -> Option<NaiveDate> {
+    date.checked_add_days(renox::chrono::Days::new(u64::try_from(days).ok()?))
 }
 
 /// What a contract says of one service.
@@ -142,6 +170,28 @@ mod tests {
         assert!(contract.applies_on(day("2026-12-31")));
         assert!(!contract.applies_on(day("2027-01-01")));
         assert!(!contract.applies_on(day("2025-12-31")));
+    }
+
+    #[test]
+    fn the_windows_end_on_their_last_day() {
+        let contract = PayerContract {
+            first_submission_days: 30,
+            resubmission_days: 30,
+            ..PayerContract::default()
+        };
+        assert_eq!(
+            contract.first_submission_deadline(day("2026-11-01")),
+            Some(day("2026-12-01"))
+        );
+        assert_eq!(
+            contract.resubmission_deadline(day("2026-12-10")),
+            Some(day("2027-01-09"))
+        );
+        let negative = PayerContract {
+            first_submission_days: -1,
+            ..PayerContract::default()
+        };
+        assert_eq!(negative.first_submission_deadline(day("2026-11-01")), None);
     }
 
     #[test]

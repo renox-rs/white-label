@@ -23,3 +23,7 @@ wl-payments = { path = "../../crates/wl-payments" }
 wl-hr = { path = "../../crates/wl-hr" }
 # The real notifier, for the tests that prove the quiet hours.
 wl-notify = { path = "../../crates/wl-notify" }
+# The real payer bills in the claim tests (no cycle: wl-invoicing does not use
+# the clinics app): the technical rejection, the held overpayment and the
+# recoupment run against the module that owns the money.
+wl-invoicing = { path = "../../crates/wl-invoicing" }

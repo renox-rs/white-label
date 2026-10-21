@@ -29,6 +29,11 @@ pub const CHARGES_CAPTURE: &str = "charges.capture";
 /// deposit in full (the front desk's and the nurse's).
 pub const CHARGES_DESK: &str = "charges.desk";
 
+/// Prepare, validate and submit the clinic's claims to the payers, record the
+/// channel's rejection and the payer's remittance and recoupment, and send a
+/// claim again (`CLN.CLM.01`, `CLN.ACL.09`: the billing coordinator's).
+pub const CLAIMS_MANAGE: &str = "claims.manage";
+
 /// The owner / medical director: told when a practitioner licence expires
 /// (`CLN.RUL.01`) and alerted when a compliance-critical rule fails.
 pub const OWNER_ROLE: &str = "owner";

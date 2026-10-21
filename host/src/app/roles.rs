@@ -305,6 +305,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::AUTHORISATIONS_MANAGE,
             cln::CHARGES_CAPTURE,
             cln::CHARGES_DESK,
+            cln::CLAIMS_MANAGE,
             inventory::RECALLS_MANAGE,
             con::PROJECTS_VIEW,
             con::PROJECTS_MANAGE,
@@ -833,6 +834,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::AUTHORISATIONS_MANAGE,
             cln::CHARGES_CAPTURE,
             cln::CHARGES_DESK,
+            cln::CLAIMS_MANAGE,
         ],
     ),
     (
@@ -852,6 +854,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::POLICIES_VIEW,
             cln::POLICIES_MANAGE,
             cln::AUTHORISATIONS_MANAGE,
+            cln::CLAIMS_MANAGE,
+            invoices::PAYER_BILLS_VIEW,
+            invoices::PAYER_BILLS_ISSUE,
+            invoices::PAYER_BILLS_RECONCILE,
         ],
     ),
     (

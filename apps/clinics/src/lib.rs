@@ -11,6 +11,10 @@ pub mod billing;
 pub mod card_requests;
 pub mod charge;
 pub mod charges;
+pub mod claim;
+pub mod claim_machine;
+pub mod claim_money;
+pub mod claims;
 pub mod consent;
 pub mod contract;
 pub mod contracts;
@@ -38,6 +42,10 @@ use renox::prelude::*;
 pub use appointment::Appointment;
 pub use authorisation::{AuthStatus, AuthorisationHold, PriorAuthService, PriorAuthorisation};
 pub use charge::{ChargeKind, ChargeLine};
+pub use claim::{
+    AnswerKind, AttemptKind, Claim, ClaimAttempt, ClaimError, ClaimLine, ClaimRemittance,
+    ClaimStatus,
+};
 pub use consent::{ConsentLine, SelfPayConsent};
 pub use contract::{PayerContract, PayerTariff};
 pub use coverage::{CoverageOutcome, PendingCheckIn};
@@ -76,6 +84,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "clinics/authorisation.html",
         include_str!("../views/clinics/authorisation.html"),
+    ),
+    (
+        "clinics/claims.html",
+        include_str!("../views/clinics/claims.html"),
+    ),
+    (
+        "clinics/claim.html",
+        include_str!("../views/clinics/claim.html"),
     ),
 ];
 
@@ -117,7 +133,9 @@ impl Module for Clinics {
             .view_data::<pages::visits::ShowPage>()
             .view_data::<pages::contracts::IndexPage>()
             .view_data::<pages::authorisations::IndexPage>()
-            .view_data::<pages::authorisations::ShowPage>();
+            .view_data::<pages::authorisations::ShowPage>()
+            .view_data::<pages::claims::IndexPage>()
+            .view_data::<pages::claims::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -140,8 +158,13 @@ impl Module for Clinics {
             .model::<AppointmentFlag>()
             .model::<ChargeLine>()
             .model::<PayerContract>()
-            .model::<PayerTariff>();
+            .model::<PayerTariff>()
+            .model::<Claim>()
+            .model::<ClaimLine>()
+            .model::<ClaimAttempt>()
+            .model::<ClaimRemittance>();
         visit_machine::register();
+        renox::state_machine::register::<Claim>();
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
         appointments::register(app);
@@ -162,6 +185,10 @@ impl Module for Clinics {
         // `CLN.RUL.10`: a policy that ends or a card that expired before the
         // visit is asked for again (BL-CLN-04).
         card_requests::register(app);
+        // The claim follows the money its payer bill records (BL-CLN-08), and
+        // its tasks: the technical rejection and `CLN.RUL.05` (BL-CLN-07,
+        // BL-CLN-08).
+        claim_money::register(app);
         // `CLN.RUL.01`: an expired licence or set of privileges is told to
         // the clinic manager of the branch and the owner (BL-CLN-12).
         licences::register(app);
@@ -190,6 +217,14 @@ impl Module for Clinics {
                 .group("nav.app")
                 .order(73)
                 .permission(permissions::POLICIES_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("clinics.claims", "nav.claims")
+                .icon("receipt")
+                .group("nav.app")
+                .order(74)
+                .permission(permissions::CLAIMS_MANAGE),
         );
         app.nav(
             "app",

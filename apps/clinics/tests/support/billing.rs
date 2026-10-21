@@ -8,7 +8,11 @@ use renox::prelude::*;
 use wl_kernel::invoicing::{
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
 };
-use wl_kernel::payer_bills::{NewPayerBill, PayerBillFuture, PayerBillId, PayerBills};
+use wl_kernel::payer_bills::{
+    NewPayerBill, PayerAnswer, PayerBillFuture, PayerBillId, PayerBillLineSummary,
+    PayerBillStatus, PayerBillSummary, PayerBills, Recoupment, RejectionDeadline, Remittance,
+    SubmissionError,
+};
 use wl_kernel::payments::{
     AllocationTarget, Direction, PaymentFuture, PaymentId, PaymentMethod, PaymentRecorder,
     PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest, ReversalReason,
@@ -117,14 +121,71 @@ impl Invoicer for Books {
     }
 }
 
-/// The payer bills made so far.
+/// One payer bill the stand-in keeps.
+#[derive(Debug, Clone)]
+pub struct Bill {
+    /// The id it answered with.
+    pub id: i64,
+    /// What it was asked for.
+    pub request: NewPayerBill,
+    /// Where it stands.
+    pub status: PayerBillStatus,
+    /// Its number, once issued.
+    pub number: Option<String>,
+    /// How often it was sent again after a remittance.
+    pub resubmissions: i64,
+    /// Whether a remittance was recorded.
+    pub has_remittance: bool,
+    /// The day of the last remittance.
+    pub last_remittance_on: Option<NaiveDate>,
+    /// Its lines.
+    pub lines: Vec<PayerBillLineSummary>,
+    /// The errors of each technical rejection.
+    pub rejections: Vec<Vec<SubmissionError>>,
+    /// How many times it was issued.
+    pub issued: i64,
+    /// The corrections of the last resubmission.
+    pub corrections: Option<String>,
+}
+
+impl Bill {
+    fn summary(&self) -> PayerBillSummary {
+        let claimed: i64 = self.lines.iter().map(|l| l.claimed).sum();
+        let paid: i64 = self.lines.iter().map(|l| l.paid).sum();
+        let denied: i64 = self.lines.iter().map(|l| l.denied).sum();
+        PayerBillSummary {
+            id: PayerBillId(self.id),
+            number: self.number.clone(),
+            status: self.status,
+            payer: PartyId(900),
+            customer: self.request.customer,
+            legal_entity_id: 1,
+            source: self.request.source.clone(),
+            currency: self.request.currency.clone(),
+            claimed,
+            paid,
+            denied,
+            open: claimed - paid,
+            resubmission_count: self.resubmissions,
+            has_remittance: self.has_remittance,
+            not_submitted_in_time: false,
+        }
+    }
+}
+
+/// The payer bills the clinic made, with the lifecycle of the real ones
+/// (issue, technical rejection, resubmission, a simple remittance and
+/// recoupment), kept in memory. An advice that pays more than a line has
+/// open is answered as waiting for approval (request 77) and records
+/// nothing; the approval itself is the real wl-invoicing's, tested in
+/// `claims_real.rs`.
 #[derive(Clone, Default)]
-pub struct Claims(Arc<Mutex<Vec<NewPayerBill>>>);
+pub struct Claims(Arc<Mutex<Vec<Bill>>>);
 
 impl Claims {
     /// Every payer bill asked for, oldest first.
     pub fn all(&self) -> Vec<NewPayerBill> {
-        self.0.lock().unwrap().clone()
+        self.0.lock().unwrap().iter().map(|b| b.request.clone()).collect()
     }
 
     /// What the payer is claimed for, over all bills, in fils.
@@ -135,9 +196,74 @@ impl Claims {
             .map(|line| line.claimed)
             .sum()
     }
+
+    /// Payer bill `id` as the stand-in keeps it.
+    pub fn bill(&self, id: i64) -> Bill {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|b| b.id == id)
+            .cloned()
+            .expect("the payer bill exists")
+    }
+
+    /// Changes payer bill `id` as a test needs it (a state the stand-in's own
+    /// lifecycle reaches only through steps the test does not take).
+    pub fn force(&self, id: i64, change: impl FnOnce(&mut Bill)) {
+        let mut bills = self.0.lock().unwrap();
+        let bill = bills
+            .iter_mut()
+            .find(|b| b.id == id)
+            .expect("the payer bill exists");
+        change(bill);
+    }
+
+    fn with<T>(&self, id: PayerBillId, f: impl FnOnce(&mut Bill) -> Result<T>) -> Result<T> {
+        let mut bills = self.0.lock().unwrap();
+        match bills.iter_mut().find(|b| b.id == id.0) {
+            Some(bill) => f(bill),
+            None => Err(Error::NotFound),
+        }
+    }
+}
+
+fn refused(message: &str) -> Error {
+    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.to_owned())
 }
 
 impl PayerBills for Claims {
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        id: PayerBillId,
+    ) -> PayerBillFuture<'a, Option<PayerBillSummary>> {
+        let found = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|b| b.id == id.0)
+            .map(Bill::summary);
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn lines<'a>(
+        &'a self,
+        _db: &'a Db,
+        id: PayerBillId,
+    ) -> PayerBillFuture<'a, Vec<PayerBillLineSummary>> {
+        let lines = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|b| b.id == id.0)
+            .map(|b| b.lines.clone())
+            .unwrap_or_default();
+        Box::pin(async move { Ok(lines) })
+    }
+
     fn create<'a>(
         &'a self,
         _state: &'a AppState,
@@ -145,9 +271,184 @@ impl PayerBills for Claims {
         _by: Option<&'a AuthUser>,
     ) -> PayerBillFuture<'a, PayerBillId> {
         let mut all = self.0.lock().unwrap();
-        all.push(request);
-        let id = 500 + i64::try_from(all.len()).unwrap();
+        let id = 500 + i64::try_from(all.len() + 1).unwrap();
+        let lines = request
+            .lines
+            .iter()
+            .zip(1_i64..)
+            .map(|(line, position)| PayerBillLineSummary {
+                id: id * 10 + position,
+                position,
+                description: line.description.clone(),
+                claimed: line.claimed,
+                paid: 0,
+                denied: 0,
+                written_off: 0,
+                transferred: 0,
+                denial_code: None,
+                denial_reason: None,
+                recoupment_code: None,
+            })
+            .collect();
+        all.push(Bill {
+            id,
+            request,
+            status: PayerBillStatus::Draft,
+            number: None,
+            resubmissions: 0,
+            has_remittance: false,
+            last_remittance_on: None,
+            lines,
+            rejections: Vec::new(),
+            issued: 0,
+            corrections: None,
+        });
         Box::pin(async move { Ok(PayerBillId(id)) })
+    }
+
+    fn issue<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: PayerBillId,
+        _by: Option<&'a AuthUser>,
+    ) -> PayerBillFuture<'a, ()> {
+        let done = self.with(id, |bill| {
+            if bill.status != PayerBillStatus::Draft {
+                return Err(refused("the payer bill is not a draft"));
+            }
+            bill.status = PayerBillStatus::Issued;
+            bill.issued += 1;
+            if bill.number.is_none() {
+                bill.number = Some(format!("PB-2026-{:04}", bill.id));
+            }
+            Ok(())
+        });
+        Box::pin(async move { done })
+    }
+
+    fn submission_rejected<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: PayerBillId,
+        errors: Vec<SubmissionError>,
+        _by: Option<&'a AuthUser>,
+    ) -> PayerBillFuture<'a, RejectionDeadline> {
+        let done = self.with(id, |bill| {
+            if bill.status != PayerBillStatus::Issued {
+                return Err(refused("the payer bill is not issued"));
+            }
+            bill.status = PayerBillStatus::Draft;
+            bill.rejections.push(errors);
+            Ok(RejectionDeadline { deadline: None })
+        });
+        Box::pin(async move { done })
+    }
+
+    fn resubmit<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: PayerBillId,
+        corrections: &'a str,
+        _by: Option<&'a AuthUser>,
+    ) -> PayerBillFuture<'a, ()> {
+        let done = self.with(id, |bill| {
+            if !matches!(
+                bill.status,
+                PayerBillStatus::PartiallyPaid | PayerBillStatus::Denied
+            ) {
+                return Err(refused("the payer bill cannot be resubmitted"));
+            }
+            bill.status = PayerBillStatus::Issued;
+            bill.resubmissions += 1;
+            bill.corrections = Some(corrections.to_owned());
+            for line in &mut bill.lines {
+                line.denied = 0;
+            }
+            Ok(())
+        });
+        Box::pin(async move { done })
+    }
+
+    fn record_remittance<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: PayerBillId,
+        remittance: Remittance,
+        _by: &'a AuthUser,
+    ) -> PayerBillFuture<'a, PayerAnswer> {
+        let done = self.with(id, |bill| {
+            if bill.status != PayerBillStatus::Issued {
+                return Err(refused("the payer bill is not issued"));
+            }
+            for entry in &remittance.lines {
+                let Some(line) = bill.lines.iter().find(|l| l.id == entry.line) else {
+                    return Err(refused("a line is not on the payer bill"));
+                };
+                if entry.paid > line.claimed - line.paid - entry.denied {
+                    return Ok(PayerAnswer::Pending { request: 77 });
+                }
+            }
+            for entry in &remittance.lines {
+                let line = bill
+                    .lines
+                    .iter_mut()
+                    .find(|l| l.id == entry.line)
+                    .expect("checked above");
+                line.paid += entry.paid;
+                line.denied = entry.denied;
+                if entry.denied > 0 {
+                    line.denial_code = entry.code.clone();
+                    line.denial_reason = entry.reason.clone();
+                }
+            }
+            bill.has_remittance = true;
+            bill.last_remittance_on = Some(remittance.date);
+            bill.status = if bill.lines.iter().all(|l| l.paid == l.claimed) {
+                PayerBillStatus::Paid
+            } else if bill.lines.iter().all(|l| l.paid == 0) {
+                PayerBillStatus::Denied
+            } else {
+                PayerBillStatus::PartiallyPaid
+            };
+            Ok(PayerAnswer::Done)
+        });
+        Box::pin(async move { done })
+    }
+
+    fn record_recoupment<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: PayerBillId,
+        recoupment: Recoupment,
+        _by: &'a AuthUser,
+    ) -> PayerBillFuture<'a, PayerAnswer> {
+        let done = self.with(id, |bill| {
+            for entry in &recoupment.lines {
+                let Some(line) = bill.lines.iter().find(|l| l.id == entry.line) else {
+                    return Err(refused("a line is not on the payer bill"));
+                };
+                if entry.amount <= 0 || entry.amount > line.paid {
+                    return Err(refused("more than the line was paid"));
+                }
+            }
+            for entry in &recoupment.lines {
+                let line = bill
+                    .lines
+                    .iter_mut()
+                    .find(|l| l.id == entry.line)
+                    .expect("checked above");
+                line.paid -= entry.amount;
+                line.denied += entry.amount;
+                line.recoupment_code = Some(recoupment.code.clone());
+            }
+            bill.status = if bill.lines.iter().all(|l| l.paid == 0) {
+                PayerBillStatus::Denied
+            } else {
+                PayerBillStatus::PartiallyPaid
+            };
+            Ok(PayerAnswer::Done)
+        });
+        Box::pin(async move { done })
     }
 }
 
