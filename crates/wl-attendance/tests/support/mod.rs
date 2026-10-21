@@ -746,6 +746,7 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
 
 /// Records the events and provides the fakes.
 struct Fakes {
+    real_invoicing: bool,
     notices: Recording,
     staff: Staff,
     tasks: Tasks,
@@ -773,7 +774,11 @@ impl Module for Fakes {
         provide_qualifications(app, self.quals.clone());
         provide_cost_poster(app, self.posted.clone());
         provide_cost_rates(app, TradeRates);
-        provide_invoicer(app, self.disputes.clone());
+        if self.real_invoicing {
+            wl_kernel::parties::provide_directory(app, BlueDunesOnly);
+        } else {
+            provide_invoicer(app, self.disputes.clone());
+        }
         provide_approver_resolver(app, self.approvers.clone());
         record(app, &self.recorded);
         record(app, &self.flagged);
@@ -1041,7 +1046,91 @@ pub async fn boot() -> Booted {
 /// [`boot`] with `module` and `extra` appended to the client's `client.toml`
 /// (for the `[calendar]`).
 pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
+    boot_full(module, extra, false).await
+}
+
+/// [`boot`] with the real wl-invoicing in place of the fake `Invoicer`: the
+/// invoices, the disputes and the credit notes are wl-invoicing's own. The
+/// legal entity has a TRN and Blue Dunes ([`BLUE_DUNES`]) is the only party.
+pub async fn boot_with_invoicing() -> Booted {
+    boot_full(WlAttendance::new(), "", true).await
+}
+
+/// The party the invoicing tests bill.
+pub const BLUE_DUNES: PartyId = PartyId(1);
+
+/// Answers for Blue Dunes only, as wl-parties would.
+struct BlueDunesOnly;
+
+fn blue_dunes() -> wl_kernel::parties::PartySummary {
+    wl_kernel::parties::PartySummary {
+        id: BLUE_DUNES,
+        code: "P-00001".into(),
+        kind: wl_kernel::parties::PartyKind::Company,
+        display_name: "Blue Dunes LLC".into(),
+        status: wl_kernel::parties::PartyStatus::Active,
+        display_block_reason: None,
+    }
+}
+
+impl wl_kernel::parties::PartyDirectory for BlueDunesOnly {
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<wl_kernel::parties::PartySummary>> {
+        Box::pin(async move { Ok((party == BLUE_DUNES).then(blue_dunes)) })
+    }
+
+    fn find_by_code<'a>(
+        &'a self,
+        _db: &'a Db,
+        code: &'a str,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<wl_kernel::parties::PartySummary>> {
+        Box::pin(async move { Ok((code == "P-00001").then(blue_dunes)) })
+    }
+
+    fn display_name<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _lang: &'a str,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn status<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<wl_kernel::parties::PartyStatus>> {
+        Box::pin(async { Ok(Some(wl_kernel::parties::PartyStatus::Active)) })
+    }
+
+    fn billing_identity<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<wl_kernel::parties::BillingIdentity>> {
+        Box::pin(async move {
+            Ok(
+                (party == BLUE_DUNES).then(|| wl_kernel::parties::BillingIdentity {
+                    party,
+                    legal_name_en: "Blue Dunes LLC".into(),
+                    legal_name_ar: None,
+                    trn: Some("100000000000011".into()),
+                    billing_address: Some("Office 12, Business Bay, Dubai".into()),
+                    billing_email: Some("ap@bluedunes.example".into()),
+                    einvoice_recipient_id: None,
+                }),
+            )
+        })
+    }
+}
+
+async fn boot_full(module: WlAttendance, extra: &str, invoicing: bool) -> Booted {
     let fakes = Fakes {
+        real_invoicing: invoicing,
         notices: Recording::default(),
         staff: Staff::default(),
         tasks: Tasks::default(),
@@ -1074,8 +1163,26 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         .module(renox::audit::Audit)
         .module(module)
         .module(fakes);
+    let app = if invoicing {
+        app.module(wl_invoicing::WlInvoicing::new())
+    } else {
+        app
+    };
+    let client = if invoicing {
+        CLIENT
+            .replace(
+                r#"["parties", "hr", "attendance"]"#,
+                r#"["parties", "hr", "attendance", "invoicing"]"#,
+            )
+            .replace(
+                r#"name_en = "Gulf Build Contracting LLC""#,
+                "name_en = \"Gulf Build Contracting LLC\"\ntrn = \"100000000000003\"",
+            )
+    } else {
+        CLIENT.to_owned()
+    };
     let config =
-        wl_kernel::ClientConfig::parse(&format!("{CLIENT}\n{extra}")).expect("a valid client.toml");
+        wl_kernel::ClientConfig::parse(&format!("{client}\n{extra}")).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     // The pages extend the app's layout; a package test has no app, so it
     // brings the smallest one.
@@ -1163,6 +1270,24 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     permissions::define_role(app.db(), "hse", &[perm::VIEW])
         .await
         .unwrap();
+    if invoicing {
+        // The receivables clerk issues invoices and may dispute them.
+        use wl_invoicing::permissions as invoicing_perm;
+        permissions::define_role(
+            app.db(),
+            "receivables",
+            &[
+                invoicing_perm::VIEW,
+                invoicing_perm::CREATE,
+                invoicing_perm::ISSUE,
+                invoicing_perm::CREDIT,
+                invoicing_perm::DISPUTE,
+                invoicing_perm::RECEIVABLES_VIEW,
+            ],
+        )
+        .await
+        .unwrap();
+    }
     Booted {
         app,
         notices,
