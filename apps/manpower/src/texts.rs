@@ -381,7 +381,7 @@ pub(crate) fn money(fils: i64) -> String {
     let whole = (fils / 100).abs().to_string();
     let mut grouped = String::new();
     for (i, digit) in whole.chars().enumerate() {
-        if i > 0 && (whole.len() - i) % 3 == 0 {
+        if i > 0 && (whole.len() - i).is_multiple_of(3) {
             grouped.push(',');
         }
         grouped.push(digit);

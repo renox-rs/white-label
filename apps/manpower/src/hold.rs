@@ -778,7 +778,7 @@ mod tests {
             reasons: vec![other],
             by: Some(1),
         };
-        assert!(hold_problem(&input).is_some_and(|p| p.contains("text")));
+        assert!(hold_problem(&input).is_some_and(|p| p.contains("other reason")));
         let input = HoldInput {
             reasons: vec![NewReason::by_hand(
                 HoldReason::Other,
