@@ -212,10 +212,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_practitioner_kinds_block_booking_and_check_in_and_are_never_overridden() {
+    fn the_practitioner_kinds_block_booking_check_in_and_start_and_are_never_overridden() {
         for kind in [licence_kind(), privileges_kind()] {
             let guarded: Vec<&str> = kind.blocks.iter().map(|b| b.guarded.as_str()).collect();
-            assert_eq!(guarded, ["booking.book", "booking.check_in"]);
+            assert_eq!(
+                guarded,
+                ["booking.book", "booking.check_in", "booking.start"]
+            );
             assert_eq!(kind.override_mode, OverrideMode::Never);
             assert_eq!(kind.responsible_role.as_deref(), Some("clinic_manager"));
             assert!(kind.has_expiry && kind.has_number);
