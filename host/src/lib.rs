@@ -174,6 +174,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     if client_app == "accounting" {
         app = app.module(app::accounting_seed::AccountingSeed);
     }
+    // The Clinics client's service types (BL-CLN-12).
+    if client_app == app::clinics_seed::CLINICS {
+        app = app.module(app::clinics_seed::ClinicsSeed);
+    }
     // The Construction client's categories, checklists and SOPs (BL-CON-17,
     // BL-CON-18).
     if client_app == app::construction_seed::CONSTRUCTION {
@@ -257,6 +261,7 @@ fn enable(
         "documents" => {
             app::property_seed::register_documents(client_app);
             app::accounting_seed::register_documents(client_app);
+            app::clinics_seed::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
             }
@@ -292,7 +297,7 @@ fn enable(
             )
         }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
-        "scheduling" => Ok(app.module(wl_scheduling::WlScheduling::new())),
+        "scheduling" => Ok(app.module(app::clinics_seed::scheduling_for(client_app))),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
         ))),
