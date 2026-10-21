@@ -51,13 +51,13 @@ use renox::db::{DateTime, now};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
-use wl_kernel::{LegalEntity, Subject};
 use wl_kernel::payments::{
     DEFAULT_CURRENCY, PAYMENT_LINK_SUBJECT_TYPE, PaymentLinkExpired, PaymentLinkRequest,
     PaymentReceived, RefundRequest, RefundSource, payment_links, payment_recorder,
 };
 use wl_kernel::scheduling::BOOKING_SUBJECT_TYPE;
 use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, task_creator};
+use wl_kernel::{LegalEntity, Subject};
 
 use crate::booking::{Booking, BookingStatus, UNPAID};
 use crate::config::{SchedulingConfig, config_of};

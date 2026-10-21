@@ -425,7 +425,11 @@ async fn the_reassign_route_refuses_a_lapsing_resource_and_names_the_expiry() {
         .assert_status(422)
         .assert_see(&said(day(19)));
     assert_eq!(
-        t.reload(booking.id).await.resource_ids(t.db()).await.unwrap(),
+        t.reload(booking.id)
+            .await
+            .resource_ids(t.db())
+            .await
+            .unwrap(),
         vec![a.id]
     );
     assert!(t.events.reassigned.all().is_empty());
@@ -437,7 +441,11 @@ async fn the_reassign_route_refuses_a_lapsing_resource_and_names_the_expiry() {
         .await
         .assert_status(303);
     assert_eq!(
-        t.reload(booking.id).await.resource_ids(t.db()).await.unwrap(),
+        t.reload(booking.id)
+            .await
+            .resource_ids(t.db())
+            .await
+            .unwrap(),
         vec![b.id]
     );
 }

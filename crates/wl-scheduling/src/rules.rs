@@ -440,10 +440,12 @@ pub async fn run(state: &AppState, at: DateTime) -> Result<Sent> {
         note("no-show", error);
         0
     });
-    let released = prepayment::release_due(state, at).await.unwrap_or_else(|error| {
-        note("release", error);
-        0
-    });
+    let released = prepayment::release_due(state, at)
+        .await
+        .unwrap_or_else(|error| {
+            note("release", error);
+            0
+        });
     match failure {
         Some(error) => Err(error),
         None => Ok(Sent {

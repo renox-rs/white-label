@@ -165,9 +165,7 @@ async fn the_sick_leave_recorded_in_hr_flags_the_bookings_of_the_day() {
     let at_15 = t
         .booking(&service, &[&doctor], dubai(&day_text, 15, 0))
         .await;
-    let manager = t
-        .user("Hanan", &[wl_hr::permissions::LEAVE_APPROVE])
-        .await;
+    let manager = t.user("Hanan", &[wl_hr::permissions::LEAVE_APPROVE]).await;
 
     t.app
         .travel((dubai(&day_text, 10, 30) - now()).to_std().expect("ahead"));
@@ -184,7 +182,10 @@ async fn the_sick_leave_recorded_in_hr_flags_the_bookings_of_the_day() {
         assert!(row.conflict_block, "{} is flagged", row.number);
         assert_eq!(row.status, BookingStatus::Booked, "nothing is cancelled");
     }
-    assert!(!t.reload(before.id).await.has_conflict(), "it ended at 10:30");
+    assert!(
+        !t.reload(before.id).await.has_conflict(),
+        "it ended at 10:30"
+    );
     assert!(t.events.cancelled.all().is_empty());
     let raised = t.events.conflicts.all();
     assert_eq!(raised.len(), 1);
@@ -198,7 +199,11 @@ async fn the_sick_leave_recorded_in_hr_flags_the_bookings_of_the_day() {
         listed.iter().map(|b| b.id).collect::<Vec<_>>(),
         ids(&[&at_11, &at_15])
     );
-    let block = AvailabilityBlock::query().first(t.db()).await.unwrap().unwrap();
+    let block = AvailabilityBlock::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(block.source, "leave");
     assert_eq!(block.reason, "sick");
     let late = block.starts_at - dubai(&day_text, 10, 30);

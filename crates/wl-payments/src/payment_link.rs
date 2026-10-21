@@ -555,11 +555,7 @@ impl PaymentLinks for Links {
         })
     }
 
-    fn cancel<'a>(
-        &'a self,
-        state: &'a AppState,
-        link: &'a Subject,
-    ) -> PaymentFuture<'a, bool> {
+    fn cancel<'a>(&'a self, state: &'a AppState, link: &'a Subject) -> PaymentFuture<'a, bool> {
         Box::pin(async move {
             if link.subject_type != PAYMENT_LINK_SUBJECT_TYPE {
                 return Ok(false);
@@ -640,7 +636,12 @@ mod tests {
     #[test]
     fn pay_and_expire_are_the_systems_and_cancel_is_staffs() {
         let machine = PaymentLink::machine();
-        for (name, system) in [(PAY, true), (EXPIRE, true), (CANCEL, false), (WITHDRAW, true)] {
+        for (name, system) in [
+            (PAY, true),
+            (EXPIRE, true),
+            (CANCEL, false),
+            (WITHDRAW, true),
+        ] {
             let found = machine.find(name).expect("transition");
             assert_eq!(found.is_system(), system, "{name}");
             assert_eq!(found.from_states(), ["open"], "{name}");
@@ -648,7 +649,10 @@ mod tests {
         assert_eq!(machine.find(PAY).unwrap().to_state(), Some("paid"));
         assert_eq!(machine.find(EXPIRE).unwrap().to_state(), Some("expired"));
         assert_eq!(machine.find(CANCEL).unwrap().to_state(), Some("cancelled"));
-        assert_eq!(machine.find(WITHDRAW).unwrap().to_state(), Some("cancelled"));
+        assert_eq!(
+            machine.find(WITHDRAW).unwrap().to_state(),
+            Some("cancelled")
+        );
     }
 
     fn link_expiring(at: DateTime) -> PaymentLink {
