@@ -933,19 +933,19 @@ party is told to book again."
 - Must not reinstate a cancelled booking on late payment.
 
 #### Done when
-- [ ] Given a self-booking with prepayment AED 150 and hold 15 min, the payment link's expiry is
+- [x] Given a self-booking with prepayment AED 150 and hold 15 min, the payment link's expiry is
       15 min after booking; when `PaymentLinkExpired` arrives, the booking is `cancelled` with
       `unpaid`, initiated by `party`, deposit outcome none; `SlotReleased` is emitted and the
       party is told.
-- [ ] A matching waiting-list entry is offered the slot.
-- [ ] When `PaymentReceived` for AED 150 arrives afterwards, a refund of AED 150 with reason
+- [x] A matching waiting-list entry is offered the slot.
+- [x] When `PaymentReceived` for AED 150 arrives afterwards, a refund of AED 150 with reason
       *slot not available* is requested once.
-- [ ] Given `PaymentFailed` at minute 5, the booking stays held; when the party retries and
+- [x] Given `PaymentFailed` at minute 5, the booking stays held; when the party retries and
       `PaymentReceived` arrives at minute 8, the booking is kept and no refund is requested.
-- [ ] Given a `requested` self-booking with prepayment and no payment, at minute 15 exactly one
+- [x] Given a `requested` self-booking with prepayment and no payment, at minute 15 exactly one
       cancel runs (whether `PaymentLinkExpired` or `SCH.RUL.04` arrives first) and one
       `BookingCancelled` is emitted.
-- [ ] Given the slot is still free when the late payment arrives, the refund is still requested and
+- [x] Given the slot is still free when the late payment arrives, the refund is still requested and
       the booking stays `cancelled`.
 
 #### Out of scope
