@@ -64,9 +64,11 @@ macro_rules! at_time {
 }
 
 mod hooks;
+mod ipa_plans;
 mod people;
 mod screens;
 mod seed_attendance;
+mod seed_books;
 mod seed_closing;
 mod seed_guarantees;
 mod seed_hr;
@@ -76,6 +78,7 @@ mod seed_people;
 mod seed_projects;
 mod seed_stock;
 mod seed_variations;
+mod stock_plans;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -219,7 +222,7 @@ impl Seed {
         self.award("OFC-06").await?;
         self.boq("OFC-06").await?;
         self.start("OFC-06").await?;
-        for c in seed_ipas::COMPLETED {
+        for c in ipa_plans::COMPLETED {
             self.month(c.cutoff, &[*c]).await?;
         }
         self.complete("OFC-06", -130).await?;
@@ -229,19 +232,19 @@ impl Seed {
             self.boq(code).await?;
             self.start(code).await?;
         }
-        self.month(-118, seed_ipas::JUNE).await?;
+        self.month(-118, ipa_plans::JUNE).await?;
         for code in ["CLN-03"] {
             self.award(code).await?;
             self.boq(code).await?;
             self.start(code).await?;
         }
-        self.month(-88, seed_ipas::JULY).await?;
+        self.month(-88, ipa_plans::JULY).await?;
         for code in ["RST-04"] {
             self.award(code).await?;
             self.boq(code).await?;
             self.start(code).await?;
         }
-        self.month(-57, seed_ipas::AUGUST).await?;
+        self.month(-57, ipa_plans::AUGUST).await?;
         // The client terminated the showroom's subcontract; its third IPA
         // became the final account, which is submitted and certified.
         self.terminate("TRM-07", -45, -40).await?;
@@ -249,8 +252,8 @@ impl Seed {
         // invoiced once the termination took effect.
         self.invoice_retention("TRM-07", construction::retention::RetentionPart::First, -35)
             .await?;
-        self.cycle(&seed_ipas::FINAL_ACCOUNT).await?;
-        self.month(-26, seed_ipas::SEPTEMBER).await?;
+        self.cycle(&ipa_plans::FINAL_ACCOUNT).await?;
+        self.month(-26, ipa_plans::SEPTEMBER).await?;
         // This month's drafts, and a project just awarded.
         self.cutoff(0).await?;
         for (code, number, bp) in [
