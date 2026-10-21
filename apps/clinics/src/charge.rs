@@ -76,6 +76,15 @@ pub struct ChargeLine {
     pub removed_reason: Option<String>,
     /// The user who recorded it.
     pub recorded_by: Option<i64>,
+    /// A consumable of an item that is tracked by lot (`STK.LOT.01`): it
+    /// needs its lot before the visit is checked out.
+    pub lot_tracked: bool,
+    /// The lot the desk picked or scanned (`inventory.lot:4`).
+    pub lot_id: Option<i64>,
+    /// Its number, as printed on the pack.
+    pub lot_number: Option<String>,
+    /// When the stock was issued from the branch store.
+    pub issued_at: Option<DateTime>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

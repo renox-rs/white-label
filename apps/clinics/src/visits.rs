@@ -18,6 +18,7 @@ use wl_kernel::scheduling::{
 
 use crate::appointment::Appointment;
 use crate::billing::{self, Basis};
+use crate::lots;
 use crate::visit::{Visit, VisitStatus};
 use crate::visit_machine::{CANCEL, CHECK_IN, COMPLETE, START, VisitInput};
 
@@ -128,6 +129,13 @@ pub async fn on_completed(state: &AppState, event: &BookingCompleted) -> Result<
     };
     let visit = follow(state, event.booking.0, COMPLETE, &input).await?;
     release(state, visit.as_ref()).await?;
+    // The check-out issues the consumables from the branch store, each with
+    // its lot (BL-CLN-13).
+    if let Some(done) = &visit
+        && done.status == VisitStatus::Completed
+    {
+        lots::issue(state, done.id).await?;
+    }
     // The charge lines are priced, split and billed (`CLN.ENC.02`).
     if let Some(done) = &visit
         && done.status == VisitStatus::Completed
@@ -153,6 +161,12 @@ pub async fn on_cancelled(state: &AppState, event: &BookingCancelled) -> Result<
     };
     let visit = follow(state, event.booking.0, CANCEL, &input).await?;
     release(state, visit.as_ref()).await?;
+    // What was used before the visit stopped left the store (BL-CLN-13).
+    if let Some(stopped) = &visit
+        && stopped.status == VisitStatus::Cancelled
+    {
+        lots::issue(state, stopped.id).await?;
+    }
     // The work done is billed (BL-CLN-05): a walk-out as a normal visit, a
     // clinic stop only when the patient accepted it.
     if let Some(stopped) = &visit

@@ -33,8 +33,9 @@
 //! - `Captured.amount` for wl-scheduling is the **patient share** of the
 //!   work done: the deposit is applied to what the patient owes, never to
 //!   the payer's part.
-//! - Nothing here moves stock: the issue of a consumable from a lot is
-//!   BL-CLN-13's (`STK.MOV.01`); the line is the charge.
+//! - Nothing here moves stock: the line is the charge and names the lot of a
+//!   lot-tracked consumable; the stock is issued from the branch store when
+//!   the visit ends ([`crate::lots`], `STK.MOV.01`).
 
 use std::collections::BTreeMap;
 
@@ -53,6 +54,7 @@ use crate::contract::{PayerContract, PayerTariff};
 use crate::contracts;
 use crate::coverage::{CoverageOutcome, PendingCheckIn, VisitService};
 use crate::db::refused;
+use crate::lots;
 use crate::policy::InsurancePolicy;
 use crate::split::{self, Part};
 use crate::texts::english;
@@ -68,6 +70,9 @@ pub struct NewCharge {
     pub units: i64,
     /// Standard rated (5%); otherwise zero-rated.
     pub vat_standard: bool,
+    /// The number of the lot the desk picked or scanned, for a consumable of
+    /// a lot-tracked item (`STK.LOT.01`); blank to set it later.
+    pub lot: Option<String>,
 }
 
 impl NewCharge {
@@ -77,7 +82,15 @@ impl NewCharge {
             code: code.trim().to_owned(),
             units,
             vat_standard: false,
+            lot: None,
         }
+    }
+
+    /// From the lot `number` (picked or scanned).
+    pub fn lot(mut self, number: &str) -> Self {
+        let number = number.trim();
+        self.lot = (!number.is_empty()).then(|| number.to_owned());
+        self
     }
 
     /// Standard rated (5%).
@@ -88,7 +101,7 @@ impl NewCharge {
 }
 
 /// The visit `id` when it can still change.
-async fn open_visit(state: &AppState, id: i64) -> Result<Visit> {
+pub(crate) async fn open_visit(state: &AppState, id: i64) -> Result<Visit> {
     let visit = Visit::find_or_404(&state.db, id).await?;
     if visit.billed_at.is_some() || !visit.status.is_open() {
         return Err(refused(english("clinics.charges.problem.closed", &[])));
@@ -208,6 +221,18 @@ async fn record(
             }
         }
     }
+    // A consumable of an item tracked by lot names its lot (`STK.LOT.01`): a
+    // lot that is held, expired or not at the branch store is refused here.
+    let mut lot_tracked = false;
+    let mut lot = None;
+    if kind == ChargeKind::Consumable
+        && let Some(stock) = lots::stock_of(state, &visit, &new.code).await?
+    {
+        lot_tracked = stock.choice.lot_tracked;
+        if lot_tracked && let Some(number) = new.lot.as_deref() {
+            lot = Some(lots::pick(&stock, number)?);
+        }
+    }
     let mut line = ChargeLine {
         visit_id: visit.id,
         kind,
@@ -218,6 +243,9 @@ async fn record(
         self_pay_price: listed.unwrap_or(unit_price),
         vat_standard: new.vat_standard,
         recorded_by: by,
+        lot_tracked,
+        lot_id: lot.as_ref().map(|found| found.lot.subject_id),
+        lot_number: lot.map(|found| found.number),
         ..ChargeLine::default()
     };
     line.save(&state.db).await?;

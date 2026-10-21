@@ -20,12 +20,14 @@ pub mod claim_void;
 pub mod claim_window;
 pub mod claims;
 pub mod consent;
+pub mod consumable_issue;
 pub mod contract;
 pub mod contracts;
 pub mod coverage;
 mod db;
 pub mod flags;
 pub mod licences;
+pub mod lots;
 pub mod pages;
 pub mod permissions;
 pub mod policies;
@@ -51,6 +53,7 @@ pub use claim::{
     ClaimStatus,
 };
 pub use consent::{ConsentLine, SelfPayConsent};
+pub use consumable_issue::ConsumableIssue;
 pub use contract::{PayerContract, PayerTariff};
 pub use coverage::{CoverageOutcome, PendingCheckIn};
 pub use flags::{AppointmentFlag, FlagCause};
@@ -161,6 +164,7 @@ impl Module for Clinics {
             .model::<AuthorisationHold>()
             .model::<AppointmentFlag>()
             .model::<ChargeLine>()
+            .model::<ConsumableIssue>()
             .model::<PayerContract>()
             .model::<PayerTariff>()
             .model::<Claim>()
@@ -179,6 +183,9 @@ impl Module for Clinics {
         // What the visit did, for wl-scheduling's cancel after the check-in
         // (`SCH.ACL.06`): answered from the charge lines (BL-CLN-05).
         wl_kernel::scheduling::provide_work_done_status(app, charges::ChargeWork);
+        // `STK.LOT.01`: a visit with a lot-tracked consumable that has no lot
+        // is not checked out (BL-CLN-13).
+        wl_kernel::scheduling::provide_complete_guard(app, lots::LotGuard);
         // `CLN.ACL.15`: an insured visit is checked in only with its coverage
         // outcome (BL-CLN-01).
         coverage::register(app);

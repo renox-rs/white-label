@@ -279,6 +279,9 @@ pub async fn candidates<'c>(
         .where_(Lot::STATUS.eq(LotStatus::Released))
         .get(conn.reborrow())
         .await?;
+    // A lot past its expiry date is never offered, whatever its status says.
+    let day = wl_kernel::documents::today();
+    lots.retain(|lot| lot.expiry_date.is_none_or(|expiry| expiry >= day));
     lots.sort_by_key(|lot| (lot.expiry_date.is_none(), lot.expiry_date, lot.id));
     let mut found = Vec::new();
     for lot in lots {

@@ -1070,6 +1070,52 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.claim.task.no_deadline",
         "the payer's deadline (none is set on its contract)",
     ),
+    // The lot of every consumable issued to a visit (STK.MOV.01, STK.LOT.01).
+    ("clinics.lots.title", "Consumables and lots"),
+    ("clinics.lots.lot", "Lot"),
+    ("clinics.lots.lot_field", "Lot (scanned or picked)"),
+    ("clinics.lots.expiry", "Expires"),
+    ("clinics.lots.quantity", "Quantity"),
+    ("clinics.lots.proposed", "Proposed lot"),
+    (
+        "clinics.lots.proposed_description",
+        "The lot with the earliest expiry at the branch store that is not expired and not on hold. Leave the lot blank to choose it later.",
+    ),
+    ("clinics.lots.proposed_none", "No lot is available at the branch store."),
+    ("clinics.lots.code", "Consumable code"),
+    ("clinics.lots.propose", "Show the proposed lot"),
+    ("clinics.lots.assign", "Set the lot"),
+    (
+        "clinics.lots.assign_description",
+        "Pick or scan the lot of this consumable. A wrong lot is corrected here, before the visit is checked out. Leave blank to take the proposed lot.",
+    ),
+    ("clinics.lots.line", "Line"),
+    ("clinics.lots.assigned", "The lot is set."),
+    ("clinics.lots.uncertain", "Lot uncertain"),
+    ("clinics.lots.required", "Lot required"),
+    ("clinics.lots.issued", "Issued"),
+    ("clinics.lots.waiting", "Waiting for stock"),
+    ("clinics.lots.none_yet", "Issued from the store when the visit is checked out."),
+    (
+        "clinics.lots.problem.not_available",
+        "Lot :lot cannot be issued: it is unknown at this store, on hold or expired.",
+    ),
+    (
+        "clinics.lots.problem.required",
+        "Lot required: set the lot of :codes before the visit is checked out.",
+    ),
+    (
+        "clinics.lots.problem.no_line",
+        "This is not a consumable of the visit that needs a lot.",
+    ),
+    (
+        "clinics.lots.problem.issued",
+        "This consumable was issued already; the lot cannot be edited here.",
+    ),
+    (
+        "clinics.lots.problem.none_available",
+        "No lot is available at the branch store.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the
