@@ -25,6 +25,7 @@ What is here so far:
 |---|---|---|
 | Permissions (`visits.view`, `insurance_policies.*`, `coverage.record`) and the role names the rules use (owner, clinic manager, receptionist) | §3.1, §3.3 | `permissions` |
 | The appointment record: the clinic's side of a wl-scheduling booking (patient, service code, visit date, the policy it was booked with), made from `BookingBooked`, moved by `BookingRescheduled`, closed by `BookingCancelled` | §6 *Appointment* | `appointment`, `appointments` |
+| The visit a check-in opens (`clinics.visit`, `VIS-0007`) and its machine (checked in, in progress, completed, cancelled): every transition is the system's, run by the listeners on `BookingStarted`, `BookingCompleted` and `BookingCancelled` after the check-in; a cancellation before the check-in opens none | §6 *Visit*, §7.1 *Appointment* | `visit`, `visit_machine`, `visits` |
 
 The app owns `src/texts.rs`, the English texts (`clinics.*`). A client changes or translates them
 in `resources/lang/{locale}.json`.

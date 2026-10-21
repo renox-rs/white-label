@@ -3,15 +3,20 @@
 
 pub mod appointment;
 pub mod appointments;
+mod db;
 pub mod permissions;
 pub mod reasons;
 pub mod seed;
 mod texts;
+pub mod visit;
+pub mod visit_machine;
+pub mod visits;
 
 use renox::db::Migration;
 use renox::prelude::*;
 
 pub use appointment::Appointment;
+pub use visit::{Visit, VisitStatus};
 
 /// Dirhams as text from fils: `AED 450.00`.
 pub fn money_text(fils: i64) -> String {
@@ -41,10 +46,13 @@ impl Module for Clinics {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.model::<Appointment>();
+        app.model::<Appointment>().model::<Visit>();
+        visit_machine::register();
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
         appointments::register(app);
+        // The check-in opens the visit, which follows the booking.
+        visits::register(app);
     }
 }
 
