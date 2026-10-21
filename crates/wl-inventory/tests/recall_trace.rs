@@ -379,6 +379,14 @@ async fn walk_in_sales_are_one_line_per_outlet_and_day() {
     assert_eq!(line.occurred_on, NaiveDate::from_ymd_opt(2026, 10, 10));
     assert_eq!(line.party_id, None);
     assert_eq!(line.subject_id, None);
+    // The back-office text of the line, as the recall report prints it.
+    let report = wl_inventory::recall_close::report(t.db(), &opened)
+        .await
+        .unwrap();
+    assert!(
+        report.contains("15 sales, Outlet 1, 2026-10-10"),
+        "{report}"
+    );
 }
 
 /// Done when 4: running `trace` again creates no duplicates, adds only what is
@@ -589,4 +597,210 @@ async fn the_trace_changes_no_movement() {
         .map(|m| (m.id, m.quantity_milli, m.lot_id))
         .collect();
     assert_eq!(before, after);
+}
+
+/// A window ends where the balance there reached zero by a transfer out, and
+/// begins at the destination of the `transfer_in`: orders consuming
+/// theoretically at Outlet 1 after the transfer are not listed, those at
+/// Outlet 2 after it are *possible*.
+#[renox::test]
+async fn a_transfer_out_ends_the_window_and_the_transfer_in_opens_one() {
+    let t = boot().await;
+    let item = t.tracked_item("CHICKEN").await;
+    let t7 = t.lot(&item, "T7", LotStatus::Released).await;
+    let outlet_1 = t.named_location("OUTLET-1", "Outlet 1").await;
+    let outlet_2 = t.named_location("OUTLET-2", "Outlet 2").await;
+    let batch = Subject::new("inventory.transfer", 1);
+    t.movement(
+        MovementType::Receive,
+        &item,
+        Some(&t7),
+        None,
+        Some(&outlet_1),
+        10_000,
+        &Subject::new("inventory.goods_receipt", 1),
+        None,
+        at(1, 8),
+        false,
+    )
+    .await;
+    // All of it moves to Outlet 2 on the 6th.
+    t.movement(
+        MovementType::TransferOut,
+        &item,
+        Some(&t7),
+        Some(&outlet_1),
+        None,
+        10_000,
+        &batch,
+        None,
+        at(6, 8),
+        false,
+    )
+    .await;
+    t.movement(
+        MovementType::TransferIn,
+        &item,
+        Some(&t7),
+        None,
+        Some(&outlet_2),
+        10_000,
+        &batch,
+        None,
+        at(6, 9),
+        false,
+    )
+    .await;
+    // (order, outlet, day): 1 before the transfer at Outlet 1, 2 after it
+    // there, 3 before it at Outlet 2 (nothing there yet), 4 after it there.
+    for (n, outlet, day) in [(1, &outlet_1, 3), (2, &outlet_1, 7), (3, &outlet_2, 3), (4, &outlet_2, 8)] {
+        t.movement(
+            MovementType::Consume,
+            &item,
+            Some(&t7),
+            Some(outlet),
+            None,
+            500,
+            &order(n),
+            Some(&order(n)),
+            at(day, 9),
+            true,
+        )
+        .await;
+    }
+
+    let opened = open_recall(&t, &item, "T7").await;
+
+    let mut found: Vec<_> = t
+        .recall_lines(&opened)
+        .await
+        .iter()
+        .map(|line| (line.used_by().unwrap().to_string(), line.kind.as_str().to_owned()))
+        .collect();
+    found.sort();
+    assert_eq!(
+        found,
+        vec![
+            ("sales.order:1".to_owned(), "possible".to_owned()),
+            ("sales.order:4".to_owned(), "possible".to_owned()),
+        ]
+    );
+}
+
+/// A window also ends where the recall held the lot: theoretical
+/// consumption dated after the recall opened is not listed.
+#[renox::test]
+async fn a_window_ends_when_the_recall_holds_the_lot() {
+    let t = boot().await;
+    let item = t.tracked_item("CHICKEN").await;
+    let t7 = t.lot(&item, "T7", LotStatus::Released).await;
+    let outlet = t.named_location("OUTLET-1", "Outlet 1").await;
+    let now = renox::db::now();
+    t.movement(
+        MovementType::Receive,
+        &item,
+        Some(&t7),
+        None,
+        Some(&outlet),
+        10_000,
+        &Subject::new("inventory.goods_receipt", 1),
+        None,
+        now - renox::chrono::Duration::days(3),
+        false,
+    )
+    .await;
+    for (n, offset) in [(1, -1), (2, 1)] {
+        t.movement(
+            MovementType::Consume,
+            &item,
+            Some(&t7),
+            Some(&outlet),
+            None,
+            500,
+            &order(n),
+            Some(&order(n)),
+            now + renox::chrono::Duration::days(offset),
+            true,
+        )
+        .await;
+    }
+
+    let opened = open_recall(&t, &item, "T7").await;
+
+    let lines = t.recall_lines(&opened).await;
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0].used_by(), Some(order(1)));
+    assert_eq!(lines[0].kind.as_str(), "possible");
+}
+
+/// Lots made from each other in a circle (L9 into L20 in one batch, L20 back
+/// into L9 in another) are each traced once: the trace ends, the scope and
+/// the hold name each lot once and a visit using L20 is one line.
+#[renox::test]
+async fn a_genealogy_cycle_traces_each_lot_once() {
+    let t = boot().await;
+    let serum = t.tracked_item("SERUM").await;
+    let kit = t.tracked_item("KIT").await;
+    let l9 = t.lot(&serum, "L9", LotStatus::Released).await;
+    let l20 = t.lot(&kit, "L20", LotStatus::Released).await;
+    let branch = t.named_location("BRANCH-1", "Branch 1").await;
+    t.stock_in(&serum, &branch, Some(&l9), 20_000, 1_000).await;
+    let one = Subject::new("manufacturing.batch", 1);
+    let two = Subject::new("manufacturing.batch", 2);
+    let steps = [
+        (MovementType::Consume, &serum, &l9, Some(&branch), None, &one, 4, 2_000),
+        (MovementType::Produce, &kit, &l20, None, Some(&branch), &one, 5, 6_000),
+        (MovementType::Consume, &kit, &l20, Some(&branch), None, &two, 6, 2_000),
+        (MovementType::Produce, &serum, &l9, None, Some(&branch), &two, 7, 1_000),
+    ];
+    for (kind, item, lot, from, to, source, day, quantity) in steps {
+        t.movement(kind, item, Some(lot), from, to, quantity, source, None, at(day, 8), false)
+            .await;
+    }
+    t.movement(
+        MovementType::Issue,
+        &kit,
+        Some(&l20),
+        Some(&branch),
+        None,
+        1_000,
+        &visit(1),
+        Some(&visit(1)),
+        at(5, 12),
+        false,
+    )
+    .await;
+    t.trace_parties.set(&visit(1), PartyId(11));
+
+    let opened = open_recall(&t, &serum, "L9").await;
+
+    let mut scope = recall::lots_in_scope(t.db(), opened.id).await.unwrap();
+    scope.sort_unstable();
+    assert_eq!(scope, vec![l9.id, l20.id]);
+    let holds = t.all_holds().await;
+    assert_eq!(holds.len(), 1);
+    let mut held: Vec<i64> = t
+        .hold_lines(&holds[0])
+        .await
+        .iter()
+        .filter_map(|line| line.lot_id)
+        .collect();
+    held.sort_unstable();
+    held.dedup();
+    assert_eq!(held, vec![l9.id, l20.id]);
+    assert_eq!(
+        listed(&t, &opened).await,
+        vec![(
+            "clinics.visit:1".to_owned(),
+            Some(11),
+            "confirmed".to_owned()
+        )]
+    );
+    // Tracing again changes nothing.
+    t.trace_as(&t.recaller("Rita").await, &opened).await.assert_ok();
+    assert_eq!(t.recall_lines(&opened).await.len(), 1);
+    assert_eq!(
+        recall::lots_in_scope(t.db(), opened.id).await.unwrap().len(),
+        2
+    );
 }
