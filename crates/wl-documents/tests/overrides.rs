@@ -360,6 +360,47 @@ async fn ac6_a_legal_block_stays_never_and_an_ordinary_kind_can_be_switched_to_n
     assert!(w.request("health_card").await.is_err());
 }
 
+/// A vertical may fix the override mode to `never` without making the kind a
+/// legal block (05 practitioner licence): the client cannot loosen it, a
+/// stored kind is put back on install, and the page offers no change.
+#[renox::test]
+async fn ac6b_a_fixed_override_mode_stays_never_and_the_kind_is_not_a_legal_block() {
+    let fixed = KindSeed::new("fixed_licence", "Fixed licence")
+        .subject_type("hr.employee")
+        .expires()
+        .override_fixed()
+        .blocks(ACTIVATE, BlockMode::Block);
+    kinds::register_kind(fixed.clone());
+    let w = world(std::slice::from_ref(&fixed)).await;
+    let kind = w.t.kind("fixed_licence").await;
+    assert_eq!(kind.override_mode, OverrideMode::Never);
+    assert!(!kind.legal_block && !kind.compliance_critical);
+
+    let refused = kinds::set_override_mode(w.t.db(), "fixed_licence", OverrideMode::WithApproval)
+        .await
+        .unwrap()
+        .expect_err("a fixed override mode cannot be loosened");
+    assert_eq!(refused.reason, kinds::RefusalReason::OverrideFixed);
+
+    // A row an older build stored as `with_approval` is put back.
+    let mut stored = w.t.kind("fixed_licence").await;
+    stored.override_mode = OverrideMode::WithApproval;
+    stored.save(w.t.db()).await.unwrap();
+    w.t.install(std::slice::from_ref(&fixed)).await;
+    assert_eq!(
+        w.t.kind("fixed_licence").await.override_mode,
+        OverrideMode::Never
+    );
+
+    let admin = w.t.kind_admin().await;
+    w.t.app.acting_as(&admin);
+    w.t.app
+        .get("/document-kinds/fixed_licence")
+        .await
+        .assert_ok()
+        .assert_dont_see("/document-kinds/fixed_licence/override-mode");
+}
+
 #[renox::test]
 async fn ac7_a_cannot_approve_their_own_request_and_a_rejection_refuses_the_override() {
     let w = world_with(&[health_card()], false).await;

@@ -342,6 +342,10 @@ pub struct KindSeed {
     /// Whether the party the document is about is reminded as well as the
     /// staff when it is about to expire.
     pub notify_party: bool,
+    /// Whether the deployment fixes the override mode to `never`: the client
+    /// cannot switch it (a vertical sets it, as 05 does for the
+    /// practitioner licence), without the kind being a legal block.
+    pub override_fixed: bool,
     /// The seeded `blocks`.
     pub blocks: Vec<BlockSeed>,
 }
@@ -372,6 +376,7 @@ impl KindSeed {
             also_notify: Vec::new(),
             enabled: true,
             notify_party: false,
+            override_fixed: false,
             blocks: Vec::new(),
         }
     }
@@ -387,6 +392,16 @@ impl KindSeed {
     /// is about to expire (`DOC.RUL.01`).
     pub fn notify_party(mut self) -> Self {
         self.notify_party = true;
+        self
+    }
+
+    /// Fixes the override mode to `never` for this deployment: the client
+    /// cannot change it, though the kind is not a legal block (so it is not
+    /// compliance-critical by this alone). 05 uses it for the practitioner
+    /// licence and the branch privileges (`SCH.ACL.04`).
+    pub fn override_fixed(mut self) -> Self {
+        self.override_mode = OverrideMode::Never;
+        self.override_fixed = true;
         self
     }
 
@@ -548,6 +563,16 @@ pub fn kind_seeds() -> Vec<Arc<KindSeed>> {
         .collect()
 }
 
+/// Whether the registered seed of kind `key` fixes its override mode to
+/// `never` ([`KindSeed::override_fixed`]).
+pub fn is_override_fixed(key: &str) -> bool {
+    SEEDS
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(key)
+        .is_some_and(|seed| seed.override_fixed)
+}
+
 /// Stores the registered kinds ([`install_seeds`] with [`kind_seeds`]).
 pub async fn install(db: &Db) -> Result<usize> {
     let seeds = kind_seeds();
@@ -590,6 +615,11 @@ pub async fn install_seeds<'s>(
             }
             Some(kind) => kind,
         };
+        if seed.override_fixed && kind.override_mode != OverrideMode::Never {
+            let mut kind = kind.clone();
+            kind.override_mode = OverrideMode::Never;
+            kind.save(&mut tx).await?;
+        }
         if !seed.legal_block {
             continue;
         }
@@ -664,6 +694,9 @@ pub enum RefusalReason {
     InvalidTransition,
     /// The kind is a legal block: its override mode is locked to `never`.
     LegalBlock,
+    /// The deployment fixed the kind's override mode to `never`
+    /// ([`KindSeed::override_fixed`]).
+    OverrideFixed,
 }
 
 impl RefusalReason {
@@ -675,6 +708,7 @@ impl RefusalReason {
             RefusalReason::AlreadyGuarded => "wl_documents.kinds.already_guarded",
             RefusalReason::InvalidTransition => "wl_documents.kinds.invalid_transition",
             RefusalReason::LegalBlock => "wl_documents.kinds.override_locked",
+            RefusalReason::OverrideFixed => "wl_documents.kinds.override_fixed",
         }
     }
 }
@@ -854,6 +888,13 @@ pub async fn set_override_mode(
     if kind.legal_block && mode != OverrideMode::Never {
         return Ok(Err(BlockChangeRefused::new(
             RefusalReason::LegalBlock,
+            &kind,
+            "",
+        )));
+    }
+    if is_override_fixed(&kind.key) && mode != OverrideMode::Never {
+        return Ok(Err(BlockChangeRefused::new(
+            RefusalReason::OverrideFixed,
             &kind,
             "",
         )));

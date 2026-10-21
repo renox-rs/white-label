@@ -959,9 +959,12 @@ async fn kind_page(State(db): State<Db>, lang: Lang, Path(key): Path<String>) ->
                 (value.to_owned(), text(&lang, &format!("override.{value}")))
             })
             .collect(),
-        override_locked: kind
-            .legal_block
-            .then(|| t("kinds.override_locked", &[("kind", &name)])),
+        override_locked: if kind.legal_block {
+            Some(t("kinds.override_locked", &[("kind", &name)]))
+        } else {
+            kinds::is_override_fixed(&kind.key)
+                .then(|| t("kinds.override_fixed", &[("kind", &name)]))
+        },
         responsible_role: kind
             .responsible_role
             .as_deref()
