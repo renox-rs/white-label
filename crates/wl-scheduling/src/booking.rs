@@ -98,6 +98,8 @@ pub struct Booking {
     pub prepayment_type: Option<String>,
     /// The id of the payment link.
     pub prepayment_id: Option<i64>,
+    /// The path of the public page where the party pays it.
+    pub prepayment_path: Option<String>,
     /// The user who booked, when a user did.
     pub created_by: Option<i64>,
     /// A block overlaps the booking (`BookingConflict`, cause `block`).

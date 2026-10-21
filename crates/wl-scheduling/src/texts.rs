@@ -412,6 +412,38 @@ const TEXTS: &[(&str, &str)] = &[
         "That time cannot be booked. Please choose another.",
     ),
     (
+        "wl_scheduling.problem.payment_unavailable",
+        "The payment for that time cannot be taken now. Please try again later.",
+    ),
+    (
+        "wl_scheduling.prepayment.refund_reason",
+        "slot not available",
+    ),
+    (
+        "wl_scheduling.prepayment.task_title",
+        "Refund the late payment for booking :number",
+    ),
+    (
+        "wl_scheduling.prepayment.task_body",
+        "Payment :payment arrived after booking :number was released and the refund could not be asked automatically. Refund it in full from the payment.",
+    ),
+    (
+        "wl_scheduling.notices.unpaid_subject",
+        "Your booking {{ number }} was not held",
+    ),
+    (
+        "wl_scheduling.notices.unpaid_body",
+        "Your booking {{ number }} on {{ when }} was released because the payment did not arrive in time. Please book again.",
+    ),
+    (
+        "wl_scheduling.notices.late_payment_subject",
+        "Your payment for booking {{ number }} is being refunded",
+    ),
+    (
+        "wl_scheduling.notices.late_payment_body",
+        "Your payment arrived after booking {{ number }} on {{ when }} was released, so the time is no longer held. We are refunding it in full. Please book again.",
+    ),
+    (
         "wl_scheduling.eligibility.expired",
         ":item expired on :date",
     ),

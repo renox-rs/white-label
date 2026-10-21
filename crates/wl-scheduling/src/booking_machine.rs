@@ -327,7 +327,13 @@ impl StateMachine for Booking {
                     .tone("success")
                     .effect(|booking: &Booking, _ctx, tx| {
                         let id = booking.id;
+                        // An unpaid request keeps the hold of its payment
+                        // link: accepting it does not end it.
+                        let pending = booking.payment_pending;
                         Box::pin(async move {
+                            if pending {
+                                return Ok(());
+                            }
                             let none: Option<DateTime> = None;
                             set(tx, id, &[("hold_until", &none)]).await
                         })

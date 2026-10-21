@@ -24,6 +24,7 @@ use renox::db::{DateTime, now};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
+use wl_kernel::scheduling::SlotReleased;
 use wl_kernel::{PartyId, Subject};
 
 use crate::booking::Booking;
@@ -510,6 +511,51 @@ pub async fn offer(
     tx.commit().await?;
     outcome.emit(state).await?;
     Ok(WaitingEntry::find_or_404(&state.db, id).await?)
+}
+
+/// `SCH.RUL.03`: the slot a `SlotReleased` freed is offered to the first
+/// waiting entry that matches it, in the order the entries joined, and held
+/// for the offer hold time. One slot is offered to one entry. A slot that is
+/// no longer free (another booker was first) is skipped.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn offer_released(
+    state: &AppState,
+    released: &SlotReleased,
+    at: DateTime,
+) -> Result<Option<WaitingEntry>> {
+    let Some(service) = ServiceType::query()
+        .where_(ServiceType::CODE.eq(released.service_type.as_str()))
+        .first(&state.db)
+        .await?
+    else {
+        return Ok(None);
+    };
+    for resource in &released.resources {
+        let Some(entry) = first_match(&state.db, service.id, *resource, released.start, released.end)
+            .await?
+        else {
+            continue;
+        };
+        match offer(
+            state,
+            entry.id,
+            *resource,
+            released.start,
+            released.end,
+            Actor::system(),
+            at,
+        )
+        .await
+        {
+            Ok(offered) => return Ok(Some(offered)),
+            Err(Refusal::Failed(error)) => return Err(error),
+            Err(_) => {}
+        }
+    }
+    Ok(None)
 }
 
 /// The party takes the offered slot (`accept`): a booking is made from it

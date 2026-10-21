@@ -38,6 +38,7 @@ use crate::deposit;
 use crate::eligibility;
 use crate::events;
 use crate::notices;
+use crate::prepayment;
 use crate::refusal::Refusal;
 use crate::resource::{Resource, ServiceResource, ServiceType};
 use crate::slots::{self, Exclude, Unfit};
@@ -442,6 +443,18 @@ async fn create(
             Some(at + TimeDelta::minutes(cfg.request_hold_minutes)),
         ),
     };
+    // A party who books by themselves pays the prepayment first: the booking
+    // holds its slot until the payment link expires (`SCH.RUL.04`).
+    let due = if actor.kind == ActorKind::Party {
+        prepayment::amount_due(&service)
+    } else {
+        0
+    };
+    let hold_until = if due > 0 {
+        Some(prepayment::hold_until(at, &cfg, hold_until))
+    } else {
+        hold_until
+    };
     let mut booking = Booking {
         number,
         party_id: new.party.0,
@@ -457,6 +470,7 @@ async fn create(
         notes: new.notes.clone(),
         status,
         hold_until,
+        payment_pending: due > 0,
         created_by: actor.user,
         deposit_amount: service.deposit_amount,
         ..Booking::default()
@@ -477,7 +491,10 @@ async fn create(
     )
     .await?;
     tx.commit().await?;
-    let booking = Booking::find_or_404(&state.db, booking.id).await?;
+    let mut booking = Booking::find_or_404(&state.db, booking.id).await?;
+    if due > 0 {
+        booking = prepayment::open_link(state, &booking, due, at).await?;
+    }
     if kind == Kind::Book {
         events::booked(state, &booking, &service, ids).await?;
     }

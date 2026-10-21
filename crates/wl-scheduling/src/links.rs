@@ -419,12 +419,14 @@ async fn portal_book(
     } else {
         service::book(&state, new, actor, at).await
     };
-    made.map_err(|refusal| refusal.into_error(&lang))?;
-    Ok((
-        Toast::success(texts::t(&lang, "wl_scheduling.booking.booked")),
-        renox::HxRefresh,
-    )
-        .into_response())
+    let made = made.map_err(|refusal| refusal.into_error(&lang))?;
+    let toast = Toast::success(texts::t(&lang, "wl_scheduling.booking.booked"));
+    // A booking that needs its prepayment sends the party to the page of its
+    // payment link; the slot is held until the link expires.
+    Ok(match made.prepayment_path {
+        Some(path) if made.payment_pending => (toast, renox::HxRedirect(path)).into_response(),
+        _ => (toast, renox::HxRefresh).into_response(),
+    })
 }
 
 /// `POST /scheduling/portal/waiting-list`: joins the waiting list. Fields:

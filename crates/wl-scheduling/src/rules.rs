@@ -45,6 +45,7 @@ use crate::config::config_of;
 use crate::conflict::{BLOCK_REASON_CODE, Conflict, can_conflict, open_of};
 use crate::notices::{self, ChangeEntry};
 use crate::permissions;
+use crate::prepayment;
 use crate::refusal::Refusal;
 use crate::resource::Resource;
 use crate::service::{self, Actor};
@@ -85,6 +86,9 @@ pub struct Sent {
     pub suppressed: usize,
     /// Bookings marked no-show.
     pub no_shows: usize,
+    /// Unpaid bookings released at the end of their prepayment hold
+    /// (`SCH.RUL.04`).
+    pub released: usize,
 }
 
 /// The names of the resources of `booking`, comma separated.
@@ -250,6 +254,10 @@ pub async fn remind(state: &AppState, at: DateTime) -> Result<(usize, usize)> {
     }
     let (mut sent, mut suppressed) = (0, 0);
     for booking in bookings {
+        // A booking whose prepayment is awaited is not confirmed yet.
+        if booking.payment_pending {
+            continue;
+        }
         let due: Vec<i64> = hours
             .iter()
             .copied()
@@ -358,11 +366,13 @@ pub async fn run(state: &AppState, at: DateTime) -> Result<Sent> {
     let escalations = escalate_due(state, at).await?;
     let (reminders, suppressed) = remind(state, at).await?;
     let no_shows = no_shows(state, at).await?;
+    let released = prepayment::release_due(state, at).await?;
     Ok(Sent {
         escalations,
         reminders,
         suppressed,
         no_shows,
+        released,
     })
 }
 
@@ -374,12 +384,12 @@ pub(crate) fn schedule(app: &mut Registry) {
         });
     app.command(
         TASK,
-        "Escalate open booking conflicts, send reminders and mark no-shows (SCH.RUL.06, SCH.RUL.01, SCH.RUL.02)",
+        "Escalate open booking conflicts, send reminders, mark no-shows and release unpaid holds (SCH.RUL.06, SCH.RUL.01, SCH.RUL.02, SCH.RUL.04)",
         |_args, state: AppState| async move {
             let sent = run(&state, renox::db::now()).await?;
             println!(
-                "{} escalated, {} reminders sent, {} suppressed, {} no-shows.",
-                sent.escalations, sent.reminders, sent.suppressed, sent.no_shows
+                "{} escalated, {} reminders sent, {} suppressed, {} no-shows, {} unpaid released.",
+                sent.escalations, sent.reminders, sent.suppressed, sent.no_shows, sent.released
             );
             Ok(())
         },

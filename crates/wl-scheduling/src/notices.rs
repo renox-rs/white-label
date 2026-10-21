@@ -93,8 +93,35 @@ pub fn reminder_type() -> NotificationTypeDef {
         .template(NotifyChannel::Email, "en", Some(&subject), &body)
 }
 
+/// The party is told that the unpaid booking was released (`SCH.RUL.04`).
+pub const UNPAID_RELEASED: &str = "scheduling.booking_unpaid";
+
+/// The party is told that the payment arrived after the booking was released
+/// and is paid back.
+pub const LATE_PAYMENT: &str = "scheduling.late_payment_refunded";
+
+/// The notification type `scheduling.booking_unpaid`.
+pub fn unpaid_released_type() -> NotificationTypeDef {
+    let subject = english("wl_scheduling.notices.unpaid_subject", &[]);
+    let body = english("wl_scheduling.notices.unpaid_body", &[]);
+    NotificationTypeDef::new(UNPAID_RELEASED, "scheduling")
+        .group("scheduling")
+        .template(NotifyChannel::Email, "en", Some(&subject), &body)
+}
+
+/// The notification type `scheduling.late_payment_refunded`.
+pub fn late_payment_type() -> NotificationTypeDef {
+    let subject = english("wl_scheduling.notices.late_payment_subject", &[]);
+    let body = english("wl_scheduling.notices.late_payment_body", &[]);
+    NotificationTypeDef::new(LATE_PAYMENT, "scheduling")
+        .group("scheduling")
+        .template(NotifyChannel::Email, "en", Some(&subject), &body)
+}
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(unpaid_released_type());
+    notify::register_type(late_payment_type());
     notify::register_type(conflict_escalated_type());
     notify::register_type(no_show_marked_type());
     notify::register_type(reminder_type());
@@ -289,6 +316,34 @@ pub(crate) async fn reminder(
             "when": dubai_text(booking.starts_at),
             "resource": resources,
             "cancel_url": links::cancel_url(state, booking.id, ttl)?,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the party that `booking` was released because the payment did not
+/// arrive while it was held. Nothing else is said.
+pub(crate) async fn unpaid_released(state: &AppState, booking: &Booking) -> Result {
+    let request = NotifyRequest::new(UNPAID_RELEASED, booking.subject())
+        .to_party(booking.party())
+        .subject_label(&booking.number)
+        .data(json!({
+            "number": booking.number,
+            "when": dubai_text(booking.starts_at),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the party that the payment for `booking` came after it was released:
+/// it is paid back in full and the party books again.
+pub(crate) async fn late_payment(state: &AppState, booking: &Booking) -> Result {
+    let request = NotifyRequest::new(LATE_PAYMENT, booking.subject())
+        .to_party(booking.party())
+        .subject_label(&booking.number)
+        .data(json!({
+            "number": booking.number,
+            "when": dubai_text(booking.starts_at),
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())

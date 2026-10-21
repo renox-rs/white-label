@@ -13,6 +13,7 @@ pub mod links;
 mod notices;
 pub mod pages;
 pub mod prepaid;
+pub mod prepayment;
 pub mod refusal;
 pub mod resource;
 pub mod rules;
@@ -24,7 +25,7 @@ pub mod waiting;
 use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
-use wl_kernel::scheduling::Initiator;
+use wl_kernel::scheduling::{Initiator, SlotReleased};
 use wl_kernel::workforce::{LeaveApproved, LeaveCancelled};
 
 pub use booking::{Booking, BookingResource, BookingStatus};
@@ -237,6 +238,15 @@ impl Module for WlScheduling {
         // `SCH.RUL.05`: lapsing licences and documents flag the bookings made
         // before they lapsed; the providers wl-documents asks for the work.
         eligibility::register(app);
+        // `SCH.RUL.04`: the prepayment hold of a self-booking, the link's
+        // expiry and the payments received for it.
+        prepayment::register(app);
+        // `SCH.RUL.03`: a released slot is offered to the waiting list.
+        app.listen(|event: SlotReleased, state: AppState| async move {
+            waiting::offer_released(&state, &event, renox::db::now())
+                .await
+                .map(|_| ())
+        });
         // Sick leave and other leave block the employee's resources and flag
         // the bookings they overlap; a cancelled leave takes its blocks away.
         app.listen(|event: LeaveApproved, state: AppState| async move {
