@@ -23,8 +23,7 @@
 //!   still open, the link is `paid`, `PaymentReceived` is emitted;
 //! - `fail`: `PaymentFailed` is emitted (the link stays `open`: the party sees
 //!   the reason and a retry button); nothing is confirmed, no task is made;
-//! - `late_confirm`: as `confirm` for now (the refund of a late payment whose
-//!   record is gone comes with its own part).
+//! - `late_confirm`: see [`crate::late`].
 
 use renox::chrono::TimeDelta;
 use renox::db::DateTime;
@@ -611,7 +610,7 @@ pub(crate) fn register(app: &mut Registry) {
         match event.transition.as_str() {
             CONFIRM => after_confirm(&state, event.key).await,
             FAIL => after_fail(&state, event.key).await,
-            LATE_CONFIRM => after_confirm(&state, event.key).await,
+            LATE_CONFIRM => crate::late::after_late_confirm(&state, event.key).await,
             _ => Ok(()),
         }
     });

@@ -41,6 +41,7 @@ pub mod expense_claim;
 pub mod expense_claim_pages;
 pub mod followup;
 pub mod gateway;
+pub mod late;
 mod machine;
 pub mod notices;
 pub mod online;
@@ -417,6 +418,14 @@ impl WlPayments {
     pub fn link_expiry_days(mut self, days: i64) -> Self {
         assert!(days >= 1, "a link stays open at least one day");
         self.config.link_expiry_days = days;
+        self
+    }
+
+    /// Turns on or off the automatic approval of the refund of a late payment
+    /// that equals the payment, goes back to the same card and whose prepaid
+    /// record is no longer active (§7, on unless set).
+    pub fn late_refunds_auto(mut self, on: bool) -> Self {
+        self.config.late_refund_auto = on;
         self
     }
 
