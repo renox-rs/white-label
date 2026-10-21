@@ -65,7 +65,7 @@ pub struct DeliveryReview {
     pub delivery_id: i64,
     /// The delivery's ticket; `None` when ticketing is off.
     pub ticket_id: Option<i64>,
-    /// The source lines the delivery carries, as `type:id`.
+    /// The source lines the delivery carries and its source record, as `type:id`.
     pub origins: Json<Vec<String>>,
     /// Whether the review holds the system's issue of drafts that bill the
     /// delivery.
@@ -88,6 +88,19 @@ enum Audience {
 /// A 422 is a refusal of a guard, not a failure.
 fn is_refusal(error: &Error) -> bool {
     matches!(error, Error::Status(code, _) if *code == StatusCode::UNPROCESSABLE_ENTITY)
+}
+
+/// The origins an event's delivery is billed under: its source lines and the
+/// record it was requested for. A source that bills the whole record (a
+/// logistics shipment, one invoice line for its parcels) cannot name the
+/// delivery's lines, so a line whose origin is the source record bills the
+/// delivery too.
+fn billed_origins(lines: &[Subject], source: &Subject) -> Vec<Subject> {
+    let mut origins = lines.to_vec();
+    if !origins.contains(source) {
+        origins.push(source.clone());
+    }
+    origins
 }
 
 /// The invoice lines whose origin is one of `origins`.
@@ -146,7 +159,12 @@ async fn record_review(state: &AppState, event: &DeliveryDisputed) -> Result<boo
         delivery_type: delivery.subject_type.clone(),
         delivery_id: delivery.subject_id,
         ticket_id: event.ticket.map(|t| t.0),
-        origins: Json(event.lines.iter().map(ToString::to_string).collect()),
+        origins: Json(
+            billed_origins(&event.lines, &event.source)
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        ),
         active: true,
         ..DeliveryReview::default()
     };
@@ -303,7 +321,7 @@ async fn on_disputed(state: &AppState, event: &DeliveryDisputed) -> Result {
     let delivery = event.delivery.subject();
     let new_review = record_review(state, event).await?;
     let mut by_invoice: BTreeMap<i64, Vec<InvoiceLine>> = BTreeMap::new();
-    for line in lines_billing(&state.db, &event.lines).await? {
+    for line in lines_billing(&state.db, &billed_origins(&event.lines, &event.source)).await? {
         by_invoice.entry(line.invoice_id).or_default().push(line);
     }
     for (invoice_id, lines) in by_invoice {
