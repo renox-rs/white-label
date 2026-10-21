@@ -792,6 +792,73 @@ impl Booted {
             .await
     }
 
+    /// `POST /pending-issues/{id}/clear` as `by` with `reason` (and `lot`).
+    pub async fn clear_as(
+        &self,
+        by: &User,
+        pending: &wl_inventory::PendingIssue,
+        reason: &str,
+        lot: Option<&Lot>,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        let lot_id = lot.map(|l| l.id.to_string()).unwrap_or_default();
+        let mut form = vec![("reason", reason)];
+        if lot.is_some() {
+            form.push(("lot", lot_id.as_str()));
+        }
+        self.app
+            .htmx()
+            .post(&format!("/pending-issues/{}/clear", pending.id), &form)
+            .await
+    }
+
+    /// The pending issue as stored now.
+    pub async fn pending_now(&self, pending: &wl_inventory::PendingIssue) -> wl_inventory::PendingIssue {
+        wl_inventory::PendingIssue::find_or_404(self.db(), pending.id)
+            .await
+            .unwrap()
+    }
+
+    /// Consumes `quantity_milli` of `item` at `location` for `source`
+    /// (charged to it too) through the kernel's `StockService`, as another
+    /// module would.
+    pub async fn consume(
+        &self,
+        item: &Item,
+        location: &Location,
+        quantity_milli: i64,
+        source: &Subject,
+    ) -> wl_kernel::inventory::Consumed {
+        wl_kernel::inventory::stock_service(self.state())
+            .consume(
+                self.state(),
+                wl_kernel::inventory::ConsumeRequest::new(
+                    item.subject(),
+                    location.subject(),
+                    quantity_milli,
+                    source.clone(),
+                )
+                .cost_object(source.clone()),
+            )
+            .await
+            .unwrap()
+    }
+
+    /// Every movement of `item`, oldest first.
+    pub async fn movements_of(&self, item: &Item) -> Vec<StockMovement> {
+        StockMovement::query()
+            .where_(StockMovement::ITEM_ID.eq(item.id))
+            .order_by(StockMovement::ID)
+            .get(self.db())
+            .await
+            .unwrap()
+    }
+
+    /// The open pending issues, oldest first.
+    pub async fn open_pending(&self) -> Vec<wl_inventory::PendingIssue> {
+        wl_inventory::pending_issue::open_of(self.db()).await.unwrap()
+    }
+
     /// The quantity of `item` available at `location` (of `lot` when given),
     /// in thousandths.
     pub async fn available(&self, item: &Item, location: &Location, lot: Option<&Lot>) -> i64 {
