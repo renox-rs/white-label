@@ -552,3 +552,22 @@ async fn ask_lost(w: &World, shipment: &Shipment) {
         .unwrap();
     assert_eq!(w.reload(shipment).await.status, ShipmentStatus::Lost);
 }
+
+/// Disposal is offered to staff who manage shipments, only on a held
+/// shipment, never to the client, and the approved run to nobody.
+#[renox::test]
+async fn disposal_is_offered_only_on_a_held_shipment_to_staff() {
+    let w = boot().await;
+    let shipment = held(&w, "ORD-1").await;
+    let staff = w.offered(&w.dispatcher, &shipment).await;
+    assert!(staff.contains(&"dispose".to_owned()));
+    assert!(!staff.contains(&"dispose_approved".to_owned()));
+    assert!(!w.offered(&w.noor, &shipment).await.contains(&"dispose".to_owned()));
+    let other = w.book_as(&w.noor, SOUQ, "ORD-2").await;
+    let at_hub = w.at_hub(&w.pick_up(&other).await).await;
+    assert!(
+        !w.offered(&w.dispatcher, &at_hub)
+            .await
+            .contains(&"dispose".to_owned())
+    );
+}
