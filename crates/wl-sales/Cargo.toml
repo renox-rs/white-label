@@ -16,3 +16,5 @@ wl-kernel = { path = "../wl-kernel" }
 tempfile = "3"
 # The real invoicing module in the reopened-package test (no cycle: wl-invoicing does not use wl-sales).
 wl-invoicing = { path = "../wl-invoicing" }
+# The real notifications module in the redemption-by-code test (no cycle: wl-notify does not use wl-sales).
+wl-notify = { path = "../wl-notify" }

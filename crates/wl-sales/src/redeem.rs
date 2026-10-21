@@ -572,6 +572,19 @@ async fn confirm_row(state: &AppState, row: Redemption, via: &str) -> Result<Red
     Redemption::find_or_404(&state.db, row.id).await
 }
 
+/// Takes the redemption line of `row` off its sale and makes the sale's
+/// totals those of the lines left.
+async fn drop_line(db: &Db, row: &Redemption) -> Result {
+    if let Some(line) = row.line_id {
+        SaleLine::query()
+            .where_(SaleLine::ID.eq(line))
+            .delete(db)
+            .await?;
+        refresh_totals(db, &row.sale()).await?;
+    }
+    Ok(())
+}
+
 /// Checks the redemptions of `sale` before it completes (a counter sale) or is
 /// submitted (an order): a redemption still waiting for its code is released,
 /// and a held one whose hold lapsed, or whose points are no longer there, is
@@ -592,19 +605,11 @@ pub async fn prepare(state: &AppState, sale: &Subject) -> Result<bool> {
                     continue;
                 }
                 release_row(state, &row, if held { "shortfall" } else { "hold_lapsed" }).await?;
-                if let Some(line) = row.line_id {
-                    SaleLine::query()
-                        .where_(SaleLine::ID.eq(line))
-                        .delete(&state.db)
-                        .await?;
-                }
+                drop_line(&state.db, &row).await?;
                 dropped = true;
             }
             _ => {}
         }
-    }
-    if dropped {
-        refresh_totals(&state.db, sale).await?;
     }
     Ok(dropped)
 }
@@ -829,7 +834,7 @@ pub fn share_of(points: i64, part: i64, whole: i64) -> i64 {
 }
 
 /// Releases the holds that lapsed (the hold minutes passed on a sale nobody
-/// completed). Returns how many.
+/// completed) and takes their lines off the open sales. Returns how many.
 pub async fn release_lapsed(state: &AppState, at: DateTime) -> Result<usize> {
     let mut released = 0;
     let held = Redemption::query()
@@ -840,6 +845,7 @@ pub async fn release_lapsed(state: &AppState, at: DateTime) -> Result<usize> {
     for row in held {
         if row.hold_until.is_some_and(|until| until <= at) {
             release_row(state, &row, "hold_lapsed").await?;
+            drop_line(&state.db, &row).await?;
             released += 1;
         }
     }
