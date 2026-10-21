@@ -39,6 +39,14 @@
           <rx-input name="starts_at" type="datetime-local" :label="tx['booking.starts_at']" :value="starts_input" id="reschedule-booking-start" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_reassign">
+        <rx-action-sheet id="reassign-booking" :label="tx['booking.reassign']" :action="route('wl_scheduling.booking_reassign', booking.id)"
+                         :title="tx['booking.reassign']" :submit-label="tx['booking.reassign']" icon="refresh-cw">
+          <rx-select name="from" :label="tx['booking.reassign_from']" :options="on_booking" :selected="''"/>
+          <rx-select name="to" :label="tx['booking.reassign_to']" :options="others" :selected="''"/>
+          <rx-select name="reason_code" :label="tx['booking.reason_code']" :options="reasons" :selected="'resource_unavailable'"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_waive">
         <rx-action-sheet id="waive-deposit" :label="tx['deposit.waive']" :action="route('wl_scheduling.booking_waive_deposit', booking.id)"
                          :title="tx['deposit.waive']" :submit-label="tx['deposit.waive']" icon="refresh-cw">

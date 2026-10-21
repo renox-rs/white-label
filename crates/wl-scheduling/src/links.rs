@@ -6,6 +6,8 @@
 //! |---|---|---|
 //! | `GET/POST /scheduling/links/{id}/cancel` | `wl_scheduling.link_cancel_page`, `wl_scheduling.link_cancel` | a signed link: `party_request`, initiated by the party, before the cut-off |
 //! | `GET/POST /scheduling/links/{id}/cancel/{code}` | `wl_scheduling.link_change_page`, `wl_scheduling.link_change_cancel` | a signed link in a change message: reason `code`, initiated by the business, at any time before the check-in |
+//! | `GET /scheduling/links/{id}/accept` | `wl_scheduling.link_accept_page` | a signed link in a change message: *accept* keeps the booking as it is |
+//! | `GET/POST /scheduling/links/{id}/reschedule` | `wl_scheduling.link_reschedule_page`, `wl_scheduling.link_reschedule` | a signed link in a change message: *pick another time* lists the nearest free times of the same resources, and posting one moves the booking, also after the reschedule cut-off |
 //! | `POST /scheduling/portal/bookings/{id}/cancel` | `wl_scheduling.portal_cancel` | a portal user acting for the booking's party: `party_request` |
 //! | `POST /scheduling/portal/bookings` | `wl_scheduling.portal_book` | a portal user acting for `party`: books, or requests when the service needs acceptance; a slot just taken answers 409 with the nearest free slots |
 //! | `POST /scheduling/portal/waiting-list` | `wl_scheduling.portal_waiting_join` | a portal user acting for `party`: joins the waiting list |
@@ -31,9 +33,10 @@ use wl_kernel::documents::{dubai_text, today};
 
 use crate::booking::{Booking, default_initiator};
 use crate::config::config_of;
-use crate::pages::{field, number, parse_local};
-use crate::resource::ServiceType;
+use crate::pages::{field, local_text, number, parse_local};
+use crate::resource::{Resource, ServiceType};
 use crate::service::{self, Actor, CancelRequest, NewBooking};
+use crate::slots;
 use crate::texts;
 use crate::waiting::{self, NewEntry, WaitingEntry};
 
@@ -66,6 +69,26 @@ pub fn change_cancel_url(
     )
 }
 
+/// The link in a change message that keeps the booking as it is, valid for
+/// `ttl`.
+///
+/// # Errors
+///
+/// When the route is not registered.
+pub fn accept_url(state: &AppState, booking_id: i64, ttl: Duration) -> Result<String> {
+    state.signed_url("wl_scheduling.link_accept_page", &[&booking_id], ttl)
+}
+
+/// The link in a change message that opens the choice of another time, valid
+/// for `ttl`.
+///
+/// # Errors
+///
+/// When the route is not registered.
+pub fn reschedule_url(state: &AppState, booking_id: i64, ttl: Duration) -> Result<String> {
+    state.signed_url("wl_scheduling.link_reschedule_page", &[&booking_id], ttl)
+}
+
 /// The routes of the links (public: the signature is the credential) and of
 /// the portal.
 pub fn routes() -> Routes {
@@ -79,7 +102,13 @@ pub fn routes() -> Routes {
                 .get("/scheduling/links/{id}/cancel/{code}", change_page)
                 .name("wl_scheduling.link_change_page")
                 .post("/scheduling/links/{id}/cancel/{code}", cancel_by_change)
-                .name("wl_scheduling.link_change_cancel"),
+                .name("wl_scheduling.link_change_cancel")
+                .get("/scheduling/links/{id}/accept", accept_page)
+                .name("wl_scheduling.link_accept_page")
+                .get("/scheduling/links/{id}/reschedule", reschedule_page)
+                .name("wl_scheduling.link_reschedule_page")
+                .post("/scheduling/links/{id}/reschedule", reschedule_by_link)
+                .name("wl_scheduling.link_reschedule"),
         )
         .merge(
             Routes::new()
@@ -203,6 +232,115 @@ async fn cancel_by_change(
     .map_err(|refusal| refusal.into_error(&lang))?;
     let message = texts::t(&lang, "wl_scheduling.link.cancelled");
     page(&state, &lang, id, uri.to_string(), Some(message)).await
+}
+
+/// `GET /scheduling/links/{id}/accept`: the party keeps the booking as it is.
+/// Nothing changes; the page says so.
+async fn accept_page(
+    _signature: ValidSignature,
+    State(state): State<AppState>,
+    lang: Lang,
+    OriginalUri(uri): OriginalUri,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    let message = texts::t(&lang, "wl_scheduling.link.accepted");
+    page(&state, &lang, id, uri.to_string(), Some(message)).await
+}
+
+/// One time the party can pick.
+#[derive(Serialize)]
+pub(crate) struct SlotChoice {
+    value: String,
+    label: String,
+}
+
+/// What the page of *pick another time* needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-scheduling/link_slots.html")]
+pub(crate) struct SlotsPage {
+    tx: BTreeMap<&'static str, String>,
+    summary: String,
+    action: String,
+    message: String,
+    slots: Vec<SlotChoice>,
+    no_slots: bool,
+}
+
+async fn slots_page(
+    state: &AppState,
+    lang: &Lang,
+    id: i64,
+    action: String,
+    message: Option<String>,
+) -> Result<View> {
+    let booking = Booking::find_or_404(&state.db, id).await?;
+    let service = ServiceType::find_or_404(&state.db, booking.service_type_id).await?;
+    let open = booking.status.is_open() && !booking.status.is_after_check_in();
+    let mut choices = Vec::new();
+    if message.is_none() && open {
+        let ids = booking.resource_ids(&state.db).await?;
+        let mut resources = Vec::new();
+        for resource_id in &ids {
+            if let Some(resource) = Resource::find(&state.db, *resource_id).await? {
+                resources.push(resource);
+            }
+        }
+        let now = renox::db::now();
+        // Up to three times of the same resources, as the party was told.
+        for slot in slots::nearest(state, &service, &resources, booking.starts_at, now, slots::SHOWN)
+            .await?
+        {
+            let mut same = slot.resource_ids.clone();
+            same.sort_unstable();
+            if same == ids {
+                choices.push(SlotChoice {
+                    value: local_text(slot.start),
+                    label: dubai_text(slot.start),
+                });
+            }
+        }
+    }
+    let no_slots = message.is_none() && choices.is_empty();
+    Ok(View::typed(SlotsPage {
+        tx: texts::all(lang),
+        summary: format!("{} · {}", service.name_en, dubai_text(booking.starts_at)),
+        action,
+        message: message.unwrap_or_default(),
+        slots: choices,
+        no_slots,
+    }))
+}
+
+/// `GET /scheduling/links/{id}/reschedule`: the nearest free times of the
+/// booking's own resources, each with a button.
+async fn reschedule_page(
+    _signature: ValidSignature,
+    State(state): State<AppState>,
+    lang: Lang,
+    OriginalUri(uri): OriginalUri,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    slots_page(&state, &lang, id, uri.to_string(), None).await
+}
+
+/// `POST /scheduling/links/{id}/reschedule`: the party picks `starts_at`. The
+/// booking moves, the slot is checked again under the lock, and the conflict
+/// clears; the reschedule cut-off does not apply to a change message.
+async fn reschedule_by_link(
+    _signature: ValidSignature,
+    State(state): State<AppState>,
+    lang: Lang,
+    OriginalUri(uri): OriginalUri,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<View> {
+    let start = parse_local(field(&form, "starts_at"))
+        .ok_or_else(|| Error::BadRequest("starts_at".to_owned()))?;
+    service::reschedule_from_change(&state, id, start, renox::db::now())
+        .await
+        .map_err(|refusal| refusal.into_error(&lang))?;
+    let message = texts::t(&lang, "wl_scheduling.link.rescheduled");
+    slots_page(&state, &lang, id, uri.to_string(), Some(message)).await
 }
 
 /// `POST /scheduling/portal/bookings/{id}/cancel`: a portal user cancels a

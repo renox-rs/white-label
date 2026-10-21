@@ -6,7 +6,7 @@
 use renox::prelude::*;
 use wl_kernel::scheduling::{
     BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted, BookingNoShow,
-    BookingRescheduled, CancelStage, CancelledBy, DepositOutcome, Initiator, SlotReleased,
+    BookingReassigned, BookingRescheduled, CancelStage, CancelledBy, DepositOutcome, Initiator, SlotReleased,
 };
 
 use crate::booking::Booking;
@@ -51,6 +51,24 @@ pub async fn rescheduled(
             end: booking.ends_at,
             resources,
             deposit_carried: booking.deposit_held(),
+        })
+        .await
+}
+
+/// `reassign` moved the booking to other resources at the same time.
+pub async fn reassigned(
+    state: &AppState,
+    booking: &Booking,
+    old_resources: Vec<i64>,
+    new_resources: Vec<i64>,
+    reason_code: &str,
+) -> Result {
+    state
+        .emit(BookingReassigned {
+            booking: booking.booking_id(),
+            old_resources,
+            new_resources,
+            reason_code: reason_code.to_owned(),
         })
         .await
 }

@@ -29,11 +29,13 @@ use crate::booking::{
 };
 use crate::booking_machine::{
     ACCEPT, ActorKind, BookingInput, CANCEL, CHECK_IN, COMPLETE, CONFIRM, DECLINE, MARK_NO_SHOW,
-    Occupy, RESCHEDULE, RESCHEDULE_REQUEST, START,
+    Occupy, REASSIGN, REASSIGN_CONFIRMED, REASSIGN_REQUESTED, RESCHEDULE, RESCHEDULE_REQUEST,
+    START,
 };
 use crate::config::config_of;
 use crate::deposit;
 use crate::events;
+use crate::notices;
 use crate::refusal::Refusal;
 use crate::resource::{Resource, ServiceResource, ServiceType};
 use crate::slots::{self, Exclude, Unfit};
@@ -561,6 +563,32 @@ pub async fn reschedule(
     actor: Actor,
     at: DateTime,
 ) -> std::result::Result<Booking, Refusal> {
+    reschedule_with(state, id, new_start, new_resources, actor, at, false).await
+}
+
+/// The party picks another time from a message about a change the business
+/// made (*pick another time*, `reassign`, `BookingConflict`): the booking
+/// moves with the same resources, and neither the reschedule cut-off nor the
+/// minimum notice of a self-booking applies, as the party did not cause the
+/// change. The slot is checked again under the lock and the conflict clears.
+pub async fn reschedule_from_change(
+    state: &AppState,
+    id: i64,
+    new_start: DateTime,
+    at: DateTime,
+) -> std::result::Result<Booking, Refusal> {
+    reschedule_with(state, id, new_start, None, Actor::party(None), at, true).await
+}
+
+async fn reschedule_with(
+    state: &AppState,
+    id: i64,
+    new_start: DateTime,
+    new_resources: Option<Vec<i64>>,
+    actor: Actor,
+    at: DateTime,
+    change_link: bool,
+) -> std::result::Result<Booking, Refusal> {
     let cfg = config_of(state);
     let old = Booking::find_or_404(&state.db, id).await?;
     let service = service_of(state, &old).await?;
@@ -576,7 +604,7 @@ pub async fn reschedule(
         return Err(Refusal::invalid("wl_scheduling.problem.in_the_past"));
     }
     if actor.kind == ActorKind::Party {
-        if !hours_before(new_start, at, cfg.min_notice_hours) {
+        if !change_link && !hours_before(new_start, at, cfg.min_notice_hours) {
             return Err(Refusal::invalid("wl_scheduling.problem.too_soon"));
         }
         if new_start - at > TimeDelta::days(cfg.horizon_days) {
@@ -599,7 +627,8 @@ pub async fn reschedule(
         return Err(refusal_after(state, &service, &locked, new_start, at, unfit).await?);
     }
     let mut input = input_for(state, actor, at, &service);
-    input.within_cutoff = hours_before(old.starts_at, at, service.reschedule_cutoff_hours);
+    input.within_cutoff =
+        change_link || hours_before(old.starts_at, at, service.reschedule_cutoff_hours);
     input.new_start = Some(new_start);
     input.new_end = Some(end);
     input.occupy = occupy_rows(&service, &locked, new_start, end);
@@ -627,6 +656,25 @@ pub async fn reschedule(
     Ok(moved)
 }
 
+/// Asks the vertical again whether the booking's resources may deliver the
+/// service at `at` (check-in and start, `SCH.ACL.04`): a licence may have
+/// lapsed since the booking was made.
+async fn recheck_eligible(
+    state: &AppState,
+    booking: &Booking,
+    service: &ServiceType,
+    at: DateTime,
+) -> std::result::Result<(), Refusal> {
+    let ids = booking.resource_ids(&state.db).await?;
+    let mut resources = Vec::new();
+    for id in ids {
+        if let Some(resource) = Resource::find(&state.db, id).await? {
+            resources.push(resource);
+        }
+    }
+    check_eligible(state, service, &resources, at).await
+}
+
 /// Checks the party in (`check_in`); `bookings.checkin`.
 pub async fn check_in(
     state: &AppState,
@@ -637,6 +685,8 @@ pub async fn check_in(
     staff_only(actor)?;
     let booking = Booking::find_or_404(&state.db, id).await?;
     let service = service_of(state, &booking).await?;
+    // The resource must be eligible now; otherwise reassign first.
+    recheck_eligible(state, &booking, &service, at).await?;
     let input = input_for(state, actor, at, &service);
     let done = run_simple(state, &booking, CHECK_IN, &input, actor, None).await?;
     events::checked_in(state, &done).await?;
@@ -653,6 +703,7 @@ pub async fn start(
     staff_only(actor)?;
     let booking = Booking::find_or_404(&state.db, id).await?;
     let service = service_of(state, &booking).await?;
+    recheck_eligible(state, &booking, &service, at).await?;
     let input = input_for(state, actor, at, &service);
     run_simple(state, &booking, START, &input, actor, None).await
 }
@@ -849,6 +900,106 @@ pub async fn cancel(
     };
     events::slot_released(state, &service, ids, from, booking.ends_at).await?;
     settled
+}
+
+/// Staff move a booking to another resource at the same time (`reassign`):
+/// `to` takes the place of `from`, the booking keeps its state, `from`'s slot
+/// is released (`SlotReleased`), the conflict is cleared and the party is told
+/// who it is with now, with *accept*, *pick another time* and *cancel* links.
+/// The reason code (`reason_code`, one of the cancellation codes, for example
+/// `resource_unavailable`) goes to the event and the history, never to the
+/// party. A party who cancels from the message does so as the business.
+///
+/// The new resource is locked like a booking (`SCH.BKG.01`) and must be open,
+/// free for the whole time and eligible at the booking's start.
+///
+/// # Errors
+///
+/// A party as actor; a booking that is not `requested`, `booked` or
+/// `confirmed`; `from` not on the booking or `to` already on it; a resource
+/// that cannot deliver the service; a busy or ineligible `to`; an unknown
+/// reason code.
+pub async fn reassign(
+    state: &AppState,
+    id: i64,
+    from: i64,
+    to: i64,
+    reason_code: &str,
+    actor: Actor,
+    at: DateTime,
+) -> std::result::Result<Booking, Refusal> {
+    staff_only(actor)?;
+    let cfg = config_of(state);
+    let booking = Booking::find_or_404(&state.db, id).await?;
+    let service = service_of(state, &booking).await?;
+    let name = match booking.status {
+        BookingStatus::Requested => REASSIGN_REQUESTED,
+        BookingStatus::Booked => REASSIGN,
+        BookingStatus::Confirmed => REASSIGN_CONFIRMED,
+        other => {
+            return Err(Refusal::Transition(TransitionError::NotFrom(
+                other.as_str().to_owned(),
+            )));
+        }
+    };
+    let old_ids = booking.resource_ids(&state.db).await?;
+    if !old_ids.contains(&from) {
+        return Err(Refusal::invalid("wl_scheduling.problem.not_on_booking"));
+    }
+    if to == from || old_ids.contains(&to) {
+        return Err(Refusal::invalid("wl_scheduling.problem.already_on_booking"));
+    }
+    let mut new_ids: Vec<i64> = old_ids.iter().copied().filter(|r| *r != from).collect();
+    new_ids.push(to);
+    new_ids.sort_unstable();
+    let resources = resolve_resources(state, &service, &new_ids).await?;
+    let incoming: Vec<Resource> = resources
+        .iter()
+        .filter(|resource| resource.id == to)
+        .cloned()
+        .collect();
+    check_eligible(state, &service, &incoming, booking.starts_at).await?;
+    let mut tx = state.db.begin_immediate().await?;
+    let locked = slots::lock(&mut tx, &[to]).await?;
+    let exclude = Exclude {
+        booking: Some(booking.id),
+        ..Exclude::default()
+    };
+    if let Err(unfit) = slots::check_free(
+        &mut tx,
+        &service,
+        &locked,
+        booking.starts_at,
+        booking.ends_at,
+        at,
+        exclude,
+    )
+    .await?
+    {
+        tx.rollback().await?;
+        return Err(refusal_after(state, &service, &locked, booking.starts_at, at, unfit).await?);
+    }
+    let mut input = input_for(state, actor, at, &service);
+    input.reason_code = Some(reason_code.to_owned());
+    input.default_initiated_by = default_initiator(reason_code, &cfg.extra_reason_codes);
+    input.reassign_from = Some(from);
+    input.occupy = occupy_rows(&service, &locked, booking.starts_at, booking.ends_at);
+    let outcome = booking
+        .transition(name)
+        .by_system()
+        .input(&input)
+        .meta(actor.meta())
+        .reason(reason_code)
+        .run_in(&mut tx)
+        .await?;
+    tx.commit().await?;
+    outcome.emit(state).await?;
+    let moved = Booking::find_or_404(&state.db, id).await?;
+    events::reassigned(state, &moved, old_ids, new_ids, reason_code).await?;
+    events::slot_released(state, &service, vec![from], booking.starts_at, booking.ends_at).await?;
+    let who = incoming.first().map(|resource| resource.name.clone()).unwrap_or_default();
+    notices::reassigned(state, &moved, &who, reason_code, at).await?;
+    Ok(moved)
 }
 
 /// Links the record a vertical opened at check-in (a visit, a job card) to

@@ -11,6 +11,7 @@
 //! booked | confirmed | checked_in | in_progress --complete--> completed
 //! booked | confirmed --mark_no_show--> no_show
 //! requested | booked | confirmed | checked_in | in_progress --cancel--> cancelled
+//! requested | booked | confirmed --reassign--> the same state
 //! ```
 //!
 //! Decisions:
@@ -20,6 +21,9 @@
 //! - `reschedule` ends in `booked` or in `requested` (staff acceptance), and
 //!   a transition has one end state, so the second is
 //!   [`RESCHEDULE_REQUEST`]. Both move the booking to the new time.
+//! - `reassign` keeps the state, and a transition has one end state, so there
+//!   is one per state: [`REASSIGN_REQUESTED`], [`REASSIGN`] (`booked`) and
+//!   [`REASSIGN_CONFIRMED`]. The service picks the one of the booking's state.
 //! - Every transition is a system transition that the services run after they
 //!   checked who may act: a party's right depends on the portal grant, a
 //!   signed link or the cut-off, which the engine's permission check does not
@@ -58,6 +62,12 @@ pub const COMPLETE: &str = "complete";
 pub const MARK_NO_SHOW: &str = "mark_no_show";
 /// The booking is cancelled.
 pub const CANCEL: &str = "cancel";
+/// A `booked` booking moves to another resource at the same time.
+pub const REASSIGN: &str = "reassign";
+/// A `requested` booking moves to another resource at the same time.
+pub const REASSIGN_REQUESTED: &str = "reassign_requested";
+/// A `confirmed` booking moves to another resource at the same time.
+pub const REASSIGN_CONFIRMED: &str = "reassign_confirmed";
 
 /// Who runs a transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -140,6 +150,8 @@ pub struct BookingInput {
     pub work_done_pending: bool,
     /// The work done, in fils, as the vertical record captured it.
     pub work_done_amount: i64,
+    /// The resource a `reassign` replaces.
+    pub reassign_from: Option<i64>,
 }
 
 impl BookingInput {
@@ -184,7 +196,12 @@ async fn release_rows(tx: &mut renox::db::Transaction, id: i64) -> Result {
 /// ones taken.
 async fn move_to(tx: &mut renox::db::Transaction, id: i64, input: &BookingInput) -> Result {
     release_rows(tx, id).await?;
-    for occupy in &input.occupy {
+    take_rows(tx, id, &input.occupy).await
+}
+
+/// Takes the time of `rows` for the booking.
+async fn take_rows(tx: &mut renox::db::Transaction, id: i64, rows: &[Occupy]) -> Result {
+    for occupy in rows {
         BookingResource {
             booking_id: id,
             resource_id: occupy.resource_id,
@@ -197,6 +214,74 @@ async fn move_to(tx: &mut renox::db::Transaction, id: i64, input: &BookingInput)
         .await?;
     }
     Ok(())
+}
+
+/// The effect of the reassign transitions: the replaced resource's slot is
+/// released, the new resource's slot taken, and the conflict is cleared.
+async fn swap_resource(
+    tx: &mut renox::db::Transaction,
+    id: i64,
+    input: &BookingInput,
+) -> Result {
+    if let Some(from) = input.reassign_from {
+        BookingResource::query()
+            .where_(BookingResource::BOOKING_ID.eq(id))
+            .where_(BookingResource::RESOURCE_ID.eq(from))
+            .where_(BookingResource::RELEASED.eq(false))
+            .update(&mut *tx, &[("released", &true)])
+            .await?;
+    }
+    take_rows(tx, id, &input.occupy).await?;
+    set(
+        tx,
+        id,
+        &[("conflict_block", &false), ("conflict_eligibility", &false)],
+    )
+    .await
+}
+
+/// `reassign` for a booking in `state`: staff only, with a known reason code
+/// that is not shown to the party.
+fn reassign_transition(name: &str, state: BookingStatus) -> Transition<Booking> {
+    transition(name, &[state], state)
+        .label("Reassign")
+        .guard("staff_only", |_b: &Booking, ctx| {
+            let refused = input_of(ctx).actor != ActorKind::Staff;
+            Box::pin(async move {
+                if refused {
+                    Err(guard_text("wl_scheduling.problem.staff_only"))
+                } else {
+                    Ok(())
+                }
+            })
+        })
+        .guard("reason_given", |_b: &Booking, ctx| {
+            let given = input_of(ctx)
+                .reason_code
+                .is_some_and(|code| !code.trim().is_empty());
+            Box::pin(async move {
+                if given {
+                    Ok(())
+                } else {
+                    Err(guard_text("wl_scheduling.problem.reason_needed"))
+                }
+            })
+        })
+        .guard("reason_known", |_b: &Booking, ctx| {
+            let known = input_of(ctx).default_initiated_by.is_some();
+            Box::pin(async move {
+                if known {
+                    Ok(())
+                } else {
+                    Err(guard_text("wl_scheduling.problem.unknown_reason"))
+                }
+            })
+        })
+        .effect(|booking: &Booking, ctx, tx| {
+            let id = booking.id;
+            let input = input_of(ctx);
+            Box::pin(async move { swap_resource(tx, id, &input).await })
+        })
 }
 
 /// A transition no user runs: the services check who may act.
@@ -451,6 +536,9 @@ impl StateMachine for Booking {
                         })
                     }),
             )
+            .transition(reassign_transition(REASSIGN_REQUESTED, Requested))
+            .transition(reassign_transition(REASSIGN, Booked))
+            .transition(reassign_transition(REASSIGN_CONFIRMED, Confirmed))
             .transition(
                 transition(
                     CANCEL,
@@ -683,6 +771,10 @@ mod tests {
             row(CANCEL).0,
             ["requested", "booked", "confirmed", "checked_in", "in_progress"]
         );
+        // `reassign` keeps the state, whichever it is.
+        assert_eq!(row(REASSIGN_REQUESTED), (vec!["requested".to_owned()], "requested".to_owned(), true));
+        assert_eq!(row(REASSIGN), (vec!["booked".to_owned()], "booked".to_owned(), true));
+        assert_eq!(row(REASSIGN_CONFIRMED), (vec!["confirmed".to_owned()], "confirmed".to_owned(), true));
     }
 
     fn cancel_input(actor: ActorKind) -> BookingInput {
@@ -757,6 +849,9 @@ mod tests {
                 "initiated_by"
             ]
         );
+        for name in [REASSIGN_REQUESTED, REASSIGN, REASSIGN_CONFIRMED] {
+            assert_eq!(guards(name), ["staff_only", "reason_given", "reason_known"]);
+        }
         assert_eq!(guards(RESCHEDULE), ["before_cutoff"]);
     }
 }

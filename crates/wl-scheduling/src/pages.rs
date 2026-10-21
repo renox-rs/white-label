@@ -9,6 +9,7 @@
 //! | `POST /scheduling/bookings/{id}/decline` | `wl_scheduling.booking_decline` | `bookings.manage` |
 //! | `POST /scheduling/bookings/{id}/confirm` | `wl_scheduling.booking_confirm` | `bookings.manage` |
 //! | `POST /scheduling/bookings/{id}/reschedule` | `wl_scheduling.booking_reschedule` | `bookings.manage` |
+//! | `POST /scheduling/bookings/{id}/reassign` | `wl_scheduling.booking_reassign` | `bookings.manage` |
 //! | `POST /scheduling/bookings/{id}/cancel` | `wl_scheduling.booking_cancel` | `bookings.manage` |
 //! | `POST /scheduling/bookings/{id}/mark-no-show` | `wl_scheduling.booking_no_show` | `bookings.manage` |
 //! | `POST /scheduling/bookings/{id}/complete` | `wl_scheduling.booking_complete` | `bookings.manage` |
@@ -62,6 +63,8 @@ pub fn routes() -> Routes {
                 .name("wl_scheduling.booking_confirm")
                 .post("/scheduling/bookings/{id}/reschedule", reschedule)
                 .name("wl_scheduling.booking_reschedule")
+                .post("/scheduling/bookings/{id}/reassign", reassign)
+                .name("wl_scheduling.booking_reassign")
                 .post("/scheduling/bookings/{id}/cancel", cancel)
                 .name("wl_scheduling.booking_cancel")
                 .post("/scheduling/bookings/{id}/mark-no-show", no_show)
@@ -238,6 +241,9 @@ pub(crate) struct ShowPage {
     deposit: String,
     work_done: String,
     can_waive: bool,
+    can_reassign: bool,
+    on_booking: Vec<(String, String)>,
+    others: Vec<(String, String)>,
 }
 
 /// `GET /scheduling/bookings/{id}`.
@@ -263,6 +269,20 @@ async fn show(
         ("party".to_owned(), text(&lang, "booking.side_party")),
         ("business".to_owned(), text(&lang, "booking.side_business")),
     ];
+    // The resources a reassign can replace, and those that could take over.
+    let held = booking.resource_ids(&state.db).await?;
+    let mut on_booking = Vec::new();
+    for id in &held {
+        if let Some(resource) = Resource::find(&state.db, *id).await? {
+            on_booking.push((id.to_string(), resource.name));
+        }
+    }
+    let others = crate::resource::eligible_resources(&state.db, service.id)
+        .await?
+        .into_iter()
+        .filter(|resource| !held.contains(&resource.id))
+        .map(|resource| (resource.id.to_string(), resource.name))
+        .collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         booking: row_of(&state, &lang, &booking).await?,
@@ -302,6 +322,13 @@ async fn show(
         starts_input: local_text(booking.starts_at),
         deposit: deposit_text(&lang, &booking),
         work_done: work_done_text(&booking),
+        can_reassign: manage
+            && matches!(
+                status,
+                BookingStatus::Requested | BookingStatus::Booked | BookingStatus::Confirmed
+            ),
+        on_booking,
+        others,
         can_waive: user.has_permission(permissions::WAIVE_DEPOSIT) && booking.deposit_forfeited > 0,
     }))
 }
@@ -467,6 +494,29 @@ async fn reschedule(
     .await
     .map_err(|refusal| refusal.into_error(&lang))?;
     done(&lang, "booking.rescheduled", id)
+}
+
+/// `POST /scheduling/bookings/{id}/reassign`: `from` (a resource of the
+/// booking), `to` (the one that takes over) and `reason_code`.
+async fn reassign(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    service::reassign(
+        &state,
+        id,
+        number(&form, "from")?,
+        number(&form, "to")?,
+        field(&form, "reason_code"),
+        Actor::staff(user.id),
+        renox::db::now(),
+    )
+    .await
+    .map_err(|refusal| refusal.into_error(&lang))?;
+    done(&lang, "booking.reassigned", id)
 }
 
 /// `POST /scheduling/bookings/{id}/cancel`: `reason_code` (and `note`).

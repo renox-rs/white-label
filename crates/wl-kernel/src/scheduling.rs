@@ -5,7 +5,7 @@
 //! A booking is the subject `scheduling.booking:N` ([`BOOKING_SUBJECT_TYPE`]).
 //! `wl-scheduling` emits [`BookingBooked`], [`BookingRescheduled`],
 //! [`BookingCheckedIn`], [`BookingCompleted`], [`BookingNoShow`],
-//! [`BookingCancelled`] and [`SlotReleased`] after the transaction that
+//! [`BookingReassigned`], [`BookingCancelled`] and [`SlotReleased`] after the transaction that
 //! changed the booking has committed. A vertical opens its own record on
 //! [`BookingCheckedIn`] (a visit, a job card) and consumes a package credit on
 //! [`BookingCompleted`].
@@ -193,6 +193,23 @@ pub struct BookingRescheduled {
 }
 
 impl Event for BookingRescheduled {}
+
+/// Staff moved a booking to another resource at the same time (`reassign`).
+/// The reason code is for staff: the party is not told it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookingReassigned {
+    /// The booking.
+    pub booking: BookingId,
+    /// The resources before.
+    pub old_resources: Vec<i64>,
+    /// The resources now.
+    pub new_resources: Vec<i64>,
+    /// The cancellation reason code that says why, e.g.
+    /// `resource_unavailable`.
+    pub reason_code: String,
+}
+
+impl Event for BookingReassigned {}
 
 /// The party arrived (`check_in`): a vertical opens its record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

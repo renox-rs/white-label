@@ -7,6 +7,7 @@ pub mod config;
 pub mod deposit;
 pub mod events;
 pub mod links;
+mod notices;
 pub mod pages;
 pub mod prepaid;
 pub mod refusal;
@@ -45,6 +46,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-scheduling/link.html",
         include_str!("../views/wl-scheduling/link.html"),
+    ),
+    (
+        "wl-scheduling/link_slots.html",
+        include_str!("../views/wl-scheduling/link_slots.html"),
     ),
 ];
 
@@ -167,7 +172,8 @@ impl Module for WlScheduling {
         renox::state_machine::register::<WaitingEntry>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
-            .view_data::<links::LinkPage>();
+            .view_data::<links::LinkPage>()
+            .view_data::<links::SlotsPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -177,6 +183,7 @@ impl Module for WlScheduling {
                 }
             }
         });
+        notices::register_types();
         app.provide(self.config.clone());
         // wl-payments asks whether a booking still waits for its money.
         wl_kernel::payments::provide_prepaid_subjects(app, prepaid::PrepaidBookings);
