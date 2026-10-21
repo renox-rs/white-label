@@ -17,6 +17,7 @@ mod events;
 pub mod freight;
 pub mod freight_costing;
 pub mod freight_flow;
+pub mod freight_hold;
 pub mod freight_machine;
 mod freight_pages;
 pub mod hold;
@@ -66,6 +67,7 @@ pub use cod::{CodLoss, CodRule};
 pub use dispute::StatementDispute;
 pub use freight::{FreightContainer, FreightEvent, FreightJob, FreightStatus};
 pub use freight_costing::{FreightMargin, JobLine};
+pub use freight_hold::FreightHold;
 pub use freight_machine::FreightInput;
 pub use netting::Offset;
 pub use statement::Statement;
@@ -142,6 +144,7 @@ impl Module for Logistics {
             .model::<FreightContainer>()
             .model::<JobLine>()
             .model::<FreightMargin>()
+            .model::<FreightHold>()
             .model::<StatementDispute>()
             .model::<PaymentReturn>()
             .model::<AccountChange>()
@@ -171,6 +174,8 @@ impl Module for Logistics {
         remit::register(app);
         // `LOG.RUL.07`, monthly on day 1: the draft invoice of each client.
         billing::register(app);
+        // `LOG.RUL.09`, daily at 07:00: the ETA of a freight job.
+        freight_hold::register(app);
         // `LOG.RUL.12`, daily at 02:00, and the approval of `LOG.ACL.14`.
         trace::register(app);
         // `LOG.RUL.13`, every 15 minutes: a driver who does not hand over the

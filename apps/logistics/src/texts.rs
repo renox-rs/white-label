@@ -1009,6 +1009,75 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.freight.departed_body",
         "Freight job {{ number }} has departed ({{ bl }}).",
     ),
+    // Hold and release (`LOG.RUL.09`, BL-LOG-21).
+    (
+        "logistics.freight.hold_reason.customs_hold_or_inspection",
+        "Customs hold or inspection",
+    ),
+    (
+        "logistics.freight.hold_reason.declaration_rejected",
+        "Customs declaration rejected",
+    ),
+    (
+        "logistics.freight.hold_reason.duty_unpaid",
+        "Customs duty unpaid",
+    ),
+    (
+        "logistics.freight.hold_reason.documents_missing",
+        "Documents missing",
+    ),
+    (
+        "logistics.freight.hold_reason.customs_platform_down",
+        "Customs system unavailable",
+    ),
+    (
+        "logistics.freight.hold_reason.client_instruction",
+        "On hold at your request",
+    ),
+    (
+        "logistics.freight.hold_reason_needed",
+        "Give the reason for the hold: customs hold or inspection, declaration rejected, duty unpaid, documents missing, customs platform down or client instruction.",
+    ),
+    (
+        "logistics.freight.hold_title",
+        "Freight job {{ number }} is on hold: {{ reason }}",
+    ),
+    (
+        "logistics.freight.hold_body",
+        "Freight job {{ number }} is on hold. Reason: {{ reason }}. {{ note }}",
+    ),
+    (
+        "logistics.freight.release_target",
+        "A released job goes back to the state it was in before the hold.",
+    ),
+    (
+        "logistics.freight.release_note_needed",
+        "Note how the reason was resolved before releasing the job.",
+    ),
+    (
+        "logistics.freight.not_on_hold",
+        "The job is not on hold.",
+    ),
+    (
+        "logistics.freight.hold_note_needed",
+        "Give a known reason and a note.",
+    ),
+    (
+        "logistics.freight.release_title",
+        "Freight job {{ number }} is moving again",
+    ),
+    (
+        "logistics.freight.release_body",
+        "The hold on freight job {{ number }} is over: {{ note }}",
+    ),
+    (
+        "logistics.freight.eta_title",
+        "Freight job {{ number }} is past its ETA",
+    ),
+    (
+        "logistics.freight.eta_body",
+        "The expected arrival of freight job {{ number }} was {{ eta }} and the job is not ready for delivery.",
+    ),
     ("logistics.freight_done", "Freight job updated."),
     ("logistics.freight_container_added", "Container added."),
     ("logistics.freight_opened", "Freight job opened."),

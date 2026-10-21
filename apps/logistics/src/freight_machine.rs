@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::freight::{FreightJob, FreightStatus, track};
 use crate::freight_costing;
+use crate::freight_hold;
 use crate::permissions;
 use crate::texts::english;
 
@@ -100,7 +101,7 @@ pub(crate) fn given(text: &Option<String>) -> bool {
     text.as_deref().is_some_and(|text| !text.trim().is_empty())
 }
 
-fn trimmed(text: &Option<String>) -> Option<String> {
+pub(crate) fn trimmed(text: &Option<String>) -> Option<String> {
     text.as_deref()
         .map(str::trim)
         .filter(|text| !text.is_empty())
@@ -108,7 +109,7 @@ fn trimmed(text: &Option<String>) -> Option<String> {
 }
 
 /// A guard that refuses with the text `key` unless `ok(job, input)`.
-fn needs(
+pub(crate) fn needs(
     transition: Transition<FreightJob>,
     name: &'static str,
     key: &'static str,
@@ -342,6 +343,16 @@ pub(crate) fn transitions() -> Vec<Transition<FreightJob>> {
         deliver(),
         close(),
         cancel(),
+        freight_hold::hold_transition(),
+        freight_hold::release_transition(RELEASE_IN_TRANSIT, FreightStatus::InTransit),
+        freight_hold::release_transition(
+            RELEASE_CUSTOMS_CLEARANCE,
+            FreightStatus::CustomsClearance,
+        ),
+        freight_hold::release_transition(
+            RELEASE_READY_FOR_DELIVERY,
+            FreightStatus::ReadyForDelivery,
+        ),
     ]
 }
 
@@ -388,6 +399,10 @@ mod tests {
         let machine = FreightJob::machine();
         assert_eq!(machine.states().len(), 9);
         for name in [
+            HOLD,
+            RELEASE_IN_TRANSIT,
+            RELEASE_CUSTOMS_CLEARANCE,
+            RELEASE_READY_FOR_DELIVERY,
             REQUEST_DOCUMENTS,
             DEPART,
             ARRIVE,

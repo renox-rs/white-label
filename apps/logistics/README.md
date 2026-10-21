@@ -204,6 +204,16 @@ their own issues.
   e-POD and `close` every cost allocated and the invoice issued; the margin at
   each close is kept. Revenue and cost lines are the stand-in for job costing
   (`FIN.CST.01`), supplier bills and disbursements until wl-invoicing has them.
+- **Hold and release of a freight job** (`freight_hold`, `LOG.RUL.09`): the
+  documentation officer puts a job in transit, in customs clearance or ready
+  for delivery on hold with a reason (customs hold or inspection, declaration
+  rejected, duty unpaid, documents missing, customs platform down, client
+  instruction) and a note. The state before the hold is stored with the state
+  change and `release` (a note on how the reason was resolved) returns to
+  exactly that state. The client and the officers are told, the portal page
+  shows the reason label and the note, a second reason is a note on the open
+  hold, no ETA alert is raised while on hold and the hold periods are left
+  out of `is_on_time`.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight

@@ -13,6 +13,7 @@ use crate::booking::{self, parse_dirhams};
 use crate::freight::{FreightJob, FreightStatus};
 use crate::freight_costing::{self, Figures};
 use crate::freight_flow as flow;
+use crate::freight_hold;
 use crate::freight_machine as machine;
 use crate::pages::{Fields, Texts, field, tx};
 use crate::permissions;
@@ -232,7 +233,10 @@ async fn show(
                 .collect(),
         })
         .collect();
-    let hold_label: Option<String> = None;
+    let hold_label = (job.status == FreightStatus::OnHold)
+        .then(|| job.hold_reason.clone())
+        .flatten()
+        .map(|reason| freight_hold::reason_label(&lang, &reason));
     let lines = if staff {
         freight_costing::lines_of(&state.db, job.id).await?
     } else {
@@ -310,7 +314,8 @@ fn bad_input(lang: &Lang) -> Error {
 
 /// `POST /freight/{id}/{action}`: `request-documents` (`missing`), `depart`
 /// (`bl_awb`), `arrive`, `clear` (`declaration_no`, `duties` in dirhams,
-/// `delivery_order`), `hold` (`reason`, `note`), `release` (`note`),
+/// `delivery_order`), `hold` (`reason`, `note`), `hold-note` (`reason`, `note`: a second reason on
+/// an open hold), `release` (`note`),
 /// `deliver` (`pod_reference`), `close`, `reopen` (`reason`, `note`) and
 /// `cancel` (`reason`).
 async fn act(
@@ -343,6 +348,21 @@ async fn act(
             )
             .await
         }
+        "hold" => {
+            freight_hold::hold(&state, &user, id, &field(&form, "reason"), &field(&form, "note"))
+                .await
+        }
+        "hold-note" => {
+            freight_hold::add_reason(
+                &state,
+                &user,
+                id,
+                &field(&form, "reason"),
+                &field(&form, "note"),
+            )
+            .await
+        }
+        "release" => freight_hold::release(&state, &user, id, &field(&form, "note")).await,
         "deliver" => flow::deliver(&state, &user, id, &field(&form, "pod_reference")).await,
         "close" => flow::close(&state, &user, id).await,
         "cancel" => flow::cancel(&state, &user, id, &field(&form, "reason")).await,
