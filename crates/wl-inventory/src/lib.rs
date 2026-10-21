@@ -32,6 +32,7 @@ pub mod recall;
 pub mod recall_close;
 pub mod recall_line;
 pub mod recall_notice;
+mod recall_pages;
 pub mod recall_trace;
 pub mod receipt_reverse;
 pub mod reorder;
@@ -341,6 +342,7 @@ impl Module for WlInventory {
             .merge(supplier_pages::routes())
             .merge(preferred_change::routes())
             .merge(stock_pages::routes())
+            .merge(recall_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
