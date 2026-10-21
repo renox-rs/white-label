@@ -22,6 +22,7 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
+use wl_kernel::attendance::{AttendanceHistory, LabourFuture, provide_attendance_history};
 use wl_kernel::cheques::{
     ChequeBounceResolved, ChequeBounced, ChequeFuture, ChequeId, ChequeOutcome, ChequeStatus,
     ChequeSummary, Cheques, NoCheques, provide_cheques,
@@ -41,9 +42,13 @@ use wl_kernel::parties::{PartyDirectory, PartyFuture, provide_directory};
 use wl_kernel::payments::Direction;
 use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::rate_cards::{RateCardFuture, RateCardVersion, RateCards, provide_rate_cards};
+use wl_kernel::tickets::{
+    OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+};
 use wl_kernel::timesheets::{TimesheetClosing, TimesheetClosure, provide_timesheet_closing};
 use wl_kernel::workforce::{
-    EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
+    AbsenceCaseClosed, AbsenceCaseOpened, EmployeeId, StaffProfile, Workforce, WorkforceFuture,
+    provide_workforce,
 };
 use wl_kernel::{BusinessCalendar, PartyId, PartyKind, PartyStatus, PartySummary, Subject};
 
@@ -168,7 +173,10 @@ impl PartyDirectory for Parties {
 
 /// The employees of HR, as the workforce of the kernel answers for them.
 #[derive(Clone, Default)]
-pub struct Staff(Arc<Mutex<BTreeMap<i64, (StaffProfile, bool)>>>);
+pub struct Staff(
+    Arc<Mutex<BTreeMap<i64, (StaffProfile, bool)>>>,
+    Arc<Mutex<BTreeMap<i64, Vec<NaiveDate>>>>,
+);
 
 impl Staff {
     /// An employee `id` named `name`, `active` in HR or not (onboarding).
@@ -194,6 +202,11 @@ impl Staff {
             ),
         );
         EmployeeId(id)
+    }
+
+    /// HR recorded a failed attempt to reach the employee `id` on `day`.
+    pub fn failed_to_reach(&self, id: i64, day: NaiveDate) {
+        self.1.lock().unwrap().entry(id).or_default().push(day);
     }
 
     /// Puts the employee `id` on or off the active list of HR.
@@ -232,6 +245,176 @@ impl Workforce for Staff {
                 .unwrap()
                 .get(&employee.0)
                 .is_some_and(|(_, active)| *active))
+        })
+    }
+
+    fn failed_contact_days<'a>(
+        &'a self,
+        _db: &'a Db,
+        employee: EmployeeId,
+        after: NaiveDate,
+    ) -> WorkforceFuture<'a, Vec<NaiveDate>> {
+        Box::pin(async move {
+            let mut days: Vec<NaiveDate> = self
+                .1
+                .lock()
+                .unwrap()
+                .get(&employee.0)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|day| *day > after)
+                .collect();
+            days.sort_unstable();
+            days.dedup();
+            Ok(days)
+        })
+    }
+}
+
+/// The days the employees were present, as wl-attendance answers for them.
+#[derive(Clone, Default)]
+pub struct History(Arc<Mutex<BTreeMap<i64, Vec<NaiveDate>>>>);
+
+impl History {
+    /// The employee `id` attended on `day`.
+    pub fn attended(&self, id: i64, day: NaiveDate) {
+        self.0.lock().unwrap().entry(id).or_default().push(day);
+    }
+}
+
+impl AttendanceHistory for History {
+    fn attended_days<'a>(
+        &'a self,
+        _state: &'a AppState,
+        employee: EmployeeId,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> LabourFuture<'a, Vec<NaiveDate>> {
+        Box::pin(async move {
+            let mut days: Vec<NaiveDate> = self
+                .0
+                .lock()
+                .unwrap()
+                .get(&employee.0)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|day| from <= *day && *day <= to)
+                .collect();
+            days.sort_unstable();
+            days.dedup();
+            Ok(days)
+        })
+    }
+}
+
+/// A ticket another module opened, as the tickets fake keeps it.
+#[derive(Debug, Clone)]
+pub struct Opened {
+    /// The ticket.
+    pub ticket: OpenTicket,
+    /// Its id.
+    pub id: i64,
+    /// Why it was completed; none while open.
+    pub completed: Option<String>,
+    /// The comments on it.
+    pub comments: Vec<String>,
+}
+
+/// The tickets of wl-ticketing, as the vertical opens them.
+#[derive(Clone, Default)]
+pub struct Tickets(Arc<Mutex<Vec<Opened>>>);
+
+impl Tickets {
+    /// Every ticket opened, oldest first.
+    pub fn all(&self) -> Vec<Opened> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl TaskCreator for Tickets {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            let id = i64::try_from(all.len()).unwrap() + 1;
+            all.push(Opened {
+                ticket,
+                id,
+                completed: None,
+                comments: Vec::new(),
+            });
+            Ok(Some(TicketRef {
+                id: TicketId(id),
+                number: format!("TKT-2027-{id:04}"),
+            }))
+        })
+    }
+
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|opened| {
+                    opened.completed.is_none()
+                        && opened.ticket.source_key.as_deref() == Some(source_key)
+                })
+                .map(|opened| TicketRef {
+                    id: TicketId(opened.id),
+                    number: format!("TKT-2027-{:04}", opened.id),
+                }))
+        })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            let found = all
+                .iter_mut()
+                .find(|opened| opened.id == ticket.0 && opened.completed.is_none());
+            Ok(match found {
+                Some(opened) => {
+                    opened.completed = Some(note.to_owned());
+                    true
+                }
+                None => false,
+            })
+        })
+    }
+
+    fn comment<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        comment: TaskComment,
+    ) -> TicketFuture<'a, ()> {
+        Box::pin(async move {
+            if let Some(opened) = self
+                .0
+                .lock()
+                .unwrap()
+                .iter_mut()
+                .find(|opened| opened.id == ticket.0)
+            {
+                opened.comments.push(comment.text);
+            }
+            Ok(())
         })
     }
 }
@@ -797,6 +980,10 @@ struct Fakes {
     contracts_ended: Recorded<ContractEnded>,
     closings: Closings,
     documents: Documents,
+    history: History,
+    tickets: Tickets,
+    case_opened: Recorded<AbsenceCaseOpened>,
+    case_closed: Recorded<AbsenceCaseClosed>,
 }
 
 impl Module for Fakes {
@@ -821,6 +1008,10 @@ impl Module for Fakes {
         record(app, &self.contracts_ended);
         provide_timesheet_closing(app, self.closings.clone());
         provide_guard(app, self.documents.clone());
+        provide_attendance_history(app, self.history.clone());
+        provide_task_creator(app, self.tickets.clone());
+        record(app, &self.case_opened);
+        record(app, &self.case_closed);
     }
 }
 
@@ -860,6 +1051,14 @@ pub struct Booted {
     pub closings: Closings,
     /// The documents of the employees.
     pub documents: Documents,
+    /// The days the employees attended.
+    pub history: History,
+    /// The tickets opened.
+    pub tickets: Tickets,
+    /// `AbsenceCaseOpened`.
+    pub case_opened: Recorded<AbsenceCaseOpened>,
+    /// `AbsenceCaseClosed`.
+    pub case_closed: Recorded<AbsenceCaseClosed>,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// The contracts made, for their references.
@@ -1110,6 +1309,10 @@ pub async fn boot() -> Booted {
     let contracts_ended = Recorded::default();
     let closings = Closings::default();
     let documents = Documents::default();
+    let history = History::default();
+    let tickets = Tickets::default();
+    let case_opened = Recorded::default();
+    let case_closed = Recorded::default();
     let invoices = Invoices::default();
     let register = Register::default();
     let fakes = Fakes {
@@ -1129,6 +1332,10 @@ pub async fn boot() -> Booted {
         contracts_ended: contracts_ended.clone(),
         closings: closings.clone(),
         documents: documents.clone(),
+        history: history.clone(),
+        tickets: tickets.clone(),
+        case_opened: case_opened.clone(),
+        case_closed: case_closed.clone(),
     };
     let app = App::new()
         .module(Auth::new())
@@ -1195,6 +1402,10 @@ pub async fn boot() -> Booted {
         contracts_ended,
         closings,
         documents,
+        history,
+        tickets,
+        case_opened,
+        case_closed,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),
         _views: views,
