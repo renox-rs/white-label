@@ -11,6 +11,8 @@
 //! | `POST /clinics/visits/{id}/refund-deposit` | `clinics.visit_refund_deposit` | `charges.desk` |
 //! | `POST /clinics/visits/{id}/consent` | `clinics.visit_consent` | `coverage.record` |
 //! | `POST /clinics/visits/{id}/bill` | `clinics.visit_bill` | `charges.capture` or `charges.desk` |
+//! | `POST /clinics/visits/{id}/lots` | `clinics.visit_lot` | `charges.desk` or `charges.capture` |
+//! | `GET /clinics/visits/{id}?code=X` | `clinics.visit` | the issue screen: the lot proposed for consumable `X` |
 //!
 //! The page shows the cover the check-in recorded. When the eligibility turns
 //! positive before the service starts, the receptionist changes the outcome
@@ -28,7 +30,9 @@ use crate::billing::{self, Basis};
 use crate::charge::{ChargeKind, ChargeLine};
 use crate::charges::{self, NewCharge};
 use crate::consent::{self, SelfPayConsent};
+use crate::consumable_issue::ConsumableIssue;
 use crate::coverage::{self, CoverageOutcome};
+use crate::lots;
 use crate::money_text;
 use crate::permissions;
 use crate::policy::InsurancePolicy;
@@ -56,6 +60,8 @@ pub fn routes() -> Routes {
         .name("clinics.visit_consent")
         .post("/clinics/visits/{id}/bill", bill)
         .name("clinics.visit_bill")
+        .post("/clinics/visits/{id}/lots", set_lot)
+        .name("clinics.visit_lot")
         .require_auth()
 }
 
@@ -96,6 +102,21 @@ pub struct ChargeRow {
     pub payer: String,
     /// Why the line is not charged, or what it was.
     pub note: String,
+    /// The lot of a consumable: the number, "Lot required" or "Lot uncertain".
+    pub lot: String,
+}
+
+/// One part of a consumable that left the branch store.
+#[derive(Serialize, Debug, Clone)]
+pub struct IssueRow {
+    /// The consumable.
+    pub code: String,
+    /// The lot's number, or "Lot uncertain" for the part waiting for stock.
+    pub lot: String,
+    /// The last day of use.
+    pub expiry: String,
+    /// The units.
+    pub quantity: String,
 }
 
 /// What the page needs.
@@ -134,6 +155,21 @@ pub(crate) struct ShowPage {
     can_bill: bool,
     kind_options: Vec<[String; 2]>,
     vat_options: Vec<[String; 2]>,
+    issues: Vec<IssueRow>,
+    lines: Vec<[String; 2]>,
+    proposal_code: String,
+    proposal: String,
+    can_set_lot: bool,
+    can_desk_only: bool,
+}
+
+/// The query of the visit page: `code` asks which lot the issue screen
+/// proposes for that consumable.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ShowQuery {
+    /// The consumable code.
+    #[serde(default)]
+    pub code: String,
 }
 
 /// The work done as the page reads it.
@@ -160,12 +196,49 @@ fn note_text(lang: &Lang, line: &ChargeLine) -> String {
     }
 }
 
-/// `GET /clinics/visits/{id}`.
+/// The quantity of a lot row, in units.
+fn units_text(quantity_milli: i64) -> String {
+    if quantity_milli % 1_000 == 0 {
+        (quantity_milli / 1_000).to_string()
+    } else {
+        format!("{}.{:03}", quantity_milli / 1_000, quantity_milli % 1_000)
+    }
+}
+
+/// What the lot column of a consumable line says.
+fn lot_text(lang: &Lang, line: &ChargeLine, issues: &[ConsumableIssue]) -> String {
+    if line.kind != ChargeKind::Consumable {
+        return text(lang, "none");
+    }
+    let mine: Vec<String> = issues
+        .iter()
+        .filter(|issue| issue.charge_line_id == line.id)
+        .map(|issue| {
+            if issue.is_uncertain() {
+                text(lang, "lots.uncertain")
+            } else {
+                issue.lot_number.clone().unwrap_or_else(|| text(lang, "none"))
+            }
+        })
+        .collect();
+    if !mine.is_empty() {
+        return mine.join(", ");
+    }
+    match &line.lot_number {
+        Some(number) => number.clone(),
+        None if line.lot_tracked => text(lang, "lots.required"),
+        None => text(lang, "none"),
+    }
+}
+
+/// `GET /clinics/visits/{id}` (`?code=X`: the issue screen proposes the lot
+/// of consumable `X` with the earliest expiry).
 async fn show(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Path(id): Path<i64>,
+    Query(query): Query<ShowQuery>,
 ) -> Result<View> {
     require(&user, permissions::VISITS_VIEW)?;
     let visit = Visit::find_or_404(&state.db, id).await?;
@@ -216,6 +289,45 @@ async fn show(
         });
     }
     let lines = ChargeLine::active_of(&state.db, visit.id).await?;
+    let issued = ConsumableIssue::of_visit(&state.db, visit.id).await?;
+    let issue_rows: Vec<IssueRow> = issued
+        .iter()
+        .map(|issue| IssueRow {
+            code: lines
+                .iter()
+                .find(|line| line.id == issue.charge_line_id)
+                .map_or_else(|| text(&lang, "none"), |line| line.code.clone()),
+            lot: if issue.is_uncertain() {
+                text(&lang, "lots.uncertain")
+            } else {
+                issue.lot_number.clone().unwrap_or_else(|| text(&lang, "none"))
+            },
+            expiry: issue
+                .expiry_date
+                .map_or_else(|| text(&lang, "none"), |day| day.to_string()),
+            quantity: units_text(issue.quantity_milli),
+        })
+        .collect();
+    let lot_lines: Vec<[String; 2]> = lines
+        .iter()
+        .filter(|line| line.kind == ChargeKind::Consumable && line.lot_tracked && line.issued_at.is_none())
+        .map(|line| [line.id.to_string(), format!("{} x {}", line.code, line.units)])
+        .collect();
+    let proposal_code = query.code.trim().to_owned();
+    let proposal = if proposal_code.is_empty() {
+        String::new()
+    } else {
+        match lots::proposal(&state, &visit, &proposal_code).await? {
+            Some(lot) => format!(
+                "{} ({} {})",
+                lot.number,
+                text(&lang, "lots.expiry"),
+                lot.expiry_date
+                    .map_or_else(|| text(&lang, "none"), |day| day.to_string())
+            ),
+            None => text(&lang, "lots.proposed_none"),
+        }
+    };
     let quoted = if visit.billed_at.is_none() && visit.status.is_open() {
         charges::quote(&state, &visit).await.ok()
     } else {
@@ -238,6 +350,7 @@ async fn show(
             patient: money_text(line.patient_share),
             payer: money_text(line.payer_share),
             note: note_text(&lang, line),
+            lot: lot_text(&lang, line, &issued),
         })
         .collect();
     let (patient_total, payer_total) = match &quoted {
@@ -312,6 +425,12 @@ async fn show(
             option("zero", "charges.vat.zero"),
             option("standard", "charges.vat.standard"),
         ],
+        issues: issue_rows,
+        lines: lot_lines,
+        proposal_code,
+        proposal,
+        can_set_lot: (can_capture || can_desk) && open,
+        can_desk_only: can_desk && !can_capture && open,
     }))
 }
 
@@ -361,6 +480,9 @@ pub struct ChargeForm {
     /// `standard` for a standard-rated line, else zero-rated.
     #[serde(default)]
     pub vat: String,
+    /// The number of the lot scanned or picked (a consumable).
+    #[serde(default)]
+    pub lot: String,
 }
 
 /// The units typed in a form: one when blank.
@@ -386,6 +508,7 @@ async fn charge(
         new = new.standard_rated();
     }
     if form.kind == "consumable" {
+        new = new.lot(&form.lot);
         if !user.has_permission(permissions::CHARGES_DESK) {
             require(&user, permissions::CHARGES_CAPTURE)?;
         }
@@ -520,4 +643,32 @@ async fn bill(
         .ok_or_else(|| invalid(&text(&lang, "charges.problem.closed")))?;
     billing::bill(&state, id, basis).await?;
     done(&lang, "charges.billed")
+}
+
+/// The form that sets the lot of a consumable line.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct LotForm {
+    /// The consumable line.
+    #[serde(default)]
+    pub line: String,
+    /// The number of the lot scanned or picked; blank takes the proposed one.
+    #[serde(default)]
+    pub lot: String,
+}
+
+/// `POST /clinics/visits/{id}/lots`: sets or corrects the lot of a
+/// consumable line before the check-out.
+async fn set_lot(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<LotForm>,
+) -> Result<Response> {
+    if !user.has_permission(permissions::CHARGES_DESK) {
+        require(&user, permissions::CHARGES_CAPTURE)?;
+    }
+    let line = parse_id(&form.line).ok_or_else(|| invalid(&text(&lang, "lots.problem.no_line")))?;
+    lots::assign(&state, id, line, Some(form.lot.as_str())).await?;
+    done(&lang, "lots.assigned")
 }
