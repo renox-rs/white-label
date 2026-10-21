@@ -7,6 +7,7 @@ pub mod authorisations;
 pub mod claims;
 pub mod contracts;
 pub mod policies;
+pub mod recalls;
 pub mod visits;
 
 use std::collections::BTreeMap;
@@ -29,6 +30,7 @@ pub fn routes() -> Routes {
         .merge(authorisations::routes())
         .merge(claims::routes())
         .merge(contracts::routes())
+        .merge(recalls::routes())
         .merge(visits::routes())
 }
 

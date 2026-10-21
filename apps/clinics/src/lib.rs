@@ -34,6 +34,8 @@ pub mod policies;
 pub mod policy;
 pub mod prior_auth_rules;
 pub mod reasons;
+pub mod recall_notice;
+pub mod recalls;
 pub mod seed;
 pub mod split;
 mod texts;
@@ -59,6 +61,7 @@ pub use coverage::{CoverageOutcome, PendingCheckIn};
 pub use flags::{AppointmentFlag, FlagCause};
 pub use licences::LicenceAlert;
 pub use policy::{EligibilityCheck, InsurancePolicy};
+pub use recall_notice::{RecallNotice, RecallNoticeStatus};
 pub use visit::{Visit, VisitStatus};
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -99,6 +102,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "clinics/claim.html",
         include_str!("../views/clinics/claim.html"),
+    ),
+    (
+        "clinics/recall.html",
+        include_str!("../views/clinics/recall.html"),
+    ),
+    (
+        "clinics/recall_calls.html",
+        include_str!("../views/clinics/recall_calls.html"),
     ),
 ];
 
@@ -142,7 +153,9 @@ impl Module for Clinics {
             .view_data::<pages::authorisations::IndexPage>()
             .view_data::<pages::authorisations::ShowPage>()
             .view_data::<pages::claims::IndexPage>()
-            .view_data::<pages::claims::ShowPage>();
+            .view_data::<pages::claims::ShowPage>()
+            .view_data::<pages::recalls::ShowPage>()
+            .view_data::<pages::recalls::CallsPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -165,6 +178,7 @@ impl Module for Clinics {
             .model::<AppointmentFlag>()
             .model::<ChargeLine>()
             .model::<ConsumableIssue>()
+            .model::<RecallNotice>()
             .model::<PayerContract>()
             .model::<PayerTariff>()
             .model::<Claim>()
@@ -212,6 +226,9 @@ impl Module for Clinics {
         // `CLN.RUL.01`: an expired licence or set of privileges is told to
         // the clinic manager of the branch and the owner (BL-CLN-12).
         licences::register(app);
+        // A recalled lot traced to patients, the neutral notice and the call
+        // task when it gives up (BL-CLN-14).
+        recalls::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.insurance_policies` text.
         app.nav(
@@ -245,6 +262,14 @@ impl Module for Clinics {
                 .group("nav.app")
                 .order(74)
                 .permission(permissions::CLAIMS_MANAGE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("clinics.recall_calls", "nav.recall_calls")
+                .icon("clipboard-list")
+                .group("nav.app")
+                .order(75)
+                .permission(permissions::RECALLS_CALL),
         );
         app.nav(
             "app",

@@ -43,6 +43,17 @@ pub const CLAIMS_WRITEOFF: &str = "claims.writeoff";
 /// clinic did not submit in time (`CLN.ACL.16`: the owner's alone).
 pub const MISSED_WINDOW_BILLING: &str = "contracts.missed_window_billing";
 
+/// See the trace of a recalled lot: the patients who got it, by name, visit
+/// day and branch (health data, every view audited, `CLN.ACL.01`): the clinic
+/// manager's and the medical director's.
+pub const RECALLS_TRACE: &str = "recalls.trace";
+/// Send the notices of a recall to the patients (`STK.ACL.05`: the clinic
+/// manager's).
+pub const RECALLS_NOTIFY: &str = "recalls.notify";
+/// Record the outcome of the call to a patient whose recall notice could not
+/// be delivered (the front desk's, in the branch of the visit).
+pub const RECALLS_CALL: &str = "recalls.call";
+
 /// The owner / medical director: told when a practitioner licence expires
 /// (`CLN.RUL.01`) and alerted when a compliance-critical rule fails.
 pub const OWNER_ROLE: &str = "owner";

@@ -1116,6 +1116,56 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.lots.problem.none_available",
         "No lot is available at the branch store.",
     ),
+    // A recalled lot traced to patients (CLN.ACL.01, STK.ACL.05).
+    ("clinics.recall.title", "Product recall"),
+    (
+        "clinics.recall.subtitle",
+        "The patients who got a recalled product: name, visit day and branch only. Each view is recorded.",
+    ),
+    ("clinics.recall.patient", "Patient"),
+    ("clinics.recall.visit_date", "Visit date"),
+    ("clinics.recall.branch", "Branch"),
+    ("clinics.recall.notice", "Notice"),
+    ("clinics.recall.told", "Told"),
+    ("clinics.recall.told_party", "Told through"),
+    ("clinics.recall.lot_uncertain", "Lot uncertain"),
+    ("clinics.recall.empty", "No visit used this lot."),
+    ("clinics.recall.send", "Send the notices"),
+    (
+        "clinics.recall.send_description",
+        "Each patient (or guardian) gets one message listing the visit days. It names the clinic and asks them to call; it never names the product.",
+    ),
+    ("clinics.recall.sent", "Notices sent."),
+    ("clinics.recall.notice.pending", "Not told"),
+    ("clinics.recall.notice.sent", "Sent"),
+    ("clinics.recall.notice.waived", "Waived"),
+    ("clinics.recall.label", "Notice from the clinic"),
+    ("clinics.recall.subject", "A message from {{ clinic }}"),
+    (
+        "clinics.recall.body",
+        "{{ clinic }}: please {{ contact }} about a product used in your visit on {{ dates }}.",
+    ),
+    ("clinics.recall.call_us", "call us"),
+    ("clinics.recall.call_us_on", "call us on :phone"),
+    (
+        "clinics.recall.problem.nothing",
+        "Nobody is left to tell: every patient of this recall was told or waived.",
+    ),
+    (
+        "clinics.recall.problem.outcome",
+        "Record what came of the call.",
+    ),
+    ("clinics.recall.calls_title", "Recall calls"),
+    (
+        "clinics.recall.calls_subtitle",
+        "Patients who could not be reached by message. Call them and record the outcome.",
+    ),
+    ("clinics.recall.calls_empty", "No call is waiting."),
+    ("clinics.recall.call_outcome", "What came of the call"),
+    ("clinics.recall.call_record", "Record the call"),
+    ("clinics.recall.call_recorded", "The call is recorded."),
+    ("clinics.recall.call_days", "Visit days"),
+    ("clinics.recall.call_gave_up", "Gave up"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the
