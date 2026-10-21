@@ -11,7 +11,7 @@ use renox::state_machine::{StateMachine, TransitionError};
 use crate::freight::FreightJob;
 use crate::freight_costing;
 use crate::freight_machine::{
-    ARRIVE, CANCEL, CLEAR, CLOSE, DELIVER, DEPART, FreightInput, REQUEST_DOCUMENTS,
+    ARRIVE, CLEAR, CLOSE, DELIVER, DEPART, FreightInput, REQUEST_DOCUMENTS,
 };
 use crate::notices::tell_party;
 use crate::texts::english;
@@ -198,7 +198,9 @@ pub async fn close(
     run(state, user, id, CLOSE, &input).await
 }
 
-/// `cancel` (`jobs.manage`) before departure, with a reason.
+/// `cancel` (`jobs.manage`) before departure, with a reason; the quotation's
+/// cancellation charges and the incurred costs are drafted on one invoice
+/// ([`crate::freight_cancel`]).
 ///
 /// # Errors
 ///
@@ -210,9 +212,5 @@ pub async fn cancel(
     id: i64,
     reason: &str,
 ) -> std::result::Result<FreightJob, TransitionError> {
-    let input = FreightInput {
-        reason: Some(reason.trim().to_owned()),
-        ..FreightInput::default()
-    };
-    run(state, user, id, CANCEL, &input).await
+    crate::freight_cancel::cancel(state, user, id, reason).await
 }

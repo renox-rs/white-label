@@ -76,6 +76,9 @@ pub struct JobLine {
     pub source_ref: Option<String>,
     /// Recorded after the job was closed once (a late cost).
     pub late: bool,
+    /// For a cost billed after the job was cancelled: what the accountant
+    /// decided, `invoiced` or `absorbed`; none while it waits.
+    pub decision: Option<String>,
     /// The user who recorded it.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -272,6 +275,11 @@ pub async fn add_cost(
         ..JobLine::default()
     };
     line.insert(&state.db).await?;
+    if job.status == FreightStatus::Cancelled {
+        // A cost billed after `cancel`: the accountant decides whether to
+        // invoice it (BL-LOG-23).
+        crate::freight_cancel::tell_accountants(state, &job, &line).await?;
+    }
     Ok(line)
 }
 

@@ -277,6 +277,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::JOBS_MANAGE,
             log::JOBS_DELIVER,
             log::JOBS_CLOSE,
+            log::JOBS_BILL_CANCELLED,
             log::REMITTANCES_VIEW,
             log::REMITTANCES_PREPARE,
             log::REMITTANCES_APPROVE,
@@ -618,6 +619,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // approves them and the adjustment lines (`LOG.ACL.07`,
             // `LOG.ACL.12`).
             log::JOBS_VIEW,
+            // The accountant decides whether a cost billed to a cancelled job
+            // is invoiced (BL-LOG-23).
+            log::JOBS_BILL_CANCELLED,
             log::REMITTANCES_VIEW,
             log::REMITTANCES_PREPARE,
             log::REMITTANCES_APPROVE,

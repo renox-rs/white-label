@@ -15,6 +15,7 @@ pub mod disposal;
 pub mod dispute;
 mod events;
 pub mod freight;
+pub mod freight_cancel;
 pub mod freight_costing;
 pub mod freight_flow;
 pub mod freight_hold;
@@ -67,6 +68,7 @@ pub use cash_watch::CashWatch;
 pub use cod::{CodLoss, CodRule};
 pub use dispute::StatementDispute;
 pub use freight::{FreightContainer, FreightEvent, FreightJob, FreightStatus};
+pub use freight_cancel::{FreightCancellation, FreightQuotation};
 pub use freight_costing::{FreightMargin, JobLine};
 pub use freight_hold::FreightHold;
 pub use freight_reopen::FreightReopening;
@@ -148,6 +150,8 @@ impl Module for Logistics {
             .model::<FreightMargin>()
             .model::<FreightHold>()
             .model::<FreightReopening>()
+            .model::<FreightQuotation>()
+            .model::<FreightCancellation>()
             .model::<StatementDispute>()
             .model::<PaymentReturn>()
             .model::<AccountChange>()

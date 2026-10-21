@@ -1107,6 +1107,67 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.freight.supplementary_revenue",
         "Supplementary invoice for freight job {{ number }}",
     ),
+    // Cancelling a job before departure (BL-LOG-23).
+    (
+        "logistics.freight.quotation_departed",
+        "The quotation terms are entered before the job departs.",
+    ),
+    (
+        "logistics.freight.quotation_amount",
+        "A cancellation charge is not negative.",
+    ),
+    (
+        "logistics.freight.cancellation_line",
+        "Cancellation charge, freight job {{ number }} ({{ stage }})",
+    ),
+    (
+        "logistics.freight.cancellation_cost_line",
+        "{{ description }} (cancelled job {{ number }})",
+    ),
+    (
+        "logistics.freight.cancellation_revenue",
+        "Cancellation invoice for freight job {{ number }}",
+    ),
+    (
+        "logistics.freight.cancel_task_title",
+        "Decide the incurred costs of cancelled freight job {{ number }}",
+    ),
+    (
+        "logistics.freight.cancel_task_body",
+        "Freight job {{ number }} was cancelled and its quotation has no cancellation charge for that stage, so nothing was invoiced. Costs incurred so far and not invoiced: {{ incurred }}. Decide whether to recharge them.",
+    ),
+    (
+        "logistics.freight.cancelled_title",
+        "Freight job {{ number }} is cancelled",
+    ),
+    (
+        "logistics.freight.cancelled_body",
+        "Freight job {{ number }} was cancelled: {{ reason }}.",
+    ),
+    (
+        "logistics.freight.late_cost_title",
+        "A cost was billed to cancelled freight job {{ number }}",
+    ),
+    (
+        "logistics.freight.late_cost_body",
+        "{{ description }} ({{ amount }}) was allocated to cancelled freight job {{ number }}. Decide whether to invoice it to the client.",
+    ),
+    (
+        "logistics.freight.not_cancelled_cost",
+        "Only a cost of a cancelled job is decided here.",
+    ),
+    (
+        "logistics.freight.already_decided",
+        "This cost is already decided or invoiced.",
+    ),
+    (
+        "logistics.freight.liability_first",
+        "Allocate the cost with its liability first.",
+    ),
+    (
+        "logistics.freight.company_not_recharged",
+        "A cost the company is liable for is not invoiced to the client.",
+    ),
     ("logistics.freight_done", "Freight job updated."),
     ("logistics.freight_container_added", "Container added."),
     ("logistics.freight_opened", "Freight job opened."),

@@ -40,6 +40,7 @@ pub mod parties;
 pub mod payments;
 pub mod portal;
 pub mod qualifications;
+pub mod quotations;
 pub mod role_tasks;
 pub mod sales;
 pub mod scopes;

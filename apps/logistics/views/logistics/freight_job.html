@@ -54,8 +54,18 @@
       <rx-column :label="tx['job_line']">{{ line.description }}</rx-column>
       <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
       <rx-column :label="tx['job_liability']" hide-narrow>{{ line.liability }}</rx-column>
+      <rx-column :label="tx['job_decision']" hide-narrow>{{ line.decision }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['job_no_lines']" icon="receipt"/></rx-slot>
     </rx-table>
+    <rx-card :title="tx['job_cancellation']" rx-if="cancellation">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['job_cancel_stage']" :value="cancellation.stage"/>
+        <rx-entry :label="tx['note']" :value="cancellation.reason"/>
+        <rx-entry :label="tx['job_cancel_charge']" :value="cancellation.charge" format="money"/>
+        <rx-entry :label="tx['job_cancel_recharged']" :value="cancellation.recharged" format="money"/>
+        <rx-entry :label="tx['job_cancel_absorbed']" :value="cancellation.absorbed" format="money"/>
+      </rx-infolist>
+    </rx-card>
     <rx-card :title="tx['job_margin']" rx-if="figures">
       <rx-infolist columns="2">
         <rx-entry :label="tx['job_revenue']" :value="figures.revenue" format="money"/>

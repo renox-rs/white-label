@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use crate::booking::{self, parse_dirhams};
 use crate::freight::{FreightJob, FreightStatus};
+use crate::freight_cancel::{self, QuotationInput};
 use crate::freight_costing::{self, Figures};
 use crate::freight_flow as flow;
 use crate::freight_hold;
@@ -41,6 +42,10 @@ pub fn routes() -> Routes {
         .name("logistics.freight_supplementary")
         .post("/freight/{id}/zero-rate-evidence", zero_rate_evidence)
         .name("logistics.freight_zero_rate_evidence")
+        .post("/freight/{id}/quotation", quotation)
+        .name("logistics.freight_quotation")
+        .post("/freight/lines/{line}/decide", decide)
+        .name("logistics.freight_decide")
         .post("/freight/lines/{line}/allocate", allocate)
         .name("logistics.freight_allocate")
         .post("/freight/lines/{line}/disbursement", disbursement)
@@ -98,6 +103,7 @@ pub(crate) struct LineRow {
     rechargeable: bool,
     issued: bool,
     late: bool,
+    decision: String,
 }
 
 /// The margin at one close.
@@ -196,6 +202,7 @@ pub(crate) struct ShowPage {
     figures: Option<Figures>,
     margins: Vec<MarginRow>,
     actions: Vec<ActionView>,
+    cancellation: Option<freight_cancel::FreightCancellation>,
 }
 
 fn date_text(date: Option<renox::chrono::NaiveDate>) -> String {
@@ -269,7 +276,13 @@ async fn show(
     } else {
         Vec::new()
     };
+    let cancellation = if staff {
+        freight_cancel::cancellation_of(&state.db, job.id).await?
+    } else {
+        None
+    };
     let page = ShowPage {
+        cancellation,
         tx: tx(&lang),
         status_label: status_word(&lang, job.status),
         status_kind: status_kind(job.status),
@@ -310,6 +323,7 @@ async fn show(
                 rechargeable: l.rechargeable,
                 issued: l.issued,
                 late: l.late,
+                decision: l.decision.unwrap_or_default(),
             })
             .collect(),
         figures,
@@ -479,6 +493,63 @@ async fn allocate(
     Ok((
         Toast::success(t(&lang, "logistics.freight_done")),
         Redirect::route("logistics.freight_job", &[&allocated.job_id])?,
+    )
+        .into_response())
+}
+
+/// A charge typed in dirhams; none when blank or zero.
+fn charge_in(lang: &Lang, form: &std::collections::BTreeMap<String, String>, name: &str) -> Result<Option<i64>> {
+    let text = field(form, name);
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    let fils = parse_dirhams(&text).ok_or_else(|| bad_input(lang))?;
+    Ok(Some(fils).filter(|fils| *fils > 0))
+}
+
+/// `POST /freight/{id}/quotation`: `reference`, the cancellation charges in
+/// dirhams `fixed_charge`, `booked_charge` and `documents_pending_charge`
+/// (blank for none) and `recharge_incurred` (`1`).
+async fn quotation(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let input = QuotationInput {
+        reference: field(&form, "reference"),
+        fixed: charge_in(&lang, &form, "fixed_charge")?,
+        booked: charge_in(&lang, &form, "booked_charge")?,
+        documents_pending: charge_in(&lang, &form, "documents_pending_charge")?,
+        recharge_incurred: matches!(field(&form, "recharge_incurred").trim(), "1" | "on" | "true"),
+    };
+    freight_cancel::set_quotation(&state, &user, id, &input)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/lines/{line}/decide`: `invoice` (`1` to invoice the cost
+/// billed after a cancel, `0` to absorb it).
+async fn decide(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(line): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let invoice = matches!(field(&form, "invoice").trim(), "1" | "on" | "true");
+    let decided = freight_cancel::decide_late_cost(&state, &user, line, invoice)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&decided.job_id])?,
     )
         .into_response())
 }

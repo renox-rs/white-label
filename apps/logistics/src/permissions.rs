@@ -38,6 +38,9 @@ pub const JOBS_MANAGE: &str = "jobs.manage";
 pub const JOBS_DELIVER: &str = "jobs.deliver";
 /// Close a freight job and reopen a closed one for a late cost.
 pub const JOBS_CLOSE: &str = "jobs.close";
+/// Decide whether a cost billed after a job was cancelled is invoiced to the
+/// client: the accountant (§4.2 row *Client cancels before departure*).
+pub const JOBS_BILL_CANCELLED: &str = "jobs.bill_cancelled";
 
 /// Approve a request to mark a shipment off a delivery lost (`LOG.ACL.14`):
 /// the operations manager, and the company admin, who holds every permission.
@@ -92,6 +95,7 @@ pub const ALL: &[&str] = &[
     JOBS_MANAGE,
     JOBS_DELIVER,
     JOBS_CLOSE,
+    JOBS_BILL_CANCELLED,
 ];
 
 /// The operations manager runs a depot (§3.1). The host's
