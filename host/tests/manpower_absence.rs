@@ -165,6 +165,14 @@ async fn the_case_leads_to_the_report_and_the_end_of_the_deployment() {
     let ended = reload(&app, d.id).await;
     assert_eq!(ended.status, DeploymentStatus::Ended);
     assert_eq!(ended.end_reason.as_deref(), Some("absconded"));
+    // The MD's approval opened the cancellation case from the absconding
+    // variant of the step template (BL-MPW-21).
+    let cases = wl_hr::VisaCase::cancellations_of(app.db(), w.0)
+        .await
+        .unwrap();
+    assert_eq!(cases.len(), 1);
+    assert_eq!(cases[0].variant, "absconding");
+    assert_eq!(cases[0].report_number.as_deref(), Some("MOHRE-777"));
 }
 
 /// AC5 with the real wl-hr: W's pay for the paid run is held for the absence
