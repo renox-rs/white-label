@@ -3,8 +3,8 @@
 //! the account manager ends a deployment for the client's rejection with the
 //! conduct box ticked (the replacement request opens and a conduct complaint
 //! ticket exists for the worker and the client) and ends a deployment entered
-//! in error (its attendance records are rejected; an accepted one is left and
-//! the account manager is told).
+//! in error (its three recorded records are rejected; an accepted one is
+//! rejected too, a locked one is left and the account manager is told).
 
 mod manpower_support;
 mod support;
@@ -117,11 +117,14 @@ async fn a_rejected_worker_with_conduct_involved_opens_the_replacement_and_a_tic
     );
 }
 
-/// AC5: D has 3 attendance records at the site; ending it with *entered in
-/// error* rejects all three; a record that was accepted before cannot be
-/// rejected and the account manager is told to make an adjustment.
-#[renox::test]
-async fn ending_a_deployment_entered_in_error_rejects_its_attendance() {
+/// The agency with D (active, five days on site) for W and the three records
+/// the supervisor marked at its site: two shifts yesterday, one today.
+async fn three_marked_records() -> (
+    renox::testing::TestApp,
+    manpower_support::Account,
+    manpower::Deployment,
+    Vec<AttendanceRecord>,
+) {
     let app = boot().await;
     let a = account(&app).await;
     let supervisor = person(&app, "Sami", SUPERVISOR).await;
@@ -166,19 +169,34 @@ async fn ending_a_deployment_entered_in_error_rejects_its_attendance() {
             .await
             .assert_ok();
     }
-    let records = AttendanceRecord::query()
-        .where_(AttendanceRecord::EMPLOYEE_ID.eq(w.0))
+    let records = records_of(&app, w.0).await;
+    assert_eq!(records.len(), 3);
+    (app, a, d, records)
+}
+
+async fn records_of(app: &renox::testing::TestApp, employee: i64) -> Vec<AttendanceRecord> {
+    AttendanceRecord::query()
+        .where_(AttendanceRecord::EMPLOYEE_ID.eq(employee))
         .order_by(AttendanceRecord::ID)
         .get(app.db())
         .await
-        .unwrap();
-    assert_eq!(records.len(), 3);
-    // The first one was accepted in a review already.
-    AttendanceRecord::query()
-        .where_(AttendanceRecord::ID.eq(records[0].id))
-        .update(app.db(), &[("status", &AttendanceStatus::Accepted)])
-        .await
-        .unwrap();
+        .unwrap()
+}
+
+/// AC5, as the point reads: D has 3 attendance records at the site, none
+/// reviewed (recorded or flagged); ending it with *entered in error* rejects
+/// all three, and the account manager has nothing to adjust.
+#[renox::test]
+async fn ending_a_deployment_entered_in_error_rejects_its_three_recorded_records() {
+    let (app, a, d, records) = three_marked_records().await;
+    assert!(
+        records.iter().all(|r| matches!(
+            r.status,
+            AttendanceStatus::Recorded | AttendanceStatus::Flagged
+        )),
+        "none is reviewed yet: {:?}",
+        records.iter().map(|r| r.status).collect::<Vec<_>>()
+    );
 
     post(
         &app,
@@ -190,18 +208,58 @@ async fn ending_a_deployment_entered_in_error_rejects_its_attendance() {
     .assert_status(303);
 
     assert_eq!(reload(&app, d.id).await.status, DeploymentStatus::Ended);
-    let after = AttendanceRecord::query()
-        .where_(AttendanceRecord::EMPLOYEE_ID.eq(w.0))
-        .order_by(AttendanceRecord::ID)
-        .get(app.db())
-        .await
-        .unwrap();
+    let after = records_of(&app, d.employee_id).await;
+    assert_eq!(after.len(), 3);
+    assert!(
+        after.iter().all(|r| r.status == AttendanceStatus::Rejected),
+        "all three are rejected: {:?}",
+        after.iter().map(|r| r.status).collect::<Vec<_>>()
+    );
+    let staff = messages_to(&app, "manpower.notice", &a.amal).await;
+    assert!(
+        !staff
+            .iter()
+            .any(|m| m.data.0.to_string().contains("adjustment timesheet")),
+        "nothing is left to adjust"
+    );
+}
+
+/// AC5 and `HRM.ACL.08`: of the three records one was accepted in a review
+/// (no timesheet has it beyond open) and one is `locked` in an approved
+/// timesheet. The accepted one is rejected too, as the spec says only locked
+/// hours need an adjustment; the locked one stays and the account manager is
+/// told to make an adjustment timesheet.
+#[renox::test]
+async fn an_accepted_record_is_rejected_and_a_locked_one_is_left_for_an_adjustment() {
+    let (app, a, d, records) = three_marked_records().await;
+    for (record, status) in [
+        (&records[0], AttendanceStatus::Accepted),
+        (&records[1], AttendanceStatus::Locked),
+    ] {
+        AttendanceRecord::query()
+            .where_(AttendanceRecord::ID.eq(record.id))
+            .update(app.db(), &[("status", &status)])
+            .await
+            .unwrap();
+    }
+
+    post(
+        &app,
+        &a.amal,
+        &format!("/manpower/deployments/{}/end", d.id),
+        &[("reason", "entered_in_error")],
+    )
+    .await
+    .assert_status(303);
+
+    assert_eq!(reload(&app, d.id).await.status, DeploymentStatus::Ended);
+    let after = records_of(&app, d.employee_id).await;
+    assert_eq!(after[0].status, AttendanceStatus::Rejected);
     assert_eq!(
-        after[0].status,
-        AttendanceStatus::Accepted,
+        after[1].status,
+        AttendanceStatus::Locked,
         "left for an adjustment"
     );
-    assert_eq!(after[1].status, AttendanceStatus::Rejected);
     assert_eq!(after[2].status, AttendanceStatus::Rejected);
     let staff = messages_to(&app, "manpower.notice", &a.amal).await;
     assert!(

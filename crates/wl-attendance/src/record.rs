@@ -275,7 +275,7 @@ impl StateMachine for AttendanceRecord {
                 Transition::new(REJECT_BY_SYSTEM)
                     .label("Reject")
                     .system()
-                    .from([Recorded, Flagged])
+                    .from([Recorded, Flagged, Accepted])
                     .to(Rejected)
                     .reason_required()
                     .effect(|record: &AttendanceRecord, ctx, tx| {

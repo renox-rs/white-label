@@ -274,8 +274,9 @@ pub trait AttendanceReview: Send + Sync + 'static {
     /// Rejects the attendance of `employee` from `from` on at the work
     /// locations in `contexts`, with `reason` (09 Manpower: a deployment
     /// entered in error, whose hours are neither billed nor paid). A record
-    /// that is `recorded` or `flagged` is rejected; one already accepted or
-    /// `locked` in a timesheet cannot be, and is listed in
+    /// that is `recorded`, `flagged` or `accepted` (and not yet in a
+    /// submitted timesheet) is rejected; one `locked`, or in a timesheet
+    /// already submitted, cannot be, and is listed in
     /// [`WorkRejection::kept`] for an adjustment timesheet (`HRM.ACL.08`).
     /// The default rejects nothing.
     fn reject_work<'a>(
@@ -295,7 +296,7 @@ pub trait AttendanceReview: Send + Sync + 'static {
 pub struct WorkRejection {
     /// The records rejected now.
     pub rejected: Vec<AttendanceRecordId>,
-    /// The records that stay because they are accepted or in a locked
+    /// The records that stay because they are locked or in a submitted
     /// timesheet: an adjustment is needed.
     pub kept: Vec<AttendanceRecordId>,
 }
