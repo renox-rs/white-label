@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use renox::chrono::TimeDelta;
 use wl_kernel::scheduling::{CancelStage, DepositOutcome, Initiator, WorkDone};
-use wl_scheduling::service::{self, Actor, CancelRequest};
-use wl_scheduling::{Booking, BookingStatus, links};
+use wl_scheduling::service::{self, Actor, CancelRequest, NewBooking};
+use wl_scheduling::{Booking, BookingStatus, Refusal, links};
 
 use support::{Booked, in_hours};
 
@@ -263,6 +263,55 @@ async fn only_the_remaining_time_is_released() {
     assert_eq!(released.len(), 1);
     assert_eq!(released[0].start, at);
     assert_eq!(released[0].end, booking.ends_at);
+}
+
+/// The time a walk-out released can be booked again: while the visit runs the
+/// doctor is busy; after the party walked out 20 minutes in, a second party
+/// books the same doctor from then on.
+#[renox::test]
+async fn the_released_time_can_be_booked_again() {
+    let t = boot_desk().await;
+    let booking = checked_in(&t, true, true).await;
+    let doctor = booking.resource_ids(t.db()).await.unwrap()[0];
+    let service = booking.service_type_id;
+    let at = booking.starts_at + TimeDelta::minutes(20);
+
+    // While the visit runs, the doctor is busy.
+    let busy = service::book(
+        t.state(),
+        NewBooking::new(
+            support::OTHER_PATIENT,
+            service,
+            &[doctor],
+            booking.starts_at,
+        ),
+        Actor::staff(1),
+        support::now(),
+    )
+    .await;
+    assert!(matches!(busy, Err(Refusal::Taken { .. })), "{busy:?}");
+
+    service::cancel(
+        t.state(),
+        booking.id,
+        CancelRequest::new("walked_out"),
+        Actor::staff(1),
+        at,
+    )
+    .await
+    .expect("staff cancel after the check-in");
+    assert_eq!(t.events.released.all()[0].start, at);
+
+    let again = service::book(
+        t.state(),
+        NewBooking::new(support::OTHER_PATIENT, service, &[doctor], at),
+        Actor::staff(1),
+        support::now(),
+    )
+    .await
+    .expect("the released time is bookable again");
+    assert_eq!(again.status, BookingStatus::Booked);
+    assert_eq!(again.starts_at, at);
 }
 
 /// After the end nothing is released.
