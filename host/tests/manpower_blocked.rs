@@ -270,6 +270,54 @@ async fn a_blocked_client_keeps_its_workers_and_starts_nothing_new() {
     assert!(!body.contains("This party is on hold"), "{body}");
 }
 
+/// AC2 (the `renew` end to end, BL-MPW-05): the account manager's real `renew`
+/// of the blocked client's contract is refused with *on hold* and no reason and
+/// changes nothing; after the unblock the same renewal goes through.
+#[renox::test]
+async fn the_real_renew_refuses_a_blocked_client_and_works_after_the_unblock() {
+    let app = boot().await;
+    let a = account(&app).await;
+    let path = format!("/manpower/contracts/{}/renew", a.contract.id);
+    let form = [
+        ("end_date", "2028-12-31"),
+        ("signed_on", "2026-10-01"),
+        ("document", "RENEWAL-2028.pdf"),
+    ];
+    block(&app, a.client).await;
+
+    let refused = post(&app, &a.amal, &path, &form).await;
+    refused.assert_status(422);
+    let body = refused.text();
+    assert!(body.contains("This party is on hold"), "{body}");
+    assert!(!body.to_lowercase().contains("fraud"), "{body}");
+    let kept = ClientContract::find_or_404(app.db(), a.contract.id)
+        .await
+        .unwrap();
+    assert_eq!(kept.end_date, a.contract.end_date);
+    assert!(kept.renewed_at.is_none());
+
+    let deputy = person(&app, "Dina", COMPLIANCE).await;
+    app.acting_as(&deputy);
+    app.htmx()
+        .post_multipart(
+            &format!("/parties/{}/unblock", a.client.0),
+            &[("note", "Cleared by the lawyer")],
+            &[],
+        )
+        .await
+        .assert_ok();
+
+    post(&app, &a.amal, &path, &form).await.assert_status(303);
+    let renewed = ClientContract::find_or_404(app.db(), a.contract.id)
+        .await
+        .unwrap();
+    assert_eq!(renewed.status, ContractStatus::Active);
+    assert_eq!(
+        renewed.end_date,
+        renox::chrono::NaiveDate::from_ymd_opt(2028, 12, 31).unwrap()
+    );
+}
+
 /// AC1, "W can check in": with client C blocked, the site supervisor checks W
 /// (the employee of the active D) in through the real attendance route and the
 /// record is saved, whatever the block: the workers on site continue.

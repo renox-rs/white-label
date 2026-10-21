@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use manpower::permissions as perm;
 use manpower::{
-    ClientContract, ContractActivated, ContractStatus, CoverRequested, Deployment,
+    ClientContract, ContractActivated, ContractRenewed, ContractStatus, CoverRequested, Deployment,
     DeploymentActivated, DeploymentCancelled, DeploymentEnded, DeploymentStatus, Manpower,
     ManpowerRequest, RequestStatus, Site,
 };
@@ -636,6 +636,7 @@ struct Fakes {
     ended: Recorded<DeploymentEnded>,
     cancelled: Recorded<DeploymentCancelled>,
     covers: Recorded<CoverRequested>,
+    renewed: Recorded<ContractRenewed>,
 }
 
 impl Module for Fakes {
@@ -656,6 +657,7 @@ impl Module for Fakes {
         record(app, &self.ended);
         record(app, &self.cancelled);
         record(app, &self.covers);
+        record(app, &self.renewed);
     }
 }
 
@@ -687,6 +689,8 @@ pub struct Booted {
     pub cancelled: Recorded<DeploymentCancelled>,
     /// `CoverRequested`.
     pub covers: Recorded<CoverRequested>,
+    /// The events `ContractRenewed`.
+    pub renewed: Recorded<ContractRenewed>,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// The contracts made, for their references.
@@ -933,6 +937,7 @@ pub async fn boot() -> Booted {
     let ended = Recorded::default();
     let cancelled = Recorded::default();
     let covers = Recorded::default();
+    let renewed = Recorded::default();
     let invoices = Invoices::default();
     let register = Register::default();
     let fakes = Fakes {
@@ -948,6 +953,7 @@ pub async fn boot() -> Booted {
         ended: ended.clone(),
         cancelled: cancelled.clone(),
         covers: covers.clone(),
+        renewed: renewed.clone(),
     };
     let app = App::new()
         .module(Auth::new())
@@ -1010,6 +1016,7 @@ pub async fn boot() -> Booted {
         ended,
         cancelled,
         covers,
+        renewed,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),
         _views: views,
