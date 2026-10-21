@@ -575,13 +575,13 @@ if nobody holds it, the users with `bookings.manage` in that scope."
 - Must not mark a conflicted booking no-show by any actor.
 
 #### Done when
-- [ ] Given a conflicted booking at 15:00, at 13:00 the branch manager is notified and the party
+- [x] Given a conflicted booking at 15:00, at 13:00 the branch manager is notified and the party
       gets the change message; the 2 h reminder is not sent.
-- [ ] Given a conflict raised at 14:10 for 15:00, escalation is sent at 14:10.
-- [ ] At 15:15 `SCH.RUL.02` does not mark it no-show; a staff `mark_no_show` is refused.
-- [ ] Given a branch with no user in the manager role, the 13:00 escalation goes to the users with
+- [x] Given a conflict raised at 14:10 for 15:00, escalation is sent at 14:10.
+- [x] At 15:15 `SCH.RUL.02` does not mark it no-show; a staff `mark_no_show` is refused.
+- [x] Given a branch with no user in the manager role, the 13:00 escalation goes to the users with
       `bookings.manage` in that branch.
-- [ ] Given the conflict cleared at 12:00, the 13:00 reminder goes out normally.
+- [x] Given the conflict cleared at 12:00, the 13:00 reminder goes out normally.
 
 #### Out of scope
 Raising conflicts (BL-SCH-05, BL-SCH-07).
