@@ -4,9 +4,8 @@
 //! end date and submitted at once (a week that ran past it is cut), and the
 //! workers `active` in HR are on the bench while one in `notice` is not.
 //!
-//! The billing of the approved last timesheet by `MPW.RUL.05` is not tested:
-//! no module turns an approved timesheet into usage records yet (see the
-//! manpower README).
+//! The billing of the approved last timesheet by `MPW.RUL.05` is in
+//! `manpower_billing.rs`.
 
 mod support;
 
@@ -182,8 +181,7 @@ async fn the_run_after_the_end_date_closes_the_last_timesheets_and_sends_the_wor
 /// AC2, approval half: the client approver approves D1's closed and submitted
 /// timesheet after the contract is `ended` (and the deployment with it): the
 /// sheet is `approved` by them, the contract and the deployment stay `ended`.
-/// The next `MPW.RUL.05` run that bills those hours is deferred (see the
-/// header).
+/// The billing of those hours is tested in `manpower_billing.rs`.
 #[renox::test]
 async fn the_client_approves_the_closed_timesheet_after_the_contract_has_ended() {
     let config = ClientConfig::parse(CLIENT).unwrap();
