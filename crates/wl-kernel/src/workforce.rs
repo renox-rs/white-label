@@ -15,7 +15,9 @@
 //! account, manager, leave) and the employee of a user.
 //!
 //! `wl-hr` also provides [`Qualifications`](crate::qualifications::Qualifications) (`qualification_valid`) and emits
-//! [`QualificationExpiring`] and [`QualificationExpired`].
+//! [`QualificationExpiring`] and [`QualificationExpired`]. Its payroll runs
+//! are announced with [`PayrollRunReturned`] (a run sent back to draft) and
+//! [`PayrollLinesFailed`] (the bank rejected a SIF file, or lines of it).
 //!
 //! An employee is referred to by [`EmployeeId`] or as a [`Subject`] of type
 //! [`EMPLOYEE_SUBJECT_TYPE`]; a scope is a [`Subject`] too (a branch).
@@ -93,6 +95,76 @@ impl From<i64> for OnboardingId {
         OnboardingId(id)
     }
 }
+
+/// The subject type of a payroll run, for [`Subject`] references.
+pub const PAYROLL_RUN_SUBJECT_TYPE: &str = "hr.payroll_run";
+
+/// The id of a payroll run.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct PayrollRunId(pub i64);
+
+impl PayrollRunId {
+    /// The run as a [`Subject`]: `hr.payroll_run:4`.
+    pub fn subject(self) -> Subject {
+        Subject::new(PAYROLL_RUN_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for PayrollRunId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for PayrollRunId {
+    fn from(id: i64) -> Self {
+        PayrollRunId(id)
+    }
+}
+
+/// An approver sent a payroll run back to `draft` with a reason and comments
+/// on the lines to fix (`return`, wl-hr §4 *Payroll run*): the approval is
+/// cleared.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayrollRunReturned {
+    /// The run.
+    pub run: PayrollRunId,
+    /// Its period, e.g. `2026-11`.
+    pub period: String,
+    /// Why it was returned.
+    pub reason: String,
+}
+
+impl Event for PayrollRunReturned {}
+
+/// A payroll line the bank failed, with the bank's reason.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FailedPayrollLine {
+    /// The payroll line's id.
+    pub line: i64,
+    /// The employee it pays.
+    pub employee: EmployeeId,
+    /// Why the bank failed it (the rejection reason of a whole file, or the
+    /// reason from the result file).
+    pub reason: String,
+}
+
+/// The bank or exchange house rejected the whole SIF file
+/// (`record_rejection`), or failed some lines of it (`record_partial`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayrollLinesFailed {
+    /// The run.
+    pub run: PayrollRunId,
+    /// Its period, e.g. `2026-11`.
+    pub period: String,
+    /// The failed lines with their reasons.
+    pub lines: Vec<FailedPayrollLine>,
+}
+
+impl Event for PayrollLinesFailed {}
 
 /// An employee became `active` (`activate`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

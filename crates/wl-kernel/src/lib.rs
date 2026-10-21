@@ -208,9 +208,10 @@ pub use workforce::{
 /// The kernel's permissions (wl-kernel §6).
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
-    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoWorkforce, ONBOARDING_SUBJECT_TYPE,
-    OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile, Workforce,
-    provide_workforce, workforce,
+    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, FailedPayrollLine, NoWorkforce,
+    ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted,
+    PAYROLL_RUN_SUBJECT_TYPE, PayrollLinesFailed, PayrollRunId, PayrollRunReturned, StaffProfile,
+    Workforce, provide_workforce, workforce,
 };
 
 /// The permission names the kernel declares.

@@ -31,6 +31,15 @@
       <rx-column :label="tx['payroll.net']">{{ line.net }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="line.status_kind" :text="line.status"/></rx-column>
       <rx-column :label="tx['payroll.reason']" hide-narrow>{{ line.reason }}</rx-column>
+      <rx-column :label="tx['payroll.comment']">
+        {{ line.comment }}
+        <template rx-if="can_comment">
+          <rx-action-sheet :id="'comment-line-' ~ line.id" :label="tx['payroll.comment_line']" :action="route('wl_hr.payroll_line_comment', line.id)"
+                           :title="tx['payroll.comment_line']" :submit-label="tx['payroll.comment_submit']" icon="pencil">
+            <rx-textarea name="comment" :label="tx['payroll.comment']" :id="'comment-text-' ~ line.id" :value="line.comment"/>
+          </rx-action-sheet>
+        </template>
+      </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['payroll.no_lines']" icon="users"/></rx-slot>
     </rx-table>
   </rx-stack>

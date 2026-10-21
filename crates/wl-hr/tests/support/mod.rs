@@ -26,11 +26,17 @@ use wl_kernel::documents::{
     SopAcknowledgements, SopFuture, SopStaff, Validity, provide_guard,
     provide_sop_acknowledgements,
 };
-use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
-use wl_kernel::tickets::{ChecklistRunId, Checklists, TicketFuture, provide_checklists};
+use wl_kernel::notify::{
+    MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
+};
+use wl_kernel::tickets::{
+    ChecklistRunId, Checklists, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef,
+    provide_checklists, provide_task_creator,
+};
 use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
-    OnboardingCompleted, OnboardingStarted, QualificationExpired, QualificationExpiring,
+    OnboardingCompleted, OnboardingStarted, PayrollLinesFailed, PayrollRunReturned,
+    QualificationExpired, QualificationExpiring,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -39,6 +45,20 @@ use wl_kernel::{PartyId, SopId, Subject};
 const LAYOUT: &str = r#"<!doctype html>
 <html><body><rx-outlet name="content"/></body></html>
 "#;
+
+/// The users a notice is for, sorted.
+pub fn users(request: &NotifyRequest) -> Vec<i64> {
+    let mut ids: Vec<i64> = request
+        .recipients
+        .iter()
+        .filter_map(|r| match r {
+            NotifyRecipient::User { id } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    ids.sort_unstable();
+    ids
+}
 
 /// A client with the HR module (and the parties it needs) on.
 const CLIENT: &str = r#"
@@ -384,6 +404,70 @@ struct Fakes {
     qualification_expired: Arc<Mutex<Vec<QualificationExpired>>>,
     qualification_expiring: Arc<Mutex<Vec<QualificationExpiring>>>,
     absconded: Arc<Mutex<Vec<EmployeeAbsconded>>>,
+    returned: Arc<Mutex<Vec<PayrollRunReturned>>>,
+    failed: Arc<Mutex<Vec<PayrollLinesFailed>>>,
+    tasks: TicketDesk,
+}
+
+/// A `TaskCreator` that records the tickets it opens. A ticket opened with a
+/// source key that is still open is the same ticket (`find_open`).
+#[derive(Clone, Default)]
+pub struct TicketDesk {
+    opened: Arc<Mutex<Vec<OpenTicket>>>,
+}
+
+impl TicketDesk {
+    /// The tickets opened, oldest first.
+    pub fn opened(&self) -> Vec<OpenTicket> {
+        self.opened.lock().unwrap().clone()
+    }
+
+    /// The tickets opened with a source key that starts with `prefix`.
+    pub fn with_key(&self, prefix: &str) -> Vec<OpenTicket> {
+        self.opened()
+            .into_iter()
+            .filter(|t| {
+                t.source_key
+                    .as_deref()
+                    .is_some_and(|k| k.starts_with(prefix))
+            })
+            .collect()
+    }
+}
+
+impl TaskCreator for TicketDesk {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let mut opened = self.opened.lock().unwrap();
+            opened.push(ticket);
+            let n = opened.len() as i64;
+            Ok(Some(TicketRef {
+                id: TicketId(n),
+                number: format!("TKT-{n}"),
+            }))
+        })
+    }
+
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let opened = self.opened.lock().unwrap();
+            Ok(opened
+                .iter()
+                .position(|t| t.source_key.as_deref() == Some(source_key))
+                .map(|n| TicketRef {
+                    id: TicketId(n as i64 + 1),
+                    number: format!("TKT-{}", n + 1),
+                }))
+        })
+    }
 }
 
 /// Records `event`s of type `E` into `log`.
@@ -415,6 +499,9 @@ impl Module for Fakes {
         record(app, &self.qualification_expired);
         record(app, &self.qualification_expiring);
         record(app, &self.absconded);
+        record(app, &self.returned);
+        record(app, &self.failed);
+        provide_task_creator(app, self.tasks.clone());
     }
 }
 
@@ -446,6 +533,12 @@ pub struct Booted {
     pub qualification_expiring: Recorded<QualificationExpiring>,
     /// `EmployeeAbsconded`.
     pub absconded: Recorded<EmployeeAbsconded>,
+    /// `PayrollRunReturned`.
+    pub returned: Recorded<PayrollRunReturned>,
+    /// `PayrollLinesFailed`.
+    pub failed: Recorded<PayrollLinesFailed>,
+    /// The tasks (tickets) opened for staff.
+    pub tasks: TicketDesk,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// The absence cases opened so far.
@@ -681,6 +774,22 @@ impl Booted {
             .await
     }
 
+    /// `user` comments on `line` (the approver, before `return`).
+    pub async fn comment(
+        &self,
+        user: &User,
+        line: &PayrollLine,
+        comment: &str,
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app
+            .post(
+                &format!("/hr/payroll/lines/{}/comment", line.id),
+                &[("comment", comment)],
+            )
+            .await
+    }
+
     /// `run`, as stored now.
     pub async fn run(&self, run: &PayrollRun) -> PayrollRun {
         PayrollRun::find_or_404(self.db(), run.id).await.unwrap()
@@ -744,11 +853,17 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         qualification_expired: Arc::default(),
         qualification_expiring: Arc::default(),
         absconded: Arc::default(),
+        returned: Arc::default(),
+        failed: Arc::default(),
+        tasks: TicketDesk::default(),
     };
-    let (qualification_expired, qualification_expiring, absconded) = (
+    let (qualification_expired, qualification_expiring, absconded, returned, failed, tasks) = (
         Recorded(fakes.qualification_expired.clone()),
         Recorded(fakes.qualification_expiring.clone()),
         Recorded(fakes.absconded.clone()),
+        Recorded(fakes.returned.clone()),
+        Recorded(fakes.failed.clone()),
+        fakes.tasks.clone(),
     );
     let (notices, checklists, sops, docs) = (
         fakes.notices.clone(),
@@ -872,6 +987,9 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         qualification_expired,
         qualification_expiring,
         absconded,
+        returned,
+        failed,
+        tasks,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         cases: std::sync::atomic::AtomicI64::new(0),
     }

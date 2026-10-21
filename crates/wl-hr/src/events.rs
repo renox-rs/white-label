@@ -11,11 +11,14 @@
 //!   verticals keep, which `report_absconding` needs ([`crate::absence`]).
 //! - `DocumentExpired` and `DocumentExpiring` of an employee: the qualification
 //!   events of `HRM.RUL.10` ([`crate::qualification_expiry`]).
+//! - `Transitioned<PayrollRun>`: the notices and events that follow a payroll
+//!   run's `return`, rejections and escalation ([`crate::payroll_events`]).
 //! - `ChecklistCompleted`, `DocumentAccepted`, `SopPublished`,
 //!   `SopAcknowledged`, `SopWithdrawn`, `SopReadersChanged`: the steps of
 //!   [`crate::steps`].
 
 use renox::prelude::*;
+use renox::state_machine::Transitioned;
 use wl_kernel::documents::{
     DocumentAccepted, DocumentExpired, DocumentExpiring, SopAcknowledged, SopPublished,
     SopReadersChanged, SopWithdrawn,
@@ -26,7 +29,8 @@ use wl_kernel::workforce::{
     EmployeeExited, EmployeeOnboardingCancelled,
 };
 
-use crate::{absence, onboarding, qualification_expiry, steps};
+use crate::payroll::PayrollRun;
+use crate::{absence, onboarding, payroll_events, qualification_expiry, steps};
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
@@ -52,6 +56,11 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(
         |event: EmployeeAssignmentChanged, state: AppState| async move {
             onboarding::re_resolve(&state, event.employee.0).await
+        },
+    );
+    app.listen(
+        |event: Transitioned<PayrollRun>, state: AppState| async move {
+            payroll_events::on_transitioned(&state, &event).await
         },
     );
     app.listen(|event: ChecklistCompleted, state: AppState| async move {

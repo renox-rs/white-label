@@ -18,6 +18,7 @@ pub mod onboarding;
 pub mod onboarding_machine;
 pub mod pages;
 pub mod payroll;
+mod payroll_events;
 pub mod qualification;
 pub mod qualification_expiry;
 pub mod reminders;

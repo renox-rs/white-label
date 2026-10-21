@@ -10,6 +10,10 @@
 //! - `approve` (calculated -> approved, `payroll.approve`): another user than
 //!   the preparer (`HRM.ACL.04`), and refused while a line is above the
 //!   Art. 25 caps (`HRM.ACL.06`, [`crate::caps`]) for every approver.
+//! - `return` (calculated, approved -> draft, `payroll.approve`): the approver
+//!   sends the run back with a reason and a comment on at least one line
+//!   ([`comment_line`]); the approver is cleared and the preparer told
+//!   ([`crate::payroll_events`]). Not possible once the file was sent.
 //!
 //! The transitions that decide which line goes into which SIF file:
 //!
@@ -36,7 +40,7 @@
 
 use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine, Transition, TransitionError};
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 
 use crate::employee::{Employee, EmployeeStatus};
@@ -50,6 +54,8 @@ pub const HELD_ABSENCE_REPORT: &str = "absence report";
 pub const CALCULATE: &str = "calculate";
 /// A second user approves the calculated run.
 pub const APPROVE: &str = "approve";
+/// The approver sends a calculated or approved run back to draft.
+pub const RETURN: &str = "return";
 /// The run is ready to be sent.
 pub const SUBMIT: &str = "submit";
 /// The bank's result file shows failed lines.
@@ -105,6 +111,8 @@ pub struct PayrollRun {
     pub prepared_by: Option<i64>,
     /// The user who approved it; empty after `return`.
     pub approved_by: Option<i64>,
+    /// Why the approver last sent it back to `draft` (`return`).
+    pub return_reason: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -147,6 +155,9 @@ pub struct PayrollLine {
     /// fils: the basis of the Art. 25 caps (`HRM.ACL.06`). The payroll
     /// calculation fills it from the salary structure.
     pub fixed_wage: i64,
+    /// The approver's comment on this line to fix (`return`); cleared by the
+    /// next `calculate`.
+    pub approver_comment: Option<String>,
     /// Where it stands.
     pub status: LineStatus,
     /// Why it is held.
@@ -162,6 +173,11 @@ pub struct PayrollLine {
 }
 
 impl PayrollRun {
+    /// The run as a [`Subject`](wl_kernel::Subject), for notices.
+    pub fn subject(&self) -> wl_kernel::Subject {
+        wl_kernel::PayrollRunId(self.id).subject()
+    }
+
     /// The lines of the run, oldest first.
     pub async fn lines(&self, db: &Db) -> Result<Vec<PayrollLine>> {
         PayrollLine::query()
@@ -212,6 +228,7 @@ impl StateMachine for PayrollRun {
             .terminal()
             .transition(calculate())
             .transition(approve())
+            .transition(return_run())
             .transition(
                 Transition::new(SUBMIT)
                     .label("Submit")
@@ -291,6 +308,17 @@ fn calculate() -> Transition<PayrollRun> {
             let by = ctx.actor().map(|user| user.id);
             Box::pin(async move {
                 adjustment::link_to_run_in(tx, id, &period).await?;
+                // The comments of a `return` were answered by this calculation.
+                PayrollLine::query()
+                    .where_(PayrollLine::RUN_ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("approver_comment", &None::<String>),
+                            ("updated_at", &now()),
+                        ],
+                    )
+                    .await?;
                 PayrollRun::query()
                     .where_(PayrollRun::ID.eq(id))
                     .update(
@@ -319,17 +347,8 @@ fn approve() -> Transition<PayrollRun> {
         .from([PayrollRunStatus::Calculated])
         .to(PayrollRunStatus::Approved)
         .guard("not_the_preparer", |run: &PayrollRun, ctx| {
-            let same = matches!(
-                (ctx.actor(), run.prepared_by),
-                (Some(user), Some(preparer)) if user.id == preparer
-            );
-            Box::pin(async move {
-                if same {
-                    Err(english("wl_hr.payroll.same_user", &[]))
-                } else {
-                    Ok(())
-                }
-            })
+            let problem = preparer_problem(run, ctx);
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
         })
         .effect(|run: &PayrollRun, ctx, tx| {
             let id = run.id;
@@ -349,6 +368,79 @@ fn approve() -> Transition<PayrollRun> {
                 Ok(())
             })
         })
+}
+
+/// Why the user may not approve or return `run`: they prepared it
+/// (`HRM.ACL.04`).
+fn preparer_problem(run: &PayrollRun, ctx: &TransitionCtx) -> Option<String> {
+    let same = matches!(
+        (ctx.actor(), run.prepared_by),
+        (Some(user), Some(preparer)) if user.id == preparer
+    );
+    same.then(|| english("wl_hr.payroll.same_user", &[]))
+}
+
+/// `return` (calculated, approved -> draft, `payroll.approve`): the approver
+/// sends the run back with a reason and at least one comment on a line to
+/// fix. The approver is cleared; the lines and files stay, and the next
+/// `calculate` recalculates the lines. Not possible once the file was sent:
+/// an amount error is then corrected by a supplementary run (§5.6). The
+/// preparer is told after the commit (`payroll_events`).
+fn return_run() -> Transition<PayrollRun> {
+    Transition::new(RETURN)
+        .label("Return")
+        .tone("danger")
+        .permission(permissions::PAYROLL_APPROVE)
+        .from([PayrollRunStatus::Calculated, PayrollRunStatus::Approved])
+        .to(PayrollRunStatus::Draft)
+        .reason_required()
+        .guard("not_the_preparer", |run: &PayrollRun, ctx| {
+            let problem = preparer_problem(run, ctx);
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|run: &PayrollRun, ctx, tx| {
+            let id = run.id;
+            let reason = ctx.reason().map(str::trim).map(str::to_owned);
+            Box::pin(async move {
+                let commented = PayrollLine::query()
+                    .where_(PayrollLine::RUN_ID.eq(id))
+                    .where_(PayrollLine::APPROVER_COMMENT.is_not_null())
+                    .count(&mut *tx)
+                    .await?;
+                if commented == 0 {
+                    return Err(Error::Status(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        english("wl_hr.payroll.comment_required", &[]),
+                    ));
+                }
+                PayrollRun::query()
+                    .where_(PayrollRun::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("approved_by", &None::<i64>),
+                            ("return_reason", &reason),
+                            ("updated_at", &now()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// Sets or clears the approver's comment on line `line_id` (blank clears
+/// it). The page route checks who may comment.
+pub async fn comment_line(db: &Db, line_id: i64, comment: &str) -> Result<()> {
+    let comment = Some(comment.trim().to_owned()).filter(|c| !c.is_empty());
+    PayrollLine::query()
+        .where_(PayrollLine::ID.eq(line_id))
+        .update(
+            db,
+            &[("approver_comment", &comment), ("updated_at", &now())],
+        )
+        .await?;
+    Ok(())
 }
 
 /// The next SIF version of run `run_id`: every `included` line goes into it

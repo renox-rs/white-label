@@ -5,6 +5,7 @@
 //! |---|---|---|
 //! | `GET /hr/payroll/{id}` | `wl_hr.payroll_run` | `payroll.view` |
 //! | `POST /hr/payroll/{id}/transitions/{name}` | `wl_hr.payroll_transitions.*` | `payroll.view` and the transition's permission |
+//! | `POST /hr/payroll/lines/{id}/comment` | `wl_hr.payroll_line_comment` | `payroll.approve`, not the preparer |
 //!
 //! The page lists the lines, the lines above the Art. 25 caps (the
 //! exceptions of `HRM.ACL.06`) and the actions the signed-in user may run.
@@ -14,7 +15,7 @@ use std::collections::BTreeMap;
 
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::caps;
 use crate::employee::Employee;
@@ -27,14 +28,23 @@ type Texts = BTreeMap<&'static str, String>;
 /// The routes of the payroll pages.
 pub fn routes() -> Routes {
     Routes::new()
-        .get("/hr/payroll/{id}", show)
-        .name("wl_hr.payroll_run")
-        .group(
-            "/hr/payroll",
-            "wl_hr.payroll_transitions.",
-            wl_kernel::machines::routes::<PayrollRun>(),
+        .merge(
+            Routes::new()
+                .get("/hr/payroll/{id}", show)
+                .name("wl_hr.payroll_run")
+                .group(
+                    "/hr/payroll",
+                    "wl_hr.payroll_transitions.",
+                    wl_kernel::machines::routes::<PayrollRun>(),
+                )
+                .require_permission(permissions::PAYROLL_VIEW),
         )
-        .require_permission(permissions::PAYROLL_VIEW)
+        .merge(
+            Routes::new()
+                .post("/hr/payroll/lines/{id}/comment", comment_line)
+                .name("wl_hr.payroll_line_comment")
+                .require_auth(),
+        )
 }
 
 /// The package text `key` (without the `wl_hr.` prefix).
@@ -87,6 +97,8 @@ pub struct LineView {
     pub status_kind: &'static str,
     /// Why it is held or failed.
     pub reason: String,
+    /// The approver's comment on the line.
+    pub comment: String,
 }
 
 /// A line above a cap (`HRM.ACL.06`).
@@ -126,6 +138,7 @@ pub(crate) struct ShowPage {
     actions: Vec<ActionView>,
     approve_blocked: bool,
     can_approve: bool,
+    can_comment: bool,
 }
 
 /// The run's header.
@@ -204,12 +217,28 @@ async fn show(
         actions,
         approve_blocked: approve_blocked && run.status == PayrollRunStatus::Calculated,
         can_approve: user.has_permission(permissions::PAYROLL_APPROVE),
+        can_comment: can_comment(&user, &run),
     }))
 }
 
 /// The transitions the generic button row runs: they need no input beyond a
 /// reason. The others have a form of their own.
-const GENERIC: [&str; 2] = [crate::payroll::CALCULATE, crate::payroll::APPROVE];
+const GENERIC: [&str; 3] = [
+    crate::payroll::CALCULATE,
+    crate::payroll::APPROVE,
+    crate::payroll::RETURN,
+];
+
+/// Whether `user` may comment on the lines of `run`: an approver who is not
+/// the preparer, while the run is `calculated` or `approved`.
+fn can_comment(user: &AuthUser, run: &PayrollRun) -> bool {
+    user.has_permission(permissions::PAYROLL_APPROVE)
+        && matches!(
+            run.status,
+            PayrollRunStatus::Calculated | PayrollRunStatus::Approved
+        )
+        && run.prepared_by != Some(user.id)
+}
 
 fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
     LineView {
@@ -224,5 +253,42 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
             .clone()
             .or_else(|| line.failure_reason.clone())
             .unwrap_or_default(),
+        comment: line.approver_comment.clone().unwrap_or_default(),
     }
+}
+
+/// The form that comments on a line.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct CommentForm {
+    /// The comment; blank takes it away.
+    #[validate(max = 1000)]
+    #[serde(default)]
+    pub comment: String,
+}
+
+/// `POST /hr/payroll/lines/{id}/comment`: the approver comments on a line to
+/// fix before `return`.
+async fn comment_line(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path(id): Path<i64>,
+    Valid(form): Valid<CommentForm>,
+) -> Result<Response> {
+    if !user.has_permission(permissions::PAYROLL_APPROVE) {
+        return Err(Error::Forbidden);
+    }
+    let line = PayrollLine::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let run = PayrollRun::find_or_404(&state.db, line.run_id).await?;
+    if !can_comment(&user, &run) {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            text(&lang, "payroll.comment_closed"),
+        ));
+    }
+    crate::payroll::comment_line(&state.db, id, &form.comment).await?;
+    Ok((Toast::success(text(&lang, "payroll.comment_saved")), back).into_response())
 }

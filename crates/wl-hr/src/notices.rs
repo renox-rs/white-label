@@ -11,6 +11,7 @@ use wl_kernel::workforce::AffectedWork;
 
 use crate::employee::Employee;
 use crate::onboarding::{Onboarding, OnboardingStep};
+use crate::payroll::PayrollRun;
 use crate::texts::english;
 
 /// The assignees are told of a step (a new onboarding, a new holder).
@@ -28,6 +29,9 @@ pub const STEP_REMINDER: &str = "hr.onboarding_step_reminder";
 pub const STEP_ESCALATED: &str = "hr.onboarding_step_escalated";
 /// The manager and HR are told that a qualification expired (`HRM.RUL.10`).
 pub const QUALIFICATION_EXPIRED: &str = "hr.qualification_expired";
+
+/// The preparer is told that the approver sent a payroll run back to draft.
+pub const PAYROLL_RETURNED: &str = "hr.payroll_returned";
 
 /// `date` as `9 Nov 2026`.
 fn date_text(date: NaiveDate) -> String {
@@ -59,6 +63,7 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(ONBOARDING_COMPLETED, "completed"));
     notify::register_type(english_type(STEP_REOPENED, "step_reopened"));
     notify::register_type(english_type(QUALIFICATION_EXPIRED, "qualification_expired"));
+    notify::register_type(english_type(PAYROLL_RETURNED, "payroll_returned"));
     // The employee's own channel: SMS to the number on record.
     let body = english("wl_hr.notices.in_person_body", &[]);
     notify::register_type(
@@ -76,7 +81,7 @@ pub(crate) fn register_types() {
 }
 
 /// The employee's name for staff-facing text.
-async fn name_of(state: &AppState, employee: &Employee) -> String {
+pub(crate) async fn name_of(state: &AppState, employee: &Employee) -> String {
     wl_kernel::parties::directory(state)
         .display_name(&state.db, employee.party(), "en")
         .await
@@ -249,6 +254,32 @@ async fn overdue(
             "step": step.title_en,
             "due": date_text(step.due_date),
             "days": days,
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the preparer) that payroll run `run` was returned to draft
+/// with `reason` and the approver's `comments` on the lines to fix.
+pub(crate) async fn payroll_returned(
+    state: &AppState,
+    run: &PayrollRun,
+    reason: &str,
+    comments: &str,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(PAYROLL_RETURNED, run.subject())
+        .subject_label(&run.period)
+        .data(json!({
+            "period": run.period,
+            "reason": reason,
+            "comments": comments,
         }));
     for user in users {
         request = request.to_user(*user);

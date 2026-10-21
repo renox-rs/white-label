@@ -129,6 +129,20 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.payroll.same_user",
         "A payroll run is prepared by one user and approved by another.",
     ),
+    (
+        "wl_hr.payroll.comment_required",
+        "Comment on at least one line to fix before the run is returned.",
+    ),
+    ("wl_hr.payroll.comment", "Comment"),
+    ("wl_hr.payroll.comment_line", "Comment on this line"),
+    ("wl_hr.payroll.comment_saved", "Comment saved."),
+    ("wl_hr.payroll.comment_submit", "Save comment"),
+    (
+        "wl_hr.payroll.comment_closed",
+        "Lines can be commented while the run is calculated or approved.",
+    ),
+    ("wl_hr.payroll.return", "Return"),
+    ("wl_hr.payroll.return_reason", "Returned because"),
     ("wl_hr.payroll.status.draft", "Draft"),
     ("wl_hr.payroll.status.calculated", "Calculated"),
     ("wl_hr.payroll.status.approved", "Approved"),
@@ -467,6 +481,14 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_hr.qualifications.kind_required",
         "Give the document kind of the qualification.",
+    ),
+    (
+        "wl_hr.notices.payroll_returned_subject",
+        "Payroll run {{ period }} was returned",
+    ),
+    (
+        "wl_hr.notices.payroll_returned_body",
+        "The payroll run {{ period }} was returned to draft: {{ reason }}. Lines to fix: {{ comments }}",
     ),
     (
         "wl_hr.notices.step_escalated_subject",
