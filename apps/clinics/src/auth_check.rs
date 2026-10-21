@@ -165,6 +165,16 @@ pub async fn consented(state: &AppState, booking: i64, short: &[&Need]) -> Resul
     Ok(current.is_some_and(|c| short.iter().all(|need| c.units_of(&need.code) >= need.self_pay)))
 }
 
+/// Whether `consent` lists every one of `services` for at least its units:
+/// what a self-pay visit needs before the patient is checked in, for the
+/// booked service and for the ones entered with
+/// [`crate::coverage::set_services`].
+pub fn covers_all(consent: &SelfPayConsent, services: &[VisitService]) -> bool {
+    services
+        .iter()
+        .all(|service| consent.units_of(&service.code) >= service.units)
+}
+
 /// The patient signs the self-pay consent for the services the prior
 /// authorisation does not cover: it lists only those services (the rest stays
 /// in the payer split) and does not change the coverage outcome.

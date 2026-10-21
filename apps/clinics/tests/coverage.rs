@@ -684,3 +684,56 @@ impl Scene {
             .len()
     }
 }
+
+/// A self-pay visit checks every service of the visit against the consent,
+/// not only the booked one: the consent the patient signed for the booked
+/// service alone does not let the extra service entered at the desk through.
+#[renox::test]
+async fn a_self_pay_check_in_checks_every_service_of_the_visit() {
+    let s = scene().await;
+    let t = &s.t;
+    t.prices.set("x_ray", day(-400), 12_000);
+    s.eligibility(&s.booking, "negative", None).await;
+    s.post(
+        &s.clinic(&s.booking, "services"),
+        &[("services", "consultation:1, x_ray:2")],
+    )
+    .await
+    .assert_ok();
+
+    // The consent signed on the tablet takes the services and units entered.
+    s.sign(&s.booking, "Patient One").await.assert_ok();
+    let signed = SelfPayConsent::current(t.db(), s.booking.id)
+        .await
+        .unwrap()
+        .expect("signed");
+    assert_eq!(signed.units_of("x_ray"), 2);
+    assert_eq!(signed.estimated_fils, 45_000 + 2 * 12_000);
+
+    // A consent that lists only the booked service, left as the one in force
+    // beside the self-pay outcome, is not enough.
+    let appointment = Appointment::of_booking(t.db(), s.booking.id)
+        .await
+        .unwrap()
+        .unwrap();
+    consent::sign_codes(
+        t.state(),
+        None,
+        &appointment,
+        "Patient One",
+        None,
+        &["consultation".to_owned()],
+        now(),
+    )
+    .await
+    .unwrap();
+    let res = s.check_in(&s.booking).await;
+    res.assert_status(422);
+    assert!(res.text().contains("signed self-pay consent"), "{}", res.text());
+    let res = s.outcome(&s.booking, "self_pay", None).await;
+    res.assert_status(422);
+
+    // Signing again for every service lets the patient in.
+    s.sign(&s.booking, "Patient One").await.assert_ok();
+    s.check_in(&s.booking).await.assert_status(303);
+}

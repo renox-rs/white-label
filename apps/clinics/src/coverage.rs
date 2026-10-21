@@ -449,15 +449,15 @@ pub async fn choose(
         }
         Choice::SelfPay => {
             // The price first: a service with none cannot be on a consent.
-            consent::price_lines(
-                state,
-                &[(appointment.service_code.clone(), 1)],
-                appointment.visit_date,
-            )
-            .await?;
+            let services = auth_check::services_of(&appointment, Some(&pending));
+            let wanted: Vec<(String, i64)> = services
+                .iter()
+                .map(|s| (s.code.clone(), s.units))
+                .collect();
+            consent::price_lines(state, &wanted, appointment.visit_date).await?;
             let signed = SelfPayConsent::current(&state.db, booking)
                 .await?
-                .filter(|c| c.lists(&appointment.service_code));
+                .filter(|c| auth_check::covers_all(c, &services));
             let Some(signed) = signed else {
                 return Err(refused(english("clinics.consent.problem.required", &[])));
             };
@@ -506,7 +506,26 @@ pub async fn sign_consent(
 ) -> Result<SelfPayConsent> {
     let (appointment, policy) = target(state, booking).await?;
     let pending = ensure_pending(state, &appointment, &policy, by).await?;
-    let signed = consent::sign(state, by, &appointment, signer_name, ip, extra, at).await?;
+    // The units the receptionist entered for a service are the units on the
+    // consent; a service without an entry is one unit.
+    let entered = auth_check::services_of(&appointment, Some(&pending));
+    let mut wanted: Vec<(String, i64)> = Vec::new();
+    for code in std::iter::once(appointment.service_code.as_str())
+        .chain(extra.iter().map(String::as_str))
+        .chain(entered.iter().map(|s| s.code.as_str()))
+    {
+        let code = code.trim();
+        if code.is_empty() || wanted.iter().any(|(c, _)| c == code) {
+            continue;
+        }
+        let units = entered
+            .iter()
+            .find(|s| s.code == code)
+            .map_or(1, |s| s.units);
+        wanted.push((code.to_owned(), units));
+    }
+    let signed =
+        consent::sign_lines(state, by, &appointment, signer_name, ip, &wanted, at).await?;
     SelfPayConsent::query()
         .where_(SelfPayConsent::ID.eq(signed.id))
         .update(
@@ -674,9 +693,11 @@ pub async fn check_in_answer(state: &AppState, booking: i64) -> Result<CheckInAn
         )));
     };
     if pending.outcome == Some(CoverageOutcome::SelfPay) {
+        // Every service of the visit, with its units, not only the booked one.
+        let services = auth_check::services_of(&appointment, Some(&pending));
         let signed = SelfPayConsent::current(&state.db, booking)
             .await?
-            .is_some_and(|c| c.lists(&appointment.service_code));
+            .is_some_and(|c| auth_check::covers_all(&c, &services));
         if !signed {
             return Ok(CheckInAnswer::Refused(english(
                 "clinics.consent.problem.required",
