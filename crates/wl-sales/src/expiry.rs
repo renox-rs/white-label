@@ -147,19 +147,32 @@ async fn remind(
         .where_(LoyaltyAccount::ID.eq(account.id))
         .update(&state.db, &[("expiry_reminder_failed_at", &none)])
         .await?;
-    notices::loyalty_expiry(
+    // Decision: the lots are marked before the message is asked for, so a
+    // failure after the send can never send the same reminder again the next
+    // day (at most once per lot). A failure of the request itself puts the
+    // marks back, so the next run tries again.
+    for lot in &lots {
+        PointsMovement::query()
+            .where_(PointsMovement::ID.eq(lot.id))
+            .update(&state.db, &[("reminded_on", &Some(on))])
+            .await?;
+    }
+    if let Err(error) = notices::loyalty_expiry(
         state,
         account,
         points,
         points * programme.point_value,
         first,
     )
-    .await?;
-    for lot in &lots {
-        PointsMovement::query()
-            .where_(PointsMovement::ID.eq(lot.id))
-            .update(&state.db, &[("reminded_on", &Some(on))])
-            .await?;
+    .await
+    {
+        for lot in &lots {
+            PointsMovement::query()
+                .where_(PointsMovement::ID.eq(lot.id))
+                .update(&state.db, &[("reminded_on", &none)])
+                .await?;
+        }
+        return Err(error);
     }
     Ok(true)
 }
@@ -190,7 +203,10 @@ async fn expire(
         let shielded = shield.min(remaining);
         shield -= shielded;
         // A programme that was turned off expires every open lot once its
-        // closing date has passed (BL-SAL-26).
+        // closing date has passed (BL-SAL-26, as the spec decides). Every lot
+        // has a last day (`PointsMovement::is_lot` needs one, and every
+        // movement that adds points sets it), so no lot is expired for want of
+        // a date.
         let closed = programme.closing_date.is_some_and(|last| last < on);
         if !closed && !lot.lot_expires_on.is_some_and(|last| last < on) {
             continue;

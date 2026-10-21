@@ -12,6 +12,14 @@
 //!   it was created by then and its last day is not before the date.
 //! - Each movement carries the legal entity of its sale, so points earned in
 //!   one entity and redeemed in another are in the entity that earned them.
+//! - Every movement that adds points is a lot with a last day (`earn`,
+//!   `reverse_redeem`, positive `adjust`, `transfer` in), so no points are
+//!   outside the report for want of a date: the balance and the report agree
+//!   on the day the expiry job has run.
+//! - Access: the spec names no permission of its own for the report (it lists
+//!   `loyalty.view`, `.enrol`, `.redeem`, `.adjust`, `.manage` only), so it
+//!   needs `loyalty.view` like the other loyalty pages; a role for the
+//!   accountant gets `loyalty.view` in the app's roles.
 //! - Age is the days from the day the lot was created to the date: up to 90,
 //!   91 to 180, 181 to 365 and over a year.
 //! - When an account's lots hold more than its balance as at the date (a

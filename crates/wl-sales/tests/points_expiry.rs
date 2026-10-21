@@ -16,8 +16,9 @@ use wl_kernel::documents::today;
 use wl_kernel::notify::{
     ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyChannel, NotifyRecipient,
 };
-use wl_sales::expiry::TASK;
+use wl_sales::expiry::{self, TASK};
 use wl_sales::liability;
+use wl_sales::permissions as perm;
 use wl_sales::notices::LOYALTY_EXPIRY;
 use wl_sales::{
     LoyaltyAccount, LoyaltyProgramme, PointsKind, PointsMovement, Redemption, RedemptionStatus,
@@ -211,6 +212,68 @@ async fn a_reminder_that_gave_up_does_not_stop_the_lot_expiring_and_the_account_
     let gone = movements(&t, &m, PointsKind::Expire).await;
     assert_eq!(gone.iter().map(|x| x.points).sum::<i64>(), -300);
     assert_eq!(account(&t, &m).await.points_balance, 0);
+}
+
+#[renox::test]
+async fn a_reminder_that_could_not_be_asked_for_is_tried_again_and_one_that_was_asked_for_is_not_repeated()
+ {
+    let (t, shop, _floor, m) = world(300, &[]).await;
+    let lot = movements(&t, &m, PointsKind::Earn).await.remove(0);
+    end_on(&t, &lot, today() + Days::days(20)).await;
+
+    // The notifier is down: the lot is not marked and the next run asks again.
+    shop.mail.notifications_fail(true);
+    let report = expiry::run_daily(t.state(), today(), renox::db::now())
+        .await
+        .unwrap();
+    assert_eq!((report.reminded, report.failed), (0, 1));
+    let again = PointsMovement::find(t.db(), lot.id).await.unwrap().unwrap();
+    assert!(again.reminded_on.is_none());
+    shop.mail.notifications_fail(false);
+    run(&t, today() + Days::days(1)).await;
+    assert_eq!(shop.mail.of_type(LOYALTY_EXPIRY).len(), 1);
+
+    // Asked for once: marked, and never asked for again.
+    let marked = PointsMovement::find(t.db(), lot.id).await.unwrap().unwrap();
+    assert_eq!(marked.reminded_on, Some(today() + Days::days(1)));
+    run(&t, today() + Days::days(2)).await;
+    run(&t, today() + Days::days(3)).await;
+    assert_eq!(shop.mail.of_type(LOYALTY_EXPIRY).len(), 1);
+}
+
+#[renox::test]
+async fn every_movement_that_adds_points_has_a_last_day_so_the_report_and_the_balance_agree() {
+    let (t, _shop, floor, m) = world(300, &[]).await;
+    // A positive adjustment and a second sale add lots too.
+    let ana = t
+        .user("Ana", &[perm::LOYALTY_VIEW, perm::LOYALTY_ADJUST])
+        .await;
+    t.app.acting_as(&ana);
+    t.app
+        .post(
+            &format!("/loyalty/accounts/{}/adjust", m.id),
+            &[("points", "100"), ("reason", "Goodwill")],
+        )
+        .await
+        .assert_status(303);
+    floor.earn(&t, &m, 50).await;
+    let all = PointsMovement::of_account(t.db(), m.id).await.unwrap();
+    assert!(
+        all.iter()
+            .filter(|x| x.points > 0)
+            .all(|x| x.lot_expires_on.is_some() && x.is_lot())
+    );
+    let report = liability::report(t.db(), today()).await.unwrap();
+    assert_eq!(report.points, account(&t, &m).await.points_balance);
+    assert_eq!(report.points, 450);
+}
+
+#[renox::test]
+async fn the_liability_page_needs_the_loyalty_permission() {
+    let (t, _shop, _floor, _m) = world(100, &[]).await;
+    let nobody = t.user("Nobody", &[]).await;
+    t.app.acting_as(&nobody);
+    t.app.get("/loyalty/liability").await.assert_status(403);
 }
 
 #[renox::test]

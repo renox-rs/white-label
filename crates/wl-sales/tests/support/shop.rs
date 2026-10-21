@@ -46,12 +46,18 @@ pub struct Mail {
     otp_requests: Arc<Mutex<Vec<OtpRequest>>>,
     serial: Arc<AtomicI64>,
     cannot_send: Arc<AtomicBool>,
+    notify_fails: Arc<AtomicBool>,
 }
 
 impl Mail {
     /// Makes the next codes fail to send (or work again).
     pub fn cannot_send_codes(&self, on: bool) {
         self.cannot_send.store(on, Ordering::SeqCst);
+    }
+
+    /// Makes the next notifications fail (or work again).
+    pub fn notifications_fail(&self, on: bool) {
+        self.notify_fails.store(on, Ordering::SeqCst);
     }
 
     /// The codes asked for so far, oldest first.
@@ -97,6 +103,12 @@ impl Notifier for Mail {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         Box::pin(async move {
+            if self.notify_fails.load(Ordering::SeqCst) {
+                return Err(Error::Status(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "the notifier is down".to_owned(),
+                ));
+            }
             self.sent.lock().unwrap().push(request);
             Ok(vec![MessageId(1)])
         })
