@@ -22,9 +22,10 @@ use wl_kernel::payments::{
 };
 use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::scheduling::{
-    BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted, BookingNoShow,
-    BookingReassigned, BookingRescheduled, Eligibility, EligibilityQuery, ResourceEligibility,
-    SlotReleased, provide_resource_eligibility,
+    AvailabilitySource, BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted,
+    BookingConflict, BookingNoShow, BookingReassigned, BookingRescheduled, Eligibility,
+    EligibilityQuery, ResourceEligibility, SlotReleased, SourceBlock, provide_availability_source,
+    provide_resource_eligibility,
 };
 use wl_kernel::scheduling::{
     BookingId, SchedulingFuture, WorkDone, WorkDoneStatus, provide_work_done_status,
@@ -97,6 +98,7 @@ pub struct Events {
     pub cancelled: Recorded<BookingCancelled>,
     pub reassigned: Recorded<BookingReassigned>,
     pub released: Recorded<SlotReleased>,
+    pub conflicts: Recorded<BookingConflict>,
 }
 
 /// Who acts for whom in the portal: the portal module's grants, as a list.
@@ -350,6 +352,37 @@ impl ResourceEligibility for Licences {
     }
 }
 
+/// The blocks another module supplies, as the module asks for them.
+#[derive(Clone, Default)]
+pub struct Sources(Arc<Mutex<Vec<SourceBlock>>>);
+
+impl Sources {
+    /// From now on the source also supplies `block`.
+    pub fn add(&self, block: SourceBlock) {
+        self.0.lock().unwrap().push(block);
+    }
+}
+
+impl AvailabilitySource for Sources {
+    fn blocks<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _resource_id: i64,
+        _employee_id: Option<i64>,
+        from: DateTime,
+        until: DateTime,
+    ) -> SchedulingFuture<'a, Vec<SourceBlock>> {
+        Box::pin(async move {
+            let all = self.0.lock().unwrap();
+            Ok(all
+                .iter()
+                .filter(|block| block.starts_at < until && from < block.ends_at)
+                .cloned()
+                .collect())
+        })
+    }
+}
+
 /// A client with the real parties and payments modules on too.
 const CLIENT_REAL: &str = r#"
 [client]
@@ -374,6 +407,7 @@ struct Harness {
     work: Work,
     messages: Messages,
     licences: Licences,
+    sources: Sources,
 }
 
 impl Module for Harness {
@@ -389,6 +423,7 @@ impl Module for Harness {
         provide_work_done_status(app, self.work.clone());
         provide_notifier(app, self.messages.clone());
         provide_resource_eligibility(app, self.licences.clone());
+        provide_availability_source(app, self.sources.clone());
     }
 }
 
@@ -408,6 +443,8 @@ pub struct Booked {
     pub messages: Messages,
     /// The resources the vertical's licence check refuses.
     pub licences: Licences,
+    /// The blocks other modules supply.
+    pub sources: Sources,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
     /// Keeps the database file alive (when the test uses one).
@@ -676,6 +713,7 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
     let work = Work::default();
     let messages = Messages::default();
     let licences = Licences::default();
+    let sources = Sources::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -693,6 +731,7 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
         work: work.clone(),
         messages: messages.clone(),
         licences: licences.clone(),
+        sources: sources.clone(),
     });
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
@@ -702,6 +741,7 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
     let app = record(app, &events.cancelled);
     let app = record(app, &events.reassigned);
     let app = record(app, &events.released);
+    let app = record(app, &events.conflicts);
     let client = if real { CLIENT_REAL } else { CLIENT };
     let config = wl_kernel::ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -739,6 +779,7 @@ async fn boot_app_on(module: WlScheduling, real: bool, file_backed: bool) -> Boo
         work,
         messages,
         licences,
+        sources,
         _views: views,
         _database: database,
     }
