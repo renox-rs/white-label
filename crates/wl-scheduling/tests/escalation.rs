@@ -198,11 +198,21 @@ async fn an_open_conflict_is_escalated_two_hours_before_and_its_reminder_is_supp
 }
 
 /// A conflict raised at 14:10 for 15:00 is already inside the two hours: it is
-/// escalated at 14:10, and not again.
+/// escalated at 14:10 (the branch manager is told, the party gets the change
+/// message), and not again.
 #[renox::test]
 async fn a_conflict_raised_inside_the_window_is_escalated_at_once() {
-    let t = boot().await;
+    let t = boot_with(WlScheduling::new().manager_role("branch_manager")).await;
     let s = scene(&t).await;
+    let manager = holder(&t, "Mona", "branch_manager", &[perm::VIEW], &scope(BRANCH)).await;
+    holder(
+        &t,
+        "Elsewhere",
+        "other_branch_manager",
+        &[perm::VIEW],
+        &scope(OTHER_BRANCH),
+    )
+    .await;
     let booking = book_at(&t, &s, &s.a, DAY, 15, 0, now()).await;
 
     let flagged = conflict::leave_approved(t.state(), &sick(602), dubai(DAY, 14, 10))
@@ -215,12 +225,19 @@ async fn a_conflict_raised_inside_the_window_is_escalated_at_once() {
         of_type(&t, "scheduling.bookings_changed")[0].subject,
         booking.subject()
     );
-    assert_eq!(of_type(&t, "scheduling.conflict_escalated").len(), 0);
-    // Nobody holds a manager role or manages bookings in the branch, so the
-    // administrators would be told; there are none here.
+    let told = of_type(&t, "scheduling.conflict_escalated");
+    assert_eq!(told.len(), 1, "the manager is told at 14:10");
+    assert_eq!(told[0].subject, booking.subject());
+    assert_eq!(
+        told[0].recipients,
+        [NotifyRecipient::User { id: manager.id }],
+        "the manager of the booking's branch only"
+    );
+    assert!(Messages::body(&told[0]).contains(&booking.number));
     let later = rules::run(t.state(), dubai(DAY, 14, 15)).await.unwrap();
     assert_eq!(later.escalations, 0);
     assert_eq!(of_type(&t, "scheduling.bookings_changed").len(), 1);
+    assert_eq!(of_type(&t, "scheduling.conflict_escalated").len(), 1);
 }
 
 /// With nobody in the manager role in the branch, the users with
