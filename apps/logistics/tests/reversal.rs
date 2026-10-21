@@ -285,6 +285,10 @@ async fn a_refunded_reversal_of_remitted_cod_drafts_a_negative_line_and_a_task_f
     assert_eq!(later[0].source_type.as_deref(), Some("logistics.shipment"));
     assert_eq!(later[0].source_id, Some(shipment.id));
     assert_eq!(decided.shortage_handover_id, Some(later[0].id));
+    // The operations manager's task is closed by the decision.
+    let closed = w.tickets.completed();
+    assert_eq!(closed.len(), 1);
+    assert_eq!(Some(closed[0].0.0), decided.task_ticket_id);
     // Decided once.
     w.post(
         &second,

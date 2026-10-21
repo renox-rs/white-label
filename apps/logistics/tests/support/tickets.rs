@@ -17,6 +17,7 @@ pub struct TicketDesk {
     opened: Arc<Mutex<Vec<OpenTicket>>>,
     resolved: Arc<Mutex<Vec<(TicketId, String)>>>,
     comments: Arc<Mutex<Vec<(TicketId, TaskComment)>>>,
+    completed: Arc<Mutex<Vec<(TicketId, String)>>>,
     off: Arc<AtomicBool>,
 }
 
@@ -34,6 +35,11 @@ impl TicketDesk {
     /// The comments added, with their ticket.
     pub fn comments(&self) -> Vec<(TicketId, TaskComment)> {
         self.comments.lock().unwrap().clone()
+    }
+
+    /// The tickets closed by their source, with the note.
+    pub fn completed(&self) -> Vec<(TicketId, String)> {
+        self.completed.lock().unwrap().clone()
     }
 
     /// Switches ticketing off (`true`) or on again.
@@ -70,6 +76,21 @@ impl TaskCreator for TicketDesk {
     ) -> TicketFuture<'a, bool> {
         Box::pin(async move {
             self.resolved
+                .lock()
+                .unwrap()
+                .push((ticket, note.to_owned()));
+            Ok(true)
+        })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            self.completed
                 .lock()
                 .unwrap()
                 .push((ticket, note.to_owned()));
