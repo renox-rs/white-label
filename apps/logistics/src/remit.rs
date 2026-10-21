@@ -230,6 +230,7 @@ async fn settle(
     let offset_total = netting::store(&mut *tx, remittance.id, &taken).await?;
     let net = before_offsets - offset_total;
     if carried < 0 {
+        let note = english("logistics.remittance.carried_note", &[]);
         let mut line = AdjustmentLine {
             client_party_id: remittance.client_party_id,
             amount: carried,
@@ -240,12 +241,15 @@ async fn settle(
             source: source::CARRIED_FORWARD.to_owned(),
             carried_from_id: Some(remittance.id),
             decided_at: Some(renox::db::now()),
-            decision_note: Some(english("logistics.remittance.carried_note", &[])),
+            decision_note: Some(note.clone()),
             // Derived from lines that were approved: the rest of them.
             status: AdjustmentStatus::Approved,
             ..AdjustmentLine::default()
         };
-        line.insert(&mut *tx).await?;
+        // Born approved, as the lines it is derived from were: the state
+        // machine's one exception for a row that starts past `pending`.
+        line.insert_in_state(&mut *tx, AdjustmentStatus::Approved, &note)
+            .await?;
     }
     let carried_forward = -carried;
     Remittance::query()
