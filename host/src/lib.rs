@@ -24,10 +24,15 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::accounting_seed::parties_for;
 pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
-pub use app::negative_flow::{invoicing_for, payments_for};
+pub use app::logistics_demo;
+pub use app::logistics_rules;
+pub use app::logistics_seed;
+pub use app::logistics_settings;
+pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
 pub use app::roles;
 
 use wl_invoicing::WlInvoicing;
@@ -68,6 +73,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     "db:seed",
     demo_data::COMMAND,
     construction_demo::COMMAND,
+    app::logistics_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.
@@ -149,6 +155,8 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::negative_flow::register_block_effects(&client_app);
     app::accounting_seed::register_block_effects(&client_app);
     app::accounting_seed::register_integrations(&client_app);
+    app::logistics_seed::register_integrations(&client_app);
+    app::logistics_rules::register_critical(&client_app);
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
@@ -188,6 +196,13 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         // `db:seed` in local (never in production).
         app = app.module(app::construction_demo::DemoSeed::new(demo_client));
     }
+    // The Logistics client's demo company, in local only (`logistics:demo`,
+    // and `db:seed`).
+    if client_app == "logistics" {
+        app = app.module(app::logistics_seed::LogisticsSeed);
+        app = app.module(app::logistics_rules::LogisticsRules);
+        app = app.module(app::logistics_demo::LogisticsDemo);
+    }
     // The page that shows the shared modules' settings of this client.
     let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
@@ -221,12 +236,12 @@ fn with_brand(app: renox::App, name: &str) -> renox::App {
 }
 
 /// The vertical apps built so far, as `[client] app` names them.
-pub const VERTICALS: &[&str] = &["property", "accounting", "construction"];
+pub const VERTICALS: &[&str] = &["property", "accounting", "construction", "logistics"];
 
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting` and `construction`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction` and `logistics`"
     ))
 }
 
@@ -246,6 +261,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "property" => Ok(app.module(property::Property)),
         "accounting" => Ok(app.module(accounting::Accounting)),
         "construction" => Ok(app.module(construction::Construction)),
+        "logistics" => Ok(app.module(logistics::Logistics)),
         other => Err(unbuilt_vertical(other)),
     }
 }
@@ -265,6 +281,7 @@ fn enable(
         "documents" => {
             app::property_seed::register_documents(client_app);
             app::accounting_seed::register_documents(client_app);
+            app::logistics_seed::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
             }
@@ -300,6 +317,7 @@ fn enable(
             )
         }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
+        "delivery" => Ok(app.module(app::negative_flow::delivery_for(client_app))),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
         ))),

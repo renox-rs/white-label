@@ -1,0 +1,22 @@
+[package]
+name = "wl-delivery"
+description = "Delivery: runs and dispatch, the driver's day list, proof of delivery and partial acceptance."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+wl-payments = { path = "../wl-payments" }
+# The real documents guard and workforce in the dispatch documents test.
+wl-documents = { path = "../wl-documents" }
+wl-hr = { path = "../wl-hr" }
+# The real ticket service in the claim and missing item task tests.
+wl-ticketing = { path = "../wl-ticketing" }

@@ -127,6 +127,26 @@ impl Invoicer for Invoices {
         })
     }
 
+    fn open_of<'a>(&'a self, db: &'a Db, party: PartyId) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
+        Box::pin(async move {
+            let open = [
+                InvoiceStatus::Issued,
+                InvoiceStatus::PartiallyPaid,
+                InvoiceStatus::Overdue,
+            ];
+            let rows = Invoice::query()
+                .where_(Invoice::STATUS.is_in(open))
+                .where_(Invoice::PARTY_ID.eq(party.0))
+                .where_(Invoice::BALANCE.gt(0))
+                .order_by(Invoice::ID)
+                .get(db)
+                .await?;
+            let mut found: Vec<InvoiceSummary> = rows.iter().map(Invoice::summary).collect();
+            found.sort_by_key(|invoice| (invoice.due_date, invoice.id.0));
+            Ok(found)
+        })
+    }
+
     fn dispute<'a>(
         &'a self,
         state: &'a AppState,

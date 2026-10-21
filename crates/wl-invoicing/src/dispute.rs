@@ -39,7 +39,7 @@ use wl_kernel::invoicing::{
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest, fill};
 use wl_kernel::scopes;
-use wl_kernel::tickets::{self, Assignee, OpenTicket, TicketChannel, TicketId};
+use wl_kernel::tickets::{self, Assignee, OpenTicket, TicketChannel, TicketId, TicketRef};
 use wl_kernel::{PartyId, Subject};
 
 use crate::allocate::amount_text;
@@ -125,6 +125,11 @@ pub struct Dispute {
     pub raised_via: DisputeVia,
     /// When it was raised.
     pub raised_at: DateTime,
+    /// The type of the record that caused it (a delivery under review), when
+    /// it was not raised on the invoice itself.
+    pub source_type: Option<String>,
+    /// The id of that record.
+    pub source_id: Option<i64>,
     /// How it was settled; `None` while open.
     pub outcome: Option<DisputeOutcome>,
     /// The note given with the resolution.
@@ -151,6 +156,14 @@ impl Dispute {
     /// The dispute as a [`Subject`]: `invoicing.dispute:7`.
     pub fn subject(&self) -> Subject {
         Subject::new(SUBJECT_TYPE, self.id)
+    }
+
+    /// The record that caused it, if there is one.
+    pub fn source(&self) -> Option<Subject> {
+        match (&self.source_type, self.source_id) {
+            (Some(kind), Some(id)) => Some(Subject::new(kind, id)),
+            _ => None,
+        }
     }
 
     /// Whether it is still open.
@@ -384,6 +397,8 @@ pub async fn raise(state: &AppState, request: DisputeRequest) -> Result<i64> {
         raised_by_party_id: party_id,
         raised_via: via,
         raised_at: renox::db::now(),
+        source_type: request.source.as_ref().map(|s| s.subject_type.clone()),
+        source_id: request.source.as_ref().map(|s| s.subject_id),
         ..Default::default()
     };
     let already = || refused("The invoice is already disputed.");
@@ -409,7 +424,7 @@ pub async fn raise(state: &AppState, request: DisputeRequest) -> Result<i64> {
     }
     tx.commit().await?;
 
-    after_commit(state, &invoice, &mut dispute, &lines, &plan).await?;
+    after_commit(state, &invoice, &mut dispute, &lines, &plan, request.ticket).await?;
     Ok(dispute.id)
 }
 
@@ -420,6 +435,7 @@ async fn after_commit(
     dispute: &mut Dispute,
     lines: &[InvoiceLine],
     plan: &Plan,
+    existing_ticket: Option<TicketId>,
 ) -> Result {
     let disputed: Vec<&InvoiceLine> = lines
         .iter()
@@ -462,7 +478,19 @@ async fn after_commit(
     if let Some(owner) = owner {
         open = open.assign_to(Assignee::user(owner));
     }
-    let ticket = tickets::task_creator(state).open(state, open).await?;
+    // A ticket the request brings (a delivery's) is the dispute's ticket and
+    // no second one is opened; its number is not known here.
+    let ticket = match existing_ticket {
+        Some(id) => Some(TicketRef {
+            id,
+            number: String::new(),
+        }),
+        None => tickets::task_creator(state).open(state, open).await?,
+    };
+    let ticket_number = ticket
+        .as_ref()
+        .map(|t| t.number.as_str())
+        .filter(|number| !number.is_empty());
     if let Some(ticket) = &ticket {
         dispute.ticket_id = Some(ticket.id.0);
         dispute.save(&state.db).await?;
@@ -475,7 +503,7 @@ async fn after_commit(
             let mut notice = NotifyRequest::new(UNASSIGNED, invoice.subject()).data(data(
                 invoice,
                 dispute,
-                ticket.as_ref().map(|t| t.number.as_str()),
+                ticket_number,
             ));
             for id in ids {
                 notice = notice.to_user(id);
@@ -485,11 +513,7 @@ async fn after_commit(
     }
     let ack = NotifyRequest::new(ACKNOWLEDGED, invoice.subject())
         .to_party(invoice.party())
-        .data(data(
-            invoice,
-            dispute,
-            ticket.as_ref().map(|t| t.number.as_str()),
-        ));
+        .data(data(invoice, dispute, ticket_number));
     notifier.notify(state, ack).await?;
 
     state

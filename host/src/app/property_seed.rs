@@ -163,6 +163,7 @@ pub fn sales_for(client_app: &str) -> WlSales {
         PROPERTY => module.over_budget_approval(true).campaign_required_for(&[]),
         super::construction_seed::CONSTRUCTION => super::construction_seed::sales(module),
         "accounting" => super::accounting_seed::sales_for(client_app),
+        super::logistics_seed::LOGISTICS => super::logistics_seed::sales(module),
         _ => module,
     }
 }
@@ -176,6 +177,7 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
         PROPERTY => module.manager_role(PROPERTY_MANAGER).owner_role(owner_role),
         super::construction_seed::CONSTRUCTION => super::construction_seed::hr(module, owner_role),
         "accounting" => super::accounting_seed::hr_for(client_app, owner_role),
+        super::logistics_seed::LOGISTICS => super::logistics_seed::hr(module),
         _ => module,
     }
 }

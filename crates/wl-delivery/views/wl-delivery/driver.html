@@ -1,0 +1,58 @@
+{#- wl-delivery: the driver's day list on the phone: today's stops in order.
+    The phone and the full address show only while the stop is open
+    (WRK.ACL.05). Replace it with resources/views/wl-delivery/driver.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['driver.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['driver.title']" :subtitle="today"/>
+ <rx-confirm rx-for="run in returnable" :id="'return-run-' ~ run[0]" :label="tx['close.return'] ~ ' ' ~ run[1]" :action="route('wl_delivery.run_return', run[0])" method="POST"
+                  :title="tx['close.return']" :message="tx['close.stops_hint']" :confirm-label="tx['close.return']"/>
+    <rx-form rx-for="h in waiting" :action="route('wl_delivery.hand_over_confirm', h.id)" novalidate>
+      <rx-card :title="tx['hand_over.waiting_title'] ~ ' ' ~ h.from_run">
+        <p>{{ h.reason }}</p>
+        <rx-form-errors/>
+        <table class="rx-table">
+          <caption>{{ tx['hand_over.parcel'] }}</caption>
+          <tbody>
+            {% for stop in h.stops %}
+            <tr>
+              <td><input type="checkbox" name="parcel_{{ stop.id }}" id="parcel-{{ h.id }}-{{ stop.id }}"></td>
+              <td>{{ stop.number }}</td>
+              <td>{{ stop.recipient }}</td>
+              <td>{{ stop.area }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <rx-form-grid columns="2">
+          <rx-input name="cash" :label="tx['hand_over.cash_counted']" :id="'hand-over-cash-' ~ h.id"/>
+          <rx-input name="cheques" :label="tx['hand_over.cheques']" :id="'hand-over-cheques-' ~ h.id"/>
+          <rx-input name="latitude" :label="tx['proof.latitude']" :id="'hand-over-lat-' ~ h.id"/>
+          <rx-input name="longitude" :label="tx['proof.longitude']" :id="'hand-over-lng-' ~ h.id"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['hand_over.confirm']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+    <rx-form rx-for="run in returnable" :action="route('wl_delivery.run_driver_abort', run[0])" novalidate>
+      <rx-card :title="tx['abort.title'] ~ ' ' ~ run[1]">
+        <p>{{ tx['abort.driver_hint'] }}</p>
+        <rx-form-grid columns="2">
+          <rx-select name="reason" :label="tx['abort.reason']" :options="abort_reasons" :selected="''" :id="'abort-reason-' ~ run[0]" required/>
+          <rx-input name="note" :label="tx['abort.note']" :id="'abort-note-' ~ run[0]"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['abort.action']" variant="secondary"/>
+        </div>
+      </rx-card>
+    </rx-form>
+    <rx-table :rows="stops" as="stop" :key="stop.id" card>
+      <rx-column :label="tx['fields.sequence']">{{ stop.sequence }}</rx-column>
+      <rx-column :label="tx['fields.recipient']"><a href="/driver/stops/{{ stop.id }}">{{ stop.recipient }}</a></rx-column>
+      <rx-column :label="tx['fields.address']">{{ stop.address or stop.area }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ stop.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['driver.none']" icon="truck"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

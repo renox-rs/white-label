@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS "wl_delivery_receipts";
+ALTER TABLE "wl_delivery_lines" DROP COLUMN accounted_by;
+ALTER TABLE "wl_delivery_lines" DROP COLUMN accounted_at;
+ALTER TABLE "wl_delivery_lines" DROP COLUMN refused_missing_milli;
+ALTER TABLE "wl_delivery_lines" DROP COLUMN refused_received_milli;
+ALTER TABLE "wl_delivery_runs" DROP COLUMN closed_at;
+ALTER TABLE "wl_delivery_runs" DROP COLUMN returned_at;
+ALTER TABLE "wl_delivery_runs" DROP COLUMN cash_counted_at;
+ALTER TABLE "wl_delivery_runs" DROP COLUMN cash_counted_by;
+ALTER TABLE "wl_delivery_runs" DROP COLUMN cash_counted_amount;

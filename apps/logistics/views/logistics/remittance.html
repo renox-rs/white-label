@@ -1,0 +1,97 @@
+{#- logistics: a COD remittance: what is on it (a line per delivered
+    shipment, the fees, the client-absorbed differences with their reason, the
+    adjustment lines) and the actions the person may run (approve, reopen,
+    pay). Replace it with resources/views/logistics/remittance.html in the
+    app. -#}
+<rx-page layout="layouts/app.html" :title="remittance.number">
+  <rx-stack>
+    <rx-page-header :title="remittance.number" :subtitle="tx['remit_title']" :back="route('logistics.remittances')" :back-label="tx['remit_title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-confirm rx-if="can_approve" :id="'approve-' ~ remittance.id" :label="tx['remit_approve']" :action="route('logistics.remittance_approve', remittance.id)" method="POST"
+                  :title="tx['remit_approve_title']" :message="tx['remit_approve_message']" :confirm-label="tx['remit_approve']"/>
+      <rx-confirm rx-if="can_reopen" :id="'reopen-' ~ remittance.id" :label="tx['remit_reopen']" :action="route('logistics.remittance_reopen', remittance.id)" method="POST"
+                  :title="tx['remit_reopen_title']" :message="tx['remit_reopen_message']" :confirm-label="tx['remit_reopen']"/>
+      <rx-action-sheet rx-if="can_pay" :id="'pay-' ~ remittance.id" :label="tx['remit_pay']" :action="route('logistics.remittance_pay', remittance.id)"
+                       :title="tx['remit_pay_title']" :description="tx['remit_pay_description']" :submit-label="tx['remit_pay']" icon="send">
+        <rx-input name="payment_reference" :label="tx['remit_reference']" :id="'pay-reference-' ~ remittance.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_dispute" :id="'dispute-' ~ remittance.id" :label="tx['remit_dispute']" :action="route('logistics.remittance_dispute', remittance.id)"
+                       :title="tx['remit_dispute_title']" :description="tx['remit_dispute_description']" :submit-label="tx['remit_dispute']" icon="flag">
+        <rx-textarea name="reason" :label="tx['reason']" :id="'dispute-reason-' ~ remittance.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_resolve" :id="'resolve-' ~ remittance.id" :label="tx['remit_resolve']" :action="route('logistics.remittance_resolve_dispute', remittance.id)"
+                       :title="tx['remit_resolve_title']" :description="tx['remit_resolve_description']" :submit-label="tx['remit_resolve']" icon="check">
+        <rx-input name="outcome" :label="tx['remit_outcome']" :id="'resolve-outcome-' ~ remittance.id" required/>
+        <rx-input name="amount" :label="tx['remit_outcome_amount']" :id="'resolve-amount-' ~ remittance.id"/>
+        <rx-textarea name="note" :label="tx['note']" :id="'resolve-note-' ~ remittance.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_return" :id="'return-' ~ remittance.id" :label="tx['remit_return']" :action="route('logistics.remittance_return_payment', remittance.id)"
+                       :title="tx['remit_return_title']" :description="tx['remit_return_description']" :submit-label="tx['remit_return']" icon="undo">
+        <rx-input name="advice" :label="tx['remit_advice']" :id="'return-advice-' ~ remittance.id" required/>
+        <rx-input name="reason" :label="tx['reason']" :id="'return-reason-' ~ remittance.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_confirm_account" :id="'confirm-account-' ~ remittance.id" :label="tx['remit_confirm_account']" :action="route('logistics.remittance_confirm_account', remittance.id)"
+                       :title="tx['remit_confirm_account']" :description="tx['remit_confirm_account_description']" :submit-label="tx['remit_confirm_account']" icon="check">
+        <rx-input name="note" :label="tx['note']" :id="'confirm-account-note-' ~ remittance.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_repay" :id="'repay-' ~ remittance.id" :label="tx['remit_repay']" :action="route('logistics.remittance_repay', remittance.id)"
+                       :title="tx['remit_repay_title']" :description="tx['remit_repay_description']" :submit-label="tx['remit_repay']" icon="send">
+        <rx-input name="payment_reference" :label="tx['remit_reference']" :id="'repay-reference-' ~ remittance.id" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    {% if refusal %}<rx-include template="wl-kernel/block_refusal.html"/>{% endif %}
+    <rx-card :title="tx['details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['remit_number']" :value="remittance.number" copyable/>
+        <rx-entry :label="tx['client']" :value="remittance.client_party_id"/>
+        <rx-entry :label="tx['remit_cod']" :value="remittance.cod_total" format="money"/>
+        <rx-entry :label="tx['remit_fees']" :value="remittance.fee_total" format="money"/>
+        <rx-entry :label="tx['remit_adjustments']" :value="remittance.adjustment_total" format="money"/>
+        <rx-entry :label="tx['remit_offset_total']" rx-if="remittance.offset_total" :value="remittance.offset_total" format="money"/>
+        <rx-entry :label="tx['remit_net']" :value="remittance.net" format="money"/>
+        <rx-entry :label="tx['remit_disputed']" rx-if="remittance.disputed" :value="tx['yes']"/>
+        <rx-entry :label="tx['remit_message']" rx-if="remittance.message" :value="remittance.message"/>
+        <rx-entry :label="tx['remit_carried']" rx-if="remittance.carried_forward" :value="remittance.carried_forward" format="money"/>
+        <rx-entry :label="tx['remit_payment']" rx-if="remittance.payment_number" :value="remittance.payment_number"/>
+        <rx-entry :label="tx['remit_reference']" rx-if="remittance.payment_reference" :value="remittance.payment_reference"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.shipment" :caption="tx['remit_lines']" card>
+      <rx-column :label="tx['number']"><a href="{{ line.shipment_url }}">{{ line.shipment }}</a></rx-column>
+      <rx-column :label="tx['cod']" align="num">{{ line.collected | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_absorbed']" align="num" hide-narrow>{{ line.absorbed | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_absorbed_reason']" hide-narrow>{{ line.absorbed_reason }}</rx-column>
+      <rx-column :label="tx['remit_fee']" align="num" hide-narrow>{{ line.fee | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['remit_no_lines']" icon="package"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="offsets" as="offset" :key="offset.invoice" :caption="tx['remit_offsets']" card>
+      <rx-column :label="tx['remit_offset_invoice']">{{ offset.invoice }}</rx-column>
+      <rx-column :label="tx['due']" hide-narrow>{{ offset.due_date }}</rx-column>
+      <rx-column :label="tx['amount']" align="num">{{ offset.amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_payment']" hide-narrow>{{ offset.payment }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['remit_no_offsets']" icon="receipt"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="returns" :rows="returns" as="returned" :key="returned.advice" :caption="tx['remit_returns']" card>
+      <rx-column :label="tx['remit_advice']">{{ returned.advice }}</rx-column>
+      <rx-column :label="tx['reason']" hide-narrow>{{ returned.reason }}</rx-column>
+      <rx-column :label="tx['remit_account']" hide-narrow>{{ returned.bank_account }}</rx-column>
+      <rx-column :label="tx['remit_reference']" hide-narrow>{{ returned.payment_reference }}</rx-column>
+    </rx-table>
+    <rx-table :rows="adjustments" as="adjustment" :key="adjustment.id" :caption="tx['remit_adjustment_lines']" card>
+      <rx-column :label="tx['amount']" align="num">{{ adjustment.amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['reason']">{{ adjustment.reason }}</rx-column>
+      <rx-column :label="tx['kind']" hide-narrow>{{ adjustment.source }}</rx-column>
+      <rx-column :label="tx['state']">{{ adjustment.status }}</rx-column>
+      <rx-column :label="tx['actions']" hide-narrow>
+        <rx-confirm rx-if="adjustment.can_decide" :id="'approve-line-' ~ adjustment.id" :label="tx['adj_approve']" :action="route('logistics.adjustment_approve', adjustment.id)" method="POST"
+                    :title="tx['adj_approve']" :message="tx['adj_approve_message']" :confirm-label="tx['adj_approve']"/>
+        <rx-confirm rx-if="adjustment.can_decide" :id="'reject-line-' ~ adjustment.id" :label="tx['adj_reject']" :action="route('logistics.adjustment_reject', adjustment.id)" method="POST"
+                    :title="tx['adj_reject']" :message="tx['adj_reject_message']" :confirm-label="tx['adj_reject']"/>
+        <rx-confirm rx-if="adjustment.can_delete" :id="'delete-line-' ~ adjustment.id" :label="tx['adj_delete']" :action="route('logistics.adjustment_delete', adjustment.id)" method="POST"
+                    :title="tx['adj_delete']" :message="tx['adj_delete_message']" :confirm-label="tx['adj_delete']"/>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['remit_no_adjustments']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

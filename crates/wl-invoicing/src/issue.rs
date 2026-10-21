@@ -63,6 +63,10 @@ pub(crate) struct IssueInput {
     /// system twin checks it.
     #[serde(default)]
     pub auto_issue: bool,
+    /// Whether a line of the draft bills a line of a delivery under review
+    /// (#69): the system twin does not issue it while the review is open.
+    #[serde(default)]
+    pub held_by_review: bool,
 }
 
 /// The `issue` transition and its system twin, for the machine.
@@ -86,6 +90,17 @@ pub(crate) fn transitions() -> [Transition<Invoice>; 2] {
                     _ => Err(
                         "The system issues no invoice of this source: a user issues it.".to_owned(),
                     ),
+                }
+            })
+        })
+        .guard("no_delivery_review", |_invoice: &Invoice, ctx| {
+            Box::pin(async move {
+                match input(ctx) {
+                    Some(input) if input.held_by_review => Err(
+                        "A delivery this invoice bills is under review: a user issues it after the review."
+                            .to_owned(),
+                    ),
+                    _ => Ok(()),
                 }
             })
         }),
@@ -264,6 +279,7 @@ async fn gather(state: &AppState, invoice: &Invoice) -> Result<IssueInput> {
         auto_issue: crate::config_of(state)
             .auto_issue_sources
             .contains(&invoice.source_type),
+        held_by_review: crate::delivery_dispute::held_by_review(&state.db, &lines).await?,
     })
 }
 
@@ -335,6 +351,7 @@ mod tests {
             payment_terms_days: 30,
             einvoice: Default::default(),
             auto_issue: false,
+            held_by_review: false,
         }
     }
 

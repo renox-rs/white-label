@@ -1,0 +1,49 @@
+{#- logistics: the COD remittances, newest first, with what is on them and
+    their status. Replace it with resources/views/logistics/remittances.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['remit_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['remit_title']" :subtitle="tx['remit_subtitle']">
+      <rx-action-sheet rx-if="can_build" id="build-remittance" :label="tx['remit_build']" :action="route('logistics.remittance_build')"
+                       :title="tx['remit_build_title']" :description="tx['remit_build_description']" :submit-label="tx['remit_build']" icon="banknote">
+        <rx-input name="client_party_id" :label="tx['client']" id="build-remittance-client" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_add_adjustment" id="add-adjustment" :label="tx['adj_add']" :action="route('logistics.adjustment_add')"
+                       :title="tx['adj_add_title']" :description="tx['adj_add_description']" :submit-label="tx['adj_add']" icon="plus">
+        <rx-input name="client_party_id" :label="tx['client']" id="add-adjustment-client" required/>
+        <rx-input name="amount" :label="tx['adj_amount']" id="add-adjustment-amount" required/>
+        <rx-textarea name="reason" :label="tx['reason']" id="add-adjustment-reason" required/>
+        <rx-input name="shipment_id" :label="tx['adj_shipment']" id="add-adjustment-shipment"/>
+        <rx-input name="corrects_remittance_id" :label="tx['adj_remittance']" id="add-adjustment-remittance"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_request_account" id="request-account" :label="tx['account_request']" :action="route('logistics.account_request')"
+                       :title="tx['account_request_title']" :description="tx['account_request_description']" :submit-label="tx['account_request']" icon="landmark">
+        <rx-input name="client_party_id" :label="tx['client']" id="request-account-client" required/>
+        <rx-input name="account" :label="tx['remit_account']" id="request-account-iban" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-table :rows="remittances" as="remittance" :key="remittance.number" :caption="tx['remit_title']">
+      <rx-column :label="tx['remit_number']"><a href="{{ remittance.url }}">{{ remittance.number }}</a></rx-column>
+      <rx-column :label="tx['client']" hide-narrow>{{ remittance.client_party_id }}</rx-column>
+      <rx-column :label="tx['remit_cod']" align="num" hide-narrow>{{ remittance.cod_total | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_fees']" align="num" hide-narrow>{{ remittance.fee_total | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_adjustments']" align="num" hide-narrow>{{ remittance.adjustment_total | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['remit_net']" align="num">{{ remittance.net | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['state']"><rx-badge :kind="remittance.status_kind" :text="remittance.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['remit_empty']" :message="tx['remit_empty_text']" icon="banknote"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="account_changes" :rows="account_changes" as="change" :key="change.id" :caption="tx['account_changes']">
+      <rx-column :label="tx['client']">{{ change.client_party_id }}</rx-column>
+      <rx-column :label="tx['remit_account']">{{ change.account }}</rx-column>
+      <rx-column :label="tx['state']"><rx-badge :kind="change.status_kind" :text="change.status"/></rx-column>
+      <rx-column :label="tx['actions']" hide-narrow>
+        <rx-confirm rx-if="change.can_decide" :id="'approve-account-' ~ change.id" :label="tx['account_approve']" :action="route('logistics.account_approve', change.id)" method="POST"
+                    :title="tx['account_approve']" :message="tx['account_approve_message']" :confirm-label="tx['account_approve']"/>
+        <rx-confirm rx-if="change.can_decide" :id="'reject-account-' ~ change.id" :label="tx['account_reject']" :action="route('logistics.account_reject', change.id)" method="POST"
+                    :title="tx['account_reject']" :message="tx['account_reject_message']" :confirm-label="tx['account_reject']"/>
+        <rx-confirm rx-if="change.can_withdraw" :id="'withdraw-account-' ~ change.id" :label="tx['account_withdraw']" :action="route('logistics.account_withdraw', change.id)" method="POST"
+                    :title="tx['account_withdraw']" :message="tx['account_withdraw_message']" :confirm-label="tx['account_withdraw']"/>
+      </rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>

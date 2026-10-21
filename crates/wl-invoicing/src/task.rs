@@ -60,6 +60,15 @@ pub enum TaskKind {
     /// An e-invoice transmission is not sent H hours after `issue`
     /// (`FIN.RUL.16`).
     EinvoiceStuck,
+    /// A delivery was put under review while a draft invoice bills its
+    /// lines (#69): check the review before issuing the draft.
+    DeliveryDisputedBeforeIssue,
+    /// The delivery whose review flagged this invoice was reversed (#69):
+    /// resolve the dispute, usually `credited` for the undelivered lines.
+    DeliveryReversed,
+    /// The delivery whose review flagged this invoice was lost (#69): resolve
+    /// the dispute, usually `credited` for the undelivered lines.
+    DeliveryLost,
     /// An issued supplier debit note waits for the supplier's tax credit
     /// note (§5.13 step 4): record it so the note can settle.
     RecordTaxCreditNote,
@@ -88,6 +97,9 @@ impl TaskKind {
             TaskKind::StatementBalanceStale => "wl_invoicing.task.statement_balance_stale",
             TaskKind::EinvoiceRejected => "wl_invoicing.einvoice.task.rejected",
             TaskKind::EinvoiceStuck => "wl_invoicing.einvoice.task.stuck",
+            TaskKind::DeliveryDisputedBeforeIssue => "wl_invoicing.delivery.task.before_issue",
+            TaskKind::DeliveryReversed => "wl_invoicing.delivery.task.reversed",
+            TaskKind::DeliveryLost => "wl_invoicing.delivery.task.lost",
             TaskKind::RecordTaxCreditNote => "wl_invoicing.task.record_tax_credit_note",
             TaskKind::AdjustmentCreditRefused => "wl_invoicing.task.adjustment_credit_refused",
         }
