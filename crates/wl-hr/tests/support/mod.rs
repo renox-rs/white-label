@@ -604,12 +604,15 @@ impl TaskCreator for TicketDesk {
     }
 }
 
+/// What `record_payroll_use` was told: the run and the hours it used.
+type PayrollUse = (Subject, Vec<PayrollHours>);
+
 /// The timesheets of wl-attendance: the hours payroll is given at `calculate`
 /// and a log of what `submit` told it was used.
 #[derive(Clone, Default)]
 pub struct TimesheetDesk {
     hours: Arc<Mutex<Vec<PayrollHours>>>,
-    used: Arc<Mutex<Vec<(Subject, Vec<PayrollHours>)>>>,
+    used: Arc<Mutex<Vec<PayrollUse>>>,
 }
 
 impl TimesheetDesk {
@@ -619,7 +622,7 @@ impl TimesheetDesk {
     }
 
     /// `(run, hours)` of each `record_payroll_use`.
-    pub fn used(&self) -> Vec<(Subject, Vec<PayrollHours>)> {
+    pub fn used(&self) -> Vec<PayrollUse> {
         self.used.lock().unwrap().clone()
     }
 }
