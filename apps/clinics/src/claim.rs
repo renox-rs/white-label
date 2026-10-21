@@ -69,7 +69,7 @@ impl ClaimStatus {
 }
 
 /// A claim.
-#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone, PartialEq)]
 #[model(
     table = "clinics_claims",
     state_machine,
