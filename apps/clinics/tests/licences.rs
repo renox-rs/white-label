@@ -148,7 +148,12 @@ async fn the_manager_and_the_owner_are_told_once_and_the_bookings_are_in_conflic
         .await
         .unwrap();
 
-    // One message each to the manager of Branch 1 and the owner.
+    // One message each to the manager of Branch 1 and the owner. This is the
+    // clinic's own alert (`CLN.RUL.01`). `DOC.RUL.03` adds nothing for the
+    // owner (the kinds are not compliance-critical, proved with the real
+    // wl-documents in host/tests/clinics_wiring.rs), but it does send the clinic
+    // manager its own `documents.expired` renewal notice: the manager gets two
+    // messages for one expiry. Known limit, there is no seam to suppress it.
     let messages = told(&t);
     assert_eq!(messages.len(), 2, "{messages:?}");
     assert_eq!(
@@ -167,7 +172,9 @@ async fn the_manager_and_the_owner_are_told_once_and_the_bookings_are_in_conflic
         assert!(body.contains("practitioner licence"), "{body}");
         assert!(body.contains("Appointments affected: 4"), "{body}");
         assert!(body.contains("test.branch 2"), "{body}");
-        assert!(body.contains("employee"), "{body}");
+        // The practitioner by name, not by employee number.
+        assert!(body.contains("Dr K"), "{body}");
+        assert!(!body.contains("employee"), "{body}");
     }
     let employee = t.employee_id(&doctor).0;
     let rows = LicenceAlert::of_expiry(t.db(), employee, LICENCE, day(10))
@@ -233,6 +240,40 @@ async fn the_manager_and_the_owner_are_told_once_and_the_bookings_are_in_conflic
     assert_eq!(outcome, RunOutcome::Skipped);
     assert!(again.users.is_empty());
     assert_eq!(told(&t).len(), 2);
+}
+
+/// 05 §4.5: an expired licence blocks `booking.start` as well. A visit
+/// checked in on the last valid day can be started on it; the day after the
+/// start is refused, with no override.
+#[renox::test]
+async fn a_start_after_the_expiry_is_refused() {
+    let t = boot().await;
+    staff(&t).await;
+    let doctor = t.practitioner("Dr K", 61, None).await;
+    let service_type = t.consultation(&[&doctor]).await;
+    let first = t.book(&service_type, &doctor, at(day(10), 9)).await;
+    let second = t.book(&service_type, &doctor, at(day(10), 11)).await;
+    t.docs.accepted_until(
+        &t.employee_id(&doctor).subject(),
+        LICENCE,
+        DOCUMENT,
+        Some(day(10)),
+    );
+    service::check_in(t.state(), first.id, Actor::staff(1), at(day(10), 9))
+        .await
+        .expect("checked in on the last valid day");
+    service::check_in(t.state(), second.id, Actor::staff(1), at(day(10), 11))
+        .await
+        .expect("checked in on the last valid day");
+
+    service::start(t.state(), first.id, Actor::staff(1), at(day(10), 9))
+        .await
+        .expect("started on the last valid day");
+    let late = service::start(t.state(), second.id, Actor::staff(1), at(day(11), 0)).await;
+    let Err(Refusal::Ineligible(text)) = late else {
+        panic!("the start is refused: {late:?}");
+    };
+    assert!(text.contains("practitioner licence expired on"), "{text}");
 }
 
 /// Done when 3: Dr M works at Branch 2, where her privileges expire; Branch 1

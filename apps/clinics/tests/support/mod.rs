@@ -116,12 +116,22 @@ impl SelfPayPrices for Prices {
     }
 }
 
-/// The party directory as the clinic needs it: it knows nobody by name, and
-/// answers who the guardians of a dependant are (`PTY.REL.01`).
+/// The party directory as the clinic needs it: it knows only the
+/// practitioners by name, and
+/// answers who the guardians of a dependant are (`PTY.REL.01`) and the names
+/// of the practitioners (`Clinic::practitioner`).
 #[derive(Clone, Default)]
-pub struct Guardians(Arc<Mutex<BTreeMap<i64, Vec<PartyId>>>>);
+pub struct Guardians(
+    Arc<Mutex<BTreeMap<i64, Vec<PartyId>>>>,
+    Arc<Mutex<BTreeMap<i64, String>>>,
+);
 
 impl Guardians {
+    /// The party `party` is called `name`.
+    pub fn name(&self, party: i64, name: &str) {
+        self.1.lock().unwrap().insert(party, name.to_owned());
+    }
+
     /// `guardian` is a guardian of the dependant `child`.
     pub fn set(&self, child: PartyId, guardian: PartyId) {
         self.0
@@ -149,10 +159,11 @@ impl PartyDirectory for Guardians {
     fn display_name<'a>(
         &'a self,
         _db: &'a Db,
-        _party: PartyId,
+        party: PartyId,
         _lang: &'a str,
     ) -> PartyFuture<'a, Option<String>> {
-        Box::pin(async { Ok(None) })
+        let name = self.1.lock().unwrap().get(&party.0).cloned();
+        Box::pin(async move { Ok(name) })
     }
 
     fn status<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
@@ -628,6 +639,7 @@ impl Clinic {
         until: Option<NaiveDate>,
     ) -> Resource {
         let employee = self.employee(party).await;
+        self.guardians.name(party, name);
         self.qualification(&employee, LICENCE, at_branch, until)
             .await;
         self.qualification(&employee, PRIVILEGES, at_branch, until)
