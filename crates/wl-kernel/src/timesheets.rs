@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use renox::chrono::NaiveDate;
+use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -283,7 +284,9 @@ pub fn timesheet_closing(state: &AppState) -> Arc<dyn TimesheetClosing> {
 /// that an external approver approves, as the context's contract says
 /// (wl-attendance §8 `ApproverResolver`). The app provides it with
 /// [`provide_approver_resolver`]. Every answer is for the context as it is
-/// now, so a change of the contract applies to a timesheet that is waiting.
+/// now, so a change of the contract applies to a timesheet that is waiting,
+/// except the deemed-approval days, which are those in force at the `submit`
+/// ([`ApproverResolver::deemed_approval_days_at`]).
 pub trait ApproverResolver: Send + Sync + 'static {
     /// The user who is the account manager of the context's client: the one
     /// who collects a signed sheet and is told when the hours are deemed
@@ -326,6 +329,20 @@ pub trait ApproverResolver: Send + Sync + 'static {
         _context: Option<&'a Subject>,
     ) -> LabourFuture<'a, Option<i64>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// The days in force when the timesheet was submitted, at `submitted_at`
+    /// (`HRM.RUL.15` at N: a change of the contract after the `submit` does not
+    /// change a timesheet that waits, 09 §4.3). The default is
+    /// [`deemed_approval_days`](ApproverResolver::deemed_approval_days), the
+    /// days as they are now, for a resolver that keeps no history.
+    fn deemed_approval_days_at<'a>(
+        &'a self,
+        state: &'a AppState,
+        context: Option<&'a Subject>,
+        _submitted_at: DateTime,
+    ) -> LabourFuture<'a, Option<i64>> {
+        self.deemed_approval_days(state, context)
     }
 }
 

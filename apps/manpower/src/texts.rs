@@ -33,6 +33,14 @@ const TEXTS: &[(&str, &str)] = &[
         "The payment terms, the notice period and the deemed-approval days cannot be negative or zero.",
     ),
     (
+        "manpower.problems.deemed_days",
+        "The deemed-approval days are whole days of 1 or more, or empty for no clause.",
+    ),
+    (
+        "manpower.problems.terms_closed",
+        "The contract is cancelled or ended: its timesheet terms cannot change.",
+    ),
+    (
         "manpower.problems.signed_in_future",
         "A contract cannot be signed on a day that has not come.",
     ),

@@ -40,6 +40,7 @@ use wl_kernel::PartyId;
 use wl_kernel::workforce::EmployeeId;
 
 use crate::absence;
+use crate::approvers;
 use crate::contract::{BillingCycle, ClientContract, ContractStatus};
 use crate::contracts::{self, NewContract};
 use crate::db::refused;
@@ -77,6 +78,8 @@ pub fn routes() -> Routes {
         .name("manpower.contract_hold")
         .post("/manpower/contracts/{id}/renew", renew_contract)
         .name("manpower.contract_renew")
+        .post("/manpower/contracts/{id}/timesheet-terms", timesheet_terms)
+        .name("manpower.contract_terms")
         .post("/manpower/contracts/{id}/terminate", terminate_contract)
         .name("manpower.contract_terminate")
         .post("/manpower/contracts/{id}/release", release_contract)
@@ -375,6 +378,22 @@ async fn hold_contract(
         Some(text.as_str()).filter(|text| !text.is_empty()),
     )
     .await?;
+    Ok(back("/manpower/contracts"))
+}
+
+/// `POST /manpower/contracts/{id}/timesheet-terms`: `deemed_approval_days`
+/// (whole days; empty: no clause) and `escalation_contact_party_id` (empty:
+/// none).
+async fn timesheet_terms(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let days = number(&lang, &form, "deemed_approval_days")?;
+    let contact = number(&lang, &form, "escalation_contact_party_id")?.map(PartyId);
+    approvers::set_terms(&state, &user, id, days, contact).await?;
     Ok(back("/manpower/contracts"))
 }
 

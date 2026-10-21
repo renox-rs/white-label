@@ -9,8 +9,10 @@
 //! so with N at or below E the escalation finds nothing `submitted` and sends
 //! nothing.
 //!
-//! [`run`] reads N when it runs, so a contract changed while the timesheet
-//! waits applies. A context without a clause (the resolver answers none, or a
+//! [`run`] reads N as it was when the timesheet was submitted (the resolver's
+//! `deemed_approval_days_at`; a resolver without history answers with the
+//! contract as it is now, so a contract changed while the timesheet waits
+//! applies). A context without a clause (the resolver answers none, or a
 //! number below 1) is left as it is: the timesheet stays `submitted`. An
 //! internal approver's timesheet is never deemed approved, by the rule and by
 //! the machine's guard. The transition does what `approve` does
@@ -59,14 +61,14 @@ pub struct Report {
 /// Returns whether it did.
 async fn deem_one(state: &AppState, sheet: &Timesheet, on: NaiveDate) -> Result<bool> {
     let context = sheet.context();
+    let Some(submitted) = sheet.submitted_at else {
+        return Ok(false);
+    };
     let Some(days) = approver_resolver(state)
-        .deemed_approval_days(state, context.as_ref())
+        .deemed_approval_days_at(state, context.as_ref(), submitted)
         .await?
         .filter(|days| *days >= 1)
     else {
-        return Ok(false);
-    };
-    let Some(submitted) = sheet.submitted_at else {
         return Ok(false);
     };
     if dubai_date(submitted) + Duration::days(days) > on {

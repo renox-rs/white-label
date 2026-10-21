@@ -3,6 +3,7 @@
 
 pub mod absence;
 mod access;
+pub mod approvers;
 mod attendance;
 pub mod bench;
 pub mod blocked;
@@ -140,7 +141,8 @@ impl Module for Manpower {
             .model::<ContractHold>()
             .model::<expiry::ContractEndNotice>()
             .model::<absence::AbsenceCase>()
-            .model::<visa_steps::VisaStepNotice>();
+            .model::<visa_steps::VisaStepNotice>()
+            .model::<approvers::ContractTerms>();
         contract::register();
         request::register();
         // `MPW.RUL.06`: an approved leave opens the cover requests the
@@ -165,6 +167,9 @@ impl Module for Manpower {
         exits::listen(app);
         resumption::listen(app);
         notices::register_types();
+        // BL-MPW-19: who approves a deployment's timesheets, who is told when
+        // the client does not, and after how many days silence is approval.
+        wl_kernel::timesheets::provide_approver_resolver(app, approvers::Approvers);
         // Deployments whose end date has passed end by themselves: daily at
         // 02:00 Asia/Dubai.
         app.schedule()
