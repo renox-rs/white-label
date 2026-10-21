@@ -263,6 +263,8 @@ pub async fn bill_party(state: &AppState, party: PartyId) -> Result<Vec<BilledIn
             invoice: invoice.subject(),
             party,
             lines: records.len(),
+            net_total: invoice.net_total,
+            currency: invoice.currency.clone(),
             timesheets: sources,
         });
     }

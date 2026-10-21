@@ -6,6 +6,7 @@ mod access;
 pub mod approvers;
 mod attendance;
 pub mod bench;
+pub mod billing;
 pub mod blocked;
 pub mod config;
 pub mod contract;
@@ -64,6 +65,10 @@ pub const CREDIT_HOLD_TASK: &str = "manpower:credit-hold-daily";
 /// The name of the daily scheduled task that ends the client contracts whose
 /// end date has passed (`end`, BL-MPW-06).
 pub const CONTRACT_END_TASK: &str = "manpower:contract-end-daily";
+
+/// The name of the daily scheduled task of `MPW.RUL.05`: the approved hours
+/// of the clients whose billing cycle ended become draft invoices.
+pub const BILLING_TASK: &str = billing::TASK;
 
 /// The name of the daily scheduled task of `MPW.RUL.11`: the account manager is
 /// told 60 and 30 days before a client contract's end date.
@@ -138,6 +143,7 @@ impl Module for Manpower {
             .model::<Deployment>()
             .model::<documents::DeploymentDocumentFlag>()
             .model::<suspension::DeploymentSuspension>()
+            .model::<suspension::SuspensionSpan>()
             .model::<ContractHold>()
             .model::<expiry::ContractEndNotice>()
             .model::<absence::AbsenceCase>()
@@ -190,6 +196,15 @@ impl Module for Manpower {
         app.schedule()
             .daily_at("00:05", CONTRACT_END_TASK, |state: AppState| async move {
                 ending::daily(&state).await
+            })
+            .timezone("Asia/Dubai");
+        // `MPW.RUL.05`: approved hours become usage when a timesheet is
+        // approved, and draft invoices at the end of the billing cycle, daily
+        // at 03:00 (after the contracts that ended have ended, 00:05).
+        billing::listen(app);
+        app.schedule()
+            .daily_at("03:00", BILLING_TASK, |state: AppState| async move {
+                billing::daily(&state).await
             })
             .timezone("Asia/Dubai");
         // `MPW.RUL.11`: the warnings before a contract ends, daily at 02:00.

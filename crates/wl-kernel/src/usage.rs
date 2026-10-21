@@ -110,6 +110,10 @@ pub struct BilledInvoice {
     pub party: PartyId,
     /// How many lines it has.
     pub lines: usize,
+    /// The total without VAT, in minor units of [`BilledInvoice::currency`].
+    pub net_total: i64,
+    /// The ISO currency code.
+    pub currency: String,
     /// The timesheets whose hours it bills.
     pub timesheets: Vec<Subject>,
 }

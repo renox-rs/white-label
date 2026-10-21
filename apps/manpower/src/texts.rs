@@ -200,6 +200,23 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ worker }}, {{ role }}, {{ site }}, until {{ until }}",
     ),
     ("manpower.expiry.none", "No worker is on site."),
+    // Billing the hours of a deployment (`MPW.RUL.05`, BL-MPW-06, BL-MPW-11).
+    (
+        "manpower.billing.title",
+        "Draft invoice for {{ client }}: {{ total }}",
+    ),
+    (
+        "manpower.billing.body",
+        "The approved hours of {{ client }} are drafted as an invoice of {{ total }} without VAT, {{ count }} lines. Review it and issue it.",
+    ),
+    (
+        "manpower.billing.unpriced_title",
+        "Hours not billed: no rate for {{ worker }}",
+    ),
+    (
+        "manpower.billing.unpriced_body",
+        "The approved hours of {{ worker }} ({{ role }}, {{ shift }} shift) in timesheet {{ timesheet }} on {{ days }} are not billed: contract {{ contract }} has no accepted rate card version with a line for them on those days. Accept a rate card version that prices them, then bill them by hand.",
+    ),
     // A visa case step that is late (`MPW.RUL.14`, BL-MPW-18). The target is the
     // configured one, not a legal deadline.
     (

@@ -31,9 +31,9 @@
 //!   on another site) and the timesheets closed.
 //! - **Billing.** Nothing here stops the billing of the hours: the closed
 //!   timesheet is submitted to the client like any other and is billed after
-//!   its approval though the contract is `ended` (`MPW.RUL.05`; the billing
-//!   run that turns approved timesheets into draft invoices is wl-invoicing's
-//!   and is not built yet, see the README).
+//!   its approval though the contract is `ended`: the approval records the
+//!   hours as usage and the next `MPW.RUL.05` run drafts the invoice
+//!   ([`crate::billing`]; an `ended` contract is billed on every run).
 //! - A request to terminate the contract that still waits for the MD is
 //!   withdrawn ([`crate::termination::withdraw_pending`]).
 
