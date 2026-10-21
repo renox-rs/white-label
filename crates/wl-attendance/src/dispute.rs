@@ -36,6 +36,9 @@
 //!   resolved upheld") and its creator is told once. It has no payroll or
 //!   billing effect. A dispute that ends `upheld` with no adjustment needs
 //!   none, and none is created.
+//!   One that is already `submitted` when the dispute ends `upheld` is refused
+//!   by `approve` and `approve_on_behalf` too ("cannot be approved"), so it
+//!   never emits `TimesheetApproved`.
 //!
 //! Decisions:
 //!

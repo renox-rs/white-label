@@ -198,6 +198,57 @@ async fn att09_an_adjustment_cannot_be_submitted_after_its_dispute_is_upheld() {
     assert!(t.posted.all().is_empty());
 }
 
+/// Regression for AC3: J was already `submitted` when its dispute ended
+/// `upheld`; neither `approve` nor `approve_on_behalf` is accepted, J stays
+/// `submitted`, and no `TimesheetApproved` or cost is emitted.
+#[renox::test]
+async fn att09_a_submitted_adjustment_cannot_be_approved_after_its_dispute_is_upheld() {
+    let t = boot().await;
+    let a_user = t.user_with("Amal", "adjuster").await;
+    let approver = t.user_with("Bilal", "approver").await;
+    let account_manager = t.user_with("Carla", "account_manager").await;
+    let keeper = t.user_with("Tariq", "timekeeper").await;
+
+    for kind in [ApproverKind::Internal, ApproverKind::External] {
+        let original = locked_eight_hours(&t, t.employee(1, &[]), &project(5), kind).await;
+        t.disputes.open(7, 1);
+        let j = open_j(&t, &a_user, &original).await;
+        post_to(&t, &keeper, &j, "submit", &[("x", "y")])
+            .await
+            .assert_ok();
+        assert_eq!(t.reload_sheet(&j).await.status, TimesheetStatus::Submitted);
+
+        t.state()
+            .emit(resolved(DisputeOutcome::Upheld, None))
+            .await
+            .unwrap();
+        assert!(t.reload_sheet(&j).await.dispute_upheld_at.is_some());
+
+        if kind == ApproverKind::Internal {
+            post_to(&t, &approver, &j, "approve", &[("x", "y")])
+                .await
+                .assert_status(422);
+        } else {
+            post_to(
+                &t,
+                &account_manager,
+                &j,
+                "approve-on-behalf",
+                &[
+                    ("document_id", "41"),
+                    ("approver_name", "Omar Client"),
+                    ("signed_on", "2026-11-09"),
+                ],
+            )
+            .await
+            .assert_status(422);
+        }
+        assert_eq!(t.reload_sheet(&j).await.status, TimesheetStatus::Submitted);
+    }
+    assert!(t.approved.all().is_empty());
+    assert!(t.posted.all().is_empty());
+}
+
 /// An adjustment that was already approved when its dispute ends `upheld` is
 /// left as it is and its creator is not told.
 #[renox::test]

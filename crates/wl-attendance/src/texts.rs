@@ -259,6 +259,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.adjustment.dispute_upheld",
         "The invoice dispute was resolved upheld, so this adjustment has no effect and cannot be submitted.",
     ),
+    (
+        "wl_attendance.adjustment.dispute_upheld_approve",
+        "The invoice dispute was resolved upheld, so this adjustment has no effect and cannot be approved.",
+    ),
     // An external timesheet nobody answers (`HRM.RUL.15`, BL-ATT-10).
     (
         "wl_attendance.escalation.task_title",

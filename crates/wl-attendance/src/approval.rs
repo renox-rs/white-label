@@ -173,6 +173,19 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
                 let checked = check_creator(sheet, ctx);
                 Box::pin(async move { checked })
             })
+            .guard("dispute_not_upheld", |sheet: &Timesheet, _ctx| {
+                // An adjustment of a client dispute that ended `upheld` has
+                // no payroll or billing effect and is not approved either
+                // (`crate::dispute`, BL-ATT-09).
+                let upheld = sheet.dispute_upheld_at.is_some();
+                Box::pin(async move {
+                    if upheld {
+                        Err(english("wl_attendance.adjustment.dispute_upheld_approve", &[]))
+                    } else {
+                        Ok(())
+                    }
+                })
+            })
             .effect(|sheet: &Timesheet, ctx, tx| {
                 let sheet = sheet.clone();
                 let by = ctx.actor().map(|user| user.id);
@@ -208,6 +221,19 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
             .guard("creator_is_not_approver", |sheet: &Timesheet, ctx| {
                 let checked = check_creator(sheet, ctx);
                 Box::pin(async move { checked })
+            })
+            .guard("dispute_not_upheld", |sheet: &Timesheet, _ctx| {
+                // An adjustment of a client dispute that ended `upheld` has
+                // no payroll or billing effect and is not approved either
+                // (`crate::dispute`, BL-ATT-09).
+                let upheld = sheet.dispute_upheld_at.is_some();
+                Box::pin(async move {
+                    if upheld {
+                        Err(english("wl_attendance.adjustment.dispute_upheld_approve", &[]))
+                    } else {
+                        Ok(())
+                    }
+                })
             })
             .effect(|sheet: &Timesheet, ctx, tx| {
                 let sheet = sheet.clone();
