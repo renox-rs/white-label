@@ -8,13 +8,13 @@
 mod support;
 
 use renox::prelude::*;
-use wl_inventory::StockMovement;
+use wl_inventory::{LotStatus, StockMovement};
 use wl_scheduling::Refusal;
 use wl_scheduling::service::{self, Actor};
 
 use clinics::ChargeLine;
 use support::desk::desk_with_stock;
-use support::stock::{issued, open_visit, record, store};
+use support::stock::{date, issued, lot, open_visit, receive, record, store};
 use support::{at, day};
 
 /// Done when 1: given the filler lots L1 (2027-01-31) and L2 (2027-03-31) at
@@ -240,4 +240,77 @@ async fn a_consumable_the_stock_does_not_know_is_only_a_charge() {
     .assert_ok();
     d.complete(&booking).await;
     assert!(issued(&d, &visit).await.is_empty());
+}
+
+/// An expired lot is never offered: it is not proposed (although its expiry
+/// is the earliest), the pick refuses it, `POST /lots` refuses it and so
+/// does a new charge line naming it; the stock then leaves with L1.
+#[renox::test]
+async fn an_expired_lot_is_not_proposed_and_is_refused() {
+    let d = desk_with_stock().await;
+    let s = store(&d, 2, 2).await;
+    let expired = lot(&d, &s.item, "L0", date(2020, 1, 31), LotStatus::Released).await;
+    receive(&d, &s, &expired, 5).await;
+    let (booking, visit) = open_visit(&d).await;
+
+    // Proposed: L1, not the earlier-expiring L0.
+    let page = d
+        .get(
+            &d.rita,
+            &format!("/clinics/visits/{}?code=filler", visit.id),
+        )
+        .await;
+    page.assert_ok().assert_see("L1");
+    assert!(!page.text().contains("L0"), "{}", page.text());
+
+    // A new line naming it is refused, nothing is recorded.
+    let refused = record(&d, &visit, 1, "L0").await;
+    refused.assert_status(422);
+    assert!(
+        refused.text().contains("cannot be issued"),
+        "{}",
+        refused.text()
+    );
+    assert!(
+        ChargeLine::active_of(d.t.db(), visit.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // So is `POST /lots` for a line that has none yet.
+    record(&d, &visit, 1, "").await.assert_ok();
+    let line = ChargeLine::active_of(d.t.db(), visit.id)
+        .await
+        .unwrap()
+        .remove(0);
+    let refused = d
+        .post(
+            &d.rita,
+            &format!("/clinics/visits/{}/lots", visit.id),
+            &[("line", line.id.to_string().as_str()), ("lot", "l0")],
+        )
+        .await;
+    refused.assert_status(422);
+    assert!(
+        refused.text().contains("cannot be issued"),
+        "{}",
+        refused.text()
+    );
+    let line = ChargeLine::find_or_404(d.t.db(), line.id).await.unwrap();
+    assert_eq!(line.lot_id, None);
+
+    // The check-out takes the lot with the earliest expiry that can be issued.
+    d.post(
+        &d.rita,
+        &format!("/clinics/visits/{}/lots", visit.id),
+        &[("line", line.id.to_string().as_str()), ("lot", "")],
+    )
+    .await
+    .assert_ok();
+    d.complete(&booking).await;
+    assert_eq!(
+        issued(&d, &visit).await,
+        vec![(Some("L1".to_owned()), 1, false)]
+    );
 }
