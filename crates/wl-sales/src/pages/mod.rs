@@ -13,6 +13,7 @@ pub mod redeem;
 pub mod report;
 pub mod sales_orders;
 pub mod sales_returns;
+pub mod segments;
 
 use renox::prelude::*;
 
@@ -32,4 +33,5 @@ pub fn routes() -> Routes {
         .merge(report::routes())
         .merge(sales_orders::routes())
         .merge(sales_returns::routes())
+        .merge(segments::routes())
 }

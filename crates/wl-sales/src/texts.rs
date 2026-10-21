@@ -1083,6 +1083,394 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.errors.date", "Give a date such as 2026-12-31."),
     ("wl_sales.loyalty.why.expire", "the points expired"),
     ("wl_sales.loyalty.reminder", "Expiry reminder"),
+    (
+        "wl_sales.segments.title",
+        "Customer segments",
+    ),
+    (
+        "wl_sales.segments.subtitle",
+        "Saved rules that pick customers for a retention campaign. The members are worked out each time a segment is used.",
+    ),
+    (
+        "wl_sales.segments.new_title",
+        "New segment",
+    ),
+    (
+        "wl_sales.segments.name",
+        "Name",
+    ),
+    (
+        "wl_sales.segments.match",
+        "Customers must meet",
+    ),
+    (
+        "wl_sales.segments.rules",
+        "Rules",
+    ),
+    (
+        "wl_sales.segments.count",
+        "Last count (estimate)",
+    ),
+    (
+        "wl_sales.segments.empty",
+        "No segments yet",
+    ),
+    (
+        "wl_sales.segments.saved",
+        "Segment saved.",
+    ),
+    (
+        "wl_sales.segments.previewed",
+        "About :count customers match now. The count is an estimate; the segment is worked out again at send time.",
+    ),
+    (
+        "wl_sales.segments.preview",
+        "Count the members now",
+    ),
+    (
+        "wl_sales.segments.export",
+        "Export the members",
+    ),
+    (
+        "wl_sales.segments.members",
+        "Members",
+    ),
+    (
+        "wl_sales.segments.estimate",
+        "Estimate at the last count:",
+    ),
+    (
+        "wl_sales.segments.save",
+        "Save the segment",
+    ),
+    (
+        "wl_sales.segments.mode.all",
+        "All of the rules",
+    ),
+    (
+        "wl_sales.segments.mode.any",
+        "Any of the rules",
+    ),
+    (
+        "wl_sales.segments.enrolled.yes",
+        "Enrolled in loyalty",
+    ),
+    (
+        "wl_sales.segments.enrolled.no",
+        "Not enrolled in loyalty",
+    ),
+    (
+        "wl_sales.segments.errors.number",
+        "Give a whole number.",
+    ),
+    (
+        "wl_sales.segments.errors.amount",
+        "Give an amount such as 500 or 500.00.",
+    ),
+    (
+        "wl_sales.segments.q.no_sale_days",
+        "No sale for at least this many days",
+    ),
+    (
+        "wl_sales.segments.q.spend_amount",
+        "Spent more than (AED, before VAT)",
+    ),
+    (
+        "wl_sales.segments.q.spend_days",
+        "... in the last days (default 365)",
+    ),
+    (
+        "wl_sales.segments.q.sales_count",
+        "At least this many sales",
+    ),
+    (
+        "wl_sales.segments.q.sales_days",
+        "... in the last days (default 365)",
+    ),
+    (
+        "wl_sales.segments.q.item",
+        "Bought the item",
+    ),
+    (
+        "wl_sales.segments.q.item_days",
+        "... within the last days (empty: ever)",
+    ),
+    (
+        "wl_sales.segments.q.balance",
+        "Loyalty balance of at least (points)",
+    ),
+    (
+        "wl_sales.segments.q.credits",
+        "Package credits left, at least",
+    ),
+    (
+        "wl_sales.segments.q.enrolled",
+        "Loyalty membership",
+    ),
+    (
+        "wl_sales.segments.q.any",
+        "Not used",
+    ),
+    (
+        "wl_sales.segments.rule.no_sale_for_days",
+        "No sale for :days days or more",
+    ),
+    (
+        "wl_sales.segments.rule.spend_over",
+        "Spent more than :amount in the last :days days",
+    ),
+    (
+        "wl_sales.segments.rule.sales_at_least",
+        "At least :count sales in the last :days days",
+    ),
+    (
+        "wl_sales.segments.rule.bought_item",
+        "Bought :item",
+    ),
+    (
+        "wl_sales.segments.rule.bought_item_within",
+        "Bought :item in the last :days days",
+    ),
+    (
+        "wl_sales.segments.rule.loyalty_balance",
+        "Loyalty balance of :points points or more",
+    ),
+    (
+        "wl_sales.segments.rule.package_credits",
+        ":credits package credits or more left",
+    ),
+    (
+        "wl_sales.segments.rule.enrolled",
+        "Enrolled in loyalty",
+    ),
+    (
+        "wl_sales.segments.rule.not_enrolled",
+        "Not enrolled in loyalty",
+    ),
+    (
+        "wl_sales.segments.rule.vertical",
+        "Rule :name",
+    ),
+    (
+        "wl_sales.segments.problem.name",
+        "Give the segment a name.",
+    ),
+    (
+        "wl_sales.segments.problem.name_taken",
+        "Another segment has this name.",
+    ),
+    (
+        "wl_sales.segments.problem.no_rules",
+        "Give at least one rule: a segment with none would pick everybody.",
+    ),
+    (
+        "wl_sales.segments.problem.days",
+        "The days must be 1 or more.",
+    ),
+    (
+        "wl_sales.segments.problem.spend",
+        "The amount cannot be negative and the days must be 1 or more.",
+    ),
+    (
+        "wl_sales.segments.problem.count",
+        "The number of sales and the days must be 1 or more.",
+    ),
+    (
+        "wl_sales.segments.problem.item",
+        "Name the item; the days, when given, must be 1 or more.",
+    ),
+    (
+        "wl_sales.segments.problem.points",
+        "The points cannot be negative.",
+    ),
+    (
+        "wl_sales.segments.problem.credits",
+        "The credits must be 1 or more.",
+    ),
+    (
+        "wl_sales.segments.problem.vertical",
+        "Name the kind of rule.",
+    ),
+    (
+        "wl_sales.segments.problem.clinical",
+        ":item is a clinical service; segments may not use clinical services.",
+    ),
+    (
+        "wl_sales.segments.problem.not_found",
+        "There is no such segment.",
+    ),
+    (
+        "wl_sales.retention.title",
+        "Retention message",
+    ),
+    (
+        "wl_sales.retention.requester",
+        "Requested for",
+    ),
+    (
+        "wl_sales.retention.state",
+        "Broadcast",
+    ),
+    (
+        "wl_sales.retention.state.none",
+        "Not requested",
+    ),
+    (
+        "wl_sales.retention.state.requested",
+        "Requested: waiting or scheduled",
+    ),
+    (
+        "wl_sales.retention.state.completed",
+        "Sent",
+    ),
+    (
+        "wl_sales.retention.state.cancelled",
+        "Not sent",
+    ),
+    (
+        "wl_sales.retention.state.failed",
+        "Not sent",
+    ),
+    (
+        "wl_sales.retention.recipients",
+        "Recipients",
+    ),
+    (
+        "wl_sales.retention.delivered",
+        "Delivered",
+    ),
+    (
+        "wl_sales.retention.opted_out",
+        "Opted out",
+    ),
+    (
+        "wl_sales.retention.returned",
+        "Returned",
+    ),
+    (
+        "wl_sales.retention.days",
+        "days",
+    ),
+    (
+        "wl_sales.retention.returned_value",
+        "Sales of returned customers before VAT",
+    ),
+    (
+        "wl_sales.retention.cost",
+        "Campaign cost",
+    ),
+    (
+        "wl_sales.retention.excluded",
+        "Left out, by reason",
+    ),
+    (
+        "wl_sales.retention.reason",
+        "Reason",
+    ),
+    (
+        "wl_sales.retention.count",
+        "Customers",
+    ),
+    (
+        "wl_sales.retention.no_excluded",
+        "Nobody left out",
+    ),
+    (
+        "wl_sales.retention.not_sent",
+        "Not sent",
+    ),
+    (
+        "wl_sales.retention.request_again",
+        "Request the broadcast again",
+    ),
+    (
+        "wl_sales.retention.requested",
+        "The broadcast was requested.",
+    ),
+    (
+        "wl_sales.retention.not_sent_toast",
+        "The broadcast was refused; the reason is shown on the campaign.",
+    ),
+    (
+        "wl_sales.retention.reason.campaign_ended",
+        "The campaign ended",
+    ),
+    (
+        "wl_sales.retention.reason.requester_guard_failed",
+        "The campaign no longer allowed the send",
+    ),
+    (
+        "wl_sales.retention.reason.approval_expired",
+        "Nobody approved it in time",
+    ),
+    (
+        "wl_sales.retention.reason.rejected",
+        "Rejected",
+    ),
+    (
+        "wl_sales.retention.reason.cancelled",
+        "Cancelled",
+    ),
+    (
+        "wl_sales.retention.excluded.no_consent",
+        "No marketing consent",
+    ),
+    (
+        "wl_sales.retention.excluded.opted_out",
+        "Opted out",
+    ),
+    (
+        "wl_sales.retention.excluded.blocked_party",
+        "On hold, archived or merged",
+    ),
+    (
+        "wl_sales.retention.excluded.suppressed_address",
+        "Address suppressed",
+    ),
+    (
+        "wl_sales.retention.excluded.no_contact_point",
+        "No contact point",
+    ),
+    (
+        "wl_sales.retention.excluded.frequency_cap",
+        "Frequency cap",
+    ),
+    (
+        "wl_sales.retention.excluded.expired",
+        "Too late to send",
+    ),
+    (
+        "wl_sales.retention.excluded.broadcast_stopped",
+        "Broadcast stopped",
+    ),
+    (
+        "wl_sales.retention.problem.not_found",
+        "There is no such campaign.",
+    ),
+    (
+        "wl_sales.retention.problem.not_retention",
+        "Only a retention campaign sends a message.",
+    ),
+    (
+        "wl_sales.retention.problem.not_active",
+        "The campaign is not active.",
+    ),
+    (
+        "wl_sales.retention.problem.incomplete",
+        "Set the segment, template, channel and send time first.",
+    ),
+    (
+        "wl_sales.retention.problem.open",
+        "A broadcast is already requested for this campaign.",
+    ),
+    (
+        "wl_sales.retention.problem.already_sent",
+        "This campaign has sent its message. A new campaign is needed to send again.",
+    ),
+    (
+        "wl_sales.retention.problem.channel",
+        "The message channel is not one wl-notify knows.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
