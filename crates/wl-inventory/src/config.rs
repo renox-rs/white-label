@@ -69,6 +69,10 @@ impl Default for ScoreSettings {
     }
 }
 
+/// The hours a pending issue may stay open before it is escalated by
+/// default (`STK.RUL.06`).
+pub const DEFAULT_PENDING_ALERT_HOURS: i64 = 24;
+
 /// The rejection reasons by default (§7).
 pub const DEFAULT_REASONS: &[&str] = &[
     "temperature",
@@ -121,6 +125,10 @@ pub struct InventoryConfig {
     /// person (`STK.ACL.07`, §7 *Second person for a preferred supplier
     /// change*, default on).
     pub preferred_change_needs_approval: bool,
+    /// The hours a pending issue or a negative balance may stay open before
+    /// the storekeeper gets a task and the manager is told (`STK.RUL.06`,
+    /// H = 24).
+    pub pending_alert_hours: i64,
 }
 
 impl InventoryConfig {
@@ -141,6 +149,7 @@ impl Default for InventoryConfig {
             order_limits_fils: DEFAULT_ORDER_LIMITS_FILS.to_vec(),
             score: ScoreSettings::default(),
             preferred_change_needs_approval: true,
+            pending_alert_hours: DEFAULT_PENDING_ALERT_HOURS,
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {
@@ -176,5 +185,6 @@ mod tests {
         assert_eq!(config.score.threshold, 70);
         assert_eq!(config.score.min_receipts, 3);
         assert!(config.preferred_change_needs_approval);
+        assert_eq!(config.pending_alert_hours, 24);
     }
 }

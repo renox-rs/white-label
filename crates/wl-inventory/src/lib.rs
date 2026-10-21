@@ -31,6 +31,7 @@ pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
 pub mod scope_stock;
+pub mod shortage_alert;
 pub mod stock_count;
 pub mod stock_hold;
 pub mod stock_service;
@@ -69,6 +70,7 @@ pub use receipt_reverse::reverse;
 pub use reorder::{ReorderSuggestion, SuggestionStatus};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
+pub use shortage_alert::ShortageAlert;
 pub use stock_count::{StockCount, StockCountStatus};
 pub use stock_hold::{HoldScope, HoldStatus, StockHold, StockHoldItem, StockHoldLine};
 pub use supplier_return::{
@@ -191,6 +193,14 @@ impl WlInventory {
         self
     }
 
+    /// The hours a pending issue or a negative balance may stay open before
+    /// the storekeeper gets a task and the manager is told (default 24;
+    /// `STK.RUL.06`).
+    pub fn pending_alert_hours(mut self, hours: i64) -> Self {
+        self.config.pending_alert_hours = hours.max(1);
+        self
+    }
+
     /// The settings of the supplier score: weights, caps, grace days, window,
     /// minimum receipts and the threshold (defaults in [`ScoreSettings`]).
     pub fn supplier_score(mut self, settings: ScoreSettings) -> Self {
@@ -280,6 +290,7 @@ impl Module for WlInventory {
         app.model::<StockHoldLine>();
         app.model::<StockHoldItem>();
         app.model::<PendingIssue>();
+        app.model::<ShortageAlert>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
         app.model::<SupplierReturn>();
@@ -388,6 +399,10 @@ impl Module for WlInventory {
         // stock at a location (06: an out-of-range reading).
         wl_kernel::inventory::provide_stock_hold_service(app, hold_service::InventoryHolds);
         hold_service::register_types();
+        // `STK.RUL.06`: the storekeeper is told when stock runs short, and
+        // after H hours gets a task and the manager is told.
+        shortage_alert::register_types();
+        shortage_alert::schedule(app);
         // `StockService`: another module consumes stock automatically; the
         // short part becomes a pending issue. Clearing one above the value
         // (`STK.ACL.02`) needs a second holder of `stock.approve`.
@@ -419,6 +434,11 @@ impl Module for WlInventory {
         // `STK.ACL.07`: the notice to the requester of a preferred supplier
         // change that was decided.
         preferred_change::register_types();
+        app.listen(
+            |event: wl_kernel::inventory::StockNegative, state: AppState| async move {
+                shortage_alert::on_negative(&state, &event).await
+            },
+        );
         app.listen(
             |event: wl_kernel::invoicing::SupplierDebitNoteIssued, state: AppState| async move {
                 supplier_score::on_debit_note_issued(&state, &event).await

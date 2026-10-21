@@ -651,6 +651,35 @@ const TEXTS: &[(&str, &str)] = &[
         "Only {{ available }} of {{ item }} is available here, {{ quantity }} is needed.",
     ),
     ("wl_inventory.issue.done", "Stock issued."),
+    // `STK.RUL.06`: stock that is short.
+    (
+        "wl_inventory.short.subject",
+        "{{ item }} is short at {{ location }}",
+    ),
+    (
+        "wl_inventory.short.body",
+        "{{ quantity }} of {{ item }} could not be taken at {{ location }} for {{ source }} and is a pending issue. It posts by itself when stock arrives, or clear it after a count.",
+    ),
+    (
+        "wl_inventory.short.overdue_subject",
+        "{{ item }} still short at {{ location }}",
+    ),
+    (
+        "wl_inventory.short.overdue_body",
+        "{{ item }} has been short at {{ location }} for {{ hours }} hours or more. The storekeeper has a task to count or clear it.",
+    ),
+    (
+        "wl_inventory.short.task_title",
+        "Count or clear {{ item }} at {{ location }}",
+    ),
+    (
+        "wl_inventory.short.task_body",
+        "{{ item }} has been short at {{ location }} for {{ hours }} hours or more. Count the stock, or clear the pending issues with a reason.",
+    ),
+    (
+        "wl_inventory.short.task_done",
+        "The shortage is over.",
+    ),
     // Pending issues.
     (
         "wl_inventory.pending.not_covered",
