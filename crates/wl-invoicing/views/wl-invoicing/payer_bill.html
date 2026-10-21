@@ -98,5 +98,11 @@
       <rx-column :label="tx['payer_bill.recoup.deducted']" hide-narrow>{{ item.deducted }}</rx-column>
       <rx-column :label="tx['payer_bill.recoup.carrier']" hide-narrow>{{ item.carrier }}</rx-column>
     </rx-table>
+    <rx-table rx-if="credit_movements" :rows="credit_movements" as="item" :key="item.id" :caption="tx['payer_bill.sections.credit']" card>
+      <rx-column :label="tx['payer_bill.credit.kind']">{{ item.kind }}</rx-column>
+      <rx-column :label="tx['payer_bill.credit.amount']">{{ item.amount }}</rx-column>
+      <rx-column :label="tx['payer_bill.credit.refund']" hide-narrow><a rx-if="item.refund" href="{{ item.refund }}">{{ item.refund }}</a></rx-column>
+      <rx-column :label="tx['payer_bill.credit.approved_by']" hide-narrow>{{ item.approved_by }}</rx-column>
+    </rx-table>
   </rx-stack>
 </rx-page>

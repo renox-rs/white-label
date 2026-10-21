@@ -86,6 +86,7 @@ mod payer_bill_pages;
 pub mod payer_closing;
 pub mod payer_contract;
 pub mod payer_credit;
+pub mod payer_credit_refund;
 pub mod payer_issue;
 mod payer_notices;
 pub mod payer_policy;
@@ -1072,6 +1073,10 @@ impl Module for WlInvoicing {
         payer_bill_machine::register_events(app);
         // Verticals make and drive payer bills through the kernel (§6).
         wl_kernel::payer_bills::provide_payer_bills(app, PayerBilling);
+        // The balance wl-payments reads before a refund of it is asked, and
+        // the refund movements that follow its approval or its failure.
+        wl_kernel::payer_bills::provide_payer_credits(app, payer_credit_refund::Credits);
+        payer_credit_refund::register(app);
         // `FIN.RUL.17`, the cost reversal and the supplier notice of `issue`,
         // and the debit notes other modules draft and read through the kernel.
         debit_note_events::register_types();

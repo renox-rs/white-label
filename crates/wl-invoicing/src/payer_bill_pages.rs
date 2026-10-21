@@ -231,6 +231,18 @@ pub(crate) struct RecoupmentRow {
     reversal: bool,
 }
 
+/// One movement of the payer credit balance, as the page lists it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct CreditRow {
+    id: i64,
+    kind: String,
+    amount: String,
+    /// The wl-payments refund of a refund movement.
+    refund: String,
+    /// Whose approval of the refund is the movement's.
+    approved_by: String,
+}
+
 /// What a payer bill's page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-invoicing/payer_bill.html")]
@@ -256,6 +268,7 @@ pub(crate) struct ShowPage {
     remittances: Vec<RemittanceRow>,
     recoupments: Vec<RecoupmentRow>,
     credit: String,
+    credit_movements: Vec<CreditRow>,
     can_issue: bool,
     can_resubmit: bool,
     can_reject: bool,
@@ -341,6 +354,34 @@ async fn show(
         &bill.currency,
     )
     .await?;
+    let mut credit_movements = Vec::new();
+    for movement in payer_credit::PayerCreditMovement::query()
+        .where_(payer_credit::PayerCreditMovement::PAYER_PARTY_ID.eq(bill.payer_party_id))
+        .where_(payer_credit::PayerCreditMovement::LEGAL_ENTITY_ID.eq(bill.legal_entity_id))
+        .where_(payer_credit::PayerCreditMovement::CURRENCY.eq(bill.currency.as_str()))
+        .order_by_desc(payer_credit::PayerCreditMovement::ID)
+        .limit(20)
+        .get(&state.db)
+        .await?
+    {
+        let approved_by = match movement.approved_by {
+            Some(id) => User::find(&state.db, id)
+                .await?
+                .map(|u| u.name)
+                .unwrap_or_default(),
+            None => String::new(),
+        };
+        credit_movements.push(CreditRow {
+            id: movement.id,
+            kind: text(&lang, &format!("payer_bill.credit.kind.{}", movement.kind)),
+            amount: amount_text(&bill.currency, movement.amount),
+            refund: movement
+                .refund_id
+                .map(|id| format!("/refunds/{id}"))
+                .unwrap_or_default(),
+            approved_by,
+        });
+    }
     let can_reconcile = user.has_permission(permissions::PAYER_BILLS_RECONCILE);
     let can_issue = user.has_permission(permissions::PAYER_BILLS_ISSUE);
     Ok(View::typed(ShowPage {
@@ -370,6 +411,7 @@ async fn show(
         remittances,
         recoupments,
         credit: amount_text(&bill.currency, credit),
+        credit_movements,
         can_close: user.has_permission(permissions::PAYER_BILLS_WRITE_OFF)
             && matches!(
                 bill.status,

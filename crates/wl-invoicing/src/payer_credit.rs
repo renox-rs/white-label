@@ -2,11 +2,13 @@
 //! §5.8 step 7): money a payer paid beyond what it owes. The money itself is
 //! the payer's unallocated credit in wl-payments; this module records the
 //! movements, so a recoupment can be set off against it first and a refund
-//! of it (BL-PAY-08, `RefundSource::PayerCredit`) knows what is left.
+//! of it (`RefundSource::PayerCredit`, [`crate::payer_credit_refund`]) knows
+//! what is left.
 //!
 //! A movement is signed: an approved overpayment adds, a recoupment that
-//! takes from the balance and a refund subtract. The balance is the sum of
-//! the movements of one payer, legal entity and currency.
+//! takes from the balance and a refund subtract, a failed refund adds its
+//! amount back. The balance is the sum of the movements of one payer, legal
+//! entity and currency.
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -19,6 +21,8 @@ pub const OVERPAYMENT: &str = "overpayment";
 pub const SET_OFF: &str = "set_off";
 /// The kind of a refund of the balance to the payer (subtracts).
 pub const REFUND: &str = "refund";
+/// The kind of a refund that failed (adds back what [`REFUND`] took).
+pub const REFUND_RESTORED: &str = "refund_restored";
 
 /// One movement of a payer's credit balance.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
@@ -45,6 +49,11 @@ pub struct PayerCreditMovement {
     pub remittance_id: Option<i64>,
     /// The recoupment that took it, if any.
     pub recoupment_id: Option<i64>,
+    /// The wl-payments refund it belongs to ([`REFUND`], [`REFUND_RESTORED`]).
+    pub refund_id: Option<i64>,
+    /// The user whose approval of the refund is the movement's approval
+    /// (`FIN.ACL.16`); `None` for the other kinds.
+    pub approved_by: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -93,8 +102,8 @@ mod tests {
     fn the_credit_is_a_subject_of_its_own() {
         assert_eq!(SUBJECT_TYPE, "invoicing.payer_credit");
         assert_eq!(
-            [OVERPAYMENT, SET_OFF, REFUND],
-            ["overpayment", "set_off", "refund"]
+            [OVERPAYMENT, SET_OFF, REFUND, REFUND_RESTORED],
+            ["overpayment", "set_off", "refund", "refund_restored"]
         );
     }
 }
