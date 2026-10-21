@@ -239,7 +239,7 @@ async fn a_checked_in_visit_holds_the_unit_the_next_one_would_use() {
     service::start(s.t.state(), v1.id, Actor::staff(s.rita.id), now())
         .await
         .unwrap();
-    service::complete(s.t.state(), v1.id, Actor::staff(s.rita.id), now())
+    service::complete(s.t.state(), v1.id, Actor::staff(s.rita.id), at(day(1), 14))
         .await
         .unwrap();
     assert_eq!(AuthorisationHold::held(s.t.db(), a1.id, None).await.unwrap(), 0);

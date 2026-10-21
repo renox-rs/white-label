@@ -47,11 +47,12 @@ async fn the_check_in_opens_the_visit() {
     assert_eq!(visit.number(), format!("VIS-{:04}", visit.id));
     assert_eq!(
         history_of(&t, &visit).await,
-        [("check_in".to_owned(), "checked_in".to_owned())]
+        [("insert".to_owned(), "checked_in".to_owned())]
     );
 }
 
 /// `start` and `complete` of the booking move the visit; its times are kept.
+/// The service completes only once its start time has passed.
 #[renox::test]
 async fn the_visit_follows_start_and_complete() {
     let t = boot().await;
@@ -69,7 +70,7 @@ async fn the_visit_follows_start_and_complete() {
     assert_eq!(started.status, VisitStatus::InProgress);
     assert!(started.started_at.is_some());
 
-    service::complete(t.state(), booking.id, Actor::staff(1), now())
+    service::complete(t.state(), booking.id, Actor::staff(1), at(day(1), 10))
         .await
         .expect("the service is complete");
     let done = Visit::of_booking(t.db(), booking.id).await.unwrap().unwrap();
@@ -78,7 +79,7 @@ async fn the_visit_follows_start_and_complete() {
     assert_eq!(
         history_of(&t, &done).await,
         [
-            ("check_in".to_owned(), "checked_in".to_owned()),
+            ("insert".to_owned(), "checked_in".to_owned()),
             ("start".to_owned(), "in_progress".to_owned()),
             ("complete".to_owned(), "completed".to_owned()),
         ]

@@ -10,6 +10,7 @@ use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_scheduling::service::{self, Actor};
 
+use clinics::coverage::{self, EligibilityInput};
 use clinics::policies::{self, NewPolicy};
 use clinics::{EligibilityCheck, InsurancePolicy, appointments};
 use support::{PATIENT, at, boot, day};
@@ -159,6 +160,17 @@ async fn an_appointment_takes_the_policy_of_its_patient() {
     assert!(insured.is_insured());
     assert_eq!(insured.policy_id, Some(mine.id));
 
+    // The check-in of an insured appointment needs the payer's answer and the
+    // coverage outcome.
+    coverage::record_eligibility(
+        t.state(),
+        Some(1),
+        booking.id,
+        EligibilityInput::new(true),
+        now(),
+    )
+    .await
+    .expect("a positive result sets the outcome insured");
     service::check_in(t.state(), booking.id, Actor::staff(1), now())
         .await
         .unwrap();

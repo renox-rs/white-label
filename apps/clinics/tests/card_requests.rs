@@ -50,7 +50,13 @@ impl Scene {
 
     /// An appointment on `date` at 09:00, insured with `policy`.
     async fn insured(&self, date: i64, policy: &InsurancePolicy) -> Booking {
-        let booking = self.t.book(&self.service, &self.doctor, at(day(date), 9)).await;
+        self.insured_at(date, 9, policy).await
+    }
+
+    /// Like [`insured`](Scene::insured) at `hour:00` (the doctor has one
+    /// booking at a time).
+    async fn insured_at(&self, date: i64, hour: u32, policy: &InsurancePolicy) -> Booking {
+        let booking = self.t.book(&self.service, &self.doctor, at(day(date), hour)).await;
         appointments::attach_policy(self.t.state(), booking.id, policy.id)
             .await
             .unwrap();
@@ -156,14 +162,14 @@ async fn a_valid_cover_is_left_alone_and_the_message_names_no_service() {
     assert!(s.asked().is_empty());
 
     // An insured one that needs a card: the text.
-    let booking = s.insured(5, &bad).await;
+    let booking = s.insured_at(5, 10, &bad).await;
     card_requests::run_daily(s.t.state(), at(day(3), 2)).await.unwrap();
     let asked = s.asked();
     assert_eq!(asked.len(), 1);
     let body = support::Messages::body(&asked[0]);
     assert!(body.contains("Palm Grove Clinic LLC"), "{body}");
     assert!(body.contains(&long(day(5))), "{body}");
-    assert!(body.contains("09:00"), "{body}");
+    assert!(body.contains("10:00"), "{body}");
     assert!(body.contains(&format!("/portal/link/{}/document_upload", PATIENT.0)), "{body}");
     assert!(!body.to_lowercase().contains("consultation"), "{body}");
     assert_eq!(s.flags(&booking).await.len(), 1);
