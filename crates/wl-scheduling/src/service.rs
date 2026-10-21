@@ -19,8 +19,8 @@ use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError, TransitionRecord};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::scheduling::{
-    CancelStage, CancelledBy, Eligibility, EligibilityQuery, Initiator, WorkDone,
-    resource_eligibility, work_done_status,
+    CancelStage, CancelledBy, CheckInAnswer, Eligibility, EligibilityQuery, Initiator, WorkDone,
+    check_in_guard, resource_eligibility, work_done_status,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -776,6 +776,14 @@ pub async fn check_in(
         "wl_scheduling.eligibility.hint_reassign",
     )
     .await?;
+    // The vertical may want more before the party is in (05: the coverage
+    // outcome of an insured visit, `CLN.ACL.15`).
+    if let CheckInAnswer::Refused(text) = check_in_guard(state)
+        .check(state, booking.booking_id(), at)
+        .await?
+    {
+        return Err(Refusal::Invalid(text));
+    }
     let input = input_for(state, actor, at, &service);
     let done = run_simple(state, &booking, CHECK_IN, &input, actor, None).await?;
     events::checked_in(state, &done).await?;
@@ -802,7 +810,9 @@ pub async fn start(
     )
     .await?;
     let input = input_for(state, actor, at, &service);
-    run_simple(state, &booking, START, &input, actor, None).await
+    let done = run_simple(state, &booking, START, &input, actor, None).await?;
+    events::started(state, &done).await?;
+    Ok(done)
 }
 
 /// The service took place (`complete`): by staff, the resource, or the

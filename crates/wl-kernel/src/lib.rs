@@ -189,6 +189,7 @@ pub use sales::{
     NoLeadConversion, campaign_attribution, lead_conversion, provide_campaign_attribution,
     provide_lead_conversion,
 };
+pub use sales::{NoSelfPayPrices, SelfPayPrices, provide_self_pay_prices, self_pay_prices};
 pub use sales::{
     ConsumePackage, NoPackageLedger, PACKAGE_SUBJECT_TYPE, PackageActivated, PackageConsumed,
     PackageConsumption, PackageExpired, PackageExtended, PackageId, PackageLedger, package_ledger,

@@ -6,8 +6,8 @@
 use renox::prelude::*;
 use wl_kernel::scheduling::{
     BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted, BookingNoShow,
-    BookingReassigned, BookingRescheduled, CancelStage, CancelledBy, DepositOutcome, Initiator,
-    SlotReleased,
+    BookingReassigned, BookingRescheduled, BookingStarted, CancelStage, CancelledBy,
+    DepositOutcome, Initiator, SlotReleased,
 };
 
 use crate::booking::Booking;
@@ -81,6 +81,17 @@ pub async fn checked_in(state: &AppState, booking: &Booking) -> Result {
             booking: booking.booking_id(),
             subject: booking.for_subject(),
             at: booking.checked_in_at.unwrap_or_else(renox::db::now),
+        })
+        .await
+}
+
+/// `start` began the service.
+pub async fn started(state: &AppState, booking: &Booking) -> Result {
+    state
+        .emit(BookingStarted {
+            booking: booking.booking_id(),
+            subject: booking.for_subject(),
+            at: booking.started_at.unwrap_or_else(renox::db::now),
         })
         .await
 }

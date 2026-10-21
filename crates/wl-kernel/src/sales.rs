@@ -634,6 +634,44 @@ pub fn package_ledger(state: &AppState) -> Arc<dyn PackageLedger> {
     }
 }
 
+/// The self-pay price list of the service catalogue (`SAL.CAT.01`): what a
+/// vertical quotes a party who pays a service itself, such as the estimate on
+/// the self-pay consent of 05 (`CLN.ACL.15`). `wl-sales` provides it once the
+/// catalogue is built; until then there is no price for any service.
+pub trait SelfPayPrices: Send + Sync + 'static {
+    /// The self-pay price in fils of the service `code` on `on`, or `None`
+    /// when the list has none for that day. The default has no price.
+    fn price_on<'a>(
+        &'a self,
+        _db: &'a Db,
+        _code: &'a str,
+        _on: NaiveDate,
+    ) -> SalesFuture<'a, Option<i64>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The price list when nothing provides one: no service has a price.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSelfPayPrices;
+
+impl SelfPayPrices for NoSelfPayPrices {}
+
+/// Makes `prices` the app's [`SelfPayPrices`]; `wl-sales` calls it in
+/// `register` once it has the catalogue.
+pub fn provide_self_pay_prices(app: &mut Registry, prices: impl SelfPayPrices) {
+    let prices: Arc<dyn SelfPayPrices> = Arc::new(prices);
+    app.provide(prices);
+}
+
+/// The app's [`SelfPayPrices`], or [`NoSelfPayPrices`] when none is provided.
+pub fn self_pay_prices(state: &AppState) -> Arc<dyn SelfPayPrices> {
+    match state.provided::<Arc<dyn SelfPayPrices>>() {
+        Some(prices) => Arc::clone(&prices),
+        None => Arc::new(NoSelfPayPrices),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Counter sales, sales orders, sales returns and loyalty points (wl-sales
 // §4.2, §4.3, §4.5, §4.7, §6; base for BL-SAL-22).

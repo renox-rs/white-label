@@ -4,7 +4,7 @@
 //!
 //! A booking is the subject `scheduling.booking:N` ([`BOOKING_SUBJECT_TYPE`]).
 //! `wl-scheduling` emits [`BookingBooked`], [`BookingRescheduled`],
-//! [`BookingCheckedIn`], [`BookingCompleted`], [`BookingNoShow`],
+//! [`BookingCheckedIn`], [`BookingStarted`], [`BookingCompleted`], [`BookingNoShow`],
 //! [`BookingReassigned`], [`BookingCancelled`] and [`SlotReleased`] after the transaction that
 //! changed the booking has committed. A vertical opens its own record on
 //! [`BookingCheckedIn`] (a visit, a job card) and consumes a package credit on
@@ -13,6 +13,10 @@
 //! [`WorkDoneStatus`] is the vertical's answer to "what was done for this
 //! booking?" (`SCH.ACL.06`): a booking that is checked in is cancelled only
 //! once the visit or job card has its work done captured or marked none.
+//!
+//! [`CheckInGuard`] lets a vertical refuse a check-in (05 asks for the
+//! coverage outcome of an insured visit); [`BookingStarted`] tells it the
+//! service began.
 //!
 //! [`BookingConflict`] is emitted when a new block or a lapsing licence puts
 //! bookings in conflict; [`AvailabilitySource`] supplies other modules' blocks.
@@ -227,6 +231,19 @@ pub struct BookingCheckedIn {
 
 impl Event for BookingCheckedIn {}
 
+/// The service started (`start`): the party is with the resource.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookingStarted {
+    /// The booking.
+    pub booking: BookingId,
+    /// The patient, vehicle or student.
+    pub subject: Option<Subject>,
+    /// When the service started.
+    pub at: DateTime,
+}
+
+impl Event for BookingStarted {}
+
 /// The service took place (`complete`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BookingCompleted {
@@ -422,6 +439,52 @@ pub fn resource_eligibility(state: &AppState) -> Arc<dyn ResourceEligibility> {
     match state.provided::<Arc<dyn ResourceEligibility>>() {
         Some(found) => Arc::clone(&found),
         None => Arc::new(NoResourceEligibility),
+    }
+}
+
+/// The answer of a [`CheckInGuard`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CheckInAnswer {
+    /// The party may be checked in.
+    Allowed,
+    /// The party may not; the text is safe to show to the staff who check in.
+    Refused(String),
+}
+
+/// May this party be checked in (wl-scheduling §4.1 `check_in`)? The
+/// vertical answers from what it holds about the booking: 05 wants the
+/// coverage outcome of an insured visit (`CLN.ACL.15`). The default allows
+/// every check-in.
+pub trait CheckInGuard: Send + Sync + 'static {
+    /// Whether `booking` may be checked in at `at`.
+    fn check<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+        _at: DateTime,
+    ) -> SchedulingFuture<'a, CheckInAnswer> {
+        Box::pin(async { Ok(CheckInAnswer::Allowed) })
+    }
+}
+
+/// The guard when no vertical provides one: every check-in is allowed.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCheckInGuard;
+
+impl CheckInGuard for NoCheckInGuard {}
+
+/// Makes `guard` the app's [`CheckInGuard`]; a vertical calls it in
+/// `register`.
+pub fn provide_check_in_guard(app: &mut Registry, guard: impl CheckInGuard) {
+    let guard: Arc<dyn CheckInGuard> = Arc::new(guard);
+    app.provide(guard);
+}
+
+/// The app's [`CheckInGuard`], or [`NoCheckInGuard`].
+pub fn check_in_guard(state: &AppState) -> Arc<dyn CheckInGuard> {
+    match state.provided::<Arc<dyn CheckInGuard>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoCheckInGuard),
     }
 }
 
