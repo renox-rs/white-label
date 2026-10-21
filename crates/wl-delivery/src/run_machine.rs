@@ -2,12 +2,15 @@
 //!
 //! ```text
 //! [*] --> planned --dispatch--> dispatched --return_to_depot--> returned_to_depot --close--> closed
+//! dispatched --hand_over (the receiving driver confirms)--> dispatched
+//! dispatched --abort / abort_by_driver--> returned_to_depot
 //! ```
 //!
-//! `cancelled` is declared for the run `cancel` of a later issue; `abort`
-//! and `hand_over` (BL-DLV-08, BL-DLV-09) come with theirs. `return_to_depot`
-//! and `close` are in [`crate::close`] (BL-DLV-11); the states are declared
-//! so the diagram is whole. The
+//! `cancelled` is declared for the run `cancel` of a later issue.
+//! `hand_over` is in [`crate::hand_over`] (BL-DLV-09), `abort` and
+//! `abort_by_driver` in [`crate::abort`] (BL-DLV-08), `return_to_depot` and
+//! `close` in [`crate::close`] (BL-DLV-11); the states are declared so the
+//! diagram is whole. The
 //! driver and vehicle document guard of `dispatch` runs before the
 //! transition ([`crate::doc_guard`]), because a Renox guard gets no
 //! `AppState`.
@@ -50,6 +53,8 @@ impl StateMachine for Run {
             );
         crate::close::transitions()
             .into_iter()
+            .chain(crate::hand_over::transitions())
+            .chain(crate::abort::transitions())
             .fold(machine, Machine::transition)
     }
 }

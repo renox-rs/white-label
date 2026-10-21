@@ -55,6 +55,12 @@ pub struct DeliverySettings {
     /// Whether the driver's cash period leaves the escalation of the
     /// payments module to a vertical rule (03: `LOG.RUL.13`).
     replace_cash_escalation: bool,
+    /// Whether the receiving driver counts the cash at a hand-over (§7:
+    /// on); off, the custody amount moves as recorded.
+    hand_over_counts_cash: bool,
+    /// The abort reasons a vertical adds to breakdown, accident, driver
+    /// unwell, weather and other (03: `driver_unreachable`).
+    extra_abort_reasons: Vec<String>,
 }
 
 impl Default for DeliverySettings {
@@ -68,6 +74,8 @@ impl Default for DeliverySettings {
             cod_approval_minutes: DEFAULT_COD_APPROVAL_MINUTES,
             cod_absorbers: ALL_ABSORBERS.to_vec(),
             replace_cash_escalation: false,
+            hand_over_counts_cash: true,
+            extra_abort_reasons: Vec::new(),
         }
     }
 }
@@ -115,6 +123,31 @@ impl DeliverySettings {
     /// rule.
     pub fn set_replace_cash_escalation(&mut self, replaced: bool) {
         self.replace_cash_escalation = replaced;
+    }
+
+    /// Makes the receiving driver count the cash at a hand-over (`true`, §7)
+    /// or lets the custody amount move as recorded (`false`).
+    pub fn set_hand_over_counts_cash(&mut self, on: bool) {
+        self.hand_over_counts_cash = on;
+    }
+
+    /// Adds abort reasons beyond the five of the spec.
+    pub fn set_extra_abort_reasons(&mut self, reasons: &[&str]) {
+        self.extra_abort_reasons = reasons.iter().map(|r| (*r).to_owned()).collect();
+    }
+
+    /// Whether the receiving driver counts the cash at a hand-over.
+    pub fn hand_over_counts_cash(&self) -> bool {
+        self.hand_over_counts_cash
+    }
+
+    /// The abort reason codes: the five of the spec, then the vertical's.
+    pub fn abort_reasons(&self) -> Vec<String> {
+        ["breakdown", "accident", "driver_unwell", "weather", "other"]
+            .iter()
+            .map(|r| (*r).to_owned())
+            .chain(self.extra_abort_reasons.iter().cloned())
+            .collect()
     }
 
     /// Whether a short payment above the tolerance may be approved.
@@ -192,6 +225,17 @@ mod tests {
         assert_eq!(settings.cod_approval_minutes(), 10);
         assert!(settings.offers_absorber(CodAbsorber::Customer));
         assert!(!settings.replace_cash_escalation());
+        assert!(settings.hand_over_counts_cash());
+        assert_eq!(settings.abort_reasons().len(), 5);
+    }
+
+    #[test]
+    fn a_vertical_adds_abort_reasons_after_the_five() {
+        let mut settings = DeliverySettings::default();
+        settings.set_extra_abort_reasons(&["driver_unreachable"]);
+        let reasons = settings.abort_reasons();
+        assert_eq!(reasons.len(), 6);
+        assert_eq!(reasons[5], "driver_unreachable");
     }
 
     #[test]

@@ -113,8 +113,8 @@ pub use delivery::{
     DeliveryAttemptFailed, DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed,
     DeliveryFound, DeliveryFuture, DeliveryId, DeliveryItem, DeliveryLost, DeliveryOutForDelivery,
     DeliveryRefusedReceived, DeliveryRequest, DeliveryRequester, DeliveryReversed, NoDeliveries,
-    PodMethod, RUN_SUBJECT_TYPE, RefusedLineReceived, ReviewOutcome, RunClosed, RunDispatched,
-    RunId, provide_requester,
+    PodMethod, RUN_SUBJECT_TYPE, RefusedLineReceived, ReviewOutcome, RunAborted, RunClosed,
+    RunDispatched, RunHandedOver, RunId, provide_requester,
 };
 pub use deposits::{
     AdjustDeposit, CancelSettlement, DeductionKind, DeductionLineView, DepositAdjusted,

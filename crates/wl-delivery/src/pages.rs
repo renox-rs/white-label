@@ -19,6 +19,10 @@
 //! | `POST /runs/{id}/receipts` | `wl_delivery.run_receipts` | `runs.dispatch` (fields `item_{delivery}_0` = `received` or `missing`; `received_{delivery}_{line}`, `missing_{delivery}_{line}`) |
 //! | `POST /runs/{id}/cash` | `wl_delivery.run_cash` | `runs.dispatch` (field `amount`; not the run's driver) |
 //! | `POST /runs/{id}/close` | `wl_delivery.run_close` | `runs.dispatch` |
+//! | `POST /runs/{id}/hand-over` | `wl_delivery.run_hand_over` | `runs.dispatch` (fields `to_run_id`, `reason`, `note`, `delivery_{id}` per open stop chosen) |
+//! | `POST /runs/{id}/abort` | `wl_delivery.run_abort` | `runs.dispatch` (fields `reason`, `note`, `ticket`: `breakdown`, `accident` or empty) |
+//! | `POST /driver/hand-overs/{id}/confirm` | `wl_delivery.hand_over_confirm` | `runs.drive` and the receiving run's driver (fields `parcel_{id}` per parcel, `cash`, `cheques`, `latitude`, `longitude`) |
+//! | `POST /driver/runs/{id}/abort` | `wl_delivery.run_driver_abort` | `runs.drive` and the run's driver (fields `reason`, `note`) |
 //! | `POST /driver/runs/{id}/return` | `wl_delivery.run_return` | `runs.drive` (the run's driver) |
 //! | `GET /driver` | `wl_delivery.driver` | `runs.drive` (today's stops of the user) |
 //! | `GET /driver/stops/{id}` | `wl_delivery.stop` | `runs.drive` (404 for anyone else's stop) |
@@ -50,10 +54,12 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::delivery::ReviewOutcome;
 use wl_kernel::documents::{dubai_text, today};
 
+use crate::abort::{self, AbortRequest};
 use crate::close;
 use crate::cod;
 use crate::day_list::{StopView, stop_of, stops_of};
 use crate::delivery::{Attempt, Delivery, DeliveryStatus};
+use crate::hand_over::{self, Confirmation, HandOver, Proposal};
 use crate::lost;
 use crate::permissions;
 use crate::plan::{self, NewRun};
@@ -146,6 +152,10 @@ pub fn routes() -> Routes {
                 .name("wl_delivery.run_cash")
                 .post("/runs/{id}/close", store_close)
                 .name("wl_delivery.run_close")
+                .post("/runs/{id}/hand-over", store_hand_over)
+                .name("wl_delivery.run_hand_over")
+                .post("/runs/{id}/abort", store_abort)
+                .name("wl_delivery.run_abort")
                 .require_permission(permissions::RUNS_DISPATCH),
         )
         .merge(
@@ -156,6 +166,10 @@ pub fn routes() -> Routes {
                 .name("wl_delivery.stop")
                 .post("/driver/runs/{id}/return", store_return)
                 .name("wl_delivery.run_return")
+                .post("/driver/runs/{id}/abort", store_driver_abort)
+                .name("wl_delivery.run_driver_abort")
+                .post("/driver/hand-overs/{id}/confirm", store_hand_over_confirm)
+                .name("wl_delivery.hand_over_confirm")
                 .require_permission(permissions::RUNS_DRIVE),
         )
         .merge(
@@ -1284,6 +1298,30 @@ pub(crate) struct RunPage {
     can_dispatch: bool,
     /// The depot's list of a run that is back; none before.
     depot: Option<DepotView>,
+    /// Whether the viewer may hand open stops over (a dispatched run).
+    can_hand_over: bool,
+    /// `(run id, label)` of the runs the stops can go to.
+    hand_over_runs: Vec<(String, String)>,
+    /// `(code, label)` of the hand-over reasons.
+    hand_over_reasons: Vec<(String, String)>,
+    /// The hand-overs of this run so far.
+    hand_overs: Vec<HandOverRow>,
+    /// Whether the viewer may abort the run.
+    can_abort: bool,
+    /// `(code, label)` of the abort reasons.
+    abort_reasons: Vec<(String, String)>,
+    /// `(value, label)` of the ticket choices of an abort.
+    abort_tickets: Vec<(String, String)>,
+}
+
+/// One hand-over of the run, as the run page lists it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct HandOverRow {
+    id: i64,
+    to_run: String,
+    reason: String,
+    status: String,
+    stops: String,
 }
 
 /// One item the depot accounts for.
@@ -1325,6 +1363,8 @@ pub(crate) struct StopRow {
     recipient: String,
     area: String,
     status: String,
+    /// Whether the stop is still out (it can be handed over).
+    open: bool,
 }
 
 /// `GET /runs/{id}`.
@@ -1351,6 +1391,7 @@ async fn run_show(
             recipient: d.recipient_name.clone(),
             area: d.area.clone(),
             status: t(&format!("status.{}", d.status.as_str())),
+            open: d.status == DeliveryStatus::OutForDelivery,
         })
         .collect();
     let card = RunCard {
@@ -1404,13 +1445,73 @@ async fn run_show(
     } else {
         None
     };
+    let dispatcher = user.has_permission(permissions::RUNS_DISPATCH);
+    let can_hand_over = dispatcher && run.status == RunStatus::Dispatched;
+    let mut hand_over_runs = Vec::new();
+    if can_hand_over {
+        for other in Run::query()
+            .where_(Run::STATUS.is_in([RunStatus::Planned, RunStatus::Dispatched]))
+            .order_by(Run::ID)
+            .get(&state.db)
+            .await?
+        {
+            if other.id == run.id || other.driver_user_id == run.driver_user_id {
+                continue;
+            }
+            let name = User::find(&state.db, other.driver_user_id)
+                .await?
+                .map_or_else(|| format!("#{}", other.driver_user_id), |u| u.name);
+            hand_over_runs.push((other.id.to_string(), format!("{} ({name})", other.number)));
+        }
+    }
+    let mut hand_overs = Vec::new();
+    for hand_over in HandOver::of_run(&state.db, run.id).await? {
+        let to_run = Run::find(&state.db, hand_over.to_run_id)
+            .await?
+            .map_or_else(|| format!("#{}", hand_over.to_run_id), |r| r.number);
+        let numbers: Vec<String> = hand_over
+            .deliveries(&state.db)
+            .await?
+            .into_iter()
+            .map(|d| d.number)
+            .collect();
+        hand_overs.push(HandOverRow {
+            id: hand_over.id,
+            to_run,
+            reason: hand_over::reason_text(&hand_over.reason),
+            status: t(if hand_over.is_confirmed() {
+                "hand_over.done"
+            } else {
+                "hand_over.pending"
+            }),
+            stops: numbers.join(", "),
+        });
+    }
+    let abort_reasons = settings(&state)
+        .abort_reasons()
+        .into_iter()
+        .map(|code| {
+            let label = t(&format!("abort.reason.{code}"));
+            (code, label)
+        })
+        .collect();
     Ok(View::typed(RunPage {
         tx: texts::all(&lang),
         status_label: t(&format!("run_status.{}", run.status.as_str())),
         status_kind: run_status_kind(run.status),
-        can_dispatch: user.has_permission(permissions::RUNS_DISPATCH)
-            && run.status == RunStatus::Planned,
+        can_dispatch: dispatcher && run.status == RunStatus::Planned,
         depot,
+        can_hand_over,
+        hand_over_runs,
+        hand_over_reasons: options(&t, "hand_over.reason", hand_over::REASONS),
+        hand_overs,
+        can_abort: dispatcher && run.status == RunStatus::Dispatched,
+        abort_reasons,
+        abort_tickets: vec![
+            (String::new(), t("abort.ticket_none")),
+            ("breakdown".to_owned(), t("abort.ticket_breakdown")),
+            ("accident".to_owned(), t("abort.ticket_accident")),
+        ],
         run,
         card,
         stops,
@@ -1436,6 +1537,139 @@ async fn store_dispatch(
         .into_response())
 }
 
+/// The ids of the fields `{prefix}{id}` that are ticked.
+fn ticked_ids(fields: &HashMap<String, String>, prefix: &str) -> Vec<i64> {
+    let mut ids: Vec<i64> = fields
+        .iter()
+        .filter(|(_, value)| !matches!(value.trim(), "" | "0" | "false" | "off"))
+        .filter_map(|(name, _)| name.strip_prefix(prefix)?.parse().ok())
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+/// `POST /runs/{id}/hand-over`: the dispatcher chooses open stops
+/// (`delivery_{id}`), the receiving run (`to_run_id`) and a reason; the
+/// receiving driver's documents are checked today (422 when one is not
+/// valid) and the hand-over waits for the receiving driver to confirm.
+async fn store_hand_over(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(run): Found<Run>,
+    Form(fields): Form<HashMap<String, String>>,
+) -> Result<Response> {
+    let to_run_id = field(&fields, "to_run_id")
+        .and_then(|text| text.parse::<i64>().ok())
+        .ok_or_else(|| unprocessable(texts::t(&lang, "wl_delivery.hand_over.to_run_unknown")))?;
+    let proposal = Proposal {
+        to_run_id,
+        reason: field(&fields, "reason").unwrap_or_default().to_owned(),
+        note: field(&fields, "note").unwrap_or_default().to_owned(),
+        delivery_ids: ticked_ids(&fields, "delivery_"),
+    };
+    hand_over::propose(&state, &user, &run, &proposal)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.hand_over.proposed")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /driver/hand-overs/{id}/confirm`: the receiving driver confirms each
+/// parcel (`parcel_{id}`), counts the cash (`cash`, AED) and lists the
+/// cheques received (`cheques`); the stops move to the driver's run.
+async fn store_hand_over_confirm(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(fields): Form<HashMap<String, String>>,
+) -> Result<Response> {
+    let hand_over = HandOver::find_or_404(&state.db, id).await?;
+    let cash = match field(&fields, "cash") {
+        None => None,
+        Some(text) => Some(
+            parse_scaled(text, 2)
+                .ok_or_else(|| unprocessable("The cash counted is not an amount.".to_owned()))?,
+        ),
+    };
+    let confirmation = Confirmation {
+        parcels: ticked_ids(&fields, "parcel_"),
+        cash,
+        cheques: field(&fields, "cheques")
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+            .map(str::to_owned)
+            .collect(),
+        location: (
+            field(&fields, "latitude").and_then(parse_degrees),
+            field(&fields, "longitude").and_then(parse_degrees),
+        ),
+    };
+    hand_over::confirm(&state, &user, &hand_over, &confirmation)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.hand_over.confirmed")),
+        Redirect::route("wl_delivery.driver", &[])?,
+    )
+        .into_response())
+}
+
+/// The abort request in the fields `reason`, `note` and `ticket`.
+fn abort_request(fields: &HashMap<String, String>) -> AbortRequest {
+    AbortRequest {
+        reason: field(fields, "reason").unwrap_or_default().to_owned(),
+        note: field(fields, "note").unwrap_or_default().to_owned(),
+        ticket: field(fields, "ticket").map(str::to_owned),
+    }
+}
+
+/// `POST /runs/{id}/abort`: the dispatcher aborts the run with a reason
+/// (*other* needs a note) and may tick a breakdown or accident ticket.
+async fn store_abort(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(run): Found<Run>,
+    Form(fields): Form<HashMap<String, String>>,
+) -> Result<Response> {
+    abort::abort_run(&state, &user, &run, &abort_request(&fields))
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.abort.aborted")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /driver/runs/{id}/abort`: the run's driver aborts it from the phone,
+/// only with a reason; no ticket is offered there.
+async fn store_driver_abort(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(run): Found<Run>,
+    Form(fields): Form<HashMap<String, String>>,
+) -> Result<Response> {
+    let mut request = abort_request(&fields);
+    request.ticket = None;
+    abort::abort_run(&state, &user, &run, &request)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.abort.aborted")),
+        Redirect::route("wl_delivery.driver", &[])?,
+    )
+        .into_response())
+}
+
 // ---------------------------------------------------------------------------
 // The driver's phone
 // ---------------------------------------------------------------------------
@@ -1450,6 +1684,21 @@ pub(crate) struct DriverPage {
     /// `(id, number)` of the driver's runs of today that are out, which the
     /// driver brings back to the depot.
     returnable: Vec<(i64, String)>,
+    /// Hand-overs waiting for the driver's confirmation.
+    waiting: Vec<WaitingRow>,
+    /// `(code, label)` of the abort reasons.
+    abort_reasons: Vec<(String, String)>,
+}
+
+/// A hand-over waiting for the receiving driver.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct WaitingRow {
+    id: i64,
+    from_run: String,
+    reason: String,
+    stops: Vec<StopRow>,
+    /// Whether the driver counts the cash (the setting).
+    counts_cash: bool,
 }
 
 /// `GET /driver`: today's stops of the signed-in driver.
@@ -1470,11 +1719,50 @@ async fn driver(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Re
         .into_iter()
         .map(|run| (run.id, run.number))
         .collect();
+    let t = texts_in(&lang);
+    let mut waiting = Vec::new();
+    for hand_over in hand_over::waiting_for(&state.db, user.id).await? {
+        let from_run = Run::find(&state.db, hand_over.run_id)
+            .await?
+            .map_or_else(|| format!("#{}", hand_over.run_id), |r| r.number);
+        let stops = hand_over
+            .deliveries(&state.db)
+            .await?
+            .into_iter()
+            .filter(|d| d.status == DeliveryStatus::OutForDelivery)
+            .map(|d| StopRow {
+                id: d.id,
+                sequence: d.run_sequence.unwrap_or_default(),
+                number: d.number.clone(),
+                recipient: d.recipient_name.clone(),
+                area: d.area.clone(),
+                status: t(&format!("status.{}", d.status.as_str())),
+                open: true,
+            })
+            .collect();
+        waiting.push(WaitingRow {
+            id: hand_over.id,
+            from_run,
+            reason: hand_over::reason_text(&hand_over.reason),
+            stops,
+            counts_cash: settings(&state).hand_over_counts_cash(),
+        });
+    }
+    let abort_reasons = settings(&state)
+        .abort_reasons()
+        .into_iter()
+        .map(|code| {
+            let label = t(&format!("abort.reason.{code}"));
+            (code, label)
+        })
+        .collect();
     Ok(View::typed(DriverPage {
         tx: texts::all(&lang),
         today: day.format("%Y-%m-%d").to_string(),
         stops,
         returnable,
+        waiting,
+        abort_reasons,
     }))
 }
 

@@ -28,17 +28,19 @@ use wl_kernel::{
     DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryItem, DeliveryLost,
     DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequest, DeliveryReversed, PodMethod,
     RunClosed,
-    RunDispatched, Subject,
+    RunAborted, RunDispatched, RunHandedOver, Subject,
 };
 
 pub mod custody;
 pub mod documents;
+pub mod notices;
 pub mod payments;
 pub mod roster;
 pub mod tickets;
 
 use custody::FakeCustody;
 use documents::Documents;
+use notices::Notices;
 use payments::FakePayments;
 use roster::{Roster, employee_of};
 use tickets::TicketDesk;
@@ -135,6 +137,12 @@ pub struct World {
     pub refused_received: Recorded<DeliveryRefusedReceived>,
     /// `RunClosed`.
     pub run_closed: Recorded<RunClosed>,
+    /// `RunHandedOver`.
+    pub handed_over: Recorded<RunHandedOver>,
+    /// `RunAborted`.
+    pub aborted: Recorded<RunAborted>,
+    /// The notices asked of the kernel's notifier.
+    pub notices: Notices,
     /// The tickets the module opened, resolved and commented on.
     pub tickets: TicketDesk,
     /// The cash custody (provided only by [`boot_with_custody`]).
@@ -529,6 +537,10 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
     let reversed = Recorded::new();
     let refused_received = Recorded::new();
     let run_closed = Recorded::new();
+    let handed_over = Recorded::new();
+    let aborted = Recorded::new();
+    let notices = Notices::default();
+    let notifier: Arc<dyn wl_kernel::notify::Notifier> = Arc::new(notices.clone());
     let tickets = TicketDesk::default();
     let custody = FakeCustody::default();
     let payments = FakePayments::default();
@@ -543,7 +555,8 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
         .module(module)
         .provide(guard)
         .provide(workforce)
-        .provide(creator);
+        .provide(creator)
+        .provide(notifier);
     let app = if with_custody {
         let held: Arc<dyn CashCustody> = Arc::new(custody.clone());
         let recorder: Arc<dyn PaymentRecorder> = Arc::new(payments.clone());
@@ -563,6 +576,8 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
     let app = record(app, &reversed);
     let app = record(app, &refused_received);
     let app = record(app, &run_closed);
+    let app = record(app, &handed_over);
+    let app = record(app, &aborted);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -632,6 +647,9 @@ async fn boot_inner(module: WlDelivery, docs: Documents, with_custody: bool) -> 
         reversed,
         refused_received,
         run_closed,
+        handed_over,
+        aborted,
+        notices,
         tickets,
         custody,
         payments,

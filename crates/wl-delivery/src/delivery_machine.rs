@@ -11,6 +11,7 @@
 //! delivered | under_review --reverse_delivery (approval, WRK.ACL.10)--> attempted
 //!     --back_on_the_road (system, run still dispatched)--> out_for_delivery
 //! out_for_delivery | attempted | under_review --mark_lost--> lost --found--> attempted
+//! out_for_delivery --fail_aborted (system, the run was aborted)--> attempted
 //! ```
 //!
 //! Every state of §4.1 is declared with its tone so the diagram is whole;
@@ -66,6 +67,7 @@ impl StateMachine for Delivery {
             .chain(crate::review::transitions())
             .chain(crate::lost::transitions())
             .chain(crate::reverse::transitions())
+            .chain(crate::abort::delivery_transitions())
             .fold(machine, Machine::transition)
     }
 }

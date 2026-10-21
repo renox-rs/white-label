@@ -26,6 +26,60 @@
       <rx-column :label="tx['fields.status']">{{ stop.status }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['stops.none']" icon="truck"/></rx-slot>
     </rx-table>
+    <rx-form rx-if="can_hand_over" :action="route('wl_delivery.run_hand_over', run.id)" novalidate>
+      <rx-card :title="tx['hand_over.title']">
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-select name="to_run_id" :label="tx['hand_over.to_run']" :options="hand_over_runs" :selected="''" id="hand-over-run"/>
+          <rx-select name="reason" :label="tx['hand_over.reason']" :options="hand_over_reasons" :selected="''" id="hand-over-reason"/>
+        </rx-form-grid>
+        <rx-input name="note" :label="tx['hand_over.note']" id="hand-over-note"/>
+        <table class="rx-table">
+          <caption>{{ tx['hand_over.stops'] }}</caption>
+          <tbody>
+            {% for stop in stops %}{% if stop.open %}
+            <tr>
+              <td><input type="checkbox" name="delivery_{{ stop.id }}" id="hand-over-stop-{{ stop.id }}"></td>
+              <td>{{ stop.number }}</td>
+              <td>{{ stop.recipient }}</td>
+              <td>{{ stop.area }}</td>
+            </tr>
+            {% endif %}{% endfor %}
+          </tbody>
+        </table>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['hand_over.propose']" variant="secondary"/>
+        </div>
+      </rx-card>
+    </rx-form>
+    <rx-card rx-if="hand_overs" :title="tx['hand_over.history']">
+      <table class="rx-table">
+        <tbody>
+          {% for h in hand_overs %}
+          <tr>
+            <td>{{ h.to_run }}</td>
+            <td>{{ h.reason }}</td>
+            <td>{{ h.stops }}</td>
+            <td>{{ h.status }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </rx-card>
+    <rx-form rx-if="can_abort" :action="route('wl_delivery.run_abort', run.id)" novalidate>
+      <rx-card :title="tx['abort.title']">
+        <p>{{ tx['abort.description'] }}</p>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-select name="reason" :label="tx['abort.reason']" :options="abort_reasons" :selected="''" id="abort-reason"/>
+          <rx-select name="ticket" :label="tx['abort.ticket']" :options="abort_tickets" :selected="''" id="abort-ticket"/>
+        </rx-form-grid>
+        <rx-input name="note" :label="tx['abort.note']" id="abort-note"/>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['abort.action']" variant="secondary"/>
+        </div>
+      </rx-card>
+    </rx-form>
     <rx-card rx-if="depot" :title="tx['close.title']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['close.cash_expected']" :value="depot.cash_expected"/>

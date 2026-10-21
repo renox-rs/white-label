@@ -20,6 +20,7 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::custody::HandoverPeriod;
 use crate::parties::PartyId;
 use crate::subject::Subject;
 use crate::tickets::TicketId;
@@ -715,6 +716,63 @@ pub struct DeliveryRefusedReceived {
 }
 
 impl Event for DeliveryRefusedReceived {}
+
+/// Open stops of a run were handed over to another driver's run, the
+/// receiving driver having confirmed each parcel and counted the cash
+/// (`hand_over`, wl-delivery §4.2, BL-DLV-09).
+///
+/// `wl-payments` moves the counted cash from the giving driver's handover of
+/// `run` to the receiving driver's handover of `to_run` when it receives this
+/// event (BL-PAY-20, `FIN.CSH.01`), once per `hand_over`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunHandedOver {
+    /// The hand-over record (the key that makes the cash move once).
+    pub hand_over: i64,
+    /// The giving run.
+    pub run: RunId,
+    /// The receiving run.
+    pub to_run: RunId,
+    /// The giving driver (a user).
+    pub from_driver: i64,
+    /// The receiving driver (a user).
+    pub to_driver: i64,
+    /// The dispatcher who chose the stops (a user).
+    pub requested_by: i64,
+    /// The deliveries that moved.
+    pub deliveries: Vec<DeliveryId>,
+    /// The cash the receiving driver counted, in fils.
+    pub cash_counted: i64,
+    /// The references of the cheques the receiving driver confirmed.
+    pub cheques: Vec<String>,
+    /// Why: `breakdown`, `accident`, `driver_unwell` or `load_balancing`.
+    pub reason: String,
+    /// The receiving driver's cash period (the receiving run).
+    pub to_period: HandoverPeriod,
+}
+
+impl Event for RunHandedOver {}
+
+/// A run was aborted mid-route (`abort`, wl-delivery §4.2, BL-DLV-08).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunAborted {
+    /// The run.
+    pub run: RunId,
+    /// The driver (a user).
+    pub driver: i64,
+    /// The vehicle (an asset); `None` for an on-foot rider.
+    pub vehicle: Option<i64>,
+    /// Why: `breakdown`, `accident`, `driver_unwell`, `weather`, `other` (or
+    /// a code a vertical adds, 03: `driver_unreachable`).
+    pub reason: String,
+    /// The deliveries still out that failed with *run aborted*.
+    pub deliveries: Vec<DeliveryId>,
+    /// The cash collected on the run, in fils.
+    pub cash_collected: i64,
+    /// The user who aborted it.
+    pub aborted_by: i64,
+}
+
+impl Event for RunAborted {}
 
 /// A run closed: its cash was counted and every undelivered and refused item
 /// was received back or reported missing.

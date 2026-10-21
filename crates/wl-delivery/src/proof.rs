@@ -38,7 +38,6 @@
 //! absorbs the difference, then the full cash expected (the missing part is
 //! the shortage at the count).
 
-use renox::chrono::Duration;
 use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
 use renox::serde_json::Value;
@@ -46,7 +45,7 @@ use renox::state_machine::{
     StateMachine, Transition, TransitionCtx, TransitionError, Transitioned,
 };
 use serde::{Deserialize, Serialize};
-use wl_kernel::custody::{CashCollection, HandoverPeriod, custody};
+use wl_kernel::custody::{CashCollection, custody};
 use wl_kernel::delivery::{DeliveredLine, DeliveryAttemptFailed, DeliveryDelivered, PodMethod};
 
 use crate::cod::{self, ApprovalChoice};
@@ -948,14 +947,7 @@ async fn collect_cash(state: &AppState, delivery: &Delivery, proof: &Proof) -> R
         return Ok(());
     }
     let run = Run::find_or_404(&state.db, run_id).await?;
-    let planned_end = match (run.planned_start, run.estimated_minutes) {
-        (Some(start), Some(minutes)) => Some(start + Duration::minutes(minutes)),
-        _ => None,
-    };
-    let mut period = HandoverPeriod::run(run.subject(), run.run_date, planned_end);
-    if settings(state).replace_cash_escalation() {
-        period = period.replaced_escalation();
-    }
+    let period = run.cash_period(settings(state).replace_cash_escalation());
     custody(state)
         .collect(
             state,

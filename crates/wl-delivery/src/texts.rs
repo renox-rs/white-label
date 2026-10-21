@@ -461,6 +461,160 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.cod.needs_no_approval",
         "The cash collected is within the tolerance: deliver without approval.",
     ),
+    // Handing stops over to another driver's run (#165).
+    (
+        "wl_delivery.hand_over.not_dispatched",
+        "Only a run that is out hands stops over.",
+    ),
+    (
+        "wl_delivery.hand_over.reason_unknown",
+        "Choose why the stops are handed over: breakdown, accident, driver unwell or load balancing.",
+    ),
+    (
+        "wl_delivery.hand_over.no_stops",
+        "Choose at least one open stop of the run.",
+    ),
+    (
+        "wl_delivery.hand_over.not_open_stop",
+        "{number} is not an open stop of this run.",
+    ),
+    (
+        "wl_delivery.hand_over.same_run",
+        "Choose another run to hand the stops over to.",
+    ),
+    (
+        "wl_delivery.hand_over.same_driver",
+        "Stops are handed over to another driver, not to the same one.",
+    ),
+    (
+        "wl_delivery.hand_over.to_run_unknown",
+        "The receiving run does not exist.",
+    ),
+    (
+        "wl_delivery.hand_over.to_run_closed",
+        "The receiving run must be planned or out.",
+    ),
+    (
+        "wl_delivery.hand_over.only_receiver",
+        "Only the driver of the receiving run confirms a hand-over.",
+    ),
+    (
+        "wl_delivery.hand_over.already_confirmed",
+        "This hand-over is already confirmed.",
+    ),
+    (
+        "wl_delivery.hand_over.parcels_unconfirmed",
+        "Confirm each parcel before taking the stops over: {count} left.",
+    ),
+    (
+        "wl_delivery.hand_over.count_cash",
+        "Count the cash before taking the stops over.",
+    ),
+    (
+        "wl_delivery.hand_over.negative_cash",
+        "The cash counted cannot be negative.",
+    ),
+    (
+        "wl_delivery.hand_over.nothing_left",
+        "No stop of this hand-over is still open.",
+    ),
+    ("wl_delivery.hand_over.reason.breakdown", "Breakdown"),
+    ("wl_delivery.hand_over.reason.accident", "Accident"),
+    ("wl_delivery.hand_over.reason.driver_unwell", "Driver unwell"),
+    (
+        "wl_delivery.hand_over.reason.load_balancing",
+        "Load balancing",
+    ),
+    ("wl_delivery.hand_over.title", "Hand stops over"),
+    ("wl_delivery.hand_over.history", "Hand-overs"),
+    ("wl_delivery.hand_over.to_run", "Receiving run"),
+    ("wl_delivery.hand_over.reason", "Reason"),
+    ("wl_delivery.hand_over.note", "Note"),
+    ("wl_delivery.hand_over.stops", "Stops to hand over"),
+    ("wl_delivery.hand_over.propose", "Hand over"),
+    (
+        "wl_delivery.hand_over.proposed",
+        "Hand-over sent to the receiving driver.",
+    ),
+    ("wl_delivery.hand_over.confirmed", "Stops taken over."),
+    ("wl_delivery.hand_over.confirm", "Take over the stops"),
+    ("wl_delivery.hand_over.waiting_title", "Stops waiting for you"),
+    ("wl_delivery.hand_over.cash_counted", "Cash counted (AED)"),
+    (
+        "wl_delivery.hand_over.cheques",
+        "Cheques received (references, separated by commas)",
+    ),
+    ("wl_delivery.hand_over.parcel", "Parcel scanned or ticked"),
+    ("wl_delivery.hand_over.from_run", "From run"),
+    ("wl_delivery.hand_over.pending", "Waiting for the receiving driver"),
+    ("wl_delivery.hand_over.done", "Taken over"),
+    // Aborting a run (#164).
+    (
+        "wl_delivery.abort.choose_reason",
+        "Choose why the run is aborted.",
+    ),
+    (
+        "wl_delivery.abort.note_for_other",
+        "Say what happened: the reason other needs a note.",
+    ),
+    (
+        "wl_delivery.abort.only_the_driver",
+        "Only the driver of the run aborts it from the phone.",
+    ),
+    (
+        "wl_delivery.abort.ticket_unknown",
+        "Open a breakdown or an accident ticket, or none.",
+    ),
+    ("wl_delivery.abort.reason.breakdown", "Breakdown"),
+    ("wl_delivery.abort.reason.accident", "Accident"),
+    ("wl_delivery.abort.reason.driver_unwell", "Driver unwell"),
+    ("wl_delivery.abort.reason.weather", "Weather"),
+    ("wl_delivery.abort.reason.other", "Other"),
+    (
+        "wl_delivery.abort.reason.driver_unreachable",
+        "Driver unreachable",
+    ),
+    (
+        "wl_delivery.abort.ticket_title.breakdown",
+        "Vehicle breakdown on run {run}",
+    ),
+    (
+        "wl_delivery.abort.ticket_title.accident",
+        "Vehicle accident on run {run}",
+    ),
+    ("wl_delivery.abort.title", "Abort the run"),
+    (
+        "wl_delivery.abort.description",
+        "Stops still out fail with the reason run aborted, recipients are told of the delay, and the cash is counted at the depot.",
+    ),
+    ("wl_delivery.abort.action", "Abort run"),
+    ("wl_delivery.abort.reason", "Reason"),
+    ("wl_delivery.abort.note", "Note (needed for other)"),
+    ("wl_delivery.abort.ticket", "Open a ticket about the vehicle"),
+    ("wl_delivery.abort.ticket_none", "No ticket"),
+    ("wl_delivery.abort.ticket_breakdown", "Breakdown ticket"),
+    ("wl_delivery.abort.ticket_accident", "Accident ticket"),
+    ("wl_delivery.abort.aborted", "Run aborted."),
+    (
+        "wl_delivery.abort.driver_hint",
+        "If the van cannot go on, say why. Stops you could not hand over fail as run aborted.",
+    ),
+    (
+        "wl_delivery.notices.delayed_subject",
+        "Your delivery {{ number }} is delayed",
+    ),
+    (
+        "wl_delivery.notices.delayed_body",
+        "Your delivery {{ number }} is delayed: the run carrying it could not go on. We will contact you to arrange a new delivery.",
+    ),
+    (
+        "wl_delivery.notices.aborted_subject",
+        "Run {{ run }} was aborted",
+    ),
+    (
+        "wl_delivery.notices.aborted_body",
+        "Run {{ run }} was aborted: {{ reason }}. Its cash is counted at the depot: {{ link }}",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

@@ -1,13 +1,16 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod abort;
 pub mod close;
 pub mod cod;
 pub mod day_list;
 pub mod delivery;
 mod delivery_machine;
 pub mod doc_guard;
+pub mod hand_over;
 pub mod lost;
+pub mod notices;
 pub mod pages;
 pub mod plan;
 pub mod proof;
@@ -156,6 +159,20 @@ impl WlDelivery {
         self
     }
 
+    /// Makes the receiving driver count the cash at a run hand-over (§7: on);
+    /// off, the amount recorded in the giving driver's custody moves.
+    pub fn hand_over_counts_cash(mut self, on: bool) -> Self {
+        self.settings.set_hand_over_counts_cash(on);
+        self
+    }
+
+    /// Adds abort reasons to breakdown, accident, driver unwell, weather and
+    /// other (03: `driver_unreachable`, used by `LOG.RUL.13`).
+    pub fn abort_reasons(mut self, extra: &[&str]) -> Self {
+        self.settings.set_extra_abort_reasons(extra);
+        self
+    }
+
     /// Sets the days a delivery may go untraced before `WRK.RUL.17` marks
     /// it lost (§7: 7).
     pub fn untraced_days(mut self, days: i64) -> Self {
@@ -226,6 +243,8 @@ impl Module for WlDelivery {
             .model::<Proof>()
             .model::<Trace>()
             .model::<close::Receipt>()
+            .model::<hand_over::HandOver>()
+            .model::<hand_over::HandOverStop>()
             .model::<FailureReason>()
             .model::<RefusalReason>()
             .model::<CodReason>()
@@ -250,6 +269,8 @@ impl Module for WlDelivery {
         // reversal: the cash, the ticket and `DeliveryReversed`.
         reverse::register(app);
         proof::register(app);
+        // The notices of an aborted run.
+        notices::register_types();
         // A run closes when the driver's cash handover of it is counted.
         close::register(app);
         // The seeded defaults keep the client's changes.

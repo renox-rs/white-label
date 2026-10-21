@@ -1,11 +1,12 @@
 //! The Run (wl-delivery §3, §4.2): one driver's trip with ordered stops. Its
 //! status moves only through the machine in [`crate::run_machine`].
 
-use renox::chrono::NaiveDate;
+use renox::chrono::{Duration, NaiveDate};
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
+use wl_kernel::custody::HandoverPeriod;
 use wl_kernel::delivery::RunId;
 use wl_kernel::numbering::{Reset, Series};
 
@@ -98,8 +99,14 @@ pub struct Run {
     pub estimated_minutes: Option<i64>,
     /// The planned start.
     pub planned_start: Option<DateTime>,
-    /// Why it was aborted.
+    /// Why it was aborted: the reason's code.
     pub abort_reason: Option<String>,
+    /// The note that goes with the reason (needed for *other*).
+    pub abort_note: Option<String>,
+    /// The user who aborted it.
+    pub aborted_by: Option<i64>,
+    /// When it was aborted.
+    pub aborted_at: Option<DateTime>,
     /// The cash the depot counted when the driver handed it over, in fils.
     pub cash_counted_amount: Option<i64>,
     /// The user who counted it (never the driver).
@@ -127,6 +134,22 @@ impl Run {
     /// The run as a [`Subject`].
     pub fn subject(&self) -> Subject {
         self.run_id().subject()
+    }
+
+    /// The driver's cash period for this run (`FIN.CSH.01`): the run, its
+    /// day and its planned end. With `replace_escalation` the vertical's own
+    /// rule replaces the escalation of `wl-payments` (03: `LOG.RUL.13`).
+    pub fn cash_period(&self, replace_escalation: bool) -> HandoverPeriod {
+        let planned_end = match (self.planned_start, self.estimated_minutes) {
+            (Some(start), Some(minutes)) => Some(start + Duration::minutes(minutes)),
+            _ => None,
+        };
+        let period = HandoverPeriod::run(self.subject(), self.run_date, planned_end);
+        if replace_escalation {
+            period.replaced_escalation()
+        } else {
+            period
+        }
     }
 
     /// The vehicle's document subject; none for an on-foot rider or a run
