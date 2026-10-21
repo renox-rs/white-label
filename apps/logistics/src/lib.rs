@@ -31,6 +31,7 @@ mod screen_texts;
 pub mod seed;
 pub mod shipment;
 pub mod shipment_machine;
+pub mod trace;
 mod texts;
 mod voiding;
 
@@ -48,6 +49,7 @@ pub use shipment::{
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
 pub use cod::{CodLoss, CodRule};
 pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
+pub use trace::TraceTask;
 pub use remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};
 pub use remittance_machine::RemittanceInput;
 pub use shipment_machine::ShipmentInput;
@@ -106,7 +108,8 @@ impl Module for Logistics {
             .model::<RemittanceLine>()
             .model::<AdjustmentLine>()
             .model::<CodLoss>()
-            .model::<Reversal>();
+            .model::<Reversal>()
+            .model::<TraceTask>();
         // The shipment's rule on who absorbs a COD difference.
         wl_kernel::delivery::provide_cod_rule(app, CodRule);
         // A refund to a recipient who is no party is paid by hand.
@@ -116,6 +119,8 @@ impl Module for Logistics {
         renox::state_machine::register::<AdjustmentLine>();
         // `LOG.RUL.06`, weekly on Monday.
         remit::register(app);
+        // `LOG.RUL.12`, daily at 02:00, and the approval of `LOG.ACL.14`.
+        trace::register(app);
         // The shipment's machine, and its place in the kernel's void pattern.
         voiding::register();
         // The shipment follows its delivery and cancels it.

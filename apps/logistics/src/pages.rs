@@ -289,6 +289,10 @@ pub(crate) struct ShowPage {
     can_review: bool,
     can_cod_instruction: bool,
     can_found: bool,
+    can_mark_lost: bool,
+    can_depot_scan: bool,
+    can_note: bool,
+    liabilities: Vec<[String; 2]>,
     can_claim_settled: bool,
     can_claim_choice: bool,
     claim_choices: Vec<[String; 2]>,
@@ -432,6 +436,20 @@ async fn show(
             && shipment.delivery_id.is_some(),
         can_cod_instruction: manages && shipment.status == OutForDelivery,
         can_found: scans && shipment.status == ShipmentStatus::Lost,
+        can_mark_lost: manages && crate::trace::requestable(shipment.status),
+        can_depot_scan: scans
+            && matches!(shipment.status, PickedUp | AtHub | OnHold | Returning),
+        can_note: manages
+            && !matches!(shipment.status, Cancelled | Voided | Disposed),
+        liabilities: crate::loss::LIABILITIES
+            .iter()
+            .map(|liability| {
+                [
+                    (*liability).to_owned(),
+                    t(&lang, &format!("logistics.screen.liability_{liability}")),
+                ]
+            })
+            .collect(),
         can_claim_settled: manages && shipment.status == ShipmentStatus::Lost,
         can_claim_choice: manages
             && held

@@ -531,6 +531,46 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.loss_found", "Shipment found."),
     ("logistics.loss_claim_settled", "Claim settled."),
     ("logistics.loss_claim_chosen", "The client's choice is recorded."),
+    // Tracing and marking lost off a delivery (`LOG.RUL.12`, `LOG.ACL.14`,
+    // BL-LOG-12).
+    (
+        "logistics.trace.title",
+        "Trace shipment {{ number }}: no scan for {{ days }} days",
+    ),
+    (
+        "logistics.trace.description",
+        "Shipment {{ number }} ({{ status }}) has had no scan, tracking event or note for {{ days }} days. Search the hub, call the driver, check the run sheet; a scan or a note closes this task.",
+    ),
+    (
+        "logistics.trace.escalated",
+        "Shipment {{ number }} is still untraced after {{ days }} days: request mark lost now. A user requests it with a reason and a liability and another operations manager or the company admin approves.",
+    ),
+    (
+        "logistics.trace.closed",
+        "The shipment was scanned or moved: the clock restarts.",
+    ),
+    ("logistics.trace.scanned", "Scanned at a depot."),
+    ("logistics.trace.noted", "A note was added."),
+    (
+        "logistics.trace.not_traced",
+        "Only a shipment that was picked up, is at the hub, on hold, returning or lost is scanned at a depot.",
+    ),
+    ("logistics.trace.note_needed", "Write the note."),
+    (
+        "logistics.trace.on_delivery",
+        "A shipment on a delivery is marked lost with its delivery, in the delivery module.",
+    ),
+    (
+        "logistics.trace.scanned_since",
+        "The shipment was scanned or noted after the request, so it is not marked lost.",
+    ),
+    ("logistics.loss_marked", "Shipment marked lost."),
+    (
+        "logistics.loss_requested",
+        "The request waits for another operations manager or the company admin to approve it.",
+    ),
+    ("logistics.depot_scanned", "Scan recorded."),
+    ("logistics.noted", "Note added."),
     // A reversed delivery (`WRK.ACL.10`, `LOG.ACL.12`, BL-LOG-10).
     (
         "logistics.reversal.event_needed",

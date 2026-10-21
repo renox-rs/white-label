@@ -114,6 +114,18 @@ their own issues.
   holds it (*client instruction*) until the client chooses: delivery drafts an
   invoice for the claim credit and releases it, keeping the settlement sends
   it back.
+- **Tracing and losing off a delivery** (`trace`, `LOG.RUL.12`, `LOG.ACL.14`):
+  every day at 02:00 (Asia/Dubai) a shipment `picked_up`, `at_hub`, `on_hold`
+  or `returning` with no scan, tracking event or note for 3 days gets one
+  trace task for the operations manager; after 7 days from the same instant
+  the task is escalated to *request mark lost now*. A scan at a depot
+  (`/shipments/{id}/depot-scan`), a note or any change closes the task and
+  restarts the clock. A user with `shipments.manage` requests `mark_lost` with
+  a reason and a liability at any time; the kernel defers it as an approval
+  that a holder of `shipments.approve_loss` (the operations manager, or the
+  company admin) other than the requester decides; a scan or note after the
+  request fails it at the final approval. The effects are those of a loss on a
+  delivery.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight
@@ -128,8 +140,8 @@ the reason when refused.
 
 ## Permissions
 
-`shipments.view`, `.book`, `.manage`, `.scan`, `.deliver`, `.void` and
-`.cancel`, and `remittances.view`, `.prepare`, `.approve` and `.pay`
+`shipments.view`, `.book`, `.manage`, `.scan`, `.deliver`, `.void`,
+`.cancel` and `.approve_loss`, and `remittances.view`, `.prepare`, `.approve` and `.pay`
 (`permissions`). The host maps them to the operations manager, the
 dispatcher, hub staff, the driver and the client user, and the remittances to
 the accountant.

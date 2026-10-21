@@ -84,6 +84,19 @@
                        :title="tx['found_title']" :description="tx['found_description']" :submit-label="tx['found']" icon="search-check">
         <rx-input name="depot" :label="tx['depot']" :id="'found-depot-' ~ shipment.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_mark_lost" :id="'mark-lost-' ~ shipment.id" :label="tx['mark_lost']" :action="route('logistics.shipment_mark_lost', shipment.id)"
+                       :title="tx['mark_lost_title']" :description="tx['mark_lost_description']" :submit-label="tx['mark_lost']" icon="search-x" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['reason']" :id="'mark-lost-reason-' ~ shipment.id" required/>
+        <rx-select name="liability" :label="tx['liability']" :id="'mark-lost-liability-' ~ shipment.id" :selected="'none'" :options="liabilities"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_depot_scan" :id="'depot-scan-' ~ shipment.id" :label="tx['depot_scan']" :action="route('logistics.shipment_depot_scan', shipment.id)"
+                       :title="tx['depot_scan_title']" :description="tx['depot_scan_description']" :submit-label="tx['depot_scan']" icon="scan-line">
+        <rx-input name="depot" :label="tx['depot']" :id="'depot-scan-depot-' ~ shipment.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_note" :id="'note-' ~ shipment.id" :label="tx['add_note']" :action="route('logistics.shipment_note', shipment.id)"
+                       :title="tx['add_note_title']" :description="tx['add_note_description']" :submit-label="tx['add_note']" icon="message-square">
+        <rx-textarea name="note" :label="tx['note']" :id="'note-text-' ~ shipment.id" required/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_claim_settled" :id="'claim-settled-' ~ shipment.id" :label="tx['claim_settled']" :action="route('logistics.shipment_claim_settled', shipment.id)"
                        :title="tx['claim_settled_title']" :description="tx['claim_settled_description']" :submit-label="tx['claim_settled']" icon="badge-check">
         <rx-input name="amount" :label="tx['claim_amount']" :id="'claim-settled-amount-' ~ shipment.id" required/>

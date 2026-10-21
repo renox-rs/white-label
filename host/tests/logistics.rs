@@ -39,6 +39,13 @@ fn the_roles_hold_the_shipment_permissions() {
         assert!(holds(role, perm::SHIPMENTS_VOID), "{role}");
         assert!(holds(role, perm::SHIPMENTS_CANCEL), "{role}");
     }
+    // The operations manager and the company admin approve a loss off a
+    // delivery (`LOG.ACL.14`); the dispatcher who requests it cannot.
+    assert!(holds(OPERATIONS_MANAGER, perm::SHIPMENTS_APPROVE_LOSS));
+    assert!(holds(ADMIN, perm::SHIPMENTS_APPROVE_LOSS));
+    assert!(!holds(DISPATCHER, perm::SHIPMENTS_APPROVE_LOSS));
+    assert!(!holds(HUB_STAFF, perm::SHIPMENTS_APPROVE_LOSS));
+    assert!(!holds(DRIVER, perm::SHIPMENTS_APPROVE_LOSS));
     // The client user books, voids and cancels, and never manages.
     assert!(holds(SHIPPING_CLIENT, perm::SHIPMENTS_BOOK));
     assert!(holds(SHIPPING_CLIENT, perm::SHIPMENTS_VOID));

@@ -22,6 +22,11 @@ pub const SHIPMENTS_VOID: &str = "shipments.void";
 /// user of the shipment's company (`LOG.ACL.09`).
 pub const SHIPMENTS_CANCEL: &str = "shipments.cancel";
 
+/// Approve a request to mark a shipment off a delivery lost (`LOG.ACL.14`):
+/// the operations manager, and the company admin, who holds every permission.
+/// The requester never approves.
+pub const SHIPMENTS_APPROVE_LOSS: &str = "shipments.approve_loss";
+
 /// See COD remittances, their lines and their statements (`LOG.COD.01`).
 pub const REMITTANCES_VIEW: &str = "remittances.view";
 /// Build a draft COD remittance and prepare adjustment lines on it
@@ -42,6 +47,7 @@ pub const ALL: &[&str] = &[
     SHIPMENTS_DELIVER,
     SHIPMENTS_VOID,
     SHIPMENTS_CANCEL,
+    SHIPMENTS_APPROVE_LOSS,
     REMITTANCES_VIEW,
     REMITTANCES_PREPARE,
     REMITTANCES_APPROVE,

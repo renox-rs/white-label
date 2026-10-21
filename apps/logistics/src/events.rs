@@ -320,6 +320,9 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(
         |event: Transitioned<Shipment>, state: AppState| async move {
             let name = event.transition.as_str();
+            // Any change of the shipment is activity: a trace task closes and
+            // the untraced clock restarts (`LOG.RUL.12`).
+            crate::trace::close_open(&state, event.key, "activity").await?;
             if name == MARK_LOST || name == MARK_LOST_APPROVED || name == MARK_LOST_SYSTEM {
                 // A shipment that was on no delivery has a pending one: it
                 // must not go on a run while the shipment is lost.
