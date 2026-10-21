@@ -390,6 +390,83 @@ async fn the_expiry_task_expires_a_link_and_the_party_cannot_pay_it() {
     assert!(t.gateway.checkouts().is_empty());
 }
 
+/// Makes every update of payment `id` fail, as a database error would.
+async fn poison(t: &support::Booted, id: i64) {
+    renox::db::sql(format!(
+        "CREATE TRIGGER poison_payment BEFORE UPDATE ON wl_payments_payments \
+         WHEN NEW.id = {id} BEGIN SELECT RAISE(ABORT, 'poisoned for the test'); END"
+    ))
+    .execute(t.db())
+    .await
+    .unwrap();
+}
+
+/// One pending payment that errors does not stop the run: the other one is
+/// still timed out, the error is returned after the batch, and the next run
+/// (the error gone) handles the first.
+#[renox::test]
+async fn a_payment_that_errors_does_not_stop_the_others_of_the_run() {
+    let t = boot().await;
+    let link = t
+        .link(BLUE_DUNES, 25_000, None, Some(booking()), None)
+        .await;
+    let other = t
+        .link(BLUE_DUNES, 25_000, None, Some(booking()), None)
+        .await;
+    let bad = t.start_online(&link).await;
+    let good = t.start_online(&other).await;
+    assert!(bad.id < good.id, "the failing one is handled first");
+    poison(&t, bad.id).await;
+    let at = good.created_at.unwrap() + TimeDelta::minutes(31);
+
+    let ran = online::check_pending(t.state(), at).await;
+    assert!(ran.is_err(), "the error is reported after the batch");
+    assert_eq!(t.reload(&bad).await.status, PaymentStatus::Pending);
+    let timed_out = t.reload(&good).await;
+    assert_eq!(timed_out.status, PaymentStatus::Failed);
+    assert_eq!(timed_out.failure_kind, Some(PaymentFailureKind::Timeout));
+
+    renox::db::sql("DROP TRIGGER poison_payment")
+        .execute(t.db())
+        .await
+        .unwrap();
+    let report = online::check_pending(t.state(), at).await.unwrap();
+    assert_eq!(report.failed, 1);
+    assert_eq!(t.reload(&bad).await.status, PaymentStatus::Failed);
+}
+
+/// A pending payment with no gateway transaction cannot be asked about, but
+/// still times out as failed with the reason `timeout`.
+#[renox::test]
+async fn a_pending_payment_without_a_gateway_transaction_times_out() {
+    let t = boot().await;
+    let link = t
+        .link(BLUE_DUNES, 25_000, None, Some(booking()), None)
+        .await;
+    let payment = t.start_online(&link).await;
+    wl_payments::Payment::query()
+        .where_(wl_payments::Payment::ID.eq(payment.id))
+        .update(t.db(), &[("gateway_transaction", &None::<String>)])
+        .await
+        .unwrap();
+    let since = payment.created_at.unwrap();
+
+    let early = online::check_pending(t.state(), since + TimeDelta::minutes(29))
+        .await
+        .unwrap();
+    assert_eq!(early.failed, 0);
+    assert_eq!(t.reload(&payment).await.status, PaymentStatus::Pending);
+
+    let report = online::check_pending(t.state(), since + TimeDelta::minutes(30))
+        .await
+        .unwrap();
+    assert_eq!((report.confirmed, report.failed), (0, 1));
+    let failed = t.reload(&payment).await;
+    assert_eq!(failed.status, PaymentStatus::Failed);
+    assert_eq!(failed.failure_kind, Some(PaymentFailureKind::Timeout));
+    assert_eq!(t.failed.all().len(), 1);
+}
+
 /// The public page: a token that opens nothing shows a neutral page; a
 /// waiting payment and a paid link say so.
 #[renox::test]

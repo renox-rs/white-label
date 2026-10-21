@@ -457,7 +457,9 @@ pub fn check_due(since: DateTime, minutes: i64, now: DateTime) -> bool {
 ///
 /// # Errors
 ///
-/// The database's errors.
+/// The database's errors. A payment whose transition errors does not stop
+/// the run: the others are handled, and the first error is returned after
+/// the batch.
 pub async fn check_pending(state: &AppState, now: DateTime) -> Result<PendingReport> {
     let minutes = config_of(state).pending_timeout_minutes;
     let pending = Payment::query()
@@ -468,14 +470,24 @@ pub async fn check_pending(state: &AppState, now: DateTime) -> Result<PendingRep
         .await?;
     let gateway = gateway_of(state);
     let mut report = PendingReport::default();
+    let mut first_error = None;
     for payment in pending {
-        let (Some(since), Some(txn)) = (payment.created_at, payment.gateway_transaction.clone())
-        else {
+        let Some(since) = payment.created_at else {
             continue;
         };
         if !check_due(since, minutes, now) {
             continue;
         }
+        // Decision: a payment with no gateway transaction cannot be asked
+        // about; it times out like one the gateway gives no final answer for.
+        let Some(txn) = payment.gateway_transaction.clone() else {
+            match fail_payment(state, &payment, PaymentFailureKind::Timeout, "").await {
+                Ok(Some(_)) => report.failed += 1,
+                Ok(None) => {}
+                Err(other) => note_error(&mut first_error, payment.id, other.into_error()),
+            }
+            continue;
+        };
         let answer = gateway.payment_status(&txn).await;
         let result = match answer {
             Ok(GatewayPaymentStatus::Paid) => {
@@ -498,10 +510,21 @@ pub async fn check_pending(state: &AppState, now: DateTime) -> Result<PendingRep
         match result {
             Ok(Some(_)) => report.failed += 1,
             Ok(None) => {}
-            Err(other) => return Err(other.into_error()),
+            Err(other) => note_error(&mut first_error, payment.id, other.into_error()),
         }
     }
-    Ok(report)
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(report),
+    }
+}
+
+/// Logs the error of payment `payment` and keeps the first one of the run,
+/// returned once the whole batch was handled: one payment that errors must
+/// not stop (or starve) the others.
+fn note_error(first: &mut Option<renox::Error>, payment: i64, error: renox::Error) {
+    eprintln!("payments:pending_timeout: payment {payment} failed: {error}");
+    first.get_or_insert(error);
 }
 
 /// Allocates the unallocated money of the confirmed `payment` to the
