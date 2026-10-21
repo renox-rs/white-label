@@ -46,7 +46,7 @@ pub enum PackageStatus {
     state_machine,
     index(holder_party_id, item_code, status),
     index(invoice_id),
-    index(status, valid_to)
+    index(valid_to)
 )]
 pub struct Package {
     /// The primary key.

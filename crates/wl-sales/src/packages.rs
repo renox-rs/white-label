@@ -24,11 +24,11 @@ use wl_kernel::{PartyId, Subject};
 
 use crate::config::config_of;
 use crate::package::{MovementKind, Package, PackageMovement, PackageStatus};
-use crate::package_reopen::record_refusal;
 use crate::package_machine::{
     ACTIVATE, ActivateInput, CANCEL, CONSUME, CONSUME_LAST, CancelInput, ConsumeInput, EXPIRE,
     EXTEND, ExpireInput, ExtendInput, REVERSE, REVERSE_SYSTEM, ReverseInput,
 };
+use crate::package_reopen::record_refusal;
 use crate::texts::english;
 
 /// The scheduled task, and the command, of the daily expiry.
@@ -189,7 +189,7 @@ pub async fn of_invoice(db: &Db, invoice: InvoiceId) -> Result<Option<Package>> 
 /// after.
 pub async fn activate(state: &AppState, id: i64, on: NaiveDate) -> Result<Package> {
     let package = Package::find_or_404(&state.db, id).await?;
-    package
+    let _ = package
         .transition(ACTIVATE)
         .by_system()
         .input(&ActivateInput { on, paid: true })
@@ -258,7 +258,7 @@ pub async fn consume(
         today: wl_kernel::documents::today(),
         suspend_while_unpaid: suspend,
     };
-    package
+    let _ = package
         .transition(name)
         .by_system()
         .input(&input)
@@ -291,7 +291,8 @@ pub async fn reverse(
             .reason(reason.to_owned()),
         None => package.transition(REVERSE_SYSTEM).by_system(),
     };
-    run.input(&input)
+    let _ = run
+        .input(&input)
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
@@ -316,7 +317,7 @@ pub async fn extend(
     if !reason.trim().is_empty() {
         run = run.reason(reason.trim().to_owned());
     }
-    run.run(state).await.map_err(|e| e.into_error())?;
+    let _ = run.run(state).await.map_err(|e| e.into_error())?;
     Package::find_or_404(&state.db, id).await
 }
 
@@ -330,7 +331,7 @@ pub async fn cancel(state: &AppState, by: &renox::AuthUser, id: i64) -> Result<P
             .await?
             .is_none_or(|i| i.balance >= i.gross_total),
     };
-    package
+    let _ = package
         .transition(CANCEL)
         .by(by)
         .input(&CancelInput { nothing_paid })
@@ -419,14 +420,7 @@ impl PackageLedger for Ledger {
             for movement in consumed {
                 let net = consumed_by(&state.db, movement.package_id, &source).await?;
                 if net > 0 {
-                    reverse(
-                        state,
-                        movement.package_id,
-                        net,
-                        Some(source.clone()),
-                        None,
-                    )
-                    .await?;
+                    reverse(state, movement.package_id, net, Some(source.clone()), None).await?;
                     gave_back = true;
                 }
             }

@@ -38,7 +38,9 @@ use wl_kernel::notify::{self, NotifyRequest};
 use wl_kernel::payments::PaymentReversed;
 use wl_kernel::role_tasks::{self, RoleTask};
 use wl_kernel::sales::PACKAGE_SUBJECT_TYPE;
-use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, TaskComment, TicketId, task_creator};
+use wl_kernel::tickets::{
+    Assignee, OpenTicket, TASK_CATEGORY, TaskComment, TicketId, task_creator,
+};
 use wl_kernel::{COMPANY_ADMIN_ROLE, PartyId, Subject};
 
 use crate::config::config_of;
@@ -188,10 +190,14 @@ async fn open_collect_task(
     balance: i64,
 ) -> Result<Option<TicketId>> {
     let due = format!("AED {}", aed(balance));
-    let params: [(&str, &dyn std::fmt::Display); 2] =
-        [("balance", &due), ("package", &package.item_name)];
-    let title = english("wl_sales.packages.collect_title", &params);
-    let description = english("wl_sales.packages.collect_description", &params);
+    let (title, description) = {
+        let params: [(&str, &dyn std::fmt::Display); 2] =
+            [("balance", &due), ("package", &package.item_name)];
+        (
+            english("wl_sales.packages.collect_title", &params),
+            english("wl_sales.packages.collect_description", &params),
+        )
+    };
     let key = task_key(package.id, money_source);
     let subject = package.subject();
     if let Some(user) = package.sold_by {
@@ -255,9 +261,11 @@ pub(crate) async fn record_refusal(
     .insert(&state.db)
     .await?;
     if let Some(ticket) = package.collect_ticket_id {
-        let params: [(&str, &dyn std::fmt::Display); 2] =
-            [("quantity", &quantity), ("source", source)];
-        let text = english("wl_sales.packages.refused_comment", &params);
+        let text = {
+            let params: [(&str, &dyn std::fmt::Display); 2] =
+                [("quantity", &quantity), ("source", source)];
+            english("wl_sales.packages.refused_comment", &params)
+        };
         task_creator(state)
             .comment(state, TicketId(ticket), TaskComment::internal(&text))
             .await?;
@@ -276,8 +284,8 @@ pub async fn refusals(db: &Db, package: i64) -> Result<Vec<PackageRefusal>> {
 
 /// `InvoiceReopened` of a package's invoice.
 async fn on_invoice_reopened(state: &AppState, event: &InvoiceReopened) -> Result {
-    let by_source = (event.source.subject_type == PACKAGE_SUBJECT_TYPE)
-        .then_some(event.source.subject_id);
+    let by_source =
+        (event.source.subject_type == PACKAGE_SUBJECT_TYPE).then_some(event.source.subject_id);
     let package = match by_source {
         Some(id) => Some(id),
         None => of_invoice(&state.db, event.invoice).await?.map(|p| p.id),
@@ -318,7 +326,11 @@ async fn on_payment_reversed(state: &AppState, event: &PaymentReversed) -> Resul
         if package.invoice_id.is_some() {
             continue;
         }
-        let balance = if amount > 0 { amount } else { package.price_paid };
+        let balance = if amount > 0 {
+            amount
+        } else {
+            package.price_paid
+        };
         reopen(state, id, &event.payment.subject(), None, balance).await?;
     }
     Ok(())
