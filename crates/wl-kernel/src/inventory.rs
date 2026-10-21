@@ -866,6 +866,17 @@ pub trait StockService: Send + Sync + 'static {
     ) -> StockFuture<'a, Consumed> {
         Box::pin(async { Ok(Consumed::default()) })
     }
+
+    /// The `source` that consumed (a visit, a sale) was cancelled before its
+    /// pending issues posted: each one still open is cleared with the reason
+    /// *source cancelled*, without a movement. Returns how many were cleared.
+    fn source_cancelled<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source: &'a Subject,
+    ) -> StockFuture<'a, usize> {
+        Box::pin(async { Ok(0) })
+    }
 }
 
 /// The stock service when `inventory` is off: nothing is posted.
