@@ -7,7 +7,7 @@
 mod support;
 
 use renox::prelude::*;
-use wl_hr::{Employee, EmployeeStatus, PayrollLine, PayrollRun, PayrollRunStatus};
+use wl_hr::{EmployeeStatus, PayrollLine, PayrollRun, PayrollRunStatus};
 
 use support::{Booted, users};
 
@@ -18,8 +18,6 @@ struct Desk {
     t: Booted,
     a: User,
     b: User,
-    e: Employee,
-    other: Employee,
     run: PayrollRun,
     line: PayrollLine,
     other_line: PayrollLine,
@@ -38,8 +36,6 @@ async fn desk() -> Desk {
         t,
         a,
         b,
-        e,
-        other,
         run,
         line,
         other_line,
