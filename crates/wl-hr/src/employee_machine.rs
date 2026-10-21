@@ -35,14 +35,22 @@
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};
-use wl_kernel::workforce::{EmployeeAbsconded, EmployeeActivated, EmployeeId};
+use wl_kernel::documents::today;
+use wl_kernel::workforce::{
+    EmployeeAbsconded, EmployeeActivated, EmployeeId, EmployeeNoticeWithdrawn,
+    EmployeeOnboardingCancelled, EmployeeReinstated,
+};
 
 use crate::absconding;
 use crate::absence::AbsenceReport;
 use crate::activation;
 use crate::employee::{Employee, EmployeeStatus};
+use crate::exit_effects;
 use crate::exits::{self, ExitInput};
 use crate::permissions;
+use crate::settlement_close;
+use crate::texts::english;
+use crate::visa;
 
 /// The employee starts work.
 pub const ACTIVATE: &str = "activate";
@@ -98,14 +106,21 @@ fn exit_pair<const N: usize>(
                 })
             },
         );
-        // The effects of the exits come with their own issues; this is
-        // `report_absconding`'s (#197): the checks that read the database,
-        // then the report, the held pay, the settlement and the visa case.
+        // The effects of the exits: `report_absconding`'s (#197) are the
+        // checks that read the database, then the report, the held pay, the
+        // settlement and the visa case; those of `cancel_onboarding`,
+        // `withdraw_notice` and `reinstate` are in `exit_effects` (#195, #196,
+        // #198); `record_death` comes with its own issue.
         if name == REPORT_ABSCONDING {
             transition.effect(|employee: &Employee, ctx, tx| {
                 let id = employee.id;
                 let input = ctx.input_as::<ExitInput>().unwrap_or_default();
                 Box::pin(async move { absconding::apply(tx, id, &input).await })
+            })
+        } else if exit_effects::has_checks(name) {
+            transition.effect(move |employee: &Employee, ctx, tx| {
+                let input = ctx.input_as::<ExitInput>().unwrap_or_default();
+                Box::pin(async move { exit_effects::apply(tx, employee, name, &input).await })
             })
         } else {
             transition
@@ -233,12 +248,48 @@ pub(crate) fn register(app: &mut Registry) {
                         })
                         .await
                 }
-                REINSTATE | REINSTATE_APPROVED => {
-                    // The absence report is withdrawn: the lines it held are
-                    // released (`HRM.RUL.12`).
-                    crate::release::report_withdrawn(&state, event.key)
+                CANCEL_ONBOARDING | CANCEL_ONBOARDING_APPROVED => {
+                    // The apps cancel the planned deployments; the onboarding
+                    // cancels itself (`events`).
+                    state
+                        .emit(EmployeeOnboardingCancelled {
+                            employee: EmployeeId(event.key),
+                            reason: event.reason.clone().unwrap_or_default(),
+                        })
                         .await
-                        .map(|_| ())
+                }
+                WITHDRAW_NOTICE | WITHDRAW_NOTICE_APPROVED => {
+                    // The settlement and the cancellation case are not needed
+                    // any more (the checks made sure nothing was paid).
+                    settlement_close::cancel_open(&state, event.key).await?;
+                    let reason = english("wl_hr.exits.notice_withdrawn_reason", &[]);
+                    visa::cancel_open_cancellations(&state, event.key, &reason).await?;
+                    state
+                        .emit(EmployeeNoticeWithdrawn {
+                            employee: EmployeeId(event.key),
+                        })
+                        .await
+                }
+                REINSTATE | REINSTATE_APPROVED => {
+                    // The settlement and the cancellation case are cancelled;
+                    // the absence report is withdrawn: the lines it held are
+                    // released (`HRM.RUL.12`).
+                    settlement_close::cancel_open(&state, event.key).await?;
+                    let reason = english("wl_hr.exits.reinstated_reason", &[]);
+                    visa::cancel_open_cancellations(&state, event.key, &reason).await?;
+                    crate::release::report_withdrawn(&state, event.key).await?;
+                    let returned = AbsenceReport::query()
+                        .where_(AbsenceReport::EMPLOYEE_ID.eq(event.key))
+                        .order_by_desc(AbsenceReport::ID)
+                        .first(&state.db)
+                        .await?
+                        .and_then(|report| report.returned_on);
+                    state
+                        .emit(EmployeeReinstated {
+                            employee: EmployeeId(event.key),
+                            return_date: returned.unwrap_or_else(today),
+                        })
+                        .await
                 }
                 REPORT_ABSCONDING | REPORT_ABSCONDING_APPROVED => {
                     let Some(report) = AbsenceReport::valid_for(&state.db, event.key).await? else {

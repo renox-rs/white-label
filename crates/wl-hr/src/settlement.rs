@@ -53,6 +53,10 @@ pub(crate) fn refuse(key: &str) -> Error {
 /// The reason of the settlement of an absconded employee.
 pub const REASON_ABSCONDING: &str = "absconding";
 
+/// The reason of the settlement that pays the days worked by an employee whose
+/// onboarding was cancelled.
+pub const REASON_ONBOARDING_CANCELLED: &str = "onboarding_cancelled";
+
 /// Payee of a settlement: the employee.
 pub const PAYEE_EMPLOYEE: &str = "employee";
 
@@ -248,6 +252,18 @@ impl FinalSettlement {
             )
             .order_by_desc(FinalSettlement::ID)
             .first(&mut *tx)
+            .await
+    }
+
+    /// The settlements of `employee`, oldest first, inside `tx`.
+    pub async fn of_employee_in(
+        tx: &mut Transaction,
+        employee: i64,
+    ) -> Result<Vec<FinalSettlement>> {
+        FinalSettlement::query()
+            .where_(FinalSettlement::EMPLOYEE_ID.eq(employee))
+            .order_by(FinalSettlement::ID)
+            .get(&mut *tx)
             .await
     }
 

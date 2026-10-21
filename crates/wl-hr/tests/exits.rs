@@ -260,6 +260,7 @@ async fn hrm04_who_may_ask_and_from_which_state() {
         ("transition", "reinstate"),
         ("reason", "returned"),
         ("reference", "WD-55"),
+        ("return_date", "2026-01-10"),
     ];
     post(&t, &a, &e, &reinstate).await.assert_status(422);
     let activate = [("transition", "activate"), ("reason", "now")];
@@ -423,6 +424,7 @@ async fn hrm04_each_exit_moves_the_employee_once_approved() {
                 ("transition", "reinstate"),
                 ("reason", "came back"),
                 ("reference", "WD-55"),
+                ("return_date", "2026-01-10"),
             ],
             EmployeeStatus::Active,
         ),

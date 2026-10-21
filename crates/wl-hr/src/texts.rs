@@ -477,6 +477,44 @@ const TEXTS: &[(&str, &str)] = &[
         "Attach the death certificate or the authority's notice.",
     ),
     (
+        "wl_hr.exits.return_date_required",
+        "Give the date the worker returned.",
+    ),
+    (
+        "wl_hr.exits.return_date_future",
+        "The date the worker returned cannot be in the future.",
+    ),
+    (
+        "wl_hr.exits.new_case_open",
+        "The new visa case is still open: cancel it or reject it first.",
+    ),
+    (
+        "wl_hr.exits.cancellation_required",
+        "A work permit or entry permit was issued: complete a cancellation visa case, or record that no cancellation is needed on the new visa case.",
+    ),
+    (
+        "wl_hr.exits.settlement_required",
+        "The employee has attendance: pay a final settlement with the reason onboarding cancelled first.",
+    ),
+    (
+        "wl_hr.exits.cancellation_completed",
+        "The cancellation visa case is completed: the visa is gone.",
+    ),
+    ("wl_hr.exits.settlement_paid", "Settlement already paid."),
+    ("wl_hr.exits.settlement_disputed", "Settlement is disputed."),
+    (
+        "wl_hr.exits.settlement_part_paid",
+        "A payment is recorded against the settlement.",
+    ),
+    (
+        "wl_hr.exits.notice_withdrawn_reason",
+        "Notice withdrawn by agreement.",
+    ),
+    (
+        "wl_hr.exits.reinstated_reason",
+        "The absconded employee was reinstated.",
+    ),
+    (
         "wl_hr.exits.unknown_action",
         "This is not an action that needs approval.",
     ),

@@ -14,6 +14,7 @@ pub mod employee;
 pub mod employee_machine;
 pub mod establishment;
 mod events;
+pub mod exit_effects;
 pub mod exits;
 pub mod hours;
 pub mod leave;

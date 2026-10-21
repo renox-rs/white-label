@@ -28,8 +28,10 @@
 //!   history row of the transition carries the requester and the approver
 //!   in its metadata.
 //!
-//! The effects of each exit (settlement, payroll lines, visa case, events) and
-//! the guards that read the database come with their own issues.
+//! The checks that read the database and the effects of each exit live with the
+//! exit: `report_absconding` in [`crate::absconding`] (#197), `cancel_onboarding`,
+//! `withdraw_notice` and `reinstate` in [`crate::exit_effects`] (#195, #196,
+//! #198); `record_death` comes with its own issue.
 
 use renox::auth::permissions::users_with_permission_in;
 use renox::chrono::NaiveDate;
@@ -39,6 +41,7 @@ use renox::serde_json::{Value, json};
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalPolicy, ApprovalRequest, PolicyDefault};
+use wl_kernel::attendance::attendance_history;
 use wl_kernel::documents::today;
 use wl_kernel::workforce::EMPLOYEE_SUBJECT_TYPE;
 use wl_kernel::{ApprovalDecided, ApprovalEnd};
@@ -50,6 +53,7 @@ use crate::employee::Employee;
 use crate::employee_machine::{
     CANCEL_ONBOARDING, RECORD_DEATH, REINSTATE, REPORT_ABSCONDING, WITHDRAW_NOTICE,
 };
+use crate::exit_effects;
 use crate::permissions;
 use crate::texts::english;
 
@@ -147,6 +151,10 @@ pub struct ExitInput {
     /// The authority's reference of the withdrawal or cancellation of the
     /// absence report (`reinstate`).
     pub withdrawal_reference: Option<String>,
+    /// Whether the employee has attendance (`cancel_onboarding`): read when
+    /// the request was made, because the checks at the approval have only the
+    /// database. The request overwrites whatever the form sent.
+    pub has_attendance: Option<bool>,
     /// Absence days before `report_absconding` is allowed: the setting when
     /// the request was made (the checks at the approval cannot read it).
     pub absence_days: Option<i64>,
@@ -170,7 +178,8 @@ impl ExitInput {
 /// transition's guard names: `cancel_onboarding` none; `withdraw_notice` the
 /// other party's written agreement; `report_absconding` the MoHRE absence
 /// report number and date; `reinstate` the withdrawal or cancellation
-/// reference; `record_death` the death certificate or the authority's notice.
+/// reference and the day the worker returned (not in the future);
+/// `record_death` the death certificate or the authority's notice.
 pub fn missing(transition: &str, input: &ExitInput) -> Option<String> {
     if input.reason.trim().is_empty() {
         return Some(english("wl_hr.exits.reason_required", &[]));
@@ -181,6 +190,8 @@ pub fn missing(transition: &str, input: &ExitInput) -> Option<String> {
             "report_required"
         }
         REINSTATE if blank(&input.withdrawal_reference) => "reference_required",
+        REINSTATE if input.return_date.is_none() => "return_date_required",
+        REINSTATE if input.return_date.is_some_and(|day| day > today()) => "return_date_future",
         RECORD_DEATH
             if !(input.has_document(KIND_DEATH_CERTIFICATE)
                 || input.has_document(KIND_AUTHORITY_NOTICE)) =>
@@ -296,6 +307,21 @@ pub async fn request(
         return Ok(Err(ExitRefused::AlreadyPending));
     }
     let mut input = input;
+    input.has_attendance = None;
+    if transition == CANCEL_ONBOARDING {
+        let attended = attendance_history(state)
+            .attended_days(state, employee.employee_id(), employee.hire_date, today())
+            .await?;
+        input.has_attendance = Some(!attended.is_empty());
+    }
+    if exit_effects::has_checks(transition) {
+        let mut tx = state.db.begin().await?;
+        let problem = exit_effects::problem_in(&mut tx, employee.id, transition, &input).await?;
+        drop(tx);
+        if let Some(message) = problem {
+            return Ok(Err(ExitRefused::Incomplete(message)));
+        }
+    }
     if transition == REPORT_ABSCONDING {
         let days = *input
             .absence_days
@@ -401,11 +427,14 @@ async fn audit_decided(state: &AppState, event: &ApprovalDecided) -> Result {
 /// request `failed` and nothing runs. Today only `report_absconding` has
 /// any: an absence case is open, the days passed and the contact attempts.
 async fn recheck(tx: &mut Transaction, request: &ApprovalRequest) -> Result<Option<String>> {
+    let input: ExitInput =
+        renox::serde_json::from_value(request.payload.0.clone()).unwrap_or_default();
+    if exit_effects::has_checks(&request.transition) {
+        return exit_effects::problem_in(tx, request.subject_id, &request.transition, &input).await;
+    }
     if request.transition != REPORT_ABSCONDING {
         return Ok(None);
     }
-    let input: ExitInput =
-        renox::serde_json::from_value(request.payload.0.clone()).unwrap_or_default();
     let days = input
         .absence_days
         .unwrap_or(absconding::DEFAULT_ABSENCE_DAYS);
@@ -493,6 +522,16 @@ mod tests {
         reinstate.withdrawal_reference = Some("  ".into());
         assert!(missing(REINSTATE, &reinstate).is_some());
         reinstate.withdrawal_reference = Some("WD-55".into());
+        assert!(
+            missing(REINSTATE, &reinstate).is_some(),
+            "the day the worker returned is needed too"
+        );
+        reinstate.return_date = NaiveDate::from_ymd_opt(2999, 1, 1);
+        assert!(
+            missing(REINSTATE, &reinstate).is_some(),
+            "not in the future"
+        );
+        reinstate.return_date = NaiveDate::from_ymd_opt(2026, 1, 10);
         assert_eq!(missing(REINSTATE, &reinstate), None);
 
         let mut death = input("died");
