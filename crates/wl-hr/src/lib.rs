@@ -35,6 +35,14 @@ pub mod reminders;
 pub mod salary;
 pub mod seed;
 pub mod settlement;
+pub mod settlement_alerts;
+pub mod settlement_amounts;
+pub mod settlement_close;
+pub mod settlement_dispute;
+mod settlement_events;
+pub mod settlement_offset;
+pub mod settlement_pay;
+pub mod settlement_payment;
 pub mod sif;
 pub mod steps;
 pub mod supplementary;
@@ -72,6 +80,7 @@ pub use qualification_expiry::QualificationExpiry;
 pub use receivable::Receivable;
 pub use salary::SalaryStructure;
 pub use settlement::{FinalSettlement, SettlementStatus};
+pub use settlement_payment::SettlementPayment;
 pub use sif::{SifFile, SifLine};
 pub use steps::{DoneInput, InPerson, StepRefused};
 pub use template::{
@@ -111,6 +120,10 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-hr/pay_account_stop.html",
         include_str!("../views/wl-hr/pay_account_stop.html"),
     ),
+    (
+        "wl-hr/settlement.html",
+        include_str!("../views/wl-hr/settlement.html"),
+    ),
 ];
 
 /// The module's permissions (wl-hr §6).
@@ -124,8 +137,14 @@ pub mod permissions {
     /// Manage templates, start a manual onboarding, waive and reopen steps;
     /// its holders are the `hr` owner of steps.
     pub const ONBOARDING_MANAGE: &str = "onboarding.manage";
-    /// Prepare a final settlement, and cancel it when it is not needed.
+    /// Prepare a final settlement (enter its amounts, also the revised ones
+    /// of a dispute), dispute it, and cancel it when it is not needed.
     pub const SETTLEMENTS_PREPARE: &str = "settlements.prepare";
+    /// Approve a final settlement, and resolve its dispute (`HRM.ACL.04`: not
+    /// the user who entered the amounts).
+    pub const SETTLEMENTS_APPROVE: &str = "settlements.approve";
+    /// Pay a final settlement and record payments against it.
+    pub const SETTLEMENTS_PAY: &str = "settlements.pay";
     /// Manage visa cases, and cancel one.
     pub const VISAS_MANAGE: &str = "visas.manage";
     /// See payroll runs, their lines and SIF files.
@@ -211,6 +230,20 @@ impl WlHr {
         self
     }
 
+    /// N of `HRM.RUL.09`: days after the last working day at which HR and the
+    /// accountant are told the final settlement is due (default 10).
+    pub fn settlement_alert_days(mut self, days: i64) -> Self {
+        self.config.settlement_alert_days = days;
+        self
+    }
+
+    /// Days after `pay` at which a settlement without a dispute closes
+    /// (default 30).
+    pub fn settlement_close_days(mut self, days: i64) -> Self {
+        self.config.settlement_close_days = days;
+        self
+    }
+
     /// The routing codes a pay account may name; none listed accepts any code
     /// of the right form.
     pub fn routing_codes(mut self, codes: &[&str]) -> Self {
@@ -249,6 +282,7 @@ impl Module for WlHr {
             .view_data::<pages::payroll::ShowPage>()
             .view_data::<pages::pay_accounts::ShowPage>()
             .view_data::<pages::pay_accounts::StopPage>()
+            .view_data::<pages::settlements::ShowPage>()
             .view_data::<pages::templates::IndexPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
@@ -284,6 +318,7 @@ impl Module for WlHr {
         app.model::<HourDifference>();
         app.model::<Receivable>();
         app.model::<FinalSettlement>();
+        app.model::<SettlementPayment>();
         app.model::<VisaCase>();
         app.model::<PayAccount>();
         app.provide(self.config.clone());
@@ -294,6 +329,7 @@ impl Module for WlHr {
         renox::state_machine::register::<FinalSettlement>();
         renox::state_machine::register::<VisaCase>();
         events::register(app);
+        settlement_events::register(app);
         // `HRM.ACL.05`: the pay account's machine, the MD's waiver policy, its
         // notices, the daily activation.
         pay_account::register(app, &self.config.md_role);
@@ -305,6 +341,10 @@ impl Module for WlHr {
         reminders::schedule(app);
         // `HRM.RUL.11`: the daily escalation of WPS rejections still open.
         wps_alerts::schedule(app);
+        // `HRM.RUL.09`: the 14-day alerts of the final settlement.
+        settlement_alerts::schedule(app);
+        // A paid settlement closes after the period to dispute.
+        settlement_close::schedule(app);
         // `HRM.RUL.12`: the daily proposal of off-cycle runs for released held lines.
         release::schedule(app);
         wl_kernel::workforce::provide_workforce(app, workforce::Staff);

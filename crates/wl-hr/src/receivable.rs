@@ -3,7 +3,9 @@
 //! settlement was paid, or who has no settlement to take it ([`crate::supplementary`]).
 //! A receivable is kept on the employee's party. Decision: no kernel contract
 //! for receivables exists yet (wl-payments would provide it), so wl-hr keeps
-//! the row; the accounting side reads it when that contract comes.
+//! the row; the accounting side reads it when that contract comes. A final
+//! settlement makes one for the recoveries above the Art. 25 caps
+//! ([`crate::settlement_offset`]).
 
 use renox::db::DateTime;
 use renox::prelude::*;
@@ -26,6 +28,9 @@ pub struct Receivable {
     pub source_run_id: Option<i64>,
     /// The payroll line that caused it.
     pub source_line_id: Option<i64>,
+    /// The final settlement that caused it (recoveries above the caps, or a
+    /// revised net below what was paid).
+    pub settlement_id: Option<i64>,
     /// `open` or `settled`.
     pub status: String,
     /// A note.

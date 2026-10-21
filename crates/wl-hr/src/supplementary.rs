@@ -258,6 +258,8 @@ pub(crate) async fn settle_negatives_in(tx: &mut Transaction, run: &PayrollRun) 
                     ],
                 )
                 .await?;
+            // The offset within the caps follows the new recovery (#213).
+            crate::settlement_offset::recalculate_in(&mut *tx, open.id).await?;
             continue;
         }
         let left = !settlements.is_empty()

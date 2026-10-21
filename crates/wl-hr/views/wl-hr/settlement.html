@@ -1,0 +1,118 @@
+{#- wl-hr: a final settlement (wl-hr §4): the dues, the recoveries offset within
+    the Art. 25 caps, the net, what was paid, the dispute, and the actions the
+    signed-in user may run. Replace it with resources/views/wl-hr/settlement.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['settlement.title'] ~ ' ' ~ settlement.employee">
+  <rx-stack>
+    <rx-page-header :title="tx['settlement.title']" :subtitle="settlement.employee"
+                    :badge="settlement.status" :badge-kind="settlement.status_kind"/>
+    <template rx-if="actions">
+      <rx-transition-actions :actions="actions" :action="'/hr/settlements/' ~ settlement.id ~ '/transitions'"/>
+    </template>
+    <template rx-if="can_edit_amounts">
+      <rx-action-sheet id="settlement-amounts" :label="tx['settlement.enter_amounts']" :action="route('wl_hr.settlement_amounts', settlement.id)"
+                       :title="tx['settlement.enter_amounts']" :description="tx['settlement.amounts_hint']" :submit-label="tx['settlement.save']" icon="edit">
+        <rx-input name="last_working_day" type="date" :label="tx['settlement.last_working_day']" :value="settlement.last_working_day" id="settlement-amounts-lwd"/>
+        <rx-input name="unpaid_salary" :label="tx['settlement.unpaid_salary']" :value="settlement.unpaid_salary" id="settlement-amounts-salary"/>
+        <rx-input name="leave_encashment" :label="tx['settlement.leave_encashment']" :value="settlement.leave_encashment" id="settlement-amounts-leave"/>
+        <rx-input name="gratuity" :label="tx['settlement.gratuity']" :value="settlement.gratuity" id="settlement-amounts-gratuity"/>
+        <rx-input name="notice_pay" :label="tx['settlement.notice_pay']" :value="settlement.notice_pay" id="settlement-amounts-notice"/>
+        <rx-input name="other_dues" :label="tx['settlement.other_dues']" :value="settlement.other_dues" id="settlement-amounts-other"/>
+        <rx-input name="advance_recoveries" :label="tx['settlement.advance_recoveries']" :value="settlement.advance_recoveries" id="settlement-amounts-advance"/>
+        <rx-input name="fine_recoveries" :label="tx['settlement.fine_recoveries']" :value="settlement.fine_recoveries" id="settlement-amounts-fine"/>
+        <rx-input name="court_debt_recoveries" :label="tx['settlement.court_debt_recoveries']" :value="settlement.court_debt_recoveries" id="settlement-amounts-court"/>
+        <rx-input name="damage_recoveries" :label="tx['settlement.damage_recoveries']" :value="settlement.damage_recoveries" id="settlement-amounts-damage"/>
+        <template rx-if="settlement.estate">
+          <rx-input name="representative" :label="tx['settlement.representative']" :value="settlement.representative" id="settlement-amounts-representative"/>
+          <rx-input name="right_document" :label="tx['settlement.right_document']" :value="settlement.right_document" id="settlement-amounts-right"/>
+        </template>
+      </rx-action-sheet>
+    </template>
+    <template rx-if="can_pay">
+      <rx-action-sheet id="settlement-pay" :label="tx['settlement.pay']" :action="route('wl_hr.settlement_pay', settlement.id)"
+                       :title="tx['settlement.pay']" :description="tx['settlement.pay_hint']" :submit-label="tx['settlement.pay']" icon="check">
+        <rx-input name="amount" :label="tx['settlement.payment_amount']" :value="settlement.unpaid" id="settlement-pay-amount"/>
+        <rx-select name="method" :label="tx['settlement.payment_method']" :options="methods" :selected="method_selected"/>
+        <rx-input name="reference" :label="tx['settlement.payment_reference']" id="settlement-pay-reference"/>
+      </rx-action-sheet>
+    </template>
+    <template rx-if="can_record_payment">
+      <rx-action-sheet id="settlement-payment" :label="tx['settlement.record_payment']" :action="route('wl_hr.settlement_payment', settlement.id)"
+                       :title="tx['settlement.record_payment']" :description="tx['settlement.record_payment_hint']" :submit-label="tx['settlement.record_payment']" icon="plus">
+        <rx-input name="amount" :label="tx['settlement.payment_amount']" id="settlement-payment-amount" required/>
+        <rx-select name="method" :label="tx['settlement.payment_method']" :options="methods" :selected="method_selected"/>
+        <rx-input name="reference" :label="tx['settlement.payment_reference']" id="settlement-payment-reference"/>
+      </rx-action-sheet>
+    </template>
+    <template rx-if="can_dispute">
+      <rx-action-sheet id="settlement-dispute" :label="tx['settlement.dispute']" :action="route('wl_hr.settlement_dispute', settlement.id)"
+                       :title="tx['settlement.dispute']" :description="tx['settlement.dispute_hint']" :submit-label="tx['settlement.dispute']" variant="danger" icon="alert">
+        <rx-select name="source" :label="tx['settlement.dispute_source']" :options="sources" :selected="source_selected"/>
+        <rx-input name="reference" :label="tx['settlement.dispute_reference']" id="settlement-dispute-reference" required/>
+        <rx-input name="undisputed_amount" :label="tx['settlement.undisputed']" id="settlement-dispute-undisputed" required/>
+        <rx-input name="hearing_on" type="date" :label="tx['settlement.hearing_on']" id="settlement-dispute-hearing"/>
+        <rx-input name="reply_due_on" type="date" :label="tx['settlement.reply_due_on']" id="settlement-dispute-reply"/>
+      </rx-action-sheet>
+    </template>
+    <template rx-if="can_resolve">
+      <rx-action-sheet id="settlement-resolve" :label="tx['settlement.resolve']" :action="route('wl_hr.settlement_resolve', settlement.id)"
+                       :title="tx['settlement.resolve']" :description="tx['settlement.resolve_hint']" :submit-label="tx['settlement.resolve']" icon="check">
+        <rx-select name="outcome" :label="tx['settlement.outcome']" :options="outcomes" :selected="outcome_selected"/>
+        <rx-input name="document" :label="tx['settlement.resolution_document']" id="settlement-resolve-document" required/>
+      </rx-action-sheet>
+    </template>
+    <template rx-if="can_acknowledge">
+      <rx-action-sheet id="settlement-acknowledgement" :label="tx['settlement.acknowledge']" :action="route('wl_hr.settlement_acknowledgement', settlement.id)"
+                       :title="tx['settlement.acknowledge']" :description="tx['settlement.acknowledge_hint']" :submit-label="tx['settlement.acknowledge']" icon="pen">
+        <rx-input name="signed_on" type="date" :label="tx['settlement.signed_on']" :value="today" id="settlement-acknowledgement-date"/>
+      </rx-action-sheet>
+    </template>
+    <rx-card :title="tx['settlement.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['settlement.reason']" :value="settlement.reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['settlement.payee']" :value="settlement.payee"/>
+        <rx-entry :label="tx['settlement.last_working_day']" :value="settlement.last_working_day" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['settlement.deadline']" :value="settlement.deadline" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['settlement.unpaid_salary']" :value="settlement.unpaid_salary"/>
+        <rx-entry :label="tx['settlement.leave_encashment']" :value="settlement.leave_encashment"/>
+        <rx-entry :label="tx['settlement.gratuity']" :value="settlement.gratuity"/>
+        <rx-entry :label="tx['settlement.notice_pay']" :value="settlement.notice_pay"/>
+        <rx-entry :label="tx['settlement.other_dues']" :value="settlement.other_dues"/>
+        <rx-entry :label="tx['settlement.dues']" :value="settlement.dues"/>
+        <rx-entry :label="tx['settlement.recoveries']" :value="settlement.recoveries"/>
+        <rx-entry :label="tx['settlement.offset']" :value="settlement.offset"/>
+        <rx-entry :label="tx['settlement.net']" :value="settlement.net"/>
+        <rx-entry :label="tx['settlement.owed']" :value="settlement.owed"/>
+        <rx-entry :label="tx['settlement.paid_so_far']" :value="settlement.paid"/>
+        <rx-entry :label="tx['settlement.unpaid']" :value="settlement.unpaid"/>
+        <rx-entry :label="tx['settlement.statement']" :value="settlement.statement_version"/>
+        <rx-entry :label="tx['settlement.closes_on']" :value="settlement.closes_on" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['settlement.acknowledgement']" :value="settlement.acknowledgement" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <template rx-if="settlement.dispute_source">
+      <rx-card :title="tx['settlement.dispute_title']">
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['settlement.dispute_source']" :value="settlement.dispute_source"/>
+          <rx-entry :label="tx['settlement.dispute_reference']" :value="settlement.dispute_reference"/>
+          <rx-entry :label="tx['settlement.undisputed']" :value="settlement.undisputed"/>
+          <rx-entry :label="tx['settlement.hearing_on']" :value="settlement.hearing_on" :placeholder="tx['none']"/>
+          <rx-entry :label="tx['settlement.reply_due_on']" :value="settlement.reply_due_on" :placeholder="tx['none']"/>
+          <rx-entry :label="tx['settlement.ticket']" :value="settlement.ticket" :placeholder="tx['none']"/>
+          <rx-entry :label="tx['settlement.outcome']" :value="settlement.dispute_outcome" :placeholder="tx['none']"/>
+          <rx-entry :label="tx['settlement.resolution_document']" :value="settlement.resolution_document" :placeholder="tx['none']"/>
+        </rx-infolist>
+      </rx-card>
+    </template>
+    <template rx-if="payments">
+      <rx-card :title="tx['settlement.payments']">
+        <rx-table :rows="payments" as="payment" :key="payment.paid_on ~ payment.reference ~ payment.amount" :caption="tx['settlement.payments']">
+          <rx-column :label="tx['settlement.payment_date']">{{ payment.paid_on }}</rx-column>
+          <rx-column :label="tx['settlement.payment_amount']">{{ payment.amount }}</rx-column>
+          <rx-column :label="tx['settlement.payment_method']" hide-narrow>{{ payment.method }}</rx-column>
+          <rx-column :label="tx['settlement.payment_reference']" hide-narrow>{{ payment.reference }}</rx-column>
+        </rx-table>
+      </rx-card>
+    </template>
+  </rx-stack>
+</rx-page>

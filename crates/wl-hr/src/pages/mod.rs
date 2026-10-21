@@ -3,6 +3,7 @@
 pub mod employees;
 pub mod pay_accounts;
 pub mod payroll;
+pub mod settlements;
 pub mod templates;
 
 use renox::prelude::*;
@@ -13,5 +14,6 @@ pub fn routes() -> Routes {
         .merge(employees::routes())
         .merge(pay_accounts::routes())
         .merge(payroll::routes())
+        .merge(settlements::routes())
         .merge(templates::routes())
 }

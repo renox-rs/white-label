@@ -16,6 +16,7 @@ use crate::employee::Employee;
 use crate::onboarding::{Onboarding, OnboardingStep};
 use crate::pay_account::PayAccount;
 use crate::payroll::PayrollRun;
+use crate::settlement::FinalSettlement;
 use crate::texts::english;
 
 /// The assignees are told of a step (a new onboarding, a new holder).
@@ -62,6 +63,21 @@ pub const PAY_ACCOUNT_STOPPED: &str = "hr.pay_account_stopped";
 /// by e-mail where known), that a new pay account takes effect on a date.
 pub const PAY_ACCOUNT_CHANGE: &str = "hr.pay_account_change";
 
+/// HR, the accountant and the MD are told that a final settlement is
+/// disputed.
+pub const SETTLEMENT_DISPUTED: &str = "hr.settlement_disputed";
+
+/// HR and the accountant are told that a final settlement is due
+/// (`HRM.RUL.09`).
+pub const SETTLEMENT_DUE: &str = "hr.settlement_due";
+
+/// HR and the accountant are reminded to pay the undisputed amount of a
+/// disputed settlement (`HRM.RUL.09`).
+pub const SETTLEMENT_UNDISPUTED_DUE: &str = "hr.settlement_undisputed_due";
+
+/// The MD is told that a final settlement is overdue (`HRM.RUL.09`).
+pub const SETTLEMENT_OVERDUE: &str = "hr.settlement_overdue";
+
 /// `date` as `9 Nov 2026`.
 fn date_text(date: NaiveDate) -> String {
     date.format("%-d %b %Y").to_string()
@@ -96,6 +112,13 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(PAYROLL_FAILED, "payroll_failed"));
     notify::register_type(english_type(PAYROLL_ESCALATED, "payroll_escalated"));
     notify::register_type(english_type(PAYROLL_RELEASED, "payroll_released"));
+    notify::register_type(english_type(SETTLEMENT_DISPUTED, "settlement_disputed"));
+    notify::register_type(english_reminder(SETTLEMENT_DUE, "settlement_due"));
+    notify::register_type(english_reminder(
+        SETTLEMENT_UNDISPUTED_DUE,
+        "settlement_undisputed_due",
+    ));
+    notify::register_type(english_reminder(SETTLEMENT_OVERDUE, "settlement_overdue"));
     notify::register_type(english_type(PAY_ACCOUNT_REQUESTED, "pay_account_requested"));
     notify::register_type(english_type(PAY_ACCOUNT_REJECTED, "pay_account_rejected"));
     notify::register_type(english_type(PAY_ACCOUNT_STOPPED, "pay_account_stopped"));
@@ -140,6 +163,40 @@ pub(crate) async fn name_of(state: &AppState, employee: &Employee) -> String {
         .ok()
         .flatten()
         .unwrap_or_else(|| format!("#{}", employee.id))
+}
+
+/// Tells `users` about final settlement `settlement` of `employee` with the
+/// notice type `type_key` (the dispute, the 14-day alerts): who, the source and
+/// reference of a dispute, the undisputed amount, the last working day and the
+/// legal deadline `deadline`.
+pub(crate) async fn settlement_notice(
+    state: &AppState,
+    type_key: &str,
+    settlement: &FinalSettlement,
+    employee: &str,
+    deadline: Option<NaiveDate>,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let aed = crate::pages::payroll::aed;
+    let mut request = NotifyRequest::new(type_key, settlement.subject())
+        .subject_label(employee)
+        .data(json!({
+            "employee": employee,
+            "source": settlement.dispute_source.clone().unwrap_or_default(),
+            "reference": settlement.dispute_reference.clone().unwrap_or_default(),
+            "undisputed": aed(settlement.undisputed_amount),
+            "net": aed(settlement.net),
+            "last_working_day": settlement.last_working_day.map(date_text).unwrap_or_default(),
+            "deadline": deadline.map(date_text).unwrap_or_default(),
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
 }
 
 /// Tells `users` (the manager and HR) that the qualification of `kind` of

@@ -982,6 +982,277 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.notices.pay_account_change_body",
         "A new pay account ending {{ last4 }} takes effect on {{ date }}. Until then your salary goes to your current account. If this was not you, stop the change: {{ link }}",
     ),
+    // Final settlements (#212 to #215).
+    ("wl_hr.settlement.settlements", "Final settlements"),
+    ("wl_hr.settlement.title", "Final settlement"),
+    ("wl_hr.settlement.reason", "Reason"),
+    ("wl_hr.settlement.payee", "Payee"),
+    ("wl_hr.settlement.payee.employee", "Employee"),
+    ("wl_hr.settlement.payee.estate", "Estate of the employee"),
+    ("wl_hr.settlement.status.draft", "Draft"),
+    ("wl_hr.settlement.status.approved", "Approved"),
+    ("wl_hr.settlement.status.disputed", "Disputed"),
+    ("wl_hr.settlement.status.paid", "Paid"),
+    ("wl_hr.settlement.status.closed", "Closed"),
+    ("wl_hr.settlement.status.cancelled", "Cancelled"),
+    ("wl_hr.settlement.source.worker", "The worker"),
+    ("wl_hr.settlement.source.mohre_complaint", "MoHRE complaint"),
+    ("wl_hr.settlement.source.court", "Court case"),
+    ("wl_hr.settlement.outcome", "Outcome"),
+    ("wl_hr.settlement.outcome.upheld", "Upheld"),
+    ("wl_hr.settlement.outcome.revised", "Revised"),
+    ("wl_hr.settlement.method.wps", "WPS"),
+    ("wl_hr.settlement.method.transfer", "Bank transfer"),
+    ("wl_hr.settlement.last_working_day", "Last working day"),
+    ("wl_hr.settlement.deadline", "Legal deadline"),
+    ("wl_hr.settlement.unpaid_salary", "Unpaid salary"),
+    ("wl_hr.settlement.leave_encashment", "Leave encashment"),
+    ("wl_hr.settlement.gratuity", "Gratuity"),
+    ("wl_hr.settlement.notice_pay", "Notice pay"),
+    ("wl_hr.settlement.other_dues", "Other dues"),
+    ("wl_hr.settlement.dues", "Dues"),
+    (
+        "wl_hr.settlement.advance_recoveries",
+        "Advances and loans to recover",
+    ),
+    ("wl_hr.settlement.fine_recoveries", "Fines to recover"),
+    (
+        "wl_hr.settlement.court_debt_recoveries",
+        "Court debts to recover",
+    ),
+    ("wl_hr.settlement.damage_recoveries", "Damage to recover"),
+    ("wl_hr.settlement.recoveries", "Recoveries"),
+    (
+        "wl_hr.settlement.offset",
+        "Recoveries offset within the Art. 25 caps",
+    ),
+    ("wl_hr.settlement.net", "Net"),
+    (
+        "wl_hr.settlement.owed",
+        "Due from the employee (recoveries above the caps)",
+    ),
+    ("wl_hr.settlement.paid_so_far", "Paid so far"),
+    ("wl_hr.settlement.unpaid", "Net still unpaid"),
+    ("wl_hr.settlement.statement", "Statement version"),
+    ("wl_hr.settlement.closes_on", "Closes without a dispute on"),
+    (
+        "wl_hr.settlement.acknowledgement",
+        "Acknowledgement signed on",
+    ),
+    (
+        "wl_hr.settlement.representative",
+        "Representative of the estate",
+    ),
+    (
+        "wl_hr.settlement.right_document",
+        "Document giving the right to receive",
+    ),
+    ("wl_hr.settlement.enter_amounts", "Enter the amounts"),
+    (
+        "wl_hr.settlement.amounts_hint",
+        "Amounts in dirhams. Recoveries are offset against the dues only within the Art. 25 caps; the rest is owed by the employee.",
+    ),
+    ("wl_hr.settlement.save", "Save"),
+    ("wl_hr.settlement.amounts_saved", "Amounts saved."),
+    ("wl_hr.settlement.pay", "Pay"),
+    (
+        "wl_hr.settlement.pay_hint",
+        "Record the payment of the net still unpaid, or leave the amount at 0 when it is already paid or nothing is payable.",
+    ),
+    ("wl_hr.settlement.paid", "Settlement paid."),
+    ("wl_hr.settlement.record_payment", "Record a payment"),
+    (
+        "wl_hr.settlement.record_payment_hint",
+        "A payment against the settlement, e.g. the undisputed amount while it is disputed.",
+    ),
+    ("wl_hr.settlement.payment_recorded", "Payment recorded."),
+    ("wl_hr.settlement.payments", "Payments"),
+    ("wl_hr.settlement.payment_date", "Date"),
+    ("wl_hr.settlement.payment_amount", "Amount"),
+    ("wl_hr.settlement.payment_method", "Method"),
+    ("wl_hr.settlement.payment_reference", "Reference"),
+    ("wl_hr.settlement.dispute", "Dispute"),
+    (
+        "wl_hr.settlement.dispute_hint",
+        "The worker contests the amounts, or a MoHRE complaint or court case is open. The undisputed amount can still be paid.",
+    ),
+    ("wl_hr.settlement.dispute_title", "Dispute"),
+    ("wl_hr.settlement.dispute_source", "Source"),
+    ("wl_hr.settlement.dispute_reference", "Reference"),
+    ("wl_hr.settlement.undisputed", "Undisputed amount"),
+    ("wl_hr.settlement.hearing_on", "Hearing date"),
+    ("wl_hr.settlement.reply_due_on", "Reply due on"),
+    ("wl_hr.settlement.ticket", "Labour-case ticket"),
+    ("wl_hr.settlement.disputed", "Settlement disputed."),
+    ("wl_hr.settlement.resolve", "Resolve"),
+    (
+        "wl_hr.settlement.resolve_hint",
+        "Upheld keeps the amounts; revised takes the amounts the preparer entered and needs a user other than the preparer.",
+    ),
+    (
+        "wl_hr.settlement.resolution_document",
+        "Decision, agreement or judgment",
+    ),
+    ("wl_hr.settlement.resolved", "Dispute resolved."),
+    (
+        "wl_hr.settlement.acknowledge",
+        "Record the signed acknowledgement",
+    ),
+    (
+        "wl_hr.settlement.acknowledge_hint",
+        "The signed receipt of payment closes the settlement. It is not a waiver of any claim.",
+    ),
+    ("wl_hr.settlement.signed_on", "Signed on"),
+    (
+        "wl_hr.settlement.acknowledged",
+        "Acknowledgement recorded; the settlement is closed.",
+    ),
+    (
+        "wl_hr.settlement.same_user",
+        "The user who entered the amounts cannot approve them.",
+    ),
+    (
+        "wl_hr.settlement.amount_negative",
+        "An amount cannot be negative.",
+    ),
+    (
+        "wl_hr.settlement.amounts_state",
+        "The amounts can be entered only while the settlement is a draft or disputed.",
+    ),
+    (
+        "wl_hr.settlement.payment_state",
+        "A payment can be recorded only while the settlement is approved or disputed.",
+    ),
+    (
+        "wl_hr.settlement.payment_amount_required",
+        "Give the amount of the payment.",
+    ),
+    (
+        "wl_hr.settlement.payment_method_required",
+        "Pay through WPS or a bank transfer.",
+    ),
+    (
+        "wl_hr.settlement.payment_above_net",
+        "The payments cannot be more than the net of the settlement.",
+    ),
+    (
+        "wl_hr.settlement.net_unpaid",
+        "The net of the settlement is not paid in full.",
+    ),
+    (
+        "wl_hr.settlement.estate_payee_required",
+        "Record the estate's representative and the document giving the right to receive before paying.",
+    ),
+    (
+        "wl_hr.settlement.dispute_source_required",
+        "Give the source of the dispute (the worker, a MoHRE complaint or a court case) and its reference.",
+    ),
+    (
+        "wl_hr.settlement.dispute_undisputed_required",
+        "Enter the undisputed amount, from 0 up to the net.",
+    ),
+    (
+        "wl_hr.settlement.resolve_outcome_required",
+        "Give the outcome: upheld or revised.",
+    ),
+    (
+        "wl_hr.settlement.resolve_document_required",
+        "Attach the decision, agreement or judgment.",
+    ),
+    (
+        "wl_hr.settlement.revised_amounts_required",
+        "Enter the revised amounts before resolving as revised.",
+    ),
+    (
+        "wl_hr.settlement.resolve_revised_approves",
+        "A revised settlement goes back to approved.",
+    ),
+    (
+        "wl_hr.settlement.resolve_unpaid_net",
+        "The net is not paid in full; the settlement goes back to approved.",
+    ),
+    (
+        "wl_hr.settlement.resolve_closes",
+        "The net is paid in full; the settlement closes.",
+    ),
+    (
+        "wl_hr.settlement.not_disputed",
+        "The settlement is not disputed.",
+    ),
+    (
+        "wl_hr.settlement.close_not_due",
+        "The period to dispute has not ended and the acknowledgement is not signed.",
+    ),
+    (
+        "wl_hr.settlement.cancel_paid",
+        "A settlement with a payment recorded against it cannot be cancelled.",
+    ),
+    (
+        "wl_hr.settlement.acknowledge_state",
+        "An acknowledgement can be recorded only for a paid settlement.",
+    ),
+    (
+        "wl_hr.settlement.acknowledge_not_asked",
+        "The estate is not asked for an acknowledgement.",
+    ),
+    (
+        "wl_hr.settlement.receivable_note",
+        "Recoveries above the Art. 25 caps of final settlement :id.",
+    ),
+    (
+        "wl_hr.settlement.recovery_task_title",
+        "Recover AED :amount from the employee (final settlement :id)",
+    ),
+    (
+        "wl_hr.settlement.recovery_task_description",
+        "The recoveries of the final settlement were above what may be offset against the dues. The amount is a receivable on the employee's party.",
+    ),
+    (
+        "wl_hr.settlement.dispute_ticket_title",
+        "Settlement dispute: :employee (:reference)",
+    ),
+    (
+        "wl_hr.settlement.dispute_ticket_description",
+        "Source: :source. Reference: :reference. :dates",
+    ),
+    ("wl_hr.settlement.dispute_hearing", "Hearing: :date."),
+    ("wl_hr.settlement.dispute_reply", "Reply due: :date."),
+    (
+        "wl_hr.settlement.dispute_ticket_resolved",
+        "The dispute of the final settlement was resolved (:outcome).",
+    ),
+    (
+        "wl_hr.notices.settlement_disputed_subject",
+        "Final settlement of {{ employee }} disputed",
+    ),
+    (
+        "wl_hr.notices.settlement_disputed_body",
+        "The final settlement of {{ employee }} is disputed ({{ source }}, reference {{ reference }}). The undisputed amount of AED {{ undisputed }} can still be paid on time. The legal deadline is {{ deadline }}.",
+    ),
+    (
+        "wl_hr.notices.settlement_due_subject",
+        "Final settlement of {{ employee }} is due",
+    ),
+    (
+        "wl_hr.notices.settlement_due_body",
+        "The final settlement of {{ employee }} (last working day {{ last_working_day }}) is not paid yet. The legal deadline is {{ deadline }}.",
+    ),
+    (
+        "wl_hr.notices.settlement_undisputed_due_subject",
+        "Pay the undisputed amount of the settlement of {{ employee }}",
+    ),
+    (
+        "wl_hr.notices.settlement_undisputed_due_body",
+        "The final settlement of {{ employee }} is disputed and the undisputed amount of AED {{ undisputed }} is not paid in full. Pay it before the legal deadline, {{ deadline }}.",
+    ),
+    (
+        "wl_hr.notices.settlement_overdue_subject",
+        "Final settlement of {{ employee }} is overdue",
+    ),
+    (
+        "wl_hr.notices.settlement_overdue_body",
+        "The final settlement of {{ employee }} (last working day {{ last_working_day }}) was due on {{ deadline }} and is still not paid.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

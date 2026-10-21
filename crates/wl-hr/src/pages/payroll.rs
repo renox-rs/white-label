@@ -557,7 +557,7 @@ pub struct SupplementaryForm {
 }
 
 /// `3000`, `3000.5` or `3000.50` dirhams as fils.
-fn parse_aed(text: &str) -> Option<i64> {
+pub(crate) fn parse_aed(text: &str) -> Option<i64> {
     let (whole, fraction) = text.trim().split_once('.').unwrap_or((text.trim(), ""));
     if fraction.len() > 2 || !fraction.chars().all(|c| c.is_ascii_digit()) {
         return None;

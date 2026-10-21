@@ -320,6 +320,7 @@ pub(crate) struct ShowPage {
     can_activate: bool,
     today: String,
     pay_accounts: Vec<crate::pages::pay_accounts::AccountView>,
+    settlements: Vec<crate::pages::settlements::RowView>,
     can_request_pay_account: bool,
     pay_channels: Vec<(String, String)>,
     pay_channel_selected: String,
@@ -552,6 +553,19 @@ async fn show(
             pay_accounts.push(crate::pages::pay_accounts::view_of(&state, &lang, &account).await?);
         }
     }
+    let mut settlements = Vec::new();
+    if [
+        permissions::SETTLEMENTS_PREPARE,
+        permissions::SETTLEMENTS_APPROVE,
+        permissions::SETTLEMENTS_PAY,
+    ]
+    .iter()
+    .any(|permission| user.has_permission(permission))
+    {
+        for settlement in crate::settlement::FinalSettlement::of_employee(&state.db, id).await? {
+            settlements.push(crate::pages::settlements::row_of(&lang, &settlement));
+        }
+    }
     Ok(View::typed(ShowPage {
         attempts,
         report,
@@ -587,6 +601,7 @@ async fn show(
             && user.has_permission(permissions::EMPLOYEES_MANAGE),
         today: day.to_string(),
         pay_accounts,
+        settlements,
         can_request_pay_account: can_manage,
         pay_channels: [
             crate::pay_account::BANK_ACCOUNT,

@@ -225,6 +225,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::PAYROLL_PREPARE,
             hr::PAYROLL_APPROVE,
             hr::ADJUSTMENTS_MANAGE,
+            hr::SETTLEMENTS_PREPARE,
+            hr::SETTLEMENTS_APPROVE,
+            hr::SETTLEMENTS_PAY,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -530,6 +533,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::AML_RAISE,
             // Told of WPS rejections (`HRM.RUL.11`), reads the run.
             hr::PAYROLL_VIEW,
+            // Pays the final settlements and records their payments.
+            hr::SETTLEMENTS_PAY,
             prp::UNITS_VIEW,
             prp::LEASES_VIEW,
             prp::LEASES_CANCEL,
@@ -626,6 +631,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::ONBOARDING_MANAGE,
             hr::PAYROLL_VIEW,
             hr::PAYROLL_APPROVE,
+            // The MD approves the final settlements and resolves their disputes
+            // (`HRM.ACL.04`).
+            hr::SETTLEMENTS_APPROVE,
         ],
     ),
     (
@@ -639,6 +647,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::PAYROLL_VIEW,
             hr::PAYROLL_PREPARE,
             hr::ADJUSTMENTS_MANAGE,
+            // HR prepares and disputes the final settlements.
+            hr::SETTLEMENTS_PREPARE,
             attendance::VIEW,
             attendance::REVIEW,
             // HR clears a permit flag by correcting or accepting it, and is

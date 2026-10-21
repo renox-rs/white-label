@@ -28,6 +28,15 @@
         <rx-entry :label="tx['employees.scopes']" :value="scopes" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="settlements">
+      <rx-card :title="tx['settlement.settlements']">
+        <rx-table :rows="settlements" as="settlement" :key="settlement.id" :caption="tx['settlement.settlements']">
+          <rx-column :label="tx['settlement.reason']"><a href="{{ route('wl_hr.settlement', settlement.id) }}">{{ settlement.reason }}</a></rx-column>
+          <rx-column :label="tx['settlement.net']" hide-narrow>{{ settlement.net }}</rx-column>
+          <rx-column :label="tx['fields.status']"><rx-badge :kind="settlement.status_kind" :text="settlement.status"/></rx-column>
+        </rx-table>
+      </rx-card>
+    </template>
     <template rx-if="pay_accounts or can_request_pay_account">
       <rx-card :title="tx['pay_account.accounts']">
         <rx-stack>

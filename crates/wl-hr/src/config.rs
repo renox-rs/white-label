@@ -37,6 +37,17 @@ pub const DEFAULT_HR_ROLE: &str = "hr";
 /// The cooling period of a new pay account in days (`HRM.ACL.05`, wl-hr §7).
 pub const DEFAULT_COOLING_DAYS: i64 = 5;
 
+/// N of `HRM.RUL.09` (wl-hr §6, §7 *Settlement alert*): days after the last
+/// working day at which HR and the accountant are told.
+pub const DEFAULT_SETTLEMENT_ALERT_DAYS: i64 = 10;
+
+/// The legal deadline of the final settlement: days after the end of the
+/// contract (Art. 53, `HRM.RUL.09`).
+pub const DEFAULT_SETTLEMENT_DEADLINE_DAYS: i64 = 14;
+
+/// Days after `pay` at which a settlement without a dispute closes (wl-hr §7).
+pub const DEFAULT_SETTLEMENT_CLOSE_DAYS: i64 = 30;
+
 /// The settings of the HR module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HrConfig {
@@ -58,6 +69,13 @@ pub struct HrConfig {
     pub hr_role: String,
     /// The cooling period of a new pay account, in days (`HRM.ACL.05`).
     pub cooling_days: i64,
+    /// N of `HRM.RUL.09`: days after the last working day.
+    pub settlement_alert_days: i64,
+    /// The legal deadline of the final settlement, days after the last
+    /// working day.
+    pub settlement_deadline_days: i64,
+    /// Days after `pay` at which a settlement without a dispute closes.
+    pub settlement_close_days: i64,
     /// The routing codes of the banks and agents a pay account may name. Empty
     /// accepts any code of the right form: the list comes with the salary
     /// file formats.
@@ -76,6 +94,9 @@ impl Default for HrConfig {
             cut_off_day: DEFAULT_CUT_OFF_DAY,
             hr_role: DEFAULT_HR_ROLE.to_owned(),
             cooling_days: DEFAULT_COOLING_DAYS,
+            settlement_alert_days: DEFAULT_SETTLEMENT_ALERT_DAYS,
+            settlement_deadline_days: DEFAULT_SETTLEMENT_DEADLINE_DAYS,
+            settlement_close_days: DEFAULT_SETTLEMENT_CLOSE_DAYS,
             routing_codes: Vec::new(),
         }
     }
