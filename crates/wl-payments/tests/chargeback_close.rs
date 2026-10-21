@@ -237,6 +237,49 @@ async fn charged_back_again(t: &Booted) -> (Payment, InvoiceId) {
     (charged, invoice)
 }
 
+/// The lost-by-deadline rule through the scheduler: the registered daily task
+/// (`payments:chargeback_deadlines`) run the day after the evidence deadline
+/// loses the dispute; run on the deadline day it does not.
+#[renox::test]
+async fn the_scheduled_task_loses_a_dispute_after_its_deadline() {
+    let t = boot_with_gateway(&FakeGateway::new()).await;
+    let staff = t.user_a().await;
+    let invoice = t.invoices.add(BLUE_DUNES, "INV-9", 80_000);
+    let link = t
+        .link(BLUE_DUNES, 80_000, Some(invoice), None, Some(&staff))
+        .await;
+    let payment = t.start_online(&link).await;
+    let txn = payment.gateway_transaction.clone().unwrap();
+    wl_payments::online::gateway_succeeded(t.state(), &txn, 80_000)
+        .await
+        .unwrap();
+    let due = wl_kernel::documents::today() + renox::chrono::Days::new(3);
+    chargeback::gateway_dispute_opened(
+        t.state(),
+        &txn,
+        &DisputeOpened::new("dp_1").evidence_due(due),
+    )
+    .await
+    .unwrap()
+    .expect("charged back");
+
+    // Three days on is the deadline day itself: nothing is lost.
+    t.app.travel(std::time::Duration::from_secs(3 * 24 * 3600));
+    t.app
+        .run_scheduled(chargeback_close::DEADLINE_TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(t.reload(&payment).await.status, PaymentStatus::ChargedBack);
+
+    t.app.travel(std::time::Duration::from_secs(24 * 3600));
+    t.app
+        .run_scheduled(chargeback_close::DEADLINE_TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(t.reload(&payment).await.status, PaymentStatus::Reversed);
+    assert_eq!(t.chargeback_closed.all().len(), 1);
+}
+
 /// One charged-back payment that errors when the deadline closes it does not
 /// stop the others: the second is lost, the error is returned after the batch.
 #[renox::test]

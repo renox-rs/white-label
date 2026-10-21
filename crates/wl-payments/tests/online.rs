@@ -390,6 +390,35 @@ async fn the_expiry_task_expires_a_link_and_the_party_cannot_pay_it() {
     assert!(t.gateway.checkouts().is_empty());
 }
 
+/// `FIN.RUL.19` through the scheduler: the registered task
+/// (`payments:pending_timeout`) run as `schedule:run` does, 31 minutes after
+/// the payment became pending, times it out; 29 minutes after it does not.
+#[renox::test]
+async fn the_scheduled_task_times_out_a_pending_payment() {
+    let t = boot().await;
+    let link = t
+        .link(BLUE_DUNES, 25_000, None, Some(booking()), None)
+        .await;
+    let payment = t.start_online(&link).await;
+
+    t.app.travel(std::time::Duration::from_secs(29 * 60));
+    t.app
+        .run_scheduled(online::TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(t.reload(&payment).await.status, PaymentStatus::Pending);
+
+    t.app.travel(std::time::Duration::from_secs(2 * 60));
+    t.app
+        .run_scheduled(online::TASK)
+        .await
+        .expect("the task runs");
+    let failed = t.reload(&payment).await;
+    assert_eq!(failed.status, PaymentStatus::Failed);
+    assert_eq!(failed.failure_kind, Some(PaymentFailureKind::Timeout));
+    assert_eq!(t.failed.all().len(), 1);
+}
+
 /// Makes every update of payment `id` fail, as a database error would.
 async fn poison(t: &support::Booted, id: i64) {
     renox::db::sql(format!(

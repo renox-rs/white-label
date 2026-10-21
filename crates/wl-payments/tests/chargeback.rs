@@ -224,6 +224,67 @@ async fn the_reminder_comes_two_days_before_the_deadline_once_and_not_after_the_
     assert_eq!(again, 0);
 }
 
+/// `FIN.RUL.20` through the scheduler: the registered hourly task
+/// (`payments:chargeback_reminders`) run at 09:00 Dubai two days before the
+/// evidence deadline sends the reminder once; an hour earlier it sends none.
+#[renox::test]
+async fn the_scheduled_task_sends_the_reminder_two_days_before_the_deadline() {
+    let t = boot().await;
+    let staff = t.user_a().await;
+    t.accountant("Rita").await;
+    let payment = paid_online(&t, 80_000, &staff).await;
+    let due = wl_kernel::documents::today() + chrono_days(10);
+    chargeback::gateway_dispute_opened(
+        t.state(),
+        payment.gateway_transaction.as_deref().unwrap(),
+        &DisputeOpened::new("dp_1").evidence_due(due),
+    )
+    .await
+    .unwrap()
+    .expect("charged back");
+    let before = t.notices.of_type(wl_payments::notices::ONLINE_TASK).len();
+    let at = chargeback::reminder_at(due, 2).unwrap();
+    let wait = |at: renox::db::DateTime| {
+        (at - renox::db::now())
+            .to_std()
+            .expect("the reminder time is ahead")
+    };
+
+    t.app.travel(wait(at - TimeDelta::hours(1)));
+    t.app
+        .run_scheduled(chargeback::REMINDER_TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(
+        t.notices.of_type(wl_payments::notices::ONLINE_TASK).len(),
+        before
+    );
+
+    t.app.travel(std::time::Duration::from_secs(61 * 60));
+    t.app
+        .run_scheduled(chargeback::REMINDER_TASK)
+        .await
+        .expect("the task runs");
+    let sent = t.notices.of_type(wl_payments::notices::ONLINE_TASK);
+    assert_eq!(sent.len(), before + 1);
+    assert!(sent[before].data.to_string().contains("dp_1"));
+
+    // The next hour sends nothing more.
+    t.app.travel(std::time::Duration::from_secs(60 * 60));
+    t.app
+        .run_scheduled(chargeback::REMINDER_TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(
+        t.notices.of_type(wl_payments::notices::ONLINE_TASK).len(),
+        before + 1
+    );
+}
+
+fn chrono_days(n: u64) -> renox::chrono::Days {
+    renox::chrono::Days::new(n)
+}
+
 /// A received AED 500.00 payment, a chargeback recorded by hand with the
 /// reference NG-778, the deadline 2027-03-05 and the fee AED 50.00: the same
 /// effects as a webhook; recording NG-778 a second time is refused.
