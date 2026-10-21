@@ -28,8 +28,11 @@
 //! `DOC.RUL.03` (§7.2), and `DOC.RUL.03` is a compliance-critical rule
 //! owned by the owner role all the same. Whether the law makes them legal
 //! blocks is `⚠ open: lawyer (L-19)`; the override mode is `never` as the
-//! spec says. `booking.start` is not listed in the kinds' blocks: wl-scheduling
-//! asks the qualification again at `start` by itself.
+//! spec says. The kinds block `booking.start` as well, as 05 §4.5 lists it:
+//! wl-scheduling has no document provider for `start` (it asks the
+//! qualification again at `start` by itself, which is what refuses a start
+//! after the expiry), so the entry is the kind's statement of intent and
+//! the rule's future-work lists do not read it.
 
 use std::sync::Arc;
 
@@ -47,11 +50,15 @@ use wl_kernel::workforce::EMPLOYEE_SUBJECT_TYPE;
 use wl_scheduling::eligibility::{GUARDED_BOOK, GUARDED_CHECK_IN};
 use wl_scheduling::{ServiceType, WlScheduling};
 
+/// The transition the kinds also guard (05 §4.5).
+pub const GUARDED_START: &str = "booking.start";
+
 /// The client app these values are for.
 pub const CLINICS: &str = "clinics";
 
 /// The kind `key` of a practitioner: an expiring document of the employee that
-/// blocks `booking.book` and `booking.check_in`, never overridden.
+/// blocks `booking.book`, `booking.check_in` and `booking.start`, never
+/// overridden.
 fn practitioner_kind(key: &str, name_en: &str, name_ar: &str) -> KindSeed {
     KindSeed::new(key, name_en)
         .name_ar(name_ar)
@@ -64,6 +71,7 @@ fn practitioner_kind(key: &str, name_en: &str, name_ar: &str) -> KindSeed {
         .override_mode(OverrideMode::Never)
         .blocks(GUARDED_BOOK, BlockMode::Block)
         .blocks(GUARDED_CHECK_IN, BlockMode::Block)
+        .blocks(GUARDED_START, BlockMode::Block)
 }
 
 /// The practitioner licence as wl-documents' seed.
