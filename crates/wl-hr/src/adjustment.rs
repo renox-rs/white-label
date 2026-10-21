@@ -56,6 +56,9 @@ pub struct Adjustment {
     pub period: String,
     /// The run that took it into a line.
     pub run_id: Option<i64>,
+    /// The hours difference a recovery came from (a reconciliation or an
+    /// adjustment timesheet, BL-HRM-16).
+    pub difference_id: Option<i64>,
     /// A note.
     pub note: Option<String>,
     /// Who entered it.

@@ -18,9 +18,10 @@ use renox::testing::TestApp;
 use wl_hr::permissions as perm;
 use wl_hr::{
     Adjustment, AdjustmentKind, Employee, EmploymentType, LineStatus, NewEmployee, Onboarding,
-    OnboardingStep, PayrollLine, PayrollRun, PayrollRunStatus, WlHr, employees,
+    OnboardingStep, PayrollLine, PayrollRun, PayrollRunStatus, SalaryStructure, WlHr, employees,
     template::{self, StepInput, TemplateInput},
 };
+use wl_kernel::attendance::LabourFuture;
 use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag,
     SopAcknowledgements, SopFuture, SopStaff, Validity, provide_guard,
@@ -32,6 +33,9 @@ use wl_kernel::notify::{
 use wl_kernel::tickets::{
     ChecklistRunId, Checklists, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef,
     provide_checklists, provide_task_creator,
+};
+use wl_kernel::timesheets::{
+    HoursLine, PayrollHours, PayrollPeriod, Timesheets, provide_timesheets,
 };
 use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
@@ -397,6 +401,7 @@ struct Fakes {
     checklists: ChecklistDesk,
     sops: SopDesk,
     docs: DocDesk,
+    timesheets: TimesheetDesk,
     started: Arc<Mutex<Vec<OnboardingStarted>>>,
     completed: Arc<Mutex<Vec<OnboardingCompleted>>>,
     activated: Arc<Mutex<Vec<EmployeeActivated>>>,
@@ -471,6 +476,75 @@ impl TaskCreator for TicketDesk {
     }
 }
 
+/// The timesheets of wl-attendance: the hours payroll is given at `calculate`
+/// and a log of what `submit` told it was used.
+#[derive(Clone, Default)]
+pub struct TimesheetDesk {
+    hours: Arc<Mutex<Vec<PayrollHours>>>,
+    used: Arc<Mutex<Vec<(Subject, Vec<PayrollHours>)>>>,
+}
+
+impl TimesheetDesk {
+    /// `hours` are given to payroll from now on.
+    pub fn give(&self, hours: PayrollHours) {
+        self.hours.lock().unwrap().push(hours);
+    }
+
+    /// `(run, hours)` of each `record_payroll_use`.
+    pub fn used(&self) -> Vec<(Subject, Vec<PayrollHours>)> {
+        self.used.lock().unwrap().clone()
+    }
+}
+
+impl Timesheets for TimesheetDesk {
+    fn hours_for_payroll<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _period: &'a PayrollPeriod,
+    ) -> LabourFuture<'a, Vec<PayrollHours>> {
+        Box::pin(async move { Ok(self.hours.lock().unwrap().clone()) })
+    }
+
+    fn record_payroll_use<'a>(
+        &'a self,
+        _state: &'a AppState,
+        run: &'a Subject,
+        used: &'a [PayrollHours],
+    ) -> LabourFuture<'a, ()> {
+        Box::pin(async move {
+            self.used.lock().unwrap().push((run.clone(), used.to_vec()));
+            Ok(())
+        })
+    }
+}
+
+/// The hours of timesheet `timesheet` of `employee` in November: `(day,
+/// category, minutes)` rows.
+pub fn hours_of(
+    employee: &Employee,
+    timesheet: i64,
+    provisional: bool,
+    rows: &[(u32, &str, i64)],
+) -> PayrollHours {
+    PayrollHours {
+        timesheet: Subject::new("attendance.timesheet", timesheet),
+        owner: employee.employee_id(),
+        period_from: nov(1),
+        period_to: nov(30),
+        context: None,
+        approver_kind: "internal".into(),
+        provisional,
+        lines: rows
+            .iter()
+            .map(|(day, category, minutes)| HoursLine {
+                date: nov(*day),
+                category: (*category).to_owned(),
+                minutes: *minutes,
+            })
+            .collect(),
+    }
+}
+
 /// Records `event`s of type `E` into `log`.
 fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Arc<Mutex<Vec<E>>>) {
     let log = log.clone();
@@ -493,6 +567,7 @@ impl Module for Fakes {
         provide_checklists(app, self.checklists.clone());
         provide_sop_acknowledgements(app, self.sops.clone());
         provide_guard(app, self.docs.clone());
+        provide_timesheets(app, self.timesheets.clone());
         record(app, &self.started);
         record(app, &self.completed);
         record(app, &self.activated);
@@ -521,6 +596,8 @@ pub struct Booted {
     pub sops: SopDesk,
     /// The accepted documents.
     pub docs: DocDesk,
+    /// The hours of the timesheets.
+    pub timesheets: TimesheetDesk,
     /// `OnboardingStarted`.
     pub started: Recorded<OnboardingStarted>,
     /// `OnboardingCompleted`.
@@ -736,6 +813,34 @@ impl Booted {
         )
         .await
         .unwrap()
+    }
+
+    /// A salary structure for `employee` from 1 Jan 2026: a basic wage of
+    /// `wage` fils and `hourly` fils an hour.
+    pub async fn salary(&self, employee: &Employee, wage: i64, hourly: i64) -> SalaryStructure {
+        SalaryStructure::create(
+            self.db(),
+            SalaryStructure {
+                employee_id: employee.id,
+                effective_from: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+                basic: wage,
+                hourly_rate: Some(hourly),
+                ..SalaryStructure::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// The line of `employee` in `run`, as stored now.
+    pub async fn line_of(&self, run: &PayrollRun, employee: &Employee) -> PayrollLine {
+        PayrollLine::query()
+            .where_(PayrollLine::RUN_ID.eq(run.id))
+            .where_(PayrollLine::EMPLOYEE_ID.eq(employee.id))
+            .first(self.db())
+            .await
+            .unwrap()
+            .expect("the run has a line for the employee")
     }
 
     /// A deduction of `fils` of `kind` from the pay of `employee` in `period`.
@@ -986,6 +1091,7 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         checklists: ChecklistDesk::default(),
         sops: SopDesk::default(),
         docs: DocDesk::default(),
+        timesheets: TimesheetDesk::default(),
         started: Arc::default(),
         completed: Arc::default(),
         activated: Arc::default(),
@@ -1007,11 +1113,12 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         Recorded(fakes.paid.clone()),
         fakes.tasks.clone(),
     );
-    let (notices, checklists, sops, docs) = (
+    let (notices, checklists, sops, docs, timesheets) = (
         fakes.notices.clone(),
         fakes.checklists.clone(),
         fakes.sops.clone(),
         fakes.docs.clone(),
+        fakes.timesheets.clone(),
     );
     let (started, completed, activated, changed) = (
         Recorded(fakes.started.clone()),
@@ -1122,6 +1229,7 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         checklists,
         sops,
         docs,
+        timesheets,
         started,
         completed,
         activated,

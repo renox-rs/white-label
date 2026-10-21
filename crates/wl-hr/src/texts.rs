@@ -292,6 +292,49 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.payroll.cap.court_debt", "Court debts (25%)"),
     ("wl_hr.payroll.cap.damage", "Damage (5 days' wage)"),
     ("wl_hr.payroll.cap.total", "All deductions (50%)"),
+    // The calculation of the lines (issue #206).
+    ("wl_hr.payroll.hours", "Hours"),
+    ("wl_hr.payroll.provisional", "provisional"),
+    ("wl_hr.payroll.variable", "Variable pay (AED)"),
+    ("wl_hr.payroll.deductions", "Deductions (AED)"),
+    (
+        "wl_hr.payroll.exception.missing_timesheet",
+        "Missing timesheet",
+    ),
+    ("wl_hr.payroll.differences", "Difference lines"),
+    ("wl_hr.payroll.difference_source", "From"),
+    ("wl_hr.payroll.difference_amount", "Difference (AED)"),
+    (
+        "wl_hr.payroll.difference.adjustment",
+        "Adjustment timesheet",
+    ),
+    (
+        "wl_hr.payroll.difference.reconciliation",
+        "Reconciliation of provisional hours",
+    ),
+    ("wl_hr.payroll.convert", "Turn into a recovery plan"),
+    (
+        "wl_hr.payroll.convert_hint",
+        "Spreads the recovery over the next months within the Art. 25 caps; recalculate the run afterwards.",
+    ),
+    ("wl_hr.payroll.convert_note", "Note"),
+    ("wl_hr.payroll.difference_converted", "Recovery plan made."),
+    (
+        "wl_hr.payroll.difference_note",
+        "Recovery of hours taken back after they were paid",
+    ),
+    (
+        "wl_hr.payroll.difference_not_in_open_run",
+        "The difference is not in a run that is still being prepared.",
+    ),
+    (
+        "wl_hr.payroll.difference_not_negative",
+        "Only a negative difference that is still open becomes a recovery plan.",
+    ),
+    (
+        "wl_hr.payroll.no_room_for_recovery",
+        "No wage is known to plan the recovery within the Art. 25 caps.",
+    ),
     ("wl_hr.exits.title", "Non-standard exit"),
     ("wl_hr.exits.request", "Request an exit action"),
     ("wl_hr.exits.submit", "Send for approval"),

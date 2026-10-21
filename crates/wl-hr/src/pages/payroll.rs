@@ -4,7 +4,9 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `GET /hr/payroll/{id}` | `wl_hr.payroll_run` | `payroll.view` |
+//! | `POST /hr/payroll/{id}/transitions/calculate` | `wl_hr.payroll_calculate` | `payroll.view` and `payroll.prepare`; asks the timesheets for the hours first |
 //! | `POST /hr/payroll/{id}/transitions/{name}` | `wl_hr.payroll_transitions.*` | `payroll.view` and the transition's permission |
+//! | `POST /hr/payroll/differences/{id}/convert` | `wl_hr.payroll_difference_convert` | `payroll.prepare` |
 //! | `POST /hr/payroll/{id}/rejection` | `wl_hr.payroll_rejection` | `payroll.prepare` |
 //! | `POST /hr/payroll/{id}/resubmit` | `wl_hr.payroll_resubmit` | `payroll.prepare` |
 //! | `POST /hr/payroll/{id}/partial` | `wl_hr.payroll_partial` | `payroll.prepare` |
@@ -24,6 +26,7 @@ use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 
 use crate::caps;
+use crate::differences::{self, HourDifference};
 use crate::employee::Employee;
 use crate::payroll::{
     ConfirmInput, FailedLine, LineStatus, PartialInput, PayrollLine, PayrollRun, PayrollRunStatus,
@@ -43,6 +46,8 @@ pub fn routes() -> Routes {
             Routes::new()
                 .get("/hr/payroll/{id}", show)
                 .name("wl_hr.payroll_run")
+                .post("/hr/payroll/{id}/transitions/calculate", calculate)
+                .name("wl_hr.payroll_calculate")
                 .group(
                     "/hr/payroll",
                     "wl_hr.payroll_transitions.",
@@ -62,6 +67,8 @@ pub fn routes() -> Routes {
                 .name("wl_hr.payroll_partial")
                 .post("/hr/payroll/{id}/confirm", confirm_paid)
                 .name("wl_hr.payroll_confirm")
+                .post("/hr/payroll/differences/{id}/convert", convert_difference)
+                .name("wl_hr.payroll_difference_convert")
                 .post("/hr/payroll/lines/{id}/hold", hold_line)
                 .name("wl_hr.payroll_line_hold")
                 .post("/hr/payroll/lines/{id}/pay-other", pay_other)
@@ -127,6 +134,41 @@ pub struct LineView {
     pub failed: bool,
     /// Whether its payslip is published.
     pub payslip: bool,
+    /// The timesheet hours the line was calculated from, e.g. `160 h`.
+    pub hours: String,
+    /// Whether the hours are provisional (the timesheet is not approved yet).
+    pub provisional: bool,
+    /// The exception of the line in the page's language, e.g. *missing
+    /// timesheet*.
+    pub exception: String,
+    /// The pay of overtime and the like, dirhams.
+    pub variable: String,
+    /// The hours added or taken back by adjustments and reconciliations,
+    /// dirhams, signed.
+    pub difference: String,
+    /// The deductions, dirhams.
+    pub deductions: String,
+}
+
+/// One difference line of the run: hours an adjustment timesheet or a
+/// reconciliation adds or takes back.
+#[derive(Serialize, Debug, Clone)]
+pub struct DifferenceView {
+    /// The primary key.
+    pub id: i64,
+    /// The employee's name.
+    pub employee: String,
+    /// Where it comes from, in the page's language.
+    pub source: String,
+    /// The category of the hours.
+    pub category: String,
+    /// The hours, signed.
+    pub hours: String,
+    /// The amount, dirhams, signed.
+    pub amount: String,
+    /// Whether the preparer can turn it into a recovery plan: it is negative
+    /// and the run is still being prepared.
+    pub can_convert: bool,
 }
 
 /// A line above a cap (`HRM.ACL.06`).
@@ -163,6 +205,7 @@ pub(crate) struct ShowPage {
     run: RunView,
     lines: Vec<LineView>,
     exceptions: Vec<ExceptionView>,
+    differences: Vec<DifferenceView>,
     actions: Vec<ActionView>,
     approve_blocked: bool,
     can_approve: bool,
@@ -229,6 +272,26 @@ async fn show(
         names.insert(line.employee_id, name.clone());
         lines.push(line_view(&lang, &line, name));
     }
+    let mut difference_lines = Vec::new();
+    for difference in HourDifference::of_run(&state.db, id).await? {
+        difference_lines.push(DifferenceView {
+            id: difference.id,
+            employee: names
+                .get(&difference.employee_id)
+                .cloned()
+                .unwrap_or_default(),
+            source: text(&lang, &format!("payroll.difference.{}", difference.source)),
+            category: difference.category.clone(),
+            hours: hours_text(difference.minutes),
+            amount: aed(difference.amount),
+            can_convert: difference.status == differences::OPEN
+                && difference.amount < 0
+                && matches!(
+                    run.status,
+                    PayrollRunStatus::Draft | PayrollRunStatus::Calculated
+                ),
+        });
+    }
     let mut exceptions = Vec::new();
     for problem in caps::problems(&state.db, id).await? {
         exceptions.push(ExceptionView {
@@ -266,6 +329,7 @@ async fn show(
         },
         lines,
         exceptions,
+        differences: difference_lines,
         actions,
         approve_blocked: approve_blocked && run.status == PayrollRunStatus::Calculated,
         can_approve: user.has_permission(permissions::PAYROLL_APPROVE),
@@ -343,7 +407,76 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
         comment: line.approver_comment.clone().unwrap_or_default(),
         failed: line.status == LineStatus::Failed,
         payslip: line.payslip_published_at.is_some(),
+        hours: if line.hours_minutes == 0 {
+            String::new()
+        } else {
+            hours_text(line.hours_minutes)
+        },
+        provisional: line.provisional_minutes > 0,
+        exception: line
+            .exception
+            .as_deref()
+            .map(|e| text(lang, &format!("payroll.exception.{e}")))
+            .unwrap_or_default(),
+        variable: aed(line.variable_amount),
+        difference: aed(line.difference_amount),
+        deductions: aed(line.deductions_amount),
     }
+}
+
+/// `minutes` as hours: `160 h`, `7 h 30 min`.
+pub(crate) fn hours_text(minutes: i64) -> String {
+    let sign = if minutes < 0 { "-" } else { "" };
+    let minutes = minutes.abs();
+    if minutes % 60 == 0 {
+        format!("{sign}{} h", minutes / 60)
+    } else {
+        format!("{sign}{} h {} min", minutes / 60, minutes % 60)
+    }
+}
+
+/// `POST /hr/payroll/{id}/transitions/calculate`: the timesheets are asked for
+/// the hours of the period, then the run is calculated.
+async fn calculate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    back: renox::Back,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let _run = crate::calculation::calculate(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(back.into_response())
+}
+
+/// The form that turns a difference into a recovery plan.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ConvertForm {
+    /// A note for the adjustments.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /hr/payroll/differences/{id}/convert`: the preparer turns a negative
+/// difference into an overpayment recovery with an instalment plan.
+async fn convert_difference(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ConvertForm>,
+) -> Result<Response> {
+    if !user.has_permission(permissions::PAYROLL_PREPARE) {
+        return Err(Error::Forbidden);
+    }
+    differences::convert_to_recovery(&state, id, &form.note).await?;
+    Ok((
+        Toast::success(text(&lang, "payroll.difference_converted")),
+        back,
+    )
+        .into_response())
 }
 
 /// The form that comments on a line.

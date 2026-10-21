@@ -1,0 +1,10 @@
+ALTER TABLE "wl_hr_adjustments" DROP COLUMN difference_id;
+DROP TABLE "wl_hr_hour_differences";
+DROP TABLE "wl_hr_payroll_hours";
+ALTER TABLE "wl_hr_payroll_lines" DROP COLUMN exception;
+ALTER TABLE "wl_hr_payroll_lines" DROP COLUMN provisional_minutes;
+ALTER TABLE "wl_hr_payroll_lines" DROP COLUMN hours_minutes;
+ALTER TABLE "wl_hr_payroll_lines" DROP COLUMN deductions_amount;
+ALTER TABLE "wl_hr_payroll_lines" DROP COLUMN difference_amount;
+ALTER TABLE "wl_hr_payroll_lines" DROP COLUMN variable_amount;
+DROP TABLE "wl_hr_salary_structures";

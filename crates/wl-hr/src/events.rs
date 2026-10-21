@@ -13,24 +13,29 @@
 //!   events of `HRM.RUL.10` ([`crate::qualification_expiry`]).
 //! - `Transitioned<PayrollRun>`: the notices and events that follow a payroll
 //!   run's `return`, rejections and escalation ([`crate::payroll_events`]).
+//! - `TimesheetApproved` (adjustments that affect payroll) and
+//!   `TimesheetReconciliationNeeded`: the hours that enter the next regular run
+//!   ([`crate::differences`]).
 //! - `ChecklistCompleted`, `DocumentAccepted`, `SopPublished`,
 //!   `SopAcknowledged`, `SopWithdrawn`, `SopReadersChanged`: the steps of
 //!   [`crate::steps`].
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
+use wl_kernel::attendance::TimesheetApproved;
 use wl_kernel::documents::{
     DocumentAccepted, DocumentExpired, DocumentExpiring, SopAcknowledged, SopPublished,
     SopReadersChanged, SopWithdrawn,
 };
 use wl_kernel::tickets::ChecklistCompleted;
+use wl_kernel::timesheets::TimesheetReconciliationNeeded;
 use wl_kernel::workforce::{
     AbsenceCaseClosed, AbsenceCaseOpened, EmployeeAssignmentChanged, EmployeeDeceased,
     EmployeeExited, EmployeeOnboardingCancelled,
 };
 
 use crate::payroll::PayrollRun;
-use crate::{absence, onboarding, payroll_events, qualification_expiry, steps};
+use crate::{absence, differences, onboarding, payroll_events, qualification_expiry, steps};
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
@@ -61,6 +66,14 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(
         |event: Transitioned<PayrollRun>, state: AppState| async move {
             payroll_events::on_transitioned(&state, &event).await
+        },
+    );
+    app.listen(|event: TimesheetApproved, state: AppState| async move {
+        differences::on_approved(&state, &event).await
+    });
+    app.listen(
+        |event: TimesheetReconciliationNeeded, state: AppState| async move {
+            differences::on_reconciliation(&state, &event).await
         },
     );
     app.listen(|event: ChecklistCompleted, state: AppState| async move {

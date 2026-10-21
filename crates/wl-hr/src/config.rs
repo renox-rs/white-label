@@ -26,6 +26,10 @@ pub const DEFAULT_ACCOUNTANT_ROLE: &str = "accountant";
 /// WPS due date at which a rejection still open is escalated.
 pub const DEFAULT_WPS_ESCALATION_DAYS: i64 = 1;
 
+/// The payroll cut-off day of the month (wl-hr §7, `HRM.RUL.02` parameter D):
+/// attendance dated after it is not counted as provisional hours.
+pub const DEFAULT_CUT_OFF_DAY: u32 = 25;
+
 /// The settings of the HR module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HrConfig {
@@ -41,6 +45,8 @@ pub struct HrConfig {
     pub accountant_role: String,
     /// N of `HRM.RUL.11`: days before the WPS due date.
     pub wps_escalation_days: i64,
+    /// The payroll cut-off day of the month (D of `HRM.RUL.02`).
+    pub cut_off_day: u32,
 }
 
 impl Default for HrConfig {
@@ -52,6 +58,7 @@ impl Default for HrConfig {
             md_role: DEFAULT_MD_ROLE.to_owned(),
             accountant_role: DEFAULT_ACCOUNTANT_ROLE.to_owned(),
             wps_escalation_days: DEFAULT_WPS_ESCALATION_DAYS,
+            cut_off_day: DEFAULT_CUT_OFF_DAY,
         }
     }
 }

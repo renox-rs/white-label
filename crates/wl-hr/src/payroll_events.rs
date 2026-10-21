@@ -15,7 +15,7 @@ use wl_kernel::{
 
 use crate::payroll::{
     CONFIRM_PAID, LineStatus, PayrollLine, PayrollRun, RECORD_PARTIAL, RECORD_PARTIAL_BY_SYSTEM,
-    RECORD_REJECTION, RETURN,
+    RECORD_REJECTION, RETURN, SUBMIT,
 };
 use crate::{notices, wps_alerts};
 
@@ -26,6 +26,7 @@ pub(crate) async fn on_transitioned(state: &AppState, event: &Transitioned<Payro
         RECORD_REJECTION | RECORD_PARTIAL | RECORD_PARTIAL_BY_SYSTEM => {
             failed(state, event.key).await
         }
+        SUBMIT => crate::calculation::record_use(state, event.key).await,
         CONFIRM_PAID => paid(state, event.key).await,
         _ => Ok(()),
     }

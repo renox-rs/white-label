@@ -1,12 +1,12 @@
-//! Payroll runs and lines as far as an exit and the WPS rejections need them
-//! (wl-hr §4 *Payroll run*, §5.6, issues #197 and #201 to #205). The rest of
-//! the lifecycle (the calculation itself, `confirm_paid`, `cancel`, off-cycle
-//! and supplementary runs) comes with BL-HRM-16 to 18; here are the run and its
-//! lines, and:
+//! Payroll runs and lines (wl-hr §4 *Payroll run*, §5.3, §5.6, issues #197,
+//! #201 to #208). The run and its lines, and:
 //!
 //! - `calculate` (draft, calculated -> calculated, `payroll.prepare`): the
-//!   user is the preparer; the period's adjustments are taken into the lines.
-//!   The base of BL-HRM-15: the amounts of the lines are not calculated yet.
+//!   user is the preparer; the lines of a `regular` run are calculated from
+//!   the salary structures, the timesheet hours (provisional ones marked) and
+//!   the differences of adjustment timesheets and reconciliations
+//!   ([`crate::calculation`], BL-HRM-16); the period's adjustments are taken
+//!   into the lines.
 //! - `approve` (calculated -> approved, `payroll.approve`): another user than
 //!   the preparer (`HRM.ACL.04`), and refused while a line is above the
 //!   Art. 25 caps (`HRM.ACL.06`, [`crate::caps`]) for every approver.
@@ -60,6 +60,10 @@ use crate::{adjustment, caps, permissions, sif, wps_partial, wps_rejection};
 
 /// The reason of a line held by the absence report.
 pub const HELD_ABSENCE_REPORT: &str = "absence report";
+
+/// The reason of a line held while the employee has an open absence case
+/// (wl-hr §4 *Payroll run* `calculate`).
+pub const HELD_ABSENCE_CASE: &str = "absence case";
 
 /// The preparer calculates the lines of the run.
 pub const CALCULATE: &str = "calculate";
@@ -190,6 +194,22 @@ pub struct PayrollLine {
     /// fils: the basis of the Art. 25 caps (`HRM.ACL.06`). The payroll
     /// calculation fills it from the salary structure.
     pub fixed_wage: i64,
+    /// The pay of the hours that are not `normal` (overtime, night, rest day,
+    /// public holiday), AED fils (BL-HRM-16).
+    pub variable_amount: i64,
+    /// The hours added (+) or taken back (-) by adjustment timesheets and
+    /// reconciliations in this run, AED fils; the recoveries are among the
+    /// deductions.
+    pub difference_amount: i64,
+    /// The adjustments deducted on this line, AED fils.
+    pub deductions_amount: i64,
+    /// The minutes of timesheet hours the line was calculated from.
+    pub hours_minutes: i64,
+    /// Of them, the minutes of timesheets not approved yet (provisional).
+    pub provisional_minutes: i64,
+    /// An exception the preparer reviews, e.g. `missing_timesheet`
+    /// ([`crate::calculation::MISSING_TIMESHEET`]).
+    pub exception: Option<String>,
     /// The approver's comment on this line to fix (`return`); cleared by the
     /// next `calculate`.
     pub approver_comment: Option<String>,
@@ -311,11 +331,13 @@ impl StateMachine for PayrollRun {
 }
 
 /// `calculate` (draft, calculated -> calculated, `payroll.prepare`): the user
-/// who runs it is the preparer. The adjustments of the run's period are taken
-/// into the lines (`HRM.ACL.06` checks them). The lines themselves (salary
-/// structure, hours, leave) are calculated by the payroll calculation of
-/// BL-HRM-16; until then the lines and their `fixed_wage` are what the run
-/// holds.
+/// who runs it is the preparer. The lines of a `regular` run are calculated
+/// from the salary structures, the timesheet hours the transition is given as
+/// input and the differences of adjustment timesheets and reconciliations
+/// ([`crate::calculation`]); the adjustments of the run's period are taken
+/// into the lines (`HRM.ACL.06` checks them). The lines of an `off_cycle` or a
+/// `supplementary` run are fixed when the run is made: `calculate` only
+/// records the preparer.
 fn calculate() -> Transition<PayrollRun> {
     Transition::new(CALCULATE)
         .label("Calculate")
@@ -323,11 +345,18 @@ fn calculate() -> Transition<PayrollRun> {
         .from([PayrollRunStatus::Draft, PayrollRunStatus::Calculated])
         .to(PayrollRunStatus::Calculated)
         .effect(|run: &PayrollRun, ctx, tx| {
-            let id = run.id;
-            let period = run.period.clone();
+            let run = run.clone();
             let by = ctx.actor().map(|user| user.id);
+            let input = ctx
+                .input_as::<crate::calculation::CalculateInput>()
+                .unwrap_or_default();
             Box::pin(async move {
-                adjustment::link_to_run_in(tx, id, &period).await?;
+                let id = run.id;
+                let calculated = crate::calculation::lines_in(tx, &run, &input).await?;
+                if run.run_type == crate::calculation::REGULAR {
+                    adjustment::link_to_run_in(tx, id, &run.period).await?;
+                }
+                crate::calculation::settle_in(tx, id, &calculated).await?;
                 // The comments of a `return` were answered by this calculation.
                 PayrollLine::query()
                     .where_(PayrollLine::RUN_ID.eq(id))

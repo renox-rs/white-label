@@ -6,13 +6,16 @@ pub mod absence;
 pub mod activation;
 pub mod adjustment;
 pub mod assignees;
+pub mod calculation;
 pub mod caps;
 pub mod config;
+pub mod differences;
 pub mod employee;
 pub mod employee_machine;
 pub mod establishment;
 mod events;
 pub mod exits;
+pub mod hours;
 pub mod leave;
 mod notices;
 pub mod onboarding;
@@ -22,7 +25,9 @@ pub mod payroll;
 mod payroll_events;
 pub mod qualification;
 pub mod qualification_expiry;
+pub mod recovery;
 pub mod reminders;
+pub mod salary;
 pub mod seed;
 pub mod settlement;
 pub mod sif;
@@ -41,7 +46,9 @@ use renox::prelude::*;
 
 pub use absence::{AbsenceCase, AbsenceReport, ContactAttempt, ContactOutcome};
 pub use adjustment::{Adjustment, AdjustmentKind};
+pub use calculation::PayrollHour;
 pub use config::HrConfig;
+pub use differences::HourDifference;
 pub use employee::{
     Employee, EmployeeScope, EmployeeStatus, EmploymentType, NewEmployee, change_job_role,
     correct_hire_date, set_scope,
@@ -55,6 +62,7 @@ pub use onboarding::{
 pub use payroll::{LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
 pub use qualification::{NewQualification, Qualification, Quals};
 pub use qualification_expiry::QualificationExpiry;
+pub use salary::SalaryStructure;
 pub use settlement::{FinalSettlement, SettlementStatus};
 pub use sif::{SifFile, SifLine};
 pub use steps::{DoneInput, InPerson, StepRefused};
@@ -172,6 +180,12 @@ impl WlHr {
         self
     }
 
+    /// The payroll cut-off day of the month (default 25).
+    pub fn cut_off_day(mut self, day: u32) -> Self {
+        self.config.cut_off_day = day;
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &HrConfig {
         &self.config
@@ -225,6 +239,9 @@ impl Module for WlHr {
         app.model::<SifLine>();
         app.model::<Establishment>();
         app.model::<Adjustment>();
+        app.model::<SalaryStructure>();
+        app.model::<PayrollHour>();
+        app.model::<HourDifference>();
         app.model::<FinalSettlement>();
         app.model::<VisaCase>();
         app.provide(self.config.clone());
