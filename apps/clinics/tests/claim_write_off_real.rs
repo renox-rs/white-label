@@ -510,3 +510,48 @@ async fn the_stored_policy_of_a_payer_bill_write_off_names_the_owner_alone() {
         .unwrap();
     assert_eq!(all.len(), 1);
 }
+
+/// Edge case: the open amount changes while the write-off waits for the
+/// owner (here the payer bill's balance moves from AED 1,500.00 to AED
+/// 1,400.00). The owner's approval does not write off the new amount: the
+/// request fails, the payer bill and the claim are as they were, and the
+/// claim does not go on waiting for it.
+#[renox::test]
+async fn an_amount_that_changed_while_the_write_off_waited_fails_the_request() {
+    let t = boot_real().await;
+    let mona = t.manager("Mona").await;
+    let olga = t.owner().await;
+    let claim = t.claim(d("2026-09-01"), &[("consultation", 150_000)]).await;
+    claim_closing::write_off(
+        t.state(),
+        &mona,
+        claim.id,
+        "missed window",
+        dubai("2026-10-05", 9, 0),
+    )
+    .await
+    .expect("the request is made");
+    let request = t.claim_now(claim.id).await.held_request_id.expect("held");
+
+    wl_invoicing::PayerBill::query()
+        .where_(wl_invoicing::PayerBill::ID.eq(claim.payer_bill_id))
+        .update(t.db(), &[("balance", &140_000_i64)])
+        .await
+        .unwrap();
+    // The decision is recorded; the write-off it was for does not run.
+    let _ = approvals::approve(t.state(), request, &olga, "ok").await;
+
+    let stored = approvals::ApprovalRequest::find_or_404(t.db(), request)
+        .await
+        .unwrap();
+    assert_eq!(stored.status, approvals::ApprovalStatus::Failed);
+    let after = t.claim_now(claim.id).await;
+    assert_eq!(after.status, ClaimStatus::Draft);
+    assert!(!after.is_held(), "the claim does not wait for a dead request");
+    assert_eq!(t.bill_of(&after).await.status, PayerBillStatus::Draft);
+    let lines = payer_bills(t.state())
+        .lines(t.db(), after.payer_bill())
+        .await
+        .unwrap();
+    assert_eq!(lines.iter().map(|l| l.written_off).sum::<i64>(), 0);
+}
