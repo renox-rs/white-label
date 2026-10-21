@@ -122,14 +122,26 @@ async fn hrm20_ac2_a_run_uses_the_account_active_when_it_is_submitted() {
             .await;
     let later_line = w.t.payroll_line(&later, &w.e, NET, NET).await;
 
+    let earlier =
+        w.t.payroll_run("2026-10", wl_hr::PayrollRunStatus::Approved)
+            .await;
+    let lines = [w.t.payroll_line(&earlier, &w.e, NET, NET).await];
+
+    // Day 6: the job finds nothing to activate and the run is submitted.
     job_on(&w, nov(6)).await;
-    let (_run, lines) = w.t.submitted_run("2026-10", &[&w.e], NET).await;
+    w.t.on(nov(6), wl_hr::payroll::submit(w.t.state(), earlier.id))
+        .await
+        .unwrap();
+    assert_eq!(w.t.account(&new).await.status, PayAccountStatus::Cooling);
     let early = sent_line(&w.t, &lines[0]).await;
     assert_eq!(early.pay_account_id, Some(w.old.id));
     assert_eq!(early.account_last4.as_deref(), Some("4321"));
 
+    // Day 7: the job activates the account, then the other run is submitted.
     job_on(&w, nov(7)).await;
-    wl_hr::payroll::submit(w.t.state(), later.id).await.unwrap();
+    w.t.on(nov(7), wl_hr::payroll::submit(w.t.state(), later.id))
+        .await
+        .unwrap();
 
     let used = sent_line(&w.t, &later_line).await;
     assert_eq!(used.pay_account_id, Some(new.id));
