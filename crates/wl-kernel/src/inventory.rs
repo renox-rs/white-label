@@ -60,6 +60,9 @@ pub const SUPPLIER_RETURN_SUBJECT_TYPE: &str = "inventory.supplier_return";
 /// The subject type of a stock hold.
 pub const STOCK_HOLD_SUBJECT_TYPE: &str = "inventory.stock_hold";
 
+/// The subject type of one line of a stock hold.
+pub const STOCK_HOLD_LINE_SUBJECT_TYPE: &str = "inventory.stock_hold_line";
+
 /// The subject type of a transfer between two locations.
 pub const TRANSFER_SUBJECT_TYPE: &str = "inventory.transfer";
 
@@ -950,3 +953,64 @@ pub fn stock_hold_service(state: &AppState) -> Arc<dyn StockHoldService> {
         None => Arc::new(NoStockHoldService),
     }
 }
+
+/// What was decided for one line of a closed stock hold.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeldOutcome {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location the quantity was at, `inventory.location:2`.
+    pub location: Subject,
+    /// The lot, `inventory.lot:4`.
+    pub lot: Option<Subject>,
+    /// The quantity held, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// `release`, `discard` or `return_to_supplier`.
+    pub outcome: String,
+}
+
+/// A stock hold closed because its last line was decided (wl-inventory §6
+/// `StockHoldClosed`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockHoldClosed {
+    /// The hold, `inventory.stock_hold:3`.
+    pub hold: Subject,
+    /// Its number, `HLD-2026-0001`.
+    pub number: String,
+    /// `recall`, `quality`, `temperature`, `complaint` or `other`.
+    pub reason: String,
+    /// The record that caused it.
+    pub reference: Option<Subject>,
+    /// What was decided for each line.
+    pub outcomes: Vec<HeldOutcome>,
+}
+
+impl Event for StockHoldClosed {}
+
+/// A lot left its hold and can be used again (wl-inventory §6 `LotReleased`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LotReleased {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+}
+
+impl Event for LotReleased {}
+
+/// A lot was discarded (wl-inventory §6 `LotDiscarded`): what was left of it
+/// went to wastage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LotDiscarded {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// Why: the hold or expiry reason.
+    pub reason: String,
+    /// The quantity the discard took out, in thousandths (0 when the lines
+    /// of the hold had taken it all already).
+    pub quantity_milli: i64,
+}
+
+impl Event for LotDiscarded {}
