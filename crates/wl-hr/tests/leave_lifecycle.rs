@@ -41,7 +41,11 @@ async fn an_employee_asks_hr_approves_and_the_event_goes_out() {
     assert!(t.leave_approved.all().is_empty());
 
     // The employee cannot approve their own leave.
-    assert!(leave::approve(t.state(), account.id, request.id).await.is_err());
+    assert!(
+        leave::approve(t.state(), account.id, request.id)
+            .await
+            .is_err()
+    );
     assert_eq!(stored(&t, &request).await.status, LeaveStatus::Requested);
 
     let approved = leave::approve(t.state(), hr.id, request.id).await.unwrap();
@@ -76,7 +80,11 @@ async fn a_rejection_needs_a_reason_and_keeps_it() {
     let (employee, account) = t.ravi().await;
     let hr = t.user_in_branch("Hana", "hr").await;
     let request = requested(&t, &employee, account.id, "annual", 9, 13).await;
-    assert!(leave::reject(t.state(), hr.id, request.id, "  ").await.is_err());
+    assert!(
+        leave::reject(t.state(), hr.id, request.id, "  ")
+            .await
+            .is_err()
+    );
     let rejected = leave::reject(t.state(), hr.id, request.id, "peak week")
         .await
         .unwrap();
@@ -96,7 +104,10 @@ async fn cancel_works_until_the_start_date_and_releases_the_calendars() {
 
     // On 10 Nov the leave has started.
     let late = t
-        .on(nov(10), leave::cancel(t.state(), account.id, request.id, ""))
+        .on(
+            nov(10),
+            leave::cancel(t.state(), account.id, request.id, ""),
+        )
         .await;
     assert!(late.is_err());
     assert_eq!(stored(&t, &request).await.status, LeaveStatus::Approved);
@@ -105,7 +116,10 @@ async fn cancel_works_until_the_start_date_and_releases_the_calendars() {
     leave::approve(t.state(), hr.id, other.id).await.unwrap();
     // Before it starts the employee may cancel it.
     let cancelled = t
-        .on(nov(10), leave::cancel(t.state(), account.id, other.id, "plans changed"))
+        .on(
+            nov(10),
+            leave::cancel(t.state(), account.id, other.id, "plans changed"),
+        )
         .await
         .unwrap();
     assert_eq!(cancelled.status, LeaveStatus::Cancelled);
@@ -158,11 +172,35 @@ async fn a_sick_leave_requested_ahead_needs_its_note_to_be_approved() {
 async fn bad_requests_are_refused() {
     let t = support::boot().await;
     let (employee, account) = t.ravi().await;
-    let backwards = leave::request(t.state(), account.id, employee.id, "annual", nov(13), nov(9)).await;
+    let backwards = leave::request(
+        t.state(),
+        account.id,
+        employee.id,
+        "annual",
+        nov(13),
+        nov(9),
+    )
+    .await;
     assert!(backwards.is_err());
-    let unknown = leave::request(t.state(), account.id, employee.id, "sabbatical", nov(9), nov(13)).await;
+    let unknown = leave::request(
+        t.state(),
+        account.id,
+        employee.id,
+        "sabbatical",
+        nov(9),
+        nov(13),
+    )
+    .await;
     assert!(unknown.is_err());
     let stranger = t.user("Sam").await;
-    let not_theirs = leave::request(t.state(), stranger.id, employee.id, "annual", nov(9), nov(13)).await;
+    let not_theirs = leave::request(
+        t.state(),
+        stranger.id,
+        employee.id,
+        "annual",
+        nov(9),
+        nov(13),
+    )
+    .await;
     assert!(matches!(not_theirs, Err(renox::Error::Forbidden)));
 }

@@ -9,8 +9,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_inventory::movement::MovementType;
 use wl_inventory::{
-    DraftLine, Item, Location, LotStatus, PendingIssue, PendingStatus, Recall, RecallLine,
-    recall,
+    DraftLine, Item, Location, LotStatus, PendingIssue, PendingStatus, Recall, RecallLine, recall,
 };
 use wl_kernel::inventory::{TraceMark, lot_trace};
 use wl_kernel::{PartyId, Subject};
@@ -85,18 +84,73 @@ async fn the_trace_lists_visits_and_the_customer_of_a_lot_made_from_the_recalled
     let branch = t.named_location("BRANCH-1", "Branch 1").await;
     t.stock_in(&serum, &branch, Some(&l9), 20_000, 1_000).await;
     let issue = MovementType::Issue;
-    t.movement(issue, &serum, Some(&l9), Some(&branch), None, 2_000, &visit(1), Some(&visit(1)), at(2, 8), false)
-        .await;
-    t.movement(issue, &serum, Some(&l9), Some(&branch), None, 3_000, &visit(2), Some(&visit(2)), at(3, 8), false)
-        .await;
+    t.movement(
+        issue,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        2_000,
+        &visit(1),
+        Some(&visit(1)),
+        at(2, 8),
+        false,
+    )
+    .await;
+    t.movement(
+        issue,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        3_000,
+        &visit(2),
+        Some(&visit(2)),
+        at(3, 8),
+        false,
+    )
+    .await;
     // Batch B consumes 10 of L9 and produces 5 of L20; 4 of them are sold.
     let batch = Subject::new("manufacturing.batch", 1);
-    t.movement(MovementType::Consume, &serum, Some(&l9), Some(&branch), None, 10_000, &batch, None, at(4, 8), false)
-        .await;
-    t.movement(MovementType::Produce, &kit, Some(&l20), None, Some(&branch), 5_000, &batch, None, at(4, 9), false)
-        .await;
-    t.movement(issue, &kit, Some(&l20), Some(&branch), None, 4_000, &order(5), Some(&order(5)), at(6, 8), false)
-        .await;
+    t.movement(
+        MovementType::Consume,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        10_000,
+        &batch,
+        None,
+        at(4, 8),
+        false,
+    )
+    .await;
+    t.movement(
+        MovementType::Produce,
+        &kit,
+        Some(&l20),
+        None,
+        Some(&branch),
+        5_000,
+        &batch,
+        None,
+        at(4, 9),
+        false,
+    )
+    .await;
+    t.movement(
+        issue,
+        &kit,
+        Some(&l20),
+        Some(&branch),
+        None,
+        4_000,
+        &order(5),
+        Some(&order(5)),
+        at(6, 8),
+        false,
+    )
+    .await;
     t.trace_parties.set(&visit(1), PartyId(11));
     t.trace_parties.set(&visit(2), PartyId(12));
     t.trace_parties.set(&order(5), PartyId(33));
@@ -109,8 +163,16 @@ async fn the_trace_lists_visits_and_the_customer_of_a_lot_made_from_the_recalled
     assert_eq!(
         listed(&t, &opened).await,
         vec![
-            ("clinics.visit:1".to_owned(), Some(11), "confirmed".to_owned()),
-            ("clinics.visit:2".to_owned(), Some(12), "confirmed".to_owned()),
+            (
+                "clinics.visit:1".to_owned(),
+                Some(11),
+                "confirmed".to_owned()
+            ),
+            (
+                "clinics.visit:2".to_owned(),
+                Some(12),
+                "confirmed".to_owned()
+            ),
             ("sales.order:5".to_owned(), Some(33), "confirmed".to_owned()),
         ]
     );
@@ -160,8 +222,16 @@ async fn the_trace_lists_visits_and_the_customer_of_a_lot_made_from_the_recalled
     assert_eq!(
         where_,
         vec![
-            (Subject::new("inventory.lot", l9.id), branch.subject(), 5_000),
-            (Subject::new("inventory.lot", l20.id), branch.subject(), 1_000),
+            (
+                Subject::new("inventory.lot", l9.id),
+                branch.subject(),
+                5_000
+            ),
+            (
+                Subject::new("inventory.lot", l20.id),
+                branch.subject(),
+                1_000
+            ),
         ]
     );
 }
@@ -175,11 +245,33 @@ async fn a_subject_without_a_resolver_is_unknown_and_a_dispatch_shows_its_delive
     let l9 = t.lot(&serum, "L9", LotStatus::Released).await;
     let branch = t.named_location("BRANCH-1", "Branch 1").await;
     t.stock_in(&serum, &branch, Some(&l9), 20_000, 1_000).await;
-    t.movement(MovementType::Issue, &serum, Some(&l9), Some(&branch), None, 2_000, &Subject::new("clinics.job", 4), Some(&Subject::new("clinics.job", 4)), at(2, 8), false)
-        .await;
+    t.movement(
+        MovementType::Issue,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        2_000,
+        &Subject::new("clinics.job", 4),
+        Some(&Subject::new("clinics.job", 4)),
+        at(2, 8),
+        false,
+    )
+    .await;
     let dispatch = Subject::new("delivery.dispatch", 8);
-    t.movement(MovementType::Dispatch, &serum, Some(&l9), Some(&branch), None, 1_000, &dispatch, None, at(3, 8), false)
-        .await;
+    t.movement(
+        MovementType::Dispatch,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        1_000,
+        &dispatch,
+        None,
+        at(3, 8),
+        false,
+    )
+    .await;
     t.trace_parties.set(&dispatch, PartyId(44));
     t.trace_parties.delivery(&dispatch, "out_for_delivery");
 
@@ -187,9 +279,15 @@ async fn a_subject_without_a_resolver_is_unknown_and_a_dispatch_shows_its_delive
 
     let lines = t.recall_lines(&opened).await;
     assert_eq!(lines.len(), 2);
-    let job = lines.iter().find(|l| l.kind.as_str() == "confirmed").unwrap();
+    let job = lines
+        .iter()
+        .find(|l| l.kind.as_str() == "confirmed")
+        .unwrap();
     assert_eq!((job.party_id, job.subject_id), (None, Some(4)));
-    let sent = lines.iter().find(|l| l.kind.as_str() == "dispatch").unwrap();
+    let sent = lines
+        .iter()
+        .find(|l| l.kind.as_str() == "dispatch")
+        .unwrap();
     assert_eq!(sent.party_id, Some(44));
     assert_eq!(sent.delivery_status.as_deref(), Some("out_for_delivery"));
 }
@@ -239,12 +337,34 @@ async fn walk_in_sales_are_one_line_per_outlet_and_day() {
     let kit = t.tracked_item("KIT").await;
     let l20 = t.lot(&kit, "L20", LotStatus::Released).await;
     let outlet = t.named_location("OUTLET-1", "Outlet 1").await;
-    t.movement(MovementType::Receive, &kit, Some(&l20), None, Some(&outlet), 30_000, &Subject::new("inventory.goods_receipt", 1), None, at(1, 8), false)
-        .await;
+    t.movement(
+        MovementType::Receive,
+        &kit,
+        Some(&l20),
+        None,
+        Some(&outlet),
+        30_000,
+        &Subject::new("inventory.goods_receipt", 1),
+        None,
+        at(1, 8),
+        false,
+    )
+    .await;
     for n in 1..=15 {
         let sale = Subject::new("sales.pos_sale", n);
-        t.movement(MovementType::Consume, &kit, Some(&l20), Some(&outlet), None, 1_000, &sale, Some(&sale), at(10, 8), false)
-            .await;
+        t.movement(
+            MovementType::Consume,
+            &kit,
+            Some(&l20),
+            Some(&outlet),
+            None,
+            1_000,
+            &sale,
+            Some(&sale),
+            at(10, 8),
+            false,
+        )
+        .await;
     }
     t.trace_parties.walk_in("sales.pos_sale");
 
@@ -270,10 +390,32 @@ async fn tracing_again_adds_only_new_lines_and_keeps_the_notice_status() {
     let l9 = t.lot(&serum, "L9", LotStatus::Released).await;
     let branch = t.named_location("BRANCH-1", "Branch 1").await;
     t.stock_in(&serum, &branch, Some(&l9), 20_000, 1_000).await;
-    t.movement(MovementType::Issue, &serum, Some(&l9), Some(&branch), None, 2_000, &visit(1), Some(&visit(1)), at(2, 8), false)
-        .await;
-    t.movement(MovementType::Issue, &serum, Some(&l9), Some(&branch), None, 3_000, &visit(2), Some(&visit(2)), at(3, 8), false)
-        .await;
+    t.movement(
+        MovementType::Issue,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        2_000,
+        &visit(1),
+        Some(&visit(1)),
+        at(2, 8),
+        false,
+    )
+    .await;
+    t.movement(
+        MovementType::Issue,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        3_000,
+        &visit(2),
+        Some(&visit(2)),
+        at(3, 8),
+        false,
+    )
+    .await;
     t.trace_parties.set(&visit(1), PartyId(11));
     t.trace_parties.set(&visit(2), PartyId(12));
     let opened = open_recall(&t, &serum, "L9").await;
@@ -296,8 +438,19 @@ async fn tracing_again_adds_only_new_lines_and_keeps_the_notice_status() {
     assert_eq!(t.recall_now(&opened).await.trace_runs, 2);
 
     // A visit that used the lot since is the only line added.
-    t.movement(MovementType::Issue, &serum, Some(&l9), Some(&branch), None, 1_000, &visit(9), Some(&visit(9)), at(8, 8), false)
-        .await;
+    t.movement(
+        MovementType::Issue,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        1_000,
+        &visit(9),
+        Some(&visit(9)),
+        at(8, 8),
+        false,
+    )
+    .await;
     t.trace_as(&manager, &opened).await.assert_ok();
     let third: Vec<RecallLine> = t.recall_lines(&opened).await;
     assert_eq!(third.len(), 3);
@@ -324,17 +477,61 @@ async fn theoretical_consumption_is_possible_only_while_the_lot_was_on_hand() {
     let t8 = t.lot(&item, "T8", LotStatus::Released).await;
     let outlet = t.named_location("OUTLET-1", "Outlet 1").await;
     let receipt = Subject::new("inventory.goods_receipt", 1);
-    t.movement(MovementType::Receive, &item, Some(&t8), None, Some(&outlet), 50_000, &receipt, None, at(1, 8), false)
-        .await;
-    t.movement(MovementType::Receive, &item, Some(&t7), None, Some(&outlet), 10_000, &receipt, None, at(3, 8), false)
-        .await;
+    t.movement(
+        MovementType::Receive,
+        &item,
+        Some(&t8),
+        None,
+        Some(&outlet),
+        50_000,
+        &receipt,
+        None,
+        at(1, 8),
+        false,
+    )
+    .await;
+    t.movement(
+        MovementType::Receive,
+        &item,
+        Some(&t7),
+        None,
+        Some(&outlet),
+        10_000,
+        &receipt,
+        None,
+        at(3, 8),
+        false,
+    )
+    .await;
     // The rest of T7 is thrown away on the 6th: its balance there is zero.
-    t.movement(MovementType::Wastage, &item, Some(&t7), Some(&outlet), None, 10_000, &Subject::new("inventory.lot", t7.id), None, at(6, 8), false)
-        .await;
+    t.movement(
+        MovementType::Wastage,
+        &item,
+        Some(&t7),
+        Some(&outlet),
+        None,
+        10_000,
+        &Subject::new("inventory.lot", t7.id),
+        None,
+        at(6, 8),
+        false,
+    )
+    .await;
     // Orders consume the item without a scan; the postings used T8.
     for (n, day) in [(1, 2), (2, 4), (3, 7)] {
-        t.movement(MovementType::Consume, &item, Some(&t8), Some(&outlet), None, 500, &order(n), Some(&order(n)), at(day, 9), true)
-            .await;
+        t.movement(
+            MovementType::Consume,
+            &item,
+            Some(&t8),
+            Some(&outlet),
+            None,
+            500,
+            &order(n),
+            Some(&order(n)),
+            at(day, 9),
+            true,
+        )
+        .await;
     }
     t.trace_parties.set(&order(2), PartyId(22));
 
@@ -361,8 +558,19 @@ async fn the_trace_changes_no_movement() {
     let l9 = t.lot(&serum, "L9", LotStatus::Released).await;
     let branch = t.named_location("BRANCH-1", "Branch 1").await;
     t.stock_in(&serum, &branch, Some(&l9), 20_000, 1_000).await;
-    t.movement(MovementType::Issue, &serum, Some(&l9), Some(&branch), None, 2_000, &visit(1), Some(&visit(1)), at(2, 8), false)
-        .await;
+    t.movement(
+        MovementType::Issue,
+        &serum,
+        Some(&l9),
+        Some(&branch),
+        None,
+        2_000,
+        &visit(1),
+        Some(&visit(1)),
+        at(2, 8),
+        false,
+    )
+    .await;
     let before: Vec<(i64, i64, Option<i64>)> = t
         .movements_of(&serum)
         .await

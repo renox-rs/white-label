@@ -106,10 +106,9 @@ pub(crate) fn register_types() {
 
 /// Registers the hourly [`TASK`].
 pub(crate) fn schedule(app: &mut Registry) {
-    app.schedule()
-        .hourly(TASK, |state: AppState| async move {
-            run(&state, renox::db::now()).await.map(|_| ())
-        });
+    app.schedule().hourly(TASK, |state: AppState| async move {
+        run(&state, renox::db::now()).await.map(|_| ())
+    });
 }
 
 /// The key of the task to count or clear `item_id` at `location_id`: one
@@ -277,7 +276,10 @@ pub async fn run(state: &AppState, at: DateTime) -> Result<usize> {
             .where_(ShortageAlert::ID.eq(alert.id))
             .update(
                 &state.db,
-                &[("escalated_at", &Some(at)), ("updated_at", &renox::db::now())],
+                &[
+                    ("escalated_at", &Some(at)),
+                    ("updated_at", &renox::db::now()),
+                ],
             )
             .await?;
         escalated += 1;

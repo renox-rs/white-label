@@ -676,10 +676,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.short.task_body",
         "{{ item }} has been short at {{ location }} for {{ hours }} hours or more. Count the stock, or clear the pending issues with a reason.",
     ),
-    (
-        "wl_inventory.short.task_done",
-        "The shortage is over.",
-    ),
+    ("wl_inventory.short.task_done", "The shortage is over."),
     // Pending issues.
     (
         "wl_inventory.pending.not_covered",
@@ -834,10 +831,7 @@ const TEXTS: &[(&str, &str)] = &[
         "A second person must approve first; the line stays undecided until then.",
     ),
     ("wl_inventory.hold.cancelled", "The hold is cancelled."),
-    (
-        "wl_inventory.hold.cancel_reason",
-        "placed in error",
-    ),
+    ("wl_inventory.hold.cancel_reason", "placed in error"),
     // `STK.RUL.07`: the reminder and the escalation of an open hold.
     (
         "wl_inventory.hold.reminder_subject",
@@ -856,10 +850,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Stock hold {{ number }} ({{ reason }}) still has {{ lines }} line(s) to decide, {{ hours }} hours after it was placed. The people who decide it have been reminded.",
     ),
     // Opening a recall.
-    (
-        "wl_inventory.recall.no_reason",
-        "A recall needs a reason.",
-    ),
+    ("wl_inventory.recall.no_reason", "A recall needs a reason."),
     (
         "wl_inventory.recall.bad_scope",
         "A recall needs a scope: the items, with the lot numbers or the supplier lot numbers recalled.",

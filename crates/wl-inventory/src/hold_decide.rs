@@ -86,11 +86,11 @@ pub enum DecideOutcome {
 /// `None` for a lot with another source (a produced lot).
 async fn supplier_of(db: &Db, lot: &Lot) -> Result<Option<i64>> {
     match lot.source() {
-        Some(source) if source.subject_type == GOODS_RECEIPT_SUBJECT_TYPE => Ok(
-            GoodsReceipt::find(db, source.subject_id)
+        Some(source) if source.subject_type == GOODS_RECEIPT_SUBJECT_TYPE => {
+            Ok(GoodsReceipt::find(db, source.subject_id)
                 .await?
-                .map(|receipt| receipt.supplier_party_id),
-        ),
+                .map(|receipt| receipt.supplier_party_id))
+        }
         _ => Ok(None),
     }
 }
@@ -156,11 +156,7 @@ pub async fn decide(
 
 /// Whether another open hold on whole lots, besides `except`, still has an
 /// undecided line of `lot_id`.
-async fn held_elsewhere(
-    tx: &mut renox::db::Transaction,
-    lot_id: i64,
-    except: i64,
-) -> Result<bool> {
+async fn held_elsewhere(tx: &mut renox::db::Transaction, lot_id: i64, except: i64) -> Result<bool> {
     let rows = StockHoldLine::query()
         .where_(StockHoldLine::LOT_ID.eq(Some(lot_id)))
         .where_(StockHoldLine::STATUS.eq(HoldLineStatus::Undecided))
@@ -409,28 +405,26 @@ pub(crate) fn register(app: &mut Registry) {
             state.emit(closed_event(&hold, &lines)).await
         },
     );
-    app.listen(
-        |event: Transitioned<Lot>, state: AppState| async move {
-            let lot = Lot::find_or_404(&state.db, event.key).await?;
-            let subject = Subject::new(LOT_SUBJECT_TYPE, lot.id);
-            let item = Subject::new(ITEM_SUBJECT_TYPE, lot.item_id);
-            if event.transition == lot::RELEASE {
-                state.emit(LotReleased { lot: subject, item }).await
-            } else if event.transition == lot::DISCARD {
-                let quantity_milli = discarded_quantity(&state.db, lot.id).await?;
-                state
-                    .emit(LotDiscarded {
-                        lot: subject,
-                        item,
-                        reason: event.reason.clone().unwrap_or_default(),
-                        quantity_milli,
-                    })
-                    .await
-            } else {
-                Ok(())
-            }
-        },
-    );
+    app.listen(|event: Transitioned<Lot>, state: AppState| async move {
+        let lot = Lot::find_or_404(&state.db, event.key).await?;
+        let subject = Subject::new(LOT_SUBJECT_TYPE, lot.id);
+        let item = Subject::new(ITEM_SUBJECT_TYPE, lot.item_id);
+        if event.transition == lot::RELEASE {
+            state.emit(LotReleased { lot: subject, item }).await
+        } else if event.transition == lot::DISCARD {
+            let quantity_milli = discarded_quantity(&state.db, lot.id).await?;
+            state
+                .emit(LotDiscarded {
+                    lot: subject,
+                    item,
+                    reason: event.reason.clone().unwrap_or_default(),
+                    quantity_milli,
+                })
+                .await
+        } else {
+            Ok(())
+        }
+    });
 }
 
 #[cfg(test)]
@@ -441,7 +435,10 @@ mod tests {
     fn each_decision_is_a_transition_of_the_line() {
         assert_eq!(Decision::Release.transition(), "release");
         assert_eq!(Decision::Discard.transition(), "discard");
-        assert_eq!(Decision::ReturnToSupplier.transition(), "return_to_supplier");
+        assert_eq!(
+            Decision::ReturnToSupplier.transition(),
+            "return_to_supplier"
+        );
     }
 
     #[test]

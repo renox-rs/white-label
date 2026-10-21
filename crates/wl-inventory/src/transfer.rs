@@ -349,9 +349,13 @@ pub async fn gather_send(
         let needed = claimed.entry((line.item_id, line.lot_id)).or_insert(0);
         *needed += line.quantity_milli;
         let needed = *needed;
-        let found_balance =
-            balance::balance(&mut *tx, line.item_id, transfer.from_location_id, line.lot_id)
-                .await?;
+        let found_balance = balance::balance(
+            &mut *tx,
+            line.item_id,
+            transfer.from_location_id,
+            line.lot_id,
+        )
+        .await?;
         if found_balance.available_milli() >= needed || found.stock_problem.is_some() {
             continue;
         }
@@ -629,7 +633,11 @@ mod tests {
         assert_eq!(send.to_state(), Some("in_transit"));
         assert_eq!(
             send.guard_names(),
-            ["has_lines", "released_lots_only", "stock_available_and_not_held"]
+            [
+                "has_lines",
+                "released_lots_only",
+                "stock_available_and_not_held"
+            ]
         );
         let receive = machine.find(RECEIVE).expect("receive");
         assert_eq!(receive.from_states(), ["in_transit"]);

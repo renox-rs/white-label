@@ -37,11 +37,11 @@ use crate::employee::{Employee, EmployeeStatus};
 use crate::exits::{
     self, ExitDocument, ExitInput, KIND_AGREEMENT, KIND_AUTHORITY_NOTICE, KIND_DEATH_CERTIFICATE,
 };
+use crate::leave::{LeaveRequest, LeaveStatus};
 use crate::onboarding::{
     Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest, StartTrigger,
     StepStatus,
 };
-use crate::leave::{LeaveRequest, LeaveStatus};
 use crate::pages::templates::{kind_label, owner_label};
 use crate::steps::{self, DoneInput, InPerson};
 use crate::template::{OWNER_EMPLOYEE, OnboardingTemplate, StepKind};
@@ -838,7 +838,11 @@ async fn record_sick(
     let from = date_field("from_date", &form.from_date)?.unwrap_or_else(today);
     let to = date_field("to_date", &form.to_date)?.unwrap_or(from);
     sick_leave::record(&state, user.id, id, from, to).await?;
-    Ok((Toast::success(text(&lang, "sick.recorded")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "sick.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that attaches a sick note.
@@ -864,7 +868,11 @@ async fn attach_sick_note(
         .parse()
         .map_err(|_| Error::BadRequest("document".to_owned()))?;
     sick_leave::attach_note(&state, user.id, id, document).await?;
-    Ok((Toast::success(text(&lang, "sick.attached")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "sick.attached")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records an attempt to reach an absent worker.

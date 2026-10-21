@@ -99,17 +99,22 @@ async fn a_whole_lot_hold_covers_every_location_of_the_lot() {
     assert_eq!(hold.placed_by, Some(holder.id));
     assert_eq!(
         lines(&t, hold).await,
-        vec![
-            (store_a.id, item.id, 40_000),
-            (transit, item.id, 10_000)
-        ]
+        vec![(store_a.id, item.id, 40_000), (transit, item.id, 10_000)]
     );
     let held = t.lot_now(&lot).await;
     assert_eq!(held.status, LotStatus::OnHold);
     assert_eq!(held.status_before_hold.as_deref(), Some("released"));
     assert_eq!(t.available(&item, &store_a, Some(&lot)).await, 0);
     assert_eq!(t.available(&item, &store_a, None).await, 0);
-    assert_eq!(t.available(&item, &Location::find_or_404(t.db(), transit).await.unwrap(), Some(&lot)).await, 0);
+    assert_eq!(
+        t.available(
+            &item,
+            &Location::find_or_404(t.db(), transit).await.unwrap(),
+            Some(&lot)
+        )
+        .await,
+        0
+    );
 
     let placed_events = t.holds.all();
     assert_eq!(placed_events.len(), 1);
@@ -270,11 +275,7 @@ async fn held_quantity_cannot_be_transferred_or_issued() {
     t.stock_in(&y, &fridge, None, 4_000, 100).await;
     assert_eq!(t.available(&y, &fridge, None).await, 4_000);
     let transfer = t
-        .transfer(
-            &fridge,
-            &store_b,
-            vec![NewTransferLine::of(y.id, 5_000)],
-        )
+        .transfer(&fridge, &store_b, vec![NewTransferLine::of(y.id, 5_000)])
         .await;
     let refused = t.send_as(&mover, &transfer).await;
     refused.assert_status(422);
@@ -451,7 +452,10 @@ async fn a_lot_already_held_or_expired_keeps_its_status_and_still_gets_lines() {
     }
     let placed = holds(&t).await;
     assert_eq!(placed.len(), 2);
-    assert_eq!(lines(&t, &placed[1]).await, vec![(store.id, item.id, 10_000)]);
+    assert_eq!(
+        lines(&t, &placed[1]).await,
+        vec![(store.id, item.id, 10_000)]
+    );
     assert_eq!(t.lot_now(&l2).await.status, LotStatus::OnHold);
     // `hold` ran once, for the first hold.
     assert_eq!(t.lots_held.all().len(), 1);
@@ -472,7 +476,10 @@ async fn a_lot_already_held_or_expired_keeps_its_status_and_still_gets_lines() {
     .await
     .assert_ok();
     let placed = holds(&t).await;
-    assert_eq!(lines(&t, &placed[2]).await, vec![(store.id, item.id, 6_000)]);
+    assert_eq!(
+        lines(&t, &placed[2]).await,
+        vec![(store.id, item.id, 6_000)]
+    );
     assert_eq!(t.lot_now(&l3).await.status, LotStatus::Expired);
     assert_eq!(t.lots_held.all().len(), 1);
     assert_eq!(t.available(&item, &store, None).await, 0);

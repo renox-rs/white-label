@@ -266,12 +266,7 @@ pub async fn approve(state: &AppState, by: i64, id: i64) -> Result<LeaveRequest>
 ///
 /// `Forbidden` without `leave.approve` in the employee's scopes; 422 without
 /// a reason or when the request is not `requested`.
-pub async fn reject(
-    state: &AppState,
-    by: i64,
-    id: i64,
-    reason: &str,
-) -> Result<LeaveRequest> {
+pub async fn reject(state: &AppState, by: i64, id: i64, reason: &str) -> Result<LeaveRequest> {
     let (leave, employee) = load(state, id).await?;
     if !holds_approve(state, by, &employee).await? {
         return Err(Error::Forbidden);
@@ -297,12 +292,7 @@ pub async fn reject(
 /// `Forbidden` for a user who is neither the employee nor a holder of
 /// `leave.approve`; 422 when the start date is reached or the request is
 /// settled.
-pub async fn cancel(
-    state: &AppState,
-    by: i64,
-    id: i64,
-    reason: &str,
-) -> Result<LeaveRequest> {
+pub async fn cancel(state: &AppState, by: i64, id: i64, reason: &str) -> Result<LeaveRequest> {
     let (leave, employee) = load(state, id).await?;
     if employee.user_id != Some(by) && !holds_approve(state, by, &employee).await? {
         return Err(Error::Forbidden);

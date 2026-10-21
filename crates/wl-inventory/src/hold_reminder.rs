@@ -80,10 +80,9 @@ pub(crate) fn register_types() {
 
 /// Registers the hourly [`TASK`].
 pub(crate) fn schedule(app: &mut Registry) {
-    app.schedule()
-        .hourly(TASK, |state: AppState| async move {
-            run(&state, renox::db::now()).await.map(|_| ())
-        });
+    app.schedule().hourly(TASK, |state: AppState| async move {
+        run(&state, renox::db::now()).await.map(|_| ())
+    });
 }
 
 /// What one run of [`run`] sent.

@@ -219,8 +219,8 @@ async fn deciders(db: &Db, locations: &BTreeSet<i64>) -> Result<Vec<i64>> {
         let Some(location) = Location::find(db, *location_id).await? else {
             continue;
         };
-        for user in users_with_permission_in(db, permissions::LOTS_RELEASE, &location.scope())
-            .await?
+        for user in
+            users_with_permission_in(db, permissions::LOTS_RELEASE, &location.scope()).await?
         {
             ids.insert(user.id);
         }

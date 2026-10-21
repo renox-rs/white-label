@@ -20,8 +20,8 @@
 
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError, Transitioned};
-use wl_kernel::inventory::{LOT_SUBJECT_TYPE, RecallClosed};
 use wl_kernel::Subject;
+use wl_kernel::inventory::{LOT_SUBJECT_TYPE, RecallClosed};
 
 use crate::hold_decide::closed_event;
 use crate::item::{Item, quantity_text};
@@ -61,18 +61,16 @@ async fn line_text(db: &Db, line: &RecallLine) -> Result<String> {
         Some(id) => Lot::find(db, id).await?.map(|lot| lot.number),
         None => None,
     };
-    let lot = lot.map(|number| format!(" lot {number}")).unwrap_or_default();
+    let lot = lot
+        .map(|number| format!(" lot {number}"))
+        .unwrap_or_default();
     let date = line.occurred_on.map(|d| d.to_string()).unwrap_or_default();
     let notice = match line.notice_status {
         NoticeStatus::Pending => "pending".to_owned(),
-        NoticeStatus::Sent => format!(
-            "sent ({})",
-            line.template.clone().unwrap_or_default()
-        ),
-        NoticeStatus::Waived => format!(
-            "waived: {}",
-            line.waive_reason.clone().unwrap_or_default()
-        ),
+        NoticeStatus::Sent => format!("sent ({})", line.template.clone().unwrap_or_default()),
+        NoticeStatus::Waived => {
+            format!("waived: {}", line.waive_reason.clone().unwrap_or_default())
+        }
     };
     if line.kind == LineKind::WalkIn {
         let outlet = match line.location_id {
@@ -191,7 +189,9 @@ pub async fn report(db: &Db, recall: &Recall) -> Result<String> {
                     lot.unwrap_or_default(),
                     place.map(|l| l.name_en).unwrap_or_default(),
                     quantity_text(held.quantity_milli),
-                    held.outcome.clone().unwrap_or_else(|| "undecided".to_owned()),
+                    held.outcome
+                        .clone()
+                        .unwrap_or_else(|| "undecided".to_owned()),
                 ),
             ));
         }

@@ -48,9 +48,8 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::inventory::{
-    LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotTrace, RECALL_SUBJECT_TYPE,
-    RecallTraced, TraceFuture, TraceParty, TracePartyResolver, TracedHolder, TracedPlace,
-    trace_party_resolver,
+    LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotTrace, RECALL_SUBJECT_TYPE, RecallTraced,
+    TraceFuture, TraceParty, TracePartyResolver, TracedHolder, TracedPlace, trace_party_resolver,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -136,7 +135,10 @@ async fn outputs_of(db: &Db, lot_id: i64) -> Result<Vec<i64>> {
         .await?;
     let mut sources = BTreeSet::new();
     for moved in &moves {
-        if matches!(moved.movement_type, MovementType::Consume | MovementType::Issue) {
+        if matches!(
+            moved.movement_type,
+            MovementType::Consume | MovementType::Issue
+        ) {
             sources.insert((moved.source_type.clone(), moved.source_id));
         }
     }
@@ -526,8 +528,15 @@ pub async fn trace(
             for lot_id in &plan.new_lots {
                 let lot = Lot::find_or_404(&mut tx, *lot_id).await?;
                 for (location_id, quantity) in balance::lot_locations(&mut tx, lot.id).await? {
-                    new_line(&mut tx, hold.id, lot.item_id, location_id, Some(lot.id), quantity)
-                        .await?;
+                    new_line(
+                        &mut tx,
+                        hold.id,
+                        lot.item_id,
+                        location_id,
+                        Some(lot.id),
+                        quantity,
+                    )
+                    .await?;
                     added_lines += 1;
                 }
                 if matches!(lot.status, LotStatus::Quarantine | LotStatus::Released) {

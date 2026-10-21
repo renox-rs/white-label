@@ -55,7 +55,8 @@ async fn a_recall_holds_the_lot_at_every_location_in_transit_too() {
     let lot = t.lot(&item, "L9", LotStatus::Released).await;
     let branch_1 = t.named_location("BRANCH-1", "Branch 1").await;
     let branch_2 = t.named_location("BRANCH-2", "Branch 2").await;
-    t.stock_in(&item, &branch_1, Some(&lot), 18_000, 1_000).await;
+    t.stock_in(&item, &branch_1, Some(&lot), 18_000, 1_000)
+        .await;
     t.stock_in(&item, &branch_2, Some(&lot), 4_000, 1_000).await;
     let mover = t.mover("Mo").await;
     let transfer = t
@@ -119,7 +120,11 @@ async fn a_recall_holds_the_lot_at_every_location_in_transit_too() {
         .collect();
     assert_eq!(
         lines,
-        vec![(branch_1.id, 12_000), (branch_2.id, 4_000), (transit, 6_000)]
+        vec![
+            (branch_1.id, 12_000),
+            (branch_2.id, 4_000),
+            (transit, 6_000)
+        ]
     );
     assert_eq!(t.lot_now(&lot).await.status, LotStatus::OnHold);
     assert_eq!(t.available(&item, &branch_1, Some(&lot)).await, 0);
@@ -246,7 +251,11 @@ async fn a_recall_needs_a_source_a_reason_a_scope_and_the_permission() {
     .assert_status(422);
     t.recall_as(
         &manager,
-        &[("source", "internal"), ("reason", "x"), ("lot_numbers", "L9")],
+        &[
+            ("source", "internal"),
+            ("reason", "x"),
+            ("lot_numbers", "L9"),
+        ],
     )
     .await
     .assert_status(422);
@@ -350,7 +359,10 @@ async fn one_hold_covers_the_lots_of_several_items() {
     assert_eq!(t.lot_now(&vaccine_lot).await.status, LotStatus::OnHold);
     let opened = t.all_recalls().await.remove(0);
     assert_eq!(
-        recall::lots_in_scope(t.db(), opened.id).await.unwrap().len(),
+        recall::lots_in_scope(t.db(), opened.id)
+            .await
+            .unwrap()
+            .len(),
         2
     );
     assert_eq!(
@@ -370,8 +382,10 @@ async fn a_lot_with_no_balance_is_in_scope_without_a_line() {
     let stocked = t.lot(&item, "L2", LotStatus::Released).await;
     let expired = t.lot(&item, "L3", LotStatus::Expired).await;
     let branch = t.named_location("BRANCH-1", "Branch 1").await;
-    t.stock_in(&item, &branch, Some(&stocked), 5_000, 1_000).await;
-    t.stock_in(&item, &branch, Some(&expired), 1_000, 1_000).await;
+    t.stock_in(&item, &branch, Some(&stocked), 5_000, 1_000)
+        .await;
+    t.stock_in(&item, &branch, Some(&expired), 1_000, 1_000)
+        .await;
     let item_id = item.id.to_string();
 
     t.recall_as(

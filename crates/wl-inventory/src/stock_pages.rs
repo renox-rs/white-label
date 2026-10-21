@@ -150,11 +150,7 @@ async fn place_hold(
         },
     )
     .await?;
-    Ok((
-        Toast::success(text(&lang, "hold.placed")),
-        renox::HxRefresh,
-    )
-        .into_response())
+    Ok((Toast::success(text(&lang, "hold.placed")), renox::HxRefresh).into_response())
 }
 
 /// Decides line `id` and answers with the toast: decided, or waiting for a
@@ -214,7 +210,14 @@ async fn return_line(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    decide_line(&state, &user, line_texts(&lang), id, Decision::ReturnToSupplier).await
+    decide_line(
+        &state,
+        &user,
+        line_texts(&lang),
+        id,
+        Decision::ReturnToSupplier,
+    )
+    .await
 }
 
 /// What a user enters to cancel a hold.
@@ -397,11 +400,7 @@ async fn issue_stock(
         },
     )
     .await?;
-    Ok((
-        Toast::success(text(&lang, "issue.done")),
-        renox::HxRefresh,
-    )
-        .into_response())
+    Ok((Toast::success(text(&lang, "issue.done")), renox::HxRefresh).into_response())
 }
 
 /// What the storekeeper enters to clear a pending issue.

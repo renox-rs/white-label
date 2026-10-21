@@ -35,8 +35,8 @@
 
 use renox::db::Transaction;
 use renox::prelude::*;
-use serde::{Deserialize, Serialize};
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
+use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::documents::today;
 
@@ -259,10 +259,9 @@ fn decision_rules(
     transition: Transition<StockHoldLine>,
     to: HoldLineStatus,
 ) -> Transition<StockHoldLine> {
-    transition
-        .from([HoldLineStatus::Undecided])
-        .to(to)
-        .guard("hold_open", |_line: &StockHoldLine, ctx| {
+    transition.from([HoldLineStatus::Undecided]).to(to).guard(
+        "hold_open",
+        |_line: &StockHoldLine, ctx| {
             let open = input(ctx).is_some_and(|run| run.hold_open);
             Box::pin(async move {
                 if open {
@@ -271,7 +270,8 @@ fn decision_rules(
                     Err(english("wl_inventory.hold.not_open").to_owned())
                 }
             })
-        })
+        },
+    )
 }
 
 /// `release` and `release_approved`.
@@ -299,16 +299,14 @@ fn release_rules(transition: Transition<StockHoldLine>) -> Transition<StockHoldL
 
 /// `discard` and `discard_approved`.
 fn discard_rules(transition: Transition<StockHoldLine>) -> Transition<StockHoldLine> {
-    decision_rules(transition, HoldLineStatus::Discarded).effect(
-        |line: &StockHoldLine, ctx, tx| {
-            let line = line.clone();
-            let run = input(ctx);
-            Box::pin(async move {
-                let run = run.ok_or_else(|| refused(said("wl_inventory.hold.not_open", &[])))?;
-                discard_in(tx, line, &run).await
-            })
-        },
-    )
+    decision_rules(transition, HoldLineStatus::Discarded).effect(|line: &StockHoldLine, ctx, tx| {
+        let line = line.clone();
+        let run = input(ctx);
+        Box::pin(async move {
+            let run = run.ok_or_else(|| refused(said("wl_inventory.hold.not_open", &[])))?;
+            discard_in(tx, line, &run).await
+        })
+    })
 }
 
 impl StateMachine for StockHoldLine {
@@ -414,7 +412,10 @@ mod tests {
             ["hold_open", "lot_not_expired"]
         );
         assert_eq!(
-            machine.find(RETURN_TO_SUPPLIER).expect("return").guard_names(),
+            machine
+                .find(RETURN_TO_SUPPLIER)
+                .expect("return")
+                .guard_names(),
             ["hold_open", "lot_has_supplier"]
         );
         assert_eq!(

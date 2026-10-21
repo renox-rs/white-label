@@ -156,9 +156,14 @@ pub async fn issue(
     };
     let (taken, short) = plan(&candidates, request.quantity_milli);
     if short > 0 {
-        let text =
-            shortage_text(&mut tx, &item, location.id, request.lot_id, request.quantity_milli)
-                .await?;
+        let text = shortage_text(
+            &mut tx,
+            &item,
+            location.id,
+            request.lot_id,
+            request.quantity_milli,
+        )
+        .await?;
         return Err(refused(text));
     }
     let source = request
@@ -183,7 +188,10 @@ pub async fn issue(
             .cost_object
             .as_ref()
             .map(|subject| subject.subject_type.clone());
-        moved.cost_object_id = request.cost_object.as_ref().map(|subject| subject.subject_id);
+        moved.cost_object_id = request
+            .cost_object
+            .as_ref()
+            .map(|subject| subject.subject_id);
         moved.insert(&mut tx).await?;
         movements.push(moved);
     }
@@ -225,7 +233,10 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
             .cost_object
             .as_ref()
             .map(|subject| subject.subject_type.clone());
-        moved.cost_object_id = request.cost_object.as_ref().map(|subject| subject.subject_id);
+        moved.cost_object_id = request
+            .cost_object
+            .as_ref()
+            .map(|subject| subject.subject_id);
         moved.theoretical = request.theoretical;
         moved.insert(&mut tx).await?;
         posted += quantity;

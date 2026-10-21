@@ -241,8 +241,7 @@ async fn consume_in(
 /// that arrived.
 async fn post_in(tx: &mut Transaction, pending: PendingIssue, run: &PostInput) -> Result {
     let item = Item::find_or_404(&mut *tx, pending.item_id).await?;
-    let found =
-        balance::balance(&mut *tx, item.id, pending.location_id, run.lot_id).await?;
+    let found = balance::balance(&mut *tx, item.id, pending.location_id, run.lot_id).await?;
     if found.available_milli() < pending.quantity_milli {
         return Err(refused(said("wl_inventory.pending.not_covered", &[])));
     }
@@ -352,8 +351,9 @@ impl StateMachine for PendingIssue {
                         let pending = pending.clone();
                         let run = ctx.input_as::<PostInput>().ok();
                         Box::pin(async move {
-                            let run = run
-                                .ok_or_else(|| refused(said("wl_inventory.pending.not_open", &[])))?;
+                            let run = run.ok_or_else(|| {
+                                refused(said("wl_inventory.pending.not_open", &[]))
+                            })?;
                             post_in(tx, pending, &run).await
                         })
                     }),
@@ -387,10 +387,7 @@ impl StateMachine for PendingIssue {
                                     &mut *tx,
                                     &[
                                         ("resolved_by", &Some("source_cancelled".to_owned())),
-                                        (
-                                            "clear_reason",
-                                            &Some(SOURCE_CANCELLED_REASON.to_owned()),
-                                        ),
+                                        ("clear_reason", &Some(SOURCE_CANCELLED_REASON.to_owned())),
                                         ("closed_at", &Some(now)),
                                         ("updated_at", &now),
                                     ],

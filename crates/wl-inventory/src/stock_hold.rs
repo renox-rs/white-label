@@ -275,7 +275,10 @@ pub(crate) async fn new_line(
 
 /// An item a hold on a location is limited to.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_inventory_stock_hold_items", unique(stock_hold_id, item_id))]
+#[model(
+    table = "wl_inventory_stock_hold_items",
+    unique(stock_hold_id, item_id)
+)]
 pub struct StockHoldItem {
     /// The primary key.
     pub id: i64,
@@ -393,9 +396,8 @@ fn add_lines_rules(transition: Transition<StockHold>) -> Transition<StockHold> {
             })
         })
         .guard("quantity_moved_in", |_hold: &StockHold, ctx| {
-            let wrong = input(ctx).is_none_or(|input| {
-                input.lines.iter().any(|line| line.quantity_milli <= 0)
-            });
+            let wrong = input(ctx)
+                .is_none_or(|input| input.lines.iter().any(|line| line.quantity_milli <= 0));
             Box::pin(async move {
                 if wrong {
                     Err(english("wl_inventory.hold.no_quantity").to_owned())

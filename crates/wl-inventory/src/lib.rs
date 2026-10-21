@@ -20,20 +20,20 @@ pub mod location;
 pub mod lot;
 pub mod match_source;
 pub mod movement;
-pub mod pending_issue;
 pub mod pages;
+pub mod pending_issue;
 pub mod po_issue;
 pub mod po_revise;
 pub mod preferred_change;
 pub mod purchase_order;
 pub mod purchase_request;
-pub mod receipt_post;
 pub mod recall;
 pub mod recall_close;
 pub mod recall_line;
 pub mod recall_notice;
 mod recall_pages;
 pub mod recall_trace;
+pub mod receipt_post;
 pub mod receipt_reverse;
 pub mod reorder;
 pub mod return_credit;
@@ -43,8 +43,8 @@ pub mod scope_stock;
 pub mod shortage_alert;
 pub mod stock_count;
 pub mod stock_hold;
-pub mod stock_service;
 mod stock_pages;
+pub mod stock_service;
 mod supplier_pages;
 pub mod supplier_return;
 pub mod supplier_review;
@@ -74,9 +74,9 @@ pub use po_issue::{IssueOutcome, issue};
 pub use po_revise::{PurchaseOrderRevision, ReviseInput, ReviseOutcome, revise};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use purchase_request::{PurchaseRequest, PurchaseRequestStatus};
-pub use receipt_post::{PostOutcome, post};
 pub use recall::{Recall, RecallLot, RecallScope, RecallSource, RecallStatus};
 pub use recall_line::{LineKind, NoticeStatus, RecallLine};
+pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
 pub use reorder::{ReorderSuggestion, SuggestionStatus};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
@@ -219,8 +219,10 @@ impl WlInventory {
     /// The hold reasons whose release needs a second holder of `lots.release`
     /// (default `recall`; `STK.ACL.05`). Other holds are released by one.
     pub fn hold_second_person_reasons(mut self, reasons: &[&str]) -> Self {
-        self.config.hold_second_person_reasons =
-            reasons.iter().map(|reason| (*reason).trim().to_lowercase()).collect();
+        self.config.hold_second_person_reasons = reasons
+            .iter()
+            .map(|reason| (*reason).trim().to_lowercase())
+            .collect();
         self
     }
 

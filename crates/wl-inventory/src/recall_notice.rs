@@ -251,8 +251,7 @@ pub async fn waive(
     }
     let line = RecallLine::find_or_404(&state.db, line_id).await?;
     let recall = Recall::find_or_404(&state.db, line.recall_id).await?;
-    let refused =
-        |message: String| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message);
+    let refused = |message: String| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message);
     let reason = reason.trim().to_owned();
     if reason.is_empty() {
         return Err(refused(said("wl_inventory.recall.waive_reason", &[])));
@@ -307,11 +306,17 @@ pub async fn on_gave_up(state: &AppState, event: &MessageGaveUp) -> Result {
     }
     let number = recall.number.clone().unwrap_or_default();
     let used_by: Option<Subject> = line.used_by();
-    let title = said("wl_inventory.recall.notice_task_title", &[("number", &number)]);
+    let title = said(
+        "wl_inventory.recall.notice_task_title",
+        &[("number", &number)],
+    );
     let description = said(
         "wl_inventory.recall.notice_task_body",
         &[
-            ("subject", &used_by.map(|s| s.to_string()).unwrap_or_default()),
+            (
+                "subject",
+                &used_by.map(|s| s.to_string()).unwrap_or_default(),
+            ),
             ("party", &line.party_id.unwrap_or_default().to_string()),
         ],
     );
@@ -327,9 +332,9 @@ pub async fn on_gave_up(state: &AppState, event: &MessageGaveUp) -> Result {
 
 /// Registers the listener of `MessageGaveUp`.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: MessageGaveUp, state: AppState| async move {
-        on_gave_up(&state, &event).await
-    });
+    app.listen(
+        |event: MessageGaveUp, state: AppState| async move { on_gave_up(&state, &event).await },
+    );
 }
 
 #[cfg(test)]

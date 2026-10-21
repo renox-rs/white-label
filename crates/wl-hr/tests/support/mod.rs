@@ -32,7 +32,8 @@ use wl_kernel::tickets::{
 };
 use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
-    LeaveApproved, LeaveCancelled, OnboardingCompleted, OnboardingStarted, QualificationExpired, QualificationExpiring,
+    LeaveApproved, LeaveCancelled, OnboardingCompleted, OnboardingStarted, QualificationExpired,
+    QualificationExpiring,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -218,7 +219,11 @@ impl Tasks {
     pub fn with_key(&self, prefix: &str) -> Vec<OpenTicket> {
         self.opened()
             .into_iter()
-            .filter(|t| t.source_key.as_deref().is_some_and(|k| k.starts_with(prefix)))
+            .filter(|t| {
+                t.source_key
+                    .as_deref()
+                    .is_some_and(|k| k.starts_with(prefix))
+            })
             .collect()
     }
 

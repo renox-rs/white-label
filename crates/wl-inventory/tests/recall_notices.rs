@@ -178,7 +178,12 @@ async fn a_notice_needs_a_template_lines_and_a_party() {
     t.notices_as(&manager, &recall, "patient", &[unknown])
         .await
         .assert_status(422);
-    assert!(t.notices.all().iter().all(|r| !r.type_key.starts_with("inventory.recall_notice_")));
+    assert!(
+        t.notices
+            .all()
+            .iter()
+            .all(|r| !r.type_key.starts_with("inventory.recall_notice_"))
+    );
     assert!(
         t.recall_lines(&recall)
             .await
@@ -247,25 +252,30 @@ async fn a_recall_closes_with_its_report_once_every_line_is_told_or_waived() {
         .assert_ok();
 
     // Line 2 is pending and the hold is open: refused, nothing changes.
-    t.close_recall_as(&manager, &recall).await.assert_status(422);
+    t.close_recall_as(&manager, &recall)
+        .await
+        .assert_status(422);
     assert_eq!(t.recall_now(&recall).await.status, RecallStatus::Traced);
 
-    t.waive_as(&manager, &lines[1], "  ").await.assert_status(422);
+    t.waive_as(&manager, &lines[1], "  ")
+        .await
+        .assert_status(422);
     t.waive_as(&manager, &lines[1], "Told in person")
         .await
         .assert_ok();
     let waived = t.recall_lines(&recall).await;
     assert_eq!(waived[1].notice_status, NoticeStatus::Waived);
-    assert_eq!(
-        waived[1].waive_reason.as_deref(),
-        Some("Told in person")
-    );
+    assert_eq!(waived[1].waive_reason.as_deref(), Some("Told in person"));
     assert_eq!(waived[1].waived_by, Some(manager.id));
     // A line already decided cannot be waived again.
-    t.waive_as(&manager, &lines[0], "again").await.assert_status(422);
+    t.waive_as(&manager, &lines[0], "again")
+        .await
+        .assert_status(422);
 
     // Every line is decided, the hold is not: still refused.
-    t.close_recall_as(&manager, &recall).await.assert_status(422);
+    t.close_recall_as(&manager, &recall)
+        .await
+        .assert_status(422);
     assert!(t.recall_closed.all().is_empty());
 
     // The held stock is discarded; the hold closes by itself.
@@ -301,7 +311,9 @@ async fn a_recall_closes_with_its_report_once_every_line_is_told_or_waived() {
     assert_eq!(events[0].lots, vec![Subject::new("inventory.lot", l9.id)]);
 
     // A closed recall is final.
-    t.close_recall_as(&manager, &recall).await.assert_status(422);
+    t.close_recall_as(&manager, &recall)
+        .await
+        .assert_status(422);
     t.trace_as(&manager, &recall).await.assert_status(422);
     assert_eq!(t.recall_closed.all().len(), 1);
 }
@@ -320,7 +332,9 @@ async fn a_release_waiting_for_the_second_person_keeps_the_recall_open() {
     let hold = t.all_holds().await.pop().unwrap();
 
     // An undecided line of the hold refuses the close.
-    t.close_recall_as(&manager, &recall).await.assert_status(422);
+    t.close_recall_as(&manager, &recall)
+        .await
+        .assert_status(422);
 
     let line = t.hold_lines(&hold).await.remove(0);
     t.decide_as(&ann, &line, "release").await.assert_ok();
@@ -329,7 +343,9 @@ async fn a_release_waiting_for_the_second_person_keeps_the_recall_open() {
         .unwrap();
     assert_eq!(requests.len(), 1);
     assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Open);
-    t.close_recall_as(&manager, &recall).await.assert_status(422);
+    t.close_recall_as(&manager, &recall)
+        .await
+        .assert_status(422);
     assert_eq!(t.recall_now(&recall).await.status, RecallStatus::Traced);
     assert!(t.recall_closed.all().is_empty());
 

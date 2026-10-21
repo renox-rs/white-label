@@ -37,7 +37,12 @@ async fn record(
 }
 
 /// `user` attaches note 77 to request `request` on `day`.
-async fn attach(t: &Booted, day: u32, user: &User, request: &LeaveRequest) -> renox::testing::TestResponse {
+async fn attach(
+    t: &Booted,
+    day: u32,
+    user: &User,
+    request: &LeaveRequest,
+) -> renox::testing::TestResponse {
     t.on(nov(day), async {
         t.app.acting_as(user);
         t.app

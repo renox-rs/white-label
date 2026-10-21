@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use wl_kernel::PartyId;
 use wl_kernel::Subject;
-use wl_kernel::broadcast::{BroadcastRequest, BroadcastRequesters, RequesterCheck, RequesterFuture};
+use wl_kernel::broadcast::{
+    BroadcastRequest, BroadcastRequesters, RequesterCheck, RequesterFuture,
+};
 use wl_kernel::consents::Consents;
 use wl_kernel::notify::{
     self, Category, ContactKind, NotificationTypeDef, NotifyChannel, PartyContactPoint,

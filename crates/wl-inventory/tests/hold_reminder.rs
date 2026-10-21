@@ -19,7 +19,8 @@ use support::{Booted, boot_with};
 
 /// Waits `hours` hours and `minutes` minutes.
 fn wait(t: &Booted, hours: u64, minutes: u64) {
-    t.app.travel(Duration::from_secs(hours * 3600 + minutes * 60));
+    t.app
+        .travel(Duration::from_secs(hours * 3600 + minutes * 60));
 }
 
 /// The users each notice of `kind` went to, with the record it was about.
@@ -325,13 +326,14 @@ async fn the_location_beats_the_reason_and_the_reason_beats_the_default() {
     assert!(escalations.contains(&(quality_hold.subject(), vec![lead.id])));
     assert!(escalations.contains(&(fridge_hold.subject(), vec![kim.id])));
     // The default role is the owner's, once the other hold is 48 hours old.
-    assert!(!escalations.iter().any(|(_, people)| people == &vec![owner.id]));
+    assert!(
+        !escalations
+            .iter()
+            .any(|(_, people)| people == &vec![owner.id])
+    );
     wait(&t, 24, 0);
     t.app.run_scheduled(TASK).await.unwrap();
-    assert!(
-        told(&t, ESCALATION_NOTICE)
-            .contains(&(other_hold.subject(), vec![owner.id]))
-    );
+    assert!(told(&t, ESCALATION_NOTICE).contains(&(other_hold.subject(), vec![owner.id])));
 }
 
 /// By default H is 24 hours: the first reminder after a day, the first

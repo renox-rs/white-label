@@ -142,7 +142,12 @@ pub enum RecallStatus {
 
 /// The withdrawal of lots that may be unsafe or defective.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_inventory_recalls", state_machine, unique(number), index(status))]
+#[model(
+    table = "wl_inventory_recalls",
+    state_machine,
+    unique(number),
+    index(status)
+)]
 pub struct Recall {
     /// The primary key.
     pub id: i64,
@@ -306,9 +311,7 @@ impl StateMachine for Recall {
                     .permission(permissions::RECALLS_MANAGE),
             ))
             .transition(trace_rules(
-                Transition::new(TRACE_BY_SYSTEM)
-                    .label("Trace")
-                    .system(),
+                Transition::new(TRACE_BY_SYSTEM).label("Trace").system(),
             ))
             .transition(
                 Transition::new(SEND_NOTICES)
@@ -318,8 +321,9 @@ impl StateMachine for Recall {
                     .from([Traced])
                     .to(Traced)
                     .guard("template_chosen", |_recall: &Recall, ctx| {
-                        let chosen = notice_input(ctx)
-                            .is_some_and(|input| crate::recall_notice::is_template(&input.template));
+                        let chosen = notice_input(ctx).is_some_and(|input| {
+                            crate::recall_notice::is_template(&input.template)
+                        });
                         Box::pin(async move {
                             if chosen {
                                 Ok(())
@@ -705,9 +709,15 @@ mod tests {
     #[test]
     fn the_sources_are_the_four_of_the_spec() {
         for name in ["supplier", "authority", "internal", "complaint"] {
-            assert_eq!(RecallSource::parse(name).map(|source| source.as_str()), Some(name));
+            assert_eq!(
+                RecallSource::parse(name).map(|source| source.as_str()),
+                Some(name)
+            );
         }
-        assert_eq!(RecallSource::parse(" Supplier "), Some(RecallSource::Supplier));
+        assert_eq!(
+            RecallSource::parse(" Supplier "),
+            Some(RecallSource::Supplier)
+        );
         assert_eq!(RecallSource::parse("rumour"), None);
     }
 

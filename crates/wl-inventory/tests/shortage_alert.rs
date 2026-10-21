@@ -23,7 +23,8 @@ fn visit(n: i64) -> Subject {
 
 /// Waits `hours` hours and `minutes` minutes.
 fn wait(t: &Booted, hours: u64, minutes: u64) {
-    t.app.travel(Duration::from_secs(hours * 3600 + minutes * 60));
+    t.app
+        .travel(Duration::from_secs(hours * 3600 + minutes * 60));
 }
 
 /// The users a notice of `kind` was sent to, one entry per notice.

@@ -257,7 +257,9 @@ mod tests {
         assert_eq!(discard.to_state(), Some("rejected"));
         let unhold = machine.find(UNHOLD).expect("unhold");
         assert_eq!(unhold.to_state(), Some("released"));
-        let back = machine.find(UNHOLD_TO_QUARANTINE).expect("unhold to quarantine");
+        let back = machine
+            .find(UNHOLD_TO_QUARANTINE)
+            .expect("unhold to quarantine");
         assert_eq!(back.from_states(), ["on_hold"]);
         assert_eq!(back.to_state(), Some("quarantine"));
         assert!(unhold.is_system() && back.is_system());

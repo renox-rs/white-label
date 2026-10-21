@@ -155,7 +155,10 @@ async fn a_discard_above_the_value_waits_for_a_second_person() {
     let requests = waiting_on(&t, &line).await;
     assert_eq!(requests.len(), 1);
     assert!(wastage_of(&t, &item).await.is_empty());
-    assert_eq!(t.hold_lines(&hold).await[0].status, HoldLineStatus::Undecided);
+    assert_eq!(
+        t.hold_lines(&hold).await[0].status,
+        HoldLineStatus::Undecided
+    );
     assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Open);
     // The quantity stays held while it waits.
     assert_eq!(t.available(&item, &fridge, None).await, 0);
@@ -197,7 +200,10 @@ async fn a_rejected_approval_leaves_the_line_undecided() {
         .unwrap();
 
     assert!(waiting_on(&t, &line).await.is_empty());
-    assert_eq!(t.hold_lines(&hold).await[0].status, HoldLineStatus::Undecided);
+    assert_eq!(
+        t.hold_lines(&hold).await[0].status,
+        HoldLineStatus::Undecided
+    );
     assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Open);
     assert!(wastage_of(&t, &item).await.is_empty());
     assert_eq!(t.available(&item, &fridge, None).await, 0);
@@ -228,7 +234,10 @@ async fn releasing_a_recall_line_needs_a_second_person() {
 
     let requests = waiting_on(&t, &line).await;
     assert_eq!(requests.len(), 1);
-    assert_eq!(t.hold_lines(&hold).await[0].status, HoldLineStatus::Undecided);
+    assert_eq!(
+        t.hold_lines(&hold).await[0].status,
+        HoldLineStatus::Undecided
+    );
     assert_eq!(t.lot_now(&lot).await.status, LotStatus::OnHold);
     assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Open);
     let refused = approvals::approve(t.state(), requests[0].id, &ann, "").await;
@@ -238,7 +247,10 @@ async fn releasing_a_recall_line_needs_a_second_person() {
     approvals::approve(t.state(), requests[0].id, &ben, "checked")
         .await
         .unwrap();
-    assert_eq!(t.hold_lines(&hold).await[0].status, HoldLineStatus::Released);
+    assert_eq!(
+        t.hold_lines(&hold).await[0].status,
+        HoldLineStatus::Released
+    );
     assert_eq!(t.lot_now(&lot).await.status, LotStatus::Released);
     assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Closed);
     assert_eq!(t.available(&item, &branch, Some(&lot)).await, 12_000);
@@ -296,7 +308,10 @@ async fn the_lot_is_released_when_all_its_lines_are_released() {
     assert_eq!(t.available(&item, &store_b, Some(&lot)).await, 10_000);
     let released = t.released.all();
     assert_eq!(released.len(), 1);
-    assert_eq!(released[0].lot, wl_kernel::Subject::new("inventory.lot", lot.id));
+    assert_eq!(
+        released[0].lot,
+        wl_kernel::Subject::new("inventory.lot", lot.id)
+    );
     let closed = t.closed.all();
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0].outcomes.len(), 2);
@@ -460,8 +475,17 @@ async fn a_lot_without_a_supplier_is_not_returned() {
 
     refused.assert_status(422);
     assert!(refused.text().contains("supplier"), "{}", refused.text());
-    assert_eq!(t.hold_lines(&hold).await[0].status, HoldLineStatus::Undecided);
-    assert!(SupplierReturn::query().get(t.db()).await.unwrap().is_empty());
+    assert_eq!(
+        t.hold_lines(&hold).await[0].status,
+        HoldLineStatus::Undecided
+    );
+    assert!(
+        SupplierReturn::query()
+            .get(t.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// Releasing the stock of an `expired` lot is not offered: only a discard.
@@ -482,7 +506,10 @@ async fn an_expired_lot_can_only_be_discarded_or_returned() {
     let refused = t.decide_as(&chef, &line, "release").await;
     refused.assert_status(422);
     assert!(refused.text().contains("expired"), "{}", refused.text());
-    assert_eq!(t.hold_lines(&hold).await[0].status, HoldLineStatus::Undecided);
+    assert_eq!(
+        t.hold_lines(&hold).await[0].status,
+        HoldLineStatus::Undecided
+    );
 
     t.decide_as(&chef, &line, "discard").await.assert_ok();
     assert_eq!(t.hold_now(&hold).await.status, HoldStatus::Closed);
@@ -501,8 +528,13 @@ async fn deciding_needs_the_permission_and_happens_once() {
     let hold = hold_location(&t, &holder, &branch, "other").await;
     let line = t.hold_lines(&hold).await.remove(0);
 
-    t.decide_as(&holder, &line, "release").await.assert_forbidden();
-    assert_eq!(t.hold_lines(&hold).await[0].status, HoldLineStatus::Undecided);
+    t.decide_as(&holder, &line, "release")
+        .await
+        .assert_forbidden();
+    assert_eq!(
+        t.hold_lines(&hold).await[0].status,
+        HoldLineStatus::Undecided
+    );
 
     t.decide_as(&rae, &line, "release").await.assert_ok();
     t.decide_as(&rae, &line, "discard").await.assert_status(422);
@@ -539,7 +571,10 @@ async fn a_line_in_transit_follows_the_lot_to_its_destination() {
         .iter()
         .map(|l| (l.location_id, l.quantity_milli))
         .collect();
-    assert_eq!(before, vec![(store_a.id, 40_000), (transit.unwrap(), 10_000)]);
+    assert_eq!(
+        before,
+        vec![(store_a.id, 40_000), (transit.unwrap(), 10_000)]
+    );
 
     t.receive_as(&mover, &transfer, true).await.assert_ok();
 
@@ -645,7 +680,9 @@ async fn a_hold_is_not_cancelled_after_a_decision_nor_for_a_recall() {
     let rae = t.releaser("Rae").await;
 
     let hold = hold_location(&t, &holder, &branch, "quality").await;
-    t.cancel_hold_as(&holder, &hold, "oops").await.assert_forbidden();
+    t.cancel_hold_as(&holder, &hold, "oops")
+        .await
+        .assert_forbidden();
     let lines = t.hold_lines(&hold).await;
     assert_eq!(lines.len(), 2);
     t.decide_as(&rae, &lines[0], "release").await.assert_ok();

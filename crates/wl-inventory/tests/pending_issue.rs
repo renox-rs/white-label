@@ -24,7 +24,12 @@ fn visit(n: i64) -> Subject {
 
 /// A receipt of `lines` of `item` at `branch` (delivered on one order of
 /// 100 units), posted by a storekeeper.
-async fn receive(t: &Booted, branch: &Location, item: &Item, lines: Vec<(i64, Option<(&str, u32)>)>) {
+async fn receive(
+    t: &Booted,
+    branch: &Location,
+    item: &Item,
+    lines: Vec<(i64, Option<(&str, u32)>)>,
+) {
     let (order, po_line) = t.order(branch, item, 100_000, 500).await;
     let drafts = lines
         .into_iter()
@@ -247,7 +252,8 @@ async fn held_stock_and_lots_not_released_are_not_consumed() {
 
     let tracked = t.tracked_item("SERUM").await;
     let waiting = t.lot(&tracked, "Q-1", LotStatus::Quarantine).await;
-    t.stock_in(&tracked, &branch, Some(&waiting), 5_000, 500).await;
+    t.stock_in(&tracked, &branch, Some(&waiting), 5_000, 500)
+        .await;
     let done = t.consume(&tracked, &branch, 2_000, &visit(2)).await;
     assert_eq!((done.posted_milli, done.short_milli), (0, 2_000));
 }
@@ -371,7 +377,10 @@ async fn clearing_a_lot_tracked_item_needs_its_lot() {
         .await
         .assert_ok();
     let now = t.pending_now(&pending).await;
-    assert_eq!((now.status, now.lot_id), (PendingStatus::Cleared, Some(lot.id)));
+    assert_eq!(
+        (now.status, now.lot_id),
+        (PendingStatus::Cleared, Some(lot.id))
+    );
     let moved = t.movements_of(&item).await;
     assert!(moved.iter().all(|m| m.lot_id == Some(lot.id)));
 }
@@ -509,8 +518,14 @@ async fn stock_that_joins_a_hold_does_not_cover_a_pending_issue() {
 
     assert_eq!(t.open_pending().await.len(), 1);
     assert_eq!(t.available(&item, &branch, None).await, 0);
-    let hold = wl_inventory::StockHold::query().first(t.db()).await.unwrap().unwrap();
-    let held = wl_inventory::stock_hold::lines_of(t.db(), hold.id).await.unwrap();
+    let hold = wl_inventory::StockHold::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
+    let held = wl_inventory::stock_hold::lines_of(t.db(), hold.id)
+        .await
+        .unwrap();
     assert_eq!(
         held.iter().map(|l| l.quantity_milli).collect::<Vec<_>>(),
         vec![2_000, 4_000]

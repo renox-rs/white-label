@@ -854,7 +854,10 @@ impl Booted {
     }
 
     /// The affected lines of `recall`, oldest first.
-    pub async fn recall_lines(&self, recall: &wl_inventory::Recall) -> Vec<wl_inventory::RecallLine> {
+    pub async fn recall_lines(
+        &self,
+        recall: &wl_inventory::Recall,
+    ) -> Vec<wl_inventory::RecallLine> {
         wl_inventory::recall_line::lines_of(self.db(), recall.id)
             .await
             .unwrap()
@@ -985,7 +988,11 @@ impl Booted {
         go_on: bool,
     ) -> TestResponse {
         self.app.acting_as(by);
-        let form: Vec<(&str, &str)> = if go_on { vec![("held_ok", "1")] } else { vec![] };
+        let form: Vec<(&str, &str)> = if go_on {
+            vec![("held_ok", "1")]
+        } else {
+            vec![]
+        };
         self.app
             .htmx()
             .post(&format!("/transfers/{}/receive", transfer.id), &form)
@@ -1106,7 +1113,10 @@ impl Booted {
     }
 
     /// The pending issue as stored now.
-    pub async fn pending_now(&self, pending: &wl_inventory::PendingIssue) -> wl_inventory::PendingIssue {
+    pub async fn pending_now(
+        &self,
+        pending: &wl_inventory::PendingIssue,
+    ) -> wl_inventory::PendingIssue {
         wl_inventory::PendingIssue::find_or_404(self.db(), pending.id)
             .await
             .unwrap()
@@ -1149,7 +1159,9 @@ impl Booted {
 
     /// The open pending issues, oldest first.
     pub async fn open_pending(&self) -> Vec<wl_inventory::PendingIssue> {
-        wl_inventory::pending_issue::open_of(self.db()).await.unwrap()
+        wl_inventory::pending_issue::open_of(self.db())
+            .await
+            .unwrap()
     }
 
     /// The quantity of `item` available at `location` (of `lot` when given),
