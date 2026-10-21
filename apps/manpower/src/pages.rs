@@ -812,8 +812,12 @@ async fn plan_deployment(
         start_date: date(&lang, &form, "start_date")?.ok_or_else(bad)?,
         end_date: date(&lang, &form, "end_date")?,
     };
-    deployments::plan(&state, &user, new).await?;
-    Ok(back("/manpower/deployments"))
+    let (_planned, warning) = deployments::plan_with_warning(&state, &user, new).await?;
+    // Planning only warns about the documents (`MPW.ACL.07`).
+    Ok(match warning {
+        Some(warning) => (warning.toast(), back("/manpower/deployments")).into_response(),
+        None => back("/manpower/deployments"),
+    })
 }
 
 /// `POST /manpower/deployments/{id}/activate`.

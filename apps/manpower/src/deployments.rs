@@ -11,7 +11,7 @@ use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::{Outcome, StateMachine};
 use wl_kernel::block_guard::ActionKind;
-use wl_kernel::documents::today;
+use wl_kernel::documents::{PlannedWarning, today};
 use wl_kernel::parties::directory;
 use wl_kernel::timesheets::{TimesheetClosure, timesheet_closing};
 use wl_kernel::workforce::{EmployeeId, workforce};
@@ -24,7 +24,9 @@ use crate::deployment::{
     ACTIVATE, AUTO_CANCEL, AUTO_END, CANCEL, Deployment, DeploymentInput, DeploymentKind,
     DeploymentStatus, END, EXTEND,
 };
+use crate::documents::{ACTIVATE_GUARDED, EXTEND_GUARDED};
 use crate::events::{DeploymentActivated, DeploymentCancelled, DeploymentEnded};
+use crate::guard;
 use crate::hold;
 use crate::notices;
 use crate::permissions;
@@ -86,6 +88,21 @@ fn require_manage(by: &AuthUser, client: PartyId) -> Result {
 /// `Forbidden` without `deployments.manage` for the client; a 422 for any of
 /// the above.
 pub async fn plan(state: &AppState, by: &AuthUser, new: NewDeployment) -> Result<Deployment> {
+    Ok(plan_with_warning(state, by, new).await?.0)
+}
+
+/// [`plan`], and the document guard's warning for the first day of the new
+/// deployment when a document or licence it needs will not be valid then
+/// (`MPW.ACL.07`: planning only warns; `activate` is refused later).
+///
+/// # Errors
+///
+/// As [`plan`].
+pub async fn plan_with_warning(
+    state: &AppState,
+    by: &AuthUser,
+    new: NewDeployment,
+) -> Result<(Deployment, Option<PlannedWarning>)> {
     let contract = ClientContract::find(&state.db, new.contract_id)
         .await?
         .ok_or_else(|| refused(english("manpower.deployment.contract_unknown", &[])))?;
@@ -142,7 +159,7 @@ pub async fn plan(state: &AppState, by: &AuthUser, new: NewDeployment) -> Result
             end_date = end_date.or(request.end_date);
         }
     }
-    Deployment::create(
+    let planned = Deployment::create(
         &state.db,
         Deployment {
             employee_id: new.employee.0,
@@ -162,7 +179,9 @@ pub async fn plan(state: &AppState, by: &AuthUser, new: NewDeployment) -> Result
             ..Deployment::default()
         },
     )
-    .await
+    .await?;
+    let warning = guard::warn_planned(state, &planned).await?;
+    Ok((planned, warning))
 }
 
 /// The name of the worker as the client sees it, else `#id`.
@@ -241,7 +260,28 @@ pub async fn activate(state: &AppState, by: &AuthUser, id: i64, lang: &str) -> R
     let deployment = load(state, id).await?;
     require_manage(by, deployment.client())?;
     let on = today();
-    let mut problems = activation_problems(state, &deployment, on).await?;
+    // The documents and licences are judged on the day of the transition plus
+    // the look-ahead, or the end date if earlier (`MPW.ACL.07`).
+    let check_on = guard::check_date(on, deployment.end_date);
+    let active = guard::guarded(state, by, ACTIVATE_GUARDED, id, check_on, || {
+        run_activate(state, by, &deployment, on)
+    })
+    .await?;
+    let worker = worker_name(state, lang, active.employee()).await;
+    tell_client(state, &active, "manpower.deployment.activated", &worker).await?;
+    Ok(active)
+}
+
+/// The transition of [`activate`] with the request's position, and the events
+/// after the commit.
+async fn run_activate(
+    state: &AppState,
+    by: &AuthUser,
+    deployment: &Deployment,
+    on: NaiveDate,
+) -> Result<Deployment> {
+    let id = deployment.id;
+    let mut problems = activation_problems(state, deployment, on).await?;
     let mut tx = state.db.begin().await?;
     // The contract is read in the transaction of the transition, so a `hold`
     // committed first wins (`MPW.ACL.14`).
@@ -292,8 +332,6 @@ pub async fn activate(state: &AppState, by: &AuthUser, id: i64, lang: &str) -> R
             role: active.role.clone(),
         })
         .await?;
-    let worker = worker_name(state, lang, active.employee()).await;
-    tell_client(state, &active, "manpower.deployment.activated", &worker).await?;
     Ok(active)
 }
 
@@ -365,6 +403,25 @@ pub async fn extend(
 ) -> Result<Deployment> {
     let deployment = load(state, id).await?;
     require_manage(by, deployment.client())?;
+    // The documents and licences are judged on today plus the look-ahead, or
+    // the new end date if earlier (`MPW.ACL.07`).
+    let check_on = guard::check_date(today(), Some(new_end));
+    let extended = guard::guarded(state, by, EXTEND_GUARDED, id, check_on, || {
+        run_extend(state, by, &deployment, new_end)
+    })
+    .await?;
+    let worker = worker_name(state, lang, extended.employee()).await;
+    tell_client(state, &extended, "manpower.deployment.extended", &worker).await?;
+    Ok(extended)
+}
+
+/// The transition of [`extend`].
+async fn run_extend(
+    state: &AppState,
+    by: &AuthUser,
+    deployment: &Deployment,
+    new_end: NaiveDate,
+) -> Result<Deployment> {
     let mut tx = state.db.begin().await?;
     // A blocked client extends nothing (BL-MPW-15).
     blocked::check(
@@ -406,10 +463,7 @@ pub async fn extend(
         .map_err(answer)?;
     tx.commit().await?;
     outcome.emit(state).await?;
-    let extended = load(state, id).await?;
-    let worker = worker_name(state, lang, extended.employee()).await;
-    tell_client(state, &extended, "manpower.deployment.extended", &worker).await?;
-    Ok(extended)
+    load(state, deployment.id).await
 }
 
 /// Ends deployment `id` for `by` with `reason` (one of

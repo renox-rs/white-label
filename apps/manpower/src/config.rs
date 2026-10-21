@@ -12,3 +12,9 @@ pub const DEFAULT_END_NOTICE_FIRST_DAYS: i64 = 60;
 
 /// M of `MPW.RUL.11` (§7.2): the second notice, in days before the end date.
 pub const DEFAULT_END_NOTICE_SECOND_DAYS: i64 = 30;
+
+/// N of `MPW.ACL.07` (§3.3): the document and licence guard of a deployment
+/// looks this many days ahead of the day of the transition (or up to the end
+/// date of the deployment, if that is earlier), so a worker is not deployed on
+/// a visa that expires next week.
+pub const DEFAULT_DOCUMENT_LOOK_AHEAD_DAYS: i64 = 30;

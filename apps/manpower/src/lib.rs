@@ -15,6 +15,7 @@ pub mod documents;
 pub mod ending;
 pub mod events;
 pub mod expiry;
+pub mod guard;
 pub mod hold;
 pub mod notices;
 pub mod pages;

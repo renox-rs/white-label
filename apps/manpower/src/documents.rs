@@ -4,7 +4,8 @@
 //! The document kinds say which deployment transitions they guard (their
 //! `blocks`: `deployment.activate`, `deployment.resume`, `deployment.extend`);
 //! this module tells wl-documents what that means for a deployment, through the
-//! kernel's providers, and shows what the nightly look-ahead found.
+//! kernel's providers, and shows what the nightly look-ahead found. The guard
+//! itself (`MPW.ACL.07`) is [`crate::guard`].
 //!
 //! - **`BlockSubjects`** (all three transitions): a deployment → the employee
 //!   (`hr.employee:W`), whose visa, work permit, Emirates ID, health insurance

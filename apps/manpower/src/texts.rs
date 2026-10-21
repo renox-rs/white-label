@@ -326,6 +326,10 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.deployment.document_label",
         "{{ role }} at {{ site }}, {{ from }} to {{ until }}",
     ),
+    (
+        "manpower.deployment.checked_on",
+        "The documents were judged on {{ date }}: the day of the action plus {{ days }} days, or the end date of the deployment if that is earlier.",
+    ),
     // The deployment (§7.1).
     (
         "manpower.deployment.contract_unknown",
