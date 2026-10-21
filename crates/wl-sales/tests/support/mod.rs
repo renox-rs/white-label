@@ -3,6 +3,9 @@
 
 #![allow(dead_code)]
 
+pub mod floor;
+pub mod shop;
+
 use std::sync::{Arc, Mutex};
 
 use renox::auth::{Auth, Permissions, permissions};
@@ -166,4 +169,17 @@ pub async fn boot_events_with(sales: WlSales) -> (Booted, Events) {
     let events = Events::default();
     let t = boot_configured(sales, events.clone()).await;
     (t, events)
+}
+
+/// `WlSales` with the fakes of the other modules (notifier, invoicer, payer
+/// bills, workforce) and the loyalty events recorded.
+pub async fn boot_shop() -> (Booted, shop::Shop) {
+    boot_shop_with(WlSales::new()).await
+}
+
+/// [`boot_shop`] with `sales` as the sales module.
+pub async fn boot_shop_with(sales: WlSales) -> (Booted, shop::Shop) {
+    let shop = shop::Shop::default();
+    let t = boot_configured(sales, shop.clone()).await;
+    (t, shop)
 }
