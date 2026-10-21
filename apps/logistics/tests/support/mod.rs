@@ -27,6 +27,7 @@ use wl_kernel::invoicing::Invoicer;
 use wl_kernel::notify::Notifier;
 use wl_kernel::parties::PartyDirectory;
 use wl_kernel::portal::PortalUsers;
+use wl_kernel::quotations::Quotations;
 use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::{AbsenceCaseOpened, Workforce};
 use wl_kernel::{ClientConfig, PartyId, RecordVoided};
@@ -37,6 +38,7 @@ pub mod invoices;
 pub mod notices;
 pub mod parties;
 pub mod portal;
+pub mod quotes;
 pub mod roster;
 pub mod tickets;
 
@@ -45,6 +47,7 @@ use invoices::Invoices;
 use notices::Notices;
 use parties::Parties;
 use portal::Portal;
+use quotes::Quotes;
 use roster::Roster;
 use tickets::TicketDesk;
 
@@ -125,6 +128,8 @@ pub struct World {
     pub shipment_lost: Recorded<ShipmentLost>,
     /// The drafts the module asked the invoicer for.
     pub invoices: Invoices,
+    /// The terms of the accepted quotations the tests set (`FIN.QUO.01`).
+    pub quotes: Quotes,
     /// The operations manager.
     pub ops: User,
     /// The dispatcher: manages shipments and plans runs.
@@ -256,6 +261,8 @@ async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool
     let shipment_lost = Recorded::new();
     let invoices = Invoices::default();
     let invoicer: Arc<dyn Invoicer> = Arc::new(invoices.clone());
+    let quotes = Quotes::default();
+    let quotations: Arc<dyn Quotations> = Arc::new(quotes.clone());
     let parties = Parties::default();
     let shifts = Shifts::default();
     let shift_calendar: Arc<dyn ShiftCalendar> = Arc::new(shifts.clone());
@@ -283,6 +290,7 @@ async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool
         .provide(notifier)
         .provide(portal_users)
         .provide(task_creator)
+        .provide(quotations)
         .provide(shift_calendar)
         .provide(history);
     // The recording stand-in answers the invoicing contract unless the real
@@ -419,6 +427,7 @@ async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool
         shipment_delivered,
         shipment_lost,
         invoices,
+        quotes,
         ops,
         dispatcher,
         dispatcher_b,

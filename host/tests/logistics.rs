@@ -152,6 +152,11 @@ fn the_documentation_officer_works_and_closes_freight_jobs() {
         roles::DOCUMENTATION_OFFICER,
         wl_invoicing::permissions::ISSUE
     ));
+    // The accountant decides whether a cost billed to a cancelled job is
+    // invoiced (BL-LOG-23); the documentation officer does not.
+    assert!(holds(roles::ACCOUNTANT, perm::JOBS_BILL_CANCELLED));
+    assert!(holds(ADMIN, perm::JOBS_BILL_CANCELLED));
+    assert!(!holds(roles::DOCUMENTATION_OFFICER, perm::JOBS_BILL_CANCELLED));
     for role in [OPERATIONS_MANAGER, roles::ACCOUNTANT] {
         assert!(holds(role, perm::JOBS_VIEW), "{role}");
         assert!(!holds(role, perm::JOBS_MANAGE), "{role}");
