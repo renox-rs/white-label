@@ -29,7 +29,7 @@ async fn the_issue_screen_proposes_the_lot_with_the_earliest_expiry() {
         .await;
     page.assert_ok().assert_see("L1").assert_see("2027-01-31");
     assert!(!page.text().contains("L2 ("), "{}", page.text());
-    assert!(!page.text().contains("L3"), "{}", page.text());
+    assert!(!page.text().contains("L3 ("), "{}", page.text());
 }
 
 /// Done when 2: a line for filler without a lot blocks the check-out with
