@@ -1471,6 +1471,154 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.retention.problem.channel",
         "The message channel is not one wl-notify knows.",
     ),
+    (
+        "wl_sales.closure.member_request",
+        "Member request (:via)",
+    ),
+    (
+        "wl_sales.closure.problem.closed",
+        "The account is closed already.",
+    ),
+    (
+        "wl_sales.closure.errors.confirm",
+        "The member must confirm before the points are forfeited.",
+    ),
+    (
+        "wl_sales.closure.done",
+        "The account is closed.",
+    ),
+    (
+        "wl_sales.closure.portal_title",
+        "Leave the loyalty programme",
+    ),
+    (
+        "wl_sales.closure.leave",
+        "Leave the programme",
+    ),
+    (
+        "wl_sales.closure.forfeit",
+        "Points that will be forfeited:",
+    ),
+    (
+        "wl_sales.closure.confirm",
+        "I understand that I lose these points and want to leave.",
+    ),
+    (
+        "wl_sales.closure.confirm_counter",
+        "The member asked to leave and confirmed that the points are forfeited.",
+    ),
+    (
+        "wl_sales.closure.closed",
+        "This account is closed. Enrolling again starts with no points.",
+    ),
+    (
+        "wl_sales.merge.closed_reason",
+        "Merged into :code",
+    ),
+    (
+        "wl_sales.terms.summary.earn_rate",
+        "the earn rate becomes :rate",
+    ),
+    (
+        "wl_sales.terms.summary.minimum",
+        "the least amount of a sale becomes AED :amount",
+    ),
+    (
+        "wl_sales.terms.summary.excluded",
+        "items left out: :items",
+    ),
+    (
+        "wl_sales.terms.summary.validity",
+        "new points are valid for :months months",
+    ),
+    (
+        "wl_sales.terms.summary.terms",
+        "the terms of the programme change",
+    ),
+    (
+        "wl_sales.terms.problem.no_programme",
+        "There is no such programme.",
+    ),
+    (
+        "wl_sales.terms.problem.not_running",
+        "The programme is not running.",
+    ),
+    (
+        "wl_sales.terms.problem.nothing",
+        "Change at least one term.",
+    ),
+    (
+        "wl_sales.terms.problem.notice",
+        "A change takes effect at least :days days after it is saved, so that members are told in time.",
+    ),
+    (
+        "wl_sales.terms.saved",
+        "The change is saved. :members members were told.",
+    ),
+    (
+        "wl_sales.terms.turned_off",
+        "The programme is turned off. Points can be redeemed until :date.",
+    ),
+    (
+        "wl_sales.terms.closing",
+        "Points can be redeemed until",
+    ),
+    (
+        "wl_sales.terms.change",
+        "Change the terms",
+    ),
+    (
+        "wl_sales.terms.change_description",
+        "The new terms apply to sales from the effective date, at least 30 days ahead. Points already earned keep their value and expiry. Members are told now.",
+    ),
+    (
+        "wl_sales.terms.effective_from",
+        "Effective from",
+    ),
+    (
+        "wl_sales.terms.excluded",
+        "Items left out (codes, separated by commas)",
+    ),
+    (
+        "wl_sales.terms.turn_off",
+        "Turn the programme off",
+    ),
+    (
+        "wl_sales.terms.turn_off_description",
+        "Earning stops now. Members can redeem for 90 days and are told. The points left expire after that.",
+    ),
+    (
+        "wl_sales.terms.turn_off_confirm",
+        "Turn the programme off",
+    ),
+    (
+        "wl_sales.terms.errors.confirm",
+        "Confirm that the programme is turned off.",
+    ),
+    (
+        "wl_sales.notices.loyalty_terms_changed_subject",
+        "The loyalty terms change",
+    ),
+    (
+        "wl_sales.notices.loyalty_terms_changed_body",
+        "From {{ effective_from }} the terms of the loyalty programme change: {{ summary }}. Points you have already earned keep their value and expiry. Your account is {{ code }}.",
+    ),
+    (
+        "wl_sales.notices.loyalty_programme_off_subject",
+        "The loyalty programme is ending",
+    ),
+    (
+        "wl_sales.notices.loyalty_programme_off_body",
+        "The loyalty programme has stopped earning points. You can redeem the {{ points }} points on your account {{ code }} until {{ closing_date }}; what is left then expires.",
+    ),
+    (
+        "wl_sales.notices.loyalty_closed_subject",
+        "Your loyalty account is closed",
+    ),
+    (
+        "wl_sales.notices.loyalty_closed_body",
+        "Your loyalty account {{ code }} is closed. {{ points }} points went with it.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

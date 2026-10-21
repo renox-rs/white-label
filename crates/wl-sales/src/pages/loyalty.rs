@@ -7,6 +7,9 @@
 //! | `GET /loyalty/review` | `wl_sales.loyalty_review` | `loyalty.manage` |
 //! | `POST /loyalty/review/{id}/resolve` | `wl_sales.loyalty_review_resolve` | `loyalty.manage` |
 //! | `POST /loyalty/accounts` | `wl_sales.loyalty_enrol` | `loyalty.enrol` |
+//! | `POST /loyalty/accounts/{id}/leave` | `wl_sales.loyalty_leave` | `loyalty.enrol` |
+//! | `POST /loyalty/programme/changes` | `wl_sales.loyalty_terms_change` | `loyalty.manage` |
+//! | `POST /loyalty/programme/off` | `wl_sales.loyalty_programme_off` | `loyalty.manage` |
 //! | `POST /counter-sales/{id}/member` | `wl_sales.counter_sale_member` | `loyalty.enrol` |
 //! | `POST /sales-orders/{id}/member` | `wl_sales.sales_order_member` | `loyalty.enrol` |
 //!
@@ -20,6 +23,7 @@ use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
 use wl_kernel::PartyId;
 
+use crate::closure;
 use crate::counter_sale::CounterSale;
 use crate::loyalty_account::{self, Enrolment, LoyaltyAccount};
 use crate::loyalty_attach::{self, MemberRef};
@@ -91,6 +95,8 @@ pub struct ProgrammeView {
     pub validity_months: i64,
     /// The version of the terms.
     pub terms_version: String,
+    /// The last day points can be redeemed once the programme was turned off.
+    pub closing: String,
 }
 
 /// One account as the list shows it.
@@ -114,6 +120,11 @@ pub struct AccountRow {
     pub reminder_note: String,
     /// Whether the account is open (it can be adjusted or closed).
     pub open: bool,
+    /// The points leaving would forfeit (shown on the sheet that records a
+    /// member's request to leave).
+    pub leave_points: i64,
+    /// Whether the account is paused: the party is on hold.
+    pub paused: bool,
 }
 
 /// What the page needs.
@@ -134,13 +145,20 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
     let per_visit = programme
         .as_ref()
         .is_some_and(|p| p.earn_kind == EarnKind::PerVisit);
-    let accounts = LoyaltyAccount::query()
+    let mut accounts = Vec::new();
+    for a in LoyaltyAccount::query()
         .order_by_desc(LoyaltyAccount::ID)
         .get(&db)
         .await?
         .into_iter()
         .take(50)
-        .map(|a| AccountRow {
+    {
+        let leave_points = if a.is_active() {
+            closure::forfeit_of(&db, &a).await?.points
+        } else {
+            0
+        };
+        accounts.push(AccountRow {
             id: a.id,
             code: a.code.clone(),
             party: a.party_id,
@@ -154,8 +172,10 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
                 String::new()
             },
             open: a.is_active(),
-        })
-        .collect();
+            leave_points,
+            paused: a.paused,
+        });
+    }
     let view = programme.map(|p| {
         let rate: [(&str, &dyn std::fmt::Display); 1] = [("rate", &p.earn_rate)];
         let key = match p.earn_kind {
@@ -168,6 +188,7 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
             point_value: format!("AED {}", aed(p.point_value)),
             validity_months: p.validity_months,
             terms_version: p.terms_version.clone(),
+            closing: p.closing_date.map(|d| d.to_string()).unwrap_or_default(),
             name: p.name.clone(),
         }
     });

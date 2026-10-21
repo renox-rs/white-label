@@ -5,12 +5,14 @@ pub mod acquisition;
 pub mod adjustment;
 pub mod adjustment_machine;
 pub mod adjustments;
+pub mod block;
 pub mod acquisition_change;
 pub mod acquisition_daily;
 pub mod attribution;
 pub mod bill_links;
 pub mod budget;
 pub mod campaign;
+pub mod closure;
 pub mod config;
 pub mod cost_entry;
 pub mod cost_machine;
@@ -32,6 +34,7 @@ pub mod loyalty_points;
 pub mod loyalty_programme;
 pub mod loyalty_rules;
 pub mod machine;
+pub mod merge;
 pub mod notices;
 pub mod package;
 pub mod package_machine;
@@ -55,6 +58,7 @@ pub mod sales_returns;
 pub mod seed;
 pub mod segment;
 pub mod segments;
+pub mod terms;
 mod texts;
 pub mod voids;
 
@@ -86,6 +90,7 @@ pub use promo_code::PromoCode;
 pub use redemption::{Redemption, RedemptionStatus};
 pub use retention::{BroadcastState, CampaignBroadcast, CampaignGuard, CampaignGuards};
 pub use sale_line::SaleLine;
+pub use terms::{LoyaltyTermsChange, TermsChange};
 pub use sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
 pub use sales_return::{
     ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, SalesReturnLine,
@@ -170,6 +175,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-sales/liability.html",
         include_str!("../views/wl-sales/liability.html"),
+    ),
+    (
+        "wl-sales/portal_loyalty.html",
+        include_str!("../views/wl-sales/portal_loyalty.html"),
     ),
     (
         "wl-sales/segments.html",
@@ -480,7 +489,8 @@ impl Module for WlSales {
             .view_data::<pages::adjustments::IndexPage>()
             .view_data::<pages::liability::ShowPage>()
             .view_data::<pages::segments::IndexPage>()
-            .view_data::<pages::segments::EditPage>();
+            .view_data::<pages::segments::EditPage>()
+            .view_data::<pages::membership::PortalPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -517,6 +527,7 @@ impl Module for WlSales {
         app.model::<LoyaltyReview>();
         app.model::<Redemption>();
         app.model::<PointsAdjustment>();
+        app.model::<LoyaltyTermsChange>();
         app.model::<Segment>();
         app.model::<CampaignBroadcast>();
         app.model::<CostEntry>();
@@ -550,6 +561,9 @@ impl Module for WlSales {
         // Retention campaigns: the broadcast asked on `activate`, the
         // segments for `wl-notify` and the campaign as a requester.
         retention::register(app);
+        // BL-SAL-26: a merge moves the points, a block pauses the account.
+        merge::register(app);
+        block::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);
