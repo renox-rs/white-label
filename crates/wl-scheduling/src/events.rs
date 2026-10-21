@@ -50,6 +50,7 @@ pub async fn rescheduled(
             start: booking.starts_at,
             end: booking.ends_at,
             resources,
+            deposit_carried: booking.deposit_held(),
         })
         .await
 }

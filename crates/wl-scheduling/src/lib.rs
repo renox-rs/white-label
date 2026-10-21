@@ -4,6 +4,7 @@
 pub mod booking;
 pub mod booking_machine;
 pub mod config;
+pub mod deposit;
 pub mod events;
 pub mod links;
 pub mod pages;

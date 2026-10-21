@@ -31,6 +31,7 @@ use crate::booking_machine::{
     Occupy, RESCHEDULE, RESCHEDULE_REQUEST, START,
 };
 use crate::config::config_of;
+use crate::deposit;
 use crate::events;
 use crate::refusal::Refusal;
 use crate::resource::{Resource, ServiceResource, ServiceType};
@@ -685,10 +686,13 @@ pub async fn mark_no_show(
     let service = service_of(state, &booking).await?;
     let ids = booking.resource_ids(&state.db).await?;
     let input = input_for(state, actor, at, &service);
-    let done = run_simple(state, &booking, MARK_NO_SHOW, &input, actor, None).await?;
+    let marked = run_simple(state, &booking, MARK_NO_SHOW, &input, actor, None).await?;
+    // The deposit is forfeited (`SCH.ACL.05`).
+    let settled = deposit::settle_no_show(state, &marked).await;
+    let done = settled.as_ref().map_or(marked, Clone::clone);
     events::no_show(state, &done, &service).await?;
     events::slot_released(state, &service, ids, booking.starts_at, booking.ends_at).await?;
-    Ok(done)
+    settled
 }
 
 /// What a cancellation says.
@@ -817,7 +821,12 @@ pub async fn cancel(
         BookingStatus::InProgress => CancelStage::InProgress,
         _ => CancelStage::BeforeStart,
     });
-    let done = run_simple(state, &booking, CANCEL, &input, actor, Some(&code)).await?;
+    let cancelled = run_simple(state, &booking, CANCEL, &input, actor, Some(&code)).await?;
+    // The deposit follows `SCH.ACL.05`. A refund `wl-payments` refuses does
+    // not undo the cancellation: the events still go out and the refusal is
+    // returned after them.
+    let settled = deposit::settle_cancelled(state, &cancelled, actor.user).await;
+    let done = settled.as_ref().map_or(cancelled, Clone::clone);
     events::cancelled(state, &done, cancelled_by(actor)).await?;
     // After check-in only the time that is left is freed.
     let from = if booking.status.is_after_check_in() {
@@ -826,7 +835,7 @@ pub async fn cancel(
         booking.starts_at
     };
     events::slot_released(state, &service, ids, from, booking.ends_at).await?;
-    Ok(done)
+    settled
 }
 
 /// The resources for a booking whose booker named none (the portal): the

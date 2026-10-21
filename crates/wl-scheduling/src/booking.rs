@@ -108,8 +108,21 @@ pub struct Booking {
     pub deposit_amount: i64,
     /// `refunded`, `forfeited` or `applied_to_work_done`, once settled.
     pub deposit_outcome: Option<String>,
-    /// The refund asked for the deposit (`payments.refund`).
+    /// The refund asked for the deposit (`payments.refund`); the last one
+    /// when a waived forfeiture was refunded later.
     pub deposit_refund_id: Option<i64>,
+    /// The part of the deposit applied to the work done, in fils.
+    pub deposit_applied: i64,
+    /// The part of the deposit paid back, in fils.
+    pub deposit_refunded: i64,
+    /// The part of the deposit the business keeps, in fils.
+    pub deposit_forfeited: i64,
+    /// The user who waived the forfeiture (`bookings.waive_deposit`).
+    pub deposit_waived_by: Option<i64>,
+    /// When the forfeiture was waived.
+    pub deposit_waived_at: Option<DateTime>,
+    /// Why the forfeiture was waived.
+    pub deposit_waive_reason: Option<String>,
     /// The cancellation reason code.
     pub cancel_code: Option<String>,
     /// `party` or `business`.
@@ -215,6 +228,16 @@ impl Booking {
         match (&self.work_done_type, self.work_done_id) {
             (Some(kind), Some(id)) => Some(Subject::new(kind, id)),
             _ => None,
+        }
+    }
+
+    /// The deposit the party has paid and the business holds, in fils: 0
+    /// without a deposit or while its payment is still awaited.
+    pub fn deposit_held(&self) -> i64 {
+        if self.payment_pending {
+            0
+        } else {
+            self.deposit_amount
         }
     }
 

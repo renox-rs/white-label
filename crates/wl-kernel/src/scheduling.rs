@@ -183,6 +183,9 @@ pub struct BookingRescheduled {
     pub end: DateTime,
     /// The new resources.
     pub resources: Vec<i64>,
+    /// The booking deposit that stays held and now belongs to the new time,
+    /// in fils; 0 when the service type has none (`SCH.ACL.05`).
+    pub deposit_carried: i64,
 }
 
 impl Event for BookingRescheduled {}
