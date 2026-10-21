@@ -246,3 +246,51 @@ async fn hrm15_only_the_recoveries_of_the_period_and_the_employee_count() {
 
     assert_eq!(calculate_then_approve(&d).await, 303);
 }
+
+/// Regression, `HRM.ACL.06`: an adjustment entered after `calculate` is taken
+/// into the run at `approve`, so the caps see it and the approver cannot get
+/// past them.
+#[renox::test]
+async fn hrm15_a_recovery_entered_after_calculate_still_meets_the_caps_at_approve() {
+    let d = desk().await;
+    d.t.transition(&d.prep, &d.run, "calculate", "")
+        .await
+        .assert_status(303);
+    d.t.deduct(
+        &d.e,
+        AdjustmentKind::OverpaymentRecovery,
+        aed(700),
+        "2026-11",
+    )
+    .await;
+
+    d.t.transition(&d.appr, &d.run, "approve", "")
+        .await
+        .assert_status(422);
+
+    assert_eq!(d.t.run(&d.run).await.status, PayrollRunStatus::Calculated);
+    assert_eq!(d.t.run(&d.run).await.approved_by, None);
+}
+
+/// Regression, the other side: a late recovery within the caps is linked to the
+/// run and deducted from the net of the line at `approve`.
+#[renox::test]
+async fn hrm15_a_late_recovery_within_the_caps_is_deducted_at_approve() {
+    let d = desk().await;
+    d.t.transition(&d.prep, &d.run, "calculate", "")
+        .await
+        .assert_status(303);
+    let late =
+        d.t.deduct(&d.e, AdjustmentKind::Fine, aed(100), "2026-11")
+            .await;
+
+    d.t.transition(&d.appr, &d.run, "approve", "")
+        .await
+        .assert_status(303);
+
+    let late = Adjustment::find_or_404(d.t.db(), late.id).await.unwrap();
+    assert_eq!(late.run_id, Some(d.run.id));
+    let line = d.t.line(&d.line).await;
+    assert_eq!(line.deductions_amount, aed(100));
+    assert_eq!(line.net_amount, WAGE - aed(100));
+}

@@ -430,8 +430,16 @@ fn approve() -> Transition<PayrollRun> {
         })
         .effect(|run: &PayrollRun, ctx, tx| {
             let id = run.id;
+            let period = run.period.clone();
+            let regular = run.run_type == crate::calculation::REGULAR;
             let by = ctx.actor().map(|user| user.id);
             Box::pin(async move {
+                // An adjustment entered after `calculate` is taken into its
+                // line now, so the caps see it and the net deducts it.
+                if regular {
+                    let late = adjustment::link_late_in(tx, id, &period).await?;
+                    crate::calculation::settle_in(tx, id, &late).await?;
+                }
                 let problems = caps::problems_in(tx, id).await?;
                 if !problems.is_empty() {
                     return Err(Error::Status(

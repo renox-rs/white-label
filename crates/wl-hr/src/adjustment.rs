@@ -6,6 +6,7 @@
 //! An adjustment is for a month (`period`). `calculate` takes the open
 //! adjustments of the run's period into the lines of their employees
 //! ([`link_to_run_in`]), and from then on the caps are checked on the line.
+//! One entered after `calculate` is taken at `approve` ([`link_late_in`]).
 
 use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
@@ -112,4 +113,36 @@ pub async fn link_to_run_in(tx: &mut Transaction, run_id: i64, period: &str) -> 
         )
         .await?;
     Ok(())
+}
+
+/// Takes the adjustments of `period` that no run has taken yet into run
+/// `run_id`, for the employees that have a line in it, and keeps the ones it
+/// took before. Returns the ids of the lines that got an adjustment now.
+///
+/// An adjustment entered after `calculate` is not linked to the run, so the
+/// caps ([`crate::caps::problems_in`]) would not see it: `approve` takes it
+/// here, before it checks them.
+pub async fn link_late_in(tx: &mut Transaction, run_id: i64, period: &str) -> Result<Vec<i64>> {
+    let lines = crate::payroll::PayrollLine::query()
+        .where_(crate::payroll::PayrollLine::RUN_ID.eq(run_id))
+        .where_(crate::payroll::PayrollLine::SOURCE_LINE_ID.is_null())
+        .order_by(crate::payroll::PayrollLine::ID)
+        .get(&mut *tx)
+        .await?;
+    let mut touched = Vec::new();
+    for line in lines {
+        let linked = Adjustment::query()
+            .where_(Adjustment::PERIOD.eq(period))
+            .where_(Adjustment::RUN_ID.is_null())
+            .where_(Adjustment::EMPLOYEE_ID.eq(line.employee_id))
+            .update(
+                &mut *tx,
+                &[("run_id", &Some(run_id)), ("updated_at", &now())],
+            )
+            .await?;
+        if linked > 0 {
+            touched.push(line.id);
+        }
+    }
+    Ok(touched)
 }
