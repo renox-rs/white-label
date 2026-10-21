@@ -37,6 +37,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/clinics/policies.html"),
     ),
     (
+        "clinics/appointments.html",
+        include_str!("../views/clinics/appointments.html"),
+    ),
+    (
         "clinics/appointment.html",
         include_str!("../views/clinics/appointment.html"),
     ),
@@ -79,6 +83,7 @@ impl Module for Clinics {
 
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::policies::IndexPage>()
+            .view_data::<pages::appointments::IndexPage>()
             .view_data::<pages::appointments::ShowPage>()
             .view_data::<pages::visits::ShowPage>();
         app.templates(|env| {
@@ -111,6 +116,14 @@ impl Module for Clinics {
         licences::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.insurance_policies` text.
+        app.nav(
+            "app",
+            NavLink::route("clinics.appointments", "nav.clinic_appointments")
+                .icon("clipboard-list")
+                .group("nav.app")
+                .order(71)
+                .permission(permissions::VISITS_VIEW),
+        );
         app.nav(
             "app",
             NavLink::route("clinics.policies", "nav.insurance_policies")

@@ -31,6 +31,16 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.appointments.cancelled", "This appointment is cancelled."),
     // The coverage outcome at check-in (CLN.ACL.15).
     ("clinics.history.system", "System"),
+    ("clinics.appointments.list_title", "Appointments"),
+    (
+        "clinics.appointments.list_subtitle",
+        "From today, soonest first, with where the cover of each insured visit stands.",
+    ),
+    ("clinics.appointments.when", "When"),
+    ("clinics.appointments.cover", "Cover"),
+    ("clinics.appointments.empty", "No appointments from today"),
+    ("clinics.coverage.waiting", "Waiting for the coverage outcome"),
+    ("clinics.coverage.not_insured", "Not insured"),
     ("clinics.coverage.policy", "Insurance policy"),
     ("clinics.coverage.attach_policy", "Book with a policy"),
     (

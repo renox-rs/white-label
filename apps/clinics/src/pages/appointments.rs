@@ -3,6 +3,7 @@
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
+//! | `GET /clinics/appointments` | `clinics.appointments` | `visits.view` |
 //! | `GET /clinics/appointments/{booking}` | `clinics.appointment` | `visits.view` |
 //! | `POST /clinics/appointments/{booking}/policy` | `clinics.appointment_policy` | `coverage.record` |
 //! | `POST /clinics/appointments/{booking}/eligibility` | `clinics.appointment_eligibility` | `coverage.record` |
@@ -32,6 +33,8 @@ use crate::visit::Visit;
 /// The routes of the pages.
 pub fn routes() -> Routes {
     Routes::new()
+        .get("/clinics/appointments", index)
+        .name("clinics.appointments")
         .get("/clinics/appointments/{booking}", show)
         .name("clinics.appointment")
         .post("/clinics/appointments/{booking}/policy", policy)
@@ -56,6 +59,72 @@ pub(crate) fn policy_label(lang: &Lang, policy: &InsurancePolicy) -> String {
         .valid_to
         .map_or_else(|| text(lang, "none"), |d| d.to_string());
     format!("{} — {} ({})", policy.plan, policy.member_id, to)
+}
+
+/// One appointment of the list.
+#[derive(Serialize, Debug, Clone)]
+pub struct AppointmentRow {
+    /// The booking.
+    pub booking: i64,
+    /// The patient's name.
+    pub patient: String,
+    /// The service code.
+    pub service: String,
+    /// The start (Asia/Dubai).
+    pub starts: String,
+    /// Where the cover stands, in the page's language.
+    pub cover: String,
+    /// The badge kind.
+    pub cover_kind: &'static str,
+}
+
+/// What the list page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "clinics/appointments.html")]
+pub(crate) struct IndexPage {
+    tx: Texts,
+    appointments: Vec<AppointmentRow>,
+}
+
+/// `GET /clinics/appointments`: the appointments from today on, soonest first,
+/// with where the cover of each insured one stands.
+async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+    require(&user, permissions::VISITS_VIEW)?;
+    let all = Appointment::query()
+        .where_(Appointment::VISIT_DATE.gte(wl_kernel::documents::today()))
+        .where_(Appointment::CANCELLED_ON.is_null())
+        .order_by(Appointment::STARTS_AT)
+        .get(&state.db)
+        .await?;
+    let mut rows = Vec::with_capacity(all.len());
+    for appointment in &all {
+        let visit = Visit::of_booking(&state.db, appointment.booking_id).await?;
+        let pending = PendingCheckIn::active_of(&state.db, appointment.booking_id).await?;
+        let (cover, kind) = if visit.is_some() {
+            (text(&lang, "coverage.checked_in"), "success")
+        } else if !appointment.is_insured() {
+            (text(&lang, "coverage.not_insured"), "info")
+        } else if let Some(outcome) = pending.as_ref().and_then(|p| p.outcome) {
+            (outcome_label(&lang, outcome), "success")
+        } else {
+            (text(&lang, "coverage.waiting"), "warning")
+        };
+        rows.push(AppointmentRow {
+            booking: appointment.booking_id,
+            patient: match appointment.patient_party_id {
+                Some(id) => party_name(&state, &lang, wl_kernel::PartyId(id)).await,
+                None => text(&lang, "none"),
+            },
+            service: appointment.service_code.clone(),
+            starts: wl_kernel::documents::dubai_text(appointment.starts_at),
+            cover,
+            cover_kind: kind,
+        });
+    }
+    Ok(View::typed(IndexPage {
+        tx: texts::all(&lang),
+        appointments: rows,
+    }))
 }
 
 /// What the page needs.

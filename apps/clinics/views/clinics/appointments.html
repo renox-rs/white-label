@@ -1,0 +1,15 @@
+{#- clinics: the appointments from today on, soonest first, with where the
+    cover of each insured visit stands; each opens the pre-check-in screen.
+    Replace it with resources/views/clinics/appointments.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['appointments.list_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['appointments.list_title']" :subtitle="tx['appointments.list_subtitle']"/>
+    <rx-table :rows="appointments" as="row" :key="row.booking" :caption="tx['appointments.list_title']" card>
+      <rx-column :label="tx['appointments.when']"><a href="{{ route('clinics.appointment', row.booking) }}">{{ row.starts }}</a></rx-column>
+      <rx-column :label="tx['appointments.patient']">{{ row.patient }}</rx-column>
+      <rx-column :label="tx['appointments.service']" hide-narrow>{{ row.service }}</rx-column>
+      <rx-column :label="tx['appointments.cover']"><rx-badge :kind="row.cover_kind" :text="row.cover"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['appointments.empty']" icon="clipboard-list"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
