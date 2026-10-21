@@ -19,6 +19,12 @@
 //! - A permit already lapsed on the day it is recorded is refused.
 //! - Recording again changes the same row (the renewal), and the approver and
 //!   the time are those of the last record; the audit log keeps the history.
+//! - Recording that a campaign promotes **no** service after a permit was
+//!   recorded keeps the permit's number and last valid day: the guard stops
+//!   asking for it, but the campaign that started under it still ends the day
+//!   after (a flip must not make a campaign immortal).
+//! - A permit is recorded for a campaign that exists, in one transaction; two
+//!   records at once end as a renewal, never as a unique-key error.
 
 use renox::chrono::NaiveDate;
 use renox::db::{DateTime, now};
@@ -162,8 +168,10 @@ pub async fn problem(db: &Db, campaign: i64, day: NaiveDate) -> Result<Option<Pr
     })
 }
 
-/// The last day campaign `campaign` may run: the permit's last valid day, for
-/// a campaign that promotes services and has one recorded.
+/// The last day campaign `campaign` may run: the last valid day of the permit
+/// recorded for it. Recording later that the campaign promotes no service
+/// keeps that day (see [`record`]), so a campaign that started under a permit
+/// still ends with it.
 ///
 /// # Errors
 ///
@@ -171,7 +179,6 @@ pub async fn problem(db: &Db, campaign: i64, day: NaiveDate) -> Result<Option<Pr
 pub async fn last_day(db: &Db, campaign: i64) -> Result<Option<NaiveDate>> {
     Ok(AdvertisingPermit::of_campaign(db, campaign)
         .await?
-        .filter(|permit| permit.promotes_services)
         .and_then(|permit| permit.valid_to))
 }
 
@@ -227,7 +234,11 @@ pub async fn record(state: &AppState, by: &AuthUser, new: NewPermit) -> Result<A
     if !by.has_permission(permissions::PERMITS_MANAGE) {
         return Err(Error::Forbidden);
     }
-    if new.campaign_id < 1 {
+    if new.campaign_id < 1
+        || !wl_kernel::sales::campaign_attribution(state)
+            .campaign_exists(state, wl_kernel::sales::CampaignId(new.campaign_id))
+            .await?
+    {
         return Err(refused("clinics.permit.problem.campaign"));
     }
     if new.promotes_services {
@@ -240,18 +251,15 @@ pub async fn record(state: &AppState, by: &AuthUser, new: NewPermit) -> Result<A
             Some(_) => {}
         }
     }
-    let at = now();
-    let existing = AdvertisingPermit::of_campaign(&state.db, new.campaign_id).await?;
-    let mut permit = existing.unwrap_or_else(|| AdvertisingPermit {
-        campaign_id: new.campaign_id,
-        ..AdvertisingPermit::default()
-    });
-    permit.promotes_services = new.promotes_services;
-    permit.permit_number = new.permit_number.trim().to_owned();
-    permit.valid_to = new.valid_to;
-    permit.approved_by = Some(by.id);
-    permit.approved_at = Some(at);
-    permit.save(&state.db).await?;
+    // The second of two parallel records finds the first one's row.
+    let mut attempt = 0;
+    let permit = loop {
+        attempt += 1;
+        match store(&state.db, by.id, &new).await {
+            Err(error) if attempt < 3 && error.is_unique_violation() => {}
+            other => break other?,
+        }
+    };
     renox::audit::record(
         &state.db,
         renox::audit::Entry::new(RECORDED)
@@ -264,6 +272,30 @@ pub async fn record(state: &AppState, by: &AuthUser, new: NewPermit) -> Result<A
             })),
     )
     .await?;
+    Ok(permit)
+}
+
+/// Writes the permit in one transaction that holds the write lock: the row
+/// of the campaign is changed when there is one, made when there is not.
+async fn store(db: &Db, by: i64, new: &NewPermit) -> Result<AdvertisingPermit> {
+    let mut tx = db.begin_immediate().await?;
+    let existing = AdvertisingPermit::query()
+        .where_(AdvertisingPermit::CAMPAIGN_ID.eq(new.campaign_id))
+        .first(&mut tx)
+        .await?;
+    let mut permit = existing.unwrap_or_else(|| AdvertisingPermit {
+        campaign_id: new.campaign_id,
+        ..AdvertisingPermit::default()
+    });
+    permit.promotes_services = new.promotes_services;
+    if new.promotes_services || permit.permit_number.is_empty() {
+        permit.permit_number = new.permit_number.trim().to_owned();
+        permit.valid_to = new.valid_to;
+    }
+    permit.approved_by = Some(by);
+    permit.approved_at = Some(now());
+    permit.save(&mut tx).await?;
+    tx.commit().await?;
     Ok(permit)
 }
 

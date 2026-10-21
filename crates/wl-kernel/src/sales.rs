@@ -372,6 +372,17 @@ pub trait CampaignAttribution: Send + Sync + 'static {
     fn sale_gone<'a>(&'a self, _state: &'a AppState, _sale: Subject) -> SalesFuture<'a, ()> {
         Box::pin(async { Ok(()) })
     }
+
+    /// Whether campaign `campaign` exists. A vertical that keeps its own
+    /// rows by campaign id (05's advertising permit) asks before it stores
+    /// one. The default says yes: no sales module, nothing to check.
+    fn campaign_exists<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _campaign: CampaignId,
+    ) -> SalesFuture<'a, bool> {
+        Box::pin(async { Ok(true) })
+    }
 }
 
 /// The campaign attribution when the `sales` module is off.

@@ -9,6 +9,7 @@
 mod support;
 
 use host::roles::{ADMIN, CLINIC_MANAGER, MARKETING, MARKETING_MANAGER, OWNER, RECEPTIONIST};
+use clinics::AdvertisingPermit;
 use renox::chrono::{Days, Months, NaiveDate};
 use renox::prelude::*;
 use renox::testing::TestApp;
@@ -306,6 +307,89 @@ async fn a_campaign_needs_its_advertising_permit_to_be_activated_and_ends_when_i
         .unwrap();
     assert_eq!((after.ended, after.failed), (1, 0));
     assert_eq!(status().await, CampaignStatus::Ended);
+}
+
+/// A permit is recorded for a campaign that exists, two records at once end
+/// as one row, and recording later that the campaign promotes no service
+/// keeps the last day, so a campaign that started under the permit still
+/// ends the day after it.
+#[renox::test]
+async fn a_permit_needs_its_campaign_and_a_flip_to_no_services_keeps_the_end() {
+    let app = clinics_booted().await;
+    let manager = person(&app, "Mona", MARKETING_MANAGER).await;
+    let owner = person(&app, "Olga", OWNER).await;
+    let campaign = Campaign {
+        name: "Whitening".into(),
+        code: "WHITE26".into(),
+        purpose: Some(Purpose::Acquisition),
+        marketing_channel: Some(MarketingChannel::Meta),
+        owner_id: Some(manager.id),
+        start_date: Some(day(0)),
+        end_date: Some(day(60)),
+        ..Campaign::default()
+    }
+    .store(app.db())
+    .await
+    .unwrap()
+    .unwrap();
+    let id = campaign.id.to_string();
+    let valid_to = today().to_string();
+    let permit_form = |campaign| {
+        [
+            ("campaign", campaign),
+            ("promotes", "yes"),
+            ("permit_number", "AD-2026-31"),
+            ("valid_to", valid_to.as_str()),
+        ]
+    };
+
+    app.acting_as(&owner);
+    app.htmx()
+        .post("/clinics/campaign-permits", &permit_form("9999"))
+        .await
+        .assert_status(422);
+    assert!(AdvertisingPermit::listed(app.db()).await.unwrap().is_empty());
+
+    // Two records at once: both answer, one row.
+    let form = permit_form(id.as_str());
+    let both = renox::tokio::join!(
+        app.htmx().post("/clinics/campaign-permits", &form),
+        app.htmx().post("/clinics/campaign-permits", &form),
+    );
+    both.0.assert_ok();
+    both.1.assert_ok();
+    assert_eq!(AdvertisingPermit::listed(app.db()).await.unwrap().len(), 1);
+
+    app.acting_as(&manager);
+    app.htmx()
+        .post(
+            &format!("/campaigns/{}/transitions/activate", campaign.id),
+            &[("x", "")],
+        )
+        .await
+        .assert_status(303);
+
+    // The director now records that it promotes no service: the end stays.
+    app.acting_as(&owner);
+    app.htmx()
+        .post(
+            "/clinics/campaign-permits",
+            &[("campaign", id.as_str()), ("promotes", "no")],
+        )
+        .await
+        .assert_ok();
+    assert_eq!(
+        clinics::permits::last_day(app.db(), campaign.id)
+            .await
+            .unwrap(),
+        Some(today())
+    );
+    let after = wl_sales::campaigns::run_daily(app.state(), day(1))
+        .await
+        .unwrap();
+    assert_eq!((after.ended, after.failed), (1, 0));
+    let ended = Campaign::find(app.db(), campaign.id).await.unwrap().unwrap();
+    assert_eq!(ended.status, CampaignStatus::Ended);
 }
 
 /// `SAL.LOY.01`, `SAL.RUL.07`, `SAL.RUL.08`, `SAL.ACL.07`: the seeded
