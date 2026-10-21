@@ -25,16 +25,22 @@ fn register_gateway() {
     .register();
 }
 
-/// Takes the gateway down, as the scheduled check does after its failures.
+/// Takes the gateway down, as the scheduled check does after its failures:
+/// `go_down` waits for the connection's limit (15 minutes of failures).
 async fn gateway_down(w: &support::World) {
     integrations::report_failure(w.state(), SMS_GATEWAY, "gateway timeout")
         .await
         .unwrap();
+    w.app.travel(std::time::Duration::from_secs(16 * 60));
     let connection = IntegrationConnection::by_key(w.db(), SMS_GATEWAY)
         .await
         .unwrap()
         .expect("the connection");
-    assert!(integrations::go_down(w.state(), &connection).await.unwrap());
+    let down = w
+        .app
+        .at_travelled_time(integrations::go_down(w.state(), &connection))
+        .await;
+    assert!(down.unwrap());
 }
 
 /// AC5: with the gateway up a tracking SMS is sent; with it down it is queued
