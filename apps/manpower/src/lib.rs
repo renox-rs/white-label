@@ -16,6 +16,7 @@ pub mod hold;
 pub mod notices;
 pub mod pages;
 pub mod permissions;
+pub mod release;
 pub mod request;
 pub mod requests;
 pub mod site;
@@ -135,6 +136,7 @@ impl Module for Manpower {
             })
             .timezone("Asia/Dubai");
         hold::listen(app);
+        release::listen(app);
         // A site is a scope roles are assigned in, shown by its name.
         wl_kernel::scopes::register_label(site::SUBJECT_TYPE, |db, id| {
             let id = id.to_owned();

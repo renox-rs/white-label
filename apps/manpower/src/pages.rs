@@ -8,6 +8,7 @@
 //! | `POST /manpower/contracts/{id}/activate` | `manpower.contract_activate` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/cancel` | `manpower.contract_cancel` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/hold` | `manpower.contract_hold` | `contracts.manage` for the client |
+//! | `POST /manpower/contracts/{id}/release` | `manpower.contract_release` | `contracts.manage` for the client (the MD approves while a hold condition remains) |
 //! | `POST /manpower/sites` | `manpower.site_create` | `sites.manage` for the client |
 //! | `GET /manpower/requests` | `manpower.requests` | `requests.view`, `requests.create` or `requests.manage` for the client, or the client's portal access |
 //! | `POST /manpower/requests` | `manpower.request_create` | `requests.create` for the client, or the client's approver |
@@ -62,6 +63,8 @@ pub fn routes() -> Routes {
         .name("manpower.contract_cancel")
         .post("/manpower/contracts/{id}/hold", hold_contract)
         .name("manpower.contract_hold")
+        .post("/manpower/contracts/{id}/release", release_contract)
+        .name("manpower.contract_release")
         .post("/manpower/sites", create_site)
         .name("manpower.site_create")
         .get("/manpower/requests", requests_index)
@@ -346,6 +349,16 @@ async fn hold_contract(
         Some(text.as_str()).filter(|text| !text.is_empty()),
     )
     .await?;
+    Ok(back("/manpower/contracts"))
+}
+
+/// `POST /manpower/contracts/{id}/release`.
+async fn release_contract(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    contracts::release(&state, &user, id).await?;
     Ok(back("/manpower/contracts"))
 }
 

@@ -106,6 +106,31 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manpower.hold.line_other", "Other: {{ text }}."),
     (
+        "manpower.release.not_on_hold",
+        "Only a contract on credit hold can be released.",
+    ),
+    (
+        "manpower.release.state_before",
+        "The contract can only go back to the state it had before the hold.",
+    ),
+    ("manpower.release.by_payment", "released by payment"),
+    (
+        "manpower.release.released_title",
+        "Credit hold released: {{ contract }}",
+    ),
+    (
+        "manpower.release.released_body",
+        "The credit hold of contract {{ contract }} is released. It is {{ note }} again and takes requests and deployments as before.",
+    ),
+    (
+        "manpower.release.rejected_title",
+        "Release of the credit hold refused: {{ contract }}",
+    ),
+    (
+        "manpower.release.rejected_body",
+        "The release of the credit hold of contract {{ contract }} was not approved. It stays on hold. {{ note }}",
+    ),
+    (
         "manpower.hold.refusal",
         "Contract on credit hold since {{ since }}: {{ reason }}",
     ),

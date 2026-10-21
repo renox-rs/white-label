@@ -11,12 +11,15 @@
 //! active, on_hold, terminating --end--> ended                              (BL-MPW-06)
 //! ```
 //!
-//! Built here: the six states and `activate`, `cancel` and `hold`. `ended` and
+//! Built here: the six states and `activate`, `cancel`, `hold` and `release`. `ended` and
 //! the transitions into and out of `terminating` are declared so the issues
-//! that add `release`, `terminate`, `renew` and `end` only add transitions:
-//! **`release` comes with BL-MPW-03, `terminate` with BL-MPW-04, `renew` with
-//! BL-MPW-05, `end` with BL-MPW-06.**
+//! that add `terminate`, `renew` and `end` only add transitions:
+//! **`terminate` comes with BL-MPW-04, `renew` with BL-MPW-05, `end` with
+//! BL-MPW-06.**
 //!
+//! - `release` (and `release_terminating`, back to the other state; the system's
+//!   `auto_release` pair and the kernel's `*_approved` twins) ends the hold
+//!   ([`crate::release`]).
 //! - `hold` (`contracts.manage`, with a reason) and its twin `auto_hold` (the
 //!   system's, `MPW.RUL.10`) put an `active` or `terminating` contract on
 //!   credit hold; the state before, the day, who held it and the reasons are
@@ -37,11 +40,13 @@ use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
+use wl_kernel::machines::approved;
 use wl_kernel::{PartyId, Subject, SubjectMachine};
 
 use crate::db::set_contract;
 use crate::hold::{hold_effects, hold_input, hold_problem};
 use crate::permissions;
+use crate::release::{release_effects, release_input, release_policy, release_problem};
 
 /// The subject type of a client contract.
 pub const SUBJECT_TYPE: &str = "manpower.client_contract";
@@ -55,6 +60,16 @@ pub const CANCEL: &str = "cancel";
 pub const HOLD: &str = "hold";
 /// The system's `hold` (`MPW.RUL.10`).
 pub const AUTO_HOLD: &str = "auto_hold";
+/// `release` back to `active`, the account manager's, approved by the MD while
+/// a hold condition remains (`MPW.ACL.14`).
+pub const RELEASE: &str = "release";
+/// `release` back to `terminating`: the pair of [`RELEASE`] for a contract held
+/// while it was terminating.
+pub const RELEASE_TERMINATING: &str = "release_terminating";
+/// The system's `release` to `active`: no hold condition is left.
+pub const AUTO_RELEASE: &str = "auto_release";
+/// The system's `release` to `terminating`.
+pub const AUTO_RELEASE_TERMINATING: &str = "auto_release_terminating";
 
 /// Where a client contract stands (§7.1).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -198,6 +213,26 @@ fn user(name: &str, label: &str, permission: &'static str) -> Transition<ClientC
         .permission_in(permission, |contract: &ClientContract| contract.scope())
 }
 
+/// A release back to `target`: the state before the hold must be `target`; the
+/// hold is cleared and its reasons closed.
+fn releasing(
+    transition: Transition<ClientContract>,
+    target: ContractStatus,
+) -> Transition<ClientContract> {
+    transition
+        .from([ContractStatus::OnHold])
+        .to(target)
+        .guard("state_before", move |contract: &ClientContract, _ctx| {
+            let problem = release_problem(contract, target);
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|contract: &ClientContract, ctx, tx| {
+            let contract = contract.clone();
+            let input = release_input(ctx);
+            Box::pin(async move { release_effects(&mut *tx, &contract, &input).await })
+        })
+}
+
 /// `hold` and `auto_hold`: the contract is `active` or `terminating`, a reason
 /// is given, and the state before, the day, who held it and the reasons are
 /// kept.
@@ -266,6 +301,41 @@ impl StateMachine for ClientContract {
                 user(HOLD, "Hold", permissions::CONTRACTS_MANAGE).tone("danger"),
             ))
             .transition(holding(Transition::new(AUTO_HOLD).label("Hold").system()))
+            .transition(releasing(
+                user(RELEASE, "Release", permissions::CONTRACTS_MANAGE).tone("primary"),
+                Active,
+            ))
+            .transition(releasing(
+                user(
+                    RELEASE_TERMINATING,
+                    "Release",
+                    permissions::CONTRACTS_MANAGE,
+                )
+                .tone("primary"),
+                Terminating,
+            ))
+            .transition(releasing(
+                Transition::new(&approved(RELEASE))
+                    .label("Release (approved)")
+                    .system(),
+                Active,
+            ))
+            .transition(releasing(
+                Transition::new(&approved(RELEASE_TERMINATING))
+                    .label("Release (approved)")
+                    .system(),
+                Terminating,
+            ))
+            .transition(releasing(
+                Transition::new(AUTO_RELEASE).label("Release").system(),
+                Active,
+            ))
+            .transition(releasing(
+                Transition::new(AUTO_RELEASE_TERMINATING)
+                    .label("Release")
+                    .system(),
+                Terminating,
+            ))
             .transition(
                 user(CANCEL, "Cancel", permissions::CONTRACTS_MANAGE)
                     .tone("danger")
@@ -287,6 +357,7 @@ impl StateMachine for ClientContract {
 /// the scope where approvers are looked for.
 pub fn subject_machine() -> SubjectMachine {
     SubjectMachine::of::<ClientContract>(SUBJECT_TYPE)
+        .action(RELEASE_TERMINATING, crate::release::ACTION)
         .scope(|contract: &ClientContract| contract.scope())
         .build()
 }
@@ -295,6 +366,7 @@ pub fn subject_machine() -> SubjectMachine {
 pub(crate) fn register() {
     subject_machine().register();
     renox::state_machine::register::<ClientContract>();
+    release_policy().register();
 }
 
 #[cfg(test)]
@@ -304,11 +376,22 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_that_is_built_is_declared() {
         let machine = ClientContract::machine();
-        let table: [(&str, &[&str], &str, bool); 4] = [
+        let table: [(&str, &[&str], &str, bool); 10] = [
             (ACTIVATE, &["draft"], "active", false),
             (CANCEL, &["draft"], "cancelled", false),
             (HOLD, &["active", "terminating"], "on_hold", false),
             (AUTO_HOLD, &["active", "terminating"], "on_hold", true),
+            (RELEASE, &["on_hold"], "active", false),
+            (RELEASE_TERMINATING, &["on_hold"], "terminating", false),
+            ("release_approved", &["on_hold"], "active", true),
+            (
+                "release_terminating_approved",
+                &["on_hold"],
+                "terminating",
+                true,
+            ),
+            (AUTO_RELEASE, &["on_hold"], "active", true),
+            (AUTO_RELEASE_TERMINATING, &["on_hold"], "terminating", true),
         ];
         assert_eq!(machine.transitions().len(), table.len());
         for (name, from, to, by_system) in &table {

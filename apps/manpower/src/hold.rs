@@ -667,10 +667,11 @@ pub async fn run_contract(state: &AppState, id: i64, on: NaiveDate) -> Result<Ve
         .filter(|summary| !known.contains(&summary.id.0))
         .map(NewReason::invoice)
         .collect();
-    if reasons.is_empty() {
-        return Ok(reasons);
+    if !reasons.is_empty() {
+        apply_reasons(state, id, reasons.clone(), None).await?;
     }
-    apply_reasons(state, id, reasons.clone(), None).await?;
+    // A hold whose causes are gone is released (BL-MPW-03).
+    crate::release::settle(state, id, on).await?;
     Ok(reasons)
 }
 

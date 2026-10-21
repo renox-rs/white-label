@@ -277,3 +277,15 @@ pub async fn hold(
 ) -> Result<ClientContract> {
     crate::hold::hold_by_hand(state, by, id, reason, text).await
 }
+
+/// `by` asks to release the credit hold of contract `id`: at once when no
+/// hold condition remains, else the MD is asked and the contract stays
+/// `on_hold` until approved.
+///
+/// # Errors
+///
+/// `Forbidden` without `contracts.manage` for the client; a 422 unless the
+/// contract is `on_hold`.
+pub async fn release(state: &AppState, by: &AuthUser, id: i64) -> Result<crate::release::Released> {
+    crate::release::release(state, by, id).await
+}
