@@ -505,20 +505,20 @@ refunded); work done billed through charge capture".
 - Must not let the patient cancel after check-in.
 
 #### Done when
-- [ ] Given a checked-in appointment with deposit AED 200.00, a filler syringe issued (price AED
+- [x] Given a checked-in appointment with deposit AED 200.00, a filler syringe issued (price AED
       150.00) and no service delivered, when staff cancel with `walked_out`, the visit bills AED
       150.00, the deposit settles it and AED 50.00 is refunded.
-- [ ] Given the practitioner marked the consultation (AED 300.00) delivered, a walk-out bills AED
+- [x] Given the practitioner marked the consultation (AED 300.00) delivered, a walk-out bills AED
       300.00; the deposit AED 200.00 settles part and AED 100.00 is due from the patient.
-- [ ] Given an `in_progress` visit stopped for `equipment_failure` with a consumable issued and no
+- [x] Given an `in_progress` visit stopped for `equipment_failure` with a consumable issued and no
       acceptance, nothing is charged, the consumable shows price 0, and AED 200.00 is refunded.
-- [ ] With acceptance recorded, the same stop bills the consumable and still refunds the deposit
+- [x] With acceptance recorded, the same stop bills the consumable and still refunds the deposit
       in full.
-- [ ] An insured walk-out with a delivered consultation creates a draft claim for the payer share.
-- [ ] An insured visit stopped for `equipment_failure` with a delivered consultation and no
+- [x] An insured walk-out with a delivered consultation creates a draft claim for the payer share.
+- [x] An insured visit stopped for `equipment_failure` with a delivered consultation and no
       acceptance creates no claim and no patient charge; with acceptance a draft claim is
       created for the payer share.
-- [ ] Setting *none* while a consumable was issued is refused.
+- [x] Setting *none* while a consumable was issued is refused.
 
 #### Out of scope
 The booking `cancel` mechanics and deposit engine (BL-SCH-02, BL-SCH-03); procedure not
@@ -584,12 +584,12 @@ not charged, and a deposit taken for the procedure is applied to the consultatio
 - Must not forfeit the procedure deposit.
 
 #### Done when
-- [ ] Given a booked laser procedure (AED 1,200.00) with deposit AED 300.00, when the practitioner
+- [x] Given a booked laser procedure (AED 1,200.00) with deposit AED 300.00, when the practitioner
       records "not suitable" and a consultation (AED 250.00, self-pay), the visit bills AED 250.00,
       the deposit covers it and AED 50.00 is refunded.
-- [ ] Recording "not suitable" without picking a consultation service is refused.
-- [ ] The appointment is `completed`, not `cancelled`.
-- [ ] No prior-authorisation unit and no package session is consumed for the laser.
+- [x] Recording "not suitable" without picking a consultation service is refused.
+- [x] The appointment is `completed`, not `cancelled`.
+- [x] No prior-authorisation unit and no package session is consumed for the laser.
 
 #### Out of scope
 Cancellation after check-in (BL-CLN-05).
