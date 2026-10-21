@@ -19,6 +19,10 @@
         <rx-confirm :id="'engagement-letter-send-' ~ engagement.id" :label="tx['letters.send']" :action="route('accounting.engagement_letter_send', engagement.id)" method="POST"
                     :title="tx['letters.send']" :message="tx['letters.send_message']" :confirm-label="tx['letters.send']" :cancel-label="tx['button_cancel']" icon="send"/>
       </template>
+      <template rx-if="can_open_cdd">
+        <rx-confirm :id="'engagement-cdd-' ~ engagement.id" :label="tx['engagements.open_cdd']" :action="route('accounting.engagement_cdd_open', engagement.id)" method="POST"
+                    :title="tx['engagements.open_cdd']" :message="tx['engagements.open_cdd_message']" :confirm-label="tx['engagements.open_cdd']" :cancel-label="tx['button_cancel']" icon="shield-check"/>
+      </template>
       <template rx-if="can_raise_aml">
         <rx-action-sheet :id="'engagement-aml-' ~ engagement.id" :label="tx['aml.raise']" :action="route('accounting.engagement_aml_concern', engagement.id)"
                          :title="tx['aml.raise']" :description="tx['aml.raise_description']" :submit-label="tx['aml.raise']" icon="shield-alert">
