@@ -32,6 +32,7 @@ pub mod send;
 pub mod send_window;
 pub mod staff_task;
 pub mod statutory_notice;
+pub mod stopped;
 pub mod suppressions;
 mod texts;
 pub mod types;
@@ -72,6 +73,7 @@ pub use send::SendMessage;
 pub use send_window::SendWindow;
 pub use staff_task::{StaffTask, StaffTaskHandler, open_give_up_task};
 pub use statutory_notice::StatutoryNoticeHandler;
+pub use stopped::StoppedRecipient;
 pub use suppressions::{Suppression, SuppressionReason};
 pub use types::NotificationType;
 
@@ -209,6 +211,7 @@ impl Module for WlNotify {
         app.model::<NotificationType>()
             .model::<Message>()
             .model::<Suppression>()
+            .model::<StoppedRecipient>()
             .model::<ReactionRun>()
             .model::<ReactionStep>()
             .model::<StatutoryNotice>()

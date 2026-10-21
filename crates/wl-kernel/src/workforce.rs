@@ -528,6 +528,15 @@ pub trait Workforce: Send + Sync + 'static {
         Box::pin(async { Ok(false) })
     }
 
+    /// Whether the account of user `user_id` belongs to an employee who has
+    /// exited and whose portal is read-only until it closes (`POR.ACL.01`,
+    /// wl-hr `exit`: the portal stays readable for a number of days, then
+    /// [`access_disabled`](Workforce::access_disabled) answers yes). The
+    /// default switches nobody to read-only.
+    fn read_only<'a>(&'a self, _db: &'a Db, _user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// Whether `employee` is `active` now: not in onboarding, on leave, in
     /// notice or gone. A deployment starts only for such an employee (09
     /// Manpower §7.1 *Deployment* `activate`). The default is no: a guard that
