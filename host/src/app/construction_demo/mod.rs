@@ -69,7 +69,9 @@ mod hooks;
 mod people;
 mod screens;
 mod seed_attendance;
+mod seed_closing;
 mod seed_hr;
+mod seed_ipas;
 mod seed_people;
 mod seed_projects;
 
@@ -204,6 +206,58 @@ pub async fn seed(kernel: &Kernel) -> Result<Report> {
 }
 
 impl Seed {
+    /// The story of the projects, in the order it happened: each project is
+    /// awarded and started on its day, and the cut-offs make the IPAs.
+    async fn story(&mut self) -> Result {
+        // The office fit-out that was completed.
+        self.award("OFC-06").await?;
+        self.boq("OFC-06").await?;
+        self.start("OFC-06").await?;
+        for c in seed_ipas::COMPLETED {
+            self.month(c.cutoff, &[*c]).await?;
+        }
+        self.complete("OFC-06", -130).await?;
+        // The showroom (terminated later), the tower and the fashion store.
+        for code in ["TRM-07", "TWR-01", "MALL-02"] {
+            self.award(code).await?;
+            self.boq(code).await?;
+            self.start(code).await?;
+        }
+        self.month(-118, seed_ipas::JUNE).await?;
+        for code in ["CLN-03"] {
+            self.award(code).await?;
+            self.boq(code).await?;
+            self.start(code).await?;
+        }
+        self.month(-88, seed_ipas::JULY).await?;
+        for code in ["RST-04"] {
+            self.award(code).await?;
+            self.boq(code).await?;
+            self.start(code).await?;
+        }
+        self.month(-57, seed_ipas::AUGUST).await?;
+        // The client terminated the showroom's subcontract; its third IPA
+        // became the final account, which is submitted and certified.
+        self.terminate("TRM-07", -45, -40).await?;
+        self.cycle(&seed_ipas::FINAL_ACCOUNT).await?;
+        self.month(-26, seed_ipas::SEPTEMBER).await?;
+        // This month's drafts, and a project just awarded.
+        self.cutoff(0).await?;
+        for (code, number, bp) in [
+            ("TWR-01", 5, 6_100),
+            ("MALL-02", 5, 7_200),
+            ("CLN-03", 4, 4_300),
+            ("RST-04", 3, 4_600),
+        ] {
+            let draft = self.ipa_of(code, number).await?;
+            let today = crate::app::demo_data::real_today();
+            at!(self, today, { self.progress(&draft, bp).await })?;
+        }
+        self.award("VIL-05").await?;
+        self.boq("VIL-05").await?;
+        Ok(())
+    }
+
     async fn run(&mut self) -> Result {
         let started = std::time::Instant::now();
         let lap = |what: &'static str, seed: &mut Self| {
@@ -217,15 +271,12 @@ impl Seed {
             self.registrations().await
         })?;
         lap("people", self);
-        for plan in seed_projects::PLANS {
-            self.award(plan.code).await?;
-            self.start(plan.code).await?;
-        }
-        lap("projects", self);
         Box::pin(self.staff()).await?;
+        lap("staff", self);
+        Box::pin(self.story()).await?;
+        lap("projects and IPAs", self);
         self.permits().await?;
         self.assign_sites().await?;
-        lap("staff", self);
         self.sites().await?;
         Box::pin(self.attendance()).await?;
         lap("attendance", self);
