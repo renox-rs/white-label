@@ -590,6 +590,13 @@ const SEEDS: &[Seed] = &[
 /// The seeded *Owner drawings* category has no owner party yet: the client
 /// sets it before any drawing is recorded.
 pub async fn install(db: &Db) -> Result<usize> {
+    install_owned(db, None).await
+}
+
+/// [`install`] with the client's owner role for the budget categories
+/// (`InvoicingConfig::budget_category_owner`): every new seeded category
+/// except owner drawings belongs to it. A category that exists is not changed.
+pub async fn install_owned(db: &Db, owner: Option<&str>) -> Result<usize> {
     let mut created = 0;
     let mut tx = db.begin().await?;
     for (position, seed) in SEEDS.iter().enumerate() {
@@ -601,7 +608,11 @@ pub async fn install(db: &Db) -> Result<usize> {
                     name_en: seed.name_en.to_owned(),
                     name_ar: Some(seed.name_ar.to_owned()),
                     kind: seed.kind,
-                    owner_role: seed.owner_role.map(str::to_owned),
+                    owner_role: match (owner, seed.kind) {
+                        (_, BudgetKind::OwnerDrawings) => None,
+                        (Some(role), _) => Some(role.to_owned()),
+                        (None, _) => seed.owner_role.map(str::to_owned),
+                    },
                     position: i64::try_from(position).unwrap_or(0) + 1,
                     active: true,
                     ..Default::default()

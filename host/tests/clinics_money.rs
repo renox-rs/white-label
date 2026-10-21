@@ -760,6 +760,51 @@ async fn approved_budget(app: &TestApp, by: &User, owner: &User, code: &str, amo
         .unwrap();
 }
 
+/// A category the accountant adds later starts with the clinic's default
+/// owner role (the accountant), unless the form names another; owner drawings
+/// get none.
+#[renox::test]
+async fn a_category_added_later_belongs_to_the_accountant() {
+    let app = clinics_booted().await;
+    let cara = person(&app, "Cara", ACCOUNTANT).await;
+    app.acting_as(&cara);
+    app.htmx()
+        .post(
+            "/budget-categories",
+            &[
+                ("code", "equipment"),
+                ("name_en", "Equipment"),
+                ("kind", "expense"),
+                ("active", "on"),
+            ],
+        )
+        .await
+        .assert_redirect("/budget-categories");
+    app.htmx()
+        .post(
+            "/budget-categories",
+            &[
+                ("code", "training"),
+                ("name_en", "Training"),
+                ("kind", "expense"),
+                ("owner_role", "clinic_manager"),
+                ("active", "on"),
+            ],
+        )
+        .await
+        .assert_redirect("/budget-categories");
+    let equipment = BudgetCategory::by_code(app.db(), "equipment")
+        .await
+        .unwrap()
+        .expect("saved");
+    assert_eq!(equipment.owner_role.as_deref(), Some(ACCOUNTANT));
+    let training = BudgetCategory::by_code(app.db(), "training")
+        .await
+        .unwrap()
+        .expect("saved");
+    assert_eq!(training.owner_role.as_deref(), Some(CLINIC_MANAGER));
+}
+
 /// Done when (cash-flow forecast and budget), 2 (first part): the categories
 /// belong to the accountant; a monthly budget the accountant prepares needs
 /// approval by the owner / medical director, never its preparer.

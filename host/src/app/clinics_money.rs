@@ -70,6 +70,8 @@ pub fn invoicing(module: WlInvoicing, entities: &[String]) -> WlInvoicing {
         .payer_write_off_approvers(&[OWNER_ROLE, COMPANY_ADMIN_ROLE])
         .payer_write_off_limit(seed::CLAIM_WRITE_OFF_LIMIT)
         .payer_follow_up_days(seed::PAYER_FOLLOW_UP_DAYS)
+        // `FIN.BUD.01`: the accountant owns every category, marketing too.
+        .budget_category_owner(ACCOUNTANT)
         // The patient's billing dispute (portal complaint form, `FIN.RUL.15`).
         .portal_disputes(true)
         .dispute_ticket_role(CLINIC_MANAGER_ROLE)

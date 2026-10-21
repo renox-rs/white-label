@@ -269,7 +269,11 @@ async fn create(
     lang: Lang,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    let input = input_of(&form, None)?;
+    let mut input = input_of(&form, None)?;
+    // A new category without an owner role starts with the client's default.
+    if input.owner_role.is_none() && input.kind != BudgetKind::OwnerDrawings {
+        input.owner_role = crate::config_of(&state).budget_category_owner.clone();
+    }
     save(&state.db, None, input)
         .await
         .map_err(|e| on_base(e, &form))?;

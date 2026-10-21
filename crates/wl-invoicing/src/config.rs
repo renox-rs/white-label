@@ -263,6 +263,12 @@ pub struct InvoicingConfig {
     /// bill with no remittance (§7: 45 for 05, 30 for 08; the default 30).
     /// The rule is not built yet: this is the value it will read.
     pub payer_follow_up_days: i64,
+    /// The owner role of the budget categories (`FIN.BUD.01`): the seeded
+    /// categories belong to it, and a category made later without an owner
+    /// role starts with it. `None` (the default): the module's own seed
+    /// (marketing to the marketing manager, the others unowned). 05 sets the
+    /// accountant. Owner drawings never get a default.
+    pub budget_category_owner: Option<String>,
     /// What extra hours of an adjustment on invoiced hours become (default
     /// an extra line on the next usage invoice).
     pub adjustment_plus: AdjustmentPlus,
@@ -356,6 +362,7 @@ impl Default for InvoicingConfig {
             payer_write_off_approvers: Vec::new(),
             payer_write_off_limit: 0,
             payer_follow_up_days: 30,
+            budget_category_owner: None,
             adjustment_plus: AdjustmentPlus::ExtraLine,
             adjustment_task_role: "coordinator".to_owned(),
             subscription_suspension: true,
@@ -496,6 +503,7 @@ mod tests {
         assert!(config.payer_write_off_approvers.is_empty());
         assert_eq!(config.payer_write_off_limit, 0);
         assert_eq!(config.payer_follow_up_days, 30);
+        assert_eq!(config.budget_category_owner, None);
         assert_eq!(config.adjustment_plus, AdjustmentPlus::ExtraLine);
         assert_eq!(config.adjustment_task_role, "coordinator");
         assert!(config.subscription_suspension);

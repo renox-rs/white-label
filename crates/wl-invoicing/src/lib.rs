@@ -825,6 +825,14 @@ impl WlInvoicing {
         self
     }
 
+    /// The owner role of every seeded budget category and the default of a
+    /// category made later without one (`FIN.BUD.01`; 05: the accountant).
+    /// Owner drawings never get one.
+    pub fn budget_category_owner(mut self, role: &str) -> Self {
+        self.config.budget_category_owner = Some(role.to_owned());
+        self
+    }
+
     /// The days after a payer bill is issued when `FIN.RUL.13` follows up a
     /// bill with no remittance (default 30; 05: 45). A value below 1 is
     /// read as 1.
@@ -1131,16 +1139,27 @@ impl Module for WlInvoicing {
         // `db:seed`: the demo invoices, as drafts.
         app.seeder(|state: AppState| async move { seed::run(&state).await.map(|_| ()) });
         // The seeded budget categories (§7), kept as the client changed them.
-        app.seeder(|state: AppState| async move {
-            budget_category::install(&state.db).await.map(|_| ())
+        let owner = self.config.budget_category_owner.clone();
+        app.seeder(move |state: AppState| {
+            let owner = owner.clone();
+            async move {
+                budget_category::install_owned(&state.db, owner.as_deref())
+                    .await
+                    .map(|_| ())
+            }
         });
+        let owner = self.config.budget_category_owner.clone();
         app.command(
             "invoicing:install",
             "Store the seeded budget categories and their mapping, where the database lacks them",
-            |_args, state: AppState| async move {
-                let created = budget_category::install(&state.db).await?;
-                println!("{created} budget categories created.");
-                Ok(())
+            move |_args, state: AppState| {
+                let owner = owner.clone();
+                async move {
+                    let created =
+                        budget_category::install_owned(&state.db, owner.as_deref()).await?;
+                    println!("{created} budget categories created.");
+                    Ok(())
+                }
             },
         );
         // In the app group of the staff sidebar; the label is the app's
