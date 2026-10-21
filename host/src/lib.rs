@@ -188,6 +188,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         // `db:seed` in local (never in production).
         app = app.module(app::construction_demo::DemoSeed::new(demo_client));
     }
+    // The Manpower client's ticket categories (BL-MPW-14, BL-MPW-17).
+    if client_app == app::manpower_seed::MANPOWER {
+        app = app.module(app::manpower_seed::ManpowerSeed);
+    }
     // The page that shows the shared modules' settings of this client.
     let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))

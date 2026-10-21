@@ -221,6 +221,7 @@ pub async fn apply(
             problems: Vec::new(),
             on: Some(on),
             new_end_date: None,
+            ..DeploymentInput::default()
         };
         let transition = match by {
             Some(user) => deployment.transition(SUSPEND).by(user),

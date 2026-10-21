@@ -110,6 +110,7 @@ async fn run(
         problems: problems(state, deployment, on).await?,
         on: Some(on),
         new_end_date: None,
+        ..DeploymentInput::default()
     };
     let mut tx = state.db.begin().await?;
     let locked = Deployment::query()

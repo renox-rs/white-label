@@ -44,6 +44,9 @@ pub const ACCEPT_BY_SYSTEM: &str = "accept_by_system";
 pub const CORRECT: &str = "correct";
 /// A reviewer rejects a record (`attendance.review`).
 pub const REJECT: &str = "reject";
+/// The system rejects a record on behalf of a vertical (09 Manpower: a
+/// deployment entered in error).
+pub const REJECT_BY_SYSTEM: &str = "reject_by_system";
 /// The system locks an accepted record when its timesheet is approved.
 pub const LOCK: &str = "lock";
 
@@ -269,6 +272,19 @@ impl StateMachine for AttendanceRecord {
                     }),
             )
             .transition(
+                Transition::new(REJECT_BY_SYSTEM)
+                    .label("Reject")
+                    .system()
+                    .from([Recorded, Flagged])
+                    .to(Rejected)
+                    .reason_required()
+                    .effect(|record: &AttendanceRecord, ctx, tx| {
+                        let record = record.clone();
+                        let who = review::Who::of(ctx);
+                        Box::pin(async move { review::reject_in(tx, &record, &who).await })
+                    }),
+            )
+            .transition(
                 Transition::new(LOCK)
                     .label("Lock")
                     .system()
@@ -353,6 +369,7 @@ mod tests {
                 "accept_by_system",
                 "correct",
                 "reject",
+                "reject_by_system",
                 "lock"
             ]
         );

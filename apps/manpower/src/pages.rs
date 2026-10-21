@@ -45,6 +45,7 @@ use crate::db::refused;
 use crate::deployment::{Deployment, DeploymentKind, DeploymentStatus};
 use crate::deployments::{self, NewDeployment};
 use crate::documents::DeploymentDocumentFlag;
+use crate::ends;
 use crate::hold::ContractHold;
 use crate::permissions;
 use crate::renewal::RenewAsk;
@@ -911,7 +912,9 @@ async fn resume_deployment(
     Ok(back("/manpower/deployments"))
 }
 
-/// `POST /manpower/deployments/{id}/end`: `reason`.
+/// `POST /manpower/deployments/{id}/end`: `reason` and, for the reasons that
+/// ask for it, `note` (the client's note), `conduct` (ticked: a complaint
+/// ticket opens), `end_date` (client non-payment: the last day) and `waiver`.
 async fn end_deployment(
     State(state): State<AppState>,
     user: AuthUser,
@@ -919,7 +922,21 @@ async fn end_deployment(
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    deployments::end(&state, &user, id, &field(&form, "reason"), &lang.locale).await?;
+    let details = ends::EndDetails {
+        note: Some(field(&form, "note")),
+        conduct: matches!(field(&form, "conduct").as_str(), "on" | "true" | "1"),
+        end_date: date(&lang, &form, "end_date")?,
+        waiver: Some(field(&form, "waiver")),
+    };
+    ends::end(
+        &state,
+        &user,
+        id,
+        &field(&form, "reason"),
+        details,
+        &lang.locale,
+    )
+    .await?;
     Ok(back("/manpower/deployments"))
 }
 

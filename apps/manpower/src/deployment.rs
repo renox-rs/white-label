@@ -38,14 +38,16 @@
 //!   contract takes deployments (`active` or `terminating`, not `on_hold`) and
 //!   the documents and licences are valid on today plus 30 days, or the new end
 //!   date if earlier (`MPW.ACL.07`).
-//! - `end` is the user's, with a reason: for now *end date* (the date has
-//!   come) and *replaced*; **the other reasons come with their issues:
-//!   *client rejected* and *client non-payment* and *entered in error* with
-//!   BL-MPW-14, *exit*, *absconded* and *deceased* are the system's on the exits of the worker ([`crate::exits`], BL-MPW-13);
-//!   *contract end* is the contract's `end`, BL-MPW-06.** `auto_end` is the
-//!   system's and takes any reason, so those issues only call it. The daily
+//! - `end` is the user's, with a reason: *end date* (the date has come),
+//!   *replaced*, and the three that ask for more in [`crate::ends`]: *client
+//!   rejected* (the client's note), *client non-payment* (the MD's, with the
+//!   notice period or a waiver) and *entered in error* (BL-MPW-14).
+//!   *Contract end* is the contract's `end` (BL-MPW-06); *exit*, *absconded* and
+//!   *deceased* are the system's on the exits of the worker ([`crate::exits`],
+//!   BL-MPW-13). `auto_end` is the system's and takes any reason. The daily
 //!   run ends the deployments whose end date has passed
-//!   ([`crate::deployments::end_due`]). After every `end` the open timesheet of
+//!   ([`crate::deployments::end_due`]), with the reason a scheduled end set
+//!   (`planned_end_reason`) or *end date*. After every `end` the open timesheet of
 //!   the worker in this deployment is closed at the last day and submitted at
 //!   once, through the kernel's `TimesheetClosing` (wl-attendance,
 //!   [`crate::deployments::finish_end`]).
@@ -125,8 +127,16 @@ pub mod reasons {
         ENTERED_IN_ERROR,
     ];
 
-    /// The reasons a user may give for now; the rest come with their issues.
-    pub const USER: &[&str] = &[END_DATE, REPLACED];
+    /// The reasons a user may give; *contract end* is the contract's, and
+    /// *exit*, *absconded* and *deceased* are the system's, on the exits of the
+    /// worker. *Client non-payment* is the MD's alone.
+    pub const USER: &[&str] = &[
+        END_DATE,
+        REPLACED,
+        CLIENT_REJECTED,
+        CLIENT_NON_PAYMENT,
+        ENTERED_IN_ERROR,
+    ];
 }
 
 /// Where a deployment stands (§7.1).
@@ -221,6 +231,13 @@ pub struct Deployment {
     pub exit_announced_at: Option<DateTime>,
     /// Why it ended, one of [`reasons`].
     pub end_reason: Option<String>,
+    /// The client's note of a rejection.
+    pub end_note: Option<String>,
+    /// The waiver of a short notice the MD attached (a document reference).
+    pub end_waiver: Option<String>,
+    /// The reason a scheduled end will be made with: the daily run ends the
+    /// deployment with it instead of *end date* (client non-payment).
+    pub planned_end_reason: Option<String>,
     /// The day it ended.
     pub ended_on: Option<NaiveDate>,
     /// Why it was cancelled.
@@ -303,6 +320,12 @@ pub struct DeploymentInput {
     /// `extend`: the new end date.
     #[serde(default)]
     pub new_end_date: Option<NaiveDate>,
+    /// `end`: the client's note, or what the user wrote.
+    #[serde(default)]
+    pub note: Option<String>,
+    /// `end` (client non-payment): the waiver of a short notice.
+    #[serde(default)]
+    pub waiver: Option<String>,
 }
 
 /// The input of a run; the default without one.
@@ -359,7 +382,16 @@ fn ended(
         .effect(|deployment: &Deployment, ctx, tx| {
             let id = deployment.id;
             let reason = ctx.reason().map(|reason| reason.trim().to_owned());
-            let on = input_of(ctx).on.unwrap_or_else(today);
+            let input = input_of(ctx);
+            let on = input.on.unwrap_or_else(today);
+            let note = input
+                .note
+                .map(|note| note.trim().to_owned())
+                .filter(|n| !n.is_empty());
+            let waiver = input
+                .waiver
+                .map(|w| w.trim().to_owned())
+                .filter(|w| !w.is_empty());
             // The last day is the end date, or the day it ended when that
             // is earlier or there is none.
             let last = deployment.end_date.map_or(on, |end| end.min(on));
@@ -371,6 +403,8 @@ fn ended(
                         ("end_reason", &reason),
                         ("ended_on", &Some(on)),
                         ("end_date", &Some(last)),
+                        ("end_note", &note),
+                        ("end_waiver", &waiver),
                     ],
                 )
                 .await
@@ -590,8 +624,17 @@ mod tests {
     }
 
     #[test]
-    fn the_user_ends_for_two_reasons_and_the_system_for_any() {
-        assert_eq!(reasons::USER, [reasons::END_DATE, reasons::REPLACED]);
+    fn the_user_ends_for_five_reasons_and_the_system_for_any() {
+        assert_eq!(
+            reasons::USER,
+            [
+                reasons::END_DATE,
+                reasons::REPLACED,
+                reasons::CLIENT_REJECTED,
+                reasons::CLIENT_NON_PAYMENT,
+                reasons::ENTERED_IN_ERROR
+            ]
+        );
         assert_eq!(reasons::ALL.len(), 9);
         assert!(reasons::USER.iter().all(|r| reasons::ALL.contains(r)));
     }

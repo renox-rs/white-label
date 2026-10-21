@@ -98,6 +98,7 @@ pub(crate) async fn end_effects(tx: &mut Transaction, contract: &ClientContract)
         problems: Vec::new(),
         on: Some(contract.end_date),
         new_end_date: None,
+        ..DeploymentInput::default()
     };
     for deployment in deployments {
         if deployment.status == DeploymentStatus::Planned {

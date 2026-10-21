@@ -22,7 +22,7 @@ use crate::contract::{ClientContract, ContractStatus};
 use crate::db::{answer, lock_contract, refused};
 use crate::deployment::{
     ACTIVATE, AUTO_CANCEL, AUTO_END, CANCEL, Deployment, DeploymentInput, DeploymentKind,
-    DeploymentStatus, END, EXTEND, EXTEND_SUSPENDED,
+    DeploymentStatus, EXTEND, EXTEND_SUSPENDED,
 };
 use crate::documents::{ACTIVATE_GUARDED, EXTEND_GUARDED};
 use crate::events::{DeploymentActivated, DeploymentCancelled, DeploymentEnded};
@@ -63,12 +63,12 @@ pub struct NewDeployment {
 }
 
 /// The deployment `id`, or 404.
-async fn load(state: &AppState, id: i64) -> Result<Deployment> {
+pub(crate) async fn load(state: &AppState, id: i64) -> Result<Deployment> {
     Deployment::find_or_404(&state.db, id).await
 }
 
 /// `Forbidden` unless `by` manages deployments of the client company.
-fn require_manage(by: &AuthUser, client: PartyId) -> Result {
+pub(crate) fn require_manage(by: &AuthUser, client: PartyId) -> Result {
     if by.has_permission_in(
         permissions::DEPLOYMENTS_MANAGE,
         &permissions::client_scope(client.0),
@@ -327,6 +327,7 @@ async fn run_activate(
         problems,
         on: Some(on),
         new_end_date: None,
+        ..DeploymentInput::default()
     };
     // A blocked client starts nothing new (BL-MPW-15).
     blocked::check(
@@ -504,6 +505,7 @@ async fn run_extend(
         problems,
         on: Some(today()),
         new_end_date: Some(new_end),
+        ..DeploymentInput::default()
     };
     // A suspended deployment stays suspended (BL-MPW-11).
     let name = if deployment.status == DeploymentStatus::Suspended {
@@ -524,13 +526,15 @@ async fn run_extend(
 }
 
 /// Ends deployment `id` for `by` with `reason` (one of
-/// [`crate::deployment::reasons::USER`]). *End date* needs the end date to
-/// have come. The client is told and [`DeploymentEnded`] is emitted.
+/// [`crate::deployment::reasons::USER`]), without the details the dearer
+/// reasons ask for ([`crate::ends::end`] takes them). *End date* needs the end
+/// date to have come. The client is told and [`DeploymentEnded`] is emitted.
 ///
 /// # Errors
 ///
 /// `Forbidden` without `deployments.manage` for the client; a 422 for a
-/// reason the user may not give yet, an end date still to come or unless the
+/// reason the user may not give, an end date still to come, a reason that
+/// needs more than this gives (a note for *client rejected*) or unless the
 /// deployment is `active` or `suspended`.
 pub async fn end(
     state: &AppState,
@@ -539,28 +543,15 @@ pub async fn end(
     reason: &str,
     lang: &str,
 ) -> Result<Deployment> {
-    let deployment = load(state, id).await?;
-    require_manage(by, deployment.client())?;
-    let mut problems = Vec::new();
-    if reason.trim() == crate::deployment::reasons::END_DATE
-        && !deployment.end_date.is_some_and(|end| end <= today())
-    {
-        problems.push(english("manpower.deployment.end_date_not_come", &[]));
-    }
-    let input = DeploymentInput {
-        problems,
-        on: Some(today()),
-        new_end_date: None,
-    };
-    let _outcome = deployment
-        .transition(END)
-        .by(by)
-        .reason(reason)
-        .input(&input)
-        .run(state)
-        .await
-        .map_err(answer)?;
-    after_end(state, id, lang).await
+    crate::ends::end(
+        state,
+        by,
+        id,
+        reason,
+        crate::ends::EndDetails::default(),
+        lang,
+    )
+    .await
 }
 
 /// What follows the commit of an `end`: the open timesheet of the worker is
@@ -715,13 +706,19 @@ pub async fn end_due(state: &AppState, on: NaiveDate) -> Result<Vec<Deployment>>
         problems: Vec::new(),
         on: Some(on),
         new_end_date: None,
+        ..DeploymentInput::default()
     };
     let mut ended = Vec::new();
     for deployment in due {
         let done = deployment
             .transition(AUTO_END)
             .by_system()
-            .reason(crate::deployment::reasons::END_DATE)
+            .reason(
+                deployment
+                    .planned_end_reason
+                    .as_deref()
+                    .unwrap_or(crate::deployment::reasons::END_DATE),
+            )
             .input(&input)
             .run(state)
             .await;

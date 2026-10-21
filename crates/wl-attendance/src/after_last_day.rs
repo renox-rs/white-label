@@ -12,12 +12,15 @@
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_kernel::Subject;
-use wl_kernel::attendance::{AttendanceRecordId, AttendanceReview, LabourFuture};
+use wl_kernel::attendance::{AttendanceRecordId, AttendanceReview, LabourFuture, WorkRejection};
+use wl_kernel::workforce::EmployeeId;
 
 use crate::flags::{self, FlagType, Pending};
 use crate::location::WorkLocation;
-use crate::record::AttendanceRecord;
+use crate::lock;
+use crate::record::{AttendanceRecord, AttendanceStatus, REJECT_BY_SYSTEM};
 
 /// Flags the attendance recorded after `after` at the work locations in
 /// `context` with `note`. Returns the records flagged now; a record that
@@ -90,6 +93,71 @@ pub async fn has_records(state: &AppState, context: &Subject) -> Result<bool> {
         .is_some())
 }
 
+/// Rejects the attendance of `employee` from `from` on at the work locations
+/// in `contexts` with `reason`: a record that is `recorded` or `flagged` is
+/// rejected by the system (its proposed hours leave the open timesheet); one
+/// that is `accepted` or `locked` is listed in `kept` for an adjustment.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn reject_work(
+    state: &AppState,
+    contexts: &[Subject],
+    employee: EmployeeId,
+    from: NaiveDate,
+    reason: &str,
+) -> Result<WorkRejection> {
+    let ids: Vec<i64> = WorkLocation::query()
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .filter(|location| {
+            location
+                .scope()
+                .is_some_and(|scope| contexts.contains(&scope))
+        })
+        .map(|location| location.id)
+        .collect();
+    let mut done = WorkRejection::default();
+    if ids.is_empty() {
+        return Ok(done);
+    }
+    let records = AttendanceRecord::query()
+        .where_(AttendanceRecord::LOCATION_ID.is_in(ids))
+        .where_(AttendanceRecord::EMPLOYEE_ID.eq(employee.0))
+        .where_(AttendanceRecord::DATE.gte(from))
+        .order_by(AttendanceRecord::ID)
+        .get(&state.db)
+        .await?;
+    for record in records {
+        match record.status {
+            AttendanceStatus::Rejected => {}
+            AttendanceStatus::Accepted | AttendanceStatus::Locked => {
+                done.kept.push(record.record_id());
+            }
+            AttendanceStatus::Recorded | AttendanceStatus::Flagged => {
+                let _day = lock::take(record.employee_id, record.date).await;
+                let mut tx = state.db.begin().await?;
+                let Some(fresh) = AttendanceRecord::find(&mut tx, record.id).await? else {
+                    continue;
+                };
+                let outcome = fresh
+                    .transition(REJECT_BY_SYSTEM)
+                    .by_system()
+                    .reason(reason)
+                    .run_in(&mut tx)
+                    .await
+                    .map_err(|e| e.into_error())?;
+                tx.commit().await?;
+                outcome.emit(state).await?;
+                done.rejected.push(record.record_id());
+            }
+        }
+    }
+    Ok(done)
+}
+
 /// The module's [`AttendanceReview`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Reviewer;
@@ -111,5 +179,16 @@ impl AttendanceReview for Reviewer {
         context: &'a Subject,
     ) -> LabourFuture<'a, bool> {
         Box::pin(has_records(state, context))
+    }
+
+    fn reject_work<'a>(
+        &'a self,
+        state: &'a AppState,
+        contexts: &'a [Subject],
+        employee: EmployeeId,
+        from: NaiveDate,
+        reason: &'a str,
+    ) -> LabourFuture<'a, WorkRejection> {
+        Box::pin(reject_work(state, contexts, employee, from, reason))
     }
 }

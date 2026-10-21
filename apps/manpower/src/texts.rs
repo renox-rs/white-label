@@ -488,6 +488,44 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.exit.line_visa",
         "{{ contract }}: {{ site }} as {{ role }}, {{ status }}, ends {{ until }}.",
     ),
+    // Ending for a reason that needs more (§7.1 `end`, BL-MPW-14).
+    (
+        "manpower.end.note_required",
+        "Give the client's note: why the client rejected the worker.",
+    ),
+    (
+        "manpower.end.before_today",
+        "The last day cannot be in the past.",
+    ),
+    (
+        "manpower.end.short_notice",
+        "The contract's notice period is {{ days }} days: the last day cannot be before {{ earliest }} unless you attach a waiver.",
+    ),
+    ("manpower.end.error_reason", "deployment entered in error"),
+    (
+        "manpower.end.adjust_title",
+        "Adjustment needed for {{ worker }}",
+    ),
+    (
+        "manpower.end.adjust_body",
+        "The deployment of {{ worker }} was entered in error. {{ count }} attendance records are accepted or in a locked timesheet and were not rejected: make an adjustment timesheet.",
+    ),
+    (
+        "manpower.end.conduct_title",
+        "Conduct: {{ worker }} at {{ site }}",
+    ),
+    (
+        "manpower.end.conduct_body",
+        "The client rejected {{ worker }} at {{ site }}: {{ note }}",
+    ),
+    (
+        "manpower.deployment.withdrawn_title",
+        "{{ worker }} will leave {{ site }}",
+    ),
+    (
+        "manpower.deployment.withdrawn_body",
+        "The deployment of {{ worker }} as {{ role }} at {{ site }} ends on {{ until }}, after the notice period of the contract.",
+    ),
     // Suspension (§7.1 `suspend`, `MPW.RUL.12`).
     (
         "manpower.attendance.suspended",

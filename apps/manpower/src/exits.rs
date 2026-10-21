@@ -144,6 +144,7 @@ pub async fn leave(
         problems: Vec::new(),
         on: Some(on),
         new_end_date: None,
+        ..DeploymentInput::default()
     };
     let mut outcomes = Vec::new();
     let (mut ended, mut cancelled) = (0, 0);

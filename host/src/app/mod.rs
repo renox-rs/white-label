@@ -8,6 +8,7 @@ pub mod dashboard;
 pub mod demo;
 pub mod demo_data;
 pub mod home;
+pub mod manpower_seed;
 pub mod negative_flow;
 pub mod property_seed;
 mod property_work;

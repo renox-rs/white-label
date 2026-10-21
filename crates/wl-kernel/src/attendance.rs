@@ -270,6 +270,34 @@ pub trait AttendanceReview: Send + Sync + 'static {
     ) -> LabourFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
+
+    /// Rejects the attendance of `employee` from `from` on at the work
+    /// locations in `contexts`, with `reason` (09 Manpower: a deployment
+    /// entered in error, whose hours are neither billed nor paid). A record
+    /// that is `recorded` or `flagged` is rejected; one already accepted or
+    /// `locked` in a timesheet cannot be, and is listed in
+    /// [`WorkRejection::kept`] for an adjustment timesheet (`HRM.ACL.08`).
+    /// The default rejects nothing.
+    fn reject_work<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _contexts: &'a [Subject],
+        _employee: EmployeeId,
+        _from: NaiveDate,
+        _reason: &'a str,
+    ) -> LabourFuture<'a, WorkRejection> {
+        Box::pin(async { Ok(WorkRejection::default()) })
+    }
+}
+
+/// What [`AttendanceReview::reject_work`] did.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct WorkRejection {
+    /// The records rejected now.
+    pub rejected: Vec<AttendanceRecordId>,
+    /// The records that stay because they are accepted or in a locked
+    /// timesheet: an adjustment is needed.
+    pub kept: Vec<AttendanceRecordId>,
 }
 
 /// The review when none is provided: nothing is flagged.
