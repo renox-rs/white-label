@@ -296,18 +296,33 @@ impl Real {
     /// The owner / medical director: told when a compliance-critical rule
     /// fails or misses its run.
     pub async fn owner(&self) -> User {
-        let user = self.user("Olga", &[clinics::permissions::VISITS_VIEW]).await;
-        permissions::define_role(
-            self.db(),
-            clinics::permissions::OWNER_ROLE,
-            &[clinics::permissions::VISITS_VIEW],
-        )
+        let grants = [
+            clinics::permissions::VISITS_VIEW,
+            clinics::permissions::MISSED_WINDOW_BILLING,
+        ];
+        let user = self.user("Olga", &grants).await;
+        permissions::define_role(self.db(), clinics::permissions::OWNER_ROLE, &grants)
         .await
         .unwrap();
         user.assign_role(self.db(), clinics::permissions::OWNER_ROLE)
             .await
             .unwrap();
         user
+    }
+
+    /// A clinic manager called `name`: closes claims (`claims.writeoff`) and
+    /// holds what the payer bill asks of the signed-in user. The same name
+    /// gives the same user.
+    pub async fn manager(&self, name: &str) -> User {
+        self.user(
+            name,
+            &[
+                clinics::permissions::CLAIMS_WRITEOFF,
+                inv::PAYER_BILLS_VIEW,
+                inv::PAYER_BILLS_WRITE_OFF,
+            ],
+        )
+        .await
     }
 
     /// A draft claim for a completed visit on `visit_date`, with one payer

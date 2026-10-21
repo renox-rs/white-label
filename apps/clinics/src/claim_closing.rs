@@ -31,7 +31,8 @@
 //!   spec's `write_off` effect reads "balance moved to the patient where the
 //!   contract allows". A move needs no approval (the payer bill gives none);
 //!   the patient is told by the payer bill, with the amount and without the
-//!   codes.
+//!   codes. The visit's patient total rises, and its payer total falls, by
+//!   what moved.
 //! - **The windows** are the payer contract's; the payer bill checks the
 //!   payer agreement's own (the two are kept equal) and its refusal comes
 //!   back unchanged.
@@ -54,6 +55,7 @@ use crate::claims::{attempt_deadline, contract_of, dry_run};
 use crate::contract::PayerContract;
 use crate::permissions::{self, OWNER_ROLE};
 use crate::texts::english;
+use crate::visit::Visit;
 
 /// What `held_kind` says while a write-off waits for the owner.
 pub const HELD_WRITE_OFF: &str = "write_off";
@@ -181,6 +183,22 @@ pub async fn write_off(
         .input(&input)
         .run(state)
         .await?;
+    if input.to_patient {
+        // The patient's share of the visit rises by what moved to them.
+        if let Some(visit) = Visit::find(&state.db, claim.visit_id).await? {
+            Visit::query()
+                .where_(Visit::ID.eq(visit.id))
+                .update(
+                    &state.db,
+                    &[
+                        ("patient_total", &(visit.patient_total + input.open)),
+                        ("payer_total", &(visit.payer_total - input.open).max(0)),
+                        ("updated_at", &renox::db::now()),
+                    ],
+                )
+                .await?;
+        }
+    }
     Ok(Closed::Done(Claim::find_or_404(&state.db, id).await?))
 }
 

@@ -946,7 +946,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "clinics.claim.problem.window_open",
-        "The payer still accepts this claim until :date: send it, or write it off after that day.",
+        "The payer still accepts this claim through :date. Send it in time, or write it off after that day.",
     ),
     (
         "clinics.claim.problem.window_unknown",
