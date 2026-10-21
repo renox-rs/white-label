@@ -460,6 +460,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.exits.transition.reinstate", "Reinstate"),
     ("wl_hr.exits.transition.record_death", "Record death"),
     (
+        "wl_hr.exits.death_date_required",
+        "The date of death is required.",
+    ),
+    (
         "wl_hr.exits.death_date_future",
         "The date of death cannot be in the future.",
     ),

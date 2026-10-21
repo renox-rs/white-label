@@ -179,8 +179,9 @@ impl ExitInput {
 /// other party's written agreement; `report_absconding` the MoHRE absence
 /// report number and date; `reinstate` the withdrawal or cancellation
 /// reference and the day the worker returned (not in the future);
-/// `record_death` the death certificate or the authority's notice (and a
-/// date of death, when given, not in the future).
+/// `record_death` the death certificate or the authority's notice and the
+/// date of death (required, not in the future: it fixes the salary owed up to
+/// it and the date of the event).
 pub fn missing(transition: &str, input: &ExitInput) -> Option<String> {
     if input.reason.trim().is_empty() {
         return Some(english("wl_hr.exits.reason_required", &[]));
@@ -193,6 +194,7 @@ pub fn missing(transition: &str, input: &ExitInput) -> Option<String> {
         REINSTATE if blank(&input.withdrawal_reference) => "reference_required",
         REINSTATE if input.return_date.is_none() => "return_date_required",
         REINSTATE if input.return_date.is_some_and(|day| day > today()) => "return_date_future",
+        RECORD_DEATH if input.death_date.is_none() => "death_date_required",
         RECORD_DEATH if input.death_date.is_some_and(|day| day > today()) => "death_date_future",
         RECORD_DEATH
             if !(input.has_document(KIND_DEATH_CERTIFICATE)
@@ -537,6 +539,7 @@ mod tests {
         assert_eq!(missing(REINSTATE, &reinstate), None);
 
         let mut death = input("died");
+        death.death_date = NaiveDate::from_ymd_opt(2026, 1, 10);
         assert!(missing(RECORD_DEATH, &death).is_some());
         death.documents.push(document(KIND_AUTHORITY_NOTICE, ""));
         assert!(
@@ -545,6 +548,14 @@ mod tests {
         );
         death.documents[0].document = Some(9);
         assert_eq!(missing(RECORD_DEATH, &death), None);
+        death.death_date = None;
+        assert_eq!(
+            missing(RECORD_DEATH, &death),
+            Some(english("wl_hr.exits.death_date_required", &[])),
+            "the date of death is required"
+        );
+        death.death_date = NaiveDate::from_ymd_opt(2999, 1, 1);
+        assert!(missing(RECORD_DEATH, &death).is_some(), "not in the future");
     }
 
     #[test]

@@ -114,7 +114,9 @@
               <rx-input name="return_date" type="date" :label="tx['exits.return_date']" id="request-exit-return-date"/>
               <rx-input name="death_certificate" :label="tx['exits.death_document']" id="request-exit-death-certificate"/>
               <rx-input name="authority_notice" :label="tx['exits.authority_notice']" id="request-exit-authority-notice"/>
-              <rx-input name="death_date" type="date" :label="tx['exits.death_date']" id="request-exit-death-date"/>
+              <rx-show-when field="transition" values="record_death">
+                <rx-input name="death_date" type="date" :label="tx['exits.death_date']" id="request-exit-death-date" required/>
+              </rx-show-when>
             </rx-action-sheet>
           </template>
         </rx-stack>

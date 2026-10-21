@@ -176,6 +176,7 @@ async fn hrm04_one_pending_request_per_employee() {
         ("transition", "record_death"),
         ("reason", "died in service"),
         ("death_certificate", "DC-9"),
+        ("death_date", "2026-10-01"),
     ];
     post(&t, &a, &e, &death).await.assert_status(422);
     assert_eq!(all_requests(&t, &e).await.len(), 1);
@@ -192,6 +193,7 @@ async fn hrm04_a_request_without_its_documents_is_refused_at_request() {
     let death = [
         ("transition", "record_death"),
         ("reason", "died in service"),
+        ("death_date", "2026-10-01"),
     ];
     post(&t, &a, &e, &death).await.assert_status(422);
     assert!(all_requests(&t, &e).await.is_empty());
@@ -221,6 +223,7 @@ async fn hrm04_a_request_without_its_documents_is_refused_at_request() {
                 ("transition", "record_death"),
                 ("reason", "  "),
                 ("authority_notice", "N-1"),
+                ("death_date", "2026-10-01"),
             ],
         ),
     ];
@@ -237,8 +240,49 @@ async fn hrm04_a_request_without_its_documents_is_refused_at_request() {
         ("transition", "record_death"),
         ("reason", "died in service"),
         ("authority_notice", "N-1"),
+        ("death_date", "2026-10-01"),
     ];
     post(&t, &a, &e, &with_notice).await.assert_ok();
+    assert_eq!(pending(&t, &e).await.len(), 1);
+}
+
+/// HRM-09 (#199) AC5, `record_death`: the date of death is required. With the
+/// certificate but no date (or a blank one) the request is refused with 422
+/// and the text says so, no approval request exists and the employee stays
+/// `active`; with a date it is accepted.
+#[renox::test]
+async fn hrm04_a_death_request_without_the_date_of_death_is_refused_at_request() {
+    let t = support::boot().await;
+    let a = t.user_with("Hana", "hr").await;
+    let e = t.employee_in(60, EmployeeStatus::Active).await;
+
+    for date in [None, Some(""), Some("  ")] {
+        let mut fields = vec![
+            ("transition", "record_death"),
+            ("reason", "died in service"),
+            ("death_certificate", "DC-9"),
+        ];
+        if let Some(date) = date {
+            fields.push(("death_date", date));
+        }
+        let refused = post(&t, &a, &e, &fields).await;
+        refused.assert_status(422);
+        assert!(
+            refused.text().contains("The date of death is required"),
+            "{}",
+            refused.text()
+        );
+        assert!(all_requests(&t, &e).await.is_empty(), "{date:?}");
+    }
+    assert_eq!(t.employee(&e).await.status, EmployeeStatus::Active);
+
+    let with_date = [
+        ("transition", "record_death"),
+        ("reason", "died in service"),
+        ("death_certificate", "DC-9"),
+        ("death_date", "2026-10-01"),
+    ];
+    post(&t, &a, &e, &with_date).await.assert_ok();
     assert_eq!(pending(&t, &e).await.len(), 1);
 }
 
@@ -368,6 +412,7 @@ async fn hrm04_a_failed_check_at_approval_ends_the_request_failed() {
         ("transition", "record_death"),
         ("reason", "died in service"),
         ("death_certificate", "DC-9"),
+        ("death_date", "2026-10-01"),
     ];
     post(&t, &a, &e, &death).await.assert_ok();
     let request = pending(&t, &e).await.remove(0);
@@ -434,6 +479,7 @@ async fn hrm04_each_exit_moves_the_employee_once_approved() {
                 ("transition", "record_death"),
                 ("reason", "died"),
                 ("death_certificate", "DC-1"),
+                ("death_date", "2026-01-10"),
             ],
             EmployeeStatus::Deceased,
         ),

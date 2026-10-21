@@ -59,10 +59,21 @@ pub fn task_key(id: i64, task: &str) -> String {
     format!("hr.death:{id}:{task}")
 }
 
+/// The refusal of a death with no date: `exits::missing` stops it at the
+/// request, so this is only the defensive answer.
+fn date_required() -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        english("wl_hr.exits.death_date_required", &[]),
+    )
+}
+
 /// The effect of `record_death`, inside the transition's transaction.
 pub async fn apply(tx: &mut Transaction, employee: &Employee, input: &ExitInput) -> Result {
     let id = employee.id;
-    let day = input.death_date.unwrap_or_else(wl_kernel::documents::today);
+    // The date of death is required at the request (`exits::missing`); there
+    // is no default to the approval day, which would be a wrong date.
+    let day = input.death_date.ok_or_else(date_required)?;
     let closed = employee
         .portal_closed_at
         .or(employee.user_id.map(|_| now()));
@@ -157,9 +168,7 @@ pub async fn after_commit(state: &AppState, id: i64) -> Result {
         .stop_messages_to(state, recipients, STOP_REASON)
         .await?;
     open_tasks(state, &employee).await?;
-    let date = employee
-        .date_of_death
-        .unwrap_or_else(wl_kernel::documents::today);
+    let date = employee.date_of_death.ok_or_else(date_required)?;
     state
         .emit(EmployeeDeceased {
             employee: employee.employee_id(),

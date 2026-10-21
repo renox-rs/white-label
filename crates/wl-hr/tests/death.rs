@@ -300,10 +300,10 @@ async fn hrm09_ac4_the_preparer_records_the_representative_on_the_draft() {
     assert_eq!(s.payee, "estate");
 }
 
-/// AC5: without the certificate or the authority's notice, or with a date of
-/// death in the future, it is refused and nothing is requested.
+/// AC5: without the certificate or the authority's notice, without the date of
+/// death, or with a date of death in the future, it is refused and nothing is requested.
 #[renox::test]
-async fn hrm09_ac5_without_the_certificate_or_with_a_future_date_it_is_refused() {
+async fn hrm09_ac5_without_the_certificate_or_the_date_or_with_a_future_date_it_is_refused() {
     let w = world().await;
     let without = [
         ("transition", "record_death"),
@@ -311,6 +311,14 @@ async fn hrm09_ac5_without_the_certificate_or_with_a_future_date_it_is_refused()
         ("death_date", "2026-11-10"),
     ];
     post(&w.t, nov(10), &w.hr, &w.e, &without)
+        .await
+        .assert_status(422);
+    let undated = [
+        ("transition", "record_death"),
+        ("reason", "died in service"),
+        ("death_certificate", "DC-9"),
+    ];
+    post(&w.t, nov(10), &w.hr, &w.e, &undated)
         .await
         .assert_status(422);
     let future = [
