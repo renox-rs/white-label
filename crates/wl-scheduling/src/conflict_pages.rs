@@ -176,15 +176,34 @@ async fn label_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<St
 /// The form of a bulk action: `action` (`reassign`, `reschedule` or `cancel`),
 /// the selected `bookings`, and for `reassign` the resource `to` (the first
 /// that can take each booking when empty), for `cancel` the `reason_code`.
-#[derive(Deserialize)]
+///
+/// Decision: read from the field pairs, because the selection is one
+/// `bookings` field per ticked box and the urlencoded deserializer refuses a
+/// repeated key (or a single one) for a sequence.
+#[derive(Default)]
 struct ResolveForm {
     action: String,
-    #[serde(default)]
     bookings: Vec<i64>,
-    #[serde(default)]
     to: String,
-    #[serde(default)]
     reason_code: String,
+}
+
+impl ResolveForm {
+    /// Collects the fields of the posted pairs; an unknown field is ignored
+    /// and a booking that is not a number is skipped.
+    fn from_pairs(pairs: Vec<(String, String)>) -> Self {
+        let mut form = Self::default();
+        for (key, value) in pairs {
+            match key.as_str() {
+                "action" => form.action = value,
+                "to" => form.to = value,
+                "reason_code" => form.reason_code = value,
+                "bookings" => form.bookings.extend(value.trim().parse::<i64>().ok()),
+                _ => {}
+            }
+        }
+        form
+    }
 }
 
 /// `POST /scheduling/conflicts/resolve`: one action for the selected
@@ -193,8 +212,9 @@ async fn resolve(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-    Form(form): Form<ResolveForm>,
+    Form(pairs): Form<Vec<(String, String)>>,
 ) -> Result<Response> {
+    let form = ResolveForm::from_pairs(pairs);
     let action = match form.action.as_str() {
         "reassign" => BulkAction::Reassign {
             to: form.to.trim().parse().ok(),
