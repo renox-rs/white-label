@@ -874,6 +874,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::JOBS_MANAGE,
             log::JOBS_DELIVER,
             log::JOBS_CLOSE,
+            // The documentation officer issues the supplementary invoice of a
+            // reopened job (BL-LOG-22) and sees the invoices of its jobs
+            // (`LOG.ACL.11`).
+            invoices::VIEW,
+            invoices::ISSUE,
         ],
     ),
     (

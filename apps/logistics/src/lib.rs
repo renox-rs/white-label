@@ -18,6 +18,7 @@ pub mod freight;
 pub mod freight_costing;
 pub mod freight_flow;
 pub mod freight_hold;
+pub mod freight_reopen;
 pub mod freight_machine;
 mod freight_pages;
 pub mod hold;
@@ -68,6 +69,7 @@ pub use dispute::StatementDispute;
 pub use freight::{FreightContainer, FreightEvent, FreightJob, FreightStatus};
 pub use freight_costing::{FreightMargin, JobLine};
 pub use freight_hold::FreightHold;
+pub use freight_reopen::FreightReopening;
 pub use freight_machine::FreightInput;
 pub use netting::Offset;
 pub use statement::Statement;
@@ -145,6 +147,7 @@ impl Module for Logistics {
             .model::<JobLine>()
             .model::<FreightMargin>()
             .model::<FreightHold>()
+            .model::<FreightReopening>()
             .model::<StatementDispute>()
             .model::<PaymentReturn>()
             .model::<AccountChange>()

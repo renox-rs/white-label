@@ -566,6 +566,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("logistics.screen.job_close", "Close"),
     ("logistics.screen.job_reopen", "Reopen"),
     ("logistics.screen.job_cancel", "Cancel"),
+    (
+        "logistics.screen.job_supplementary",
+        "Issue the supplementary invoice",
+    ),
     ("logistics.screen.job_field.missing", "Documents missing"),
     ("logistics.screen.job_field.bl_awb", "Bill of lading or air waybill"),
     ("logistics.screen.job_field.declaration_no", "Declaration number"),

@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use crate::freight::{FreightJob, FreightStatus, track};
 use crate::freight_costing;
 use crate::freight_hold;
+use crate::freight_reopen;
 use crate::permissions;
 use crate::texts::english;
 
@@ -343,6 +344,7 @@ pub(crate) fn transitions() -> Vec<Transition<FreightJob>> {
         deliver(),
         close(),
         cancel(),
+        freight_reopen::reopen_transition(),
         freight_hold::hold_transition(),
         freight_hold::release_transition(RELEASE_IN_TRANSIT, FreightStatus::InTransit),
         freight_hold::release_transition(
@@ -400,6 +402,7 @@ mod tests {
         assert_eq!(machine.states().len(), 9);
         for name in [
             HOLD,
+            REOPEN,
             RELEASE_IN_TRANSIT,
             RELEASE_CUSTOMS_CLEARANCE,
             RELEASE_READY_FOR_DELIVERY,

@@ -1078,6 +1078,35 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.freight.eta_body",
         "The expected arrival of freight job {{ number }} was {{ eta }} and the job is not ready for delivery.",
     ),
+    // Reopening a closed job (BL-LOG-22).
+    (
+        "logistics.freight.reopen_reason_needed",
+        "Give the reason to reopen the job: late supplier bill, demurrage, port storage or other.",
+    ),
+    (
+        "logistics.freight.reopen_note_needed",
+        "Say in a note what the other reason is.",
+    ),
+    (
+        "logistics.freight.not_reopened",
+        "The supplementary invoice is made for a job that was reopened and is delivered again.",
+    ),
+    (
+        "logistics.freight.nothing_to_recharge",
+        "There is no late cost to recharge: allocate it to the client and mark it rechargeable.",
+    ),
+    (
+        "logistics.freight.invoicing_off",
+        "Invoicing is not enabled, so no supplementary invoice can be drafted.",
+    ),
+    (
+        "logistics.freight.supplementary_line",
+        "{{ description }} (job {{ number }}{{ first }})",
+    ),
+    (
+        "logistics.freight.supplementary_revenue",
+        "Supplementary invoice for freight job {{ number }}",
+    ),
     ("logistics.freight_done", "Freight job updated."),
     ("logistics.freight_container_added", "Container added."),
     ("logistics.freight_opened", "Freight job opened."),

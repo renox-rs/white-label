@@ -14,6 +14,7 @@ use crate::freight::{FreightJob, FreightStatus};
 use crate::freight_costing::{self, Figures};
 use crate::freight_flow as flow;
 use crate::freight_hold;
+use crate::freight_reopen;
 use crate::freight_machine as machine;
 use crate::pages::{Fields, Texts, field, tx};
 use crate::permissions;
@@ -36,8 +37,14 @@ pub fn routes() -> Routes {
         .name("logistics.freight_cost")
         .post("/freight/{id}/revenue", revenue)
         .name("logistics.freight_revenue")
+        .post("/freight/{id}/supplementary", supplementary)
+        .name("logistics.freight_supplementary")
+        .post("/freight/{id}/zero-rate-evidence", zero_rate_evidence)
+        .name("logistics.freight_zero_rate_evidence")
         .post("/freight/lines/{line}/allocate", allocate)
         .name("logistics.freight_allocate")
+        .post("/freight/lines/{line}/disbursement", disbursement)
+        .name("logistics.freight_disbursement")
         .require_auth()
 }
 
@@ -233,6 +240,20 @@ async fn show(
                 .collect(),
         })
         .collect();
+    let mut actions: Vec<ActionView> = actions;
+    // The supplementary invoice of a reopened job is an action of its own.
+    if staff
+        && job.status == FreightStatus::Delivered
+        && user.has_permission(permissions::JOBS_MANAGE)
+        && !freight_costing::margins_of(&state.db, job.id).await?.is_empty()
+    {
+        actions.push(ActionView {
+            slug: "supplementary",
+            label: t(&lang, "logistics.screen.job_supplementary"),
+            url: format!("/freight/{}/supplementary", job.id),
+            fields: Vec::new(),
+        });
+    }
     let hold_label = (job.status == FreightStatus::OnHold)
         .then(|| job.hold_reason.clone())
         .flatten()
@@ -363,6 +384,10 @@ async fn act(
             .await
         }
         "release" => freight_hold::release(&state, &user, id, &field(&form, "note")).await,
+        "reopen" => {
+            freight_reopen::reopen(&state, &user, id, &field(&form, "reason"), &field(&form, "note"))
+                .await
+        }
         "deliver" => flow::deliver(&state, &user, id, &field(&form, "pod_reference")).await,
         "close" => flow::close(&state, &user, id).await,
         "cancel" => flow::cancel(&state, &user, id, &field(&form, "reason")).await,
@@ -454,6 +479,63 @@ async fn allocate(
     Ok((
         Toast::success(t(&lang, "logistics.freight_done")),
         Redirect::route("logistics.freight_job", &[&allocated.job_id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/{id}/supplementary`: drafts and issues the supplementary
+/// invoice of the late costs that are rechargeable.
+async fn supplementary(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    freight_reopen::supplementary_invoice(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/{id}/zero-rate-evidence`: `attached` (`1` or `0`).
+async fn zero_rate_evidence(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let attached = matches!(field(&form, "attached").trim(), "1" | "on" | "true");
+    freight_reopen::set_zero_rate_evidence(&state, &user, id, attached)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/lines/{line}/disbursement`: `conditions` (`1` when the
+/// three conditions of VATP013 are recorded for the cost).
+async fn disbursement(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(line): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let met = matches!(field(&form, "conditions").trim(), "1" | "on" | "true");
+    let line = freight_reopen::set_disbursement(&state, &user, line, met)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&line.job_id])?,
     )
         .into_response())
 }

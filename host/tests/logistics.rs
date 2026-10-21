@@ -147,6 +147,11 @@ fn the_documentation_officer_works_and_closes_freight_jobs() {
             assert!(holds(role, permission), "{role} {permission}");
         }
     }
+    // It issues the supplementary invoice of a reopened job (BL-LOG-22).
+    assert!(holds(
+        roles::DOCUMENTATION_OFFICER,
+        wl_invoicing::permissions::ISSUE
+    ));
     for role in [OPERATIONS_MANAGER, roles::ACCOUNTANT] {
         assert!(holds(role, perm::JOBS_VIEW), "{role}");
         assert!(!holds(role, perm::JOBS_MANAGE), "{role}");

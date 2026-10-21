@@ -64,9 +64,13 @@ pub struct JobLine {
     pub allocated: bool,
     /// Whether the cost is recharged to the client.
     pub rechargeable: bool,
+    /// The three conditions of VATP013 are recorded: the cost is a
+    /// disbursement and is billed `out_of_scope` (`FIN.DSB.01`).
+    pub disbursement: bool,
     /// For a revenue line: whether its invoice is issued.
     pub issued: bool,
-    /// The invoice of a revenue line.
+    /// The invoice of a revenue line, or the supplementary invoice a cost was
+    /// recharged on.
     pub invoice_id: Option<i64>,
     /// The supplier bill or disbursement a cost comes from.
     pub source_ref: Option<String>,

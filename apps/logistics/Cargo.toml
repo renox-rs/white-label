@@ -23,3 +23,6 @@ wl-payments = { path = "../../crates/wl-payments" }
 # The real wl-parties in the blocked-client tests: the block and the exception
 # of `PTY.ACL.03` are its block guard's.
 wl-parties = { path = "../../crates/wl-parties" }
+# The real wl-invoicing in the freight tests: the supplementary invoice of a
+# reopened job is a real draft, issued by a user.
+wl-invoicing = { path = "../../crates/wl-invoicing" }

@@ -214,6 +214,16 @@ their own issues.
   shows the reason label and the note, a second reason is a note on the open
   hold, no ETA alert is raised while on hold and the hold periods are left
   out of `is_on_time`.
+- **Reopening a closed freight job** (`freight_reopen`): `jobs.close` reopens
+  a closed job with a reason (late supplier bill, demurrage, port storage, or
+  *other* with a note); a cancelled job is never reopened. The late cost is
+  allocated with its liability (*company* only lowers the margin, *client* may
+  be recharged) and the supplementary invoice is drafted through the kernel's
+  invoicer and issued by the officer: a disbursement is `out_of_scope` when
+  the three conditions of VATP013 are recorded, any other recharge carries
+  the main service's 5% (zero-rated only for an international job with its
+  evidence). `close` has the same guards and the margin of each close stays in
+  the history; the first invoice is never changed.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
   from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
   exist; `rates::price` is the one place to change. The zone prices by weight

@@ -127,6 +127,8 @@ pub struct FreightJob {
     pub held_at: Option<DateTime>,
     /// When it was last closed.
     pub closed_at: Option<DateTime>,
+    /// The evidence for zero-rating is attached (the VAT of §9).
+    pub zero_rate_evidence: bool,
     /// The ETA `LOG.RUL.09` last told the documentation officer about.
     pub eta_alerted_for: Option<NaiveDate>,
     /// Where it is; changed only by a transition.
