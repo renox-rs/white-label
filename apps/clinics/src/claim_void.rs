@@ -9,7 +9,10 @@
 //! attempt, also one back in `draft` after a technical rejection, is refused
 //! by the machine ([`crate::claim_machine::never_submitted`]).
 //!
-//! In this order, each step only once the earlier ones are certain:
+//! In this order, each step only once the earlier ones are certain, and each
+//! one idempotent, so that a failure in the middle is finished by running the
+//! void again (the claim is void and has no `void_code` yet: the void is
+//! incomplete, and the same call completes it):
 //!
 //! 1. The reason code (`duplicate`, `wrong_payer`, `wrong_policy`, free text
 //!    optional) is checked; `duplicate` needs the claim it duplicates, picked
@@ -19,9 +22,10 @@
 //!    before anything changed.
 //! 3. The payer bill is voided through the kernel's `PayerBills::void`
 //!    (`voided`, number kept; it is no longer a bill of the visit, so the
-//!    visit can be split again).
+//!    visit can be split again); a bill that is void already is left.
 //! 4. The claim is voided by the kernel's void.
-//! 5. The visit's payer split is removed (its payer bill and payer share).
+//! 5. The visit's payer split is removed (its payer bill and payer share),
+//!    once.
 //!    If the right policy was named, the visit is re-split to it and a new
 //!    claim is made ([`crate::billing::payer_side`]), which keeps the voided
 //!    one as the claim it replaces. If none was named (and the reason is not
@@ -38,15 +42,25 @@
 //!   charge lines keep their prices and units and are divided again by the
 //!   new policy's payer contract. A policy that gives no payer share is
 //!   refused too (leave the policy out and resolve the coverage).
-//! - **The payer bill's void** is not one that waits for approval: it is a
-//!   draft that was never sent. Were an approval to be asked, the void stops
-//!   with a refusal.
+//! - **No approval.** The payer bill's void and the claim's are drafts that
+//!   were never sent: by default nothing waits for an approval. Should an
+//!   admin put an approval policy on `clinics.claim_void` or on the payer
+//!   bill's void, voiding a claim is **refused before anything changes**
+//!   (`void_waits`): a void that waited half way would leave a voided payer
+//!   bill with a live claim, or the other way round, and this app does not
+//!   follow an approval to its end. Decision: refusing is the safe reading
+//!   until a policy is wanted; then the approval is to be followed by a
+//!   listener on `RecordVoided`.
 //! - The void does not emit its own event beyond the kernel's `RecordVoided`.
 
 use renox::db::now;
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::TransitionError;
-use wl_kernel::payer_bills::{PayerAnswer, payer_bills};
+use wl_kernel::approvals::ApprovalPolicy;
+use wl_kernel::payer_bills::{
+    PAYER_BILL_SUBJECT_TYPE, PayerAnswer, PayerBillStatus, payer_bills,
+};
 use wl_kernel::role_tasks::{self, RoleTask};
 use wl_kernel::tickets::task_creator;
 use wl_kernel::voids::{self, VoidOutcome};
@@ -54,7 +68,7 @@ use wl_kernel::voids::{self, VoidOutcome};
 use crate::billing::payer_side;
 use crate::charge::ChargeLine;
 use crate::charges::{self, Quote};
-use crate::claim::Claim;
+use crate::claim::{CLAIM_SUBJECT_TYPE, Claim};
 use crate::claim_machine::{ClaimInput, clean};
 use crate::claims::{can_manage, dry_run};
 use crate::permissions::BILLING_COORDINATOR_ROLE;
@@ -271,11 +285,15 @@ async fn apply_split(
         )
         .await?;
     let mut visit = Visit::find_or_404(&state.db, visit_id).await?;
-    let made = payer_side(state, &mut visit, quote, by)
-        .await?
-        .ok_or_else(|| {
-            crate::db::refused(english("clinics.claim.problem.resplit_no_share", &[]))
-        })?;
+    // A run that stopped after the claim was made finds it again.
+    let made = match payer_side(state, &mut visit, quote, by).await? {
+        Some(made) => Some(made),
+        None => match visit.payer_bill_id {
+            Some(bill) => Claim::of_payer_bill(&state.db, bill).await?,
+            None => None,
+        },
+    }
+    .ok_or_else(|| crate::db::refused(english("clinics.claim.problem.resplit_no_share", &[])))?;
     Claim::query()
         .where_(Claim::ID.eq(made.id))
         .update(
@@ -326,7 +344,16 @@ pub async fn void(
     } else {
         None
     };
-    dry_run(&claim, voids::VOID, by, &ClaimInput::default()).await?;
+    // A void that stopped half way (the claim is void, nothing marks it
+    // complete) is finished by the same call.
+    let resuming = claim.is_void() && claim.void_code.is_none();
+    if resuming {
+        if !can_manage(by) {
+            return Err(TransitionError::Forbidden);
+        }
+    } else {
+        dry_run(&claim, voids::VOID, by, &ClaimInput::default()).await?;
+    }
     let visit = Visit::find_or_404(&state.db, claim.visit_id).await?;
     let resplit = match (duplicate, request.policy) {
         (false, Some(policy)) => Some(plan(state, &visit, policy).await?),
@@ -334,33 +361,42 @@ pub async fn void(
     };
     let reason = reason_text(&request);
 
-    match payer_bills(state)
-        .void(state, claim.payer_bill(), &reason, by)
-        .await?
-    {
-        PayerAnswer::Done => {}
-        PayerAnswer::Pending { .. } => return Err(guard("clinics.claim.problem.void_waits")),
+    if !resuming {
+        if void_needs_approval(state).await? {
+            return Err(guard("clinics.claim.problem.void_waits"));
+        }
+        let bill = payer_bills(state)
+            .find(&state.db, claim.payer_bill())
+            .await?;
+        if bill.is_none_or(|bill| bill.status != PayerBillStatus::Voided) {
+            match payer_bills(state)
+                .void(state, claim.payer_bill(), &reason, by)
+                .await?
+            {
+                PayerAnswer::Done => {}
+                PayerAnswer::Pending { .. } => {
+                    return Err(guard("clinics.claim.problem.void_waits"));
+                }
+            }
+        }
+        match voids::void(state, by, &claim.subject(), &reason).await? {
+            VoidOutcome::Voided(_) => {}
+            VoidOutcome::Pending(_) => return Err(guard("clinics.claim.problem.void_waits")),
+        }
     }
-    match voids::void(state, by, &claim.subject(), &reason).await? {
-        VoidOutcome::Voided(_) => {}
-        VoidOutcome::Pending(_) => return Err(guard("clinics.claim.problem.void_waits")),
-    }
-    Claim::query()
-        .where_(Claim::ID.eq(id))
-        .update(
-            &state.db,
-            &[
-                ("void_code", &Some(request.code.clone())),
-                ("void_note", &request.note),
-                ("void_duplicate_of", &duplicate_of),
-                ("updated_at", &now()),
-            ],
-        )
-        .await?;
 
-    remove_split(state, &visit).await?;
-    let mut replacement = None;
-    if let Some((policy, quote)) = &resplit {
+    // The split is taken away once: a visit that no longer holds this
+    // claim's payer bill has been through it.
+    if visit.payer_bill_id == Some(claim.payer_bill_id) {
+        remove_split(state, &visit).await?;
+    }
+    let mut replacement = Claim::query()
+        .where_(Claim::REPLACES_CLAIM_ID.eq(id))
+        .first(&state.db)
+        .await?;
+    if replacement.is_none()
+        && let Some((policy, quote)) = &resplit
+    {
         replacement = Some(apply_split(state, visit.id, policy, quote, id, Some(by.id)).await?);
     }
     let to_resolve = !duplicate && resplit.is_none();
@@ -395,11 +431,40 @@ pub async fn void(
         .description(&description);
         role_tasks::open(state, task).await?;
     }
+    // Last: the mark that the void is complete.
+    Claim::query()
+        .where_(Claim::ID.eq(id))
+        .update(
+            &state.db,
+            &[
+                ("void_code", &Some(request.code.clone())),
+                ("void_note", &request.note),
+                ("void_duplicate_of", &duplicate_of),
+                ("updated_at", &now()),
+            ],
+        )
+        .await?;
     Ok(Voided {
         claim: Claim::find_or_404(&state.db, id).await?,
         replacement,
         to_resolve,
     })
+}
+
+/// Whether an admin put an approval policy on the void of a claim or of a
+/// payer bill: the void would then wait half way, so it is refused up front.
+async fn void_needs_approval(state: &AppState) -> Result<bool> {
+    let input = json!({ voids::POSTED_KEY: 0 });
+    for subject_type in [CLAIM_SUBJECT_TYPE, PAYER_BILL_SUBJECT_TYPE] {
+        let action = voids::approval::action_key(subject_type);
+        if ApprovalPolicy::for_action(&state.db, &action, &input)
+            .await?
+            .is_some()
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Resolves the coverage of the visit of the voided claim `id`: the visit is

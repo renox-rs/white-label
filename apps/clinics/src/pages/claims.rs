@@ -485,7 +485,10 @@ async fn show(
             &claim,
             &claim_closing::facts(&state, &claim, now(), Some(user.id)).await?,
         );
-    let can_void = claim.status.is_editable() && claim.attempts == 0;
+    // A void that stopped half way (void, but not marked complete) is
+    // offered again: the same form finishes it.
+    let can_void = (claim.status.is_editable() && claim.attempts == 0)
+        || (claim.is_void() && claim.void_code.is_none());
     let blank = [String::new(), text(&lang, "claim.void_none")];
     let mut duplicate_options = vec![blank.clone()];
     let mut policy_options = vec![blank];

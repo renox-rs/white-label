@@ -12,6 +12,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_invoicing::{PayerAgreement, VatRecipient};
 use wl_kernel::PartyId;
+use wl_kernel::approvals::{ApprovalPolicy, ConditionKind, Step};
 use wl_kernel::documents::today;
 use wl_kernel::machines;
 use wl_kernel::payer_bills::PayerBillStatus;
@@ -19,7 +20,7 @@ use wl_kernel::voids::VoidRecord;
 
 use clinics::claim_void::{self, VoidRequest};
 use clinics::contracts::{self, NewContract};
-use clinics::{Claim, ClaimStatus, InsurancePolicy, Visit, claims};
+use clinics::{Claim, ClaimStatus, InsurancePolicy, PayerContract, Visit, claims};
 use support::real::{Real, boot_real};
 use support::{PATIENT, dubai};
 
@@ -435,4 +436,186 @@ async fn only_the_billing_coordinator_voids() {
         .await
         .assert_forbidden();
     assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::Draft);
+}
+
+/// A payer 902 whose contract has no payer agreement yet: a void that
+/// re-splits the visit to it voids the claim and then fails at the new payer
+/// bill.
+async fn payer_without_agreement(t: &Real) -> (InsurancePolicy, i64) {
+    let contract = contracts::create(
+        t.state(),
+        None,
+        NewContract::new(PartyId(902), d("2026-01-01")),
+    )
+    .await
+    .expect("the contract");
+    let mut policy = InsurancePolicy {
+        patient_party_id: PATIENT.0,
+        payer_party_id: 902,
+        plan: "Silver".to_owned(),
+        member_id: "M-902".to_owned(),
+        valid_from: d("2026-01-01"),
+        ..InsurancePolicy::default()
+    };
+    policy.save(t.db()).await.expect("the policy");
+    (policy, contract.id)
+}
+
+/// A void that fails after the claim was voided (the new payer bill cannot be
+/// made) is finished by the same call once the cause is gone: the claim is
+/// void and not marked complete, the form is offered again, and the retry
+/// completes the split once, with one Void record and one voided payer bill.
+#[renox::test]
+async fn a_void_that_failed_in_the_middle_is_finished_by_the_same_call() {
+    let t = boot_real().await;
+    let cora = t.coordinator().await;
+    let claim = ready(&t, &cora).await;
+    let (policy, contract) = payer_without_agreement(&t).await;
+    let policy_id = policy.id.to_string();
+    let fields = [
+        ("code", "wrong_payer"),
+        ("note", "billed to Daman"),
+        ("policy", policy_id.as_str()),
+    ];
+
+    let failed = t.post(&cora, &void_path(&claim), &fields).await;
+    failed.assert_status(422);
+    // Half way: the payer bill and the claim are void, the split is off the
+    // visit, nothing says the void is complete.
+    let half = t.claim_now(claim.id).await;
+    assert_eq!(half.status, ClaimStatus::Voided);
+    assert_eq!(half.void_code, None);
+    assert_eq!(t.bill_of(&half).await.status, PayerBillStatus::Voided);
+    let visit = Visit::find_or_404(t.db(), claim.visit_id).await.unwrap();
+    assert_eq!(visit.payer_bill_id, None);
+    assert_eq!(Claim::of_visit(t.db(), visit.id).await.unwrap().len(), 1);
+    // The page offers the void again.
+    t.get(&cora, &format!("/clinics/claims/{}", claim.id))
+        .await
+        .assert_ok()
+        .assert_see("claim-void-");
+
+    // The cause is gone: the payer's contract has its agreement.
+    PayerContract::query()
+        .where_(PayerContract::ID.eq(contract))
+        .update(t.db(), &[("agreement_id", &Some(t.agreement.id))])
+        .await
+        .unwrap();
+    t.post(&cora, &void_path(&claim), &fields)
+        .await
+        .assert_ok();
+
+    let done = t.claim_now(claim.id).await;
+    assert_eq!(done.status, ClaimStatus::Voided);
+    assert_eq!(done.void_code.as_deref(), Some("wrong_payer"));
+    assert_eq!(done.void_note.as_deref(), Some("billed to Daman"));
+    let visit = Visit::find_or_404(t.db(), claim.visit_id).await.unwrap();
+    assert_eq!(visit.payer_total, 40_000);
+    assert_eq!(visit.coverage_policy_id, Some(policy.id));
+    let all = Claim::of_visit(t.db(), visit.id).await.unwrap();
+    assert_eq!(all.len(), 2, "one new claim, not two");
+    let made = all.iter().find(|c| c.id != claim.id).unwrap();
+    assert_eq!(made.replaces_claim_id, Some(claim.id));
+    assert_eq!(visit.payer_bill_id, Some(made.payer_bill_id));
+    assert_eq!(made.contract_id, Some(contract), "billed under the new contract");
+    assert_eq!(
+        VoidRecord::query()
+            .where_(VoidRecord::SUBJECT_ID.eq(claim.id))
+            .get(t.db())
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.subject_type == "clinics.claim")
+            .count(),
+        1,
+        "voided once"
+    );
+    // A complete void is not run again.
+    t.post(&cora, &void_path(&claim), &fields)
+        .await
+        .assert_status(422);
+}
+
+/// The payer bill was voided and the claim was not (the first write of the
+/// void went through, the second did not): voiding the claim again finishes
+/// it instead of failing on the bill that is void already.
+#[renox::test]
+async fn a_claim_whose_payer_bill_is_void_already_is_voided() {
+    let t = boot_real().await;
+    let cora = t.coordinator().await;
+    let claim = ready(&t, &cora).await;
+    wl_kernel::payer_bills::payer_bills(t.state())
+        .void(t.state(), claim.payer_bill(), "wrong_payer", &cora)
+        .await
+        .expect("the payer bill is void");
+    assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::Ready);
+
+    t.post(&cora, &void_path(&claim), &[("code", "wrong_payer")])
+        .await
+        .assert_ok();
+
+    let done = t.claim_now(claim.id).await;
+    assert_eq!(done.status, ClaimStatus::Voided);
+    assert_eq!(done.void_code.as_deref(), Some("wrong_payer"));
+    assert!(
+        Visit::find_or_404(t.db(), claim.visit_id)
+            .await
+            .unwrap()
+            .coverage_to_resolve
+    );
+}
+
+/// An admin who puts an approval policy on the void of a claim (or of its payer
+/// bill) makes the void wait; this app does not follow the approval, so the
+/// void is refused before anything changes, whichever of the two it is. The
+/// refusal says why.
+#[renox::test]
+async fn a_void_that_would_wait_for_an_approval_is_refused_before_anything_changes() {
+    let t = boot_real().await;
+    let cora = t.coordinator().await;
+    let claim = ready(&t, &cora).await;
+    for action in ["clinics.claim_void", "invoicing.payer_bill_void"] {
+        let mut policy = ApprovalPolicy {
+            action: action.to_owned(),
+            condition: ConditionKind::Always,
+            steps: renox::db::Json(vec![Step::one_of(["admin"])]),
+            sod: true,
+            active: true,
+            ..ApprovalPolicy::default()
+        };
+        policy.insert(t.db()).await.expect("the admin's policy");
+
+        let refused = t
+            .post(&cora, &void_path(&claim), &[("code", "wrong_payer")])
+            .await;
+        refused.assert_status(422);
+        assert!(
+            refused.text().contains("waits for an approval"),
+            "{action}: {}",
+            refused.text()
+        );
+        let after = t.claim_now(claim.id).await;
+        assert_eq!(after.status, ClaimStatus::Ready, "{action}");
+        assert_eq!(t.bill_of(&after).await.status, PayerBillStatus::Draft);
+        assert!(
+            VoidRecord::of_subject(t.db(), &after.subject())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            wl_kernel::approvals::pending_for(t.db(), &after.subject())
+                .await
+                .unwrap()
+                .is_empty(),
+            "no request was left behind"
+        );
+        policy.active = false;
+        policy.save(t.db()).await.unwrap();
+    }
+    // With the policies off again the claim voids.
+    t.post(&cora, &void_path(&claim), &[("code", "wrong_payer")])
+        .await
+        .assert_ok();
+    assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::Voided);
 }
