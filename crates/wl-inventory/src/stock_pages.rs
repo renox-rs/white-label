@@ -7,6 +7,7 @@
 //! | `POST /stock-hold-lines/{id}/discard` | `wl_inventory.hold_line_discard` | `lots.release` at the location; a second person above the value |
 //! | `POST /stock-hold-lines/{id}/return-to-supplier` | `wl_inventory.hold_line_return` | `lots.release` at the location |
 //! | `POST /stock-holds/{id}/cancel` | `wl_inventory.hold_cancel` | `lots.release` in the hold's scope |
+//! | `POST /recalls` | `wl_inventory.recall_open` | `recalls.manage` |
 //! | `POST /stock-issues` | `wl_inventory.stock_issue` | `stock.issue` at the location |
 //! | `POST /pending-issues/{id}/clear` | `wl_inventory.pending_clear` | `stock.adjust` at the location |
 //! | `POST /transfers/{id}/send` | `wl_inventory.transfer_send` | `stock.transfer` at the source |
@@ -30,6 +31,7 @@ use wl_kernel::Subject;
 use crate::hold_decide::{DecideOutcome, Decision, cancel, decide};
 use crate::hold_service::{NewHold, NewScope, place_as, warnings_for};
 use crate::permissions;
+use crate::recall::{NewRecall, RecallSource, ScopeEntry};
 use crate::texts;
 use crate::transfer::{Transfer, TransferStatus, lines_of};
 
@@ -46,6 +48,8 @@ pub fn routes() -> Routes {
         .name("wl_inventory.hold_line_return")
         .post("/stock-holds/{id}/cancel", cancel_hold)
         .name("wl_inventory.hold_cancel")
+        .post("/recalls", open_recall)
+        .name("wl_inventory.recall_open")
         .post("/stock-issues", issue_stock)
         .name("wl_inventory.stock_issue")
         .post("/pending-issues/{id}/clear", clear_pending_issue)
@@ -245,6 +249,80 @@ async fn cancel_hold(
         Err(TransitionError::Guard(message)) => Err(refused(message)),
         Err(other) => Err(other.into_error()),
     }
+}
+
+/// The non-empty, trimmed parts of the comma-separated `text`.
+fn words(text: &Option<String>) -> Vec<String> {
+    text.as_deref()
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// What a user enters to open a recall.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct RecallForm {
+    /// `supplier`, `authority`, `internal` or `complaint`.
+    #[validate(max = 32)]
+    pub source: Option<String>,
+    /// Why.
+    #[validate(max = 500)]
+    pub reason: Option<String>,
+    /// The id of the supplier behind a supplier recall, when known.
+    #[validate(max = 20)]
+    pub supplier: Option<String>,
+    /// The ids of the items recalled, like `4, 5`.
+    #[validate(max = 200)]
+    pub items: Option<String>,
+    /// The lot numbers recalled, like `L9, L10`, of each item named.
+    #[validate(max = 500)]
+    pub lot_numbers: Option<String>,
+    /// The supplier lot numbers recalled, of each item named.
+    #[validate(max = 500)]
+    pub supplier_lots: Option<String>,
+}
+
+/// `POST /recalls`: opens a recall and holds every lot in its scope at every
+/// location, in transit too.
+async fn open_recall(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Valid(form): Valid<RecallForm>,
+) -> Result<Response> {
+    let bad = || refused(text(&lang, "recall.bad_form"));
+    let source = RecallSource::parse(form.source.as_deref().unwrap_or_default())
+        .ok_or_else(|| refused(text(&lang, "recall.bad_source")))?;
+    let items = ids(&form.items).ok_or_else(bad)?;
+    let mut scope = Vec::new();
+    for item_id in items {
+        for number in words(&form.lot_numbers) {
+            scope.push(ScopeEntry::lot(item_id, &number));
+        }
+        for number in words(&form.supplier_lots) {
+            scope.push(ScopeEntry::supplier_lot(item_id, &number));
+        }
+    }
+    let supplier_party_id = id_of(&form.supplier)?;
+    crate::recall::open(
+        &state,
+        &user,
+        NewRecall {
+            source,
+            reason: form.reason.clone().unwrap_or_default(),
+            supplier_party_id,
+            scope,
+        },
+    )
+    .await?;
+    Ok((
+        Toast::success(text(&lang, "recall.opened")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// What a user enters to issue stock.
