@@ -409,3 +409,57 @@ async fn ending_the_campaign_before_the_send_time_cancels_the_scheduled_broadcas
     w.send(b.send_at).await;
     assert_eq!(w.phone.count(), 0);
 }
+
+#[renox::test]
+async fn reopening_an_ended_campaign_sends_nothing_again_and_the_page_names_no_excluded_party() {
+    let w = world(5, |n| n).await;
+    // Parties 1 to 3 agreed; 4 and 5 did not and are left out.
+    for party in 1..=3 {
+        w.fakes.parties.consent.give(party);
+    }
+    w.start().await;
+    let id = w.rows().await[0].broadcast_id.unwrap();
+    let b = w.broadcast(id).await;
+    w.send(b.send_at).await;
+    assert_eq!(w.broadcast(id).await.status, BroadcastStatus::Completed);
+    assert_eq!(w.phone.count(), 3);
+
+    // The page shows how many were left out and why, never who.
+    let boss =
+        w.t.user("Bilal", &[perm::CAMPAIGNS_VIEW, perm::CAMPAIGNS_MANAGE])
+            .await;
+    w.t.app.acting_as(&boss);
+    let page = w.t.app.get(&format!("/campaigns/{}", w.r.id)).await;
+    page.assert_ok()
+        .assert_see("No marketing consent")
+        .assert_dont_see("Party 4")
+        .assert_dont_see("Party 5");
+
+    // End it and reopen it: the day's run and the send window pass, and
+    // nothing more goes out.
+    w.t.app
+        .post(
+            &format!("/campaigns/{}/transitions/end", w.r.id),
+            &[("x", "")],
+        )
+        .await
+        .assert_status(303);
+    let later = (today() + Duration::days(40)).to_string();
+    w.t.app
+        .post(
+            &format!("/campaigns/{}/reopen", w.r.id),
+            &[("end_date", later.as_str())],
+        )
+        .await
+        .assert_status(303);
+    assert_eq!(w.reload().await.status, CampaignStatus::Active);
+    campaigns::run_daily(w.t.state(), today()).await.unwrap();
+    w.send(b.send_at + Duration::days(1)).await;
+    assert_eq!(w.rows().await.len(), 1, "reopen asks for no new broadcast");
+    assert_eq!(w.phone.count(), 3, "reopen sends nothing");
+    assert_eq!(
+        Broadcast::query().count(w.t.db()).await.unwrap(),
+        1,
+        "wl-notify holds the one broadcast"
+    );
+}
