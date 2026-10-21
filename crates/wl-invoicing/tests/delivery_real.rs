@@ -150,7 +150,7 @@ async fn delivered_and_invoiced(t: &Real) -> (Delivery, Invoice, User, User) {
             ("signature", "signature-1"),
             ("latitude", "25.204849"),
             ("longitude", "55.270783"),
-            ("cash_collected", "0"),
+            ("cash_collected", "3000.00"),
             (&a, "10"),
             (&ra, "0"),
             (&b, "5"),
@@ -158,7 +158,7 @@ async fn delivered_and_invoiced(t: &Real) -> (Delivery, Invoice, User, User) {
         ],
     )
     .await
-    .assert_ok();
+    .assert_status(303);
     let delivered = Delivery::find_or_404(t.app.db(), delivery.id).await.unwrap();
     assert_eq!(delivered.status.as_str(), "delivered");
 
