@@ -46,6 +46,10 @@ pub const DEFAULT_EXPIRY_REMINDER_DAYS: i64 = 30;
 /// §7: 500).
 pub const DEFAULT_ADJUSTMENT_LIMIT: i64 = 500;
 
+/// The days after a retention campaign's send within which a purchase makes
+/// the member count as returned (§7: 30).
+pub const DEFAULT_RETENTION_RESPONSE_DAYS: i64 = 30;
+
 /// The lost reasons a lead can be closed with (§7: the starter list, always
 /// with *duplicate* and *spam or invalid*).
 pub const DEFAULT_LOST_REASONS: &[&str] = &[
@@ -111,6 +115,15 @@ pub struct SalesConfig {
     pub expiry_reminder_days: i64,
     /// The points above which a manual adjustment needs a manager.
     pub adjustment_limit: i64,
+    /// The days after a retention campaign's send within which a purchase
+    /// counts as the member returning.
+    pub retention_response_days: i64,
+    /// The item codes of clinical services (05). A segment rule on one is
+    /// refused, and the segment editor does not offer them, unless
+    /// [`segment_clinical_rules`](Self::segment_clinical_rules) is on.
+    pub clinical_items: Vec<String>,
+    /// Whether segment rules may use clinical items (§7: off).
+    pub segment_clinical_rules: bool,
 }
 
 impl Default for SalesConfig {
@@ -142,6 +155,9 @@ impl Default for SalesConfig {
             give_back_days: DEFAULT_GIVE_BACK_DAYS,
             expiry_reminder_days: DEFAULT_EXPIRY_REMINDER_DAYS,
             adjustment_limit: DEFAULT_ADJUSTMENT_LIMIT,
+            retention_response_days: DEFAULT_RETENTION_RESPONSE_DAYS,
+            clinical_items: Vec::new(),
+            segment_clinical_rules: false,
         }
     }
 }
@@ -158,6 +174,15 @@ impl SalesConfig {
     /// Whether a lead or first sale with the source `code` needs a campaign.
     pub fn campaign_required_for(&self, code: &str) -> bool {
         self.campaign_required_sources.iter().any(|c| c == code)
+    }
+
+    /// Whether the item `code` is a clinical service a segment may not use.
+    pub fn is_blocked_clinical(&self, code: &str) -> bool {
+        !self.segment_clinical_rules
+            && self
+                .clinical_items
+                .iter()
+                .any(|c| c.eq_ignore_ascii_case(code.trim()))
     }
 
     /// Whether `reason` is one of the lost reasons.
@@ -178,5 +203,18 @@ mod tests {
         assert!(!config.is_lost_reason("because"));
         assert_eq!(config.attribution_window_months, None);
         assert!(config.acquisition_change_approval);
+    }
+
+    #[test]
+    fn clinical_items_are_left_out_of_segments_unless_the_setting_is_on() {
+        let mut config = SalesConfig {
+            clinical_items: vec!["XRAY".into()],
+            ..SalesConfig::default()
+        };
+        assert!(config.is_blocked_clinical("xray"));
+        assert!(!config.is_blocked_clinical("shampoo"));
+        config.segment_clinical_rules = true;
+        assert!(!config.is_blocked_clinical("xray"));
+        assert_eq!(config.retention_response_days, 30);
     }
 }
