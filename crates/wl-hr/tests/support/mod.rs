@@ -26,10 +26,13 @@ use wl_kernel::documents::{
     provide_sop_acknowledgements,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
-use wl_kernel::tickets::{ChecklistRunId, Checklists, TicketFuture, provide_checklists};
+use wl_kernel::tickets::{
+    ChecklistRunId, Checklists, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef,
+    provide_checklists, provide_task_creator,
+};
 use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
-    OnboardingCompleted, OnboardingStarted, QualificationExpired, QualificationExpiring,
+    LeaveApproved, LeaveCancelled, OnboardingCompleted, OnboardingStarted, QualificationExpired, QualificationExpiring,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -193,6 +196,87 @@ impl SopAcknowledgements for SopDesk {
                 .unwrap()
                 .push((who.clone(), signature.to_owned(), witness));
             Ok(done)
+        })
+    }
+}
+
+/// The tasks opened through the kernel's task creator, with the ones the
+/// opener resolved.
+#[derive(Clone, Default)]
+pub struct Tasks {
+    opened: Arc<Mutex<Vec<OpenTicket>>>,
+    resolved: Arc<Mutex<Vec<i64>>>,
+}
+
+impl Tasks {
+    /// Every task opened so far.
+    pub fn opened(&self) -> Vec<OpenTicket> {
+        self.opened.lock().unwrap().clone()
+    }
+
+    /// The tasks opened with a source key that starts with `prefix`.
+    pub fn with_key(&self, prefix: &str) -> Vec<OpenTicket> {
+        self.opened()
+            .into_iter()
+            .filter(|t| t.source_key.as_deref().is_some_and(|k| k.starts_with(prefix)))
+            .collect()
+    }
+
+    /// Whether task number `id` (1 for the first opened) was resolved.
+    pub fn is_resolved(&self, id: i64) -> bool {
+        self.resolved.lock().unwrap().contains(&id)
+    }
+
+    fn reference(n: usize) -> TicketRef {
+        TicketRef {
+            id: TicketId(i64::try_from(n).unwrap()),
+            number: format!("TKT-2026-{n:04}"),
+        }
+    }
+}
+
+impl TaskCreator for Tasks {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let mut all = self.opened.lock().unwrap();
+            all.push(ticket);
+            Ok(Some(Tasks::reference(all.len())))
+        })
+    }
+
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let all = self.opened.lock().unwrap();
+            let resolved = self.resolved.lock().unwrap();
+            Ok(all
+                .iter()
+                .position(|t| t.source_key.as_deref() == Some(source_key))
+                .filter(|n| !resolved.contains(&(i64::try_from(*n).unwrap() + 1)))
+                .map(|n| Tasks::reference(n + 1)))
+        })
+    }
+
+    fn resolve_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        _note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            let mut resolved = self.resolved.lock().unwrap();
+            if resolved.contains(&ticket.0) {
+                return Ok(false);
+            }
+            resolved.push(ticket.0);
+            Ok(true)
         })
     }
 }
@@ -383,6 +467,9 @@ struct Fakes {
     qualification_expired: Arc<Mutex<Vec<QualificationExpired>>>,
     qualification_expiring: Arc<Mutex<Vec<QualificationExpiring>>>,
     absconded: Arc<Mutex<Vec<EmployeeAbsconded>>>,
+    tasks: Tasks,
+    leave_approved: Arc<Mutex<Vec<LeaveApproved>>>,
+    leave_cancelled: Arc<Mutex<Vec<LeaveCancelled>>>,
 }
 
 /// Records `event`s of type `E` into `log`.
@@ -414,6 +501,9 @@ impl Module for Fakes {
         record(app, &self.qualification_expired);
         record(app, &self.qualification_expiring);
         record(app, &self.absconded);
+        record(app, &self.leave_approved);
+        record(app, &self.leave_cancelled);
+        provide_task_creator(app, self.tasks.clone());
     }
 }
 
@@ -445,6 +535,12 @@ pub struct Booted {
     pub qualification_expiring: Recorded<QualificationExpiring>,
     /// `EmployeeAbsconded`.
     pub absconded: Recorded<EmployeeAbsconded>,
+    /// The staff tasks opened.
+    pub tasks: Tasks,
+    /// `LeaveApproved`.
+    pub leave_approved: Recorded<LeaveApproved>,
+    /// `LeaveCancelled`.
+    pub leave_cancelled: Recorded<LeaveCancelled>,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// The absence cases opened so far.
@@ -653,11 +749,19 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         qualification_expired: Arc::default(),
         qualification_expiring: Arc::default(),
         absconded: Arc::default(),
+        tasks: Tasks::default(),
+        leave_approved: Arc::default(),
+        leave_cancelled: Arc::default(),
     };
     let (qualification_expired, qualification_expiring, absconded) = (
         Recorded(fakes.qualification_expired.clone()),
         Recorded(fakes.qualification_expiring.clone()),
         Recorded(fakes.absconded.clone()),
+    );
+    let (tasks, leave_approved, leave_cancelled) = (
+        fakes.tasks.clone(),
+        Recorded(fakes.leave_approved.clone()),
+        Recorded(fakes.leave_cancelled.clone()),
     );
     let (notices, checklists, sops, docs) = (
         fakes.notices.clone(),
@@ -692,6 +796,8 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         perm::EMPLOYEES_MANAGE,
         perm::ONBOARDING_VIEW,
         perm::ONBOARDING_MANAGE,
+        perm::LEAVE_VIEW,
+        perm::LEAVE_APPROVE,
     ];
     permissions::define_role(app.db(), "hr", &hr).await.unwrap();
     permissions::define_role(
@@ -741,6 +847,9 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         qualification_expired,
         qualification_expiring,
         absconded,
+        tasks,
+        leave_approved,
+        leave_cancelled,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         cases: std::sync::atomic::AtomicI64::new(0),
     }

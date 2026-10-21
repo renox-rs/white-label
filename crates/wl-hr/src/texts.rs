@@ -429,6 +429,25 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.notices.step_escalated_body",
         "The step \"{{ step }}\" of the onboarding of {{ employee }} was due {{ due }} and is still open, {{ days }} days overdue. Its assignees were reminded.",
     ),
+    // Leave requests.
+    (
+        "wl_hr.leave.problem.sick_note",
+        "A sick leave needs its sick note before it is approved.",
+    ),
+    (
+        "wl_hr.leave.problem.started",
+        "The leave has started; it can no longer be cancelled.",
+    ),
+    ("wl_hr.leave.problem.not_over", "The leave is not over yet."),
+    ("wl_hr.leave.problem.type", "Choose a known leave type."),
+    (
+        "wl_hr.leave.problem.dates",
+        "The last day cannot be before the first day.",
+    ),
+    ("wl_hr.leave.requested", "Leave requested."),
+    ("wl_hr.leave.approved", "Leave approved."),
+    ("wl_hr.leave.rejected", "Leave rejected."),
+    ("wl_hr.leave.cancelled", "Leave cancelled."),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

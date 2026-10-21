@@ -1,0 +1,11 @@
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN sick_note_task_raised_on;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN sick_note_task_id;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN sick_note_due_on;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN sick_note_attached_on;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN sick_note_document_id;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN recorded_sick;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN decision_reason;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN decided_at;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN decided_by;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN requested_by;
+ALTER TABLE "wl_hr_leave_requests" DROP COLUMN unpaid_days;

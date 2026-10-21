@@ -220,6 +220,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_EXIT_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_REQUEST,
+            hr::LEAVE_APPROVE,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -483,6 +486,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_APPROVE,
             parties::VIEW,
             invoices::VIEW,
             // 04 `FIN.ACL.15`: billing asks for the write-off (a partner
@@ -628,6 +633,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_APPROVE,
             attendance::VIEW,
             attendance::REVIEW,
             // HR clears a permit flag by correcting or accepting it, and is

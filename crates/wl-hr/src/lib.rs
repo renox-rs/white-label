@@ -11,6 +11,8 @@ pub mod employee_machine;
 mod events;
 pub mod exits;
 pub mod leave;
+pub mod leave_machine;
+pub mod leave_service;
 mod notices;
 pub mod onboarding;
 pub mod onboarding_machine;
@@ -37,7 +39,7 @@ pub use employee::{
     Employee, EmployeeScope, EmployeeStatus, EmploymentType, NewEmployee, change_job_role,
     correct_hire_date, set_scope,
 };
-pub use leave::{LeaveRequest, LeaveStatus};
+pub use leave::{LEAVE_SUBJECT_TYPE, LeaveRequest, LeaveStatus};
 pub use onboarding::{
     AppliedTemplate, Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest,
     StartTrigger, StepAssignee, StepStatus,
@@ -89,6 +91,12 @@ pub mod permissions {
     pub const SETTLEMENTS_PREPARE: &str = "settlements.prepare";
     /// Manage visa cases, and cancel one.
     pub const VISAS_MANAGE: &str = "visas.manage";
+    /// See leave requests in scope.
+    pub const LEAVE_VIEW: &str = "leave.view";
+    /// Request leave for oneself (also a portal ability for employees).
+    pub const LEAVE_REQUEST: &str = "leave.request";
+    /// Approve and reject leave in scope; record same-day sick leave.
+    pub const LEAVE_APPROVE: &str = "leave.approve";
     /// Approve the non-standard exits `cancel_onboarding`, `withdraw_notice`,
     /// `report_absconding`, `reinstate` and `record_death` (`HRM.ACL.07`,
     /// default: the MD).
@@ -180,12 +188,14 @@ impl Module for WlHr {
         app.model::<VisaCase>();
         app.provide(self.config.clone());
         employee_machine::register(app);
+        renox::state_machine::register::<LeaveRequest>();
         renox::state_machine::register::<Onboarding>();
         renox::state_machine::register::<OnboardingStep>();
         renox::state_machine::register::<PayrollRun>();
         renox::state_machine::register::<FinalSettlement>();
         renox::state_machine::register::<VisaCase>();
         events::register(app);
+        leave_service::register(app);
         // `HRM.ACL.07`: the policies of the five non-standard exits and the
         // audit of their requests and decisions.
         exits::register(app);
