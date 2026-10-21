@@ -9,6 +9,7 @@
 //! with the portal role `owner` or `approver`. A client viewer only sees.
 
 use renox::chrono::NaiveDate;
+use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use wl_kernel::block_guard::ActionKind;
@@ -18,8 +19,9 @@ use wl_kernel::rate_cards::rate_cards;
 use crate::access::may_write;
 use crate::blocked;
 use crate::contract::{ClientContract, ContractStatus};
-use crate::db::{answer, refused};
+use crate::db::{answer, lock_contract, refused};
 use crate::deployments;
+use crate::hold;
 use crate::notices;
 use crate::permissions;
 use crate::request::{CANCEL, ManpowerRequest, RequestInput, SUBMIT};
@@ -117,18 +119,15 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewRequest) -> Result<
 }
 
 /// The checks that fail for submitting `request` under `contract`, one
-/// English line each: the contract `active` (`MPW.ACL.14`: not `on_hold`, nor
-/// `terminating`), the dates within the contract, and a rate card that covers
-/// the role and the shift. A refusal for a client user does not name the hold.
+/// English line each: the dates within the contract, and a rate card that
+/// covers the role and the shift. The state of the contract is read in the
+/// transaction of the run ([`status_problem`]).
 async fn readiness(
     state: &AppState,
     request: &ManpowerRequest,
     contract: &ClientContract,
 ) -> Result<Vec<String>> {
     let mut problems = Vec::new();
-    if contract.status != ContractStatus::Active {
-        problems.push(english("manpower.request.contract_not_active", &[]));
-    }
     if request.start_date > contract.end_date
         || request.end_date.is_some_and(|end| end > contract.end_date)
     {
@@ -153,6 +152,28 @@ async fn readiness(
     Ok(problems)
 }
 
+/// Why `contract`, as the transaction `tx` reads it, takes no new request, if
+/// it does not: it must be `active` (`MPW.ACL.14`: not `on_hold`, nor
+/// `terminating`). `staff` is whether the person holds `requests.create` for
+/// the client: the refusal for a contract on hold names the hold and its
+/// reason for staff, and is neutral for the client's own user.
+async fn status_problem(
+    tx: &mut Transaction,
+    contract: &ClientContract,
+    staff: bool,
+) -> Result<Option<String>> {
+    if contract.status == ContractStatus::Active {
+        return Ok(None);
+    }
+    Ok(Some(if !staff {
+        english("manpower.request.portal_refused", &[])
+    } else if contract.status == ContractStatus::OnHold {
+        hold::refusal_in(tx, contract).await?
+    } else {
+        english("manpower.request.contract_not_active", &[])
+    }))
+}
+
 /// `by` submits draft request `id`: it becomes `open` and the account manager
 /// is told.
 ///
@@ -173,20 +194,37 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<Manpower
     {
         return Err(Error::Forbidden);
     }
+    // The contract is read in the transaction of the transition, so a `hold`
+    // committed first wins (`MPW.ACL.14`).
+    let mut tx = state.db.begin().await?;
     // A blocked client orders nothing new (BL-MPW-15).
-    blocked::ensure(state, Some(by), request.client(), ActionKind::Start).await?;
-    let contract = ClientContract::find_or_404(&state.db, request.client_contract_id).await?;
+    blocked::check(
+        &mut tx,
+        state,
+        Some(by),
+        request.client(),
+        ActionKind::Start,
+    )
+    .await?;
+    let contract = lock_contract(&mut tx, request.client_contract_id).await?;
+    let staff = by.has_permission_in(permissions::REQUESTS_CREATE, &request.scope());
+    let mut problems = readiness(state, &request, &contract).await?;
+    if let Some(problem) = status_problem(&mut tx, &contract, staff).await? {
+        problems.insert(0, problem);
+    }
     let input = RequestInput {
-        problems: readiness(state, &request, &contract).await?,
+        problems,
         by: Some(by.id),
     };
-    let _outcome = request
+    let outcome = request
         .transition(SUBMIT)
         .by(by)
         .input(&input)
-        .run(state)
+        .run_in(&mut tx)
         .await
         .map_err(answer)?;
+    tx.commit().await?;
+    outcome.emit(state).await?;
     let open = load(state, id).await?;
     let managers =
         notices::account_managers(state, open.client(), contract.account_manager_user_id).await?;

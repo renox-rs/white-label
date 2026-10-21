@@ -26,8 +26,10 @@
 //! - The account manager may open a cover request by hand
 //!   ([`open_by_hand`], `requests.manage`), with or without the contract's
 //!   cover obligation (§4.1: "the account manager may create a replacement").
-//!   **The contract's `MPW.ACL.14` check for cover requests on a held contract
-//!   comes with BL-MPW-02.**
+//!   A contract on credit hold (`MPW.ACL.14`, BL-MPW-02) takes no cover request
+//!   by hand: it is refused with the hold's reason. The cover the contract
+//!   requires still opens, since the worker on site is the agency's to
+//!   replace; the cover worker's `activate` is refused until the release.
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
@@ -41,6 +43,7 @@ use crate::db::refused;
 use crate::deployment::{Deployment, DeploymentStatus};
 use crate::deployments::worker_name;
 use crate::events::CoverRequested;
+use crate::hold;
 use crate::notices;
 use crate::permissions;
 use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
@@ -220,6 +223,15 @@ pub async fn open_by_hand(
     }
     if !deployment.is_on_site() || to.is_some_and(|to| to < from) {
         return Err(refused(english("manpower.cover.not_covered", &[])));
+    }
+    // A cover request by hand asks for a new worker, which a contract on
+    // credit hold takes no more of (`MPW.ACL.14`). The cover the contract
+    // requires (`MPW.RUL.06`, suspension, rejection) still opens: the worker
+    // on site is the agency's to replace, and the cover worker's `activate`
+    // is refused until the hold is released.
+    let contract = ClientContract::find_or_404(&state.db, deployment.client_contract_id).await?;
+    if contract.status == ContractStatus::OnHold {
+        return Err(refused(hold::refusal(state, &contract).await?));
     }
     match open_cover(
         state,

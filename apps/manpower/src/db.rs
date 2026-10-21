@@ -38,6 +38,18 @@ pub(crate) async fn set_contract(
     Ok(())
 }
 
+/// Client contract `id` as it is in `tx`, locked until the transaction ends
+/// (PostgreSQL): the state a guard of `MPW.ACL.14` reads, so a `hold`
+/// committed first wins.
+pub(crate) async fn lock_contract(tx: &mut Transaction, id: i64) -> Result<ClientContract> {
+    ClientContract::query()
+        .where_(ClientContract::ID.eq(id))
+        .lock_for_update()
+        .first(&mut *tx)
+        .await?
+        .ok_or(Error::NotFound)
+}
+
 /// Sets columns of manpower request `id` other than the status and stamps
 /// `updated_at`.
 pub(crate) async fn set_request(

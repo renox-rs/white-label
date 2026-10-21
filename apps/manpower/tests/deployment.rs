@@ -282,7 +282,8 @@ async fn activation_lists_every_failing_check_and_changes_nothing() {
         response.assert_status(422);
         let body = response.text();
         assert!(body.contains("not active in HR"), "{body}");
-        assert!(body.contains("does not take deployments now"), "{body}");
+        // The contract is on hold: staff are told so (`MPW.ACL.14`).
+        assert!(body.contains("Contract on credit hold since"), "{body}");
         assert!(
             body.contains("end date of the deployment has passed"),
             "{body}"

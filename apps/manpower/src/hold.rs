@@ -50,7 +50,7 @@ use renox::state_machine::{StateMachine, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::cheques::{ChequeBounced, cheques};
-use wl_kernel::documents::today;
+use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::invoicing::{InvoicePaid, InvoiceSummary, invoicer};
 use wl_kernel::payments::PaymentReceived;
 
@@ -215,16 +215,19 @@ impl NewReason {
 
     /// The history line of the transition: what the reason is.
     fn history(&self) -> String {
-        match self.kind {
-            HoldReason::Overdue => english(
-                "manpower.hold.history_overdue",
-                &[("what", &self.label.clone().unwrap_or_default())],
-            ),
-            HoldReason::BouncedCheque => english(
-                "manpower.hold.history_bounced_cheque",
-                &[("what", &self.label.clone().unwrap_or_default())],
-            ),
-            HoldReason::Other => english(
+        let what = self.label.clone().unwrap_or_default();
+        match (self.kind, what.is_empty()) {
+            (HoldReason::Overdue, false) => {
+                english("manpower.hold.history_overdue", &[("what", &what)])
+            }
+            (HoldReason::Overdue, true) => english("manpower.hold.history_overdue_plain", &[]),
+            (HoldReason::BouncedCheque, false) => {
+                english("manpower.hold.history_bounced_cheque", &[("what", &what)])
+            }
+            (HoldReason::BouncedCheque, true) => {
+                english("manpower.hold.history_bounced_cheque_plain", &[])
+            }
+            (HoldReason::Other, _) => english(
                 "manpower.hold.history_other",
                 &[("text", &self.text.clone().unwrap_or_default())],
             ),
@@ -450,6 +453,67 @@ pub async fn hold_by_hand(
     apply_reasons(state, id, vec![NewReason::by_hand(kind, text)], Some(by))
         .await?
         .ok_or_else(|| refused(english("manpower.hold.not_holdable", &[])))
+}
+
+/// What the open reasons of `open` say, in a line: `overdue (INV-1)`,
+/// `bounced cheque CHQ-9`, the text of another reason.
+fn reason_summary(open: &[ContractHold]) -> String {
+    open.iter()
+        .map(|row| {
+            let what = row.label.clone().unwrap_or_default();
+            match (row.reason, what.is_empty()) {
+                (HoldReason::Overdue, false) => {
+                    english("manpower.hold.summary_overdue", &[("what", &what)])
+                }
+                (HoldReason::Overdue, true) => english("manpower.hold.summary_overdue_plain", &[]),
+                (HoldReason::BouncedCheque, false) => {
+                    english("manpower.hold.summary_cheque", &[("what", &what)])
+                }
+                (HoldReason::BouncedCheque, true) => {
+                    english("manpower.hold.summary_cheque_plain", &[])
+                }
+                (HoldReason::Other, _) => row.reason_text.clone().unwrap_or_default(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// The refusal of `MPW.ACL.14` for staff: *Contract on credit hold since
+/// <date>: <reason>*, from the reasons in `tx` (the transaction of the run,
+/// which reads the contract too, so a `hold` committed first wins). A client
+/// user is never given it ([`crate::requests::submit`] words the portal's
+/// refusal without it).
+///
+/// # Errors
+///
+/// A database error.
+pub(crate) async fn refusal_in(tx: &mut Transaction, contract: &ClientContract) -> Result<String> {
+    let open: Vec<ContractHold> = ContractHold::query()
+        .where_(ContractHold::CLIENT_CONTRACT_ID.eq(contract.id))
+        .where_(ContractHold::RESOLVED_AT.is_null())
+        .order_by(ContractHold::ID)
+        .get(&mut *tx)
+        .await?;
+    let since = contract
+        .held_at
+        .map_or_else(|| "-".to_owned(), |at| dubai_date(at).to_string());
+    Ok(english(
+        "manpower.hold.refusal",
+        &[("since", &since), ("reason", &reason_summary(&open))],
+    ))
+}
+
+/// [`refusal_in`] for a caller that has no transaction of its own.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn refusal(state: &AppState, contract: &ClientContract) -> Result<String> {
+    let mut tx = state.db.begin().await?;
+    let text = refusal_in(&mut tx, contract).await;
+    drop(tx);
+    text
 }
 
 /// The people told of a hold: the account manager of the client and the MD.

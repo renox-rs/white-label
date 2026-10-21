@@ -19,14 +19,15 @@
 //!
 //! - `activate` (`deployments.manage` for the client) needs the employee
 //!   `active` in HR (the kernel's `Workforce`), the contract `active` or
-//!   `terminating`, the end date not past and, when it fills a request, that
+//!   `terminating` (read in the transaction of the run; on hold it refuses with
+//!   *Contract on credit hold since <date>: <reason>*, `MPW.ACL.14`), the end date not past and, when it fills a request, that
 //!   request still taking workers; the request takes one position in the same
 //!   transaction (`fill_partly` or `fill`). **The document and licence check
 //!   (`MPW.ACL.07`) comes with BL-MPW-08, the overlap check (`MPW.ACL.15`)
 //!   with BL-MPW-10. A blocked client (BL-MPW-15) is refused `activate` and
 //!   `extend` through [`crate::blocked`].**
 //! - `extend` moves the end date later, within the contract, while the
-//!   contract takes deployments (`active` or `terminating`; the document
+//!   contract takes deployments (`active` or `terminating`, not `on_hold`; the document
 //!   check of the new end date comes with BL-MPW-08).
 //! - `end` is the user's, with a reason: for now *end date* (the date has
 //!   come) and *replaced*; **the other reasons come with their issues:

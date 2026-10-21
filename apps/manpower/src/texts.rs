@@ -106,6 +106,22 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manpower.hold.line_other", "Other: {{ text }}."),
     (
+        "manpower.hold.refusal",
+        "Contract on credit hold since {{ since }}: {{ reason }}",
+    ),
+    ("manpower.hold.summary_overdue", "overdue ({{ what }})"),
+    ("manpower.hold.summary_overdue_plain", "overdue"),
+    ("manpower.hold.summary_cheque_plain", "bounced cheque"),
+    (
+        "manpower.hold.history_overdue_plain",
+        "Credit hold: overdue",
+    ),
+    (
+        "manpower.hold.history_bounced_cheque_plain",
+        "Credit hold: bounced cheque",
+    ),
+    ("manpower.hold.summary_cheque", "bounced cheque {{ what }}"),
+    (
         "manpower.hold.worker",
         "{{ worker }}, {{ role }} at {{ site }}",
     ),
@@ -137,6 +153,10 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "manpower.request.contract_not_active",
         "The contract does not take new requests now.",
+    ),
+    (
+        "manpower.request.portal_refused",
+        "This request cannot be submitted now. Please contact your account manager.",
     ),
     (
         "manpower.request.outside_contract",
@@ -434,6 +454,30 @@ mod tests {
         keys.sort_unstable();
         keys.dedup();
         assert_eq!(keys.len(), count, "a text key is listed twice");
+    }
+
+    #[test]
+    fn every_key_the_code_asks_for_has_a_text() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut missing = Vec::new();
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|ext| ext != "rs") || path.ends_with("texts.rs") {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).unwrap();
+            for call in source.split("english(").skip(1) {
+                let call = call.trim_start();
+                let Some(rest) = call.strip_prefix('"') else {
+                    continue;
+                };
+                let key = rest.split('"').next().unwrap_or_default();
+                if key.starts_with("manpower.") && !TEXTS.iter().any(|(k, _)| *k == key) {
+                    missing.push(format!("{}: {key}", path.display()));
+                }
+            }
+        }
+        assert!(missing.is_empty(), "keys without a text: {missing:?}");
     }
 
     #[test]

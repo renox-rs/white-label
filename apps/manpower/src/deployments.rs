@@ -18,12 +18,13 @@ use wl_kernel::{PartyId, Subject};
 
 use crate::blocked;
 use crate::contract::{ClientContract, ContractStatus};
-use crate::db::{answer, refused};
+use crate::db::{answer, lock_contract, refused};
 use crate::deployment::{
     ACTIVATE, AUTO_CANCEL, AUTO_END, CANCEL, Deployment, DeploymentInput, DeploymentKind,
     DeploymentStatus, END, EXTEND,
 };
 use crate::events::{DeploymentActivated, DeploymentCancelled, DeploymentEnded};
+use crate::hold;
 use crate::notices;
 use crate::permissions;
 use crate::request::{FILL, FILL_PARTLY, ManpowerRequest};
@@ -179,9 +180,28 @@ pub(crate) async fn worker_name(state: &AppState, lang: &str, employee: Employee
     format!("#{}", employee.0)
 }
 
+/// Why `contract`, as `tx` reads it, takes no deployment now, if it does not
+/// (`MPW.ACL.14`): *Contract on credit hold since <date>: <reason>* while it is
+/// `on_hold`, else that it takes none. A deployment is for staff, so the
+/// reason is shown.
+async fn contract_problem(
+    tx: &mut Transaction,
+    contract: &ClientContract,
+) -> Result<Option<String>> {
+    if contract.takes_deployments() {
+        return Ok(None);
+    }
+    Ok(Some(if contract.status == ContractStatus::OnHold {
+        hold::refusal_in(tx, contract).await?
+    } else {
+        english("manpower.deployment.contract_not_active", &[])
+    }))
+}
+
 /// The checks that fail for activating `deployment` on `on`, one English line
-/// each: the employee `active` in HR, the contract `active` or `terminating`
-/// (`MPW.ACL.14`), the end date not past, the request still taking workers.
+/// each: the employee `active` in HR, the end date not past, the request still
+/// taking workers. The contract (`active` or `terminating`, `MPW.ACL.14`) is
+/// read in the transaction of the run ([`contract_problem`]).
 async fn activation_problems(
     state: &AppState,
     deployment: &Deployment,
@@ -193,10 +213,6 @@ async fn activation_problems(
         .await?
     {
         problems.push(english("manpower.deployment.employee_not_active", &[]));
-    }
-    let contract = ClientContract::find_or_404(&state.db, deployment.client_contract_id).await?;
-    if !contract.takes_deployments() {
-        problems.push(english("manpower.deployment.contract_not_active", &[]));
     }
     if deployment.end_date.is_some_and(|end| end < on) {
         problems.push(english("manpower.deployment.over", &[]));
@@ -224,12 +240,19 @@ pub async fn activate(state: &AppState, by: &AuthUser, id: i64, lang: &str) -> R
     let deployment = load(state, id).await?;
     require_manage(by, deployment.client())?;
     let on = today();
+    let mut problems = activation_problems(state, &deployment, on).await?;
+    let mut tx = state.db.begin().await?;
+    // The contract is read in the transaction of the transition, so a `hold`
+    // committed first wins (`MPW.ACL.14`).
+    let contract = lock_contract(&mut tx, deployment.client_contract_id).await?;
+    if let Some(problem) = contract_problem(&mut tx, &contract).await? {
+        problems.insert(0, problem);
+    }
     let input = DeploymentInput {
-        problems: activation_problems(state, &deployment, on).await?,
+        problems,
         on: Some(on),
         new_end_date: None,
     };
-    let mut tx = state.db.begin().await?;
     // A blocked client starts nothing new (BL-MPW-15).
     blocked::check(
         &mut tx,
@@ -341,12 +364,22 @@ pub async fn extend(
 ) -> Result<Deployment> {
     let deployment = load(state, id).await?;
     require_manage(by, deployment.client())?;
+    let mut tx = state.db.begin().await?;
     // A blocked client extends nothing (BL-MPW-15).
-    blocked::ensure(state, Some(by), deployment.client(), ActionKind::Extend).await?;
-    let contract = ClientContract::find_or_404(&state.db, deployment.client_contract_id).await?;
+    blocked::check(
+        &mut tx,
+        state,
+        Some(by),
+        deployment.client(),
+        ActionKind::Extend,
+    )
+    .await?;
+    // The contract is read in the transaction of the transition, so a `hold`
+    // committed first wins (`MPW.ACL.14`).
+    let contract = lock_contract(&mut tx, deployment.client_contract_id).await?;
     let mut problems = Vec::new();
-    if !contract.takes_deployments() {
-        problems.push(english("manpower.deployment.contract_not_active", &[]));
+    if let Some(problem) = contract_problem(&mut tx, &contract).await? {
+        problems.push(problem);
     }
     match deployment.end_date {
         None => problems.push(english("manpower.deployment.open_ended", &[])),
@@ -363,13 +396,15 @@ pub async fn extend(
         on: Some(today()),
         new_end_date: Some(new_end),
     };
-    let _outcome = deployment
+    let outcome = deployment
         .transition(EXTEND)
         .by(by)
         .input(&input)
-        .run(state)
+        .run_in(&mut tx)
         .await
         .map_err(answer)?;
+    tx.commit().await?;
+    outcome.emit(state).await?;
     let extended = load(state, id).await?;
     let worker = worker_name(state, lang, extended.employee()).await;
     tell_client(state, &extended, "manpower.deployment.extended", &worker).await?;

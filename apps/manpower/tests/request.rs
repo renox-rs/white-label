@@ -167,8 +167,9 @@ async fn a_request_the_rate_card_does_not_cover_is_not_submitted() {
     assert!(t.notices.of_type("manpower.notice").is_empty());
 }
 
-/// §7.1 `submit`: a contract that is not `active` takes no request, and the
-/// refusal says nothing of a hold.
+/// §7.1 `submit`: a contract that is not `active` takes no request; the
+/// refusal to staff names the hold of a contract on hold (BL-MPW-02) and says
+/// nothing of a hold otherwise.
 #[renox::test]
 async fn a_contract_that_is_not_active_takes_no_request() {
     let t = boot().await;
@@ -193,8 +194,14 @@ async fn a_contract_that_is_not_active_takes_no_request() {
                 .await;
             response.assert_status(422);
             let body = response.text().to_lowercase();
-            assert!(body.contains("does not take new requests"), "{body}");
-            assert!(!body.contains("hold"), "{body}");
+            if status == ContractStatus::OnHold {
+                // Staff are told of the hold (`MPW.ACL.14`, BL-MPW-02); the
+                // client approver is not (see `tests/hold_guards.rs`).
+                assert!(body.contains("contract on credit hold since"), "{body}");
+            } else {
+                assert!(body.contains("does not take new requests"), "{body}");
+                assert!(!body.contains("hold"), "{body}");
+            }
         })
         .await;
         assert_eq!(

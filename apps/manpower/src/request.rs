@@ -20,10 +20,12 @@
 //! - `submit` needs the contract `active` (not `on_hold`, nor `terminating`,
 //!   `MPW.ACL.14`) and a rate card that covers the role and the shift (the
 //!   kernel's `RateCards`). The client approver submits for their own company
-//!   (`MPW.ACL.01`), staff with `requests.create` for the client. **The
-//!   refusal while the contract is on hold needs `hold`, which comes with
-//!   BL-MPW-01; the guard on the status is built here and BL-MPW-02 tests it
-//!   with the hold.** A blocked client (`PartyBlocked`, BL-MPW-15) is refused
+//!   (`MPW.ACL.01`), staff with `requests.create` for the client. The
+//!   contract is read in the transaction of the `submit`, so a `hold`
+//!   committed first wins. While it is `on_hold` staff are refused with
+//!   *Contract on credit hold since <date>: <reason>*; the client approver is
+//!   told *This request cannot be submitted now. Please contact your account
+//!   manager.*, with no word of the hold (`MPW.ACL.14`, BL-MPW-02). A blocked client (`PartyBlocked`, BL-MPW-15) is refused
 //!   `submit` through [`crate::blocked`].
 //! - `cancel` needs a reason; the planned deployments of the request are
 //!   cancelled with it ([`crate::requests::cancel`]). `auto_cancel` is the
