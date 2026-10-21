@@ -69,6 +69,19 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
             .tone("primary")
             .from([TimesheetStatus::Open])
             .to(TimesheetStatus::Submitted)
+            .guard("dispute_not_upheld", |sheet: &Timesheet, _ctx| {
+                // An adjustment of a client dispute that ended `upheld` has
+                // no payroll or billing effect and is not submitted
+                // (`crate::dispute`, BL-ATT-09).
+                let upheld = sheet.dispute_upheld_at.is_some();
+                Box::pin(async move {
+                    if upheld {
+                        Err(english("wl_attendance.adjustment.dispute_upheld", &[]))
+                    } else {
+                        Ok(())
+                    }
+                })
+            })
             .effect(|sheet: &Timesheet, ctx, tx| {
                 let sheet = sheet.clone();
                 let by = ctx.actor().map(|user| user.id);
@@ -79,6 +92,19 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
             .system()
             .from([TimesheetStatus::Open])
             .to(TimesheetStatus::Submitted)
+            .guard("dispute_not_upheld", |sheet: &Timesheet, _ctx| {
+                // An adjustment of a client dispute that ended `upheld` has
+                // no payroll or billing effect and is not submitted
+                // (`crate::dispute`, BL-ATT-09).
+                let upheld = sheet.dispute_upheld_at.is_some();
+                Box::pin(async move {
+                    if upheld {
+                        Err(english("wl_attendance.adjustment.dispute_upheld", &[]))
+                    } else {
+                        Ok(())
+                    }
+                })
+            })
             .effect(|sheet: &Timesheet, _ctx, tx| {
                 let sheet = sheet.clone();
                 Box::pin(async move { submit_in(tx, &sheet, None).await })

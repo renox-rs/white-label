@@ -9,6 +9,7 @@ pub mod checks;
 pub mod config;
 pub mod crew;
 pub mod crews_affected;
+pub mod dispute;
 pub mod entry;
 pub mod flags;
 pub mod history;
@@ -186,6 +187,7 @@ impl Module for WlAttendance {
         app.model::<Timesheet>();
         app.model::<TimesheetEntry>();
         app.model::<approval::ApprovalEvidence>();
+        app.model::<dispute::AdjustmentEvidence>();
         app.provide(self.config.clone());
         overtime::provide_entry_hours(app, entry::TimesheetEntryHours);
         wl_kernel::attendance::provide_attendance_review(app, after_last_day::Reviewer);
@@ -193,6 +195,7 @@ impl Module for WlAttendance {
         renox::state_machine::register::<AttendanceRecord>();
         renox::state_machine::register::<Timesheet>();
         notices::register_types();
+        dispute::register(app);
         period_end::schedule(app);
         wl_kernel::documents::register_future_work(
             crews_affected::GUARDED,

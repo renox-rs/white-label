@@ -22,7 +22,7 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use wl_kernel::documents::dubai_text;
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
-use wl_kernel::workforce::{StaffProfile, workforce};
+use wl_kernel::workforce::{EmployeeId, StaffProfile, workforce};
 
 use crate::config::config_of;
 use crate::flags::{Added, FlagType};
@@ -41,8 +41,19 @@ pub const OVER_CAP: &str = "attendance.over_cap";
 /// The user who submitted a timesheet is told it was sent back.
 pub const TIMESHEET_REJECTED: &str = "attendance.timesheet_rejected";
 
+/// The creator of an adjustment is told that the invoice dispute it was
+/// opened for ended `upheld` (BL-ATT-09).
+pub const ADJUSTMENT_DISPUTE_UPHELD: &str = "attendance.adjustment_dispute_upheld";
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
+    let subject = english("wl_attendance.notices.dispute_upheld_subject", &[]);
+    let body = english("wl_attendance.notices.dispute_upheld_body", &[]);
+    notify::register_type(
+        NotificationTypeDef::new(ADJUSTMENT_DISPUTE_UPHELD, "attendance")
+            .group("attendance")
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+    );
     let subject = english("wl_attendance.notices.rejected_subject", &[]);
     let body = english("wl_attendance.notices.rejected_body", &[]);
     notify::register_type(
@@ -217,6 +228,43 @@ pub(crate) async fn timesheet_rejected(
             "from": sheet.period_from.to_string(),
             "to": sheet.period_to.to_string(),
             "reason": reason,
+        }))
+        .to_user(user);
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// The name of `employee` for staff-facing text: the party's display name,
+/// else `#7`.
+pub(crate) async fn employee_name(state: &AppState, employee: EmployeeId) -> Result<String> {
+    let profile = workforce(state).staff(state, employee).await?;
+    let name = match &profile {
+        Some(profile) => wl_kernel::parties::directory(state)
+            .display_name(&state.db, profile.party, "en")
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    };
+    Ok(name.unwrap_or_else(|| format!("#{}", employee.0)))
+}
+
+/// Tells the creator of the adjustment `sheet` that its dispute ended
+/// `upheld`. Nobody is told when the creator is not known.
+pub(crate) async fn adjustment_dispute_upheld(
+    state: &AppState,
+    sheet: &crate::timesheet::Timesheet,
+) -> Result {
+    let Some(user) = sheet.created_by else {
+        return Ok(());
+    };
+    let employee = employee_name(state, sheet.owner()).await?;
+    let request = NotifyRequest::new(ADJUSTMENT_DISPUTE_UPHELD, sheet.subject())
+        .subject_label(&format!("{employee} {}", sheet.period_from))
+        .data(json!({
+            "employee": employee,
+            "from": sheet.period_from.to_string(),
+            "to": sheet.period_to.to_string(),
         }))
         .to_user(user);
     notify::notifier(state).notify(state, request).await?;

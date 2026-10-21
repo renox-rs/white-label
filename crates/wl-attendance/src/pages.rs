@@ -391,6 +391,11 @@ pub struct AdjustmentForm {
     #[validate(max = 8000)]
     #[serde(default)]
     pub entries: String,
+    /// The attendance evidence, as `type:id` separated by commas
+    /// ([`crate::dispute::parse_evidence`]).
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub evidence: String,
 }
 
 /// `POST /timesheets/{id}/adjustments`: a user opens an adjustment on a
@@ -427,6 +432,7 @@ async fn open_adjustment(
             linked,
             affects: Affects::parse(&form.affects),
             entries,
+            evidence: crate::dispute::parse_evidence(&form.evidence)?,
         },
     )
     .await?;

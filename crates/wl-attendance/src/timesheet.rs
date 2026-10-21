@@ -236,6 +236,12 @@ pub struct Timesheet {
     pub linked_id: Option<i64>,
     /// An adjustment: where it flows.
     pub affects: Option<Affects>,
+    /// An adjustment of a client dispute: the credit note the dispute was
+    /// resolved with (`invoicing.credit_note`), once it is.
+    pub credit_note_id: Option<i64>,
+    /// An adjustment of a client dispute: when the dispute ended `upheld`
+    /// before the adjustment was approved; its `submit` is refused from then.
+    pub dispute_upheld_at: Option<DateTime>,
     /// The user who created it.
     pub created_by: Option<i64>,
     /// The user who submitted it; none for the system.

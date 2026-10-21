@@ -13,7 +13,7 @@ use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
-use renox::testing::TestApp;
+use renox::testing::{TestApp, TestResponse};
 use wl_attendance::permissions as perm;
 use wl_attendance::{
     AttendanceMethod, AttendanceRecord, AttendanceStatus, WlAttendance, WorkLocation,
@@ -26,7 +26,10 @@ use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, Validity,
     provide_guard,
 };
-use wl_kernel::invoicing::{CostPoster, PostCost, SupplierBillFuture, provide_cost_poster};
+use wl_kernel::invoicing::{
+    CostPoster, DisputeOutcome, DisputeState, InvoiceDraft, InvoiceFuture, InvoiceId,
+    InvoiceSummary, Invoicer, PostCost, SupplierBillFuture, provide_cost_poster, provide_invoicer,
+};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
@@ -236,6 +239,67 @@ impl CostRateResolver for TradeRates {
                 _ => None,
             })
         })
+    }
+}
+
+/// The invoice disputes of wl-invoicing, as the kernel's `Invoicer` answers
+/// for them: a dispute is open until it is settled.
+#[derive(Clone, Default)]
+pub struct Disputes(Arc<Mutex<BTreeMap<i64, DisputeState>>>);
+
+impl Disputes {
+    /// Dispute `id` of invoice `invoice` is open.
+    pub fn open(&self, id: i64, invoice: i64) {
+        self.0.lock().unwrap().insert(
+            id,
+            DisputeState {
+                invoice: InvoiceId(invoice),
+                outcome: None,
+            },
+        );
+    }
+
+    /// Dispute `id` was settled with `outcome`.
+    pub fn settle(&self, id: i64, outcome: DisputeOutcome) {
+        if let Some(found) = self.0.lock().unwrap().get_mut(&id) {
+            found.outcome = Some(outcome);
+        }
+    }
+}
+
+impl Invoicer for Disputes {
+    fn draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        _draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, Option<InvoiceId>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: InvoiceId,
+    ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: InvoiceId,
+        _source: Subject,
+        _amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn dispute_state<'a>(
+        &'a self,
+        _db: &'a Db,
+        dispute: i64,
+    ) -> InvoiceFuture<'a, Option<DisputeState>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().get(&dispute).copied()) })
     }
 }
 
@@ -569,6 +633,7 @@ struct Fakes {
     docs: DocDesk,
     quals: Quals,
     posted: Posted,
+    disputes: Disputes,
     recorded: Arc<Mutex<Vec<AttendanceRecorded>>>,
     flagged: Arc<Mutex<Vec<AttendanceFlagged>>>,
     approved: Arc<Mutex<Vec<TimesheetApproved>>>,
@@ -587,6 +652,7 @@ impl Module for Fakes {
         provide_qualifications(app, self.quals.clone());
         provide_cost_poster(app, self.posted.clone());
         provide_cost_rates(app, TradeRates);
+        provide_invoicer(app, self.disputes.clone());
         record(app, &self.recorded);
         record(app, &self.flagged);
         record(app, &self.approved);
@@ -615,6 +681,8 @@ pub struct Booted {
     pub posted: Posted,
     /// `TimesheetApproved`.
     pub approved: Recorded<TimesheetApproved>,
+    /// The invoice disputes.
+    pub disputes: Disputes,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// Keeps the views directory alive.
@@ -853,6 +921,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         docs: DocDesk::default(),
         quals: Quals::default(),
         posted: Posted::default(),
+        disputes: Disputes::default(),
         recorded: Arc::default(),
         flagged: Arc::default(),
         approved: Arc::default(),
@@ -864,6 +933,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     );
     let (docs, quals) = (fakes.docs.clone(), fakes.quals.clone());
     let (posted, approved) = (fakes.posted.clone(), Recorded(fakes.approved.clone()));
+    let disputes = fakes.disputes.clone();
     let (recorded, flagged) = (
         Recorded(fakes.recorded.clone()),
         Recorded(fakes.flagged.clone()),
@@ -974,6 +1044,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         flagged,
         posted,
         approved,
+        disputes,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         _views: views,
     }
@@ -982,4 +1053,65 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
 /// A subject for a project.
 pub fn project(id: i64) -> Subject {
     Subject::new("construction.project", id)
+}
+
+/// The cost code of the examples, as a form sends it.
+pub const COST_CODE: &str = "construction.cost_code:3";
+
+/// A locked timesheet of `employee` for `context` with 8 h normal on 2
+/// November against the cost code, used by payroll run 7 (`paid_by`) and
+/// approved by `kind`.
+pub async fn locked_eight_hours(
+    t: &Booted,
+    employee: EmployeeId,
+    context: &Subject,
+    kind: wl_attendance::timesheet::ApproverKind,
+) -> wl_attendance::Timesheet {
+    let mut new = wl_attendance::Timesheet::regular(employee, nov(2), nov(8)).in_context(context);
+    new.paid_by = Some("hr.payroll_run:7".into());
+    new.approver_kind = kind;
+    if kind == wl_attendance::timesheet::ApproverKind::External {
+        new.approver_role = Some("client_approver".into());
+    }
+    let sheet = t
+        .sheet_in(new, wl_attendance::TimesheetStatus::Locked)
+        .await;
+    wl_attendance::TimesheetEntry::create(
+        t.db(),
+        wl_attendance::TimesheetEntry {
+            timesheet_id: sheet.id,
+            employee_id: employee.0,
+            date: nov(2),
+            cost_object_type: Some("construction.cost_code".into()),
+            cost_object_id: Some(3),
+            normal_minutes: 480,
+            billable: true,
+            ..wl_attendance::TimesheetEntry::default()
+        },
+    )
+    .await
+    .unwrap();
+    sheet
+}
+
+/// The entries of a form that takes 8 h of normal hours off 2 November.
+pub fn minus_eight_hours() -> String {
+    format!(
+        r#"[{{"date": "2026-11-02", "category": "normal", "minutes": -480, "cost_object": "{COST_CODE}"}}]"#
+    )
+}
+
+/// `user` posts `form` to `/timesheets/{id}/{action}`.
+pub async fn post_to(
+    t: &Booted,
+    user: &User,
+    sheet: &wl_attendance::Timesheet,
+    action: &str,
+    form: &[(&str, &str)],
+) -> TestResponse {
+    t.app.acting_as(user);
+    t.app
+        .htmx()
+        .post(&format!("/timesheets/{}/{action}", sheet.id), form)
+        .await
 }

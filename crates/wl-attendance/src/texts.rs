@@ -238,6 +238,35 @@ const TEXTS: &[(&str, &str)] = &[
         ":date is outside the period of the original timesheet, :from to :to.",
     ),
     ("wl_attendance.adjustment.opened", "Adjustment opened."),
+    // The invoice dispute behind a client dispute adjustment (BL-ATT-09).
+    (
+        "wl_attendance.adjustment.dispute_unknown",
+        "The invoice dispute :dispute does not exist.",
+    ),
+    (
+        "wl_attendance.adjustment.dispute_resolved",
+        "The invoice dispute :dispute is already resolved. Link a dispute that is still open.",
+    ),
+    (
+        "wl_attendance.adjustment.evidence_required",
+        "A client dispute does not cut pay by itself. To affect payroll, attach the attendance evidence: attendance records of the worker or a document.",
+    ),
+    (
+        "wl_attendance.adjustment.bad_evidence",
+        "The evidence must be an attendance record of this worker or a document, as type:id: :detail",
+    ),
+    (
+        "wl_attendance.adjustment.dispute_upheld",
+        "The invoice dispute was resolved upheld, so this adjustment has no effect and cannot be submitted.",
+    ),
+    (
+        "wl_attendance.notices.dispute_upheld_subject",
+        "Dispute upheld: adjustment cannot be submitted",
+    ),
+    (
+        "wl_attendance.notices.dispute_upheld_body",
+        "The invoice dispute linked to your adjustment of {{ employee }} for {{ from }} to {{ to }} was resolved upheld. The invoice stands, so the adjustment has no effect on billing or pay and cannot be submitted.",
+    ),
     // Approving a timesheet (`HRM.ACL.08`, BL-ATT-08).
     (
         "wl_attendance.approval.kind_mismatch",

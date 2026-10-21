@@ -40,6 +40,9 @@ use crate::tickets::TicketId;
 /// The subject type of an invoice, for [`Subject`] references.
 pub const INVOICE_SUBJECT_TYPE: &str = "invoicing.invoice";
 
+/// The subject type of an invoice dispute: `invoicing.dispute:7`.
+pub const DISPUTE_SUBJECT_TYPE: &str = "invoicing.dispute";
+
 /// The subject type of a credit note, for [`Subject`] references.
 pub const CREDIT_NOTE_SUBJECT_TYPE: &str = "invoicing.credit_note";
 
@@ -503,6 +506,22 @@ pub enum DisputeOutcome {
     Credited,
 }
 
+/// Where a dispute stands, as other modules read it (`Invoicer::dispute_state`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisputeState {
+    /// The disputed invoice.
+    pub invoice: InvoiceId,
+    /// How it was settled; `None` while it is open.
+    pub outcome: Option<DisputeOutcome>,
+}
+
+impl DisputeState {
+    /// Whether the dispute is still open.
+    pub fn is_open(&self) -> bool {
+        self.outcome.is_none()
+    }
+}
+
 /// A disputed invoice line, as an event carries it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DisputedLine {
@@ -834,6 +853,19 @@ pub trait Invoicer: Send + Sync + 'static {
                 ),
             ))
         })
+    }
+
+    /// Where the dispute `dispute` stands: its invoice and, once resolved,
+    /// its outcome; `None` for a dispute that does not exist and by default
+    /// (invoicing is not enabled). A module that links work to a dispute
+    /// (an adjustment timesheet of origin `client_dispute`) asks it to see
+    /// that the dispute is still open.
+    fn dispute_state<'a>(
+        &'a self,
+        _db: &'a Db,
+        _dispute: i64,
+    ) -> InvoiceFuture<'a, Option<DisputeState>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// Issues the `draft` invoice `id` through its `issue` transition: the

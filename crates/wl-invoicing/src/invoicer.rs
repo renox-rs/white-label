@@ -5,9 +5,9 @@
 use renox::prelude::*;
 use renox::state_machine::{Outcome, TransitionError};
 use wl_kernel::invoicing::{
-    CreditLine, CreditNoteId, CreditNoteSummary, DisputeRequest, DraftLine, InvoiceDraft,
-    InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer, ReopenReason, Reopened,
-    Unallocate, WriteOffAnswer,
+    CreditLine, CreditNoteId, CreditNoteSummary, DisputeRequest, DisputeState, DraftLine,
+    InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer, ReopenReason,
+    Reopened, Unallocate, WriteOffAnswer,
 };
 use wl_kernel::{LegalEntity, PartyId};
 
@@ -133,6 +133,21 @@ impl Invoicer for Invoices {
         request: DisputeRequest,
     ) -> InvoiceFuture<'a, i64> {
         Box::pin(async move { crate::dispute::raise(state, request).await })
+    }
+
+    fn dispute_state<'a>(
+        &'a self,
+        db: &'a Db,
+        dispute: i64,
+    ) -> InvoiceFuture<'a, Option<DisputeState>> {
+        Box::pin(async move {
+            Ok(crate::dispute::Dispute::find(db, dispute)
+                .await?
+                .map(|d| DisputeState {
+                    invoice: InvoiceId(d.invoice_id),
+                    outcome: d.outcome,
+                }))
+        })
     }
 
     fn write_off<'a>(
