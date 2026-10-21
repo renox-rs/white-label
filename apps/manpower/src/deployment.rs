@@ -19,7 +19,8 @@
 //! deployment is `extend_suspended`. `suspend` and `resume` are in
 //! [`crate::suspension`] and [`crate::resumption`] (BL-MPW-11, BL-MPW-12): the
 //! reasons are rows, the days suspended (`suspended_on`, `resumed_on`,
-//! `suspended_days`) are not billed.
+//! `suspended_days`, and one [`SuspensionSpan`] per suspension) are not billed
+//! ([`crate::billing`]).
 //!
 //! - `activate` (`deployments.manage` for the client) needs the employee
 //!   `active` in HR (the kernel's `Workforce`), the contract `active` or
@@ -65,6 +66,7 @@ use wl_kernel::{PartyId, Subject, SubjectMachine};
 
 use crate::db::set_deployment;
 use crate::permissions;
+use crate::suspension::SuspensionSpan;
 use crate::texts::english;
 
 /// The subject type of a deployment.
@@ -434,7 +436,18 @@ fn suspended(transition: Transition<Deployment>) -> Transition<Deployment> {
                         ("suspension_announced_at", &none),
                     ],
                 )
-                .await
+                .await?;
+                // The run of days billing leaves out.
+                SuspensionSpan::create(
+                    &mut *tx,
+                    SuspensionSpan {
+                        deployment_id: id,
+                        from_on: on,
+                        ..SuspensionSpan::default()
+                    },
+                )
+                .await?;
+                Ok(())
             })
         })
 }
@@ -458,7 +471,13 @@ fn resumed(transition: Transition<Deployment>) -> Transition<Deployment> {
                     id,
                     &[("resumed_on", &Some(on)), ("suspended_days", &total)],
                 )
-                .await
+                .await?;
+                SuspensionSpan::query()
+                    .where_(SuspensionSpan::DEPLOYMENT_ID.eq(id))
+                    .where_(SuspensionSpan::TO_ON.is_null())
+                    .update(&mut *tx, &[("to_on", &Some(on))])
+                    .await?;
+                Ok(())
             })
         })
 }

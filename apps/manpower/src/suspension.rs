@@ -36,9 +36,11 @@
 //!   only by staff. Decision: the client's message never names the document
 //!   (*is temporarily unavailable*); the account manager's does.
 //! - **Billing.** The suspended days are kept (`suspended_on`, `resumed_on`,
-//!   `suspended_days`) for the usage billing of the deployment; **the billing
-//!   itself (`MPW.RUL.05`) is not built in this app**, so nothing here
-//!   reduces an invoice.
+//!   `suspended_days`, and a [`SuspensionSpan`] per suspension, opened here
+//!   and closed by `resume`) for the usage billing of the deployment. Nothing
+//!   here bills: [`crate::billing`] (`MPW.RUL.05`) leaves the days of the spans
+//!   out of every timesheet it bills, and bills a month rate by the days not
+//!   suspended.
 
 use std::collections::BTreeSet;
 
@@ -76,6 +78,55 @@ pub enum SuspensionKind {
     Document,
     /// Staff suspended it (site access withdrawn, investigation...).
     Manual,
+}
+
+/// One run of days a deployment was suspended: from the day the suspension
+/// began to the day before the worker was back. Written by the `suspend` and
+/// `resume` transitions; billing leaves these days out ([`crate::billing`]).
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[model(table = "manpower_deployment_suspension_spans", index(deployment_id))]
+pub struct SuspensionSpan {
+    /// The primary key.
+    pub id: i64,
+    /// The deployment.
+    pub deployment_id: i64,
+    /// The first day suspended.
+    pub from_on: NaiveDate,
+    /// The day the worker was back (`resume`); none while still suspended.
+    /// The last day suspended is the day before.
+    pub to_on: Option<NaiveDate>,
+    /// When the row was created.
+    pub created_at: Option<DateTime>,
+    /// When the row was last changed.
+    pub updated_at: Option<DateTime>,
+}
+
+impl SuspensionSpan {
+    /// The spans of deployment `deployment_id`, oldest first.
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub async fn of_deployment(db: &Db, deployment_id: i64) -> Result<Vec<SuspensionSpan>> {
+        SuspensionSpan::query()
+            .where_(SuspensionSpan::DEPLOYMENT_ID.eq(deployment_id))
+            .order_by(SuspensionSpan::FROM_ON)
+            .order_by(SuspensionSpan::ID)
+            .get(db)
+            .await
+    }
+
+    /// The days suspended, both ends included; `None` for a span of no day
+    /// (a worker back the day the suspension began).
+    pub fn days(&self) -> Option<wl_kernel::usage::DaySpan> {
+        match self.to_on {
+            Some(back) => back
+                .pred_opt()
+                .filter(|last| *last >= self.from_on)
+                .map(|last| wl_kernel::usage::DaySpan::new(self.from_on, Some(last))),
+            None => Some(wl_kernel::usage::DaySpan::new(self.from_on, None)),
+        }
+    }
 }
 
 /// One reason a deployment is suspended.
