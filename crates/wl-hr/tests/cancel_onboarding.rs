@@ -13,6 +13,7 @@ use sql_check::count_of;
 use wl_hr::{Adjustment, Employee, EmployeeStatus, Receivable, SettlementStatus, VisaCaseStatus};
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::invoicing::{PostCost, cost_poster};
+use wl_kernel::workforce::workforce;
 
 use support::{Booted, nov};
 
@@ -79,11 +80,25 @@ async fn hrm05_ac1_a_rejected_new_case_and_no_days_worked_cancel_the_onboarding(
     sqlx_set_user(&t, &e, portal.id).await;
     t.visa_in(&e, "new", VisaCaseStatus::Rejected, |_| {}).await;
 
+    assert!(
+        !workforce(t.state())
+            .access_disabled(t.db(), portal.id)
+            .await
+            .unwrap()
+    );
+
     ask(&t, &hr, &e, nov(10), &[("reason", "visa refused")])
         .await
         .assert_ok();
     assert_eq!(t.employee(&e).await.status, EmployeeStatus::Onboarding);
     approve(&t, &md, &e, nov(10)).await;
+    assert!(
+        workforce(t.state())
+            .access_disabled(t.db(), portal.id)
+            .await
+            .unwrap(),
+        "the portal account is closed"
+    );
 
     let after = t.employee(&e).await;
     assert_eq!(after.status, EmployeeStatus::OnboardingCancelled);

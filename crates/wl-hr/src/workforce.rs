@@ -149,7 +149,11 @@ impl Workforce for Staff {
                 .get(db)
                 .await?;
             for employee in employees {
-                if employee.status == EmployeeStatus::Absconded {
+                // Absconded, or the portal account was closed when the
+                // onboarding was cancelled.
+                if employee.status == EmployeeStatus::Absconded
+                    || employee.portal_closed_at.is_some()
+                {
                     return Ok(true);
                 }
                 let report = AbsenceReport::valid_for(db, employee.id).await?;

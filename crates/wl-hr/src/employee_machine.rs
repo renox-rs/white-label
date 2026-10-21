@@ -21,8 +21,11 @@
 //! kernel defers as an approval request, with a system twin
 //! `<name>_approved` that the kernel runs at the final approval. Both carry
 //! the same guard, so the documents the exit needs are checked at the
-//! request and again at the approval. Their effects come with their own
-//! issues (#195 to #198); this module only moves the status.
+//! request and again at the approval. The effects of `report_absconding` are
+//! in [`crate::absconding`], those of `cancel_onboarding`, `withdraw_notice`
+//! and `reinstate` in [`crate::exit_effects`] and the listener below
+//! (settlement and cancellation case cancelled, the events); `record_death`
+//! comes with its own issue.
 //!
 //! `activate` (`employees.manage`) is for a record created in `onboarding`.
 //! A minimal record has no statutory items to check (§2). A template that
