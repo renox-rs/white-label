@@ -409,6 +409,7 @@ impl StateMachine for PendingIssue {
 /// # Errors
 ///
 /// A database error.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn record_in(
     tx: &mut Transaction,
     location: &Location,

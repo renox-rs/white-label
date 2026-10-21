@@ -81,8 +81,6 @@ struct Planned {
 /// What the trace found.
 #[derive(Debug, Default)]
 struct Plan {
-    /// Every lot in scope, the output lots last.
-    lots: Vec<i64>,
     /// The lots that are not in the recall's scope yet.
     new_lots: Vec<i64>,
     /// The lines.
@@ -476,7 +474,6 @@ async fn plan(state: &AppState, recall: &Recall) -> Result<Plan> {
         }
     }
     Ok(Plan {
-        lots,
         new_lots,
         lines: collector.finish(),
     })

@@ -6,7 +6,6 @@
 mod support;
 
 use renox::prelude::*;
-use wl_inventory::goods_receipt::lines_of;
 use wl_inventory::movement::MovementType;
 use wl_inventory::{DraftLine, Item, Location, LotStatus, PendingIssue, PendingStatus};
 use wl_kernel::Subject;

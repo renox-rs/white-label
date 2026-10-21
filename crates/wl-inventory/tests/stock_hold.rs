@@ -511,6 +511,6 @@ async fn a_vertical_automation_places_a_hold_as_the_system() {
     assert!(
         <StockHold as renox::state_machine::StateMachine>::machine()
             .find(ADD_LINES_BY_SYSTEM)
-            .is_some_and(|transition| transition.is_system())
+            .is_ok_and(|transition| transition.is_system())
     );
 }

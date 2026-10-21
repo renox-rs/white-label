@@ -209,7 +209,7 @@ pub async fn request(
     if to < from {
         return Err(refuse("wl_hr.leave.problem.dates"));
     }
-    Ok(LeaveRequest::create(
+    LeaveRequest::create(
         &state.db,
         LeaveRequest {
             employee_id,
@@ -221,7 +221,7 @@ pub async fn request(
             ..LeaveRequest::default()
         },
     )
-    .await?)
+    .await
 }
 
 /// Loads request `id` and its employee.
@@ -257,7 +257,7 @@ pub async fn approve(state: &AppState, by: i64, id: i64) -> Result<LeaveRequest>
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
-    Ok(LeaveRequest::find_or_404(&state.db, id).await?)
+    LeaveRequest::find_or_404(&state.db, id).await
 }
 
 /// `by` rejects request `id` for `reason`.
@@ -287,7 +287,7 @@ pub async fn reject(
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
-    Ok(LeaveRequest::find_or_404(&state.db, id).await?)
+    LeaveRequest::find_or_404(&state.db, id).await
 }
 
 /// `by` cancels request `id` before it starts.
@@ -318,7 +318,7 @@ pub async fn cancel(
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
-    Ok(LeaveRequest::find_or_404(&state.db, id).await?)
+    LeaveRequest::find_or_404(&state.db, id).await
 }
 
 /// `complete` for every approved leave that ended before `day`. Returns how

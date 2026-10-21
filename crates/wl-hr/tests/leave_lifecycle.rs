@@ -4,6 +4,7 @@
 //! days that `approve` marks.
 
 mod support;
+use renox::prelude::*;
 
 use wl_hr::leave_service as leave;
 use wl_hr::{LeaveRequest, LeaveStatus};

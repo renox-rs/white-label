@@ -679,7 +679,7 @@ pub async fn open(state: &AppState, user: &AuthUser, new: NewRecall) -> Result<R
     crate::recall_trace::trace(state, None, recall.id)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok(Recall::find_or_404(&state.db, recall.id).await?)
+    Recall::find_or_404(&state.db, recall.id).await
 }
 
 /// The lots found in the scope of `recall_id`, oldest first.
@@ -705,7 +705,7 @@ mod tests {
     #[test]
     fn the_sources_are_the_four_of_the_spec() {
         for name in ["supplier", "authority", "internal", "complaint"] {
-            assert_eq!(RecallSource::parse(name).map(RecallSource::as_str), Some(name));
+            assert_eq!(RecallSource::parse(name).map(|source| source.as_str()), Some(name));
         }
         assert_eq!(RecallSource::parse(" Supplier "), Some(RecallSource::Supplier));
         assert_eq!(RecallSource::parse("rumour"), None);

@@ -115,7 +115,7 @@ pub async fn record(
     tx.commit().await?;
     state.emit(approved_event(&request)).await?;
     leave::sync_due_dates(state, employee_id, today()).await?;
-    Ok(LeaveRequest::find_or_404(&state.db, request.id).await?)
+    LeaveRequest::find_or_404(&state.db, request.id).await
 }
 
 /// `by` attaches the sick note `document` to request `id`; the open HR task
@@ -168,7 +168,7 @@ pub async fn attach_note(
             .await?;
     }
     leave::sync_due_dates(state, request.employee_id, today()).await?;
-    Ok(LeaveRequest::find_or_404(&state.db, id).await?)
+    LeaveRequest::find_or_404(&state.db, id).await
 }
 
 /// What a run did.
