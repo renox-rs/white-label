@@ -259,6 +259,10 @@ async fn show(
     let manages = user.has_permission(permissions::SHIPMENTS_MANAGE);
     let scans = user.has_permission(permissions::SHIPMENTS_SCAN);
     use ShipmentStatus::{AtHub, Attempted, Created, OnHold, PickedUp, Returning};
+    // A client user of the company cancels what a colleague booked.
+    let cancel_for_company = shipment.status == Created
+        && user.has_permission(permissions::SHIPMENTS_CANCEL)
+        && booking::acts_for(&state, &user, shipment.client()).await?;
     let page = ShowPage {
         tx: tx(&lang),
         status_label: status_word(&lang, shipment.status),
@@ -304,7 +308,7 @@ async fn show(
                 Created | PickedUp | Attempted | Returning
             ),
         can_void: has("void"),
-        can_cancel: has("cancel"),
+        can_cancel: has("cancel") || cancel_for_company,
         can_cancel_return: manages && matches!(shipment.status, PickedUp | AtHub | Attempted | OnHold),
         can_return: has("return_delivered")
             || (user.has_permission(permissions::SHIPMENTS_DELIVER)
