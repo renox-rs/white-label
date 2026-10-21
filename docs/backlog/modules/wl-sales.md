@@ -2236,22 +2236,22 @@ what they spent.
 - Must not show the requester the names of excluded recipients.
 
 #### Done when
-- [ ] Given segment S (no sale for 60 days, spend > AED 500 in 12 months) matching 300 parties of
+- [x] Given segment S (no sale for 60 days, spend > AED 500 in 12 months) matching 300 parties of
       which 180 have SMS marketing consent, activating retention campaign R requests one
       broadcast with an estimate of 180, which is `scheduled` without approval (limit 200); the
       result shows 180 recipients and 120 excluded *no consent*.
-- [ ] Two members of R buy for AED 150 and AED 250 excl. VAT within 30 days: the report shows 2
+- [x] Two members of R buy for AED 150 and AED 250 excl. VAT within 30 days: the report shows 2
       returned and AED 400 against R's cost.
-- [ ] `reopen` of R after `end` sends nothing.
-- [ ] In 05, the segment editor does not offer clinical service items by default.
-- [ ] Exporting S's members without the sensitive export permission is refused.
-- [ ] User A sets R's segment and template and R activates on its start date: the broadcast
+- [x] `reopen` of R after `end` sends nothing.
+- [x] In 05, the segment editor does not offer clinical service items by default.
+- [x] Exporting S's members without the sensitive export permission is refused.
+- [x] User A sets R's segment and template and R activates on its start date: the broadcast
       names A as requester, and A cannot approve it.
-- [ ] B rejects R's broadcast: R shows *not sent*; after A changes the template, R requests a
+- [x] B rejects R's broadcast: R shows *not sent*; after A changes the template, R requests a
       new broadcast, which completes; a third request is refused.
-- [ ] Ending R before its send time cancels its scheduled broadcast.
-- [ ] A blocked party matching S is not in S's members.
-- [ ] Of 180 recipients, 20 had messages suppressed by the frequency cap; a buyer among those 20
+- [x] Ending R before its send time cancels its scheduled broadcast.
+- [x] A blocked party matching S is not in S's members.
+- [x] Of 180 recipients, 20 had messages suppressed by the frequency cap; a buyer among those 20
       is not counted as returned.
 
 #### Out of scope

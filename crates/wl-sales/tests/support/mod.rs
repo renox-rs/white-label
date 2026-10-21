@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 pub mod floor;
+pub mod retention;
 pub mod shop;
 
 use std::sync::{Arc, Mutex};
@@ -85,6 +86,15 @@ impl Module for Noop {
     }
 }
 
+/// A second module that adds nothing.
+struct Spare;
+
+impl Module for Spare {
+    fn name(&self) -> &'static str {
+        "spare"
+    }
+}
+
 /// [`boot`] with one more module (a recorder of events or messages).
 pub async fn boot_with(extra: impl Module) -> Booted {
     boot_configured(WlSales::new(), extra).await
@@ -93,6 +103,12 @@ pub async fn boot_with(extra: impl Module) -> Booted {
 /// [`boot_with`] with `sales` as the sales module, for a test that changes
 /// the settings.
 pub async fn boot_configured(sales: WlSales, extra: impl Module) -> Booted {
+    boot_pair(sales, extra, Spare).await
+}
+
+/// [`boot_configured`] with a second extra module (the real wl-notify and the
+/// fakes it needs).
+pub async fn boot_pair(sales: WlSales, first: impl Module, second: impl Module) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -102,7 +118,8 @@ pub async fn boot_configured(sales: WlSales, extra: impl Module) -> Booted {
         .module(Permissions)
         .module(renox::audit::Audit)
         .module(sales)
-        .module(extra);
+        .module(first)
+        .module(second);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();

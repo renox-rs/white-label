@@ -800,11 +800,13 @@ async fn campaign_of_form(
         ),
     };
     c.promo_code = optional("promo_code");
+    // The send time is compared by the minute, as the form shows it.
+    let minute = |at: Option<renox::db::DateTime>| at.map(|at| at.timestamp() / 60);
     let before = (
         c.segment_id,
         c.template_key.clone(),
         c.message_channel.clone(),
-        c.send_at,
+        minute(c.send_at),
     );
     c.segment_id = number("segment_id")?;
     if let Some(id) = c.segment_id
@@ -824,7 +826,7 @@ async fn campaign_of_form(
         c.segment_id,
         c.template_key.clone(),
         c.message_channel.clone(),
-        c.send_at,
+        minute(c.send_at),
     );
     if before != after {
         let retention_set = after.0.is_some()
