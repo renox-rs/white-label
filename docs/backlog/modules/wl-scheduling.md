@@ -740,13 +740,13 @@ for the booking's start and refuse a time when the resource will be ineligible (
 - Must not show the reason to the party.
 
 #### Done when
-- [ ] Given Dr A's licence expired yesterday and a `confirmed` booking now, `check_in` is refused
+- [x] Given Dr A's licence expired yesterday and a `confirmed` booking now, `check_in` is refused
       with "licence expired on <date>; reassign first".
-- [ ] After reassigning to Dr B, `check_in` succeeds.
-- [ ] Given a booking `checked_in` whose resource's licence expires before `start`, `start` is
+- [x] After reassigning to Dr B, `check_in` succeeds.
+- [x] Given a booking `checked_in` whose resource's licence expires before `start`, `start` is
       refused with the hint "cancel with resource_ineligible and rebook"; the booking stays
       `checked_in`.
-- [ ] Given Dr A's licence expires 2026-11-20, `book` (or `reschedule`, `accept`, `reassign`) to
+- [x] Given Dr A's licence expires 2026-11-20, `book` (or `reschedule`, `accept`, `reassign`) to
       Dr A on 2026-11-25 is refused with the expiry named to staff; on 2026-11-18 it succeeds.
 
 #### Out of scope
