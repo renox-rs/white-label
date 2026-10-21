@@ -5,6 +5,7 @@
 //! because the setup screen that edits them comes with the BOQ issue.
 
 use construction::Project;
+use wl_inventory::Location;
 use renox::prelude::*;
 use super::at;
 
@@ -198,6 +199,14 @@ impl Seed {
             )
             .await?;
         self.report.add("projects", 1);
+        // The store of the project: its goods are received and counted there.
+        let mut store = Location::new(
+            &format!("STORE-{code}"),
+            &format!("{code} site store"),
+        )
+        .in_scope(&project.subject());
+        store.save(self.db()).await?;
+        self.report.add("stores", 1);
         Ok(())
     }
 

@@ -171,7 +171,7 @@ pub const FESTIVAL_PLAZA: &str = "Festival Plaza Retail Holdings LLC";
 /// The healthcare client, blocked by compliance.
 pub const AL_NOOR: &str = "Al Noor Healthcare Group LLC";
 /// The board supplier.
-pub const GYPSUM: &str = "Emirates Gypsum & Boards Trading LLC";
+pub const GYPSUM: &str = "Emirates Gypsum & Building Materials Trading LLC";
 /// The electrical materials supplier.
 pub const ELECTRICAL: &str = "Desert Star Electrical Materials LLC";
 /// The Dubai subcontractor with a valid Dubai Municipality registration.

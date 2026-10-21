@@ -181,8 +181,8 @@ pub const JULY: &[Cycle] = &[
 pub const AUGUST: &[Cycle] = &[
     // Never certified: the next IPA replaces it.
     cycle("TWR-01", 3, -57, 5_100, 2, None, None, None),
-    // Certified and waiting for the invoice.
-    cycle("MALL-02", 3, -57, 5_300, 3, Some((18, 96)), None, None),
+    // Certified, and invoiced late: the invoice is issued and not yet due.
+    cycle("MALL-02", 3, -57, 5_300, 3, Some((18, 96)), Some(32), None),
     cycle("CLN-03", 2, -57, 2_600, 3, Some((16, 95)), Some(2), None),
     cycle("RST-04", 1, -57, 1_500, 3, Some((12, 96)), Some(2), paid(20, 100)),
 ];
@@ -414,7 +414,7 @@ impl Seed {
     }
 
     /// The client pays `percent` of what is open on the invoice of IPA `ipa`
-    /// by transfer: the accountant records the payment and allocates it.
+    /// by transfer (see [`Seed::pay_invoice`]).
     pub(crate) async fn receive(
         &mut self,
         code: &str,
@@ -422,23 +422,38 @@ impl Seed {
         on: NaiveDate,
         percent: i64,
     ) -> Result {
-        let accountant = email_of(ACCOUNTANT);
         let ipa = Ipa::find_or_404(self.db(), ipa).await?;
         let Some(invoice_id) = ipa.invoice_id else {
             return Ok(());
         };
+        let client = plan_of(code).client;
+        let reference = format!("TRF-{}-{:02}-{:02}", code, ipa.number, percent % 100);
+        self.pay_invoice(client, invoice_id, on, percent, &reference)
+            .await
+    }
+
+    /// `client` pays `percent` of what is open on invoice `invoice_id` by
+    /// transfer on `on`: the accountant records the payment and allocates it.
+    pub(crate) async fn pay_invoice(
+        &mut self,
+        client: &str,
+        invoice_id: i64,
+        on: NaiveDate,
+        percent: i64,
+        reference: &str,
+    ) -> Result {
+        let accountant = email_of(ACCOUNTANT);
         let invoice = Invoice::find_or_404(self.db(), invoice_id).await?;
         let amount = invoice.balance * percent / 100;
         if amount <= 0 {
             return Ok(());
         }
-        let client = self.party(plan_of(code).client).clone();
+        let client = self.party(client).clone();
         let entity = wl_kernel::LegalEntity::default_entity(self.db())
             .await?
             .id
             .to_string();
         let amount_text = aed(amount);
-        let reference = format!("TRF-{}-{:02}-{:02}", code, ipa.number, percent % 100);
         let date = text(on);
         let invoice_text = invoice_id.to_string();
         at!(self, on, {
@@ -453,7 +468,7 @@ impl Seed {
                         ("method", "transfer"),
                         ("amount", amount_text.as_str()),
                         ("payment_date", date.as_str()),
-                        ("reference", reference.as_str()),
+                        ("reference", reference),
                         ("bank_account", "Gulf Demo Bank AE00 0000 0000 0000 0001 234"),
                     ],
                 )

@@ -73,8 +73,10 @@ mod seed_closing;
 mod seed_guarantees;
 mod seed_hr;
 mod seed_ipas;
+mod seed_money;
 mod seed_people;
 mod seed_projects;
+mod seed_stock;
 mod seed_variations;
 
 use std::collections::BTreeMap;
@@ -154,6 +156,8 @@ pub(crate) struct Seed {
     pub employees: BTreeMap<&'static str, i64>,
     /// The work locations by project code.
     pub sites: BTreeMap<String, i64>,
+    /// The items by code.
+    pub items: BTreeMap<&'static str, i64>,
 }
 
 impl Seed {
@@ -202,6 +206,7 @@ pub async fn seed(kernel: &Kernel) -> Result<Report> {
         parties: BTreeMap::new(),
         employees: BTreeMap::new(),
         sites: BTreeMap::new(),
+        items: BTreeMap::new(),
     };
     Box::pin(seed.run()).await?;
     Ok(seed.report)
@@ -281,11 +286,18 @@ impl Seed {
         lap("variations", self);
         Box::pin(self.guarantees()).await?;
         lap("guarantees", self);
+        Box::pin(self.stock()).await?;
+        Box::pin(self.stock_rules()).await?;
+        lap("stock", self);
+        Box::pin(self.money()).await?;
+        lap("money", self);
         self.permits().await?;
         self.assign_sites().await?;
         self.sites().await?;
         Box::pin(self.attendance()).await?;
         lap("attendance", self);
+        self.daily_rules().await?;
+        lap("daily rules", self);
         // The sign that the seed is done.
         renox::audit::record(
             self.db(),
