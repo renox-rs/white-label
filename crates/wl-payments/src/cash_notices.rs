@@ -112,13 +112,19 @@ pub(crate) fn period_text(handover: &CashHandover) -> String {
     match handover.period_subject() {
         Some(subject) => format!(
             "{} {} of {}",
-            english(&format!("wl_payments.cash.period.{}", handover.period_kind.as_str())),
+            english(&format!(
+                "wl_payments.cash.period.{}",
+                handover.period_kind.as_str()
+            )),
             subject.subject_id,
             handover.period_date.format("%Y-%m-%d")
         ),
         None => format!(
             "{} {}",
-            english(&format!("wl_payments.cash.period.{}", handover.period_kind.as_str())),
+            english(&format!(
+                "wl_payments.cash.period.{}",
+                handover.period_kind.as_str()
+            )),
             handover.period_date.format("%Y-%m-%d")
         ),
     }

@@ -75,7 +75,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The run leaves now. The driver's and the vehicle's documents are checked for today.",
     ),
     ("wl_delivery.actions.assigned", "Delivery put on the run."),
-    ("wl_delivery.actions.unassigned", "Delivery taken off the run."),
+    (
+        "wl_delivery.actions.unassigned",
+        "Delivery taken off the run.",
+    ),
     ("wl_delivery.actions.dispatched", "Run dispatched."),
     ("wl_delivery.actions.open_review", "Put under review"),
     ("wl_delivery.actions.open_review_title", "Put under review"),
@@ -83,7 +86,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.actions.open_review_description",
         "The recipient or the client denies this delivery. Its cash on delivery is held out of remittances and its billing is held until the review is closed.",
     ),
-    ("wl_delivery.actions.open_review_reason", "Why is it disputed?"),
+    (
+        "wl_delivery.actions.open_review_reason",
+        "Why is it disputed?",
+    ),
     ("wl_delivery.actions.close_review", "Close the review"),
     ("wl_delivery.actions.close_review_title", "Close the review"),
     (
@@ -92,7 +98,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_delivery.actions.close_review_outcome", "Outcome"),
     ("wl_delivery.actions.close_review_note", "Note"),
-    ("wl_delivery.actions.review_opened", "Delivery put under review."),
+    (
+        "wl_delivery.actions.review_opened",
+        "Delivery put under review.",
+    ),
     ("wl_delivery.actions.review_closed", "Review closed."),
     ("wl_delivery.outcome.upheld", "Upheld: the delivery stands"),
     ("wl_delivery.review.title", "Review"),
@@ -123,9 +132,18 @@ const TEXTS: &[(&str, &str)] = &[
         "The goods are neither delivered nor back. Another manager approves it before the delivery is lost; a claim ticket opens and the source stops billing it.",
     ),
     ("wl_delivery.actions.mark_lost_reason", "Reason"),
-    ("wl_delivery.actions.mark_lost_liability", "Who bears the loss"),
-    ("wl_delivery.actions.mark_lost_requested", "Asked a second manager to approve the loss."),
-    ("wl_delivery.actions.mark_lost_done", "Delivery marked lost."),
+    (
+        "wl_delivery.actions.mark_lost_liability",
+        "Who bears the loss",
+    ),
+    (
+        "wl_delivery.actions.mark_lost_requested",
+        "Asked a second manager to approve the loss.",
+    ),
+    (
+        "wl_delivery.actions.mark_lost_done",
+        "Delivery marked lost.",
+    ),
     ("wl_delivery.actions.found", "Found"),
     ("wl_delivery.actions.found_title", "Goods found"),
     (
@@ -159,10 +177,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.lost.claim_description",
         "Reason: {reason}. Liability: {liability}.",
     ),
-    (
-        "wl_delivery.lost.found_comment",
-        "Goods found at {depot}.",
-    ),
+    ("wl_delivery.lost.found_comment", "Goods found at {depot}."),
     (
         "wl_delivery.close.cash_not_counted",
         "The cash the driver collected is not counted yet.",
@@ -175,7 +190,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.close.stops_open",
         "{count} stop has no outcome yet: mark it delivered or failed first.",
     ),
-    ("wl_delivery.close.not_back", "The run is not back at the depot."),
+    (
+        "wl_delivery.close.not_back",
+        "The run is not back at the depot.",
+    ),
     (
         "wl_delivery.close.not_an_item",
         "That is not an item of this run to receive back.",
@@ -266,7 +284,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_delivery.status.cancelled", "Cancelled"),
     ("wl_delivery.run_status.planned", "Planned"),
     ("wl_delivery.run_status.dispatched", "Dispatched"),
-    ("wl_delivery.run_status.returned_to_depot", "Back at the depot"),
+    (
+        "wl_delivery.run_status.returned_to_depot",
+        "Back at the depot",
+    ),
     ("wl_delivery.run_status.closed", "Closed"),
     ("wl_delivery.run_status.cancelled", "Cancelled"),
     ("wl_delivery.vehicle.van", "Van"),

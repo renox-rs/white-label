@@ -227,7 +227,8 @@ impl CashHandover {
     /// When the holder's period ends: the recorded end, else 23:59
     /// Asia/Dubai (19:59 UTC) of the period's date.
     pub fn ends_at(&self) -> DateTime {
-        self.period_end.unwrap_or_else(|| end_of_day(self.period_date))
+        self.period_end
+            .unwrap_or_else(|| end_of_day(self.period_date))
     }
 
     /// What other modules see of it.

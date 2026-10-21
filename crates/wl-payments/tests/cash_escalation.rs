@@ -114,13 +114,23 @@ async fn the_manager_gets_a_task_12_hours_after_the_end_of_the_day() {
     let handover = t.collect(&driver, "2027-05-01", 90_000, 1).await;
 
     // 2027-05-02 11:58 in Dubai.
-    let early = cash_escalation::run(t.state(), at("2027-05-02T07:58:00Z")).await.unwrap();
+    let early = cash_escalation::run(t.state(), at("2027-05-02T07:58:00Z"))
+        .await
+        .unwrap();
     assert_eq!(early, Escalated::default());
     assert!(t.cash_tickets.opened().is_empty());
 
     // 2027-05-02 11:59 in Dubai.
-    let done = cash_escalation::run(t.state(), at("2027-05-02T07:59:00Z")).await.unwrap();
-    assert_eq!(done, Escalated { tasks: 1, admin_notices: 0 });
+    let done = cash_escalation::run(t.state(), at("2027-05-02T07:59:00Z"))
+        .await
+        .unwrap();
+    assert_eq!(
+        done,
+        Escalated {
+            tasks: 1,
+            admin_notices: 0
+        }
+    );
     let tickets = t.cash_tickets.opened();
     assert_eq!(tickets.len(), 1);
     assert_eq!(tickets[0].subject, handover.subject());
@@ -133,11 +143,18 @@ async fn the_manager_gets_a_task_12_hours_after_the_end_of_the_day() {
     let notices = t.notices.of_type(CASH_TASK);
     assert_eq!(notices.len(), 1);
     assert!(told(&notices[0].recipients, &mona));
-    assert!(notices[0].data["text"].as_str().unwrap().contains("AED 900.00"));
+    assert!(
+        notices[0].data["text"]
+            .as_str()
+            .unwrap()
+            .contains("AED 900.00")
+    );
     assert!(t.reloaded(&handover).await.task_at.is_some());
 
     // The same hour again, and the hours after, do not repeat the task.
-    let again = cash_escalation::run(t.state(), at("2027-05-02T09:00:00Z")).await.unwrap();
+    let again = cash_escalation::run(t.state(), at("2027-05-02T09:00:00Z"))
+        .await
+        .unwrap();
     assert_eq!(again, Escalated::default());
     assert_eq!(t.cash_tickets.opened().len(), 1);
 }
@@ -152,22 +169,42 @@ async fn after_48_hours_the_admin_is_told_and_the_manager_counts_what_was_receiv
     let boss = admin(&t, "Amira").await;
     let driver = t.holder("Dani").await;
     let handover = t.collect(&driver, "2027-05-01", 90_000, 1).await;
-    cash_escalation::run(t.state(), at("2027-05-02T07:59:00Z")).await.unwrap();
+    cash_escalation::run(t.state(), at("2027-05-02T07:59:00Z"))
+        .await
+        .unwrap();
 
     // 2027-05-03 23:58 in Dubai: not yet.
-    let early = cash_escalation::run(t.state(), at("2027-05-03T19:58:00Z")).await.unwrap();
+    let early = cash_escalation::run(t.state(), at("2027-05-03T19:58:00Z"))
+        .await
+        .unwrap();
     assert_eq!(early, Escalated::default());
     assert!(!told(&t.notices.recipients(CASH_TASK), &boss));
 
     // 2027-05-03 23:59 in Dubai.
-    let done = cash_escalation::run(t.state(), at("2027-05-03T19:59:00Z")).await.unwrap();
-    assert_eq!(done, Escalated { tasks: 0, admin_notices: 1 });
+    let done = cash_escalation::run(t.state(), at("2027-05-03T19:59:00Z"))
+        .await
+        .unwrap();
+    assert_eq!(
+        done,
+        Escalated {
+            tasks: 0,
+            admin_notices: 1
+        }
+    );
     let recipients = t.notices.recipients(CASH_TASK);
     assert!(told(&recipients, &boss), "the admin is told");
     let asks = t.notices.of_type(CASH_TASK);
     let last = asks.last().unwrap();
-    assert!(told(&last.recipients, &mona), "the manager is asked to count");
-    assert!(last.data["text"].as_str().unwrap().contains("holder was absent"));
+    assert!(
+        told(&last.recipients, &mona),
+        "the manager is asked to count"
+    );
+    assert!(
+        last.data["text"]
+            .as_str()
+            .unwrap()
+            .contains("holder was absent")
+    );
     assert!(t.reloaded(&handover).await.admin_notified_at.is_some());
 
     t.cash_post(
@@ -186,7 +223,9 @@ async fn after_48_hours_the_admin_is_told_and_the_manager_counts_what_was_receiv
     assert_eq!(t.cash_shortage.all()[0].difference, 90_000);
     assert_eq!(t.cash_tickets.completed(), [TicketId(1)]);
     // Counted: nothing more is escalated.
-    let later = cash_escalation::run(t.state(), at("2027-05-09T00:00:00Z")).await.unwrap();
+    let later = cash_escalation::run(t.state(), at("2027-05-09T00:00:00Z"))
+        .await
+        .unwrap();
     assert_eq!(later, Escalated::default());
 }
 
@@ -200,9 +239,17 @@ async fn a_late_run_gives_the_task_and_tells_the_admin_together() {
     let driver = t.holder("Dani").await;
     t.collect(&driver, "2027-05-01", 90_000, 1).await;
 
-    let done = cash_escalation::run(t.state(), at("2027-05-04T08:00:00Z")).await.unwrap();
+    let done = cash_escalation::run(t.state(), at("2027-05-04T08:00:00Z"))
+        .await
+        .unwrap();
 
-    assert_eq!(done, Escalated { tasks: 1, admin_notices: 1 });
+    assert_eq!(
+        done,
+        Escalated {
+            tasks: 1,
+            admin_notices: 1
+        }
+    );
     let recipients = t.notices.recipients(CASH_TASK);
     assert!(told(&recipients, &mona));
     assert!(told(&recipients, &boss));
@@ -218,8 +265,12 @@ async fn a_handover_counted_in_time_triggers_nothing() {
     let chandra = t.counter("Chandra").await;
     let handover = t.collect(&driver, "2027-05-01", 90_000, 1).await;
 
-    t.count_cash(&chandra, &handover, "900.00").await.assert_ok();
-    let done = cash_escalation::run(t.state(), at("2027-05-09T00:00:00Z")).await.unwrap();
+    t.count_cash(&chandra, &handover, "900.00")
+        .await
+        .assert_ok();
+    let done = cash_escalation::run(t.state(), at("2027-05-09T00:00:00Z"))
+        .await
+        .unwrap();
 
     assert_eq!(done, Escalated::default());
     assert!(t.cash_tickets.opened().is_empty());
@@ -238,10 +289,14 @@ async fn a_run_that_never_returns_starts_the_clock_at_its_planned_end() {
     run_handover(&t, &driver, 5, "2027-05-01T14:00:00Z", false).await;
 
     // 2027-05-02 05:59 in Dubai.
-    let early = cash_escalation::run(t.state(), at("2027-05-02T01:59:00Z")).await.unwrap();
+    let early = cash_escalation::run(t.state(), at("2027-05-02T01:59:00Z"))
+        .await
+        .unwrap();
     assert_eq!(early, Escalated::default());
     // 2027-05-02 06:00 in Dubai.
-    let done = cash_escalation::run(t.state(), at("2027-05-02T02:00:00Z")).await.unwrap();
+    let done = cash_escalation::run(t.state(), at("2027-05-02T02:00:00Z"))
+        .await
+        .unwrap();
     assert_eq!(done.tasks, 1);
 }
 
@@ -266,12 +321,18 @@ async fn a_run_that_returns_earlier_starts_the_clock_at_its_return() {
         .unwrap();
 
     // 2027-05-02 02:59 in Dubai.
-    let early = cash_escalation::run(t.state(), at("2027-04-30T00:00:00Z")).await.unwrap();
+    let early = cash_escalation::run(t.state(), at("2027-04-30T00:00:00Z"))
+        .await
+        .unwrap();
     assert_eq!(early, Escalated::default());
-    let still = cash_escalation::run(t.state(), at("2027-05-01T22:59:00Z")).await.unwrap();
+    let still = cash_escalation::run(t.state(), at("2027-05-01T22:59:00Z"))
+        .await
+        .unwrap();
     assert_eq!(still, Escalated::default());
     // 2027-05-02 03:00 in Dubai.
-    let done = cash_escalation::run(t.state(), at("2027-05-01T23:00:00Z")).await.unwrap();
+    let done = cash_escalation::run(t.state(), at("2027-05-01T23:00:00Z"))
+        .await
+        .unwrap();
     assert_eq!(done.tasks, 1);
 }
 
@@ -287,9 +348,17 @@ async fn a_driver_handover_whose_vertical_rule_replaces_the_rule_is_not_escalate
     run_handover(&t, &driver, 5, "2027-05-01T14:00:00Z", true).await;
     let counter = t.collect(&clerk, "2027-05-01", 20_000, 7).await;
 
-    let done = cash_escalation::run(t.state(), at("2027-05-09T00:00:00Z")).await.unwrap();
+    let done = cash_escalation::run(t.state(), at("2027-05-09T00:00:00Z"))
+        .await
+        .unwrap();
 
-    assert_eq!(done, Escalated { tasks: 1, admin_notices: 1 });
+    assert_eq!(
+        done,
+        Escalated {
+            tasks: 1,
+            admin_notices: 1
+        }
+    );
     let tickets = t.cash_tickets.opened();
     assert_eq!(tickets.len(), 1);
     assert_eq!(tickets[0].subject, counter.subject());
@@ -305,10 +374,28 @@ async fn the_hours_are_the_clients_settings() {
     t.collect(&driver, "2027-05-01", 90_000, 1).await;
 
     // 2027-05-02 01:58 in Dubai: 2 hours after 23:59 is 01:59.
-    let early = cash_escalation::run(t.state(), at("2027-05-01T21:58:00Z")).await.unwrap();
+    let early = cash_escalation::run(t.state(), at("2027-05-01T21:58:00Z"))
+        .await
+        .unwrap();
     assert_eq!(early, Escalated::default());
-    let task = cash_escalation::run(t.state(), at("2027-05-01T21:59:00Z")).await.unwrap();
-    assert_eq!(task, Escalated { tasks: 1, admin_notices: 0 });
-    let admin_notice = cash_escalation::run(t.state(), at("2027-05-01T23:59:00Z")).await.unwrap();
-    assert_eq!(admin_notice, Escalated { tasks: 0, admin_notices: 1 });
+    let task = cash_escalation::run(t.state(), at("2027-05-01T21:59:00Z"))
+        .await
+        .unwrap();
+    assert_eq!(
+        task,
+        Escalated {
+            tasks: 1,
+            admin_notices: 0
+        }
+    );
+    let admin_notice = cash_escalation::run(t.state(), at("2027-05-01T23:59:00Z"))
+        .await
+        .unwrap();
+    assert_eq!(
+        admin_notice,
+        Escalated {
+            tasks: 0,
+            admin_notices: 1
+        }
+    );
 }

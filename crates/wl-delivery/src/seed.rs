@@ -19,7 +19,13 @@ pub const FAILURE_REASONS: [(&str, &str, &str, bool, bool); 9] = [
     ("wrong_address", "Wrong address", "عنوان خاطئ", true, true),
     ("no_cash", "No cash", "لا يوجد نقد", true, true),
     ("access_denied", "Access denied", "الدخول ممنوع", true, true),
-    ("not_attempted", "Not attempted", "لم تتم المحاولة", false, true),
+    (
+        "not_attempted",
+        "Not attempted",
+        "لم تتم المحاولة",
+        false,
+        true,
+    ),
     ("run_aborted", "Run aborted", "أُلغيت الرحلة", false, true),
     ("reversed", "Reversed", "تم التراجع", false, true),
 ];

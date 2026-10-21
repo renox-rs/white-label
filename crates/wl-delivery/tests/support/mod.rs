@@ -15,17 +15,18 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::testing::{TestApp, TestResponse};
 use wl_delivery::{
-    Deliveries, Delivery, DeliveryLine, NewRun, Run, VehicleType, WlDelivery,
-    permissions as perm, seed,
+    Deliveries, Delivery, DeliveryLine, NewRun, Run, VehicleType, WlDelivery, permissions as perm,
+    seed,
 };
 use wl_kernel::documents::{DocumentGuard, today};
+use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{
-    ClientConfig, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered, DeliveryItem,
-    DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryLost, DeliveryOutForDelivery,
-    DeliveryRefusedReceived, DeliveryRequest, PodMethod, RunClosed, RunDispatched, Subject,
+    ClientConfig, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered,
+    DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryItem, DeliveryLost,
+    DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequest, PodMethod, RunClosed,
+    RunDispatched, Subject,
 };
-use wl_kernel::tickets::TaskCreator;
 
 pub mod documents;
 pub mod roster;
@@ -212,10 +213,11 @@ impl World {
         collect: i64,
     ) -> Delivery {
         let source = SOURCE.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let mut request = DeliveryRequest::new(Subject::new(source_type, source), "Mariam Al Hosani")
-            .address("Villa 12, Al Barsha 2", "Al Barsha")
-            .phone("+971500000000")
-            .collect(collect);
+        let mut request =
+            DeliveryRequest::new(Subject::new(source_type, source), "Mariam Al Hosani")
+                .address("Villa 12, Al Barsha 2", "Al Barsha")
+                .phone("+971500000000")
+                .collect(collect);
         for (description, quantity, amount) in items {
             let mut item = DeliveryItem::new(description, *quantity);
             if let Some(amount) = amount {
@@ -335,7 +337,9 @@ impl World {
         let line = self.lines(&out).await.remove(0);
         let cash = format!("{}.{:02}", collect / 100, collect % 100);
         let fields = stop_fields(&[(line.id, "10", "0", "", "")], &cash);
-        self.deliver(&self.driver, &out, &fields).await.assert_status(303);
+        self.deliver(&self.driver, &out, &fields)
+            .await
+            .assert_status(303);
         let after = self.reload(&out).await;
         assert_eq!(after.status.as_str(), "delivered");
         after
@@ -387,10 +391,7 @@ impl World {
 /// The fields of a delivered stop: the proof (photo and signature, the
 /// default setting), the location and, per line, the quantities
 /// `(line id, delivered, refused, reason, photo)` as the driver types them.
-pub fn stop_fields(
-    lines: &[(i64, &str, &str, &str, &str)],
-    cash: &str,
-) -> Vec<(String, String)> {
+pub fn stop_fields(lines: &[(i64, &str, &str, &str, &str)], cash: &str) -> Vec<(String, String)> {
     let mut fields: Vec<(String, String)> = vec![
         ("recipient_name".into(), "Mariam Al Hosani".into()),
         ("photo".into(), "photo-0001".into()),
@@ -556,7 +557,13 @@ pub async fn chief_driver(w: &World) -> User {
     make_user(
         w.db(),
         "Chief",
-        &[perm::RUNS_DRIVE, perm::COMPLETE, perm::REVERSE, perm::MANAGE, perm::VIEW],
+        &[
+            perm::RUNS_DRIVE,
+            perm::COMPLETE,
+            perm::REVERSE,
+            perm::MANAGE,
+            perm::VIEW,
+        ],
     )
     .await
 }

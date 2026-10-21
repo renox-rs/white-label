@@ -9,9 +9,9 @@ mod support;
 use renox::prelude::*;
 use renox::state_machine;
 use wl_delivery::{Delivery, DeliveryStatus, Trace};
+use wl_kernel::DeliveryId;
 use wl_kernel::delivery::{ReviewOutcome, requester};
 use wl_kernel::tickets::TicketId;
-use wl_kernel::DeliveryId;
 
 use support::boot;
 
@@ -85,7 +85,9 @@ async fn opening_a_review_needs_the_permission_a_reason_and_a_delivered_delivery
     w.open_review(&w.dispatcher, &delivery, "recipient denies")
         .await
         .assert_forbidden();
-    w.open_review(&w.manager, &delivery, "   ").await.assert_status(422);
+    w.open_review(&w.manager, &delivery, "   ")
+        .await
+        .assert_status(422);
     assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Delivered);
     assert!(w.tickets.opened().is_empty());
     assert!(w.disputed.all().is_empty());
@@ -186,7 +188,12 @@ async fn a_second_dispute_is_linked_to_the_existing_ticket() {
         .assert_see("ticket 1");
     // The system links the new ticket as a comment on the first.
     requester(w.state())
-        .open_review(w.state(), delivery.delivery_id(), "client also denies", Some(TicketId(55)))
+        .open_review(
+            w.state(),
+            delivery.delivery_id(),
+            "client also denies",
+            Some(TicketId(55)),
+        )
         .await
         .unwrap();
 
@@ -195,7 +202,10 @@ async fn a_second_dispute_is_linked_to_the_existing_ticket() {
     assert_eq!(comments.len(), 1);
     assert_eq!(comments[0].0, TicketId(1));
     assert!(comments[0].1.text.contains("55"));
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::UnderReview);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::UnderReview
+    );
 }
 
 /// Without `wl-ticketing` the review still opens, with no ticket and a
@@ -235,7 +245,10 @@ async fn closing_a_review_as_upheld_releases_the_delivery_and_resolves_the_ticke
     let after = w.reload(&delivery).await;
     assert_eq!(after.status, DeliveryStatus::Delivered);
     assert!(!after.frozen);
-    assert_eq!(after.review_note.as_deref(), Some("Photo and signature match"));
+    assert_eq!(
+        after.review_note.as_deref(),
+        Some("Photo and signature match")
+    );
     assert_eq!(
         w.tickets.resolved(),
         vec![(TicketId(1), "Photo and signature match".to_owned())]
@@ -291,9 +304,14 @@ async fn only_the_upheld_outcome_closes_a_review_and_only_once() {
     )
     .await
     .assert_status(422);
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::UnderReview);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::UnderReview
+    );
 
-    w.close_review(&w.manager, &under_review, "Checked").await.assert_ok();
+    w.close_review(&w.manager, &under_review, "Checked")
+        .await
+        .assert_ok();
     w.close_review(&w.manager, &under_review, "Checked again")
         .await
         .assert_status(422);
@@ -317,7 +335,10 @@ async fn closing_a_review_needs_the_manage_permission() {
         .await
         .assert_forbidden();
 
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::UnderReview);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::UnderReview
+    );
 }
 
 /// The delivery page offers `open_review` on a delivered delivery and

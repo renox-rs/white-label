@@ -9,8 +9,8 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::Subject;
 use wl_kernel::delivery::{DeliveryFuture, DeliveryId, DeliveryRequest, DeliveryRequester};
-use wl_kernel::tickets::TicketId;
 use wl_kernel::documents::today;
+use wl_kernel::tickets::TicketId;
 
 use crate::delivery::{DELIVERY_SERIES, Delivery, DeliveryLine, DeliveryStatus, Direction, Proof};
 use crate::plan::cancel_as_system;
@@ -137,11 +137,7 @@ impl DeliveryRequester for Deliveries {
         state: &'a AppState,
         request: DeliveryRequest,
     ) -> DeliveryFuture<'a, DeliveryId> {
-        Box::pin(async move {
-            Ok(Deliveries::request(state, request)
-                .await?
-                .delivery_id())
-        })
+        Box::pin(async move { Ok(Deliveries::request(state, request).await?.delivery_id()) })
     }
 
     fn cancel<'a>(

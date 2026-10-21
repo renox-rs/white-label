@@ -490,7 +490,10 @@ mod tests {
     #[test]
     fn statuses_keep_their_keys_and_three_are_terminal() {
         assert_eq!(HandoverStatus::WrittenOff.as_str(), "written_off");
-        assert_eq!(to_value(HandoverStatus::WrittenOff).unwrap(), json!("written_off"));
+        assert_eq!(
+            to_value(HandoverStatus::WrittenOff).unwrap(),
+            json!("written_off")
+        );
         assert!(HandoverStatus::Counted.is_terminal());
         assert!(HandoverStatus::Recovered.is_terminal());
         assert!(HandoverStatus::WrittenOff.is_terminal());
@@ -533,9 +536,20 @@ mod tests {
             1_000,
             Subject::new("delivery.delivery", 9),
         );
-        assert_eq!(custody(state).collect(state, collection).await.unwrap(), None);
-        assert!(!custody(state).release(state, HandoverId(1).subject()).await.unwrap());
-        assert_eq!(custody(state).find(&state.db, HandoverId(1)).await.unwrap(), None);
+        assert_eq!(
+            custody(state).collect(state, collection).await.unwrap(),
+            None
+        );
+        assert!(
+            !custody(state)
+                .release(state, HandoverId(1).subject())
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            custody(state).find(&state.db, HandoverId(1)).await.unwrap(),
+            None
+        );
         let deduction = ShortageDeduction {
             handover: HandoverId(1),
             recovery: 1,

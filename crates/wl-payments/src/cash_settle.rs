@@ -22,9 +22,13 @@
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::serde_json::Value;
-use renox::state_machine::{Outcome, StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
+use renox::state_machine::{
+    Outcome, StateMachine, Transition, TransitionCtx, TransitionError, Transitioned,
+};
 use serde::{Deserialize, Serialize};
-use wl_kernel::approvals::{ApprovalRequest, PolicyDefault, register_final_check, submit::REQUEST_KEY};
+use wl_kernel::approvals::{
+    ApprovalRequest, PolicyDefault, register_final_check, submit::REQUEST_KEY,
+};
 use wl_kernel::custody::{CASH_HANDOVER_SUBJECT_TYPE, CashShortageSettled, HandoverStatus};
 use wl_kernel::machines::SubjectMachine;
 
@@ -85,7 +89,9 @@ pub(crate) fn write_off_problem(input: Option<&WriteOffInput>) -> Option<String>
         return Some("A reason is required.".to_owned());
     }
     if input.amount <= 0 {
-        return Some("Nothing is left to write off: record the recovery with `recover`.".to_owned());
+        return Some(
+            "Nothing is left to write off: record the recovery with `recover`.".to_owned(),
+        );
     }
     None
 }
@@ -133,10 +139,13 @@ pub(crate) fn transitions() -> Vec<Transition<CashHandover>> {
             .from([HandoverStatus::Short])
             .to(HandoverStatus::Recovered)
             .permission(permissions::CASH_COUNT)
-            .guard("recoveries_cover_the_difference", |handover: &CashHandover, _ctx| {
-                let problem = recover_problem(handover);
-                Box::pin(async move { problem.map_or(Ok(()), Err) })
-            }),
+            .guard(
+                "recoveries_cover_the_difference",
+                |handover: &CashHandover, _ctx| {
+                    let problem = recover_problem(handover);
+                    Box::pin(async move { problem.map_or(Ok(()), Err) })
+                },
+            ),
         writing_off(
             Transition::new(WRITE_OFF)
                 .label("Write off")
@@ -299,9 +308,11 @@ pub(crate) fn register(app: &mut Registry, write_off_limit: i64) {
     register_final_check(CASH_HANDOVER_SUBJECT_TYPE, |tx, request| {
         Box::pin(recheck(tx, request))
     });
-    app.listen(|event: Transitioned<CashHandover>, state: AppState| async move {
-        after_settled(&state, &event).await
-    });
+    app.listen(
+        |event: Transitioned<CashHandover>, state: AppState| async move {
+            after_settled(&state, &event).await
+        },
+    );
 }
 
 /// The write-off limit now in force, in fils.

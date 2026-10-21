@@ -65,10 +65,19 @@ async fn a_partly_accepted_delivery_is_delivered_with_the_quantities_per_line() 
     let after = w.reload(&delivery).await;
     assert_eq!(after.status, DeliveryStatus::Delivered);
     let lines = w.lines(&after).await;
-    assert_eq!((lines[0].delivered_milli, lines[0].refused_milli), (10_000, 0));
-    assert_eq!((lines[1].delivered_milli, lines[1].refused_milli), (3_000, 2_000));
+    assert_eq!(
+        (lines[0].delivered_milli, lines[0].refused_milli),
+        (10_000, 0)
+    );
+    assert_eq!(
+        (lines[1].delivered_milli, lines[1].refused_milli),
+        (3_000, 2_000)
+    );
     assert_eq!(lines[1].refusal_reason.as_deref(), Some("damaged"));
-    assert_eq!(lines[1].refusal_photo_ref.as_deref(), Some("damage-photo-1"));
+    assert_eq!(
+        lines[1].refusal_photo_ref.as_deref(),
+        Some("damage-photo-1")
+    );
 
     let events = w.delivered.all();
     assert_eq!(events.len(), 1);
@@ -121,7 +130,10 @@ async fn deliver_is_refused_without_the_signature_the_setting_requires() {
         .assert_status(422)
         .assert_see("signature");
 
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::OutForDelivery);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::OutForDelivery
+    );
     assert_eq!(attempts_of(&w, &delivery).await, 0);
     assert!(w.delivered.all().is_empty());
     let lines = w.lines(&delivery).await;
@@ -140,7 +152,10 @@ async fn deliver_is_refused_when_a_refused_quantity_has_no_reason() {
         .assert_status(422)
         .assert_see("refusal reason");
 
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::OutForDelivery);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::OutForDelivery
+    );
     assert!(w.delivered.all().is_empty());
 }
 
@@ -159,7 +174,10 @@ async fn deliver_is_refused_when_delivered_plus_refused_is_not_the_quantity() {
         .assert_status(422)
         .assert_see("must equal the quantity ordered (5)");
 
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::OutForDelivery);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::OutForDelivery
+    );
 }
 
 /// AC5: a refused quantity with the reason *damaged* and no photo: `deliver`
@@ -176,10 +194,16 @@ async fn deliver_is_refused_when_a_damaged_quantity_has_no_photo() {
         .await
         .assert_status(422)
         .assert_see("damaged quantity needs a photo");
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::OutForDelivery);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::OutForDelivery
+    );
 
     let wrong_item = stop_fields(
-        &[(a.id, "10", "0", "", ""), (b.id, "3", "2", "wrong_item", "")],
+        &[
+            (a.id, "10", "0", "", ""),
+            (b.id, "3", "2", "wrong_item", ""),
+        ],
         "0",
     );
     w.deliver(&w.driver, &delivery, &wrong_item).await;
@@ -193,7 +217,10 @@ async fn refusing_every_line_is_a_failed_attempt_with_the_reason_refused() {
     let w = boot().await;
     let (delivery, a, b) = two_lines(&w, 0, false).await;
     let fields = stop_fields(
-        &[(a.id, "0", "10", "not_ordered", ""), (b.id, "0", "5", "not_ordered", "")],
+        &[
+            (a.id, "0", "10", "not_ordered", ""),
+            (b.id, "0", "5", "not_ordered", ""),
+        ],
         "0",
     );
 
@@ -201,7 +228,10 @@ async fn refusing_every_line_is_a_failed_attempt_with_the_reason_refused() {
         .await
         .assert_status(422)
         .assert_see("Nothing was accepted");
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::OutForDelivery);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::OutForDelivery
+    );
 
     w.fail(&w.driver, &delivery, "refused").await;
     let after = w.reload(&delivery).await;
@@ -243,8 +273,12 @@ async fn a_source_type_with_partial_acceptance_off_takes_no_refused_quantity() {
         .assert_see("Partial acceptance is off");
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::OutForDelivery);
 
-    w.deliver(&w.driver, &out, &stop_fields(&[(line.id, "1", "0", "", "")], "0"))
-        .await;
+    w.deliver(
+        &w.driver,
+        &out,
+        &stop_fields(&[(line.id, "1", "0", "", "")], "0"),
+    )
+    .await;
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::Delivered);
 }
 
@@ -294,7 +328,9 @@ async fn a_delivered_proof_and_its_quantities_are_never_edited() {
         .assert_see("already delivered")
         .assert_see("Mariam Al Hosani");
     // A failed visit cannot be recorded over it either.
-    w.fail(&w.driver, &delivery, "not_home").await.assert_status(422);
+    w.fail(&w.driver, &delivery, "not_home")
+        .await
+        .assert_status(422);
     // The dispatcher and the manager cannot take it off a run or put it on
     // another.
     for user in [&w.dispatcher, &w.manager] {
@@ -363,7 +399,10 @@ async fn cash_above_the_expected_amount_is_refused() {
         .await
         .assert_status(422)
         .assert_see("give the change back");
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::OutForDelivery);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::OutForDelivery
+    );
 }
 
 /// AC10: cash on delivery of AED 150 without line amounts and the same
@@ -379,7 +418,10 @@ async fn without_line_amounts_the_expected_cash_stays_the_full_amount() {
         .await
         .assert_status(422)
         .assert_see("short of the AED 150.00 expected");
-    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::OutForDelivery);
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::OutForDelivery
+    );
 
     w.deliver(&w.driver, &delivery, &stop_fields(&lines, "150.00"))
         .await;
@@ -414,14 +456,21 @@ async fn a_source_type_that_accepts_any_method_needs_only_one() {
 
     // Neither method: refused. The photo of the default setting is not one.
     let none = without(
-        without(stop_fields(&[(line.id, "2", "0", "", "")], "0"), "signature"),
+        without(
+            stop_fields(&[(line.id, "2", "0", "", "")], "0"),
+            "signature",
+        ),
         "nothing",
     );
     w.deliver(&w.driver, &out, &none)
         .await
         .assert_status(422)
         .assert_see("The proof is incomplete");
-    w.deliver(&w.driver, &out, &stop_fields(&[(line.id, "2", "0", "", "")], "0"))
-        .await;
+    w.deliver(
+        &w.driver,
+        &out,
+        &stop_fields(&[(line.id, "2", "0", "", "")], "0"),
+    )
+    .await;
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::Delivered);
 }

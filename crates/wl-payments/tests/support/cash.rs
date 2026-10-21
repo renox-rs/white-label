@@ -176,9 +176,18 @@ impl Booted {
     }
 
     /// `by` counts `handover` at `amount` (dirhams as typed).
-    pub async fn count_cash(&self, by: &User, handover: &CashHandover, amount: &str) -> TestResponse {
-        self.cash_post(by, &format!("/cash/{}/count", handover.id), &[("counted", amount)])
-            .await
+    pub async fn count_cash(
+        &self,
+        by: &User,
+        handover: &CashHandover,
+        amount: &str,
+    ) -> TestResponse {
+        self.cash_post(
+            by,
+            &format!("/cash/{}/count", handover.id),
+            &[("counted", amount)],
+        )
+        .await
     }
 
     /// `by` recounts `handover` at `amount`, the holder being present.
@@ -232,7 +241,9 @@ impl Booted {
         counter: &User,
     ) -> CashHandover {
         let handover = self.collect(holder, day, expected, 1).await;
-        self.count_cash(counter, &handover, counted).await.assert_ok();
+        self.count_cash(counter, &handover, counted)
+            .await
+            .assert_ok();
         self.reloaded(&handover).await
     }
 
@@ -252,8 +263,7 @@ impl Booted {
     pub async fn set_cash_write_off_limit(&self, fils: i64) {
         wl_kernel::approvals::ApprovalPolicy::query()
             .where_(
-                wl_kernel::approvals::ApprovalPolicy::ACTION
-                    .eq(wl_payments::cash_settle::ACTION),
+                wl_kernel::approvals::ApprovalPolicy::ACTION.eq(wl_payments::cash_settle::ACTION),
             )
             .update(self.db(), &[("threshold", &fils)])
             .await
@@ -262,22 +272,30 @@ impl Booted {
 
     /// The counts of `handover`.
     pub async fn counts(&self, handover: &CashHandover) -> Vec<CashCount> {
-        CashCount::of_handover(self.db(), handover.id).await.unwrap()
+        CashCount::of_handover(self.db(), handover.id)
+            .await
+            .unwrap()
     }
 
     /// The cash entries of `handover`.
     pub async fn entries(&self, handover: &CashHandover) -> Vec<CashEntry> {
-        CashEntry::of_handover(self.db(), handover.id).await.unwrap()
+        CashEntry::of_handover(self.db(), handover.id)
+            .await
+            .unwrap()
     }
 
     /// The postings of `handover`.
     pub async fn postings(&self, handover: &CashHandover) -> Vec<CashPosting> {
-        CashPosting::of_handover(self.db(), handover.id).await.unwrap()
+        CashPosting::of_handover(self.db(), handover.id)
+            .await
+            .unwrap()
     }
 
     /// The recoveries of `handover`.
     pub async fn recoveries(&self, handover: &CashHandover) -> Vec<CashRecovery> {
-        CashRecovery::of_handover(self.db(), handover.id).await.unwrap()
+        CashRecovery::of_handover(self.db(), handover.id)
+            .await
+            .unwrap()
     }
 }
 

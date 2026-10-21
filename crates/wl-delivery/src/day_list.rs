@@ -89,10 +89,12 @@ pub async fn stops_of(db: &Db, driver_user_id: i64, day: NaiveDate) -> Result<Ve
         .get(db)
         .await?;
     let mut stops = Vec::new();
-    for run in runs
-        .into_iter()
-        .filter(|run| matches!(run.status, RunStatus::Planned | RunStatus::Dispatched | RunStatus::ReturnedToDepot))
-    {
+    for run in runs.into_iter().filter(|run| {
+        matches!(
+            run.status,
+            RunStatus::Planned | RunStatus::Dispatched | RunStatus::ReturnedToDepot
+        )
+    }) {
         let deliveries = Delivery::query()
             .where_(Delivery::RUN_ID.eq(run.id))
             .order_by(Delivery::RUN_SEQUENCE)

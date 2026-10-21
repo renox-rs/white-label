@@ -96,12 +96,22 @@ async fn the_rule_marks_a_delivery_lost_only_after_seven_full_days_untraced() {
     touched_at(&w, &delivery, at("2026-11-01T06:00:00Z")).await;
 
     // 2026-11-08 02:00 in Dubai.
-    assert_eq!(lost::run(w.state(), at("2026-11-07T22:00:00Z")).await.unwrap(), 0);
+    assert_eq!(
+        lost::run(w.state(), at("2026-11-07T22:00:00Z"))
+            .await
+            .unwrap(),
+        0
+    );
     assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Attempted);
     assert!(w.lost.all().is_empty());
 
     // 2026-11-09 02:00 in Dubai.
-    assert_eq!(lost::run(w.state(), at("2026-11-08T22:00:00Z")).await.unwrap(), 1);
+    assert_eq!(
+        lost::run(w.state(), at("2026-11-08T22:00:00Z"))
+            .await
+            .unwrap(),
+        1
+    );
 
     let after = w.reload(&delivery).await;
     assert_eq!(after.status, DeliveryStatus::Lost);
@@ -120,7 +130,12 @@ async fn the_rule_marks_a_delivery_lost_only_after_seven_full_days_untraced() {
     assert_eq!(events[0].liability, "none");
     assert_eq!(events[0].run, Some(wl_kernel::RunId(after.run_id.unwrap())));
     // A second run the same day picks nothing: the delivery is lost already.
-    assert_eq!(lost::run(w.state(), at("2026-11-08T22:00:00Z")).await.unwrap(), 0);
+    assert_eq!(
+        lost::run(w.state(), at("2026-11-08T22:00:00Z"))
+            .await
+            .unwrap(),
+        0
+    );
     assert_eq!(w.lost.all().len(), 1);
     assert_eq!(w.tickets.opened().len(), 1, "one claim ticket per loss");
 }
@@ -134,11 +149,26 @@ async fn a_scan_restarts_the_untraced_clock() {
     scanned_at(&w, &delivery, at("2026-11-05T06:00:00Z")).await;
 
     // 2026-11-09 02:00 would be 7 days after the visit, but only 3 after the scan.
-    assert_eq!(lost::run(w.state(), at("2026-11-08T22:00:00Z")).await.unwrap(), 0);
+    assert_eq!(
+        lost::run(w.state(), at("2026-11-08T22:00:00Z"))
+            .await
+            .unwrap(),
+        0
+    );
     // 2026-11-12 02:00 in Dubai: 6 days 16 hours after the scan.
-    assert_eq!(lost::run(w.state(), at("2026-11-11T22:00:00Z")).await.unwrap(), 0);
+    assert_eq!(
+        lost::run(w.state(), at("2026-11-11T22:00:00Z"))
+            .await
+            .unwrap(),
+        0
+    );
     // 2026-11-13 02:00 in Dubai: more than 7 x 24 h after the scan.
-    assert_eq!(lost::run(w.state(), at("2026-11-12T22:00:00Z")).await.unwrap(), 1);
+    assert_eq!(
+        lost::run(w.state(), at("2026-11-12T22:00:00Z"))
+            .await
+            .unwrap(),
+        1
+    );
     assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Lost);
 }
 
@@ -186,7 +216,9 @@ async fn a_manual_loss_needs_a_second_manager_to_approve() {
     let w = boot().await;
     let delivery = attempted(&w).await;
 
-    ask_loss(&w, &w.ops_a, &delivery, "driver").await.assert_ok();
+    ask_loss(&w, &w.ops_a, &delivery, "driver")
+        .await
+        .assert_ok();
 
     assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Attempted);
     let request = pending_request(&w, &delivery).await;
@@ -242,12 +274,18 @@ async fn the_runs_driver_cannot_request_and_the_request_is_checked() {
     assert_eq!(out.status, DeliveryStatus::OutForDelivery);
 
     ask_loss(&w, &chief, &out, "none").await.assert_status(422);
-    ask_loss(&w, &w.driver, &out, "none").await.assert_forbidden();
-    ask_loss(&w, &w.ops_a, &out, "carrier").await.assert_status(422);
-    assert!(ApprovalRequest::pending_about(w.db(), &out.delivery_id().subject())
+    ask_loss(&w, &w.driver, &out, "none")
         .await
-        .unwrap()
-        .is_empty());
+        .assert_forbidden();
+    ask_loss(&w, &w.ops_a, &out, "carrier")
+        .await
+        .assert_status(422);
+    assert!(
+        ApprovalRequest::pending_about(w.db(), &out.delivery_id().subject())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // The same request from a manager who is not the driver is accepted.
     ask_loss(&w, &w.ops_a, &out, "business").await.assert_ok();
@@ -261,7 +299,9 @@ async fn the_runs_driver_cannot_request_and_the_request_is_checked() {
 async fn a_scan_after_the_request_fails_it_at_final_approval() {
     let w = boot().await;
     let delivery = attempted(&w).await;
-    ask_loss(&w, &w.ops_a, &delivery, "driver").await.assert_ok();
+    ask_loss(&w, &w.ops_a, &delivery, "driver")
+        .await
+        .assert_ok();
     let request = pending_request(&w, &delivery).await;
 
     w.post(
@@ -277,7 +317,10 @@ async fn a_scan_after_the_request_fails_it_at_final_approval() {
         .expect("the request ends");
 
     assert_eq!(decided.decision, ApprovalEnd::Failed);
-    let stored = ApprovalRequest::find(w.db(), request.id).await.unwrap().unwrap();
+    let stored = ApprovalRequest::find(w.db(), request.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(stored.status, ApprovalStatus::Failed);
     assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Attempted);
     assert!(w.tickets.opened().is_empty());
@@ -301,17 +344,29 @@ async fn a_found_delivery_is_attempted_again_with_a_visit_that_does_not_count() 
     let counted = lost_delivery.attempts;
 
     // Only a holder of `deliveries.manage` runs it, and the depot is needed.
-    w.post(&w.driver, &format!("/deliveries/{}/found", delivery.id), &[("depot", "Sharjah depot")])
-        .await
-        .assert_forbidden();
-    w.post(&w.ops_a, &format!("/deliveries/{}/found", delivery.id), &[("depot", "  ")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.driver,
+        &format!("/deliveries/{}/found", delivery.id),
+        &[("depot", "Sharjah depot")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &w.ops_a,
+        &format!("/deliveries/{}/found", delivery.id),
+        &[("depot", "  ")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Lost);
 
-    w.post(&w.ops_a, &format!("/deliveries/{}/found", delivery.id), &[("depot", "Sharjah depot")])
-        .await
-        .assert_ok();
+    w.post(
+        &w.ops_a,
+        &format!("/deliveries/{}/found", delivery.id),
+        &[("depot", "Sharjah depot")],
+    )
+    .await
+    .assert_ok();
 
     let after = w.reload(&delivery).await;
     assert_eq!(after.status, DeliveryStatus::Attempted);
@@ -328,7 +383,10 @@ async fn a_found_delivery_is_attempted_again_with_a_visit_that_does_not_count() 
     assert_eq!(comments.len(), 1);
     assert_eq!(comments[0].0, TicketId(1));
     assert!(comments[0].1.text.contains("Sharjah depot"));
-    assert!(w.tickets.resolved().is_empty(), "the claim ticket is not closed");
+    assert!(
+        w.tickets.resolved().is_empty(),
+        "the claim ticket is not closed"
+    );
 }
 
 /// AC6: a `delivered` delivery is never picked by the rule, however old, and
@@ -339,8 +397,15 @@ async fn a_delivered_delivery_is_never_lost() {
     let delivery = w.delivered_cod(30_000).await;
     touched_at(&w, &delivery, at("2026-01-01T06:00:00Z")).await;
 
-    assert_eq!(lost::run(w.state(), at("2030-01-01T00:00:00Z")).await.unwrap(), 0);
-    ask_loss(&w, &w.ops_a, &delivery, "none").await.assert_status(422);
+    assert_eq!(
+        lost::run(w.state(), at("2030-01-01T00:00:00Z"))
+            .await
+            .unwrap(),
+        0
+    );
+    ask_loss(&w, &w.ops_a, &delivery, "none")
+        .await
+        .assert_status(422);
 
     assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Delivered);
     assert!(w.lost.all().is_empty());
@@ -360,7 +425,12 @@ async fn a_delivery_lost_from_a_review_says_so_and_stays_frozen() {
     assert_eq!(reviewed.status, DeliveryStatus::UnderReview);
     touched_at(&w, &reviewed, at("2026-11-01T06:00:00Z")).await;
 
-    assert_eq!(lost::run(w.state(), at("2026-11-08T22:00:00Z")).await.unwrap(), 1);
+    assert_eq!(
+        lost::run(w.state(), at("2026-11-08T22:00:00Z"))
+            .await
+            .unwrap(),
+        1
+    );
 
     let after = w.reload(&delivery).await;
     assert_eq!(after.status, DeliveryStatus::Lost);
@@ -375,10 +445,24 @@ async fn a_delivery_lost_from_a_review_says_so_and_stays_frozen() {
 /// The setting: the days untraced before a loss are a builder method.
 #[renox::test]
 async fn the_untraced_days_are_a_setting() {
-    let w = support::boot_with(wl_delivery::WlDelivery::new().untraced_days(2), support::documents::Documents::logistics()).await;
+    let w = support::boot_with(
+        wl_delivery::WlDelivery::new().untraced_days(2),
+        support::documents::Documents::logistics(),
+    )
+    .await;
     let delivery = attempted(&w).await;
     touched_at(&w, &delivery, at("2026-11-01T06:00:00Z")).await;
 
-    assert_eq!(lost::run(w.state(), at("2026-11-02T22:00:00Z")).await.unwrap(), 0);
-    assert_eq!(lost::run(w.state(), at("2026-11-03T06:00:00Z")).await.unwrap(), 1);
+    assert_eq!(
+        lost::run(w.state(), at("2026-11-02T22:00:00Z"))
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        lost::run(w.state(), at("2026-11-03T06:00:00Z"))
+            .await
+            .unwrap(),
+        1
+    );
 }

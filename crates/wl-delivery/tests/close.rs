@@ -7,7 +7,9 @@
 mod support;
 
 use renox::prelude::*;
-use wl_delivery::{Delivery, DeliveryLine, DeliveryStatus, NewRun, Run, RunStatus, Trace, VehicleType};
+use wl_delivery::{
+    Delivery, DeliveryLine, DeliveryStatus, NewRun, Run, RunStatus, Trace, VehicleType,
+};
 use wl_kernel::documents::today;
 use wl_kernel::tickets::TASK_CATEGORY;
 
@@ -31,7 +33,8 @@ async fn dispatched_run(w: &World, driver: &renox::prelude::User, deliveries: &[
 
 /// The driver brings the run back.
 async fn bring_back(w: &World, run: &Run) -> renox::testing::TestResponse {
-    w.post(&w.driver, &format!("/driver/runs/{}/return", run.id), &[]).await
+    w.post(&w.driver, &format!("/driver/runs/{}/return", run.id), &[])
+        .await
 }
 
 struct Scene {
@@ -55,9 +58,15 @@ async fn back_at_the_depot(w: &World, collect: i64) -> Scene {
     let line = w.lines(&refused).await.remove(0);
     let cash = format!("{}.{:02}", collect / 100, collect % 100);
     let fields = stop_fields(&[(line.id, "7", "3", "damaged", "damage-photo-1")], &cash);
-    w.deliver(&w.driver, &refused, &fields).await.assert_status(303);
-    w.fail(&w.driver, &first, "not_home").await.assert_status(303);
-    w.fail(&w.driver, &second, "not_home").await.assert_status(303);
+    w.deliver(&w.driver, &refused, &fields)
+        .await
+        .assert_status(303);
+    w.fail(&w.driver, &first, "not_home")
+        .await
+        .assert_status(303);
+    w.fail(&w.driver, &second, "not_home")
+        .await
+        .assert_status(303);
     bring_back(w, &run).await.assert_ok();
     let run = w.reload_run(&run).await;
     assert_eq!(run.status, RunStatus::ReturnedToDepot);
@@ -82,13 +91,20 @@ fn receipts_path(run: &Run) -> String {
 async fn ticking_everything_received_closes_the_run_and_emits_the_events() {
     let w = boot().await;
     let s = back_at_the_depot(&w, 0).await;
-    let (a, b) = (format!("item_{}_0", s.first.id), format!("item_{}_0", s.second.id));
+    let (a, b) = (
+        format!("item_{}_0", s.first.id),
+        format!("item_{}_0", s.second.id),
+    );
     let line = format!("received_{}_{}", s.refused.id, s.refused_line.id);
 
     w.post(
         &w.dispatcher,
         &receipts_path(&s.run),
-        &[(a.as_str(), "received"), (b.as_str(), "received"), (line.as_str(), "3")],
+        &[
+            (a.as_str(), "received"),
+            (b.as_str(), "received"),
+            (line.as_str(), "3"),
+        ],
     )
     .await
     .assert_ok();
@@ -106,16 +122,29 @@ async fn ticking_everything_received_closes_the_run_and_emits_the_events() {
     assert_eq!(events[0].lines[0].refused_milli, 3_000);
     assert_eq!(events[0].lines[0].received_milli, 3_000);
     assert_eq!(events[0].lines[0].missing_milli, 0);
-    assert_eq!(events[0].lines[0].refusal_reason.as_deref(), Some("damaged"));
+    assert_eq!(
+        events[0].lines[0].refusal_reason.as_deref(),
+        Some("damaged")
+    );
     let closed = w.run_closed.all();
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0].run, run.run_id());
     assert_eq!(closed[0].driver, w.driver.id);
     assert_eq!(closed[0].vehicle, Some(VAN));
-    assert_eq!((closed[0].delivered, closed[0].undelivered, closed[0].missing), (1, 2, 0));
+    assert_eq!(
+        (
+            closed[0].delivered,
+            closed[0].undelivered,
+            closed[0].missing
+        ),
+        (1, 2, 0)
+    );
     // The quantities are on the line, with who and when.
     let line = w.lines(&s.refused).await.remove(0);
-    assert_eq!((line.refused_received_milli, line.refused_missing_milli), (3_000, 0));
+    assert_eq!(
+        (line.refused_received_milli, line.refused_missing_milli),
+        (3_000, 0)
+    );
     assert!(line.accounted_at.is_some());
     assert_eq!(line.accounted_by, Some(w.dispatcher.id));
     // The deliveries did not move; the received ones left a depot receipt.
@@ -137,7 +166,10 @@ async fn ticking_everything_received_closes_the_run_and_emits_the_events() {
 async fn a_part_received_refused_line_reports_the_missing_part() {
     let w = boot().await;
     let s = back_at_the_depot(&w, 0).await;
-    let (a, b) = (format!("item_{}_0", s.first.id), format!("item_{}_0", s.second.id));
+    let (a, b) = (
+        format!("item_{}_0", s.first.id),
+        format!("item_{}_0", s.second.id),
+    );
     let received = format!("received_{}_{}", s.refused.id, s.refused_line.id);
     let missing = format!("missing_{}_{}", s.refused.id, s.refused_line.id);
 
@@ -160,7 +192,10 @@ async fn a_part_received_refused_line_reports_the_missing_part() {
     assert_eq!(events[0].lines[0].missing_milli, 1_000);
     assert_eq!(w.reload(&s.refused).await.status, DeliveryStatus::Delivered);
     let line = w.lines(&s.refused).await.remove(0);
-    assert_eq!((line.refused_received_milli, line.refused_missing_milli), (2_000, 1_000));
+    assert_eq!(
+        (line.refused_received_milli, line.refused_missing_milli),
+        (2_000, 1_000)
+    );
     assert_eq!(w.run_closed.all()[0].missing, 1);
     let tasks = w.tickets.opened();
     assert_eq!(tasks.len(), 1);
@@ -175,13 +210,20 @@ async fn a_part_received_refused_line_reports_the_missing_part() {
 async fn an_undelivered_delivery_reported_missing_gets_a_task_and_stays_attempted() {
     let w = boot().await;
     let s = back_at_the_depot(&w, 0).await;
-    let (a, b) = (format!("item_{}_0", s.first.id), format!("item_{}_0", s.second.id));
+    let (a, b) = (
+        format!("item_{}_0", s.first.id),
+        format!("item_{}_0", s.second.id),
+    );
     let line = format!("received_{}_{}", s.refused.id, s.refused_line.id);
 
     w.post(
         &w.dispatcher,
         &receipts_path(&s.run),
-        &[(a.as_str(), "missing"), (b.as_str(), "received"), (line.as_str(), "3")],
+        &[
+            (a.as_str(), "missing"),
+            (b.as_str(), "received"),
+            (line.as_str(), "3"),
+        ],
     )
     .await
     .assert_ok();
@@ -217,17 +259,27 @@ async fn an_undelivered_delivery_reported_missing_gets_a_task_and_stays_attempte
 async fn the_run_does_not_close_until_the_cash_is_counted() {
     let w = boot().await;
     let s = back_at_the_depot(&w, 10_000).await;
-    let (a, b) = (format!("item_{}_0", s.first.id), format!("item_{}_0", s.second.id));
+    let (a, b) = (
+        format!("item_{}_0", s.first.id),
+        format!("item_{}_0", s.second.id),
+    );
     let line = format!("received_{}_{}", s.refused.id, s.refused_line.id);
 
     w.post(
         &w.dispatcher,
         &receipts_path(&s.run),
-        &[(a.as_str(), "received"), (b.as_str(), "received"), (line.as_str(), "3")],
+        &[
+            (a.as_str(), "received"),
+            (b.as_str(), "received"),
+            (line.as_str(), "3"),
+        ],
     )
     .await
     .assert_ok();
-    assert_eq!(w.reload_run(&s.run).await.status, RunStatus::ReturnedToDepot);
+    assert_eq!(
+        w.reload_run(&s.run).await.status,
+        RunStatus::ReturnedToDepot
+    );
     w.post(&w.dispatcher, &format!("/runs/{}/close", s.run.id), &[])
         .await
         .assert_status(422)
@@ -236,15 +288,27 @@ async fn the_run_does_not_close_until_the_cash_is_counted() {
     assert!(w.refused_received.all().is_empty());
 
     // The driver does not count their own cash and has no right to.
-    w.post(&w.driver, &format!("/runs/{}/cash", s.run.id), &[("amount", "100.00")])
-        .await
-        .assert_forbidden();
-    w.post(&w.dispatcher, &format!("/runs/{}/cash", s.run.id), &[("amount", "x")])
-        .await
-        .assert_status(422);
-    w.post(&w.dispatcher, &format!("/runs/{}/cash", s.run.id), &[("amount", "100.00")])
-        .await
-        .assert_ok();
+    w.post(
+        &w.driver,
+        &format!("/runs/{}/cash", s.run.id),
+        &[("amount", "100.00")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &w.dispatcher,
+        &format!("/runs/{}/cash", s.run.id),
+        &[("amount", "x")],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &w.dispatcher,
+        &format!("/runs/{}/cash", s.run.id),
+        &[("amount", "100.00")],
+    )
+    .await
+    .assert_ok();
 
     let run = w.reload_run(&s.run).await;
     assert_eq!(run.status, RunStatus::Closed);
@@ -272,13 +336,21 @@ async fn the_runs_driver_cannot_count_their_own_cash() {
     let run = dispatched_run(&w, &dora, &[&delivery]).await;
     let line = w.lines(&delivery).await.remove(0);
     let fields = stop_fields(&[(line.id, "10", "0", "", "")], "100.00");
-    w.deliver(&dora, &delivery, &fields).await.assert_status(303);
-    w.post(&dora, &format!("/driver/runs/{}/return", run.id), &[]).await.assert_ok();
+    w.deliver(&dora, &delivery, &fields)
+        .await
+        .assert_status(303);
+    w.post(&dora, &format!("/driver/runs/{}/return", run.id), &[])
+        .await
+        .assert_ok();
     assert_eq!(w.reload_run(&run).await.status, RunStatus::ReturnedToDepot);
 
-    w.post(&dora, &format!("/runs/{}/cash", run.id), &[("amount", "100.00")])
-        .await
-        .assert_status(422);
+    w.post(
+        &dora,
+        &format!("/runs/{}/cash", run.id),
+        &[("amount", "100.00")],
+    )
+    .await
+    .assert_status(422);
 
     assert_eq!(w.reload_run(&run).await.cash_counted_at, None);
 }
@@ -292,7 +364,9 @@ async fn a_run_with_nothing_to_account_for_closes_when_it_is_back() {
     let run = dispatched_run(&w, &w.driver, &[&delivery]).await;
     let line = w.lines(&delivery).await.remove(0);
     let fields = stop_fields(&[(line.id, "10", "0", "", "")], "0");
-    w.deliver(&w.driver, &delivery, &fields).await.assert_status(303);
+    w.deliver(&w.driver, &delivery, &fields)
+        .await
+        .assert_status(303);
 
     bring_back(&w, &run).await.assert_ok();
 
@@ -309,21 +383,36 @@ async fn the_run_returns_only_with_every_stop_decided_and_by_its_driver() {
     let open = w.simple_delivery().await;
     let done = w.simple_delivery().await;
     let run = dispatched_run(&w, &w.driver, &[&open, &done]).await;
-    w.fail(&w.driver, &done, "not_home").await.assert_status(303);
+    w.fail(&w.driver, &done, "not_home")
+        .await
+        .assert_status(303);
 
-    bring_back(&w, &run).await.assert_status(422).assert_see("no outcome");
-    w.post(&w.other_driver, &format!("/driver/runs/{}/return", run.id), &[])
+    bring_back(&w, &run)
         .await
-        .assert_status(422);
-    w.post(&w.dispatcher, &format!("/driver/runs/{}/return", run.id), &[])
-        .await
-        .assert_forbidden();
+        .assert_status(422)
+        .assert_see("no outcome");
+    w.post(
+        &w.other_driver,
+        &format!("/driver/runs/{}/return", run.id),
+        &[],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &w.dispatcher,
+        &format!("/driver/runs/{}/return", run.id),
+        &[],
+    )
+    .await
+    .assert_forbidden();
     w.post(&w.dispatcher, &format!("/runs/{}/close", run.id), &[])
         .await
         .assert_status(422);
     assert_eq!(w.reload_run(&run).await.status, RunStatus::Dispatched);
 
-    w.fail(&w.driver, &open, "not_home").await.assert_status(303);
+    w.fail(&w.driver, &open, "not_home")
+        .await
+        .assert_status(303);
     bring_back(&w, &run).await.assert_ok();
     let back = w.reload_run(&run).await;
     assert_eq!(back.status, RunStatus::ReturnedToDepot);
@@ -341,9 +430,13 @@ async fn the_depot_ticks_are_checked() {
     let missing = format!("missing_{}_{}", s.refused.id, s.refused_line.id);
     let first = format!("item_{}_0", s.first.id);
 
-    w.post(&w.driver, &receipts_path(&s.run), &[(first.as_str(), "received")])
-        .await
-        .assert_forbidden();
+    w.post(
+        &w.driver,
+        &receipts_path(&s.run),
+        &[(first.as_str(), "received")],
+    )
+    .await
+    .assert_forbidden();
     // 2 + 2 is not the refused quantity of 3.
     w.post(
         &w.dispatcher,
@@ -353,20 +446,38 @@ async fn the_depot_ticks_are_checked() {
     .await
     .assert_status(422);
     // More than was refused.
-    w.post(&w.dispatcher, &receipts_path(&s.run), &[(received.as_str(), "4")])
-        .await
-        .assert_status(422);
-    w.post(&w.dispatcher, &receipts_path(&s.run), &[(first.as_str(), "maybe")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.dispatcher,
+        &receipts_path(&s.run),
+        &[(received.as_str(), "4")],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &w.dispatcher,
+        &receipts_path(&s.run),
+        &[(first.as_str(), "maybe")],
+    )
+    .await
+    .assert_status(422);
 
     // Partly received is only for refused lines: the missing part is what is left.
-    w.post(&w.dispatcher, &receipts_path(&s.run), &[(missing.as_str(), "1")])
-        .await
-        .assert_ok();
+    w.post(
+        &w.dispatcher,
+        &receipts_path(&s.run),
+        &[(missing.as_str(), "1")],
+    )
+    .await
+    .assert_ok();
     let line = w.lines(&s.refused).await.remove(0);
-    assert_eq!(line.refused_received_milli, 0, "the lines get their quantities at close");
-    assert_eq!(w.reload_run(&s.run).await.status, RunStatus::ReturnedToDepot);
+    assert_eq!(
+        line.refused_received_milli, 0,
+        "the lines get their quantities at close"
+    );
+    assert_eq!(
+        w.reload_run(&s.run).await.status,
+        RunStatus::ReturnedToDepot
+    );
 }
 
 /// The run page lists the items for the depot user once the run is back.

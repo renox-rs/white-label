@@ -10,8 +10,8 @@ mod support;
 use renox::auth::{Permissions, permissions};
 use renox::prelude::*;
 use renox::testing::TestApp;
-use wl_delivery::{Deliveries, Delivery, NewRun, VehicleType, WlDelivery};
 use wl_delivery::permissions as dlv;
+use wl_delivery::{Deliveries, Delivery, NewRun, VehicleType, WlDelivery};
 use wl_invoicing::dispute::Dispute;
 use wl_invoicing::{Invoice, WlInvoicing, issue};
 use wl_kernel::documents::today;
@@ -94,7 +94,12 @@ async fn user(t: &Real, name: &str, grants: &[&str]) -> User {
     user
 }
 
-async fn post(t: &Real, by: &User, path: &str, fields: &[(&str, &str)]) -> renox::testing::TestResponse {
+async fn post(
+    t: &Real,
+    by: &User,
+    path: &str,
+    fields: &[(&str, &str)],
+) -> renox::testing::TestResponse {
     t.app.acting_as(by);
     t.app.htmx().post(path, fields).await
 }
@@ -105,7 +110,13 @@ async fn delivered_and_invoiced(t: &Real) -> (Delivery, Invoice, User, User) {
     let dispatcher = user(
         t,
         "Dina",
-        &[dlv::VIEW, dlv::DISPATCH, dlv::MANAGE, dlv::RUNS_VIEW, dlv::RUNS_DISPATCH],
+        &[
+            dlv::VIEW,
+            dlv::DISPATCH,
+            dlv::MANAGE,
+            dlv::RUNS_VIEW,
+            dlv::RUNS_DISPATCH,
+        ],
     )
     .await;
     let driver = user(t, "Dev", &[dlv::RUNS_DRIVE, dlv::COMPLETE]).await;
@@ -129,9 +140,14 @@ async fn delivered_and_invoiced(t: &Real) -> (Delivery, Invoice, User, User) {
     .await
     .unwrap();
     let run_id = run.id.to_string();
-    post(t, &dispatcher, &format!("/deliveries/{}/assign", delivery.id), &[("run_id", &run_id)])
-        .await
-        .assert_ok();
+    post(
+        t,
+        &dispatcher,
+        &format!("/deliveries/{}/assign", delivery.id),
+        &[("run_id", &run_id)],
+    )
+    .await
+    .assert_ok();
     post(t, &dispatcher, &format!("/runs/{}/dispatch", run.id), &[])
         .await
         .assert_ok();
@@ -159,7 +175,9 @@ async fn delivered_and_invoiced(t: &Real) -> (Delivery, Invoice, User, User) {
     )
     .await
     .assert_status(303);
-    let delivered = Delivery::find_or_404(t.app.db(), delivery.id).await.unwrap();
+    let delivered = Delivery::find_or_404(t.app.db(), delivery.id)
+        .await
+        .unwrap();
     assert_eq!(delivered.status.as_str(), "delivered");
 
     let mut draft = InvoiceDraft::new(BLUE_DUNES, Subject::new("sales.order", 9));
@@ -180,7 +198,6 @@ async fn delivered_and_invoiced(t: &Real) -> (Delivery, Invoice, User, User) {
     (delivered, invoice, dispatcher, driver)
 }
 
-
 /// The dispatcher puts the delivery under review on its page: the ticket
 /// wl-delivery opened is the dispute's ticket, the invoice is flagged for
 /// the delivery's lines (AED 3,000.00 here) and no second ticket exists;
@@ -200,9 +217,13 @@ async fn a_review_on_the_delivery_page_flags_the_invoice_and_closing_it_resolves
     .await
     .assert_ok();
 
-    let under_review = Delivery::find_or_404(t.app.db(), delivery.id).await.unwrap();
+    let under_review = Delivery::find_or_404(t.app.db(), delivery.id)
+        .await
+        .unwrap();
     assert_eq!(under_review.status.as_str(), "under_review");
-    let ticket_id = under_review.review_ticket_id.expect("a real ticket was opened");
+    let ticket_id = under_review
+        .review_ticket_id
+        .expect("a real ticket was opened");
     let flagged = Invoice::find_or_404(t.app.db(), invoice.id).await.unwrap();
     assert!(flagged.disputed);
     let dispute = Dispute::find_or_404(t.app.db(), flagged.dispute_id.unwrap())
@@ -224,7 +245,9 @@ async fn a_review_on_the_delivery_page_flags_the_invoice_and_closing_it_resolves
     .await
     .assert_ok();
 
-    let closed = Delivery::find_or_404(t.app.db(), delivery.id).await.unwrap();
+    let closed = Delivery::find_or_404(t.app.db(), delivery.id)
+        .await
+        .unwrap();
     assert_eq!(closed.status.as_str(), "delivered");
     assert!(!closed.frozen);
     let released = Invoice::find_or_404(t.app.db(), invoice.id).await.unwrap();

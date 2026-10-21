@@ -14,6 +14,7 @@ use wl_invoicing::dispute::{self, Dispute, DisputeVia};
 use wl_invoicing::dispute_resolve::{self, ResolveInput};
 use wl_invoicing::task::{self, InvoicingTask, TaskKind, TaskStatus};
 use wl_invoicing::{Invoice, WlInvoicing, issue};
+use wl_kernel::Subject;
 use wl_kernel::delivery::{
     DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost, DeliveryReversed,
     ReviewOutcome,
@@ -24,7 +25,6 @@ use wl_kernel::invoicing::{
 };
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::tickets::TicketId;
-use wl_kernel::Subject;
 
 use support::{BLUE_DUNES, Booted, boot, boot_with};
 
@@ -44,8 +44,12 @@ async fn draft_of(t: &Booted, lines: &[(i64, i64)]) -> Invoice {
     let mut draft = InvoiceDraft::new(BLUE_DUNES, order());
     for (origin, price) in lines {
         draft = draft.line(
-            DraftLine::new(&format!("Order line {origin}"), *price, VatCategory::ZeroRated)
-                .origin(line(*origin)),
+            DraftLine::new(
+                &format!("Order line {origin}"),
+                *price,
+                VatCategory::ZeroRated,
+            )
+            .origin(line(*origin)),
         );
     }
     t.draft_of(draft).await
@@ -140,7 +144,10 @@ async fn a_disputed_delivery_flags_the_invoice_for_its_lines_with_the_deliverys_
     assert_eq!(all[0].ticket_id, Some(7));
     assert_eq!(all[0].raised_via, DisputeVia::System);
     assert_eq!(all[0].source(), Some(DELIVERY.subject()));
-    assert!(t.tickets.opened().is_empty(), "the delivery's ticket is used");
+    assert!(
+        t.tickets.opened().is_empty(),
+        "the delivery's ticket is used"
+    );
     let events = t.disputed.all();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].amount, 80_000);
@@ -207,7 +214,11 @@ async fn a_reversed_delivery_leaves_the_flag_and_gives_the_owner_a_task() {
     assert_eq!(tasks[0].role, "owner");
     assert_eq!(tasks[0].amount, 80_000);
     assert_eq!(tasks[0].source(), DELIVERY.subject());
-    assert!(tasks[0].message.contains("credited"), "{}", tasks[0].message);
+    assert!(
+        tasks[0].message.contains("credited"),
+        "{}",
+        tasks[0].message
+    );
     let notices = t.notices.of_type(task::REVERSAL_TASK);
     assert_eq!(notices.len(), 1);
     assert!(matches!(
@@ -342,8 +353,12 @@ async fn an_invoice_already_disputed_by_a_user_is_not_flagged_again() {
     let invoice = issued_of(&t, &[(11, 80_000), (12, 220_000)], &a).await;
     let own = dispute::raise(
         t.state(),
-        DisputeRequest::new(InvoiceId(invoice.id), "wrong price", DisputeBy::User { id: a.id })
-            .amount(10_000),
+        DisputeRequest::new(
+            InvoiceId(invoice.id),
+            "wrong price",
+            DisputeBy::User { id: a.id },
+        )
+        .amount(10_000),
     )
     .await
     .unwrap();

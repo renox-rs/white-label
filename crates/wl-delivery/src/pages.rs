@@ -226,11 +226,7 @@ fn parse_degrees(text: &str) -> Option<i64> {
 /// status.
 pub fn deliveries_grid(lang: &Lang) -> Grid {
     let t = texts_in(lang);
-    let statuses = options(
-        &t,
-        "status",
-        DeliveryStatus::ALL.iter().map(|s| s.as_str()),
-    );
+    let statuses = options(&t, "status", DeliveryStatus::ALL.iter().map(|s| s.as_str()));
     Grid::new("wl-delivery")
         .title(&t("title"))
         .column(
@@ -476,7 +472,9 @@ async fn show(
         && !driver_of_run
         && matches!(
             delivery.status,
-            DeliveryStatus::OutForDelivery | DeliveryStatus::Attempted | DeliveryStatus::UnderReview
+            DeliveryStatus::OutForDelivery
+                | DeliveryStatus::Attempted
+                | DeliveryStatus::UnderReview
         );
     let can_find = manager && delivery.status == DeliveryStatus::Lost;
     let lost = delivery.lost_reason.as_ref().map(|reason| LostRow {
@@ -802,7 +800,11 @@ async fn store_receipts(
     let closed = close::receive(&state, &user, &run, &entries)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok(closing_toast(&lang, &closed, "wl_delivery.close.receipts_saved"))
+    Ok(closing_toast(
+        &lang,
+        &closed,
+        "wl_delivery.close.receipts_saved",
+    ))
 }
 
 /// `POST /runs/{id}/cash`: the depot records the cash it counted (field
@@ -821,7 +823,11 @@ async fn store_cash(
     let closed = close::count_cash(&state, &user, &run, amount)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok(closing_toast(&lang, &closed, "wl_delivery.close.cash_saved"))
+    Ok(closing_toast(
+        &lang,
+        &closed,
+        "wl_delivery.close.cash_saved",
+    ))
 }
 
 /// `POST /runs/{id}/close`: closes the run when everything is accounted for;
@@ -868,9 +874,16 @@ async fn store_trace(
     Found(delivery): Found<Delivery>,
     Form(form): Form<TraceForm>,
 ) -> Result<Response> {
-    crate::trace::record(&state, &user, &delivery, form.kind.trim(), &form.note, &form.depot)
-        .await
-        .map_err(TransitionError::into_error)?;
+    crate::trace::record(
+        &state,
+        &user,
+        &delivery,
+        form.kind.trim(),
+        &form.note,
+        &form.depot,
+    )
+    .await
+    .map_err(TransitionError::into_error)?;
     Ok((
         Toast::success(texts::t(&lang, "wl_delivery.actions.traced")),
         renox::HxRefresh,
@@ -972,8 +985,12 @@ async fn store_run(
     lang: Lang,
     Form(form): Form<RunForm>,
 ) -> Result<Response> {
-    let vehicle_type = VehicleType::parse(&form.vehicle_type)
-        .ok_or_else(|| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, "Unknown vehicle type.".to_owned()))?;
+    let vehicle_type = VehicleType::parse(&form.vehicle_type).ok_or_else(|| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Unknown vehicle type.".to_owned(),
+        )
+    })?;
     let vehicle_asset_id = match form.vehicle_asset_id.as_deref().map(str::trim) {
         None | Some("") => None,
         Some(text) => Some(text.parse::<i64>().map_err(|_| {
@@ -983,7 +1000,8 @@ async fn store_run(
             )
         })?),
     };
-    let mut new = NewRun::new(form.run_date, form.driver_user_id).vehicle(vehicle_type, vehicle_asset_id);
+    let mut new =
+        NewRun::new(form.run_date, form.driver_user_id).vehicle(vehicle_type, vehicle_asset_id);
     new.depot = form.depot.clone().unwrap_or_default();
     let run = plan::create_run(&state, new).await?;
     Ok((
@@ -1266,10 +1284,7 @@ fn unprocessable(message: String) -> Error {
 
 /// The text field `name` of the posted form, blank as none.
 fn field<'a>(fields: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
-    fields
-        .get(name)
-        .map(|v| v.trim())
-        .filter(|v| !v.is_empty())
+    fields.get(name).map(|v| v.trim()).filter(|v| !v.is_empty())
 }
 
 /// `POST /driver/stops/{id}/deliver`: records the outcome *delivered*. The
@@ -1289,13 +1304,21 @@ async fn store_deliver(
     let mut entries = Vec::new();
     for line in delivery.lines(&state.db).await? {
         let delivered = match field(&fields, &format!("delivered_{}", line.id)) {
-            Some(text) => parse_scaled(text, 3)
-                .ok_or_else(|| unprocessable(format!("{}: the delivered quantity is not a number.", line.description)))?,
+            Some(text) => parse_scaled(text, 3).ok_or_else(|| {
+                unprocessable(format!(
+                    "{}: the delivered quantity is not a number.",
+                    line.description
+                ))
+            })?,
             None => line.quantity_milli,
         };
         let refused = match field(&fields, &format!("refused_{}", line.id)) {
-            Some(text) => parse_scaled(text, 3)
-                .ok_or_else(|| unprocessable(format!("{}: the refused quantity is not a number.", line.description)))?,
+            Some(text) => parse_scaled(text, 3).ok_or_else(|| {
+                unprocessable(format!(
+                    "{}: the refused quantity is not a number.",
+                    line.description
+                ))
+            })?,
             None => 0,
         };
         entries.push(LineEntry {
@@ -1312,7 +1335,9 @@ async fn store_deliver(
         None => 0,
     };
     let form = DeliverForm {
-        recipient_name: field(&fields, "recipient_name").unwrap_or_default().to_owned(),
+        recipient_name: field(&fields, "recipient_name")
+            .unwrap_or_default()
+            .to_owned(),
         photo: field(&fields, "photo").map(str::to_owned),
         signature: field(&fields, "signature").map(str::to_owned),
         otp_verified: field(&fields, "otp_verified") == Some("1"),

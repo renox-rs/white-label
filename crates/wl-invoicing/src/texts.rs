@@ -847,10 +847,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.supplier_bill_reopened.hint.debit_note_cancelled",
         "",
     ),
-    (
-        "wl_invoicing.delivery.reason",
-        "delivery disputed",
-    ),
+    ("wl_invoicing.delivery.reason", "delivery disputed"),
     (
         "wl_invoicing.delivery.upheld_note",
         "The delivery review was closed as upheld: the delivery stands.",
@@ -879,10 +876,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.tasks.kind.delivery_reversed",
         "Delivery reversed",
     ),
-    (
-        "wl_invoicing.tasks.kind.delivery_lost",
-        "Delivery lost",
-    ),
+    ("wl_invoicing.tasks.kind.delivery_lost", "Delivery lost"),
     (
         "wl_invoicing.task.subject",
         "Reversal on invoice {{ number }} needs follow-up",

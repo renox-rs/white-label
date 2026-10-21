@@ -9,9 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use renox::prelude::*;
-use wl_kernel::tickets::{
-    OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef,
-};
+use wl_kernel::tickets::{OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef};
 
 /// The recording `TaskCreator`.
 #[derive(Clone, Default)]
@@ -71,7 +69,10 @@ impl TaskCreator for TicketDesk {
         note: &'a str,
     ) -> TicketFuture<'a, bool> {
         Box::pin(async move {
-            self.resolved.lock().unwrap().push((ticket, note.to_owned()));
+            self.resolved
+                .lock()
+                .unwrap()
+                .push((ticket, note.to_owned()));
             Ok(true)
         })
     }

@@ -8,9 +8,7 @@ mod support;
 
 use renox::prelude::*;
 use wl_kernel::Subject;
-use wl_kernel::custody::{
-    CashCollection, HandoverPeriod, HandoverStatus, PeriodKind, custody,
-};
+use wl_kernel::custody::{CashCollection, HandoverPeriod, HandoverStatus, PeriodKind, custody};
 use wl_payments::{CashHandover, CashHolder};
 
 use support::boot;
@@ -43,11 +41,19 @@ async fn cash_collected_in_a_period_adds_up_in_one_open_handover() {
     assert_eq!(handover.period_kind, PeriodKind::Day);
     assert_eq!(handover.location.as_deref(), Some("Dubai branch"));
     assert_eq!(t.entries(&handover).await.len(), 2);
-    assert!(CashHolder::find(t.db(), handover.holder_id).await.unwrap().is_some());
+    assert!(
+        CashHolder::find(t.db(), handover.holder_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
 
     let viewer = t.counter("Chandra").await;
     t.app.acting_as(&viewer);
-    t.app.get(&format!("/cash/{}", handover.id)).await.assert_ok();
+    t.app
+        .get(&format!("/cash/{}", handover.id))
+        .await
+        .assert_ok();
     t.app.get("/cash").await.assert_ok();
 }
 
@@ -118,13 +124,30 @@ async fn cash_is_released_while_open_and_a_counted_handover_takes_no_more() {
     let handover = t.collect(&rana, "2027-04-01", 100_000, 1).await;
     t.collect(&rana, "2027-04-01", 40_000, 2).await;
 
-    assert!(custody(t.state()).release(t.state(), delivery(2)).await.unwrap());
+    assert!(
+        custody(t.state())
+            .release(t.state(), delivery(2))
+            .await
+            .unwrap()
+    );
     assert_eq!(t.reloaded(&handover).await.expected, 100_000);
     // Released once; nothing was collected for another source.
-    assert!(!custody(t.state()).release(t.state(), delivery(2)).await.unwrap());
-    assert!(!custody(t.state()).release(t.state(), delivery(99)).await.unwrap());
+    assert!(
+        !custody(t.state())
+            .release(t.state(), delivery(2))
+            .await
+            .unwrap()
+    );
+    assert!(
+        !custody(t.state())
+            .release(t.state(), delivery(99))
+            .await
+            .unwrap()
+    );
 
-    t.count_cash(&chandra, &handover, "1000.00").await.assert_ok();
+    t.count_cash(&chandra, &handover, "1000.00")
+        .await
+        .assert_ok();
     assert_eq!(t.reloaded(&handover).await.status, HandoverStatus::Counted);
     let refused = custody(t.state()).release(t.state(), delivery(1)).await;
     assert!(matches!(

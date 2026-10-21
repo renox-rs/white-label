@@ -195,8 +195,10 @@ pub(crate) fn transitions() -> Vec<Transition<Delivery>> {
             let is_driver = matches!(ctx.actor(), Some(user) if driver != 0 && user.id == driver);
             Box::pin(async move {
                 if is_driver {
-                    Err("The driver of the run cannot request that its delivery is lost."
-                        .to_owned())
+                    Err(
+                        "The driver of the run cannot request that its delivery is lost."
+                            .to_owned(),
+                    )
                 } else {
                     Ok(())
                 }
@@ -264,8 +266,16 @@ fn found_transition() -> Transition<Delivery> {
                     .where_(Delivery::ID.eq(delivery_id))
                     .update(&mut *tx, &[("frozen", &frozen)])
                     .await?;
-                trace::insert_in(&mut *tx, delivery_id, trace::FOUND, "", &input.depot, now, actor)
-                    .await
+                trace::insert_in(
+                    &mut *tx,
+                    delivery_id,
+                    trace::FOUND,
+                    "",
+                    &input.depot,
+                    now,
+                    actor,
+                )
+                .await
             })
         })
 }
@@ -445,7 +455,10 @@ async fn after_lost(state: &AppState, event: &Transitioned<Delivery>) -> Result 
         .clone()
         .unwrap_or_else(|| "none".to_owned());
     let description = english("wl_delivery.lost.claim_description")
-        .replace("{reason}", delivery.lost_reason.as_deref().unwrap_or_default())
+        .replace(
+            "{reason}",
+            delivery.lost_reason.as_deref().unwrap_or_default(),
+        )
         .replace("{liability}", &liability);
     let mut claim = OpenTicket::new(
         delivery.delivery_id().subject(),

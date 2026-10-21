@@ -109,7 +109,9 @@ impl PodMethod {
 
     /// The method stored as `key`.
     pub fn parse(key: &str) -> Option<PodMethod> {
-        PodMethod::ALL.into_iter().find(|m| m.as_str() == key.trim())
+        PodMethod::ALL
+            .into_iter()
+            .find(|m| m.as_str() == key.trim())
     }
 }
 
@@ -806,7 +808,10 @@ mod tests {
             event.billable_milli(&Subject::new("sales.order_line", 1)),
             Some(8_000)
         );
-        assert_eq!(event.billable_milli(&Subject::new("sales.order_line", 2)), None);
+        assert_eq!(
+            event.billable_milli(&Subject::new("sales.order_line", 2)),
+            None
+        );
     }
 
     #[test]

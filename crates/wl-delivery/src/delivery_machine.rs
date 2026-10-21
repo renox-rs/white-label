@@ -103,11 +103,21 @@ mod tests {
             ("unassign", vec!["assigned"], "pending", false),
             ("dispatch", vec!["assigned"], "out_for_delivery", true),
             ("cancel", vec!["pending", "assigned"], "cancelled", false),
-            ("auto_cancel", vec!["pending", "assigned"], "cancelled", true),
+            (
+                "auto_cancel",
+                vec!["pending", "assigned"],
+                "cancelled",
+                true,
+            ),
             ("deliver", vec!["out_for_delivery"], "delivered", false),
             ("fail", vec!["out_for_delivery"], "attempted", false),
             ("open_review", vec!["delivered"], "under_review", false),
-            ("open_review_system", vec!["delivered"], "under_review", true),
+            (
+                "open_review_system",
+                vec!["delivered"],
+                "under_review",
+                true,
+            ),
             ("close_review", vec!["under_review"], "delivered", false),
             (
                 "mark_lost",

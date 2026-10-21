@@ -32,6 +32,7 @@ use renox::db::Json;
 use renox::prelude::*;
 use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::delivery::{
     DeliveryDisputeClosed, DeliveryDisputed, DeliveryLost, DeliveryReversed, ReviewOutcome,
 };
@@ -39,7 +40,6 @@ use wl_kernel::invoicing::{DisputeBy, DisputeRequest, InvoiceStatus};
 use wl_kernel::notify::{self, NotifyRequest, fill};
 use wl_kernel::scopes;
 use wl_kernel::tickets::{self, TaskComment, TicketId};
-use wl_kernel::Subject;
 
 use crate::dispute::{self, DISPUTABLE, Dispute};
 use crate::dispute_resolve::{self, ResolveInput};
@@ -52,7 +52,10 @@ use crate::texts::english;
 
 /// A delivery that went under review, as this module keeps it.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_invoicing_delivery_reviews", index(delivery_type, delivery_id))]
+#[model(
+    table = "wl_invoicing_delivery_reviews",
+    index(delivery_type, delivery_id)
+)]
 pub struct DeliveryReview {
     /// The primary key.
     pub id: i64,
@@ -177,7 +180,11 @@ async fn open_disputes_of(db: &Db, delivery: &Subject) -> Result<Vec<Dispute>> {
 }
 
 /// The users a task of `audience` for `invoice` goes to.
-async fn audience_of(state: &AppState, invoice: &Invoice, audience: Audience) -> Result<(OwnerRole, Vec<i64>)> {
+async fn audience_of(
+    state: &AppState,
+    invoice: &Invoice,
+    audience: Audience,
+) -> Result<(OwnerRole, Vec<i64>)> {
     match audience {
         Audience::Owner => {
             let (role, users) = owner::recipients(&state.db, invoice).await?;
@@ -391,7 +398,15 @@ async fn task_for_disputes(state: &AppState, delivery: &Subject, kind: TaskKind)
         let Some(invoice) = Invoice::find(&state.db, dispute.invoice_id).await? else {
             continue;
         };
-        open_task(state, kind, &invoice, delivery, dispute.amount, Audience::Owner).await?;
+        open_task(
+            state,
+            kind,
+            &invoice,
+            delivery,
+            dispute.amount,
+            Audience::Owner,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -422,9 +437,7 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: DeliveryReversed, state: AppState| async move {
         on_reversed(&state, &event).await
     });
-    app.listen(|event: DeliveryLost, state: AppState| async move {
-        on_lost(&state, &event).await
-    });
+    app.listen(|event: DeliveryLost, state: AppState| async move { on_lost(&state, &event).await });
 }
 
 #[cfg(test)]

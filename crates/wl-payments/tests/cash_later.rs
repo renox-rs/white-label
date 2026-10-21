@@ -12,9 +12,9 @@ use wl_kernel::Subject;
 use wl_kernel::approvals::ApprovalRequest;
 use wl_kernel::custody::{HandoverKind, HandoverStatus};
 use wl_kernel::notify::NotifyRecipient;
+use wl_payments::CashHandover;
 use wl_payments::cash_handover::PostingKind;
 use wl_payments::cash_notices::CASH_SHORTAGE;
-use wl_payments::CashHandover;
 
 use support::{Booted, boot};
 
@@ -32,9 +32,13 @@ async fn manager(t: &Booted, name: &str) -> User {
     )
     .await
     .unwrap();
-    permissions::define_role(t.db(), "finance_manager", &[wl_payments::permissions::CASH_VIEW])
-        .await
-        .unwrap();
+    permissions::define_role(
+        t.db(),
+        "finance_manager",
+        &[wl_payments::permissions::CASH_VIEW],
+    )
+    .await
+    .unwrap();
     user.assign_role(t.db(), "finance_manager").await.unwrap();
     user
 }
@@ -108,11 +112,17 @@ async fn a_later_shortage_is_a_new_short_handover_linked_to_its_source() {
     assert_ne!(later.id, first.id);
     assert_eq!(later.kind, HandoverKind::LaterShortage);
     assert_eq!(later.status, HandoverStatus::Short);
-    assert_eq!((later.expected, later.counted, later.difference), (30_000, 0, 30_000));
+    assert_eq!(
+        (later.expected, later.counted, later.difference),
+        (30_000, 0, 30_000)
+    );
     assert_eq!(later.holder_user_id, d.id);
     assert_eq!(later.source(), Some(shipment(9)));
     assert_eq!(later.created_by, Some(m.id));
-    assert_eq!(later.reason.as_deref(), Some("Delivery reversed, liability driver"));
+    assert_eq!(
+        later.reason.as_deref(),
+        Some("Delivery reversed, liability driver")
+    );
     let events = t.cash_shortage.all();
     assert_eq!(events.len(), shortages_before + 1);
     let event = events.last().unwrap();
@@ -152,9 +162,13 @@ async fn a_second_shortage_for_the_same_source_is_refused_while_the_first_is_sho
     assert_eq!(count, 2);
 
     let first = later_of(&t, 9).await;
-    t.cash_post(&c, &format!("/cash/{}/recover", first.id), &[("amount", "300.00")])
-        .await
-        .assert_ok();
+    t.cash_post(
+        &c,
+        &format!("/cash/{}/recover", first.id),
+        &[("amount", "300.00")],
+    )
+    .await
+    .assert_ok();
     raise(&t, &m, &d, "300.00", 9).await.assert_ok();
 }
 
@@ -220,9 +234,13 @@ async fn a_later_shortage_is_recovered_or_written_off_like_any_other() {
 
     raise(&t, &m, &d, "300.00", 9).await.assert_ok();
     let big = later_of(&t, 9).await;
-    t.cash_post(&c, &format!("/cash/{}/recover", big.id), &[("amount", "300.00")])
-        .await
-        .assert_ok();
+    t.cash_post(
+        &c,
+        &format!("/cash/{}/recover", big.id),
+        &[("amount", "300.00")],
+    )
+    .await
+    .assert_ok();
     assert_eq!(t.reloaded(&big).await.status, HandoverStatus::Recovered);
 
     raise(&t, &m, &d, "40.00", 10).await.assert_ok();

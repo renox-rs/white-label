@@ -28,13 +28,13 @@ use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionError};
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::approvals::{
     ApprovalDecided, ApprovalEnd, ApprovalRequest, PolicyDefault, register_final_check,
     submit::REQUEST_KEY,
 };
 use wl_kernel::custody::{HandoverStatus, ShortageDeduction, shortage_recovery};
 use wl_kernel::machines::SubjectMachine;
-use wl_kernel::Subject;
 
 use crate::cash_handover::CashHandover;
 use crate::cash_notices;
@@ -152,7 +152,9 @@ impl CashRecovery {
     pub async fn waiting_total(db: &Db, handover_id: i64) -> Result<i64> {
         CashRecovery::query()
             .where_(CashRecovery::HANDOVER_ID.eq(handover_id))
-            .where_(CashRecovery::STATUS.is_in([RecoveryStatus::Requested, RecoveryStatus::Authorised]))
+            .where_(
+                CashRecovery::STATUS.is_in([RecoveryStatus::Requested, RecoveryStatus::Authorised]),
+            )
             .sum::<i64, _>(db, "amount")
             .await
     }
@@ -228,8 +230,10 @@ impl StateMachine for CashRecovery {
                             .is_ok_and(|input| !input.hr_reference.is_empty());
                         Box::pin(async move {
                             if !mine {
-                                Err("Only the person the deduction is taken from acknowledges it."
-                                    .to_owned())
+                                Err(
+                                    "Only the person the deduction is taken from acknowledges it."
+                                        .to_owned(),
+                                )
                             } else if !given {
                                 Err("The deduction was not passed to HR.".to_owned())
                             } else {
@@ -335,7 +339,10 @@ pub async fn record_cash(
         responsible_user_id: handover.responsible_user_id,
         kind: RecoveryKind::Cash,
         amount,
-        note: note.map(str::trim).filter(|n| !n.is_empty()).map(str::to_owned),
+        note: note
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_owned),
         recorded_by: Some(user.id),
         status: RecoveryStatus::Recorded,
         ..Default::default()
@@ -409,14 +416,21 @@ pub async fn request_deduction(
         responsible_user_id: handover.responsible_user_id,
         kind: RecoveryKind::SalaryDeduction,
         amount,
-        note: note.map(str::trim).filter(|n| !n.is_empty()).map(str::to_owned),
+        note: note
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_owned),
         recorded_by: Some(user.id),
         status: RecoveryStatus::Requested,
         ..Default::default()
     };
     let mut tx = state.db.begin().await?;
     recovery
-        .insert_in_state(&mut tx, RecoveryStatus::Requested, "Salary deduction requested")
+        .insert_in_state(
+            &mut tx,
+            RecoveryStatus::Requested,
+            "Salary deduction requested",
+        )
         .await?;
     tx.commit().await?;
     let outcome = recovery
@@ -460,7 +474,9 @@ pub async fn acknowledge(
 ) -> std::result::Result<CashRecovery, TransitionError> {
     let recovery = CashRecovery::find_or_404(&state.db, recovery.id).await?;
     if recovery.status != RecoveryStatus::Authorised {
-        return Err(TransitionError::NotFrom(recovery.status.as_str().to_owned()));
+        return Err(TransitionError::NotFrom(
+            recovery.status.as_str().to_owned(),
+        ));
     }
     if user.id != recovery.responsible_user_id {
         return Err(guard(
@@ -478,10 +494,8 @@ pub async fn acknowledge(
         amount: recovery.amount,
         approved_by: recovery.approved_by,
         acknowledged: true,
-        reason: english("wl_payments.cash.deduction_reason").replace(
-            "{period}",
-            &cash_notices::period_text(&handover),
-        ),
+        reason: english("wl_payments.cash.deduction_reason")
+            .replace("{period}", &cash_notices::period_text(&handover)),
     };
     let reference = shortage_recovery(state)
         .deduct(state, deduction)

@@ -36,11 +36,9 @@ use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionEr
 use serde::{Deserialize, Serialize};
 use wl_kernel::delivery::{DeliveredLine, DeliveryAttemptFailed, DeliveryDelivered, PodMethod};
 
-use crate::delivery::{
-    Attempt, AttemptOutcome, Delivery, DeliveryLine, DeliveryStatus, Proof,
-};
+use crate::delivery::{Attempt, AttemptOutcome, Delivery, DeliveryLine, DeliveryStatus, Proof};
 use crate::permissions;
-use crate::reasons::{FailureReason, RefusalReason, DAMAGED};
+use crate::reasons::{DAMAGED, FailureReason, RefusalReason};
 use crate::settings::settings;
 
 /// `deliver`: out_for_delivery → delivered.
@@ -203,7 +201,11 @@ pub(crate) fn evaluate(input: &DeliverInput) -> std::result::Result<Evaluated, S
     let mut expected_from_lines = 0i64;
     let mut has_line_amounts = false;
     for facts in &input.facts {
-        let entries: Vec<&LineEntry> = form.lines.iter().filter(|e| e.line_id == facts.id).collect();
+        let entries: Vec<&LineEntry> = form
+            .lines
+            .iter()
+            .filter(|e| e.line_id == facts.id)
+            .collect();
         let [entry] = entries.as_slice() else {
             return Err(format!(
                 "{}: enter the delivered and refused quantity of this line.",
@@ -211,7 +213,10 @@ pub(crate) fn evaluate(input: &DeliverInput) -> std::result::Result<Evaluated, S
             ));
         };
         if entry.delivered_milli < 0 || entry.refused_milli < 0 {
-            return Err(format!("{}: quantities cannot be negative.", facts.description));
+            return Err(format!(
+                "{}: quantities cannot be negative.",
+                facts.description
+            ));
         }
         if entry.delivered_milli + entry.refused_milli != facts.quantity_milli {
             return Err(format!(
@@ -254,13 +259,15 @@ pub(crate) fn evaluate(input: &DeliverInput) -> std::result::Result<Evaluated, S
             expected_from_lines += pro_rata(amount, entry.delivered_milli, facts.quantity_milli);
         }
     }
-    if form.lines.iter().any(|e| !input.facts.iter().any(|f| f.id == e.line_id)) {
+    if form
+        .lines
+        .iter()
+        .any(|e| !input.facts.iter().any(|f| f.id == e.line_id))
+    {
         return Err("A quantity was entered for a line that is not on this delivery.".to_owned());
     }
     if delivered_total <= 0 {
-        return Err(
-            "Nothing was accepted: fail the attempt with the reason Refused.".to_owned(),
-        );
+        return Err("Nothing was accepted: fail the attempt with the reason Refused.".to_owned());
     }
     let captured = captured_methods(form);
     let missing: Vec<&str> = input
@@ -275,7 +282,10 @@ pub(crate) fn evaluate(input: &DeliverInput) -> std::result::Result<Evaluated, S
         missing.is_empty()
     };
     if !satisfied {
-        return Err(format!("The proof is incomplete: {} needed.", missing.join(", ")));
+        return Err(format!(
+            "The proof is incomplete: {} needed.",
+            missing.join(", ")
+        ));
     }
     let cash_expected = if has_line_amounts {
         expected_from_lines
@@ -362,9 +372,8 @@ fn deliver_transition() -> Transition<Delivery> {
             let actor = ctx.actor().map(|user| user.id);
             let input = deliver_input(ctx);
             Box::pin(async move {
-                let invalid = |message: String| {
-                    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message)
-                };
+                let invalid =
+                    |message: String| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message);
                 let input = input.map_err(invalid)?;
                 let evaluated = evaluate(&input).map_err(invalid)?;
                 let form = &input.form;
@@ -467,7 +476,9 @@ fn fail_transition() -> Transition<Delivery> {
                 Some(input) if input.reason.trim().is_empty() => {
                     Err("Choose the reason the visit failed.".to_owned())
                 }
-                Some(input) if input.latitude_micro.is_none() || input.longitude_micro.is_none() => {
+                Some(input)
+                    if input.latitude_micro.is_none() || input.longitude_micro.is_none() =>
+                {
                     Err("The location of the visit is needed.".to_owned())
                 }
                 Some(_) => Ok(()),
@@ -622,7 +633,10 @@ pub(crate) async fn next_attempt_number(db: &Db, delivery: &Delivery) -> Result<
 /// Emits `DeliveryDelivered` for the committed state of delivery `id`.
 async fn emit_delivered(state: &AppState, id: i64) -> Result<()> {
     let delivery = Delivery::find_or_404(&state.db, id).await?;
-    let proof = delivery.latest_proof(&state.db).await?.ok_or(Error::NotFound)?;
+    let proof = delivery
+        .latest_proof(&state.db)
+        .await?
+        .ok_or(Error::NotFound)?;
     let attempt = Attempt::find_or_404(&state.db, proof.attempt_id).await?;
     let lines = delivery
         .lines(&state.db)
@@ -791,17 +805,20 @@ mod tests {
     #[test]
     fn the_rules_refuse_what_the_issue_lists() {
         let mut no_reason = entry(2, 3_000, 2_000);
-        let error = evaluate(&input(vec![entry(1, 10_000, 0), no_reason.clone()], 13_000))
-            .unwrap_err();
+        let error =
+            evaluate(&input(vec![entry(1, 10_000, 0), no_reason.clone()], 13_000)).unwrap_err();
         assert!(error.contains("refusal reason"), "{error}");
 
         no_reason.reason = Some("damaged".into());
-        let error = evaluate(&input(vec![entry(1, 10_000, 0), no_reason.clone()], 13_000))
-            .unwrap_err();
+        let error =
+            evaluate(&input(vec![entry(1, 10_000, 0), no_reason.clone()], 13_000)).unwrap_err();
         assert!(error.contains("photo"), "{error}");
 
-        let error = evaluate(&input(vec![entry(1, 10_000, 0), entry(2, 2_000, 2_000)], 15_000))
-            .unwrap_err();
+        let error = evaluate(&input(
+            vec![entry(1, 10_000, 0), entry(2, 2_000, 2_000)],
+            15_000,
+        ))
+        .unwrap_err();
         assert!(error.contains("must equal the quantity"), "{error}");
 
         let mut all_refused_a = entry(1, 0, 10_000);

@@ -169,10 +169,7 @@ fn guard_error(message: impl Into<String>) -> TransitionError {
 }
 
 /// The source line references of the delivery's lines, for the events.
-pub(crate) async fn source_lines(
-    db: &Db,
-    delivery: &Delivery,
-) -> Result<Vec<wl_kernel::Subject>> {
+pub(crate) async fn source_lines(db: &Db, delivery: &Delivery) -> Result<Vec<wl_kernel::Subject>> {
     Ok(delivery
         .lines(db)
         .await?

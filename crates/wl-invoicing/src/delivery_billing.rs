@@ -342,8 +342,10 @@ async fn credit_lines(db: &Db, invoice: &Invoice, net: i64) -> Result<Vec<Credit
         if left <= 0 {
             break;
         }
-        let remaining =
-            vat::remaining_credit(line.net_amount, credited.get(&line.id).copied().unwrap_or(0));
+        let remaining = vat::remaining_credit(
+            line.net_amount,
+            credited.get(&line.id).copied().unwrap_or(0),
+        );
         let take = remaining.min(left);
         if take > 0 {
             planned.push(CreditLine::new(line.position, take));
@@ -409,8 +411,7 @@ async fn settle_difference(state: &AppState, event: &DeliveryDelivered) -> Resul
             None => row.outcome = CodOutcome::NoInvoice,
             Some(invoice) if invoice.status == InvoiceStatus::Draft => {
                 row.line_position = Some(
-                    reduce_draft(&state.db, invoice, event.delivery.subject(), &absorption)
-                        .await?,
+                    reduce_draft(&state.db, invoice, event.delivery.subject(), &absorption).await?,
                 );
                 row.outcome = CodOutcome::DraftReduced;
             }

@@ -8,7 +8,9 @@ mod support;
 
 use renox::prelude::*;
 use renox::state_machine;
-use wl_delivery::{Attempt, AttemptOutcome, Delivery, DeliveryStatus, NewRun, Run, RunStatus, VehicleType};
+use wl_delivery::{
+    Attempt, AttemptOutcome, Delivery, DeliveryStatus, NewRun, Run, RunStatus, VehicleType,
+};
 use wl_kernel::delivery::requester;
 use wl_kernel::{DeliveryItem, DeliveryRequest, Subject};
 
@@ -23,7 +25,9 @@ async fn a_delivery_goes_from_pending_to_delivered_with_its_events_and_history()
     let delivery = w.simple_delivery().await;
     assert_eq!(delivery.status, DeliveryStatus::Pending);
     assert!(delivery.number.starts_with("DLV-"));
-    let run = w.run_on(&wl_kernel::documents::today().format("%Y-%m-%d").to_string()).await;
+    let run = w
+        .run_on(&wl_kernel::documents::today().format("%Y-%m-%d").to_string())
+        .await;
     assert!(run.number.starts_with("RUN-"));
 
     w.assign(&w.dispatcher, &delivery, &run).await.assert_ok();
@@ -148,8 +152,12 @@ async fn the_driver_sees_only_their_own_stops_and_the_phone_only_while_open() {
         .assert_not_found();
 
     let line = &w.lines(&out).await[0];
-    w.deliver(&w.driver, &out, &stop_fields(&[(line.id, "10", "0", "", "")], "0"))
-        .await;
+    w.deliver(
+        &w.driver,
+        &out,
+        &stop_fields(&[(line.id, "10", "0", "", "")], "0"),
+    )
+    .await;
     assert_eq!(w.reload(&out).await.status, DeliveryStatus::Delivered);
     w.app.acting_as(&w.driver);
     w.app

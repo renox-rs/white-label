@@ -24,9 +24,13 @@ async fn finance_manager(t: &Booted, name: &str) -> User {
     )
     .await
     .unwrap();
-    permissions::define_role(t.db(), "finance_manager", &[wl_payments::permissions::CASH_VIEW])
-        .await
-        .unwrap();
+    permissions::define_role(
+        t.db(),
+        "finance_manager",
+        &[wl_payments::permissions::CASH_VIEW],
+    )
+    .await
+    .unwrap();
     user.assign_role(t.db(), "finance_manager").await.unwrap();
     user
 }
@@ -64,7 +68,10 @@ async fn a_short_count_is_a_shortage_that_tells_the_holder_and_the_manager() {
     let counted = t.cash_counted.all();
     assert_eq!(counted.len(), 1);
     assert_eq!(counted[0].status, HandoverStatus::Short);
-    assert_eq!((counted[0].expected, counted[0].counted), (230_000, 225_000));
+    assert_eq!(
+        (counted[0].expected, counted[0].counted),
+        (230_000, 225_000)
+    );
     let recipients = t.notices.recipients(CASH_SHORTAGE);
     assert!(notified(&recipients, &r), "the holder is told");
     assert!(notified(&recipients, &manager), "the manager is told");
@@ -89,13 +96,21 @@ async fn the_holder_cannot_count_nor_the_first_counter_recount_and_a_third_user_
     let plain = t.holder("Pia").await;
     let handover = t.collect(&r, "2027-04-01", 230_000, 1).await;
 
-    t.count_cash(&r, &handover, "2300.00").await.assert_status(422);
-    t.count_cash(&plain, &handover, "2300.00").await.assert_forbidden();
+    t.count_cash(&r, &handover, "2300.00")
+        .await
+        .assert_status(422);
+    t.count_cash(&plain, &handover, "2300.00")
+        .await
+        .assert_forbidden();
     assert_eq!(t.reloaded(&handover).await.status, HandoverStatus::Open);
     t.count_cash(&c, &handover, "2250.00").await.assert_ok();
 
-    t.recount_cash(&c, &handover, "2300.00").await.assert_status(422);
-    t.recount_cash(&r, &handover, "2300.00").await.assert_status(422);
+    t.recount_cash(&c, &handover, "2300.00")
+        .await
+        .assert_status(422);
+    t.recount_cash(&r, &handover, "2300.00")
+        .await
+        .assert_status(422);
     // A recount that does not say whether the holder was there is refused.
     t.cash_post(
         &d,

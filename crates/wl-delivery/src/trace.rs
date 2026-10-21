@@ -108,7 +108,10 @@ pub async fn last_traced_at(db: &Db, delivery: &Delivery) -> Result<Option<DateT
         .first(db)
         .await?
         .map(|a| a.occurred_at);
-    Ok([trace, attempt, delivery.created_at].into_iter().flatten().max())
+    Ok([trace, attempt, delivery.created_at]
+        .into_iter()
+        .flatten()
+        .max())
 }
 
 /// Whether a trace or a visit of `delivery_id` was recorded after `since`.

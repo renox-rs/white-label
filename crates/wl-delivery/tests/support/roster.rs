@@ -10,9 +10,7 @@ use std::sync::{Arc, Mutex};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::PartyId;
-use wl_kernel::workforce::{
-    EmployeeId, StaffProfile, Workforce, WorkforceFuture,
-};
+use wl_kernel::workforce::{EmployeeId, StaffProfile, Workforce, WorkforceFuture};
 
 /// The employee of a user: the tests' stand-in for wl-hr's records.
 pub fn employee_of(user_id: i64) -> EmployeeId {

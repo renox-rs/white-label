@@ -12,11 +12,11 @@ use renox::prelude::*;
 use wl_invoicing::delivery_billing::{CodDifference, CodOutcome};
 use wl_invoicing::reminders::{self, AFTER_DUE};
 use wl_invoicing::{Invoice, InvoiceLine};
+use wl_kernel::Subject;
 use wl_kernel::delivery::{DeliveredLine, DeliveryDelivered, DeliveryId};
 use wl_kernel::invoicing::{
     CreditNoteStatus, DraftLine, InvoiceDraft, InvoiceId, InvoiceStatus, VatCategory, invoicer,
 };
-use wl_kernel::Subject;
 
 use support::{BLUE_DUNES, Booted, boot};
 
@@ -106,7 +106,12 @@ async fn the_draft_bills_the_delivered_quantity_and_never_the_refused_one() {
     assert_eq!(lines[0].vat_amount, 2_000);
     let after = t.reload(&draft).await;
     assert_eq!(
-        (after.net_total, after.vat_total, after.gross_total, after.balance),
+        (
+            after.net_total,
+            after.vat_total,
+            after.gross_total,
+            after.balance
+        ),
         (40_000, 2_000, 42_000, 42_000)
     );
     assert_eq!(after.status, InvoiceStatus::Draft);
@@ -125,7 +130,11 @@ async fn the_draft_bills_the_delivered_quantity_and_never_the_refused_one() {
 #[renox::test]
 async fn a_line_with_nothing_delivered_leaves_and_an_empty_draft_is_discarded() {
     let t = boot().await;
-    let draft = draft_of(&t, &[(1, 2_000, 10_000), (2, 3_000, 10_000), (3, 1_000, 10_000)]).await;
+    let draft = draft_of(
+        &t,
+        &[(1, 2_000, 10_000), (2, 3_000, 10_000), (3, 1_000, 10_000)],
+    )
+    .await;
 
     t.state()
         .emit(delivered(
@@ -138,7 +147,10 @@ async fn a_line_with_nothing_delivered_leaves_and_an_empty_draft_is_discarded() 
 
     let lines = lines_of(&t, &draft).await;
     assert_eq!(
-        lines.iter().map(|l| (l.position, l.origin_id)).collect::<Vec<_>>(),
+        lines
+            .iter()
+            .map(|l| (l.position, l.origin_id))
+            .collect::<Vec<_>>(),
         [(1, Some(1)), (2, Some(3))]
     );
     // Lines 1 and 3 are untouched: 2 x 100.00 + 1 x 100.00 plus 5% VAT.
@@ -194,7 +206,10 @@ async fn a_difference_the_customer_owes_stays_open_and_is_chased() {
             .unwrap()
             .is_empty()
     );
-    let row = CodDifference::of_delivery(t.db(), DELIVERY.0).await.unwrap().unwrap();
+    let row = CodDifference::of_delivery(t.db(), DELIVERY.0)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(row.outcome, CodOutcome::CustomerOwes);
     assert_eq!(row.absorbed_by, "customer");
 
@@ -214,14 +229,19 @@ async fn a_difference_the_client_absorbs_is_its_remittance_line() {
         .issued(&[(100_000, VatCategory::Standard)], None, &a)
         .await;
     let event = delivered(Vec::new(), 3_000, Some("client"));
-    let absorption = event.cod_absorption().expect("a difference with an absorber");
+    let absorption = event
+        .cod_absorption()
+        .expect("a difference with an absorber");
     assert_eq!(absorption.remittance_adjustment(), -3_000);
     assert_eq!(absorption.reason, "recipient short of cash");
 
     t.state().emit(event).await.unwrap();
 
     let after = t.reload(&invoice).await;
-    assert_eq!((after.balance, after.status), (105_000, InvoiceStatus::Issued));
+    assert_eq!(
+        (after.balance, after.status),
+        (105_000, InvoiceStatus::Issued)
+    );
     assert!(
         invoicer(t.state())
             .credit_notes_for(t.db(), InvoiceId(invoice.id))
@@ -229,7 +249,10 @@ async fn a_difference_the_client_absorbs_is_its_remittance_line() {
             .unwrap()
             .is_empty()
     );
-    let row = CodDifference::of_delivery(t.db(), DELIVERY.0).await.unwrap().unwrap();
+    let row = CodDifference::of_delivery(t.db(), DELIVERY.0)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(row.outcome, CodOutcome::ClientRemittance);
     assert_eq!(row.amount, 3_000);
 }
@@ -243,21 +266,32 @@ async fn a_difference_the_business_absorbs_is_a_negative_line_on_a_draft() {
     let draft = draft_of(&t, &[(1, 1_000, 10_000)]).await;
     assert_eq!(draft.gross_total, 10_500);
 
-    let event = delivered(vec![delivered_line(1, 1_000, 1_000)], 3_000, Some("business"));
+    let event = delivered(
+        vec![delivered_line(1, 1_000, 1_000)],
+        3_000,
+        Some("business"),
+    );
     t.state().emit(event.clone()).await.unwrap();
     t.state().emit(event).await.unwrap();
 
     let lines = lines_of(&t, &draft).await;
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[1].position, 2);
-    assert!(lines[1].description.starts_with("COD difference absorbed (business)"));
+    assert!(
+        lines[1]
+            .description
+            .starts_with("COD difference absorbed (business)")
+    );
     assert!(lines[1].description.contains("recipient short of cash"));
     assert_eq!(lines[1].gross_amount, -3_000);
     assert_eq!(lines[1].net_amount, -2_857);
     assert_eq!(lines[1].origin(), Some(DELIVERY.subject()));
     let after = t.reload(&draft).await;
     assert_eq!((after.gross_total, after.balance), (7_500, 7_500));
-    let row = CodDifference::of_delivery(t.db(), DELIVERY.0).await.unwrap().unwrap();
+    let row = CodDifference::of_delivery(t.db(), DELIVERY.0)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(row.outcome, CodOutcome::DraftReduced);
     assert_eq!(row.line_position, Some(2));
 }
@@ -288,7 +322,10 @@ async fn a_difference_the_business_or_driver_absorbs_is_a_credit_note_on_an_issu
     assert_ne!(notes[0].status, CreditNoteStatus::Draft);
     let after = t.reload(&invoice).await;
     assert_eq!((after.balance, after.status), (0, InvoiceStatus::Paid));
-    let row = CodDifference::of_delivery(t.db(), DELIVERY.0).await.unwrap().unwrap();
+    let row = CodDifference::of_delivery(t.db(), DELIVERY.0)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(row.outcome, CodOutcome::Credited);
     assert!(row.credit_note_id.is_some());
 
@@ -326,12 +363,20 @@ async fn a_difference_without_an_invoice_or_an_absorber_changes_nothing() {
         .emit(delivered(Vec::new(), 3_000, Some("business")))
         .await
         .unwrap();
-    let row = CodDifference::of_delivery(t.db(), DELIVERY.0).await.unwrap().unwrap();
+    let row = CodDifference::of_delivery(t.db(), DELIVERY.0)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(row.outcome, CodOutcome::NoInvoice);
     assert_eq!(row.invoice_id, None);
 
     let mut other = delivered(Vec::new(), 3_000, None);
     other.delivery = DeliveryId(44);
     t.state().emit(other).await.unwrap();
-    assert!(CodDifference::of_delivery(t.db(), 44).await.unwrap().is_none());
+    assert!(
+        CodDifference::of_delivery(t.db(), 44)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

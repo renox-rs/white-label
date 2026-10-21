@@ -178,7 +178,8 @@ pub(crate) fn transitions() -> Vec<Transition<Run>> {
             .permission(permissions::RUNS_DRIVE)
             .guard("by_the_runs_driver", |_run: &Run, ctx| {
                 let driver = return_input(ctx).map(|i| i.driver_user_id);
-                let allowed = matches!((ctx.actor(), driver), (Some(user), Some(d)) if user.id == d);
+                let allowed =
+                    matches!((ctx.actor(), driver), (Some(user), Some(d)) if user.id == d);
                 Box::pin(async move {
                     if allowed {
                         Ok(())
@@ -495,7 +496,9 @@ pub async fn count_cash(
         return Err(TransitionError::Forbidden);
     }
     if user.id == run.driver_user_id {
-        return Err(unprocessable(english("wl_delivery.close.counted_by_another")));
+        return Err(unprocessable(english(
+            "wl_delivery.close.counted_by_another",
+        )));
     }
     if run.status != RunStatus::ReturnedToDepot {
         return Err(unprocessable(english("wl_delivery.close.not_back")));
@@ -675,7 +678,10 @@ async fn open_missing_task(state: &AppState, run: &Run, item: &Item) -> Result<(
     let ticket = OpenTicket::new(subject, TASK_CATEGORY, &title)
         .description(&description)
         .source(run.subject())
-        .source_key(&format!("delivery.missing:{}:{}", item.delivery_id, item.line_id));
+        .source_key(&format!(
+            "delivery.missing:{}:{}",
+            item.delivery_id, item.line_id
+        ));
     tickets::task_creator(state).open(state, ticket).await?;
     Ok(())
 }

@@ -21,12 +21,18 @@ async fn recovering_the_whole_shortage_in_cash_moves_it_to_recovered() {
     let r = t.holder("Rana").await;
     let c = t.counter("Chandra").await;
     let d = t.counter("Dev").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
     assert_eq!(handover.difference, 5_000);
 
-    t.cash_post(&d, &format!("/cash/{}/recover", handover.id), &[("amount", "50.00")])
-        .await
-        .assert_ok();
+    t.cash_post(
+        &d,
+        &format!("/cash/{}/recover", handover.id),
+        &[("amount", "50.00")],
+    )
+    .await
+    .assert_ok();
 
     let after = t.reloaded(&handover).await;
     assert_eq!(after.status, HandoverStatus::Recovered);
@@ -50,13 +56,23 @@ async fn recoveries_are_made_by_someone_else_and_within_the_shortage() {
     let t = boot().await;
     let r = t.counter("Rana").await;
     let c = t.counter("Chandra").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
 
-    t.recover_part(&r, &handover, "10.00").await.assert_status(422);
-    t.cash_post(&r, &format!("/cash/{}/recover", handover.id), &[("amount", "50.00")])
+    t.recover_part(&r, &handover, "10.00")
         .await
         .assert_status(422);
-    t.recover_part(&c, &handover, "50.01").await.assert_status(422);
+    t.cash_post(
+        &r,
+        &format!("/cash/{}/recover", handover.id),
+        &[("amount", "50.00")],
+    )
+    .await
+    .assert_status(422);
+    t.recover_part(&c, &handover, "50.01")
+        .await
+        .assert_status(422);
     t.recover_part(&c, &handover, "0").await.assert_status(422);
     assert!(t.recoveries(&handover).await.is_empty());
     assert_eq!(t.reloaded(&handover).await.recovered, 0);
@@ -75,18 +91,27 @@ async fn a_write_off_above_the_limit_waits_for_a_second_user_and_posts_the_loss(
     let c = t.counter("Chandra").await;
     let m = t.cash_manager("Mona").await;
     let n = t.cash_manager("Nadia").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
 
     t.write_off_cash(&c, &handover).await.assert_forbidden();
     t.write_off_cash(&r, &handover).await.assert_forbidden();
     t.write_off_cash(&m, &handover).await.assert_ok();
 
     assert_eq!(t.reloaded(&handover).await.status, HandoverStatus::Short);
-    let request = t.pending_request(&handover.subject()).await.expect("a request waits");
+    let request = t
+        .pending_request(&handover.subject())
+        .await
+        .expect("a request waits");
     assert_eq!(request.action, ACTION);
     assert_eq!(request.requester_id, m.id);
     assert_eq!(request.payload.0["amount"], 5_000);
-    assert!(approvals::approve(t.state(), request.id, &m, "mine").await.is_err());
+    assert!(
+        approvals::approve(t.state(), request.id, &m, "mine")
+            .await
+            .is_err()
+    );
     assert!(t.cash_settled.all().is_empty());
 
     let decided = approvals::approve(t.state(), request.id, &n, "agreed")
@@ -120,7 +145,9 @@ async fn a_part_recovery_leaves_the_rest_to_write_off() {
     let c = t.counter("Chandra").await;
     let m = t.cash_manager("Mona").await;
     let n = t.cash_manager("Nadia").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
 
     t.recover_part(&c, &handover, "20.00").await.assert_ok();
 
@@ -135,9 +162,14 @@ async fn a_part_recovery_leaves_the_rest_to_write_off() {
     assert_eq!(t.reloaded(&handover).await.status, HandoverStatus::Short);
 
     t.write_off_cash(&m, &handover).await.assert_ok();
-    let request = t.pending_request(&handover.subject()).await.expect("a request waits");
+    let request = t
+        .pending_request(&handover.subject())
+        .await
+        .expect("a request waits");
     assert_eq!(request.payload.0["amount"], 3_000);
-    approvals::approve(t.state(), request.id, &n, "agreed").await.unwrap();
+    approvals::approve(t.state(), request.id, &n, "agreed")
+        .await
+        .unwrap();
 
     let after = t.reloaded(&handover).await;
     assert_eq!(after.status, HandoverStatus::WrittenOff);
@@ -149,7 +181,10 @@ async fn a_part_recovery_leaves_the_rest_to_write_off() {
     assert_eq!(recoveries.len(), 1, "the recovery stays shown");
     assert_eq!(recoveries[0].amount, 2_000);
     let settled = t.cash_settled.all();
-    assert_eq!((settled[0].recovered, settled[0].written_off), (2_000, 3_000));
+    assert_eq!(
+        (settled[0].recovered, settled[0].written_off),
+        (2_000, 3_000)
+    );
 }
 
 /// A recovery recorded while the write-off waits changes what is left: at the
@@ -161,9 +196,14 @@ async fn a_recovery_during_the_approval_fails_the_write_off() {
     let c = t.counter("Chandra").await;
     let m = t.cash_manager("Mona").await;
     let n = t.cash_manager("Nadia").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
     t.write_off_cash(&m, &handover).await.assert_ok();
-    let request = t.pending_request(&handover.subject()).await.expect("a request waits");
+    let request = t
+        .pending_request(&handover.subject())
+        .await
+        .expect("a request waits");
 
     t.recover_part(&c, &handover, "10.00").await.assert_ok();
     let decided = approvals::approve(t.state(), request.id, &n, "agreed")
@@ -178,7 +218,10 @@ async fn a_recovery_during_the_approval_fails_the_write_off() {
     assert!(t.postings(&after).await.is_empty());
     // Asked again for what is left, it can go through.
     t.write_off_cash(&m, &after).await.assert_ok();
-    let again = t.pending_request(&handover.subject()).await.expect("a new request");
+    let again = t
+        .pending_request(&handover.subject())
+        .await
+        .expect("a new request");
     assert_eq!(again.payload.0["amount"], 4_000);
 }
 
@@ -189,14 +232,22 @@ async fn a_write_off_needs_a_reason_and_a_rest() {
     let r = t.holder("Rana").await;
     let c = t.counter("Chandra").await;
     let m = t.cash_manager("Mona").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
 
-    t.cash_post(&m, &format!("/cash/{}/write-off", handover.id), &[("reason", "  ")])
-        .await
-        .assert_status(422);
+    t.cash_post(
+        &m,
+        &format!("/cash/{}/write-off", handover.id),
+        &[("reason", "  ")],
+    )
+    .await
+    .assert_status(422);
     assert!(t.pending_request(&handover.subject()).await.is_none());
 
     t.recover_part(&c, &handover, "50.00").await.assert_ok();
-    t.write_off_cash(&m, &t.reloaded(&handover).await).await.assert_status(422);
+    t.write_off_cash(&m, &t.reloaded(&handover).await)
+        .await
+        .assert_status(422);
     assert!(t.pending_request(&handover.subject()).await.is_none());
 }

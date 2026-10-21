@@ -63,7 +63,10 @@ pub enum VehicleType {
 impl VehicleType {
     /// The type stored as `key`.
     pub fn parse(key: &str) -> Option<VehicleType> {
-        VehicleType::ALL.iter().copied().find(|v| v.as_str() == key.trim())
+        VehicleType::ALL
+            .iter()
+            .copied()
+            .find(|v| v.as_str() == key.trim())
     }
 }
 
@@ -146,7 +149,13 @@ mod tests {
         let statuses: Vec<_> = RunStatus::ALL.iter().map(|s| s.as_str()).collect();
         assert_eq!(
             statuses,
-            ["planned", "dispatched", "returned_to_depot", "closed", "cancelled"]
+            [
+                "planned",
+                "dispatched",
+                "returned_to_depot",
+                "closed",
+                "cancelled"
+            ]
         );
         assert_eq!(VehicleType::parse("on_foot"), Some(VehicleType::OnFoot));
         assert_eq!(VehicleType::parse("boat"), None);

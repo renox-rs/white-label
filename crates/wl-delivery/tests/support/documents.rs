@@ -14,8 +14,8 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::{
-    BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture,
-    DocumentGuard, FlagFailure, InvalidReason, OverrideMode, RecordFlag, Validity, block_subjects,
+    BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture, DocumentGuard,
+    FlagFailure, InvalidReason, OverrideMode, RecordFlag, Validity, block_subjects,
 };
 
 /// The driver's licence (attaches to the employee).
@@ -214,7 +214,11 @@ impl DocumentGuard for Documents {
                     };
                     let message = format!(
                         "{what}; renew: {renewer}; override: {}",
-                        if allowed { "with approval" } else { "not allowed" }
+                        if allowed {
+                            "with approval"
+                        } else {
+                            "not allowed"
+                        }
                     );
                     failures.push(BlockFailure {
                         entry: entry.clone(),

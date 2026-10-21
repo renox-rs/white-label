@@ -25,9 +25,9 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
+use wl_kernel::delivery::{DeliveryAssigned, DeliveryOutForDelivery, RunDispatched};
 use wl_kernel::documents::today;
 use wl_kernel::workforce::workforce;
-use wl_kernel::delivery::{DeliveryAssigned, DeliveryOutForDelivery, RunDispatched};
 
 use crate::delivery::{Delivery, DeliveryStatus};
 use crate::doc_guard;
@@ -181,8 +181,16 @@ fn dispatch_transition() -> Transition<Delivery> {
         .effect(|delivery: &Delivery, _ctx, tx| {
             let id = delivery.id;
             Box::pin(async move {
-                crate::trace::insert_in(&mut *tx, id, crate::trace::DISPATCH, "", "", renox::db::now(), None)
-                    .await
+                crate::trace::insert_in(
+                    &mut *tx,
+                    id,
+                    crate::trace::DISPATCH,
+                    "",
+                    "",
+                    renox::db::now(),
+                    None,
+                )
+                .await
             })
         })
 }
@@ -416,7 +424,11 @@ pub async fn dispatch_run(
         today(),
         Some(user.id),
         || async {
-            let mut tx = state.db.begin().await.map_err(|e| TransitionError::Failed(e.into()))?;
+            let mut tx = state
+                .db
+                .begin()
+                .await
+                .map_err(|e| TransitionError::Failed(e.into()))?;
             let mut outcomes = Vec::new();
             let first = run
                 .transition(run_machine::DISPATCH)
@@ -432,7 +444,9 @@ pub async fn dispatch_run(
                         .await?,
                 );
             }
-            tx.commit().await.map_err(|e| TransitionError::Failed(e.into()))?;
+            tx.commit()
+                .await
+                .map_err(|e| TransitionError::Failed(e.into()))?;
             first.emit(state).await.map_err(TransitionError::Failed)?;
             for outcome in outcomes {
                 outcome.emit(state).await.map_err(TransitionError::Failed)?;

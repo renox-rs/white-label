@@ -308,7 +308,10 @@ async fn show(
                 RecoveryKind::SalaryDeduction => "cash.recovery.kind_deduction",
             }),
             amount: money(recovery.amount),
-            status: t(&format!("cash.recovery.status.{}", recovery.status.as_str())),
+            status: t(&format!(
+                "cash.recovery.status.{}",
+                recovery.status.as_str()
+            )),
             status_kind: match recovery.status {
                 RecoveryStatus::Recorded => "success",
                 RecoveryStatus::Requested | RecoveryStatus::Authorised => "warning",
@@ -583,7 +586,9 @@ async fn store_write_off(
     let reason = form.reason.clone().unwrap_or_default();
     match cash_settle::write_off(&state, &user, &handover, &reason).await {
         Ok(WriteOffRequest::WrittenOff) => Ok(done(&lang, "wl_payments.cash.write_off.done")),
-        Ok(WriteOffRequest::Requested(_)) => Ok(done(&lang, "wl_payments.cash.write_off.requested")),
+        Ok(WriteOffRequest::Requested(_)) => {
+            Ok(done(&lang, "wl_payments.cash.write_off.requested"))
+        }
         Err(error) => Err(refuse(error, "reason", &form)),
     }
 }
@@ -641,7 +646,11 @@ async fn store_shortage(
         _ => None,
     };
     let Some(source) = source else {
-        return Err(invalid("source_type", t("cash.raise.source_required"), &form));
+        return Err(invalid(
+            "source_type",
+            t("cash.raise.source_required"),
+            &form,
+        ));
     };
     let request = RaiseShortage {
         holder_user: holder,
@@ -707,7 +716,11 @@ mod tests {
     #[test]
     fn every_status_kind_and_period_has_a_label() {
         let mut keys: Vec<String> = Vec::new();
-        keys.extend(STATUSES.iter().map(|s| format!("cash.status.{}", s.as_str())));
+        keys.extend(
+            STATUSES
+                .iter()
+                .map(|s| format!("cash.status.{}", s.as_str())),
+        );
         keys.extend(
             ["period", "later_shortage"]
                 .iter()

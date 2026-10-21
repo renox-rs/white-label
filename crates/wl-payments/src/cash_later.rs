@@ -59,7 +59,9 @@ pub(crate) fn raise_problem(request: &RaiseShortage, user_id: i64) -> Option<Str
         return Some("The shortage is above 0.".to_owned());
     }
     if user_id == request.holder_user {
-        return Some("A shortage is raised by someone other than its holder (FIN.ACL.05).".to_owned());
+        return Some(
+            "A shortage is raised by someone other than its holder (FIN.ACL.05).".to_owned(),
+        );
     }
     None
 }

@@ -22,7 +22,9 @@
 //! holder and the manager ([`after_count`]).
 
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
+use renox::state_machine::{
+    StateMachine, Transition, TransitionCtx, TransitionError, Transitioned,
+};
 use serde::{Deserialize, Serialize};
 use wl_kernel::custody::{CashHandoverCounted, CashShortage, HandoverStatus};
 
@@ -242,7 +244,12 @@ pub async fn count(
         holder_absent,
         note: note.map(str::to_owned),
     };
-    let _outcome = handover.transition(name).by(user).input(&input).run(state).await?;
+    let _outcome = handover
+        .transition(name)
+        .by(user)
+        .input(&input)
+        .run(state)
+        .await?;
     reload(state, &handover).await
 }
 
@@ -277,7 +284,12 @@ pub async fn recount(
         holder_absent,
         note: note.map(str::to_owned),
     };
-    let _outcome = handover.transition(name).by(user).input(&input).run(state).await?;
+    let _outcome = handover
+        .transition(name)
+        .by(user)
+        .input(&input)
+        .run(state)
+        .await?;
     reload(state, &handover).await
 }
 
@@ -307,7 +319,10 @@ async fn after_count(state: &AppState, event: &Transitioned<CashHandover>) -> Re
             expected: handover.expected,
             counted: handover.counted,
             status: handover.status,
-            counted_by: handover.recounted_by.or(handover.counted_by).unwrap_or_default(),
+            counted_by: handover
+                .recounted_by
+                .or(handover.counted_by)
+                .unwrap_or_default(),
         })
         .await?;
     if handover.status == HandoverStatus::Short {
@@ -334,9 +349,11 @@ pub(crate) fn shortage_event(handover: &CashHandover) -> CashShortage {
 
 /// Registers the listener of the count transitions.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: Transitioned<CashHandover>, state: AppState| async move {
-        after_count(&state, &event).await
-    });
+    app.listen(
+        |event: Transitioned<CashHandover>, state: AppState| async move {
+            after_count(&state, &event).await
+        },
+    );
 }
 
 #[cfg(test)]

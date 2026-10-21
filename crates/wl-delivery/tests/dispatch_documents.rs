@@ -23,8 +23,11 @@ fn day_text(day: renox::chrono::NaiveDate) -> String {
 async fn assign_is_refused_when_the_licence_expires_before_the_run_date() {
     let w = boot().await;
     w.valid_documents("2099-12-31");
-    w.docs
-        .set(&w.driver_subject(), documents::LICENCE, Some(date("2026-11-10")));
+    w.docs.set(
+        &w.driver_subject(),
+        documents::LICENCE,
+        Some(date("2026-11-10")),
+    );
     let run = w.run_on("2026-11-12").await;
     let delivery = w.simple_delivery().await;
 
@@ -46,8 +49,11 @@ async fn assign_is_refused_when_the_licence_expires_before_the_run_date() {
 async fn assign_succeeds_when_the_licence_is_valid_on_the_run_date() {
     let w = boot().await;
     w.valid_documents("2099-12-31");
-    w.docs
-        .set(&w.driver_subject(), documents::LICENCE, Some(date("2026-11-10")));
+    w.docs.set(
+        &w.driver_subject(),
+        documents::LICENCE,
+        Some(date("2026-11-10")),
+    );
     let run = w.run_on("2026-11-09").await;
     let delivery = w.simple_delivery().await;
 
@@ -80,7 +86,10 @@ async fn dispatch_is_refused_when_the_insurance_expired_yesterday() {
     w.dispatch(&w.dispatcher, &run)
         .await
         .assert_status(422)
-        .assert_see(&format!("Vehicle insurance expired on {}", day_text(yesterday)));
+        .assert_see(&format!(
+            "Vehicle insurance expired on {}",
+            day_text(yesterday)
+        ));
 
     assert_eq!(w.reload_run(&run).await.status, RunStatus::Planned);
     assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Assigned);
@@ -95,7 +104,8 @@ async fn an_on_foot_rider_with_a_valid_permit_is_dispatched_without_a_vehicle() 
     let w = boot().await;
     let far = Some(date("2099-12-31"));
     w.docs.set(&w.driver_subject(), documents::LICENCE, far);
-    w.docs.set(&w.driver_subject(), documents::RIDER_PERMIT, far);
+    w.docs
+        .set(&w.driver_subject(), documents::RIDER_PERMIT, far);
     // No Mulkiya and no insurance exist anywhere: a vehicle check would fail.
     let run = w.on_foot_run_on(&day_text(today())).await;
     let delivery = w.simple_delivery().await;
@@ -119,8 +129,11 @@ async fn an_on_foot_rider_with_a_valid_permit_is_dispatched_without_a_vehicle() 
 async fn a_legal_block_offers_no_override_request() {
     let w = boot().await;
     w.valid_documents("2099-12-31");
-    w.docs
-        .set(&w.vehicle_subject(), documents::MULKIYA, Some(date("2026-01-01")));
+    w.docs.set(
+        &w.vehicle_subject(),
+        documents::MULKIYA,
+        Some(date("2026-01-01")),
+    );
     let run = w.run_on("2026-11-12").await;
     let delivery = w.simple_delivery().await;
 
@@ -145,8 +158,11 @@ async fn a_kind_that_allows_an_override_offers_the_request() {
         false,
     );
     let w = boot_with(WlDelivery::new(), docs).await;
-    w.docs
-        .set(&w.vehicle_subject(), documents::INSURANCE, Some(date("2026-01-01")));
+    w.docs.set(
+        &w.vehicle_subject(),
+        documents::INSURANCE,
+        Some(date("2026-01-01")),
+    );
     let run = w.run_on(&day_text(today())).await;
 
     w.dispatch(&w.dispatcher, &run)
@@ -244,6 +260,8 @@ async fn only_a_holder_of_deliveries_dispatch_assigns() {
     w.valid_documents("2099-12-31");
     let run = w.run_on("2026-11-12").await;
     let delivery = w.simple_delivery().await;
-    w.assign(&w.driver, &delivery, &run).await.assert_forbidden();
+    w.assign(&w.driver, &delivery, &run)
+        .await
+        .assert_forbidden();
     assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Pending);
 }

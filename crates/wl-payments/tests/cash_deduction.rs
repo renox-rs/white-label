@@ -21,10 +21,17 @@ use support::{boot, boot_with};
 #[renox::test]
 async fn with_the_default_setting_the_deduction_is_not_offered_and_is_refused() {
     let t = boot().await;
-    assert!(!t.state().provided::<wl_payments::PaymentsConfig>().unwrap().cash_salary_deduction);
+    assert!(
+        !t.state()
+            .provided::<wl_payments::PaymentsConfig>()
+            .unwrap()
+            .cash_salary_deduction
+    );
     let r = t.holder("Rana").await;
     let c = t.counter("Chandra").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
 
     t.app.acting_as(&c);
     let page = t.app.get(&format!("/cash/{}", handover.id)).await;
@@ -32,9 +39,13 @@ async fn with_the_default_setting_the_deduction_is_not_offered_and_is_refused() 
     page.assert_see("Record a recovery");
     page.assert_dont_see("Deduct from salary");
 
-    t.cash_post(&c, &format!("/cash/{}/deductions", handover.id), &[("amount", "50.00")])
-        .await
-        .assert_status(422);
+    t.cash_post(
+        &c,
+        &format!("/cash/{}/deductions", handover.id),
+        &[("amount", "50.00")],
+    )
+    .await
+    .assert_status(422);
     assert!(t.recoveries(&handover).await.is_empty());
     assert!(t.hr.deductions().is_empty());
     assert_eq!(t.reloaded(&handover).await.status, HandoverStatus::Short);
@@ -53,7 +64,9 @@ async fn a_deduction_needs_an_approval_and_the_holders_acknowledgement_before_it
     let r = t.holder("Rana").await;
     let c = t.counter("Chandra").await;
     let n = t.cash_manager("Nadia").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
 
     // The option is offered now; the holder cannot ask for it.
     t.app.acting_as(&c);
@@ -61,13 +74,21 @@ async fn a_deduction_needs_an_approval_and_the_holders_acknowledgement_before_it
         .get(&format!("/cash/{}", handover.id))
         .await
         .assert_see("Deduct from salary");
-    t.cash_post(&r, &format!("/cash/{}/deductions", handover.id), &[("amount", "50.00")])
-        .await
-        .assert_forbidden();
+    t.cash_post(
+        &r,
+        &format!("/cash/{}/deductions", handover.id),
+        &[("amount", "50.00")],
+    )
+    .await
+    .assert_forbidden();
 
-    t.cash_post(&c, &format!("/cash/{}/deductions", handover.id), &[("amount", "50.00")])
-        .await
-        .assert_ok();
+    t.cash_post(
+        &c,
+        &format!("/cash/{}/deductions", handover.id),
+        &[("amount", "50.00")],
+    )
+    .await
+    .assert_ok();
 
     let recoveries = t.recoveries(&handover).await;
     assert_eq!(recoveries.len(), 1);
@@ -82,26 +103,51 @@ async fn a_deduction_needs_an_approval_and_the_holders_acknowledgement_before_it
     assert_eq!(request.action, ACTION);
     assert_eq!(request.requester_id, c.id);
     assert_eq!(recovery.approval_request_id, Some(request.id));
-    assert!(approvals::approve(t.state(), request.id, &c, "mine").await.is_err());
-    assert!(approvals::approve(t.state(), request.id, &r, "mine").await.is_err());
-    assert_eq!(t.reloaded(&handover).await.recovered, 0, "nothing counts yet");
+    assert!(
+        approvals::approve(t.state(), request.id, &c, "mine")
+            .await
+            .is_err()
+    );
+    assert!(
+        approvals::approve(t.state(), request.id, &r, "mine")
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        t.reloaded(&handover).await.recovered,
+        0,
+        "nothing counts yet"
+    );
 
-    approvals::approve(t.state(), request.id, &n, "agreed").await.unwrap();
+    approvals::approve(t.state(), request.id, &n, "agreed")
+        .await
+        .unwrap();
 
     let authorised = &t.recoveries(&handover).await[0];
     assert_eq!(authorised.status, RecoveryStatus::Authorised);
     assert_eq!(authorised.approved_by, Some(n.id));
-    assert!(t.hr.deductions().is_empty(), "HR hears when the holder agrees");
+    assert!(
+        t.hr.deductions().is_empty(),
+        "HR hears when the holder agrees"
+    );
     assert_eq!(t.reloaded(&handover).await.recovered, 0);
 
     // Only the person it is taken from acknowledges it.
-    t.cash_post(&c, &format!("/cash/recoveries/{}/acknowledge", authorised.id), &[])
-        .await
-        .assert_status(422);
+    t.cash_post(
+        &c,
+        &format!("/cash/recoveries/{}/acknowledge", authorised.id),
+        &[],
+    )
+    .await
+    .assert_status(422);
     assert!(t.hr.deductions().is_empty());
-    t.cash_post(&r, &format!("/cash/recoveries/{}/acknowledge", authorised.id), &[])
-        .await
-        .assert_ok();
+    t.cash_post(
+        &r,
+        &format!("/cash/recoveries/{}/acknowledge", authorised.id),
+        &[],
+    )
+    .await
+    .assert_ok();
 
     let passed = t.hr.deductions();
     assert_eq!(passed.len(), 1);
@@ -120,7 +166,10 @@ async fn a_deduction_needs_an_approval_and_the_holders_acknowledgement_before_it
     t.cash_post(&c, &format!("/cash/{}/recover", handover.id), &[])
         .await
         .assert_ok();
-    assert_eq!(t.reloaded(&handover).await.status, HandoverStatus::Recovered);
+    assert_eq!(
+        t.reloaded(&handover).await.status,
+        HandoverStatus::Recovered
+    );
 }
 
 /// A deduction whose approval is rejected is `rejected`: nothing counts, HR is
@@ -135,10 +184,16 @@ async fn a_deduction_that_is_not_approved_changes_nothing() {
     let r = t.holder("Rana").await;
     let c = t.counter("Chandra").await;
     let n = t.cash_manager("Nadia").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
-    t.cash_post(&c, &format!("/cash/{}/deductions", handover.id), &[("amount", "30.00")])
-        .await
-        .assert_ok();
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
+    t.cash_post(
+        &c,
+        &format!("/cash/{}/deductions", handover.id),
+        &[("amount", "30.00")],
+    )
+    .await
+    .assert_ok();
     let recovery = t.recoveries(&handover).await.remove(0);
     let request = t.pending_request(&recovery.subject()).await.unwrap();
 
@@ -153,10 +208,17 @@ async fn a_deduction_that_is_not_approved_changes_nothing() {
     let handover_after = t.reloaded(&handover).await;
     assert_eq!(handover_after.recovered, 0);
     // The deduction no longer holds room back: the rest can be recovered in cash.
-    t.cash_post(&c, &format!("/cash/{}/recover", handover.id), &[("amount", "50.00")])
-        .await
-        .assert_ok();
-    assert_eq!(t.reloaded(&handover).await.status, HandoverStatus::Recovered);
+    t.cash_post(
+        &c,
+        &format!("/cash/{}/recover", handover.id),
+        &[("amount", "50.00")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(
+        t.reloaded(&handover).await.status,
+        HandoverStatus::Recovered
+    );
 }
 
 /// A deduction larger than what is left is refused, and a deduction waiting
@@ -170,12 +232,22 @@ async fn deductions_stay_within_what_is_left_to_recover() {
     .await;
     let r = t.holder("Rana").await;
     let c = t.counter("Chandra").await;
-    let handover = t.short_handover(&r, "2027-04-01", 230_000, "2250.00", &c).await;
+    let handover = t
+        .short_handover(&r, "2027-04-01", 230_000, "2250.00", &c)
+        .await;
     let path = format!("/cash/{}/deductions", handover.id);
 
-    t.cash_post(&c, &path, &[("amount", "50.01")]).await.assert_status(422);
-    t.cash_post(&c, &path, &[("amount", "30.00")]).await.assert_ok();
-    t.cash_post(&c, &path, &[("amount", "30.00")]).await.assert_status(422);
-    t.cash_post(&c, &path, &[("amount", "20.00")]).await.assert_ok();
+    t.cash_post(&c, &path, &[("amount", "50.01")])
+        .await
+        .assert_status(422);
+    t.cash_post(&c, &path, &[("amount", "30.00")])
+        .await
+        .assert_ok();
+    t.cash_post(&c, &path, &[("amount", "30.00")])
+        .await
+        .assert_status(422);
+    t.cash_post(&c, &path, &[("amount", "20.00")])
+        .await
+        .assert_ok();
     assert_eq!(t.recoveries(&handover).await.len(), 2);
 }
