@@ -201,8 +201,52 @@ pub async fn missing(state: &AppState, visit: &Visit) -> Result<Vec<ChargeLine>>
     Ok(lines)
 }
 
+/// The lot-tracked consumable lines of `visit` whose lot is no longer among
+/// those the branch store offers (put on hold, expired or used up after it was
+/// assigned) while the store still has other lots to offer: the check-out
+/// waits for the desk to pick again, instead of the stock silently leaving
+/// with another lot than the one the line shows.
+///
+/// Decision: when the store has no lot left at all the quantity becomes a
+/// pending issue, as for a line without a lot, so nothing is refused.
+///
+/// # Errors
+///
+/// The database's and the inventory's errors.
+pub async fn no_longer_offered(state: &AppState, visit: &Visit) -> Result<Vec<ChargeLine>> {
+    let mut lines = Vec::new();
+    for line in ChargeLine::active_of(&state.db, visit.id).await? {
+        let Some(wanted) = line.lot_id else { continue };
+        if line.kind != ChargeKind::Consumable || !line.lot_tracked || line.issued_at.is_some() {
+            continue;
+        }
+        let Some(stock) = stock_of(state, visit, &line.code).await? else {
+            continue;
+        };
+        let offered = stock
+            .choice
+            .lots
+            .iter()
+            .any(|lot| lot.lot.subject_id == wanted);
+        if !offered && !stock.choice.lots.is_empty() {
+            lines.push(line);
+        }
+    }
+    Ok(lines)
+}
+
+/// The codes of `lines`, comma separated.
+fn codes_of(lines: &[ChargeLine]) -> String {
+    lines
+        .iter()
+        .map(|line| line.code.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// The app's [`CompleteGuard`]: the check-out of a visit with a lot-tracked
-/// consumable that has no lot is refused with "lot required".
+/// consumable that has no lot, or whose lot is no longer offered, is refused
+/// with "lot required" / "lot no longer available".
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LotGuard;
 
@@ -218,16 +262,20 @@ impl CompleteGuard for LotGuard {
                 return Ok(CheckInAnswer::Allowed);
             };
             let lines = missing(state, &visit).await?;
-            if lines.is_empty() {
+            if !lines.is_empty() {
+                let codes = codes_of(&lines);
+                return Ok(CheckInAnswer::Refused(english(
+                    "clinics.lots.problem.required",
+                    &[("codes", &codes)],
+                )));
+            }
+            let stale = no_longer_offered(state, &visit).await?;
+            if stale.is_empty() {
                 return Ok(CheckInAnswer::Allowed);
             }
-            let codes = lines
-                .iter()
-                .map(|line| line.code.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
+            let codes = codes_of(&stale);
             Ok(CheckInAnswer::Refused(english(
-                "clinics.lots.problem.required",
+                "clinics.lots.problem.not_offered",
                 &[("codes", &codes)],
             )))
         })

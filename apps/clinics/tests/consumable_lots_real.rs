@@ -314,3 +314,78 @@ async fn an_expired_lot_is_not_proposed_and_is_refused() {
         vec![(Some("L1".to_owned()), 1, false)]
     );
 }
+
+/// A lot assigned to the line and put on hold (by a recall) before the
+/// check-out: the check-out is refused ("lot no longer available") instead of
+/// the stock silently leaving with another lot than the line shows; after the
+/// desk picks again, the stock leaves with the new lot.
+#[renox::test]
+async fn a_lot_put_on_hold_after_it_was_assigned_blocks_the_check_out() {
+    let d = desk_with_stock().await;
+    let s = store(&d, 2, 2).await;
+    let (booking, visit) = open_visit(&d).await;
+    record(&d, &visit, 1, "L1").await.assert_ok();
+    let line = ChargeLine::active_of(d.t.db(), visit.id)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(line.lot_number.as_deref(), Some("L1"));
+
+    // A recall of L1 holds it.
+    let mia = d
+        .t
+        .user("Mia", &[wl_inventory::permissions::RECALLS_MANAGE])
+        .await;
+    let item = s.item.id.to_string();
+    d.post(
+        &mia,
+        "/recalls",
+        &[
+            ("source", "supplier"),
+            ("reason", "Contamination"),
+            ("items", item.as_str()),
+            ("lot_numbers", "L1"),
+        ],
+    )
+    .await
+    .assert_ok();
+    let held = wl_inventory::Lot::find_or_404(d.t.db(), s.l1.id)
+        .await
+        .unwrap();
+    assert_eq!(held.status, LotStatus::OnHold);
+
+    let refused = service::complete(
+        d.t.state(),
+        booking.id,
+        Actor::staff(d.rita.id),
+        at(day(1), 18),
+    )
+    .await;
+    let Err(Refusal::Invalid(text)) = refused else {
+        panic!("the check-out is refused: {refused:?}");
+    };
+    assert!(text.contains("Lot no longer available"), "{text}");
+    assert!(text.contains("filler"), "{text}");
+    assert!(issued(&d, &visit).await.is_empty());
+
+    // The held lot is not offered again; the blank pick takes L2.
+    d.post(
+        &d.rita,
+        &format!("/clinics/visits/{}/lots", visit.id),
+        &[("line", line.id.to_string().as_str()), ("lot", "L1")],
+    )
+    .await
+    .assert_status(422);
+    d.post(
+        &d.rita,
+        &format!("/clinics/visits/{}/lots", visit.id),
+        &[("line", line.id.to_string().as_str()), ("lot", "")],
+    )
+    .await
+    .assert_ok();
+    d.complete(&booking).await;
+    assert_eq!(
+        issued(&d, &visit).await,
+        vec![(Some("L2".to_owned()), 1, false)]
+    );
+}

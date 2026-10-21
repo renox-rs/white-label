@@ -1112,6 +1112,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Lot required: set the lot of :codes before the visit is checked out.",
     ),
     (
+        "clinics.lots.problem.not_offered",
+        "Lot no longer available: the lot of :codes is on hold, expired or used up; pick another lot before the visit is checked out.",
+    ),
+    (
         "clinics.lots.problem.no_line",
         "This is not a consumable of the visit that needs a lot.",
     ),
