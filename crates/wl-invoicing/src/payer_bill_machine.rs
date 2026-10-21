@@ -77,6 +77,9 @@ impl StateMachine for PayerBill {
     }
 }
 
+/// The approval action of the void of a payer bill.
+pub const VOID_ACTION: &str = "invoicing.payer_bill_void";
+
 /// Registers the machine as the subject `invoicing.payer_bill` and for
 /// `rnx state:diagram PayerBill`.
 pub(crate) fn register() {
@@ -97,6 +100,11 @@ pub(crate) fn register() {
         );
     }
     machine = machine.action(payer_closing::WRITE_OFF, payer_closing::WRITE_OFF_ACTION);
+    // Decision: the void of a payer bill has its own approval action. Without
+    // it the key defaults to `invoicing.void`, which the supplier bill's
+    // `void` shares, and the kernel's default void policy of the payer bill
+    // (`posted` above 0) would then be matched against the supplier bill's.
+    machine = machine.action(wl_kernel::voids::VOID, VOID_ACTION);
     machine.register();
     renox::state_machine::register::<PayerBill>();
     payer_policy::money_policy().register();
@@ -136,6 +144,21 @@ pub(crate) fn register_events(app: &mut Registry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_void_of_a_payer_bill_does_not_share_the_modules_void_key() {
+        let machine = SubjectMachine::of::<PayerBill>(SUBJECT_TYPE).action("void", VOID_ACTION);
+        let machine = machine.build();
+        assert_eq!(machine.action_key("void"), "invoicing.payer_bill_void");
+        assert_ne!(
+            machine.action_key("void"),
+            wl_kernel::machines::SubjectMachine::of::<crate::SupplierBill>(
+                "invoicing.supplier_bill"
+            )
+            .build()
+            .action_key("void")
+        );
+    }
 
     #[test]
     fn the_seven_states_and_their_tones() {
