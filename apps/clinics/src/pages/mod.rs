@@ -4,6 +4,7 @@
 
 pub mod appointments;
 pub mod authorisations;
+pub mod contracts;
 pub mod policies;
 pub mod visits;
 
@@ -25,6 +26,7 @@ pub fn routes() -> Routes {
         .merge(policies::routes())
         .merge(appointments::routes())
         .merge(authorisations::routes())
+        .merge(contracts::routes())
         .merge(visits::routes())
 }
 

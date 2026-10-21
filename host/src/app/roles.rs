@@ -94,6 +94,9 @@ pub const CLINIC_MANAGER: &str = cln::CLINIC_MANAGER_ROLE;
 /// The receptionist of a branch (05 §3.1): books, checks in and records the
 /// coverage outcome of an insured visit (`CLN.ACL.15`).
 pub const RECEPTIONIST: &str = cln::RECEPTIONIST_ROLE;
+/// The practitioner of a branch (05 §3.1): records the services delivered on
+/// a visit and the consumables used (`CLN.ENC.01`).
+pub const PRACTITIONER: &str = cln::PRACTITIONER_ROLE;
 /// The billing coordinator (05 §3.1): prepares and follows the prior
 /// authorisations and is asked to request a new one when one stops covering
 /// an appointment (`CLN.RUL.07`, `CLN.RUL.09`).
@@ -300,6 +303,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::POLICIES_MANAGE,
             cln::COVERAGE_RECORD,
             cln::AUTHORISATIONS_MANAGE,
+            cln::CHARGES_CAPTURE,
+            cln::CHARGES_DESK,
             inventory::RECALLS_MANAGE,
             con::PROJECTS_VIEW,
             con::PROJECTS_MANAGE,
@@ -826,6 +831,17 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::POLICIES_MANAGE,
             cln::COVERAGE_RECORD,
             cln::AUTHORISATIONS_MANAGE,
+            cln::CHARGES_CAPTURE,
+            cln::CHARGES_DESK,
+        ],
+    ),
+    (
+        PRACTITIONER,
+        &[
+            scheduling::VIEW,
+            cln::VISITS_VIEW,
+            cln::CHARGES_CAPTURE,
+            cln::CHARGES_DESK,
         ],
     ),
     (
@@ -848,6 +864,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::POLICIES_VIEW,
             cln::POLICIES_MANAGE,
             cln::COVERAGE_RECORD,
+            cln::CHARGES_DESK,
         ],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),

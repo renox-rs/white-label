@@ -7,8 +7,13 @@ pub mod auth_check;
 pub mod authorisation;
 pub mod authorisation_machine;
 pub mod authorisations;
+pub mod billing;
 pub mod card_requests;
+pub mod charge;
+pub mod charges;
 pub mod consent;
+pub mod contract;
+pub mod contracts;
 pub mod coverage;
 mod db;
 pub mod flags;
@@ -20,6 +25,7 @@ pub mod policy;
 pub mod prior_auth_rules;
 pub mod reasons;
 pub mod seed;
+pub mod split;
 mod texts;
 pub mod visit;
 pub mod visit_machine;
@@ -31,7 +37,9 @@ use renox::prelude::*;
 
 pub use appointment::Appointment;
 pub use authorisation::{AuthStatus, AuthorisationHold, PriorAuthService, PriorAuthorisation};
+pub use charge::{ChargeKind, ChargeLine};
 pub use consent::{ConsentLine, SelfPayConsent};
+pub use contract::{PayerContract, PayerTariff};
 pub use coverage::{CoverageOutcome, PendingCheckIn};
 pub use flags::{AppointmentFlag, FlagCause};
 pub use licences::LicenceAlert;
@@ -56,6 +64,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "clinics/visit.html",
         include_str!("../views/clinics/visit.html"),
+    ),
+    (
+        "clinics/contracts.html",
+        include_str!("../views/clinics/contracts.html"),
     ),
     (
         "clinics/authorisations.html",
@@ -103,6 +115,7 @@ impl Module for Clinics {
             .view_data::<pages::appointments::IndexPage>()
             .view_data::<pages::appointments::ShowPage>()
             .view_data::<pages::visits::ShowPage>()
+            .view_data::<pages::contracts::IndexPage>()
             .view_data::<pages::authorisations::IndexPage>()
             .view_data::<pages::authorisations::ShowPage>();
         app.templates(|env| {
@@ -124,13 +137,19 @@ impl Module for Clinics {
             .model::<PriorAuthorisation>()
             .model::<PriorAuthService>()
             .model::<AuthorisationHold>()
-            .model::<AppointmentFlag>();
+            .model::<AppointmentFlag>()
+            .model::<ChargeLine>()
+            .model::<PayerContract>()
+            .model::<PayerTariff>();
         visit_machine::register();
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
         appointments::register(app);
         // The check-in opens the visit, which follows the booking.
         visits::register(app);
+        // What the visit did, for wl-scheduling's cancel after the check-in
+        // (`SCH.ACL.06`): answered from the charge lines (BL-CLN-05).
+        wl_kernel::scheduling::provide_work_done_status(app, charges::ChargeWork);
         // `CLN.ACL.15`: an insured visit is checked in only with its coverage
         // outcome (BL-CLN-01).
         coverage::register(app);
@@ -162,6 +181,14 @@ impl Module for Clinics {
                 .icon("file-text")
                 .group("nav.app")
                 .order(72)
+                .permission(permissions::POLICIES_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("clinics.contracts", "nav.payer_contracts")
+                .icon("receipt")
+                .group("nav.app")
+                .order(73)
                 .permission(permissions::POLICIES_VIEW),
         );
         app.nav(

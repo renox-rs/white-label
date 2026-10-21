@@ -91,6 +91,46 @@ pub struct Visit {
     pub coverage_policy_id: Option<i64>,
     /// The signed self-pay consent of a *self-pay* visit.
     pub consent_id: Option<i64>,
+    /// The practitioner or the desk set the work done to *none* (nothing was
+    /// delivered and no consumable issued): `SCH.ACL.06`.
+    pub work_none: bool,
+    /// The user who recorded that the patient accepts the work done after
+    /// the clinic stopped the visit.
+    pub work_accepted_by: Option<i64>,
+    /// When the patient's acceptance was recorded.
+    pub work_accepted_at: Option<DateTime>,
+    /// The practitioner decided the planned procedure is not suitable
+    /// (BL-CLN-06); the app keeps the outcome, never the clinical reason.
+    pub not_suitable: bool,
+    /// The receptionist chose to refund the deposit in full instead of
+    /// applying it to the patient share (BL-CLN-06).
+    pub deposit_refund_full: bool,
+    /// When the visit was billed; `None` until it is.
+    pub billed_at: Option<DateTime>,
+    /// The patient's invoice (`invoicing.invoice`), when there was a patient
+    /// share.
+    pub invoice_id: Option<i64>,
+    /// The draft payer bill (`invoicing.payer_bill`), when there was a payer
+    /// share.
+    pub payer_bill_id: Option<i64>,
+    /// When the prior-authorisation units of the bill were consumed.
+    pub authorisations_consumed_at: Option<DateTime>,
+    /// When the deposit was applied and the remainder refunded.
+    pub deposit_settled_at: Option<DateTime>,
+    /// The patient share of the bill, in fils.
+    pub patient_total: i64,
+    /// The payer share of the bill, in fils.
+    pub payer_total: i64,
+    /// The part of the deposit applied to the patient share, in fils.
+    pub deposit_applied: i64,
+    /// The part of the deposit the app asked back on completion, in fils.
+    pub deposit_refunded: i64,
+    /// The cancellation was the clinic's side (a business-initiated reason),
+    /// as the bill saw it.
+    pub clinic_stop: bool,
+    /// The part of the deposit wl-scheduling applied to the work done when
+    /// it cancelled the booking, in fils.
+    pub scheduling_applied: i64,
     /// The lifecycle state; changed only by a transition.
     pub status: VisitStatus,
     /// When the row was created.

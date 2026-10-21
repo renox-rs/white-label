@@ -125,6 +125,15 @@ async fn a_cancellation_after_the_check_in_cancels_the_visit() {
     service::check_in(t.state(), booking.id, Actor::staff(1), now())
         .await
         .unwrap();
+    // The work done is captured or marked none before the cancel
+    // (`SCH.ACL.06`).
+    let open = Visit::of_booking(t.db(), booking.id)
+        .await
+        .unwrap()
+        .unwrap();
+    clinics::charges::mark_none(t.state(), open.id)
+        .await
+        .expect("nothing was done");
     service::cancel(
         t.state(),
         booking.id,

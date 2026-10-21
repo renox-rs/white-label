@@ -21,6 +21,14 @@ pub const COVERAGE_RECORD: &str = "coverage.record";
 /// (`CLN.INS.03`: the billing coordinator's).
 pub const AUTHORISATIONS_MANAGE: &str = "insurance.manage";
 
+/// Record the services delivered on a visit, mark the planned procedure not
+/// suitable and bill the visit (`CLN.ENC.01`: the practitioner's).
+pub const CHARGES_CAPTURE: &str = "charges.capture";
+/// Record the consumables issued to a visit, set the work done to *none*,
+/// record the patient's acceptance of the work done and choose to refund the
+/// deposit in full (the front desk's and the nurse's).
+pub const CHARGES_DESK: &str = "charges.desk";
+
 /// The owner / medical director: told when a practitioner licence expires
 /// (`CLN.RUL.01`) and alerted when a compliance-critical rule fails.
 pub const OWNER_ROLE: &str = "owner";
@@ -34,3 +42,6 @@ pub const RECEPTIONIST_ROLE: &str = "receptionist";
 /// and is asked to request a new one when one stops covering an appointment
 /// (`CLN.RUL.07`, `CLN.RUL.09`).
 pub const BILLING_COORDINATOR_ROLE: &str = "billing_coordinator";
+/// The practitioner (doctor, dentist, therapist): sees the own visits and
+/// records the charges of the services delivered (`CLN.ENC.01`).
+pub const PRACTITIONER_ROLE: &str = "practitioner";

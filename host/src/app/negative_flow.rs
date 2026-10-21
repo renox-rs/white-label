@@ -83,6 +83,9 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
             module
         }
         "construction" => super::construction_seed::invoicing(module, entities),
+        // The patient's share of a visit is issued at once, so that the
+        // deposit held for the booking can be allocated to it (BL-CLN-05).
+        super::clinics_seed::CLINICS => module.auto_issue_source("clinics.visit"),
         // The retainer of an engagement bills itself: its cycle invoices
         // are issued at once, so that ending the engagement can credit the
         // cycle already invoiced in advance (BL-ACC-06).

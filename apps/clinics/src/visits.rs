@@ -13,10 +13,11 @@ use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::parties::PARTY_SUBJECT_TYPE;
 use wl_kernel::scheduling::{
-    BookingCancelled, BookingCheckedIn, BookingCompleted, BookingStarted, CancelStage,
+    BookingCancelled, BookingCheckedIn, BookingCompleted, BookingStarted, CancelStage, Initiator,
 };
 
 use crate::appointment::Appointment;
+use crate::billing::{self, Basis};
 use crate::visit::{Visit, VisitStatus};
 use crate::visit_machine::{CANCEL, CHECK_IN, COMPLETE, START, VisitInput};
 
@@ -127,6 +128,12 @@ pub async fn on_completed(state: &AppState, event: &BookingCompleted) -> Result<
     };
     let visit = follow(state, event.booking.0, COMPLETE, &input).await?;
     release(state, visit.as_ref()).await?;
+    // The charge lines are priced, split and billed (`CLN.ENC.02`).
+    if let Some(done) = &visit
+        && done.status == VisitStatus::Completed
+    {
+        billing::bill(state, done.id, Basis::Completed).await?;
+    }
     Ok(visit)
 }
 
@@ -146,6 +153,17 @@ pub async fn on_cancelled(state: &AppState, event: &BookingCancelled) -> Result<
     };
     let visit = follow(state, event.booking.0, CANCEL, &input).await?;
     release(state, visit.as_ref()).await?;
+    // The work done is billed (BL-CLN-05): a walk-out as a normal visit, a
+    // clinic stop only when the patient accepted it.
+    if let Some(stopped) = &visit
+        && stopped.status == VisitStatus::Cancelled
+    {
+        let basis = Basis::Cancelled {
+            business: event.initiated_by == Initiator::Business,
+            deposit_applied: event.deposit_applied,
+        };
+        billing::bill(state, stopped.id, basis).await?;
+    }
     Ok(visit)
 }
 
