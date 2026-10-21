@@ -45,7 +45,10 @@ async fn world(points: i64) -> (Booted, Shop, Floor, LoyaltyAccount, User) {
 }
 
 async fn adjust(t: &Booted, m: &LoyaltyAccount, points: &str, reason: &str, status: u16) {
-    t.app
+    // A validation error answers a plain form post with a redirect back; the
+    // 422 is what an htmx request sees.
+    let request = if status == 422 { t.app.htmx() } else { t.app.request() };
+    request
         .post(
             &format!("/loyalty/accounts/{}/adjust", m.id),
             &[("points", points), ("reason", reason)],

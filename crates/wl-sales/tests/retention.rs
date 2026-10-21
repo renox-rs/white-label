@@ -380,6 +380,7 @@ async fn the_report_counts_the_recipients_who_bought_within_the_response_days() 
         entry_date: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
         amount: 30_000,
         requested_by: w.a.id,
+        status: CostStatus::Approved,
         ..CostEntry::default()
     };
     let mut tx = w.t.db().begin().await.unwrap();

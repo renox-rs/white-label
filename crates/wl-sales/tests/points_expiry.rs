@@ -310,6 +310,7 @@ async fn the_liability_report_values_120000_points_at_aed_1200_and_counts_negati
         .assert_see("AED 1,200.00")
         .assert_see("120000");
     t.app
+        .htmx()
         .get("/loyalty/liability?as_at=31-12")
         .await
         .assert_status(422);

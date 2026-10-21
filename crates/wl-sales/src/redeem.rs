@@ -721,10 +721,18 @@ pub async fn give_back(
         let end = start + size;
         let overlap = to.min(end) - from.max(start);
         if overlap > 0 {
-            let expires = slice
-                .lot_expires_on
-                .filter(|day| *day >= on)
-                .unwrap_or(fallback);
+            // The lot's own expiry decides (the slice only copied it when the
+            // points were spent); a lot that has lapsed gets the setting's days.
+            let lot_day = match slice.lot_id {
+                Some(lot_id) => PointsMovement::query()
+                    .where_(PointsMovement::ID.eq(lot_id))
+                    .first(&mut tx)
+                    .await?
+                    .and_then(|lot| lot.lot_expires_on),
+                None => None,
+            }
+            .or(slice.lot_expires_on);
+            let expires = lot_day.filter(|day| *day >= on).unwrap_or(fallback);
             PointsMovement {
                 account_id: account.id,
                 kind: PointsKind::ReverseRedeem,

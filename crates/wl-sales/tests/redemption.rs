@@ -660,10 +660,12 @@ async fn cancelling_one_of_two_equal_lines_of_a_confirmed_order_gives_back_250_o
     let url = format!("/sales-orders/{}/cancel-line", order.id);
     // A reason is required, the quantity must be open, and something must stay.
     t.app
+        .htmx()
         .post(&url, &[("line_no", "1"), ("quantity", "1"), ("reason", "")])
         .await
         .assert_status(422);
     t.app
+        .htmx()
         .post(&url, &[("line_no", "1"), ("quantity", "2"), ("reason", "Changed mind")])
         .await
         .assert_status(422);

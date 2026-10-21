@@ -256,7 +256,7 @@ async fn a_request_asks_for_a_sale_that_was_completed_and_for_quantities_it_hold
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.as_str()))
                 .collect();
-            t.app.post("/sales-returns", &borrowed).await
+            t.app.htmx().post("/sales-returns", &borrowed).await
         }
     };
     post(fields(cart.id, cart_line.id, "1")).await.assert_status(422);

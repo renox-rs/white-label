@@ -337,6 +337,7 @@ pub async fn sale_at(t: &Booted, party: i64, at: DateTime, net: i64, item: &str)
         net_total: net,
         vat_total: net / 20,
         gross_total: net + net / 20,
+        status: CounterSaleStatus::Completed,
         completed_at: Some(at),
         ..CounterSale::default()
     };
