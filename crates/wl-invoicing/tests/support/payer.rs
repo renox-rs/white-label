@@ -8,8 +8,8 @@ use renox::auth::permissions;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_invoicing::payer_bill::lines_of;
-use wl_invoicing::{CreditNote, Invoice, PayerAgreement, PayerBill, PayerBillLine, VatRecipient};
 use wl_invoicing::permissions as perm;
+use wl_invoicing::{CreditNote, Invoice, PayerAgreement, PayerBill, PayerBillLine, VatRecipient};
 use wl_kernel::documents::today;
 use wl_kernel::payer_bills::{
     NewPayerBill, NewPayerBillLine, PayerBillClosed, PayerBillId, PayerBillIssued,
@@ -101,7 +101,10 @@ impl Booted {
             .unwrap()
             .unwrap();
         change(&mut changed);
-        changed.save(self.db()).await.expect("the agreement is saved");
+        changed
+            .save(self.db())
+            .await
+            .expect("the agreement is saved");
         changed
     }
 

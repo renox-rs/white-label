@@ -187,7 +187,10 @@ pub const SUBJECT_TYPE: &str = PAYER_BILL_SUBJECT_TYPE;
 
 /// One line of a [`PayerBill`]. Money is `i64` fils of the bill's currency.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_invoicing_payer_bill_lines", unique(payer_bill_id, position))]
+#[model(
+    table = "wl_invoicing_payer_bill_lines",
+    unique(payer_bill_id, position)
+)]
 pub struct PayerBillLine {
     /// The primary key.
     pub id: i64,

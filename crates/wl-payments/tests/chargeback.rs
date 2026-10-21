@@ -36,7 +36,9 @@ async fn boot() -> Booted {
 /// confirmed and allocated to a new invoice of the same amount.
 async fn paid_online(t: &Booted, amount: i64, by: &User) -> Payment {
     let invoice = t.invoices.add(BLUE_DUNES, "INV-9", amount);
-    let link = t.link(BLUE_DUNES, amount, Some(invoice), None, Some(by)).await;
+    let link = t
+        .link(BLUE_DUNES, amount, Some(invoice), None, Some(by))
+        .await;
     let payment = t.start_online(&link).await;
     wl_payments::online::gateway_succeeded(
         t.state(),
@@ -95,7 +97,10 @@ async fn a_dispute_webhook_charges_the_payment_back_and_opens_the_evidence_task(
     assert_eq!(reversed[0].reason, ReversalReason::Chargeback);
     assert_eq!(reversed[0].removed.len(), 1);
     assert_eq!(reversed[0].removed[0].amount, 80_000);
-    assert_eq!(reversed[0].removed[0].target.subject_type, "invoicing.invoice");
+    assert_eq!(
+        reversed[0].removed[0].target.subject_type,
+        "invoicing.invoice"
+    );
 
     // The fee: an outgoing payment to the gateway provider, bank charges,
     // allocated to nothing.
@@ -111,7 +116,10 @@ async fn a_dispute_webhook_charges_the_payment_back_and_opens_the_evidence_task(
     assert_eq!(fee.status, PaymentStatus::Received);
     assert!(fee.number.as_deref().is_some_and(|n| n.starts_with("PV-")));
     assert!(t.allocations(&fee).await.is_empty());
-    assert_eq!(t.payment(charged.id).await.dispute_fee_payment_id, Some(fee.id));
+    assert_eq!(
+        t.payment(charged.id).await.dispute_fee_payment_id,
+        Some(fee.id)
+    );
 
     // The accountant's evidence task, with the deadline and the links.
     let tasks = t.tasks(&charged).await;
@@ -121,10 +129,17 @@ async fn a_dispute_webhook_charges_the_payment_back_and_opens_the_evidence_task(
     assert_eq!(task.due_on, Some(day(2027, 2, 10)));
     assert_eq!(task.role, "accountant");
     assert!(task.text.contains("10 Feb 2027"), "{}", task.text);
-    assert!(!task.text.contains("Enter the dispute fee"), "{}", task.text);
+    assert!(
+        !task.text.contains("Enter the dispute fee"),
+        "{}",
+        task.text
+    );
     let links = task.evidence.0["links"].to_string();
     assert!(links.contains("Invoice INV-9"), "{links}");
-    assert!(links.contains(&format!("/payments/{}", charged.id)), "{links}");
+    assert!(
+        links.contains(&format!("/payments/{}", charged.id)),
+        "{links}"
+    );
     // The accountant and the staff member who took the payment are told.
     assert!(told(&t, accountant.id));
     assert!(told(&t, staff.id));
@@ -154,9 +169,7 @@ async fn the_reminder_comes_two_days_before_the_deadline_once_and_not_after_the_
     let t = boot().await;
     let staff = t.user_a().await;
     let accountant = t.accountant("Rita").await;
-    let chargeback_user = t
-        .user("Cara", &[perm::VIEW, perm::CHARGEBACK])
-        .await;
+    let chargeback_user = t.user("Cara", &[perm::VIEW, perm::CHARGEBACK]).await;
     let waiting = paid_online(&t, 80_000, &staff).await;
     let submitted = paid_online(&t, 50_000, &staff).await;
     for (payment, reference) in [(&waiting, "dp_1"), (&submitted, "dp_2")] {
@@ -190,7 +203,10 @@ async fn the_reminder_comes_two_days_before_the_deadline_once_and_not_after_the_
         .unwrap();
     assert_eq!(sent, 0);
     let sent = chargeback::run_reminders(t.state(), at).await.unwrap();
-    assert_eq!(sent, 1, "only the dispute whose evidence is still to submit");
+    assert_eq!(
+        sent, 1,
+        "only the dispute whose evidence is still to submit"
+    );
     let reminders: Vec<String> = t
         .notices
         .of_type(wl_payments::notices::ONLINE_TASK)
@@ -309,7 +325,14 @@ async fn a_chargeback_is_refused_without_what_it_needs() {
         .assert_status(422);
     t.app
         .htmx()
-        .post(&path, &[("reference", "NG-1"), ("deadline", "2027-03-05"), ("fee", "abc")])
+        .post(
+            &path,
+            &[
+                ("reference", "NG-1"),
+                ("deadline", "2027-03-05"),
+                ("fee", "abc"),
+            ],
+        )
         .await
         .assert_status(422);
     assert_eq!(t.payment(online.id).await.status, PaymentStatus::Received);
@@ -333,7 +356,11 @@ async fn a_chargeback_is_refused_without_what_it_needs() {
         .assert_ok();
     let tasks = t.tasks(&t.payment(online.id).await).await;
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].text.contains("Enter the dispute fee"), "{}", tasks[0].text);
+    assert!(
+        tasks[0].text.contains("Enter the dispute fee"),
+        "{}",
+        tasks[0].text
+    );
     let fees = Payment::query()
         .where_(Payment::PURPOSE.eq(BANK_CHARGES))
         .count(t.db())

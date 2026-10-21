@@ -139,12 +139,8 @@ impl PayerCredits for Credits {
 
 /// Registers the listeners of `RefundApproved` and `RefundFailed`.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: RefundApproved, state: AppState| async move {
-        take(&state, &event).await
-    });
-    app.listen(|event: RefundFailed, state: AppState| async move {
-        restore(&state, &event).await
-    });
+    app.listen(|event: RefundApproved, state: AppState| async move { take(&state, &event).await });
+    app.listen(|event: RefundFailed, state: AppState| async move { restore(&state, &event).await });
 }
 
 #[cfg(test)]

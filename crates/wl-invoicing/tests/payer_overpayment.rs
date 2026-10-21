@@ -54,7 +54,9 @@ async fn remit(
 
 /// The pending approval requests about `bill`.
 async fn pending(t: &Booted, bill: &PayerBill) -> Vec<ApprovalRequest> {
-    approvals::pending_for(t.db(), &bill.subject()).await.unwrap()
+    approvals::pending_for(t.db(), &bill.subject())
+        .await
+        .unwrap()
 }
 
 /// The credit balance of the payer of `bill`.
@@ -74,14 +76,22 @@ async fn an_overpayment_is_held_until_a_second_person_approves() {
     let a = t.reconciler("Ana").await;
     let b = t.reconciler("Bea").await;
 
-    remit(&t, &bill, &a, "ADV-1", "450.00", &[]).await.assert_redirect(&format!("/payer-bills/{}", bill.id));
+    remit(&t, &bill, &a, "ADV-1", "450.00", &[])
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", bill.id));
 
     // Held: nothing is recorded, the bill is as it was.
     let held = t.reload_bill(&bill).await;
     assert_eq!(held.status, PayerBillStatus::Issued);
     assert!(!held.has_remittance);
     assert_eq!(held.paid_total, 0);
-    assert!(PayerRemittance::query().get(t.db()).await.unwrap().is_empty());
+    assert!(
+        PayerRemittance::query()
+            .get(t.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(credit(&t, &bill).await, 0);
     assert!(t.payer.remitted.all().is_empty());
     let requests = pending(&t, &bill).await;
@@ -99,7 +109,10 @@ async fn an_overpayment_is_held_until_a_second_person_approves() {
     assert_eq!((paid.paid_total, paid.balance), (40_000, 0));
     assert!(paid.has_remittance);
     assert!(!paid.in_ageing, "nothing is open any more");
-    assert_eq!(paid.last_remittance_on, Some(support::payer::d("2026-12-10")));
+    assert_eq!(
+        paid.last_remittance_on,
+        Some(support::payer::d("2026-12-10"))
+    );
     let line = t.bill_lines(&paid).await.remove(0);
     assert_eq!(line.paid, 40_000);
     let allocations = PayerAllocation::query().get(t.db()).await.unwrap();
@@ -123,7 +136,9 @@ async fn the_reconciler_cannot_approve_their_own_overpayment() {
     let t = boot().await;
     let bill = issued_bill(&t).await;
     let a = t.reconciler("Ana").await;
-    remit(&t, &bill, &a, "ADV-1", "450.00", &[]).await.assert_redirect(&format!("/payer-bills/{}", bill.id));
+    remit(&t, &bill, &a, "ADV-1", "450.00", &[])
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", bill.id));
     let request = pending(&t, &bill).await.remove(0);
 
     let refused = approvals::approve(t.state(), request.id, &a, "").await;
@@ -140,7 +155,9 @@ async fn a_rejected_overpayment_records_nothing() {
     let bill = issued_bill(&t).await;
     let a = t.reconciler("Ana").await;
     let b = t.reconciler("Bea").await;
-    remit(&t, &bill, &a, "ADV-1", "450.00", &[]).await.assert_redirect(&format!("/payer-bills/{}", bill.id));
+    remit(&t, &bill, &a, "ADV-1", "450.00", &[])
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", bill.id));
     let request = pending(&t, &bill).await.remove(0);
 
     approvals::reject(t.state(), request.id, &b, "The advice is wrong")
@@ -154,12 +171,20 @@ async fn a_rejected_overpayment_records_nothing() {
     let same = t.reload_bill(&bill).await;
     assert_eq!(same.status, PayerBillStatus::Issued);
     assert!(!same.has_remittance);
-    assert!(PayerRemittance::query().get(t.db()).await.unwrap().is_empty());
+    assert!(
+        PayerRemittance::query()
+            .get(t.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(credit(&t, &bill).await, 0);
 
     // The corrected advice, paying what is open, needs no approval and uses
     // the same reference.
-    remit(&t, &bill, &a, "ADV-1", "400.00", &[]).await.assert_redirect(&format!("/payer-bills/{}", bill.id));
+    remit(&t, &bill, &a, "ADV-1", "400.00", &[])
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", bill.id));
     assert_eq!(t.reload_bill(&bill).await.status, PayerBillStatus::Paid);
     assert!(pending(&t, &bill).await.is_empty());
 }
@@ -175,12 +200,12 @@ async fn an_advice_reference_is_recorded_once_per_payer() {
         .payer_bill(&agreement, today(), &[("Consultation", 40_000)])
         .await;
     let first = t.issue_payer_bill(&first, &cora).await;
-    let second = t
-        .payer_bill(&agreement, today(), &[("Lab", 20_000)])
-        .await;
+    let second = t.payer_bill(&agreement, today(), &[("Lab", 20_000)]).await;
     let second = t.issue_payer_bill(&second, &cora).await;
 
-    remit(&t, &first, &a, "ADV-7", "200.00", &[]).await.assert_redirect(&format!("/payer-bills/{}", first.id));
+    remit(&t, &first, &a, "ADV-7", "200.00", &[])
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", first.id));
     assert_eq!(
         t.reload_bill(&first).await.status,
         PayerBillStatus::PartiallyPaid
@@ -203,9 +228,13 @@ async fn a_recoupment_reopens_the_line_as_denied_and_uses_the_credit_first() {
     let a = t.reconciler("Ana").await;
     let b = t.reconciler("Bea").await;
     // AED 400.00 paid, AED 50.00 over (approved) as the credit balance.
-    remit(&t, &bill, &a, "ADV-1", "450.00", &[]).await.assert_redirect(&format!("/payer-bills/{}", bill.id));
+    remit(&t, &bill, &a, "ADV-1", "450.00", &[])
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", bill.id));
     let request = pending(&t, &bill).await.remove(0);
-    approvals::approve(t.state(), request.id, &b, "").await.unwrap();
+    approvals::approve(t.state(), request.id, &b, "")
+        .await
+        .unwrap();
     assert_eq!(credit(&t, &bill).await, 5_000);
     let line = t.bill_lines(&bill).await.remove(0);
 
@@ -229,7 +258,13 @@ async fn a_recoupment_reopens_the_line_as_denied_and_uses_the_credit_first() {
     let waiting = t.reload_bill(&bill).await;
     assert_eq!(waiting.status, PayerBillStatus::Paid);
     assert_eq!(waiting.paid_total, 40_000);
-    assert!(PayerRecoupment::query().get(t.db()).await.unwrap().is_empty());
+    assert!(
+        PayerRecoupment::query()
+            .get(t.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let request = pending(&t, &bill).await.remove(0);
     assert_eq!(request.payload.0["amount"], 40_000);
     // A cannot approve it.
@@ -238,7 +273,9 @@ async fn a_recoupment_reopens_the_line_as_denied_and_uses_the_credit_first() {
         Err(Error::Forbidden)
     ));
 
-    approvals::approve(t.state(), request.id, &b, "").await.unwrap();
+    approvals::approve(t.state(), request.id, &b, "")
+        .await
+        .unwrap();
 
     let denied = t.reload_bill(&bill).await;
     assert_eq!(denied.status, PayerBillStatus::Denied);
@@ -272,7 +309,9 @@ async fn a_recoupment_above_what_was_paid_is_refused() {
     let t = boot().await;
     let bill = issued_bill(&t).await;
     let a = t.reconciler("Ana").await;
-    remit(&t, &bill, &a, "ADV-1", "400.00", &[]).await.assert_redirect(&format!("/payer-bills/{}", bill.id));
+    remit(&t, &bill, &a, "ADV-1", "400.00", &[])
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", bill.id));
     assert_eq!(t.reload_bill(&bill).await.status, PayerBillStatus::Paid);
     let line = t.bill_lines(&bill).await.remove(0);
     let field = format!("line_{}_recouped", line.id);
@@ -300,7 +339,11 @@ async fn a_partial_recoupment_leaves_the_bill_partly_paid() {
     let b = t.reconciler("Bea").await;
     let agreement = t.agreement(BLUE_DUNES, VatRecipient::Customer).await;
     let bill = t
-        .payer_bill(&agreement, today(), &[("Consultation", 40_000), ("Lab", 10_000)])
+        .payer_bill(
+            &agreement,
+            today(),
+            &[("Consultation", 40_000), ("Lab", 10_000)],
+        )
         .await;
     let bill = t.issue_payer_bill(&bill, &cora).await;
     let lines = t.bill_lines(&bill).await;
@@ -329,7 +372,9 @@ async fn a_partial_recoupment_leaves_the_bill_partly_paid() {
     .await
     .assert_redirect(&format!("/payer-bills/{}", bill.id));
     let request = pending(&t, &bill).await.remove(0);
-    approvals::approve(t.state(), request.id, &b, "").await.unwrap();
+    approvals::approve(t.state(), request.id, &b, "")
+        .await
+        .unwrap();
 
     let after = t.reload_bill(&bill).await;
     assert_eq!(after.status, PayerBillStatus::PartiallyPaid);

@@ -140,7 +140,12 @@ async fn adjust(
     let lower: Vec<&PayerBillLine> = lines.iter().filter(|l| l.invoiced > l.claimed).collect();
     let credit: Vec<CreditLine> = lower
         .iter()
-        .filter_map(|l| Some(CreditLine::new(l.invoice_line_position?, l.invoiced - l.claimed)))
+        .filter_map(|l| {
+            Some(CreditLine::new(
+                l.invoice_line_position?,
+                l.invoiced - l.claimed,
+            ))
+        })
         .collect();
     if !credit.is_empty() {
         let reason = format!(
@@ -154,13 +159,12 @@ async fn adjust(
     }
     let higher: Vec<&PayerBillLine> = lines.iter().filter(|l| l.claimed > l.invoiced).collect();
     if !higher.is_empty() {
-        let extra: Vec<(&PayerBillLine, i64)> =
-            higher.iter().map(|l| (*l, l.claimed - l.invoiced)).collect();
-        let invoice = create_draft(
-            &state.db,
-            draft_for(bill, &extra, " (additional amount)"),
-        )
-        .await?;
+        let extra: Vec<(&PayerBillLine, i64)> = higher
+            .iter()
+            .map(|l| (*l, l.claimed - l.invoiced))
+            .collect();
+        let invoice =
+            create_draft(&state.db, draft_for(bill, &extra, " (additional amount)")).await?;
         crate::issue::issue_for_payer_bill(state, &invoice)
             .await
             .map_err(renox::state_machine::TransitionError::into_error)?;

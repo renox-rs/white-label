@@ -19,8 +19,8 @@
 use renox::chrono::TimeDelta;
 use renox::db::Json;
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use renox::state_machine::Transitioned;
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::payments::{PAYMENT_LINK_SUBJECT_TYPE, PaymentLinkExpired};
 use wl_kernel::{LegalEntity, PartyId, Subject};
@@ -365,7 +365,9 @@ pub async fn create(
         .find(&state.db, new.party)
         .await?;
     if party.is_none() {
-        return Err(TransitionError::Guard("The party was not found.".to_owned()));
+        return Err(TransitionError::Guard(
+            "The party was not found.".to_owned(),
+        ));
     }
     let now = renox::db::now();
     let expires_at = new
@@ -418,7 +420,13 @@ pub async fn expire_due(state: &AppState, at: DateTime) -> Result<usize> {
             payment_id: None,
             at: Some(at),
         };
-        match link.transition(EXPIRE).by_system().input(&run).run(state).await {
+        match link
+            .transition(EXPIRE)
+            .by_system()
+            .input(&run)
+            .run(state)
+            .await
+        {
             Ok(_) => expired += 1,
             Err(TransitionError::NotFrom(_) | TransitionError::Guard(_)) => {}
             Err(other) => return Err(other.into_error()),
@@ -441,7 +449,13 @@ pub(crate) async fn mark_paid(state: &AppState, link_id: i64, payment_id: i64) -
         payment_id: Some(payment_id),
         at: None,
     };
-    match link.transition(PAY).by_system().input(&run).run(state).await {
+    match link
+        .transition(PAY)
+        .by_system()
+        .input(&run)
+        .run(state)
+        .await
+    {
         Ok(_) | Err(TransitionError::NotFrom(_)) => Ok(()),
         Err(other) => Err(other.into_error()),
     }

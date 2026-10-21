@@ -41,7 +41,9 @@
 use renox::db::Json;
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
+use renox::state_machine::{
+    StateMachine, Transition, TransitionCtx, TransitionError, Transitioned,
+};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{CreditLine, DraftLine, InvoiceDraft, InvoiceStatus};
@@ -582,7 +584,10 @@ pub async fn documents(state: &AppState, bill_id: i64) -> Result {
     }
     let how = bill.close_outcome.clone().unwrap_or_default();
     let reason = bill.close_reason.clone().unwrap_or_default();
-    let number = bill.number.clone().unwrap_or_else(|| format!("#{}", bill.id));
+    let number = bill
+        .number
+        .clone()
+        .unwrap_or_else(|| format!("#{}", bill.id));
     if how == VOIDED {
         if let (Some(invoice_id), None) = (bill.payer_invoice_id, bill.close_credit_note_id) {
             let invoice = Invoice::find_or_404(&state.db, invoice_id).await?;
@@ -657,10 +662,7 @@ async fn set_close_document(state: &AppState, id: i64, column: &str, document: i
         .where_(PayerBill::ID.eq(id))
         .update(
             &state.db,
-            &[
-                (column, &Some(document)),
-                ("updated_at", &renox::db::now()),
-            ],
+            &[(column, &Some(document)), ("updated_at", &renox::db::now())],
         )
         .await?;
     Ok(())
@@ -795,10 +797,7 @@ mod tests {
         assert_eq!(void.from_states(), ["draft"]);
         assert_eq!(void.to_state(), Some("voided"));
         assert!(machine.find(voids::VOID_APPROVED).unwrap().is_system());
-        assert_eq!(
-            wl_kernel::machines::approved(WRITE_OFF),
-            WRITE_OFF_APPROVED
-        );
+        assert_eq!(wl_kernel::machines::approved(WRITE_OFF), WRITE_OFF_APPROVED);
     }
 
     #[renox::test]
@@ -826,12 +825,13 @@ mod tests {
     #[renox::test]
     async fn a_close_needs_a_reason_an_open_amount_and_the_customer_to_be_billable() {
         let bill = draft_bill(60_000);
-        let no_reason = TransitionCtx::new(None)
-            .with_input(renox::serde_json::to_value(CloseInput {
+        let no_reason = TransitionCtx::new(None).with_input(
+            renox::serde_json::to_value(CloseInput {
                 reason: None,
                 ..missed()
             })
-            .unwrap());
+            .unwrap(),
+        );
         assert!(refusal(WRITE_OFF, &bill, &no_reason).await.is_some());
         assert!(
             refusal(WRITE_OFF, &draft_bill(0), &ctx(&missed()))

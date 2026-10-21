@@ -149,8 +149,10 @@ fn rules(transition: Transition<PayerBill>) -> Transition<PayerBill> {
             let remitted = bill.has_remittance;
             Box::pin(async move {
                 if remitted {
-                    Err(english("wl_invoicing.payer_bill.errors.rejection_after_remittance")
-                        .to_owned())
+                    Err(
+                        english("wl_invoicing.payer_bill.errors.rejection_after_remittance")
+                            .to_owned(),
+                    )
                 } else {
                     Ok(())
                 }
@@ -181,10 +183,7 @@ fn rules(transition: Transition<PayerBill>) -> Transition<PayerBill> {
                     .where_(PayerBill::ID.eq(id))
                     .update(
                         &mut *tx,
-                        &[
-                            ("in_ageing", &false),
-                            ("updated_at", &renox::db::now()),
-                        ],
+                        &[("in_ageing", &false), ("updated_at", &renox::db::now())],
                     )
                     .await?;
                 Ok(())
@@ -400,7 +399,10 @@ mod tests {
     #[test]
     fn the_rejection_leaves_issued_for_draft_and_has_a_system_twin() {
         let machine = PayerBill::machine();
-        for (name, system) in [(SUBMISSION_REJECTED, false), (SUBMISSION_REJECTED_SYSTEM, true)] {
+        for (name, system) in [
+            (SUBMISSION_REJECTED, false),
+            (SUBMISSION_REJECTED_SYSTEM, true),
+        ] {
             let transition = machine.find(name).unwrap();
             assert_eq!(transition.from_states(), ["issued"]);
             assert_eq!(transition.to_state(), Some("draft"));
@@ -419,11 +421,7 @@ mod tests {
         assert!(refusal(&bill(), &ctx(vec![])).await.is_some());
         let blank = vec![SubmissionError::new("E104", " ")];
         assert!(refusal(&bill(), &ctx(blank)).await.is_some());
-        assert!(
-            refusal(&bill(), &TransitionCtx::new(None))
-                .await
-                .is_some()
-        );
+        assert!(refusal(&bill(), &TransitionCtx::new(None)).await.is_some());
     }
 
     #[renox::test]

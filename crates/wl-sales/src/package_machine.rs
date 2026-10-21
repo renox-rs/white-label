@@ -125,11 +125,7 @@ fn reason_of(ctx: &TransitionCtx) -> Option<String> {
 
 /// A guard that fails with the English `key` unless `ok`.
 fn check(ok: bool, key: &str) -> std::result::Result<(), String> {
-    if ok {
-        Ok(())
-    } else {
-        Err(english(key, &[]))
-    }
+    if ok { Ok(()) } else { Err(english(key, &[])) }
 }
 
 /// Sets non-status columns of package `id` outside the machine's guard and

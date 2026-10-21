@@ -17,11 +17,23 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.payer_bill.fields.payer", "Payer"),
     ("wl_invoicing.payer_bill.fields.customer", "Customer"),
     ("wl_invoicing.payer_bill.fields.source", "Source"),
-    ("wl_invoicing.payer_bill.fields.agreement", "Payer agreement"),
+    (
+        "wl_invoicing.payer_bill.fields.agreement",
+        "Payer agreement",
+    ),
     ("wl_invoicing.payer_bill.fields.recipient", "Tax invoice to"),
-    ("wl_invoicing.payer_bill.fields.reference", "Payer reference"),
-    ("wl_invoicing.payer_bill.fields.service_date", "Service date"),
-    ("wl_invoicing.payer_bill.fields.resubmissions", "Resubmissions"),
+    (
+        "wl_invoicing.payer_bill.fields.reference",
+        "Payer reference",
+    ),
+    (
+        "wl_invoicing.payer_bill.fields.service_date",
+        "Service date",
+    ),
+    (
+        "wl_invoicing.payer_bill.fields.resubmissions",
+        "Resubmissions",
+    ),
     ("wl_invoicing.payer_bill.fields.claimed", "Claimed"),
     ("wl_invoicing.payer_bill.fields.paid", "Paid"),
     ("wl_invoicing.payer_bill.fields.denied", "Denied"),
@@ -34,7 +46,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.payer_bill.fields.close_reason", "Reason"),
     ("wl_invoicing.payer_bill.status.draft", "Draft"),
     ("wl_invoicing.payer_bill.status.issued", "Issued"),
-    ("wl_invoicing.payer_bill.status.partially_paid", "Partly paid"),
+    (
+        "wl_invoicing.payer_bill.status.partially_paid",
+        "Partly paid",
+    ),
     ("wl_invoicing.payer_bill.status.denied", "Denied"),
     ("wl_invoicing.payer_bill.status.paid", "Paid"),
     ("wl_invoicing.payer_bill.status.closed", "Closed"),
@@ -51,12 +66,18 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.payer_bill.lines.code", "Payer code"),
     ("wl_invoicing.payer_bill.lines.empty", "No lines"),
     ("wl_invoicing.payer_bill.issue.action", "Issue"),
-    ("wl_invoicing.payer_bill.issue.title", "Issue this payer bill?"),
+    (
+        "wl_invoicing.payer_bill.issue.title",
+        "Issue this payer bill?",
+    ),
     (
         "wl_invoicing.payer_bill.issue.message",
         "It is sent to the payer and its receivable opens.",
     ),
-    ("wl_invoicing.payer_bill.issue.done", "The payer bill is issued."),
+    (
+        "wl_invoicing.payer_bill.issue.done",
+        "The payer bill is issued.",
+    ),
     ("wl_invoicing.payer_bill.resubmit.action", "Resubmit"),
     (
         "wl_invoicing.payer_bill.resubmit.title",
@@ -87,10 +108,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.payer_bill.errors.rejection_after_remittance",
         "A remittance is already recorded on this payer bill: it cannot go back to draft.",
     ),
-    (
-        "wl_invoicing.payer_bill.reject.action",
-        "Record rejection",
-    ),
+    ("wl_invoicing.payer_bill.reject.action", "Record rejection"),
     (
         "wl_invoicing.payer_bill.reject.title",
         "The channel rejected the submission",
@@ -105,7 +123,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.payer_bill.reject.done",
         "The rejection is recorded and the bill is a draft again.",
     ),
-    ("wl_invoicing.payer_bill.sections.errors", "Submission errors"),
+    (
+        "wl_invoicing.payer_bill.sections.errors",
+        "Submission errors",
+    ),
     ("wl_invoicing.payer_bill.errors_table.attempt", "Attempt"),
     ("wl_invoicing.payer_bill.errors_table.code", "Code"),
     ("wl_invoicing.payer_bill.errors_table.message", "Message"),
@@ -114,9 +135,18 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.payer_bill.waits_for_approval",
         "Sent for approval: a second person must approve it before it is recorded.",
     ),
-    ("wl_invoicing.payer_bill.fields.credit", "Payer credit balance"),
-    ("wl_invoicing.payer_bill.sections.remittances", "Remittances"),
-    ("wl_invoicing.payer_bill.sections.recoupments", "Recoupments"),
+    (
+        "wl_invoicing.payer_bill.fields.credit",
+        "Payer credit balance",
+    ),
+    (
+        "wl_invoicing.payer_bill.sections.remittances",
+        "Remittances",
+    ),
+    (
+        "wl_invoicing.payer_bill.sections.recoupments",
+        "Recoupments",
+    ),
     ("wl_invoicing.payer_bill.remit.action", "Record remittance"),
     (
         "wl_invoicing.payer_bill.remit.title",
@@ -127,7 +157,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "Enter what the payer paid and denied per line. An amount above what is open waits for a second person.",
     ),
     ("wl_invoicing.payer_bill.remit.submit", "Record remittance"),
-    ("wl_invoicing.payer_bill.remit.reference", "Advice reference"),
+    (
+        "wl_invoicing.payer_bill.remit.reference",
+        "Advice reference",
+    ),
     ("wl_invoicing.payer_bill.remit.date", "Advice date"),
     (
         "wl_invoicing.payer_bill.remit.date_hint",
@@ -142,7 +175,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.payer_bill.remit.denied", "Denied"),
     ("wl_invoicing.payer_bill.remit.code", "Denial code"),
     ("wl_invoicing.payer_bill.remit.reason", "Denial reason"),
-    ("wl_invoicing.payer_bill.remit.overpayment", "To credit balance"),
+    (
+        "wl_invoicing.payer_bill.remit.overpayment",
+        "To credit balance",
+    ),
     (
         "wl_invoicing.payer_bill.remit.done",
         "The remittance is recorded.",
@@ -167,17 +203,32 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.payer_bill.recoup.carrier_date",
         "Date of that remittance",
     ),
-    ("wl_invoicing.payer_bill.sections.credit", "Payer credit balance"),
+    (
+        "wl_invoicing.payer_bill.sections.credit",
+        "Payer credit balance",
+    ),
     ("wl_invoicing.payer_bill.credit.kind", "Movement"),
     ("wl_invoicing.payer_bill.credit.amount", "Amount"),
     ("wl_invoicing.payer_bill.credit.refund", "Refund"),
     ("wl_invoicing.payer_bill.credit.approved_by", "Approved by"),
-    ("wl_invoicing.payer_bill.credit.kind.overpayment", "Overpayment"),
-    ("wl_invoicing.payer_bill.credit.kind.set_off", "Set off against a recoupment"),
+    (
+        "wl_invoicing.payer_bill.credit.kind.overpayment",
+        "Overpayment",
+    ),
+    (
+        "wl_invoicing.payer_bill.credit.kind.set_off",
+        "Set off against a recoupment",
+    ),
     ("wl_invoicing.payer_bill.credit.kind.refund", "Refund"),
-    ("wl_invoicing.payer_bill.credit.kind.refund_restored", "Refund failed, given back"),
+    (
+        "wl_invoicing.payer_bill.credit.kind.refund_restored",
+        "Refund failed, given back",
+    ),
     ("wl_invoicing.payer_bill.recoup.amount", "Recouped"),
-    ("wl_invoicing.payer_bill.recoup.from_credit", "From credit balance"),
+    (
+        "wl_invoicing.payer_bill.recoup.from_credit",
+        "From credit balance",
+    ),
     (
         "wl_invoicing.payer_bill.recoup.deducted",
         "Deducted from the remittance",
@@ -285,7 +336,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.payer_bill.write_off.done",
         "The open amount is written off.",
     ),
-    ("wl_invoicing.payer_bill.transfer.action", "Move to the customer"),
+    (
+        "wl_invoicing.payer_bill.transfer.action",
+        "Move to the customer",
+    ),
     (
         "wl_invoicing.payer_bill.transfer.title",
         "Move the open amount to the customer",
@@ -294,22 +348,25 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.payer_bill.transfer.description",
         "Only where the payer agreement allows billing the customer. The customer is told.",
     ),
-    ("wl_invoicing.payer_bill.transfer.submit", "Move to the customer"),
+    (
+        "wl_invoicing.payer_bill.transfer.submit",
+        "Move to the customer",
+    ),
     (
         "wl_invoicing.payer_bill.transfer.done",
         "The open amount moved to the customer.",
     ),
     ("wl_invoicing.payer_bill.void.action", "Void"),
-    (
-        "wl_invoicing.payer_bill.void.title",
-        "Void this payer bill",
-    ),
+    ("wl_invoicing.payer_bill.void.title", "Void this payer bill"),
     (
         "wl_invoicing.payer_bill.void.description",
         "For a bill made in error: a duplicate, the wrong payer or policy. It keeps its number and the source can be split again.",
     ),
     ("wl_invoicing.payer_bill.void.submit", "Void"),
-    ("wl_invoicing.payer_bill.void.reason", "Reason (duplicate, wrong payer or policy)"),
+    (
+        "wl_invoicing.payer_bill.void.reason",
+        "Reason (duplicate, wrong payer or policy)",
+    ),
     (
         "wl_invoicing.payer_bill.errors.customer_not_billable",
         "The payer agreement does not allow billing the customer for these lines.",

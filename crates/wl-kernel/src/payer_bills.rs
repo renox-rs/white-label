@@ -247,7 +247,12 @@ pub struct NewPayerBill {
 impl NewPayerBill {
     /// A bill in AED under `agreement` for `customer` about `source`, for a
     /// service on `service_date`, with no line yet.
-    pub fn new(agreement: i64, customer: PartyId, source: Subject, service_date: NaiveDate) -> Self {
+    pub fn new(
+        agreement: i64,
+        customer: PartyId,
+        source: Subject,
+        service_date: NaiveDate,
+    ) -> Self {
         NewPayerBill {
             agreement,
             customer,
@@ -351,7 +356,6 @@ impl RemittanceLine {
         self.reason = Some(reason.trim().to_owned()).filter(|r| !r.is_empty());
         self
     }
-
 }
 
 /// The payer's remittance advice for one payer bill.
@@ -883,7 +887,13 @@ mod tests {
             .line(1, 40_000)
             .reason(" taken back ")
             .carried_by("ADV-10", day);
-        assert_eq!(recoupment.lines, [RecoupedLine { line: 1, amount: 40_000 }]);
+        assert_eq!(
+            recoupment.lines,
+            [RecoupedLine {
+                line: 1,
+                amount: 40_000
+            }]
+        );
         assert_eq!(recoupment.reason.as_deref(), Some("taken back"));
         assert_eq!(recoupment.carrier_reference.as_deref(), Some("ADV-10"));
     }

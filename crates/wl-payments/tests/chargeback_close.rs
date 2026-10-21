@@ -333,16 +333,24 @@ async fn accepting_a_chargeback_needs_another_persons_approval_and_tells_the_gat
     assert_eq!(accepted.status, PaymentStatus::Reversed);
     assert_eq!(accepted.dispute_outcome.as_deref(), Some("accepted"));
     assert_eq!(accepted.reversal_reason, Some(ReversalReason::Chargeback));
-    assert_eq!(accepted.reversal_note.as_deref(), Some("Not worth contesting"));
+    assert_eq!(
+        accepted.reversal_note.as_deref(),
+        Some("Not worth contesting")
+    );
     assert_eq!(
         gateway.accepted(),
-        [(payment.gateway_transaction.clone().unwrap(), "dp_1".to_owned())]
+        [(
+            payment.gateway_transaction.clone().unwrap(),
+            "dp_1".to_owned()
+        )]
     );
     let closed = t.chargeback_closed.all();
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0].outcome, ChargebackOutcome::Accepted);
     assert_eq!(closed[0].reopened.len(), 1);
-    let request = ApprovalRequest::find_or_404(t.db(), request.id).await.unwrap();
+    let request = ApprovalRequest::find_or_404(t.db(), request.id)
+        .await
+        .unwrap();
     assert_eq!(request.status, ApprovalStatus::Approved);
 }
 
@@ -356,7 +364,10 @@ async fn a_gateway_that_refuses_the_acceptance_fails_the_request() {
     let a = t.user("Cara", &[perm::VIEW, perm::CHARGEBACK]).await;
     let b = t.user("Dina", &[perm::VIEW, perm::CHARGEBACK]).await;
     let (payment, _invoice) = charged_back(&t).await;
-    gateway.refuse_accept(payment.gateway_transaction.as_deref().unwrap(), "dispute closed");
+    gateway.refuse_accept(
+        payment.gateway_transaction.as_deref().unwrap(),
+        "dispute closed",
+    );
 
     t.app.acting_as(&a);
     t.app
@@ -374,11 +385,16 @@ async fn a_gateway_that_refuses_the_acceptance_fails_the_request() {
     t.app.acting_as(&b);
     t.app
         .htmx()
-        .post(&format!("/approvals/{}/approve", request.id), &[("comment", "")])
+        .post(
+            &format!("/approvals/{}/approve", request.id),
+            &[("comment", "")],
+        )
         .await
         .assert_ok();
 
-    let request = ApprovalRequest::find_or_404(t.db(), request.id).await.unwrap();
+    let request = ApprovalRequest::find_or_404(t.db(), request.id)
+        .await
+        .unwrap();
     assert_eq!(request.status, ApprovalStatus::Failed);
     assert_eq!(t.reload(&payment).await.status, PaymentStatus::ChargedBack);
     assert!(t.chargeback_closed.all().is_empty());

@@ -32,9 +32,7 @@ use wl_kernel::broadcast::{BroadcastCancelReason, BroadcastCompleted, RequesterC
 use wl_kernel::notify::NotifyRecipient;
 
 use crate::broadcast::{Broadcast, BroadcastStatus, ExcludedCounts};
-use crate::broadcast_machine::{
-    CANCEL, CANCEL_SYSTEM, COMPLETE, CompleteInput, START, StartInput,
-};
+use crate::broadcast_machine::{CANCEL, CANCEL_SYSTEM, COMPLETE, CompleteInput, START, StartInput};
 use crate::broadcast_recipients::{Recipient, resolve};
 use crate::broadcast_results;
 use crate::broadcasts::announce_cancelled;

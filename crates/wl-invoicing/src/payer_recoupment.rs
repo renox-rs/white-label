@@ -40,7 +40,9 @@ use renox::chrono::NaiveDate;
 use renox::db::Json;
 use renox::prelude::*;
 use renox::serde_json::json;
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
+use renox::state_machine::{
+    StateMachine, Transition, TransitionCtx, TransitionError, Transitioned,
+};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals;
 use wl_kernel::machines::approved;
@@ -59,7 +61,8 @@ use crate::texts::english;
 pub const RECORD_RECOUPMENT: &str = "record_recoupment";
 
 /// The states a recoupment leaves a bill in.
-pub const OUTCOMES: [PayerBillStatus; 2] = [PayerBillStatus::PartiallyPaid, PayerBillStatus::Denied];
+pub const OUTCOMES: [PayerBillStatus; 2] =
+    [PayerBillStatus::PartiallyPaid, PayerBillStatus::Denied];
 
 /// The states a recoupment leaves.
 const FROM: [PayerBillStatus; 3] = [
@@ -75,11 +78,7 @@ pub const REVERSAL_CODE: &str = "payment_reversed";
 /// `record_recoupment_denied`, or its `_approved` twin the kernel runs.
 pub fn transition_name(outcome: PayerBillStatus, approved_twin: bool) -> String {
     let name = format!("{RECORD_RECOUPMENT}_{}", outcome.as_str());
-    if approved_twin {
-        approved(&name)
-    } else {
-        name
-    }
+    if approved_twin { approved(&name) } else { name }
 }
 
 /// The name of the system transition of a reversed payment.
@@ -331,14 +330,10 @@ async fn write_recoupment_in(
     let (from_credit, deducted) = if input.reversal {
         (0, 0)
     } else {
-        let credit = payer_credit::balance(
-            &mut *tx,
-            bill.payer(),
-            bill.legal_entity_id,
-            &bill.currency,
-        )
-        .await?
-        .max(0);
+        let credit =
+            payer_credit::balance(&mut *tx, bill.payer(), bill.legal_entity_id, &bill.currency)
+                .await?
+                .max(0);
         let from_credit = credit.min(total);
         (from_credit, total - from_credit)
     };
@@ -487,8 +482,7 @@ pub async fn reverse(
     if recoupment.lines.is_empty() {
         return Ok(None);
     }
-    let outcome = plan(&lines, &recoupment)
-        .map_err(TransitionError::Guard)?;
+    let outcome = plan(&lines, &recoupment).map_err(TransitionError::Guard)?;
     let total: i64 = recoupment.lines.iter().map(|e| e.amount).sum();
     let gathered = RecoupmentInput {
         recoupment: Some(recoupment),
@@ -624,13 +618,7 @@ mod tests {
         assert!(plan(&lines, &Recoupment::new("R07").line(1, 0)).is_err());
         assert!(plan(&lines, &Recoupment::new("R07").line(9, 1)).is_err());
         assert!(plan(&lines, &Recoupment::new("R07")).is_err());
-        assert!(
-            plan(
-                &lines,
-                &Recoupment::new("R07").line(1, 1).line(1, 1)
-            )
-            .is_err()
-        );
+        assert!(plan(&lines, &Recoupment::new("R07").line(1, 1).line(1, 1)).is_err());
     }
 
     #[test]

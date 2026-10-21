@@ -67,7 +67,9 @@ async fn agreement(t: &Booted) -> PayerAgreement {
 
 /// The pending approval requests about `bill`.
 async fn pending(t: &Booted, bill: &PayerBill) -> Vec<wl_kernel::approvals::ApprovalRequest> {
-    approvals::pending_for(t.db(), &bill.subject()).await.unwrap()
+    approvals::pending_for(t.db(), &bill.subject())
+        .await
+        .unwrap()
 }
 
 /// AC1: given a 05 visit whose customer tax invoice of AED 1,000.00 was
@@ -101,7 +103,10 @@ async fn a_late_draft_is_written_off_with_a_credit_note_against_the_customers_in
 
     let closed = t.reload_bill(&bill).await;
     assert_eq!(closed.status, PayerBillStatus::Closed);
-    assert!(closed.not_submitted_in_time, "flagged not submitted in time");
+    assert!(
+        closed.not_submitted_in_time,
+        "flagged not submitted in time"
+    );
     assert_eq!(closed.close_outcome.as_deref(), Some("written_off"));
     assert_eq!(closed.close_reason.as_deref(), Some("missed the window"));
     assert_eq!((closed.written_off_total, closed.balance), (60_000, 0));
@@ -479,10 +484,7 @@ async fn voiding_cancels_an_issued_payer_invoice_with_a_credit_note() {
     assert_eq!(credits.len(), 1, "cancelled by a credit note");
     assert_eq!(credits[0].gross_total, 90_000);
     assert_eq!(voided.close_credit_note_id, Some(credits[0].id));
-    assert_eq!(
-        t.invoice(invoice.id).await.status,
-        InvoiceStatus::Credited
-    );
+    assert_eq!(t.invoice(invoice.id).await.status, InvoiceStatus::Credited);
 }
 
 /// AC7: `void` of a 05 bill that was submitted once is refused; a bill that
@@ -493,9 +495,14 @@ async fn a_clinic_claim_submitted_once_cannot_be_voided() {
     let cora = t.coordinator_cora().await;
     let agreement = agreement(&t).await;
     let make = |n: i64| {
-        NewPayerBill::new(agreement.id, OMAR, Subject::new("clinics.claim", n), today())
-            .void_before_first_submission()
-            .line(NewPayerBillLine::new("Consultation and tests", 60_000))
+        NewPayerBill::new(
+            agreement.id,
+            OMAR,
+            Subject::new("clinics.claim", n),
+            today(),
+        )
+        .void_before_first_submission()
+        .line(NewPayerBillLine::new("Consultation and tests", 60_000))
     };
     let submitted_id = payer_bills(t.state())
         .create(t.state(), make(9_001), None)
@@ -514,7 +521,11 @@ async fn a_clinic_claim_submitted_once_cannot_be_voided() {
 
     post_void(&t, &submitted, &cora, "created in error").await;
     let same = t.reload_bill(&submitted).await;
-    assert_eq!(same.status, PayerBillStatus::Draft, "refused: submitted once");
+    assert_eq!(
+        same.status,
+        PayerBillStatus::Draft,
+        "refused: submitted once"
+    );
     assert!(t.payer.closed.all().is_empty());
 
     let fresh_id = payer_bills(t.state())

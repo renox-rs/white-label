@@ -29,13 +29,15 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
-use wl_kernel::payer_bills::{PayerAnswer, PayerBillStatus, Recoupment, Remittance, RemittanceLine};
+use wl_kernel::payer_bills::{
+    PayerAnswer, PayerBillStatus, Recoupment, Remittance, RemittanceLine,
+};
 
 use crate::allocate::amount_text;
+use crate::bill_pages::{parse_date, parse_decimal};
 use crate::credit_notes::By;
 use crate::payer_agreement::PayerAgreement;
 use crate::payer_bill::{PayerBill, lines_of};
-use crate::bill_pages::{parse_date, parse_decimal};
 use crate::payer_closing;
 use crate::payer_credit;
 use crate::payer_issue;
@@ -581,7 +583,10 @@ async fn recoupment(
     let get = |key: &str| form.get(key).map_or("", |v| v.trim());
     let mut taken = Recoupment::new(get("code")).reason(get("reason"));
     if !get("carrier_reference").is_empty() {
-        taken = taken.carried_by(get("carrier_reference"), date_of(&lang, get("carrier_date"))?);
+        taken = taken.carried_by(
+            get("carrier_reference"),
+            date_of(&lang, get("carrier_date"))?,
+        );
     }
     for line in lines_of(&state.db, bill.id).await? {
         let amount = fils_of(&lang, get(&format!("line_{}_recouped", line.id)))?;

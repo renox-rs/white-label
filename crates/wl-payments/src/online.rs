@@ -28,7 +28,9 @@
 use renox::chrono::TimeDelta;
 use renox::db::DateTime;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
+use renox::state_machine::{
+    StateMachine, Transition, TransitionCtx, TransitionError, Transitioned,
+};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::invoicer;

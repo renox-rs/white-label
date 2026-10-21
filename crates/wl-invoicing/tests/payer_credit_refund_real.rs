@@ -187,7 +187,10 @@ async fn the_approval_of_the_refund_is_the_approval_of_the_movement() {
     // The requester cannot approve it; another user can.
     let approve = format!("/refunds/{id}/transitions/approve");
     t.app.acting_as(&a);
-    t.app.post(&approve, &[("reason", "")]).await.assert_status(422);
+    t.app
+        .post(&approve, &[("reason", "")])
+        .await
+        .assert_status(422);
     assert_eq!(
         Refund::find_or_404(t.app.db(), id).await.unwrap().status,
         RefundStatus::Requested
@@ -239,7 +242,10 @@ async fn a_second_approval_takes_nothing_more() {
         .post(&approve, &[("reason", "")])
         .await
         .assert_status(303);
-    t.app.post(&approve, &[("reason", "")]).await.assert_status(422);
+    t.app
+        .post(&approve, &[("reason", "")])
+        .await
+        .assert_status(422);
     assert_eq!(movements(&t, id).await.len(), 1);
     assert_eq!(balance(&t, entity).await, 70_000);
 }

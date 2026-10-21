@@ -1207,19 +1207,28 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.evidence.done", "Noted."),
     ("wl_payments.sections.dispute", "Chargeback"),
     ("wl_payments.dispute.status", "Dispute"),
-    ("wl_payments.dispute.evidence_submitted", "Evidence submitted on"),
+    (
+        "wl_payments.dispute.evidence_submitted",
+        "Evidence submitted on",
+    ),
     ("wl_payments.dispute.open", "Open"),
     ("wl_payments.dispute.won", "Won"),
     ("wl_payments.dispute.lost", "Lost"),
     ("wl_payments.dispute.accepted", "Accepted"),
     ("wl_payments.accept_chargeback.action", "Accept chargeback"),
-    ("wl_payments.accept_chargeback.title", "Accept the chargeback"),
+    (
+        "wl_payments.accept_chargeback.title",
+        "Accept the chargeback",
+    ),
     (
         "wl_payments.accept_chargeback.description",
         "Do not contest the dispute. Another user with the chargeback permission must approve it; the gateway is told then. The invoices the payment paid stay open.",
     ),
     ("wl_payments.accept_chargeback.submit", "Ask to accept"),
-    ("wl_payments.accept_chargeback.reason", "Why it is not contested"),
+    (
+        "wl_payments.accept_chargeback.reason",
+        "Why it is not contested",
+    ),
     (
         "wl_payments.accept_chargeback.reason_required",
         "Give a reason.",
@@ -1236,7 +1245,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Record that the acquirer ruled for the card holder. The payment is reversed and the invoices it paid stay open.",
     ),
     ("wl_payments.lose_chargeback.submit", "Record as lost"),
-    ("wl_payments.lose_chargeback.done", "Dispute recorded as lost."),
+    (
+        "wl_payments.lose_chargeback.done",
+        "Dispute recorded as lost.",
+    ),
     ("wl_payments.reason.chargeback_won", "Chargeback (won)"),
     ("wl_payments.online.failure", "Why it failed"),
     ("wl_payments.pay.title", "Pay online"),
@@ -1244,7 +1256,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.pay.retry", "Try again"),
     ("wl_payments.pay.failed", "Your payment did not go through"),
     ("wl_payments.pay.problem", "We could not start the payment"),
-    ("wl_payments.pay.waiting_title", "Your payment is being processed"),
+    (
+        "wl_payments.pay.waiting_title",
+        "Your payment is being processed",
+    ),
     (
         "wl_payments.pay.waiting",
         "We are waiting for the answer of the payment provider. Open this page again in a few minutes.",
@@ -1254,12 +1269,15 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.pay.paid",
         "Thank you, this payment has been received.",
     ),
-    ("wl_payments.pay.expired_title", "This payment link has expired"),
     (
-        "wl_payments.pay.expired",
-        "Ask us for a new payment link.",
+        "wl_payments.pay.expired_title",
+        "This payment link has expired",
     ),
-    ("wl_payments.pay.cancelled_title", "This payment link was withdrawn"),
+    ("wl_payments.pay.expired", "Ask us for a new payment link."),
+    (
+        "wl_payments.pay.cancelled_title",
+        "This payment link was withdrawn",
+    ),
     (
         "wl_payments.pay.cancelled",
         "Ask us for a new payment link.",

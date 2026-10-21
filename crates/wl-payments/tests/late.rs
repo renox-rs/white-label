@@ -156,7 +156,9 @@ async fn a_late_confirmation_after_the_hold_was_released_is_refunded_at_once() {
         .map(|n| n.data.to_string())
         .collect();
     assert!(
-        texts.iter().any(|d| d.contains("refunded to the same card")),
+        texts
+            .iter()
+            .any(|d| d.contains("refunded to the same card")),
         "{texts:?}"
     );
 
@@ -200,8 +202,7 @@ async fn a_late_confirmation_for_a_booking_paid_by_another_payment_is_refunded_a
     // The party paid at the desk meanwhile.
     let entity = t.entity("PGP").await;
     t.receive_request(
-        RecordPayment::new(BLUE_DUNES, entity.id, PaymentMethod::Cash, 25_000)
-            .prepaid(booking()),
+        RecordPayment::new(BLUE_DUNES, entity.id, PaymentMethod::Cash, 25_000).prepaid(booking()),
     )
     .await;
 
@@ -306,7 +307,9 @@ async fn a_partly_open_link_allocates_what_is_open_and_requests_the_rest() {
 async fn a_late_confirmation_of_another_amount_gives_the_accountant_a_task() {
     let t = boot().await;
     let accountant = t.accountant("Rita").await;
-    let link = t.link(BLUE_DUNES, 25_000, None, Some(booking()), None).await;
+    let link = t
+        .link(BLUE_DUNES, 25_000, None, Some(booking()), None)
+        .await;
     let payment = failed_booking_payment(&t, &link).await;
 
     let refused = online::gateway_succeeded(
@@ -328,7 +331,9 @@ async fn a_late_confirmation_of_another_amount_gives_the_accountant_a_task() {
 async fn the_refund_of_a_late_payment_to_a_blocked_party_waits() {
     let gateway = FakeGateway::new();
     let t = boot_with(WlPayments::new().gateway(gateway.clone()), gateway.clone()).await;
-    let link = t.link(BLUE_DUNES, 25_000, None, Some(booking()), None).await;
+    let link = t
+        .link(BLUE_DUNES, 25_000, None, Some(booking()), None)
+        .await;
     let payment = failed_booking_payment(&t, &link).await;
     t.prepaid.release(&booking());
     t.blocked.block(BLUE_DUNES);
@@ -337,5 +342,8 @@ async fn the_refund_of_a_late_payment_to_a_blocked_party_waits() {
     let refunds = refunds_of(&t, &payment).await;
     assert_eq!(refunds.len(), 1);
     assert_eq!(refunds[0].status, RefundStatus::Approved);
-    assert!(gateway.refunded().is_empty(), "nothing goes out to a blocked party");
+    assert!(
+        gateway.refunded().is_empty(),
+        "nothing goes out to a blocked party"
+    );
 }

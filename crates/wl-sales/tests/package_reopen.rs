@@ -9,14 +9,12 @@ use std::sync::{Arc, Mutex};
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use wl_kernel::invoicing::{
-    InvoiceId, InvoicePaid, InvoiceReopened, InvoiceStatus, ReopenReason,
-};
-use wl_kernel::notify::{Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, MessageId};
+use wl_kernel::invoicing::{InvoiceId, InvoicePaid, InvoiceReopened, InvoiceStatus, ReopenReason};
+use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::payments::{
     PaymentId, PaymentReversed, PaymentSource, RemovedAllocation, ReversalReason,
 };
-use wl_kernel::sales::{PackageConsumption, package_ledger, ConsumePackage};
+use wl_kernel::sales::{ConsumePackage, PackageConsumption, package_ledger};
 use wl_kernel::tickets::{
     Assignee, OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef,
 };
@@ -212,11 +210,7 @@ fn reopened(package: &Package, n: i64, balance: i64) -> InvoiceReopened {
     }
 }
 
-fn reversed(
-    n: i64,
-    prepaid: Option<Subject>,
-    removed: Vec<RemovedAllocation>,
-) -> PaymentReversed {
+fn reversed(n: i64, prepaid: Option<Subject>, removed: Vec<RemovedAllocation>) -> PaymentReversed {
     PaymentReversed {
         payment: PaymentId(n),
         party: HOLDER,
@@ -241,7 +235,10 @@ async fn a_reopened_invoice_leaves_the_package_active_and_asks_the_seller_to_col
     let package = active_package(&t, Some(seller.id)).await;
     assert_eq!(package.remaining(), 6);
 
-    t.state().emit(reopened(&package, 42, 150_000)).await.unwrap();
+    t.state()
+        .emit(reopened(&package, 42, 150_000))
+        .await
+        .unwrap();
 
     let after = reload(&t, &package).await;
     assert_eq!(after.status, PackageStatus::Active);
@@ -252,7 +249,11 @@ async fn a_reopened_invoice_leaves_the_package_active_and_asks_the_seller_to_col
     let tasks = desk.opened();
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].assignee, Some(Assignee::user(seller.id)));
-    assert!(tasks[0].title.contains("Collect AED 1,500.00 before the next use"));
+    assert!(
+        tasks[0]
+            .title
+            .contains("Collect AED 1,500.00 before the next use")
+    );
     assert!(tasks[0].title.contains("Physio, 10 sessions"));
     assert_eq!(tasks[0].subject, package.subject());
     assert_eq!(
@@ -271,12 +272,18 @@ async fn a_reopened_invoice_leaves_the_package_active_and_asks_the_seller_to_col
     assert_eq!(notices[0].subject, package.subject());
 
     // The same event again: one task and one notice in all.
-    t.state().emit(reopened(&package, 42, 150_000)).await.unwrap();
+    t.state()
+        .emit(reopened(&package, 42, 150_000))
+        .await
+        .unwrap();
     assert_eq!(desk.opened().len(), 1);
     assert_eq!(mail.balance_due().len(), 1);
 
     // A second reversal is a second task.
-    t.state().emit(reopened(&package, 43, 150_000)).await.unwrap();
+    t.state()
+        .emit(reopened(&package, 43, 150_000))
+        .await
+        .unwrap();
     assert_eq!(desk.opened().len(), 2);
 }
 
@@ -300,7 +307,10 @@ async fn without_a_seller_user_the_role_is_asked_and_the_payer_is_told_too() {
         .await
         .unwrap();
 
-    t.state().emit(reopened(&package, 42, 50_000)).await.unwrap();
+    t.state()
+        .emit(reopened(&package, 42, 50_000))
+        .await
+        .unwrap();
 
     let tasks = desk.opened();
     assert_eq!(tasks.len(), 1);
@@ -330,7 +340,10 @@ async fn a_completed_package_gets_the_task_and_a_pending_one_does_not() {
         .unwrap();
     assert_eq!(reload(&t, &package).await.status, PackageStatus::Completed);
 
-    t.state().emit(reopened(&package, 42, 150_000)).await.unwrap();
+    t.state()
+        .emit(reopened(&package, 42, 150_000))
+        .await
+        .unwrap();
     assert_eq!(reload(&t, &package).await.status, PackageStatus::Completed);
     assert_eq!(desk.opened().len(), 1);
     assert_eq!(mail.balance_due().len(), 1);
@@ -356,7 +369,10 @@ async fn a_completed_package_gets_the_task_and_a_pending_one_does_not() {
 async fn with_the_setting_off_the_next_consume_succeeds() {
     let (t, _, _) = boot().await;
     let package = active_package(&t, None).await;
-    t.state().emit(reopened(&package, 42, 150_000)).await.unwrap();
+    t.state()
+        .emit(reopened(&package, 42, 150_000))
+        .await
+        .unwrap();
 
     let outcome = package_ledger(t.state())
         .consume(t.state(), ConsumePackage::new(HOLDER, ITEM, 1, booking(2)))
@@ -381,7 +397,10 @@ async fn with_the_setting_on_consume_waits_for_the_invoice_to_be_paid() {
     let (t, desk, _) = boot_with_setting(sales).await;
     let seller = t.user("Fatima", &[]).await;
     let package = active_package(&t, Some(seller.id)).await;
-    t.state().emit(reopened(&package, 42, 150_000)).await.unwrap();
+    t.state()
+        .emit(reopened(&package, 42, 150_000))
+        .await
+        .unwrap();
 
     let ledger = package_ledger(t.state());
     let refused = ledger
@@ -395,7 +414,10 @@ async fn with_the_setting_on_consume_waits_for_the_invoice_to_be_paid() {
         }
     );
     let still = reload(&t, &package).await;
-    assert_eq!((still.status, still.credits_used), (PackageStatus::Active, 4));
+    assert_eq!(
+        (still.status, still.credits_used),
+        (PackageStatus::Active, 4)
+    );
     assert!(
         still
             .movements(t.db())
@@ -458,7 +480,10 @@ async fn the_reversal_itself_counts_only_for_a_package_without_an_invoice() {
     let event = reversed(42, Some(with_invoice.subject()), vec![allocation]);
     t.state().emit(event.clone()).await.unwrap();
     assert!(desk.opened().is_empty(), "wl-invoicing reopens the invoice");
-    assert_eq!(reload(&t, &with_invoice).await.status, PackageStatus::Active);
+    assert_eq!(
+        reload(&t, &with_invoice).await.status,
+        PackageStatus::Active
+    );
 
     t.state()
         .emit(reopened(&with_invoice, 42, 150_000))

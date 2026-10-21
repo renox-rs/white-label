@@ -176,10 +176,7 @@ fn with_rules(transition: Transition<Payment>) -> Transition<Payment> {
 /// # Errors
 ///
 /// The database's errors; 404 for an unknown legal entity.
-pub(crate) async fn assign_number(
-    tx: &mut renox::db::Transaction,
-    payment: &Payment,
-) -> Result {
+pub(crate) async fn assign_number(tx: &mut renox::db::Transaction, payment: &Payment) -> Result {
     let entity = LegalEntity::find_or_404(&mut *tx, payment.legal_entity_id).await?;
     let active = LegalEntity::query()
         .where_(LegalEntity::STATUS.eq("active"))

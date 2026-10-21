@@ -39,7 +39,13 @@ async fn a_declined_payment_fails_and_the_party_may_try_again() {
     let staff = t.user_a().await;
     let invoice = t.invoices.add(BLUE_DUNES, "INV-9", 25_000);
     let link = t
-        .link(BLUE_DUNES, 25_000, Some(invoice), Some(booking()), Some(&staff))
+        .link(
+            BLUE_DUNES,
+            25_000,
+            Some(invoice),
+            Some(booking()),
+            Some(&staff),
+        )
         .await;
     let payment = t.start_online(&link).await;
     assert_eq!(payment.payment_link_id, Some(link.id));
@@ -153,7 +159,9 @@ async fn a_pending_payment_the_gateway_reports_paid_is_received_after_the_timeou
 #[renox::test]
 async fn a_payment_without_a_final_answer_fails_with_the_reason_timeout() {
     let t = boot().await;
-    let link = t.link(BLUE_DUNES, 25_000, None, Some(booking()), None).await;
+    let link = t
+        .link(BLUE_DUNES, 25_000, None, Some(booking()), None)
+        .await;
     // Still processing at the gateway.
     let slow = t.start_online(&link).await;
     let since = slow.created_at.unwrap();
@@ -185,7 +193,10 @@ async fn a_payment_without_a_final_answer_fails_with_the_reason_timeout() {
     assert_eq!(down.failure_kind, Some(PaymentFailureKind::Timeout));
 
     let kinds: Vec<_> = t.failed.all().iter().map(|e| e.kind).collect();
-    assert_eq!(kinds, [PaymentFailureKind::Timeout, PaymentFailureKind::Timeout]);
+    assert_eq!(
+        kinds,
+        [PaymentFailureKind::Timeout, PaymentFailureKind::Timeout]
+    );
 }
 
 /// The gateway declining the payment when asked fails it as declined, with
@@ -201,9 +212,12 @@ async fn a_status_query_that_says_declined_fails_the_payment_as_declined() {
             reason: "Insufficient funds".to_owned(),
         },
     );
-    online::check_pending(t.state(), payment.created_at.unwrap() + TimeDelta::minutes(30))
-        .await
-        .unwrap();
+    online::check_pending(
+        t.state(),
+        payment.created_at.unwrap() + TimeDelta::minutes(30),
+    )
+    .await
+    .unwrap();
     let failed = t.reload(&payment).await;
     assert_eq!(failed.failure_kind, Some(PaymentFailureKind::Declined));
     assert_eq!(failed.failure_reason.as_deref(), Some("Insufficient funds"));
@@ -346,7 +360,9 @@ async fn a_link_expires_at_its_expiry_and_says_which_booking_was_waiting() {
 #[renox::test]
 async fn the_expiry_task_expires_a_link_and_the_party_cannot_pay_it() {
     let t = boot().await;
-    let link = t.link(BLUE_DUNES, 25_000, None, Some(booking()), None).await;
+    let link = t
+        .link(BLUE_DUNES, 25_000, None, Some(booking()), None)
+        .await;
     let past = renox::db::now() - TimeDelta::minutes(5);
     PaymentLink::query()
         .where_(PaymentLink::ID.eq(link.id))
@@ -395,7 +411,10 @@ async fn the_public_page_answers_for_every_state_of_the_link() {
         .assert_see("Pay now");
     let payment = t.start_online(&link).await;
     // A second press while one is waiting starts nothing new.
-    t.press_pay(&link).await.assert_ok().assert_see("already in progress");
+    t.press_pay(&link)
+        .await
+        .assert_ok()
+        .assert_see("already in progress");
     t.app
         .get(&t.link_path(&link))
         .await
@@ -403,9 +422,13 @@ async fn the_public_page_answers_for_every_state_of_the_link() {
         .assert_see("being processed");
     assert_eq!(t.gateway.checkouts().len(), 1);
 
-    online::gateway_succeeded(t.state(), payment.gateway_transaction.as_deref().unwrap(), 25_000)
-        .await
-        .unwrap();
+    online::gateway_succeeded(
+        t.state(),
+        payment.gateway_transaction.as_deref().unwrap(),
+        25_000,
+    )
+    .await
+    .unwrap();
     t.app
         .get(&t.link_path(&link))
         .await
@@ -437,6 +460,9 @@ async fn a_cancelled_link_cannot_be_paid() {
         .await
         .assert_ok()
         .assert_see("withdrawn");
-    t.press_pay(&link).await.assert_ok().assert_see("can no longer be paid");
+    t.press_pay(&link)
+        .await
+        .assert_ok()
+        .assert_see("can no longer be paid");
     assert!(t.gateway.checkouts().is_empty());
 }

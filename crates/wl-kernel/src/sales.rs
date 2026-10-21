@@ -608,12 +608,7 @@ pub trait PackageLedger: Send + Sync + 'static {
 
     /// The credits `party` can still use for `item` in active packages. The
     /// default is none.
-    fn balance<'a>(
-        &'a self,
-        _db: &'a Db,
-        _party: PartyId,
-        _item: &'a str,
-    ) -> SalesFuture<'a, i64> {
+    fn balance<'a>(&'a self, _db: &'a Db, _party: PartyId, _item: &'a str) -> SalesFuture<'a, i64> {
         Box::pin(async { Ok(0) })
     }
 }

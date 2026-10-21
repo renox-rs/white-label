@@ -78,11 +78,7 @@ pub const OUTCOMES: [PayerBillStatus; 3] = [
 /// `record_remittance_paid`, or its `_approved` twin the kernel runs.
 pub fn transition_name(outcome: PayerBillStatus, approved_twin: bool) -> String {
     let name = format!("{RECORD_REMITTANCE}_{}", outcome.as_str());
-    if approved_twin {
-        approved(&name)
-    } else {
-        name
-    }
+    if approved_twin { approved(&name) } else { name }
 }
 
 /// A remittance advice recorded on a payer bill. Row of
@@ -344,9 +340,11 @@ async fn write_remittance_in(
     approval: Option<i64>,
     by: Option<i64>,
 ) -> Result {
-    let remittance = input
-        .remittance
-        .ok_or_else(|| Error::from(renox::anyhow::anyhow!("a remittance run without its advice")))?;
+    let remittance = input.remittance.ok_or_else(|| {
+        Error::from(renox::anyhow::anyhow!(
+            "a remittance run without its advice"
+        ))
+    })?;
     let mut lines = lines_of(&mut *tx, bill.id).await?;
     // The lines may have changed since the advice was matched (an approval
     // can wait): the plan must still fit.
@@ -606,9 +604,11 @@ mod tests {
         assert_eq!((planned[0].applied, planned[0].over), (40_000, 5_000));
         assert_eq!(outcome, PayerBillStatus::Paid);
         // What the payer denied counts against the room on the line.
-        let advice = Remittance::new("ADV-2", day()).line(
-            RemittanceLine::paid(1, 35_000).denied(10_000, "R12", "not covered"),
-        );
+        let advice = Remittance::new("ADV-2", day()).line(RemittanceLine::paid(1, 35_000).denied(
+            10_000,
+            "R12",
+            "not covered",
+        ));
         let (planned, outcome) = plan(&lines, &advice).unwrap();
         assert_eq!((planned[0].applied, planned[0].over), (30_000, 5_000));
         assert_eq!(outcome, PayerBillStatus::PartiallyPaid);
@@ -677,7 +677,12 @@ mod tests {
             problem: Some("no".into()),
             ..ready.clone()
         };
-        assert!(transition.check_guards(&bill, &ctx(&problem)).await.is_err());
+        assert!(
+            transition
+                .check_guards(&bill, &ctx(&problem))
+                .await
+                .is_err()
+        );
         assert!(
             transition
                 .check_guards(&bill, &TransitionCtx::new(None))

@@ -126,7 +126,6 @@ impl Consents for Granted {
     }
 }
 
-
 /// The campaign is always active.
 struct Active;
 
@@ -291,10 +290,15 @@ async fn messages_still_queued_48_hours_after_the_start_are_suppressed_and_never
     assert_eq!(count(&statuses(&t).await, MessageStatus::Queued), 100);
 
     let early = send_at + Duration::hours(48) - Duration::minutes(1);
-    assert_eq!(stale::suppress_stale(t.app.state(), early).await.unwrap(), 0);
+    assert_eq!(
+        stale::suppress_stale(t.app.state(), early).await.unwrap(),
+        0
+    );
     let at_limit = send_at + Duration::hours(48);
     assert_eq!(
-        stale::suppress_stale(t.app.state(), at_limit).await.unwrap(),
+        stale::suppress_stale(t.app.state(), at_limit)
+            .await
+            .unwrap(),
         100
     );
     let all = t.messages().await;
@@ -314,7 +318,10 @@ async fn messages_still_queued_48_hours_after_the_start_are_suppressed_and_never
     assert!(t.sms.sent().is_empty());
     // A second sweep finds nothing.
     let later = send_at + Duration::hours(60);
-    assert_eq!(stale::suppress_stale(t.app.state(), later).await.unwrap(), 0);
+    assert_eq!(
+        stale::suppress_stale(t.app.state(), later).await.unwrap(),
+        0
+    );
 }
 
 /// A message whose send job only runs after the limit is refused at the send,
@@ -332,10 +339,8 @@ async fn a_send_job_that_runs_after_the_stale_limit_sends_nothing() {
     assert!(t.sms.sent().is_empty());
     let all = t.messages().await;
     assert_eq!(all.len(), 100);
-    assert!(all.iter().all(
-        |m| m.status == MessageStatus::Suppressed
-            && m.suppress_reason.as_deref() == Some("expired")
-    ));
+    assert!(all.iter().all(|m| m.status == MessageStatus::Suppressed
+        && m.suppress_reason.as_deref() == Some("expired")));
 }
 
 /// The stale limit counts from the start, not from a deferral: a message
@@ -521,7 +526,11 @@ async fn a_user_without_the_permission_cannot_stop_a_broadcast() {
         .assert_ok()
         .assert_dont_see("Stop sending");
     t.app.acting_as(&h);
-    t.app.get(&path).await.assert_ok().assert_see("Stop sending");
+    t.app
+        .get(&path)
+        .await
+        .assert_ok()
+        .assert_see("Stop sending");
 }
 
 /// Stopping a broadcast that has not started, or one with everything sent, is

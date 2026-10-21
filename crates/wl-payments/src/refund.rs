@@ -680,7 +680,9 @@ async fn resolve_payer_credit(
     if subject.subject_type != wl_kernel::payer_bills::PAYER_CREDIT_SUBJECT_TYPE
         || subject.subject_id != request.party.0
     {
-        return Err(guard("The payer credit balance does not belong to the party."));
+        return Err(guard(
+            "The payer credit balance does not belong to the party.",
+        ));
     }
     let mut resolved = resolve_vouched(state, request).await?;
     let balance = wl_kernel::payer_bills::payer_credits(state)

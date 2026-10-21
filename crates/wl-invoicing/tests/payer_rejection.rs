@@ -53,12 +53,11 @@ async fn a_technical_rejection_returns_the_bill_to_draft_with_its_errors() {
     assert_eq!(rejected.resubmission_count, 0);
     assert!(!rejected.in_ageing, "the receivable leaves the ageing");
     assert_eq!(rejected.number.as_deref(), Some(number.as_str()));
-    let errors = PayerSubmissionError::of_bill(t.db(), bill.id).await.unwrap();
+    let errors = PayerSubmissionError::of_bill(t.db(), bill.id)
+        .await
+        .unwrap();
     assert_eq!(errors.len(), 1);
-    assert_eq!(
-        (errors[0].attempt, errors[0].code.as_str()),
-        (1, "E104")
-    );
+    assert_eq!((errors[0].attempt, errors[0].code.as_str()), (1, "E104"));
     assert_eq!(errors[0].message, "invalid member ID");
 
     // The coordinator's task names the errors and the last day to send it
@@ -98,10 +97,7 @@ async fn a_rejection_without_an_error_changes_nothing() {
     t.post_payer(&bill, &cora, "submission-rejected", &[("errors", " ")])
         .await
         .assert_status(422);
-    assert_eq!(
-        t.reload_bill(&bill).await.status,
-        PayerBillStatus::Issued
-    );
+    assert_eq!(t.reload_bill(&bill).await.status, PayerBillStatus::Issued);
     assert!(t.tickets.opened().is_empty());
     assert!(t.payer.rejected.all().is_empty());
 
@@ -257,7 +253,9 @@ async fn every_attempt_keeps_its_own_errors() {
             .assert_redirect(&format!("/payer-bills/{}", bill.id));
         t.issue_payer_bill(&bill, &cora).await;
     }
-    let all = PayerSubmissionError::of_bill(t.db(), bill.id).await.unwrap();
+    let all = PayerSubmissionError::of_bill(t.db(), bill.id)
+        .await
+        .unwrap();
     let by_attempt: Vec<(i64, &str)> = all.iter().map(|e| (e.attempt, e.code.as_str())).collect();
     assert_eq!(by_attempt, [(1, "E104"), (2, "E7"), (2, "E9")]);
     let now = t.reload_bill(&bill).await;

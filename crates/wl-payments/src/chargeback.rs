@@ -39,7 +39,9 @@ use renox::chrono::{NaiveDate, TimeDelta};
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
+use renox::state_machine::{
+    StateMachine, Transition, TransitionCtx, TransitionError, Transitioned,
+};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::{DUBAI_OFFSET_SECONDS, dubai_date, today};
 use wl_kernel::invoicing::invoicer;
@@ -103,7 +105,8 @@ fn rules(transition: Transition<Payment>) -> Transition<Payment> {
         .from([PaymentStatus::Received])
         .to(PaymentStatus::ChargedBack)
         .guard("gateway_payment", |payment: &Payment, _ctx| {
-            let fits = payment.direction == Direction::In && payment.method == PaymentMethod::Gateway;
+            let fits =
+                payment.direction == Direction::In && payment.method == PaymentMethod::Gateway;
             Box::pin(async move {
                 if fits {
                     Ok(())
@@ -383,7 +386,9 @@ async fn evidence_pack(
         }
     }
     if let Some(prepaid) = payment.prepaid() {
-        links.push(json!({ "label": format!("Paid in advance for {prepaid}"), "href": Value::Null }));
+        links.push(
+            json!({ "label": format!("Paid in advance for {prepaid}"), "href": Value::Null }),
+        );
     }
     Ok(json!({
         "gateway_reference": payment.dispute_reference,
@@ -480,7 +485,10 @@ async fn record_fee(state: &AppState, payment: &Payment) -> Result {
     let now = renox::db::now();
     Payment::query()
         .where_(Payment::ID.eq(paid.id))
-        .update(&state.db, &[("purpose", &BANK_CHARGES.to_owned()), ("updated_at", &now)])
+        .update(
+            &state.db,
+            &[("purpose", &BANK_CHARGES.to_owned()), ("updated_at", &now)],
+        )
         .await?;
     Payment::query()
         .where_(Payment::ID.eq(payment.id))
@@ -616,9 +624,10 @@ pub(crate) fn register(app: &mut Registry) {
             _ => Ok(()),
         }
     });
-    app.schedule().hourly(REMINDER_TASK, |state: AppState| async move {
-        run_reminders(&state, renox::db::now()).await.map(|_| ())
-    });
+    app.schedule()
+        .hourly(REMINDER_TASK, |state: AppState| async move {
+            run_reminders(&state, renox::db::now()).await.map(|_| ())
+        });
     app.command(
         REMINDER_TASK,
         "Remind the accountant of the evidence deadline of a chargeback (FIN.RUL.20)",

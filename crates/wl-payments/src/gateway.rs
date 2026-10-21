@@ -301,11 +301,7 @@ impl Gateway for FakeGateway {
         &'a self,
         gateway_txn: &'a str,
     ) -> GatewayFuture<'a, GatewayPaymentStatus> {
-        let down = self
-            .status_down
-            .lock()
-            .expect("lock")
-            .contains(gateway_txn);
+        let down = self.status_down.lock().expect("lock").contains(gateway_txn);
         let status = self
             .statuses
             .lock()
@@ -521,7 +517,10 @@ mod tests {
         assert_eq!(a.provider(), "fake");
         let remembered: Arc<dyn Gateway> = Arc::new(a.clone());
         remember(&remembered);
-        assert_eq!(by_account(a.account()).map(|g| g.provider().to_owned()), Some("fake".to_owned()));
+        assert_eq!(
+            by_account(a.account()).map(|g| g.provider().to_owned()),
+            Some("fake".to_owned())
+        );
         assert!(by_account("nobody").is_none());
     }
 }

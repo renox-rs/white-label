@@ -848,10 +848,7 @@ async fn show(
         .or_else(|| payment.dispute_status.clone())
         .map(|code| t(&format!("dispute.{code}")))
         .unwrap_or_default();
-    let dispute_fee = payment
-        .dispute_fee
-        .map(money)
-        .unwrap_or_default();
+    let dispute_fee = payment.dispute_fee.map(money).unwrap_or_default();
     let reasons = options(&t, "reason", &["entered_in_error", "bank_return"]);
     let entity_name = match LegalEntity::find(&db, payment.legal_entity_id).await? {
         Some(entity) => entity.code,

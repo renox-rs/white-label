@@ -565,7 +565,9 @@ async fn recheck(
     let dispute = payment.dispute_reference.clone().unwrap_or_default();
     match gateway.accept_dispute(txn, &dispute).await {
         Ok(()) => Ok(None),
-        Err(error) => Ok(Some(format!("the gateway rejected the acceptance: {error}"))),
+        Err(error) => Ok(Some(format!(
+            "the gateway rejected the acceptance: {error}"
+        ))),
     }
 }
 

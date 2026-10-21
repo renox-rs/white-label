@@ -33,8 +33,14 @@ pub(crate) fn event_of(refund: &Refund, approved_by: Option<i64>) -> Option<Refu
 /// Registers the listener.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Refund>, state: AppState| async move {
-        if ![APPROVE, APPROVE_BY_SYSTEM, RETRY, RETRY_BY_SYSTEM, CHANGE_METHOD]
-            .contains(&event.transition.as_str())
+        if ![
+            APPROVE,
+            APPROVE_BY_SYSTEM,
+            RETRY,
+            RETRY_BY_SYSTEM,
+            CHANGE_METHOD,
+        ]
+        .contains(&event.transition.as_str())
         {
             return Ok(());
         }

@@ -147,9 +147,7 @@ async fn nothing_is_refunded_where_there_is_no_balance_or_it_is_not_the_partys()
     let entity = t.entity("PGP").await;
     let a = t.user_a().await;
     // No balance at all.
-    ask(&t, &a, &source(), PAYER, 100)
-        .await
-        .assert_status(422);
+    ask(&t, &a, &source(), PAYER, 100).await.assert_status(422);
     // The balance of another payer.
     t.payer_credits.set(PAYER, entity.id, 120_000);
     let other = RefundSource::PayerCredit(payer_credit_subject(support::BLUE_DUNES));

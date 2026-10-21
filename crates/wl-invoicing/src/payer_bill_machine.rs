@@ -24,18 +24,18 @@
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};
 use wl_kernel::machines::SubjectMachine;
-use wl_kernel::voids;
 use wl_kernel::payer_bills::PayerBillStatus;
+use wl_kernel::voids;
 
 use crate::payer_bill::{PayerBill, SUBJECT_TYPE};
 use crate::payer_closing;
 use crate::payer_issue;
 use crate::payer_notices;
 use crate::payer_policy;
-use crate::permissions;
 use crate::payer_recoupment;
 use crate::payer_rejection;
 use crate::payer_remittance;
+use crate::permissions;
 
 /// Every transition of the machine, in a stable order.
 fn all_transitions() -> Vec<Transition<PayerBill>> {
@@ -53,7 +53,7 @@ impl StateMachine for PayerBill {
     const COLUMN: renox::db::Col<PayerBill, PayerBillStatus> = PayerBill::STATUS;
 
     fn machine() -> Machine<Self> {
-        use PayerBillStatus::{Closed, Denied, Draft, Issued, PartiallyPaid, Paid, Voided};
+        use PayerBillStatus::{Closed, Denied, Draft, Issued, Paid, PartiallyPaid, Voided};
         let machine = Machine::new()
             .initial([Draft])
             .state(Draft)
@@ -122,13 +122,15 @@ pub(crate) fn register_events(app: &mut Registry) {
             payer_recoupment::on_payment_reversed(&state, &event).await
         },
     );
-    app.listen(|event: Transitioned<PayerBill>, state: AppState| async move {
-        payer_issue::on_transition(&state, &event).await?;
-        payer_rejection::on_transition(&state, &event).await?;
-        payer_remittance::on_transition(&state, &event).await?;
-        payer_recoupment::on_transition(&state, &event).await?;
-        payer_closing::on_transition(&state, &event).await
-    });
+    app.listen(
+        |event: Transitioned<PayerBill>, state: AppState| async move {
+            payer_issue::on_transition(&state, &event).await?;
+            payer_rejection::on_transition(&state, &event).await?;
+            payer_remittance::on_transition(&state, &event).await?;
+            payer_recoupment::on_transition(&state, &event).await?;
+            payer_closing::on_transition(&state, &event).await
+        },
+    );
 }
 
 #[cfg(test)]

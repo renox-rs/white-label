@@ -162,9 +162,9 @@ async fn start(
     };
     match online::start_online(&state, id).await {
         Ok(started) => Ok(Redirect::to(&started.checkout.url).into_response()),
-        Err(TransitionError::Guard(message)) => {
-            Ok(page(&state, &lang, token, Some(message)).await?.into_response())
-        }
+        Err(TransitionError::Guard(message)) => Ok(page(&state, &lang, token, Some(message))
+            .await?
+            .into_response()),
         Err(other) => Err(other.into_error()),
     }
 }

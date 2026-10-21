@@ -119,10 +119,7 @@ async fn a_package_waits_for_payment_and_activates_when_its_invoice_is_paid() {
     let package = pay(&t, &package).await;
     assert_eq!(package.status, PackageStatus::Active);
     assert_eq!(package.valid_from, Some(today()));
-    assert_eq!(
-        package.valid_to,
-        today().checked_add_months(Months::new(6))
-    );
+    assert_eq!(package.valid_to, today().checked_add_months(Months::new(6)));
     let events = seen.activated.lock().unwrap().clone();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].credits, 10);
@@ -145,7 +142,10 @@ async fn consuming_records_a_movement_and_the_last_credits_complete_the_package(
         }
     );
     let after = reload(&t, &package).await;
-    assert_eq!((after.status, after.credits_used), (PackageStatus::Active, 4));
+    assert_eq!(
+        (after.status, after.credits_used),
+        (PackageStatus::Active, 4)
+    );
     let movements = after.movements(t.db()).await.unwrap();
     assert_eq!(movements.len(), 1);
     assert_eq!(movements[0].kind, MovementKind::Consume);
@@ -165,17 +165,25 @@ async fn consuming_records_a_movement_and_the_last_credits_complete_the_package(
         .await
         .unwrap();
     let done = reload(&t, &package).await;
-    assert_eq!((done.status, done.remaining()), (PackageStatus::Completed, 0));
+    assert_eq!(
+        (done.status, done.remaining()),
+        (PackageStatus::Completed, 0)
+    );
     let events = seen.consumed.lock().unwrap().clone();
     assert_eq!(events.len(), 2);
     assert_eq!(events[1].remaining, 0);
     assert_eq!(events[1].source, booking(3));
 
     // The cancelled source gives its credits back and the package is active.
-    let back = package_ledger(t.state()).reverse(t.state(), booking(3)).await;
+    let back = package_ledger(t.state())
+        .reverse(t.state(), booking(3))
+        .await;
     assert!(back.unwrap());
     let reversed = reload(&t, &package).await;
-    assert_eq!((reversed.status, reversed.remaining()), (PackageStatus::Active, 6));
+    assert_eq!(
+        (reversed.status, reversed.remaining()),
+        (PackageStatus::Active, 6)
+    );
 }
 
 #[renox::test]

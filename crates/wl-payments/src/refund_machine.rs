@@ -184,8 +184,10 @@ fn approve_by_system() -> Transition<Refund> {
                 if fits {
                     Ok(())
                 } else {
-                    Err("Only a late payment refund to the same card is approved by the system."
-                        .to_owned())
+                    Err(
+                        "Only a late payment refund to the same card is approved by the system."
+                            .to_owned(),
+                    )
                 }
             })
         })

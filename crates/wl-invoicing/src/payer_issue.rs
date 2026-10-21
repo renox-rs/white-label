@@ -462,7 +462,11 @@ mod tests {
             Some("The payer was not found.")
         );
         // Without the gathered input nothing is issued.
-        assert!(refusal(ISSUE, &bill, &TransitionCtx::new(None)).await.is_some());
+        assert!(
+            refusal(ISSUE, &bill, &TransitionCtx::new(None))
+                .await
+                .is_some()
+        );
     }
 
     #[renox::test]
