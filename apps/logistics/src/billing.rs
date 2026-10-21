@@ -45,7 +45,7 @@ use crate::notices::tell_user;
 use crate::permissions;
 use crate::rates::aed;
 use crate::remit::period_end_of;
-use crate::shipment::{Charge, Shipment, ShipmentStatus, TrackingEvent, charge_kind};
+use crate::shipment::{Charge, Shipment, ShipmentStatus, TrackingEvent, charge_kind, track};
 use crate::texts::english;
 
 /// The scheduled task of `LOG.RUL.07`.
@@ -174,6 +174,93 @@ pub async fn mark_shipment_invoiced(db: &Db, id: i64, at: DateTime) -> Result {
         .update(db, &[("invoiced_on", &at)])
         .await?;
     Ok(())
+}
+
+/// Records that run `run` billed `charges` and `shipments`.
+async fn link_run(
+    db: &Db,
+    run: i64,
+    charges: &[i64],
+    shipments: &BTreeSet<i64>,
+) -> Result {
+    let run = Some(run);
+    for id in charges {
+        Charge::query()
+            .where_(Charge::ID.eq(*id))
+            .update(db, &[("billing_run_id", &run)])
+            .await?;
+    }
+    for id in shipments {
+        Shipment::query()
+            .where_(Shipment::ID.eq(*id))
+            .update(db, &[("billing_run_id", &run)])
+            .await?;
+    }
+    Ok(())
+}
+
+/// Releases what a monthly run billed on a draft invoice that is gone (the
+/// accountant discarded it): its shipments and charges are billable again,
+/// the run is deleted so that the month can be drafted again, and each
+/// shipment gets a tracking event. A run whose invoice exists (a draft, or
+/// issued, or credited since) is left as it is. `client` limits the check to
+/// one client; `None` checks every run. The check is by the invoicer's
+/// answer, so it holds for every way a draft can be discarded.
+///
+/// Answers how many runs were released.
+///
+/// # Errors
+///
+/// Database errors and the invoicer's.
+pub async fn release_discarded(state: &AppState, client: Option<PartyId>) -> Result<usize> {
+    let mut query = BillingRun::query().where_(BillingRun::INVOICE_ID.is_not_null());
+    if let Some(client) = client {
+        query = query.where_(BillingRun::CLIENT_PARTY_ID.eq(client.0));
+    }
+    let mut released = 0;
+    for run in query.get(&state.db).await? {
+        let Some(invoice) = run.invoice_id else {
+            continue;
+        };
+        let found = invoicing::invoicer(state)
+            .find(&state.db, InvoiceId(invoice))
+            .await?;
+        if found.is_some() {
+            continue;
+        }
+        let none: Option<DateTime> = None;
+        let no_run: Option<i64> = None;
+        let shipments = Shipment::query()
+            .where_(Shipment::BILLING_RUN_ID.eq(run.id))
+            .get(&state.db)
+            .await?;
+        let mut tx = state.db.begin().await?;
+        for shipment in &shipments {
+            Shipment::query()
+                .where_(Shipment::ID.eq(shipment.id))
+                .update(&mut tx, &[("invoiced_on", &none), ("billing_run_id", &no_run)])
+                .await?;
+            track(
+                &mut tx,
+                shipment.id,
+                "billing_released",
+                &run.period,
+                None,
+            )
+            .await?;
+        }
+        Charge::query()
+            .where_(Charge::BILLING_RUN_ID.eq(run.id))
+            .update(&mut tx, &[("billed_on", &none), ("billing_run_id", &no_run)])
+            .await?;
+        BillingRun::query()
+            .where_(BillingRun::ID.eq(run.id))
+            .delete(&mut tx)
+            .await?;
+        tx.commit().await?;
+        released += 1;
+    }
+    Ok(released)
 }
 
 /// The first day of the month of `day`.
@@ -344,6 +431,7 @@ pub async fn draft_for(
     client: PartyId,
     day: NaiveDate,
 ) -> Result<Option<Monthly>> {
+    release_discarded(state, Some(client)).await?;
     let period = period_of(day);
     let done = BillingRun::query()
         .where_(BillingRun::CLIENT_PARTY_ID.eq(client.0))
@@ -385,9 +473,10 @@ pub async fn draft_for(
         .filter(|entry| entry.shipment_billed)
         .map(|entry| entry.shipment_id)
         .collect();
-    for id in shipments {
-        mark_shipment_invoiced(&state.db, id, at).await?;
+    for id in &shipments {
+        mark_shipment_invoiced(&state.db, *id, at).await?;
     }
+    link_run(&state.db, run.id, &charge_ids, &shipments).await?;
     let unpriced =
         i64::try_from(entries.iter().filter(|e| e.unpriced_return).count()).unwrap_or(i64::MAX);
     let count = i64::try_from(entries.len()).unwrap_or(i64::MAX);
@@ -455,6 +544,7 @@ async fn tell_drafted(
 ///
 /// Database errors and the invoicer's.
 pub async fn run_monthly(state: &AppState, day: NaiveDate) -> Result<Vec<Monthly>> {
+    release_discarded(state, None).await?;
     let mut clients = BTreeSet::new();
     for status in [
         ShipmentStatus::Delivered,

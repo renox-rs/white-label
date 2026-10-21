@@ -709,3 +709,93 @@ async fn a_return_without_a_price_is_billed_at_zero_and_the_accountants_are_told
     let body = drafted[0].data["body"].as_str().unwrap();
     assert!(body.contains("no return price for client 501"), "{body}");
 }
+
+/// BL-LOG-20 (#318) risk: a draft invoice the accountant discards leaves
+/// nothing marked billed. The shipments and the charges of its run are
+/// billable again, the run is gone, and the next run drafts the month anew,
+/// once.
+#[renox::test]
+async fn a_discarded_draft_releases_its_shipments_and_charges_for_the_next_run() {
+    use wl_kernel::invoicing::{InvoiceId, Invoicer};
+    let w = boot().await;
+    card(&w).await;
+    let heavy = reweighed_delivery(&w, "ORD-1", at(2026, 10, 15)).await;
+
+    let first = billing::run_monthly(w.state(), day(2026, 11, 1))
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].lines, 2, "the delivery and the re-weigh surcharge");
+    let billed = w.reload(&heavy).await;
+    assert!(billed.invoiced_on.is_some());
+    assert!(billed.billing_run_id.is_some());
+
+    // While the draft stands, a second run changes nothing.
+    let again = billing::run_monthly(w.state(), day(2026, 11, 2))
+        .await
+        .unwrap();
+    assert!(again.is_empty());
+    assert!(w.reload(&heavy).await.invoiced_on.is_some());
+
+    // The accountant discards the draft.
+    let discarded = w
+        .invoices
+        .discard_draft(w.db(), InvoiceId(first[0].invoice.0))
+        .await
+        .unwrap();
+    assert!(discarded);
+
+    let released = billing::release_discarded(w.state(), None).await.unwrap();
+    assert_eq!(released, 1);
+    let after = w.reload(&heavy).await;
+    assert_eq!(after.invoiced_on, None, "the shipment is billable again");
+    assert_eq!(after.billing_run_id, None);
+    let charges = Charge::query()
+        .where_(Charge::SHIPMENT_ID.eq(heavy.id))
+        .get(w.db())
+        .await
+        .unwrap();
+    assert!(!charges.is_empty());
+    assert!(
+        charges
+            .iter()
+            .all(|c| c.billed_on.is_none() && c.billing_run_id.is_none()),
+        "the surcharge is billable again"
+    );
+    assert_eq!(
+        BillingRun::query().count(w.db()).await.unwrap(),
+        0,
+        "the month can be drafted again"
+    );
+
+    // The run itself releases first, so the month is drafted again, once.
+    let second = billing::run_monthly(w.state(), day(2026, 11, 3))
+        .await
+        .unwrap();
+    assert_eq!(second.len(), 1);
+    assert_eq!(second[0].lines, 2);
+    assert_eq!(BillingRun::query().count(w.db()).await.unwrap(), 1);
+    assert!(w.reload(&heavy).await.invoiced_on.is_some());
+}
+
+/// A run whose draft was discarded is released by the run itself, with no
+/// call of `release_discarded` in between.
+#[renox::test]
+async fn the_next_monthly_run_releases_a_discarded_draft_by_itself() {
+    use wl_kernel::invoicing::{InvoiceId, Invoicer};
+    let w = boot().await;
+    card(&w).await;
+    delivered_on(&w, "ORD-1", at(2026, 10, 15)).await;
+    let first = billing::run_monthly(w.state(), day(2026, 11, 1))
+        .await
+        .unwrap();
+    w.invoices
+        .discard_draft(w.db(), InvoiceId(first[0].invoice.0))
+        .await
+        .unwrap();
+    let second = billing::run_monthly(w.state(), day(2026, 11, 2))
+        .await
+        .unwrap();
+    assert_eq!(second.len(), 1, "the discarded month is drafted again");
+    assert_eq!(drafts(&w).len(), 2);
+}

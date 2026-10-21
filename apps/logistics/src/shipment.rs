@@ -110,6 +110,9 @@ pub struct Shipment {
     pub reweigh_price: Option<i64>,
     /// When the shipment went on an issued monthly invoice (BL-LOG-20).
     pub invoiced_on: Option<DateTime>,
+    /// The monthly run that billed it; released when the draft invoice is
+    /// discarded.
+    pub billing_run_id: Option<i64>,
     /// How many parcels were booked.
     pub parcel_count: i64,
     /// How many parcels were scanned.
@@ -555,6 +558,9 @@ pub struct Charge {
     pub ticket_id: Option<i64>,
     /// When it went on an invoice; none while it waits for the next draft.
     pub billed_on: Option<DateTime>,
+    /// The monthly run that billed it; released when the draft invoice is
+    /// discarded.
+    pub billing_run_id: Option<i64>,
     /// When it was recorded.
     pub recorded_at: DateTime,
     /// When the row was created.

@@ -22,6 +22,7 @@ struct Inner {
     drafts: Vec<InvoiceDraft>,
     open: Vec<InvoiceSummary>,
     allocations: Vec<(InvoiceId, Subject, i64)>,
+    discarded: Vec<i64>,
 }
 
 /// The recording `Invoicer`.
@@ -110,15 +111,42 @@ impl Invoicer for Invoices {
         Box::pin(async move { Ok(Some(InvoiceId(id))) })
     }
 
+    fn discard_draft<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, bool> {
+        let mut inner = self.0.lock().unwrap();
+        let exists = usize::try_from(id.0).is_ok_and(|n| n >= 1 && n <= inner.drafts.len());
+        let gone = exists && !inner.discarded.contains(&id.0);
+        if gone {
+            inner.discarded.push(id.0);
+        }
+        Box::pin(async move { Ok(gone) })
+    }
+
     fn find<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
-        let found = self
-            .0
-            .lock()
-            .unwrap()
-            .open
-            .iter()
-            .find(|invoice| invoice.id == id)
-            .cloned();
+        let inner = self.0.lock().unwrap();
+        let mut found = inner.open.iter().find(|invoice| invoice.id == id).cloned();
+        // A draft the app asked for is found until it is discarded.
+        if found.is_none()
+            && !inner.discarded.contains(&id.0)
+            && let Some(draft) = usize::try_from(id.0)
+                .ok()
+                .and_then(|n| n.checked_sub(1))
+                .and_then(|n| inner.drafts.get(n))
+        {
+            found = Some(InvoiceSummary {
+                id,
+                number: None,
+                status: InvoiceStatus::Draft,
+                party: draft.party,
+                legal_entity_id: None,
+                currency: draft.currency.clone(),
+                gross_total: 0,
+                balance: 0,
+                due_date: draft.due_date,
+                disputed: false,
+                chasing_paused_until: None,
+            });
+        }
+        drop(inner);
         Box::pin(async move { Ok(found) })
     }
 
