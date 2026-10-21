@@ -11,8 +11,12 @@ use renox::chrono::{NaiveDate, TimeDelta, Timelike};
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::testing::TestApp;
-use wl_kernel::PartyId;
 use wl_kernel::calendar::BusinessCalendar;
+use wl_kernel::payments::{
+    AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
+    RefundId, RefundRequest, ReversalReason, provide_payment_recorder,
+};
+use wl_kernel::{PartyId, Subject};
 use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::scheduling::{
     BookingBooked, BookingCancelled, BookingCheckedIn, BookingCompleted, BookingNoShow,
@@ -117,9 +121,115 @@ impl PortalUsers for Portal {
     }
 }
 
+/// `wl-payments` as the module sees it: it records the refunds asked of it,
+/// numbers them, and refuses on demand (payments off, an unknown party).
+#[derive(Clone, Default)]
+pub struct Refunds {
+    asked: Arc<Mutex<Vec<(RefundRequest, Option<i64>)>>>,
+    refuse: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Refunds {
+    /// The refunds asked so far, with the user who asked.
+    pub fn asked(&self) -> Vec<(RefundRequest, Option<i64>)> {
+        self.asked.lock().unwrap().clone()
+    }
+
+    /// The amounts asked so far, in fils.
+    pub fn amounts(&self) -> Vec<i64> {
+        self.asked().iter().map(|(request, _)| request.amount).collect()
+    }
+
+    /// From now on every refund is refused (or accepted again).
+    pub fn refuse(&self, refuse: bool) {
+        self.refuse.store(refuse, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+fn off() -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "payments refuses".to_owned(),
+    )
+}
+
+impl PaymentRecorder for Refunds {
+    fn record<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: RecordPayment,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, PaymentSummary> {
+        Box::pin(async { Err(off()) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: PaymentId,
+        _target: AllocationTarget,
+        _amount: i64,
+    ) -> PaymentFuture<'a, ()> {
+        Box::pin(async { Err(off()) })
+    }
+
+    fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: PaymentId,
+        _reason: ReversalReason,
+        _note: Option<String>,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, ()> {
+        Box::pin(async { Err(off()) })
+    }
+
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: PaymentId,
+    ) -> PaymentFuture<'a, Option<PaymentSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn credit_balance<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> PaymentFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+
+    fn payments_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _prepaid: &'a Subject,
+    ) -> PaymentFuture<'a, Vec<PaymentSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn request_refund<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: RefundRequest,
+        by: Option<i64>,
+    ) -> PaymentFuture<'a, RefundId> {
+        Box::pin(async move {
+            if self.refuse.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(off());
+            }
+            let mut asked = self.asked.lock().unwrap();
+            asked.push((request, by));
+            Ok(RefundId(900 + asked.len() as i64))
+        })
+    }
+}
+
 /// Provides the fakes.
 struct Harness {
     portal: Portal,
+    refunds: Refunds,
 }
 
 impl Module for Harness {
@@ -129,6 +239,7 @@ impl Module for Harness {
 
     fn register(&self, app: &mut Registry) {
         provide_portal_users(app, self.portal.clone());
+        provide_payment_recorder(app, self.refunds.clone());
     }
 }
 
@@ -140,6 +251,8 @@ pub struct Booked {
     pub events: Events,
     /// Who acts for whom in the portal.
     pub portal: Portal,
+    /// The refunds the module asked of `wl-payments`.
+    pub refunds: Refunds,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
 }
@@ -230,6 +343,25 @@ impl Booked {
                 .unwrap();
         }
         service
+    }
+
+    /// A 30-minute service that `doctor` delivers with a deposit of AED 200
+    /// that is forfeited when a party cancels less than 24 hours before; the
+    /// party may cancel until 2 hours before. After check-in the rest is
+    /// forfeited unless `walk_out_forfeits` is false.
+    pub async fn deposit_service(&self, doctor: &Resource, walk_out_forfeits: bool) -> ServiceType {
+        self.service_with("consultation", &[doctor], |service| {
+            service.deposit_amount = 20_000;
+            service.deposit_forfeit_hours = 24;
+            service.cancel_cutoff_hours = 2;
+            service.walk_out_forfeits = walk_out_forfeits;
+        })
+        .await
+    }
+
+    /// A user who may waive a forfeited deposit.
+    pub async fn waiver(&self) -> User {
+        self.user("Walid", &[perm::VIEW, perm::WAIVE_DEPOSIT]).await
     }
 
     /// A plain 30-minute service that `doctor` delivers.
@@ -330,6 +462,7 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
     std::fs::write(&path, LAYOUT).unwrap();
     let events = Events::default();
     let portal = Portal::default();
+    let refunds = Refunds::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -337,6 +470,7 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
         .module(module)
         .module(Harness {
             portal: portal.clone(),
+            refunds: refunds.clone(),
         });
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
@@ -357,6 +491,7 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
         app,
         events,
         portal,
+        refunds,
         _views: views,
     }
 }

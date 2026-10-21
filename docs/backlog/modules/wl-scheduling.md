@@ -209,15 +209,15 @@ owed more than the deposit is `⚠ open: lawyer (L-32)`.
 - Must not waive without the permission.
 
 #### Done when
-- [ ] Given deposit AED 200 and a 24 h window, when the party cancels 30 h before, then a refund
+- [x] Given deposit AED 200 and a 24 h window, when the party cancels 30 h before, then a refund
       of AED 200 is requested and the outcome is `refunded`.
-- [ ] When the party cancels 10 h before, the outcome is `forfeited`.
-- [ ] When staff cancel with `equipment_failure` 1 h before, a refund of AED 200 is requested.
-- [ ] When staff reschedule with a business reason, the deposit is carried to the new booking.
-- [ ] Given a `no_show`, the deposit is forfeited; user B with `bookings.waive_deposit` waives it
+- [x] When the party cancels 10 h before, the outcome is `forfeited`.
+- [x] When staff cancel with `equipment_failure` 1 h before, a refund of AED 200 is requested.
+- [x] When staff reschedule with a business reason, the deposit is carried to the new booking.
+- [x] Given a `no_show`, the deposit is forfeited; user B with `bookings.waive_deposit` waives it
       with a reason and a refund of AED 200 is requested; user C without the permission is
       refused.
-- [ ] Given a cancel 10 h before with initiated by `business` and code `resource_unavailable`
+- [x] Given a cancel 10 h before with initiated by `business` and code `resource_unavailable`
       (what BL-SCH-01 records for a party cancelling from a change message), a refund of AED 200
       is requested and the outcome is `refunded`. The end-to-end test from the conflict message
       is in BL-SCH-05.
