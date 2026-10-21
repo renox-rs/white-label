@@ -240,6 +240,38 @@ async fn a_late_payment_is_refunded_in_full_once_and_the_booking_stays_cancelled
     assert_ne!(again.id, booking.id);
 }
 
+/// The refund of a late payment is in the payment's own currency, not the
+/// module's default.
+#[renox::test]
+async fn the_late_refund_is_in_the_currency_of_the_payment() {
+    let t = boot_paid().await;
+    let party = patient(&t).await;
+    let (doctor, service) = clinic(&t, false).await;
+    let booking = self_book(&t, party, &service, &doctor, in_hours(30), now())
+        .await
+        .unwrap();
+    let link = link_of(&t, &booking).await;
+    let paying = start_paying(&t, &link).await;
+    payment_link::expire_due(t.state(), link.expires_at)
+        .await
+        .unwrap();
+    Payment::query()
+        .where_(Payment::ID.eq(paying.id))
+        .update(t.db(), &[("currency", &"USD".to_owned())])
+        .await
+        .unwrap();
+
+    let paid = online::gateway_succeeded(t.state(), &txn(&paying), 15_000)
+        .await
+        .unwrap()
+        .expect("the payment is confirmed");
+
+    let all = refunds(&t).await;
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].source_id, paid.id);
+    assert_eq!(all[0].currency, "USD");
+}
+
 /// Done when 4: a failed payment keeps the hold; the retry on the same link
 /// that succeeds keeps the booking and asks no refund; the link that expires
 /// afterwards, with the booking paid, is ignored.

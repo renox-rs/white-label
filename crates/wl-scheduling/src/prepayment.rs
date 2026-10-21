@@ -289,8 +289,11 @@ pub async fn release_due(state: &AppState, at: DateTime) -> Result<usize> {
 
 /// The booking the payment of `event` was made in advance for: among the
 /// paying party's bookings that await payment or were cancelled, the one whose
-/// prepaid payments include it.
-async fn booking_of(state: &AppState, event: &PaymentReceived) -> Result<Option<Booking>> {
+/// prepaid payments include it, with that payment's own currency.
+async fn booking_of(
+    state: &AppState,
+    event: &PaymentReceived,
+) -> Result<Option<(Booking, String)>> {
     let candidates = Booking::query()
         .where_(Booking::PARTY_ID.eq(event.party.0))
         .where_(Booking::PREPAYMENT_TYPE.eq(PAYMENT_LINK_SUBJECT_TYPE))
@@ -303,8 +306,8 @@ async fn booking_of(state: &AppState, event: &PaymentReceived) -> Result<Option<
             continue;
         }
         let paid = recorder.payments_for(&state.db, &booking.subject()).await?;
-        if paid.iter().any(|payment| payment.id == event.payment) {
-            return Ok(Some(booking));
+        if let Some(payment) = paid.iter().find(|payment| payment.id == event.payment) {
+            return Ok(Some((booking, payment.currency.clone())));
         }
     }
     Ok(None)
@@ -322,7 +325,7 @@ pub async fn on_payment_received(
     event: &PaymentReceived,
     at: DateTime,
 ) -> Result<()> {
-    let Some(booking) = booking_of(state, event).await? else {
+    let Some((booking, currency)) = booking_of(state, event).await? else {
         return Ok(());
     };
     if awaits_payment(&booking) && booking.hold_until.is_none_or(|until| until > at) {
@@ -337,7 +340,7 @@ pub async fn on_payment_received(
     if booking.status != BookingStatus::Cancelled {
         return Ok(());
     }
-    refund_late(state, &booking, event, at).await
+    refund_late(state, &booking, event, &currency, at).await
 }
 
 /// The payment arrived in time: the booking no longer awaits it. A `booked`
@@ -360,11 +363,13 @@ async fn confirm_payment(state: &AppState, booking: &Booking, at: DateTime) -> R
     Ok(())
 }
 
-/// Asks the full refund of the late payment, once, and tells the party.
+/// Asks the full refund of the late payment, in the currency it was paid in,
+/// once, and tells the party.
 async fn refund_late(
     state: &AppState,
     booking: &Booking,
     event: &PaymentReceived,
+    currency: &str,
     at: DateTime,
 ) -> Result<()> {
     let mut claim = PrepaymentRefund {
@@ -388,7 +393,7 @@ async fn refund_late(
         party: event.party,
         legal_entity_id: entity.id,
         amount: event.amount,
-        currency: DEFAULT_CURRENCY.to_owned(),
+        currency: currency.to_owned(),
         method: None,
         gateway_txn: None,
         reason: english("wl_scheduling.prepayment.refund_reason", &[]),
