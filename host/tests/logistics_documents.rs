@@ -509,6 +509,56 @@ async fn a_failed_log_rul_10_alerts_the_company_admin() {
     );
 }
 
+/// AC4 (behaviour): the nightly `LOG.RUL.10` itself fails (the grounding
+/// cannot be stored) on five attempts with the kernel's backoff; the run is
+/// `failed` and the owner alert goes to the company admin and the operations
+/// manager, once.
+#[renox::test]
+async fn the_rule_that_fails_for_good_alerts_the_admin_and_the_owner_role() {
+    use host::logistics_rules::run_ground_rule;
+    use wl_kernel::automation::RunOutcome;
+    use wl_kernel::compliance::ComplianceAlert;
+    let app = logistics_booted().await;
+    let admin = person(&app, "Ada", ADMIN).await;
+    let manager = person(&app, "Olivia", OPERATIONS_MANAGER).await;
+    let driver = person(&app, "Dev", host::roles::DRIVER).await;
+    document(&app, &van(), "mulkiya", day(-3)).await;
+    run(&app, "RUN-T-1", &driver, day(1), "Depot A", VehicleType::Van).await;
+    // The grounding cannot be stored: the rule fails.
+    renox::db::sql("DROP TABLE logistics_vehicle_groundings")
+        .execute(app.db())
+        .await
+        .unwrap();
+
+    let night = today();
+    for wait in [60_u64, 300, 900, 3600] {
+        let outcome = app
+            .at_travelled_time(run_ground_rule(app.state(), night))
+            .await
+            .unwrap();
+        assert_eq!(outcome, RunOutcome::Retrying);
+        app.travel(std::time::Duration::from_secs(wait));
+    }
+    let outcome = app
+        .at_travelled_time(run_ground_rule(app.state(), night))
+        .await
+        .unwrap();
+    assert_eq!(outcome, RunOutcome::Failed, "the fifth attempt fails for good");
+
+    let alerts = ComplianceAlert::query().get(app.db()).await.unwrap();
+    assert_eq!(alerts.len(), 1, "one alert");
+    assert_eq!(alerts[0].rule, "LOG.RUL.10");
+    assert_eq!(alerts[0].owner_role, "operations_manager");
+    let told = recipients(app.db(), &alerts[0].owner_role).await.unwrap();
+    assert!(told.contains(&admin.id), "the company admin is alerted");
+    assert!(told.contains(&manager.id), "and the owner role");
+    // A sixth call does not alert again.
+    app.at_travelled_time(run_ground_rule(app.state(), night))
+        .await
+        .unwrap();
+    assert_eq!(ComplianceAlert::query().count(app.db()).await.unwrap(), 1);
+}
+
 /// `LOG.RUL.10` grounds a vehicle whose Mulkiya expired, tells the fleet
 /// manager and the dispatcher, and runs once for the day.
 #[renox::test]
