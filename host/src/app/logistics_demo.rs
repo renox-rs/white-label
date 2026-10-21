@@ -15,7 +15,9 @@ use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::PartyKind;
 
-use super::roles::{self, DISPATCHER, DRIVER, HUB_STAFF, OPERATIONS_MANAGER, SHIPPING_CLIENT};
+use super::roles::{
+    self, CUSTOMER_SERVICE, DISPATCHER, DRIVER, HUB_STAFF, OPERATIONS_MANAGER, SHIPPING_CLIENT,
+};
 use super::seed::PASSWORD;
 
 /// The command that fills a local database with the demo company.
@@ -59,6 +61,12 @@ pub const LOGINS: &[Login] = &[
         email: "driver@najm.example",
         role: DRIVER,
         label: "Driver",
+    },
+    Login {
+        name: "Layla Hamdan",
+        email: "service@najm.example",
+        role: CUSTOMER_SERVICE,
+        label: "Customer service",
     },
     Login {
         name: "Noor Haddad",

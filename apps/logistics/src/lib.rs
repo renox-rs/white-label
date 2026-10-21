@@ -11,6 +11,7 @@ mod claim;
 pub mod cod;
 mod credit;
 pub mod disposal;
+pub mod dispute;
 mod events;
 pub mod hold;
 pub mod loss;
@@ -55,6 +56,7 @@ pub use account::{AccountChange, AccountChangeStatus};
 pub use adjustment::{AdjustmentLine, AdjustmentStatus};
 pub use cash_watch::CashWatch;
 pub use cod::{CodLoss, CodRule};
+pub use dispute::StatementDispute;
 pub use netting::Offset;
 pub use statement::Statement;
 pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
@@ -78,6 +80,7 @@ impl Module for Logistics {
         pages::routes()
             .merge(remittance_pages::routes())
             .merge(account::routes())
+            .merge(dispute::routes())
             .merge(cod::routes())
             .merge(reversal_pages::routes())
             .merge(loss_pages::routes())
@@ -120,6 +123,7 @@ impl Module for Logistics {
             .model::<Remittance>()
             .model::<RemittanceLine>()
             .model::<AdjustmentLine>()
+            .model::<StatementDispute>()
             .model::<PaymentReturn>()
             .model::<AccountChange>()
             .model::<Offset>()

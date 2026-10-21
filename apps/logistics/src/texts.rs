@@ -858,6 +858,62 @@ const TEXTS: &[(&str, &str)] = &[
     ("logistics.account_approved", "Bank account change approved."),
     ("logistics.account_rejected", "Bank account change rejected."),
     ("logistics.account_withdrawn", "Bank account change withdrawn."),
+    // A COD statement dispute (`LOG.ACL.12`, BL-LOG-18).
+    (
+        "logistics.dispute.returned",
+        "A dispute is not offered while the transfer is returned: the client's question is a normal ticket for customer service.",
+    ),
+    (
+        "logistics.dispute.draft",
+        "A draft has no statement to dispute yet.",
+    ),
+    (
+        "logistics.dispute.not_paid",
+        "The statement is published when the remittance is paid.",
+    ),
+    ("logistics.dispute.reason_needed", "Give the reason."),
+    (
+        "logistics.dispute.ticket_title",
+        "Statement {{ number }} disputed by the client",
+    ),
+    (
+        "logistics.dispute.ticket_description",
+        "The client contests statement {{ number }}: {{ reason }}",
+    ),
+    (
+        "logistics.dispute.not_disputed",
+        "This remittance has no open dispute.",
+    ),
+    (
+        "logistics.dispute.outcome_unknown",
+        "The outcome is upheld or adjusted.",
+    ),
+    (
+        "logistics.dispute.note_needed",
+        "Give a note: the client is told the outcome.",
+    ),
+    (
+        "logistics.dispute.amount_needed",
+        "An adjusted outcome needs the amount of the adjustment line.",
+    ),
+    (
+        "logistics.dispute.resolved_title",
+        "Your question about statement {{ number }}",
+    ),
+    (
+        "logistics.dispute.upheld_body",
+        "We reviewed statement {{ number }} and it stands. {{ note }}",
+    ),
+    (
+        "logistics.dispute.adjusted_body",
+        "We reviewed statement {{ number }} and corrected it: a line of {{ amount }} will appear on your next statement. {{ note }}",
+    ),
+    ("logistics.remittance_disputed", "The statement is flagged as disputed."),
+    (
+        "logistics.remittance_dispute_added",
+        "Your message was added to the open question.",
+    ),
+    ("logistics.remittance_dispute_resolved", "The dispute is resolved."),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

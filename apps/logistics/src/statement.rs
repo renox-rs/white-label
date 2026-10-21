@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::{dubai_date, today};
 
 use crate::adjustment::{self, StatementLine};
-use crate::remittance::Remittance;
+use crate::remittance::{Remittance, RemittanceStatus};
 
 /// A published version of a remittance's statement.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
@@ -119,6 +119,9 @@ pub struct StatementView {
     pub net: i64,
     /// Whether the client contests it.
     pub disputed: bool,
+    /// Whether the client may dispute it now: it is paid and its transfer
+    /// was not returned (`dispute` is not offered then).
+    pub dispute_offered: bool,
     /// The adjustment lines.
     pub adjustments: Vec<StatementLine>,
     /// The invoices offset, each with its number and amount.
@@ -154,6 +157,7 @@ pub async fn view(db: &Db, remittance: &Remittance) -> Result<Option<StatementVi
         offset_total: latest.offset_total,
         net: latest.net,
         disputed: remittance.disputed,
+        dispute_offered: remittance.status == RemittanceStatus::Paid && !remittance.disputed,
         adjustments: adjustment::statement_lines(db, remittance).await?,
         offsets,
     }))

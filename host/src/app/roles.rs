@@ -104,6 +104,9 @@ pub const OPERATIONS_MANAGER: &str = "operations_manager";
 pub const DRIVER: &str = "driver";
 /// Hub staff: scan parcels in and out of a depot (03 §3.1, `LOG.HUB.01`).
 pub const HUB_STAFF: &str = log::HUB_STAFF_ROLE;
+/// Customer service of a logistics client: answers the client's queries and
+/// flags a COD statement it contests (03 §3.1, `LOG.ACL.12`).
+pub const CUSTOMER_SERVICE: &str = log::CUSTOMER_SERVICE_ROLE;
 /// A client user of a logistics company: books, tracks, voids and cancels its
 /// own shipments in the portal (03 §3.1, `LOG.ACL.02`, `LOG.ACL.09`).
 pub const SHIPPING_CLIENT: &str = log::CLIENT_ROLE;
@@ -268,6 +271,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // A change of the remittance bank account is asked here and
             // approved by a second user (`LOG.ACL.13`).
             log::REMITTANCES_REQUEST_ACCOUNT,
+            log::REMITTANCES_DISPUTE,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -607,6 +611,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // A change of the remittance bank account is asked here and
             // approved by a second user (`LOG.ACL.13`).
             log::REMITTANCES_REQUEST_ACCOUNT,
+            log::REMITTANCES_DISPUTE,
             // The accountant works the deadline tasks (04 compliance
             // calendar, wl-ticketing §4.4).
             tickets::TASKS_VIEW,
@@ -854,6 +859,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
     ),
     (HUB_STAFF, &[log::SHIPMENTS_VIEW, log::SHIPMENTS_SCAN]),
     (
+        CUSTOMER_SERVICE,
+        &[
+            log::SHIPMENTS_VIEW,
+            log::REMITTANCES_VIEW,
+            log::REMITTANCES_DISPUTE,
+            tickets::VIEW,
+            tickets::CREATE,
+        ],
+    ),
+    (
         SHIPPING_CLIENT,
         &[
             log::SHIPMENTS_BOOK,
@@ -862,6 +877,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // The client asks to change its remittance bank account in the
             // portal (`LOG.ACL.13`).
             log::REMITTANCES_REQUEST_ACCOUNT,
+            // It disputes a paid statement in the portal (`LOG.ACL.12`).
+            log::REMITTANCES_DISPUTE,
         ],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),

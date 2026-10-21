@@ -44,6 +44,10 @@ pub const REMITTANCES_APPROVE: &str = "remittances.approve";
 /// paid one as returned by the bank (`return_payment`) and pay it again
 /// (`repay`).
 pub const REMITTANCES_PAY: &str = "remittances.pay";
+/// Flag a COD statement the client contests (`dispute`): customer service,
+/// the accountant, and a client user of the company in the portal (BL-LOG-18).
+/// The outcome is decided with `remittances.approve`.
+pub const REMITTANCES_DISPUTE: &str = "remittances.dispute";
 /// Ask to change the client's remittance bank account and take the request
 /// back (`LOG.ACL.13`): the accountant, and a client user of the company in
 /// the portal. A second user with `remittances.approve` approves it.
@@ -65,6 +69,7 @@ pub const ALL: &[&str] = &[
     REMITTANCES_APPROVE,
     REMITTANCES_PAY,
     REMITTANCES_REQUEST_ACCOUNT,
+    REMITTANCES_DISPUTE,
 ];
 
 /// The operations manager runs a depot (§3.1). The host's
@@ -77,6 +82,9 @@ pub const DISPATCHER_ROLE: &str = "dispatcher";
 pub const HUB_STAFF_ROLE: &str = "hub_staff";
 /// The driver works the assigned run (§3.1). The host's `roles::DRIVER`.
 pub const DRIVER_ROLE: &str = "driver";
+/// Customer service answers client and recipient queries and flags the COD
+/// statements a client contests (§3.1). The host's `roles::CUSTOMER_SERVICE`.
+pub const CUSTOMER_SERVICE_ROLE: &str = "customer_service";
 /// A client user books, tracks and cancels its own shipments (§3.1). The
 /// host's `roles::SHIPPING_CLIENT`.
 pub const CLIENT_ROLE: &str = "shipping_client";

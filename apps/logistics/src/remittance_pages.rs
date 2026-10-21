@@ -282,6 +282,8 @@ pub(crate) struct ShowPage {
     lines: Vec<LineRow>,
     offsets: Vec<OffsetRow>,
     returns: Vec<ReturnRow>,
+    can_dispute: bool,
+    can_resolve: bool,
     can_return: bool,
     can_repay: bool,
     can_confirm_account: bool,
@@ -371,6 +373,12 @@ async fn show(
         lines,
         offsets,
         returns,
+        can_dispute: matches!(
+            remittance.status,
+            RemittanceStatus::Approved | RemittanceStatus::Paid
+        ) && user.has_permission(permissions::REMITTANCES_DISPUTE),
+        can_resolve: remittance.disputed
+            && user.has_permission(permissions::REMITTANCES_APPROVE),
         can_return: remittance.status == RemittanceStatus::Paid
             && user.has_permission(permissions::REMITTANCES_PAY),
         can_repay: remittance.status == RemittanceStatus::PaymentReturned
