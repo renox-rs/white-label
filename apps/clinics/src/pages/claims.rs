@@ -11,6 +11,8 @@
 //! | `POST /clinics/claims/{id}/remittance` | `clinics.claim_remittance` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/recoupment` | `clinics.claim_recoupment` | `claims.manage` |
 //! | `POST /clinics/claims/{id}/write-off` | `clinics.claim_write_off` | `claims.writeoff` |
+//! | `POST /clinics/claims/{id}/void` | `clinics.claim_void` | `claims.manage` |
+//! | `POST /clinics/claims/{id}/resolve-coverage` | `clinics.claim_resolve` | `claims.manage` |
 //!
 //! The pages only read the form and call the services of
 //! [`crate::claims`] and [`crate::claim_money`]; the transitions are the
@@ -29,18 +31,20 @@ use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 use wl_kernel::payer_bills::payer_bills;
 
-use super::{Texts, invalid, parse_date, party_name, require, text, text_with};
+use super::{Texts, invalid, parse_date, parse_id, party_name, require, text, text_with};
 use crate::claim::{
     AnswerKind, AttemptKind, Claim, ClaimAttempt, ClaimError, ClaimLine, ClaimRemittance,
     ClaimStatus,
 };
 use crate::claim_closing::{self, Closed};
 use crate::claim_money::{self, Advice, AdviceLine, Recorded, Takeback};
+use crate::claim_void::{self, REASON_CODES, VoidRequest};
 use crate::claims::{self, attempt_deadline, resubmission_deadline};
 use crate::contract::PayerContract;
 use crate::money_text;
 use crate::permissions;
 use crate::texts;
+use crate::visit::Visit;
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
@@ -63,6 +67,10 @@ pub fn routes() -> Routes {
         .name("clinics.claim_recoupment")
         .post("/clinics/claims/{id}/write-off", write_off)
         .name("clinics.claim_write_off")
+        .post("/clinics/claims/{id}/void", void)
+        .name("clinics.claim_void")
+        .post("/clinics/claims/{id}/resolve-coverage", resolve_coverage)
+        .name("clinics.claim_resolve")
         .require_auth()
 }
 
@@ -359,6 +367,13 @@ pub(crate) struct ShowPage {
     can_remit: bool,
     can_recoup: bool,
     can_write_off: bool,
+    can_void: bool,
+    void_codes: Vec<[String; 2]>,
+    duplicate_options: Vec<[String; 2]>,
+    policy_options: Vec<[String; 2]>,
+    void_info: String,
+    links: String,
+    to_resolve: bool,
 }
 
 /// `GET /clinics/claims/{id}`.
@@ -467,6 +482,84 @@ async fn show(
             &claim,
             &claim_closing::facts(&state, &claim, now(), Some(user.id)).await?,
         );
+    let can_void = claim.status.is_editable() && claim.attempts == 0;
+    let blank = [String::new(), text(&lang, "claim.void_none")];
+    let mut duplicate_options = vec![blank.clone()];
+    let mut policy_options = vec![blank];
+    if can_void {
+        for other in claim_void::candidates(&state.db, &claim).await? {
+            duplicate_options.push([other.id.to_string(), other.number()]);
+        }
+        for policy in claim_void::policies_for(&state.db, &claim).await? {
+            policy_options.push([
+                policy.id.to_string(),
+                format!(
+                    "{} {}",
+                    party_name(&state, &lang, policy.payer()).await,
+                    policy.plan
+                ),
+            ]);
+        }
+    }
+    let void_codes: Vec<[String; 2]> = REASON_CODES
+        .iter()
+        .map(|code| [(*code).to_owned(), text(&lang, &format!("claim.void_code.{code}"))])
+        .collect();
+    let void_info = match (&claim.void_code, claim.voided_on) {
+        (Some(code), Some(on)) => text_with(
+            &lang,
+            "claim.void_info",
+            &[
+                ("date", &on.to_string()),
+                ("reason", &text(&lang, &format!("claim.void_code.{code}"))),
+            ],
+        ),
+        _ => String::new(),
+    };
+    let mut links = Vec::new();
+    if let Some(other) = claim.void_duplicate_of {
+        links.push(format!(
+            "{} {}",
+            text(&lang, "claim.duplicate_of"),
+            Claim::find_or_404(&state.db, other).await?.number()
+        ));
+    }
+    if let Some(other) = claim.replaces_claim_id {
+        links.push(format!(
+            "{} {}",
+            text(&lang, "claim.replaces"),
+            Claim::find_or_404(&state.db, other).await?.number()
+        ));
+    }
+    if let Some(made) = Claim::query()
+        .where_(Claim::REPLACES_CLAIM_ID.eq(claim.id))
+        .first(&state.db)
+        .await?
+    {
+        links.push(format!(
+            "{} {}",
+            text(&lang, "claim.replaced_by"),
+            made.number()
+        ));
+    }
+    let to_resolve = claim.is_void()
+        && Visit::find(&state.db, claim.visit_id)
+            .await?
+            .is_some_and(|visit| visit.coverage_to_resolve);
+    if to_resolve {
+        policy_options.clear();
+        policy_options.push([String::new(), text(&lang, "claim.void_none")]);
+        for policy in claim_void::policies_for(&state.db, &claim).await? {
+            policy_options.push([
+                policy.id.to_string(),
+                format!(
+                    "{} {}",
+                    party_name(&state, &lang, policy.payer()).await,
+                    policy.plan
+                ),
+            ]);
+        }
+    }
     let held = claim.is_held();
     let held_text = match (&claim.held_kind, claim.held_reference.as_deref()) {
         (Some(kind), reference) if held => text_with(
@@ -529,6 +622,13 @@ async fn show(
             ClaimStatus::Paid | ClaimStatus::PartiallyPaid | ClaimStatus::WrittenOff
         ) && !held,
         can_write_off,
+        can_void,
+        void_codes,
+        duplicate_options,
+        policy_options,
+        void_info,
+        links: links.join(" · "),
+        to_resolve,
     }))
 }
 
@@ -664,6 +764,80 @@ async fn write_off(
             Closed::Held(_) => "claim.close_held",
         },
     )
+}
+
+/// The form of `void`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct VoidForm {
+    /// `duplicate`, `wrong_payer` or `wrong_policy`.
+    #[serde(default)]
+    pub code: String,
+    /// Free text, optional.
+    #[serde(default)]
+    pub note: String,
+    /// For a duplicate, the claim it duplicates.
+    #[serde(default)]
+    pub duplicate_of: String,
+    /// The right policy to split the visit again under; blank leaves the
+    /// coverage to resolve.
+    #[serde(default)]
+    pub policy: String,
+}
+
+/// `POST /clinics/claims/{id}/void`: voids a claim made in error, before it
+/// was sent (`CLN.ACL.14`).
+async fn void(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<VoidForm>,
+) -> Result<Response> {
+    require(&user, permissions::CLAIMS_MANAGE)?;
+    let mut request = VoidRequest::new(&form.code).note(&form.note);
+    if let Some(other) = parse_id(&form.duplicate_of) {
+        request = request.duplicate_of(other);
+    }
+    if let Some(policy) = parse_id(&form.policy) {
+        request = request.policy(policy);
+    }
+    let voided = claim_void::void(&state, &user, id, request)
+        .await
+        .map_err(refusal)?;
+    let message = match (&voided.replacement, voided.to_resolve) {
+        (Some(made), _) => text_with(
+            &lang,
+            "claim.voided_resplit",
+            &[("number", &made.number())],
+        ),
+        (None, true) => text(&lang, "claim.voided_to_resolve"),
+        (None, false) => text(&lang, "claim.voided"),
+    };
+    Ok((Toast::success(message), renox::HxRefresh).into_response())
+}
+
+/// The form of `resolve_coverage`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ResolveForm {
+    /// The patient's right policy.
+    #[serde(default)]
+    pub policy: String,
+}
+
+/// `POST /clinics/claims/{id}/resolve-coverage`: splits the visit of a voided
+/// claim again under the right policy.
+async fn resolve_coverage(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ResolveForm>,
+) -> Result<Response> {
+    let policy = parse_id(&form.policy).ok_or_else(|| invalid("policy: 1, 2, 3 ..."))?;
+    claim_void::resolve_coverage(&state, &user, id, policy)
+        .await
+        .map_err(refusal)?;
+    done(&lang, "claim.resolved")
 }
 
 /// The advice date typed in a form, today when blank.

@@ -48,6 +48,21 @@
           </rx-stack>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_void">
+        <rx-action-sheet :id="'claim-void-' ~ id" :label="tx['claim.void']" :action="route('clinics.claim_void', id)"
+                         :title="tx['claim.void']" :description="tx['claim.void_description']" :submit-label="tx['claim.void']" icon="x">
+          <rx-select name="code" :label="tx['claim.void_code']" :options="void_codes" :selected="'wrong_payer'" :id="'claim-void-code-' ~ id"/>
+          <rx-select name="duplicate_of" :label="tx['claim.void_duplicate_of']" :options="duplicate_options" :selected="''" :id="'claim-void-duplicate-' ~ id"/>
+          <rx-select name="policy" :label="tx['claim.void_policy']" :options="policy_options" :selected="''" :id="'claim-void-policy-' ~ id"/>
+          <rx-input name="note" :label="tx['claim.void_note']" :id="'claim-void-note-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="to_resolve">
+        <rx-action-sheet :id="'claim-resolve-' ~ id" :label="tx['claim.resolve']" :action="route('clinics.claim_resolve', id)"
+                         :title="tx['claim.resolve']" :description="tx['claim.resolve_description']" :submit-label="tx['claim.resolve']" icon="refresh-cw">
+          <rx-select name="policy" :label="tx['claim.void_policy']" :options="policy_options" :selected="''" :id="'claim-resolve-policy-' ~ id"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_write_off">
         <rx-action-sheet :id="'claim-write-off-' ~ id" :label="tx['claim.write_off']" :action="route('clinics.claim_write_off', id)"
                          :title="tx['claim.write_off']" :description="tx['claim.write_off_description']" :submit-label="tx['claim.write_off']" icon="x">
@@ -64,6 +79,9 @@
     </rx-page-header>
     <rx-alert rx-if="held" kind="warning" :message="held_text"/>
     <rx-alert rx-if="held_result" kind="info" :message="held_result"/>
+    <rx-alert rx-if="void_info" kind="warning" :message="void_info"/>
+    <rx-alert rx-if="links" kind="info" :message="links"/>
+    <rx-alert rx-if="to_resolve" kind="warning" :message="tx['claim.coverage_to_resolve']"/>
     <rx-card :title="tx['claim.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['policies.patient']" :value="patient"/>
