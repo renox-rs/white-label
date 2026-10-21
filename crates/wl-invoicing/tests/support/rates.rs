@@ -52,18 +52,39 @@ impl PortalUsers for Portal {
     }
 }
 
-/// The timesheets that are `locked`.
+/// The timesheets that are `locked`, and the ones billing told it used.
 #[derive(Clone, Default)]
-pub struct Sheets(Arc<Mutex<BTreeSet<i64>>>);
+pub struct Sheets(
+    Arc<Mutex<BTreeSet<i64>>>,
+    Arc<Mutex<Vec<(Subject, String)>>>,
+);
 
 impl Sheets {
     /// Timesheet `id` is `locked`.
     pub fn lock(&self, id: i64) {
         self.0.lock().unwrap().insert(id);
     }
+
+    /// The timesheets billing used and the invoice it named, in the order told.
+    pub fn billed(&self) -> Vec<(Subject, String)> {
+        self.1.lock().unwrap().clone()
+    }
 }
 
 impl Timesheets for Sheets {
+    fn record_billing_use<'a>(
+        &'a self,
+        _state: &'a AppState,
+        timesheets: &'a [Subject],
+        reference: &'a str,
+    ) -> LabourFuture<'a, ()> {
+        let mut told = self.1.lock().unwrap();
+        for timesheet in timesheets {
+            told.push((timesheet.clone(), reference.to_owned()));
+        }
+        Box::pin(async { Ok(()) })
+    }
+
     fn is_locked<'a>(
         &'a self,
         _state: &'a AppState,

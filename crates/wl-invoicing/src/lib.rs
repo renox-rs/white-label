@@ -107,6 +107,7 @@ pub mod unallocate;
 pub mod unallocation;
 pub mod usage;
 pub mod usage_adjustment;
+pub mod usage_billing;
 pub mod vat;
 pub mod vat_adjustment;
 pub mod vat_pages;
@@ -1047,6 +1048,7 @@ impl Module for WlInvoicing {
         events::register(app);
         // Hours corrected after billing (§5.2 step 5).
         usage_adjustment::register(app);
+        wl_kernel::usage::provide_usage_recorder(app, usage_billing::Recorder);
         // The customer notice and `InvoiceWrittenOff` after a write-off.
         write_off::register(app);
         // `db:seed`: the demo invoices, as drafts.

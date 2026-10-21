@@ -34,6 +34,8 @@
 //! `locked` get the price of the version now in force on their work date.
 //! Invoiced hours and locked timesheets keep the price they had.
 
+use std::collections::BTreeSet;
+
 use renox::chrono::{Datelike, Days, NaiveDate};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -184,6 +186,33 @@ async fn line_of(
         .await?
         .into_iter()
         .find(|line| line.role == role && line.shift_type == shift_type))
+}
+
+/// What the line of `role` on `shift_type` in the version of `card` in force
+/// on `day` is priced per; `None` when no accepted version is in force that
+/// day or it has no line for them.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn unit_on(
+    db: &Db,
+    card: &RateCard,
+    role: &str,
+    shift_type: &str,
+    day: NaiveDate,
+) -> Result<Option<Unit>> {
+    let Some(version) = version_in_force(db, card.id, day).await? else {
+        return Ok(None);
+    };
+    Ok(line_of(
+        db,
+        &version,
+        &role.trim().to_lowercase(),
+        &shift_type.trim().to_lowercase(),
+    )
+    .await?
+    .map(|line| line.unit))
 }
 
 /// Prices `work` by the version in force on its date. `None` when the source
@@ -440,6 +469,23 @@ pub struct MonthWork {
 ///
 /// 422 for a version whose line for the role and shift is not a month rate.
 pub async fn price_month(db: &Db, work: &MonthWork) -> Result<Vec<MonthLine>> {
+    price_month_on(db, work, None).await
+}
+
+/// As [`price_month`], for the days in `only` when given (a month rate of a
+/// worker who ran only part of the month, or was suspended for part of it):
+/// month rate × the days of the version in `only` ÷ calendar days of the
+/// month. The days of one version are one line even when they are not
+/// consecutive.
+///
+/// # Errors
+///
+/// As [`price_month`].
+pub async fn price_month_on(
+    db: &Db,
+    work: &MonthWork,
+    only: Option<&BTreeSet<NaiveDate>>,
+) -> Result<Vec<MonthLine>> {
     let (source, month) = (&work.source, work.month);
     let Some((first, month_days)) = days_in_month(work.year, month) else {
         return Err(refused(english("wl_invoicing.rate_card.problem.month")));
@@ -454,12 +500,15 @@ pub async fn price_month(db: &Db, work: &MonthWork) -> Result<Vec<MonthLine>> {
         let day = first
             .checked_add_days(Days::new(u64::try_from(offset).unwrap_or_default()))
             .unwrap_or(first);
+        if only.is_some_and(|days| !days.contains(&day)) {
+            continue;
+        }
         let Some(version) = version_in_force(db, card.id, day).await? else {
             continue;
         };
         if let Some(last) = lines.last_mut()
             && last.version.id == version.id
-            && last.to.succ_opt() == Some(day)
+            && (only.is_some() || last.to.succ_opt() == Some(day))
         {
             last.to = day;
             last.days += 1;
@@ -503,7 +552,23 @@ pub async fn record_month(
     work: &MonthWork,
     legal_entity_id: Option<i64>,
 ) -> Result<Vec<UsageRecord>> {
-    let lines = price_month(db, work).await?;
+    record_month_on(db, record_source, work, None, legal_entity_id).await
+}
+
+/// As [`record_month`], for the days in `only` when given (see
+/// [`price_month_on`]).
+///
+/// # Errors
+///
+/// As [`price_month`].
+pub async fn record_month_on(
+    db: &Db,
+    record_source: &Subject,
+    work: &MonthWork,
+    only: Option<&BTreeSet<NaiveDate>>,
+    legal_entity_id: Option<i64>,
+) -> Result<Vec<UsageRecord>> {
+    let lines = price_month_on(db, work, only).await?;
     let Some(card) = RateCard::of_source(db, &work.source).await? else {
         return Ok(Vec::new());
     };
