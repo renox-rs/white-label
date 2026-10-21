@@ -34,6 +34,15 @@ pub const CHARGES_DESK: &str = "charges.desk";
 /// claim again (`CLN.CLM.01`, `CLN.ACL.09`: the billing coordinator's).
 pub const CLAIMS_MANAGE: &str = "claims.manage";
 
+/// Close a claim that missed the payer's first-submission window, or that is
+/// partly paid or denied, by writing it off or moving it to the patient
+/// (`CLN.ACL.16`, `FIN.ACL.14`: the clinic manager's; above AED 1,000 the
+/// owner approves).
+pub const CLAIMS_WRITEOFF: &str = "claims.writeoff";
+/// Allow, on a payer contract, billing the patient for a payer share the
+/// clinic did not submit in time (`CLN.ACL.16`: the owner's alone).
+pub const MISSED_WINDOW_BILLING: &str = "contracts.missed_window_billing";
+
 /// The owner / medical director: told when a practitioner licence expires
 /// (`CLN.RUL.01`) and alerted when a compliance-critical rule fails.
 pub const OWNER_ROLE: &str = "owner";

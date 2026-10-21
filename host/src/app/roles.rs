@@ -306,6 +306,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::CHARGES_CAPTURE,
             cln::CHARGES_DESK,
             cln::CLAIMS_MANAGE,
+            cln::CLAIMS_WRITEOFF,
+            cln::MISSED_WINDOW_BILLING,
             inventory::RECALLS_MANAGE,
             con::PROJECTS_VIEW,
             con::PROJECTS_MANAGE,
@@ -687,6 +689,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::ONBOARDING_MANAGE,
             scheduling::VIEW,
             cln::VISITS_VIEW,
+            cln::MISSED_WINDOW_BILLING,
         ],
     ),
     (
@@ -835,6 +838,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::CHARGES_CAPTURE,
             cln::CHARGES_DESK,
             cln::CLAIMS_MANAGE,
+            cln::CLAIMS_WRITEOFF,
+            invoices::PAYER_BILLS_VIEW,
+            invoices::PAYER_BILLS_WRITE_OFF,
         ],
     ),
     (

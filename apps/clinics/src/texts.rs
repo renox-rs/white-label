@@ -829,6 +829,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The recoupment :reference waits for a second person's approval. Nothing is recorded until it is given.",
     ),
     (
+        "clinics.claim.held.write_off",
+        "The write-off waits for the owner's approval. The claim stays as it is until it is given.",
+    ),
+    (
         "clinics.claim.held.ended",
         "The advice that waited for approval ended without a yes (:result). Nothing was recorded.",
     ),
@@ -895,6 +899,26 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "clinics.claim.problem.no_line",
         "A line of the advice is not a line of this claim.",
+    ),
+    (
+        "clinics.claim.problem.close_reason",
+        "Give the reason for closing the claim.",
+    ),
+    (
+        "clinics.claim.problem.close_nothing",
+        "Nothing is open on this claim.",
+    ),
+    (
+        "clinics.claim.problem.window_open",
+        "The payer still accepts this claim until :date: send it, or write it off after that day.",
+    ),
+    (
+        "clinics.claim.problem.window_unknown",
+        "The payer contract gives no first-submission window to count, so the claim cannot be shown to have missed it.",
+    ),
+    (
+        "clinics.claim.problem.accepts_late",
+        "This payer accepts late claims: validate the claim with a late reason instead of writing it off.",
     ),
     (
         "clinics.claim.task.rejected_title",

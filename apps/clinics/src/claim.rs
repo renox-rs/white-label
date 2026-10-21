@@ -147,6 +147,22 @@ pub struct Claim {
     /// The day the clinic manager got the task for the window about to end
     /// (`CLN.RUL.03`, D days before it ends).
     pub window_task_on: Option<NaiveDate>,
+    /// How the claim was closed: `written_off`, or `transferred` when the
+    /// share moved to the patient (`CLN.ACL.16`).
+    pub close_how: Option<String>,
+    /// Why it was closed (the reason of the `write_off`); also kept while the
+    /// owner's approval of a write-off waits.
+    pub close_reason: Option<String>,
+    /// What the close wrote off or moved, in fils.
+    pub close_amount: i64,
+    /// The day it was closed (Asia/Dubai).
+    pub closed_on: Option<NaiveDate>,
+    /// The user who closed it.
+    pub closed_by: Option<i64>,
+    /// Whether it was closed from `draft` or `ready` after the payer's
+    /// first-submission window: reported as *not submitted in time* in the
+    /// denial KPI.
+    pub not_submitted_in_time: bool,
     /// The lifecycle state; changed only by a transition.
     pub status: ClaimStatus,
     /// The user who made it, if any.

@@ -52,6 +52,10 @@ pub struct PayerContract {
     /// Whether the payer still accepts a first claim after its window, with
     /// a late reason recorded on the claim.
     pub accepts_late_claims: bool,
+    /// Whether the payer share of a claim closed by `write_off` may be moved
+    /// to the patient (`CLN.ACL.16`, `⚠ open: lawyer L-34`). Off by default;
+    /// only the owner sets it.
+    pub bill_missed_to_patient: bool,
     /// N of `CLN.RUL.03`: the days after the visit the billing coordinator is
     /// told of a claim still in `draft` or `ready`; below the
     /// first-submission window.

@@ -9,13 +9,13 @@
 //! | [`RESUBMIT`] | partially_paid, denied | resubmitted | `claims.manage` | corrections recorded; within the resubmission window and limit |
 //! | [`RECORD_REMITTANCE_PAID`] / [`RECORD_REMITTANCE_PARTIALLY_PAID`] / [`RECORD_REMITTANCE_DENIED`] | submitted, resubmitted | paid / partially_paid / denied | system | the payer bill recorded the advice |
 //! | [`RECORD_RECOUPMENT_PARTIALLY_PAID`] / [`RECORD_RECOUPMENT_DENIED`] | paid, partially_paid, written_off | partially_paid / denied | system | recouped amount not above the paid amount; the payer's code |
+//! | [`WRITE_OFF`] | draft, ready, partially_paid, denied | written_off | `claims.writeoff` | reason given; from draft or ready only after the first-submission window passed and the payer does not accept late claims (`CLN.ACL.16`); something open |
+//! | [`WRITE_OFF_APPROVED`] | draft, ready, partially_paid, denied | written_off | system | reason given; something open (the owner approved the payer bill's write-off above the limit, `FIN.ACL.14`) |
 //!
-//! `write_off` and `void` are not here yet: the states `written_off` and
-//! `voided` exist, and `record_recoupment` already leaves `written_off`.
-//! BL-CLN-09 adds `write_off` (and the first-submission window it closes) and
-//! BL-CLN-10 adds `void`, each as a transition added to [`machine`]
-//! through [`Machine::transition`], with its guards as pure functions of the
-//! claim and a [`ClaimInput`] like the ones below.
+//! `void` is not here yet (BL-CLN-10): the state `voided` exists, and
+//! `record_recoupment` already leaves `written_off`. `write_off` is BL-CLN-09's
+//! and closes the claim the way the payer bill closes: it is written off, or,
+//! where the payer contract allows, moved to the patient.
 //!
 //! Decisions:
 //!
@@ -68,6 +68,23 @@ pub const RECORD_RECOUPMENT_PARTIALLY_PAID: &str = "record_recoupment_partially_
 /// `paid | partially_paid | written_off → denied`: nothing is paid on any
 /// line after the recoupment.
 pub const RECORD_RECOUPMENT_DENIED: &str = "record_recoupment_denied";
+
+/// `draft | ready | partially_paid | denied → written_off`: the open amount
+/// is written off, or moved to the patient where the payer contract allows
+/// it (`CLN.ACL.16`).
+pub const WRITE_OFF: &str = "write_off";
+/// `draft | ready | partially_paid | denied → written_off`: the system's twin
+/// of [`WRITE_OFF`], run when the owner approved the write-off the payer bill
+/// held above the limit (`FIN.ACL.14`).
+pub const WRITE_OFF_APPROVED: &str = "write_off_approved";
+
+/// The states a close leaves.
+const CLOSABLE: [ClaimStatus; 4] = [
+    ClaimStatus::Draft,
+    ClaimStatus::Ready,
+    ClaimStatus::PartiallyPaid,
+    ClaimStatus::Denied,
+];
 
 /// What a payer's answer did to one line, as the payer bill holds it now.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,6 +173,13 @@ pub struct ClaimInput {
     pub limit: Option<i64>,
     /// The payer's answer (the remittance and recoupment transitions).
     pub money: Option<MoneyInput>,
+    /// Why the claim is closed (`write_off`).
+    pub reason: Option<String>,
+    /// Whether the payer share moves to the patient, the payer contract
+    /// allowing it (`write_off`).
+    pub to_patient: bool,
+    /// What the close writes off or moves, in fils (`write_off`).
+    pub open: i64,
 }
 
 fn input_of(ctx: &TransitionCtx) -> ClaimInput {
@@ -348,6 +372,60 @@ pub fn recoupment_code_given(input: &ClaimInput) -> std::result::Result<(), Stri
     }
 }
 
+/// `write_off` guard: a reason is given.
+///
+/// # Errors
+///
+/// The English text of the refusal.
+pub fn reason_given(input: &ClaimInput) -> std::result::Result<(), String> {
+    if clean(&input.reason).is_some() {
+        Ok(())
+    } else {
+        Err(english("clinics.claim.problem.close_reason", &[]))
+    }
+}
+
+/// `write_off` guard: from `draft` or `ready` only after the first-submission
+/// window of the attempt passed (today is after its last day) and when the
+/// payer does not accept late claims (`CLN.ACL.16`); a claim the payer has
+/// answered is not tied to the window.
+///
+/// # Errors
+///
+/// The English text of the refusal, naming the last day.
+pub fn window_missed(claim: &Claim, input: &ClaimInput) -> std::result::Result<(), String> {
+    if !claim.status.is_editable() {
+        return Ok(());
+    }
+    match (input.deadline, input.on) {
+        (Some(deadline), Some(on)) if on > deadline => {
+            if input.accepts_late {
+                Err(english("clinics.claim.problem.accepts_late", &[]))
+            } else {
+                Ok(())
+            }
+        }
+        (Some(deadline), Some(_)) => Err(english(
+            "clinics.claim.problem.window_open",
+            &[("date", &deadline)],
+        )),
+        _ => Err(english("clinics.claim.problem.window_unknown", &[])),
+    }
+}
+
+/// `write_off` guard: something is open on the claim.
+///
+/// # Errors
+///
+/// The English text of the refusal.
+pub fn something_open(input: &ClaimInput) -> std::result::Result<(), String> {
+    if input.open > 0 {
+        Ok(())
+    } else {
+        Err(english("clinics.claim.problem.close_nothing", &[]))
+    }
+}
+
 /// Sets the columns of claim `id` other than the status, and stamps
 /// `updated_at`.
 async fn set(tx: &mut Transaction, id: i64, columns: &[(&str, &(dyn ToDbValue + Sync))]) -> Result {
@@ -399,6 +477,8 @@ impl StateMachine for Claim {
             .transition(remittance(RECORD_REMITTANCE_DENIED, Denied))
             .transition(recoupment(RECORD_RECOUPMENT_PARTIALLY_PAID, PartiallyPaid))
             .transition(recoupment(RECORD_RECOUPMENT_DENIED, Denied))
+            .transition(write_off())
+            .transition(write_off_approved())
     }
 }
 
@@ -627,6 +707,99 @@ fn recoupment(name: &'static str, to: ClaimStatus) -> Transition<Claim> {
         })
 }
 
+/// `write_off`: the claim is closed. From `draft` or `ready` it is the claim
+/// that missed the payer's window (`CLN.ACL.16`); from `partially_paid` or
+/// `denied` it is the balance the payer will not pay.
+fn write_off() -> Transition<Claim> {
+    Transition::new(WRITE_OFF)
+        .label("Write off")
+        .tone("danger")
+        .permission(permissions::CLAIMS_WRITEOFF)
+        .from(CLOSABLE)
+        .to(ClaimStatus::WrittenOff)
+        .guard("reason_given", |_c: &Claim, ctx| {
+            let result = reason_given(&input_of(ctx));
+            Box::pin(async move { result })
+        })
+        .guard("first_window_missed", |c: &Claim, ctx| {
+            let result = window_missed(c, &input_of(ctx));
+            Box::pin(async move { result })
+        })
+        .guard("something_open", |_c: &Claim, ctx| {
+            let result = something_open(&input_of(ctx));
+            Box::pin(async move { result })
+        })
+        .effect(|c: &Claim, ctx, tx| {
+            let claim = c.clone();
+            let input = input_of(ctx);
+            Box::pin(async move { close_in(tx, &claim, &input).await })
+        })
+}
+
+/// `write_off_approved`: the system closes the claim once the owner approved
+/// the write-off the payer bill held. The window was asked when the write-off
+/// was requested.
+fn write_off_approved() -> Transition<Claim> {
+    Transition::new(WRITE_OFF_APPROVED)
+        .label("Write off (approved)")
+        .from(CLOSABLE)
+        .to(ClaimStatus::WrittenOff)
+        .system()
+        .guard("reason_given", |_c: &Claim, ctx| {
+            let result = reason_given(&input_of(ctx));
+            Box::pin(async move { result })
+        })
+        .guard("something_open", |_c: &Claim, ctx| {
+            let result = something_open(&input_of(ctx));
+            Box::pin(async move { result })
+        })
+        .effect(|c: &Claim, ctx, tx| {
+            let claim = c.clone();
+            let input = input_of(ctx);
+            Box::pin(async move { close_in(tx, &claim, &input).await })
+        })
+}
+
+/// What a close writes besides the status: how and why it was closed, the
+/// amount, who and when, whether it is *not submitted in time*, and that the
+/// payer owes nothing more (the denied amounts are closed with it), and the
+/// end of any hold.
+async fn close_in(tx: &mut Transaction, claim: &Claim, input: &ClaimInput) -> Result {
+    let how = if input.to_patient {
+        "transferred"
+    } else {
+        "written_off"
+    };
+    let on = input.on.unwrap_or_else(|| dubai_date(now()));
+    ClaimLine::query()
+        .where_(ClaimLine::CLAIM_ID.eq(claim.id))
+        .update(&mut *tx, &[("denied", &0_i64), ("updated_at", &now())])
+        .await?;
+    let none: Option<String> = None;
+    let no_date: Option<NaiveDate> = None;
+    let no_id: Option<i64> = None;
+    let missed = claim.status.is_editable();
+    set(
+        tx,
+        claim.id,
+        &[
+            ("close_how", &Some(how.to_owned())),
+            ("close_reason", &clean(&input.reason)),
+            ("close_amount", &input.open),
+            ("closed_on", &Some(on)),
+            ("closed_by", &input.by),
+            ("not_submitted_in_time", &missed),
+            ("denied", &0_i64),
+            ("held_kind", &none),
+            ("held_request_id", &no_id),
+            ("held_reference", &none),
+            ("held_date", &no_date),
+            ("held_by", &no_id),
+        ],
+    )
+    .await
+}
+
 /// What a remittance or a recoupment writes besides the status: the lines'
 /// paid, denied and recouped amounts with the payer's codes, the totals, the
 /// record of the advice, and the end of the hold.
@@ -728,8 +901,8 @@ mod tests {
                 ("voided", Some("neutral"), true),
             ]
         );
-        assert_eq!(machine.transitions().len(), 9);
-        let expected: [(&str, &[&str], &str, bool, &[&str]); 9] = [
+        assert_eq!(machine.transitions().len(), 11);
+        let expected: [(&str, &[&str], &str, bool, &[&str]); 11] = [
             (
                 VALIDATE,
                 &["draft"],
@@ -791,6 +964,20 @@ mod tests {
                 true,
                 &["recouped_within_paid", "recoupment_code_given"],
             ),
+            (
+                WRITE_OFF,
+                &["draft", "ready", "partially_paid", "denied"],
+                "written_off",
+                false,
+                &["reason_given", "first_window_missed", "something_open"],
+            ),
+            (
+                WRITE_OFF_APPROVED,
+                &["draft", "ready", "partially_paid", "denied"],
+                "written_off",
+                true,
+                &["reason_given", "something_open"],
+            ),
         ];
         for (name, from, to, system, guards) in expected {
             let transition = machine.find(name).expect("the transition exists");
@@ -815,6 +1002,52 @@ mod tests {
                 "{state}"
             );
         }
+    }
+
+    #[test]
+    fn a_claim_is_closed_only_with_a_reason_and_something_open() {
+        let closing = ClaimInput {
+            reason: Some(" missed window ".to_owned()),
+            open: 60_000,
+            ..input()
+        };
+        assert!(reason_given(&closing).is_ok());
+        assert!(reason_given(&input()).is_err());
+        assert!(something_open(&closing).is_ok());
+        assert!(something_open(&input()).is_err());
+    }
+
+    #[test]
+    fn a_draft_is_written_off_only_after_a_missed_window_of_a_payer_that_does_not_accept_late() {
+        let draft = Claim::default();
+        let missed = ClaimInput {
+            deadline: Some(day("2026-11-02")),
+            ..input()
+        };
+        assert!(window_missed(&draft, &missed).is_ok());
+        let open = ClaimInput {
+            deadline: Some(day("2026-11-03")),
+            ..input()
+        };
+        let refusal = window_missed(&draft, &open).unwrap_err();
+        assert!(refusal.contains("2026-11-03"), "the last day counts: {refusal}");
+        let accepting = ClaimInput {
+            accepts_late: true,
+            ..missed.clone()
+        };
+        assert!(window_missed(&draft, &accepting).unwrap_err().contains("late"));
+        assert!(window_missed(&draft, &input()).is_err(), "no window to count");
+        // The window does not matter once the payer answered.
+        let denied = Claim {
+            status: ClaimStatus::Denied,
+            ..Claim::default()
+        };
+        assert!(window_missed(&denied, &open).is_ok());
+        let ready = Claim {
+            status: ClaimStatus::Ready,
+            ..Claim::default()
+        };
+        assert!(window_missed(&ready, &open).is_err());
     }
 
     #[test]
