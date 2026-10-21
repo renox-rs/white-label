@@ -51,7 +51,6 @@ use wl_kernel::payments::{
 use crate::allocate;
 use crate::allocation::Allocation;
 use crate::chargeback::REMOVED_REASON;
-use crate::config_of;
 use crate::credit;
 use crate::followup::{FollowupKind, FollowupStatus, FollowupTask, money_text};
 use crate::gateway;
