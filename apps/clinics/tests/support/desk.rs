@@ -6,6 +6,7 @@ use renox::db::now;
 use renox::prelude::*;
 use renox::testing::TestResponse;
 use wl_kernel::PartyId;
+use wl_kernel::payments::{PaymentMethod, RecordPayment, payment_recorder};
 use wl_scheduling::service::{self, Actor};
 use wl_scheduling::{Booking, Resource, ServiceType};
 
@@ -13,7 +14,9 @@ use clinics::contracts::{self, NewContract};
 use clinics::policies::{self, NewPolicy};
 use clinics::{InsurancePolicy, PayerContract, Visit, appointments};
 
-use super::{Clinic, PATIENT, at, boot, boot_with_stock, boot_with_stock_and_notify, day};
+use super::{
+    Clinic, PATIENT, at, boot, boot_with_money, boot_with_stock, boot_with_stock_and_notify, day,
+};
 
 /// The payer of the insured visits.
 pub const PAYER: PartyId = PartyId(900);
@@ -35,6 +38,11 @@ pub struct Desk {
 /// Boots the clinic with the self-pay price of the consultation.
 pub async fn desk() -> Desk {
     desk_on(boot().await).await
+}
+
+/// Like [`desk`] with the real wl-invoicing and wl-payments behind the money.
+pub async fn desk_with_money() -> Desk {
+    desk_on(boot_with_money().await).await
 }
 
 /// Like [`desk`] with the real wl-inventory behind the consumables.
@@ -124,11 +132,38 @@ impl Desk {
     pub async fn booking(&self, service: &ServiceType, hour: u32) -> Booking {
         let booking = self.t.book(service, &self.doctor, at(day(1), hour)).await;
         if booking.deposit_amount > 0 {
-            self.t
-                .deposits
-                .paid(booking.id, PATIENT, booking.deposit_amount);
+            if self.t.money {
+                self.pay_deposit(&booking).await;
+            } else {
+                self.t
+                    .deposits
+                    .paid(booking.id, PATIENT, booking.deposit_amount);
+            }
         }
         booking
+    }
+
+    /// The patient pays the deposit of `booking` at the desk: a received
+    /// payment of the real wl-payments, held for the booking.
+    pub async fn pay_deposit(&self, booking: &Booking) {
+        let entity = wl_kernel::LegalEntity::default_entity(self.t.db())
+            .await
+            .expect("the legal entity exists");
+        payment_recorder(self.t.state())
+            .record(
+                self.t.state(),
+                RecordPayment::new(
+                    PATIENT,
+                    entity.id,
+                    PaymentMethod::Card,
+                    booking.deposit_amount,
+                )
+                .reference("SLIP-1")
+                .prepaid(wl_kernel::scheduling::BookingId(booking.id).subject()),
+                Some(self.rita.id),
+            )
+            .await
+            .expect("the deposit is received");
     }
 
     /// Like [`booking`](Desk::booking), insured with `policy` and with a

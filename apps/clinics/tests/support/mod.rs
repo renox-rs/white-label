@@ -110,6 +110,25 @@ name_en = "Palm Grove Clinic LLC"
 default = true
 "#;
 
+/// A clinic with scheduling, HR and the real money modules on.
+const CLIENT_WITH_MONEY: &str = r#"
+[client]
+name = "Palm Grove Clinic LLC"
+app = "clinics"
+
+[modules]
+enabled = ["parties", "hr", "scheduling", "invoicing", "payments"]
+
+[roles]
+owner = "owner"
+
+[[legal_entities]]
+code = "PGC"
+name_en = "Palm Grove Clinic LLC"
+trn = "100000000000003"
+default = true
+"#;
+
 /// The branch the practitioners work at.
 pub fn branch() -> Subject {
     scheduling::branch()
@@ -242,6 +261,77 @@ impl PartyDirectory for Guardians {
     }
 }
 
+/// The directory of the real-money tests: every party exists and can be
+/// billed; the names, contacts and guardians are [`Guardians`]'.
+#[derive(Clone)]
+struct EveryParty(Guardians);
+
+impl PartyDirectory for EveryParty {
+    fn find<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async move {
+            Ok(Some(PartySummary {
+                id: party,
+                code: format!("P-{:05}", party.0),
+                kind: wl_kernel::parties::PartyKind::Person,
+                display_name: format!("Party {}", party.0),
+                status: PartyStatus::Active,
+                display_block_reason: None,
+            }))
+        })
+    }
+
+    fn find_by_code<'a>(
+        &'a self,
+        db: &'a Db,
+        code: &'a str,
+    ) -> PartyFuture<'a, Option<PartySummary>> {
+        self.0.find_by_code(db, code)
+    }
+
+    fn display_name<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+        lang: &'a str,
+    ) -> PartyFuture<'a, Option<String>> {
+        self.0.display_name(db, party, lang)
+    }
+
+    fn status<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
+        Box::pin(async { Ok(Some(PartyStatus::Active)) })
+    }
+
+    fn billing_identity<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<wl_kernel::parties::BillingIdentity>> {
+        Box::pin(async move {
+            Ok(Some(wl_kernel::parties::BillingIdentity {
+                party,
+                legal_name_en: format!("Party {}", party.0),
+                legal_name_ar: None,
+                trn: None,
+                billing_address: Some("Dubai".to_owned()),
+                billing_email: None,
+                einvoice_recipient_id: None,
+            }))
+        })
+    }
+
+    fn contacts<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<PartyContacts>> {
+        self.0.contacts(db, party)
+    }
+
+    fn guardians<'a>(&'a self, db: &'a Db, party: PartyId) -> PartyFuture<'a, Vec<PartyId>> {
+        self.0.guardians(db, party)
+    }
+}
+
 /// The patient's e-mail address in the real-notifier tests.
 pub const PATIENT_EMAIL: &str = "patient@example.com";
 
@@ -287,6 +377,9 @@ impl wl_notify::ChannelProvider for Outbox {
 /// Provides the fakes.
 struct Harness {
     real_notify: bool,
+    /// The real wl-invoicing and wl-payments are mounted: the invoices, the
+    /// payments and the refunds are theirs, not the stand-ins'.
+    money: bool,
     guardians: Guardians,
     refunds: Refunds,
     deposits: Deposits,
@@ -305,9 +398,11 @@ impl Module for Harness {
     }
 
     fn register(&self, app: &mut Registry) {
-        provide_payment_recorder(app, self.deposits.clone());
-        provide_invoicer(app, self.books.clone());
-        provide_payer_bills(app, self.claims.clone());
+        if !self.money {
+            provide_payment_recorder(app, self.deposits.clone());
+            provide_invoicer(app, self.books.clone());
+            provide_payer_bills(app, self.claims.clone());
+        }
         provide_package_ledger(app, self.packages.clone());
         if !self.real_notify {
             provide_notifier(app, self.messages.clone());
@@ -315,7 +410,11 @@ impl Module for Harness {
         provide_guard(app, self.docs.clone());
         provide_task_creator(app, self.tasks.clone());
         provide_self_pay_prices(app, self.prices.clone());
-        provide_directory(app, self.guardians.clone());
+        if self.money {
+            provide_directory(app, EveryParty(self.guardians.clone()));
+        } else {
+            provide_directory(app, self.guardians.clone());
+        }
     }
 }
 
@@ -347,6 +446,9 @@ pub struct Clinic {
     pub outbox: Outbox,
     /// The guardians of the dependants.
     pub guardians: Guardians,
+    /// Whether the real wl-invoicing and wl-payments are mounted
+    /// ([`boot_with_money`]); `books`, `deposits` and `claims` stay empty.
+    pub money: bool,
     /// The `QualificationExpired` events wl-hr emitted.
     pub expired: Recorded<QualificationExpired>,
     /// Keeps the views directory alive.
@@ -376,28 +478,35 @@ pub fn clock_at(t: &Clinic, to: DateTime) {
 /// Boots the clinics app: scheduling, HR and the fakes, with the 05 reason
 /// codes and a self-pay price of AED 450.00 for the consultation.
 pub async fn boot() -> Clinic {
-    boot_with(false, false).await
+    boot_with(false, false, false).await
+}
+
+/// Like [`boot`] with the real wl-invoicing and wl-payments: the patient's
+/// invoice, the deposit held for the booking and the refund of what is left
+/// are theirs.
+pub async fn boot_with_money() -> Clinic {
+    boot_with(false, false, true).await
 }
 
 /// Like [`boot`] with the real wl-inventory: the branch stores, lots and
 /// pending issues the consumables of a visit are issued from.
 pub async fn boot_with_stock() -> Clinic {
-    boot_with(false, true).await
+    boot_with(false, true, false).await
 }
 
 /// Like [`boot_with_stock`] with the real wl-notify too: the notices of a
 /// recall reach its queue and its give-up reaction.
 pub async fn boot_with_stock_and_notify() -> Clinic {
-    boot_with(true, true).await
+    boot_with(true, true, false).await
 }
 
 /// Like [`boot`] with the real wl-notify in place of the notifier fake: its
 /// quiet hours hold a message to the patient, its provider is [`Outbox`].
 pub async fn boot_real_notify() -> Clinic {
-    boot_with(true, false).await
+    boot_with(true, false, false).await
 }
 
-async fn boot_with(real_notify: bool, stock: bool) -> Clinic {
+async fn boot_with(real_notify: bool, stock: bool, money: bool) -> Clinic {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -428,6 +537,7 @@ async fn boot_with(real_notify: bool, stock: bool) -> Clinic {
         .module(clinics::Clinics)
         .module(Harness {
             real_notify,
+            money,
             guardians: guardians.clone(),
             refunds: refunds.clone(),
             deposits: deposits.clone(),
@@ -444,6 +554,14 @@ async fn boot_with(real_notify: bool, stock: bool) -> Clinic {
     } else {
         app
     };
+    let app = if money {
+        // The patient's share is issued at once, so the deposit can be
+        // allocated to it (the host sets the same for the clinics app).
+        app.module(wl_invoicing::WlInvoicing::new().auto_issue_source("clinics.visit"))
+            .module(wl_payments::WlPayments::new())
+    } else {
+        app
+    };
     let app = if stock {
         app.module(wl_inventory::WlInventory::new())
     } else {
@@ -456,7 +574,13 @@ async fn boot_with(real_notify: bool, stock: bool) -> Clinic {
     let app = record(app, &events.cancelled);
     let app = record(app, &events.conflicts);
     let app = record(app, &expired);
-    let client = if stock { CLIENT_WITH_STOCK } else { CLIENT };
+    let client = if money {
+        CLIENT_WITH_MONEY
+    } else if stock {
+        CLIENT_WITH_STOCK
+    } else {
+        CLIENT
+    };
     let config = wl_kernel::ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -479,6 +603,7 @@ async fn boot_with(real_notify: bool, stock: bool) -> Clinic {
         prices,
         outbox,
         guardians,
+        money,
         expired,
         _views: views,
     }
