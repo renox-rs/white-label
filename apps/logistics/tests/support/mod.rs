@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 use logistics::permissions as perm;
 use logistics::remit::{self, Built};
 use logistics::{
-    Logistics, Remittance, RemittanceStatus, Shipment, ShipmentDelivered, ShipmentStatus,
+    Logistics, Remittance, RemittanceStatus, Shipment, ShipmentDelivered, ShipmentLost,
+    ShipmentStatus,
 };
 use renox::auth::{Permissions, permissions};
 use renox::chrono::TimeDelta;
@@ -21,6 +22,7 @@ use renox::testing::{TestApp, TestResponse};
 use wl_delivery::{Delivery, NewRun, VehicleType, WlDelivery, permissions as dperm, seed};
 use wl_kernel::delivery::CodAbsorber;
 use wl_kernel::documents::today;
+use wl_kernel::invoicing::Invoicer;
 use wl_kernel::notify::Notifier;
 use wl_kernel::parties::PartyDirectory;
 use wl_kernel::portal::PortalUsers;
@@ -28,12 +30,14 @@ use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{ClientConfig, PartyId, RecordVoided};
 
+pub mod invoices;
 pub mod notices;
 pub mod parties;
 pub mod portal;
 pub mod roster;
 pub mod tickets;
 
+use invoices::Invoices;
 use notices::Notices;
 use parties::Parties;
 use portal::Portal;
@@ -113,6 +117,10 @@ pub struct World {
     pub voided: Recorded<RecordVoided>,
     /// `ShipmentDelivered`.
     pub shipment_delivered: Recorded<ShipmentDelivered>,
+    /// `ShipmentLost`.
+    pub shipment_lost: Recorded<ShipmentLost>,
+    /// The drafts the module asked the invoicer for.
+    pub invoices: Invoices,
     /// The operations manager.
     pub ops: User,
     /// The dispatcher: manages shipments and plans runs.
@@ -208,6 +216,9 @@ async fn boot_with(real_payments: bool) -> World {
     let task_creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let voided = Recorded::new();
     let shipment_delivered = Recorded::new();
+    let shipment_lost = Recorded::new();
+    let invoices = Invoices::default();
+    let invoicer: Arc<dyn Invoicer> = Arc::new(invoices.clone());
     let parties = Parties::default();
     let app = App::new()
         .module(Auth::new())
@@ -224,7 +235,8 @@ async fn boot_with(real_payments: bool) -> World {
         .provide(workforce)
         .provide(notifier)
         .provide(portal_users)
-        .provide(task_creator);
+        .provide(task_creator)
+        .provide(invoicer);
     let app = if real_payments {
         let directory: Arc<dyn PartyDirectory> = Arc::new(parties.clone());
         app.provide(directory)
@@ -234,6 +246,7 @@ async fn boot_with(real_payments: bool) -> World {
     };
     let app = record(app, &voided);
     let app = record(app, &shipment_delivered);
+    let app = record(app, &shipment_lost);
     let client = if real_payments {
         CLIENT.replace(
             "[\"parties\", \"delivery\"]",
@@ -316,6 +329,8 @@ async fn boot_with(real_payments: bool) -> World {
         tickets,
         voided,
         shipment_delivered,
+        shipment_lost,
+        invoices,
         ops,
         dispatcher,
         dispatcher_b,
