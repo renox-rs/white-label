@@ -578,9 +578,9 @@ mod tests {
     #[test]
     fn a_block_overlaps_only_the_time_it_covers() {
         let block = AvailabilityBlock::manual(1, at(2, 10, 0), at(2, 11, 0), "sick");
-        assert!(blocked(&[block.clone()], at(2, 10, 30), at(2, 11, 30)));
-        assert!(blocked(&[block.clone()], at(2, 9, 30), at(2, 10, 1)));
-        assert!(!blocked(&[block.clone()], at(2, 11, 0), at(2, 11, 30)));
+        assert!(blocked(std::slice::from_ref(&block), at(2, 10, 30), at(2, 11, 30)));
+        assert!(blocked(std::slice::from_ref(&block), at(2, 9, 30), at(2, 10, 1)));
+        assert!(!blocked(std::slice::from_ref(&block), at(2, 11, 0), at(2, 11, 30)));
         assert!(!blocked(&[block], at(2, 9, 0), at(2, 10, 0)));
     }
 

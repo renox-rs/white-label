@@ -325,10 +325,10 @@ pub async fn eligible_resources(db: &Db, service_type_id: i64) -> Result<Vec<Res
         .into_iter()
         .map(|row| row.resource_id)
         .collect::<Vec<_>>();
-    Ok(Resource::query()
+    Resource::query()
         .where_(Resource::ID.is_in(ids))
         .where_(Resource::ACTIVE.eq(true))
         .order_by(Resource::ID)
         .get(db)
-        .await?)
+        .await
 }

@@ -9,7 +9,7 @@ mod support;
 use std::time::Duration;
 
 use wl_kernel::notify::{
-    self, NotifyChannel, NotifyRecipient, OtpRequest, OtpSent, OtpVerdict, Notifier,
+    self, NotifyChannel, NotifyRecipient, OtpRequest, OtpSent, OtpVerdict,
 };
 use wl_kernel::Subject;
 use wl_notify::{OtpCode, OtpStatus};

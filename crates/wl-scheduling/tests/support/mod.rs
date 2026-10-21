@@ -130,11 +130,14 @@ impl PortalUsers for Portal {
     }
 }
 
+/// A refund asked of the fake payments module, with the number it returned.
+type AskedRefund = (RefundRequest, Option<i64>);
+
 /// `wl-payments` as the module sees it: it records the refunds asked of it,
 /// numbers them, and refuses on demand (payments off, an unknown party).
 #[derive(Clone, Default)]
 pub struct Refunds {
-    asked: Arc<Mutex<Vec<(RefundRequest, Option<i64>)>>>,
+    asked: Arc<Mutex<Vec<AskedRefund>>>,
     refuse: Arc<std::sync::atomic::AtomicBool>,
 }
 
