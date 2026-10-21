@@ -959,6 +959,25 @@ impl Booted {
         self.attempt(employee, day(1, 6)).await;
     }
 
+    /// The tickets of the real wl-ticketing, oldest first, each with the key
+    /// of its category.
+    pub async fn tickets(&self) -> Vec<(wl_ticketing::Ticket, String)> {
+        let all = wl_ticketing::Ticket::query()
+            .order_by(wl_ticketing::Ticket::ID)
+            .get(self.db())
+            .await
+            .unwrap();
+        let mut found = Vec::new();
+        for ticket in all {
+            let category = wl_ticketing::Category::find(self.db(), ticket.category_id)
+                .await
+                .unwrap()
+                .expect("the category of a ticket");
+            found.push((ticket, category.key));
+        }
+        found
+    }
+
     /// `employee`, as stored now.
     pub async fn employee(&self, employee: &Employee) -> Employee {
         Employee::find_or_404(self.db(), employee.id).await.unwrap()

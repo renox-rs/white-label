@@ -27,7 +27,10 @@ struct World {
 }
 
 async fn world() -> World {
-    let t = support::boot().await;
+    world_on(support::boot().await).await
+}
+
+async fn world_on(t: Booted) -> World {
     let a = t.user_with("Amal", "settle_all").await;
     let b = t.user_with("Basel", "settle_appr").await;
     let hr = t.user_with("Hira", "hr").await;
@@ -124,6 +127,50 @@ async fn hrm22_ac1_a_paid_settlement_is_disputed_with_a_ticket_and_notices() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].reference, "C-9");
     assert_eq!(events[0].source, "mohre_complaint");
+}
+
+/// AC1 with the real wl-ticketing: the labour-case ticket is a ticket of the
+/// `labour_case` category about the employee, opened from the settlement, and
+/// it is closed when the dispute is resolved (AC3).
+#[renox::test]
+async fn hrm22_ac1_the_labour_case_is_a_real_ticket_opened_and_closed_with_the_dispute() {
+    let w = world_on(support::boot_with_ticketing().await).await;
+    let settlement = approved(&w).await;
+    dispute(&w, &settlement, "10000").await;
+
+    let settlement = w.t.settlement(&settlement).await;
+    let tickets = w.t.tickets().await;
+    assert_eq!(tickets.len(), 1);
+    let (ticket, category) = &tickets[0];
+    assert_eq!(category, "labour_case");
+    assert_eq!(settlement.dispute_ticket, Some(ticket.id));
+    let subject = |kind: &str, id: i64| wl_kernel::Subject::new(kind, id);
+    assert_eq!(
+        subject(&ticket.subject_type, ticket.subject_id),
+        w.e.subject()
+    );
+    assert_eq!(
+        subject(
+            ticket.source_type.as_deref().unwrap(),
+            ticket.source_id.unwrap()
+        ),
+        settlement.subject()
+    );
+    assert!(ticket.title.contains("C-9"));
+    assert!(ticket.description.contains("C-9"));
+    assert!(ticket.is_open());
+
+    w.t.settle(
+        &w.b,
+        &settlement,
+        "resolve",
+        &[("outcome", "upheld"), ("document", "Award-3")],
+    )
+    .await
+    .assert_status(303);
+    let tickets = w.t.tickets().await;
+    assert_eq!(tickets.len(), 1);
+    assert!(!tickets[0].0.is_open(), "{:?}", tickets[0].0.status);
 }
 
 /// AC1 (guard): a dispute without a reference, or without the undisputed

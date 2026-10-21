@@ -35,7 +35,10 @@ struct World {
 }
 
 async fn world() -> World {
-    let t = support::boot().await;
+    world_on(support::boot().await).await
+}
+
+async fn world_on(t: Booted) -> World {
     let a = t.user_with("Hana", "hr_pay").await;
     let b = t.user_with("Basel", "pay_approver").await;
     let c = t.user_with("Cara", "payroll_appr").await;
@@ -171,6 +174,41 @@ async fn hrm21_ac1_the_worker_stops_the_change_from_the_link_once() {
     // The employee's job later finds nothing to activate.
     job_on(&w, nov(7)).await;
     assert_eq!(w.t.account(&w.old).await.status, PayAccountStatus::Active);
+}
+
+/// AC1 with the real wl-ticketing: the security ticket is a ticket of the
+/// confidential category about the stopped account, assigned to the MD.
+#[renox::test]
+async fn hrm21_ac1_the_security_task_is_a_real_confidential_ticket_for_the_md() {
+    let w = world_on(support::boot_with_ticketing().await).await;
+    let new = cooling(&w).await;
+    let path = stop_path(&w);
+    w.t.app.logout();
+    w.t.on(nov(3), w.t.app.post(&path, &[]))
+        .await
+        .assert_ok()
+        .assert_see("The change was stopped");
+
+    let tickets = w.t.tickets().await;
+    assert_eq!(tickets.len(), 1);
+    let (ticket, category) = &tickets[0];
+    assert_eq!(category, CONFIDENTIAL_TASK_CATEGORY);
+    assert!(ticket.confidential);
+    assert_eq!(ticket.assignee_user_id, Some(w.md.id));
+    assert_eq!(
+        wl_kernel::Subject::new(&ticket.subject_type, ticket.subject_id),
+        new.subject()
+    );
+    assert!(ticket.title.contains("Ravi Kumar"));
+    assert!(ticket.title.contains("1234"));
+    assert!(ticket.is_open());
+
+    // A second tap changes nothing, and no second ticket is opened.
+    w.t.on(nov(3), w.t.app.post(&path, &[]))
+        .await
+        .assert_ok()
+        .assert_see("can no longer be stopped");
+    assert_eq!(w.t.tickets().await.len(), 1);
 }
 
 /// The link is signed and expires with the cooling period.
@@ -410,6 +448,35 @@ async fn hrm21_ac4_a_message_that_gave_up_keeps_the_account_cooling_until_the_wo
     assert_eq!(active.reached_recorded_by, Some(w.a.id));
     assert_eq!(w.t.account(&w.old).await.status, PayAccountStatus::Retired);
     assert_eq!(w.t.pay_changed.all().len(), 1);
+}
+
+/// AC4 with the real wl-ticketing: the HR task is a real ticket for the HR
+/// holder, found by its source key, so a second give-up opens none.
+#[renox::test]
+async fn hrm21_ac4_the_hr_task_is_a_real_ticket_found_by_its_source_key() {
+    let w = world_on(support::boot_with_ticketing().await).await;
+    let new = cooling(&w).await;
+
+    gave_up(&w, &new).await;
+    gave_up(&w, &new).await;
+
+    let tickets = w.t.tickets().await;
+    assert_eq!(tickets.len(), 1, "the same open task is used");
+    let (ticket, category) = &tickets[0];
+    assert_eq!(category, "task");
+    assert!(!ticket.confidential);
+    assert_eq!(ticket.assignee_user_id, Some(w.hr.id));
+    assert_eq!(
+        wl_kernel::Subject::new(&ticket.subject_type, ticket.subject_id),
+        new.subject()
+    );
+    assert!(ticket.title.contains("1234"));
+    assert!(
+        ticket
+            .source_key
+            .as_deref()
+            .is_some_and(|key| key.starts_with("hr.pay_account_notice:"))
+    );
 }
 
 /// AC5: the worker reached is recorded before the cooling end date: the

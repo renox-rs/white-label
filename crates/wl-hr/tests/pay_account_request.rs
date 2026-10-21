@@ -7,7 +7,7 @@ mod support;
 
 use renox::prelude::*;
 use wl_hr::{Employee, EmployeeStatus, PayAccount, PayAccountStatus};
-use wl_kernel::notify::{NotifyChannel, NotifyRecipient};
+use wl_kernel::notify::{NotifyChannel, NotifyRecipient, fill, notification_type};
 use wl_kernel::tickets::Assignee;
 
 use support::{Booted, nov, users};
@@ -28,7 +28,10 @@ struct World {
 }
 
 async fn world() -> World {
-    let t = support::boot().await;
+    world_on(support::boot().await).await
+}
+
+async fn world_on(t: Booted) -> World {
     let a = t.user_with("Hana", "hr_pay").await;
     let b = t.user_with("Basel", "pay_approver").await;
     let e = t.employee_in(61, EmployeeStatus::Active).await;
@@ -123,6 +126,18 @@ async fn hrm19_ac2_the_requester_cannot_approve_and_the_sms_goes_to_the_old_numb
     assert!(link.contains(&format!("/hr/pay-accounts/{}/stop", account.id)));
     assert!(!sms[0].data.to_string().contains(NEW_IBAN));
     assert!(account.notice_undelivered_at.is_none());
+
+    // The text the worker reads: the registered SMS template filled with the
+    // data of the request names the last 4 digits and the date.
+    let kind = notification_type(CHANGE).expect("the type is registered");
+    let template = kind
+        .template_for(NotifyChannel::Sms, "en")
+        .expect("an SMS template");
+    let text = fill(&template.body, &sms[0].data);
+    assert!(text.contains("1234"), "{text}");
+    assert!(text.contains("2026-11-07"), "{text}");
+    assert!(text.contains(link), "{text}");
+    assert!(!text.contains(NEW_IBAN), "{text}");
 }
 
 /// AC3: a holder name that differs from the employee's is refused without an
@@ -222,6 +237,47 @@ async fn hrm19_ac5_without_a_number_on_record_the_notice_is_undelivered_and_hr_h
     let tasks = w.t.tasks.with_key("hr.pay_account_notice:");
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].assignee, Some(Assignee::user(hr.id)));
+}
+
+/// AC5 with the real wl-ticketing: the HR task is a ticket of the `task`
+/// category about the account, assigned to the HR holder, and the opener finds
+/// it again by its source key while it is open.
+#[renox::test]
+async fn hrm19_ac5_the_hr_task_is_a_real_ticket_for_the_hr_holder() {
+    let w = world_on(support::boot_with_ticketing().await).await;
+    let hr = w.t.user_with("Hira", "hr").await;
+    let f = w.t.employee_in(63, EmployeeStatus::Active).await;
+    w.t.parties.name(63, "Sara Noor");
+    let mut form = fields(NEW_IBAN);
+    form[3] = ("holder_name", "Sara Noor");
+    w.t.request_account(&w.a, &f, &form)
+        .await
+        .assert_status(303);
+    let account = w.t.accounts_of(&f).await.remove(0);
+
+    w.t.on(nov(2), w.t.pay_transition(&w.b, &account, "approve", ""))
+        .await
+        .assert_status(303);
+
+    let account = w.t.account(&account).await;
+    assert!(account.notice_undelivered_at.is_some());
+    let tickets = w.t.tickets().await;
+    assert_eq!(tickets.len(), 1);
+    let (ticket, category) = &tickets[0];
+    assert_eq!(category, "task");
+    assert_eq!(ticket.assignee_user_id, Some(hr.id));
+    assert_eq!(
+        wl_kernel::Subject::new(&ticket.subject_type, ticket.subject_id),
+        account.subject()
+    );
+    assert!(ticket.title.contains("Sara Noor"));
+    let key = ticket.source_key.clone().unwrap();
+    assert!(key.starts_with("hr.pay_account_notice:"));
+    let found = wl_kernel::tickets::task_creator(w.t.state())
+        .find_open(w.t.state(), &key)
+        .await
+        .unwrap();
+    assert_eq!(found.map(|t| t.id.0), Some(ticket.id));
 }
 
 /// AC6: B rejects with a reason: `rejected`, A is notified; without a reason it
