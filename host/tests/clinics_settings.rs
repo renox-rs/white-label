@@ -642,7 +642,9 @@ async fn a_recall_notice_that_gives_up_opens_a_call_task_for_the_front_desk() {
     )
     .await;
     assert_eq!(message.status, MessageStatus::Abandoned);
-    let now = RecallNotice::find_or_404(app.db(), notice.id).await.unwrap();
+    let now = RecallNotice::find_or_404(app.db(), notice.id)
+        .await
+        .unwrap();
     assert_eq!(now.status, RecallNoticeStatus::GaveUp);
     let tasks = give_up_tasks(&app, RECALL_NOTICE_SUBJECT_TYPE).await;
     assert_eq!(tasks.len(), 1, "one call task");

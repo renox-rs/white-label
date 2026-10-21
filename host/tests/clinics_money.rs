@@ -16,10 +16,10 @@ mod support;
 
 use host::roles::{ACCOUNTANT, CLINIC_MANAGER, OWNER, RECEIVABLES, RECEPTIONIST};
 use renox::chrono::{Datelike, Days, NaiveDate, Weekday};
-use std::time::Duration;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
+use std::time::Duration;
 use support::*;
 use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
 use wl_invoicing::budget_report::{self, ReportQuery};
@@ -258,7 +258,9 @@ async fn the_payer_write_off_policy_follows_invoicing_not_scheduling() {
     host::clinics_seed::install_for(app.state(), &|module| module == "invoicing")
         .await
         .unwrap();
-    let again = ApprovalPolicy::find_or_404(app.db(), policy.id).await.unwrap();
+    let again = ApprovalPolicy::find_or_404(app.db(), policy.id)
+        .await
+        .unwrap();
     assert_eq!(again.steps.0, [Step::one_of(["owner", "admin"])]);
 }
 
@@ -298,8 +300,15 @@ async fn a_dispute_credit_waits_for_a_second_person() {
     let cleo = person(&app, "Cleo", RECEIVABLES).await;
     let erin = person(&app, "Erin", ACCOUNTANT).await;
     let patient = tenant(&app, "Sara Ali").await;
-    let invoice = issued_invoice(&app, &rita, patient, 100_000, VatCategory::Standard, day(10))
-        .await;
+    let invoice = issued_invoice(
+        &app,
+        &rita,
+        patient,
+        100_000,
+        VatCategory::Standard,
+        day(10),
+    )
+    .await;
     let id = dispute::raise(
         app.state(),
         DisputeRequest::new(
@@ -412,8 +421,18 @@ async fn a_payer_overpayment_waits_for_a_second_person() {
         .await
         .assert_redirect(&format!("/payer-bills/{}", id.0));
     let held = PayerBill::find_or_404(app.db(), id.0).await.unwrap();
-    assert_eq!(held.status, PayerBillStatus::Issued, "nothing is recorded yet");
-    assert!(PayerRemittance::query().get(app.db()).await.unwrap().is_empty());
+    assert_eq!(
+        held.status,
+        PayerBillStatus::Issued,
+        "nothing is recorded yet"
+    );
+    assert!(
+        PayerRemittance::query()
+            .get(app.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let request = approvals::pending_for(app.db(), &held.subject())
         .await
         .unwrap()
@@ -454,10 +473,19 @@ async fn accepting_a_chargeback_needs_a_second_person_and_tells_the_gateway() {
     let cleo = person(&app, "Cleo", ACCOUNTANT).await;
     let patient = tenant(&app, "Sara Ali").await;
     let legal = entity(&app, "PGC").await;
-    let invoice = issued_invoice(&app, &rita, patient, 80_000, VatCategory::ZeroRated, day(10)).await;
+    let invoice = issued_invoice(
+        &app,
+        &rita,
+        patient,
+        80_000,
+        VatCategory::ZeroRated,
+        day(10),
+    )
+    .await;
     let link = payment_link::create(
         app.state(),
-        NewLink::new(patient, legal.id, 80_000, "AED").target(&Subject::new("invoicing.invoice", invoice.id), 80_000),
+        NewLink::new(patient, legal.id, 80_000, "AED")
+            .target(&Subject::new("invoicing.invoice", invoice.id), 80_000),
     )
     .await
     .expect("the link is made");
@@ -847,7 +875,11 @@ async fn a_failed_refund_is_retried_once_after_24_hours() {
     .unwrap();
     app.travel(Duration::from_secs(200 * 3600));
     app.run_scheduled(refund_retry::TASK).await.unwrap();
-    assert_eq!(retries_of(app.db(), id).await.unwrap(), 1, "no third attempt");
+    assert_eq!(
+        retries_of(app.db(), id).await.unwrap(),
+        1,
+        "no third attempt"
+    );
     assert_eq!(
         RefundAttempt::of_refund(app.db(), id).await.unwrap().len(),
         2

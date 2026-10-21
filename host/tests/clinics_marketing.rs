@@ -14,30 +14,28 @@ mod support;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
+use host::roles::{MARKETING, MARKETING_MANAGER, OWNER};
 use renox::chrono::{Duration, NaiveDate, NaiveDateTime};
 use renox::db::DateTime;
 use renox::prelude::*;
-use renox::testing::TestApp;
-use host::roles::{MARKETING, MARKETING_MANAGER, OWNER};
 use renox::state_machine::StateMachine;
+use renox::testing::TestApp;
 use support::{clinics_booted_with, person, tenant};
 use wl_kernel::approvals;
+use wl_kernel::consents::{ConsentFuture, Consents, provide_consents};
 use wl_kernel::documents::today;
+use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
+use wl_kernel::{BusinessCalendar, PartyId, Subject};
 use wl_notify::broadcast_run::run_due;
+use wl_notify::channels::ProviderFuture;
 use wl_notify::{Broadcast, BroadcastStatus};
+use wl_notify::{
+    ChannelProvider, Clock, Message, MessageStatus, Outgoing, SendError, WlNotify, release,
+};
 use wl_sales::sale_line::KIND_ITEM;
 use wl_sales::{
     BroadcastState, Campaign, CampaignBroadcast, CampaignStatus, CounterSale, CounterSaleStatus,
     MarketingChannel, Purpose, SaleLine, Segment, campaigns,
-};
-use wl_kernel::consents::{ConsentFuture, Consents, provide_consents};
-use wl_kernel::notify::{
-    self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest,
-};
-use wl_kernel::{BusinessCalendar, PartyId, Subject};
-use wl_notify::channels::ProviderFuture;
-use wl_notify::{
-    ChannelProvider, Clock, Message, MessageStatus, Outgoing, SendError, WlNotify, release,
 };
 
 const OFFER: &str = "clinics_test.offer";
@@ -172,11 +170,7 @@ async fn boot(tune: impl FnOnce(WlNotify) -> WlNotify + 'static) -> (TestApp, Ma
         )))),
     };
     let provider = mail.clone();
-    let app = clinics_booted_with(
-        move |n| tune(n.provider(provider)),
-        rig.clone(),
-    )
-    .await;
+    let app = clinics_booted_with(move |n| tune(n.provider(provider)), rig.clone()).await;
     (app, mail, rig)
 }
 
@@ -230,7 +224,12 @@ async fn marketing_waits_for_the_morning_is_capped_and_needs_consent() {
     assert_eq!(held.scheduled_for, Some(dubai(next, 7, 0)));
     assert_eq!(mail.count(), 0);
     rig.clock.set(dubai(next, 7, 0));
-    assert_eq!(release::run_due(app.state(), dubai(next, 7, 0)).await.unwrap(), 1);
+    assert_eq!(
+        release::run_due(app.state(), dubai(next, 7, 0))
+            .await
+            .unwrap(),
+        1
+    );
     app.run_all_jobs().await;
     assert_eq!(offers_to(&app, anna).await[0].status, MessageStatus::Sent);
     assert_eq!(mail.count(), 1);
@@ -370,7 +369,10 @@ async fn a_retention_broadcast_to_201_needs_a_second_approver_and_the_permit_end
     let broadcast = Broadcast::find_or_404(app.db(), rows[0].broadcast_id.expect("taken"))
         .await
         .unwrap();
-    assert_eq!(broadcast.estimate, 201, "the three without consent are left out");
+    assert_eq!(
+        broadcast.estimate, 201,
+        "the three without consent are left out"
+    );
     assert_eq!(broadcast.status, BroadcastStatus::PendingApproval);
     assert_eq!(broadcast.requested_by, carla.id);
     let request = broadcast.approval_request_id.expect("an approval request");
@@ -383,7 +385,9 @@ async fn a_retention_broadcast_to_201_needs_a_second_approver_and_the_permit_end
     approvals::approve(app.state(), request, &mona, "")
         .await
         .unwrap();
-    let scheduled = Broadcast::find_or_404(app.db(), broadcast.id).await.unwrap();
+    let scheduled = Broadcast::find_or_404(app.db(), broadcast.id)
+        .await
+        .unwrap();
     assert_eq!(scheduled.status, BroadcastStatus::Scheduled);
     assert_eq!(scheduled.send_at, send_at);
 
@@ -391,14 +395,22 @@ async fn a_retention_broadcast_to_201_needs_a_second_approver_and_the_permit_end
     // broadcast is cancelled.
     // (The demo data has campaigns of its own that end meanwhile: read ours.)
     campaigns::run_daily(app.state(), last_day).await.unwrap();
-    let running = Campaign::find(app.db(), campaign.id).await.unwrap().unwrap();
+    let running = Campaign::find(app.db(), campaign.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(running.status, CampaignStatus::Active);
     campaigns::run_daily(app.state(), last_day + Duration::days(1))
         .await
         .unwrap();
-    let ended = Campaign::find(app.db(), campaign.id).await.unwrap().unwrap();
+    let ended = Campaign::find(app.db(), campaign.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(ended.status, CampaignStatus::Ended);
-    let cancelled = Broadcast::find_or_404(app.db(), broadcast.id).await.unwrap();
+    let cancelled = Broadcast::find_or_404(app.db(), broadcast.id)
+        .await
+        .unwrap();
     assert_eq!(cancelled.status, BroadcastStatus::Cancelled);
     assert_eq!(cancelled.cancel_reason.as_deref(), Some("campaign_ended"));
     let rows = CampaignBroadcast::of_campaign(app.db(), campaign.id)

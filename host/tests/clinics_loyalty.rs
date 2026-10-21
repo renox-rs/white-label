@@ -14,9 +14,7 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::testing::TestApp;
 use std::sync::{Arc, Mutex};
-use support::{
-    Wire, clinics_booted_with, company, draft_invoice, entity, person, tenant,
-};
+use support::{Wire, clinics_booted_with, company, draft_invoice, entity, person, tenant};
 use wl_invoicing::payer_agreement::{PayerAgreement, VatRecipient};
 use wl_kernel::approvals;
 use wl_kernel::documents::today;
@@ -28,7 +26,7 @@ use wl_notify::{Clock, Message, WlNotify};
 use wl_sales::expiry::run_daily;
 use wl_sales::{
     AdjustmentStatus, CounterSale, LoyaltyAccount, LoyaltyProgramme, PointsAdjustment, PointsKind,
-    PointsMovement, RedemptionStatus, Redemption,
+    PointsMovement, Redemption, RedemptionStatus,
 };
 
 /// The clock of wl-notify: Dubai noon of the day the test sets.
@@ -68,8 +66,11 @@ async fn world() -> World {
     let clock = Moving(Arc::new(Mutex::new(renox::db::now())));
     clock.day(today());
     let (s, m) = (sms.clone(), mail.clone());
-    let app = clinics_booted_with(move |n: WlNotify| n.provider(s).provider(m), Rig(clock.clone()))
-        .await;
+    let app = clinics_booted_with(
+        move |n: WlNotify| n.provider(s).provider(m),
+        Rig(clock.clone()),
+    )
+    .await;
     World {
         app,
         sms,
@@ -264,7 +265,10 @@ async fn the_loyalty_programme_earns_redeems_expires_and_asks_a_manager_above_50
         .await
         .unwrap();
     assert_eq!(told, 1);
-    assert!(!w.mail.sent().is_empty(), "the reminder reached the mailbox");
+    assert!(
+        !w.mail.sent().is_empty(),
+        "the reminder reached the mailbox"
+    );
     w.clock.day(expiry);
     let last = run_daily(app.state(), expiry, at(expiry)).await.unwrap();
     assert_eq!(last.expired_points, 0, "still redeemable on the last day");
@@ -336,12 +340,7 @@ async fn open_cart(app: &TestApp, member: &LoyaltyAccount, item: &str, price: i6
 }
 
 /// Rings up and completes a counter sale paid in cash.
-async fn ring_up(
-    app: &TestApp,
-    member: &LoyaltyAccount,
-    item: &str,
-    price: i64,
-) -> CounterSale {
+async fn ring_up(app: &TestApp, member: &LoyaltyAccount, item: &str, price: i64) -> CounterSale {
     let sale = open_cart(app, member, item, price).await;
     app.htmx()
         .post(

@@ -439,7 +439,10 @@ pub async fn install(state: &AppState) -> Result<Installed> {
 /// # Errors
 ///
 /// The database's errors.
-pub async fn install_for(state: &AppState, on: &(dyn Fn(&str) -> bool + Sync)) -> Result<Installed> {
+pub async fn install_for(
+    state: &AppState,
+    on: &(dyn Fn(&str) -> bool + Sync),
+) -> Result<Installed> {
     let mut installed = Installed::default();
     if on("scheduling") {
         installed.service_types = install_service_types(state).await?;
