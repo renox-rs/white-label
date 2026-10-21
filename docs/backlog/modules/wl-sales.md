@@ -1123,9 +1123,9 @@ Setting: suspend consumption while a reopened invoice balance is unpaid: off (05
 - Must not change the package state or remove used credits.
 
 #### Done when
-- [ ] Given an `active` package (10 credits, 4 used) whose invoice is reopened, it stays `active` with 6 left, the seller has a "collect before next use" task, and the holder gets a balance-due message.
-- [ ] With the setting off, the next `consume` succeeds.
-- [ ] With the setting on, `consume` is refused until the invoice is paid, then succeeds.
+- [x] Given an `active` package (10 credits, 4 used) whose invoice is reopened, it stays `active` with 6 left, the seller has a "collect before next use" task, and the holder gets a balance-due message.
+- [x] With the setting off, the next `consume` succeeds.
+- [x] With the setting on, `consume` is refused until the invoice is paid, then succeeds.
 
 #### Out of scope
 Payment reversal and invoice reopening (Epic wl-payments, Epic wl-invoicing).

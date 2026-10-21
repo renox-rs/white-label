@@ -831,15 +831,15 @@ state stays, stopped by and at are recorded, and `BroadcastStopped` tells the re
 - Must not recall or retry a message suppressed as *expired* or *broadcast stopped*.
 
 #### Done when
-- [ ] A broadcast with send at 10:00 still `pending_approval` at 10:00 the next day becomes
+- [x] A broadcast with send at 10:00 still `pending_approval` at 10:00 the next day becomes
       `cancelled` with *approval expired* at the first 15-minute check at or after 10:00 (by
       10:15 at the latest), the requester is told and `BroadcastCancelled` is emitted once.
-- [ ] With the SMS provider down from `start` for 50 hours, the 100 queued messages are
+- [x] With the SMS provider down from `start` for 50 hours, the 100 queued messages are
       suppressed *expired* at 48 hours and none is sent when the provider recovers.
-- [ ] Stopping a `sending` broadcast with 30 messages sent and 70 queued suppresses the 70 with
+- [x] Stopping a `sending` broadcast with 30 messages sent and 70 queued suppresses the 70 with
       *broadcast stopped* and emits `BroadcastStopped`; the 30 stay sent.
-- [ ] Stopping a `completed` broadcast with 15 messages deferred until 07:00 suppresses the 15.
-- [ ] A user without `notifications.marketing.send` cannot stop a broadcast.
+- [x] Stopping a `completed` broadcast with 15 messages deferred until 07:00 suppresses the 15.
+- [x] A user without `notifications.marketing.send` cannot stop a broadcast.
 
 #### Out of scope
 The broadcast itself (BL-NTF-07); send window and frequency cap (BL-NTF-08); the campaign
