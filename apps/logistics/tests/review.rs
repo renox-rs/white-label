@@ -7,7 +7,7 @@
 
 mod support;
 
-use logistics::notices::{CLIENT_NOTICE, REMITTANCE_REOPENED};
+use logistics::notices::REMITTANCE_REOPENED;
 use logistics::shipment_machine::{CLOSE_REVIEW, OPEN_REVIEW};
 use logistics::{RemittanceStatus, Shipment, ShipmentStatus};
 use renox::prelude::*;
@@ -65,7 +65,7 @@ async fn a_disputed_delivery_puts_the_shipment_under_review_and_out_of_the_draft
     assert_eq!(reviewed.status, ShipmentStatus::UnderReview);
     let ticket = reviewed.review_ticket_id.expect("the dispute ticket is linked");
     assert_eq!(w.tickets.opened().len(), 1);
-    let notices = w.notices.of_type(CLIENT_NOTICE);
+    let notices = w.notices.to_clients();
     assert_eq!(notices.len(), 1);
     assert_eq!(
         notices[0].recipients,
@@ -81,7 +81,7 @@ async fn a_disputed_delivery_puts_the_shipment_under_review_and_out_of_the_draft
         .await
         .assert_status(422)
         .assert_see("Only a delivered shipment");
-    assert_eq!(w.notices.of_type(CLIENT_NOTICE).len(), 1);
+    assert_eq!(w.notices.to_clients().len(), 1);
 
     // The next draft leaves it out, and so does the monthly billing.
     assert!(w.rule().await.is_empty());
@@ -248,7 +248,7 @@ async fn a_review_opens_without_a_ticket_when_ticketing_is_off() {
     let reviewed = w.reload(&shipment).await;
     assert_eq!(reviewed.status, ShipmentStatus::UnderReview);
     assert_eq!(reviewed.review_ticket_id, None);
-    let notices = w.notices.of_type(CLIENT_NOTICE);
+    let notices = w.notices.to_clients();
     assert_eq!(notices.len(), 1);
     assert!(!notices[0].data["body"].as_str().unwrap().contains("ticket"));
 }

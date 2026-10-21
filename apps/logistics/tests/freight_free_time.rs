@@ -10,7 +10,7 @@ mod support;
 
 use logistics::freight_costing::{self, JobLine, line_kind};
 use logistics::freight_free_time::{self, FREE_TIME_TASK, FREE_TIME_TASK_AT, FreeTimeNotice};
-use logistics::notices::{CLIENT_NOTICE, STAFF_NOTICE};
+use logistics::notices::STAFF_NOTICE;
 use logistics::{FreightContainer, FreightJob};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
@@ -56,7 +56,7 @@ async fn demurrage_job(w: &World) -> (FreightJob, FreightContainer) {
 }
 
 async fn notices_to_client(w: &World) -> usize {
-    w.notices.of_type(CLIENT_NOTICE).len()
+    w.notices.to_clients().len()
 }
 
 async fn log_days(w: &World, job: &FreightJob) -> Vec<NaiveDate> {
@@ -92,7 +92,7 @@ async fn the_officer_and_the_client_are_told_two_days_before_and_on_the_end_date
     assert!(w.notices.users_of_type(STAFF_NOTICE).contains(&w.docs.id));
     let staff_after = w.notices.of_type(STAFF_NOTICE).len();
     assert!(staff_after > staff_before, "the officers are told");
-    let told = w.notices.of_type(CLIENT_NOTICE);
+    let told = w.notices.to_clients();
     assert!(told.last().unwrap().data.to_string().contains("MSKU123"));
     assert!(told.last().unwrap().data.to_string().contains("2026-11-10"));
 

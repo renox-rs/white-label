@@ -10,7 +10,7 @@ mod support;
 
 use logistics::freight_hold::{self, FreightHold};
 use logistics::freight_machine::{FreightInput, RELEASE_IN_TRANSIT};
-use logistics::notices::{CLIENT_NOTICE, STAFF_NOTICE};
+use logistics::notices::STAFF_NOTICE;
 use logistics::{FreightJob, FreightStatus};
 use renox::chrono::{NaiveDate, TimeDelta};
 use renox::prelude::*;
@@ -44,7 +44,7 @@ async fn set_eta(w: &World, job: &FreightJob, eta: NaiveDate) {
 async fn a_job_in_customs_clearance_is_held_with_its_reason_and_the_portal_shows_it() {
     let w = boot().await;
     let job = w.in_customs().await;
-    let before = w.notices.of_type(CLIENT_NOTICE).len();
+    let before = w.notices.to_clients().len();
 
     w.job_action(
         &w.docs,
@@ -65,7 +65,7 @@ async fn a_job_in_customs_clearance_is_held_with_its_reason_and_the_portal_shows
     assert_eq!(periods[0].from_state, "customs_clearance");
     assert!(periods[0].ended_at.is_none());
 
-    let client = w.notices.of_type(CLIENT_NOTICE);
+    let client = w.notices.to_clients();
     assert_eq!(client.len(), before + 1);
     assert!(
         client
@@ -102,7 +102,7 @@ async fn release_returns_the_job_to_the_state_before_the_hold_and_needs_a_note()
     )
     .await
     .assert_status(303);
-    let told = w.notices.of_type(CLIENT_NOTICE).len();
+    let told = w.notices.to_clients().len();
 
     w.job_action(&w.docs, &job, "release", &[("note", " ")])
         .await
@@ -123,7 +123,7 @@ async fn release_returns_the_job_to_the_state_before_the_hold_and_needs_a_note()
     .assert_status(303);
     let released = w.job(job.id).await;
     assert_eq!(released.status, FreightStatus::CustomsClearance);
-    assert_eq!(w.notices.of_type(CLIENT_NOTICE).len(), told + 1);
+    assert_eq!(w.notices.to_clients().len(), told + 1);
     let periods = freight_hold::holds_of(w.db(), job.id).await.unwrap();
     assert_eq!(periods.len(), 1);
     assert!(periods[0].ended_at.is_some());

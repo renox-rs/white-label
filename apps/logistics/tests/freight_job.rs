@@ -6,7 +6,6 @@
 
 mod support;
 
-use logistics::notices::CLIENT_NOTICE;
 use logistics::{FreightJob, FreightStatus, JobLine};
 use renox::prelude::*;
 
@@ -60,7 +59,7 @@ async fn a_job_goes_from_booked_to_delivered_with_the_guards_of_each_step() {
     let pending = w.job(job.id).await;
     assert_eq!(pending.status, FreightStatus::DocumentsPending);
     assert_eq!(pending.documents_note.as_deref(), Some("packing list"));
-    let notices = w.notices.of_type(CLIENT_NOTICE);
+    let notices = w.notices.to_clients();
     assert_eq!(notices.len(), 1);
     assert!(notices[0].data["body"].as_str().unwrap().contains("packing list"));
 
@@ -75,7 +74,7 @@ async fn a_job_goes_from_booked_to_delivered_with_the_guards_of_each_step() {
     let moving = w.job(job.id).await;
     assert_eq!(moving.status, FreightStatus::InTransit);
     assert_eq!(moving.bl_awb.as_deref(), Some("MAEU123456789"));
-    assert_eq!(w.notices.of_type(CLIENT_NOTICE).len(), 2);
+    assert_eq!(w.notices.to_clients().len(), 2);
 
     w.job_action(&w.docs, &job, "arrive", &[])
         .await

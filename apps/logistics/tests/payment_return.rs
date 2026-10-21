@@ -7,7 +7,7 @@
 mod support;
 
 use logistics::account::{self, AccountChange, AccountChangeStatus};
-use logistics::notices::{ACCOUNT_CONFIRM, CLIENT_NOTICE, STAFF_NOTICE};
+use logistics::notices::{ACCOUNT_CONFIRM, STAFF_NOTICE};
 use logistics::reweigh::ClientTerms;
 use logistics::{PaymentReturn, Remittance, RemittanceStatus, statement};
 use renox::chrono::TimeDelta;
@@ -132,7 +132,7 @@ async fn a_returned_transfer_makes_the_remittance_payment_returned_and_asks_the_
         .expect("the voucher exists");
     assert_eq!(payment.status, PaymentStatus::Reversed);
     // The client is told and asked to confirm its bank account.
-    let told = w.notices.of_type(CLIENT_NOTICE);
+    let told = w.notices.to_clients();
     let notice = told
         .iter()
         .find(|request| request.data["title"].as_str().is_some_and(|t| t.contains("returned")))

@@ -6,7 +6,6 @@
 mod support;
 
 use logistics::dispute::StatementDispute;
-use logistics::notices::CLIENT_NOTICE;
 use logistics::{AdjustmentLine, AdjustmentStatus, Remittance, RemittanceStatus};
 use renox::prelude::*;
 use wl_kernel::notify::NotifyRecipient;
@@ -298,7 +297,7 @@ async fn resolving_adjusted_puts_a_line_on_the_next_draft_for_another_user_to_ap
     assert_eq!(w.tickets.completed()[0].0, TicketId(1));
     let told: Vec<_> = w
         .notices
-        .of_type(CLIENT_NOTICE)
+        .to_clients()
         .into_iter()
         .filter(|request| {
             request.data["title"]
@@ -338,7 +337,7 @@ async fn resolving_upheld_clears_the_flag_without_a_line_and_tells_the_client() 
     assert_eq!(AdjustmentLine::query().count(w.db()).await.unwrap(), 0);
     let told: Vec<_> = w
         .notices
-        .of_type(CLIENT_NOTICE)
+        .to_clients()
         .into_iter()
         .filter(|request| {
             request.data["body"]

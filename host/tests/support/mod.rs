@@ -154,6 +154,36 @@ pub async fn accounting_booted() -> TestApp {
     app
 }
 
+/// The demo logistics client (03 Logistics).
+const LOGISTICS_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-logistics/client.toml"
+);
+
+/// The logistics host, with `wl:install` and the seeds run as the demo does.
+pub async fn logistics_booted() -> TestApp {
+    logistics_booted_with(host::Tuning::default()).await
+}
+
+/// [`logistics_booted`] with the shared modules tuned (for example the
+/// e-invoicing go-live date of the entity).
+pub async fn logistics_booted_with(tuning: host::Tuning) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(LOGISTICS_CLIENT).expect("the logistics client");
+    let app = TestApp::new(
+        host::app_for_tuned(config, tuning)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
 /// A verified user `name` holding `role`.
 pub async fn person(app: &TestApp, name: &str, role: &str) -> User {
     let mut user = User::register(

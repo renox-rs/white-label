@@ -27,6 +27,15 @@ impl Notices {
             .collect()
     }
 
+    /// The requests to clients, of any of the types a client is told with
+    /// (shipment notices, action requests, statements).
+    pub fn to_clients(&self) -> Vec<NotifyRequest> {
+        self.all()
+            .into_iter()
+            .filter(|r| logistics::notices::CLIENT_TYPES.contains(&r.type_key.as_str()))
+            .collect()
+    }
+
     /// The users the requests of type `key` went to.
     pub fn users_of_type(&self, key: &str) -> Vec<i64> {
         self.of_type(key)
