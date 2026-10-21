@@ -1110,6 +1110,19 @@ pub trait PaymentLinks: Send + Sync + 'static {
     ) -> PaymentFuture<'a, Option<PaymentLinkRef>> {
         Box::pin(async { Ok(None) })
     }
+
+    /// Withdraws the `open` link `link` as the system, because what it was
+    /// asked for no longer exists (an unpaid booking hold was released). A
+    /// party who opens it afterwards can no longer pay. `true` when this call
+    /// closed it; `false` when it was not open (paid, expired or cancelled
+    /// already) or unknown. The default does nothing.
+    fn cancel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _link: &'a Subject,
+    ) -> PaymentFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 }
 
 /// The links when `payments` is off: none can be made.

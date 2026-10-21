@@ -8,13 +8,15 @@
 //! [*] --> open --pay--> paid (terminal)
 //! open --expire--> expired (terminal)
 //! open --cancel--> cancelled (terminal)
+//! open --withdraw--> cancelled (terminal)
 //! ```
 //!
 //! `pay` is the system's, run when the online payment on it is confirmed.
 //! `expire` is the system's too, run by the hourly task [`TASK`] once the
 //! expiry passed; the listener then emits `PaymentLinkExpired`, so
 //! wl-scheduling can release an unpaid booking hold. `cancel` is for staff
-//! with `payments.links`.
+//! with `payments.links`; `withdraw` is the system's, run through the kernel's
+//! `PaymentLinks::cancel` when a module releases what the link was for.
 
 use renox::chrono::TimeDelta;
 use renox::db::Json;
@@ -40,6 +42,9 @@ pub const EXPIRE: &str = "expire";
 
 /// The `cancel` transition's name.
 pub const CANCEL: &str = "cancel";
+
+/// The `withdraw` transition's name.
+pub const WITHDRAW: &str = "withdraw";
 
 /// The scheduled task and command that expire the links.
 pub const TASK: &str = "payments:expire_links";
@@ -197,6 +202,7 @@ impl StateMachine for PaymentLink {
             .transition(pay())
             .transition(expire())
             .transition(cancel())
+            .transition(withdraw())
     }
 }
 
@@ -253,6 +259,19 @@ fn cancel() -> Transition<PaymentLink> {
         .label("Cancel")
         .tone("danger")
         .permission(permissions::LINKS)
+        .from([LinkStatus::Open])
+        .to(LinkStatus::Cancelled)
+}
+
+/// `withdraw`: the system closes the link because the thing it asked for is
+/// gone (wl-scheduling released an unpaid booking hold, `SCH.RUL.04`).
+/// Decision: a separate system transition, as `cancel` is staff's and a
+/// system run may only use `system` transitions; both end `cancelled`.
+fn withdraw() -> Transition<PaymentLink> {
+    Transition::new(WITHDRAW)
+        .label("Withdraw")
+        .tone("neutral")
+        .system()
         .from([LinkStatus::Open])
         .to(LinkStatus::Cancelled)
 }
@@ -535,6 +554,32 @@ impl PaymentLinks for Links {
             }))
         })
     }
+
+    fn cancel<'a>(
+        &'a self,
+        state: &'a AppState,
+        link: &'a Subject,
+    ) -> PaymentFuture<'a, bool> {
+        Box::pin(async move {
+            if link.subject_type != PAYMENT_LINK_SUBJECT_TYPE {
+                return Ok(false);
+            }
+            let Some(found) = PaymentLink::find(&state.db, link.subject_id).await? else {
+                return Ok(false);
+            };
+            match found
+                .transition(WITHDRAW)
+                .by_system()
+                .input(&LinkInput::default())
+                .run(state)
+                .await
+            {
+                Ok(_) => Ok(true),
+                Err(TransitionError::NotFrom(_) | TransitionError::Conflict) => Ok(false),
+                Err(other) => Err(other.into_error()),
+            }
+        })
+    }
 }
 
 /// Registers the listener that emits `PaymentLinkExpired` after an `expire`
@@ -595,7 +640,7 @@ mod tests {
     #[test]
     fn pay_and_expire_are_the_systems_and_cancel_is_staffs() {
         let machine = PaymentLink::machine();
-        for (name, system) in [(PAY, true), (EXPIRE, true), (CANCEL, false)] {
+        for (name, system) in [(PAY, true), (EXPIRE, true), (CANCEL, false), (WITHDRAW, true)] {
             let found = machine.find(name).expect("transition");
             assert_eq!(found.is_system(), system, "{name}");
             assert_eq!(found.from_states(), ["open"], "{name}");
@@ -603,6 +648,7 @@ mod tests {
         assert_eq!(machine.find(PAY).unwrap().to_state(), Some("paid"));
         assert_eq!(machine.find(EXPIRE).unwrap().to_state(), Some("expired"));
         assert_eq!(machine.find(CANCEL).unwrap().to_state(), Some("cancelled"));
+        assert_eq!(machine.find(WITHDRAW).unwrap().to_state(), Some("cancelled"));
     }
 
     fn link_expiring(at: DateTime) -> PaymentLink {
