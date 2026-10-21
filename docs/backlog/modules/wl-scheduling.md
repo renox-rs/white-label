@@ -111,19 +111,19 @@ Setting: Cancellation reason codes and their *initiated by* = §4.1 list.
 - Must not cancel without a reason code.
 
 #### Done when
-- [ ] Given a `booked` booking, when staff cancel with `site_closed`, then initiated by is
+- [x] Given a `booked` booking, when staff cancel with `site_closed`, then initiated by is
       `business` and `BookingCancelled` carries reason `site_closed`, initiated by `business`,
       stage "before start".
-- [ ] When staff cancel with `site_closed` and override to `party` with note "patient asked to
+- [x] When staff cancel with `site_closed` and override to `party` with note "patient asked to
       close early", initiated by is `party`; without a note it is refused.
-- [ ] When the party cancels from the reminder link, the code is `party_request` and initiated by
+- [x] When the party cancels from the reminder link, the code is `party_request` and initiated by
       `party`.
-- [ ] Given a booking reassigned with `resource_unavailable`, when the party cancels from the
+- [x] Given a booking reassigned with `resource_unavailable`, when the party cancels from the
       reassign message 3 h before the start (cut-off 24 h), the cancel succeeds with code
       `resource_unavailable`, initiated by `business`.
-- [ ] Given deposit forfeit window 12 h and cut-off 24 h, a cancel 10 h before has late = yes and
+- [x] Given deposit forfeit window 12 h and cut-off 24 h, a cancel 10 h before has late = yes and
       one 20 h before has late = no; with no deposit, a cancel 20 h before has late = yes.
-- [ ] Cancel without a code is refused.
+- [x] Cancel without a code is refused.
 
 #### Out of scope
 Deposit outcome (BL-SCH-02); cancel after check-in (BL-SCH-03).
