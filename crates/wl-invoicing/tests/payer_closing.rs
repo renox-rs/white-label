@@ -175,6 +175,48 @@ async fn a_write_off_above_the_limit_waits_for_approval() {
     assert_eq!(t.payer.closed.all().len(), 1);
 }
 
+/// Edge case: the open amount changes while the write-off approval waits.
+/// When the second person approves, the guards run again on the changed
+/// bill: the request fails, the bill stays a draft and nothing is credited.
+#[renox::test]
+async fn a_write_off_whose_amount_changed_while_it_waited_fails_at_approval() {
+    let t = boot().await;
+    let a = t.payer_writer("Ana").await;
+    let b = t.payer_writer("Bea").await;
+    let agreement = agreement(&t).await;
+    let invoice = visit_invoice(&t, 150_000, 50_000).await;
+    let bill = t
+        .payer_bill_for(
+            &agreement,
+            OMAR,
+            missed(),
+            &[("Consultation and tests", 150_000)],
+            Some(&invoice),
+        )
+        .await;
+    t.post_payer(&bill, &a, "write-off", &[("reason", "missed the window")])
+        .await
+        .assert_redirect(&format!("/payer-bills/{}", bill.id));
+    let request = pending(&t, &bill).await.remove(0);
+
+    // The claim is corrected to AED 1,400.00 while the request waits.
+    let line = t.bill_lines(&bill).await.remove(0);
+    payer_bills(t.state())
+        .correct_line(t.state(), PayerBillId(bill.id), line.id, 140_000)
+        .await
+        .expect("the draft is corrected");
+
+    let _ = approvals::approve(t.state(), request.id, &b, "ok").await;
+    let stored = approvals::ApprovalRequest::find_or_404(t.db(), request.id)
+        .await
+        .unwrap();
+    assert_eq!(stored.status, approvals::ApprovalStatus::Failed);
+    let after = t.reload_bill(&bill).await;
+    assert_eq!(after.status, PayerBillStatus::Draft, "nothing was closed");
+    assert!(t.credit_notes_of(&invoice).await.is_empty());
+    assert!(t.payer.closed.all().is_empty());
+}
+
 /// AC3: with the window still open, `write_off` from draft is refused; so is
 /// it when the agreement accepts late submissions.
 #[renox::test]
