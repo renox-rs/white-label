@@ -153,6 +153,40 @@ impl StockMovement {
         }
     }
 
+    /// A movement of `movement_type` that takes `quantity_milli` of `item_id`
+    /// from `from` (when given) to `to` (when given), caused by `source`, at
+    /// `unit_cost` fils a unit worth `value`: a transfer step, an issue
+    /// (`from` only) or an adjustment that adds stock (`to` only).
+    #[allow(clippy::too_many_arguments)]
+    pub fn moving(
+        movement_type: MovementType,
+        item_id: i64,
+        lot_id: Option<i64>,
+        from: Option<i64>,
+        to: Option<i64>,
+        quantity_milli: i64,
+        unit_cost: i64,
+        value: i64,
+        source: &Subject,
+        user_id: Option<i64>,
+    ) -> Self {
+        StockMovement {
+            movement_type,
+            item_id,
+            lot_id,
+            from_location_id: from,
+            to_location_id: to,
+            quantity_milli,
+            unit_cost,
+            value,
+            source_type: source.subject_type.clone(),
+            source_id: source.subject_id,
+            user_id,
+            moved_at: renox::db::now(),
+            ..StockMovement::default()
+        }
+    }
+
     /// The record that caused it.
     pub fn source(&self) -> Subject {
         Subject::new(&self.source_type, self.source_id)

@@ -1,9 +1,14 @@
 //! The Lot (wl-inventory §3, §4 *Lot*): a batch of one item, with its expiry
 //! date and status. A goods receipt creates a lot for an accepted line of a
 //! lot-tracked item, in `quarantine` or `released` as the item says. The
-//! lifecycle transitions (`release`, `hold`, `expire`...) come with the
-//! issues that build them; the machine declares the states, and the system's
-//! `reject` is here.
+//! lifecycle transitions (`release`, `expire`...) come with the issues that
+//! build them; the machine declares the states, and the system's `reject`
+//! and `hold` are here.
+//!
+//! `hold` (§4 *Lot*): a stock hold on whole lots puts each lot that is
+//! `quarantine` or `released` on hold, with the reason, and keeps the status
+//! it had so a hold cancelled in error can give it back (`unhold`, BL-STK-12).
+//! A lot that is `on_hold` or `expired` already is not held again.
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
@@ -13,6 +18,9 @@ use wl_kernel::Subject;
 
 /// The `reject` transition's name.
 pub const REJECT: &str = "reject";
+
+/// The `hold` transition's name.
+pub const HOLD: &str = "hold";
 
 /// Where a lot stands (§4).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -52,6 +60,9 @@ pub struct Lot {
     pub expiry_date: Option<NaiveDate>,
     /// The lifecycle state; changed only by a transition.
     pub status: LotStatus,
+    /// The status the lot had when `hold` ran (`quarantine` or `released`):
+    /// the one `unhold` gives back.
+    pub status_before_hold: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -100,6 +111,27 @@ impl StateMachine for Lot {
                     .from([Quarantine, OnHold])
                     .to(Rejected),
             )
+            .transition(
+                Transition::new(HOLD)
+                    .label("Hold")
+                    .tone("warning")
+                    .system()
+                    .reason_required()
+                    .from([Quarantine, Released])
+                    .to(OnHold)
+                    .effect(|lot: &Lot, _ctx, tx| {
+                        let id = lot.id;
+                        let before = lot.status.as_str().to_owned();
+                        Box::pin(async move {
+                            // Not the status column, so outside the machine's guard.
+                            Lot::query()
+                                .where_(Lot::ID.eq(id))
+                                .update(&mut *tx, &[("status_before_hold", &Some(before))])
+                                .await?;
+                            Ok(())
+                        })
+                    }),
+            )
     }
 }
 
@@ -124,5 +156,14 @@ mod tests {
         }
         let rejected = machine.states().iter().find(|s| s.name == "rejected");
         assert!(rejected.is_some_and(|s| s.terminal));
+    }
+
+    #[test]
+    fn the_system_holds_a_lot_that_is_quarantined_or_released() {
+        let machine = Lot::machine();
+        let hold = machine.find(HOLD).expect("hold");
+        assert!(hold.is_system());
+        assert_eq!(hold.from_states(), ["quarantine", "released"]);
+        assert_eq!(hold.to_state(), Some("on_hold"));
     }
 }
