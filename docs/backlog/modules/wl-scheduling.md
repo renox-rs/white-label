@@ -310,20 +310,20 @@ after check-in = the vertical record's prices.
 - Must not create charges here: billing stays in the vertical record.
 
 #### Done when
-- [ ] Given a 05 booking `checked_in` and the visit's work done `pending`, staff `cancel` is
+- [x] Given a 05 booking `checked_in` and the visit's work done `pending`, staff `cancel` is
       refused.
-- [ ] Given work done `none`, reason `walked_out`, deposit AED 200, 05 setting refunded, then
+- [x] Given work done `none`, reason `walked_out`, deposit AED 200, 05 setting refunded, then
       the booking is `cancelled` and AED 200 is refunded; `BookingCancelled` has stage "checked
       in", work done none, deposit outcome refunded.
-- [ ] Given work done AED 80, `walked_out`, setting forfeited: AED 80 applied, AED 120 forfeited.
-- [ ] Given `equipment_failure` (business) and work done AED 80 not accepted by the party: no
+- [x] Given work done AED 80, `walked_out`, setting forfeited: AED 80 applied, AED 120 forfeited.
+- [x] Given `equipment_failure` (business) and work done AED 80 not accepted by the party: no
       charge, AED 200 refunded.
-- [ ] Given `equipment_failure` and work done AED 80 accepted by the party: AED 200 refunded in
+- [x] Given `equipment_failure` and work done AED 80 accepted by the party: AED 200 refunded in
       full, deposit outcome refunded; the vertical record bills AED 80 (no deposit applied).
-- [ ] Given work done AED 80, staff cancel with `party_request` (party asked to stop), deposit
+- [x] Given work done AED 80, staff cancel with `party_request` (party asked to stop), deposit
       AED 200, setting forfeited: initiated by `party`, AED 80 applied, AED 120 forfeited.
-- [ ] The party's cancel link on a `checked_in` booking is refused.
-- [ ] Given `in_progress` ending 11:00, cancelled at 10:20, the slot 10:20–11:00 is released.
+- [x] The party's cancel link on a `checked_in` booking is refused.
+- [x] Given `in_progress` ending 11:00, cancelled at 10:20, the slot 10:20–11:00 is released.
 
 #### Out of scope
 Vertical billing of work done (verticals 05, 08); deposit rules before check-in (BL-SCH-02).

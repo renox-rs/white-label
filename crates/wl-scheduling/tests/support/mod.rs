@@ -16,6 +16,9 @@ use wl_kernel::payments::{
     AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
     RefundId, RefundRequest, ReversalReason, provide_payment_recorder,
 };
+use wl_kernel::scheduling::{
+    BookingId, SchedulingFuture, WorkDone, WorkDoneStatus, provide_work_done_status,
+};
 use wl_kernel::{PartyId, Subject};
 use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::scheduling::{
@@ -226,10 +229,42 @@ impl PaymentRecorder for Refunds {
     }
 }
 
+/// The vertical's record of the work done, as the module asks for it: the
+/// answer is set per booking, `Nothing` until then.
+#[derive(Clone, Default)]
+pub struct Work(Arc<Mutex<Vec<(i64, WorkDone)>>>);
+
+impl Work {
+    /// From now on the work done for `booking` is `work`.
+    pub fn set(&self, booking: i64, work: WorkDone) {
+        let mut all = self.0.lock().unwrap();
+        all.retain(|(id, _)| *id != booking);
+        all.push((booking, work));
+    }
+}
+
+impl WorkDoneStatus for Work {
+    fn status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        booking: BookingId,
+        _record: Option<Subject>,
+    ) -> SchedulingFuture<'a, WorkDone> {
+        Box::pin(async move {
+            let all = self.0.lock().unwrap();
+            Ok(all
+                .iter()
+                .find(|(id, _)| *id == booking.0)
+                .map_or(WorkDone::Nothing, |(_, work)| *work))
+        })
+    }
+}
+
 /// Provides the fakes.
 struct Harness {
     portal: Portal,
     refunds: Refunds,
+    work: Work,
 }
 
 impl Module for Harness {
@@ -240,6 +275,7 @@ impl Module for Harness {
     fn register(&self, app: &mut Registry) {
         provide_portal_users(app, self.portal.clone());
         provide_payment_recorder(app, self.refunds.clone());
+        provide_work_done_status(app, self.work.clone());
     }
 }
 
@@ -253,6 +289,8 @@ pub struct Booked {
     pub portal: Portal,
     /// The refunds the module asked of `wl-payments`.
     pub refunds: Refunds,
+    /// The work done the vertical reports.
+    pub work: Work,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
 }
@@ -355,6 +393,20 @@ impl Booked {
             service.deposit_forfeit_hours = 24;
             service.cancel_cutoff_hours = 2;
             service.walk_out_forfeits = walk_out_forfeits;
+        })
+        .await
+    }
+
+    /// A 30-minute service with a deposit of AED 200 that checks the party
+    /// in and tracks the service while it runs.
+    pub async fn clinic_service(&self, doctor: &Resource, walk_out_forfeits: bool) -> ServiceType {
+        self.service_with("consultation", &[doctor], |service| {
+            service.deposit_amount = 20_000;
+            service.deposit_forfeit_hours = 24;
+            service.cancel_cutoff_hours = 2;
+            service.walk_out_forfeits = walk_out_forfeits;
+            service.check_in_required = true;
+            service.track_in_progress = true;
         })
         .await
     }
@@ -463,6 +515,7 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
     let events = Events::default();
     let portal = Portal::default();
     let refunds = Refunds::default();
+    let work = Work::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -471,6 +524,7 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
         .module(Harness {
             portal: portal.clone(),
             refunds: refunds.clone(),
+            work: work.clone(),
         });
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
@@ -492,6 +546,7 @@ pub async fn boot_with(module: WlScheduling) -> Booked {
         events,
         portal,
         refunds,
+        work,
         _views: views,
     }
 }
