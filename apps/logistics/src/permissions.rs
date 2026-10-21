@@ -119,6 +119,16 @@ pub const CLIENT_ROLE: &str = "shipping_client";
 /// shipping documents (§3.1). The host's `roles::DOCUMENTATION_OFFICER`.
 pub const DOCUMENTATION_OFFICER_ROLE: &str = "documentation_officer";
 
+/// The accountant: finance, remittances and supplier bills (§3.1). The
+/// host's `roles::ACCOUNTANT`; also the invoice owner below.
+pub const ACCOUNTANT_ROLE: &str = "accountant";
+/// The cashier counts a driver's cash and writes off a shortage up to the
+/// limit (`FIN.ACL.05`, `FIN.ACL.06`). The host's `roles::CASHIER`.
+pub const CASHIER_ROLE: &str = "cashier";
+/// The fleet manager: vehicles, their documents, services, fuel and fines
+/// (§3.1). The host's `roles::FLEET_MANAGER`.
+pub const FLEET_MANAGER_ROLE: &str = "fleet_manager";
+
 /// The invoice owner: the role whose holders get the task to credit the
 /// charge of an invoiced shipment that was reversed or lost (BL-LOG-10,
 /// BL-LOG-11). The host's `roles::ACCOUNTANT`.

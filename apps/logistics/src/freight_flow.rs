@@ -13,7 +13,7 @@ use crate::freight_costing;
 use crate::freight_machine::{
     ARRIVE, CLEAR, CLOSE, DELIVER, DEPART, FreightInput, REQUEST_DOCUMENTS,
 };
-use crate::notices::tell_party;
+use crate::notices::{ACTION_REQUEST_DOCUMENTATION, tell_party, tell_party_as};
 use crate::texts::english;
 
 pub(crate) async fn load(
@@ -54,6 +54,27 @@ pub(crate) async fn tell_client(
     tell_party(state, job.subject(), &job.number, job.client(), title, body).await
 }
 
+/// Tells the client of `job` with a request or an alert it should act on (the
+/// documents requested, a hold, a free-time end date): when it gives up the
+/// documentation officer gets a task.
+pub(crate) async fn tell_client_to_act(
+    state: &AppState,
+    job: &FreightJob,
+    title: &str,
+    body: &str,
+) -> Result {
+    tell_party_as(
+        state,
+        ACTION_REQUEST_DOCUMENTATION,
+        job.subject(),
+        &job.number,
+        job.client(),
+        title,
+        body,
+    )
+    .await
+}
+
 /// `request_documents` (`jobs.manage`): the client is told which documents
 /// are missing.
 ///
@@ -76,7 +97,7 @@ pub async fn request_documents(
         "logistics.freight.documents_body",
         &[("number", &job.number), ("missing", &missing.trim())],
     );
-    tell_client(state, &job, &title, &body).await?;
+    tell_client_to_act(state, &job, &title, &body).await?;
     Ok(job)
 }
 

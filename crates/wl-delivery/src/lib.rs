@@ -107,6 +107,11 @@ impl WlDelivery {
         Self::default()
     }
 
+    /// The settings as built, for a page that shows what is in force.
+    pub fn settings(&self) -> &DeliverySettings {
+        &self.settings
+    }
+
     /// Turns partial acceptance on or off for deliveries requested by
     /// `source_type` (§7: on; 03 single parcels: off). It is copied onto a
     /// delivery when it is created.

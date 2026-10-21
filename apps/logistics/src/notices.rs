@@ -19,12 +19,65 @@ use crate::texts::{english, template};
 /// The notification type of a notice to a client.
 pub const CLIENT_NOTICE: &str = "logistics.client_notice";
 
-/// The notification type: a title and a body the caller fills in.
+/// The notification type: a title and a body the caller fills in. Client
+/// shipment notices (pickup short, re-weigh, failed attempt, lost, found,
+/// returned, disposed) are in the *marketing and tracking* group: a notice
+/// that gives up does nothing more (§9 *Notification types*).
 pub fn client_notice_type() -> NotificationTypeDef {
     NotificationTypeDef::new(CLIENT_NOTICE, "logistics")
-        .group("shipments")
+        .group(notify::GROUP_TRACKING)
         .category(Category::Transactional)
         .give_up(&[GiveUpReaction::None])
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(template("logistics.notice.subject")),
+            template("logistics.notice.body"),
+        )
+}
+
+/// The notification type of a request that asks the client to act (address
+/// confirmation, an instruction for a damaged parcel, freight documents
+/// requested) or tells it of a freight job hold or a free-time alert, owned by
+/// the dispatcher.
+pub const ACTION_REQUEST_DISPATCHER: &str = "logistics.action_request_dispatcher";
+/// The same, owned by the documentation officer (freight documents, holds
+/// and free-time alerts).
+pub const ACTION_REQUEST_DOCUMENTATION: &str = "logistics.action_request_documentation";
+/// The notification type of a COD remittance statement and of an adjustment
+/// notice.
+pub const STATEMENT_NOTICE: &str = "logistics.statement_notice";
+
+/// Every notification type that goes to a client.
+pub const CLIENT_TYPES: [&str; 4] = [
+    CLIENT_NOTICE,
+    ACTION_REQUEST_DISPATCHER,
+    ACTION_REQUEST_DOCUMENTATION,
+    STATEMENT_NOTICE,
+];
+
+/// A request that asks the client to act, in the *portal and signatures*
+/// group: a notice that gives up marks the contact invalid and opens a staff
+/// task for the owner of the request.
+fn action_request_type(key: &str, owner_role: &str) -> NotificationTypeDef {
+    NotificationTypeDef::new(key, "logistics")
+        .group(notify::GROUP_PORTAL)
+        .staff_role(owner_role)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(template("logistics.notice.subject")),
+            template("logistics.notice.body"),
+        )
+}
+
+/// The statement notice, in the *invoices* group: a notice that gives up goes
+/// to the client's other finance contact, then opens a task for the accountant
+/// as the collector role.
+pub fn statement_notice_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(STATEMENT_NOTICE, "logistics")
+        .group(notify::GROUP_INVOICES)
+        .staff_role(permissions::ACCOUNTANT_ROLE)
         .template(
             NotifyChannel::Email,
             "en",
@@ -88,9 +141,9 @@ pub const ACCOUNT_CONFIRM: &str = "logistics.account_confirm";
 /// The notification type: the link and the last digits of the new account.
 pub fn account_confirm_type() -> NotificationTypeDef {
     NotificationTypeDef::new(ACCOUNT_CONFIRM, "logistics")
-        .group("remittances")
+        .group(notify::GROUP_PORTAL)
+        .staff_role(permissions::ACCOUNTANT_ROLE)
         .category(Category::Transactional)
-        .give_up(&[GiveUpReaction::None])
         .template(
             NotifyChannel::Email,
             "en",
@@ -104,6 +157,15 @@ pub(crate) fn register_types() {
     notify::register_type(staff_notice_type());
     notify::register_type(account_confirm_type());
     notify::register_type(client_notice_type());
+    notify::register_type(action_request_type(
+        ACTION_REQUEST_DISPATCHER,
+        permissions::DISPATCHER_ROLE,
+    ));
+    notify::register_type(action_request_type(
+        ACTION_REQUEST_DOCUMENTATION,
+        permissions::DOCUMENTATION_OFFICER_ROLE,
+    ));
+    notify::register_type(statement_notice_type());
     notify::register_type(remittance_drafted_type());
     notify::register_type(remittance_reopened_type());
 }
@@ -230,12 +292,56 @@ pub(crate) async fn tell_party(
     title: &str,
     body: &str,
 ) -> Result {
-    let request = NotifyRequest::new(CLIENT_NOTICE, subject)
+    tell_party_as(state, CLIENT_NOTICE, subject, label, party, title, body).await
+}
+
+/// [`tell_party`] with the notification type `type_key` (one of
+/// [`CLIENT_TYPES`]): the type names the group that decides what happens
+/// when the message gives up.
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub(crate) async fn tell_party_as(
+    state: &AppState,
+    type_key: &str,
+    subject: Subject,
+    label: &str,
+    party: PartyId,
+    title: &str,
+    body: &str,
+) -> Result {
+    let request = NotifyRequest::new(type_key, subject)
         .subject_label(label)
         .to_party(party)
         .data(renox::serde_json::json!({ "title": title, "body": body }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
+}
+
+/// Tells the client of `shipment` with a request that asks it to act
+/// (address confirmation, an instruction for a damaged parcel): when the
+/// message gives up, the dispatcher gets a task.
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub(crate) async fn tell_client_to_act(
+    state: &AppState,
+    shipment: &Shipment,
+    title: &str,
+    body: &str,
+) -> Result {
+    tell_party_as(
+        state,
+        ACTION_REQUEST_DISPATCHER,
+        shipment.subject(),
+        &shipment.number,
+        shipment.client(),
+        title,
+        body,
+    )
+    .await
 }
 
 /// Tells the client of `shipment` with `title` and `body`.

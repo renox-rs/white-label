@@ -59,7 +59,7 @@ use crate::adjustment::{AdjustmentLine, AdjustmentStatus, source};
 use crate::block;
 use crate::booking;
 use crate::netting::{self, Offset};
-use crate::notices::{tell_accountants, tell_party};
+use crate::notices::{STATEMENT_NOTICE, tell_accountants, tell_party_as};
 use crate::permissions;
 use crate::remittance::{REMITTANCE_SERIES, Remittance, RemittanceLine, RemittanceStatus};
 use crate::remittance_machine::{
@@ -813,7 +813,35 @@ pub async fn pay(
     }
     let paid = load(state, id).await?;
     statement::publish(&state.db, &paid).await?;
+    tell_statement(state, &paid).await?;
     Ok(paid)
+}
+
+/// Tells the client that the statement of the paid remittance is published.
+/// It is a statement notice: when it gives up, the client's other finance
+/// contact is tried, then the accountant gets a task (`invoices` group).
+async fn tell_statement(state: &AppState, remittance: &Remittance) -> Result {
+    let title = english(
+        "logistics.remittance.statement_title",
+        &[("number", &remittance.number)],
+    );
+    let body = english(
+        "logistics.remittance.statement_body",
+        &[
+            ("number", &remittance.number),
+            ("amount", &crate::rates::aed(remittance.net)),
+        ],
+    );
+    tell_party_as(
+        state,
+        STATEMENT_NOTICE,
+        remittance.subject(),
+        &remittance.number,
+        remittance.client(),
+        &title,
+        &body,
+    )
+    .await
 }
 
 /// `user` (`remittances.pay`) records that the bank returned the transfer of
@@ -879,8 +907,9 @@ pub async fn return_payment(
             ("amount", &crate::rates::aed(returned.net)),
         ],
     );
-    tell_party(
+    tell_party_as(
         state,
+        STATEMENT_NOTICE,
         returned.subject(),
         &returned.number,
         returned.client(),
@@ -1030,6 +1059,7 @@ pub async fn repay(
     }
     let paid = load(state, id).await?;
     statement::publish(&state.db, &paid).await?;
+    tell_statement(state, &paid).await?;
     Ok(paid)
 }
 

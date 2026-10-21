@@ -28,8 +28,11 @@ pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
 pub use app::logistics_demo;
+pub use app::logistics_rules;
+pub use app::logistics_seed;
+pub use app::logistics_settings;
 pub use app::accounting_seed::parties_for;
-pub use app::negative_flow::{invoicing_for, payments_for};
+pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
 pub use app::roles;
 
 use wl_invoicing::WlInvoicing;
@@ -152,6 +155,8 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::negative_flow::register_block_effects(&client_app);
     app::accounting_seed::register_block_effects(&client_app);
     app::accounting_seed::register_integrations(&client_app);
+    app::logistics_seed::register_integrations(&client_app);
+    app::logistics_rules::register_critical(&client_app);
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
@@ -194,6 +199,8 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The Logistics client's demo company, in local only (`logistics:demo`,
     // and `db:seed`).
     if client_app == "logistics" {
+        app = app.module(app::logistics_seed::LogisticsSeed);
+        app = app.module(app::logistics_rules::LogisticsRules);
         app = app.module(app::logistics_demo::LogisticsDemo);
     }
     // The page that shows the shared modules' settings of this client.
@@ -274,6 +281,7 @@ fn enable(
         "documents" => {
             app::property_seed::register_documents(client_app);
             app::accounting_seed::register_documents(client_app);
+            app::logistics_seed::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
             }

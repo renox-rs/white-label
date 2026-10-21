@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 
 use crate::freight::{FreightJob, FreightStatus, track};
-use crate::freight_flow::{load, run, tell_client};
+use crate::freight_flow::{load, run, tell_client, tell_client_to_act};
 use crate::freight_machine::{
     FreightInput, HOLD, RELEASE_CUSTOMS_CLEARANCE, RELEASE_IN_TRANSIT, RELEASE_READY_FOR_DELIVERY,
     given, input_of, needs, trimmed,
@@ -301,7 +301,7 @@ pub async fn hold(
         "logistics.freight.hold_body",
         &[("number", &job.number), ("reason", &label), ("note", &note.trim())],
     );
-    tell_client(state, &job, &title, &body).await?;
+    tell_client_to_act(state, &job, &title, &body).await?;
     tell_officers(state, &job, &title, &body).await?;
     Ok(job)
 }

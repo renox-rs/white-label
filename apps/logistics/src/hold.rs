@@ -31,7 +31,7 @@ use wl_kernel::delivery::{DeliveryId, DeliveryRequester};
 use wl_kernel::tickets::{self, OpenTicket};
 
 use crate::booking;
-use crate::notices::tell_client;
+use crate::notices::tell_client_to_act;
 use crate::permissions;
 use crate::reweigh;
 use crate::scan::barcodes_in;
@@ -197,7 +197,7 @@ pub(crate) async fn tell_of_hold(state: &AppState, id: i64) -> Result {
     let title = english("logistics.hold.title", &[("number", &shipment.number)]);
     let key = format!("logistics.hold.body.{reason}");
     let body = english(&key, &[("number", &shipment.number)]);
-    tell_client(state, &shipment, &title, &body).await
+    tell_client_to_act(state, &shipment, &title, &body).await
 }
 
 /// Opens the claim ticket of shipment `id` when the company is liable and no

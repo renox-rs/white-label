@@ -16,8 +16,8 @@ use wl_kernel::PartyId;
 use wl_kernel::PartyKind;
 
 use super::roles::{
-    self, CUSTOMER_SERVICE, DISPATCHER, DOCUMENTATION_OFFICER, DRIVER, HUB_STAFF,
-    OPERATIONS_MANAGER, SHIPPING_CLIENT,
+    self, CASHIER, CUSTOMER_SERVICE, DISPATCHER, DOCUMENTATION_OFFICER, DRIVER, FLEET_MANAGER,
+    HUB_STAFF, OPERATIONS_MANAGER, SHIPPING_CLIENT,
 };
 use super::seed::PASSWORD;
 
@@ -62,6 +62,18 @@ pub const LOGINS: &[Login] = &[
         email: "driver@najm.example",
         role: DRIVER,
         label: "Driver",
+    },
+    Login {
+        name: "Fadi Mansour",
+        email: "fleet@najm.example",
+        role: FLEET_MANAGER,
+        label: "Fleet manager",
+    },
+    Login {
+        name: "Carla Haddad",
+        email: "cashier@najm.example",
+        role: CASHIER,
+        label: "Cashier",
     },
     Login {
         name: "Dalia Nasser",

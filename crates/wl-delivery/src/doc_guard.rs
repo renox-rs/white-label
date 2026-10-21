@@ -42,18 +42,22 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::Subject;
 use wl_kernel::documents::{
-    self, BlockEntry, BlockRefusal, BlockSubjects, DocumentFuture, guarded_transition_as,
-    register_block_subjects,
+    self, BlockEntry, BlockRefusal, BlockSubjects, DocumentFuture, FutureWork, PlannedRecord,
+    guarded_transition_as, register_block_subjects, register_future_work,
 };
 use wl_kernel::workforce::workforce;
 
-use crate::run::{DRIVER_USER_SUBJECT_TYPE, Run};
+use crate::run::{DRIVER_USER_SUBJECT_TYPE, Run, RunStatus};
 
 /// The guarded transition `assign` of a delivery.
 pub const ASSIGN: &str = "delivery.assign";
 
 /// The guarded transition `dispatch` of a run.
 pub const DISPATCH: &str = "run.dispatch";
+
+/// The field of a run a `blocks` condition can name: the vehicle type
+/// (`van`, `truck`, `motorbike` or `on_foot`).
+pub const CONDITION_VEHICLE_TYPE: &str = "vehicle_type";
 
 /// The document subject of the driver of `run`: the employee of the user
 /// when `wl-hr` knows one, else the user's account.
@@ -81,6 +85,14 @@ impl BlockSubjects for RunSubjects {
             let Some(run) = Run::find(&state.db, record_id).await? else {
                 return Ok(Vec::new());
             };
+            // An entry with a condition on the vehicle (03: the rider permit
+            // is for a motorbike rider) applies to the runs that match it.
+            if let Some(condition) = &entry.condition
+                && condition.field == CONDITION_VEHICLE_TYPE
+                && !condition.matches(run.vehicle_type.as_str())
+            {
+                return Ok(Vec::new());
+            }
             let mut candidates = vec![driver_subject(state, &run).await?];
             candidates.extend(run.vehicle_subject());
             let types = documents::guard(state)
@@ -98,10 +110,49 @@ impl BlockSubjects for RunSubjects {
     }
 }
 
-/// Registers the provider for both guarded transitions.
+/// The planned work a document that expires would not cover (wl-documents
+/// `DOC.RUL.02`): the runs of the driver or the vehicle that are still
+/// `planned` on or after the day after the expiry. A run already dispatched
+/// finishes its day, so only a planned run is listed.
+struct PlannedRuns;
+
+impl FutureWork for PlannedRuns {
+    fn planned_from<'a>(
+        &'a self,
+        state: &'a AppState,
+        _entry: &'a BlockEntry,
+        subject: &'a Subject,
+        from: NaiveDate,
+    ) -> DocumentFuture<'a, Vec<PlannedRecord>> {
+        Box::pin(async move {
+            let runs = Run::query()
+                .where_(Run::STATUS.eq(RunStatus::Planned))
+                .order_by(Run::RUN_DATE)
+                .get(&state.db)
+                .await?;
+            let mut found = Vec::new();
+            for run in runs.into_iter().filter(|run| run.run_date >= from) {
+                let driver = driver_subject(state, &run).await?;
+                if &driver == subject || run.vehicle_subject().as_ref() == Some(subject) {
+                    found.push(PlannedRecord {
+                        record: run.subject(),
+                        date: run.run_date,
+                        label: run.number.clone(),
+                        scope: None,
+                    });
+                }
+            }
+            Ok(found)
+        })
+    }
+}
+
+/// Registers the providers for both guarded transitions.
 pub(crate) fn register() {
     register_block_subjects(ASSIGN, RunSubjects);
     register_block_subjects(DISPATCH, RunSubjects);
+    register_future_work(ASSIGN, PlannedRuns);
+    register_future_work(DISPATCH, PlannedRuns);
 }
 
 /// The message of a refusal: one line per failing document, then, for each

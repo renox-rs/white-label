@@ -11,6 +11,7 @@ pub mod cash_watch;
 mod claim;
 pub mod cod;
 mod credit;
+pub mod defaults;
 pub mod disposal;
 pub mod dispute;
 mod events;
@@ -23,6 +24,7 @@ pub mod freight_hold;
 pub mod freight_reopen;
 pub mod freight_machine;
 mod freight_pages;
+pub mod grounding;
 pub mod hold;
 pub mod loss;
 mod loss_pages;
@@ -45,6 +47,7 @@ pub mod scan;
 mod screen_texts;
 pub mod seed;
 pub mod shipment;
+pub mod sms_fallback;
 pub mod shipment_machine;
 pub mod statement;
 pub mod trace;
@@ -73,6 +76,7 @@ pub use freight_cancel::{FreightCancellation, FreightQuotation};
 pub use freight_costing::{FreightMargin, JobLine};
 pub use freight_free_time::{FreeTimeLine, FreeTimeNotice};
 pub use freight_hold::FreightHold;
+pub use grounding::VehicleGrounding;
 pub use freight_reopen::FreightReopening;
 pub use freight_machine::FreightInput;
 pub use netting::Offset;
@@ -152,6 +156,7 @@ impl Module for Logistics {
             .model::<FreightMargin>()
             .model::<FreightHold>()
             .model::<FreightReopening>()
+            .model::<VehicleGrounding>()
             .model::<FreightQuotation>()
             .model::<FreeTimeLine>()
             .model::<FreeTimeNotice>()
@@ -200,6 +205,9 @@ impl Module for Logistics {
         voiding::register();
         // The shipment follows its delivery and cancels it.
         events::register(app);
+        // The SMS gateway going down: the dispatcher's task and the clients'
+        // e-mail (BL-LOG-25).
+        sms_fallback::register(app);
         notices::register_types();
         // In the app group of the staff sidebar; the label is the host's
         // `nav.shipments` text.

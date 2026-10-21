@@ -25,10 +25,9 @@ use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
 use wl_invoicing::WlInvoicing;
 use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::block_effects::{BlockEffect, BlockEffectOverride, effect_for};
-use wl_kernel::delivery::CodAbsorber;
 use wl_payments::WlPayments;
 
-use super::roles::{ACCOUNTANT, ADMIN, OPERATIONS_MANAGER, PROPERTY_MANAGER, SETTINGS_VIEW};
+use super::roles::{ACCOUNTANT, ADMIN, PROPERTY_MANAGER, SETTINGS_VIEW};
 
 /// Days a dispute may stay open before it is escalated (`FIN.RUL.15`).
 pub const DISPUTE_ESCALATION_DAYS: u32 = 14;
@@ -46,7 +45,7 @@ pub const BOUNCE_DECIDE_DAYS: i64 = 14;
 pub const PAYMENT_REVERSAL_EXPIRY_HOURS: i64 = 168;
 /// The cash shortage an operations manager of a logistics client writes off
 /// without a second approver, in fils (`FIN.ACL.06`, 03: AED 50).
-pub const LOGISTICS_CASH_WRITE_OFF_LIMIT: i64 = 5_000;
+pub const LOGISTICS_CASH_WRITE_OFF_LIMIT: i64 = logistics::defaults::CASH_WRITE_OFF_LIMIT;
 /// The projected balance below which `FIN.RUL.23` alerts, in fils (AED 50,000).
 pub const CASH_THRESHOLD: i64 = 5_000_000;
 
@@ -87,6 +86,10 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
             module
         }
         "construction" => super::construction_seed::invoicing(module, entities),
+        // 03 `FIN.ACL.15`, `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23`,
+        // `FIN.RUL.24`, `FIN.ACL.21` and the e-invoicing scope (BL-LOG-26,
+        // BL-LOG-25): see [`super::logistics_seed::invoicing`].
+        "logistics" => super::logistics_seed::invoicing(module, entities),
         // The retainer of an engagement bills itself: its cycle invoices
         // are issued at once, so that ending the engagement can credit the
         // cycle already invoiced in advance (BL-ACC-06).
@@ -151,9 +154,7 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // 03: a driver's cash shortage up to AED 50 is written off by the
         // operations manager; the manager of a driver is that role. Salary
         // deduction stays off (`FIN.ACL.19`, open item L-20).
-        "logistics" => module
-            .cash_write_off_limit(LOGISTICS_CASH_WRITE_OFF_LIMIT)
-            .cash_manager(OPERATIONS_MANAGER),
+        "logistics" => super::logistics_seed::payments(module),
         "construction" => super::construction_seed::payments(module),
         // 04: a bounced cheque adds no fee; the billing role decides with the
         // engagement manager (BL-ACC-24).
@@ -171,18 +172,7 @@ pub fn payments_for(client_app: &str) -> WlPayments {
 pub fn delivery_for(client_app: &str) -> wl_delivery::WlDelivery {
     let module = wl_delivery::WlDelivery::new();
     match client_app {
-        "logistics" => module
-            .cod_absorbers(&[
-                CodAbsorber::Client,
-                CodAbsorber::Business,
-                CodAbsorber::Driver,
-            ])
-            .replace_cash_escalation(true)
-            // 03: a shipment is one consignment to one recipient; partial
-            // acceptance is off unless the shipment says otherwise: it asks
-            // for it per delivery when it has several parcels (BL-LOG-07).
-            .partial_acceptance(logistics::SUBJECT_TYPE, false)
-            .abort_reasons(&["driver_unreachable"]),
+        "logistics" => super::logistics_seed::delivery(module),
         _ => module,
     }
 }
@@ -579,13 +569,20 @@ impl Module for NegativeFlow {
 
 async fn show(State(state): State<AppState>) -> Result<Response> {
     let settings = state.provided::<NegativeFlow>().ok_or(Error::NotFound)?;
-    let rows = rows(&settings.client_app, &settings.entities);
+    // The 03 client has its own table (BL-LOG-26): the rows of the Property
+    // client name Property's tickets, leases and cheques.
+    let rows = if settings.client_app == super::logistics_seed::LOGISTICS {
+        super::logistics_settings::money_rows(&settings.entities)
+    } else {
+        rows(&settings.client_app, &settings.entities)
+    };
     Ok(view("settings/negative_flow.html", context! { rows }).into_response())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::roles::OPERATIONS_MANAGER;
 
     fn entities() -> Vec<String> {
         vec!["PGP".to_owned(), "PGFZ".to_owned()]

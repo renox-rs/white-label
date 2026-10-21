@@ -1219,6 +1219,46 @@ const TEXTS: &[(&str, &str)] = &[
         "logistics.freight.recharge_revenue",
         "Invoice of recharged costs for freight job {{ number }}",
     ),
+    (
+        "logistics.remittance.statement_title",
+        "The statement of COD remittance {{ number }} is published",
+    ),
+    (
+        "logistics.remittance.statement_body",
+        "COD remittance {{ number }} was paid: {{ amount }}. The statement is in your portal.",
+    ),
+    (
+        "logistics.contract_ended",
+        "The end of the client's contract is recorded.",
+    ),
+    (
+        "logistics.grounding.title",
+        "Vehicle {{ vehicle }} is grounded: a document expired",
+    ),
+    (
+        "logistics.grounding.body",
+        "The {{ document }} of vehicle {{ vehicle }} expired on {{ expired }}. The vehicle takes no run until it is renewed.",
+    ),
+    (
+        "logistics.sms.task_title",
+        "The SMS gateway is down: call the recipients on today's runs",
+    ),
+    (
+        "logistics.sms.task_body",
+        "Tracking SMS wait until the gateway is back. Call these {{ count }} recipient(s):\n{{ list }}",
+    ),
+    (
+        "logistics.sms.notice_title",
+        "Tracking updates by e-mail today",
+    ),
+    (
+        "logistics.sms.notice_body",
+        "Our SMS service is down. We will update you on your shipments {{ shipments }} by e-mail until it is back.",
+    ),
+    (
+        "logistics.forecast.cod_remittance",
+        "COD remittance {{ number }}",
+    ),
     ("logistics.freight_done", "Freight job updated."),
     ("logistics.freight_container_added", "Container added."),
     ("logistics.freight_opened", "Freight job opened."),

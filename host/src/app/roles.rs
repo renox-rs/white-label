@@ -103,6 +103,14 @@ pub const OPERATIONS_MANAGER: &str = "operations_manager";
 /// and their customs and shipping documents, delivers, closes and reopens them
 /// (03 §3.1, `LOG.JOB.01`).
 pub const DOCUMENTATION_OFFICER: &str = log::DOCUMENTATION_OFFICER_ROLE;
+/// The fleet manager of a logistics client: vehicles, their documents,
+/// services, fuel and fines; the responsible role of the vehicle document
+/// kinds and the one told when a vehicle is grounded (03 §3.1, `LOG.RUL.10`).
+pub const FLEET_MANAGER: &str = log::FLEET_MANAGER_ROLE;
+/// The cashier of a logistics client: counts the cash drivers hand over and
+/// writes off a shortage up to the limit (03 §3.3, `FIN.ACL.05`,
+/// `FIN.ACL.06`).
+pub const CASHIER: &str = log::CASHIER_ROLE;
 /// A driver or rider: sees today's stops of their own runs and records their
 /// outcomes (wl-delivery §6, `WRK.ACL.05`).
 pub const DRIVER: &str = "driver";
@@ -845,6 +853,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         OPERATIONS_MANAGER,
         &[
+            // The late e-POD of a driver beyond 24 hours is approved here
+            // (`PLT.ACL.10`), and the digest of voids and late entries goes
+            // to the managers who hold it (`PLT.RUL.06`).
+            wl_kernel::permissions::LATE_ENTRIES_APPROVE,
             delivery::VIEW,
             delivery::DISPATCH,
             delivery::MANAGE,
@@ -867,6 +879,25 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_APPROVE_DISPOSAL,
             log::FREIGHT_MANAGE,
             log::JOBS_VIEW,
+        ],
+    ),
+    (
+        FLEET_MANAGER,
+        &[
+            delivery::RUNS_VIEW,
+            documents::VIEW,
+            documents::UPLOAD,
+            log::SHIPMENTS_VIEW,
+        ],
+    ),
+    (
+        CASHIER,
+        &[
+            delivery::RUNS_VIEW,
+            payments::VIEW,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            payments::CASH_WRITE_OFF,
         ],
     ),
     (

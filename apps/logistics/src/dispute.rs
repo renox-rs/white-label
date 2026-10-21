@@ -28,7 +28,7 @@ use wl_kernel::tickets::{self, TaskComment, TicketId};
 
 use crate::adjustment::{self, NewAdjustment, source};
 use crate::booking;
-use crate::notices::tell_party;
+use crate::notices::{STATEMENT_NOTICE, tell_party_as};
 use crate::pages::{Fields, field};
 use crate::permissions;
 use crate::rates::aed;
@@ -324,8 +324,9 @@ pub async fn resolve(
             &[("number", &remittance.number), ("note", &note)],
         )
     };
-    tell_party(
+    tell_party_as(
         state,
+        STATEMENT_NOTICE,
         remittance.subject(),
         &remittance.number,
         remittance.client(),

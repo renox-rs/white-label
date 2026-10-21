@@ -40,7 +40,7 @@ use wl_kernel::invoicing::{self, SupplierBillLineId, SupplierBillStatus};
 
 use crate::freight::{FreightContainer, FreightJob, FreightStatus, track};
 use crate::freight_costing::{self, JobLine, closed_before, line_kind, liability, liability_reason};
-use crate::freight_flow::{load, tell_client};
+use crate::freight_flow::{load, tell_client_to_act};
 use crate::freight_hold::tell_officers;
 use crate::permissions;
 use crate::texts::english;
@@ -320,7 +320,7 @@ async fn notify_once(
         ],
     );
     tell_officers(state, job, &title, &body).await?;
-    tell_client(state, job, &title, &body).await?;
+    tell_client_to_act(state, job, &title, &body).await?;
     let mut row = FreeTimeNotice {
         job_id: job.id,
         container_id: container.id,
