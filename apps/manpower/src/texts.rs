@@ -273,10 +273,6 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.billing.weekly", "Weekly"),
     ("manpower.screen.billing.fortnightly", "Every two weeks"),
     ("manpower.screen.billing.monthly", "Monthly"),
-    // The nav.
-    ("manpower.nav.contracts", "Client contracts"),
-    ("manpower.nav.requests", "Manpower requests"),
-    ("manpower.nav.deployments", "Deployments"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

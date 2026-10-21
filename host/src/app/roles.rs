@@ -270,6 +270,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mpw::CONTRACTS_VIEW,
             mpw::CONTRACTS_MANAGE,
             mpw::SITES_MANAGE,
+            mpw::REQUESTS_VIEW,
+            mpw::REQUESTS_CREATE,
+            mpw::REQUESTS_MANAGE,
+            mpw::DEPLOYMENTS_VIEW,
+            mpw::DEPLOYMENTS_MANAGE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -665,7 +670,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
     ),
     (
         SUPERVISOR,
-        &[attendance::VIEW, attendance::MARK, attendance::CORRECT],
+        &[
+            attendance::VIEW,
+            attendance::MARK,
+            attendance::CORRECT,
+            // 09 §3.1: sees the deployments of their site (§3.2).
+            mpw::DEPLOYMENTS_VIEW,
+        ],
     ),
     (
         ACCOUNT_MANAGER,
@@ -673,6 +684,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mpw::CONTRACTS_VIEW,
             mpw::CONTRACTS_MANAGE,
             mpw::SITES_MANAGE,
+            mpw::REQUESTS_VIEW,
+            mpw::REQUESTS_CREATE,
+            mpw::REQUESTS_MANAGE,
+            mpw::DEPLOYMENTS_VIEW,
+            mpw::DEPLOYMENTS_MANAGE,
             parties::VIEW,
             documents::VIEW,
             invoices::VIEW,

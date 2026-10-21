@@ -63,8 +63,8 @@ impl Module for Manpower {
                 }
             }
         });
-        // The client contracts in the app group of the sidebar; the label is
-        // the app's `nav.contracts` text.
+        // The contracts, requests and deployments in the app group of the
+        // sidebar; the labels are the app's `nav.*` texts.
         app.nav(
             "app",
             NavLink::route("manpower.contracts", "nav.contracts")
@@ -72,6 +72,22 @@ impl Module for Manpower {
                 .group("nav.app")
                 .order(9)
                 .permission(permissions::CONTRACTS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("manpower.requests", "nav.requests")
+                .icon("users")
+                .group("nav.app")
+                .order(10)
+                .permission(permissions::REQUESTS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("manpower.deployments", "nav.deployments")
+                .icon("map-pin")
+                .group("nav.app")
+                .order(11)
+                .permission(permissions::DEPLOYMENTS_VIEW),
         );
         app.model::<Site>()
             .model::<ClientContract>()
