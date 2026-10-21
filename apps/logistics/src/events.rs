@@ -25,7 +25,7 @@ use crate::notices::tell_client;
 use crate::shipment::{SUBJECT_TYPE, Shipment, ShipmentStatus, track};
 use crate::shipment_machine::{
     CANCEL, CANCEL_RETURN, DELIVER, DISPATCH, FAIL_ATTEMPT, HOLD, HOLD_SYSTEM, PICK_UP,
-    RECEIVE_AT_HUB, RETURN, ShipmentInput,
+    RECEIVE_AT_HUB, RELEASE, RETURN, ShipmentInput,
 };
 use crate::texts::english;
 
@@ -82,6 +82,31 @@ async fn cancel_delivery(state: &AppState, shipment: &Shipment, reason: &str) ->
             None,
         )
         .await?;
+    }
+    Ok(())
+}
+
+/// Holds (or releases) the open delivery of shipment `id` in the delivery
+/// module, so a held shipment's delivery cannot go on a run or leave on one
+/// (03 §7.1 `hold`, `release`; LOG.RTE.01). A refusal is written to the
+/// tracking events.
+async fn hold_delivery(state: &AppState, id: i64, held: bool) -> Result {
+    let shipment = Shipment::find_or_404(&state.db, id).await?;
+    let Some(delivery) = shipment.delivery_id else {
+        return Ok(());
+    };
+    if state
+        .provided::<std::sync::Arc<dyn DeliveryRequester>>()
+        .is_none()
+    {
+        return Ok(());
+    }
+    if let Err(error) = wl_kernel::delivery::requester(state)
+        .hold(state, DeliveryId(delivery), held)
+        .await
+    {
+        let note = format!("{error:?}");
+        track(&state.db, id, "delivery_hold_failed", &note, None).await?;
     }
     Ok(())
 }
@@ -171,8 +196,12 @@ pub(crate) fn register(app: &mut Registry) {
         |event: Transitioned<Shipment>, state: AppState| async move {
             let name = event.transition.as_str();
             if name == HOLD || name == HOLD_SYSTEM {
+                hold_delivery(&state, event.key, true).await?;
                 crate::hold::tell_of_hold(&state, event.key).await?;
                 return crate::hold::open_claim(&state, event.key).await;
+            }
+            if name == RELEASE {
+                return hold_delivery(&state, event.key, false).await;
             }
             if name == PICK_UP || (name == RECEIVE_AT_HUB && event.from == "created") {
                 return tell_of_missing_parcels(&state, event.key).await;

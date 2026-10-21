@@ -319,6 +319,12 @@ pub async fn assign(
     if run.status != RunStatus::Planned {
         return Err(TransitionError::Guard("The run is not planned.".to_owned()));
     }
+    if delivery.held {
+        return Err(TransitionError::Guard(format!(
+            "Delivery {} is held with its shipment and cannot go on a run.",
+            delivery.number
+        )));
+    }
     if let Some(message) = driver_unavailable(state, run)
         .await
         .map_err(TransitionError::Failed)?
@@ -417,6 +423,12 @@ pub async fn dispatch_run(
         .get(&state.db)
         .await
         .map_err(TransitionError::Failed)?;
+    if let Some(held) = deliveries.iter().find(|d| d.held) {
+        return Err(TransitionError::Guard(format!(
+            "Delivery {} is held with its shipment: take it off the run before dispatching.",
+            held.number
+        )));
+    }
     doc_guard::run(
         state,
         doc_guard::DISPATCH,

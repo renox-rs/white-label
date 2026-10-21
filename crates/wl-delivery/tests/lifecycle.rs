@@ -302,3 +302,48 @@ async fn a_run_needs_its_vehicle_unless_the_rider_is_on_foot() {
     assert_eq!(rider.vehicle_asset_id, None);
     assert_eq!(rider.status, RunStatus::Planned);
 }
+
+/// A delivery its source holds (`DeliveryRequester::hold`, 03 `hold`, #303)
+/// cannot be put on a run, and a run carrying it assigned is not dispatched
+/// until it is taken off or released.
+#[renox::test]
+async fn a_held_delivery_is_not_put_on_a_run_nor_dispatched() {
+    let w = boot().await;
+    w.valid_documents("2099-12-31");
+    let delivery = w.simple_delivery().await;
+    let run = w.run_on("2026-11-12").await;
+    requester(w.state())
+        .hold(w.state(), delivery.delivery_id(), true)
+        .await
+        .unwrap();
+    w.assign(&w.dispatcher, &delivery, &run)
+        .await
+        .assert_status(422)
+        .assert_see("held with its shipment");
+    assert_eq!(w.reload(&delivery).await.status.as_str(), "pending");
+
+    requester(w.state())
+        .hold(w.state(), delivery.delivery_id(), false)
+        .await
+        .unwrap();
+    w.assign(&w.dispatcher, &delivery, &run).await.assert_ok();
+    requester(w.state())
+        .hold(w.state(), delivery.delivery_id(), true)
+        .await
+        .unwrap();
+    let today_run = w
+        .run_on(&wl_kernel::documents::today().format("%Y-%m-%d").to_string())
+        .await;
+    let other = w.simple_delivery().await;
+    w.assign(&w.dispatcher, &other, &today_run)
+        .await
+        .assert_ok();
+    // The held one sits on a planned run of another day: dispatching that run.
+    w.dispatch(&w.dispatcher, &run)
+        .await
+        .assert_status(422)
+        .assert_see("held with its shipment");
+    assert_eq!(w.reload(&delivery).await.status.as_str(), "assigned");
+    w.dispatch(&w.dispatcher, &today_run).await.assert_ok();
+    assert_eq!(w.reload(&other).await.status.as_str(), "out_for_delivery");
+}

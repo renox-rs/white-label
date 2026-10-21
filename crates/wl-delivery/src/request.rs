@@ -154,6 +154,21 @@ impl DeliveryRequester for Deliveries {
         })
     }
 
+    fn hold<'a>(
+        &'a self,
+        state: &'a AppState,
+        delivery: DeliveryId,
+        held: bool,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async move {
+            Delivery::query()
+                .where_(Delivery::ID.eq(delivery.0))
+                .update(&state.db, &[("held", &held)])
+                .await?;
+            Ok(())
+        })
+    }
+
     fn update_address<'a>(
         &'a self,
         state: &'a AppState,

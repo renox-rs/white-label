@@ -284,6 +284,19 @@ pub trait DeliveryRequester: Send + Sync + 'static {
         reason: &'a str,
     ) -> DeliveryFuture<'a, ()>;
 
+    /// Holds (`held`) or releases the delivery for its source: a held
+    /// delivery that is `pending` or `assigned` cannot be put on a run and a
+    /// run with it assigned cannot be dispatched until it is released
+    /// (03 Logistics §7.1 `hold` and `release`). The default does nothing.
+    fn hold<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _delivery: DeliveryId,
+        _held: bool,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
     /// Corrects the address and area of a delivery that is not out on a
     /// run (`pending`, `assigned` or `attempted`); a delivery in any other
     /// state is left as it is. The default does nothing.

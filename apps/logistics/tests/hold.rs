@@ -119,31 +119,40 @@ async fn hub_staff_hold_a_damaged_shipment_with_photos_and_the_client_is_told() 
     );
 }
 
-/// AC1 (must not dispatch): a held shipment is not `at_hub`; its delivery on
-/// a dispatched run does not send it out, and a shipment can be held from
-/// `created` (nobody picks it up while held).
+/// A planned run of the driver today with the van.
+async fn planned_run(w: &World) -> wl_delivery::Run {
+    wl_delivery::plan::create_run(
+        w.state(),
+        NewRun::new(today(), w.driver.id).vehicle(VehicleType::Van, Some(support::VAN)),
+    )
+    .await
+    .unwrap()
+}
+
+/// AC1 (must not dispatch): a held shipment's delivery cannot be put on a
+/// run, and a delivery already on a planned run when the shipment is held
+/// keeps the run from being dispatched until it is taken off: the delivery
+/// never leaves, so the shipment is not `delivered` behind its hold. A
+/// shipment held from `created` is not picked up.
 #[renox::test]
 async fn a_held_shipment_is_not_dispatched_and_a_created_one_is_not_picked_up() {
     let w = boot().await;
     let held = held_damaged(&w, "ORD-1").await;
     let delivery = w.delivery_of(&held).await;
-    let run = wl_delivery::plan::create_run(
-        w.state(),
-        NewRun::new(today(), w.driver.id).vehicle(VehicleType::Van, Some(support::VAN)),
-    )
-    .await
-    .unwrap();
+    assert!(delivery.held);
+    let run = planned_run(&w).await;
     let run_id = run.id.to_string();
-    w.post(
-        &w.dispatcher,
-        &format!("/deliveries/{}/assign", delivery.id),
-        &[("run_id", run_id.as_str())],
-    )
-    .await
-    .assert_ok();
+    let assign = format!("/deliveries/{}/assign", delivery.id);
+    w.post(&w.dispatcher, &assign, &[("run_id", run_id.as_str())])
+        .await
+        .assert_status(422)
+        .assert_see("held with its shipment");
     w.post(&w.dispatcher, &format!("/runs/{}/dispatch", run.id), &[])
         .await
         .assert_ok();
+    let delivery = w.delivery_of(&held).await;
+    assert_eq!(delivery.status, DeliveryStatus::Pending);
+    assert_eq!(delivery.run_id, None);
     assert_eq!(w.reload(&held).await.status, ShipmentStatus::OnHold);
 
     let created = w.book_as(&w.noor, SOUQ, "ORD-2").await;
@@ -167,6 +176,92 @@ async fn a_held_shipment_is_not_dispatched_and_a_created_one_is_not_picked_up() 
     .await
     .assert_status(422);
     assert_eq!(w.reload(&created).await.status, ShipmentStatus::OnHold);
+}
+
+/// #303 bug: a delivery assigned to a planned run *before* its shipment is
+/// held does not leave with the run, so it cannot be delivered while the
+/// shipment is `on_hold`; taken off the run and released it goes out again
+/// and the shipment follows.
+#[renox::test]
+async fn a_delivery_assigned_before_the_hold_does_not_leave_until_the_release() {
+    let w = boot().await;
+    let shipment = w.book_as(&w.noor, SOUQ, "ORD-3").await;
+    let at_hub = w.at_hub(&w.pick_up(&shipment).await).await;
+    let delivery = w.delivery_of(&at_hub).await;
+    let run = planned_run(&w).await;
+    let run_id = run.id.to_string();
+    w.post(
+        &w.dispatcher,
+        &format!("/deliveries/{}/assign", delivery.id),
+        &[("run_id", run_id.as_str())],
+    )
+    .await
+    .assert_ok();
+    w.post(
+        &w.hub,
+        &format!("/shipments/{}/hold", at_hub.id),
+        &[("reason", "client_instruction")],
+    )
+    .await
+    .assert_status(303);
+
+    // The run cannot go while it carries the held delivery.
+    let dispatch = format!("/runs/{}/dispatch", run.id);
+    w.post(&w.dispatcher, &dispatch, &[])
+        .await
+        .assert_status(422)
+        .assert_see("held with its shipment");
+    let stuck = w.delivery_of(&at_hub).await;
+    assert_eq!(stuck.status, DeliveryStatus::Assigned);
+    assert!(stuck.held);
+    assert_eq!(w.reload(&at_hub).await.status, ShipmentStatus::OnHold);
+
+    // Taken off, the run goes without it and the delivery stays pending.
+    w.post(
+        &w.dispatcher,
+        &format!("/deliveries/{}/unassign", delivery.id),
+        &[],
+    )
+    .await
+    .assert_ok();
+    w.post(&w.dispatcher, &dispatch, &[]).await.assert_ok();
+    let waiting = w.delivery_of(&at_hub).await;
+    assert_eq!(waiting.status, DeliveryStatus::Pending);
+    assert_eq!(w.reload(&at_hub).await.status, ShipmentStatus::OnHold);
+
+    // The client's instruction is recorded and the shipment released: the
+    // delivery is free again.
+    w.post(
+        &w.noor,
+        &format!("/shipments/{}/hold-instruction", at_hub.id),
+        &[("note", "deliver as is: portal 2026-11-04 09:10")],
+    )
+    .await
+    .assert_status(303);
+    w.post(
+        &w.dispatcher,
+        &format!("/shipments/{}/release", at_hub.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
+    assert!(!w.delivery_of(&at_hub).await.held);
+    let next = planned_run(&w).await;
+    let next_id = next.id.to_string();
+    w.post(
+        &w.dispatcher,
+        &format!("/deliveries/{}/assign", delivery.id),
+        &[("run_id", next_id.as_str())],
+    )
+    .await
+    .assert_ok();
+    w.post(&w.dispatcher, &format!("/runs/{}/dispatch", next.id), &[])
+        .await
+        .assert_ok();
+    assert_eq!(
+        w.reload(&at_hub).await.status,
+        ShipmentStatus::OutForDelivery
+    );
 }
 
 /// AC2: given the client's instruction "deliver as is" recorded, `release`

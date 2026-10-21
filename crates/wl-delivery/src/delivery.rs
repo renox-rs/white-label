@@ -122,6 +122,10 @@ pub struct Delivery {
     /// held out of remittances and settlements and the source does not bill
     /// the delivery. Changed only by the transitions that set or clear it.
     pub frozen: bool,
+    /// Whether the source holds the delivery (a shipment `on_hold`): it
+    /// cannot be put on a run nor leave on one until the source releases it
+    /// (`DeliveryRequester::hold`).
+    pub held: bool,
     /// The review's ticket; `None` when ticketing is off or no review.
     pub review_ticket_id: Option<i64>,
     /// Why it was put under review.
