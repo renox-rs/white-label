@@ -61,6 +61,7 @@ use wl_kernel::invoicing::{PostCost, post_cost};
 
 use crate::access;
 use crate::entry::{Category, TimesheetEntry};
+use crate::escalation;
 use crate::notices;
 use crate::permissions;
 use crate::record::{AttendanceRecord, AttendanceStatus};
@@ -463,6 +464,8 @@ async fn approved(state: &AppState, timesheet_id: i64) -> Result<Timesheet> {
     post_labour_cost(state, &sheet).await?;
     let event = approved_event(state, &sheet).await?;
     state.emit(event).await?;
+    // The task to collect a signed sheet has done its work.
+    escalation::close_task(state, timesheet_id).await?;
     Ok(sheet)
 }
 
@@ -567,6 +570,8 @@ pub async fn reject(
     let _outcome = run.run(state).await.map_err(|e| e.into_error())?;
     let stored = Timesheet::find_or_404(&state.db, timesheet_id).await?;
     notices::timesheet_rejected(state, &stored, reason.trim()).await?;
+    // It no longer waits for the client: the task to collect a sheet closes.
+    escalation::close_task(state, timesheet_id).await?;
     Ok(stored)
 }
 

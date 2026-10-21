@@ -248,6 +248,9 @@ pub struct Timesheet {
     pub submitted_by: Option<i64>,
     /// When it was submitted.
     pub submitted_at: Option<DateTime>,
+    /// When the approver was escalated to (`HRM.RUL.15` at E days) for the
+    /// latest `submit`; cleared by the next `submit`.
+    pub escalated_at: Option<DateTime>,
     /// The user who approved it; none for the system (a deemed approval).
     pub approved_by: Option<i64>,
     /// When it was approved.

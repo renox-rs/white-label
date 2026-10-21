@@ -48,6 +48,7 @@ pub mod subject;
 pub mod subscriptions;
 mod texts;
 pub mod tickets;
+pub mod timesheets;
 pub mod voids;
 pub mod wip;
 pub mod workforce;

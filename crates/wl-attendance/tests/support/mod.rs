@@ -39,6 +39,7 @@ use wl_kernel::qualifications::{
 use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
+use wl_kernel::timesheets::{ApproverResolver, provide_approver_resolver};
 use wl_kernel::workforce::{
     EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
 };
@@ -305,12 +306,30 @@ impl Invoicer for Disputes {
 
 /// The tasks opened through the kernel's task creator.
 #[derive(Clone, Default)]
-pub struct Tasks(Arc<Mutex<Vec<OpenTicket>>>);
+pub struct Tasks {
+    opened: Arc<Mutex<Vec<OpenTicket>>>,
+    closed: Arc<Mutex<Vec<i64>>>,
+}
 
 impl Tasks {
     /// Every task opened so far.
     pub fn opened(&self) -> Vec<OpenTicket> {
-        self.0.lock().unwrap().clone()
+        self.opened.lock().unwrap().clone()
+    }
+
+    /// The tasks opened with `source_key` that were closed.
+    pub fn closed_with_key(&self, source_key: &str) -> usize {
+        let closed = self.closed.lock().unwrap();
+        self.opened
+            .lock()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .filter(|(n, t)| {
+                t.source_key.as_deref() == Some(source_key)
+                    && closed.contains(&(i64::try_from(*n).unwrap() + 1))
+            })
+            .count()
     }
 }
 
@@ -321,7 +340,7 @@ impl TaskCreator for Tasks {
         ticket: OpenTicket,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(async move {
-            let mut all = self.0.lock().unwrap();
+            let mut all = self.opened.lock().unwrap();
             all.push(ticket);
             let n = all.len();
             Ok(Some(TicketRef {
@@ -337,15 +356,113 @@ impl TaskCreator for Tasks {
         source_key: &'a str,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(async move {
-            let all = self.0.lock().unwrap();
+            let all = self.opened.lock().unwrap();
+            let closed = self.closed.lock().unwrap();
             Ok(all
                 .iter()
                 .position(|t| t.source_key.as_deref() == Some(source_key))
+                .filter(|n| !closed.contains(&(i64::try_from(*n).unwrap() + 1)))
                 .map(|n| TicketRef {
                     id: TicketId(i64::try_from(n).unwrap() + 1),
                     number: format!("TKT-2026-{:04}", n + 1),
                 }))
         })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        _note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            let mut closed = self.closed.lock().unwrap();
+            if closed.contains(&ticket.0) {
+                return Ok(false);
+            }
+            closed.push(ticket.0);
+            Ok(true)
+        })
+    }
+}
+
+/// The contract of a deployment, as the app's `ApproverResolver` answers for
+/// it: the account manager, the client's escalation contact and approvers,
+/// and the days after which silence is approval (none when the contract has
+/// no such clause).
+#[derive(Clone, Default)]
+pub struct Approvers(Arc<Mutex<ApproverSetup>>);
+
+#[derive(Default)]
+struct ApproverSetup {
+    account_manager: Option<i64>,
+    escalation: Vec<NotifyRecipient>,
+    clients: Vec<NotifyRecipient>,
+    deemed_days: Option<i64>,
+}
+
+impl Approvers {
+    /// User `user` is the account manager.
+    pub fn account_manager(&self, user: i64) {
+        self.0.lock().unwrap().account_manager = Some(user);
+    }
+
+    /// User `user` is the client's escalation contact.
+    pub fn escalation_contact(&self, user: i64) {
+        self.0
+            .lock()
+            .unwrap()
+            .escalation
+            .push(NotifyRecipient::User { id: user });
+    }
+
+    /// User `user` is one of the client's approvers.
+    pub fn client_approver(&self, user: i64) {
+        self.0
+            .lock()
+            .unwrap()
+            .clients
+            .push(NotifyRecipient::User { id: user });
+    }
+
+    /// The contract deems a timesheet approved after `days` days of silence
+    /// (`None` removes the clause).
+    pub fn deemed_after(&self, days: Option<i64>) {
+        self.0.lock().unwrap().deemed_days = days;
+    }
+}
+
+impl ApproverResolver for Approvers {
+    fn account_manager<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, Option<i64>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().account_manager) })
+    }
+
+    fn escalation_contacts<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, Vec<NotifyRecipient>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().escalation.clone()) })
+    }
+
+    fn client_approvers<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, Vec<NotifyRecipient>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().clients.clone()) })
+    }
+
+    fn deemed_approval_days<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, Option<i64>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().deemed_days) })
     }
 }
 
@@ -634,6 +751,7 @@ struct Fakes {
     quals: Quals,
     posted: Posted,
     disputes: Disputes,
+    approvers: Approvers,
     recorded: Arc<Mutex<Vec<AttendanceRecorded>>>,
     flagged: Arc<Mutex<Vec<AttendanceFlagged>>>,
     approved: Arc<Mutex<Vec<TimesheetApproved>>>,
@@ -653,6 +771,7 @@ impl Module for Fakes {
         provide_cost_poster(app, self.posted.clone());
         provide_cost_rates(app, TradeRates);
         provide_invoicer(app, self.disputes.clone());
+        provide_approver_resolver(app, self.approvers.clone());
         record(app, &self.recorded);
         record(app, &self.flagged);
         record(app, &self.approved);
@@ -683,6 +802,8 @@ pub struct Booted {
     pub approved: Recorded<TimesheetApproved>,
     /// The invoice disputes.
     pub disputes: Disputes,
+    /// The contract of the deployments.
+    pub approvers: Approvers,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// Keeps the views directory alive.
@@ -922,6 +1043,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         quals: Quals::default(),
         posted: Posted::default(),
         disputes: Disputes::default(),
+        approvers: Approvers::default(),
         recorded: Arc::default(),
         flagged: Arc::default(),
         approved: Arc::default(),
@@ -933,7 +1055,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     );
     let (docs, quals) = (fakes.docs.clone(), fakes.quals.clone());
     let (posted, approved) = (fakes.posted.clone(), Recorded(fakes.approved.clone()));
-    let disputes = fakes.disputes.clone();
+    let (disputes, approvers) = (fakes.disputes.clone(), fakes.approvers.clone());
     let (recorded, flagged) = (
         Recorded(fakes.recorded.clone()),
         Recorded(fakes.flagged.clone()),
@@ -1045,6 +1167,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         posted,
         approved,
         disputes,
+        approvers,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         _views: views,
     }

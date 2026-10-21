@@ -11,6 +11,7 @@ pub mod crew;
 pub mod crews_affected;
 pub mod dispute;
 pub mod entry;
+pub mod escalation;
 pub mod flags;
 pub mod history;
 pub mod location;
@@ -139,6 +140,13 @@ impl WlAttendance {
         self
     }
 
+    /// Days after `submit` at which `HRM.RUL.15` escalates an unanswered
+    /// external timesheet (default 6, calendar days).
+    pub fn escalation_days(mut self, days: i64) -> Self {
+        self.config.escalation_days = days;
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &AttendanceConfig {
         &self.config
@@ -196,6 +204,7 @@ impl Module for WlAttendance {
         renox::state_machine::register::<Timesheet>();
         notices::register_types();
         dispute::register(app);
+        escalation::schedule(app);
         period_end::schedule(app);
         wl_kernel::documents::register_future_work(
             crews_affected::GUARDED,

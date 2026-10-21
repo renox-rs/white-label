@@ -37,7 +37,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use renox::chrono::NaiveDate;
-use renox::db::{Transaction, now};
+use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::state_machine::{Transition, TransitionError};
@@ -125,6 +125,8 @@ async fn submit_in(tx: &mut Transaction, sheet: &Timesheet, by: Option<i64>) -> 
             &[
                 ("submitted_by", &by),
                 ("submitted_at", &Some(now())),
+                // A new submit restarts the clock of `HRM.RUL.15`.
+                ("escalated_at", &Option::<DateTime>::None),
                 ("updated_at", &now()),
             ],
         )

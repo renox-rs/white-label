@@ -25,6 +25,10 @@ pub const DEFAULT_OVERTIME_WINDOW_MINUTES: i64 = 144 * 60;
 /// The rolling window of the overtime cap: three weeks.
 pub const DEFAULT_OVERTIME_WINDOW_DAYS: i64 = 21;
 
+/// The days after `submit` at which `HRM.RUL.15` escalates an unanswered
+/// external timesheet (E): 6.
+pub const DEFAULT_ESCALATION_DAYS: i64 = 6;
+
 /// The document kinds `HRM.RUL.14` checks by default (wl-attendance §7).
 pub const DEFAULT_PERMIT_KINDS: [&str; 2] = ["work_permit", "residence_visa"];
 
@@ -74,6 +78,9 @@ pub struct AttendanceConfig {
     pub permit_kinds: Vec<String>,
     /// The midday break when a scope has none of its own.
     pub midday: MiddayDefault,
+    /// Days after `submit` at which an unanswered external timesheet is
+    /// escalated (`HRM.RUL.15`, E).
+    pub escalation_days: i64,
 }
 
 impl Default for AttendanceConfig {
@@ -91,6 +98,7 @@ impl Default for AttendanceConfig {
                 .map(|k| (*k).to_owned())
                 .collect(),
             midday: MiddayDefault::default(),
+            escalation_days: DEFAULT_ESCALATION_DAYS,
         }
     }
 }

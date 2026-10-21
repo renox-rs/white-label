@@ -259,6 +259,39 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.adjustment.dispute_upheld",
         "The invoice dispute was resolved upheld, so this adjustment has no effect and cannot be submitted.",
     ),
+    // An external timesheet nobody answers (`HRM.RUL.15`, BL-ATT-10).
+    (
+        "wl_attendance.escalation.task_title",
+        "Collect the signed timesheet of :employee for :from to :to",
+    ),
+    (
+        "wl_attendance.escalation.task_body",
+        "The client has not approved the timesheet of :employee for :from to :to, submitted on :submitted (:days days ago). Collect a signed sheet from the client and approve it on their behalf.",
+    ),
+    (
+        "wl_attendance.escalation.no_manager",
+        "No line manager of the account manager was found, so the staff who may approve on behalf were told.",
+    ),
+    (
+        "wl_attendance.escalation.no_contact",
+        "No escalation contact is on the contract, so only the manager side was told.",
+    ),
+    (
+        "wl_attendance.escalation.no_account_manager",
+        "No account manager is set for this contract, so nobody owns this task yet.",
+    ),
+    (
+        "wl_attendance.escalation.task_done",
+        "The timesheet was approved or sent back.",
+    ),
+    (
+        "wl_attendance.notices.escalated_subject",
+        "No answer on a timesheet: {{ employee }}",
+    ),
+    (
+        "wl_attendance.notices.escalated_body",
+        "The timesheet of {{ employee }} for {{ from }} to {{ to }} was sent for approval on {{ submitted }} and has had no answer for {{ days }} days. Please approve it, or send it back with a reason.",
+    ),
     (
         "wl_attendance.notices.dispute_upheld_subject",
         "Dispute upheld: adjustment cannot be submitted",

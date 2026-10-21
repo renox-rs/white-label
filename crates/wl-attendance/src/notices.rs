@@ -45,8 +45,19 @@ pub const TIMESHEET_REJECTED: &str = "attendance.timesheet_rejected";
 /// opened for ended `upheld` (BL-ATT-09).
 pub const ADJUSTMENT_DISPUTE_UPHELD: &str = "attendance.adjustment_dispute_upheld";
 
+/// The client's escalation contact and the account manager's manager are told
+/// that a timesheet has had no answer (`HRM.RUL.15` at E days).
+pub const TIMESHEET_ESCALATED: &str = "attendance.timesheet_escalated";
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
+    let subject = english("wl_attendance.notices.escalated_subject", &[]);
+    let body = english("wl_attendance.notices.escalated_body", &[]);
+    notify::register_type(
+        NotificationTypeDef::new(TIMESHEET_ESCALATED, "attendance")
+            .group("attendance")
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+    );
     let subject = english("wl_attendance.notices.dispute_upheld_subject", &[]);
     let body = english("wl_attendance.notices.dispute_upheld_body", &[]);
     notify::register_type(
@@ -267,6 +278,38 @@ pub(crate) async fn adjustment_dispute_upheld(
             "to": sheet.period_to.to_string(),
         }))
         .to_user(user);
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the audience of an escalation (`HRM.RUL.15` at E days) that the
+/// timesheet of `employee` has had no answer for `days` days.
+pub(crate) async fn timesheet_escalated(
+    state: &AppState,
+    sheet: &crate::timesheet::Timesheet,
+    employee: &str,
+    submitted: renox::chrono::NaiveDate,
+    days: i64,
+    audience: &crate::escalation::Audience,
+) -> Result {
+    let mut request = NotifyRequest::new(TIMESHEET_ESCALATED, sheet.subject())
+        .subject_label(&format!("{employee} {}", sheet.period_from))
+        .data(json!({
+            "employee": employee,
+            "from": sheet.period_from.to_string(),
+            "to": sheet.period_to.to_string(),
+            "submitted": submitted.to_string(),
+            "days": days,
+        }));
+    for contact in &audience.contacts {
+        request = request.to(contact.clone());
+    }
+    for user in &audience.staff {
+        request = request.to_user(*user);
+    }
+    if request.recipients.is_empty() {
+        return Ok(());
+    }
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }
