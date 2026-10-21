@@ -265,11 +265,8 @@ async fn a_receiving_vehicle_with_an_expired_insurance_stops_the_hand_over() {
     let (r1, stops) = giving_run(&w, 2).await;
     let r2 = dispatched_run(&w, &w.other_driver, &[]).await;
     let yesterday = today() - Days::new(1);
-    w.docs.set(
-        &w.vehicle_subject(),
-        documents::INSURANCE,
-        Some(yesterday),
-    );
+    w.docs
+        .set(&w.vehicle_subject(), documents::INSURANCE, Some(yesterday));
 
     propose(&w, &r1, &r2, "breakdown", &[&stops[0]])
         .await
@@ -288,11 +285,8 @@ async fn a_receiving_vehicle_with_an_expired_insurance_stops_the_hand_over() {
         .await
         .assert_ok();
     let waiting = only_hand_over(&w, &r1).await;
-    w.docs.set(
-        &w.vehicle_subject(),
-        documents::INSURANCE,
-        Some(yesterday),
-    );
+    w.docs
+        .set(&w.vehicle_subject(), documents::INSURANCE, Some(yesterday));
     confirm(&w, &w.other_driver, &waiting, &[&stops[0]], Some("400.00"))
         .await
         .assert_status(422)

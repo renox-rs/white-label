@@ -16,7 +16,9 @@ use wl_kernel::approvals::{ApprovalRequest, ApprovalStatus};
 use wl_kernel::payments::RefundSource;
 use wl_kernel::tickets::{TASK_CATEGORY, TicketId};
 
-use support::{World, boot_with_custody, boot_with_real_payments, chief_driver, stop_fields, user_with};
+use support::{
+    World, boot_with_custody, boot_with_real_payments, chief_driver, stop_fields, user_with,
+};
 
 async fn ask(
     w: &World,
@@ -559,7 +561,10 @@ async fn reversing_while_the_run_is_out_takes_the_cash_out_of_the_real_custody()
     let handover = real_handover(&w, &delivery).await;
     assert_eq!(handover.expected, 0);
     assert_eq!(handover.holder_user, w.driver.id);
-    assert_eq!(w.reversed.all()[0].cash_treatment.as_deref(), Some("removed"));
+    assert_eq!(
+        w.reversed.all()[0].cash_treatment.as_deref(),
+        Some("removed")
+    );
 }
 
 /// AC2 of #161 on the real `wl-payments`: with the run closed and the cash
@@ -600,6 +605,8 @@ async fn a_refund_after_the_hand_over_is_a_real_requested_refund_of_the_order() 
     assert_eq!(refund.source_kind, "order");
     assert_eq!(refund.source_subject(), delivery.delivery_id().subject());
     assert_eq!(refund.requested_by, Some(w.ops_b.id));
-    let entity = wl_kernel::LegalEntity::default_entity(w.db()).await.unwrap();
+    let entity = wl_kernel::LegalEntity::default_entity(w.db())
+        .await
+        .unwrap();
     assert_eq!(refund.legal_entity_id, entity.id);
 }

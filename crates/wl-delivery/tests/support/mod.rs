@@ -25,10 +25,10 @@ use wl_kernel::payments::PaymentRecorder;
 use wl_kernel::tickets::TaskCreator;
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{
-    ClientConfig, PartyId, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered,
+    ClientConfig, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered,
     DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryItem, DeliveryLost,
-    DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequest, DeliveryReversed, PodMethod,
-    RunAborted, RunClosed, RunDispatched, RunHandedOver, Subject,
+    DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequest, DeliveryReversed, PartyId,
+    PodMethod, RunAborted, RunClosed, RunDispatched, RunHandedOver, Subject,
 };
 
 pub mod custody;
@@ -602,7 +602,8 @@ async fn boot_full(
         }
         Custody::Real => {
             let directory: Arc<dyn PartyDirectory> = Arc::new(KnownParties);
-            app.provide(directory).module(wl_payments::WlPayments::new())
+            app.provide(directory)
+                .module(wl_payments::WlPayments::new())
         }
         Custody::Off => app,
     };
