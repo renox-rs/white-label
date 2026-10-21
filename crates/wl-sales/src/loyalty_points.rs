@@ -45,7 +45,8 @@ pub enum PointsKind {
     Expire,
     /// A correction by hand (BL-SAL-24); a positive one is a lot.
     Adjust,
-    /// A lot moved by a party merge (BL-SAL-26).
+    /// A lot moved by a party merge (BL-SAL-26): negative on the merged
+    /// account, a lot with the same expiry on the survivor's.
     Transfer,
 }
 
@@ -78,6 +79,8 @@ pub const CAUSE_REDEEM: &str = "redeem";
 pub const CAUSE_EXPIRE: &str = "expire";
 /// The cause of an `adjust` movement.
 pub const CAUSE_ADJUST: &str = "adjust";
+/// The cause of a `transfer` movement: a party merge moved the lot.
+pub const CAUSE_TRANSFER: &str = "transfer";
 /// Redeemed points given back for a cancelled order line.
 pub const CAUSE_CANCEL_LINE: &str = "cancel_line";
 /// Redeemed points given back because the order was cancelled.
@@ -161,13 +164,17 @@ impl PointsMovement {
     }
 
     /// Whether the movement is a lot of points that can be redeemed or
-    /// expire: positive and with an expiry day.
+    /// expire: positive and with an expiry day (an `earn`, a `reverse_redeem`,
+    /// a positive `adjust`, or a `transfer` in from a merged account).
     pub fn is_lot(&self) -> bool {
         self.points > 0
             && self.lot_expires_on.is_some()
             && matches!(
                 self.kind,
-                PointsKind::Earn | PointsKind::ReverseRedeem | PointsKind::Adjust
+                PointsKind::Earn
+                    | PointsKind::ReverseRedeem
+                    | PointsKind::Adjust
+                    | PointsKind::Transfer
             )
     }
 

@@ -257,8 +257,11 @@ pub async fn quote(
     if points <= 0 {
         return Err(refused("wl_sales.redeem.problem.points"));
     }
-    if !account.is_active() || account.paused {
+    if !account.is_active() {
         return Err(refused("wl_sales.loyalty.problem.no_member"));
+    }
+    if account.paused {
+        return Err(crate::loyalty_account::on_hold(account.party()));
     }
     let on = today();
     let open = programme.active && programme.closing_date.is_none_or(|last| last >= on);
@@ -370,6 +373,30 @@ async fn refuse_row(state: &AppState, row: &Redemption, reason: &str) -> Result 
         .await
         .map_err(|e| e.into_error())?;
     Ok(())
+}
+
+/// Releases every pending or held redemption of the account `account` for
+/// `why` and takes their lines off the open sales: the account is closing,
+/// so nothing it held may be spent. Returns how many.
+pub(crate) async fn release_account_holds(
+    state: &AppState,
+    account: i64,
+    why: &str,
+) -> Result<usize> {
+    let rows = Redemption::query()
+        .where_(Redemption::ACCOUNT_ID.eq(account))
+        .order_by(Redemption::ID)
+        .get(&state.db)
+        .await?;
+    let mut released = 0;
+    for row in rows {
+        if matches!(row.status, RedemptionStatus::Pending | RedemptionStatus::Held) {
+            release_row(state, &row, why).await?;
+            drop_line(&state.db, &row).await?;
+            released += 1;
+        }
+    }
+    Ok(released)
 }
 
 /// Releases `row` (pending or held).

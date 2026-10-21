@@ -167,6 +167,17 @@ impl LoyaltyAccount {
     }
 }
 
+/// The refusal at the counter for a member whose party is on hold: the
+/// neutral 422 "This party is on hold", never the reason (`PTY.ACL.03`).
+pub(crate) fn on_hold(party: PartyId) -> Error {
+    wl_kernel::block_guard::BlockRefusal::neutral(
+        party,
+        wl_kernel::block_guard::ActionKind::Start,
+        "",
+    )
+    .into_error()
+}
+
 /// `text` as a mobile number in international form (`+971501234567`), or
 /// `None` when it does not have 8 to 15 digits.
 pub fn normalize_mobile(text: &str) -> Option<String> {
@@ -272,6 +283,8 @@ pub async fn enrol(state: &AppState, e: Enrolment) -> Result<LoyaltyAccount> {
             .filter(|p| p.active),
         None => LoyaltyProgramme::first_active(&state.db).await?,
     };
+    // A programme that was turned off takes no new members.
+    let programme = programme.filter(|p| p.closing_date.is_none());
     let Some(programme) = programme else {
         return Err(refused("wl_sales.loyalty.problem.no_programme"));
     };
@@ -343,6 +356,17 @@ mod tests {
         assert_eq!(normalize_mobile("971501234567").as_deref(), Some("+971501234567"));
         assert_eq!(normalize_mobile("12345"), None);
         assert_eq!(normalize_mobile(""), None);
+    }
+
+    #[test]
+    fn a_member_on_hold_is_refused_with_the_neutral_text() {
+        match on_hold(PartyId(5)) {
+            Error::Status(code, message) => {
+                assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+                assert_eq!(message, "This party is on hold");
+            }
+            other => panic!("unexpected error {other:?}"),
+        }
     }
 
     #[test]

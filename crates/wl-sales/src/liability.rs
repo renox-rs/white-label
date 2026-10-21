@@ -82,7 +82,7 @@ fn remaining_at(lot: &PointsMovement, movements: &[PointsMovement], as_at: Naive
             matches!(
                 m.kind,
                 PointsKind::Redeem | PointsKind::Expire | PointsKind::ReverseEarn
-            ) || (m.kind == PointsKind::Adjust && m.points < 0)
+            ) || (matches!(m.kind, PointsKind::Adjust | PointsKind::Transfer) && m.points < 0)
         })
         .map(|m| -m.points)
         .sum();

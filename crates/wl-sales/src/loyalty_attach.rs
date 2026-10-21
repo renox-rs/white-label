@@ -66,10 +66,17 @@ async fn account_for(state: &AppState, by: &AuthUser, member: &MemberRef) -> Res
     let Some(account) = find_member(&state.db, member).await? else {
         return Err(refused("wl_sales.loyalty.problem.no_member"));
     };
+    if account.paused {
+        return Err(crate::loyalty_account::on_hold(account.party()));
+    }
     let on = wl_kernel::documents::today();
+    // A programme that was turned off still takes a member to the sale, to
+    // redeem through the closing date; the sale earns nothing.
     let earns = LoyaltyProgramme::find(&state.db, account.programme_id)
         .await?
-        .is_some_and(|p| p.earns_on(on));
+        .is_some_and(|p| {
+            p.earns_on(on) || (p.active && p.closing_date.is_some_and(|last| last >= on))
+        });
     if !earns {
         return Err(refused("wl_sales.loyalty.problem.programme_off"));
     }

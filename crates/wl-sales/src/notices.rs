@@ -43,6 +43,17 @@ pub const ADJUSTMENT_REJECTED: &str = "sales.loyalty_adjustment_rejected";
 /// The requester of a points adjustment is told that it was returned.
 pub const ADJUSTMENT_RETURNED: &str = "sales.loyalty_adjustment_returned";
 
+/// A member is told that the terms of the programme change on a date
+/// (`transactional`: wl-sales §4.7, a notice, not marketing).
+pub const LOYALTY_TERMS_CHANGED: &str = "sales.loyalty_terms_changed";
+
+/// A member is told that the programme was turned off and until when points
+/// can be redeemed.
+pub const LOYALTY_PROGRAMME_OFF: &str = "sales.loyalty_programme_off";
+
+/// A member is told that the account was closed.
+pub const LOYALTY_CLOSED: &str = "sales.loyalty_closed";
+
 /// The owner of a lead is told that its win was reverted.
 pub const LEAD_WIN_REVERTED: &str = "sales.lead_win_reverted";
 
@@ -88,6 +99,9 @@ pub(crate) fn register_types() {
             .category(notify::Category::Reminder)
             .give_up(&[notify::GiveUpReaction::None]),
     );
+    notify::register_type(english_type(LOYALTY_TERMS_CHANGED, "loyalty_terms_changed"));
+    notify::register_type(english_type(LOYALTY_PROGRAMME_OFF, "loyalty_programme_off"));
+    notify::register_type(english_type(LOYALTY_CLOSED, "loyalty_closed"));
     notify::register_type(english_type(ADJUSTMENT_REJECTED, "adjustment_rejected"));
     notify::register_type(english_type(ADJUSTMENT_RETURNED, "adjustment_returned"));
 }
@@ -224,6 +238,10 @@ pub(crate) async fn loyalty_reward(
     reward: &str,
     valid_until: NaiveDate,
 ) -> Result {
+    // A paused account (the party is on hold) gets no loyalty message.
+    if account.paused {
+        return Ok(());
+    }
     let request = NotifyRequest::new(LOYALTY_REWARD, account.subject())
         .to_party(account.notify_party())
         .subject_label(&account.code)
@@ -244,6 +262,10 @@ pub(crate) async fn loyalty_reversed(
     points: i64,
     why: &str,
 ) -> Result {
+    // A paused account (the party is on hold) gets no loyalty message.
+    if account.paused {
+        return Ok(());
+    }
     let request = NotifyRequest::new(LOYALTY_REVERSED, account.subject())
         .to_party(account.notify_party())
         .subject_label(&account.code)
@@ -264,6 +286,10 @@ pub(crate) async fn loyalty_given_back(
     points: i64,
     why: &str,
 ) -> Result {
+    // A paused account (the party is on hold) gets no loyalty message.
+    if account.paused {
+        return Ok(());
+    }
     let request = NotifyRequest::new(LOYALTY_GIVEN_BACK, account.subject())
         .to_party(account.notify_party())
         .subject_label(&account.code)
@@ -285,6 +311,10 @@ pub(crate) async fn loyalty_expiry(
     value: i64,
     expires_on: NaiveDate,
 ) -> Result {
+    // A paused account (the party is on hold) gets no loyalty message.
+    if account.paused {
+        return Ok(());
+    }
     let request = NotifyRequest::new(LOYALTY_EXPIRY, account.subject())
         .to_party(account.notify_party())
         .subject_label(&account.code)
@@ -314,6 +344,70 @@ pub(crate) async fn adjustment_ended(
             "code": account_code,
             "points": adjustment.points,
             "reason": reason,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the member of `account` that the terms change on `effective_from`:
+/// `summary` says what changes. Points already earned keep their value and
+/// expiry. A paused account is told nothing.
+pub(crate) async fn loyalty_terms_changed(
+    state: &AppState,
+    account: &crate::loyalty_account::LoyaltyAccount,
+    summary: &str,
+    effective_from: NaiveDate,
+) -> Result {
+    if account.paused {
+        return Ok(());
+    }
+    let request = NotifyRequest::new(LOYALTY_TERMS_CHANGED, account.subject())
+        .to_party(account.notify_party())
+        .subject_label(&account.code)
+        .data(json!({
+            "code": account.code,
+            "summary": summary,
+            "effective_from": date_text(Some(effective_from)),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the member of `account` that the programme was turned off and that
+/// points can be redeemed until `closing`.
+pub(crate) async fn loyalty_programme_off(
+    state: &AppState,
+    account: &crate::loyalty_account::LoyaltyAccount,
+    closing: NaiveDate,
+) -> Result {
+    if account.paused {
+        return Ok(());
+    }
+    let request = NotifyRequest::new(LOYALTY_PROGRAMME_OFF, account.subject())
+        .to_party(account.notify_party())
+        .subject_label(&account.code)
+        .data(json!({
+            "code": account.code,
+            "points": account.points_balance.max(0),
+            "closing_date": date_text(Some(closing)),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the member of `account` that it was closed and how many points went
+/// with it (the guardian for a minor).
+pub(crate) async fn loyalty_closed(
+    state: &AppState,
+    account: &crate::loyalty_account::LoyaltyAccount,
+    points: i64,
+) -> Result {
+    let request = NotifyRequest::new(LOYALTY_CLOSED, account.subject())
+        .to_party(account.notify_party())
+        .subject_label(&account.code)
+        .data(json!({
+            "code": account.code,
+            "points": points,
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
