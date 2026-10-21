@@ -38,6 +38,7 @@ use wl_kernel::documents::{dubai_text, today};
 use super::returns::{ReturnRow, rows as return_rows};
 use super::{Texts, invalid, parse_aed, parse_id, party_name, require, text, user_name};
 use crate::cdd::CddFile;
+use crate::cdd_files;
 use crate::client_notices::{self, ClientNotice, NeutralTemplate};
 use crate::deadline_notices::{self, DeadlineNotice};
 use crate::ending;
@@ -62,6 +63,8 @@ pub fn routes() -> Routes {
         .name("accounting.engagement")
         .post("/accounting/engagements/{id}/letter", letter)
         .name("accounting.engagement_letter")
+        .post("/accounting/engagements/{id}/cdd", open_cdd)
+        .name("accounting.engagement_cdd_open")
         .post("/accounting/engagements/{id}/activate", activate)
         .name("accounting.engagement_activate")
         .post("/accounting/engagements/{id}/decline", decline)
@@ -436,6 +439,7 @@ pub(crate) struct ShowPage {
     tax_profile_id: Option<i64>,
     cdd_status: String,
     today: String,
+    can_open_cdd: bool,
     can_letter: bool,
     can_send_letter: bool,
     can_raise_aml: bool,
@@ -739,6 +743,7 @@ async fn show(
             .map(|f| text(&lang, &format!("cdd.status.{}", f.status.as_str())))
             .unwrap_or_default(),
         today: on.to_string(),
+        can_open_cdd: onboarding && cdd.is_none() && user.has_permission(permissions::CDD_PREPARE),
         can_letter: manage && onboarding && !found.letter_signed,
         can_send_letter: manage && onboarding && !found.letter_signed,
         can_raise_aml: user.has_permission(permissions::AML_RAISE),
@@ -879,6 +884,27 @@ async fn letter(
     engagements::record_letter_signed(&state, &user, id, on).await?;
     Ok((
         Toast::success(text(&lang, "engagements.letter_recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /accounting/engagements/{id}/cdd`: opens the client's CDD file, the
+/// step `activate` waits for (04 §4.1 steps 4 and 5). A client that has a file
+/// already keeps it: nothing is opened twice.
+async fn open_cdd(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    require(&user, permissions::CDD_PREPARE)?;
+    let found = Engagement::find_or_404(&state.db, id).await?;
+    if CddFile::current(&state.db, found.client()).await?.is_none() {
+        cdd_files::open(&state.db, Some(user.id), found.client()).await?;
+    }
+    Ok((
+        Toast::success(text(&lang, "engagements.cdd_opened")),
         renox::HxRefresh,
     )
         .into_response())
