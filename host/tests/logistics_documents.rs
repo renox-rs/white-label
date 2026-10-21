@@ -842,7 +842,7 @@ async fn hiring_a_driver_starts_the_checklist_and_the_sops_are_seeded() {
         assert!(owners.contains(&owner), "{owner}");
     }
     assert_eq!(
-        host::logistics_seed::hr(wl_hr::WlHr::new(), "admin")
+        host::logistics_seed::hr(wl_hr::WlHr::new())
             .config()
             .manager_role,
         "dispatcher"
@@ -894,6 +894,15 @@ async fn the_registration_kinds_have_the_company_admin_and_a_trademark_notifies_
         assert_eq!(kind.responsible_role.as_deref(), Some("admin"), "{key}");
         assert!(kind.enabled, "{key}");
         assert!(kind.blocks(app.db()).await.unwrap().is_empty(), "{key}");
+    }
+    // The reminder days are per kind: 180/90/30 for a trademark, 90/30/7 for
+    // another certification.
+    for (key, days) in [
+        ("trademark_registration", defaults::TRADEMARK_REMINDERS),
+        ("other_certification", defaults::OTHER_CERTIFICATION_REMINDERS),
+    ] {
+        let kind = DocumentKind::by_key(app.db(), key).await.unwrap().unwrap();
+        assert_eq!(kind.reminder_offsets.0, days, "{key}");
     }
     let nec = entity(&app, "NEC").await;
     let subject = Subject::new("kernel.legal_entity", nec.id);
@@ -1113,4 +1122,87 @@ async fn a_notice_that_gives_up_is_followed_by_the_reaction_of_its_group() {
         .filter(|t| t.assignee_user_id == Some(dispatcher.id))
         .collect();
     assert_eq!(for_dispatcher.len(), 1, "one task for the dispatcher");
+}
+
+/// AC9: `HRM.RUL.17` reminds the assignees of an overdue onboarding step on
+/// the first run after the due date and again every 2 days, and tells HR (the
+/// operations manager) after 5 days, once.
+#[renox::test]
+async fn an_overdue_onboarding_step_is_reminded_every_2_days_and_escalated_after_5() {
+    let app = logistics_booted().await;
+    let boss = person(&app, "Olivia", OPERATIONS_MANAGER).await;
+    let user = person(&app, "Dev", host::roles::DRIVER).await;
+    let party = tenant(&app, "Dev Driver").await;
+    let employee = wl_hr::employees::create(
+        app.state(),
+        wl_hr::NewEmployee::new(party, "driver", today()).user(user.id),
+    )
+    .await
+    .unwrap();
+    let onboarding = wl_hr::Onboarding::query()
+        .where_(wl_hr::Onboarding::EMPLOYEE_ID.eq(employee.id))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("the onboarding started");
+    let dues: Vec<NaiveDate> = wl_hr::OnboardingStep::query()
+        .where_(wl_hr::OnboardingStep::ONBOARDING_ID.eq(onboarding.id))
+        .get(app.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|step| step.due_date)
+        .collect();
+    let first_due = *dues.iter().min().expect("steps");
+    let last_due = *dues.iter().max().expect("steps");
+
+    // Once every step is overdue the cadence is the same for all of them.
+    let at = |days: u64| first_due + Days::new(days);
+    let earliest = || async {
+        wl_hr::OnboardingStep::query()
+            .where_(wl_hr::OnboardingStep::ONBOARDING_ID.eq(onboarding.id))
+            .where_(wl_hr::OnboardingStep::DUE_DATE.eq(first_due))
+            .first(app.db())
+            .await
+            .unwrap()
+            .expect("the earliest step")
+    };
+    let before = wl_hr::reminders::run(app.state(), first_due).await.unwrap();
+    assert_eq!(before.reminded, 0, "nothing on the due date itself");
+    let first = wl_hr::reminders::run(app.state(), at(1)).await.unwrap();
+    assert!(first.reminded > 0, "reminded on the first run after the due date");
+    assert_eq!(first.escalated, 0, "not yet");
+    assert_eq!(earliest().await.last_reminded_on, Some(at(1)));
+    wl_hr::reminders::run(app.state(), at(2)).await.unwrap();
+    assert_eq!(
+        earliest().await.last_reminded_on,
+        Some(at(1)),
+        "not the next day"
+    );
+    wl_hr::reminders::run(app.state(), at(3)).await.unwrap();
+    assert_eq!(
+        earliest().await.last_reminded_on,
+        Some(at(3)),
+        "again after 2 days"
+    );
+    let four = wl_hr::reminders::run(app.state(), at(4)).await.unwrap();
+    assert_eq!(four.escalated, 0, "4 days overdue");
+
+    let escalated = wl_hr::reminders::run(app.state(), at(5)).await.unwrap();
+    assert!(escalated.escalated > 0, "told after 5 days");
+    assert!(
+        !messages_to(&app, "hr.onboarding_step_escalated", &boss)
+            .await
+            .is_empty(),
+        "the operations manager is told"
+    );
+    let told_on = |step: &wl_hr::OnboardingStep| step.escalated_on;
+    let earliest = earliest().await;
+    assert_eq!(told_on(&earliest), Some(at(5)));
+    wl_hr::reminders::run(app.state(), at(9)).await.unwrap();
+    let still = wl_hr::OnboardingStep::find_or_404(app.db(), earliest.id)
+        .await
+        .unwrap();
+    assert_eq!(told_on(&still), Some(at(5)), "told once");
+    let _ = last_due;
 }

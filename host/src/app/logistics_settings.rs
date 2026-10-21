@@ -102,7 +102,7 @@ fn connection_text(key: &str) -> String {
 pub fn compliance_rows(owner_role: &str) -> Vec<Row> {
     let sales = logistics_seed::sales(wl_sales::WlSales::new());
     let sales = sales.config();
-    let hr = logistics_seed::hr(wl_hr::WlHr::new(), owner_role);
+    let hr = logistics_seed::hr(wl_hr::WlHr::new());
     let hr = hr.config();
     let asp_task_hours = logistics_seed::invoicing(wl_invoicing::WlInvoicing::new(), &[])
         .config()

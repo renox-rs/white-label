@@ -250,12 +250,16 @@ pub fn sales(module: WlSales) -> WlSales {
 
 /// The HR module with the 03 client's settings: the line manager of a driver,
 /// hub staff, a dispatcher or customer service is the dispatcher of the depot
-/// ([`defaults::LINE_MANAGER_ROLE`]), and the owner role of the client is the
-/// second person for waiving and reopening a step.
-pub fn hr(module: wl_hr::WlHr, owner_role: &str) -> wl_hr::WlHr {
+/// ([`defaults::LINE_MANAGER_ROLE`]). 03 has no HR role: the operations
+/// manager looks after onboarding (`HRM.RUL.17` tells it). wl-hr tells the
+/// holders of `onboarding.manage` through any role but its `owner_role`, so the
+/// owner role here is the company admin, not the client's owner role (which
+/// is the operations manager): with the operations manager as owner role the
+/// reminder would go to the company admin instead.
+pub fn hr(module: wl_hr::WlHr) -> wl_hr::WlHr {
     module
         .manager_role(defaults::LINE_MANAGER_ROLE)
-        .owner_role(owner_role)
+        .owner_role(ADMIN)
 }
 
 /// Which documents are in the e-invoicing mandate for 03 (§9 *E-invoicing*): a

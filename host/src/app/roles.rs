@@ -863,6 +863,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // (`PLT.ACL.10`), and the digest of voids and late entries goes
             // to the managers who hold it (`PLT.RUL.06`).
             wl_kernel::permissions::LATE_ENTRIES_APPROVE,
+            // 03 has no HR role: the operations manager owns the onboarding
+            // checklists of the depot, and `HRM.RUL.17` tells it of a step
+            // that is 5 days overdue (`HRM.ONB.01`).
+            hr::ONBOARDING_VIEW,
+            hr::ONBOARDING_MANAGE,
             delivery::VIEW,
             delivery::DISPATCH,
             delivery::MANAGE,

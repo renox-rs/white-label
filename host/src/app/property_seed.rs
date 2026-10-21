@@ -177,7 +177,7 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
         PROPERTY => module.manager_role(PROPERTY_MANAGER).owner_role(owner_role),
         super::construction_seed::CONSTRUCTION => super::construction_seed::hr(module, owner_role),
         "accounting" => super::accounting_seed::hr_for(client_app, owner_role),
-        super::logistics_seed::LOGISTICS => super::logistics_seed::hr(module, owner_role),
+        super::logistics_seed::LOGISTICS => super::logistics_seed::hr(module),
         _ => module,
     }
 }
