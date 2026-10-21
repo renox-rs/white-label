@@ -8,6 +8,7 @@ mod support;
 use std::time::Duration;
 
 use renox::chrono::NaiveDate;
+use renox::prelude::*;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::scheduling::{ConflictCause, Initiator, SourceBlock};
 use wl_kernel::workforce::{EmployeeId, LeaveApproved, LeaveCancelled};

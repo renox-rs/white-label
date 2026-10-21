@@ -713,8 +713,8 @@ impl BlockSubjects for BookingSubjects {
             else {
                 return Ok(Vec::new());
             };
-            let required = service.qualification_kinds().iter().any(|k| *k == entry.kind)
-                || service.document_kinds().iter().any(|k| *k == entry.kind);
+            let required = service.qualification_kinds().contains(&entry.kind)
+                || service.document_kinds().contains(&entry.kind);
             if !required {
                 return Ok(Vec::new());
             }
