@@ -343,6 +343,64 @@ impl Clinic {
             .unwrap()
     }
 
+    /// An authorisation of `units` of `service` on `policy`, prepared and
+    /// sent to the payer (requested), not yet answered.
+    pub async fn requested(
+        &self,
+        policy: &clinics::InsurancePolicy,
+        service: &str,
+        units: i64,
+    ) -> clinics::PriorAuthorisation {
+        let bea = self.coordinator().await;
+        let created = clinics::authorisations::create(
+            self.state(),
+            Some(bea.id),
+            clinics::authorisations::NewAuthorisation::new(policy.id, units).service(service),
+        )
+        .await
+        .expect("the authorisation is prepared");
+        self.app.acting_as(&bea);
+        self.app
+            .htmx()
+            .post(
+                &format!("/clinics/authorisations/{}/request", created.id),
+                &[("reference", "REQ")],
+            )
+            .await
+            .assert_ok();
+        clinics::PriorAuthorisation::find_or_404(self.db(), created.id)
+            .await
+            .unwrap()
+    }
+
+    /// A service type of 30 minutes with the licence and privileges
+    /// required, offered by `doctors`; the existing one of that code when
+    /// there is one.
+    pub async fn service_type(&self, code: &str, doctors: &[&Resource]) -> ServiceType {
+        let existing = ServiceType::query()
+            .where_(ServiceType::CODE.eq(code))
+            .first(self.db())
+            .await
+            .unwrap();
+        let service = match existing {
+            Some(service) => service,
+            None => {
+                let mut service = ServiceType::new(code, code, 30);
+                service.required_qualifications = clinics::seed::REQUIRED_QUALIFICATIONS.to_owned();
+                service.check_in_required = true;
+                service.track_in_progress = true;
+                service.save(self.db()).await.unwrap();
+                service
+            }
+        };
+        for doctor in doctors {
+            resource::offer(self.db(), service.id, doctor.id)
+                .await
+                .unwrap();
+        }
+        service
+    }
+
     /// Someone who may only look at the appointments.
     pub async fn viewer(&self) -> User {
         self.user("Vera", &[wl_scheduling::permissions::VIEW])
