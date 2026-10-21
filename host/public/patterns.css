@@ -165,7 +165,10 @@ a.app-card:hover .app-card__icon { transform: scale(1.06); }
 
 .app-stat { position: relative; display: grid; min-width: 0; }
 .app-stat > .app-icon { position: absolute; top: var(--rx-space-4); right: var(--rx-space-4); width: 2.25rem; height: 2.25rem; pointer-events: none; }
-.app-stat .rx-stat__label { padding-right: calc(2.25rem + var(--rx-space-2)); }
+.app-stat .rx-stat__label { padding-right: calc(2.25rem + var(--rx-space-2)); overflow-wrap: anywhere; }
+.rx-stats > .rx-stat { min-width: 0; }
+.rx-stat__value { overflow-wrap: anywhere; }
+@media (max-width: 360px) { .rx-stat__value { font-size: 1.4rem; } }
 
 /* ---------- the signed-in pages' links with icons (layouts/app.html) ---------- */
 

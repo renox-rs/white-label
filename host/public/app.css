@@ -17,3 +17,25 @@
 .rx-shell__content a:not([class]):hover {
   text-decoration: underline;
 }
+
+/* On a phone the kit draws the navbar (bell and account menu) over the brand row
+   of the sidebar. A long company name and a long person's name then ran into
+   each other; both are cut with an ellipsis so the row stays readable. */
+@media (max-width: 560px) {
+  .rx-sidebar__brand {
+    min-width: 0;
+  }
+  .rx-sidebar__brand > span:not(.rx-brand-mark) {
+    min-width: 0;
+    max-width: calc(100vw - 250px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rx-navbar .rx-menu .rx-button__label {
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
