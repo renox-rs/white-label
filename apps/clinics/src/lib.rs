@@ -9,11 +9,13 @@ pub mod authorisations;
 pub mod consent;
 pub mod coverage;
 mod db;
+pub mod flags;
 pub mod licences;
 pub mod pages;
 pub mod permissions;
 pub mod policies;
 pub mod policy;
+pub mod prior_auth_rules;
 pub mod reasons;
 pub mod seed;
 mod texts;
@@ -29,6 +31,7 @@ pub use appointment::Appointment;
 pub use authorisation::{AuthStatus, AuthorisationHold, PriorAuthService, PriorAuthorisation};
 pub use consent::{ConsentLine, SelfPayConsent};
 pub use coverage::{CoverageOutcome, PendingCheckIn};
+pub use flags::{AppointmentFlag, FlagCause};
 pub use licences::LicenceAlert;
 pub use policy::{EligibilityCheck, InsurancePolicy};
 pub use visit::{Visit, VisitStatus};
@@ -118,7 +121,8 @@ impl Module for Clinics {
             .model::<SelfPayConsent>()
             .model::<PriorAuthorisation>()
             .model::<PriorAuthService>()
-            .model::<AuthorisationHold>();
+            .model::<AuthorisationHold>()
+            .model::<AppointmentFlag>();
         visit_machine::register();
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
@@ -131,6 +135,9 @@ impl Module for Clinics {
         // The prior authorisation, its notice to the patient and the daily
         // expiry (BL-CLN-02, BL-CLN-03).
         authorisations::register(app);
+        // `CLN.RUL.07`, `CLN.RUL.09`: the appointments that need an
+        // authorisation are flagged (BL-CLN-03).
+        prior_auth_rules::register(app);
         // `CLN.RUL.01`: an expired licence or set of privileges is told to
         // the clinic manager of the branch and the owner (BL-CLN-12).
         licences::register(app);

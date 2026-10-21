@@ -62,6 +62,8 @@ pub async fn on_checked_in(state: &AppState, event: &BookingCheckedIn) -> Result
     tx.commit().await?;
     // What the receptionist recorded before the check-in moves to the visit.
     crate::coverage::move_to_visit(state, &visit).await?;
+    // The flags of the appointment no longer hold once the patient is in.
+    crate::prior_auth_rules::on_checked_in(state, visit.booking_id).await?;
     Visit::find_or_404(&state.db, visit.id).await
 }
 

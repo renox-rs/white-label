@@ -9,6 +9,7 @@
       <rx-column :label="tx['appointments.patient']">{{ row.patient }}</rx-column>
       <rx-column :label="tx['appointments.service']" hide-narrow>{{ row.service }}</rx-column>
       <rx-column :label="tx['appointments.cover']"><rx-badge :kind="row.cover_kind" :text="row.cover"/></rx-column>
+      <rx-column :label="tx['flags.title']">{{ row.flags }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['appointments.empty']" icon="clipboard-list"/></rx-slot>
     </rx-table>
   </rx-stack>

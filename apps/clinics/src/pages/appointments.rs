@@ -23,6 +23,7 @@ use super::{Texts, invalid, parse_id, party_name, require, text};
 use crate::appointment::Appointment;
 use crate::appointments;
 use crate::consent::SelfPayConsent;
+use crate::flags::AppointmentFlag;
 use crate::coverage::{self, Choice, CoverageOutcome, EligibilityInput, PendingCheckIn};
 use crate::money_text;
 use crate::permissions;
@@ -61,6 +62,15 @@ pub(crate) fn policy_label(lang: &Lang, policy: &InsurancePolicy) -> String {
     format!("{} — {} ({})", policy.plan, policy.member_id, to)
 }
 
+/// The labels of the open flags of booking `booking`, in the page's language.
+pub(crate) async fn flag_labels(state: &AppState, lang: &Lang, booking: i64) -> Result<Vec<String>> {
+    let open = AppointmentFlag::open_of(&state.db, booking).await?;
+    Ok(open
+        .iter()
+        .map(|flag| text(lang, &format!("flags.{}", flag.cause.key())))
+        .collect())
+}
+
 /// One appointment of the list.
 #[derive(Serialize, Debug, Clone)]
 pub struct AppointmentRow {
@@ -76,6 +86,9 @@ pub struct AppointmentRow {
     pub cover: String,
     /// The badge kind.
     pub cover_kind: &'static str,
+    /// The open flags, comma separated (`CLN.RUL.07`, `CLN.RUL.09`,
+    /// `CLN.RUL.10`), or a dash.
+    pub flags: String,
 }
 
 /// What the list page needs.
@@ -109,6 +122,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         } else {
             (text(&lang, "coverage.waiting"), "warning")
         };
+        let flags = flag_labels(&state, &lang, appointment.booking_id).await?;
         rows.push(AppointmentRow {
             booking: appointment.booking_id,
             patient: match appointment.patient_party_id {
@@ -119,6 +133,11 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             starts: wl_kernel::documents::dubai_text(appointment.starts_at),
             cover,
             cover_kind: kind,
+            flags: if flags.is_empty() {
+                text(&lang, "none")
+            } else {
+                flags.join(", ")
+            },
         });
     }
     Ok(View::typed(IndexPage {
@@ -137,6 +156,7 @@ pub(crate) struct ShowPage {
     service: String,
     visit_date: String,
     cancelled: bool,
+    flags: Vec<String>,
     insured: bool,
     policy: String,
     policy_valid: bool,
@@ -227,6 +247,7 @@ async fn show(
         service: appointment.service_code.clone(),
         visit_date: appointment.visit_date.to_string(),
         cancelled: appointment.is_cancelled(),
+        flags: flag_labels(&state, &lang, booking).await?,
         insured: appointment.is_insured(),
         policy: current
             .as_ref()

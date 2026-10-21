@@ -36,6 +36,7 @@
       </template>
     </rx-page-header>
     <rx-alert rx-if="cancelled" kind="warning" :message="tx['appointments.cancelled']"/>
+    <rx-alert rx-for="flag in flags" kind="warning" :message="flag"/>
     <rx-card :title="tx['appointments.title']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['appointments.patient']" :value="patient"/>

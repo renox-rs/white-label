@@ -304,6 +304,19 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.authorisation.denied_body",
         "Your insurer did not approve authorisation {{ number }}. You may choose to pay for the service yourself, or we can help you with another date. Please contact the clinic.",
     ),
+    // The flags on an appointment (CLN.RUL.07, CLN.RUL.09, CLN.RUL.10).
+    ("clinics.flags.title", "Flags"),
+    ("clinics.flags.none", "No flags"),
+    ("clinics.flags.needs_authorisation", "Needs authorisation"),
+    ("clinics.flags.insurance_card", "Insurance card to renew"),
+    (
+        "clinics.flags.needed_detail",
+        "A prior authorisation is needed for :service on :date and none covers it.",
+    ),
+    (
+        "clinics.flags.needed_task",
+        "Request a prior authorisation for :service on :date",
+    ),
     // The insurance policies.
     ("clinics.policies.title", "Insurance policies"),
     (

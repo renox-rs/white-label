@@ -303,6 +303,46 @@ impl Clinic {
         user
     }
 
+    /// An authorisation of `units` of `service` on `policy`, prepared,
+    /// requested and approved through the billing coordinator's routes,
+    /// valid through `until`.
+    pub async fn authorisation(
+        &self,
+        policy: &clinics::InsurancePolicy,
+        service: &str,
+        units: i64,
+        until: NaiveDate,
+    ) -> clinics::PriorAuthorisation {
+        let bea = self.coordinator().await;
+        let created = clinics::authorisations::create(
+            self.state(),
+            Some(bea.id),
+            clinics::authorisations::NewAuthorisation::new(policy.id, units).service(service),
+        )
+        .await
+        .expect("the authorisation is prepared");
+        self.app.acting_as(&bea);
+        self.app
+            .htmx()
+            .post(
+                &format!("/clinics/authorisations/{}/request", created.id),
+                &[("reference", "REQ")],
+            )
+            .await
+            .assert_ok();
+        self.app
+            .htmx()
+            .post(
+                &format!("/clinics/authorisations/{}/approve", created.id),
+                &[("reference", "A-1"), ("valid_until", until.to_string().as_str())],
+            )
+            .await
+            .assert_ok();
+        clinics::PriorAuthorisation::find_or_404(self.db(), created.id)
+            .await
+            .unwrap()
+    }
+
     /// Someone who may only look at the appointments.
     pub async fn viewer(&self) -> User {
         self.user("Vera", &[wl_scheduling::permissions::VIEW])
