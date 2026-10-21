@@ -1,18 +1,44 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod booking;
+pub mod booking_machine;
 pub mod config;
+pub mod events;
+pub mod pages;
+pub mod prepaid;
+pub mod refusal;
 pub mod resource;
+pub mod service;
+pub mod slots;
 mod texts;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 use wl_kernel::scheduling::Initiator;
 
+pub use booking::{Booking, BookingResource, BookingStatus};
+pub use booking_machine::{ActorKind, BookingInput};
 pub use config::{SchedulingConfig, config_of};
+pub use refusal::Refusal;
 pub use resource::{
     AvailabilityBlock, AvailabilityRule, Resource, ResourceType, ServiceResource, ServiceType,
 };
+pub use service::{Actor, CancelRequest, NewBooking};
+
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory.
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-scheduling/bookings.html",
+        include_str!("../views/wl-scheduling/bookings.html"),
+    ),
+    (
+        "wl-scheduling/booking.html",
+        include_str!("../views/wl-scheduling/booking.html"),
+    ),
+];
 
 /// The module's permissions (wl-scheduling §6).
 pub mod permissions {
@@ -112,6 +138,10 @@ impl Module for WlScheduling {
         "wl-scheduling"
     }
 
+    fn routes(&self) -> Routes {
+        pages::routes()
+    }
+
     fn migrations(&self) -> &'static [Migration] {
         renox::migrations!()
     }
@@ -121,7 +151,33 @@ impl Module for WlScheduling {
             .model::<ServiceType>()
             .model::<ServiceResource>()
             .model::<AvailabilityRule>()
-            .model::<AvailabilityBlock>();
+            .model::<AvailabilityBlock>()
+            .model::<Booking>()
+            .model::<BookingResource>();
+        renox::state_machine::register::<Booking>();
+        app.view_data::<pages::IndexPage>()
+            .view_data::<pages::ShowPage>();
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
         app.provide(self.config.clone());
+        // wl-payments asks whether a booking still waits for its money.
+        wl_kernel::payments::provide_prepaid_subjects(app, prepaid::PrepaidBookings);
+        // In the app group of the staff sidebar; the label is the app's
+        // `nav.bookings` text.
+        app.nav(
+            "app",
+            NavLink::route("wl_scheduling.bookings", "nav.bookings")
+                .icon("calendar-check")
+                .group("nav.app")
+                .order(62)
+                .permission(permissions::VIEW),
+        );
     }
 }

@@ -1,0 +1,16 @@
+{#- wl-scheduling: the bookings, newest start first, with their status. Replace
+    it with resources/views/wl-scheduling/bookings.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['bookings.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['bookings.title']" :subtitle="tx['bookings.subtitle']"/>
+    <rx-table :rows="bookings" as="booking" :key="booking.id" :caption="tx['bookings.title']" card>
+      <rx-column :label="tx['bookings.number']"><a href="{{ route('wl_scheduling.booking', booking.id) }}">{{ booking.number }}</a></rx-column>
+      <rx-column :label="tx['bookings.party']">{{ booking.party }}</rx-column>
+      <rx-column :label="tx['bookings.service']" hide-narrow>{{ booking.service }}</rx-column>
+      <rx-column :label="tx['bookings.when']">{{ booking.when }}</rx-column>
+      <rx-column :label="tx['bookings.resources']" hide-narrow>{{ booking.resources }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="booking.status_kind" :text="booking.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['bookings.empty']" icon="calendar-check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
