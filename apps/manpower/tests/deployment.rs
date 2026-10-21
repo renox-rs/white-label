@@ -9,7 +9,7 @@
 
 mod support;
 
-use manpower::{ContractStatus, Deployment, DeploymentStatus, RequestStatus};
+use manpower::{CREDIT_HOLD_TASK, ContractStatus, Deployment, DeploymentStatus, RequestStatus};
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::workforce::EmployeeId;
@@ -258,7 +258,16 @@ async fn activation_lists_every_failing_check_and_changes_nothing() {
     let amal = t.account_manager("Amal", TOWER).await;
     let site = t.site(TOWER, "Tower A").await;
     let onboarding = t.staff.employ(&t.parties, 7, "New Hire", false);
-    let held = t.contract(TOWER, ContractStatus::OnHold, Some(&amal)).await;
+    // The hold is made by the rule, on 2026-11-05, for INV-1 overdue since 2026-10-01.
+    let held = t.contract(TOWER, ContractStatus::Active, Some(&amal)).await;
+    t.invoices
+        .issue(&held, "INV-1", 4_200_000, date(2026, 10, 1));
+    t.on(date(2026, 11, 5), async {
+        t.app.run_scheduled(CREDIT_HOLD_TASK).await.unwrap();
+    })
+    .await;
+    let held = t.reload_contract(held.id).await;
+    assert_eq!(held.status, ContractStatus::OnHold);
     let request = t.request(&held, &site, 1, RequestStatus::Cancelled).await;
     let planned = t
         .deployment(
@@ -283,7 +292,10 @@ async fn activation_lists_every_failing_check_and_changes_nothing() {
         let body = response.text();
         assert!(body.contains("not active in HR"), "{body}");
         // The contract is on hold: staff are told so (`MPW.ACL.14`).
-        assert!(body.contains("Contract on credit hold since"), "{body}");
+        assert!(
+            body.contains("Contract on credit hold since 2026-11-05: overdue (INV-1)"),
+            "{body}"
+        );
         assert!(
             body.contains("end date of the deployment has passed"),
             "{body}"

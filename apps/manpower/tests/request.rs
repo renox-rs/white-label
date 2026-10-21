@@ -9,7 +9,7 @@
 mod support;
 
 use manpower::request::{AUTO_CANCEL, FILL, FILL_PARTLY};
-use manpower::{ContractStatus, ManpowerRequest, RequestStatus};
+use manpower::{CREDIT_HOLD_TASK, ContractStatus, ManpowerRequest, RequestStatus};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use support::{FOODS, TOWER, boot, date};
@@ -175,12 +175,28 @@ async fn a_contract_that_is_not_active_takes_no_request() {
     let t = boot().await;
     let amal = t.account_manager("Amal", TOWER).await;
     let site = t.site(TOWER, "Tower A").await;
+    // The hold is made by the rule, on 2026-11-05, for INV-1 overdue since 2026-10-01.
+    let held = t.contract(TOWER, ContractStatus::Active, Some(&amal)).await;
+    t.invoices
+        .issue(&held, "INV-1", 4_200_000, date(2026, 10, 1));
+    t.on(date(2026, 11, 5), async {
+        t.app.run_scheduled(CREDIT_HOLD_TASK).await.unwrap();
+    })
+    .await;
+    assert_eq!(
+        t.reload_contract(held.id).await.status,
+        ContractStatus::OnHold
+    );
     for status in [
         ContractStatus::Draft,
         ContractStatus::OnHold,
         ContractStatus::Terminating,
     ] {
-        let contract = t.contract(TOWER, status, Some(&amal)).await;
+        let contract = if status == ContractStatus::OnHold {
+            t.reload_contract(held.id).await
+        } else {
+            t.contract(TOWER, status, Some(&amal)).await
+        };
         t.cards
             .accept(&contract.subject(), date(2027, 1, 1), &[("guard", "day")]);
         let draft = t.request(&contract, &site, 1, RequestStatus::Draft).await;
@@ -197,7 +213,10 @@ async fn a_contract_that_is_not_active_takes_no_request() {
             if status == ContractStatus::OnHold {
                 // Staff are told of the hold (`MPW.ACL.14`, BL-MPW-02); the
                 // client approver is not (see `tests/hold_guards.rs`).
-                assert!(body.contains("contract on credit hold since"), "{body}");
+                assert!(
+                    body.contains("contract on credit hold since 2026-11-05: overdue (inv-1)"),
+                    "{body}"
+                );
             } else {
                 assert!(body.contains("does not take new requests"), "{body}");
                 assert!(!body.contains("hold"), "{body}");
