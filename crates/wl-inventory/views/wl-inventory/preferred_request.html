@@ -1,0 +1,51 @@
+{#- wl-inventory: one preferred-supplier request: the item, who asked, the
+    supplier now and the one proposed with score, lead time and last price,
+    and (for an approver, while it waits) the buttons to approve or reject.
+    Replace it with resources/views/wl-inventory/preferred_request.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="subtitle" :back="route('wl_inventory.preferred_requests')" :back-label="tx['request.back']" :badge="status" :badge-kind="status_kind">
+      <rx-link-button :href="item_url" :label="tx['request.item']" icon="truck" variant="secondary"/>
+      <template rx-if="can_decide">
+        <rx-confirm :id="'approve-request-' ~ id" :label="tx['request.approve']" :action="route('wl_inventory.preferred_request_approve', id)" method="POST"
+                    :title="tx['request.approve']" :message="tx['request.approve_message']" :confirm-label="tx['request.approve']" :cancel-label="tx['cancel']" icon="check"/>
+        <rx-action-sheet :id="'reject-request-' ~ id" :label="tx['request.reject']" :action="route('wl_inventory.preferred_request_reject', id)"
+                         :title="tx['request.reject']" :description="tx['request.reject_message']" :submit-label="tx['request.reject']" icon="x" variant="danger" danger>
+          <rx-textarea name="reason" :label="tx['request.reject_reason']" :id="'reject-request-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-card>
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['requests.kind']" :value="kind"/>
+        <rx-entry :label="tx['requests.requested_by']" :value="requested_by"/>
+        <rx-entry rx-if="decided_by" :label="tx['request.decided_by']" :value="decided_by"/>
+        <rx-entry rx-if="decision_reason" :label="tx['request.reason']" :value="decision_reason"/>
+        <rx-entry rx-if="returned_note" :label="tx['request.returned']" :value="returned_note"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-dashboard columns="2">
+      <rx-widget :title="tx['request.current']">
+        <rx-empty rx-if="not from" :title="tx['request.none']" icon="truck"/>
+        <rx-infolist rx-if="from" columns="1">
+          <rx-entry :label="tx['supplier']" :value="from.name" :url="from.score_url"/>
+          <rx-entry :label="tx['score']"><rx-badge :kind="from.band_kind" :text="from.band"/> {{ from.score if from.score is not none else '' }}</rx-entry>
+          <rx-entry :label="tx['lead_time']" :value="from.lead_time_days" :placeholder="tx['no_value']"/>
+          <rx-entry :label="tx['last_price']">{{ from.price.unit_price | money(currency=from.price.currency) if from.price else tx['no_value'] }}</rx-entry>
+          <rx-entry rx-if="from.on_hold" :label="tx['request.on_hold']"><rx-badge kind="error" :text="tx['request.on_hold']"/></rx-entry>
+        </rx-infolist>
+      </rx-widget>
+      <rx-widget :title="tx['request.proposed']">
+        <rx-empty rx-if="not to" :title="tx['request.none']" icon="truck"/>
+        <rx-infolist rx-if="to" columns="1">
+          <rx-entry :label="tx['supplier']" :value="to.name" :url="to.score_url"/>
+          <rx-entry :label="tx['score']"><rx-badge :kind="to.band_kind" :text="to.band"/> {{ to.score if to.score is not none else '' }}</rx-entry>
+          <rx-entry :label="tx['lead_time']" :value="to.lead_time_days" :placeholder="tx['no_value']"/>
+          <rx-entry :label="tx['last_price']">{{ to.price.unit_price | money(currency=to.price.currency) if to.price else tx['no_value'] }}</rx-entry>
+          <rx-entry rx-if="to.on_hold" :label="tx['request.on_hold']"><rx-badge kind="error" :text="tx['request.on_hold']"/></rx-entry>
+        </rx-infolist>
+      </rx-widget>
+    </rx-dashboard>
+  </rx-stack>
+</rx-page>

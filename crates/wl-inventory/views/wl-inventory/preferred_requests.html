@@ -1,0 +1,18 @@
+{#- wl-inventory: the preferred-supplier requests that wait for a decision,
+    oldest first, with the item (a link to its suppliers) and both
+    suppliers. Replace it with
+    resources/views/wl-inventory/preferred_requests.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['requests.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['requests.title']" :subtitle="tx['requests.subtitle']"/>
+    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['requests.title']" card>
+      <rx-column :label="tx['requests.number']"><a href="{{ row.url }}">#{{ row.id }}</a></rx-column>
+      <rx-column :label="tx['item']"><a href="{{ row.item_url }}">{{ row.item }}</a></rx-column>
+      <rx-column :label="tx['requests.kind']" hide-narrow>{{ row.kind }}</rx-column>
+      <rx-column :label="tx['requests.from']" hide-narrow>{{ row.from }}</rx-column>
+      <rx-column :label="tx['requests.to']">{{ row.to }}</rx-column>
+      <rx-column :label="tx['status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['requests.empty']" :message="tx['requests.empty_text']" icon="clipboard-check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

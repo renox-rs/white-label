@@ -18,9 +18,11 @@
 
 use std::collections::BTreeMap;
 
+use renox::axum::http::HeaderMap;
 use renox::prelude::*;
 use serde::Serialize;
 
+use crate::item::Item;
 use crate::item_supplier::{
     self, DeactivateOutcome, LastPrice, NewItemSupplier, SupplierRole, holds, is_on_hold,
     last_price, refused, rows_of, warnings_of,
@@ -28,6 +30,7 @@ use crate::item_supplier::{
 use crate::pages::parse_quantity;
 use crate::permissions;
 use crate::reorder::{Alternative, ReorderSuggestion};
+use crate::screens::{self, Reach};
 use crate::supplier_score::{Figures, SupplierScore};
 use crate::texts;
 
@@ -80,20 +83,20 @@ async fn may_read(state: &AppState, user: &AuthUser) -> Result<bool> {
 
 /// One supplier of an item as the back office reads it.
 #[derive(Debug, Serialize)]
-struct SupplierView {
-    id: i64,
-    supplier_party_id: i64,
-    role: &'static str,
-    rank: i64,
-    active: bool,
-    supplier_item_code: Option<String>,
-    purchase_unit: Option<String>,
-    lead_time_days: i64,
-    min_order_qty_milli: i64,
-    on_hold: bool,
-    watched: bool,
-    warnings: Vec<String>,
-    last_price: Option<LastPrice>,
+pub(crate) struct SupplierView {
+    pub(crate) id: i64,
+    pub(crate) supplier_party_id: i64,
+    pub(crate) role: &'static str,
+    pub(crate) rank: i64,
+    pub(crate) active: bool,
+    pub(crate) supplier_item_code: Option<String>,
+    pub(crate) purchase_unit: Option<String>,
+    pub(crate) lead_time_days: i64,
+    pub(crate) min_order_qty_milli: i64,
+    pub(crate) on_hold: bool,
+    pub(crate) watched: bool,
+    pub(crate) warnings: Vec<String>,
+    pub(crate) last_price: Option<LastPrice>,
 }
 
 /// `GET /items/{id}/suppliers`: the preferred supplier first, then the
@@ -101,6 +104,8 @@ struct SupplierView {
 async fn list_suppliers(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response> {
     if !may_read(&state, &user).await? {
@@ -130,7 +135,27 @@ async fn list_suppliers(
             last_price: price,
         });
     }
+    if wl_kernel::negotiate::wants_html(&headers) {
+        let item = Item::find_or_404(&state.db, id).await?;
+        let mut reach = reach_of(&state, &user, costs).await?;
+        if crate::preferred_change::may_read(&state, &user).await? {
+            reach.request = crate::preferred_change::pending_of(&state.db, id)
+                .await?
+                .map(|request| request.id);
+        }
+        return Ok(screens::suppliers(&state, &lang, &item, &views, &reach).await);
+    }
     json_response(&views)
+}
+
+/// What a person may follow from the supplier pages: the scores and, with
+/// `costs`, the prices.
+async fn reach_of(state: &AppState, user: &AuthUser, costs: bool) -> Result<Reach> {
+    Ok(Reach {
+        scores: holds(state, user, permissions::SUPPLIER_SCORES_VIEW).await?,
+        costs,
+        request: None,
+    })
 }
 
 /// The supplier a form describes: `supplier`, `role`, optionally `rank`,
@@ -215,19 +240,19 @@ async fn deactivate_supplier(
 
 /// A suggestion as the back office reads it.
 #[derive(Debug, Serialize)]
-struct SuggestionView {
-    id: i64,
-    item_id: i64,
-    location_id: i64,
-    supplier_party_id: Option<i64>,
-    supplier_role: Option<String>,
-    reason: Option<String>,
-    lead_time_days: Option<i64>,
-    suggested_qty_milli: i64,
-    rounded_from_milli: Option<i64>,
-    alternatives: Vec<Alternative>,
-    warnings: Vec<String>,
-    status: &'static str,
+pub(crate) struct SuggestionView {
+    pub(crate) id: i64,
+    pub(crate) item_id: i64,
+    pub(crate) location_id: i64,
+    pub(crate) supplier_party_id: Option<i64>,
+    pub(crate) supplier_role: Option<String>,
+    pub(crate) reason: Option<String>,
+    pub(crate) lead_time_days: Option<i64>,
+    pub(crate) suggested_qty_milli: i64,
+    pub(crate) rounded_from_milli: Option<i64>,
+    pub(crate) alternatives: Vec<Alternative>,
+    pub(crate) warnings: Vec<String>,
+    pub(crate) status: &'static str,
 }
 
 /// `GET /reorder-suggestions/{id}`: without `stock.cost.view` the last
@@ -235,6 +260,8 @@ struct SuggestionView {
 async fn show_suggestion(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response> {
     if !may_read(&state, &user).await? {
@@ -249,7 +276,7 @@ async fn show_suggestion(
             alternative.currency = None;
         }
     }
-    json_response(&SuggestionView {
+    let view = SuggestionView {
         id: suggestion.id,
         item_id: suggestion.item_id,
         location_id: suggestion.location_id,
@@ -266,7 +293,13 @@ async fn show_suggestion(
             crate::reorder::SuggestionStatus::Converted => "converted",
             crate::reorder::SuggestionStatus::Dismissed => "dismissed",
         },
-    })
+    };
+    if wl_kernel::negotiate::wants_html(&headers) {
+        let item = Item::find_or_404(&state.db, suggestion.item_id).await?;
+        let reach = reach_of(&state, &user, costs).await?;
+        return screens::reorder(&state, &lang, &item, &suggestion, &view, &reach).await;
+    }
+    json_response(&view)
 }
 
 /// `POST /reorder-suggestions/{id}/switch`: `supplier` and `reason`.
@@ -292,24 +325,24 @@ async fn switch_suggestion(
 
 /// The numbers of a window as the back office reads them.
 #[derive(Debug, Serialize)]
-struct ScoreView {
-    id: Option<i64>,
-    snapshot_date: Option<renox::chrono::NaiveDate>,
-    from: renox::chrono::NaiveDate,
-    to: renox::chrono::NaiveDate,
-    receipts: i64,
-    on_time: i64,
-    on_time_bp: Option<i64>,
-    rejected_bp: Option<i64>,
-    incidents: i64,
-    debit_notes: i64,
-    price_variance_bp: Option<i64>,
-    score: Option<i64>,
-    band: &'static str,
-    received_value: Option<i64>,
-    rejected_value: Option<i64>,
-    debit_note_value: Option<i64>,
-    notes: Vec<String>,
+pub(crate) struct ScoreView {
+    pub(crate) id: Option<i64>,
+    pub(crate) snapshot_date: Option<renox::chrono::NaiveDate>,
+    pub(crate) from: renox::chrono::NaiveDate,
+    pub(crate) to: renox::chrono::NaiveDate,
+    pub(crate) receipts: i64,
+    pub(crate) on_time: i64,
+    pub(crate) on_time_bp: Option<i64>,
+    pub(crate) rejected_bp: Option<i64>,
+    pub(crate) incidents: i64,
+    pub(crate) debit_notes: i64,
+    pub(crate) price_variance_bp: Option<i64>,
+    pub(crate) score: Option<i64>,
+    pub(crate) band: &'static str,
+    pub(crate) received_value: Option<i64>,
+    pub(crate) rejected_value: Option<i64>,
+    pub(crate) debit_note_value: Option<i64>,
+    pub(crate) notes: Vec<String>,
 }
 
 fn score_view(
@@ -345,6 +378,8 @@ fn score_view(
 async fn show_score(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
     Path(party): Path<i64>,
 ) -> Result<Response> {
     item_supplier::require(&state, &user, permissions::SUPPLIER_SCORES_VIEW).await?;
@@ -371,10 +406,25 @@ async fn show_score(
         ));
     }
     let review = crate::supplier_review::open_review(&state.db, party).await?;
+    let live = score_view(&live, None, None, costs, Vec::new());
+    let watched = crate::supplier_review::is_watched(&state, party).await?;
+    if wl_kernel::negotiate::wants_html(&headers) {
+        return Ok(screens::score(
+            &state,
+            &lang,
+            party,
+            &live,
+            &kept,
+            watched,
+            review.is_some(),
+            costs,
+        )
+        .await);
+    }
     json_response(&renox::serde_json::json!({
-        "live": score_view(&live, None, None, costs, Vec::new()),
+        "live": live,
         "snapshots": kept,
-        "watched": crate::supplier_review::is_watched(&state, party).await?,
+        "watched": watched,
         "open_review": review.map(|review| review.id),
     }))
 }
