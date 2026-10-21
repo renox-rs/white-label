@@ -32,6 +32,9 @@ use support::{Booted, Recorded, boot_providers, record};
 
 const OFFER: &str = "campaign.offer";
 
+/// Every party 1..=1000 is active and has one mobile point.
+struct Everyone;
+
 impl PartyDirectory for Everyone {
     fn find<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
         Box::pin(async { Ok(None) })
