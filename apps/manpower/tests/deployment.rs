@@ -489,9 +489,10 @@ async fn an_active_deployment_is_ended_when_another_worker_takes_the_place() {
 }
 
 /// §7.1 `end`: the reason *end date* needs the date to have come; a missing
-/// reason or one that belongs to a later issue (client rejected, client
-/// non-payment, entered in error, contract end, exit, absconded, deceased) is
-/// refused; a planned deployment is cancelled, not ended.
+/// reason, one that is not a user's (contract end, exit, absconded, deceased)
+/// and *client rejected* without the client's note are refused (the other
+/// reasons of BL-MPW-14 are in `tests/end_reasons.rs`); *client non-payment* is
+/// the MD's alone; a planned deployment is cancelled, not ended.
 #[renox::test]
 async fn a_deployment_is_not_ended_without_a_reason_a_user_may_give() {
     let t = boot().await;
@@ -515,8 +516,6 @@ async fn a_deployment_is_not_ended_without_a_reason_a_user_may_give() {
             "because",
             "end_date",
             "client_rejected",
-            "client_non_payment",
-            "entered_in_error",
             "contract_end",
             "exit",
             "absconded",
@@ -526,6 +525,12 @@ async fn a_deployment_is_not_ended_without_a_reason_a_user_may_give() {
                 .await
                 .assert_status(422);
         }
+    })
+    .await;
+    t.on(date(2027, 3, 10), async {
+        t.post(&amal, &path, &[("reason", "client_non_payment")])
+            .await
+            .assert_status(403);
     })
     .await;
     assert_eq!(
