@@ -873,6 +873,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_VIEW,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
+            // `STK.RUL.06`: told when a pending issue stays open for 24
+            // hours (the holders of `stock.approve` in the branch).
+            inventory::STOCK_APPROVE,
             // The owner of the front desk, billing and complaints SOPs
             // publishes their versions (`DOC.RUL.04`, 05 §7.2).
             documents::SOPS_MANAGE,

@@ -83,17 +83,9 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
             module
         }
         "construction" => super::construction_seed::invoicing(module, entities),
-        // The patient's share of a visit is issued at once, so that the
-        // deposit held for the booking can be allocated to it (BL-CLN-05).
-        // A payer-bill write-off above the agreement's limit is the owner's
-        // to approve (`FIN.ACL.14`, 05 section 3.3): the setting of this
-        // app's module, not a second default registered over wl-invoicing's.
-        super::clinics_seed::CLINICS => module
-            .auto_issue_source("clinics.visit")
-            .payer_write_off_approvers(&[
-                clinics::permissions::OWNER_ROLE,
-                wl_kernel::COMPANY_ADMIN_ROLE,
-            ]),
+        // The 05 money values (BL-CLN-05, BL-CLN-16): see
+        // [`super::clinics_money::invoicing`].
+        super::clinics_seed::CLINICS => super::clinics_money::invoicing(module, entities),
         // The retainer of an engagement bills itself: its cycle invoices
         // are issued at once, so that ending the engagement can credit the
         // cycle already invoiced in advance (BL-ACC-06).
@@ -159,6 +151,9 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // 04: a bounced cheque adds no fee; the billing role decides with the
         // engagement manager (BL-ACC-24).
         "accounting" => super::accounting_seed::payments(module),
+        // 05: pending payments, late confirmation, refund retry and
+        // chargebacks (BL-CLN-16).
+        super::clinics_seed::CLINICS => super::clinics_money::payments(module),
         _ => module,
     }
 }

@@ -24,6 +24,7 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::clinics_money;
 pub use app::clinics_seed;
 pub use app::construction_seed;
 pub use app::demo_data;
@@ -33,6 +34,7 @@ pub use app::roles;
 use wl_invoicing::WlInvoicing;
 use wl_kernel::{ClientConfig, ConfigError};
 use wl_notify::WlNotify;
+use wl_payments::WlPayments;
 
 /// The variable naming the client's `client.toml`.
 pub const CLIENT_CONFIG: &str = "CLIENT_CONFIG";
@@ -112,12 +114,20 @@ pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
 pub struct Tuning {
     invoicing: Option<Box<dyn FnOnce(WlInvoicing) -> WlInvoicing>>,
     notify: Option<Box<dyn FnOnce(WlNotify) -> WlNotify>>,
+    payments: Option<Box<dyn FnOnce(WlPayments) -> WlPayments>>,
 }
 
 impl Tuning {
     /// Changes the invoicing module.
     pub fn invoicing(mut self, tune: impl FnOnce(WlInvoicing) -> WlInvoicing + 'static) -> Self {
         self.invoicing = Some(Box::new(tune));
+        self
+    }
+
+    /// Changes the payments module (the gateway adapter of a client, or a
+    /// fake in a test).
+    pub fn payments(mut self, tune: impl FnOnce(WlPayments) -> WlPayments + 'static) -> Self {
+        self.payments = Some(Box::new(tune));
         self
     }
 
@@ -286,7 +296,13 @@ fn enable(
             }))
         }
         "ticketing" => Ok(app.module(app::property_seed::ticketing_for(client_app))),
-        "payments" => Ok(app.module(app::negative_flow::payments_for(client_app))),
+        "payments" => {
+            let module = app::negative_flow::payments_for(client_app);
+            Ok(app.module(match tuning.payments.take() {
+                Some(tune) => tune(module),
+                None => module,
+            }))
+        }
         "sales" => Ok(app.module(app::property_seed::sales_for(client_app))),
         "hr" => Ok(app.module(app::property_seed::hr_for(client_app, owner_role))),
         "attendance" => Ok(app.module(app::property_seed::attendance_for(client_app))),
@@ -296,7 +312,7 @@ fn enable(
                 app.module(if client_app == app::construction_seed::CONSTRUCTION {
                     app::construction_seed::inventory(module)
                 } else {
-                    module
+                    app::clinics_money::inventory(client_app, module)
                 }),
             )
         }

@@ -265,6 +265,11 @@ pub fn sales(module: WlSales) -> WlSales {
         .clinical_items(&clinical)
         .segment_clinical_rules(false)
         .campaign_guard(AdvertisingPermitGuard)
+        // A package whose payment was reversed stays active and the front
+        // desk is told to collect before the next session; consumption is
+        // not suspended (BL-SAL-16, BL-CLN-16).
+        .package_seller_role(RECEPTIONIST_ROLE)
+        .suspend_package_consumption_while_unpaid(false)
 }
 
 /// The advertising permit guard of wl-sales' campaigns (`CLN.ACL.13`): a
@@ -390,6 +395,8 @@ pub struct Installed {
     pub loyalty: usize,
     /// Segments created.
     pub segments: usize,
+    /// Budget categories given the accountant as owner role.
+    pub budget_categories: usize,
 }
 
 impl Installed {
@@ -401,6 +408,7 @@ impl Installed {
             + self.send_windows
             + self.loyalty
             + self.segments
+            + self.budget_categories
     }
 }
 
@@ -430,6 +438,10 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     }
     if on("notify") {
         installed.send_windows = install_send_windows(&state.db).await?;
+    }
+    if on("invoicing") {
+        installed.budget_categories =
+            super::clinics_money::install_budget_categories(&state.db).await?;
     }
     if on("sales") {
         installed.loyalty = install_loyalty(&state.db).await?;

@@ -442,6 +442,78 @@ pub const SOPS: [SopSpec; 5] = [
 /// schedule, and the client cannot switch that off.
 pub const CRITICAL_RULES: [&str; 4] = ["CLN.RUL.01", "SCH.RUL.05", "CLN.RUL.03", "DOC.RUL.03"];
 
+// ---- money and stock (BL-CLN-16, 05 section 7.2 settings) -----------------
+
+/// The write-off limit of a payer agreement, in fils: AED 1,000 (`FIN.ACL.14`).
+/// A write-off above it is the owner's to approve.
+pub const CLAIM_WRITE_OFF_LIMIT: i64 = 100_000;
+
+/// Days after a claim is submitted when `FIN.RUL.13` follows up a claim with
+/// no remittance (N = 45).
+pub const PAYER_FOLLOW_UP_DAYS: i64 = 45;
+
+/// Days a billing dispute may stay open before `FIN.RUL.15` escalates it.
+pub const DISPUTE_ESCALATION_DAYS: u32 = 14;
+
+/// The projected balance below which `FIN.RUL.23` alerts, in fils: AED
+/// 50,000, in any of the next 13 weeks.
+pub const CASH_THRESHOLD: i64 = 5_000_000;
+
+/// The weeks the cash-flow forecast looks ahead (`FIN.CFL.01`).
+pub const CASH_FORECAST_WEEKS: u32 = 13;
+
+/// When the daily cash-flow check runs (`FIN.RUL.23`), Asia/Dubai.
+pub const CASH_ALERT_TIME: &str = "06:00";
+
+/// The share of a month's budget line at which `FIN.RUL.24` warns, in percent.
+pub const BUDGET_WARNING_PERCENT: u32 = 100;
+
+/// Minutes after an online payment became `pending` when the gateway is asked
+/// for its final state (`FIN.RUL.19`).
+pub const PENDING_TIMEOUT_MINUTES: i64 = 30;
+
+/// Hours after a gateway refund failed before it is retried (`FIN.RUL.21`).
+pub const REFUND_RETRY_HOURS: i64 = 24;
+
+/// The retries of one failed refund: once.
+pub const REFUND_MAX_RETRIES: i64 = 1;
+
+/// Days before the evidence deadline of a chargeback that the accountant is
+/// reminded (`FIN.RUL.20`).
+pub const CHARGEBACK_REMINDER_DAYS: i64 = 2;
+
+/// Hours a pending issue stays open before the clinic manager is told and the
+/// storekeeper gets the task (`STK.RUL.06`).
+pub const PENDING_ISSUE_ALERT_HOURS: i64 = 24;
+
+/// Hours between two reminders of an open stock hold (`STK.RUL.07`).
+pub const HOLD_REMINDER_HOURS: i64 = 24;
+
+/// The reason of a stock hold on a suspect consumable (complaint, broken cold
+/// chain).
+pub const SUSPECT_HOLD_REASON: &str = "quality";
+
+/// The hold reasons whose release needs a second holder of `lots.release`
+/// (`STK.ACL.05`).
+pub const SECOND_PERSON_HOLD_REASONS: &[&str] = &["recall"];
+
+/// Cash holders (`FIN.CSH.01`, 05 section 7.2): each receptionist, per person
+/// and per day at the branch: one handover per receptionist, branch and day.
+/// The handover is wl-payments' `BL-PAY-17` (#110), not built yet; these are
+/// the values it will read.
+pub const CASH_HOLDER_MODE: &str = "staff";
+
+/// The period of a handover: a day (Asia/Dubai).
+pub const CASH_HANDOVER_PERIOD: &str = "day";
+
+/// The write-off limit of a cash shortage, in fils: AED 0, every shortage is
+/// approved (`FIN.ACL.06`).
+pub const CASH_SHORTAGE_WRITE_OFF_LIMIT: i64 = 0;
+
+/// Whether a shortage may be recovered by salary deduction (`FIN.ACL.19`):
+/// off `⚠ open: lawyer (L-20)`.
+pub const SALARY_RECOVERY: bool = false;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,6 +524,14 @@ mod tests {
         codes.sort_unstable();
         codes.dedup();
         assert_eq!(codes.len(), SERVICE_TYPES.len());
+    }
+
+    #[test]
+    fn the_money_values_are_the_05_ones() {
+        assert_eq!(CLAIM_WRITE_OFF_LIMIT, 100_000);
+        assert_eq!(CASH_THRESHOLD, 5_000_000);
+        assert_eq!(CASH_SHORTAGE_WRITE_OFF_LIMIT, 0);
+        assert_eq!(SECOND_PERSON_HOLD_REASONS, ["recall"]);
     }
 
     #[test]
