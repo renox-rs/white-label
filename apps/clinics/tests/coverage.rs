@@ -162,14 +162,23 @@ async fn check_in_is_refused_until_the_eligibility_and_an_outcome_are_recorded()
     // Nothing recorded at all.
     let res = s.check_in(&s.booking).await;
     res.assert_status(422);
-    assert!(res.text().contains("overage outcome required"), "{}", res.text());
+    assert!(
+        res.text().contains("overage outcome required"),
+        "{}",
+        res.text()
+    );
 
     // Eligibility recorded negative, no outcome.
     s.eligibility(&s.booking, "negative", None).await;
     let res = s.check_in(&s.booking).await;
     res.assert_status(422);
-    assert!(res.text().contains("overage outcome required"), "{}", res.text());
-    let refused = service::check_in(s.t.state(), s.booking.id, Actor::staff(s.rita.id), now()).await;
+    assert!(
+        res.text().contains("overage outcome required"),
+        "{}",
+        res.text()
+    );
+    let refused =
+        service::check_in(s.t.state(), s.booking.id, Actor::staff(s.rita.id), now()).await;
     let Err(Refusal::Invalid(text)) = refused else {
         panic!("the check-in is refused: {refused:?}");
     };
@@ -178,7 +187,12 @@ async fn check_in_is_refused_until_the_eligibility_and_an_outcome_are_recorded()
         s.t.booking(s.booking.id).await.status,
         BookingStatus::Booked
     );
-    assert!(Visit::of_booking(s.t.db(), s.booking.id).await.unwrap().is_none());
+    assert!(
+        Visit::of_booking(s.t.db(), s.booking.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(s.pending(&s.booking).await.outcome, None);
 }
 
@@ -206,7 +220,10 @@ async fn a_re_split_to_a_valid_policy_lets_the_patient_in() {
     let res = s
         .post(
             &s.clinic(&s.booking, "eligibility"),
-            &[("result", "positive"), ("policy", stranger.id.to_string().as_str())],
+            &[
+                ("result", "positive"),
+                ("policy", stranger.id.to_string().as_str()),
+            ],
         )
         .await;
     res.assert_status(422);
@@ -223,7 +240,12 @@ async fn a_re_split_to_a_valid_policy_lets_the_patient_in() {
     assert_eq!(visit.eligibility_positive, Some(false));
     let moved = s.pending(&s.booking).await;
     assert_eq!(moved.moved_visit_id, Some(visit.id));
-    assert!(PendingCheckIn::active_of(s.t.db(), s.booking.id).await.unwrap().is_none());
+    assert!(
+        PendingCheckIn::active_of(s.t.db(), s.booking.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     s.t.app
         .get(&format!("/clinics/visits/{}", visit.id))
         .await
@@ -243,7 +265,11 @@ async fn self_pay_needs_a_price_and_a_signed_consent() {
     // No consent yet: refused.
     let res = s.outcome(&s.booking, "self_pay", None).await;
     res.assert_status(422);
-    assert!(res.text().contains("signed self-pay consent"), "{}", res.text());
+    assert!(
+        res.text().contains("signed self-pay consent"),
+        "{}",
+        res.text()
+    );
 
     // The price list has none for the visit day (it starts the day after):
     // refused, naming the service, on the outcome and on the signature.
@@ -265,14 +291,25 @@ async fn self_pay_needs_a_price_and_a_signed_consent() {
     s.eligibility(&unpriced, "negative", None).await;
     let res = s.outcome(&unpriced, "self_pay", None).await;
     res.assert_status(422);
-    assert!(res.text().contains("no self-pay price for peel"), "{}", res.text());
+    assert!(
+        res.text().contains("no self-pay price for peel"),
+        "{}",
+        res.text()
+    );
     let res = s.sign(&unpriced, "Patient One").await;
     res.assert_status(422);
-    assert!(res.text().contains("no self-pay price for peel"), "{}", res.text());
+    assert!(
+        res.text().contains("no self-pay price for peel"),
+        "{}",
+        res.text()
+    );
     t.prices.set("peel", later, 9_000);
     let res = s.outcome(&unpriced, "self_pay", None).await;
     res.assert_status(422);
-    assert!(res.text().contains("no self-pay price for peel"), "a price from tomorrow is none today");
+    assert!(
+        res.text().contains("no self-pay price for peel"),
+        "a price from tomorrow is none today"
+    );
 
     // A blank signature is refused; the signature gives the outcome.
     s.sign(&s.booking, "  ").await.assert_status(422);
@@ -301,7 +338,9 @@ async fn self_pay_needs_a_price_and_a_signed_consent() {
     assert_eq!(visit.coverage_outcome, Some(CoverageOutcome::SelfPay));
     assert_eq!(visit.consent_id, Some(signed.id));
     assert_eq!(visit.coverage_policy_id, None);
-    let kept = SelfPayConsent::find_or_404(t.db(), signed.id).await.unwrap();
+    let kept = SelfPayConsent::find_or_404(t.db(), signed.id)
+        .await
+        .unwrap();
     assert_eq!(kept.visit_id, Some(visit.id));
     assert!(!kept.is_superseded());
 }
@@ -320,7 +359,12 @@ async fn the_pending_data_is_discarded_at_the_end_of_the_day() {
         .await
         .unwrap();
     assert_eq!(early, 0);
-    assert!(PendingCheckIn::active_of(s.t.db(), s.booking.id).await.unwrap().is_some());
+    assert!(
+        PendingCheckIn::active_of(s.t.db(), s.booking.id)
+            .await
+            .unwrap()
+            .is_some()
+    );
 
     let late = coverage::discard_lapsed(s.t.state(), dubai(&visit_day, 23, 59))
         .await
@@ -331,7 +375,9 @@ async fn the_pending_data_is_discarded_at_the_end_of_the_day() {
     assert_eq!(discarded.discard_reason.as_deref(), Some("lapsed"));
     // The consent stays on file, marked superseded, and the patient can no
     // longer be checked in on it.
-    let kept = SelfPayConsent::of_booking(s.t.db(), s.booking.id).await.unwrap();
+    let kept = SelfPayConsent::of_booking(s.t.db(), s.booking.id)
+        .await
+        .unwrap();
     assert_eq!(kept.len(), 1);
     assert!(kept[0].is_superseded());
     s.check_in(&s.booking).await.assert_status(422);
@@ -366,9 +412,15 @@ async fn coverage_not_confirmed_refunds_and_a_reschedule_carries_the_deposit() {
     let cancelled = s.t.booking(s.booking.id).await;
     assert_eq!(cancelled.status, BookingStatus::Cancelled);
     assert_eq!(cancelled.cancel_initiated_by.as_deref(), Some("business"));
-    assert_eq!(cancelled.cancel_code.as_deref(), Some("coverage_not_confirmed"));
+    assert_eq!(
+        cancelled.cancel_code.as_deref(),
+        Some("coverage_not_confirmed")
+    );
     assert_eq!(s.t.refunds.amounts(), [10_000]);
-    assert_eq!(s.pending(&s.booking).await.discard_reason.as_deref(), Some("cancelled"));
+    assert_eq!(
+        s.pending(&s.booking).await.discard_reason.as_deref(),
+        Some("cancelled")
+    );
     assert!(
         Appointment::of_booking(s.t.db(), s.booking.id)
             .await
@@ -389,8 +441,15 @@ async fn coverage_not_confirmed_refunds_and_a_reschedule_carries_the_deposit() {
     assert_eq!(moved.starts_at, new_start);
     assert_eq!(moved.deposit_amount, 10_000);
     assert_eq!(s.t.events.rescheduled.all()[0].deposit_carried, 10_000);
-    assert_eq!(s.t.refunds.amounts(), [10_000], "the carried deposit is not refunded");
-    assert_eq!(s.pending(&other).await.discard_reason.as_deref(), Some("rescheduled"));
+    assert_eq!(
+        s.t.refunds.amounts(),
+        [10_000],
+        "the carried deposit is not refunded"
+    );
+    assert_eq!(
+        s.pending(&other).await.discard_reason.as_deref(),
+        Some("rescheduled")
+    );
 }
 
 /// Done when 8: on a self-pay visit a service not on the consent is refused
@@ -441,7 +500,9 @@ async fn a_service_not_on_the_consent_needs_an_updated_consent() {
     consent::ensure_covered(s.t.state(), visit.id, "x_ray")
         .await
         .expect("x_ray is on the updated consent");
-    let all = SelfPayConsent::of_booking(s.t.db(), s.booking.id).await.unwrap();
+    let all = SelfPayConsent::of_booking(s.t.db(), s.booking.id)
+        .await
+        .unwrap();
     assert_eq!(all.len(), 2);
     assert!(all[0].is_superseded() && !all[1].is_superseded());
     assert_eq!(s.visit(&s.booking).await.consent_id, Some(updated.id));
@@ -470,7 +531,9 @@ async fn a_policy_valid_to_the_visit_day_needs_nothing_after_a_positive_result()
     s.eligibility(&s.booking, "positive", None).await;
     assert_eq!(s.pending(&s.booking).await.outcome, None);
     s.check_in(&s.booking).await.assert_status(422);
-    s.outcome(&s.booking, "insured", None).await.assert_status(422);
+    s.outcome(&s.booking, "insured", None)
+        .await
+        .assert_status(422);
 }
 
 /// A negative result takes back an *insured* outcome the positive one set.
@@ -480,7 +543,10 @@ async fn a_negative_result_takes_back_insured() {
     let valid = policy(&s.t, "Platinum", "M-3", 1).await;
     let booking = s.another(11, &valid).await;
     s.eligibility(&booking, "positive", None).await;
-    assert_eq!(s.pending(&booking).await.outcome, Some(CoverageOutcome::Insured));
+    assert_eq!(
+        s.pending(&booking).await.outcome,
+        Some(CoverageOutcome::Insured)
+    );
 
     s.eligibility(&booking, "negative", None).await;
 
@@ -515,12 +581,17 @@ async fn the_outcome_may_change_to_insured_until_the_service_starts() {
     assert_eq!(insured.coverage_outcome, Some(CoverageOutcome::Insured));
     assert_eq!(insured.coverage_policy_id, Some(valid.id));
     assert_eq!(insured.eligibility_positive, Some(true));
-    let consents = SelfPayConsent::of_booking(s.t.db(), before.id).await.unwrap();
+    let consents = SelfPayConsent::of_booking(s.t.db(), before.id)
+        .await
+        .unwrap();
     assert_eq!(consents.len(), 1, "the consent stays on file");
     assert!(consents[0].is_superseded());
-    s.post(&format!("/clinics/visits/{}/insured", visit.id), &[("reference", "")])
-        .await
-        .assert_status(422);
+    s.post(
+        &format!("/clinics/visits/{}/insured", visit.id),
+        &[("reference", "")],
+    )
+    .await
+    .assert_status(422);
 
     // Once the service has started the outcome is fixed.
     service::start(s.t.state(), after.id, Actor::staff(s.rita.id), now())
@@ -528,11 +599,17 @@ async fn the_outcome_may_change_to_insured_until_the_service_starts() {
         .expect("the service starts");
     let started = s.visit(&after).await;
     let res = s
-        .post(&format!("/clinics/visits/{}/insured", started.id), &[("reference", "")])
+        .post(
+            &format!("/clinics/visits/{}/insured", started.id),
+            &[("reference", "")],
+        )
         .await;
     res.assert_status(422);
     assert!(res.text().contains("outcome is fixed"), "{}", res.text());
-    assert_eq!(s.visit(&after).await.coverage_outcome, Some(CoverageOutcome::SelfPay));
+    assert_eq!(
+        s.visit(&after).await.coverage_outcome,
+        Some(CoverageOutcome::SelfPay)
+    );
 }
 
 /// An appointment booked with another policy forgets what was recorded for the
@@ -546,13 +623,13 @@ async fn a_new_policy_discards_what_was_recorded_and_a_self_pay_patient_is_asked
         .await
         .unwrap();
 
-    assert_eq!(s.pending(&s.booking).await.discard_reason.as_deref(), Some("policy_changed"));
+    assert_eq!(
+        s.pending(&s.booking).await.discard_reason.as_deref(),
+        Some("policy_changed")
+    );
     s.check_in(&s.booking).await.assert_status(422);
 
-    let plain = s
-        .t
-        .book(&s.service, &s.doctor, at(day(1), 14))
-        .await;
+    let plain = s.t.book(&s.service, &s.doctor, at(day(1), 14)).await;
     s.check_in(&plain).await.assert_status(303);
     assert_eq!(s.visit(&plain).await.coverage_outcome, None);
     // Not even a booking with no known patient is asked.
@@ -582,7 +659,10 @@ async fn only_the_desk_records_the_coverage() {
         .assert_forbidden();
     s.t.app
         .htmx()
-        .post(&s.clinic(&s.booking, "eligibility"), &[("result", "negative")])
+        .post(
+            &s.clinic(&s.booking, "eligibility"),
+            &[("result", "negative")],
+        )
         .await
         .assert_forbidden();
 
@@ -593,10 +673,7 @@ async fn only_the_desk_records_the_coverage() {
         .assert_ok()
         .assert_see("Gold")
         .assert_see("Not recorded");
-    assert!(
-        s.pending_rows().await == 0,
-        "viewing records nothing"
-    );
+    assert!(s.pending_rows().await == 0, "viewing records nothing");
 }
 
 impl Scene {

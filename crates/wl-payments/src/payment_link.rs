@@ -526,7 +526,9 @@ impl PaymentLinks for Links {
             if let Some(user) = request.created_by {
                 new = new.created_by(user);
             }
-            let link = create(state, new).await.map_err(TransitionError::into_error)?;
+            let link = create(state, new)
+                .await
+                .map_err(TransitionError::into_error)?;
             Ok(Some(PaymentLinkRef {
                 link: link.subject(),
                 path: path(state, link.id),

@@ -73,11 +73,7 @@ pub fn licence_kind() -> KindSeed {
 
 /// The branch privileges as wl-documents' seed.
 pub fn privileges_kind() -> KindSeed {
-    practitioner_kind(
-        PRIVILEGES_KIND,
-        "Branch privileges",
-        "صلاحيات الفرع",
-    )
+    practitioner_kind(PRIVILEGES_KIND, "Branch privileges", "صلاحيات الفرع")
 }
 
 /// The insurance card as wl-documents' seed: an expiring document of the

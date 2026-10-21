@@ -60,7 +60,9 @@ async fn holder(t: &Booked, name: &str, role: &str, grants: &[&str], scope: &Sco
     let user = User::register(t.db(), name, &email, "password123")
         .await
         .unwrap();
-    permissions::define_role(t.db(), role, grants).await.unwrap();
+    permissions::define_role(t.db(), role, grants)
+        .await
+        .unwrap();
     user.assign_role_in(t.db(), role, scope).await.unwrap();
     user
 }
@@ -104,8 +106,13 @@ async fn book_at(
 ) -> Booking {
     service::book(
         t.state(),
-        NewBooking::new(PATIENT, s.service.id, &[resource.id], dubai(day, hour, minute))
-            .at(branch(BRANCH)),
+        NewBooking::new(
+            PATIENT,
+            s.service.id,
+            &[resource.id],
+            dubai(day, hour, minute),
+        )
+        .at(branch(BRANCH)),
         Actor::staff(1),
         made_at,
     )
@@ -165,7 +172,10 @@ async fn an_open_conflict_is_escalated_two_hours_before_and_its_reminder_is_supp
     assert!(Messages::body(&told[0]).contains(&booking.number));
     let changes = of_type(&t, "scheduling.bookings_changed");
     assert_eq!(changes.len(), 1);
-    assert_eq!(changes[0].recipients, [NotifyRecipient::Party { id: PATIENT }]);
+    assert_eq!(
+        changes[0].recipients,
+        [NotifyRecipient::Party { id: PATIENT }]
+    );
     let body = Messages::body(&changes[0]);
     assert!(body.contains(&format!("/scheduling/links/{}/accept", booking.id)));
     assert!(body.contains(&format!("/scheduling/links/{}/reschedule", booking.id)));
@@ -266,8 +276,8 @@ async fn a_conflicted_booking_is_not_marked_no_show_by_the_sweep_or_by_staff() {
 
     let swept = rules::run(t.state(), dubai(DAY, 15, 15)).await.unwrap();
     assert_eq!(swept.no_shows, 0);
-    let refused = service::mark_no_show(t.state(), booking.id, Actor::staff(1), dubai(DAY, 15, 15))
-        .await;
+    let refused =
+        service::mark_no_show(t.state(), booking.id, Actor::staff(1), dubai(DAY, 15, 15)).await;
 
     match refused {
         Err(Refusal::Transition(error)) => {
@@ -358,7 +368,10 @@ async fn a_conflict_cleared_in_time_leaves_the_reminder_alone() {
     let reminders = of_type(&t, "scheduling.booking_reminder");
     assert_eq!(reminders.len(), 1);
     assert_eq!(reminders[0].subject, booking.subject());
-    assert_eq!(reminders[0].recipients, [NotifyRecipient::Party { id: PATIENT }]);
+    assert_eq!(
+        reminders[0].recipients,
+        [NotifyRecipient::Party { id: PATIENT }]
+    );
     let body = Messages::body(&reminders[0]);
     assert!(body.contains(&booking.number), "{body}");
     assert!(body.contains(&format!("/scheduling/links/{}/cancel", booking.id)));
@@ -392,8 +405,12 @@ async fn reminders_go_out_once_at_each_time() {
     let booking = book_at(&t, &s, &s.a, DAY, 15, 0, now()).await;
     let day_before = "2030-03-11";
 
-    let first = rules::run(t.state(), dubai(day_before, 15, 0)).await.unwrap();
-    let repeat = rules::run(t.state(), dubai(day_before, 15, 5)).await.unwrap();
+    let first = rules::run(t.state(), dubai(day_before, 15, 0))
+        .await
+        .unwrap();
+    let repeat = rules::run(t.state(), dubai(day_before, 15, 5))
+        .await
+        .unwrap();
     let second = rules::run(t.state(), dubai(DAY, 13, 0)).await.unwrap();
     let third = rules::run(t.state(), dubai(DAY, 13, 10)).await.unwrap();
 

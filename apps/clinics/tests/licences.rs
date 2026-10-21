@@ -15,9 +15,7 @@ use renox::auth::permissions::{self, Scope};
 use renox::prelude::*;
 use wl_kernel::automation::RunOutcome;
 use wl_kernel::compliance::{ComplianceAlert, is_critical};
-use wl_kernel::documents::{
-    BlockMode, BlockedGroup, DocumentExpired, PlannedRecord, dubai_date,
-};
+use wl_kernel::documents::{BlockMode, BlockedGroup, DocumentExpired, PlannedRecord, dubai_date};
 use wl_kernel::notify::{NotifyRecipient, NotifyRequest};
 use wl_kernel::workforce::{AffectedWork, QualificationExpired};
 use wl_kernel::{DocumentId, Subject};
@@ -137,8 +135,12 @@ async fn the_manager_and_the_owner_are_told_once_and_the_bookings_are_in_conflic
         december.push(t.book(&service_type, &doctor, at(day(days), 10)).await);
     }
     // The licence runs out after day 10.
-    t.docs
-        .accepted_until(&t.employee_id(&doctor).subject(), LICENCE, DOCUMENT, Some(day(10)));
+    t.docs.accepted_until(
+        &t.employee_id(&doctor).subject(),
+        LICENCE,
+        DOCUMENT,
+        Some(day(10)),
+    );
     let refs: Vec<&Booking> = december.iter().collect();
 
     t.state()
@@ -178,11 +180,21 @@ async fn the_manager_and_the_owner_are_told_once_and_the_bookings_are_in_conflic
     // last valid day is not, and nothing was cancelled.
     for booking in &december {
         let again = t.booking(booking.id).await;
-        assert!(again.conflict_eligibility, "{} is in conflict", again.number);
+        assert!(
+            again.conflict_eligibility,
+            "{} is in conflict",
+            again.number
+        );
         assert_eq!(again.status, booking.status);
     }
     assert!(!t.booking(last_day.id).await.conflict_eligibility);
-    let flagged: usize = t.events.conflicts.all().iter().map(|e| e.bookings.len()).sum();
+    let flagged: usize = t
+        .events
+        .conflicts
+        .all()
+        .iter()
+        .map(|e| e.bookings.len())
+        .sum();
     assert_eq!(flagged, 4);
 
     // A new booking after the expiry is refused, whoever asks.
@@ -231,9 +243,7 @@ async fn privileges_expired_at_one_branch_leave_the_other_alone() {
     let t = boot().await;
     let people = staff(&t).await;
     let at_one = t.practitioner("Dr K", 61, None).await;
-    let at_two = t
-        .practitioner_at("Dr M", 62, &other_branch(), None)
-        .await;
+    let at_two = t.practitioner_at("Dr M", 62, &other_branch(), None).await;
     let service_type = t.consultation(&[&at_one, &at_two]).await;
     let kept = t.book(&service_type, &at_one, at(day(12), 10)).await;
     let hers = t.book(&service_type, &at_two, at(day(12), 10)).await;
@@ -278,7 +288,10 @@ async fn privileges_expired_at_one_branch_leave_the_other_alone() {
         support::scheduling::now(),
     )
     .await;
-    assert!(matches!(refused, Err(Refusal::Ineligible(_))), "{refused:?}");
+    assert!(
+        matches!(refused, Err(Refusal::Ineligible(_))),
+        "{refused:?}"
+    );
 }
 
 /// A kind the rule is not about (a driving licence) tells nobody.
@@ -313,10 +326,12 @@ async fn a_failing_run_alerts_the_owner() {
     let doctor = t.practitioner("Dr K", 61, None).await;
     assert!(is_critical(RULE));
     assert!(is_critical("DOC.RUL.03"));
-    renox::db::sql("ALTER TABLE \"clinics_licence_alerts\" RENAME TO \"clinics_licence_alerts_off\"")
-        .execute(t.db())
-        .await
-        .unwrap();
+    renox::db::sql(
+        "ALTER TABLE \"clinics_licence_alerts\" RENAME TO \"clinics_licence_alerts_off\"",
+    )
+    .execute(t.db())
+    .await
+    .unwrap();
     let event = QualificationExpired {
         employee: t.employee_id(&doctor),
         qualification: None,

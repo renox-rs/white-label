@@ -287,7 +287,10 @@ async fn target(state: &AppState, booking: i64) -> Result<(Appointment, Insuranc
         return Err(refused(english("clinics.coverage.problem.checked_in", &[])));
     }
     let Some(policy) = appointment.policy_id else {
-        return Err(refused(english("clinics.coverage.problem.not_insured", &[])));
+        return Err(refused(english(
+            "clinics.coverage.problem.not_insured",
+            &[],
+        )));
     };
     let policy = InsurancePolicy::find_or_404(&state.db, policy).await?;
     Ok((appointment, policy))
@@ -757,7 +760,10 @@ pub async fn change_to_insured(
 ) -> Result<Visit> {
     let visit = Visit::find_or_404(&state.db, visit).await?;
     let Some(policy_id) = visit.policy_id else {
-        return Err(refused(english("clinics.coverage.problem.not_insured", &[])));
+        return Err(refused(english(
+            "clinics.coverage.problem.not_insured",
+            &[],
+        )));
     };
     if visit.status != VisitStatus::CheckedIn {
         return Err(refused(english("clinics.coverage.problem.fixed", &[])));
@@ -769,8 +775,8 @@ pub async fn change_to_insured(
     if !policy.is_valid_on(visit.visit_date) {
         return Err(refused(english("clinics.coverage.problem.insured", &[])));
     }
-    let check = policies::record_eligibility(state, by, policy.id, true, reference, None, at)
-        .await?;
+    let check =
+        policies::record_eligibility(state, by, policy.id, true, reference, None, at).await?;
     Visit::query()
         .where_(Visit::ID.eq(visit.id))
         .update(

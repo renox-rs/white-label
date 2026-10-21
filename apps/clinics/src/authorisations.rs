@@ -93,7 +93,10 @@ pub async fn create(
 ) -> Result<PriorAuthorisation> {
     let policy = InsurancePolicy::find_or_404(&state.db, new.policy).await?;
     if new.units < 1 {
-        return Err(refused(english("clinics.authorisation.problem.units_asked", &[])));
+        return Err(refused(english(
+            "clinics.authorisation.problem.units_asked",
+            &[],
+        )));
     }
     let mut services: Vec<String> = Vec::new();
     for code in &new.services {
@@ -313,7 +316,10 @@ pub async fn expire_due(state: &AppState, at: DateTime) -> Result<Vec<i64>> {
 pub async fn require_for(state: &AppState, payer: PartyId, code: &str) -> Result<PriorAuthService> {
     let code = code.trim();
     if code.is_empty() {
-        return Err(refused(english("clinics.authorisation.problem.service_code", &[])));
+        return Err(refused(english(
+            "clinics.authorisation.problem.service_code",
+            &[],
+        )));
     }
     let existing = PriorAuthService::query()
         .where_(PriorAuthService::PAYER_PARTY_ID.eq(payer.0))

@@ -10,8 +10,8 @@ use wl_kernel::parties::PARTY_SUBJECT_TYPE;
 use wl_kernel::scheduling::{BookingBooked, BookingCancelled, BookingRescheduled};
 
 use crate::appointment::Appointment;
-use crate::db::refused;
 use crate::card_requests;
+use crate::db::refused;
 use crate::policy::InsurancePolicy;
 use crate::prior_auth_rules;
 use crate::texts::english;
@@ -111,7 +111,10 @@ pub async fn attach_policy(state: &AppState, booking: i64, policy: i64) -> Resul
         .ok_or(Error::NotFound)?;
     let found = InsurancePolicy::find_or_404(&state.db, policy).await?;
     if appointment.is_cancelled() {
-        return Err(refused(english("clinics.appointments.problem.cancelled", &[])));
+        return Err(refused(english(
+            "clinics.appointments.problem.cancelled",
+            &[],
+        )));
     }
     if Visit::of_booking(&state.db, booking).await?.is_some() {
         return Err(refused(english(

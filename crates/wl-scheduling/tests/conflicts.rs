@@ -110,7 +110,11 @@ async fn sick_leave_flags_the_bookings_of_the_day_and_cancels_none() {
         let flagged = t.reload(booking.id).await;
         assert!(flagged.conflict_block, "{} is flagged", booking.number);
         assert!(!flagged.conflict_eligibility);
-        assert_eq!(flagged.status, BookingStatus::Booked, "nothing is cancelled");
+        assert_eq!(
+            flagged.status,
+            BookingStatus::Booked,
+            "nothing is cancelled"
+        );
     }
     assert!(t.events.cancelled.all().is_empty());
     let raised = t.events.conflicts.all();
@@ -159,13 +163,10 @@ async fn the_rest_of_the_day_starts_when_the_leave_is_recorded() {
         .book_for(PATIENT, &s.service, &[&s.a], dubai(NEXT, 11, 0))
         .await;
 
-    let flagged = conflict::leave_approved(
-        t.state(),
-        &leave(502, "sick", DAY, DAY),
-        dubai(DAY, 10, 30),
-    )
-    .await
-    .unwrap();
+    let flagged =
+        conflict::leave_approved(t.state(), &leave(502, "sick", DAY, DAY), dubai(DAY, 10, 30))
+            .await
+            .unwrap();
 
     let mut got: Vec<i64> = flagged.iter().map(|b| b.id).collect();
     got.sort_unstable();
@@ -175,7 +176,10 @@ async fn the_rest_of_the_day_starts_when_the_leave_is_recorded() {
     }
     let block = AvailabilityBlock::query()
         .order_by(AvailabilityBlock::ID)
-        .first(t.db()).await.unwrap().unwrap();
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(block.starts_at, dubai(DAY, 10, 30));
     assert_eq!(block.ends_at, dubai(NEXT, 0, 0));
 }
@@ -191,7 +195,10 @@ async fn the_same_leave_twice_flags_each_booking_once() {
     t.state().emit(leave(503, "sick", DAY, DAY)).await.unwrap();
 
     assert_eq!(t.events.conflicts.all().len(), 1);
-    assert_eq!(AvailabilityBlock::query().get(t.db()).await.unwrap().len(), 1);
+    assert_eq!(
+        AvailabilityBlock::query().get(t.db()).await.unwrap().len(),
+        1
+    );
     for booking in [&s.a11, &s.a12, &s.a15] {
         assert_eq!(open_conflicts(&t, booking.id).await, 1);
     }
@@ -239,7 +246,10 @@ async fn a_bulk_reassign_clears_the_conflicts_and_tells_each_party_once() {
 
     let sent = t.messages.sent();
     assert_eq!(sent.len(), 2, "one message per party");
-    for (request, booking, party) in [(&sent[0], &s.a11, PATIENT), (&sent[1], &s.a12, OTHER_PATIENT)] {
+    for (request, booking, party) in [
+        (&sent[0], &s.a11, PATIENT),
+        (&sent[1], &s.a12, OTHER_PATIENT),
+    ] {
         assert_eq!(request.type_key, "scheduling.bookings_changed");
         assert_eq!(request.recipients, [NotifyRecipient::Party { id: party }]);
         let body = Messages::body(request);
@@ -332,7 +342,10 @@ async fn a_bulk_cancel_is_business_initiated_and_refunds_the_deposit() {
 
     let cancelled = t.reload(s.a15.id).await;
     assert_eq!(cancelled.status, BookingStatus::Cancelled);
-    assert_eq!(cancelled.cancel_code.as_deref(), Some("resource_unavailable"));
+    assert_eq!(
+        cancelled.cancel_code.as_deref(),
+        Some("resource_unavailable")
+    );
     assert_eq!(cancelled.cancel_initiated_by.as_deref(), Some("business"));
     assert_eq!(cancelled.deposit_outcome.as_deref(), Some("refunded"));
     assert_eq!(t.refunds.amounts(), [20_000]);
@@ -369,7 +382,11 @@ async fn a_booking_the_new_resource_cannot_take_fails_alone() {
     assert_eq!(result.done, [s.a11.id]);
     assert_eq!(result.failed.len(), 1);
     assert_eq!(result.failed[0].booking, s.a12.id);
-    assert!(result.failed[0].reason.contains("taken"), "{:?}", result.failed);
+    assert!(
+        result.failed[0].reason.contains("taken"),
+        "{:?}",
+        result.failed
+    );
     assert!(!t.reload(s.a11.id).await.has_conflict());
     let stays = t.reload(s.a12.id).await;
     assert!(stays.conflict_block);
@@ -411,7 +428,9 @@ async fn a_booking_without_a_conflict_is_reported_not_touched() {
 #[renox::test]
 async fn a_bulk_reschedule_offers_three_times_and_the_pick_clears_the_conflict() {
     let t = boot_with(WlScheduling::new().horizon_days(5000).slot_step_minutes(30)).await;
-    let mut a = t.resource("Dr A", wl_scheduling::ResourceType::Person).await;
+    let mut a = t
+        .resource("Dr A", wl_scheduling::ResourceType::Person)
+        .await;
     a.employee_id = Some(EMPLOYEE);
     a.save(t.db()).await.unwrap();
     for weekday in 1..=7 {
@@ -501,7 +520,10 @@ async fn cancelling_from_the_message_is_business_initiated_and_refunds() {
     let cancelled = t.reload(s.a15.id).await;
     assert_eq!(cancelled.status, BookingStatus::Cancelled);
     assert_eq!(cancelled.cancel_initiated_by.as_deref(), Some("business"));
-    assert_eq!(cancelled.cancel_code.as_deref(), Some("resource_unavailable"));
+    assert_eq!(
+        cancelled.cancel_code.as_deref(),
+        Some("resource_unavailable")
+    );
     assert_eq!(t.refunds.amounts(), [20_000]);
     assert_eq!(open_conflicts(&t, s.a15.id).await, 0);
 }
@@ -532,7 +554,10 @@ async fn the_cancel_link_of_the_message_refunds_the_deposit() {
 async fn a_cancelled_leave_clears_the_conflicts_it_caused() {
     let t = boot().await;
     let s = scene(&t).await;
-    t.state().emit(leave(512, "annual", DAY, DAY)).await.unwrap();
+    t.state()
+        .emit(leave(512, "annual", DAY, DAY))
+        .await
+        .unwrap();
     assert!(t.reload(s.a11.id).await.conflict_block);
 
     t.state()
@@ -552,7 +577,13 @@ async fn a_cancelled_leave_clears_the_conflicts_it_caused() {
         assert_eq!(back.status, BookingStatus::Booked);
         assert_eq!(open_conflicts(&t, booking.id).await, 0);
     }
-    assert!(AvailabilityBlock::query().get(t.db()).await.unwrap().is_empty());
+    assert!(
+        AvailabilityBlock::query()
+            .get(t.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     // The time can be booked again.
     t.book_for(PATIENT, &s.service, &[&s.a], dubai(DAY, 16, 0))
         .await;
@@ -584,7 +615,10 @@ async fn manual_blocks_flag_and_each_clears_only_its_own_conflicts() {
 
     let first = AvailabilityBlock::query()
         .order_by(AvailabilityBlock::ID)
-        .first(t.db()).await.unwrap().unwrap();
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(first.source, "manual");
     assert_eq!(first.starts_at, dubai(DAY, 10, 30));
     assert_eq!(first.ends_at, dubai(NEXT, 0, 0), "the rest of the day");
@@ -612,7 +646,10 @@ async fn manual_blocks_flag_and_each_clears_only_its_own_conflicts() {
 
     t.app
         .htmx()
-        .post(&format!("/scheduling/blocks/{}/remove", first.id), &[("go", "1")])
+        .post(
+            &format!("/scheduling/blocks/{}/remove", first.id),
+            &[("go", "1")],
+        )
         .await
         .assert_status(303);
     assert!(!t.reload(s.a11.id).await.conflict_block);
@@ -623,10 +660,16 @@ async fn manual_blocks_flag_and_each_clears_only_its_own_conflicts() {
 
     let second = AvailabilityBlock::query()
         .order_by(AvailabilityBlock::ID)
-        .first(t.db()).await.unwrap().unwrap();
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     t.app
         .htmx()
-        .post(&format!("/scheduling/blocks/{}/remove", second.id), &[("go", "1")])
+        .post(
+            &format!("/scheduling/blocks/{}/remove", second.id),
+            &[("go", "1")],
+        )
         .await
         .assert_status(303);
     assert!(!t.reload(s.a12.id).await.has_conflict());
@@ -700,7 +743,10 @@ async fn blocks_from_an_availability_source_are_added_once() {
 
     assert_eq!(flagged.iter().map(|b| b.id).collect::<Vec<_>>(), [s.a11.id]);
     assert!(again.is_empty());
-    assert_eq!(AvailabilityBlock::query().get(t.db()).await.unwrap().len(), 1);
+    assert_eq!(
+        AvailabilityBlock::query().get(t.db()).await.unwrap().len(),
+        1
+    );
 }
 
 /// The conflict list shows the conflicted bookings; a user who may only look
@@ -745,7 +791,10 @@ async fn the_list_shows_conflicts_and_resolving_needs_the_manage_permission() {
     assert_eq!(t.reload(s.a11.id).await.status, BookingStatus::Booked);
     t.app
         .htmx()
-        .post("/scheduling/blocks", &[("resource", "1"), ("reason", "sick")])
+        .post(
+            "/scheduling/blocks",
+            &[("resource", "1"), ("reason", "sick")],
+        )
         .await
         .assert_forbidden();
 }

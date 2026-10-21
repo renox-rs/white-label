@@ -181,8 +181,7 @@ pub async fn affected(state: &AppState, event: &QualificationExpired) -> Result<
     let mut seen = BTreeSet::new();
     let mut found = Vec::new();
     for work in &event.affected {
-        if work.record.subject_type != BOOKING_SUBJECT_TYPE
-            || !seen.insert(work.record.subject_id)
+        if work.record.subject_type != BOOKING_SUBJECT_TYPE || !seen.insert(work.record.subject_id)
         {
             continue;
         }

@@ -215,7 +215,10 @@ pub(crate) async fn changes(
                 .map(|slot| dubai_text(*slot))
                 .collect::<Vec<_>>()
                 .join(", ");
-            lines.push(english("wl_scheduling.notices.line_slots", &[("slots", &list)]));
+            lines.push(english(
+                "wl_scheduling.notices.line_slots",
+                &[("slots", &list)],
+            ));
         }
         lines.push(english(
             "wl_scheduling.notices.line_links",

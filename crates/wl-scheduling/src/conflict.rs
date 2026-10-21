@@ -44,8 +44,8 @@ use crate::booking::{Booking, BookingResource, BookingStatus, default_initiator}
 use crate::config::config_of;
 use crate::notices::{self, ChangeEntry};
 use crate::refusal::Refusal;
-use crate::rules;
 use crate::resource::{AvailabilityBlock, Resource, ServiceType, eligible_resources};
+use crate::rules;
 use crate::service::{self, Actor, CancelRequest};
 use crate::slots;
 
@@ -55,11 +55,7 @@ pub const BLOCK_REASON_CODE: &str = "resource_unavailable";
 
 /// Why one booking is in conflict.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(
-    table = "wl_scheduling_conflicts",
-    index(booking_id),
-    index(block_id)
-)]
+#[model(table = "wl_scheduling_conflicts", index(booking_id), index(block_id))]
 pub struct Conflict {
     /// The primary key.
     pub id: i64,
@@ -253,7 +249,8 @@ pub async fn raise_for_block(
     block: &AvailabilityBlock,
     at: DateTime,
 ) -> Result<Vec<Booking>> {
-    let affected = overlapping(&state.db, block.resource_id, block.starts_at, block.ends_at).await?;
+    let affected =
+        overlapping(&state.db, block.resource_id, block.starts_at, block.ends_at).await?;
     raise(
         state,
         block.resource_id,
@@ -281,7 +278,10 @@ pub async fn add_block(
     if block.ends_at <= block.starts_at {
         return Err(Refusal::invalid("wl_scheduling.problem.block_period"));
     }
-    if Resource::find(&state.db, block.resource_id).await?.is_none() {
+    if Resource::find(&state.db, block.resource_id)
+        .await?
+        .is_none()
+    {
         return Err(Refusal::invalid("wl_scheduling.problem.unknown_resource"));
     }
     let existing = match &block.source_ref {
@@ -404,9 +404,9 @@ pub async fn leave_approved(
             AvailabilityBlock::manual(resource.id, starts_at, ends_at, &event.leave_type);
         block.source = "leave".to_owned();
         block.source_ref = Some(event.request.to_string());
-        let (_, newly) = add_block(state, block, at)
-            .await
-            .map_err(|refusal| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, refusal_text(&refusal)))?;
+        let (_, newly) = add_block(state, block, at).await.map_err(|refusal| {
+            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, refusal_text(&refusal))
+        })?;
         flagged.extend(newly);
     }
     Ok(flagged)
@@ -462,9 +462,9 @@ pub async fn pull_blocks(
             AvailabilityBlock::manual(resource.id, found.starts_at, found.ends_at, &found.reason);
         block.source = found.source;
         block.source_ref = Some(found.reference);
-        let (_, newly) = add_block(state, block, at)
-            .await
-            .map_err(|refusal| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, refusal_text(&refusal)))?;
+        let (_, newly) = add_block(state, block, at).await.map_err(|refusal| {
+            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, refusal_text(&refusal))
+        })?;
         flagged.extend(newly);
     }
     Ok(flagged)
@@ -738,10 +738,9 @@ pub async fn bulk_resolve(
                 match outcome {
                     Ok(_) => result.done.push(booking.id),
                     Err(refusal) => {
-                        let now_cancelled = Booking::find_or_404(&state.db, booking.id)
-                            .await?
-                            .status
-                            == BookingStatus::Cancelled;
+                        let now_cancelled =
+                            Booking::find_or_404(&state.db, booking.id).await?.status
+                                == BookingStatus::Cancelled;
                         if now_cancelled {
                             // The cancellation stands; the deposit refund is
                             // asked again by `deposit::settle`.

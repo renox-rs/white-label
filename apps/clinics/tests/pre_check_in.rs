@@ -5,8 +5,8 @@ mod support;
 
 use wl_kernel::PartyId;
 
-use clinics::policies::{self, NewPolicy};
 use clinics::appointments;
+use clinics::policies::{self, NewPolicy};
 use support::{PATIENT, at, boot, day};
 
 /// The list shows the appointments from today on: an insured one waits for its
@@ -51,8 +51,14 @@ async fn the_list_shows_where_the_cover_of_each_appointment_stands() {
         .assert_see("Waiting for the coverage outcome")
         .assert_see("Not insured")
         .assert_see("Insured");
-    assert!(page.text().contains(&format!("/clinics/appointments/{}", waiting.id)));
-    assert!(page.text().contains(&format!("/clinics/appointments/{}", plain.id)));
+    assert!(
+        page.text()
+            .contains(&format!("/clinics/appointments/{}", waiting.id))
+    );
+    assert!(
+        page.text()
+            .contains(&format!("/clinics/appointments/{}", plain.id))
+    );
 
     let viewer = t.viewer().await;
     t.app.acting_as(&viewer);

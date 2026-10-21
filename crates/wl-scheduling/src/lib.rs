@@ -260,30 +260,27 @@ impl Module for WlScheduling {
         app.provide(self.config.clone());
         // A booking lies in the scope of its location (its branch), so that a
         // vertical can tell which branch a booking named by an event is at.
-        wl_kernel::scopes::register(
-            wl_kernel::scheduling::BOOKING_SUBJECT_TYPE,
-            |db, id| {
-                Box::pin(async move {
-                    use renox::auth::permissions::Scope;
-                    let Some(booking) = Booking::find(db, id).await? else {
-                        return Ok(Scope::global());
-                    };
-                    // The branch's own scope; a branch type with no resolver
-                    // is a scope of its own type and id.
-                    Ok(match rules::location_of(db, &booking).await? {
-                        Some(location) => {
-                            let registered = wl_kernel::scopes::scope_of(db, &location).await?;
-                            if registered.is_global() {
-                                Scope::new(&location.subject_type, location.subject_id)
-                            } else {
-                                registered
-                            }
+        wl_kernel::scopes::register(wl_kernel::scheduling::BOOKING_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                use renox::auth::permissions::Scope;
+                let Some(booking) = Booking::find(db, id).await? else {
+                    return Ok(Scope::global());
+                };
+                // The branch's own scope; a branch type with no resolver
+                // is a scope of its own type and id.
+                Ok(match rules::location_of(db, &booking).await? {
+                    Some(location) => {
+                        let registered = wl_kernel::scopes::scope_of(db, &location).await?;
+                        if registered.is_global() {
+                            Scope::new(&location.subject_type, location.subject_id)
+                        } else {
+                            registered
                         }
-                        None => Scope::global(),
-                    })
+                    }
+                    None => Scope::global(),
                 })
-            },
-        );
+            })
+        });
         // wl-payments asks whether a booking still waits for its money.
         wl_kernel::payments::provide_prepaid_subjects(app, prepaid::PrepaidBookings);
         // In the app group of the staff sidebar; the label is the app's

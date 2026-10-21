@@ -80,7 +80,10 @@ async fn scene() -> Scene {
 impl Scene {
     /// A booking of `service` on `date` at `hour`, insured with the policy.
     async fn insured(&self, service: &ServiceType, date: i64, hour: u32) -> Booking {
-        let booking = self.t.book(service, &self.doctor, at(day(date), hour)).await;
+        let booking = self
+            .t
+            .book(service, &self.doctor, at(day(date), hour))
+            .await;
         appointments::attach_policy(self.t.state(), booking.id, self.policy.id)
             .await
             .unwrap();
@@ -162,8 +165,15 @@ async fn a_used_up_authorisation_refuses_the_check_in_until_a_consent_is_signed(
 
     assert_refused(&s.check_in(&booking).await);
     assert_eq!(s.t.booking(booking.id).await.status, BookingStatus::Booked);
-    assert!(Visit::of_booking(s.t.db(), booking.id).await.unwrap().is_none());
-    let a1 = PriorAuthorisation::find_or_404(s.t.db(), a1.id).await.unwrap();
+    assert!(
+        Visit::of_booking(s.t.db(), booking.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let a1 = PriorAuthorisation::find_or_404(s.t.db(), a1.id)
+        .await
+        .unwrap();
     assert_eq!((a1.status, a1.units_consumed), (AuthStatus::Used, 3));
 
     s.sign(&booking).await.assert_ok();
@@ -183,7 +193,12 @@ async fn a_used_up_authorisation_refuses_the_check_in_until_a_consent_is_signed(
             .units_consumed,
         3
     );
-    assert!(AuthorisationHold::of_visit(s.t.db(), visit.id).await.unwrap().is_empty());
+    assert!(
+        AuthorisationHold::of_visit(s.t.db(), visit.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// Done when 2: A1 valid until the day before the visit: refused the same way
@@ -218,7 +233,12 @@ async fn a_checked_in_visit_holds_the_unit_the_next_one_would_use() {
     s.eligible(&v2).await;
 
     s.check_in(&v1).await.assert_status(303);
-    assert_eq!(AuthorisationHold::held(s.t.db(), a1.id, None).await.unwrap(), 1);
+    assert_eq!(
+        AuthorisationHold::held(s.t.db(), a1.id, None)
+            .await
+            .unwrap(),
+        1
+    );
     assert_refused(&s.check_in(&v2).await);
     let appointment = clinics::Appointment::of_booking(s.t.db(), v2.id)
         .await
@@ -231,7 +251,10 @@ async fn a_checked_in_visit_holds_the_unit_the_next_one_would_use() {
     assert_eq!((plan[0].covered(), plan[0].self_pay), (0, 1));
     // Nothing was consumed.
     assert_eq!(
-        PriorAuthorisation::find_or_404(s.t.db(), a1.id).await.unwrap().units_left(),
+        PriorAuthorisation::find_or_404(s.t.db(), a1.id)
+            .await
+            .unwrap()
+            .units_left(),
         1
     );
 
@@ -242,7 +265,12 @@ async fn a_checked_in_visit_holds_the_unit_the_next_one_would_use() {
     service::complete(s.t.state(), v1.id, Actor::staff(s.rita.id), at(day(1), 14))
         .await
         .unwrap();
-    assert_eq!(AuthorisationHold::held(s.t.db(), a1.id, None).await.unwrap(), 0);
+    assert_eq!(
+        AuthorisationHold::held(s.t.db(), a1.id, None)
+            .await
+            .unwrap(),
+        0
+    );
     s.check_in(&v2).await.assert_status(303);
 }
 
@@ -266,7 +294,9 @@ async fn units_above_the_units_left_go_self_pay_with_consent() {
     s.check_in(&booking).await.assert_status(303);
 
     let visit = s.visit(&booking).await;
-    let holds = AuthorisationHold::of_visit(s.t.db(), visit.id).await.unwrap();
+    let holds = AuthorisationHold::of_visit(s.t.db(), visit.id)
+        .await
+        .unwrap();
     assert_eq!(holds.len(), 1);
     assert_eq!((holds[0].authorisation_id, holds[0].units), (a1.id, 2));
     assert_eq!(holds[0].service_code, "procedure");
@@ -321,7 +351,12 @@ async fn a_reschedule_asks_the_billing_coordinator_for_a_new_authorisation() {
         .await
         .unwrap();
     let booking = s.insured(&s.procedure, 1, 9).await;
-    assert!(AppointmentFlag::open_of(s.t.db(), booking.id).await.unwrap().is_empty());
+    assert!(
+        AppointmentFlag::open_of(s.t.db(), booking.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     authorisations::require_for(s.t.state(), PAYER, "procedure")
         .await
         .unwrap();
@@ -339,8 +374,14 @@ async fn a_reschedule_asks_the_billing_coordinator_for_a_new_authorisation() {
     let tasks = s.t.tasks.with_key("clinics.prior_auth_needed:");
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].assignee, Some(Assignee::user(s.bea.id)));
-    assert!(tasks[0].title.contains("Request a prior authorisation"), "{}", tasks[0].title);
-    let flags = AppointmentFlag::open_of(s.t.db(), booking.id).await.unwrap();
+    assert!(
+        tasks[0].title.contains("Request a prior authorisation"),
+        "{}",
+        tasks[0].title
+    );
+    let flags = AppointmentFlag::open_of(s.t.db(), booking.id)
+        .await
+        .unwrap();
     assert_eq!(flags.len(), 1);
     assert_eq!(flags[0].origin, "rescheduled");
 }

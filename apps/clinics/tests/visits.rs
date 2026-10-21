@@ -29,7 +29,12 @@ async fn the_check_in_opens_the_visit() {
     let doctor = t.practitioner("Dr A", 61, None).await;
     let service = t.consultation(&[&doctor]).await;
     let booking = t.book(&service, &doctor, at(day(1), 9)).await;
-    assert!(Visit::of_booking(t.db(), booking.id).await.unwrap().is_none());
+    assert!(
+        Visit::of_booking(t.db(), booking.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     service::check_in(t.state(), booking.id, Actor::staff(1), now())
         .await
@@ -66,14 +71,20 @@ async fn the_visit_follows_start_and_complete() {
     service::start(t.state(), booking.id, Actor::staff(1), now())
         .await
         .expect("the service starts");
-    let started = Visit::of_booking(t.db(), booking.id).await.unwrap().unwrap();
+    let started = Visit::of_booking(t.db(), booking.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(started.status, VisitStatus::InProgress);
     assert!(started.started_at.is_some());
 
     service::complete(t.state(), booking.id, Actor::staff(1), at(day(1), 10))
         .await
         .expect("the service is complete");
-    let done = Visit::of_booking(t.db(), booking.id).await.unwrap().unwrap();
+    let done = Visit::of_booking(t.db(), booking.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(done.status, VisitStatus::Completed);
     assert!(done.ended_at.is_some());
     assert_eq!(
@@ -103,7 +114,12 @@ async fn a_cancellation_after_the_check_in_cancels_the_visit() {
     )
     .await
     .unwrap();
-    assert!(Visit::of_booking(t.db(), before.id).await.unwrap().is_none());
+    assert!(
+        Visit::of_booking(t.db(), before.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     let booking = t.book(&service, &doctor, at(day(1), 11)).await;
     service::check_in(t.state(), booking.id, Actor::staff(1), now())
@@ -119,7 +135,10 @@ async fn a_cancellation_after_the_check_in_cancels_the_visit() {
     .await
     .expect("staff cancel after the check-in");
 
-    let visit = Visit::of_booking(t.db(), booking.id).await.unwrap().unwrap();
+    let visit = Visit::of_booking(t.db(), booking.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(visit.status, VisitStatus::Cancelled);
     assert_eq!(visit.cancel_reason.as_deref(), Some("equipment_failure"));
     assert!(visit.ended_at.is_some());

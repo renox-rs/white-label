@@ -122,7 +122,12 @@ pub struct Guardians(Arc<Mutex<BTreeMap<i64, Vec<PartyId>>>>);
 impl Guardians {
     /// `guardian` is a guardian of the dependant `child`.
     pub fn set(&self, child: PartyId, guardian: PartyId) {
-        self.0.lock().unwrap().entry(child.0).or_default().push(guardian);
+        self.0
+            .lock()
+            .unwrap()
+            .entry(child.0)
+            .or_default()
+            .push(guardian);
     }
 }
 
@@ -396,7 +401,10 @@ impl Clinic {
             .htmx()
             .post(
                 &format!("/clinics/authorisations/{}/approve", created.id),
-                &[("reference", "A-1"), ("valid_until", until.to_string().as_str())],
+                &[
+                    ("reference", "A-1"),
+                    ("valid_until", until.to_string().as_str()),
+                ],
             )
             .await
             .assert_ok();
@@ -465,8 +473,7 @@ impl Clinic {
 
     /// Someone who may only look at the appointments.
     pub async fn viewer(&self) -> User {
-        self.user("Vera", &[wl_scheduling::permissions::VIEW])
-            .await
+        self.user("Vera", &[wl_scheduling::permissions::VIEW]).await
     }
 
     /// An active employee of the real `wl-hr`.
@@ -497,11 +504,10 @@ impl Clinic {
         branch: &Subject,
         until: Option<NaiveDate>,
     ) {
-        let mut licence =
-            wl_hr::qualification::NewQualification::new(employee.employee_id(), kind)
-                .role("practitioner")
-                .scope(branch.clone())
-                .number(&format!("{kind}-{}", employee.party_id));
+        let mut licence = wl_hr::qualification::NewQualification::new(employee.employee_id(), kind)
+            .role("practitioner")
+            .scope(branch.clone())
+            .number(&format!("{kind}-{}", employee.party_id));
         if let Some(until) = until {
             licence = licence.valid_to(until);
         }

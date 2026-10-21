@@ -112,10 +112,7 @@ async fn check_in_is_refused_until_the_booking_is_reassigned() {
         .post(&path(booking.id, "check-in"), &[("x", "y")])
         .await
         .assert_status(303);
-    assert_eq!(
-        t.reload(booking.id).await.status,
-        BookingStatus::CheckedIn
-    );
+    assert_eq!(t.reload(booking.id).await.status, BookingStatus::CheckedIn);
     assert_eq!(t.events.checked_in.all().len(), 1);
 }
 
@@ -151,10 +148,7 @@ async fn start_is_refused_after_the_check_in_and_the_hint_is_to_cancel_and_reboo
         .post(&path(booking.id, "start"), &[("x", "y")])
         .await
         .assert_status(422);
-    assert_eq!(
-        t.reload(booking.id).await.status,
-        BookingStatus::CheckedIn
-    );
+    assert_eq!(t.reload(booking.id).await.status, BookingStatus::CheckedIn);
 
     // Reassign is not available from `checked_in`.
     let reassigned = service::reassign(
@@ -180,7 +174,10 @@ async fn start_is_refused_after_the_check_in_and_the_hint_is_to_cancel_and_reboo
         .assert_status(303);
     let cancelled = t.reload(booking.id).await;
     assert_eq!(cancelled.status, BookingStatus::Cancelled);
-    assert_eq!(cancelled.cancel_code.as_deref(), Some("resource_ineligible"));
+    assert_eq!(
+        cancelled.cancel_code.as_deref(),
+        Some("resource_ineligible")
+    );
     assert_eq!(cancelled.cancel_initiated_by.as_deref(), Some("business"));
 }
 
@@ -214,7 +211,12 @@ async fn book_is_refused_after_the_expiry_and_made_before_it() {
         .assert_status(422);
     let refused = service::book(
         t.state(),
-        NewBooking::new(PATIENT, service.id, &[a.id], dubai(&day(24).to_string(), 10, 0)),
+        NewBooking::new(
+            PATIENT,
+            service.id,
+            &[a.id],
+            dubai(&day(24).to_string(), 10, 0),
+        ),
         Actor::staff(1),
         now(),
     )
@@ -252,8 +254,13 @@ async fn a_party_is_not_told_why() {
 
     let refused = service::book(
         t.state(),
-        NewBooking::new(PATIENT, service.id, &[a.id], dubai(&day(24).to_string(), 10, 0))
-            .source("portal"),
+        NewBooking::new(
+            PATIENT,
+            service.id,
+            &[a.id],
+            dubai(&day(24).to_string(), 10, 0),
+        )
+        .source("portal"),
         Actor::party(None),
         now(),
     )
@@ -271,7 +278,9 @@ async fn reschedule_is_refused_after_the_expiry() {
     let t = boot_hr().await;
     let (a, _b, service) = two_doctors(&t).await;
     let desk = t.front_desk().await;
-    let booking = t.booking(&service, &[&a], dubai(&day(10).to_string(), 10, 0)).await;
+    let booking = t
+        .booking(&service, &[&a], dubai(&day(10).to_string(), 10, 0))
+        .await;
     licence_until(&t, &a, day(19));
 
     t.app.acting_as(&desk);
@@ -297,10 +306,7 @@ async fn reschedule_is_refused_after_the_expiry() {
         )
         .await
         .assert_status(303);
-    assert_eq!(
-        dubai_date(t.reload(booking.id).await.starts_at),
-        day(18)
-    );
+    assert_eq!(dubai_date(t.reload(booking.id).await.starts_at), day(18));
 }
 
 /// Done when 4, `accept`: a request made while the licence was valid is
@@ -318,8 +324,13 @@ async fn accept_is_refused_after_the_expiry() {
         .await;
     let requested = service::request(
         t.state(),
-        NewBooking::new(PATIENT, service.id, &[a.id], dubai(&day(24).to_string(), 10, 0))
-            .source("portal"),
+        NewBooking::new(
+            PATIENT,
+            service.id,
+            &[a.id],
+            dubai(&day(24).to_string(), 10, 0),
+        )
+        .source("portal"),
         Actor::party(None),
         now(),
     )
@@ -378,7 +389,11 @@ async fn reassign_to_a_lapsing_resource_is_refused() {
     .await
     .expect("Dr B holds the licence on that day");
     assert_eq!(
-        t.reload(booking.id).await.resource_ids(t.db()).await.unwrap(),
+        t.reload(booking.id)
+            .await
+            .resource_ids(t.db())
+            .await
+            .unwrap(),
         vec![b.id]
     );
 }

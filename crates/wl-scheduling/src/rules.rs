@@ -197,15 +197,7 @@ pub async fn escalate(state: &AppState, booking_id: i64, at: DateTime) -> Result
         resource: None,
         slots: Vec::new(),
     };
-    notices::changes(
-        state,
-        booking.party(),
-        &[entry],
-        notices::CHANGED,
-        code,
-        at,
-    )
-    .await?;
+    notices::changes(state, booking.party(), &[entry], notices::CHANGED, code, at).await?;
     Ok(true)
 }
 

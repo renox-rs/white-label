@@ -51,7 +51,10 @@ async fn an_appointment_needing_an_authorisation_is_flagged_and_cleared_when_one
     let free = policy_with(&t, OTHER_PAYER, "M-2").await;
 
     let booking = t.book(&service, &doctor, at(day(5), 9)).await;
-    assert!(open(&t, booking.id).await.is_empty(), "no policy yet: self-pay");
+    assert!(
+        open(&t, booking.id).await.is_empty(),
+        "no policy yet: self-pay"
+    );
     appointments::attach_policy(t.state(), booking.id, policy.id)
         .await
         .unwrap();
@@ -61,7 +64,10 @@ async fn an_appointment_needing_an_authorisation_is_flagged_and_cleared_when_one
     assert_eq!(flags[0].origin, "policy_attached");
     let tasks = t.tasks.with_key("clinics.prior_auth_needed:");
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].source_key.as_deref(), Some(needed_key(booking.id).as_str()));
+    assert_eq!(
+        tasks[0].source_key.as_deref(),
+        Some(needed_key(booking.id).as_str())
+    );
     assert_eq!(tasks[0].assignee, Some(Assignee::user(bea.id)));
 
     // Checked again: one flag, one task.
@@ -99,7 +105,9 @@ async fn an_appointment_needing_an_authorisation_is_flagged_and_cleared_when_one
     // … one that covers the day clears the flag and closes the task.
     t.authorisation(&policy, "consultation", 2, day(10)).await;
     assert!(open(&t, booking.id).await.is_empty());
-    let all = AppointmentFlag::of_booking(t.db(), booking.id).await.unwrap();
+    let all = AppointmentFlag::of_booking(t.db(), booking.id)
+        .await
+        .unwrap();
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].clear_reason.as_deref(), Some("covered"));
     assert!(t.tasks.is_resolved(1), "the coordinator's task is closed");
@@ -140,7 +148,10 @@ async fn a_reschedule_checks_the_flag_for_the_new_day() {
         .post(&path, &[("starts_at", local_text(at(day(7), 9)).as_str())])
         .await
         .assert_status(303);
-    assert!(open(&t, booking.id).await.is_empty(), "covered again on day 7");
+    assert!(
+        open(&t, booking.id).await.is_empty(),
+        "covered again on day 7"
+    );
 }
 
 /// A cancelled appointment carries no flag and its task is closed.
@@ -171,7 +182,9 @@ async fn a_cancelled_appointment_loses_its_flag() {
         .await
         .assert_status(303);
     assert!(open(&t, booking.id).await.is_empty());
-    let all = AppointmentFlag::of_booking(t.db(), booking.id).await.unwrap();
+    let all = AppointmentFlag::of_booking(t.db(), booking.id)
+        .await
+        .unwrap();
     assert_eq!(all[0].clear_reason.as_deref(), Some("cancelled"));
     assert!(t.tasks.is_resolved(1));
 }

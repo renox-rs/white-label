@@ -28,7 +28,10 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.appointments.problem.other_patient",
         "This policy belongs to another patient.",
     ),
-    ("clinics.appointments.cancelled", "This appointment is cancelled."),
+    (
+        "clinics.appointments.cancelled",
+        "This appointment is cancelled.",
+    ),
     // The coverage outcome at check-in (CLN.ACL.15).
     ("clinics.history.system", "System"),
     ("clinics.appointments.list_title", "Appointments"),
@@ -39,7 +42,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.appointments.when", "When"),
     ("clinics.appointments.cover", "Cover"),
     ("clinics.appointments.empty", "No appointments from today"),
-    ("clinics.coverage.waiting", "Waiting for the coverage outcome"),
+    (
+        "clinics.coverage.waiting",
+        "Waiting for the coverage outcome",
+    ),
     ("clinics.coverage.not_insured", "Not insured"),
     ("clinics.coverage.policy", "Insurance policy"),
     ("clinics.coverage.attach_policy", "Book with a policy"),
@@ -57,7 +63,10 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.coverage.record_eligibility_description",
         "What the payer answered, through its portal or by phone, about this policy today. For a re-split, also record the other policy.",
     ),
-    ("clinics.coverage.eligibility_recorded", "Eligibility recorded."),
+    (
+        "clinics.coverage.eligibility_recorded",
+        "Eligibility recorded.",
+    ),
     ("clinics.coverage.result", "Result"),
     ("clinics.coverage.reference", "Payer reference"),
     ("clinics.coverage.note", "Note"),
@@ -65,14 +74,23 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.coverage.outcome_missing", "Not set"),
     ("clinics.coverage.outcome_none", "Not an insured visit"),
     ("clinics.coverage.outcome.insured", "Insured"),
-    ("clinics.coverage.outcome.re_split", "Re-split to another policy"),
+    (
+        "clinics.coverage.outcome.re_split",
+        "Re-split to another policy",
+    ),
     ("clinics.coverage.outcome.self_pay", "Self-pay"),
-    ("clinics.coverage.record_outcome", "Set the coverage outcome"),
+    (
+        "clinics.coverage.record_outcome",
+        "Set the coverage outcome",
+    ),
     (
         "clinics.coverage.record_outcome_description",
         "Insured, re-split to another valid policy, or self-pay with the patient's signed consent. Otherwise reschedule or cancel with the reason coverage not confirmed.",
     ),
-    ("clinics.coverage.outcome_recorded", "Coverage outcome recorded."),
+    (
+        "clinics.coverage.outcome_recorded",
+        "Coverage outcome recorded.",
+    ),
     ("clinics.coverage.resplit_policy", "Policy for a re-split"),
     ("clinics.coverage.split_policy", "Policy of the split"),
     ("clinics.coverage.check_in", "Check in"),
@@ -87,7 +105,10 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.coverage.change_to_insured_description",
         "The payer now confirms the cover. The signed self-pay consent stays on file, marked superseded. After the service starts the outcome is fixed.",
     ),
-    ("clinics.coverage.changed_to_insured", "The visit is insured."),
+    (
+        "clinics.coverage.changed_to_insured",
+        "The visit is insured.",
+    ),
     (
         "clinics.coverage.problem.checked_in",
         "The patient is already checked in; the coverage outcome can no longer be recorded here.",
@@ -116,7 +137,10 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.coverage.problem.services",
         "Services are written as code:units, for example laser:2, consultation:1; each at least one unit, none twice.",
     ),
-    ("clinics.coverage.problem.already", "The visit is already insured."),
+    (
+        "clinics.coverage.problem.already",
+        "The visit is already insured.",
+    ),
     // The self-pay consent.
     ("clinics.consent.title", "Self-pay consent"),
     ("clinics.consent.estimate", "Estimated price"),
@@ -130,7 +154,10 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.consent.more_services",
         "More service codes, comma separated",
     ),
-    ("clinics.consent.signed", "Consent signed; the visit is self-pay."),
+    (
+        "clinics.consent.signed",
+        "Consent signed; the visit is self-pay.",
+    ),
     ("clinics.consent.superseded", "superseded"),
     (
         "clinics.consent.problem.no_price",
@@ -193,7 +220,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("clinics.authorisation.number", "Number"),
     ("clinics.authorisation.details", "Authorisation"),
-    ("clinics.authorisation.services", "Service codes, comma separated"),
+    (
+        "clinics.authorisation.services",
+        "Service codes, comma separated",
+    ),
     ("clinics.authorisation.units", "Units left"),
     ("clinics.authorisation.of", "of"),
     ("clinics.authorisation.units_asked", "Units asked for"),
@@ -202,13 +232,19 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.authorisation.units_left", "Units left"),
     ("clinics.authorisation.reference", "Payer's reference"),
     ("clinics.authorisation.valid_until", "Valid until"),
-    ("clinics.authorisation.denial_reason", "Reason the payer gave"),
+    (
+        "clinics.authorisation.denial_reason",
+        "Reason the payer gave",
+    ),
     ("clinics.authorisation.empty", "No prior authorisations yet"),
     ("clinics.authorisation.created", "Authorisation prepared."),
     ("clinics.authorisation.status.draft", "Draft"),
     ("clinics.authorisation.status.requested", "Requested"),
     ("clinics.authorisation.status.approved", "Approved"),
-    ("clinics.authorisation.status.partially_approved", "Partially approved"),
+    (
+        "clinics.authorisation.status.partially_approved",
+        "Partially approved",
+    ),
     ("clinics.authorisation.status.denied", "Denied"),
     ("clinics.authorisation.status.used", "Used"),
     ("clinics.authorisation.status.expired", "Expired"),
@@ -225,7 +261,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The payer approved the units asked for: its reference and the last day it is valid.",
     ),
     ("clinics.authorisation.approved", "Authorisation approved."),
-    ("clinics.authorisation.approve_partially", "Approve partially"),
+    (
+        "clinics.authorisation.approve_partially",
+        "Approve partially",
+    ),
     (
         "clinics.authorisation.approve_partially_description",
         "The payer approved fewer units than were asked for.",
@@ -245,12 +284,18 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.authorisation.cancel_message",
         "The authorisation is no longer needed.",
     ),
-    ("clinics.authorisation.cancelled", "Authorisation cancelled."),
+    (
+        "clinics.authorisation.cancelled",
+        "Authorisation cancelled.",
+    ),
     (
         "clinics.authorisation.required_title",
         "Services that need a prior authorisation",
     ),
-    ("clinics.authorisation.required_new", "Service that needs one"),
+    (
+        "clinics.authorisation.required_new",
+        "Service that needs one",
+    ),
     (
         "clinics.authorisation.required_description",
         "A service on the payer's list is checked in only with a valid authorisation that has units left, or as self-pay with consent.",
@@ -261,9 +306,18 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.authorisation.required_remove_message",
         "The payer no longer asks for an authorisation for this service.",
     ),
-    ("clinics.authorisation.required_empty", "No service needs an authorisation"),
-    ("clinics.authorisation.required_added", "Service added to the list."),
-    ("clinics.authorisation.required_removed", "Service removed from the list."),
+    (
+        "clinics.authorisation.required_empty",
+        "No service needs an authorisation",
+    ),
+    (
+        "clinics.authorisation.required_added",
+        "Service added to the list.",
+    ),
+    (
+        "clinics.authorisation.required_removed",
+        "Service removed from the list.",
+    ),
     (
         "clinics.authorisation.problem.services",
         "Name the services and the units before the request is sent.",
@@ -320,13 +374,22 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.authorisation.line_short",
         "Prior authorisation: :service, :covered of :units units covered; :self_pay go self-pay with the patient's consent, or reschedule while a new authorisation is requested.",
     ),
-    ("clinics.authorisation.services_action", "Services and units"),
+    (
+        "clinics.authorisation.services_action",
+        "Services and units",
+    ),
     (
         "clinics.authorisation.services_description",
         "The services the visit will use and the units of each, for example laser:2, consultation:1. A service that needs a prior authorisation is checked against the units left.",
     ),
-    ("clinics.authorisation.services_field", "Services (code:units)"),
-    ("clinics.authorisation.services_recorded", "Services recorded."),
+    (
+        "clinics.authorisation.services_field",
+        "Services (code:units)",
+    ),
+    (
+        "clinics.authorisation.services_recorded",
+        "Services recorded.",
+    ),
     (
         "clinics.authorisation.consent_action",
         "Self-pay consent for the uncovered services",
@@ -361,10 +424,7 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.flags.needed_task",
         "Request a prior authorisation for :service on :date",
     ),
-    (
-        "clinics.flags.cause_denied",
-        "was denied",
-    ),
+    ("clinics.flags.cause_denied", "was denied"),
     ("clinics.flags.cause_used", "is used up"),
     ("clinics.flags.cause_expired", "has ended"),
     ("clinics.flags.cause_look_ahead", "ends in three days"),
@@ -376,7 +436,10 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.flags.stopped_task",
         "Request a new prior authorisation: :number :cause",
     ),
-    ("clinics.cards.subject", "Please send us your new insurance card"),
+    (
+        "clinics.cards.subject",
+        "Please send us your new insurance card",
+    ),
     (
         "clinics.cards.body",
         "Your insurance policy or card will not be valid on the day of your appointment at {{ clinic }} on {{ date }} at {{ time }}. Please upload your new insurance card here: {{ link }}",

@@ -18,9 +18,6 @@ use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, Validity,
     provide_guard,
 };
-use wl_kernel::tickets::{
-    OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
-};
 use wl_kernel::notify::{
     self, MessageId, NotificationTypeDef, Notifier, NotifyChannel, NotifyFuture, NotifyRequest,
     provide_notifier,
@@ -38,6 +35,9 @@ use wl_kernel::scheduling::{
 };
 use wl_kernel::scheduling::{
     BookingId, SchedulingFuture, WorkDone, WorkDoneStatus, provide_work_done_status,
+};
+use wl_kernel::tickets::{
+    OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
 use wl_kernel::{PartyId, Subject};
 use wl_scheduling::permissions as perm;
@@ -866,20 +866,13 @@ impl Booked {
     /// [`LICENCE`] for the role `practitioner` at [`branch`], whose document
     /// is valid through `until` (for ever when `None`), and a person resource
     /// at that branch open every day of the week.
-    pub async fn practitioner(
-        &self,
-        name: &str,
-        party: i64,
-        until: Option<NaiveDate>,
-    ) -> Resource {
+    pub async fn practitioner(&self, name: &str, party: i64, until: Option<NaiveDate>) -> Resource {
         let employee = self.employee(party).await;
-        let mut licence = wl_hr::qualification::NewQualification::new(
-            employee.employee_id(),
-            LICENCE,
-        )
-        .role("practitioner")
-        .scope(branch())
-        .number(&format!("DHA-{party}"));
+        let mut licence =
+            wl_hr::qualification::NewQualification::new(employee.employee_id(), LICENCE)
+                .role("practitioner")
+                .scope(branch())
+                .number(&format!("DHA-{party}"));
         if let Some(until) = until {
             licence = licence.valid_to(until);
         }

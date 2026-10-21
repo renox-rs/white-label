@@ -26,8 +26,8 @@ use crate::appointment::Appointment;
 use crate::appointments;
 use crate::auth_check;
 use crate::consent::SelfPayConsent;
-use crate::flags::AppointmentFlag;
 use crate::coverage::{self, Choice, CoverageOutcome, EligibilityInput, PendingCheckIn};
+use crate::flags::AppointmentFlag;
 use crate::money_text;
 use crate::permissions;
 use crate::policy::{EligibilityCheck, InsurancePolicy};
@@ -73,7 +73,11 @@ pub(crate) fn policy_label(lang: &Lang, policy: &InsurancePolicy) -> String {
 }
 
 /// The labels of the open flags of booking `booking`, in the page's language.
-pub(crate) async fn flag_labels(state: &AppState, lang: &Lang, booking: i64) -> Result<Vec<String>> {
+pub(crate) async fn flag_labels(
+    state: &AppState,
+    lang: &Lang,
+    booking: i64,
+) -> Result<Vec<String>> {
     let open = AppointmentFlag::open_of(&state.db, booking).await?;
     Ok(open
         .iter()
@@ -244,24 +248,22 @@ async fn show(
     let visit = Visit::of_booking(&state.db, booking).await?;
     let none = text(&lang, "none");
     let (eligibility, outcome, consent_id) = match (&visit, &pending) {
-        (Some(v), _) => (
-            v.eligibility_check_id,
-            v.coverage_outcome,
-            v.consent_id,
-        ),
+        (Some(v), _) => (v.eligibility_check_id, v.coverage_outcome, v.consent_id),
         (None, Some(p)) => (p.eligibility_check_id, p.outcome, p.consent_id),
         (None, None) => (None, None, None),
     };
     let eligibility_text = match eligibility {
         Some(id) => match EligibilityCheck::find(&state.db, id).await? {
-            Some(check) => text(
-                &lang,
-                if check.positive {
-                    "coverage.eligibility_positive"
-                } else {
-                    "coverage.eligibility_negative"
-                },
-            ) + &format!(" ({})", check.checked_on),
+            Some(check) => {
+                text(
+                    &lang,
+                    if check.positive {
+                        "coverage.eligibility_positive"
+                    } else {
+                        "coverage.eligibility_negative"
+                    },
+                ) + &format!(" ({})", check.checked_on)
+            }
             None => none.clone(),
         },
         None => text(&lang, "coverage.eligibility_missing"),
@@ -270,21 +272,20 @@ async fn show(
         Some(id) => SelfPayConsent::find(&state.db, id).await?,
         None => None,
     };
-    let (auth_lines, needs_consent) = if visit.is_none()
-        && appointment.is_insured()
-        && !appointment.is_cancelled()
-    {
-        let needs = auth_check::plan(&state, &appointment, pending.as_ref()).await?;
-        let short = auth_check::shortfalls(&needs);
-        let unsigned = !short.is_empty() && !auth_check::consented(&state, booking, &short).await?;
-        let lines = needs
-            .iter()
-            .map(|need| auth_line(&lang, need))
-            .collect::<Vec<_>>();
-        (lines, unsigned)
-    } else {
-        (Vec::new(), false)
-    };
+    let (auth_lines, needs_consent) =
+        if visit.is_none() && appointment.is_insured() && !appointment.is_cancelled() {
+            let needs = auth_check::plan(&state, &appointment, pending.as_ref()).await?;
+            let short = auth_check::shortfalls(&needs);
+            let unsigned =
+                !short.is_empty() && !auth_check::consented(&state, booking, &short).await?;
+            let lines = needs
+                .iter()
+                .map(|need| auth_line(&lang, need))
+                .collect::<Vec<_>>();
+            (lines, unsigned)
+        } else {
+            (Vec::new(), false)
+        };
     let services_text = auth_check::services_of(&appointment, pending.as_ref())
         .iter()
         .map(|s| format!("{}:{}", s.code, s.units))
@@ -353,8 +354,14 @@ async fn show(
             .collect(),
         policy_selected: selected,
         result_options: vec![
-            ["positive".to_owned(), text(&lang, "coverage.eligibility_positive")],
-            ["negative".to_owned(), text(&lang, "coverage.eligibility_negative")],
+            [
+                "positive".to_owned(),
+                text(&lang, "coverage.eligibility_positive"),
+            ],
+            [
+                "negative".to_owned(),
+                text(&lang, "coverage.eligibility_negative"),
+            ],
         ],
         outcome_options: CoverageOutcome::ALL
             .iter()
@@ -464,9 +471,9 @@ async fn outcome(
     require(&user, permissions::COVERAGE_RECORD)?;
     let choice = match form.outcome.trim() {
         "insured" => Choice::Insured,
-        "re_split" => Choice::ReSplit(
-            parse_id(&form.policy).ok_or_else(|| invalid("policy: 1, 2, 3 ..."))?,
-        ),
+        "re_split" => {
+            Choice::ReSplit(parse_id(&form.policy).ok_or_else(|| invalid("policy: 1, 2, 3 ..."))?)
+        }
         "self_pay" => Choice::SelfPay,
         _ => return Err(invalid("outcome: insured, re_split, self_pay")),
     };

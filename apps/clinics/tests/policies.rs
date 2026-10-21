@@ -42,7 +42,11 @@ async fn a_policy_is_recorded_and_listed() {
         .await
         .assert_ok();
 
-    let policy = InsurancePolicy::query().first(t.db()).await.unwrap().unwrap();
+    let policy = InsurancePolicy::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(policy.patient_party_id, 70);
     assert_eq!(policy.payer_party_id, 900);
     assert_eq!(policy.plan, "Gold Plus");
@@ -71,7 +75,13 @@ async fn a_policy_without_plan_member_or_with_bad_dates_is_refused() {
     ] {
         assert!(policies::create(t.state(), None, new).await.is_err());
     }
-    assert!(InsurancePolicy::query().first(t.db()).await.unwrap().is_none());
+    assert!(
+        InsurancePolicy::query()
+            .first(t.db())
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 /// Eligibility is recorded per day: the latest result of the day is the one
@@ -100,17 +110,10 @@ async fn eligibility_is_recorded_per_day() {
     .unwrap();
     assert!(!negative.positive);
     assert_eq!(negative.reference.as_deref(), Some("REF-1"));
-    let positive = policies::record_eligibility(
-        t.state(),
-        Some(1),
-        policy.id,
-        true,
-        None,
-        Some("  "),
-        now(),
-    )
-    .await
-    .unwrap();
+    let positive =
+        policies::record_eligibility(t.state(), Some(1), policy.id, true, None, Some("  "), now())
+            .await
+            .unwrap();
     assert_eq!(positive.note, None);
 
     let today = day(0);
@@ -151,9 +154,11 @@ async fn an_appointment_takes_the_policy_of_its_patient() {
     .await
     .unwrap();
 
-    assert!(appointments::attach_policy(t.state(), booking.id, other.id)
-        .await
-        .is_err());
+    assert!(
+        appointments::attach_policy(t.state(), booking.id, other.id)
+            .await
+            .is_err()
+    );
     let insured = appointments::attach_policy(t.state(), booking.id, mine.id)
         .await
         .expect("the patient's own policy");
@@ -174,9 +179,11 @@ async fn an_appointment_takes_the_policy_of_its_patient() {
     service::check_in(t.state(), booking.id, Actor::staff(1), now())
         .await
         .unwrap();
-    assert!(appointments::attach_policy(t.state(), booking.id, mine.id)
-        .await
-        .is_err());
+    assert!(
+        appointments::attach_policy(t.state(), booking.id, mine.id)
+            .await
+            .is_err()
+    );
     let visit = clinics::Visit::of_booking(t.db(), booking.id)
         .await
         .unwrap()
@@ -194,7 +201,9 @@ async fn an_appointment_takes_the_policy_of_its_patient() {
     )
     .await
     .unwrap();
-    assert!(appointments::attach_policy(t.state(), cancelled.id, mine.id)
-        .await
-        .is_err());
+    assert!(
+        appointments::attach_policy(t.state(), cancelled.id, mine.id)
+            .await
+            .is_err()
+    );
 }

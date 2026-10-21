@@ -94,7 +94,11 @@ pub fn amount_due(service: &ServiceType) -> i64 {
 
 /// Until when a self-booking made at `at` holds its slot while unpaid: the
 /// prepayment hold, and for a request not less than its request hold.
-pub fn hold_until(at: DateTime, config: &SchedulingConfig, request_hold: Option<DateTime>) -> DateTime {
+pub fn hold_until(
+    at: DateTime,
+    config: &SchedulingConfig,
+    request_hold: Option<DateTime>,
+) -> DateTime {
     let until = at + renox::chrono::TimeDelta::minutes(config.prepayment_hold_minutes);
     request_hold.map_or(until, |hold| hold.max(until))
 }
@@ -176,7 +180,14 @@ pub async fn cancel_unpaid(state: &AppState, id: i64, at: DateTime, tell: bool) 
     if !awaits_payment(&booking) {
         return Ok(false);
     }
-    match service::cancel(state, booking.id, CancelRequest::new(UNPAID), Actor::system(), at).await
+    match service::cancel(
+        state,
+        booking.id,
+        CancelRequest::new(UNPAID),
+        Actor::system(),
+        at,
+    )
+    .await
     {
         Ok(done) => {
             if tell {
@@ -184,9 +195,9 @@ pub async fn cancel_unpaid(state: &AppState, id: i64, at: DateTime, tell: bool) 
             }
             Ok(true)
         }
-        Err(Refusal::Transition(
-            TransitionError::NotFrom(_) | TransitionError::Conflict,
-        )) => Ok(false),
+        Err(Refusal::Transition(TransitionError::NotFrom(_) | TransitionError::Conflict)) => {
+            Ok(false)
+        }
         Err(other) => Err(Error::Status(
             StatusCode::UNPROCESSABLE_ENTITY,
             other.plain(),
@@ -305,9 +316,8 @@ pub async fn on_payment_received(
 /// The payment arrived in time: the booking no longer awaits it. A `booked`
 /// booking holds on its own; a `requested` one for the request hold time.
 async fn confirm_payment(state: &AppState, booking: &Booking, at: DateTime) -> Result<()> {
-    let hold: Option<DateTime> = (booking.status == BookingStatus::Requested).then(|| {
-        at + renox::chrono::TimeDelta::minutes(config_of(state).request_hold_minutes)
-    });
+    let hold: Option<DateTime> = (booking.status == BookingStatus::Requested)
+        .then(|| at + renox::chrono::TimeDelta::minutes(config_of(state).request_hold_minutes));
     Booking::query()
         .where_(Booking::ID.eq(booking.id))
         .where_(Booking::PAYMENT_PENDING.eq(true))
@@ -356,7 +366,10 @@ async fn refund_late(
         gateway_txn: None,
         reason: english("wl_scheduling.prepayment.refund_reason", &[]),
     };
-    match payment_recorder(state).request_refund(state, request, None).await {
+    match payment_recorder(state)
+        .request_refund(state, request, None)
+        .await
+    {
         Ok(refund) => {
             PrepaymentRefund::query()
                 .where_(PrepaymentRefund::PAYMENT_ID.eq(event.payment.0))
@@ -422,9 +435,7 @@ mod tests {
     use super::*;
 
     fn at(minute: u32) -> DateTime {
-        "2026-11-02T10:00:00Z"
-            .parse::<DateTime>()
-            .unwrap()
+        "2026-11-02T10:00:00Z".parse::<DateTime>().unwrap()
             + renox::chrono::TimeDelta::minutes(i64::from(minute))
     }
 

@@ -41,7 +41,8 @@ impl Scene {
     /// A policy of the patient valid through `valid_to`, its card through
     /// `card_to`.
     async fn policy(&self, valid_to: i64, card_to: Option<i64>) -> InsurancePolicy {
-        let mut new = NewPolicy::new(PATIENT, PAYER, "Gold", "M-1", day(-200)).valid_to(day(valid_to));
+        let mut new =
+            NewPolicy::new(PATIENT, PAYER, "Gold", "M-1", day(-200)).valid_to(day(valid_to));
         if let Some(card) = card_to {
             new = new.card_valid_to(day(card));
         }
@@ -56,7 +57,10 @@ impl Scene {
     /// Like [`insured`](Scene::insured) at `hour:00` (the doctor has one
     /// booking at a time).
     async fn insured_at(&self, date: i64, hour: u32, policy: &InsurancePolicy) -> Booking {
-        let booking = self.t.book(&self.service, &self.doctor, at(day(date), hour)).await;
+        let booking = self
+            .t
+            .book(&self.service, &self.doctor, at(day(date), hour))
+            .await;
         appointments::attach_policy(self.t.state(), booking.id, policy.id)
             .await
             .unwrap();
@@ -73,7 +77,9 @@ impl Scene {
     }
 
     async fn flags(&self, booking: &Booking) -> Vec<AppointmentFlag> {
-        AppointmentFlag::open_of(self.t.db(), booking.id).await.unwrap()
+        AppointmentFlag::open_of(self.t.db(), booking.id)
+            .await
+            .unwrap()
     }
 
     /// Staff accept a card valid through `date` for the policy.
@@ -107,7 +113,9 @@ async fn a_policy_that_ends_before_the_visit_is_asked_for_a_new_card() {
     let booking = s.insured(5, &policy).await;
     assert!(s.asked().is_empty(), "five days ahead: nothing yet");
 
-    let ran = card_requests::run_daily(s.t.state(), at(day(3), 2)).await.unwrap();
+    let ran = card_requests::run_daily(s.t.state(), at(day(3), 2))
+        .await
+        .unwrap();
     assert_eq!(ran, [booking.id]);
 
     let flags = s.flags(&booking).await;
@@ -115,12 +123,21 @@ async fn a_policy_that_ends_before_the_visit_is_asked_for_a_new_card() {
     assert_eq!(flags[0].cause, FlagCause::InsuranceCard);
     let asked = s.asked();
     assert_eq!(asked.len(), 1);
-    assert_eq!(asked[0].recipients, [NotifyRecipient::Party { id: PATIENT }]);
+    assert_eq!(
+        asked[0].recipients,
+        [NotifyRecipient::Party { id: PATIENT }]
+    );
     let kind = notification_type(CARD_UPLOAD_REQUEST).expect("the type is registered");
-    assert_eq!(kind.urgency, Urgency::Normal, "held for the quiet hours, never dropped");
+    assert_eq!(
+        kind.urgency,
+        Urgency::Normal,
+        "held for the quiet hours, never dropped"
+    );
 
     // The same day again: still one message and one flag.
-    let again = card_requests::run_daily(s.t.state(), at(day(3), 2)).await.unwrap();
+    let again = card_requests::run_daily(s.t.state(), at(day(3), 2))
+        .await
+        .unwrap();
     assert!(again.is_empty());
     assert_eq!(s.asked().len(), 1);
     assert_eq!(s.flags(&booking).await.len(), 1);
@@ -142,7 +159,9 @@ async fn an_expiring_card_is_asked_for_too() {
     let policy = s.policy(300, Some(4)).await;
     let booking = s.insured(5, &policy).await;
 
-    card_requests::run_daily(s.t.state(), at(day(3), 2)).await.unwrap();
+    card_requests::run_daily(s.t.state(), at(day(3), 2))
+        .await
+        .unwrap();
     assert_eq!(s.flags(&booking).await.len(), 1);
     assert_eq!(s.asked().len(), 1);
 }
@@ -158,19 +177,29 @@ async fn a_valid_cover_is_left_alone_and_the_message_names_no_service() {
     // A self-pay appointment: no policy, nothing asked.
     s.t.book(&s.service, &s.doctor, at(day(5), 11)).await;
     let bad = s.policy(3, None).await;
-    assert!(card_requests::run_daily(s.t.state(), at(day(3), 2)).await.unwrap().is_empty());
+    assert!(
+        card_requests::run_daily(s.t.state(), at(day(3), 2))
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(s.asked().is_empty());
 
     // An insured one that needs a card: the text.
     let booking = s.insured_at(5, 10, &bad).await;
-    card_requests::run_daily(s.t.state(), at(day(3), 2)).await.unwrap();
+    card_requests::run_daily(s.t.state(), at(day(3), 2))
+        .await
+        .unwrap();
     let asked = s.asked();
     assert_eq!(asked.len(), 1);
     let body = support::Messages::body(&asked[0]);
     assert!(body.contains("Palm Grove Clinic LLC"), "{body}");
     assert!(body.contains(&long(day(5))), "{body}");
     assert!(body.contains("10:00"), "{body}");
-    assert!(body.contains(&format!("/portal/link/{}/document_upload", PATIENT.0)), "{body}");
+    assert!(
+        body.contains(&format!("/portal/link/{}/document_upload", PATIENT.0)),
+        "{body}"
+    );
     assert!(!body.to_lowercase().contains("consultation"), "{body}");
     assert_eq!(s.flags(&booking).await.len(), 1);
 }
@@ -183,7 +212,9 @@ async fn only_a_card_that_staff_accept_and_that_covers_the_day_clears_the_flag()
     let s = scene().await;
     let policy = s.policy(3, None).await;
     let booking = s.insured(5, &policy).await;
-    card_requests::run_daily(s.t.state(), at(day(3), 2)).await.unwrap();
+    card_requests::run_daily(s.t.state(), at(day(3), 2))
+        .await
+        .unwrap();
     assert_eq!(s.flags(&booking).await.len(), 1);
 
     // The patient uploads: wl-documents takes it for review. Nothing clears.
@@ -198,7 +229,11 @@ async fn only_a_card_that_staff_accept_and_that_covers_the_day_clears_the_flag()
         })
         .await
         .unwrap();
-    assert_eq!(s.flags(&booking).await.len(), 1, "an upload alone does not clear it");
+    assert_eq!(
+        s.flags(&booking).await.len(),
+        1,
+        "an upload alone does not clear it"
+    );
 
     // A card valid to day 4 does not reach the day of the visit.
     s.accept(&policy, 4).await.assert_ok();
@@ -206,9 +241,13 @@ async fn only_a_card_that_staff_accept_and_that_covers_the_day_clears_the_flag()
     // One valid to next year does; the policy's own end moves with it.
     s.accept(&policy, 365).await.assert_ok();
     assert!(s.flags(&booking).await.is_empty());
-    let all = AppointmentFlag::of_booking(s.t.db(), booking.id).await.unwrap();
+    let all = AppointmentFlag::of_booking(s.t.db(), booking.id)
+        .await
+        .unwrap();
     assert_eq!(all[0].clear_reason.as_deref(), Some("card_accepted"));
-    let renewed = InsurancePolicy::find_or_404(s.t.db(), policy.id).await.unwrap();
+    let renewed = InsurancePolicy::find_or_404(s.t.db(), policy.id)
+        .await
+        .unwrap();
     assert_eq!(renewed.card_valid_to, Some(day(365)));
     assert_eq!(renewed.valid_to, Some(day(365)));
 
@@ -232,7 +271,9 @@ async fn the_document_desk_accepting_the_card_clears_the_flag() {
     let s = scene().await;
     let policy = s.policy(300, Some(4)).await;
     let booking = s.insured(5, &policy).await;
-    card_requests::run_daily(s.t.state(), at(day(3), 2)).await.unwrap();
+    card_requests::run_daily(s.t.state(), at(day(3), 2))
+        .await
+        .unwrap();
     assert_eq!(s.flags(&booking).await.len(), 1);
 
     let accepted = DocumentAccepted {
@@ -251,7 +292,9 @@ async fn the_document_desk_accepting_the_card_clears_the_flag() {
         expires_on: Some(day(10)),
     };
     s.t.state().emit(other).await.unwrap();
-    let kept = InsurancePolicy::find_or_404(s.t.db(), policy.id).await.unwrap();
+    let kept = InsurancePolicy::find_or_404(s.t.db(), policy.id)
+        .await
+        .unwrap();
     assert_eq!(kept.card_valid_to, Some(day(365)));
 }
 
@@ -267,7 +310,10 @@ async fn booking_rescheduling_cancelling_and_dependants() {
     let soon = s.insured(1, &policy).await;
     assert_eq!(s.asked().len(), 1);
     let flags = s.flags(&soon).await;
-    assert_eq!((flags.len(), flags[0].origin.as_str()), (1, "policy_attached"));
+    assert_eq!(
+        (flags.len(), flags[0].origin.as_str()),
+        (1, "policy_attached")
+    );
 
     // Cancelled: no flag.
     let rita = s.t.receptionist().await;
@@ -305,12 +351,17 @@ async fn booking_rescheduling_cancelling_and_dependants() {
     )
     .await
     .unwrap();
-    let child = s.t.book_for(PartyId(72), &s.service, &s.doctor, at(day(1), 15)).await;
+    let child =
+        s.t.book_for(PartyId(72), &s.service, &s.doctor, at(day(1), 15))
+            .await;
     appointments::attach_policy(s.t.state(), child.id, child_policy.id)
         .await
         .unwrap();
     let asked = s.asked();
     let last = asked.last().unwrap();
-    assert_eq!(last.recipients, [NotifyRecipient::Party { id: PartyId(80) }]);
+    assert_eq!(
+        last.recipients,
+        [NotifyRecipient::Party { id: PartyId(80) }]
+    );
     assert!(support::Messages::body(last).contains("/portal/link/80/document_upload"));
 }

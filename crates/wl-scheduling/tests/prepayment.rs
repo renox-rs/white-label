@@ -11,7 +11,7 @@ use std::time::Duration;
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
 use wl_kernel::PartyId;
-use wl_kernel::payments::{PaymentId, PaymentMethod, PaymentReceived, PaymentFailureKind};
+use wl_kernel::payments::{PaymentFailureKind, PaymentId, PaymentMethod, PaymentReceived};
 use wl_kernel::scheduling::Initiator;
 use wl_parties::Party;
 use wl_payments::Refund;
@@ -196,10 +196,7 @@ async fn a_late_payment_is_refunded_in_full_once_and_the_booking_stays_cancelled
     payment_link::expire_due(t.state(), link.expires_at)
         .await
         .unwrap();
-    assert_eq!(
-        t.reload(booking.id).await.status,
-        BookingStatus::Cancelled
-    );
+    assert_eq!(t.reload(booking.id).await.status, BookingStatus::Cancelled);
 
     let paid = online::gateway_succeeded(t.state(), &txn(&paying), 15_000)
         .await
@@ -273,7 +270,10 @@ async fn a_failed_payment_keeps_the_hold_and_a_retry_keeps_the_booking() {
     assert!(waiting.payment_pending, "still unpaid, still held");
     assert_eq!(waiting.hold_until, held);
     assert_eq!(
-        PaymentLink::find_or_404(t.db(), link.id).await.unwrap().status,
+        PaymentLink::find_or_404(t.db(), link.id)
+            .await
+            .unwrap()
+            .status,
         LinkStatus::Open,
         "the party may retry on the same link"
     );
@@ -318,7 +318,9 @@ async fn a_requested_unpaid_booking_is_cancelled_once_when_the_link_expires_firs
     let link = link_of(&t, &booking).await;
     let minute_15 = at + TimeDelta::minutes(15);
 
-    payment_link::expire_due(t.state(), minute_15).await.unwrap();
+    payment_link::expire_due(t.state(), minute_15)
+        .await
+        .unwrap();
     let swept = rules::run(t.state(), minute_15).await.unwrap();
 
     assert_eq!(swept.released, 0, "the second trigger finds it cancelled");
@@ -327,7 +329,10 @@ async fn a_requested_unpaid_booking_is_cancelled_once_when_the_link_expires_firs
     assert_eq!(t.events.released.all().len(), 1);
     assert_eq!(told(&t, "scheduling.booking_unpaid"), 1);
     assert_eq!(
-        PaymentLink::find_or_404(t.db(), link.id).await.unwrap().status,
+        PaymentLink::find_or_404(t.db(), link.id)
+            .await
+            .unwrap()
+            .status,
         LinkStatus::Expired
     );
 }
@@ -354,7 +359,9 @@ async fn a_requested_unpaid_booking_is_cancelled_once_when_the_rule_runs_first()
 
     let swept = rules::run(t.state(), minute_15).await.unwrap();
     assert_eq!(swept.released, 1);
-    payment_link::expire_due(t.state(), minute_15).await.unwrap();
+    payment_link::expire_due(t.state(), minute_15)
+        .await
+        .unwrap();
 
     let done = t.reload(booking.id).await;
     assert_eq!(done.status, BookingStatus::Cancelled);
@@ -362,7 +369,10 @@ async fn a_requested_unpaid_booking_is_cancelled_once_when_the_rule_runs_first()
     assert_eq!(t.events.cancelled.all().len(), 1, "one BookingCancelled");
     assert_eq!(told(&t, "scheduling.booking_unpaid"), 1);
     // A later run of the rule has nothing left to release.
-    assert_eq!(prepayment::release_due(t.state(), minute_15).await.unwrap(), 0);
+    assert_eq!(
+        prepayment::release_due(t.state(), minute_15).await.unwrap(),
+        0
+    );
 }
 
 /// Staff who accept an unpaid request keep the unpaid hold: the booking is
@@ -475,6 +485,11 @@ async fn the_portal_route_books_with_the_payment_page() {
     let all = Booking::all(t.db()).await.unwrap();
     assert_eq!(all.len(), 1);
     assert!(all[0].payment_pending);
-    assert!(all[0].prepayment_path.as_deref().is_some_and(|p| p.starts_with("/pay/")));
+    assert!(
+        all[0]
+            .prepayment_path
+            .as_deref()
+            .is_some_and(|p| p.starts_with("/pay/"))
+    );
     assert_eq!(t.gateway.checkouts().len(), 0, "no payment started yet");
 }

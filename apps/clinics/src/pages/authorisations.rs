@@ -43,7 +43,10 @@ pub fn routes() -> Routes {
         .name("clinics.authorisation_request")
         .post("/clinics/authorisations/{id}/approve", approve)
         .name("clinics.authorisation_approve")
-        .post("/clinics/authorisations/{id}/approve-partially", approve_partially)
+        .post(
+            "/clinics/authorisations/{id}/approve-partially",
+            approve_partially,
+        )
         .name("clinics.authorisation_approve_partially")
         .post("/clinics/authorisations/{id}/deny", deny)
         .name("clinics.authorisation_deny")
@@ -58,7 +61,10 @@ pub fn routes() -> Routes {
 
 /// The status as staff read it.
 pub(crate) fn status_text(lang: &Lang, status: AuthStatus) -> String {
-    text(lang, &format!("authorisation.status.{}", status_key(status)))
+    text(
+        lang,
+        &format!("authorisation.status.{}", status_key(status)),
+    )
 }
 
 /// The stored name of a status.
@@ -163,7 +169,9 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             payer: party_name(&state, &lang, PartyId(a.payer_party_id)).await,
             services: a.services.0.join(", "),
             units: units_text(&lang, a),
-            valid_until: a.valid_until.map_or_else(|| dash.clone(), |d| d.to_string()),
+            valid_until: a
+                .valid_until
+                .map_or_else(|| dash.clone(), |d| d.to_string()),
             status: status_text(&lang, a.status),
             status_kind: status_kind(a.status),
         });
@@ -293,7 +301,9 @@ async fn show(
         units_consumed: a.units_consumed.to_string(),
         units_left: a.units_left().to_string(),
         reference: a.reference.clone().unwrap_or_else(|| dash.clone()),
-        valid_until: a.valid_until.map_or_else(|| dash.clone(), |d| d.to_string()),
+        valid_until: a
+            .valid_until
+            .map_or_else(|| dash.clone(), |d| d.to_string()),
         denial_reason: a.denial_reason.clone().unwrap_or_else(|| dash.clone()),
         today: today().to_string(),
         can_request: manage && a.status == AuthStatus::Draft,
@@ -367,8 +377,7 @@ async fn approve_partially(
     let reference = Some(form.reference.as_str()).filter(|r| !r.trim().is_empty());
     let until = parse_date(&form.valid_until)?;
     let units = parse_id(&form.units).ok_or_else(|| invalid("units: 1, 2, 3 ..."))?;
-    authorisations::approve_partially(&state, &user, id, units, reference, until, today())
-        .await?;
+    authorisations::approve_partially(&state, &user, id, units, reference, until, today()).await?;
     done(&lang, "authorisation.approved_partially")
 }
 

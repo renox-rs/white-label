@@ -709,8 +709,7 @@ impl BlockSubjects for BookingSubjects {
             let Some(booking) = Booking::find(&state.db, record_id).await? else {
                 return Ok(Vec::new());
             };
-            let Some(service) = ServiceType::find(&state.db, booking.service_type_id).await?
-            else {
+            let Some(service) = ServiceType::find(&state.db, booking.service_type_id).await? else {
                 return Ok(Vec::new());
             };
             let required = service.qualification_kinds().contains(&entry.kind)
@@ -833,6 +832,9 @@ mod tests {
             problem: Problem::NotValid,
             ..failure
         };
-        assert_eq!(other.text(), "practitioner licence is not valid on 25 Nov 2026");
+        assert_eq!(
+            other.text(),
+            "practitioner licence is not valid on 25 Nov 2026"
+        );
     }
 }

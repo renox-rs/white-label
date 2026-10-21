@@ -142,7 +142,8 @@ pub async fn raise(
     authorisation: Option<i64>,
     detail: Option<&str>,
 ) -> Result<(AppointmentFlag, bool)> {
-    if let Some(open) = AppointmentFlag::open_cause(&state.db, appointment.booking_id, cause).await?
+    if let Some(open) =
+        AppointmentFlag::open_cause(&state.db, appointment.booking_id, cause).await?
     {
         return Ok((open, false));
     }

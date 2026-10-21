@@ -150,10 +150,7 @@ pub fn consent_text(booking: i64, priced_on: NaiveDate, lines: &[ConsentLine]) -
         .map(|line| format!("{}:{}", line.code, line.price))
         .collect();
     let total: i64 = lines.iter().map(|line| line.price).sum();
-    format!(
-        "SELF-PAY|{booking}|{priced_on}|{}|{total}",
-        rows.join(",")
-    )
+    format!("SELF-PAY|{booking}|{priced_on}|{}|{total}", rows.join(","))
 }
 
 /// The lines for `codes` priced on `on`, each from the self-pay price list.
@@ -331,7 +328,10 @@ pub async fn sign_updated(
     if visit.coverage_outcome != Some(crate::coverage::CoverageOutcome::SelfPay)
         || !visit.status.is_open()
     {
-        return Err(refused(english("clinics.consent.problem.not_self_pay", &[])));
+        return Err(refused(english(
+            "clinics.consent.problem.not_self_pay",
+            &[],
+        )));
     }
     let appointment = Appointment::of_booking(&state.db, visit.booking_id)
         .await?
@@ -384,14 +384,20 @@ mod tests {
             },
         ];
         let text = consent_text(7, day, &lines);
-        assert_eq!(text, "SELF-PAY|7|2026-11-10|consultation:45000,x_ray:12000|57000");
+        assert_eq!(
+            text,
+            "SELF-PAY|7|2026-11-10|consultation:45000,x_ray:12000|57000"
+        );
         assert_eq!(document_hash(&text), document_hash(&text));
         assert_ne!(document_hash(&text), document_hash("SELF-PAY|8"));
     }
 
     #[test]
     fn a_code_is_listed_once() {
-        let codes = with_codes("consultation", &["x_ray".into(), " consultation ".into(), "".into()]);
+        let codes = with_codes(
+            "consultation",
+            &["x_ray".into(), " consultation ".into(), "".into()],
+        );
         assert_eq!(codes, ["consultation", "x_ray"]);
     }
 }

@@ -67,7 +67,9 @@ impl Scene {
     }
 
     async fn flags(&self, booking: i64) -> Vec<AppointmentFlag> {
-        AppointmentFlag::open_of(self.t.db(), booking).await.unwrap()
+        AppointmentFlag::open_of(self.t.db(), booking)
+            .await
+            .unwrap()
     }
 
     async fn deny(&self, a: &PriorAuthorisation) {
@@ -84,7 +86,11 @@ impl Scene {
             .assert_ok();
     }
 
-    fn task(&self, a: &PriorAuthorisation, trigger: Trigger) -> Vec<wl_kernel::tickets::OpenTicket> {
+    fn task(
+        &self,
+        a: &PriorAuthorisation,
+        trigger: Trigger,
+    ) -> Vec<wl_kernel::tickets::OpenTicket> {
         self.t.tasks.with_key(&task_key(a.id, trigger))
     }
 }
@@ -102,18 +108,14 @@ async fn a_denied_authorisation_flags_the_appointments_that_relied_on_it() {
     let after = s.laser_on(14).await;
     // Left alone: a consultation, a self-pay laser, another patient's laser
     // and a cancelled one.
-    let consultation = s
-        .t
-        .book(&s.consultation, &s.doctor, at(day(8), 9))
-        .await;
+    let consultation = s.t.book(&s.consultation, &s.doctor, at(day(8), 9)).await;
     appointments::attach_policy(s.t.state(), consultation.id, s.policy.id)
         .await
         .unwrap();
     let self_pay = s.t.book(&s.laser, &s.doctor, at(day(9), 9)).await;
-    let stranger = s
-        .t
-        .book_for(PartyId(71), &s.laser, &s.doctor, at(day(10), 9))
-        .await;
+    let stranger =
+        s.t.book_for(PartyId(71), &s.laser, &s.doctor, at(day(10), 9))
+            .await;
     let theirs = policies::create(
         s.t.state(),
         None,
@@ -138,7 +140,10 @@ async fn a_denied_authorisation_flags_the_appointments_that_relied_on_it() {
     let a1 = s.t.requested(&s.policy, "laser", 3).await;
     s.deny(&a1).await;
     assert_eq!(
-        PriorAuthorisation::find_or_404(s.t.db(), a1.id).await.unwrap().status,
+        PriorAuthorisation::find_or_404(s.t.db(), a1.id)
+            .await
+            .unwrap()
+            .status,
         AuthStatus::Denied
     );
 
@@ -154,8 +159,16 @@ async fn a_denied_authorisation_flags_the_appointments_that_relied_on_it() {
     let tasks = s.task(&a1, Trigger::Denied);
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].assignee, Some(Assignee::user(bea.id)));
-    assert!(tasks[0].description.contains(&day(6).to_string()), "{}", tasks[0].description);
-    assert!(tasks[0].description.contains(&day(14).to_string()), "{}", tasks[0].description);
+    assert!(
+        tasks[0].description.contains(&day(6).to_string()),
+        "{}",
+        tasks[0].description
+    );
+    assert!(
+        tasks[0].description.contains(&day(14).to_string()),
+        "{}",
+        tasks[0].description
+    );
     s.t.app
         .get(&format!("/clinics/appointments/{after}"))
         .await
@@ -174,11 +187,15 @@ async fn three_days_before_it_ends_only_the_appointments_after_it_are_flagged() 
     let after = s.laser_on(14).await;
 
     // Two days before: nothing yet.
-    let early = authorisations::run_daily(s.t.state(), at(day(6), 2)).await.unwrap();
+    let early = authorisations::run_daily(s.t.state(), at(day(6), 2))
+        .await
+        .unwrap();
     assert!(early.looked_ahead.is_empty());
     assert!(s.flags(after).await.is_empty());
 
-    let daily = authorisations::run_daily(s.t.state(), at(day(7), 2)).await.unwrap();
+    let daily = authorisations::run_daily(s.t.state(), at(day(7), 2))
+        .await
+        .unwrap();
     assert_eq!(daily.looked_ahead, [a1.id]);
     assert!(s.flags(inside).await.is_empty(), "still covered");
     let flags = s.flags(after).await;
@@ -187,7 +204,9 @@ async fn three_days_before_it_ends_only_the_appointments_after_it_are_flagged() 
     assert_eq!(s.task(&a1, Trigger::LookAhead).len(), 1);
 
     // The same day again: nothing new.
-    let again = authorisations::run_daily(s.t.state(), at(day(7), 2)).await.unwrap();
+    let again = authorisations::run_daily(s.t.state(), at(day(7), 2))
+        .await
+        .unwrap();
     assert!(again.looked_ahead.is_empty());
     assert_eq!(s.flags(after).await.len(), 1);
     assert_eq!(s.task(&a1, Trigger::LookAhead).len(), 1);
@@ -214,12 +233,17 @@ async fn the_last_unit_consumed_flags_the_later_appointments() {
         .assert_ok();
     s.t.app
         .htmx()
-        .post(&format!("/scheduling/bookings/{today_visit}/check-in"), &[("x", "y")])
+        .post(
+            &format!("/scheduling/bookings/{today_visit}/check-in"),
+            &[("x", "y")],
+        )
         .await
         .assert_status(303);
     assert!(s.flags(later).await.is_empty(), "A1 still covers it");
 
-    let used = authorisations::consume(s.t.state(), a1.id, 1, now()).await.unwrap();
+    let used = authorisations::consume(s.t.state(), a1.id, 1, now())
+        .await
+        .unwrap();
     assert_eq!(used.status, AuthStatus::Used);
     let flags = s.flags(later).await;
     assert_eq!(flags.len(), 1);
@@ -237,7 +261,9 @@ async fn an_expired_authorisation_flags_the_appointments_after_its_last_day() {
     let inside = s.laser_on(6).await;
     let after = s.laser_on(14).await;
 
-    let daily = authorisations::run_daily(s.t.state(), at(day(11), 2)).await.unwrap();
+    let daily = authorisations::run_daily(s.t.state(), at(day(11), 2))
+        .await
+        .unwrap();
     assert_eq!(daily.expired, [a1.id]);
     assert!(s.flags(inside).await.is_empty());
     let flags = s.flags(after).await;
@@ -269,12 +295,16 @@ async fn running_the_rule_twice_creates_one_flag_and_one_task() {
     s.deny(&a1).await;
     assert_eq!(s.flags(booking).await.len(), 1);
 
-    let (outcome, flagged) = run_for(s.t.state(), a1.id, Trigger::Denied, day(0)).await.unwrap();
+    let (outcome, flagged) = run_for(s.t.state(), a1.id, Trigger::Denied, day(0))
+        .await
+        .unwrap();
     assert_eq!(outcome, RunOutcome::Skipped);
     assert!(flagged.bookings.is_empty());
     assert_eq!(s.flags(booking).await.len(), 1);
     assert_eq!(s.task(&a1, Trigger::Denied).len(), 1);
-    let all = AppointmentFlag::of_booking(s.t.db(), booking).await.unwrap();
+    let all = AppointmentFlag::of_booking(s.t.db(), booking)
+        .await
+        .unwrap();
     assert_eq!(all.len(), 1, "one flag ever raised");
 }
 
@@ -288,11 +318,15 @@ async fn a_new_authorisation_clears_the_flag() {
     s.deny(&a1).await;
     assert_eq!(s.flags(booking).await.len(), 1);
     // The payer wants laser authorised from now on.
-    authorisations::require_for(s.t.state(), PAYER, "laser").await.unwrap();
+    authorisations::require_for(s.t.state(), PAYER, "laser")
+        .await
+        .unwrap();
 
     s.t.authorisation(&s.policy, "laser", 2, day(20)).await;
     assert!(s.flags(booking).await.is_empty());
-    let all = AppointmentFlag::of_booking(s.t.db(), booking).await.unwrap();
+    let all = AppointmentFlag::of_booking(s.t.db(), booking)
+        .await
+        .unwrap();
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].clear_reason.as_deref(), Some("covered"));
 }

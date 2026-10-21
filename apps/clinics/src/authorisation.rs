@@ -137,11 +137,7 @@ impl PriorAuthorisation {
     /// # Errors
     ///
     /// The database's errors.
-    pub async fn usable_of(
-        db: &Db,
-        patient: i64,
-        payer: i64,
-    ) -> Result<Vec<PriorAuthorisation>> {
+    pub async fn usable_of(db: &Db, patient: i64, payer: i64) -> Result<Vec<PriorAuthorisation>> {
         let all = PriorAuthorisation::query()
             .where_(PriorAuthorisation::PATIENT_PARTY_ID.eq(patient))
             .where_(PriorAuthorisation::PAYER_PARTY_ID.eq(payer))
@@ -167,7 +163,10 @@ impl PriorAuthorisation {
 
 /// A service a payer wants authorised before it is delivered.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "clinics_prior_auth_services", unique(payer_party_id, service_code))]
+#[model(
+    table = "clinics_prior_auth_services",
+    unique(payer_party_id, service_code)
+)]
 pub struct PriorAuthService {
     /// The primary key.
     pub id: i64,

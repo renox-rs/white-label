@@ -72,7 +72,10 @@ impl Need {
 
 /// The services of the visit: the ones entered, else the booked service with
 /// one unit.
-pub fn services_of(appointment: &Appointment, pending: Option<&PendingCheckIn>) -> Vec<VisitService> {
+pub fn services_of(
+    appointment: &Appointment,
+    pending: Option<&PendingCheckIn>,
+) -> Vec<VisitService> {
     match pending {
         Some(p) if !p.services.0.is_empty() => p.services.0.clone(),
         _ => vec![VisitService::new(&appointment.service_code, 1)],

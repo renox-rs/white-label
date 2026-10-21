@@ -534,8 +534,14 @@ pub async fn offer_released(
         return Ok(None);
     };
     for resource in &released.resources {
-        let Some(entry) = first_match(&state.db, service.id, *resource, released.start, released.end)
-            .await?
+        let Some(entry) = first_match(
+            &state.db,
+            service.id,
+            *resource,
+            released.start,
+            released.end,
+        )
+        .await?
         else {
             continue;
         };

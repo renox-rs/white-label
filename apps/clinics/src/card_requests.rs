@@ -118,7 +118,11 @@ async fn request_card(
     policy: &InsurancePolicy,
     origin: &str,
 ) -> Result<Told> {
-    let patient = PartyId(appointment.patient_party_id.unwrap_or(policy.patient_party_id));
+    let patient = PartyId(
+        appointment
+            .patient_party_id
+            .unwrap_or(policy.patient_party_id),
+    );
     let local = calendar(state).local(appointment.starts_at);
     let date = local.format("%d %b %Y").to_string();
     let time = local.format("%H:%M").to_string();
@@ -136,7 +140,10 @@ async fn request_card(
         notify::notifier(state).notify(state, request).await?;
         told.parties.push(party);
     }
-    let detail = english("clinics.flags.card_detail", &[("date", &appointment.visit_date)]);
+    let detail = english(
+        "clinics.flags.card_detail",
+        &[("date", &appointment.visit_date)],
+    );
     flags::raise(
         state,
         appointment,
@@ -166,7 +173,10 @@ pub async fn check(
     origin: &str,
 ) -> Result<Option<(RunOutcome, Told)>> {
     let booking = appointment.booking_id;
-    let Some(policy_id) = appointment.policy_id.filter(|_| !appointment.is_cancelled()) else {
+    let Some(policy_id) = appointment
+        .policy_id
+        .filter(|_| !appointment.is_cancelled())
+    else {
         flags::clear(state, booking, FlagCause::InsuranceCard, "not_insured").await?;
         return Ok(None);
     };
@@ -261,7 +271,10 @@ pub async fn accept_card(
 ) -> Result<Accepted> {
     let found = InsurancePolicy::find_or_404(&state.db, policy).await?;
     if card_valid_to.is_some_and(|to| to < today()) {
-        return Err(refused(english("clinics.policies.problem.card_expired", &[])));
+        return Err(refused(english(
+            "clinics.policies.problem.card_expired",
+            &[],
+        )));
     }
     let valid_to = match (found.valid_to, card_valid_to) {
         (Some(to), Some(card)) if to < card => Some(card),
@@ -292,9 +305,14 @@ pub async fn accept_card(
         };
         if appointment.policy_id == Some(updated.id)
             && updated.is_valid_on(appointment.visit_date)
-            && flags::clear(state, flag.booking_id, FlagCause::InsuranceCard, "card_accepted")
-                .await?
-                .is_some()
+            && flags::clear(
+                state,
+                flag.booking_id,
+                FlagCause::InsuranceCard,
+                "card_accepted",
+            )
+            .await?
+            .is_some()
         {
             cleared.push(flag.booking_id);
         }
@@ -375,8 +393,14 @@ mod tests {
 
     #[test]
     fn a_policy_that_ends_before_the_visit_needs_a_card() {
-        assert!(needs_card(&policy(Some("2026-11-10"), None), day("2026-11-12")));
-        assert!(!needs_card(&policy(Some("2026-11-12"), None), day("2026-11-12")));
+        assert!(needs_card(
+            &policy(Some("2026-11-10"), None),
+            day("2026-11-12")
+        ));
+        assert!(!needs_card(
+            &policy(Some("2026-11-12"), None),
+            day("2026-11-12")
+        ));
     }
 
     #[test]

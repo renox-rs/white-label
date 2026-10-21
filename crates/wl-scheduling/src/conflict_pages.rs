@@ -87,24 +87,28 @@ async fn index(
     Query(filter): Query<Filter>,
 ) -> Result<View> {
     let resource = filter.resource.trim().parse::<i64>().ok();
-    let period = filter
-        .day
-        .trim()
-        .parse::<NaiveDate>()
-        .ok()
-        .map(day_bounds);
+    let period = filter.day.trim().parse::<NaiveDate>().ok().map(day_bounds);
     let mut options = Vec::new();
     for booking in conflict::conflicts(&state.db, resource, period).await? {
-        options.push((booking.id.to_string(), label_of(&state, &lang, &booking).await?));
+        options.push((
+            booking.id.to_string(),
+            label_of(&state, &lang, &booking).await?,
+        ));
     }
     let active: Vec<Resource> = Resource::query()
         .where_(Resource::ACTIVE.eq(true))
         .order_by(Resource::ID)
         .get(&state.db)
         .await?;
-    let mut resources = vec![(String::new(), texts::t(&lang, "wl_scheduling.conflicts.all"))];
+    let mut resources = vec![(
+        String::new(),
+        texts::t(&lang, "wl_scheduling.conflicts.all"),
+    )];
     resources.extend(active.iter().map(|r| (r.id.to_string(), r.name.clone())));
-    let mut targets = vec![(String::new(), texts::t(&lang, "wl_scheduling.conflicts.any"))];
+    let mut targets = vec![(
+        String::new(),
+        texts::t(&lang, "wl_scheduling.conflicts.any"),
+    )];
     targets.extend(active.iter().map(|r| (r.id.to_string(), r.name.clone())));
     let actions = ["reassign", "reschedule", "cancel"]
         .iter()
@@ -240,7 +244,10 @@ async fn resolve(
     let mut message = texts::t_with(
         &lang,
         "wl_scheduling.conflicts.result",
-        &[("done", &result.done.len()), ("failed", &result.failed.len())],
+        &[
+            ("done", &result.done.len()),
+            ("failed", &result.failed.len()),
+        ],
     );
     for failed in result.failed.iter().chain(result.warnings.iter()) {
         message.push_str(&format!(" #{}: {}", failed.booking, failed.reason));

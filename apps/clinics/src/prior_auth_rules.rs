@@ -52,9 +52,9 @@ use crate::appointment::Appointment;
 use crate::authorisation::{PriorAuthService, PriorAuthorisation};
 use crate::authorisation_machine::{APPROVE, APPROVE_PARTIALLY, CONSUME_LAST, DENY, EXPIRE};
 use crate::authorisations::covering;
+use crate::coverage::{CoverageOutcome, PendingCheckIn};
 use crate::flags::{self, AppointmentFlag, FlagCause};
 use crate::permissions::BILLING_COORDINATOR_ROLE;
-use crate::coverage::{CoverageOutcome, PendingCheckIn};
 use crate::policy::InsurancePolicy;
 use crate::texts::english;
 use crate::visit::Visit;
@@ -166,7 +166,10 @@ pub async fn evaluate(
     origin: &str,
 ) -> Result<Verdict> {
     let booking = appointment.booking_id;
-    let Some(policy_id) = appointment.policy_id.filter(|_| !appointment.is_cancelled()) else {
+    let Some(policy_id) = appointment
+        .policy_id
+        .filter(|_| !appointment.is_cancelled())
+    else {
         clear_needed(state, booking, "not_insured").await?;
         return Ok(Verdict::NotApplicable);
     };
@@ -312,7 +315,9 @@ async fn flag_relying(
         };
         let policy = InsurancePolicy::find_or_404(&state.db, policy_id).await?;
         if policy.payer_party_id != authorisation.payer_party_id
-            || Visit::of_booking(&state.db, appointment.booking_id).await?.is_some()
+            || Visit::of_booking(&state.db, appointment.booking_id)
+                .await?
+                .is_some()
         {
             continue;
         }
@@ -336,7 +341,10 @@ async fn flag_relying(
             "clinics.flags.stopped_detail",
             &[
                 ("number", &authorisation.number()),
-                ("cause", &english(&format!("clinics.flags.cause_{}", trigger.key()), &[])),
+                (
+                    "cause",
+                    &english(&format!("clinics.flags.cause_{}", trigger.key()), &[]),
+                ),
             ],
         );
         flags::raise(
@@ -349,14 +357,20 @@ async fn flag_relying(
         )
         .await?;
         done.bookings.push(appointment.booking_id);
-        lines.push(format!("{} {}", appointment.visit_date, appointment.service_code));
+        lines.push(format!(
+            "{} {}",
+            appointment.visit_date, appointment.service_code
+        ));
     }
     if !done.bookings.is_empty() {
         let title = english(
             "clinics.flags.stopped_task",
             &[
                 ("number", &authorisation.number()),
-                ("cause", &english(&format!("clinics.flags.cause_{}", trigger.key()), &[])),
+                (
+                    "cause",
+                    &english(&format!("clinics.flags.cause_{}", trigger.key()), &[]),
+                ),
             ],
         );
         let task = RoleTask::new(

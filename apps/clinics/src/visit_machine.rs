@@ -94,9 +94,9 @@ fn complete() -> Transition<Visit> {
         .effect(|v: &Visit, ctx, tx| {
             let id = v.id;
             let at = input_of(ctx).at.unwrap_or_else(renox::db::now);
-            Box::pin(async move {
-                crate::db::set_visit(&mut *tx, id, &[("ended_at", &Some(at))]).await
-            })
+            Box::pin(
+                async move { crate::db::set_visit(&mut *tx, id, &[("ended_at", &Some(at))]).await },
+            )
         })
 }
 

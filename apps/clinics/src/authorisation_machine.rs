@@ -149,7 +149,11 @@ impl StateMachine for PriorAuthorisation {
             .transition(approve_partially())
             .transition(deny())
             .transition(consume(CONSUME, Approved, Approved))
-            .transition(consume(CONSUME_PARTIAL, PartiallyApproved, PartiallyApproved))
+            .transition(consume(
+                CONSUME_PARTIAL,
+                PartiallyApproved,
+                PartiallyApproved,
+            ))
             .transition(consume_last())
             .transition(expire())
             .transition(cancel())
@@ -350,11 +354,7 @@ fn units_guard(
 }
 
 /// `consume` and `consume_partial`: units used, some stay.
-fn consume(
-    name: &str,
-    from: AuthStatus,
-    to: AuthStatus,
-) -> Transition<PriorAuthorisation> {
+fn consume(name: &str, from: AuthStatus, to: AuthStatus) -> Transition<PriorAuthorisation> {
     Transition::new(name)
         .label("Consume")
         .tone("info")
@@ -451,12 +451,32 @@ mod tests {
         let expected = [
             (REQUEST, vec!["draft"], "requested", false),
             (APPROVE, vec!["requested"], "approved", false),
-            (APPROVE_PARTIALLY, vec!["requested"], "partially_approved", false),
+            (
+                APPROVE_PARTIALLY,
+                vec!["requested"],
+                "partially_approved",
+                false,
+            ),
             (DENY, vec!["requested"], "denied", false),
             (CONSUME, vec!["approved"], "approved", true),
-            (CONSUME_PARTIAL, vec!["partially_approved"], "partially_approved", true),
-            (CONSUME_LAST, vec!["approved", "partially_approved"], "used", true),
-            (EXPIRE, vec!["approved", "partially_approved"], "expired", true),
+            (
+                CONSUME_PARTIAL,
+                vec!["partially_approved"],
+                "partially_approved",
+                true,
+            ),
+            (
+                CONSUME_LAST,
+                vec!["approved", "partially_approved"],
+                "used",
+                true,
+            ),
+            (
+                EXPIRE,
+                vec!["approved", "partially_approved"],
+                "expired",
+                true,
+            ),
             (CANCEL, vec!["draft", "requested"], "cancelled", false),
         ];
         assert_eq!(machine.transitions().len(), expected.len());

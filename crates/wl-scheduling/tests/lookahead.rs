@@ -159,7 +159,10 @@ async fn the_nightly_run_flags_only_the_booking_after_the_expiry() {
     // The booking itself is unchanged: nothing is cancelled or moved.
     assert_eq!(late.starts_at, s.late.starts_at);
     assert_eq!(late.status, s.late.status);
-    assert_eq!(late.resource_ids(s.t.db()).await.unwrap(), vec![s.doctor.id]);
+    assert_eq!(
+        late.resource_ids(s.t.db()).await.unwrap(),
+        vec![s.doctor.id]
+    );
 }
 
 /// Done when 2: a booking beyond the 30 days is not flagged now; the run that
@@ -336,7 +339,10 @@ async fn a_renewal_clears_the_conflict_and_leaves_the_booking() {
     assert!(!late.conflict_eligibility);
     assert_eq!(late.status, s.late.status);
     assert_eq!(late.starts_at, s.late.starts_at);
-    assert_eq!(late.resource_ids(s.t.db()).await.unwrap(), vec![s.doctor.id]);
+    assert_eq!(
+        late.resource_ids(s.t.db()).await.unwrap(),
+        vec![s.doctor.id]
+    );
     let rows = s.rows(&late).await;
     assert_eq!(rows.len(), 1);
     assert!(!rows[0].is_open());
@@ -438,14 +444,9 @@ async fn a_licence_of_another_role_or_branch_does_not_count() {
     };
 
     for resource in [&nurse, &elsewhere] {
-        let failures = eligibility::failures(
-            s.t.state(),
-            &s.service,
-            resource,
-            s.late.starts_at,
-        )
-        .await
-        .unwrap();
+        let failures = eligibility::failures(s.t.state(), &s.service, resource, s.late.starts_at)
+            .await
+            .unwrap();
         assert_eq!(failures.len(), 1, "{}", resource.name);
         assert_eq!(failures[0].kind, LICENCE);
     }
@@ -486,7 +487,12 @@ async fn the_module_registers_its_future_work_and_block_subjects() {
         assert_eq!(from_25.len(), 1);
         // A kind the service does not need lists nothing.
         let other = work
-            .planned_from(s.t.state(), &entry(guarded, "fire_card"), &s.subject, day(0))
+            .planned_from(
+                s.t.state(),
+                &entry(guarded, "fire_card"),
+                &s.subject,
+                day(0),
+            )
             .await
             .unwrap();
         assert!(other.is_empty());

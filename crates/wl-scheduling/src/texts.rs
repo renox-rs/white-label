@@ -225,9 +225,15 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.conflicts.bookings", "Bookings"),
     ("wl_scheduling.conflicts.action", "Action"),
     ("wl_scheduling.conflicts.to", "Reassign to"),
-    ("wl_scheduling.conflicts.reason_code", "Reason code (cancel)"),
+    (
+        "wl_scheduling.conflicts.reason_code",
+        "Reason code (cancel)",
+    ),
     ("wl_scheduling.conflicts.apply", "Apply to the selected"),
-    ("wl_scheduling.conflicts.action_reassign", "Reassign to another resource"),
+    (
+        "wl_scheduling.conflicts.action_reassign",
+        "Reassign to another resource",
+    ),
     (
         "wl_scheduling.conflicts.action_reschedule",
         "Offer the parties other times",
@@ -452,10 +458,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_scheduling.eligibility.not_valid",
         ":item is not valid on :date",
     ),
-    (
-        "wl_scheduling.eligibility.hint_reassign",
-        "reassign first",
-    ),
+    ("wl_scheduling.eligibility.hint_reassign", "reassign first"),
     (
         "wl_scheduling.eligibility.hint_rebook",
         "cancel with resource_ineligible and rebook",
