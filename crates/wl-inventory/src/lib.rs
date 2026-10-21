@@ -504,6 +504,17 @@ mod tests {
     }
 
     #[test]
+    fn the_reasons_that_need_a_second_person_are_recall_unless_set() {
+        let module = WlInventory::new();
+        assert!(module.config().release_needs_second_person("recall"));
+        assert!(!module.config().release_needs_second_person("quality"));
+        let module = WlInventory::new().hold_second_person_reasons(&[" Quality ", "recall"]);
+        assert!(module.config().release_needs_second_person("quality"));
+        assert!(module.config().release_needs_second_person("recall"));
+        assert!(!module.config().release_needs_second_person("temperature"));
+    }
+
+    #[test]
     fn the_builder_changes_the_settings() {
         let module = WlInventory::new()
             .over_receipt_tolerance_bps(1_000)
