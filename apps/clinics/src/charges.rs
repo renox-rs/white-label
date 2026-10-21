@@ -192,7 +192,7 @@ async fn record(
     if kind == ChargeKind::Service && policy.is_some() {
         // Units no authorisation covers go self-pay and need the consent.
         let existing = ChargeLine::active_of(&state.db, visit.id).await?;
-        let needs = needs_for(state, &visit, &existing, Some((&new.code, new.units))).await?;
+        let needs = needs_for(state, &visit, &existing, Some((new.code.as_str(), new.units))).await?;
         for need in needs.iter().filter(|n| n.code == new.code && n.self_pay > 0) {
             let consent = match visit.consent_id {
                 Some(id) => SelfPayConsent::find(&state.db, id).await?,
