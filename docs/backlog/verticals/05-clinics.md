@@ -676,16 +676,16 @@ first-submission window."
 - Must not allow `resubmit` beyond the payer's limit or window.
 
 #### Done when
-- [ ] Given claim CLM-0101 `submitted` on 2026-11-03 for a visit on 2026-11-01, when coordinator A
+- [x] Given claim CLM-0101 `submitted` on 2026-11-03 for a visit on 2026-11-01, when coordinator A
       records rejection "E104 invalid member ID", the claim is `draft`, the attempt shows E104, the
       count stays 0, payer bill `submission_rejected` ran, and A gets a task with the
       first-submission deadline.
-- [ ] After fixing, `validate` and `submit` send it again as CLM-0101 with the same payer bill
+- [x] After fixing, `validate` and `submit` send it again as CLM-0101 with the same payer bill
       number.
-- [ ] Given a claim with count 1 in `resubmitted`, a technical rejection returns it to `draft`
+- [x] Given a claim with count 1 in `resubmitted`, a technical rejection returns it to `draft`
       with count 1; it can be validated within the resubmission window and submitted again.
-- [ ] Given a payer limit of 2 and count 2, `resubmit` is refused.
-- [ ] `reject_submission` on a claim with a recorded remittance is refused.
+- [x] Given a payer limit of 2 and count 2, `resubmit` is refused.
+- [x] `reject_submission` on a claim with a recorded remittance is refused.
 
 #### Out of scope
 Integrated channel responses (`CLN.CLM.02`, Later); payer bill effects (BL-INV-16).
@@ -771,19 +771,19 @@ claims are no longer final: only `record_recoupment` leaves them. The denial tas
 - Must not leave `paid` or `written_off` by any transition other than `record_recoupment`.
 
 #### Done when
-- [ ] Given claim line open AED 400.00 and a remittance paying AED 450.00, the advice is held;
+- [x] Given claim line open AED 400.00 and a remittance paying AED 450.00, the advice is held;
       user B approves; AED 400.00 is allocated and AED 50.00 goes to the payer credit balance;
       user A (recorder) cannot approve.
-- [ ] Given claim CLM-0200 `paid` (one line AED 400.00) and a later advice recouping AED 400.00
+- [x] Given claim CLM-0200 `paid` (one line AED 400.00) and a later advice recouping AED 400.00
       with code "R07" on an advice dated 2026-12-10, and a payer resubmission window of 30
       days, after user B approves CLM-0200 is `denied`, the line shows R07, and the coordinator
       has a task with resubmission deadline 2027-01-09.
-- [ ] Given a `written_off` claim with a line paid AED 300.00, a recoupment of AED 100.00 makes it
+- [x] Given a `written_off` claim with a line paid AED 300.00, a recoupment of AED 100.00 makes it
       `partially_paid` and the write-off amount is still shown.
-- [ ] A `PaymentReversed` for a payment allocated to the claim's payer bill runs
+- [x] A `PaymentReversed` for a payment allocated to the claim's payer bill runs
       `record_recoupment` without approval.
-- [ ] A recoupment of AED 500.00 on lines paid AED 400.00 is refused.
-- [ ] From `paid`, `write_off` and `resubmit` are not offered.
+- [x] A recoupment of AED 500.00 on lines paid AED 400.00 is refused.
+- [x] From `paid`, `write_off` and `resubmit` are not offered.
 
 #### Out of scope
 Payer credit balance mechanics and refunds to the payer (BL-INV-17, BL-PAY-08).
