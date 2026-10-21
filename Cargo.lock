@@ -957,6 +957,7 @@ dependencies = [
  "wl-payments",
  "wl-portal",
  "wl-sales",
+ "wl-scheduling",
  "wl-ticketing",
 ]
 
@@ -3592,6 +3593,16 @@ dependencies = [
  "wl-invoicing",
  "wl-kernel",
  "wl-notify",
+]
+
+[[package]]
+name = "wl-scheduling"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
 ]
 
 [[package]]
