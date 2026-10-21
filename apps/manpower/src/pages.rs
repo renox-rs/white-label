@@ -21,6 +21,7 @@
 //! | `POST /manpower/deployments` | `manpower.deployment_plan` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/activate` | `manpower.deployment_activate` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/extend` | `manpower.deployment_extend` | `deployments.manage` for the client |
+//! | `POST /manpower/deployments/{id}/suspend` | `manpower.deployment_suspend` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/end` | `manpower.deployment_end` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/cancel` | `manpower.deployment_cancel` | `deployments.manage` for the client |
 //!
@@ -49,8 +50,11 @@ use crate::renewal::RenewAsk;
 use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
 use crate::requests::{self, NewRequest};
 use crate::site::{self, Site};
+use crate::suspension::{self, DeploymentSuspension};
 use crate::termination::TerminateAsk;
+use crate::texts::english;
 use crate::texts::{screen_texts, t, word};
+use wl_kernel::documents::today;
 
 /// The routes.
 pub fn routes() -> Routes {
@@ -91,6 +95,8 @@ pub fn routes() -> Routes {
         .name("manpower.deployment_activate")
         .post("/manpower/deployments/{id}/extend", extend_deployment)
         .name("manpower.deployment_extend")
+        .post("/manpower/deployments/{id}/suspend", suspend_deployment)
+        .name("manpower.deployment_suspend")
         .post("/manpower/deployments/{id}/end", end_deployment)
         .name("manpower.deployment_end")
         .post("/manpower/deployments/{id}/cancel", cancel_deployment)
@@ -614,6 +620,11 @@ pub(crate) struct DeploymentRow {
     /// *document expiring <kind> <date>*, until the renewal is accepted
     /// (BL-MPW-09).
     document_flags: Vec<String>,
+    /// The calendar days suspended so far (BL-MPW-11); suspended days are not
+    /// billed.
+    days_suspended: i64,
+    /// While `suspended`: why, and for how long.
+    suspension: Vec<String>,
 }
 
 /// A deployment as a client user sees it (`MPW.ACL.01`, `MPW.ACL.02`): the
@@ -649,6 +660,25 @@ pub(crate) struct PageDeploymentRow {
 pub(crate) struct DeploymentsPage {
     tx: BTreeMap<&'static str, String>,
     deployments: Vec<PageDeploymentRow>,
+}
+
+/// The line staff see on a `suspended` deployment: the reasons and the days
+/// suspended; none otherwise.
+async fn suspension_note(state: &AppState, deployment: &Deployment) -> Result<Vec<String>> {
+    if deployment.status != DeploymentStatus::Suspended {
+        return Ok(Vec::new());
+    }
+    let reasons: Vec<String> = DeploymentSuspension::open_for(&state.db, deployment.id)
+        .await?
+        .iter()
+        .map(DeploymentSuspension::text)
+        .collect();
+    let reasons = reasons.join(", ");
+    let days = deployment.days_suspended(today());
+    Ok(vec![english(
+        "manpower.deployment.suspended_note",
+        &[("reasons", &reasons), ("days", &days)],
+    )])
 }
 
 /// The badge colour of a deployment.
@@ -723,6 +753,8 @@ async fn deployments_index(
                     .iter()
                     .map(DeploymentDocumentFlag::text)
                     .collect(),
+                days_suspended: deployment.days_suspended(today()),
+                suspension: suspension_note(&state, &deployment).await?,
             });
         } else {
             clients.push(ClientDeploymentRow {
@@ -773,7 +805,12 @@ async fn deployments_index(
                         status: row.status.clone(),
                         status_kind: row.status_kind,
                     },
-                    flags: row.document_flags.clone(),
+                    flags: row
+                        .document_flags
+                        .iter()
+                        .chain(&row.suspension)
+                        .cloned()
+                        .collect(),
                 })
                 .collect()
         };
@@ -844,6 +881,18 @@ async fn extend_deployment(
     let end =
         date(&lang, &form, "end_date")?.ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
     deployments::extend(&state, &user, id, end, &lang.locale).await?;
+    Ok(back("/manpower/deployments"))
+}
+
+/// `POST /manpower/deployments/{id}/suspend`: `reason`.
+async fn suspend_deployment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    suspension::suspend(&state, &user, id, &field(&form, "reason"), &lang.locale).await?;
     Ok(back("/manpower/deployments"))
 }
 

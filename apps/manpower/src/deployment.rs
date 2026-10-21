@@ -67,6 +67,12 @@ pub const SUBJECT_TYPE: &str = "manpower.deployment";
 pub const ACTIVATE: &str = "activate";
 /// The `extend` transition's name.
 pub const EXTEND: &str = "extend";
+/// The `suspend` transition's name.
+pub const SUSPEND: &str = "suspend";
+/// The system's `suspend` (`MPW.RUL.12`).
+pub const AUTO_SUSPEND: &str = "auto_suspend";
+/// `extend` of a suspended deployment: it stays suspended.
+pub const EXTEND_SUSPENDED: &str = "extend_suspended";
 /// The `end` transition's name.
 pub const END: &str = "end";
 /// The system's `end`.
@@ -186,6 +192,15 @@ pub struct Deployment {
     pub status: DeploymentStatus,
     /// The day it was activated.
     pub activated_on: Option<NaiveDate>,
+    /// The day the current (or the last) suspension began.
+    pub suspended_on: Option<NaiveDate>,
+    /// The day the last suspension ended (`resume`).
+    pub resumed_on: Option<NaiveDate>,
+    /// The calendar days of the suspensions that ended, not billed.
+    pub suspended_days: i64,
+    /// When the client, the account manager and the cover request were taken
+    /// care of after the current suspension began; none while still to do.
+    pub suspension_announced_at: Option<DateTime>,
     /// Why it ended, one of [`reasons`].
     pub end_reason: Option<String>,
     /// The day it ended.
@@ -232,6 +247,19 @@ impl Deployment {
             self.status,
             DeploymentStatus::Active | DeploymentStatus::Suspended | DeploymentStatus::Ended
         )
+    }
+
+    /// The calendar days the worker was suspended up to `on` (the days of the
+    /// suspensions that ended and, while `suspended`, the days since the
+    /// current one began, both ends included). Suspended days are not billed.
+    pub fn days_suspended(&self, on: NaiveDate) -> i64 {
+        let current = match (self.status, self.suspended_on) {
+            (DeploymentStatus::Suspended, Some(since)) if on >= since => {
+                (on - since).num_days() + 1
+            }
+            _ => 0,
+        };
+        self.suspended_days + current
     }
 
     /// Whether the worker is on site or may come back: `active` or
@@ -332,6 +360,33 @@ fn ended(
         })
 }
 
+/// `suspend` and `auto_suspend`: a reason, from `active`; the day the
+/// suspension began (the day after the expiry date for a document, else the
+/// day of the action) is kept and the follow-up (the client, the account
+/// manager, the cover) is marked still to do.
+fn suspended(transition: Transition<Deployment>) -> Transition<Deployment> {
+    transition
+        .reason_required()
+        .from([DeploymentStatus::Active])
+        .to(DeploymentStatus::Suspended)
+        .effect(|deployment: &Deployment, ctx, tx| {
+            let id = deployment.id;
+            let on = input_of(ctx).on.unwrap_or_else(today);
+            Box::pin(async move {
+                let none: Option<renox::db::DateTime> = None;
+                set_deployment(
+                    &mut *tx,
+                    id,
+                    &[
+                        ("suspended_on", &Some(on)),
+                        ("suspension_announced_at", &none),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
 /// `cancel` and `auto_cancel`: a reason, kept.
 fn cancelled(transition: Transition<Deployment>) -> Transition<Deployment> {
     transition
@@ -391,6 +446,22 @@ impl StateMachine for Deployment {
                         })
                     }),
             )
+            .transition(ready(suspended(user(SUSPEND, "Suspend").tone("danger"))))
+            .transition(suspended(
+                Transition::new(AUTO_SUSPEND).label("Suspend").system(),
+            ))
+            .transition(
+                ready(user(EXTEND_SUSPENDED, "Extend"))
+                    .from([Suspended])
+                    .to(Suspended)
+                    .effect(|deployment: &Deployment, ctx, tx| {
+                        let id = deployment.id;
+                        let end = input_of(ctx).new_end_date;
+                        Box::pin(async move {
+                            set_deployment(&mut *tx, id, &[("end_date", &end)]).await
+                        })
+                    }),
+            )
             .transition(ready(ended(user(END, "End").tone("danger"), reasons::USER)))
             .transition(ended(
                 Transition::new(AUTO_END).label("End").system(),
@@ -424,9 +495,12 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_that_is_built_is_declared() {
         let machine = Deployment::machine();
-        let table: [(&str, &[&str], &str, bool); 6] = [
+        let table: [(&str, &[&str], &str, bool); 9] = [
             (ACTIVATE, &["planned"], "active", false),
             (EXTEND, &["active"], "active", false),
+            (SUSPEND, &["active"], "suspended", false),
+            (AUTO_SUSPEND, &["active"], "suspended", true),
+            (EXTEND_SUSPENDED, &["suspended"], "suspended", false),
             (END, &["active", "suspended"], "ended", false),
             (AUTO_END, &["active", "suspended"], "ended", true),
             (CANCEL, &["planned"], "cancelled", false),
@@ -439,7 +513,7 @@ mod tests {
             assert_eq!(transition.to_state(), Some(*to), "{name}");
             assert_eq!(transition.is_system(), *by_system, "{name}");
         }
-        for name in [END, AUTO_END, CANCEL, AUTO_CANCEL] {
+        for name in [SUSPEND, AUTO_SUSPEND, END, AUTO_END, CANCEL, AUTO_CANCEL] {
             assert!(machine.find(name).expect(name).needs_reason(), "{name}");
         }
     }

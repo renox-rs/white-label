@@ -22,7 +22,7 @@ use crate::contract::{ClientContract, ContractStatus};
 use crate::db::{answer, lock_contract, refused};
 use crate::deployment::{
     ACTIVATE, AUTO_CANCEL, AUTO_END, CANCEL, Deployment, DeploymentInput, DeploymentKind,
-    DeploymentStatus, END, EXTEND,
+    DeploymentStatus, END, EXTEND, EXTEND_SUSPENDED,
 };
 use crate::documents::{ACTIVATE_GUARDED, EXTEND_GUARDED};
 use crate::events::{DeploymentActivated, DeploymentCancelled, DeploymentEnded};
@@ -500,8 +500,14 @@ async fn run_extend(
         on: Some(today()),
         new_end_date: Some(new_end),
     };
+    // A suspended deployment stays suspended (BL-MPW-11).
+    let name = if deployment.status == DeploymentStatus::Suspended {
+        EXTEND_SUSPENDED
+    } else {
+        EXTEND
+    };
     let outcome = deployment
-        .transition(EXTEND)
+        .transition(name)
         .by(by)
         .input(&input)
         .run_in(&mut tx)
@@ -718,5 +724,6 @@ pub async fn end_due(state: &AppState, on: NaiveDate) -> Result<Vec<Deployment>>
 /// As [`end_due`].
 pub async fn daily(state: &AppState) -> Result {
     end_due(state, today()).await?;
-    Ok(())
+    // The suspensions (`MPW.RUL.12`) that failed are tried again.
+    crate::suspension::retry(state).await
 }

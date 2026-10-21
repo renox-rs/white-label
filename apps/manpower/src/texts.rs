@@ -419,6 +419,40 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.deployment.ended_body",
         "The deployment of {{ worker }} as {{ role }} at {{ site }} ends. The last day is {{ until }}.",
     ),
+    // Suspension (§7.1 `suspend`, `MPW.RUL.12`).
+    (
+        "manpower.attendance.suspended",
+        "The deployment of this worker at the site is suspended: attendance is not recorded until it resumes.",
+    ),
+    (
+        "manpower.deployment.suspended_note",
+        "suspended: {{ reasons }}, {{ days }} days suspended",
+    ),
+    (
+        "manpower.deployment.suspend_reason",
+        "Give the reason: site access withdrawn, investigation or another.",
+    ),
+    (
+        "manpower.deployment.suspend_state",
+        "Only a deployment that is active, or already suspended, can be suspended.",
+    ),
+    ("manpower.deployment.suspend_document", "{{ kind }} expired"),
+    (
+        "manpower.deployment.suspended_title",
+        "{{ worker }} is temporarily unavailable",
+    ),
+    (
+        "manpower.deployment.suspended_body",
+        "{{ worker }} is temporarily unavailable at {{ site }} from {{ from }}. We will confirm the return date.",
+    ),
+    (
+        "manpower.deployment.suspended_staff_title",
+        "Deployment of {{ worker }} suspended",
+    ),
+    (
+        "manpower.deployment.suspended_staff_body",
+        "The deployment of {{ worker }} at {{ site }} is suspended from {{ from }}: {{ reasons }}. Attendance is refused and the days are not billed until it resumes.",
+    ),
     // Cover (`MPW.DEP.02`, `MPW.RUL.06`).
     (
         "manpower.cover.history",

@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 mod access;
+mod attendance;
 pub mod bench;
 pub mod blocked;
 pub mod config;
@@ -26,6 +27,7 @@ pub mod renewal;
 pub mod request;
 pub mod requests;
 pub mod site;
+pub mod suspension;
 pub mod termination;
 mod texts;
 
@@ -37,7 +39,7 @@ pub use contract::{BillingCycle, ClientContract, ContractStatus};
 pub use deployment::{Deployment, DeploymentKind, DeploymentStatus};
 pub use events::{
     ContractActivated, ContractEnded, ContractRenewed, CoverRequested, DeploymentActivated,
-    DeploymentCancelled, DeploymentEnded,
+    DeploymentCancelled, DeploymentEnded, DeploymentSuspended,
 };
 pub use hold::{ContractHold, HoldReason};
 pub use request::{ManpowerRequest, RequestKind, RequestStatus};
@@ -120,6 +122,7 @@ impl Module for Manpower {
             .model::<ManpowerRequest>()
             .model::<Deployment>()
             .model::<documents::DeploymentDocumentFlag>()
+            .model::<suspension::DeploymentSuspension>()
             .model::<ContractHold>()
             .model::<expiry::ContractEndNotice>();
         contract::register();
@@ -137,6 +140,11 @@ impl Module for Manpower {
         blocked::register();
         blocked::listen(app);
         documents::listen(app);
+        // `MPW.RUL.12`: a document or licence a deployment needs expires.
+        suspension::register();
+        // Attendance at a site is refused while the deployment is suspended.
+        wl_kernel::attendance::provide_context_closure(app, attendance::SuspendedDeployments);
+        suspension::listen(app);
         notices::register_types();
         // Deployments whose end date has passed end by themselves: daily at
         // 02:00 Asia/Dubai.

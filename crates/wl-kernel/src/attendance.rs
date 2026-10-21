@@ -204,6 +204,21 @@ pub trait ContextClosure: Send + Sync + 'static {
     ) -> LabourFuture<'a, Option<NaiveDate>> {
         Box::pin(async { Ok(None) })
     }
+
+    /// Why `employee` may not work in `context` on `date` (in Asia/Dubai), if
+    /// they may not: a record of that day is refused with this text. 09
+    /// Manpower says so for a worker whose deployment is suspended (an
+    /// expired visa or licence: no attendance, no billing). The default is
+    /// none: the context takes the employee.
+    fn refuses<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: &'a Subject,
+        _employee: EmployeeId,
+        _date: NaiveDate,
+    ) -> LabourFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 /// The closure when none is provided: no context closes.

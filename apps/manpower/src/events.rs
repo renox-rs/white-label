@@ -87,6 +87,24 @@ pub struct DeploymentEnded {
 
 impl Event for DeploymentEnded {}
 
+/// A deployment `suspend`ed (BL-MPW-11): the worker may not work at the site
+/// for now. Emitted once per suspension, after the commit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeploymentSuspended {
+    /// The deployment.
+    pub deployment: Subject,
+    /// The worker.
+    pub employee: EmployeeId,
+    /// The client company.
+    pub client: PartyId,
+    /// The first day suspended.
+    pub from: NaiveDate,
+    /// Why, as people read it: *work permit*, *site access withdrawn*.
+    pub reasons: Vec<String>,
+}
+
+impl Event for DeploymentSuspended {}
+
 /// A cover request was opened for a deployment (`MPW.DEP.02`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoverRequested {
