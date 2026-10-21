@@ -62,7 +62,7 @@ pub(crate) fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
 /// The module's routes, each behind its permission.
 pub fn routes() -> Routes {
     Routes::new()
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/payments", index)
                 .name("wl_payments.index")
@@ -71,7 +71,11 @@ pub fn routes() -> Routes {
                 .get("/payments/{id}", show)
                 .name("wl_payments.show")
                 .get("/payments/drawings/{id}", show_drawing)
-                .name("wl_payments.drawing")
+                .name("wl_payments.drawing"),
+            permissions::VIEW,
+        ))
+        .merge(
+            Routes::new()
                 .group(
                     "/payments",
                     "wl_payments.transitions.",
@@ -212,8 +216,24 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /payments`: the grid.
-async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
-    let payments = grid(&lang).page(Payment::query(), &request).await?;
+async fn index(
+    State(state): State<AppState>,
+    lang: Lang,
+    user: AuthUser,
+    request: GridRequest,
+) -> Result<View> {
+    // The payments of the user's scope: allocated to the invoices of their
+    // buildings, prepaid for their leases, or the deposits' payments.
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    let query = reach
+        .apply_ids(
+            &state.db,
+            Payment::query(),
+            "id",
+            wl_kernel::payments::PAYMENT_SUBJECT_TYPE,
+        )
+        .await?;
+    let payments = grid(&lang).page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         payments,
@@ -305,6 +325,10 @@ pub struct PaymentForm {
     pub cheque_bank: Option<String>,
     /// A cheque's date.
     pub cheque_date: Option<NaiveDate>,
+    /// For the method `set_off`: the id of the party's open invoice.
+    pub set_off_invoice_id: Option<i64>,
+    /// For the method `set_off`: the id of the party's approved supplier bill.
+    pub set_off_bill_id: Option<i64>,
     /// `owner_drawings` for an owner drawing or a repayment by the owner
     /// (`FIN.ACL.21`); empty for an ordinary payment.
     #[validate(max = 32)]
@@ -385,6 +409,9 @@ async fn store(
     let Some(method) = filled(&form.method).and_then(method_of) else {
         return Err(invalid("method", t("fields.method"), &form));
     };
+    if method == PaymentMethod::SetOff {
+        return store_set_off(&state, &user, &t, &form, party.id, entity, amount).await;
+    }
     let mut request = RecordPayment::new(party.id, entity, method, amount).collected_by(user.id);
     if let Some(date) = form.payment_date {
         request = request.date(date);
@@ -420,6 +447,50 @@ async fn store(
         Redirect::route("wl_payments.show", &[&payment.id])?,
     )
         .into_response())
+}
+
+/// A set-off from the record form (wl-payments §4 *Set-off*): the payment is
+/// allocated at once to the invoice and the supplier bill the form names. For
+/// a blocked party an exception is requested instead (`PTY.ACL.03`).
+async fn store_set_off(
+    state: &AppState,
+    user: &AuthUser,
+    t: Text<'_>,
+    form: &PaymentForm,
+    party: PartyId,
+    entity: i64,
+    amount: i64,
+) -> Result<Response> {
+    let (Some(invoice), Some(bill)) = (form.set_off_invoice_id, form.set_off_bill_id) else {
+        return Err(invalid(
+            "set_off_invoice_id",
+            t("set_off.documents_required"),
+            form,
+        ));
+    };
+    let request = crate::set_off::SetOffRequest {
+        party,
+        legal_entity_id: entity,
+        invoice: wl_kernel::invoicing::InvoiceId(invoice),
+        bill: wl_kernel::invoicing::SupplierBillId(bill),
+        amount,
+        date: form.payment_date,
+        reference: filled(&form.reference).map(str::to_owned),
+    };
+    match crate::set_off::record(state, user, &request).await {
+        Ok(crate::set_off::SetOffOutcome::Recorded(payment)) => Ok((
+            Toast::success(t("recorded")),
+            Redirect::route("wl_payments.show", &[&payment.id])?,
+        )
+            .into_response()),
+        Ok(crate::set_off::SetOffOutcome::ExceptionRequested(_)) => Ok((
+            Toast::success(t("set_off.exception_requested")),
+            Redirect::route("wl_payments.index", &[])?,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid("amount", message, form)),
+        Err(other) => Err(other.into_error()),
+    }
 }
 
 /// A drawing or a repayment from the record form (`FIN.ACL.21`): a drawing is
@@ -507,9 +578,17 @@ fn drawing_kind(status: DrawingStatus) -> &'static str {
 /// stands. The approvers' "Needs your action" card links here.
 async fn show_drawing(
     State(state): State<AppState>,
+    user: AuthUser,
     lang: Lang,
     Found(drawing): Found<PaymentDrawing>,
 ) -> Result<View> {
+    // An owner drawing belongs to the company, not to a building.
+    if !wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW)
+        .await?
+        .is_all()
+    {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let entity = LegalEntity::find(&state.db, drawing.legal_entity_id).await?;
     Ok(View::typed(DrawingPage {
@@ -679,6 +758,10 @@ async fn show(
     lang: Lang,
     Found(payment): Found<Payment>,
 ) -> Result<View> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    if !crate::scoped::payment_in_reach(&state.db, &reach, payment.id).await? {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let db = state.db.clone();
     let money = |fils: i64| money_text(&payment.currency, fils);

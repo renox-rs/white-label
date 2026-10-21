@@ -13,6 +13,7 @@ use renox::auth::permissions::Scope;
 use renox::auth::{Auth, Permissions, permissions};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_hr::permissions as perm;
 use wl_hr::{
@@ -27,7 +28,8 @@ use wl_kernel::documents::{
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
 use wl_kernel::tickets::{ChecklistRunId, Checklists, TicketFuture, provide_checklists};
 use wl_kernel::workforce::{
-    EmployeeActivated, EmployeeAssignmentChanged, OnboardingCompleted, OnboardingStarted,
+    AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
+    OnboardingCompleted, OnboardingStarted, QualificationExpired, QualificationExpiring,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -65,6 +67,11 @@ pub fn other_branch() -> Subject {
 /// The scope of [`branch`].
 pub fn branch_scope() -> Scope {
     Scope::new("test.branch", 2)
+}
+
+/// The scope of `subject`.
+pub fn branch_scope_of(subject: &Subject) -> Scope {
+    Scope::new(&subject.subject_type, subject.subject_id)
 }
 
 /// A date in November 2026.
@@ -190,17 +197,51 @@ impl SopAcknowledgements for SopDesk {
     }
 }
 
-/// The accepted documents of the employees: `(subject, kind)` to a document id.
+/// What the document desk holds for one subject and kind.
 #[derive(Clone, Default)]
-pub struct DocDesk(Arc<Mutex<BTreeMap<(String, String), i64>>>);
+struct DocEntry {
+    /// The accepted document and its expiry date.
+    accepted: Option<(i64, Option<NaiveDate>)>,
+    /// A renewal waiting for review.
+    pending: Option<i64>,
+}
+
+/// The documents of the employees: `(subject, kind)` to what is held. Its
+/// `is_valid` follows `document_valid` (wl-documents §5.6): valid on or
+/// before the expiry date, a renewal that waits for review is no answer.
+#[derive(Clone, Default)]
+pub struct DocDesk(Arc<Mutex<BTreeMap<(String, String), DocEntry>>>);
 
 impl DocDesk {
-    /// `subject` has an accepted document `document` of `kind`.
+    /// `subject` has an accepted document `document` of `kind` that does not
+    /// expire.
     pub fn accepted(&self, subject: &Subject, kind: &str, document: i64) {
-        self.0
-            .lock()
-            .unwrap()
-            .insert((subject.to_string(), kind.to_owned()), document);
+        self.accepted_until(subject, kind, document, None);
+    }
+
+    /// `subject` has an accepted document `document` of `kind`, valid
+    /// through `expires_on`; any renewal waiting is settled.
+    pub fn accepted_until(
+        &self,
+        subject: &Subject,
+        kind: &str,
+        document: i64,
+        expires_on: Option<NaiveDate>,
+    ) {
+        let mut all = self.0.lock().unwrap();
+        let entry = all
+            .entry((subject.to_string(), kind.to_owned()))
+            .or_default();
+        entry.accepted = Some((document, expires_on));
+        entry.pending = None;
+    }
+
+    /// A renewal `document` of `kind` was uploaded and waits for review.
+    pub fn pending_review(&self, subject: &Subject, kind: &str, document: i64) {
+        let mut all = self.0.lock().unwrap();
+        all.entry((subject.to_string(), kind.to_owned()))
+            .or_default()
+            .pending = Some(document);
     }
 }
 
@@ -218,21 +259,47 @@ impl DocumentGuard for DocDesk {
         _db: &'a Db,
         subject: &'a Subject,
         kind: &'a str,
-        _on_date: NaiveDate,
+        on_date: NaiveDate,
     ) -> DocumentFuture<'a, Validity> {
         Box::pin(async move {
-            let found = self
+            let entry = self
                 .0
                 .lock()
                 .unwrap()
                 .get(&(subject.to_string(), kind.to_owned()))
-                .copied();
-            Ok(match found {
-                Some(id) => Validity::Valid {
+                .cloned()
+                .unwrap_or_default();
+            Ok(match entry {
+                DocEntry {
+                    accepted: Some((id, expires_on)),
+                    ..
+                } if expires_on.is_none_or(|day| day >= on_date) => Validity::Valid {
                     document: Some(wl_kernel::DocumentId(id)),
-                    expires_on: None,
+                    expires_on,
                 },
-                None => Validity::Invalid {
+                DocEntry {
+                    pending: Some(id),
+                    accepted,
+                    ..
+                } => Validity::Invalid {
+                    reason: wl_kernel::InvalidReason::PendingReview,
+                    document: Some(wl_kernel::DocumentId(id)),
+                    expired_on: accepted.and_then(|(_, expires_on)| expires_on),
+                    pending: Some(wl_kernel::documents::PendingRenewal {
+                        document: wl_kernel::DocumentId(id),
+                        submitted_on: on_date,
+                    }),
+                },
+                DocEntry {
+                    accepted: Some((id, expires_on)),
+                    ..
+                } => Validity::Invalid {
+                    reason: wl_kernel::InvalidReason::Expired,
+                    document: Some(wl_kernel::DocumentId(id)),
+                    expired_on: expires_on,
+                    pending: None,
+                },
+                _ => Validity::Invalid {
                     reason: wl_kernel::InvalidReason::Missing,
                     document: None,
                     expired_on: None,
@@ -313,6 +380,9 @@ struct Fakes {
     completed: Arc<Mutex<Vec<OnboardingCompleted>>>,
     activated: Arc<Mutex<Vec<EmployeeActivated>>>,
     changed: Arc<Mutex<Vec<EmployeeAssignmentChanged>>>,
+    qualification_expired: Arc<Mutex<Vec<QualificationExpired>>>,
+    qualification_expiring: Arc<Mutex<Vec<QualificationExpiring>>>,
+    absconded: Arc<Mutex<Vec<EmployeeAbsconded>>>,
 }
 
 /// Records `event`s of type `E` into `log`.
@@ -341,6 +411,9 @@ impl Module for Fakes {
         record(app, &self.completed);
         record(app, &self.activated);
         record(app, &self.changed);
+        record(app, &self.qualification_expired);
+        record(app, &self.qualification_expiring);
+        record(app, &self.absconded);
     }
 }
 
@@ -366,6 +439,16 @@ pub struct Booted {
     pub activated: Recorded<EmployeeActivated>,
     /// `EmployeeAssignmentChanged`.
     pub changed: Recorded<EmployeeAssignmentChanged>,
+    /// `QualificationExpired`.
+    pub qualification_expired: Recorded<QualificationExpired>,
+    /// `QualificationExpiring`.
+    pub qualification_expiring: Recorded<QualificationExpiring>,
+    /// `EmployeeAbsconded`.
+    pub absconded: Recorded<EmployeeAbsconded>,
+    /// Days the clock was moved forward from the real one.
+    clock_days: std::sync::atomic::AtomicI64,
+    /// The absence cases opened so far.
+    cases: std::sync::atomic::AtomicI64,
 }
 
 impl Booted {
@@ -401,6 +484,104 @@ impl Booted {
         let user = self.user(name).await;
         user.assign_role(self.db(), role).await.unwrap();
         user
+    }
+
+    /// An employee in `status`, hired on 2 Nov at branch B, inserted as a
+    /// fixture (the machine would not take it there).
+    pub async fn employee_in(&self, party: i64, status: wl_hr::EmployeeStatus) -> Employee {
+        let mut employee = Employee {
+            party_id: party,
+            job_role: "driver".into(),
+            job_title: "Driver".into(),
+            hire_date: nov(2),
+            status,
+            ..Employee::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        employee
+            .insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        wl_hr::EmployeeScope::create(
+            &mut tx,
+            wl_hr::EmployeeScope {
+                employee_id: employee.id,
+                scope_type: branch().subject_type.clone(),
+                scope_id: branch().subject_id.to_string(),
+                ..wl_hr::EmployeeScope::default()
+            },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        employee
+    }
+
+    /// Runs `work` with the clock on `day` (Asia/Dubai), moved forward from
+    /// the real one; days only go forward within a test.
+    pub async fn on<F: std::future::Future>(&self, day: NaiveDate, work: F) -> F::Output {
+        use std::sync::atomic::Ordering;
+        let real = wl_kernel::documents::dubai_date(renox::db::now());
+        let wanted = (day - real).num_days();
+        let moved = self.clock_days.load(Ordering::SeqCst);
+        assert!(wanted >= moved, "the clock cannot go back to {day}");
+        if wanted > moved {
+            let seconds = u64::try_from(wanted - moved).unwrap() * 24 * 3600;
+            self.app.travel(std::time::Duration::from_secs(seconds));
+            self.clock_days.store(wanted, Ordering::SeqCst);
+        }
+        self.app.at_travelled_time(work).await
+    }
+
+    /// An absence case of a vertical opened for `employee` on `opened_on`,
+    /// counting from `last_present`, as the vertical tells wl-hr.
+    pub async fn open_case(
+        &self,
+        employee: &Employee,
+        opened_on: NaiveDate,
+        last_present: NaiveDate,
+    ) {
+        let id = self.cases.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        self.state()
+            .emit(AbsenceCaseOpened {
+                employee: employee.employee_id(),
+                case: Subject::new("ticketing.ticket", id),
+                opened_on,
+                last_present_on: last_present,
+            })
+            .await
+            .unwrap();
+    }
+
+    /// A failed attempt (no answer) to reach `employee` on `day`.
+    pub async fn attempt(&self, employee: &Employee, day: NaiveDate) {
+        wl_hr::ContactAttempt::create(
+            self.db(),
+            wl_hr::ContactAttempt {
+                employee_id: employee.id,
+                attempted_on: day,
+                method: "phone".into(),
+                outcome: wl_hr::ContactOutcome::NoAnswer,
+                ..wl_hr::ContactAttempt::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    /// `employee` has been absent for long: an open absence case that counts
+    /// from 2026-01-01 and two failed attempts on 2026-01-05 and 2026-01-06,
+    /// whatever the clock says.
+    pub async fn make_absent(&self, employee: &Employee) {
+        let day = |m: u32, d: u32| NaiveDate::from_ymd_opt(2026, m, d).unwrap();
+        self.open_case(employee, day(1, 9), day(1, 1)).await;
+        self.attempt(employee, day(1, 5)).await;
+        self.attempt(employee, day(1, 6)).await;
+    }
+
+    /// `employee`, as stored now.
+    pub async fn employee(&self, employee: &Employee) -> Employee {
+        Employee::find_or_404(self.db(), employee.id).await.unwrap()
     }
 
     /// Ravi K., a driver hired on 2 Nov at branch B, with an account.
@@ -469,7 +650,15 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         completed: Arc::default(),
         activated: Arc::default(),
         changed: Arc::default(),
+        qualification_expired: Arc::default(),
+        qualification_expiring: Arc::default(),
+        absconded: Arc::default(),
     };
+    let (qualification_expired, qualification_expiring, absconded) = (
+        Recorded(fakes.qualification_expired.clone()),
+        Recorded(fakes.qualification_expiring.clone()),
+        Recorded(fakes.absconded.clone()),
+    );
     let (notices, checklists, sops, docs) = (
         fakes.notices.clone(),
         fakes.checklists.clone(),
@@ -485,6 +674,7 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
+        .module(renox::audit::Audit)
         .module(module)
         .module(fakes);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
@@ -514,6 +704,26 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
     permissions::define_role(app.db(), "manager", &[perm::EMPLOYEES_VIEW])
         .await
         .unwrap();
+    // The MD approves the non-standard exits (`HRM.ACL.07`) and may also ask
+    // for them as HR.
+    permissions::define_role(
+        app.db(),
+        "md",
+        &[perm::EMPLOYEES_VIEW, perm::EMPLOYEES_EXIT_APPROVE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(
+        app.db(),
+        "hr_md",
+        &[
+            perm::EMPLOYEES_VIEW,
+            perm::EMPLOYEES_MANAGE,
+            perm::EMPLOYEES_EXIT_APPROVE,
+        ],
+    )
+    .await
+    .unwrap();
     if induction {
         wl_hr::seed::install(app.db()).await.unwrap().total();
     }
@@ -528,6 +738,11 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         completed,
         activated,
         changed,
+        qualification_expired,
+        qualification_expiring,
+        absconded,
+        clock_days: std::sync::atomic::AtomicI64::new(0),
+        cases: std::sync::atomic::AtomicI64::new(0),
     }
 }
 

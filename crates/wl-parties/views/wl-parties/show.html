@@ -4,6 +4,7 @@
 <rx-page layout="layouts/app.html" :title="party.display_name">
   <rx-stack>
     <rx-page-header :title="party.display_name" :subtitle="party.code" :back="route('wl_parties.index')" :back-label="tx['title']">
+      <rx-link-button rx-if="documents_url" :href="documents_url" :label="tx['documents.button']" variant="secondary" icon="file"/>
       <template rx-if="can_block"><rx-include template="wl-parties/_block_sheet.html"/></template>
       <template rx-if="can_unblock"><rx-include template="wl-parties/_unblock_sheet.html"/></template>
       <rx-link-button rx-if="can_update and company" :href="route('wl_parties.einvoice', party.id)" :label="tx['fields.einvoice_recipient_id']" variant="plain" icon="file-text"/>

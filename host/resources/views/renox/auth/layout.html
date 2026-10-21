@@ -9,7 +9,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <title><rx-outlet name="title">{{ app.name }}</rx-outlet></title>
+  <title><rx-outlet name="title">{{ brand }}</rx-outlet></title>
   <rx-head/>
   <rx-ui/>
   <rx-theme/>
@@ -23,7 +23,7 @@
   {#- The account pages are the wide ones (the built-in layout's `main_class` block). -#}
   <main class="rx-auth{{ ' rx-auth--wide' if not art }}" id="main">
     <div class="rx-auth__inner">
-      <p class="rx-auth__brand"><a href="{{ route('home') }}"><span class="rx-brand-mark" aria-hidden="true">{{ (app.name | string)[:1] | upper }}</span> {{ app.name }}</a></p>
+      <p class="rx-auth__brand"><a href="{{ route('home') }}"><span class="rx-brand-mark" aria-hidden="true">{{ (brand | string)[:1] | upper }}</span> {{ brand }}</a></p>
       <rx-outlet name="content"/>
     </div>
   </main>

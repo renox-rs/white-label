@@ -24,7 +24,7 @@ use crate::comments::{Comment, CommentVisibility};
 use crate::config::Category;
 use crate::contract::{ServiceContract, ServiceContracts};
 use crate::ticket::{Ticket, TicketStatus};
-use crate::work::{complete, resolve_from_source};
+use crate::work::{auto_cancel, complete, resolve_from_source};
 use renox::state_machine::TransitionError;
 
 /// The ticket service: opens tickets, and is the app's [`TaskCreator`].
@@ -238,6 +238,27 @@ impl Tickets {
         }
     }
 
+    /// Cancels ticket `id` for the record it is about (a terminated project),
+    /// with `reason`. `false` when the ticket is unknown, is not open or
+    /// cannot be cancelled (a compliance-critical visit).
+    ///
+    /// # Errors
+    ///
+    /// 422 for a blank reason.
+    pub async fn cancel_from_source(state: &AppState, id: TicketId, reason: &str) -> Result<bool> {
+        let Some(ticket) = Ticket::find(&state.db, id.0).await? else {
+            return Ok(false);
+        };
+        if !ticket.is_open() {
+            return Ok(false);
+        }
+        match auto_cancel(state, &ticket, reason).await {
+            Ok(()) => Ok(true),
+            Err(TransitionError::NotFrom(_) | TransitionError::Guard(_)) => Ok(false),
+            Err(error) => Err(abort(StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
+        }
+    }
+
     /// Closes ticket `id` for the record that opened it, with `note`.
     /// `false` when the ticket is unknown or already resolved, closed or
     /// cancelled. `TicketClosed` follows the commit.
@@ -302,6 +323,15 @@ impl TaskCreator for Tickets {
         note: &'a str,
     ) -> TicketFuture<'a, bool> {
         Box::pin(Tickets::complete(state, ticket, note))
+    }
+
+    fn cancel_from_source<'a>(
+        &'a self,
+        state: &'a AppState,
+        ticket: TicketId,
+        reason: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(Tickets::cancel_from_source(state, ticket, reason))
     }
 
     fn comment<'a>(
@@ -379,6 +409,34 @@ mod tests {
         assert_eq!(ticket.category_id, general.id);
         assert_eq!(ticket.sla_policy_id, general.sla_policy_id);
         assert!(ticket.sla_started_at.is_none());
+    }
+
+    #[renox::test]
+    async fn a_ticket_is_cancelled_for_its_record_once() {
+        let app = app().await;
+        let project = Subject::new("construction.project", 4);
+        let opened = Tickets::open_at(
+            app.state(),
+            OpenTicket::new(project, "general", "Snag"),
+            at("2026-11-03T05:00:00Z"),
+        )
+        .await
+        .unwrap();
+        let creator = task_creator(app.state());
+        assert!(
+            creator
+                .cancel_from_source(app.state(), opened.id, "project terminated")
+                .await
+                .unwrap()
+        );
+        let ticket = Ticket::find_or_404(app.db(), opened.id.0).await.unwrap();
+        assert_eq!(ticket.status, TicketStatus::Cancelled);
+        assert!(
+            !creator
+                .cancel_from_source(app.state(), opened.id, "project terminated")
+                .await
+                .unwrap()
+        );
     }
 
     #[renox::test]

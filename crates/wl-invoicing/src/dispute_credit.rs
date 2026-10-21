@@ -152,9 +152,9 @@ pub fn split(lines: &[SplitLine], agreed: i64) -> std::result::Result<Vec<Credit
 
 /// Why `origins` (the origin type of each disputed line) cannot be credited
 /// yet: a line billed from a timesheet needs an approved adjustment
-/// timesheet (`attendance.timesheet`, origin `client_dispute`), whose check
-/// comes with wl-attendance (#86). Until then it is refused, with or without
-/// a timesheet named.
+/// timesheet (`attendance.timesheet`, origin `client_dispute`), whose credit note
+/// is linked by [`crate::dispute_resolve`] (#86). Otherwise it is refused, with or
+/// without a timesheet named.
 pub fn timesheet_guard<'a>(
     origins: impl IntoIterator<Item = Option<&'a str>>,
 ) -> std::result::Result<(), String> {
@@ -294,7 +294,7 @@ pub(crate) async fn finish_in(
 
 /// Clears the invoice's flag and stores the `credited` outcome on the
 /// dispute, only while both are still open.
-async fn settle_in(
+pub(crate) async fn settle_in(
     tx: &mut renox::db::Transaction,
     invoice_id: i64,
     dispute_id: i64,

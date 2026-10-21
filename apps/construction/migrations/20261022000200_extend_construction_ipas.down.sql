@@ -1,0 +1,11 @@
+DROP INDEX "construction_ipas_cutoff";
+ALTER TABLE "construction_ipas" DROP COLUMN late_certificate_ref;
+ALTER TABLE "construction_ipas" DROP COLUMN claim_gap;
+ALTER TABLE "construction_ipas" DROP COLUMN certificate_ref;
+ALTER TABLE "construction_ipas" DROP COLUMN certified_on;
+ALTER TABLE "construction_ipas" DROP COLUMN submitted_on;
+ALTER TABLE "construction_ipas" DROP COLUMN cutoff_on;
+ALTER TABLE "construction_ipas" DROP COLUMN replaces_id;
+ALTER TABLE "construction_ipas" DROP COLUMN previous_certified;
+ALTER TABLE "construction_ipas" DROP COLUMN previous_pending;
+ALTER TABLE "construction_ipas" DROP COLUMN number;

@@ -3,14 +3,18 @@
 //! permission here, give it to roles, and `define` makes the database agree
 //! (it runs on every sign-up, seed and `users:admin`).
 
+use accounting::permissions as acc;
+use construction::permissions as con;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
 use wl_delivery::permissions as delivery;
+use wl_attendance::permissions as attendance;
 use wl_documents::permissions as documents;
 use wl_hr::permissions as hr;
+use wl_inventory::permissions as inventory;
 use wl_invoicing::permissions as invoices;
 use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
@@ -70,6 +74,18 @@ pub const PROPERTY_MANAGER: &str = prp::PROPERTY_MANAGER_ROLE;
 /// The leasing agent: drafts and submits leases, asks for a cancellation
 /// (01 §3.1, `PRP.ACL.18`).
 pub const LEASING_AGENT: &str = prp::LEASING_AGENT_ROLE;
+/// The partner of an accounting firm: owns the client relationships, ends
+/// engagements (04 §3.1).
+pub const PARTNER: &str = acc::PARTNER_ROLE;
+/// The engagement manager: runs a portfolio of clients, activates,
+/// suspends and resumes their engagements, prepares CDD files and tax
+/// profiles (04 §3.1).
+pub const ENGAGEMENT_MANAGER: &str = acc::MANAGER_ROLE;
+/// The tax specialist: returns and tax profiles (04 §3.1).
+pub const TAX_SPECIALIST: &str = acc::TAX_SPECIALIST_ROLE;
+/// Billing and admin: proposals, retainers, invoices and collections
+/// (04 §3.1).
+pub const BILLING: &str = acc::BILLING_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
@@ -85,6 +101,29 @@ pub const OPERATIONS_MANAGER: &str = "operations_manager";
 /// A driver or rider: sees today's stops of their own runs and records their
 /// outcomes (wl-delivery §6, `WRK.ACL.05`).
 pub const DRIVER: &str = "driver";
+/// A site supervisor: marks attendance of the crews and people of their
+/// location and corrects it within the window (wl-attendance §6, `HRM.ACL.01`).
+pub const SUPERVISOR: &str = "supervisor";
+/// The storekeeper: receives deliveries at the stores of their site and
+/// records what was accepted and rejected (wl-inventory §6, `STK.ACL.04`).
+pub const STOREKEEPER: &str = "storekeeper";
+/// The procurement officer: sees purchase orders and approves an
+/// over-receipt at the locations in their scope (wl-inventory §6,
+/// `STK.ACL.04`).
+pub const PROCUREMENT: &str = "procurement";
+/// The procurement manager: told of a supplier review and of a request to
+/// change the preferred supplier of an item, and approves it when they are
+/// not the requester (wl-inventory §6, `STK.ACL.07`).
+pub const PROCUREMENT_MANAGER: &str = "procurement_manager";
+/// The project manager: runs a project, asks for its termination and settles
+/// its final account (02 Construction §3.1, `CON.ACL.15`).
+pub const PROJECT_MANAGER: &str = con::PROJECT_MANAGER_ROLE;
+/// The quantity surveyor (QS): records the client's certificates and the
+/// deductions on them (02 §3, `CON.ACL.14`).
+pub const QUANTITY_SURVEYOR: &str = con::QS_ROLE;
+/// The HSE officer: told of a midday break flag (`HRM.RUL.13`) and the
+/// responsible role of the ISO certificate (02 §7.2).
+pub const HSE_OFFICER: &str = "hse";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -93,6 +132,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         ADMIN,
         &[
+            // 04 `ACC.ACL.05`: any member of staff may raise an AML concern and
+            // then sees nothing of it.
+            acc::AML_RAISE,
+            // `aml.manage` is the MLRO's and deputy's alone, as the restricted block
+            // reasons are: not even the company admin sees an AML case.
             USERS,
             ACTIVITY,
             SETTINGS_VIEW,
@@ -145,6 +189,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::CASHFLOW_MANAGE,
             invoices::EINVOICES_VIEW,
             invoices::EINVOICES_MANAGE,
+            invoices::SUBSCRIPTIONS_VIEW,
+            invoices::SUBSCRIPTIONS_MANAGE,
             tickets::VIEW,
             tickets::CREATE,
             tickets::ASSIGN,
@@ -154,6 +200,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             tickets::SERVICE_CONTRACTS_VIEW,
             tickets::SERVICE_CONTRACTS_MANAGE,
             tickets::MAINTENANCE_PLANS_MANAGE,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            tickets::TASKS_REVIEW,
+            tickets::TASKS_MANAGE,
             payments::VIEW,
             payments::RECORD,
             payments::REVERSE,
@@ -183,6 +233,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LEADS_MANAGE,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
+            hr::EMPLOYEES_EXIT_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
             delivery::VIEW,
@@ -195,6 +246,38 @@ pub const ROLES: &[(&str, &[&str])] = &[
             delivery::POD_VIEW,
             delivery::REVERSE,
             delivery::APPROVE_COD_DIFFERENCE,
+            attendance::VIEW,
+            attendance::MARK,
+            attendance::SELF_CHECK_IN,
+            attendance::REVIEW,
+            attendance::CORRECT,
+            attendance::WORK_LOCATIONS_MANAGE,
+            attendance::TIMESHEETS_SUBMIT,
+            attendance::TIMESHEETS_ADJUST,
+            attendance::TIMESHEETS_APPROVE,
+            attendance::TIMESHEETS_APPROVE_ON_BEHALF,
+            attendance::TIMESHEETS_REOPEN,
+            inventory::ITEMS_VIEW,
+            inventory::ITEMS_MANAGE,
+            inventory::LOCATIONS_MANAGE,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::PURCHASE_ORDERS_ISSUE,
+            inventory::GOODS_RECEIPTS_POST,
+            inventory::GOODS_RECEIPTS_REVERSE,
+            inventory::SUPPLIER_RETURNS_MANAGE,
+            inventory::LANDED_COSTS_POST,
+            inventory::ITEM_SUPPLIERS_MANAGE,
+            inventory::ITEM_SUPPLIERS_APPROVE,
+            con::PROJECTS_VIEW,
+            con::PROJECTS_MANAGE,
+            con::PROJECTS_TERMINATE,
+            con::PROJECTS_CANCEL,
+            con::PROJECTS_AWARD,
+            con::RETENTIONS_MANAGE,
+            con::GUARANTEES_MANAGE,
+            con::VARIATIONS_RECORD,
+            con::VARIATIONS_SUBMIT,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -208,6 +291,23 @@ pub const ROLES: &[(&str, &[&str])] = &[
             prp::OWNER_STATEMENTS_APPROVE,
             prp::AGREEMENTS_MANAGE,
             prp::COMPLIANCE_VIEW,
+            acc::ENGAGEMENTS_VIEW,
+            acc::ENGAGEMENTS_MANAGE,
+            acc::ENGAGEMENTS_END,
+            acc::CDD_VIEW,
+            acc::CDD_PREPARE,
+            acc::CDD_APPROVE,
+            acc::TAX_PROFILES_VIEW,
+            acc::TAX_PROFILES_MANAGE,
+            acc::TAX_PROFILES_APPROVE,
+            acc::RETURNS_VIEW,
+            acc::RETURNS_PREPARE,
+            acc::RETURNS_REVIEW,
+            acc::RETURNS_FILE,
+            acc::WIP_WRITE_OFF,
+            acc::KPI_VIEW,
+            acc::KPI_MANAGE,
+            acc::KPI_PUBLISH,
         ],
     ),
     (
@@ -226,6 +326,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             prp::COMPLIANCE_VIEW,
             parties::VIEW,
             documents::VIEW,
+            // The signed tenancy contract and the Ejari certificate of a lease.
+            documents::UPLOAD,
             invoices::VIEW,
             tickets::VIEW,
             tickets::CREATE,
@@ -255,10 +357,176 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         COMPLIANCE,
         &[
+            // 04 `ACC.ACL.05`: the MLRO and deputy raise and work the AML cases
+            // (`ACC.RUL.12`, `report`, `close`).
+            acc::AML_RAISE,
+            acc::AML_MANAGE,
+            // The identity documents of the people the company deals with are
+            // accepted here (the uploader never accepts their own).
+            documents::VIEW,
+            documents::REVIEW,
             parties::VIEW,
             parties::BLOCK,
             parties::BLOCK_REASON_VIEW,
             parties::BLOCK_EXCEPTION,
+            // 04 §8 and `PTY.RUL.01`: the MLRO and deputy review the possible
+            // matches (the second review of a confirmed one), run screenings
+            // and upload a sanctions list by hand.
+            parties::SCREENING_REVIEW,
+            parties::SCREENING_RUN,
+            // 04: the MLRO approves CDD files and the one-use override of
+            // an expired KYC document (`DOC.ACL.02`).
+            documents::BLOCK_OVERRIDE,
+            acc::ENGAGEMENTS_VIEW,
+            acc::CDD_VIEW,
+            acc::CDD_PREPARE,
+            acc::CDD_APPROVE,
+            // 04 `ACC.ACL.15`: sees the returns, and the KYC flag on a
+            // return filed with an expired client document.
+            acc::RETURNS_VIEW,
+            // 04 §3.1: the MLRO opens and works the CDD update task of an
+            // expired KYC document (a staff task assigned to them,
+            // `ACC.RUL.05`) and sees the deadline tasks.
+            tickets::VIEW,
+            tickets::WORK,
+            // The MLRO's tasks about a client are confidential tickets
+            // (`confidential_task`): the MLRO and the deputy see them, the
+            // managers and partners do not (`ACC.ACL.05`, `ACC.ACL.14`).
+            tickets::CONFIDENTIAL_VIEW,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+        ],
+    ),
+    (
+        PARTNER,
+        &[
+            acc::AML_RAISE,
+            acc::ENGAGEMENTS_VIEW,
+            acc::ENGAGEMENTS_MANAGE,
+            acc::ENGAGEMENTS_END,
+            acc::CDD_VIEW,
+            acc::TAX_PROFILES_VIEW,
+            acc::TAX_PROFILES_APPROVE,
+            // 04 §3.1: signs off returns, files them, and decides the
+            // write-offs of unbilled time above the manager's share.
+            acc::RETURNS_VIEW,
+            acc::RETURNS_REVIEW,
+            acc::RETURNS_FILE,
+            acc::WIP_WRITE_OFF,
+            // 04 §3.1 "all": reads the KPI packs and can withdraw one.
+            acc::KPI_VIEW,
+            acc::KPI_PUBLISH,
+            // 04 `FIN.ACL.15`, `FIN.BUD.01`, `FIN.ACL.21`: the partner
+            // approves write-offs, budgets and owner drawings (never their
+            // own request) and reads the cash forecast.
+            invoices::WRITE_OFF,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_APPROVE,
+            invoices::DRAWINGS_APPROVE,
+            invoices::CASHFLOW_VIEW,
+            invoices::RECEIVABLES_VIEW,
+            parties::VIEW,
+            documents::VIEW,
+            invoices::VIEW,
+            invoices::SUBSCRIPTIONS_VIEW,
+            tickets::TASKS_VIEW,
+        ],
+    ),
+    (
+        ENGAGEMENT_MANAGER,
+        &[
+            acc::AML_RAISE,
+            acc::ENGAGEMENTS_VIEW,
+            acc::ENGAGEMENTS_MANAGE,
+            acc::CDD_VIEW,
+            acc::CDD_PREPARE,
+            acc::TAX_PROFILES_VIEW,
+            acc::TAX_PROFILES_MANAGE,
+            // `ACC.ACL.13`: approves another person's change of a tax profile.
+            acc::TAX_PROFILES_APPROVE,
+            // 04 §3.1 "returns (review)": reviews and cancels returns and
+            // writes off unbilled time up to the limit (`ACC.ACL.09`).
+            acc::RETURNS_VIEW,
+            acc::RETURNS_REVIEW,
+            acc::WIP_WRITE_OFF,
+            // 04 §4.5: the manager raises the client's dispute and asks for a
+            // write-off.
+            invoices::DISPUTE,
+            invoices::WRITE_OFF,
+            // 04 §7.1 *KPI pack*: the manager prepares and publishes.
+            acc::KPI_VIEW,
+            acc::KPI_MANAGE,
+            acc::KPI_PUBLISH,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            documents::VIEW,
+            documents::UPLOAD,
+            invoices::VIEW,
+            // 04 §3.1 "engagements, tasks, returns (review)": works and
+            // reviews the deadline tasks, and waives them or closes them as
+            // missed (`ACC.RUL.04`, BL-TKT-09); sees the staff tasks of
+            // their clients.
+            tickets::VIEW,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            tickets::TASKS_REVIEW,
+            tickets::TASKS_MANAGE,
+        ],
+    ),
+    (
+        TAX_SPECIALIST,
+        &[
+            acc::AML_RAISE,
+            acc::ENGAGEMENTS_VIEW,
+            acc::TAX_PROFILES_VIEW,
+            acc::TAX_PROFILES_MANAGE,
+            // 04 §3.1 "returns (prepare, review)".
+            acc::RETURNS_VIEW,
+            acc::RETURNS_PREPARE,
+            acc::RETURNS_REVIEW,
+            acc::RETURNS_FILE,
+            parties::VIEW,
+            documents::VIEW,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            tickets::TASKS_REVIEW,
+        ],
+    ),
+    (
+        BILLING,
+        &[
+            acc::AML_RAISE,
+            acc::ENGAGEMENTS_VIEW,
+            // 04 §3.1 billing / admin is HR: `HRM.RUL.17` tells it.
+            hr::EMPLOYEES_VIEW,
+            hr::EMPLOYEES_MANAGE,
+            hr::ONBOARDING_VIEW,
+            hr::ONBOARDING_MANAGE,
+            parties::VIEW,
+            invoices::VIEW,
+            // 04 `FIN.ACL.15`: billing asks for the write-off (a partner
+            // approves it), disputes on the client's behalf, keeps the
+            // budget and watches the cash forecast.
+            invoices::WRITE_OFF,
+            invoices::DISPUTE,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_MANAGE,
+            invoices::BUDGET_CATEGORIES_MANAGE,
+            invoices::CASHFLOW_VIEW,
+            invoices::CASHFLOW_MANAGE,
+            // Supplier bills, owner drawings and the budget's actuals.
+            invoices::SUPPLIER_BILLS_VIEW,
+            invoices::SUPPLIER_BILLS_CREATE,
+            invoices::SUPPLIER_BILLS_APPROVE,
+            invoices::CREATE,
+            invoices::ISSUE,
+            invoices::CREDIT,
+            invoices::RECEIVABLES_VIEW,
+            invoices::SUBSCRIPTIONS_VIEW,
+            invoices::SUBSCRIPTIONS_MANAGE,
+            payments::VIEW,
+            payments::RECORD,
         ],
     ),
     (
@@ -271,15 +539,20 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::WRITE_OFF,
             invoices::DISPUTE,
             invoices::RECEIVABLES_VIEW,
+            invoices::SUBSCRIPTIONS_VIEW,
         ],
     ),
     (
         ACCOUNTANT,
         &[
+            acc::AML_RAISE,
             prp::UNITS_VIEW,
             prp::LEASES_VIEW,
             prp::LEASES_CANCEL,
             prp::OWNER_STATEMENTS_PREPARE,
+            con::PROJECTS_VIEW,
+            con::RETENTIONS_MANAGE,
+            con::GUARANTEES_MANAGE,
             invoices::VIEW,
             invoices::CREDIT,
             invoices::VAT_VIEW,
@@ -297,6 +570,25 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::CASHFLOW_MANAGE,
             invoices::EINVOICES_VIEW,
             invoices::EINVOICES_MANAGE,
+            invoices::SUBSCRIPTIONS_VIEW,
+            invoices::SUBSCRIPTIONS_MANAGE,
+            // The accountant works the deadline tasks (04 compliance
+            // calendar, wl-ticketing §4.4).
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            // 04: sees the engagements, prepares CDD files.
+            acc::ENGAGEMENTS_VIEW,
+            acc::CDD_VIEW,
+            acc::CDD_PREPARE,
+            acc::TAX_PROFILES_VIEW,
+            // `ACC.ACL.13`: asks for a change of a tax profile.
+            acc::TAX_PROFILES_MANAGE,
+            // 04 §3.1 "returns (prepare)".
+            acc::RETURNS_VIEW,
+            acc::RETURNS_PREPARE,
+            // 04 §3.1 "prepares KPI packs": imports, maps and comments.
+            acc::KPI_VIEW,
+            acc::KPI_MANAGE,
             payments::VIEW,
             payments::RECORD,
             payments::REVERSE,
@@ -345,8 +637,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::BUDGETS_APPROVE,
             invoices::CASHFLOW_VIEW,
             invoices::DRAWINGS_APPROVE,
-            // The second person for `waive` and `reopen` (`HRM.ACL.10`).
+            // The second person for `waive` and `reopen` (`HRM.ACL.10`), and
+            // the MD who approves the non-standard exits (`HRM.ACL.07`).
             hr::EMPLOYEES_VIEW,
+            hr::EMPLOYEES_EXIT_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
         ],
@@ -358,6 +652,74 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            attendance::VIEW,
+            attendance::REVIEW,
+            // HR clears a permit flag by correcting or accepting it, and is
+            // never the supervisor who marked the record (`HRM.ACL.09`).
+            attendance::CORRECT,
+        ],
+    ),
+    (
+        SUPERVISOR,
+        &[attendance::VIEW, attendance::MARK, attendance::CORRECT],
+    ),
+    (
+        STOREKEEPER,
+        &[
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::GOODS_RECEIPTS_POST,
+        ],
+    ),
+    (
+        PROCUREMENT,
+        &[
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::PURCHASE_ORDERS_ISSUE,
+            inventory::SUPPLIER_RETURNS_MANAGE,
+            inventory::LANDED_COSTS_POST,
+            inventory::ITEM_SUPPLIERS_MANAGE,
+        ],
+    ),
+    (
+        PROJECT_MANAGER,
+        &[
+            con::PROJECTS_VIEW,
+            con::PROJECTS_MANAGE,
+            con::PROJECTS_TERMINATE,
+            con::PROJECTS_AWARD,
+            con::IPAS_SUBMIT,
+            con::IPAS_DEDUCTIONS_DECIDE,
+            con::VARIATIONS_SUBMIT,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            attendance::VIEW,
+            attendance::REVIEW,
+        ],
+    ),
+    (
+        QUANTITY_SURVEYOR,
+        &[
+            con::PROJECTS_VIEW,
+            con::IPAS_CERTIFY,
+            con::IPAS_DEDUCTIONS_RECORD,
+            con::VARIATIONS_RECORD,
+            con::RETENTIONS_MANAGE,
+        ],
+    ),
+    (
+        PROCUREMENT_MANAGER,
+        &[
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::PURCHASE_ORDERS_ISSUE,
+            inventory::ITEM_SUPPLIERS_MANAGE,
+            inventory::ITEM_SUPPLIERS_APPROVE,
         ],
     ),
     (
@@ -430,6 +792,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
         ],
     ),
     (DRIVER, &[delivery::RUNS_DRIVE, delivery::COMPLETE]),
+    (HSE_OFFICER, &[attendance::VIEW]),
     (MEMBER, &[]),
 ];
 
@@ -441,8 +804,8 @@ pub async fn define(db: &Db) -> Result {
     Ok(())
 }
 
-/// `users:admin <email>`: the first admin of a new server, after they
-/// signed up.
+/// `users:admin <email>`: gives an existing user (see `users:invite`) the
+/// admin role.
 pub async fn make_admin(args: Args, state: AppState) -> Result {
     let Some(email) = args.positional().first().copied() else {
         return Err(anyhow!("usage: users:admin <email>").into());
@@ -453,5 +816,40 @@ pub async fn make_admin(args: Args, state: AppState) -> Result {
     define(&state.db).await?;
     user.assign_role(&state.db, ADMIN).await?;
     println!("{} is an admin.", user.email);
+    Ok(())
+}
+
+/// `users:invite <email> <name> [--role=admin,hr]`: adds a user (there is no
+/// public sign-up), mails them the link to choose a password and prints it,
+/// which is how the first admin of a new server gets in.
+pub async fn invite(args: Args, state: AppState) -> Result {
+    let positional = args.positional();
+    let (Some(email), Some(name)) = (positional.first().copied(), positional.get(1).copied())
+    else {
+        return Err(anyhow!("usage: users:invite <email> <name> [--role=admin,hr]").into());
+    };
+    let roles: Vec<&str> = args
+        .value("--role")
+        .map(|list| {
+            list.split(',')
+                .map(str::trim)
+                .filter(|r| !r.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(bad) = roles
+        .iter()
+        .find(|r| !ROLES.iter().any(|(name, _)| name == *r))
+    {
+        return Err(anyhow!("there is no role called {bad}").into());
+    }
+    let invitation = super::users::invite(&state, name, email, &roles).await?;
+    println!("{} is added.", invitation.user.email);
+    if invitation.mailed {
+        println!("The link to choose a password was mailed. It works for an hour:");
+    } else {
+        println!("The mail could not be sent. Give them this link (it works for an hour):");
+    }
+    println!("{}", invitation.link);
     Ok(())
 }

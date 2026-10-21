@@ -57,6 +57,24 @@ vertical adds only 9–24 of its own ([capability map](docs/CAPABILITY-MAP.md)).
 `wl-attendance` · `wl-hr` · `wl-inventory`, plus `wl-operator` for running the platform.
 See [docs/modules/](docs/modules/).
 
+## Run it
+
+Rust 1.94 or newer. From the repository root:
+
+```bash
+cargo build -p host --locked
+cd host
+export APP_ENV=local APP_DEBUG=true APP_KEY=base64:$(head -c 32 /dev/urandom | base64) \
+  DATABASE_URL=sqlite://$PWD/storage/app.db?mode=rwc STORAGE_PATH=$PWD/storage APP_PORT=3000 MAIL_MAILER=log
+../target/debug/host migrate:fresh --seed   # creates the demo database and the demo people (local only)
+../target/debug/host serve                  # http://127.0.0.1:3000, admin@example.com / password123
+```
+
+The demo client is `clients/demo-properties/client.toml`. Tests: `cargo test --workspace --locked`.
+Deploying a client to a server (production variables, systemd, Caddy, Litestream, rollout,
+restore drill): [deploy/README.md](deploy/README.md) and [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Never run `migrate:fresh` or `db:seed` against a production database.
+
 ## Where to start
 
 - [docs/README.md](docs/README.md): reading guide and conventions

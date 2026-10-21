@@ -1,0 +1,326 @@
+//! What the return tests share: returns and the calendar tasks that track
+//! them, the people around a return (preparer, reviewer, the client's
+//! approver), and the routes that drive it. The real wl-ticketing is on in
+//! [`boot_real`](super::boot_real).
+
+use accounting::returns::{self, NewReturn};
+use accounting::{Engagement, Return, ReturnStatus, ReturnType};
+use renox::chrono::NaiveDate;
+use renox::prelude::*;
+use renox::state_machine::StateMachine;
+use renox::testing::TestResponse;
+use wl_kernel::PartyId;
+use wl_kernel::deadlines::{
+    DeadlineTaskId, DeadlineTaskStatus, DeadlineTaskSummary, NewDeadlineTask, deadline_tasks,
+};
+
+use super::{Booted, Client, MANAGER, d};
+
+/// The people of a return: who prepares it, who reviews it, who approves it
+/// for the client.
+pub struct Crew {
+    /// The preparer (an accountant).
+    pub preparer: User,
+    /// The reviewer (the engagement manager).
+    pub reviewer: User,
+    /// The partner (files, ends).
+    pub partner: User,
+    /// A client user with the *owner* grant: a client approver.
+    pub approver: User,
+}
+
+impl Booted {
+    /// A portal user `name` linked to `person`, acting for `company` with the
+    /// grant roles `roles`.
+    pub async fn portal_user_with(
+        &self,
+        name: &str,
+        person: PartyId,
+        company: PartyId,
+        roles: &[&str],
+    ) -> User {
+        let user = self.user_with_grants(name, &[]).await;
+        wl_portal::PortalAccess::register(
+            self.state(),
+            user.id,
+            wl_portal::NewGrant::new(person, company, "client", roles),
+        )
+        .await
+        .expect("the portal grant is registered");
+        user
+    }
+
+    /// The preparer, the reviewer, the partner and the client's approver
+    /// (its UBO, with the *owner* grant) for `client`.
+    pub async fn crew(&self, client: &Client) -> Crew {
+        Crew {
+            preparer: self.accountant().await,
+            reviewer: self.manager().await,
+            partner: self.partner().await,
+            approver: self.portal_user("Omar", client.ubo, client.company).await,
+        }
+    }
+
+    /// An `active` engagement of `client` (a fixture), managed by `manager`.
+    pub async fn active_engagement(&self, client: &Client) -> Engagement {
+        self.engagement_in(client, accounting::EngagementStatus::Active, None)
+            .await
+    }
+
+    /// A VAT calendar task of `engagement` for the period ending 2026-10-31,
+    /// due `due`, reviewed by the manager role, as the calendar makes it.
+    pub async fn vat_task(&self, engagement: &Engagement, due: NaiveDate) -> DeadlineTaskId {
+        deadline_tasks(self.state())
+            .create(
+                self.state(),
+                NewDeadlineTask::new(
+                    engagement.subject(),
+                    "vat_return",
+                    "VAT return, period ending 2026-10-31",
+                    due,
+                )
+                .party(engagement.client())
+                .lead_days(21)
+                .reviewer_role(MANAGER)
+                .evidence_required(),
+            )
+            .await
+            .unwrap()
+            .expect("ticketing is on")
+    }
+
+    /// The deadline task `id` as ticketing stores it now.
+    pub async fn task_now(&self, id: DeadlineTaskId) -> DeadlineTaskSummary {
+        deadline_tasks(self.state())
+            .find(self.db(), id)
+            .await
+            .unwrap()
+            .expect("the task exists")
+    }
+
+    /// `user` runs `action` on the deadline task `id` through ticketing's
+    /// route.
+    pub async fn task_act(
+        &self,
+        user: &User,
+        id: DeadlineTaskId,
+        action: &str,
+        pairs: &[(&str, &str)],
+    ) -> TestResponse {
+        self.post(
+            user,
+            &format!("/deadline-tasks/{}/actions/{action}", id.0),
+            pairs,
+        )
+        .await
+    }
+
+    /// Brings the task `id` to `in_review`: started and sent for review by
+    /// `user` (who holds `tasks.work`).
+    pub async fn task_in_review(&self, user: &User, id: DeadlineTaskId) {
+        self.task_act(user, id, "start", &[]).await.assert_ok();
+        self.task_act(user, id, "submit_review", &[])
+            .await
+            .assert_ok();
+        assert_eq!(self.task_now(id).await.status, DeadlineTaskStatus::InReview);
+    }
+
+    /// A `preparing` VAT return of `engagement` for the period ending
+    /// 2026-10-31, due `due`, linked to the engagement's open VAT task of
+    /// that date.
+    pub async fn open_return(&self, engagement: &Engagement, due: NaiveDate) -> Return {
+        returns::open(
+            self.state(),
+            None,
+            NewReturn::new(engagement.id, ReturnType::Vat, d(10, 31), due),
+        )
+        .await
+        .expect("the return opens")
+    }
+
+    /// A return of `engagement` inserted directly in `status` (a fixture),
+    /// with figures and workpapers, for a period ending `period_end` and due
+    /// `due`; a `filed` one carries its acknowledgement.
+    pub async fn return_in(
+        &self,
+        engagement: &Engagement,
+        kind: ReturnType,
+        period_end: NaiveDate,
+        due: NaiveDate,
+        status: ReturnStatus,
+    ) -> Return {
+        let mut ret = Return {
+            client_party_id: engagement.client_party_id,
+            engagement_id: engagement.id,
+            return_type: kind,
+            period_end,
+            due_date: due,
+            version: 1,
+            figures: Some("Output VAT 12,000; input VAT 4,000".to_owned()),
+            workpapers_attached: true,
+            filed_on: (status == ReturnStatus::Filed).then_some(due),
+            acknowledgement: (status == ReturnStatus::Filed).then(|| "FTA-ACK-0001".to_owned()),
+            status,
+            ..Return::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        ret.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        self.return_now(&ret).await
+    }
+
+    /// `user` marks the approved `ret` filed through the route, as a tax
+    /// agent: they get an employee record and a valid FTA registration if they
+    /// have none, and the acknowledgement is dated today.
+    pub async fn file_return(&self, user: &User, ret: &Return) -> TestResponse {
+        self.qualifications.ensure(user.id);
+        self.ret_act(user, ret, "file", &[("acknowledgement", "FTA-ACK-0002")])
+            .await
+    }
+
+    /// `ret`, as stored now.
+    pub async fn return_now(&self, ret: &Return) -> Return {
+        Return::find(self.db(), ret.id).await.unwrap().unwrap()
+    }
+
+    /// The status of `ret` now.
+    pub async fn return_status(&self, ret: &Return) -> ReturnStatus {
+        self.return_now(ret).await.status
+    }
+
+    /// `user` runs `action` on `ret` through the staff route, with `pairs`.
+    pub async fn ret_act(
+        &self,
+        user: &User,
+        ret: &Return,
+        action: &str,
+        pairs: &[(&str, &str)],
+    ) -> TestResponse {
+        self.post(
+            user,
+            &format!("/accounting/returns/{}/{action}", ret.id),
+            pairs,
+        )
+        .await
+    }
+
+    /// `user` runs `action` on `ret` through the portal route, with `pairs`.
+    pub async fn portal_act(
+        &self,
+        user: &User,
+        ret: &Return,
+        action: &str,
+        pairs: &[(&str, &str)],
+    ) -> TestResponse {
+        self.post(
+            user,
+            &format!("/accounting/portal/returns/{}/{action}", ret.id),
+            pairs,
+        )
+        .await
+    }
+
+    /// Takes `ret` through the real routes up to `status`: the figures and
+    /// workpapers by the preparer, `submit`, `review` by the reviewer,
+    /// `approve` by the client's approver.
+    pub async fn return_at(&self, ret: &Return, crew: &Crew, status: ReturnStatus) -> Return {
+        if status != ReturnStatus::Preparing {
+            self.ret_act(
+                &crew.preparer,
+                ret,
+                "figures",
+                &[
+                    ("figures", "Output VAT 12,000; input VAT 4,000"),
+                    ("workpapers", "on"),
+                ],
+            )
+            .await
+            .assert_ok();
+            self.ret_act(&crew.preparer, ret, "submit", &[])
+                .await
+                .assert_ok();
+        }
+        if matches!(
+            status,
+            ReturnStatus::ClientApproval | ReturnStatus::Approved
+        ) {
+            self.ret_act(&crew.reviewer, ret, "review", &[])
+                .await
+                .assert_ok();
+        }
+        if status == ReturnStatus::Approved {
+            self.portal_act(&crew.approver, ret, "approve", &[])
+                .await
+                .assert_ok();
+        }
+        let now = self.return_now(ret).await;
+        assert_eq!(now.status, status);
+        now
+    }
+
+    /// Takes the `preparing` `ret` (reworked after a withdrawal) through
+    /// `submit` and `review` again, by the crew.
+    pub async fn return_at_again(&self, ret: &Return, crew: &Crew) {
+        self.ret_act(&crew.preparer, ret, "submit", &[])
+            .await
+            .assert_ok();
+        self.ret_act(&crew.reviewer, ret, "review", &[])
+            .await
+            .assert_ok();
+        assert_eq!(self.return_status(ret).await, ReturnStatus::ClientApproval);
+    }
+}
+
+impl Booted {
+    /// An `active` engagement of `client` (a fixture) with a retainer of
+    /// `fee` fils a month.
+    pub async fn engagement_billed(&self, client: &Client, fee: i64) -> Engagement {
+        let engagement = self.active_engagement(client).await;
+        Engagement::query()
+            .where_(Engagement::ID.eq(engagement.id))
+            .update(self.db(), &[("retainer_fee", &fee)])
+            .await
+            .unwrap();
+        self.reload(&engagement).await
+    }
+
+    /// `engagement` billed as a fixed fee without a retainer (a fixture): no
+    /// pro rata document is made when it ends.
+    pub async fn engagement_fixed_fee(&self, engagement: &Engagement) -> Engagement {
+        Engagement::query()
+            .where_(Engagement::ID.eq(engagement.id))
+            .update(
+                self.db(),
+                &[
+                    ("fee_basis", &accounting::FeeBasis::Fixed),
+                    ("retainer_fee", &0i64),
+                ],
+            )
+            .await
+            .unwrap();
+        self.reload(engagement).await
+    }
+
+    /// A deadline task of `engagement` of `task_type`, titled `title`, due
+    /// on `due`, as the calendar makes it.
+    pub async fn calendar_task(
+        &self,
+        engagement: &Engagement,
+        task_type: &str,
+        title: &str,
+        due: NaiveDate,
+    ) -> DeadlineTaskId {
+        deadline_tasks(self.state())
+            .create(
+                self.state(),
+                NewDeadlineTask::new(engagement.subject(), task_type, title, due)
+                    .party(engagement.client())
+                    .reviewer_role(MANAGER),
+            )
+            .await
+            .unwrap()
+            .expect("ticketing is on")
+    }
+}

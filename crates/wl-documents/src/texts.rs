@@ -9,6 +9,39 @@ use renox::prelude::*;
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
     ("wl_documents.title", "Documents"),
+    ("wl_documents.subject.title", "Documents"),
+    (
+        "wl_documents.subject.subtitle",
+        "What is on file for this record. A new document waits for review before it counts.",
+    ),
+    ("wl_documents.subject.add", "Add a document"),
+    (
+        "wl_documents.subject.add_description",
+        "Choose what it is and attach the file. Someone other than you accepts it in the review queue.",
+    ),
+    ("wl_documents.subject.add_submit", "Upload for review"),
+    (
+        "wl_documents.subject.uploaded",
+        "Document uploaded; it waits for review.",
+    ),
+    (
+        "wl_documents.subject.kind_required",
+        "Choose what the document is.",
+    ),
+    ("wl_documents.subject.status", "Status"),
+    (
+        "wl_documents.subject.status.pending_review",
+        "Waiting for review",
+    ),
+    ("wl_documents.subject.status.accepted", "Accepted"),
+    ("wl_documents.subject.status.rejected", "Rejected"),
+    ("wl_documents.subject.status.superseded", "Replaced"),
+    ("wl_documents.subject.status.archived", "Archived"),
+    ("wl_documents.subject.empty", "No documents yet"),
+    (
+        "wl_documents.subject.empty_hint",
+        "Add the first one with the button above.",
+    ),
     ("wl_documents.none", "—"),
     ("wl_documents.cancel", "Cancel"),
     ("wl_documents.review.title", "Review queue"),

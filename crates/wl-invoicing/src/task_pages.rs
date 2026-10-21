@@ -56,6 +56,8 @@ pub fn grid(lang: &Lang) -> Grid {
         TaskKind::DeliveryDisputedBeforeIssue,
         TaskKind::DeliveryReversed,
         TaskKind::DeliveryLost,
+        TaskKind::RecordTaxCreditNote,
+        TaskKind::AdjustmentCreditRefused,
     ]
     .iter()
     .map(|kind| {
@@ -98,6 +100,7 @@ pub fn grid(lang: &Lang) -> Grid {
                     ("delivery_disputed_before_issue", "warning"),
                     ("delivery_reversed", "danger"),
                     ("delivery_lost", "danger"),
+                    ("record_tax_credit_note", "warning"),
                 ])
                 .mobile(),
         )

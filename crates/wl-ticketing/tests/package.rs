@@ -151,7 +151,7 @@ async fn seeding_twice_keeps_one_set_of_defaults_and_the_clients_edits() {
     ] {
         assert!(reasons.contains(&(expected.0.to_owned(), expected.1)));
     }
-    assert_eq!(Category::query().count(t.db()).await.unwrap(), 2);
+    assert_eq!(Category::query().count(t.db()).await.unwrap(), 3);
 
     // A client's edits stay.
     let mut approval = HoldReason::by_key(t.db(), "approval")

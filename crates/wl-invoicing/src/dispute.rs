@@ -446,7 +446,15 @@ async fn after_commit(
         .map(|line| (*line, line.gross_amount))
         .collect();
     let number = invoice.number.clone().unwrap_or_default();
-    let (owner_role, owners) = owner::recipients(&state.db, invoice).await?;
+    let (mut owner_role, mut owners) = owner::recipients(&state.db, invoice).await?;
+    if let Some(role) = &config_of(state).dispute_ticket_role {
+        // The client's vertical names who looks after a dispute.
+        let holders = owner::finance_managers(&state.db, role, invoice).await?;
+        if !holders.is_empty() {
+            owner_role = OwnerRole::Receivables;
+            owners = holders;
+        }
+    }
     // The owner, else the first holder of the receivables role (the lowest
     // user id; the ticket has one assignee, every holder gets the notice).
     let owner = owners.first().map(|user| user.id);

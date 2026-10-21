@@ -31,6 +31,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::inventory::SupplierReturnDispatched;
 use crate::numbering::{Reset, Series};
 use crate::parties::PartyId;
 use crate::subject::Subject;
@@ -804,6 +805,18 @@ pub trait Invoicer: Send + Sync + 'static {
         Box::pin(async { Ok(Vec::new()) })
     }
 
+    /// The `overdue` invoices of `party` with a balance, oldest first: what
+    /// a vertical shows before it resumes a service suspended for
+    /// non-payment (04 engagement `resume`). The default has none (invoicing
+    /// is not enabled).
+    fn overdue_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+    ) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// Flags an issued, partly paid or overdue invoice as disputed and
     /// returns the dispute's id. The flag is not a state change. The default
     /// refuses (422): invoicing is not enabled.
@@ -1337,6 +1350,27 @@ pub struct SupplierBillLine {
     pub bill_status: SupplierBillStatus,
 }
 
+/// What other modules see of a supplier bill: who it is from, who received
+/// it, its currency, state and open balance (a set-off reads it, wl-payments
+/// §4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierBillSummary {
+    /// The bill.
+    pub id: SupplierBillId,
+    /// The supplier's invoice number as entered.
+    pub number: String,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The receiving legal entity, if set.
+    pub legal_entity_id: Option<i64>,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The bill's state now.
+    pub status: SupplierBillStatus,
+    /// What is still unpaid, in fils.
+    pub balance: i64,
+}
+
 /// Why a supplier bill is reopened (`unallocate`).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum BillReopenReason {
@@ -1421,6 +1455,59 @@ impl UnallocateBill {
     }
 }
 
+/// A supplier bill another module asks wl-invoicing to record from a party
+/// that sent it (`SupplierBills::create_submitted`): a vertical records what
+/// a client deducts from a certificate as a bill from the client, to be set
+/// off against its own invoice (02 Construction §7.1 *IPA* `invoice`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BillRequest {
+    /// The party that sent the bill.
+    pub supplier: PartyId,
+    /// The number of the bill; the duplicate check compares it, so it is
+    /// unique per source.
+    pub number: String,
+    /// The date on the bill.
+    pub bill_date: NaiveDate,
+    /// The receiving legal entity; the default one when `None`.
+    pub legal_entity_id: Option<i64>,
+    /// The record the bill is for (an IPA, a deduction…).
+    pub source: Subject,
+    /// The lines, in AED; the discount of a line must be 0.
+    pub lines: Vec<DraftLine>,
+}
+
+impl BillRequest {
+    /// A bill of `supplier` numbered `number` dated `bill_date` for
+    /// `source`, with no lines yet.
+    pub fn new(
+        supplier: PartyId,
+        number: impl Into<String>,
+        bill_date: NaiveDate,
+        source: Subject,
+    ) -> Self {
+        BillRequest {
+            supplier,
+            number: number.into(),
+            bill_date,
+            legal_entity_id: None,
+            source,
+            lines: Vec::new(),
+        }
+    }
+
+    /// With `line` added at the end.
+    pub fn line(mut self, line: DraftLine) -> Self {
+        self.lines.push(line);
+        self
+    }
+
+    /// Received by the legal entity `id`.
+    pub fn legal_entity(mut self, id: i64) -> Self {
+        self.legal_entity_id = Some(id);
+        self
+    }
+}
+
 /// The outcome of [`SupplierBills::pay`] and [`SupplierBills::unallocate`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BillBalance {
@@ -1453,6 +1540,29 @@ pub trait SupplierBills: Send + Sync + 'static {
         db: &'a Db,
         id: SupplierBillLineId,
     ) -> SupplierBillFuture<'a, Option<SupplierBillLine>>;
+
+    /// The bill `id`, or `None` when there is no such bill (or invoicing is
+    /// off).
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: SupplierBillId,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Records a supplier bill from `request` and submits it, as the system:
+    /// it has no purchase order to match, so it waits for the accountant's
+    /// approval. Returns its id; `None` when invoicing is off (the default).
+    /// Refused (422) for a bill with no lines, a line with a discount, or
+    /// any refusal of the bill itself.
+    fn create_submitted<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: BillRequest,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillId>> {
+        Box::pin(async { Ok(None) })
+    }
 
     /// Applies money to an `approved` or `partially_paid` bill (system
     /// `pay`/`pay_in_full`). 422 for an amount of 0 or less or above the
@@ -1597,6 +1707,44 @@ pub fn landed_costs(state: &AppState) -> Arc<dyn LandedCosts> {
     }
 }
 
+/// Knows which accounting periods are locked (VAT periods that were filed).
+/// `wl-invoicing` provides it with [`provide_period_locks`]; without it
+/// [`period_locks`] gives [`NoPeriodLocks`] and no period is locked. A module
+/// that posts a cost to a past date (a landed cost adjustment) refuses a
+/// date in a locked period.
+pub trait PeriodLocks: Send + Sync + 'static {
+    /// Whether `date` falls in a locked period of the legal entity `entity`.
+    /// The default says no.
+    fn is_locked<'a>(
+        &'a self,
+        _db: &'a Db,
+        _entity: i64,
+        _date: NaiveDate,
+    ) -> SupplierBillFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// The period locks when none are provided: nothing is locked.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPeriodLocks;
+
+impl PeriodLocks for NoPeriodLocks {}
+
+/// Makes `locks` the app's [`PeriodLocks`].
+pub fn provide_period_locks(app: &mut Registry, locks: impl PeriodLocks) {
+    let locks: Arc<dyn PeriodLocks> = Arc::new(locks);
+    app.provide(locks);
+}
+
+/// The app's [`PeriodLocks`], or [`NoPeriodLocks`] when none is provided.
+pub fn period_locks(state: &AppState) -> Arc<dyn PeriodLocks> {
+    match state.provided::<Arc<dyn PeriodLocks>>() {
+        Some(locks) => Arc::clone(&locks),
+        None => Arc::new(NoPeriodLocks),
+    }
+}
+
 /// A supplier bill was voided (`void`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupplierBillVoided {
@@ -1734,6 +1882,17 @@ pub struct SupplierDebitNoteSummary {
     pub debit_balance: i64,
 }
 
+/// What one line of a supplier debit note takes off, as the owner of the
+/// returned goods reads it to see which lines of a return the note covers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebitedLine {
+    /// The purchase order line the goods were ordered on, if the line names
+    /// one.
+    pub po_line: Option<i64>,
+    /// The debited quantity in thousandths.
+    pub quantity_milli: i64,
+}
+
 /// A supplier debit note was issued (`issue`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupplierDebitNoteIssued {
@@ -1749,6 +1908,9 @@ pub struct SupplierDebitNoteIssued {
     pub amount: i64,
     /// The VAT in it, in fils of the bill's currency.
     pub vat: i64,
+    /// What its lines debit.
+    #[serde(default)]
+    pub lines: Vec<DebitedLine>,
 }
 
 impl Event for SupplierDebitNoteIssued {}
@@ -1787,43 +1949,12 @@ pub struct SupplierDebitNoteCancelled {
     pub amount: i64,
     /// Why it was cancelled.
     pub reason: String,
+    /// What its lines debited.
+    #[serde(default)]
+    pub lines: Vec<DebitedLine>,
 }
 
 impl Event for SupplierDebitNoteCancelled {}
-
-/// One returned line of a [`SupplierReturnDispatched`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SupplierReturnLine {
-    /// The returned item.
-    pub item: Subject,
-    /// The stock lot, if tracked.
-    pub lot: Option<Subject>,
-    /// The returned quantity in thousandths.
-    pub qty_milli: i64,
-    /// The purchase order line the goods came in on.
-    pub po_line: Subject,
-    /// The unit price on the purchase order, in fils of its currency.
-    pub po_price: i64,
-    /// Why it goes back (a reason key, as text).
-    pub reason: String,
-}
-
-/// Goods were dispatched back to a supplier (`FIN.RUL.17` drafts a debit
-/// note from it). Defined here by whichever of wl-invoicing and
-/// wl-inventory landed first; the other reuses it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SupplierReturnDispatched {
-    /// The return's id in its owner's table.
-    pub return_id: i64,
-    /// The supplier the goods go back to.
-    pub supplier: PartyId,
-    /// The return as a [`Subject`]; one debit note draft exists per source.
-    pub source: Subject,
-    /// The returned lines.
-    pub lines: Vec<SupplierReturnLine>,
-}
-
-impl Event for SupplierReturnDispatched {}
 
 /// The 422 of a debit note action while invoicing is off.
 fn debit_notes_off() -> Error {
@@ -2168,29 +2299,15 @@ mod tests {
             return_to_supplier: Some(Subject::new("inventory.supplier_return", 2)),
             amount: 31_500,
             vat: 1_500,
+            lines: vec![DebitedLine {
+                po_line: Some(11),
+                quantity_milli: 4_000,
+            }],
         };
         let json = renox::serde_json::to_string(&issued).unwrap();
         assert_eq!(
             renox::serde_json::from_str::<SupplierDebitNoteIssued>(&json).unwrap(),
             issued
-        );
-        let dispatched = SupplierReturnDispatched {
-            return_id: 2,
-            supplier: PartyId(4),
-            source: Subject::new("inventory.supplier_return", 2),
-            lines: vec![SupplierReturnLine {
-                item: Subject::new("inventory.item", 9),
-                lot: None,
-                qty_milli: 3_000,
-                po_line: Subject::new("procurement.po_line", 11),
-                po_price: 9_500,
-                reason: "damaged".into(),
-            }],
-        };
-        let json = renox::serde_json::to_string(&dispatched).unwrap();
-        assert_eq!(
-            renox::serde_json::from_str::<SupplierReturnDispatched>(&json).unwrap(),
-            dispatched
         );
     }
 
@@ -2215,6 +2332,7 @@ mod tests {
             return_to_supplier: None,
             amount: 31_500,
             reason: "issued in error".into(),
+            lines: Vec::new(),
         };
         let json = renox::serde_json::to_string(&cancelled).unwrap();
         assert_eq!(
@@ -2241,9 +2359,9 @@ mod tests {
         let state = app.state();
         let notes = supplier_debit_notes(state);
         let event = SupplierReturnDispatched {
-            return_id: 1,
+            supplier_return: Subject::new("inventory.supplier_return", 1),
             supplier: PartyId(4),
-            source: Subject::new("inventory.supplier_return", 1),
+            source: Subject::new("inventory.goods_receipt", 1),
             lines: Vec::new(),
         };
         assert!(matches!(

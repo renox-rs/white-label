@@ -590,6 +590,37 @@ impl Deposits for DepositBook {
         })
     }
 
+    fn hold<'a>(
+        &'a self,
+        state: &'a AppState,
+        by: &'a AuthUser,
+        request: wl_kernel::deposits::HoldDeposit,
+    ) -> DepositFuture<'a, HeldDeposit> {
+        Box::pin(async move {
+            let held = crate::deposit::hold(
+                state,
+                by,
+                &crate::deposit::HoldDeposit {
+                    party: request.party,
+                    legal_entity_id: request.legal_entity_id,
+                    source: request.source,
+                    amount: request.amount,
+                    currency: request.currency,
+                    received_payment: Some(request.received_payment),
+                },
+            )
+            .await
+            .map_err(renox::state_machine::TransitionError::into_error)?;
+            Ok(HeldDeposit {
+                deposit: held.deposit_id(),
+                party: held.party(),
+                required: held.amount,
+                held: held.held_amount,
+                currency: held.currency.clone(),
+            })
+        })
+    }
+
     fn settle_cancelled<'a>(
         &'a self,
         state: &'a AppState,

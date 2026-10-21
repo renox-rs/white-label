@@ -1,0 +1,43 @@
+{#- accounting: the tax profile of a client: the versions by effective date,
+    the change waiting for approval (a past effective date highlighted), the
+    form that asks for a change of the calendar-driving fields (a manager
+    other than the requester approves it) and the contact and notes, which
+    need no approval. Replace it with
+    resources/views/accounting/tax_profile.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['tax_profile.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['tax_profile.title']" :subtitle="client">
+      <template rx-if="can_manage">
+        <rx-action-sheet id="tax-profile-change" :label="tx['tax_profile.change']" :action="route('accounting.tax_profile_change', party)"
+                         :title="tx['tax_profile.change']" :description="tx['tax_profile.change_description']" :submit-label="tx['tax_profile.change']" icon="pencil">
+          <rx-input name="trn" :label="tx['tax_profile.field.trn']" :value="trn" id="tax-profile-trn"/>
+          <rx-checkbox name="vat_registered" :label="tx['tax_profile.field.vat_registered']" :checked="vat_registered" id="tax-profile-vat-registered"/>
+          <rx-select name="vat_period" :label="tx['tax_profile.field.vat_period']" :options="periods" :selected="period_selected" id="tax-profile-vat-period"/>
+          <rx-input name="vat_first_period_end" type="date" :label="tx['tax_profile.field.vat_first_period_end']" :value="vat_first_period_end" id="tax-profile-vat-first"/>
+          <rx-input name="financial_year_end" type="date" :label="tx['tax_profile.field.financial_year_end']" :value="financial_year_end" id="tax-profile-year-end"/>
+          <rx-input name="ct_registration_no" :label="tx['tax_profile.field.ct_registration_no']" :value="ct_registration_no" id="tax-profile-ct"/>
+          <rx-checkbox name="small_business_relief" :label="tx['tax_profile.field.small_business_relief']" :checked="small_business_relief" id="tax-profile-sbr"/>
+          <rx-checkbox name="qfzp" :label="tx['tax_profile.field.qfzp']" :checked="qfzp" id="tax-profile-qfzp"/>
+          <rx-input name="effective_date" type="date" :label="tx['tax_profile.effective']" :value="today" id="tax-profile-effective" required/>
+          <rx-textarea name="note" :label="tx['tax_profile.note']" id="tax-profile-note"/>
+        </rx-action-sheet>
+        <rx-action-sheet id="tax-profile-contact" :label="tx['tax_profile.contact']" :action="route('accounting.tax_profile_contact', party)"
+                         :title="tx['tax_profile.contact']" :description="tx['tax_profile.contact_description']" :submit-label="tx['tax_profile.contact']" icon="mail">
+          <rx-input name="contact_email" :label="tx['tax_profile.field.contact_email']" :value="contact_email" id="tax-profile-email"/>
+          <rx-textarea name="notes" :label="tx['tax_profile.field.notes']" :value="notes" id="tax-profile-notes"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <template rx-if="waiting">
+      <rx-alert kind="warning" :message="tx['tax_profile.pending'] ~ ': ' ~ waiting.effective ~ ' (' ~ waiting.fields ~ '), ' ~ waiting.requested_by"/>
+      <rx-alert rx-if="waiting.past" kind="error" :message="tx['tax_profile.past_message']"/>
+    </template>
+    <rx-table :rows="versions" as="row" :key="row.effective ~ row.vat" :caption="tx['tax_profile.versions']" card>
+      <rx-column :label="tx['tax_profile.effective']">{{ row.effective }}</rx-column>
+      <rx-column :label="tx['tax_profile.field.vat_period']">{{ row.vat }}</rx-column>
+      <rx-column :label="tx['tax_profile.field.financial_year_end']">{{ row.year_end }}</rx-column>
+      <rx-column :label="tx['tax_profile.approved_by']" hide-narrow>{{ row.approved_by }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['tax_profile.empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

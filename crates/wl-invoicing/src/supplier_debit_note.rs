@@ -105,6 +105,28 @@ pub struct SupplierDebitNote {
     pub created_by: Option<i64>,
     /// The user who issued it.
     pub issued_by: Option<i64>,
+    /// The number on the supplier's tax credit note, once recorded.
+    pub tax_credit_note_number: Option<String>,
+    /// The date on the supplier's tax credit note.
+    pub tax_credit_note_date: Option<NaiveDate>,
+    /// The file of the supplier's tax credit note (a document id).
+    pub tax_credit_note_document: Option<i64>,
+    /// The user who recorded the tax credit note.
+    pub tax_credit_note_by: Option<i64>,
+    /// When it was settled.
+    pub settled_at: Option<DateTime>,
+    /// The user who settled it; `None` for the system.
+    pub settled_by: Option<i64>,
+    /// What the supplier paid short, accepted with a reason, in fils.
+    pub settle_difference: i64,
+    /// Why the difference was accepted.
+    pub settle_difference_reason: Option<String>,
+    /// When it was cancelled.
+    pub cancelled_at: Option<DateTime>,
+    /// The user who cancelled it; `None` for the system.
+    pub cancelled_by: Option<i64>,
+    /// Why it was cancelled.
+    pub cancel_reason: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: SupplierDebitNoteStatus,
     /// When the row was created.
@@ -172,6 +194,13 @@ impl SupplierDebitNote {
             applied_to_bill: self.applied_to_bill,
             debit_balance: self.debit_balance,
         }
+    }
+}
+
+impl SupplierDebitNote {
+    /// Whether the supplier's tax credit note is recorded.
+    pub fn has_tax_credit_note(&self) -> bool {
+        self.tax_credit_note_number.is_some()
     }
 }
 

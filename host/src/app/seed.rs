@@ -16,6 +16,12 @@ pub const PEOPLE: &[(&str, &str, &str)] = &[
 ];
 
 pub async fn run(state: AppState) -> Result {
+    if state.config.env == renox::Environment::Production {
+        return Err(renox::anyhow::anyhow!(
+            "the demo logins are never made in production (add people with users:invite)"
+        )
+        .into());
+    }
     let db = &state.db;
     roles::define(db).await?;
     for &(name, email, role) in PEOPLE {

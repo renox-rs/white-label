@@ -5,7 +5,7 @@
 //!
 //! It started from Renox's starter kit (`rnx new --starter`):
 //!
-//! - sign-up, login, password reset, email verification and the account
+//! - login, password reset, email verification and the account
 //!   pages (`Auth`), with the notification bell;
 //! - roles and permissions (`Permissions`): `admin` manages users and reads
 //!   the activity log, `member` is everyone else (`app::roles`);
@@ -24,6 +24,8 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::construction_seed;
+pub use app::demo_data;
 pub use app::negative_flow::{invoicing_for, payments_for};
 pub use app::roles;
 
@@ -54,6 +56,34 @@ pub fn try_app() -> Result<renox::App, ConfigError> {
         _ => DEMO_CLIENT.to_owned(),
     };
     app_for(ClientConfig::load(path)?)
+}
+
+/// Commands that wipe or fill the database with demo data. In production
+/// they are refused before anything is booted (`main.rs`): `migrate:fresh`
+/// drops every table, `db:seed` and `property:demo` make the demo logins
+/// (admin@example.com / password123).
+pub const DEMO_COMMANDS: &[&str] = &["migrate:fresh", "db:seed", demo_data::COMMAND];
+
+/// The refusal for `command` when `app_env` is a production environment.
+///
+/// # Errors
+///
+/// The message to print, when the command is one of [`DEMO_COMMANDS`] and
+/// `app_env` starts with `prod`.
+pub fn refuse_in_production(command: Option<&str>, app_env: Option<&str>) -> Result<(), String> {
+    let production = app_env.is_some_and(|env| env.trim().to_lowercase().starts_with("prod"));
+    match command {
+        Some(command) if production && DEMO_COMMANDS.contains(&command) => Err(format!(
+            "{command} is refused when APP_ENV is production: {}",
+            if command == "migrate:fresh" {
+                "it would drop every table of the live database. To start over, restore a backup."
+            } else {
+                "it would put the demo company and its logins (admin@example.com / password123) \
+                 in the live database. Add people with `users:invite`."
+            }
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// [`try_app`], for tests: the demo client unless `CLIENT_CONFIG` says
@@ -101,7 +131,7 @@ impl Tuning {
 pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App, ConfigError> {
     let mut tuning = tuning;
     let client_app = config.client.app.clone();
-    let vertical = vertical(&client_app)?;
+    check_vertical(&client_app)?;
     let manifest = config.manifest()?;
     let entities: Vec<String> = config
         .legal_entities
@@ -111,10 +141,17 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     let owner_role = config.owner_role().to_owned();
     // What a block does to a lease and to a service contract (BL-PRP-26).
     app::negative_flow::register_block_effects(&client_app);
+    app::accounting_seed::register_block_effects(&client_app);
+    app::accounting_seed::register_integrations(&client_app);
     app::negative_flow::register_approvals(&client_app);
+    // What a client user of an accounting firm sees of its engagements.
+    app::accounting_portal::register(&client_app);
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
+    let name = config.client.name.clone();
+    let demo_client = config.clone();
     let mut app = wl_kernel::apply(base(), config)?;
+    app = with_brand(app, &name);
     for module in manifest.enabled() {
         app = enable(
             app,
@@ -129,24 +166,78 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // modules' own seeds (BL-PRP-27).
     if client_app == "property" {
         app = app.module(app::property_seed::PropertySeed);
+        // The demo company, after the installs: `property:demo`, and `db:seed`
+        // in local (never in production).
+        app = app.module(app::demo_data::DemoSeed::new(demo_client));
+    }
+    // The 04 client's lead sources, checklists and SOPs (BL-ACC-23).
+    if client_app == "accounting" {
+        app = app.module(app::accounting_seed::AccountingSeed);
+    }
+    // The Construction client's categories, checklists and SOPs (BL-CON-17,
+    // BL-CON-18).
+    if client_app == app::construction_seed::CONSTRUCTION {
+        app = app.module(app::construction_seed::ConstructionSeed);
     }
     // The page that shows the shared modules' settings of this client.
-    Ok(app
+    let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
         .module(app::compliance_settings::ComplianceSettings::new(
             &client_app,
             &owner_role,
-        ))
-        .module(vertical))
+        ));
+    mount_vertical(app, &client_app)
 }
 
-/// The vertical app named in `[client] app`.
-fn vertical(name: &str) -> Result<property::Property, ConfigError> {
+/// The client's name is the app's name: `{{ brand }}` in the layouts (the
+/// sidebar, the public pages, the sign-in pages, the error pages), and the
+/// configuration's `name` for what Renox itself titles with it (the sign-in
+/// pages' `<title>`, the mails' sender name, the social cards). `APP_NAME` is
+/// not read for it: the name belongs to the client's `client.toml`.
+fn with_brand(app: renox::App, name: &str) -> renox::App {
+    let shared = name.to_owned();
+    let app = app.share("brand", move |_| {
+        let name = shared.clone();
+        async move { Ok(name) }
+    });
+    // The tests' own configuration replaces this one, which is why the
+    // layouts read `brand` and not `app.name`.
+    match renox::Config::load() {
+        Ok(mut config) => {
+            config.name = name.to_owned();
+            app.config(config)
+        }
+        Err(_) => app,
+    }
+}
+
+/// The vertical apps built so far, as `[client] app` names them.
+pub const VERTICALS: &[&str] = &["property", "accounting", "construction"];
+
+/// The refusal of a vertical app that is not built.
+fn unbuilt_vertical(name: &str) -> ConfigError {
+    ConfigError(format!(
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting` and `construction`"
+    ))
+}
+
+/// Refuses an `[client] app` that is not built, before anything mounts.
+fn check_vertical(name: &str) -> Result<(), ConfigError> {
+    if VERTICALS.contains(&name) {
+        Ok(())
+    } else {
+        Err(unbuilt_vertical(name))
+    }
+}
+
+/// Mounts the vertical app named in `[client] app`, last: one arm per app,
+/// each mounting its own module type.
+fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError> {
     match name {
-        "property" => Ok(property::Property),
-        other => Err(ConfigError(format!(
-            "[client] app `{other}` is not built yet; F1 has `property`"
-        ))),
+        "property" => Ok(app.module(property::Property)),
+        "accounting" => Ok(app.module(accounting::Accounting)),
+        "construction" => Ok(app.module(construction::Construction)),
+        other => Err(unbuilt_vertical(other)),
     }
 }
 
@@ -161,9 +252,13 @@ fn enable(
 ) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
     match module {
-        "parties" => Ok(app.module(wl_parties::WlParties)),
+        "parties" => Ok(app.module(app::accounting_seed::parties_for(client_app))),
         "documents" => {
             app::property_seed::register_documents(client_app);
+            app::accounting_seed::register_documents(client_app);
+            if client_app == app::construction_seed::CONSTRUCTION {
+                app::construction_seed::register_documents();
+            }
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
@@ -184,6 +279,17 @@ fn enable(
         "payments" => Ok(app.module(app::negative_flow::payments_for(client_app))),
         "sales" => Ok(app.module(app::property_seed::sales_for(client_app))),
         "hr" => Ok(app.module(app::property_seed::hr_for(client_app, owner_role))),
+        "attendance" => Ok(app.module(app::property_seed::attendance_for(client_app))),
+        "inventory" => {
+            let module = wl_inventory::WlInventory::new();
+            Ok(
+                app.module(if client_app == app::construction_seed::CONSTRUCTION {
+                    app::construction_seed::inventory(module)
+                } else {
+                    module
+                }),
+            )
+        }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
         "delivery" => Ok(app.module(wl_delivery::WlDelivery::new())),
         other => Err(ConfigError(format!(
@@ -205,11 +311,9 @@ fn base() -> renox::App {
                 .notifications() // the bell and /notifications
                 .magic_link() // "Email me a login link" on the login page: no password needed
                 .redirect_to("/dashboard")
-                // Everyone who signs up is a member.
-                .on_registered(|user, _form, state| async move {
-                    roles::define(&state.db).await?;
-                    user.assign_role(&state.db, roles::MEMBER).await
-                }),
+                // No public sign-up: an admin adds the people (`/users`,
+                // `users:invite`), the first one is made with the command.
+                .without_registration(),
         )
         .module(Permissions)
         .module(Audit)
@@ -217,6 +321,11 @@ fn base() -> renox::App {
         .module(app::dashboard::Dashboard)
         .module(app::users::Users)
         .module(app::activity::Activity)
+        .command(
+            "users:invite",
+            "Add a user and mail them the link to choose a password",
+            app::roles::invite,
+        )
         .command(
             "users:admin",
             "Give the user with this email the admin role",

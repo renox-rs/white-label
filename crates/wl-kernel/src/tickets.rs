@@ -45,6 +45,12 @@ pub const TICKET_SUBJECT_TYPE: &str = "ticketing.ticket";
 /// The category key of internal staff tasks other modules open.
 pub const TASK_CATEGORY: &str = "task";
 
+/// The category key of staff tasks only the holders of
+/// `tickets.confidential.view` see (an MLRO's task about a client, a case
+/// that must not tip anybody off). wl-ticketing seeds it as a confidential
+/// platform category; without it no ticket is opened, never an ordinary one.
+pub const CONFIDENTIAL_TASK_CATEGORY: &str = "confidential_task";
+
 /// The page of ticket `id`: `/tickets/{id}`.
 pub fn ticket_path(id: TicketId) -> String {
     format!("/tickets/{}", id.0)
@@ -404,6 +410,19 @@ pub trait TaskCreator: Send + Sync + 'static {
         _state: &'a AppState,
         _ticket: TicketId,
         _note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Cancels `ticket` on behalf of the record that opened it or that it is
+    /// about (a project that was terminated), with `reason`. Returns `false`
+    /// when it did nothing, e.g. the ticket is already resolved, closed or
+    /// cancelled. The default does nothing and returns `false`.
+    fn cancel_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _ticket: TicketId,
+        _reason: &'a str,
     ) -> TicketFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }

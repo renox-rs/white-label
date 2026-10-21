@@ -5,6 +5,11 @@
     {'value': totals.admins | number, 'label': t('users.figures.admins'), 'icon': 'shield-check', 'tone': 'clay'},
     {'value': totals.verified | number, 'label': t('users.figures.verified'), 'icon': 'circle-check', 'tone': 'sand'},
   ]"/>
+  <rx-action-sheet id="add-user" label="{{ t('users.add') }}" action="{{ route('users.invite') }}" title="{{ t('users.add') }}" description="{{ t('users.add_description') }}" submit-label="{{ t('users.add_submit') }}" icon="user-plus">
+    <rx-input name="name" label="{{ t('users.name') }}" id="add-user-name" required/>
+    <rx-input name="email" type="email" label="{{ t('users.email') }}" id="add-user-email" required/>
+    <rx-checkbox-list name="roles" label="{{ t('users.roles') }}" :options="role_names" :selected="[]" id="add-user-roles"/>
+  </rx-action-sheet>
   <rx-grid :page="users">
     <template rx-if="column.key == 'roles'">
       <template rx-for="role in row.roles"><rx-badge :kind="'info' if role == 'admin' else none">{{ role }}</rx-badge> </template>

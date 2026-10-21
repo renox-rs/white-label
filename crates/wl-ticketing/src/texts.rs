@@ -601,6 +601,172 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.visit.charged",
         "The requester is charged for the work done: :reason",
     ),
+    (
+        "wl_ticketing.task.problem.input",
+        "The action was not prepared by the task service.",
+    ),
+    (
+        "wl_ticketing.task.problem.wait_reason",
+        "Give a reason, or link the open item the task waits for.",
+    ),
+    (
+        "wl_ticketing.task.problem.no_reviewer",
+        "This task has no reviewer: complete it instead.",
+    ),
+    (
+        "wl_ticketing.task.problem.evidence",
+        "Attach the evidence this task needs before completing it.",
+    ),
+    (
+        "wl_ticketing.task.problem.needs_review",
+        "This task is completed by its reviewer: submit it for review.",
+    ),
+    (
+        "wl_ticketing.task.problem.not_due",
+        "The due date has not passed.",
+    ),
+    (
+        "wl_ticketing.task.problem.started",
+        "A started task is not waived here: it is listed for the manager.",
+    ),
+    (
+        "wl_ticketing.task.problem.blank",
+        "A task needs a title and a type.",
+    ),
+    (
+        "wl_ticketing.task.problem.lead_days",
+        "The lead time cannot be negative.",
+    ),
+    ("wl_ticketing.task.problem.reason", "Give a reason."),
+    (
+        "wl_ticketing.task.problem.missed_reason",
+        "Choose one of the listed reasons.",
+    ),
+    (
+        "wl_ticketing.task.overdue_line",
+        ":title (overdue since :since)",
+    ),
+    ("wl_ticketing.task.open_line", ":title (:status)"),
+    (
+        "wl_ticketing.task.released_title",
+        "Tasks that went overdue while held",
+    ),
+    (
+        "wl_ticketing.task.ended_title",
+        "Open tasks of an ended agreement",
+    ),
+    ("wl_ticketing.task.held", "Held"),
+    ("wl_ticketing.deadline.title", "Deadlines"),
+    ("wl_ticketing.deadline.subtitle_open", "Open deadline tasks"),
+    ("wl_ticketing.deadline.subtitle_mine", "My deadline tasks"),
+    ("wl_ticketing.deadline.empty", "No deadline tasks"),
+    ("wl_ticketing.deadline.late", "Late"),
+    ("wl_ticketing.deadline.completed_late", "Completed late"),
+    ("wl_ticketing.deadline.done", "Done."),
+    ("wl_ticketing.deadline.reason_required", "Give a reason."),
+    ("wl_ticketing.deadline.confirm_title", "Are you sure?"),
+    (
+        "wl_ticketing.deadline.waive_description",
+        "The task is not required this period. Give the reason.",
+    ),
+    (
+        "wl_ticketing.deadline.missed_description",
+        "The task was not done. Choose the reason; the next occurrence follows.",
+    ),
+    ("wl_ticketing.deadline.sections.details", "Details"),
+    ("wl_ticketing.deadline.fields.title", "Task"),
+    ("wl_ticketing.deadline.fields.type", "Type"),
+    ("wl_ticketing.deadline.fields.source", "Agreement"),
+    ("wl_ticketing.deadline.fields.start", "Start date"),
+    ("wl_ticketing.deadline.fields.due", "Due date"),
+    ("wl_ticketing.deadline.fields.status", "Status"),
+    ("wl_ticketing.deadline.fields.owner", "Owner"),
+    ("wl_ticketing.deadline.fields.reviewer", "Reviewer role"),
+    ("wl_ticketing.deadline.fields.overdue_on", "Overdue since"),
+    ("wl_ticketing.deadline.fields.wait_reason", "Waiting for"),
+    ("wl_ticketing.deadline.fields.comment", "Comment"),
+    ("wl_ticketing.deadline.fields.evidence", "Evidence"),
+    ("wl_ticketing.deadline.fields.reason", "Reason"),
+    ("wl_ticketing.deadline.fields.reason_text", "Details"),
+    ("wl_ticketing.deadline.fields.description", "Description"),
+    ("wl_ticketing.deadline.action.start", "Start"),
+    ("wl_ticketing.deadline.action.wait", "Wait"),
+    ("wl_ticketing.deadline.action.unblock", "Unblock"),
+    (
+        "wl_ticketing.deadline.action.submit_review",
+        "Submit for review",
+    ),
+    ("wl_ticketing.deadline.action.send_back", "Send back"),
+    ("wl_ticketing.deadline.action.complete", "Complete"),
+    ("wl_ticketing.deadline.action.waive", "Waive"),
+    (
+        "wl_ticketing.deadline.action.close_missed",
+        "Close as missed",
+    ),
+    ("wl_ticketing.deadline.status.upcoming", "Upcoming"),
+    ("wl_ticketing.deadline.status.in_progress", "In progress"),
+    ("wl_ticketing.deadline.status.waiting", "Waiting"),
+    ("wl_ticketing.deadline.status.in_review", "In review"),
+    ("wl_ticketing.deadline.status.overdue", "Overdue"),
+    ("wl_ticketing.deadline.status.completed", "Completed"),
+    ("wl_ticketing.deadline.status.missed", "Missed"),
+    ("wl_ticketing.deadline.status.not_required", "Not required"),
+    (
+        "wl_ticketing.notice.task_overdue.subject",
+        "Task {{ title }} is overdue",
+    ),
+    (
+        "wl_ticketing.notice.task_overdue.body",
+        "{{ title }} was due on {{ due_date }} and is not completed. It can still be completed; it is flagged late.",
+    ),
+    (
+        "wl_ticketing.notice.task_waived.subject",
+        "Task {{ title }} is no longer required",
+    ),
+    (
+        "wl_ticketing.notice.task_waived.body",
+        "{{ title }}, due on {{ due_date }}, was waived. The work recorded so far is kept.",
+    ),
+    (
+        "wl_ticketing.notice.task_reminder.subject",
+        "Task {{ title }} is due on {{ due_date }}",
+    ),
+    (
+        "wl_ticketing.notice.task_reminder.body",
+        "{{ title }} starts on {{ start_date }} and is due on {{ due_date }}.",
+    ),
+    (
+        "wl_ticketing.notice.task_client_reminder.subject",
+        "We need your input for {{ title }}",
+    ),
+    (
+        "wl_ticketing.notice.task_client_reminder.body",
+        "{{ title }} is due on {{ due_date }}. Please send us what we asked for.",
+    ),
+    (
+        "wl_ticketing.notice.task_waiting.subject",
+        "{{ title }} is waiting for you",
+    ),
+    (
+        "wl_ticketing.notice.task_waiting.body",
+        "We cannot go on with {{ title }}, due on {{ due_date }}, until we hear from you.",
+    ),
+    (
+        "wl_ticketing.notice.task_unblocked.subject",
+        "Task {{ title }} can go on",
+    ),
+    (
+        "wl_ticketing.notice.task_unblocked.body",
+        "What {{ title }} waited for is answered; it is in progress again.",
+    ),
+    (
+        "wl_ticketing.notice.task_review.subject",
+        "Task {{ title }} is ready for review",
+    ),
+    (
+        "wl_ticketing.notice.task_review.body",
+        "{{ title }}, due on {{ due_date }}, is prepared and waits for your review.",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

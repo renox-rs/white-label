@@ -5,6 +5,8 @@
 
 #![allow(dead_code)]
 
+pub mod subscriptions;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -38,7 +40,8 @@ use wl_kernel::einvoice::{EInvoiceAccepted, EInvoiceRejected};
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
     InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceReopened,
-    InvoiceWrittenOff, SupplierBillApproved, SupplierBillReopened, SupplierBillVoided, VatCategory,
+    InvoiceWrittenOff, SupplierBillApproved, SupplierBillReopened, SupplierBillVoided,
+    SupplierDebitNoteCancelled, SupplierDebitNoteIssued, SupplierDebitNoteSettled, VatCategory,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, PartyStatus, PartySummary};
@@ -46,6 +49,9 @@ use wl_kernel::payments::{
     AllocationTarget, BankPayment, Direction, PaymentFuture, PaymentId, PaymentMethod,
     PaymentRecorder, PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest,
     ReversalReason, UnpaidRefund,
+};
+use wl_kernel::subscriptions::{
+    SubscriptionCancelled, SubscriptionPastDue, SubscriptionSettled, SubscriptionSuspended,
 };
 use wl_kernel::tickets::{
     ContractCover, OpenTicket, ServiceContractCoverage, ServiceContractId, TaskComment,
@@ -93,12 +99,25 @@ pub const BLOCKED_PARTY: PartyId = PartyId(3);
 /// An individual: a B2C recipient, outside the e-invoicing mandate.
 pub const OMAR: PartyId = PartyId(4);
 
-/// The parties the tests bill. Cloning shares the recipient identifiers a
-/// test sets.
+/// The parties the tests bill. Cloning shares the recipient identifiers and
+/// the blocks a test sets.
 #[derive(Debug, Clone, Default)]
-pub struct TestDirectory(Arc<Mutex<std::collections::BTreeMap<i64, String>>>);
+pub struct TestDirectory(
+    Arc<Mutex<std::collections::BTreeMap<i64, String>>>,
+    Arc<Mutex<std::collections::BTreeSet<i64>>>,
+);
 
 impl TestDirectory {
+    /// Makes `party` `blocked` (or active again) for status reads.
+    pub fn set_blocked(&self, party: PartyId, blocked: bool) {
+        let mut set = self.1.lock().unwrap();
+        if blocked {
+            set.insert(party.0);
+        } else {
+            set.remove(&party.0);
+        }
+    }
+
     /// Sets (or clears) the e-invoicing recipient identifier of `party`.
     pub fn set_recipient(&self, party: PartyId, identifier: Option<&str>) {
         let mut map = self.0.lock().unwrap();
@@ -159,8 +178,9 @@ impl PartyDirectory for TestDirectory {
     }
 
     fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
-        // Party 3 is blocked (the cash-flow forecast tests).
-        let status = if party == BLOCKED_PARTY {
+        // Party 3 is blocked (the cash-flow forecast tests), and those a
+        // test blocked.
+        let status = if party == BLOCKED_PARTY || self.1.lock().unwrap().contains(&party.0) {
             PartyStatus::Blocked
         } else {
             PartyStatus::Active
@@ -850,6 +870,12 @@ pub struct Booted {
     pub bill_voided: Recorded<SupplierBillVoided>,
     /// `SupplierBillReopened`.
     pub bill_reopened: Recorded<SupplierBillReopened>,
+    /// `SupplierDebitNoteIssued`.
+    pub debit_issued: Recorded<SupplierDebitNoteIssued>,
+    /// `SupplierDebitNoteSettled`.
+    pub debit_settled: Recorded<SupplierDebitNoteSettled>,
+    /// `SupplierDebitNoteCancelled`.
+    pub debit_cancelled: Recorded<SupplierDebitNoteCancelled>,
     /// `CompanyBudgetApproved`.
     pub budget_approved: Recorded<CompanyBudgetApproved>,
     /// `CompanyBudgetVarianceReached`.
@@ -864,6 +890,14 @@ pub struct Booted {
     pub einvoice_rejected: Recorded<EInvoiceRejected>,
     /// The test parties' directory: set a recipient identifier here.
     pub directory: TestDirectory,
+    /// `SubscriptionPastDue`.
+    pub sub_past_due: Recorded<SubscriptionPastDue>,
+    /// `SubscriptionSuspended`.
+    pub sub_suspended: Recorded<SubscriptionSuspended>,
+    /// `SubscriptionSettled`.
+    pub sub_settled: Recorded<SubscriptionSettled>,
+    /// `SubscriptionCancelled`.
+    pub sub_cancelled: Recorded<SubscriptionCancelled>,
 }
 
 impl Booted {
@@ -1610,6 +1644,53 @@ pub async fn boot_with_poster(
     module: WlInvoicing,
     poster: Option<Arc<dyn wl_kernel::invoicing::CostPoster>>,
 ) -> Booted {
+    boot_all(module, poster, None).await
+}
+
+/// The landed costs of the app under test: `(subject, owner entity id)`.
+#[derive(Clone, Default)]
+pub struct LandedDesk(Arc<Mutex<Vec<(Subject, i64)>>>);
+
+impl LandedDesk {
+    /// `landed_cost` exists and belongs to the legal entity `entity`.
+    pub fn add(&self, landed_cost: Subject, entity: i64) {
+        self.0.lock().unwrap().push((landed_cost, entity));
+    }
+}
+
+impl wl_kernel::invoicing::LandedCosts for LandedDesk {
+    fn entity_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        landed_cost: &'a Subject,
+    ) -> wl_kernel::invoicing::SupplierBillFuture<'a, Option<i64>> {
+        let found = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(subject, _)| subject == landed_cost)
+            .map(|(_, entity)| *entity);
+        Box::pin(async move { Ok(found) })
+    }
+}
+
+/// wl-invoicing with a [`CostLedger`] and a [`LandedDesk`] provided.
+pub async fn boot_with_landed() -> (Booted, CostLedger, LandedDesk) {
+    let ledger = CostLedger::default();
+    let desk = LandedDesk::default();
+    let poster: Arc<dyn wl_kernel::invoicing::CostPoster> = Arc::new(ledger.clone());
+    let landed: Arc<dyn wl_kernel::invoicing::LandedCosts> = Arc::new(desk.clone());
+    let booted = boot_all(WlInvoicing::new(), Some(poster), Some(landed)).await;
+    (booted, ledger, desk)
+}
+
+/// [`boot_with_poster`] with `landed` as the app's `LandedCosts`, when given.
+pub async fn boot_all(
+    module: WlInvoicing,
+    poster: Option<Arc<dyn wl_kernel::invoicing::CostPoster>>,
+    landed: Option<Arc<dyn wl_kernel::invoicing::LandedCosts>>,
+) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1627,12 +1708,19 @@ pub async fn boot_with_poster(
     let bill_approved = Recorded::new();
     let bill_voided = Recorded::new();
     let bill_reopened = Recorded::new();
+    let debit_issued = Recorded::new();
+    let debit_settled = Recorded::new();
+    let debit_cancelled = Recorded::new();
     let budget_approved = Recorded::new();
     let variance_reached = Recorded::new();
     let below_threshold = Recorded::new();
     let drawing_decided = Recorded::new();
     let einvoice_accepted = Recorded::new();
     let einvoice_rejected = Recorded::new();
+    let sub_past_due = Recorded::new();
+    let sub_suspended = Recorded::new();
+    let sub_settled = Recorded::new();
+    let sub_cancelled = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let contracts = ContractDesk::default();
@@ -1662,6 +1750,10 @@ pub async fn boot_with_poster(
         Some(poster) => app.provide(poster),
         None => app,
     };
+    let app = match landed {
+        Some(landed) => app.provide(landed),
+        None => app,
+    };
     let app = record(app, &issued);
     let app = record(app, &overdue);
     let app = record(app, &paid);
@@ -1674,12 +1766,19 @@ pub async fn boot_with_poster(
     let app = record(app, &bill_approved);
     let app = record(app, &bill_voided);
     let app = record(app, &bill_reopened);
+    let app = record(app, &debit_issued);
+    let app = record(app, &debit_settled);
+    let app = record(app, &debit_cancelled);
     let app = record(app, &budget_approved);
     let app = record(app, &variance_reached);
     let app = record(app, &below_threshold);
     let app = record(app, &drawing_decided);
     let app = record(app, &einvoice_accepted);
     let app = record(app, &einvoice_rejected);
+    let app = record(app, &sub_past_due);
+    let app = record(app, &sub_suspended);
+    let app = record(app, &sub_settled);
+    let app = record(app, &sub_cancelled);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1712,6 +1811,8 @@ pub async fn boot_with_poster(
         perm::BUDGET_CATEGORIES_MANAGE,
         perm::CASHFLOW_VIEW,
         perm::CASHFLOW_MANAGE,
+        perm::SUBSCRIPTIONS_VIEW,
+        perm::SUBSCRIPTIONS_MANAGE,
     ];
     permissions::define_role(app.db(), "admin", &all)
         .await
@@ -1784,6 +1885,9 @@ pub async fn boot_with_poster(
         bill_approved,
         bill_voided,
         bill_reopened,
+        debit_issued,
+        debit_settled,
+        debit_cancelled,
         budget_approved,
         variance_reached,
         below_threshold,
@@ -1791,5 +1895,85 @@ pub async fn boot_with_poster(
         einvoice_accepted,
         einvoice_rejected,
         directory: directory_state,
+        sub_past_due,
+        sub_suspended,
+        sub_settled,
+        sub_cancelled,
     }
+}
+
+/// A cost poster that keeps what it is asked to post, reverse and restore;
+/// a key that was used changes nothing.
+#[derive(Clone, Default)]
+pub struct CostLedger {
+    /// The postings.
+    pub posted: Arc<Mutex<Vec<wl_kernel::invoicing::PostCost>>>,
+    /// The reversals.
+    pub reversed: Arc<Mutex<Vec<wl_kernel::invoicing::ReverseCost>>>,
+    /// The restorations of reversed cost.
+    pub restored: Arc<Mutex<Vec<wl_kernel::invoicing::ReverseCost>>>,
+}
+
+impl CostLedger {
+    /// The reversals so far.
+    pub fn reversals(&self) -> Vec<wl_kernel::invoicing::ReverseCost> {
+        self.reversed.lock().unwrap().clone()
+    }
+
+    /// The restorations so far.
+    pub fn restorations(&self) -> Vec<wl_kernel::invoicing::ReverseCost> {
+        self.restored.lock().unwrap().clone()
+    }
+
+    /// The postings so far.
+    pub fn postings(&self) -> Vec<wl_kernel::invoicing::PostCost> {
+        self.posted.lock().unwrap().clone()
+    }
+}
+
+impl wl_kernel::invoicing::CostPoster for CostLedger {
+    fn post<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: wl_kernel::invoicing::PostCost,
+    ) -> wl_kernel::invoicing::SupplierBillFuture<'a, ()> {
+        let mut all = self.posted.lock().unwrap();
+        if !all.iter().any(|p| p.key == request.key) {
+            all.push(request);
+        }
+        Box::pin(async { Ok(()) })
+    }
+
+    fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: wl_kernel::invoicing::ReverseCost,
+    ) -> wl_kernel::invoicing::SupplierBillFuture<'a, ()> {
+        let mut all = self.reversed.lock().unwrap();
+        if !all.iter().any(|p| p.key == request.key) {
+            all.push(request);
+        }
+        Box::pin(async { Ok(()) })
+    }
+
+    fn restore<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: wl_kernel::invoicing::ReverseCost,
+    ) -> wl_kernel::invoicing::SupplierBillFuture<'a, ()> {
+        let mut all = self.restored.lock().unwrap();
+        if !all.iter().any(|p| p.key == request.key) {
+            all.push(request);
+        }
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// wl-invoicing with the §7 defaults and a [`CostLedger`] as the app's
+/// cost poster.
+pub async fn boot_with_costs() -> (Booted, CostLedger) {
+    let ledger = CostLedger::default();
+    let poster: Arc<dyn wl_kernel::invoicing::CostPoster> = Arc::new(ledger.clone());
+    let booted = boot_with_poster(WlInvoicing::new(), Some(poster)).await;
+    (booted, ledger)
 }

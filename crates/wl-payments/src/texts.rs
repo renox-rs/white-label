@@ -322,6 +322,23 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.fields.invoice_id_hint",
         "The id of an open invoice of the same party, as in /invoices/{id}.",
     ),
+    ("wl_payments.fields.set_off_invoice", "Set-off: invoice id"),
+    (
+        "wl_payments.fields.set_off_bill",
+        "Set-off: supplier bill id",
+    ),
+    (
+        "wl_payments.fields.set_off_hint",
+        "For the method set-off only: the party's open invoice and its approved supplier bill, both settled for the amount.",
+    ),
+    (
+        "wl_payments.set_off.documents_required",
+        "A set-off names the invoice and the supplier bill it settles.",
+    ),
+    (
+        "wl_payments.set_off.exception_requested",
+        "The party is on hold. An exception was requested; the set-off waits for its approval.",
+    ),
     ("wl_payments.fields.purpose", "Purpose"),
     ("wl_payments.purpose.none", "Ordinary payment"),
     ("wl_payments.purpose.owner_drawings", "Owner drawings"),

@@ -102,9 +102,10 @@ async fn show(
     lang: Lang,
     Path((party, key)): Path<(i64, String)>,
 ) -> Result<View> {
-    if PortalAccess::active_grant(&state.db, user.id, PartyId(party), today())
-        .await?
-        .is_none()
+    if PortalAccess::disabled(&state, user.id).await?
+        || PortalAccess::active_grant(&state.db, user.id, PartyId(party), today())
+            .await?
+            .is_none()
     {
         return Err(Error::Forbidden);
     }

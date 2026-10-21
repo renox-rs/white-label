@@ -1,0 +1,16 @@
+[package]
+name = "wl-attendance"
+description = "Attendance: records of who was at work, where and when, with the checks on overlap, hours and permits."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"

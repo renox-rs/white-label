@@ -255,6 +255,8 @@ async fn without_parties_the_directory_finds_nobody() {
         None
     );
     assert_eq!(NoParties.find(db, PartyId(1)).await.unwrap(), None);
+    assert!(parties.search(db, "anyone", 10).await.unwrap().is_empty());
+    assert!(NoParties.search(db, "", 10).await.unwrap().is_empty());
 }
 
 /// #57 AC7: without the parties module nobody is related to anybody, for

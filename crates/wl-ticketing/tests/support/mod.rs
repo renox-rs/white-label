@@ -3,7 +3,8 @@
 //! depend on wl-parties), a notifier that records what it is asked for, the
 //! kernel events recorded, and a test-only module whose routes act as the
 //! logged-in user at a time the test chooses (a test cannot build an
-//! `AuthUser`, and the real routes take the time of the request).
+//! `AuthUser`, and the real routes take the time of the request). Deadline
+//! tasks are acted on through their real routes with the clock moved.
 
 #![allow(dead_code)]
 
@@ -22,8 +23,8 @@ use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, Pa
 use wl_kernel::tickets::{Assignee, OpenTicket, TicketAssigned, TicketClosed};
 use wl_kernel::{BusinessCalendar, ClientConfig, PartyId, Subject};
 use wl_ticketing::{
-    AssignRequest, Assignment, Priority, Ticket, Tickets, WlTicketing, assign, permissions as perm,
-    seed, work,
+    AssignRequest, Assignment, DeadlineTask, Priority, Ticket, Tickets, WlTicketing, assign,
+    permissions as perm, seed, work,
 };
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -307,6 +308,11 @@ pub fn dubai(date: &str, hour: u32, minute: u32) -> DateTime {
     BusinessCalendar::default().from_local(local)
 }
 
+/// The date `2026-11-03`.
+pub fn day(date: &str) -> NaiveDate {
+    date.parse().expect("a date")
+}
+
 /// What the harness routes take: the time of the action (Asia/Dubai
 /// wall-clock time) and the parts of the action.
 #[derive(Deserialize)]
@@ -328,6 +334,8 @@ struct ActForm {
     hold_reason: Option<String>,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    evidence: Option<String>,
 }
 
 fn instant(local: NaiveDateTime) -> DateTime {
@@ -492,6 +500,60 @@ impl Booted {
     /// The assignment rows of `ticket`, oldest first.
     pub async fn history(&self, ticket: &Ticket) -> Vec<Assignment> {
         Assignment::history(self.db(), ticket.id).await.unwrap()
+    }
+
+    /// The deadline task `id`, as stored now.
+    pub async fn task(&self, id: i64) -> DeadlineTask {
+        DeadlineTask::find_or_404(self.db(), id).await.unwrap()
+    }
+
+    /// `by` runs `action` (`start`, `wait`, `unblock`, `submit_review`,
+    /// `send_back`, `complete`, `close_missed` or `waive`) on deadline task
+    /// `id` through the real route `POST /deadline-tasks/{id}/actions/{name}`,
+    /// with the clock moved to `at` (`2026-11-03 09:00`, Asia/Dubai) for the
+    /// request, with `pairs` (`reason`, `reason_code`, `evidence`).
+    pub async fn task_act(
+        &self,
+        by: &User,
+        id: i64,
+        action: &str,
+        at: &str,
+        pairs: &[(&str, &str)],
+    ) -> renox::testing::TestResponse {
+        let at = NaiveDateTime::parse_from_str(at, "%Y-%m-%d %H:%M").expect("a date and time");
+        self.travel_to(instant(at));
+        self.app.acting_as(by);
+        let response = self
+            .app
+            .htmx()
+            .post(&format!("/deadline-tasks/{id}/actions/{action}"), pairs)
+            .await;
+        self.app.travel_back();
+        response
+    }
+
+    /// Moves the clock to `at` (forward from the real present) for what the
+    /// app does next.
+    pub fn travel_to(&self, at: DateTime) {
+        self.app.travel_back();
+        let ahead = (at - renox::db::now()).num_seconds();
+        assert!(ahead > 0, "the time {at} is in the future");
+        self.app
+            .travel(std::time::Duration::from_secs(ahead.unsigned_abs()));
+    }
+
+    /// A user holding `grants` through the role `role` (defined here), e.g.
+    /// the manager role the module is told about.
+    pub async fn user_in_role(&self, name: &str, role: &str, grants: &[&str]) -> User {
+        let email = format!("{}@example.com", name.to_lowercase());
+        let user = User::register(self.db(), name, &email, "password123")
+            .await
+            .unwrap();
+        permissions::define_role(self.db(), role, grants)
+            .await
+            .unwrap();
+        user.assign_role(self.db(), role).await.unwrap();
+        user
     }
 
     /// `by` assigns `ticket` at `at` (`2026-11-03 09:00`, Asia/Dubai) as

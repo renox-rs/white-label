@@ -3,7 +3,8 @@
 //! `demo_logins` (`src/lib.rs`).
 //!
 //! It is a list only on `/login`, with `APP_ENV=local`, and once `db:seed`
-//! made the people (`super::seed::PEOPLE`); anywhere else it is `none`, so
+//! made the people (`super::seed::PEOPLE`, and the staff of the demo company,
+//! `super::demo_data::LOGINS`, one per role); anywhere else it is `none`, so
 //! a server in production never shows it, whatever its database holds.
 
 use renox::Environment;
@@ -17,6 +18,8 @@ use super::seed::{PASSWORD, PEOPLE};
 pub struct Account {
     pub name: &'static str,
     pub email: &'static str,
+    /// What the person is, in words for the page.
+    pub label: &'static str,
 }
 
 /// What the login page shows: the people and their password.
@@ -32,9 +35,29 @@ pub async fn for_view(ctx: renox::view::ViewContext) -> Result<Option<Demo>> {
         return Ok(None);
     }
     let mut accounts = Vec::new();
-    for &(name, email, _) in PEOPLE {
+    for login in super::demo_data::LOGINS {
+        if User::find_by_email(&ctx.state.db, login.email)
+            .await?
+            .is_some()
+        {
+            accounts.push(Account {
+                name: login.name,
+                email: login.email,
+                label: login.label,
+            });
+        }
+    }
+    for &(name, email, role) in PEOPLE {
         if User::find_by_email(&ctx.state.db, email).await?.is_some() {
-            accounts.push(Account { name, email });
+            accounts.push(Account {
+                name,
+                email,
+                label: if role == super::roles::ADMIN {
+                    "Starter admin"
+                } else {
+                    "Member"
+                },
+            });
         }
     }
     Ok((!accounts.is_empty()).then_some(Demo {

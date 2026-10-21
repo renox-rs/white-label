@@ -7,6 +7,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::json;
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
+use wl_kernel::workforce::AffectedWork;
 
 use crate::employee::Employee;
 use crate::onboarding::{Onboarding, OnboardingStep};
@@ -25,6 +26,8 @@ pub const STEP_REOPENED: &str = "hr.onboarding_step_reopened";
 pub const STEP_REMINDER: &str = "hr.onboarding_step_reminder";
 /// HR and the manager are told that a step is far overdue (`HRM.RUL.17`).
 pub const STEP_ESCALATED: &str = "hr.onboarding_step_escalated";
+/// The manager and HR are told that a qualification expired (`HRM.RUL.10`).
+pub const QUALIFICATION_EXPIRED: &str = "hr.qualification_expired";
 
 /// `date` as `9 Nov 2026`.
 fn date_text(date: NaiveDate) -> String {
@@ -55,6 +58,7 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(STEP_ASSIGNED, "step_assigned"));
     notify::register_type(english_type(ONBOARDING_COMPLETED, "completed"));
     notify::register_type(english_type(STEP_REOPENED, "step_reopened"));
+    notify::register_type(english_type(QUALIFICATION_EXPIRED, "qualification_expired"));
     // The employee's own channel: SMS to the number on record.
     let body = english("wl_hr.notices.in_person_body", &[]);
     notify::register_type(
@@ -79,6 +83,39 @@ async fn name_of(state: &AppState, employee: &Employee) -> String {
         .ok()
         .flatten()
         .unwrap_or_else(|| format!("#{}", employee.id))
+}
+
+/// Tells `users` (the manager and HR) that the qualification of `kind` of
+/// `employee` expired on `expires_on`, and how much work it blocks.
+pub(crate) async fn qualification_expired(
+    state: &AppState,
+    employee: &Employee,
+    kind: &str,
+    expires_on: NaiveDate,
+    affected: &[AffectedWork],
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let work: Vec<String> = affected
+        .iter()
+        .map(|w| format!("{} ({})", w.label, date_text(w.date)))
+        .collect();
+    let mut request = NotifyRequest::new(QUALIFICATION_EXPIRED, employee.subject())
+        .subject_label(kind)
+        .data(json!({
+            "employee": name_of(state, employee).await,
+            "kind": kind,
+            "expires_on": date_text(expires_on),
+            "count": affected.len(),
+            "work": work.join(", "),
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
 }
 
 /// Tells `users` that `step` of `employee` is assigned to them.

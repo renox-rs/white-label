@@ -7,9 +7,14 @@ publish.workspace = true
 
 [dependencies]
 renox.workspace = true
+sha2 = "0.11.1"
 serde.workspace = true
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
 wl-kernel = { path = "../crates/wl-kernel" }
 property = { path = "../apps/property" }
+construction = { path = "../apps/construction" }
+accounting = { path = "../apps/accounting" }
 wl-parties = { path = "../crates/wl-parties" }
 wl-documents = { path = "../crates/wl-documents" }
 wl-notify = { path = "../crates/wl-notify" }
@@ -19,4 +24,6 @@ wl-delivery = { path = "../crates/wl-delivery" }
 wl-payments = { path = "../crates/wl-payments" }
 wl-sales = { path = "../crates/wl-sales" }
 wl-hr = { path = "../crates/wl-hr" }
+wl-attendance = { path = "../crates/wl-attendance" }
+wl-inventory = { path = "../crates/wl-inventory" }
 wl-portal = { path = "../crates/wl-portal" }

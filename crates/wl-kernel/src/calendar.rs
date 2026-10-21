@@ -10,11 +10,29 @@
 //! holidays = ["2026-12-02", "2026-12-03"]
 //! ```
 //!
+//! Normal hours: a working day has 8 normal hours, a rest day or a public
+//! holiday has none, and a reduced-hours period (Ramadan: two hours less,
+//! ER Art. 15(2)) takes hours off the days it covers:
+//!
+//! ```toml
+//! [calendar]
+//! normal_hours = 8
+//!
+//! [[calendar.reduced_hours]]
+//! from = "2027-02-18"
+//! to = "2027-03-19"
+//! hours_less = 2
+//! ```
+//!
+//! [`BusinessCalendar::normal_minutes_on`] answers for a date. Modules that
+//! check the hours worked against the normal hours (wl-attendance
+//! `HRM.RUL.13`) read it.
+//!
 //! The kernel provides the client's calendar; modules read it with
 //! [`calendar`]. SLA due times are [`BusinessCalendar::add_working`] from the
 //! time of the action, and paused time is
-//! [`BusinessCalendar::working_minutes_between`]. Ramadan hours, scopes and a
-//! holiday table come later behind the same type.
+//! [`BusinessCalendar::working_minutes_between`]. Scopes and a holiday table
+//! come later behind the same type.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -28,10 +46,33 @@ use renox::prelude::*;
 
 use crate::documents::DUBAI_OFFSET_SECONDS;
 
+/// The daily normal hours of a working day when the client sets none: 8
+/// (Art. 17 of the labour law).
+pub const DEFAULT_NORMAL_MINUTES: i64 = 8 * 60;
+
+/// A period in which the normal hours are shorter, e.g. Ramadan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReducedHours {
+    /// The first day of the period.
+    pub from: NaiveDate,
+    /// The last day of the period, included.
+    pub to: NaiveDate,
+    /// The minutes taken off the normal hours of each day in it.
+    pub minutes_less: i64,
+}
+
 /// The working days, hours and holidays of one client, in Asia/Dubai.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BusinessCalendar {
     holidays: BTreeSet<NaiveDate>,
+    normal_minutes: i64,
+    reduced: Vec<ReducedHours>,
+}
+
+impl Default for BusinessCalendar {
+    fn default() -> Self {
+        BusinessCalendar::new([])
+    }
 }
 
 impl BusinessCalendar {
@@ -44,7 +85,49 @@ impl BusinessCalendar {
     pub fn new(holidays: impl IntoIterator<Item = NaiveDate>) -> Self {
         BusinessCalendar {
             holidays: holidays.into_iter().collect(),
+            normal_minutes: DEFAULT_NORMAL_MINUTES,
+            reduced: Vec::new(),
         }
+    }
+
+    /// With `hours` normal hours on a working day (8 by default).
+    pub fn with_normal_hours(mut self, hours: u32) -> Self {
+        self.normal_minutes = i64::from(hours) * 60;
+        self
+    }
+
+    /// With the normal hours `hours_less` shorter from `from` to `to`
+    /// (included), e.g. in Ramadan. Where periods meet, the longest cut
+    /// counts.
+    pub fn with_reduced_hours(mut self, from: NaiveDate, to: NaiveDate, hours_less: u32) -> Self {
+        self.reduced.push(ReducedHours {
+            from,
+            to,
+            minutes_less: i64::from(hours_less) * 60,
+        });
+        self
+    }
+
+    /// The reduced-hours periods, in the order they were added.
+    pub fn reduced_hours(&self) -> &[ReducedHours] {
+        &self.reduced
+    }
+
+    /// The normal minutes of `date`: none on a rest day or a public holiday,
+    /// else the daily normal hours less the cut of a reduced-hours period
+    /// that covers the day (never below zero).
+    pub fn normal_minutes_on(&self, date: NaiveDate) -> i64 {
+        if !self.is_working_day(date) {
+            return 0;
+        }
+        let less = self
+            .reduced
+            .iter()
+            .filter(|period| period.from <= date && date <= period.to)
+            .map(|period| period.minutes_less)
+            .max()
+            .unwrap_or(0);
+        (self.normal_minutes - less).max(0)
     }
 
     /// The public holidays, in order.
@@ -317,6 +400,43 @@ mod tests {
         let night = dubai(&calendar, "2026-11-09 19:00");
         let morning = dubai(&calendar, "2026-11-10 08:00");
         assert_eq!(calendar.working_minutes_between(night, morning), 0);
+    }
+
+    #[test]
+    fn a_working_day_has_eight_normal_hours_and_a_rest_day_or_holiday_none() {
+        let calendar = BusinessCalendar::new([date("2026-12-02")]);
+        // Tuesday, Saturday, Sunday and a public holiday.
+        assert_eq!(calendar.normal_minutes_on(date("2026-11-03")), 8 * 60);
+        assert_eq!(calendar.normal_minutes_on(date("2026-11-07")), 0);
+        assert_eq!(calendar.normal_minutes_on(date("2026-11-08")), 0);
+        assert_eq!(calendar.normal_minutes_on(date("2026-12-02")), 0);
+        let nine = BusinessCalendar::default().with_normal_hours(9);
+        assert_eq!(nine.normal_minutes_on(date("2026-11-03")), 9 * 60);
+    }
+
+    #[test]
+    fn a_reduced_hours_period_takes_hours_off_the_days_it_covers() {
+        let calendar = BusinessCalendar::default().with_reduced_hours(
+            date("2026-11-09"),
+            date("2026-11-13"),
+            2,
+        );
+        assert_eq!(calendar.normal_minutes_on(date("2026-11-06")), 8 * 60);
+        assert_eq!(calendar.normal_minutes_on(date("2026-11-09")), 6 * 60);
+        assert_eq!(calendar.normal_minutes_on(date("2026-11-13")), 6 * 60);
+        assert_eq!(calendar.normal_minutes_on(date("2026-11-16")), 8 * 60);
+        // The weekend inside a period stays at none.
+        let long = BusinessCalendar::default().with_reduced_hours(
+            date("2026-11-02"),
+            date("2026-11-30"),
+            2,
+        );
+        assert_eq!(long.normal_minutes_on(date("2026-11-07")), 0);
+        // Two periods that meet: the longest cut counts, never below zero.
+        let both = long.with_reduced_hours(date("2026-11-10"), date("2026-11-10"), 10);
+        assert_eq!(both.normal_minutes_on(date("2026-11-10")), 0);
+        assert_eq!(both.normal_minutes_on(date("2026-11-11")), 6 * 60);
+        assert_eq!(both.reduced_hours().len(), 2);
     }
 
     #[test]

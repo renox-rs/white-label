@@ -6,7 +6,8 @@
     <rx-page-header :title="tx['agreements.title']" :subtitle="tx['agreements.subtitle']" :back="route('property.index')" :back-label="tx['portfolio.title']">
       <rx-action-sheet id="agreement-new" :label="tx['agreements.new']" :action="route('property.agreement_create')"
                        :title="tx['agreements.new']" :description="tx['agreements.new_description']" :submit-label="tx['agreements.new']" icon="plus">
-        <rx-input name="owner" :label="tx['agreements.owner_party']" id="agreement-new-owner" required/>
+        {#- The owner: a search of the parties by name or number; the form sends the party's id (a typed number such as P-00012 is accepted by the server too). -#}
+        <rx-select name="owner" :label="tx['agreements.owner_party']" :options="[]" :placeholder="tx['leases.tenant_placeholder']" options-url="{{ route('property.party_options') }}" id="agreement-new-owner" required/>
         <rx-input name="fee" :label="tx['agreements.fee_percent']" id="agreement-new-fee"/>
         <rx-input name="fee_fixed" :label="tx['agreements.fee_fixed']" id="agreement-new-fee-fixed"/>
         <rx-input name="start" type="date" :label="tx['agreements.start_date']" :value="today" id="agreement-new-start" required/>

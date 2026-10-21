@@ -24,7 +24,7 @@
     an `rx-pane`) scrolls on its own, and an `rx-fill` element takes the
     height left, so the panels cover the screen. Tablets and phones scroll
     the page; there the links move to the kit's tab bar at the bottom of the
-    screen (`tabs`). The home page uses layouts/public.html. -#}
+    screen (`tabs`). -#}
 <body class="rx-page">
   {#- A guest sees this layout only on an error page. -#}
   <rx-let name="tabs" :value="(
@@ -38,7 +38,6 @@
   ) if auth.check else [
     {'href': route('home'), 'label': t('nav.home'), 'icon': 'house'},
     {'href': route('login'), 'label': t('nav.log_in'), 'icon': 'log-in'},
-    {'href': route('register'), 'label': t('nav.register'), 'icon': 'circle-user'},
   ]"/>
   <rx-shell fill>
   {#- The links come from the modules: each one adds its own to the "app"
@@ -46,7 +45,18 @@
       `register`), and the sidebar draws only what the person may open, in
       groups, with the current page marked. A guest (an error page) gets the
       one hand-written link. -#}
-  <rx-sidebar menu="app" brand="{{ app.name }}" href="{{ route('home') }}">
+  {#- The current link is the one with the longest address the page's path
+      starts with: the kit marks every link of a module whose route names
+      share a prefix (`property.*`), which lit five links at once. -#}
+  {%- set current = namespace(url='') %}
+  {%- for group in nav('app') %}{% for item in group["items"] %}
+    {%- if (request.path == item.url or (item.url != '/' and request.path[:(item.url | length) + 1] == item.url ~ '/')) and item.url | length > current.url | length %}{% set current.url = item.url %}{% endif %}
+  {%- endfor %}{% endfor %}
+  <rx-sidebar brand="{{ brand }}" href="{{ route('home') }}">
+    <template rx-for="group in nav('app')">
+      <rx-sidebar-section rx-if="group.label" :title="group.label"/>
+      <rx-sidebar-link rx-for="item in group['items']" :href="item.url" :label="item.label" :icon="item.icon" :badge="item.badge" :active="item.url == current.url"/>
+    </template>
     <rx-sidebar-link rx-if="not auth.check" route="home" label="{{ t('nav.home') }}" icon="house"/>
   </rx-sidebar>
   <div class="rx-shell__main">
@@ -64,7 +74,6 @@
       </template>
       <template rx-else>
         <rx-link-button route="login" label="{{ t('nav.log_in') }}" variant="plain" size="small"/>
-        <rx-link-button route="register" label="{{ t('nav.register') }}" variant="primary" size="small"/>
       </template>
     </rx-navbar>
     <main class="rx-shell__content" id="main">
@@ -75,6 +84,8 @@
   </rx-shell>
   {#- Toasts from `Toast::success(…)`, after a redirect or an htmx request. -#}
   <rx-toasts/>
+  {#- A refusal of a form sent with htmx shows inside its modal or form (public/forms.js). -#}
+  <script src="{{ asset('forms.js') }}" defer></script>
   <rx-outlet stack="scripts"/>
 </body>
 </html>

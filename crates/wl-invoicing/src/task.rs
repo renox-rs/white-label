@@ -69,6 +69,13 @@ pub enum TaskKind {
     /// The delivery whose review flagged this invoice was lost (#69): resolve
     /// the dispute, usually `credited` for the undelivered lines.
     DeliveryLost,
+    /// An issued supplier debit note waits for the supplier's tax credit
+    /// note (§5.13 step 4): record it so the note can settle.
+    RecordTaxCreditNote,
+    /// The credit of an approved adjustment timesheet is above what the
+    /// original invoice can still be credited by (§5.2 step 5): the
+    /// coordinator settles it with the client.
+    AdjustmentCreditRefused,
 }
 
 impl TaskKind {
@@ -93,6 +100,8 @@ impl TaskKind {
             TaskKind::DeliveryDisputedBeforeIssue => "wl_invoicing.delivery.task.before_issue",
             TaskKind::DeliveryReversed => "wl_invoicing.delivery.task.reversed",
             TaskKind::DeliveryLost => "wl_invoicing.delivery.task.lost",
+            TaskKind::RecordTaxCreditNote => "wl_invoicing.task.record_tax_credit_note",
+            TaskKind::AdjustmentCreditRefused => "wl_invoicing.task.adjustment_credit_refused",
         }
     }
 }

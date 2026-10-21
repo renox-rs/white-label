@@ -444,6 +444,42 @@ impl PlannedItem {
     }
 }
 
+type SubjectLabelFn =
+    Arc<dyn for<'a> Fn(&'a Db, i64) -> DocumentFuture<'a, Option<String>> + Send + Sync>;
+
+static SUBJECT_LABELS: RwLock<BTreeMap<String, SubjectLabelFn>> = RwLock::new(BTreeMap::new());
+
+/// Registers how to name the records of `subject_type` for people (`L-000050
+/// · JVT-B / 1501`) where a page lists documents of any record: the review
+/// queue and the documents of a record. Registering again replaces it.
+pub fn register_subject_label<F>(subject_type: &str, label: F)
+where
+    F: for<'a> Fn(&'a Db, i64) -> DocumentFuture<'a, Option<String>> + Send + Sync + 'static,
+{
+    SUBJECT_LABELS
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(subject_type.to_owned(), Arc::new(label));
+}
+
+/// The registered label of `subject` ([`register_subject_label`]), if its
+/// type has one and the record is there.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn subject_label(db: &Db, subject: &Subject) -> Result<Option<String>> {
+    let label = SUBJECT_LABELS
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&subject.subject_type)
+        .cloned();
+    match label {
+        Some(label) => label(db, subject.subject_id).await,
+        None => Ok(None),
+    }
+}
+
 /// The label of a subject without a [`BlockSubjects::label`]:
 /// `<subject_type> #<id>`.
 pub fn default_subject_label(subject: &Subject) -> String {
