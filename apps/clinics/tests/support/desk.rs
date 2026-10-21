@@ -13,7 +13,7 @@ use clinics::contracts::{self, NewContract};
 use clinics::policies::{self, NewPolicy};
 use clinics::{InsurancePolicy, PayerContract, Visit, appointments};
 
-use super::{Clinic, PATIENT, at, boot, boot_with_stock, day};
+use super::{Clinic, PATIENT, at, boot, boot_with_stock, boot_with_stock_and_notify, day};
 
 /// The payer of the insured visits.
 pub const PAYER: PartyId = PartyId(900);
@@ -40,6 +40,11 @@ pub async fn desk() -> Desk {
 /// Like [`desk`] with the real wl-inventory behind the consumables.
 pub async fn desk_with_stock() -> Desk {
     desk_on(boot_with_stock().await).await
+}
+
+/// Like [`desk_with_stock`] with the real wl-notify.
+pub async fn desk_with_stock_and_notify() -> Desk {
+    desk_on(boot_with_stock_and_notify().await).await
 }
 
 async fn desk_on(t: Clinic) -> Desk {

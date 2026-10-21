@@ -54,6 +54,8 @@ pub mod claims;
 pub mod desk;
 /// The clinics app with the real wl-invoicing for the claim tests.
 pub mod real;
+/// The real wl-inventory behind the consumables of a visit.
+pub mod stock;
 
 pub use billing::{Books, Claims, Deposits, Packages};
 pub use scheduling::{Docs, Events, Messages, Recorded, Refunds, Tasks, dubai, record};
@@ -98,6 +100,9 @@ enabled = ["parties", "hr", "scheduling", "inventory"]
 
 [roles]
 owner = "owner"
+
+[clinics]
+phone = "+971 4 555 0100"
 
 [[legal_entities]]
 code = "PGC"
@@ -378,6 +383,12 @@ pub async fn boot() -> Clinic {
 /// pending issues the consumables of a visit are issued from.
 pub async fn boot_with_stock() -> Clinic {
     boot_with(false, true).await
+}
+
+/// Like [`boot_with_stock`] with the real wl-notify too: the notices of a
+/// recall reach its queue and its give-up reaction.
+pub async fn boot_with_stock_and_notify() -> Clinic {
+    boot_with(true, true).await
 }
 
 /// Like [`boot`] with the real wl-notify in place of the notifier fake: its

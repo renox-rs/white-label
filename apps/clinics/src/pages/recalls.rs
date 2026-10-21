@@ -20,6 +20,11 @@ use crate::recall_notice::RecallNotice;
 use crate::recalls;
 use crate::texts;
 
+/// Whether `user` may record calls somewhere: globally or in a branch.
+fn may_call(user: &AuthUser) -> bool {
+    user.allows(permissions::RECALLS_CALL) || user.has_permission_anywhere(permissions::RECALLS_CALL)
+}
+
 /// The routes of the pages.
 pub fn routes() -> Routes {
     Routes::new()
@@ -144,7 +149,9 @@ pub(crate) struct CallsPage {
 
 /// `GET /clinics/recall-calls`: the calls of the user's branches.
 async fn calls(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    require(&user, permissions::RECALLS_CALL)?;
+    if !may_call(&user) {
+        return Err(Error::Forbidden);
+    }
     let mut rows = Vec::new();
     for notice in RecallNotice::waiting_for_a_call(&state.db).await? {
         let scope = recalls::notice_scope(&state.db, &notice).await?;
@@ -189,7 +196,9 @@ async fn call(
     Path(id): Path<i64>,
     Form(form): Form<CallForm>,
 ) -> Result<Response> {
-    require(&user, permissions::RECALLS_CALL)?;
+    if !may_call(&user) {
+        return Err(Error::Forbidden);
+    }
     recalls::record_call(&state, &user, id, &form.outcome).await?;
     Ok((
         Toast::success(text(&lang, "recall.call_recorded")),

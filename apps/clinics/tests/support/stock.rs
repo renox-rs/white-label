@@ -1,0 +1,200 @@
+//! The real wl-inventory behind the consumables of a visit: the branch store
+//! of the doctor's branch with the filler lots L1 (2027-01-31), L2 (2027-03-31)
+//! and the held L3, and the visits that use them.
+
+#![allow(dead_code)]
+
+use renox::chrono::NaiveDate;
+use renox::prelude::*;
+use wl_inventory::item::value_of;
+use wl_inventory::{Item, Location, Lot, LotStatus, StockMovement};
+use wl_kernel::{PartyId, Subject};
+use wl_scheduling::Booking;
+
+use clinics::{ConsumableIssue, Visit};
+
+use super::desk::Desk;
+use super::{at, branch, day};
+
+pub fn date(y: i32, m: u32, d: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(y, m, d).unwrap()
+}
+
+/// The branch store with the filler lots L1 (expires 2027-01-31) and L2
+/// (2027-03-31), and the lot L3 on hold.
+pub struct Store {
+    /// The branch store.
+    pub store: Location,
+    /// The filler.
+    pub item: Item,
+    /// Expires 2027-01-31.
+    pub l1: Lot,
+    /// Expires 2027-03-31.
+    pub l2: Lot,
+    /// On hold.
+    pub l3: Lot,
+}
+
+/// A lot of `item` with its expiry date in `status`.
+pub async fn lot(d: &Desk, item: &Item, number: &str, expiry: NaiveDate, status: LotStatus) -> Lot {
+    let mut lot = Lot {
+        item_id: item.id,
+        number: number.to_owned(),
+        status,
+        expiry_date: Some(expiry),
+        ..Lot::default()
+    };
+    let mut tx = d.t.db().begin().await.unwrap();
+    lot.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    tx.commit().await.unwrap();
+    lot
+}
+
+/// `quantity` units of `lot` received at the store.
+pub async fn receive(d: &Desk, s: &Store, lot: &Lot, quantity: i64) {
+    let source = Subject::new("inventory.goods_receipt", 900);
+    let mut moved = StockMovement::receive(
+        s.item.id,
+        Some(lot.id),
+        s.store.id,
+        quantity * 1_000,
+        500,
+        value_of(quantity * 1_000, 500),
+        &source,
+        None,
+    );
+    moved.save(d.t.db()).await.unwrap();
+}
+
+/// The store of the branch the doctor works at: `l1` units of L1, `l2` of L2
+/// and 5 of the held L3.
+pub async fn store(d: &Desk, l1: i64, l2: i64) -> Store {
+    let branch: Subject = branch();
+    let mut location = Location::new("STORE-B2", "Branch store").in_scope(&branch);
+    location.save(d.t.db()).await.unwrap();
+    let mut item = Item::new("filler", "Filler", "pcs").lot_tracked();
+    item.save(d.t.db()).await.unwrap();
+    let first = lot(d, &item, "L1", date(2027, 1, 31), LotStatus::Released).await;
+    let second = lot(d, &item, "L2", date(2027, 3, 31), LotStatus::Released).await;
+    let held = lot(d, &item, "L3", date(2027, 2, 28), LotStatus::OnHold).await;
+    let s = Store {
+        store: location,
+        item,
+        l1: first,
+        l2: second,
+        l3: held,
+    };
+    if l1 > 0 {
+        receive(d, &s, &s.l1, l1).await;
+    }
+    if l2 > 0 {
+        receive(d, &s, &s.l2, l2).await;
+    }
+    receive(d, &s, &s.l3, 5).await;
+    d.t.prices.set("filler", day(-400), 20_000);
+    s
+}
+
+/// A checked-in, started visit of the consultation.
+pub async fn open_visit(d: &Desk) -> (Booking, Visit) {
+    let booking = d.booking(&d.consultation, 9).await;
+    let visit = d.check_in(&booking).await;
+    d.start(&booking).await;
+    (booking, visit)
+}
+
+/// Records `units` of filler on the visit with `lot` (blank: none).
+pub async fn record(d: &Desk, visit: &Visit, units: i64, lot: &str) -> renox::testing::TestResponse {
+    d.post(
+        &d.rita,
+        &format!("/clinics/visits/{}/charges", visit.id),
+        &[
+            ("kind", "consumable"),
+            ("code", "filler"),
+            ("units", units.to_string().as_str()),
+            ("lot", lot),
+        ],
+    )
+    .await
+}
+
+/// The rows the stock issued for the visit, as (lot number, units, pending).
+pub async fn issued(d: &Desk, visit: &Visit) -> Vec<(Option<String>, i64, bool)> {
+    ConsumableIssue::of_visit(d.t.db(), visit.id)
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| {
+            (
+                row.lot_number.clone(),
+                row.quantity_milli / 1_000,
+                row.pending_issue_id.is_some(),
+            )
+        })
+        .collect()
+}
+
+
+/// A started visit of `patient` on `days` days from today at `hour`, with the
+/// booker's notes (the reason for the visit).
+pub async fn visit_of(
+    d: &Desk,
+    patient: PartyId,
+    days: i64,
+    hour: u32,
+    notes: &str,
+) -> (Booking, Visit) {
+    use wl_scheduling::service::{self, Actor, NewBooking};
+    let mut new = NewBooking::new(
+        patient,
+        d.consultation.id,
+        &[d.doctor.id],
+        at(day(days), hour),
+    )
+    .for_subject(patient.subject());
+    new.notes = Some(notes.to_owned());
+    let booking = service::book(d.t.state(), new, Actor::staff(1), super::scheduling::now())
+        .await
+        .expect("the booking is made");
+    if booking.deposit_amount > 0 {
+        d.t.deposits
+            .paid(booking.id, patient, booking.deposit_amount);
+    }
+    let visit = d.check_in(&booking).await;
+    d.start(&booking).await;
+    (booking, visit)
+}
+
+/// The patient's visit on `days` days from today at `hour` that used `units`
+/// of filler from `lot` (blank: none) and was checked out; the visit as it
+/// is now.
+pub async fn used_filler(
+    d: &Desk,
+    patient: PartyId,
+    days: i64,
+    hour: u32,
+    units: i64,
+    lot: &str,
+) -> Visit {
+    use wl_scheduling::service::{self, Actor};
+    let (booking, visit) = visit_of(d, patient, days, hour, "Chest pain, suspected angina").await;
+    record(d, &visit, units, lot).await.assert_ok();
+    service::complete(
+        d.t.state(),
+        booking.id,
+        Actor::staff(d.rita.id),
+        at(day(days), 18),
+    )
+    .await
+    .expect("the visit is checked out");
+    d.visit(visit.id).await
+}
+
+/// Moves the receipt of `lot` at the store to `at`.
+pub async fn received_on(d: &Desk, lot: &Lot, at: renox::db::DateTime) {
+    StockMovement::query()
+        .where_(StockMovement::LOT_ID.eq(Some(lot.id)))
+        .update(d.t.db(), &[("moved_at", &at)])
+        .await
+        .unwrap();
+}

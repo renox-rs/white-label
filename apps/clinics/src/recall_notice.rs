@@ -20,7 +20,6 @@ use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
-use crate::permissions;
 use crate::texts::english;
 
 /// The subject type of a recall notice.
@@ -189,12 +188,13 @@ fn give_up() -> Transition<RecallNotice> {
         })
 }
 
-/// `called`: the front desk called the patient and recorded the outcome.
+/// `called`: the front desk called the patient and recorded the outcome. The
+/// transition is the system's because the permission is held in the branch of
+/// the visit (a scoped role): the service checks it and passes who called.
 fn called() -> Transition<RecallNotice> {
     Transition::new(CALLED)
         .label("Record the call")
-        .tone("primary")
-        .permission(permissions::RECALLS_CALL)
+        .system()
         .from([RecallNoticeStatus::GaveUp])
         .to(RecallNoticeStatus::Called)
         .guard("outcome_given", |_n: &RecallNotice, ctx| {
@@ -265,7 +265,7 @@ mod tests {
         let called = machine.find(CALLED).unwrap();
         assert_eq!(called.from_states(), vec!["gave_up"]);
         assert_eq!(called.to_state(), Some("called"));
-        assert!(!called.is_system());
+        assert!(called.is_system());
         assert_eq!(machine.transitions().len(), 2);
     }
 }

@@ -357,7 +357,7 @@ pub async fn record_call(
     }
     let _outcome = notice
         .transition(CALLED)
-        .by(by)
+        .by_system()
         .input(&NoticeInput {
             at: Some(renox::db::now()),
             outcome: Some(outcome.to_owned()),

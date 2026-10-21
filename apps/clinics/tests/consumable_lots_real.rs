@@ -7,130 +7,15 @@
 
 mod support;
 
-use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use wl_inventory::item::value_of;
-use wl_inventory::{Item, Location, Lot, LotStatus, StockMovement};
-use wl_kernel::Subject;
+use wl_inventory::StockMovement;
 use wl_scheduling::service::{self, Actor};
-use wl_scheduling::{Booking, Refusal};
+use wl_scheduling::Refusal;
 
-use clinics::{ChargeLine, ConsumableIssue, Visit};
-use support::desk::{Desk, desk_with_stock};
-use support::{at, branch, day};
-
-fn date(y: i32, m: u32, d: u32) -> NaiveDate {
-    NaiveDate::from_ymd_opt(y, m, d).unwrap()
-}
-
-/// The branch store with the filler lots L1 (expires 2027-01-31) and L2
-/// (2027-03-31), and the lot L3 on hold.
-struct Store {
-    store: Location,
-    item: Item,
-    l1: Lot,
-    l2: Lot,
-    l3: Lot,
-}
-
-/// A lot of `item` with its expiry date in `status`.
-async fn lot(d: &Desk, item: &Item, number: &str, expiry: NaiveDate, status: LotStatus) -> Lot {
-    let mut lot = Lot {
-        item_id: item.id,
-        number: number.to_owned(),
-        status,
-        expiry_date: Some(expiry),
-        ..Lot::default()
-    };
-    let mut tx = d.t.db().begin().await.unwrap();
-    lot.insert_in_state(&mut tx, status, "fixture").await.unwrap();
-    tx.commit().await.unwrap();
-    lot
-}
-
-/// `quantity` units of `lot` received at the store.
-async fn receive(d: &Desk, s: &Store, lot: &Lot, quantity: i64) {
-    let source = Subject::new("inventory.goods_receipt", 900);
-    let mut moved = StockMovement::receive(
-        s.item.id,
-        Some(lot.id),
-        s.store.id,
-        quantity * 1_000,
-        500,
-        value_of(quantity * 1_000, 500),
-        &source,
-        None,
-    );
-    moved.save(d.t.db()).await.unwrap();
-}
-
-/// The store of the branch the doctor works at: `l1` units of L1, `l2` of L2
-/// and 5 of the held L3.
-async fn store(d: &Desk, l1: i64, l2: i64) -> Store {
-    let branch: Subject = branch();
-    let mut location = Location::new("STORE-B2", "Branch store").in_scope(&branch);
-    location.save(d.t.db()).await.unwrap();
-    let mut item = Item::new("filler", "Filler", "pcs").lot_tracked();
-    item.save(d.t.db()).await.unwrap();
-    let first = lot(d, &item, "L1", date(2027, 1, 31), LotStatus::Released).await;
-    let second = lot(d, &item, "L2", date(2027, 3, 31), LotStatus::Released).await;
-    let held = lot(d, &item, "L3", date(2027, 2, 28), LotStatus::OnHold).await;
-    let s = Store {
-        store: location,
-        item,
-        l1: first,
-        l2: second,
-        l3: held,
-    };
-    if l1 > 0 {
-        receive(d, &s, &s.l1, l1).await;
-    }
-    if l2 > 0 {
-        receive(d, &s, &s.l2, l2).await;
-    }
-    receive(d, &s, &s.l3, 5).await;
-    d.t.prices.set("filler", day(-400), 20_000);
-    s
-}
-
-/// A checked-in, started visit of the consultation.
-async fn open_visit(d: &Desk) -> (Booking, Visit) {
-    let booking = d.booking(&d.consultation, 9).await;
-    let visit = d.check_in(&booking).await;
-    d.start(&booking).await;
-    (booking, visit)
-}
-
-/// Records `units` of filler on the visit with `lot` (blank: none).
-async fn record(d: &Desk, visit: &Visit, units: i64, lot: &str) -> renox::testing::TestResponse {
-    d.post(
-        &d.rita,
-        &format!("/clinics/visits/{}/charges", visit.id),
-        &[
-            ("kind", "consumable"),
-            ("code", "filler"),
-            ("units", units.to_string().as_str()),
-            ("lot", lot),
-        ],
-    )
-    .await
-}
-
-/// The rows the stock issued for the visit, as (lot number, units, pending).
-async fn issued(d: &Desk, visit: &Visit) -> Vec<(Option<String>, i64, bool)> {
-    ConsumableIssue::of_visit(d.t.db(), visit.id)
-        .await
-        .unwrap()
-        .iter()
-        .map(|row| {
-            (
-                row.lot_number.clone(),
-                row.quantity_milli / 1_000,
-                row.pending_issue_id.is_some(),
-            )
-        })
-        .collect()
-}
+use clinics::ChargeLine;
+use support::desk::desk_with_stock;
+use support::stock::{issued, open_visit, record, store};
+use support::{at, day};
 
 /// Done when 1: given the filler lots L1 (2027-01-31) and L2 (2027-03-31) at
 /// Branch 1, the issue screen proposes L1; the held lot is not offered.
