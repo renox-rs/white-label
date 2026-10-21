@@ -29,9 +29,9 @@ use wl_kernel::documents::{
     NoDocuments, RecordFlag, Validity,
 };
 use wl_kernel::inventory::{
-    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, PreferredSupplierChanged,
-    PurchaseOrderRevised, SupplierReturnCredited, SupplierReturnDispatched,
-    SupplierScoreBelowThreshold,
+    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, LotHeld, PreferredSupplierChanged,
+    PurchaseOrderRevised, StockHoldPlaced, StockNegative, SupplierReturnCredited,
+    SupplierReturnDispatched, SupplierScoreBelowThreshold,
 };
 use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
@@ -531,6 +531,9 @@ struct Fakes {
     tickets: TicketDesk,
     costs: CostDesk,
     notices: Recording,
+    holds: Arc<Mutex<Vec<StockHoldPlaced>>>,
+    lots_held: Arc<Mutex<Vec<LotHeld>>>,
+    negative: Arc<Mutex<Vec<StockNegative>>>,
 }
 
 impl Module for Fakes {
@@ -558,6 +561,9 @@ impl Module for Fakes {
         record(app, &self.received);
         record(app, &self.dispatched);
         record(app, &self.credited);
+        record(app, &self.holds);
+        record(app, &self.lots_held);
+        record(app, &self.negative);
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
@@ -600,6 +606,12 @@ pub struct Booted {
     pub costs: CostDesk,
     /// The notifications asked for.
     pub notices: Recording,
+    /// Every `StockHoldPlaced`.
+    pub holds: Recorded<StockHoldPlaced>,
+    /// Every `LotHeld`.
+    pub lots_held: Recorded<LotHeld>,
+    /// Every `StockNegative`.
+    pub negative: Recorded<StockNegative>,
     /// The days the clock was moved forward.
     clock_days: std::sync::atomic::AtomicI64,
 }
@@ -672,6 +684,126 @@ impl Booted {
     /// A procurement officer (`purchase_orders.issue`) everywhere.
     pub async fn procurement(&self, name: &str) -> User {
         self.user_with(name, "procurement").await
+    }
+
+    /// A user who sends and receives transfers and issues stock everywhere.
+    pub async fn mover(&self, name: &str) -> User {
+        self.user_with(name, "stock_mover").await
+    }
+
+    /// A user who places stock holds everywhere.
+    pub async fn holder(&self, name: &str) -> User {
+        self.user_with(name, "stock_holder").await
+    }
+
+    /// A user who decides the lines of a hold (`lots.release`) everywhere.
+    pub async fn releaser(&self, name: &str) -> User {
+        self.user_with(name, "lot_releaser").await
+    }
+
+    /// A storekeeper who clears pending issues (`stock.adjust`).
+    pub async fn clerk(&self, name: &str) -> User {
+        self.user_with(name, "stock_clerk").await
+    }
+
+    /// A location `code` named `name`.
+    pub async fn named_location(&self, code: &str, name: &str) -> Location {
+        let mut location = Location::new(code, name);
+        location.save(self.db()).await.unwrap();
+        location
+    }
+
+    /// A draft transfer of `lines` (item, lot, quantity in thousandths).
+    pub async fn transfer(
+        &self,
+        from: &Location,
+        to: &Location,
+        lines: Vec<wl_inventory::transfer::NewTransferLine>,
+    ) -> wl_inventory::Transfer {
+        wl_inventory::transfer::create_draft(
+            self.db(),
+            None,
+            wl_inventory::transfer::NewTransfer {
+                from_location_id: from.id,
+                to_location_id: to.id,
+                lines,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// `POST /transfers/{id}/send` as `by`.
+    pub async fn send_as(&self, by: &User, transfer: &wl_inventory::Transfer) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/transfers/{}/send", transfer.id), &[])
+            .await
+    }
+
+    /// `POST /transfers/{id}/receive` as `by`; `go_on` is `held_ok=1`.
+    pub async fn receive_as(
+        &self,
+        by: &User,
+        transfer: &wl_inventory::Transfer,
+        go_on: bool,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        let form: Vec<(&str, &str)> = if go_on { vec![("held_ok", "1")] } else { vec![] };
+        self.app
+            .htmx()
+            .post(&format!("/transfers/{}/receive", transfer.id), &form)
+            .await
+    }
+
+    /// The transfer as stored now.
+    pub async fn transfer_now(&self, transfer: &wl_inventory::Transfer) -> wl_inventory::Transfer {
+        wl_inventory::Transfer::find_or_404(self.db(), transfer.id)
+            .await
+            .unwrap()
+    }
+
+    /// `POST /stock-holds` as `by` with `form`.
+    pub async fn hold_as(&self, by: &User, form: &[(&str, &str)]) -> TestResponse {
+        self.app.acting_as(by);
+        self.app.htmx().post("/stock-holds", form).await
+    }
+
+    /// `POST /stock-issues` as `by`: `quantity` in base units like `5`.
+    pub async fn issue_as_user(
+        &self,
+        by: &User,
+        item: &Item,
+        location: &Location,
+        quantity: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                "/stock-issues",
+                &[
+                    ("item", item.id.to_string().as_str()),
+                    ("location", location.id.to_string().as_str()),
+                    ("quantity", quantity),
+                ],
+            )
+            .await
+    }
+
+    /// The quantity of `item` available at `location` (of `lot` when given),
+    /// in thousandths.
+    pub async fn available(&self, item: &Item, location: &Location, lot: Option<&Lot>) -> i64 {
+        wl_inventory::balance::balance(self.db(), item.id, location.id, lot.map(|l| l.id))
+            .await
+            .unwrap()
+            .available_milli()
+    }
+
+    /// The lot as stored now.
+    pub async fn lot_now(&self, lot: &Lot) -> Lot {
+        Lot::find_or_404(self.db(), lot.id).await.unwrap()
     }
 
     /// An item `code` in `kg`.
@@ -1149,6 +1281,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
     let notices = Recording::default();
+    let holds = Arc::new(Mutex::new(Vec::new()));
+    let lots_held = Arc::new(Mutex::new(Vec::new()));
+    let negative = Arc::new(Mutex::new(Vec::new()));
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1182,6 +1317,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         tickets: tickets.clone(),
         costs: costs.clone(),
         notices: notices.clone(),
+        holds: holds.clone(),
+        lots_held: lots_held.clone(),
+        negative: negative.clone(),
     });
     let client = if with_invoicing {
         CLIENT_WITH_INVOICING
@@ -1256,6 +1394,22 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     permissions::define_role(app.db(), "party_blocker", &["parties.block"])
         .await
         .unwrap();
+    permissions::define_role(
+        app.db(),
+        "stock_mover",
+        &[perm::STOCK_TRANSFER, perm::STOCK_ISSUE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(app.db(), "stock_holder", &[perm::STOCK_HOLD])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "lot_releaser", &[perm::LOTS_RELEASE])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "stock_clerk", &[perm::STOCK_ADJUST])
+        .await
+        .unwrap();
     Booted {
         app,
         received: Recorded(received),
@@ -1274,6 +1428,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         tickets,
         costs,
         notices,
+        holds: Recorded(holds),
+        lots_held: Recorded(lots_held),
+        negative: Recorded(negative),
         clock_days: std::sync::atomic::AtomicI64::new(0),
     }
 }
