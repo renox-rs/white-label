@@ -106,6 +106,15 @@ pub fn parse_local(text: &str) -> Option<DateTime> {
         .map(|local| BusinessCalendar::default().from_local(local))
 }
 
+/// The local text of an instant (`2026-11-03T10:30`, Asia/Dubai), as a form
+/// field and [`parse_local`] read it.
+pub fn local_text(at: DateTime) -> String {
+    BusinessCalendar::default()
+        .local(at)
+        .format("%Y-%m-%dT%H:%M")
+        .to_string()
+}
+
 pub(crate) fn field<'a>(form: &'a BTreeMap<String, String>, name: &str) -> &'a str {
     form.get(name).map_or("", |value| value.trim())
 }
@@ -243,7 +252,6 @@ async fn show(
         ("party".to_owned(), text(&lang, "booking.side_party")),
         ("business".to_owned(), text(&lang, "booking.side_business")),
     ];
-    let local = BusinessCalendar::default().local(booking.starts_at);
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         booking: row_of(&state, &lang, &booking).await?,
@@ -280,7 +288,7 @@ async fn show(
             ),
         can_no_show: manage && matches!(status, BookingStatus::Booked | BookingStatus::Confirmed),
         can_cancel: manage && status.is_open(),
-        starts_input: local.format("%Y-%m-%dT%H:%M").to_string(),
+        starts_input: local_text(booking.starts_at),
     }))
 }
 
