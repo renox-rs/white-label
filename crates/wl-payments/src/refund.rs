@@ -599,6 +599,11 @@ pub async fn request_for_source_as(
             let balance = resolved.refundable;
             (resolved, balance)
         }
+        KernelRefundSource::PayerCredit(subject) => {
+            let resolved = resolve_payer_credit(state, subject, request).await?;
+            let balance = resolved.refundable;
+            (resolved, balance)
+        }
         _ => (resolve_vouched(state, request).await?, i64::MAX),
     };
     if resolved.party != request.party {
@@ -659,6 +664,43 @@ async fn resolve_deposit(
         currency: deposit.currency.clone(),
         refundable: deposit.refundable(&state.db).await?,
     })
+}
+
+/// The payer credit balance a refund goes back to, checked against the
+/// request: the credit must be the party's own, and no more than the balance
+/// wl-invoicing holds for the party, the legal entity and the currency, less
+/// the refunds still `requested` against it, is refundable. An approved refund
+/// has already taken its amount from the balance
+/// ([`wl_kernel::RefundApproved`]), so it is not counted twice.
+async fn resolve_payer_credit(
+    state: &AppState,
+    subject: &Subject,
+    request: &RefundRequest,
+) -> std::result::Result<Resolved, TransitionError> {
+    if subject.subject_type != wl_kernel::payer_bills::PAYER_CREDIT_SUBJECT_TYPE
+        || subject.subject_id != request.party.0
+    {
+        return Err(guard("The payer credit balance does not belong to the party."));
+    }
+    let mut resolved = resolve_vouched(state, request).await?;
+    let balance = wl_kernel::payer_bills::payer_credits(state)
+        .balance(
+            &state.db,
+            request.party,
+            request.legal_entity_id,
+            &resolved.currency,
+        )
+        .await?;
+    let waiting = Refund::query()
+        .where_(Refund::PARTY_ID.eq(request.party.0))
+        .where_(Refund::LEGAL_ENTITY_ID.eq(request.legal_entity_id))
+        .where_(Refund::CURRENCY.eq(resolved.currency.as_str()))
+        .where_(Refund::SOURCE_KIND.eq("payer_credit"))
+        .where_(Refund::STATUS.eq(RefundStatus::Requested))
+        .sum::<i64, _>(&state.db, "amount")
+        .await?;
+    resolved.refundable = (balance - waiting).max(0);
+    Ok(resolved)
 }
 
 /// The party and legal entity of a source another module vouches for.

@@ -55,6 +55,7 @@ pub mod payment_link;
 pub mod record;
 pub mod recorder;
 pub mod refund;
+mod refund_approved;
 pub mod refund_attempt;
 mod refund_fail;
 mod refund_machine;
@@ -689,6 +690,8 @@ impl Module for WlPayments {
         wl_kernel::deposits::provide_deposit_deductions(app, deposit_deductions::Deductions);
         // `RefundPaid` after a commit.
         refund_machine::register(app);
+        // `RefundApproved` after a commit: the owner of the source takes the amount.
+        refund_approved::register(app);
         // `RefundFailed` and its notices after a commit.
         refund_fail::register(app);
         // `FIN.RUL.21`: a failed gateway refund is retried once; otherwise
