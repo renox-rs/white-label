@@ -16,7 +16,7 @@ use wl_kernel::documents::today;
 use wl_kernel::notify::{
     ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyChannel, NotifyRecipient,
 };
-use wl_sales::expiry::{self, TASK};
+use wl_sales::expiry::TASK;
 use wl_sales::liability;
 use wl_sales::notices::LOYALTY_EXPIRY;
 use wl_sales::{LoyaltyAccount, PointsKind, PointsMovement, Redemption, RedemptionStatus};
@@ -47,6 +47,15 @@ async fn run(t: &Booted, on: NaiveDate) {
         .call(TASK, vec!["--date".to_owned(), on.to_string()])
         .await
         .expect("the expiry task runs");
+}
+
+/// Moves the clock to `hour:minute` Dubai time on `day` (never backwards).
+async fn travel_to(t: &Booted, day: NaiveDate, hour: u32, minute: u32) {
+    let now = t.app.at_travelled_time(async { renox::db::now() }).await;
+    let local = day.and_hms_opt(hour, minute, 0).unwrap();
+    let target = local.and_utc() - Days::hours(4);
+    let seconds = (target - now).num_seconds().max(0);
+    t.app.travel(Duration::from_secs(seconds as u64));
 }
 
 /// Sets the last day of the lot `lot`.
@@ -206,8 +215,12 @@ async fn a_reminder_that_gave_up_does_not_stop_the_lot_expiring_and_the_account_
 async fn a_lot_ending_at_midnight_is_not_expired_while_a_sale_holds_its_points() {
     let (t, shop, floor, m) = world(800, &[]).await;
     let lot = movements(&t, &m, PointsKind::Earn).await.remove(0);
-    // The lot's last day is today; it can still be redeemed.
+    // The lot's last day is today; it can still be redeemed. The till sells
+    // ten minutes before midnight in Dubai.
     end_on(&t, &lot, today()).await;
+    let day = today();
+    travel_to(&t, day, 23, 50).await;
+    t.app.acting_as(&floor.cora);
     let sale = floor
         .open_cart(&t, &[("tee", "20.00", "1")], Some(&m.code))
         .await;
@@ -227,21 +240,17 @@ async fn a_lot_ending_at_midnight_is_not_expired_while_a_sale_holds_its_points()
         .assert_status(303);
     assert_eq!(account(&t, &m).await.points_held, 800);
 
-    // The run of the next morning finds the lot past its day, but held.
-    let tomorrow = today() + Days::days(1);
-    let report = expiry::run_daily(t.state(), tomorrow, renox::db::now())
-        .await
-        .unwrap();
-    assert_eq!((report.expired_lots, report.expired_points), (0, 0));
+    // The daily job of the next morning finds the lot past its day, but held.
+    travel_to(&t, day + Days::days(1), 0, 5).await;
+    t.app.run_scheduled(TASK).await.unwrap();
     assert!(movements(&t, &m, PointsKind::Expire).await.is_empty());
     assert_eq!(account(&t, &m).await.points_balance, 800);
 
     // The sale is abandoned: the hold ends, the next run expires the points.
     t.app.travel(Duration::from_secs(31 * 60));
-    let later = t.app.at_travelled_time(async { renox::db::now() }).await;
-    let report = expiry::run_daily(t.state(), tomorrow, later).await.unwrap();
-    assert_eq!(report.released, 1);
-    assert_eq!((report.expired_lots, report.expired_points), (1, 800));
+    t.app.run_scheduled(TASK).await.unwrap();
+    let gone = movements(&t, &m, PointsKind::Expire).await;
+    assert_eq!(gone.iter().map(|x| x.points).sum::<i64>(), -800);
     let held = &Redemption::of_sale(t.db(), &sale.subject()).await.unwrap()[0];
     assert_eq!(held.status, RedemptionStatus::Released);
     let m = account(&t, &m).await;

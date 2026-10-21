@@ -480,12 +480,8 @@ async fn points_confirmed_on_one_till_are_refused_on_another_until_the_hold_laps
     // Till 1 is abandoned: the hold lapses and the points can be used.
     t.app.travel(Duration::from_secs(11 * 60));
     ask(&t, &till2, 800, 303).await;
-    let released = t
-        .app
-        .at_travelled_time(async { redeem::release_lapsed(t.state(), renox::db::now()).await })
-        .await
-        .unwrap();
-    assert_eq!(released, 1);
+    // The every-minute task `sales:redemption_holds` lets the lapsed hold go.
+    t.app.run_scheduled(redeem::HOLDS_TASK).await.unwrap();
     let first = &redemptions(&t, &till1.subject()).await[0];
     assert_eq!(first.status, RedemptionStatus::Released);
     // The abandoned cart lost its line, and the hold is let go.
