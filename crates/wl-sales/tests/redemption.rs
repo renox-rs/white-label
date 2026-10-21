@@ -522,6 +522,65 @@ async fn a_lot_that_expired_gets_thirty_days_when_the_points_come_back() {
 }
 
 #[renox::test]
+async fn a_redemption_takes_the_lot_that_expires_first_and_the_points_come_back_to_each_lot_with_its_own_day()
+ {
+    // A lot of 300 that expires late, then one of 400 that expires sooner.
+    let (t, shop, floor, m) = world(300, &[]).await;
+    floor.earn(&t, &m, 400).await;
+    let lots = movements(&t, &m, PointsKind::Earn).await;
+    assert_eq!(lots.len(), 2);
+    let today = wl_kernel::documents::today();
+    let late = Some(today + Days::days(200));
+    let soon = Some(today + Days::days(100));
+    for (lot, day) in [(&lots[0], late), (&lots[1], soon)] {
+        PointsMovement::query()
+            .where_(PointsMovement::ID.eq(lot.id))
+            .update(t.db(), &[("lot_expires_on", &day)])
+            .await
+            .unwrap();
+    }
+
+    // 600 points: the 400 that expire first, then 200 of the other lot.
+    let sale = floor
+        .open_cart(&t, &[("tee", "50.00", "1")], Some(&m.code))
+        .await;
+    ask(&t, &sale, 600, 303).await;
+    enter_right(&t, &shop, &sale).await;
+    complete(&t, &sale, "46.50", 303).await;
+    let spent = movements(&t, &m, PointsKind::Redeem).await;
+    assert_eq!(
+        spent
+            .iter()
+            .map(|x| (x.lot_id, x.points))
+            .collect::<Vec<_>>(),
+        vec![(Some(lots[1].id), -400), (Some(lots[0].id), -200)]
+    );
+    let lot = |id: i64| PointsMovement::find(t.db(), id);
+    assert_eq!(lot(lots[1].id).await.unwrap().unwrap().consumed, 400);
+    assert_eq!(lot(lots[0].id).await.unwrap().unwrap().consumed, 200);
+
+    // Meanwhile the lot that was used first has expired. The sale is
+    // returned: its 400 points get the 30 days, the 200 keep their own day.
+    let gone = Some(today - Days::days(1));
+    PointsMovement::query()
+        .where_(PointsMovement::ID.eq(lots[1].id))
+        .update(t.db(), &[("lot_expires_on", &gone)])
+        .await
+        .unwrap();
+    return_everything(&t, &sale).await;
+    let back = movements(&t, &m, PointsKind::ReverseRedeem).await;
+    assert_eq!(
+        back.iter()
+            .map(|x| (x.lot_id, x.points, x.lot_expires_on))
+            .collect::<Vec<_>>(),
+        vec![
+            (Some(lots[1].id), 400, Some(today + Days::days(30))),
+            (Some(lots[0].id), 200, late),
+        ]
+    );
+}
+
+#[renox::test]
 async fn points_confirmed_on_one_till_are_refused_on_another_until_the_hold_lapses() {
     let (t, shop, floor, m) = world(800, &[]).await;
     let till1 = floor
