@@ -434,7 +434,7 @@ fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
 }
 
 /// `text` ("150", "1,500.5") as fils; `None` for anything else.
-fn parse_fils(text: &str) -> Option<i64> {
+pub(crate) fn parse_fils(text: &str) -> Option<i64> {
     let text = text.trim().replace(',', "");
     let (sign, text) = match text.strip_prefix('-') {
         Some(rest) => (-1, rest.to_owned()),
@@ -458,7 +458,7 @@ fn parse_fils(text: &str) -> Option<i64> {
 }
 
 /// `text` as a date (`2026-03-01`).
-fn parse_date(text: &str) -> Option<NaiveDate> {
+pub(crate) fn parse_date(text: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(text.trim(), "%Y-%m-%d").ok()
 }
 

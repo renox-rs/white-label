@@ -1,0 +1,20 @@
+{#- wl-sales: the counter sales. A cashier opens a cart for a walk-in or a
+    named customer; the list shows the latest sales. Replace it with
+    resources/views/wl-sales/counter_sales.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['counter.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['counter.title']" :subtitle="tx['counter.subtitle']">
+      <rx-action-sheet id="open-counter-sale" :label="tx['counter.open']" :action="route('wl_sales.counter_sale_open')"
+                       :title="tx['counter.open']" :description="tx['counter.open_description']" :submit-label="tx['counter.open']" variant="primary" icon="plus">
+        <rx-input name="party_id" :label="tx['counter.customer']" id="open-counter-sale-party"/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-table :rows="sales" as="sale" :key="sale.id" :caption="tx['counter.title']" card>
+      <rx-column :label="tx['counter.number']"><a href="{{ route('wl_sales.counter_sale', sale.id) }}">{{ sale.number }}</a></rx-column>
+      <rx-column :label="tx['counter.customer']" hide-narrow>{{ sale.customer or "" }}</rx-column>
+      <rx-column :label="tx['counter.total']">{{ sale.total }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="sale.status_kind" :text="sale.status_label"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['counter.empty']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

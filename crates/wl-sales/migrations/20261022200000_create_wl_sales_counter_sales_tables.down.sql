@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS "wl_sales_counter_sale_payments_payment";
+DROP INDEX IF EXISTS "wl_sales_counter_sale_payments_sale";
+DROP TABLE IF EXISTS "wl_sales_counter_sale_payments";
+DROP INDEX IF EXISTS "wl_sales_counter_sales_status";
+DROP INDEX IF EXISTS "wl_sales_counter_sales_invoice";
+DROP INDEX IF EXISTS "wl_sales_counter_sales_party";
+DROP INDEX IF EXISTS "wl_sales_counter_sales_number";
+DROP TABLE IF EXISTS "wl_sales_counter_sales";
+DROP INDEX IF EXISTS "wl_sales_sale_lines_subject";
+DROP TABLE IF EXISTS "wl_sales_sale_lines";

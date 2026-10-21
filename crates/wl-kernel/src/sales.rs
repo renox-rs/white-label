@@ -634,6 +634,350 @@ pub fn package_ledger(state: &AppState) -> Arc<dyn PackageLedger> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Counter sales, sales orders, sales returns and loyalty points (wl-sales
+// §4.2, §4.3, §4.5, §4.7, §6; base for BL-SAL-22).
+// ---------------------------------------------------------------------------
+
+/// The subject type of a counter sale, for [`Subject`] references.
+pub const COUNTER_SALE_SUBJECT_TYPE: &str = "sales.counter_sale";
+/// The subject type of a sales order, for [`Subject`] references.
+pub const SALES_ORDER_SUBJECT_TYPE: &str = "sales.sales_order";
+/// The subject type of a sales return, for [`Subject`] references.
+pub const SALES_RETURN_SUBJECT_TYPE: &str = "sales.sales_return";
+/// The subject type of a loyalty account, for [`Subject`] references.
+pub const LOYALTY_ACCOUNT_SUBJECT_TYPE: &str = "sales.loyalty_account";
+
+/// Defines a typed id of a sales record: a plain number in JSON, a
+/// [`Subject`] on demand.
+macro_rules! sales_id {
+    ($(#[$meta:meta])* $name:ident, $subject_type:expr) => {
+        $(#[$meta])*
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize,
+            Deserialize,
+        )]
+        #[serde(transparent)]
+        pub struct $name(pub i64);
+
+        impl $name {
+            /// The record as a [`Subject`].
+            pub fn subject(self) -> Subject {
+                Subject::new($subject_type, self.0)
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.fmt(f)
+            }
+        }
+
+        impl From<i64> for $name {
+            fn from(id: i64) -> Self {
+                $name(id)
+            }
+        }
+    };
+}
+
+sales_id!(
+    /// The id of a counter sale.
+    CounterSaleId,
+    COUNTER_SALE_SUBJECT_TYPE
+);
+sales_id!(
+    /// The id of a sales order.
+    SalesOrderId,
+    SALES_ORDER_SUBJECT_TYPE
+);
+sales_id!(
+    /// The id of a sales return.
+    SalesReturnId,
+    SALES_RETURN_SUBJECT_TYPE
+);
+sales_id!(
+    /// The id of a loyalty account.
+    LoyaltyAccountId,
+    LOYALTY_ACCOUNT_SUBJECT_TYPE
+);
+
+/// A counter sale was paid (or charged to the customer account) and
+/// completed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CounterSaleCompleted {
+    /// The sale.
+    pub sale: CounterSaleId,
+    /// The customer, when the sale names one.
+    pub party: Option<PartyId>,
+    /// The till session it was rung up on, when there is one.
+    pub till_session: Option<i64>,
+    /// The total with VAT, in fils.
+    pub gross_total: i64,
+    /// What was taken per payment method (`cash`, `card`, `account`…), in
+    /// fils.
+    pub by_method: Vec<(String, i64)>,
+}
+
+impl Event for CounterSaleCompleted {}
+
+/// A sales order reached `confirmed` for the first time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderConfirmed {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The channel it came through.
+    pub channel: String,
+}
+
+impl Event for SalesOrderConfirmed {}
+
+/// A quantity of one order line, in thousandths (1000 = 1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FulfilledLine {
+    /// The sale line (its id in `wl-sales`).
+    pub line: i64,
+    /// The quantity, in thousandths.
+    pub quantity_milli: i64,
+}
+
+/// Quantities of an order were delivered or collected (`fulfil`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderFulfilled {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The quantities fulfilled by this hand-over.
+    pub lines: Vec<FulfilledLine>,
+    /// The hand-over: a dispatch note, a delivery, a collection.
+    pub source: Subject,
+    /// Whether nothing is open any more: the order is `fulfilled`.
+    pub complete: bool,
+}
+
+impl Event for SalesOrderFulfilled {}
+
+/// Quantities that were fulfilled no longer are (`reverse_fulfilment`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderFulfilmentReversed {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The quantities no longer fulfilled.
+    pub lines: Vec<FulfilledLine>,
+    /// The hand-over that was reversed or lost.
+    pub source: Subject,
+    /// `reversed` or `lost`.
+    pub cause: String,
+}
+
+impl Event for SalesOrderFulfilmentReversed {}
+
+/// A sales order was cancelled.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderCancelled {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The reason.
+    pub reason: String,
+}
+
+impl Event for SalesOrderCancelled {}
+
+/// A sales order was rejected by the seller.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderRejected {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The reason.
+    pub reason: String,
+}
+
+impl Event for SalesOrderRejected {}
+
+/// A sales order is closed: everything fulfilled is invoiced.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderClosed {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+}
+
+impl Event for SalesOrderClosed {}
+
+/// A sales return was resolved.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReturnResolved {
+    /// The return.
+    pub sales_return: SalesReturnId,
+    /// `goods` or `no_goods`.
+    pub kind: String,
+    /// The sale it returns: a counter sale or a sales order.
+    pub sale: Subject,
+    /// `credit_note`, `refund`, `replacement` or `refunded_by_channel`.
+    pub resolution: String,
+    /// The value returned with VAT, in fils.
+    pub value: i64,
+    /// The credit note issued for it, when there is one.
+    pub credit_note: Option<i64>,
+}
+
+impl Event for ReturnResolved {}
+
+/// A sales return resolved *refunded by the channel* was taken back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReturnReversed {
+    /// The return.
+    pub sales_return: SalesReturnId,
+    /// The sale it returned.
+    pub sale: Subject,
+    /// The value, with VAT, in fils.
+    pub value: i64,
+    /// Why.
+    pub reason: String,
+}
+
+impl Event for ReturnReversed {}
+
+/// Loyalty points (or visits) were earned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PointsEarned {
+    /// The loyalty account.
+    pub account: LoyaltyAccountId,
+    /// The member.
+    pub party: PartyId,
+    /// The points (or visits).
+    pub points: i64,
+    /// Their value in fils (points × the point value).
+    pub value: i64,
+    /// The sale that earned them.
+    pub source: Subject,
+}
+
+impl Event for PointsEarned {}
+
+/// Earned loyalty points (or a visit) were taken back, in proportion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PointsReversed {
+    /// The loyalty account.
+    pub account: LoyaltyAccountId,
+    /// The member.
+    pub party: PartyId,
+    /// The points (or visits) taken back, positive.
+    pub points: i64,
+    /// Their value in fils.
+    pub value: i64,
+    /// The record that caused it: a sales return, a credit note, a payment
+    /// reversal, a write-off, a reopened invoice, a reversed fulfilment.
+    pub source: Subject,
+}
+
+impl Event for PointsReversed {}
+
+/// A hand-over of an order's goods (`OrderFulfilment::fulfil`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FulfilOrder {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The accepted quantities.
+    pub lines: Vec<FulfilledLine>,
+    /// The hand-over (a dispatch note, a delivery, a collection); a source
+    /// that fulfilled already changes nothing.
+    pub source: Subject,
+}
+
+/// A hand-over that no longer holds (`OrderFulfilment::reverse`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReverseFulfilment {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The quantities no longer fulfilled.
+    pub lines: Vec<FulfilledLine>,
+    /// The hand-over that was reversed or lost.
+    pub source: Subject,
+    /// `reversed` or `lost`.
+    pub cause: String,
+}
+
+/// How an [`OrderFulfilment`] call ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FulfilmentOutcome {
+    /// The quantities were fulfilled; `complete` when nothing is open.
+    Fulfilled {
+        /// The order.
+        order: SalesOrderId,
+        /// Whether the order is `fulfilled`.
+        complete: bool,
+    },
+    /// The source fulfilled before; nothing changed.
+    Already {
+        /// The order.
+        order: SalesOrderId,
+    },
+    /// The fulfilment was reversed.
+    Reversed {
+        /// The order.
+        order: SalesOrderId,
+    },
+    /// There is no such order, or the module is off.
+    NoOrder,
+}
+
+/// What `wl-inventory`, `wl-delivery` and the verticals' own fulfilment ask
+/// of a sales order (wl-sales §6 `OrderFulfilment`). `wl-sales` provides it.
+pub trait OrderFulfilment: Send + Sync + 'static {
+    /// Fulfils the accepted quantities of an order; idempotent per source.
+    /// The default has no order.
+    fn fulfil<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: FulfilOrder,
+    ) -> SalesFuture<'a, FulfilmentOutcome> {
+        Box::pin(async { Ok(FulfilmentOutcome::NoOrder) })
+    }
+
+    /// Takes quantities of an earlier hand-over off the order again. The
+    /// default has no order.
+    fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ReverseFulfilment,
+    ) -> SalesFuture<'a, FulfilmentOutcome> {
+        Box::pin(async { Ok(FulfilmentOutcome::NoOrder) })
+    }
+}
+
+/// The order fulfilment when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoOrderFulfilment;
+
+impl OrderFulfilment for NoOrderFulfilment {}
+
+/// Makes `fulfilment` the app's [`OrderFulfilment`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_order_fulfilment(app: &mut Registry, fulfilment: impl OrderFulfilment) {
+    let fulfilment: Arc<dyn OrderFulfilment> = Arc::new(fulfilment);
+    app.provide(fulfilment);
+}
+
+/// The app's [`OrderFulfilment`], or [`NoOrderFulfilment`] when none is
+/// provided.
+pub fn order_fulfilment(state: &AppState) -> Arc<dyn OrderFulfilment> {
+    match state.provided::<Arc<dyn OrderFulfilment>>() {
+        Some(fulfilment) => Arc::clone(&fulfilment),
+        None => Arc::new(NoOrderFulfilment),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -741,5 +1085,32 @@ mod tests {
         let json = renox::serde_json::to_value(&won).unwrap();
         assert_eq!(json["lead"], 2);
         assert!(json["owner"].is_null());
+    }
+
+    #[test]
+    fn the_sale_ids_are_subjects_and_plain_numbers() {
+        assert_eq!(
+            CounterSaleId(4).subject(),
+            Subject::new("sales.counter_sale", 4)
+        );
+        assert_eq!(
+            SalesOrderId(5).subject(),
+            Subject::new("sales.sales_order", 5)
+        );
+        assert_eq!(
+            SalesReturnId(6).subject(),
+            Subject::new("sales.sales_return", 6)
+        );
+        assert_eq!(
+            LoyaltyAccountId(7).subject(),
+            Subject::new("sales.loyalty_account", 7)
+        );
+        assert_eq!(renox::serde_json::to_string(&SalesOrderId(5)).unwrap(), "5");
+    }
+
+    #[test]
+    fn the_default_order_fulfilment_has_no_order() {
+        fn _object_safe(_: &dyn OrderFulfilment) {}
+        _object_safe(&NoOrderFulfilment);
     }
 }

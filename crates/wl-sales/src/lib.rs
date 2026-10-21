@@ -12,6 +12,9 @@ pub mod config;
 pub mod cost_entry;
 pub mod cost_machine;
 pub mod costs;
+pub mod counter_sale;
+pub mod counter_sale_machine;
+pub mod counter_sales;
 pub mod daily;
 mod events;
 pub mod lead;
@@ -28,6 +31,7 @@ pub mod pages;
 pub mod policy;
 pub mod promo_code;
 pub mod report;
+pub mod sale_line;
 pub mod seed;
 mod texts;
 pub mod voids;
@@ -46,11 +50,13 @@ pub use campaign::{
 };
 pub use config::SalesConfig;
 pub use cost_entry::{CostEntry, CostRefused, CostStatus};
+pub use counter_sale::{CounterSale, CounterSalePayment, CounterSaleStatus};
 pub use lead::{Captured, Lead, LeadNote, LeadRefused, LeadStatus, NewLead};
 pub use lead_source::{LeadSource, LeadSourceRefused};
 pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
 pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
+pub use sale_line::SaleLine;
 
 /// The campaign services under the names of the plan: `campaigns::delete`
 /// and `campaigns::run_daily`.
@@ -90,6 +96,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-sales/_cost_sheet.html",
         include_str!("../views/wl-sales/_cost_sheet.html"),
     ),
+    (
+        "wl-sales/counter_sales.html",
+        include_str!("../views/wl-sales/counter_sales.html"),
+    ),
+    (
+        "wl-sales/counter_sale.html",
+        include_str!("../views/wl-sales/counter_sale.html"),
+    ),
 ];
 
 /// The module's permissions (wl-sales §6).
@@ -114,6 +128,8 @@ pub mod permissions {
     pub const LEADS_VIEW: &str = "leads.view";
     /// Contact, qualify, lose and reopen leads.
     pub const LEADS_MANAGE: &str = "leads.manage";
+    /// Ring up and complete counter sales.
+    pub const POS_SELL: &str = "pos.sell";
 }
 
 /// The sales module. The host adds it with
@@ -218,6 +234,21 @@ impl WlSales {
         self
     }
 
+    /// Whether a counter sale may be charged to the customer account (§7,
+    /// off by default; 08: on).
+    pub fn counter_sales_on_account(mut self, on: bool) -> Self {
+        self.config.counter_sales_on_account = on;
+        self
+    }
+
+    /// The days after a sale within which goods can come back (§7, default
+    /// 14).
+    pub fn return_window_days(mut self, days: i64) -> Self {
+        assert!(days >= 0, "the return window cannot be negative");
+        self.config.return_window_days = days;
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &SalesConfig {
         &self.config
@@ -243,7 +274,9 @@ impl Module for WlSales {
             .view_data::<pages::report::ReportPage>()
             .view_data::<pages::campaigns::IndexPage>()
             .view_data::<pages::campaigns::FormPage>()
-            .view_data::<pages::campaigns::ShowPage>();
+            .view_data::<pages::campaigns::ShowPage>()
+            .view_data::<pages::counter_sales::IndexPage>()
+            .view_data::<pages::counter_sales::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -266,6 +299,9 @@ impl Module for WlSales {
         app.model::<PackageMovement>();
         app.model::<PackageReopening>();
         app.model::<PackageRefusal>();
+        app.model::<SaleLine>();
+        app.model::<CounterSale>();
+        app.model::<CounterSalePayment>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
@@ -276,6 +312,8 @@ impl Module for WlSales {
         // Prepaid packages: the ledger, the listeners and the daily expiry.
         packages::register(app);
         package_reopen::register(app);
+        // The counter sale: its machine and the `CounterSaleCompleted` event.
+        counter_sales::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);
@@ -309,6 +347,14 @@ impl Module for WlSales {
                 .group("nav.app")
                 .order(50)
                 .permission(permissions::CAMPAIGNS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.counter_sales", "nav.counter_sales")
+                .icon("shopping-cart")
+                .group("nav.app")
+                .order(51)
+                .permission(permissions::POS_SELL),
         );
     }
 }

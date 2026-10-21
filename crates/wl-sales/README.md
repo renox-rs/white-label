@@ -31,6 +31,7 @@ What is here so far:
 | The kernel's `CampaignAttribution` and `LeadConversion` for the verticals | §6 | `attribution` |
 | Prepaid packages: `sell`, `activate` when the invoice is paid, `consume` / `consume_last` with a movement per source, `reverse`, the daily `expire` (`sales:packages`), `extend`, `cancel`; the kernel's `PackageLedger` and `PackageActivated`/`PackageConsumed`/`PackageExtended`/`PackageExpired`. The sale pages and `refund` come later | §3, §4.4, §5.5, §6 | `package`, `package_machine`, `packages` |
 | A reversed payment of a package (`InvoiceReopened`, `PaymentReversed`): the package stays active with its used credits, the seller gets a "collect before next use" task, the holder is told the balance is due, and `WlSales::suspend_package_consumption_while_unpaid` refuses `consume` until the invoice is paid | §4.4, §6, §7 | `package_reopen`, `packages` |
+| Counter sales: a cart with sale lines, the machine (`complete`: tenders that add up, the customer account only with the setting), the receipt number, the invoice drafted for a named customer, `CounterSaleCompleted`, and the `/counter-sales` pages behind `pos.sell`. A completed sale is never edited (`SAL.ACL.04`); the till session lifecycle comes later | §3, §4.3, §5.4, §6 | `counter_sale`, `counter_sale_machine`, `counter_sales`, `sale_line`, `pages::counter_sales` |
 
 The module owns `src/texts.rs`, the English texts (`wl_sales.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.

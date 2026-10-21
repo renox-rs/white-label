@@ -224,6 +224,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::PACKAGES_SELL,
             sales::PACKAGES_EXTEND,
             sales::PACKAGES_ADJUST,
+            sales::POS_SELL,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
             hr::EMPLOYEES_EXIT_APPROVE,
