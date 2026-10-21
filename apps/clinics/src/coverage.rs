@@ -45,7 +45,7 @@
 //! - *A non-insured appointment* is asked nothing.
 
 use renox::chrono::{NaiveDate, NaiveTime};
-use renox::db::{DateTime, now};
+use renox::db::{DateTime, Json, now};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::calendar::calendar;
@@ -55,6 +55,7 @@ use wl_kernel::scheduling::{
 };
 
 use crate::appointment::Appointment;
+use crate::auth_check;
 use crate::consent::{self, SelfPayConsent};
 use crate::db::refused;
 use crate::policies;
@@ -90,6 +91,53 @@ pub const DAY_ENDS_AT: &str = "23:59";
 /// The scheduled task and command that discard the lapsed data.
 pub const TASK: &str = "clinics:pending_check_ins";
 
+/// One service of a visit with the units it will use (BL-CLN-02).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VisitService {
+    /// The service code.
+    pub code: String,
+    /// The units the visit needs of it; at least one.
+    pub units: i64,
+}
+
+impl VisitService {
+    /// `units` of the service `code`.
+    pub fn new(code: &str, units: i64) -> Self {
+        VisitService {
+            code: code.to_owned(),
+            units,
+        }
+    }
+}
+
+/// Reads `laser:2, consultation` into services: a code, a colon and the
+/// units (one when left out).
+///
+/// # Errors
+///
+/// A 422 for no service, a blank code, units that are not a whole number of
+/// at least one, or a code named twice.
+pub fn parse_services(text: &str) -> Result<Vec<VisitService>> {
+    let mut found: Vec<VisitService> = Vec::new();
+    for part in text.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let (code, units) = match part.split_once(':') {
+            Some((code, units)) => (code.trim(), units.trim().parse::<i64>().ok()),
+            None => (part, Some(1)),
+        };
+        let Some(units) = units.filter(|u| *u >= 1) else {
+            return Err(refused(english("clinics.coverage.problem.services", &[])));
+        };
+        if code.is_empty() || found.iter().any(|s| s.code == code) {
+            return Err(refused(english("clinics.coverage.problem.services", &[])));
+        }
+        found.push(VisitService::new(code, units));
+    }
+    if found.is_empty() {
+        return Err(refused(english("clinics.coverage.problem.services", &[])));
+    }
+    Ok(found)
+}
+
 /// What the receptionist recorded for an appointment before its check-in.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(table = "clinics_pending_check_ins", index(booking_id))]
@@ -115,6 +163,10 @@ pub struct PendingCheckIn {
     pub coverage_policy_id: Option<i64>,
     /// The self-pay consent of a `self_pay` outcome.
     pub consent_id: Option<i64>,
+    /// The services the visit will use, with the units of each, as the
+    /// receptionist entered them; empty means the booked service, one unit
+    /// (BL-CLN-02).
+    pub services: Json<Vec<VisitService>>,
     /// The visit the check-in moved it to.
     pub moved_visit_id: Option<i64>,
     /// The day it was discarded (Asia/Dubai).
@@ -466,6 +518,63 @@ pub async fn sign_consent(
     SelfPayConsent::find_or_404(&state.db, signed.id).await
 }
 
+/// Records the services the visit will use and the units of each (the
+/// receptionist's entry at check-in; BL-CLN-02). It replaces what was entered
+/// before.
+///
+/// # Errors
+///
+/// A 404 for an unknown appointment; a 422 for an appointment that is not
+/// insured, is cancelled or checked in.
+pub async fn set_services(
+    state: &AppState,
+    by: Option<i64>,
+    booking: i64,
+    services: Vec<VisitService>,
+) -> Result<PendingCheckIn> {
+    let (appointment, policy) = target(state, booking).await?;
+    let pending = ensure_pending(state, &appointment, &policy, by).await?;
+    set(
+        state,
+        pending.id,
+        &[("services", &Json(services)), ("recorded_by", &by)],
+    )
+    .await?;
+    PendingCheckIn::find_or_404(&state.db, pending.id).await
+}
+
+/// The patient signs the self-pay consent for the services a prior
+/// authorisation does not cover (and only those); the coverage outcome stays
+/// as it is and the consent is kept with the pending data
+/// ([`crate::auth_check::sign_consent`]).
+///
+/// # Errors
+///
+/// A 422 when every service is covered, a service has no self-pay price or
+/// the signer's name is blank.
+pub async fn sign_authorisation_consent(
+    state: &AppState,
+    by: Option<i64>,
+    booking: i64,
+    signer_name: &str,
+    ip: Option<&str>,
+    at: DateTime,
+) -> Result<SelfPayConsent> {
+    let (appointment, policy) = target(state, booking).await?;
+    let pending = ensure_pending(state, &appointment, &policy, by).await?;
+    let signed =
+        auth_check::sign_consent(state, by, &appointment, &pending, signer_name, ip, at).await?;
+    SelfPayConsent::query()
+        .where_(SelfPayConsent::ID.eq(signed.id))
+        .update(
+            &state.db,
+            &[("pending_id", &Some(pending.id)), ("updated_at", &now())],
+        )
+        .await?;
+    set(state, pending.id, &[("consent_id", &Some(signed.id))]).await?;
+    SelfPayConsent::find_or_404(&state.db, signed.id).await
+}
+
 /// Discards the data in force for `booking`, if there is any: the appointment
 /// was cancelled or rescheduled, booked with another policy, or the day ended.
 /// A consent already signed stays on file, marked superseded. Returns whether
@@ -557,6 +666,18 @@ pub async fn check_in_answer(state: &AppState, booking: i64) -> Result<CheckInAn
                 &[],
             )));
         }
+        return Ok(CheckInAnswer::Allowed);
+    }
+    // A service that needs a prior authorisation goes ahead only with a valid
+    // authorisation that has units left, or as self-pay with a consent that
+    // lists it (BL-CLN-02).
+    let needs = auth_check::plan(state, &appointment, Some(&pending)).await?;
+    let short = auth_check::shortfalls(&needs);
+    if !short.is_empty() && !auth_check::consented(state, booking, &short).await? {
+        return Ok(CheckInAnswer::Refused(english(
+            "clinics.authorisation.problem.required",
+            &[],
+        )));
     }
     Ok(CheckInAnswer::Allowed)
 }
@@ -611,6 +732,9 @@ pub async fn move_to_visit(state: &AppState, visit: &Visit) -> Result<bool> {
             )
             .await?;
     }
+    // The units of the authorisations the visit relies on are held against
+    // it until it is completed or cancelled (BL-CLN-02).
+    auth_check::hold_units(state, visit, &pending).await?;
     set(state, pending.id, &[("moved_visit_id", &Some(visit.id))]).await?;
     Ok(true)
 }

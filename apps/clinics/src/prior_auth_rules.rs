@@ -131,7 +131,9 @@ pub async fn evaluate(
         Some(&detail),
     )
     .await?;
-    if created {
+    // A reschedule asks the coordinator again: the task is opened if the
+    // earlier one was closed (a task still open is the same one).
+    if created || origin == "rescheduled" {
         let title = english(
             "clinics.flags.needed_task",
             &[("service", code), ("date", &appointment.visit_date)],

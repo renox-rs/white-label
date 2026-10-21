@@ -3,6 +3,7 @@
 
 pub mod appointment;
 pub mod appointments;
+pub mod auth_check;
 pub mod authorisation;
 pub mod authorisation_machine;
 pub mod authorisations;

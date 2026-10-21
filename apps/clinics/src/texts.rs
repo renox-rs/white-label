@@ -112,6 +112,10 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.coverage.problem.fixed",
         "After the service starts, the coverage outcome is fixed.",
     ),
+    (
+        "clinics.coverage.problem.services",
+        "Services are written as code:units, for example laser:2, consultation:1; each at least one unit, none twice.",
+    ),
     ("clinics.coverage.problem.already", "The visit is already insured."),
     // The self-pay consent.
     ("clinics.consent.title", "Self-pay consent"),
@@ -143,6 +147,10 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "clinics.consent.problem.not_on_consent",
         ":service is not on the self-pay consent; ask the patient to sign an updated consent first.",
+    ),
+    (
+        "clinics.consent.problem.no_services",
+        "Name at least one service for the consent.",
     ),
     (
         "clinics.consent.problem.not_self_pay",
@@ -296,6 +304,42 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.authorisation.problem.service_code",
         "The service code is required.",
     ),
+    (
+        "clinics.authorisation.problem.required",
+        "Prior authorisation required: self-pay with consent or reschedule.",
+    ),
+    (
+        "clinics.authorisation.problem.nothing_to_sign",
+        "Every service is covered by an authorisation; no self-pay consent is needed.",
+    ),
+    (
+        "clinics.authorisation.line_covered",
+        "Prior authorisation: :service, :units units covered by :numbers.",
+    ),
+    (
+        "clinics.authorisation.line_short",
+        "Prior authorisation: :service, :covered of :units units covered; :self_pay go self-pay with the patient's consent, or reschedule while a new authorisation is requested.",
+    ),
+    ("clinics.authorisation.services_action", "Services and units"),
+    (
+        "clinics.authorisation.services_description",
+        "The services the visit will use and the units of each, for example laser:2, consultation:1. A service that needs a prior authorisation is checked against the units left.",
+    ),
+    ("clinics.authorisation.services_field", "Services (code:units)"),
+    ("clinics.authorisation.services_recorded", "Services recorded."),
+    (
+        "clinics.authorisation.consent_action",
+        "Self-pay consent for the uncovered services",
+    ),
+    (
+        "clinics.authorisation.consent_description",
+        "The patient signs for the services a prior authorisation does not cover, with their estimated price. The services it covers stay in the payer split.",
+    ),
+    (
+        "clinics.authorisation.consent_signed",
+        "Consent signed for the uncovered services.",
+    ),
+    ("clinics.authorisation.holds", "Units held"),
     (
         "clinics.authorisation.denied_subject",
         "Your insurer did not approve the authorisation",

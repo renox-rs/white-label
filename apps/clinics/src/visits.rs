@@ -91,6 +91,17 @@ async fn follow(
     }
 }
 
+/// A visit that is over gives back the units it held against prior
+/// authorisations (BL-CLN-02).
+async fn release(state: &AppState, visit: Option<&Visit>) -> Result {
+    if let Some(visit) = visit
+        && !visit.status.is_open()
+    {
+        crate::auth_check::release_holds(state, visit.id).await?;
+    }
+    Ok(())
+}
+
 /// `BookingStarted`: the visit is `in_progress`.
 ///
 /// # Errors
@@ -114,7 +125,9 @@ pub async fn on_completed(state: &AppState, event: &BookingCompleted) -> Result<
         at: Some(renox::db::now()),
         reason: None,
     };
-    follow(state, event.booking.0, COMPLETE, &input).await
+    let visit = follow(state, event.booking.0, COMPLETE, &input).await?;
+    release(state, visit.as_ref()).await?;
+    Ok(visit)
 }
 
 /// `BookingCancelled` after the check-in: the visit is `cancelled` with the
@@ -131,7 +144,9 @@ pub async fn on_cancelled(state: &AppState, event: &BookingCancelled) -> Result<
         at: Some(renox::db::now()),
         reason: Some(event.reason_code.clone()),
     };
-    follow(state, event.booking.0, CANCEL, &input).await
+    let visit = follow(state, event.booking.0, CANCEL, &input).await?;
+    release(state, visit.as_ref()).await?;
+    Ok(visit)
 }
 
 /// Registers the listeners.

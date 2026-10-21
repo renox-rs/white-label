@@ -215,11 +215,34 @@ pub async fn sign(
     extra: &[String],
     at: DateTime,
 ) -> Result<SelfPayConsent> {
+    let codes = with_codes(&appointment.service_code, extra);
+    sign_codes(state, by, appointment, signer_name, ip, &codes, at).await
+}
+
+/// Like [`sign`] for exactly the services `codes`: the consent of the
+/// services a prior authorisation does not cover (BL-CLN-02) lists only
+/// those, not the booked service when that stays in the payer split.
+///
+/// # Errors
+///
+/// A 422 when the signer's name is blank, no service is named or a service
+/// has no self-pay price.
+pub async fn sign_codes(
+    state: &AppState,
+    by: Option<i64>,
+    appointment: &Appointment,
+    signer_name: &str,
+    ip: Option<&str>,
+    codes: &[String],
+    at: DateTime,
+) -> Result<SelfPayConsent> {
     if signer_name.trim().is_empty() {
         return Err(refused(english("clinics.consent.problem.signer", &[])));
     }
-    let codes = with_codes(&appointment.service_code, extra);
-    let lines = price_lines(state, &codes, appointment.visit_date).await?;
+    if codes.is_empty() {
+        return Err(refused(english("clinics.consent.problem.no_services", &[])));
+    }
+    let lines = price_lines(state, codes, appointment.visit_date).await?;
     let text = consent_text(appointment.booking_id, appointment.visit_date, &lines);
     supersede_all(state, appointment.booking_id, dubai_date(at)).await?;
     let mut consent = SelfPayConsent {
