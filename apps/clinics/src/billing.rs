@@ -26,7 +26,8 @@
 //!    consumed ([`crate::authorisations::consume`]).
 //! 7. The deposit: on a cancellation wl-scheduling decided (`SCH.ACL.05`) how
 //!    much is applied to the work and refunded the rest; here that part is
-//!    allocated to the invoice. On a completion the deposit is applied to the
+//!    allocated to the invoice, and what the bill cannot use (a package paid
+//!    the service) is refunded. On a completion the deposit is applied to the
 //!    patient share first and the remainder is refunded, or all of it is
 //!    refunded when the desk chose so. It is never forfeited.
 
@@ -392,10 +393,16 @@ async fn settle_deposit(state: &AppState, id: i64, basis: Basis, gross: i64) -> 
         .collect();
     let prepaid: i64 = payments.iter().map(|p| p.unallocated).sum();
     let (applied, refund) = match basis {
-        // wl-scheduling decided and asked its own refund.
+        // wl-scheduling decided how much of the deposit goes to the work and
+        // asked its own refund of the rest. What the bill cannot use (a
+        // package paid the service) is paid back here, never kept.
         Basis::Cancelled {
             deposit_applied, ..
-        } => (deposit_applied.min(gross).max(0), 0),
+        } => {
+            let decided = deposit_applied.max(0);
+            let applied = decided.min(gross).max(0);
+            (applied, (decided - applied).min(prepaid))
+        }
         Basis::Completed if visit.deposit_refund_full => (0, prepaid),
         Basis::Completed => {
             let applied = prepaid.min(gross).max(0);
