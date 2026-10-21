@@ -28,13 +28,13 @@ use wl_kernel::workforce::{LeaveApproved, LeaveCancelled};
 
 pub use booking::{Booking, BookingResource, BookingStatus};
 pub use booking_machine::{ActorKind, BookingInput};
-pub use conflict::{BulkAction, BulkResult, Conflict};
 pub use config::{SchedulingConfig, config_of};
+pub use conflict::{BulkAction, BulkResult, Conflict};
 pub use refusal::Refusal;
-pub use rules::Reminder;
 pub use resource::{
     AvailabilityBlock, AvailabilityRule, Resource, ResourceType, ServiceResource, ServiceType,
 };
+pub use rules::Reminder;
 pub use service::{Actor, CancelRequest, NewBooking};
 pub use waiting::{WaitingEntry, WaitingStatus};
 
