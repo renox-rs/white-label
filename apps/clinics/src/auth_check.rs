@@ -154,14 +154,15 @@ pub fn shortfalls(needs: &[Need]) -> Vec<&Need> {
 }
 
 /// Whether the consent in force of `booking` lists every service in
-/// `short`.
+/// `short` for at least the units that go self-pay: a consent for one unit
+/// does not let three through.
 ///
 /// # Errors
 ///
 /// The database's errors.
 pub async fn consented(state: &AppState, booking: i64, short: &[&Need]) -> Result<bool> {
     let current = SelfPayConsent::current(&state.db, booking).await?;
-    Ok(current.is_some_and(|c| short.iter().all(|need| c.lists(&need.code))))
+    Ok(current.is_some_and(|c| short.iter().all(|need| c.units_of(&need.code) >= need.self_pay)))
 }
 
 /// The patient signs the self-pay consent for the services the prior

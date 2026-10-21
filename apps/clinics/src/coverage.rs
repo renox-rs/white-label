@@ -537,12 +537,26 @@ pub async fn set_services(
 ) -> Result<PendingCheckIn> {
     let (appointment, policy) = target(state, booking).await?;
     let pending = ensure_pending(state, &appointment, &policy, by).await?;
+    // A consent is for the services and units the patient saw: when they
+    // change, it no longer says what will be billed and is superseded, so a
+    // new one must be signed.
+    let key = |list: &[VisitService]| {
+        let mut key: Vec<(String, i64)> = list.iter().map(|s| (s.code.clone(), s.units)).collect();
+        key.sort();
+        key
+    };
+    let before = auth_check::services_of(&appointment, Some(&pending));
+    let changed = key(&before) != key(&services);
     set(
         state,
         pending.id,
         &[("services", &Json(services)), ("recorded_by", &by)],
     )
     .await?;
+    if changed && pending.consent_id.is_some() {
+        consent::supersede_all(state, booking, dubai_date(now())).await?;
+        set(state, pending.id, &[("consent_id", &None::<i64>)]).await?;
+    }
     PendingCheckIn::find_or_404(&state.db, pending.id).await
 }
 

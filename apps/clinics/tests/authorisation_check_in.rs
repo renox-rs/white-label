@@ -420,3 +420,77 @@ async fn a_reschedule_asks_the_billing_coordinator_for_a_new_authorisation() {
     assert_eq!(flags.len(), 1);
     assert_eq!(flags[0].origin, "rescheduled");
 }
+
+/// A consent for one self-pay unit does not let three through: entering more
+/// units supersedes the consent, and check-in waits for a new signature that
+/// shows the new units and price.
+#[renox::test]
+async fn a_consent_for_one_unit_does_not_let_three_units_through() {
+    let s = scene().await;
+    let booking = s.insured(&s.procedure, 1, 9).await;
+    s.eligible(&booking).await;
+    s.services(&booking, "procedure:1").await;
+    assert_refused(&s.check_in(&booking).await);
+    s.sign(&booking).await.assert_ok();
+    let first = SelfPayConsent::current(s.t.db(), booking.id)
+        .await
+        .unwrap()
+        .expect("signed");
+    assert_eq!((first.units_of("procedure"), first.estimated_fils), (1, 120_000));
+
+    // The receptionist raises the units to 3: the signed consent is
+    // superseded and the check-in is refused again.
+    s.services(&booking, "procedure:3").await;
+    let old = SelfPayConsent::find_or_404(s.t.db(), first.id).await.unwrap();
+    assert!(old.is_superseded());
+    assert!(
+        SelfPayConsent::current(s.t.db(), booking.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_refused(&s.check_in(&booking).await);
+
+    // Entering the same services again changes nothing.
+    s.sign(&booking).await.assert_ok();
+    s.services(&booking, "procedure:3").await;
+    assert!(
+        SelfPayConsent::current(s.t.db(), booking.id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    s.check_in(&booking).await.assert_status(303);
+    let visit = s.visit(&booking).await;
+    let consent = SelfPayConsent::find_or_404(s.t.db(), visit.consent_id.unwrap())
+        .await
+        .unwrap();
+    assert_eq!((consent.units_of("procedure"), consent.estimated_fils), (3, 360_000));
+}
+
+/// A consent whose units fell short of what now goes self-pay is not
+/// accepted even though it lists the code: the authorisation's last units are
+/// consumed after the patient signed for one.
+#[renox::test]
+async fn a_consent_with_fewer_units_than_the_self_pay_units_is_not_accepted() {
+    let s = scene().await;
+    let a1 = s.a1(2, 30).await;
+    let booking = s.insured(&s.procedure, 1, 9).await;
+    s.eligible(&booking).await;
+    s.services(&booking, "procedure:3").await;
+    s.sign(&booking).await.assert_ok();
+
+    authorisations::consume(s.t.state(), a1.id, 2, now())
+        .await
+        .unwrap();
+    assert_refused(&s.check_in(&booking).await);
+
+    s.sign(&booking).await.assert_ok();
+    let consent = SelfPayConsent::current(s.t.db(), booking.id)
+        .await
+        .unwrap()
+        .expect("signed");
+    assert_eq!(consent.units_of("procedure"), 3);
+    s.check_in(&booking).await.assert_status(303);
+}
