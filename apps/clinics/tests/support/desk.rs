@@ -13,7 +13,7 @@ use clinics::contracts::{self, NewContract};
 use clinics::policies::{self, NewPolicy};
 use clinics::{InsurancePolicy, PayerContract, Visit, appointments};
 
-use super::{Clinic, PATIENT, at, boot, day};
+use super::{Clinic, PATIENT, at, boot, boot_with_stock, day};
 
 /// The payer of the insured visits.
 pub const PAYER: PartyId = PartyId(900);
@@ -34,7 +34,15 @@ pub struct Desk {
 
 /// Boots the clinic with the self-pay price of the consultation.
 pub async fn desk() -> Desk {
-    let t = boot().await;
+    desk_on(boot().await).await
+}
+
+/// Like [`desk`] with the real wl-inventory behind the consumables.
+pub async fn desk_with_stock() -> Desk {
+    desk_on(boot_with_stock().await).await
+}
+
+async fn desk_on(t: Clinic) -> Desk {
     let rita = t.receptionist().await;
     let dana = t.doctor_user().await;
     let doctor = t.practitioner("Dr A", 61, None).await;

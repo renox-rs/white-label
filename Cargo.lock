@@ -398,6 +398,7 @@ dependencies = [
  "serde",
  "tempfile",
  "wl-hr",
+ "wl-inventory",
  "wl-invoicing",
  "wl-kernel",
  "wl-notify",

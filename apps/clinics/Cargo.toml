@@ -27,3 +27,7 @@ wl-notify = { path = "../../crates/wl-notify" }
 # the clinics app): the technical rejection, the held overpayment and the
 # recoupment run against the module that owns the money.
 wl-invoicing = { path = "../../crates/wl-invoicing" }
+# The real stock in the lot and recall tests (no cycle: wl-inventory does not
+# use the clinics app): the lot a consumable is issued from, the pending issue
+# for the short part and the recall trace run against the module that owns them.
+wl-inventory = { path = "../../crates/wl-inventory" }

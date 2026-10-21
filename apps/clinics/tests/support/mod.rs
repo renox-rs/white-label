@@ -87,6 +87,24 @@ name_en = "Palm Grove Clinic LLC"
 default = true
 "#;
 
+/// A clinic with scheduling, HR and the stock on.
+const CLIENT_WITH_STOCK: &str = r#"
+[client]
+name = "Palm Grove Clinic LLC"
+app = "clinics"
+
+[modules]
+enabled = ["parties", "hr", "scheduling", "inventory"]
+
+[roles]
+owner = "owner"
+
+[[legal_entities]]
+code = "PGC"
+name_en = "Palm Grove Clinic LLC"
+default = true
+"#;
+
 /// The branch the practitioners work at.
 pub fn branch() -> Subject {
     scheduling::branch()
@@ -353,16 +371,22 @@ pub fn clock_at(t: &Clinic, to: DateTime) {
 /// Boots the clinics app: scheduling, HR and the fakes, with the 05 reason
 /// codes and a self-pay price of AED 450.00 for the consultation.
 pub async fn boot() -> Clinic {
-    boot_with(false).await
+    boot_with(false, false).await
+}
+
+/// Like [`boot`] with the real wl-inventory: the branch stores, lots and
+/// pending issues the consumables of a visit are issued from.
+pub async fn boot_with_stock() -> Clinic {
+    boot_with(false, true).await
 }
 
 /// Like [`boot`] with the real wl-notify in place of the notifier fake: its
 /// quiet hours hold a message to the patient, its provider is [`Outbox`].
 pub async fn boot_real_notify() -> Clinic {
-    boot_with(true).await
+    boot_with(true, false).await
 }
 
-async fn boot_with(real_notify: bool) -> Clinic {
+async fn boot_with(real_notify: bool, stock: bool) -> Clinic {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -409,6 +433,11 @@ async fn boot_with(real_notify: bool) -> Clinic {
     } else {
         app
     };
+    let app = if stock {
+        app.module(wl_inventory::WlInventory::new())
+    } else {
+        app
+    };
     let app = record(app, &events.booked);
     let app = record(app, &events.rescheduled);
     let app = record(app, &events.checked_in);
@@ -416,7 +445,8 @@ async fn boot_with(real_notify: bool) -> Clinic {
     let app = record(app, &events.cancelled);
     let app = record(app, &events.conflicts);
     let app = record(app, &expired);
-    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let client = if stock { CLIENT_WITH_STOCK } else { CLIENT };
+    let config = wl_kernel::ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
