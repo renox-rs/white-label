@@ -2,7 +2,9 @@
     it with resources/views/wl-scheduling/bookings.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['bookings.title']">
   <rx-stack>
-    <rx-page-header :title="tx['bookings.title']" :subtitle="tx['bookings.subtitle']"/>
+    <rx-page-header :title="tx['bookings.title']" :subtitle="tx['bookings.subtitle']">
+      <rx-link-button route="wl_scheduling.conflicts" :label="tx['conflicts.title']" variant="plain"/>
+    </rx-page-header>
     <rx-table :rows="bookings" as="booking" :key="booking.id" :caption="tx['bookings.title']" card>
       <rx-column :label="tx['bookings.number']"><a href="{{ route('wl_scheduling.booking', booking.id) }}">{{ booking.number }}</a></rx-column>
       <rx-column :label="tx['bookings.party']">{{ booking.party }}</rx-column>

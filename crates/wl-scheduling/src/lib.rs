@@ -5,6 +5,7 @@ pub mod booking;
 pub mod booking_machine;
 pub mod config;
 pub mod conflict;
+pub mod conflict_pages;
 pub mod deposit;
 pub mod events;
 pub mod links;
@@ -45,6 +46,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-scheduling/booking.html",
         include_str!("../views/wl-scheduling/booking.html"),
+    ),
+    (
+        "wl-scheduling/conflicts.html",
+        include_str!("../views/wl-scheduling/conflicts.html"),
     ),
     (
         "wl-scheduling/link.html",
@@ -155,7 +160,9 @@ impl Module for WlScheduling {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes().merge(links::routes())
+        pages::routes()
+            .merge(conflict_pages::routes())
+            .merge(links::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -176,6 +183,7 @@ impl Module for WlScheduling {
         renox::state_machine::register::<WaitingEntry>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
+            .view_data::<conflict_pages::ConflictsPage>()
             .view_data::<links::LinkPage>()
             .view_data::<links::SlotsPage>();
         app.templates(|env| {
