@@ -501,9 +501,7 @@ async fn a_void_that_failed_in_the_middle_is_finished_by_the_same_call() {
         .update(t.db(), &[("agreement_id", &Some(t.agreement.id))])
         .await
         .unwrap();
-    t.post(&cora, &void_path(&claim), &fields)
-        .await
-        .assert_ok();
+    t.post(&cora, &void_path(&claim), &fields).await.assert_ok();
 
     let done = t.claim_now(claim.id).await;
     assert_eq!(done.status, ClaimStatus::Voided);
@@ -517,7 +515,11 @@ async fn a_void_that_failed_in_the_middle_is_finished_by_the_same_call() {
     let made = all.iter().find(|c| c.id != claim.id).unwrap();
     assert_eq!(made.replaces_claim_id, Some(claim.id));
     assert_eq!(visit.payer_bill_id, Some(made.payer_bill_id));
-    assert_eq!(made.contract_id, Some(contract), "billed under the new contract");
+    assert_eq!(
+        made.contract_id,
+        Some(contract),
+        "billed under the new contract"
+    );
     assert_eq!(
         VoidRecord::query()
             .where_(VoidRecord::SUBJECT_ID.eq(claim.id))

@@ -46,9 +46,9 @@ use renox::db::Json;
 use renox::prelude::*;
 use wl_documents::{KindSeed, Sensitivity, register_kind};
 use wl_kernel::approvals::{ApprovalPolicy, Step};
-use wl_kernel::{COMPANY_ADMIN_ROLE, Manifest};
 use wl_kernel::documents::{BlockMode, OverrideMode};
 use wl_kernel::workforce::EMPLOYEE_SUBJECT_TYPE;
+use wl_kernel::{COMPANY_ADMIN_ROLE, Manifest};
 use wl_scheduling::eligibility::{GUARDED_BOOK, GUARDED_CHECK_IN};
 use wl_scheduling::{ServiceType, WlScheduling};
 

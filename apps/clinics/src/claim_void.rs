@@ -58,9 +58,7 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::TransitionError;
 use wl_kernel::approvals::ApprovalPolicy;
-use wl_kernel::payer_bills::{
-    PAYER_BILL_SUBJECT_TYPE, PayerAnswer, PayerBillStatus, payer_bills,
-};
+use wl_kernel::payer_bills::{PAYER_BILL_SUBJECT_TYPE, PayerAnswer, PayerBillStatus, payer_bills};
 use wl_kernel::role_tasks::{self, RoleTask};
 use wl_kernel::tickets::task_creator;
 use wl_kernel::voids::{self, VoidOutcome};

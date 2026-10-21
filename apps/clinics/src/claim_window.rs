@@ -233,10 +233,10 @@ async fn chase(state: &AppState, claim: &Claim, day: NaiveDate, report: &mut Rep
         return Ok(());
     }
     // Decision: the step is taken before anybody is told and given back
-        // when telling fails, so that two runs never tell twice and a failure
-        // is retried; the same for the task, which is also given back when
-        // ticketing is off (no task could be opened), so that it opens once
-        // ticketing is on.
+    // when telling fails, so that two runs never tell twice and a failure
+    // is retried; the same for the task, which is also given back when
+    // ticketing is off (no task could be opened), so that it opens once
+    // ticketing is on.
     if claim.resubmission_count == 0
         && claim.window_notified_on.is_none()
         && contract

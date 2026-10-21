@@ -292,10 +292,7 @@ async fn a_resubmission_after_the_window_is_refused_on_the_real_bill() {
     claims::resubmit(t.state(), &cora, claim.id, "fixed", None, on(30))
         .await
         .expect("the last day of the window still counts");
-    assert_eq!(
-        t.claim_now(claim.id).await.status,
-        ClaimStatus::Resubmitted
-    );
+    assert_eq!(t.claim_now(claim.id).await.status, ClaimStatus::Resubmitted);
 }
 
 /// Done when 5: a claim whose first submission the payer answered (a
@@ -332,7 +329,11 @@ async fn a_claim_with_a_remittance_on_record_is_not_rejected() {
             .is_empty()
     );
     assert!(t.tasks.with_key("clinics.claim_rejected:").is_empty());
-    assert!(t.tasks.with_key("invoicing.payer_bill_rejected:").is_empty());
+    assert!(
+        t.tasks
+            .with_key("invoicing.payer_bill_rejected:")
+            .is_empty()
+    );
 }
 
 /// The id of the first line of a claim, for the advice's field names.

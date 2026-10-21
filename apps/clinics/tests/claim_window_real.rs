@@ -53,8 +53,7 @@ async fn open_alerts(t: &Real) -> Vec<ComplianceAlert> {
 fn go_to(t: &Real, to: renox::db::DateTime) {
     t.app.travel_back();
     let ahead = (to - renox::db::now()).to_std().expect("ahead");
-    t.app
-        .travel(Duration::from_secs(ahead.as_secs() + 1));
+    t.app.travel(Duration::from_secs(ahead.as_secs() + 1));
 }
 
 /// Done when 1: a draft claim for a visit on 2026-11-01 under a 30-day
@@ -384,7 +383,11 @@ async fn the_clinic_managers_task_is_opened_once_ticketing_is_on() {
     t.tasks.set_off(true);
 
     let off = claim_window::run(t.state(), d("2026-11-29")).await.unwrap();
-    assert_eq!((off.notified, off.tasked), (1, 0), "no task without ticketing");
+    assert_eq!(
+        (off.notified, off.tasked),
+        (1, 0),
+        "no task without ticketing"
+    );
     assert!(t.tasks.with_key("clinics.claim_window:").is_empty());
     let after = t.claim_now(claim.id).await;
     assert_eq!(after.window_task_on, None, "the step is not marked done");

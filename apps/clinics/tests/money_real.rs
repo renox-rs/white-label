@@ -46,7 +46,10 @@ async fn a_walk_out_settles_the_deposit_against_the_real_invoice_and_refunds_the
 
     // The real invoice: issued, AED 150.00, nothing left to pay.
     let invoice = invoicer(d.t.state())
-        .find(d.t.db(), wl_kernel::invoicing::InvoiceId(visit.invoice_id.unwrap()))
+        .find(
+            d.t.db(),
+            wl_kernel::invoicing::InvoiceId(visit.invoice_id.unwrap()),
+        )
         .await
         .unwrap()
         .expect("the invoice exists");
@@ -62,7 +65,11 @@ async fn a_walk_out_settles_the_deposit_against_the_real_invoice_and_refunds_the
     assert_eq!(held.len(), 1);
     assert_eq!((held[0].allocated, held[0].amount), (15_000, 20_000));
     let refunds = Refund::all(d.t.db()).await.unwrap();
-    assert_eq!(refunds.len(), 1, "one refund, for what the bill did not use");
+    assert_eq!(
+        refunds.len(),
+        1,
+        "one refund, for what the bill did not use"
+    );
     assert_eq!(refunds[0].status, RefundStatus::Requested);
     assert_eq!(refunds[0].source_kind, "booking");
     assert_eq!(refunds[0].source_id, booking.id);
@@ -96,7 +103,10 @@ async fn a_procedure_that_is_not_suitable_bills_the_consultation_against_the_rea
     assert_eq!(visit.status, VisitStatus::Completed);
     assert_eq!(visit.patient_total, 25_000);
     let invoice = invoicer(d.t.state())
-        .find(d.t.db(), wl_kernel::invoicing::InvoiceId(visit.invoice_id.unwrap()))
+        .find(
+            d.t.db(),
+            wl_kernel::invoicing::InvoiceId(visit.invoice_id.unwrap()),
+        )
         .await
         .unwrap()
         .expect("the invoice exists");

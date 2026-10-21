@@ -547,7 +547,10 @@ async fn an_amount_that_changed_while_the_write_off_waited_fails_the_request() {
     assert_eq!(stored.status, approvals::ApprovalStatus::Failed);
     let after = t.claim_now(claim.id).await;
     assert_eq!(after.status, ClaimStatus::Draft);
-    assert!(!after.is_held(), "the claim does not wait for a dead request");
+    assert!(
+        !after.is_held(),
+        "the claim does not wait for a dead request"
+    );
     assert_eq!(t.bill_of(&after).await.status, PayerBillStatus::Draft);
     let lines = payer_bills(t.state())
         .lines(t.db(), after.payer_bill())

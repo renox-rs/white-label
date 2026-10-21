@@ -9,8 +9,8 @@ mod support;
 
 use clinics::{ChargeLine, Claim, ClaimLine, ClaimStatus, VisitStatus};
 use support::day;
-use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, invoicer};
 use support::desk::{PAYER, desk};
+use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, invoicer};
 use wl_scheduling::BookingStatus;
 
 /// A clinic with a deposit of AED 200.00 on the consultation and a filler
@@ -403,7 +403,10 @@ async fn a_clinic_stop_is_still_a_clinic_stop_when_the_first_attempt_to_bill_die
         .expect("the visit is cancelled");
     let stopped = d.visit(visit.id).await;
     assert_eq!(stopped.status, VisitStatus::Cancelled);
-    assert!(stopped.billed_at.is_none(), "the first attempt never billed");
+    assert!(
+        stopped.billed_at.is_none(),
+        "the first attempt never billed"
+    );
     assert!(
         stopped.clinic_stop,
         "who stopped it is stored with the cancellation"

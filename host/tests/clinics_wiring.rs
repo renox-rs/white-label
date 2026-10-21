@@ -54,14 +54,16 @@ async fn the_write_off_of_a_payer_bill_is_the_owners_to_approve() {
     };
     let policies = stored().await;
     assert_eq!(policies.len(), 1);
-    assert_eq!(policies[0].steps.0, [owner.clone()]);
+    assert_eq!(policies[0].steps.0, std::slice::from_ref(&owner));
 
     // Made by an earlier build: the module's default, with the manager's permission.
     let mut policy = policies[0].clone();
-    policy.steps = renox::db::Json(vec![Step::one_of(["admin"]).or_permission("payer_bills.write_off")]);
+    policy.steps = renox::db::Json(vec![
+        Step::one_of(["admin"]).or_permission("payer_bills.write_off"),
+    ]);
     policy.save(app.db()).await.unwrap();
     host::clinics_seed::install(app.state()).await.unwrap();
-    assert_eq!(stored().await[0].steps.0, [owner.clone()]);
+    assert_eq!(stored().await[0].steps.0, std::slice::from_ref(&owner));
 
     // An admin's own choice is kept.
     let mut policy = stored().await.remove(0);
