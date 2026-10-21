@@ -711,6 +711,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::RECALLS_MANAGE,
             cln::PERMITS_VIEW,
             cln::PERMITS_MANAGE,
+            // The owner of the clinical and infection control SOPs publishes
+            // their versions (`DOC.RUL.04`, 05 §7.2).
+            documents::SOPS_MANAGE,
         ],
     ),
     (
@@ -870,6 +873,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_VIEW,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
+            // The owner of the front desk, billing and complaints SOPs
+            // publishes their versions (`DOC.RUL.04`, 05 §7.2).
+            documents::SOPS_MANAGE,
             invoices::PAYER_BILLS_VIEW,
             invoices::PAYER_BILLS_WRITE_OFF,
         ],

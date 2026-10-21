@@ -824,3 +824,24 @@ pub async fn accounting_booted_with_mail(mail: BouncingMail) -> TestApp {
     app.kernel().seed().await.unwrap();
     app
 }
+
+/// The clinics host with [`BouncingMail`] as the e-mail provider.
+pub async fn clinics_booted_with_mail(mail: BouncingMail) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(CLINICS_CLIENT).expect("the clinics client");
+    let app = TestApp::new(
+        host::app_for_tuned(
+            config,
+            host::Tuning::default().notify(move |n| n.provider(mail)),
+        )
+        .expect("the app")
+        .provide(noon_clock())
+        .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
