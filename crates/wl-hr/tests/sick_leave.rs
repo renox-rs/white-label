@@ -88,6 +88,12 @@ async fn the_manager_of_the_branch_records_it_and_another_manager_is_refused() {
         .await
         .unwrap();
 
+    // The manager records it without `leave.approve`: the role lacks it.
+    assert!(
+        !wl_hr::leave_service::holds_approve(t.state(), manager.id, &employee)
+            .await
+            .unwrap()
+    );
     record(&t, 2, &elsewhere, &employee, "2026-11-02", "2026-11-03")
         .await
         .assert_forbidden();
@@ -121,6 +127,11 @@ async fn hr_with_leave_approve_records_it_and_a_user_without_a_role_is_refused()
     let t = support::boot().await;
     let (employee, account) = t.ravi().await;
     let hr = t.user_in_branch("Hana", "hr").await;
+    assert!(
+        wl_hr::leave_service::holds_approve(t.state(), hr.id, &employee)
+            .await
+            .unwrap()
+    );
     record(&t, 2, &account, &employee, "2026-11-02", "2026-11-02")
         .await
         .assert_forbidden();
