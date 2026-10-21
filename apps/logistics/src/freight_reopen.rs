@@ -270,18 +270,55 @@ pub async fn supplementary_invoice(
     user: &AuthUser,
     id: i64,
 ) -> std::result::Result<Supplementary, TransitionError> {
+    invoice_recharges(state, user, id, true).await
+}
+
+/// `user` (`jobs.manage`) drafts and issues the invoice of the costs of the
+/// open job `id` (not closed, not cancelled) that are rechargeable (liability
+/// *client*, recharged, for example the demurrage the shipping line billed
+/// for a late collection, BL-LOG-24) and not yet on an invoice. It is the same
+/// invoice as [`supplementary_invoice`] with the costs recorded before the
+/// first close.
+///
+/// # Errors
+///
+/// `Forbidden` without `jobs.manage`; `Guard` (422) for a job that is closed
+/// or cancelled, when there is no rechargeable cost and when invoicing is off.
+pub async fn recharge_invoice(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+) -> std::result::Result<Supplementary, TransitionError> {
+    invoice_recharges(state, user, id, false).await
+}
+
+/// The invoice of the rechargeable costs that are `late` (recorded after a
+/// close, on a reopened job) or not (on an open job).
+async fn invoice_recharges(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    late: bool,
+) -> std::result::Result<Supplementary, TransitionError> {
     if !user.has_permission(permissions::JOBS_MANAGE) {
         return Err(TransitionError::Forbidden);
     }
     let job = load(state, id).await?;
-    if job.status != FreightStatus::Delivered || margins_of(&state.db, id).await?.is_empty() {
-        return Err(guard(english("logistics.freight.not_reopened", &[])));
+    if late {
+        if job.status != FreightStatus::Delivered || margins_of(&state.db, id).await?.is_empty() {
+            return Err(guard(english("logistics.freight.not_reopened", &[])));
+        }
+    } else if matches!(job.status, FreightStatus::Closed | FreightStatus::Cancelled) {
+        return Err(guard(english("logistics.freight.not_open", &[])));
     }
     let lines = freight_costing::lines_of(&state.db, id).await?;
     // A draft whose issue was refused (the user may not issue, the entity is
     // not registered...) is issued once the cause is cleared: no second draft.
     let waiting = lines.iter().find(|line| {
-        line.kind == line_kind::REVENUE && line.late && !line.issued && line.invoice_id.is_some()
+        line.kind == line_kind::REVENUE
+            && line.late == late
+            && !line.issued
+            && line.invoice_id.is_some()
     });
     if let Some(waiting) = waiting {
         let invoice = InvoiceId(waiting.invoice_id.unwrap_or_default());
@@ -304,7 +341,7 @@ pub async fn supplementary_invoice(
         .iter()
         .filter(|line| {
             line.kind == line_kind::COST
-                && line.late
+                && line.late == late
                 && line.rechargeable
                 && line.invoice_id.is_none()
         })
@@ -316,7 +353,8 @@ pub async fn supplementary_invoice(
     let first = lines
         .iter()
         .find(|line| line.kind == line_kind::REVENUE && !line.late && line.invoice_id.is_some())
-        .and_then(|line| line.invoice_id);
+        .and_then(|line| line.invoice_id)
+        .filter(|_| late);
     let first_text = first.map_or_else(String::new, |invoice| format!(" / invoice {invoice}"));
     let mut draft = InvoiceDraft::new(job.client(), job.subject());
     for line in &costs {
@@ -342,7 +380,11 @@ pub async fn supplementary_invoice(
         return Err(guard(english("logistics.freight.invoicing_off", &[])));
     };
     let description = english(
-        "logistics.freight.supplementary_revenue",
+        if late {
+            "logistics.freight.supplementary_revenue"
+        } else {
+            "logistics.freight.recharge_revenue"
+        },
         &[("number", &job.number)],
     );
     let mut revenue = JobLine {
@@ -352,7 +394,7 @@ pub async fn supplementary_invoice(
         amount: net,
         issued: false,
         invoice_id: Some(invoice.0),
-        late: true,
+        late,
         created_by: Some(user.id),
         ..JobLine::default()
     };
@@ -367,7 +409,7 @@ pub async fn supplementary_invoice(
     track(
         &state.db,
         id,
-        "supplementary_invoice",
+        if late { "supplementary_invoice" } else { "recharge_invoice" },
         &format!("{} / {net}", invoice.0),
         Some(user.id),
     )

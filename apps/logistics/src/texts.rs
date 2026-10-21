@@ -1093,7 +1093,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "logistics.freight.nothing_to_recharge",
-        "There is no late cost to recharge: allocate it to the client and mark it rechargeable.",
+        "There is no cost to recharge: allocate it to the client and mark it rechargeable.",
     ),
     (
         "logistics.freight.invoicing_off",
@@ -1167,6 +1167,57 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "logistics.freight.company_not_recharged",
         "A cost the company is liable for is not invoiced to the client.",
+    ),
+    // Container free time and demurrage (BL-LOG-24).
+    (
+        "logistics.freight.free_time_title",
+        "{{ charge }} free time of container {{ container }} (freight job {{ number }})",
+    ),
+    (
+        "logistics.freight.free_time_body",
+        "The free time for {{ charge }} of container {{ container }} on freight job {{ number }} ends {{ end }} ({{ when }}). Collect or return the container before the charge starts.",
+    ),
+    ("logistics.freight.free_time_today", "today"),
+    ("logistics.freight.free_time_in_days", "in {{ days }} days"),
+    (
+        "logistics.freight.free_time_extended",
+        "The free time for {{ charge }} was extended to {{ end }} after this day was logged.",
+    ),
+    (
+        "logistics.freight.free_time_closed",
+        "The job is closed or cancelled: reopen it first.",
+    ),
+    (
+        "logistics.freight.charge_type_unknown",
+        "The charge is port storage, demurrage or detention, for a whole number of days.",
+    ),
+    (
+        "logistics.freight.container_unknown",
+        "The job has no container with that number.",
+    ),
+    (
+        "logistics.freight.bill_liability_needed",
+        "Give the liability, client or company, before the bill is approved for the job.",
+    ),
+    (
+        "logistics.freight.reason_unfit",
+        "Give the reason for the liability: late documents, late duty payment or late collection by the client for the client; company delay or other for the company.",
+    ),
+    (
+        "logistics.freight.bill_line_unknown",
+        "There is no such supplier bill line, or its bill is void.",
+    ),
+    (
+        "logistics.freight.bill_line_used",
+        "That supplier bill line is already allocated to a job.",
+    ),
+    (
+        "logistics.freight.not_open",
+        "The job is closed or cancelled.",
+    ),
+    (
+        "logistics.freight.recharge_revenue",
+        "Invoice of recharged costs for freight job {{ number }}",
     ),
     ("logistics.freight_done", "Freight job updated."),
     ("logistics.freight_container_added", "Container added."),

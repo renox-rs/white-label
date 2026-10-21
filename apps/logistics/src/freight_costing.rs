@@ -43,6 +43,34 @@ pub mod liability {
     pub const ALL: [&str; 2] = [CLIENT, COMPANY];
 }
 
+/// Why a cost has its liability (BL-LOG-24): the reasons a container charge is
+/// allocated with.
+pub mod liability_reason {
+    /// Late documents (client).
+    pub const LATE_DOCUMENTS: &str = "late_documents";
+    /// Late duty payment (client).
+    pub const LATE_DUTY_PAYMENT: &str = "late_duty_payment";
+    /// Late collection by the client (client).
+    pub const LATE_COLLECTION: &str = "late_collection_by_client";
+    /// A delay of the company (company).
+    pub const COMPANY_DELAY: &str = "company_delay";
+    /// Anything else (company).
+    pub const OTHER: &str = "other";
+    /// The reasons of a liability of the client.
+    pub const CLIENT: [&str; 3] = [LATE_DOCUMENTS, LATE_DUTY_PAYMENT, LATE_COLLECTION];
+    /// The reasons of a liability of the company.
+    pub const COMPANY: [&str; 2] = [COMPANY_DELAY, OTHER];
+
+    /// Whether `reason` is one of the reasons of `liability`.
+    pub fn fits(liability: &str, reason: &str) -> bool {
+        match liability {
+            super::liability::CLIENT => CLIENT.contains(&reason),
+            super::liability::COMPANY => COMPANY.contains(&reason),
+            _ => false,
+        }
+    }
+}
+
 /// A revenue or cost line of a job. Money is fils.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(table = "logistics_job_lines", index(job_id))]
@@ -76,6 +104,14 @@ pub struct JobLine {
     pub source_ref: Option<String>,
     /// Recorded after the job was closed once (a late cost).
     pub late: bool,
+    /// For a container charge of a supplier bill: the container.
+    pub container_id: Option<i64>,
+    /// For a container charge: `port_storage`, `demurrage` or `detention`.
+    pub charge_type: Option<String>,
+    /// For a container charge: the days the bill charges.
+    pub billed_days: Option<i64>,
+    /// Why the cost has its liability ([`liability_reason`]).
+    pub liability_reason: Option<String>,
     /// For a cost billed after the job was cancelled: what the accountant
     /// decided, `invoiced` or `absorbed`; none while it waits.
     pub decision: Option<String>,
@@ -230,7 +266,7 @@ async fn job_of(
 }
 
 /// Whether the job has been closed before: a line recorded now is a late one.
-async fn closed_before(db: &Db, job_id: i64) -> Result<bool> {
+pub(crate) async fn closed_before(db: &Db, job_id: i64) -> Result<bool> {
     Ok(!margins_of(db, job_id).await?.is_empty())
 }
 
@@ -298,6 +334,26 @@ pub async fn allocate(
     liability_of: &str,
     rechargeable: bool,
 ) -> std::result::Result<JobLine, TransitionError> {
+    allocate_with(state, user, line_id, liability_of, rechargeable, None).await
+}
+
+/// [`allocate`] with the reason for the liability ([`liability_reason`]): the
+/// reasons of the client are late documents, late duty payment and late
+/// collection by the client; the company's are its delay and other. A
+/// container charge needs one.
+///
+/// # Errors
+///
+/// As [`allocate`], and `Guard` (422) for a reason that does not fit the
+/// liability and for a container charge without one.
+pub async fn allocate_with(
+    state: &AppState,
+    user: &AuthUser,
+    line_id: i64,
+    liability_of: &str,
+    rechargeable: bool,
+    reason: Option<&str>,
+) -> std::result::Result<JobLine, TransitionError> {
     if !user.has_permission(permissions::JOBS_MANAGE) {
         return Err(TransitionError::Forbidden);
     }
@@ -307,6 +363,13 @@ pub async fn allocate(
     if line.kind != line_kind::COST || !liability::ALL.contains(&liability_of) {
         return Err(guard(english("logistics.freight.liability_needed", &[])));
     }
+    let reason = reason.map(str::trim).filter(|text| !text.is_empty());
+    if reason.is_some_and(|reason| !liability_reason::fits(liability_of, reason))
+        || (reason.is_none() && line.charge_type.is_some())
+    {
+        return Err(guard(english("logistics.freight.reason_unfit", &[])));
+    }
+    let reason_value = reason.map(str::to_owned);
     let job = job_of(&state.db, line.job_id).await?;
     if job.status == FreightStatus::Closed {
         return Err(guard(english("logistics.freight.closed_no_costs", &[])));
@@ -321,6 +384,7 @@ pub async fn allocate(
                 ("liability", &liability_value),
                 ("allocated", &true),
                 ("rechargeable", &recharge),
+                ("liability_reason", &reason_value),
             ],
         )
         .await?;

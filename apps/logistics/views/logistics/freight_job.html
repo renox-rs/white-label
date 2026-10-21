@@ -46,14 +46,25 @@
       <rx-column :label="tx['job_port_storage_end']" hide-narrow>{{ container.port_storage_end }}</rx-column>
       <rx-column :label="tx['job_demurrage_end']" hide-narrow>{{ container.demurrage_end }}</rx-column>
       <rx-column :label="tx['job_detention_end']" hide-narrow>{{ container.detention_end }}</rx-column>
+      <rx-column :label="tx['job_collected_on']" hide-narrow>{{ container.collected_on }}</rx-column>
+      <rx-column :label="tx['job_returned_empty_on']" hide-narrow>{{ container.returned_empty_on }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['job_no_containers']" icon="container"/></rx-slot>
     </rx-table>
     {% if staff %}
+    <rx-table :rows="free_time" as="entry" :key="entry.id" :caption="tx['job_free_time_log']" card>
+      <rx-column :label="tx['job_container']">{{ entry.container }}</rx-column>
+      <rx-column :label="tx['job_charge']">{{ entry.charge }}</rx-column>
+      <rx-column :label="tx['when']">{{ entry.day }}</rx-column>
+      <rx-column :label="tx['note']" hide-narrow>{{ entry.note }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['job_no_free_time_log']" icon="calendar"/></rx-slot>
+    </rx-table>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['job_lines']" card>
       <rx-column :label="tx['kind']">{{ line.kind }}</rx-column>
       <rx-column :label="tx['job_line']">{{ line.description }}</rx-column>
       <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
       <rx-column :label="tx['job_liability']" hide-narrow>{{ line.liability }}</rx-column>
+      <rx-column :label="tx['job_liability_reason']" hide-narrow>{{ line.reason }}</rx-column>
+      <rx-column :label="tx['job_days']" align="num" hide-narrow>{{ line.days }}</rx-column>
       <rx-column :label="tx['job_decision']" hide-narrow>{{ line.decision }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['job_no_lines']" icon="receipt"/></rx-slot>
     </rx-table>

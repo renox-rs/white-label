@@ -222,6 +222,11 @@ pub struct FreightContainer {
     pub demurrage_end: Option<NaiveDate>,
     /// The last free day before detention.
     pub detention_end: Option<NaiveDate>,
+    /// The day the container was collected: port storage and demurrage stop
+    /// after it (`LOG.RUL.14`).
+    pub collected_on: Option<NaiveDate>,
+    /// The day the container was returned empty: detention stops after it.
+    pub returned_empty_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -461,7 +466,7 @@ pub fn routes() -> Routes {
 }
 
 /// A date typed as `2026-11-20`; none when blank or not a date.
-fn date_in(text: &str) -> Option<NaiveDate> {
+pub(crate) fn date_in(text: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(text.trim(), "%Y-%m-%d").ok()
 }
 

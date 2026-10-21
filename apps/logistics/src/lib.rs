@@ -18,6 +18,7 @@ pub mod freight;
 pub mod freight_cancel;
 pub mod freight_costing;
 pub mod freight_flow;
+pub mod freight_free_time;
 pub mod freight_hold;
 pub mod freight_reopen;
 pub mod freight_machine;
@@ -70,6 +71,7 @@ pub use dispute::StatementDispute;
 pub use freight::{FreightContainer, FreightEvent, FreightJob, FreightStatus};
 pub use freight_cancel::{FreightCancellation, FreightQuotation};
 pub use freight_costing::{FreightMargin, JobLine};
+pub use freight_free_time::{FreeTimeLine, FreeTimeNotice};
 pub use freight_hold::FreightHold;
 pub use freight_reopen::FreightReopening;
 pub use freight_machine::FreightInput;
@@ -151,6 +153,8 @@ impl Module for Logistics {
             .model::<FreightHold>()
             .model::<FreightReopening>()
             .model::<FreightQuotation>()
+            .model::<FreeTimeLine>()
+            .model::<FreeTimeNotice>()
             .model::<FreightCancellation>()
             .model::<StatementDispute>()
             .model::<PaymentReturn>()
@@ -183,6 +187,8 @@ impl Module for Logistics {
         billing::register(app);
         // `LOG.RUL.09`, daily at 07:00: the ETA of a freight job.
         freight_hold::register(app);
+        // `LOG.RUL.14`, daily at 06:00: the free time of a container.
+        freight_free_time::register(app);
         // `LOG.RUL.12`, daily at 02:00, and the approval of `LOG.ACL.14`.
         trace::register(app);
         // `LOG.RUL.13`, every 15 minutes: a driver who does not hand over the

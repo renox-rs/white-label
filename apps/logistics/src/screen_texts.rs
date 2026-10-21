@@ -509,6 +509,13 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     // The freight job (`LOG.JOB.01`, BL-LOG-19 to BL-LOG-24).
     ("logistics.screen.job_title", "Freight job"),
     ("logistics.screen.job_decision", "Decision"),
+    ("logistics.screen.job_collected_on", "Collected on"),
+    ("logistics.screen.job_returned_empty_on", "Returned empty on"),
+    ("logistics.screen.job_liability_reason", "Reason"),
+    ("logistics.screen.job_days", "Days logged / billed"),
+    ("logistics.screen.job_free_time_log", "Free-time log"),
+    ("logistics.screen.job_charge", "Charge"),
+    ("logistics.screen.job_no_free_time_log", "No days past a free-time end date"),
     ("logistics.screen.job_cancellation", "Cancellation"),
     ("logistics.screen.job_cancel_stage", "Cancelled at"),
     ("logistics.screen.job_cancel_charge", "Cancellation charge"),

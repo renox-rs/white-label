@@ -10,10 +10,11 @@ use renox::state_machine::{StateMachine, TransitionError};
 use serde::Serialize;
 
 use crate::booking::{self, parse_dirhams};
-use crate::freight::{FreightJob, FreightStatus};
+use crate::freight::{FreightJob, FreightStatus, date_in};
 use crate::freight_cancel::{self, QuotationInput};
 use crate::freight_costing::{self, Figures};
 use crate::freight_flow as flow;
+use crate::freight_free_time::{self, BillCost};
 use crate::freight_hold;
 use crate::freight_reopen;
 use crate::freight_machine as machine;
@@ -44,6 +45,16 @@ pub fn routes() -> Routes {
         .name("logistics.freight_zero_rate_evidence")
         .post("/freight/{id}/quotation", quotation)
         .name("logistics.freight_quotation")
+        .post("/freight/{id}/costs/bill", bill_cost)
+        .name("logistics.freight_bill_cost")
+        .post("/freight/{id}/recharge", recharge)
+        .name("logistics.freight_recharge")
+        .post("/freight/containers/{id}/collected", collected)
+        .name("logistics.freight_collected")
+        .post("/freight/containers/{id}/returned-empty", returned_empty)
+        .name("logistics.freight_returned_empty")
+        .post("/freight/containers/{id}/dates", end_dates)
+        .name("logistics.freight_end_dates")
         .post("/freight/lines/{line}/decide", decide)
         .name("logistics.freight_decide")
         .post("/freight/lines/{line}/allocate", allocate)
@@ -89,6 +100,8 @@ pub(crate) struct ContainerRow {
     port_storage_end: String,
     demurrage_end: String,
     detention_end: String,
+    collected_on: String,
+    returned_empty_on: String,
 }
 
 /// One revenue or cost line of the page.
@@ -104,6 +117,10 @@ pub(crate) struct LineRow {
     issued: bool,
     late: bool,
     decision: String,
+    reason: String,
+    /// The days the log has next to the days the bill charges, for a
+    /// container charge.
+    days: String,
 }
 
 /// The margin at one close.
@@ -203,6 +220,17 @@ pub(crate) struct ShowPage {
     margins: Vec<MarginRow>,
     actions: Vec<ActionView>,
     cancellation: Option<freight_cancel::FreightCancellation>,
+    free_time: Vec<FreeTimeRow>,
+}
+
+/// One day of the free-time log.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct FreeTimeRow {
+    id: i64,
+    container: String,
+    charge: String,
+    day: String,
+    note: String,
 }
 
 fn date_text(date: Option<renox::chrono::NaiveDate>) -> String {
@@ -276,6 +304,34 @@ async fn show(
     } else {
         Vec::new()
     };
+    let mut days = std::collections::BTreeMap::new();
+    for line in &lines {
+        if let Some((logged, billed)) =
+            freight_free_time::days_compared(&state.db, line).await?
+        {
+            days.insert(line.id, format!("{logged} / {billed}"));
+        }
+    }
+    let containers = job.containers(&state.db).await?;
+    let free_time: Vec<FreeTimeRow> = if staff {
+        freight_free_time::log_of(&state.db, job.id)
+            .await?
+            .into_iter()
+            .map(|entry| FreeTimeRow {
+                id: entry.id,
+                container: containers
+                    .iter()
+                    .find(|c| c.id == entry.container_id)
+                    .map(|c| c.number.clone())
+                    .unwrap_or_default(),
+                charge: entry.charge_type.replace('_', " "),
+                day: entry.log_date.to_string(),
+                note: entry.note,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let cancellation = if staff {
         freight_cancel::cancellation_of(&state.db, job.id).await?
     } else {
@@ -298,9 +354,8 @@ async fn show(
                 at: e.occurred_at.to_string(),
             })
             .collect(),
-        containers: job
-            .containers(&state.db)
-            .await?
+        free_time,
+        containers: containers
             .into_iter()
             .map(|c| ContainerRow {
                 number: c.number,
@@ -308,6 +363,8 @@ async fn show(
                 port_storage_end: date_text(c.port_storage_end),
                 demurrage_end: date_text(c.demurrage_end),
                 detention_end: date_text(c.detention_end),
+                collected_on: date_text(c.collected_on),
+                returned_empty_on: date_text(c.returned_empty_on),
             })
             .collect(),
         staff,
@@ -324,6 +381,8 @@ async fn show(
                 issued: l.issued,
                 late: l.late,
                 decision: l.decision.unwrap_or_default(),
+                reason: l.liability_reason.unwrap_or_default(),
+                days: days.get(&l.id).cloned().unwrap_or_default(),
             })
             .collect(),
         figures,
@@ -471,8 +530,10 @@ async fn revenue(
         .into_response())
 }
 
-/// `POST /freight/lines/{line}/allocate`: `liability` (`client` or `company`)
-/// and `rechargeable` (`1`).
+/// `POST /freight/lines/{line}/allocate`: `liability` (`client` or `company`),
+/// its `reason` (late documents, late duty payment, late collection by the
+/// client, company delay or other; needed for a container charge) and
+/// `rechargeable` (`1`).
 async fn allocate(
     State(state): State<AppState>,
     user: AuthUser,
@@ -481,12 +542,14 @@ async fn allocate(
     Form(form): Fields,
 ) -> Result<Response> {
     let rechargeable = matches!(field(&form, "rechargeable").trim(), "1" | "on" | "true");
-    let allocated = freight_costing::allocate(
+    let reason = field(&form, "reason");
+    let allocated = freight_costing::allocate_with(
         &state,
         &user,
         line,
         field(&form, "liability").trim(),
         rechargeable,
+        Some(reason.as_str()),
     )
     .await
     .map_err(TransitionError::into_error)?;
@@ -550,6 +613,135 @@ async fn decide(
     Ok((
         Toast::success(t(&lang, "logistics.freight_done")),
         Redirect::route("logistics.freight_job", &[&decided.job_id])?,
+    )
+        .into_response())
+}
+
+/// A date typed in a form; today when blank; 422 when it is no date.
+fn date_or_today(lang: &Lang, form: &std::collections::BTreeMap<String, String>, name: &str) -> Result<renox::chrono::NaiveDate> {
+    let text = field(form, name);
+    if text.trim().is_empty() {
+        return Ok(wl_kernel::documents::today());
+    }
+    date_in(&text).ok_or_else(|| bad_input(lang))
+}
+
+/// `POST /freight/{id}/costs/bill`: a charge line of a supplier bill
+/// (`bill_line_id`) allocated to the job and one of its containers
+/// (`container`, `charge_type`, `billed_days`) with its `liability`, the
+/// `reason` and `rechargeable` (`1`).
+async fn bill_cost(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let number = |name: &str| -> Result<i64> {
+        field(&form, name)
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| bad_input(&lang))
+    };
+    let input = BillCost {
+        bill_line_id: number("bill_line_id")?,
+        container: field(&form, "container"),
+        charge_type: field(&form, "charge_type"),
+        billed_days: number("billed_days")?,
+        liability: field(&form, "liability"),
+        reason: field(&form, "reason"),
+        rechargeable: matches!(field(&form, "rechargeable").trim(), "1" | "on" | "true"),
+    };
+    freight_free_time::add_bill_cost(&state, &user, id, &input)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/{id}/recharge`: drafts and issues the invoice of the
+/// rechargeable costs of the open job.
+async fn recharge(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    freight_reopen::recharge_invoice(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/containers/{id}/collected`: `date` (today when blank).
+async fn collected(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let on = date_or_today(&lang, &form, "date")?;
+    let container = freight_free_time::record_collected(&state, &user, id, on)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&container.job_id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/containers/{id}/returned-empty`: `date` (today when blank).
+async fn returned_empty(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let on = date_or_today(&lang, &form, "date")?;
+    let container = freight_free_time::record_returned_empty(&state, &user, id, on)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&container.job_id])?,
+    )
+        .into_response())
+}
+
+/// `POST /freight/containers/{id}/dates`: the new `port_storage_end`,
+/// `demurrage_end` and `detention_end` (a blank one is left as it is).
+async fn end_dates(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let container = freight_free_time::set_end_dates(
+        &state,
+        &user,
+        id,
+        [
+            date_in(&field(&form, "port_storage_end")),
+            date_in(&field(&form, "demurrage_end")),
+            date_in(&field(&form, "detention_end")),
+        ],
+    )
+    .await
+    .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(t(&lang, "logistics.freight_done")),
+        Redirect::route("logistics.freight_job", &[&container.job_id])?,
     )
         .into_response())
 }

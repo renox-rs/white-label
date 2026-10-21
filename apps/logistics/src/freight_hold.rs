@@ -263,7 +263,7 @@ pub async fn holds_of(db: &Db, job_id: i64) -> Result<Vec<FreightHold>> {
 }
 
 /// Tells the documentation officers (the holders of `jobs.manage`) of `job`.
-async fn tell_officers(state: &AppState, job: &FreightJob, title: &str, body: &str) -> Result {
+pub(crate) async fn tell_officers(state: &AppState, job: &FreightJob, title: &str, body: &str) -> Result {
     for user in users_with_permission(&state.db, permissions::JOBS_MANAGE).await? {
         tell_user(state, job.subject(), &job.number, user.id, title, body).await?;
     }
