@@ -16,7 +16,7 @@ use wl_kernel::approvals::{ApprovalRequest, ApprovalStatus};
 use wl_kernel::payments::RefundSource;
 use wl_kernel::tickets::{TASK_CATEGORY, TicketId};
 
-use support::{World, boot_with_custody, chief_driver, stop_fields};
+use support::{World, boot_with_custody, boot_with_real_payments, chief_driver, stop_fields, user_with};
 
 async fn ask(
     w: &World,
@@ -530,4 +530,76 @@ async fn the_delivery_page_shows_the_request_to_the_second_manager() {
         .await
         .assert_ok()
         .assert_dont_see("Reverse delivery");
+}
+
+/// The driver's real handover of the delivery's run.
+async fn real_handover(w: &World, delivery: &Delivery) -> wl_kernel::custody::HandoverSummary {
+    let run = run_of(w, delivery).await;
+    wl_delivery::close::handover_of(w.state(), &run)
+        .await
+        .unwrap()
+        .expect("the driver's handover of the run")
+}
+
+/// AC1 of #161 on the real `wl-payments`: reversing a delivered COD delivery
+/// while its run is out takes the AED 120 out of the driver's real handover.
+#[renox::test]
+async fn reversing_while_the_run_is_out_takes_the_cash_out_of_the_real_custody() {
+    let w = boot_with_real_payments().await;
+    let delivery = w.delivered_cod(12_000).await;
+    assert_eq!(real_handover(&w, &delivery).await.expected, 12_000);
+
+    ask(&w, &w.ops_a, &delivery, "driver").await.assert_ok();
+    approve(&w, &w.ops_b, &delivery, "").await.assert_ok();
+
+    assert_eq!(
+        w.reload(&delivery).await.status,
+        DeliveryStatus::OutForDelivery
+    );
+    let handover = real_handover(&w, &delivery).await;
+    assert_eq!(handover.expected, 0);
+    assert_eq!(handover.holder_user, w.driver.id);
+    assert_eq!(w.reversed.all()[0].cash_treatment.as_deref(), Some("removed"));
+}
+
+/// AC2 of #161 on the real `wl-payments`: with the run closed and the cash
+/// counted, *refund to payer* asks a real refund for the party, AED 120, from
+/// the delivery as an order, waiting to be approved.
+#[renox::test]
+async fn a_refund_after_the_hand_over_is_a_real_requested_refund_of_the_order() {
+    use wl_payments::permissions as pay;
+    use wl_payments::refund::{Refund, RefundStatus};
+    let w = boot_with_real_payments().await;
+    let delivery = delivered_for_party(&w, 12_000).await;
+    let run = run_of(&w, &delivery).await;
+    w.post(&w.driver, &format!("/driver/runs/{}/return", run.id), &[])
+        .await
+        .assert_ok();
+    let counter = user_with(&w, "Chandra", &[pay::CASH_VIEW, pay::CASH_COUNT]).await;
+    let handover = real_handover(&w, &delivery).await;
+    w.post(
+        &counter,
+        &format!("/cash/{}/count", handover.id.0),
+        &[("counted", "120.00")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(w.reload_run(&run).await.status, RunStatus::Closed);
+
+    ask(&w, &w.ops_a, &delivery, "business").await.assert_ok();
+    approve(&w, &w.ops_b, &delivery, "refund").await.assert_ok();
+
+    assert_eq!(w.reload(&delivery).await.status, DeliveryStatus::Attempted);
+    let refunds = Refund::query().get(w.db()).await.unwrap();
+    assert_eq!(refunds.len(), 1);
+    let refund = &refunds[0];
+    assert_eq!(refund.status, RefundStatus::Requested);
+    assert_eq!(refund.amount, 12_000);
+    assert_eq!(refund.currency, "AED");
+    assert_eq!(refund.party_id, 5);
+    assert_eq!(refund.source_kind, "order");
+    assert_eq!(refund.source_subject(), delivery.delivery_id().subject());
+    assert_eq!(refund.requested_by, Some(w.ops_b.id));
+    let entity = wl_kernel::LegalEntity::default_entity(w.db()).await.unwrap();
+    assert_eq!(refund.legal_entity_id, entity.id);
 }
