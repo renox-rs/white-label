@@ -146,7 +146,7 @@ fn rules(transition: Transition<PayerBill>) -> Transition<PayerBill> {
             })
         })
         .guard("no_remittance_recorded", |bill: &PayerBill, _ctx| {
-            let remitted = bill.has_remittance;
+            let remitted = answered(bill);
             Box::pin(async move {
                 if remitted {
                     Err(
@@ -189,6 +189,14 @@ fn rules(transition: Transition<PayerBill>) -> Transition<PayerBill> {
                 Ok(())
             })
         })
+}
+
+/// Whether the payer has answered the submission a rejection would refuse:
+/// a remittance is recorded and the bill was never sent again since. A bill
+/// that was resubmitted after a remittance has one on record, and the channel
+/// can still refuse the resubmission before the payer looks at it.
+fn answered(bill: &PayerBill) -> bool {
+    bill.has_remittance && bill.resubmission_count == 0
 }
 
 /// The last day the corrected bill can be sent (Asia/Dubai, inclusive): the
@@ -276,7 +284,7 @@ pub async fn submission_rejected(
     .run(state)
     .await;
     if let Err(TransitionError::Guard(message)) = &ran
-        && bill.has_remittance
+        && answered(&bill)
     {
         open_refused_task(state, &bill, &errors, message).await?;
     }
@@ -422,6 +430,17 @@ mod tests {
         let blank = vec![SubmissionError::new("E104", " ")];
         assert!(refusal(&bill(), &ctx(blank)).await.is_some());
         assert!(refusal(&bill(), &TransitionCtx::new(None)).await.is_some());
+    }
+
+    #[renox::test]
+    async fn a_resubmission_can_be_rejected_although_it_has_a_remittance() {
+        let resubmitted = PayerBill {
+            has_remittance: true,
+            resubmission_count: 1,
+            ..bill()
+        };
+        let ok = vec![SubmissionError::new("E104", "invalid member ID")];
+        assert_eq!(refusal(&resubmitted, &ctx(ok)).await, None);
     }
 
     #[renox::test]
