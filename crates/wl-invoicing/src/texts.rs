@@ -2268,6 +2268,66 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.subscription.paused.body",
         "Your {{ plan }} subscription is paused; it is not billed while paused. See: {{ link }}",
     ),
+    (
+        "wl_invoicing.rate_card.problem.past_dated",
+        "This version is dated in the past: it needs the approval of the managing director after the client accepts it.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.not_past_dated",
+        "This version is not dated in the past; accept it directly.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.no_approval_policy",
+        "A version dated in the past needs an approval policy, and there is none.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.line_fields",
+        "A rate card line needs a role and a shift type.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.line_amounts",
+        "A rate cannot be negative, a multiplier cannot be below 1.00 and the minimum hours cannot be negative.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.card_exists",
+        "This contract already has a rate card; make a new version of it.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.same_date",
+        "Another version of this rate card already takes effect on that date.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.new_version",
+        "The lines of a version the client was asked to accept cannot be changed. Make a new version with an effective date instead.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.line_exists",
+        "This version already has a line for that role and shift type.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.document",
+        "Record the signed acceptance of the client to accept a version on its behalf.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.not_pending",
+        "Only a version waiting for the client can be accepted.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.no_lines",
+        "A version without lines cannot be accepted.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.month",
+        "That is not a month.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.not_month",
+        "The line for that role and shift is not a month rate.",
+    ),
+    (
+        "wl_invoicing.rate_card.problem.bad_input",
+        "Check the date, the amounts and the unit.",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

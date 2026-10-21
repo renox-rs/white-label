@@ -149,6 +149,19 @@ pub trait Timesheets: Send + Sync + 'static {
     ) -> LabourFuture<'a, ()> {
         Box::pin(async { Ok(()) })
     }
+
+    /// Whether `timesheet` (`attendance.timesheet:3`) is `locked`: a
+    /// consumer (payroll or billing) read it, and it is never edited again
+    /// (`HRM.ACL.02`, `HRM.ACL.08`). Billing asks it before it reprices
+    /// hours for a rate card version dated in the past (`MPW.ACL.16`). The
+    /// default says no.
+    fn is_locked<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _timesheet: &'a Subject,
+    ) -> LabourFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 }
 
 /// A timesheet that payroll paid on provisional hours was approved, and the

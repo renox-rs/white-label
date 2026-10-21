@@ -401,4 +401,15 @@ impl Timesheets for AttendanceTimesheets {
     ) -> LabourFuture<'a, ()> {
         Box::pin(async move { record_use(state, run, used).await })
     }
+
+    fn is_locked<'a>(&'a self, state: &'a AppState, sheet: &'a Subject) -> LabourFuture<'a, bool> {
+        Box::pin(async move {
+            if sheet.subject_type != wl_kernel::timesheets::TIMESHEET_SUBJECT_TYPE {
+                return Ok(false);
+            }
+            Ok(Timesheet::find(&state.db, sheet.subject_id)
+                .await?
+                .is_some_and(|sheet| sheet.status == TimesheetStatus::Locked))
+        })
+    }
 }

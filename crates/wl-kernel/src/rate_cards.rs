@@ -5,12 +5,12 @@
 //! request is submitted (the rate card covers the role and the shift),
 //! without depending on the `wl-invoicing` crate.
 //!
-//! Decision: the rate cards themselves (§3 *Rate card*, the versions of
-//! `MPW.ACL.16` and the pricing of `FIN.USG.01`) are not built in
-//! `wl-invoicing` yet, so this is the seam it will provide
-//! ([`provide_rate_cards`]). Until a module provides it, [`rate_cards`]
-//! gives [`NoRateCards`], which knows no card: a guard that cannot find the
-//! rate card does not let the work through.
+//! The rate cards themselves (§3 *Rate card*, the versions of `MPW.ACL.16`
+//! and the pricing of `FIN.USG.01`) are built in `wl-invoicing`, which
+//! provides this seam ([`provide_rate_cards`]) when its module is on. Until a
+//! module provides it, [`rate_cards`] gives [`NoRateCards`], which knows no
+//! card: a guard that cannot find the rate card does not let the work
+//! through.
 //!
 //! ```ignore
 //! use wl_kernel::rate_cards::rate_cards;
