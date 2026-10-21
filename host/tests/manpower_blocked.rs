@@ -8,7 +8,7 @@
 
 mod support;
 
-use host::roles::{ACCOUNT_MANAGER, ADMIN, COMPLIANCE};
+use host::roles::{ACCOUNT_MANAGER, ADMIN, COMPLIANCE, SUPERVISOR};
 use manpower::blocked;
 use manpower::permissions::client_scope;
 use manpower::{
@@ -19,6 +19,7 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use support::{company, noon_clock, person, scoped_person, tenant};
+use wl_attendance::{AttendanceRecord, WorkLocation};
 use wl_hr::{EmployeeStatus, NewEmployee, employees};
 use wl_kernel::block_guard::ActionKind;
 use wl_kernel::documents::today;
@@ -267,6 +268,49 @@ async fn a_blocked_client_keeps_its_workers_and_starts_nothing_new() {
     let body = told.text();
     assert!(body.contains("Blocked:"), "{body}");
     assert!(!body.contains("This party is on hold"), "{body}");
+}
+
+/// AC1, "W can check in": with client C blocked, the site supervisor checks W
+/// (the employee of the active D) in through the real attendance route and the
+/// record is saved, whatever the block: the workers on site continue.
+#[renox::test]
+async fn a_blocked_clients_worker_can_still_check_in() {
+    let app = boot().await;
+    let a = account(&app).await;
+    let supervisor = person(&app, "Sami", SUPERVISOR).await;
+    let site = WorkLocation::create(app.db(), WorkLocation::named("Tower A"))
+        .await
+        .unwrap();
+    block(&app, a.client).await;
+
+    let day = today().to_string();
+    let employee = a.d.employee_id.to_string();
+    let location = site.id.to_string();
+    let check_in = format!("{day}T07:00");
+    let check_out = format!("{day}T15:00");
+    post(
+        &app,
+        &supervisor,
+        "/attendance/mark",
+        &[
+            ("employee_id", employee.as_str()),
+            ("location_id", location.as_str()),
+            ("check_in", check_in.as_str()),
+            ("check_out", check_out.as_str()),
+        ],
+    )
+    .await
+    .assert_ok();
+
+    let records = AttendanceRecord::query()
+        .where_(AttendanceRecord::EMPLOYEE_ID.eq(a.d.employee_id))
+        .get(app.db())
+        .await
+        .unwrap();
+    assert_eq!(records.len(), 1, "W is checked in");
+    assert_eq!(records[0].date, today());
+    let d = Deployment::find_or_404(app.db(), a.d.id).await.unwrap();
+    assert_eq!(d.status, DeploymentStatus::Active, "D continues");
 }
 
 /// AC3: the MD and the account manager get a task listing the client's

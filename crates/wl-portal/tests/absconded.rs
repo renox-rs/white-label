@@ -73,7 +73,12 @@ async fn hrm10_a_read_only_portal_can_be_read_but_not_acted_in() {
         .get(&format!("/portal/{SARA_PARTY}/nothing"))
         .await
         .assert_status(404);
-    for action in ["maintenance_request", "pay_invoice", "message", "profile_change"] {
+    for action in [
+        "maintenance_request",
+        "pay_invoice",
+        "message",
+        "profile_change",
+    ] {
         t.act(&sara, action, SARA_PARTY, "en")
             .await
             .assert_forbidden();
