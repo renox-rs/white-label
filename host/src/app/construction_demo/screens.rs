@@ -67,6 +67,11 @@ pub async fn map(state: &AppState) -> Result<Vec<Screen>> {
 
     // Projects and IPAs.
     let g = "Construction";
+    add(
+        g,
+        "/construction/projects".to_owned(),
+        "The projects: status, contract value, IPAs and what waits on each",
+    );
     for (filter, what) in [
         (
             "p.code = 'TWR-01' and i.status = 'submitted'",
@@ -133,6 +138,11 @@ pub async fn map(state: &AppState) -> Result<Vec<Screen>> {
 
     // People and attendance.
     let g = "People and attendance";
+    add(
+        g,
+        "/attendance/crew".to_owned(),
+        "The form that opens a crew list: location, day and crew",
+    );
     let site = first(
         db,
         "select w.id as id from wl_attendance_work_locations w join construction_projects p on p.id = w.scope_id where p.code = 'TWR-01' order by w.id",

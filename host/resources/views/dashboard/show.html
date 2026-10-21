@@ -1,12 +1,12 @@
 <rx-page layout="layouts/app.html" title="{{ t('dashboard.title') }}">
-  {#- The dashboard: a welcome card (the compact hero), the property figures
-      as linked tiles, the leases that end soonest, the person's tasks and
+  {#- The dashboard: a welcome card (the compact hero), the figures of the
+      client's business (property, construction...) as linked tiles, the leases that end soonest, the person's tasks and
       the signed-in person's recent activity. The patterns are components
       (resources/views/components/), their texts are in resources/lang/en.json.
       The layout is `<rx-shell fill>`: on a large screen the activity is a
       pane (`rx-pane`) that takes the height left (`rx-fill`) and scrolls on
       its own, so the panels cover the screen. -#}
-  <app-hero :title="t('dashboard.welcome')" :accent="auth.user.name ~ '.'" :lead="t('dashboard.lead')" :eyebrow="t('dashboard.title')" eyebrow-icon="layout-dashboard" art="icons" :compact="true">
+  <app-hero :title="t('dashboard.welcome')" :accent="auth.user.name ~ '.'" :lead="t(lead)" :eyebrow="t('dashboard.title')" eyebrow-icon="layout-dashboard" art="icons" :compact="true">
     <rx-link-button route="account.show" label="{{ t('dashboard.account') }}" icon="circle-user"/>
     <rx-link-button rx-if="can('users.manage')" route="users.index" label="{{ t('dashboard.users') }}" icon="users"/>
   </app-hero>
@@ -16,7 +16,7 @@
         (wl_kernel::approvals::awaiting_items). -#}
     <app-section-head :title="t('dashboard.needs_action.title')" id="awaiting-title" :compact="true">
       <rx-list label="{{ t('dashboard.needs_action.title') }}">
-        <li><app-icon-circle icon="stamp" :size="18"/><div class="rx-list__main">
+        <li><app-icon-circle icon="clipboard-list" :size="18"/><div class="rx-list__main">
           <span>{{ t('dashboard.needs_action.awaiting_one') if awaiting_count == 1 else t('dashboard.needs_action.awaiting_many', count=awaiting_count) }}</span>
         </div></li>
         <li rx-for="item in awaiting"><app-icon-circle icon="circle-check" :size="18"/><div class="rx-list__main">
@@ -32,7 +32,7 @@
         (wl_kernel::approvals::needs_action_items). -#}
     <app-section-head :title="t('dashboard.needs_action.title')" id="needs-action-title" :compact="true">
       <rx-list label="{{ t('dashboard.needs_action.title') }}">
-        <li rx-for="item in needs_action"><app-icon-circle icon="undo-2" :size="18"/><div class="rx-list__main">
+        <li rx-for="item in needs_action"><app-icon-circle icon="history" :size="18"/><div class="rx-list__main">
           <template rx-if="item.url"><a href="{{ item.url }}">{{ item.title }}</a></template>
           <span rx-else>{{ item.title }}</span>
           <span class="rx-subtitle" rx-if="item.comment">{{ item.comment }}</span>
