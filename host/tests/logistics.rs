@@ -107,3 +107,32 @@ fn the_accountant_and_the_client_user_ask_for_a_bank_account_change_and_a_second
         assert!(!holds(role, perm::REMITTANCES_REQUEST_ACCOUNT), "{role}");
     }
 }
+
+#[test]
+fn customer_service_flags_statement_disputes_and_the_company_admin_approves_block_exceptions() {
+    // `LOG.ACL.12`: customer service and the client user dispute a statement;
+    // only the holders of `remittances.approve` resolve it.
+    assert!(holds(roles::CUSTOMER_SERVICE, perm::REMITTANCES_DISPUTE));
+    assert!(holds(roles::CUSTOMER_SERVICE, perm::REMITTANCES_VIEW));
+    assert!(!holds(roles::CUSTOMER_SERVICE, perm::REMITTANCES_APPROVE));
+    assert!(!holds(roles::CUSTOMER_SERVICE, perm::REMITTANCES_PAY));
+    assert!(holds(SHIPPING_CLIENT, perm::REMITTANCES_DISPUTE));
+    assert!(holds(roles::ACCOUNTANT, perm::REMITTANCES_DISPUTE));
+    // `PTY.ACL.03`: 03 has no finance manager; the company admin approves an
+    // exception and the accountant who asks for it does not.
+    assert!(holds(ADMIN, wl_parties::permissions::BLOCK_EXCEPTION));
+    assert!(!holds(roles::ACCOUNTANT, wl_parties::permissions::BLOCK_EXCEPTION));
+    // Freight jobs are opened by the dispatcher and the operations manager.
+    for role in [ADMIN, DISPATCHER, OPERATIONS_MANAGER] {
+        assert!(holds(role, perm::FREIGHT_MANAGE), "{role}");
+    }
+    for role in [DRIVER, HUB_STAFF, SHIPPING_CLIENT] {
+        assert!(!holds(role, perm::FREIGHT_MANAGE), "{role}");
+    }
+}
+
+#[test]
+fn the_logistics_client_has_the_company_admin_approve_the_block_exception() {
+    let parties = host::parties_for("logistics");
+    assert_eq!(parties.approver(), wl_kernel::COMPANY_ADMIN_ROLE);
+}

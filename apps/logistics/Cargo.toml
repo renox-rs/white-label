@@ -20,3 +20,6 @@ wl-delivery = { path = "../../crates/wl-delivery" }
 # The real payments module in the remittance tests: the payout is an outgoing
 # transfer recorded through the kernel's payments contract.
 wl-payments = { path = "../../crates/wl-payments" }
+# The real wl-parties in the blocked-client tests: the block and the exception
+# of `PTY.ACL.03` are its block guard's.
+wl-parties = { path = "../../crates/wl-parties" }

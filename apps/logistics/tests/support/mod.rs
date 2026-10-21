@@ -145,8 +145,11 @@ pub struct World {
     /// Another accountant.
     pub bashar: User,
     /// The party directory (the real wl-payments knows the clients through
-    /// it); blocking a client is done here.
+    /// it); blocking a client is done here. Not used when the real
+    /// wl-parties is booted ([`boot_with_parties`]).
     pub parties: Parties,
+    /// Which company each client user acts for.
+    pub portal: Portal,
     /// The end of the drivers' shifts (`LOG.RUL.13`).
     pub shifts: Shifts,
     /// The check-ins of the employees (`HRM.ATT.01`).
@@ -200,16 +203,25 @@ impl Module for Probe {
 
 /// The app booted with the real wl-delivery.
 pub async fn boot() -> World {
-    boot_with(false).await
+    boot_with(false, false).await
 }
 
 /// The app booted with the real wl-delivery and the real wl-payments (the
 /// payout of a COD remittance is a voucher there).
 pub async fn boot_with_payments() -> World {
-    boot_with(true).await
+    boot_with(true, false).await
 }
 
-async fn boot_with(real_payments: bool) -> World {
+/// The app booted with the real wl-delivery, wl-payments and wl-parties: the
+/// clients are real parties (create them with [`World::client_party`]), the
+/// block is the real block guard and the company admin approves the exception
+/// of `PTY.ACL.03`.
+pub async fn boot_with_parties() -> World {
+    boot_with(true, true).await
+}
+
+async fn boot_with(real_payments: bool, real_parties: bool) -> World {
+    let real_payments = real_payments || real_parties;
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -258,7 +270,15 @@ async fn boot_with(real_payments: bool) -> World {
         .provide(invoicer)
         .provide(shift_calendar)
         .provide(history);
-    let app = if real_payments {
+    let app = if real_parties {
+        // The real wl-parties is the directory and the block guard; 03 has no
+        // finance manager, so the company admin approves an exception.
+        app.module(
+            wl_parties::WlParties::new()
+                .exception_approver(wl_kernel::COMPANY_ADMIN_ROLE),
+        )
+        .module(wl_payments::WlPayments::new().cash_write_off_limit(5_000))
+    } else if real_payments {
         let directory: Arc<dyn PartyDirectory> = Arc::new(parties.clone());
         app.provide(directory)
             // 03 writes off a cash shortage above AED 50 only with approval.
@@ -294,6 +314,7 @@ async fn boot_with(real_payments: bool) -> World {
         perm::SHIPMENTS_MANAGE,
         perm::SHIPMENTS_VOID,
         perm::SHIPMENTS_CANCEL,
+        perm::FREIGHT_MANAGE,
     ];
     let planning = [
         dperm::VIEW,
@@ -369,6 +390,7 @@ async fn boot_with(real_payments: bool) -> World {
         amal,
         bashar,
         parties,
+        portal,
         shifts,
         attendance,
         absences,
@@ -379,6 +401,38 @@ impl World {
     /// The database.
     pub fn db(&self) -> &Db {
         self.app.db()
+    }
+
+    /// A client company that exists as a party in the real wl-parties,
+    /// named `name`; the client users `noor` and `nadia` act for it.
+    pub async fn client_party(&self, name: &str) -> PartyId {
+        let party = wl_parties::create(
+            self.state(),
+            wl_parties::NewParty {
+                kind: wl_kernel::PartyKind::Company,
+                legal_name_en: name.to_owned(),
+                source: "test".to_owned(),
+                ..wl_parties::NewParty::default()
+            },
+        )
+        .await
+        .expect("the party is created");
+        let client = PartyId(party.id);
+        self.portal.grant(self.noor.id, client.0);
+        self.portal.grant(self.nadia.id, client.0);
+        client
+    }
+
+    /// The system blocks `party` for `code` (for example `non_payment`):
+    /// the real wl-parties block.
+    pub async fn block_party(&self, party: PartyId, code: &str) {
+        let row = wl_parties::Party::find(self.db(), party.0)
+            .await
+            .unwrap()
+            .expect("the party exists");
+        wl_parties::block_by_system(self.state(), &row, code, "3 invoices overdue", None)
+            .await
+            .expect("the party is blocked");
     }
 
     /// The app state.
@@ -519,7 +573,13 @@ impl World {
     /// delivery with the run.
     pub async fn out_for_delivery(&self, shipment: &Shipment) -> (Shipment, Delivery) {
         let at_hub = self.at_hub(&self.pick_up(shipment).await).await;
-        let delivery = self.delivery_of(&at_hub).await;
+        self.dispatch_from_hub(&at_hub).await
+    }
+
+    /// The shipment at the hub planned on a run of the driver today and
+    /// dispatched: it is `out_for_delivery`, and the delivery with the run.
+    pub async fn dispatch_from_hub(&self, at_hub: &Shipment) -> (Shipment, Delivery) {
+        let delivery = self.delivery_of(at_hub).await;
         let run = wl_delivery::plan::create_run(
             self.state(),
             NewRun::new(today(), self.driver.id).vehicle(VehicleType::Van, Some(VAN)),
@@ -537,7 +597,7 @@ impl World {
         self.post(&self.dispatcher, &format!("/runs/{}/dispatch", run.id), &[])
             .await
             .assert_ok();
-        let after = self.reload(&at_hub).await;
+        let after = self.reload(at_hub).await;
         assert_eq!(after.status, ShipmentStatus::OutForDelivery);
         let delivery = self.delivery_of(&after).await;
         (after, delivery)
