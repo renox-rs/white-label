@@ -16,7 +16,10 @@ use wl_kernel::notify::{
     ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyChannel, NotifyRecipient,
     OTP_TYPE_KEY,
 };
-use wl_kernel::sales::{LoyaltyAccountId, QuoteRedemption, discount_engine};
+use wl_kernel::sales::{
+    FulfilOrder, FulfilledLine, LoyaltyAccountId, QuoteRedemption, SalesOrderId, discount_engine,
+    order_fulfilment,
+};
 use wl_kernel::{PartyId, Subject};
 use wl_sales::notices::LOYALTY_GIVEN_BACK;
 use wl_sales::permissions as perm;
@@ -24,7 +27,7 @@ use wl_sales::redeem;
 use wl_sales::sale_line::KIND_LOYALTY_REDEMPTION;
 use wl_sales::sales_orders;
 use wl_sales::{
-    CounterSale, LoyaltyAccount, PointsKind, PointsMovement, Redemption, RedemptionStatus,
+    CounterSale, LoyaltyAccount, LoyaltyEarning, PointsKind, PointsMovement, Redemption, RedemptionStatus,
     ReturnStatus, SaleLine, SalesOrder, SalesOrderStatus, SalesReturn, WlSales,
 };
 
@@ -897,6 +900,228 @@ async fn cancelling_one_of_two_equal_lines_of_a_confirmed_order_gives_back_250_o
         .await
         .assert_status(422);
     assert_eq!(account(&t, &m).await.points_balance, 750);
+}
+
+#[renox::test]
+async fn the_maximum_share_is_of_the_sale_after_its_other_discounts_and_both_discounts_stand_together()
+ {
+    let (t, shop, floor, m) = world(3000, &[("max_share_percent", "50")]).await;
+    // One tee of AED 100.00 less a discount of AED 50.00: AED 52.50 with VAT.
+    t.app.acting_as(&floor.cora);
+    t.app
+        .post("/counter-sales", &[("x", "")])
+        .await
+        .assert_status(303);
+    let sale = CounterSale::query()
+        .order_by_desc(CounterSale::ID)
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
+    t.app
+        .post(
+            &format!("/counter-sales/{}/lines", sale.id),
+            &[
+                ("item_code", "tee"),
+                ("unit_price", "100.00"),
+                ("quantity", "1"),
+                ("discount", "50.00"),
+            ],
+        )
+        .await
+        .assert_status(303);
+    t.app
+        .post(
+            &format!("/counter-sales/{}/member", sale.id),
+            &[("code", &m.code)],
+        )
+        .await
+        .assert_status(303);
+    let sale = reload(&t, &sale).await;
+    assert_eq!(sale.gross_total, 5_250);
+
+    // Half of AED 52.50 is 2,625 points; of the undiscounted AED 105.00 it
+    // would be 5,250 (and 3,000 would pass).
+    ask(&t, &sale, 3_000, 422).await;
+    assert!(shop.mail.otp_requests().is_empty());
+    ask(&t, &sale, 2_626, 422).await;
+    ask(&t, &sale, 2_625, 303).await;
+    enter_right(&t, &shop, &sale).await;
+    let all = lines(&t, &sale.subject()).await;
+    assert_eq!(redemption_lines(&all)[0].gross(), -2_625);
+    // The discount stays and the redemption comes on top of it.
+    assert!(all.iter().any(|l| l.kind == "item" && l.discount == 5_000));
+    assert_eq!(reload(&t, &sale).await.gross_total, 2_625);
+    complete(&t, &sale, "26.25", 303).await;
+    assert_eq!(account(&t, &m).await.points_balance, 375 + 25);
+}
+
+#[renox::test]
+async fn an_order_with_a_redemption_earns_on_the_net_after_it_when_it_is_fulfilled() {
+    let (t, shop, floor, m) = world(1000, &[]).await;
+    let order = draft_order(
+        &t,
+        &floor,
+        &m,
+        "phone",
+        "on_account",
+        &[("tee", "9.52"), ("cap", "9.52")],
+    )
+    .await;
+    redeem_on_order(&t, &shop, &order, 500).await;
+    t.app
+        .post(&format!("/sales-orders/{}/submit", order.id), &[("x", "")])
+        .await
+        .assert_status(303);
+    let order = order_now(&t, &order).await;
+    assert_eq!(order.status, SalesOrderStatus::Confirmed);
+    assert_eq!(account(&t, &m).await.points_balance, 500);
+    // Nothing is earned before the hand-over.
+    assert!(
+        LoyaltyEarning::of_source(t.db(), &order.subject())
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let items: Vec<FulfilledLine> = lines(&t, &order.subject())
+        .await
+        .iter()
+        .filter(|l| l.kind == "item")
+        .map(|l| FulfilledLine {
+            line: l.id,
+            quantity_milli: 1000,
+        })
+        .collect();
+    order_fulfilment(t.state())
+        .fulfil(
+            t.state(),
+            FulfilOrder {
+                order: SalesOrderId(order.id),
+                lines: items,
+                source: Subject::new("inventory.dispatch", 1),
+            },
+        )
+        .await
+        .unwrap();
+    // AED 19.04 before VAT less the redemption's AED 4.76 net: AED 14.28
+    // counts, 14 points.
+    let earning = LoyaltyEarning::of_source(t.db(), &order.subject())
+        .await
+        .unwrap()
+        .expect("the fulfilled order earned");
+    assert_eq!((earning.eligible_net, earning.points), (1_428, 14));
+    assert_eq!(account(&t, &m).await.points_balance, 514);
+}
+
+#[renox::test]
+async fn cancelling_a_confirmed_order_gives_back_all_the_redeemed_points() {
+    let (t, shop, floor, m) = world(1000, &[]).await;
+    let order = draft_order(
+        &t,
+        &floor,
+        &m,
+        "phone",
+        "on_account",
+        &[("tee", "9.52"), ("cap", "9.52")],
+    )
+    .await;
+    redeem_on_order(&t, &shop, &order, 500).await;
+    t.app
+        .post(&format!("/sales-orders/{}/submit", order.id), &[("x", "")])
+        .await
+        .assert_status(303);
+    assert_eq!(account(&t, &m).await.points_balance, 500);
+
+    t.app
+        .post(
+            &format!("/sales-orders/{}/transitions/cancel", order.id),
+            &[("reason", "Customer changed mind")],
+        )
+        .await
+        .assert_status(303);
+    assert_eq!(
+        order_now(&t, &order).await.status,
+        SalesOrderStatus::Cancelled
+    );
+    let m = account(&t, &m).await;
+    assert_eq!((m.points_balance, m.points_held), (1000, 0));
+    let back = movements(&t, &m, PointsKind::ReverseRedeem).await;
+    assert_eq!(back.iter().map(|x| x.points).sum::<i64>(), 500);
+    assert!(back.iter().all(|x| x.cause == "order_cancelled"));
+    assert_eq!(
+        redemptions(&t, &order.subject()).await[0].returned_points,
+        500
+    );
+    assert_eq!(shop.mail.of_type(LOYALTY_GIVEN_BACK).len(), 1);
+}
+
+#[renox::test]
+async fn a_part_return_of_a_redeemed_sale_gives_back_its_share_rounded_down() {
+    let (t, shop, floor, m) = world(801, &[]).await;
+    let sale = forty(&t, &floor, &m).await;
+    ask(&t, &sale, 801, 303).await;
+    enter_right(&t, &shop, &sale).await;
+    complete(&t, &sale, "31.99", 303).await;
+    let sale = reload(&t, &sale).await;
+    let items: Vec<SaleLine> = lines(&t, &sale.subject())
+        .await
+        .into_iter()
+        .filter(|l| l.kind == "item")
+        .collect();
+    assert_eq!(items.len(), 2);
+
+    // One of the two equal lines: half of 801 is 400, rounded down.
+    let first = return_line(&t, &sale, &items[0]).await;
+    let row = &redemptions(&t, &sale.subject()).await[0];
+    assert_eq!(row.returned_points, 400);
+    assert!(row.returned_value > 0);
+    let back = movements(&t, &m, PointsKind::ReverseRedeem).await;
+    assert_eq!(back.iter().map(|x| x.points).sum::<i64>(), 400);
+    assert!(back.iter().all(|x| x.source() == first.subject()));
+
+    // The other line brings the rest, never more than was spent.
+    return_line(&t, &sale, &items[1]).await;
+    let row = &redemptions(&t, &sale.subject()).await[0];
+    assert_eq!(row.returned_points, 801);
+    let back = movements(&t, &m, PointsKind::ReverseRedeem).await;
+    assert_eq!(back.iter().map(|x| x.points).sum::<i64>(), 801);
+    assert_eq!(shop.mail.of_type(LOYALTY_GIVEN_BACK).len(), 2);
+}
+
+/// Returns one unit of `line` of `sale` through the pages.
+async fn return_line(t: &Booted, sale: &CounterSale, line: &SaleLine) -> SalesReturn {
+    t.app
+        .post(
+            "/sales-returns",
+            &[
+                ("sale_type", "counter_sale"),
+                ("sale_id", &sale.id.to_string()),
+                ("lines", &format!("{}:1", line.id)),
+            ],
+        )
+        .await
+        .assert_status(303);
+    let r = SalesReturn::query()
+        .order_by_desc(SalesReturn::ID)
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
+    t.app
+        .post(&format!("/sales-returns/{}/receive", r.id), &[("x", "")])
+        .await
+        .assert_status(303);
+    t.app
+        .post(
+            &format!("/sales-returns/{}/resolve", r.id),
+            &[("resolution", "refund"), ("inspected", "1")],
+        )
+        .await
+        .assert_status(303);
+    let r = SalesReturn::find_or_404(t.db(), r.id).await.unwrap();
+    assert_eq!(r.status, ReturnStatus::Resolved);
+    r
 }
 
 #[renox::test]
