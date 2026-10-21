@@ -12,6 +12,13 @@
 //! | `POST /manpower/requests` | `manpower.request_create` | `requests.create` for the client, or the client's approver |
 //! | `POST /manpower/requests/{id}/submit` | `manpower.request_submit` | `requests.create` for the client, or the client's approver |
 //! | `POST /manpower/requests/{id}/cancel` | `manpower.request_cancel` | `requests.manage` for the client, or the client's approver |
+//! | `POST /manpower/deployments/{id}/cover` | `manpower.deployment_cover` | `requests.manage` for the client |
+//! | `GET /manpower/deployments` | `manpower.deployments` | `deployments.view` or `deployments.manage` for the client or the site, or the client's portal access (only the workers on site, name, role, site, shift and dates) |
+//! | `POST /manpower/deployments` | `manpower.deployment_plan` | `deployments.manage` for the client |
+//! | `POST /manpower/deployments/{id}/activate` | `manpower.deployment_activate` | `deployments.manage` for the client |
+//! | `POST /manpower/deployments/{id}/extend` | `manpower.deployment_extend` | `deployments.manage` for the client |
+//! | `POST /manpower/deployments/{id}/end` | `manpower.deployment_end` | `deployments.manage` for the client |
+//! | `POST /manpower/deployments/{id}/cancel` | `manpower.deployment_cancel` | `deployments.manage` for the client |
 //!
 //! The list answers a page when the request names `text/html` and JSON
 //! otherwise ([`wl_kernel::negotiate`]); the actions answer 303 back to the
@@ -24,10 +31,13 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::PartyId;
+use wl_kernel::workforce::EmployeeId;
 
 use crate::contract::{BillingCycle, ClientContract, ContractStatus};
 use crate::contracts::{self, NewContract};
 use crate::db::refused;
+use crate::deployment::{Deployment, DeploymentKind, DeploymentStatus};
+use crate::deployments::{self, NewDeployment};
 use crate::permissions;
 use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
 use crate::requests::{self, NewRequest};
@@ -57,6 +67,20 @@ pub fn routes() -> Routes {
         .name("manpower.request_submit")
         .post("/manpower/requests/{id}/cancel", cancel_request)
         .name("manpower.request_cancel")
+        .get("/manpower/deployments", deployments_index)
+        .name("manpower.deployments")
+        .post("/manpower/deployments", plan_deployment)
+        .name("manpower.deployment_plan")
+        .post("/manpower/deployments/{id}/activate", activate_deployment)
+        .name("manpower.deployment_activate")
+        .post("/manpower/deployments/{id}/extend", extend_deployment)
+        .name("manpower.deployment_extend")
+        .post("/manpower/deployments/{id}/end", end_deployment)
+        .name("manpower.deployment_end")
+        .post("/manpower/deployments/{id}/cancel", cancel_deployment)
+        .name("manpower.deployment_cancel")
+        .post("/manpower/deployments/{id}/cover", cover_deployment)
+        .name("manpower.deployment_cover")
         .require_auth()
 }
 
@@ -313,6 +337,8 @@ pub(crate) struct RequestRow {
     start_date: NaiveDate,
     end_date: Option<NaiveDate>,
     replacement: bool,
+    cause: Option<String>,
+    replaces_deployment_id: Option<i64>,
 }
 
 /// What the requests page needs.
@@ -347,7 +373,7 @@ async fn requests_index(
         .get(&state.db)
         .await?
     {
-        let see = requests::may_see(
+        let see = crate::access::may_see(
             &state,
             &user,
             request.client(),
@@ -382,6 +408,8 @@ async fn requests_index(
             start_date: request.start_date,
             end_date: request.end_date,
             replacement: request.kind == RequestKind::Replacement,
+            cause: request.cause.clone(),
+            replaces_deployment_id: request.replaces_deployment_id,
         });
     }
     if !any
@@ -444,5 +472,267 @@ async fn cancel_request(
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     requests::cancel(&state, &user, id, &field(&form, "reason")).await?;
+    Ok(back("/manpower/requests"))
+}
+
+/// A deployment as staff see it.
+#[derive(Debug, Serialize, Clone)]
+pub(crate) struct DeploymentRow {
+    id: i64,
+    employee_id: i64,
+    worker: String,
+    client_contract_id: i64,
+    client_party_id: i64,
+    client: String,
+    site_id: i64,
+    site: String,
+    request_id: Option<i64>,
+    role: String,
+    shift_type: String,
+    start_date: NaiveDate,
+    end_date: Option<NaiveDate>,
+    cover: bool,
+    status: String,
+    status_kind: &'static str,
+    end_reason: Option<String>,
+}
+
+/// A deployment as a client user sees it (`MPW.ACL.01`, `MPW.ACL.02`): the
+/// name, the role, the site, the shift and the dates; no ids of the
+/// agency's records, no reasons, nothing of the worker's pay, documents or
+/// medical data, which a deployment does not hold.
+#[derive(Debug, Serialize, Clone)]
+pub(crate) struct ClientDeploymentRow {
+    worker: String,
+    role: String,
+    site: String,
+    shift_type: String,
+    start_date: NaiveDate,
+    end_date: Option<NaiveDate>,
+    status: String,
+    status_kind: &'static str,
+}
+
+/// What the deployments page needs; both kinds of row have the keys the
+/// template reads.
+#[derive(Serialize, ViewData)]
+#[view(template = "manpower/deployments.html")]
+pub(crate) struct DeploymentsPage {
+    tx: BTreeMap<&'static str, String>,
+    deployments: Vec<ClientDeploymentRow>,
+}
+
+/// The badge colour of a deployment.
+fn deployment_kind(status: DeploymentStatus) -> &'static str {
+    match status {
+        DeploymentStatus::Active => "success",
+        DeploymentStatus::Suspended => "warning",
+        DeploymentStatus::Planned | DeploymentStatus::Ended | DeploymentStatus::Cancelled => "info",
+    }
+}
+
+/// `GET /manpower/deployments`: staff see the deployments of the client
+/// companies and sites they work for; a client user sees only the workers on
+/// site of their own company, as a [`ClientDeploymentRow`].
+async fn deployments_index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
+) -> Result<Response> {
+    let wants_page = wl_kernel::negotiate::wants_html(&headers);
+    let mut staff = Vec::new();
+    let mut clients = Vec::new();
+    for deployment in Deployment::query()
+        .order_by(Deployment::ID)
+        .get(&state.db)
+        .await?
+    {
+        let by_staff = [
+            permissions::DEPLOYMENTS_VIEW,
+            permissions::DEPLOYMENTS_MANAGE,
+        ]
+        .iter()
+        .any(|permission| {
+            user.has_permission_in(permission, &deployment.scope())
+                || user.has_permission_in(permission, &deployment.site_scope())
+        });
+        let by_client = !by_staff
+            && deployment.shown_to_client()
+            && crate::access::may_see(&state, &user, deployment.client(), &[]).await?;
+        if !by_staff && !by_client {
+            continue;
+        }
+        let site = Site::find(&state.db, deployment.site_id)
+            .await?
+            .map(|site| site.name)
+            .unwrap_or_default();
+        let worker = deployments::worker_name(&state, &lang.locale, deployment.employee()).await;
+        let status = word(&lang, "status", deployment.status.as_str());
+        let kind = deployment_kind(deployment.status);
+        if by_staff {
+            staff.push(DeploymentRow {
+                id: deployment.id,
+                employee_id: deployment.employee_id,
+                worker: worker.clone(),
+                client_contract_id: deployment.client_contract_id,
+                client_party_id: deployment.client_party_id,
+                client: party_name(&state, &lang, deployment.client_party_id).await,
+                site_id: deployment.site_id,
+                site: site.clone(),
+                request_id: deployment.request_id,
+                role: deployment.role.clone(),
+                shift_type: deployment.shift_type.clone(),
+                start_date: deployment.start_date,
+                end_date: deployment.end_date,
+                cover: deployment.kind == DeploymentKind::Cover,
+                status: status.clone(),
+                status_kind: kind,
+                end_reason: deployment.end_reason.clone(),
+            });
+        } else {
+            clients.push(ClientDeploymentRow {
+                worker,
+                role: deployment.role.clone(),
+                site,
+                shift_type: deployment.shift_type.clone(),
+                start_date: deployment.start_date,
+                end_date: deployment.end_date,
+                status,
+                status_kind: kind,
+            });
+        }
+    }
+    if staff.is_empty()
+        && clients.is_empty()
+        && !user.has_permission_anywhere(permissions::DEPLOYMENTS_VIEW)
+        && !user.has_permission_anywhere(permissions::DEPLOYMENTS_MANAGE)
+    {
+        // A client user with no worker on site yet gets an empty list; only
+        // someone with no access at all is refused.
+        let may = crate::access::may_see_any(&state, &user).await?;
+        if !may {
+            return Err(Error::Forbidden);
+        }
+    }
+    if wants_page {
+        // The page reads the same keys for both kinds of row.
+        let rows = if staff.is_empty() {
+            clients
+        } else {
+            staff
+                .iter()
+                .map(|row| ClientDeploymentRow {
+                    worker: row.worker.clone(),
+                    role: row.role.clone(),
+                    site: row.site.clone(),
+                    shift_type: row.shift_type.clone(),
+                    start_date: row.start_date,
+                    end_date: row.end_date,
+                    status: row.status.clone(),
+                    status_kind: row.status_kind,
+                })
+                .collect()
+        };
+        return Ok(View::typed(DeploymentsPage {
+            tx: screen_texts(&lang),
+            deployments: rows,
+        })
+        .into_response());
+    }
+    if staff.is_empty() {
+        Ok(Json(clients).into_response())
+    } else {
+        Ok(Json(staff).into_response())
+    }
+}
+
+/// `POST /manpower/deployments`: `employee_id`, `client_contract_id`,
+/// `site_id`, `role`, `shift_type`, `start_date` and, optionally,
+/// `request_id`, `shift_start`, `shift_end` and `end_date`.
+async fn plan_deployment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let bad = || refused(t(&lang, "manpower.bad_input"));
+    let new = NewDeployment {
+        employee: EmployeeId(number(&lang, &form, "employee_id")?.ok_or_else(bad)?),
+        contract_id: number(&lang, &form, "client_contract_id")?.ok_or_else(bad)?,
+        site_id: number(&lang, &form, "site_id")?.ok_or_else(bad)?,
+        request_id: number(&lang, &form, "request_id")?,
+        role: field(&form, "role"),
+        shift_type: field(&form, "shift_type"),
+        shift_start: Some(field(&form, "shift_start")),
+        shift_end: Some(field(&form, "shift_end")),
+        start_date: date(&lang, &form, "start_date")?.ok_or_else(bad)?,
+        end_date: date(&lang, &form, "end_date")?,
+    };
+    deployments::plan(&state, &user, new).await?;
+    Ok(back("/manpower/deployments"))
+}
+
+/// `POST /manpower/deployments/{id}/activate`.
+async fn activate_deployment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    deployments::activate(&state, &user, id, &lang.locale).await?;
+    Ok(back("/manpower/deployments"))
+}
+
+/// `POST /manpower/deployments/{id}/extend`: `end_date`.
+async fn extend_deployment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let end =
+        date(&lang, &form, "end_date")?.ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
+    deployments::extend(&state, &user, id, end, &lang.locale).await?;
+    Ok(back("/manpower/deployments"))
+}
+
+/// `POST /manpower/deployments/{id}/end`: `reason`.
+async fn end_deployment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    deployments::end(&state, &user, id, &field(&form, "reason"), &lang.locale).await?;
+    Ok(back("/manpower/deployments"))
+}
+
+/// `POST /manpower/deployments/{id}/cancel`: `reason`.
+async fn cancel_deployment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    deployments::cancel(&state, &user, id, &field(&form, "reason")).await?;
+    Ok(back("/manpower/deployments"))
+}
+
+/// `POST /manpower/deployments/{id}/cover`: `from` (`2027-03-01`) and,
+/// optionally, `to`: a cover request for the days the worker is away.
+async fn cover_deployment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let from =
+        date(&lang, &form, "from")?.ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
+    let to = date(&lang, &form, "to")?;
+    crate::cover::open_by_hand(&state, &user, id, from, to).await?;
     Ok(back("/manpower/requests"))
 }

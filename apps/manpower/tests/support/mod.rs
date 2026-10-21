@@ -11,8 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use manpower::permissions as perm;
 use manpower::{
-    ClientContract, ContractActivated, ContractStatus, Manpower, ManpowerRequest, RequestStatus,
-    Site,
+    ClientContract, ContractActivated, ContractStatus, CoverRequested, Deployment,
+    DeploymentActivated, DeploymentCancelled, DeploymentEnded, DeploymentStatus, Manpower,
+    ManpowerRequest, RequestStatus, Site,
 };
 use renox::auth::{Permissions, permissions};
 use renox::chrono::NaiveDate;
@@ -26,6 +27,9 @@ use wl_kernel::notify::{
 use wl_kernel::parties::{PartyDirectory, PartyFuture, provide_directory};
 use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::rate_cards::{RateCardFuture, RateCardVersion, RateCards, provide_rate_cards};
+use wl_kernel::workforce::{
+    EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
+};
 use wl_kernel::{BusinessCalendar, PartyId, PartyKind, PartyStatus, PartySummary, Subject};
 
 /// A manpower agency with the parties module standing in for the directory.
@@ -143,6 +147,76 @@ impl PartyDirectory for Parties {
                 .unwrap()
                 .contains_key(&party.0)
                 .then_some(PartyStatus::Active))
+        })
+    }
+}
+
+/// The employees of HR, as the workforce of the kernel answers for them.
+#[derive(Clone, Default)]
+pub struct Staff(Arc<Mutex<BTreeMap<i64, (StaffProfile, bool)>>>);
+
+impl Staff {
+    /// An employee `id` named `name`, `active` in HR or not (onboarding).
+    pub fn employ(&self, parties: &Parties, id: i64, name: &str, active: bool) -> EmployeeId {
+        let party = PartyId(1_000 + id);
+        parties.know(party, name);
+        self.0.lock().unwrap().insert(
+            id,
+            (
+                StaffProfile {
+                    employee: EmployeeId(id),
+                    party,
+                    user_id: None,
+                    role: "guard".into(),
+                    scopes: Vec::new(),
+                    legal_entity_id: None,
+                    listed: true,
+                    on_leave: false,
+                    returns_on: None,
+                    managers: Vec::new(),
+                },
+                active,
+            ),
+        );
+        EmployeeId(id)
+    }
+
+    /// Puts the employee `id` on or off the active list of HR.
+    pub fn set_active(&self, id: i64, active: bool) {
+        if let Some(entry) = self.0.lock().unwrap().get_mut(&id) {
+            entry.1 = active;
+        }
+    }
+}
+
+impl Workforce for Staff {
+    fn staff<'a>(
+        &'a self,
+        _state: &'a AppState,
+        employee: EmployeeId,
+    ) -> WorkforceFuture<'a, Option<StaffProfile>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .get(&employee.0)
+                .map(|(profile, _)| profile.clone()))
+        })
+    }
+
+    fn is_active<'a>(
+        &'a self,
+        _state: &'a AppState,
+        employee: EmployeeId,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .get(&employee.0)
+                .is_some_and(|(_, active)| *active))
         })
     }
 }
@@ -321,8 +395,13 @@ struct Fakes {
     parties: Parties,
     cards: Cards,
     portal: Portal,
+    staff: Staff,
     notices: Recording,
     activated: Recorded<ContractActivated>,
+    deployed: Recorded<DeploymentActivated>,
+    ended: Recorded<DeploymentEnded>,
+    cancelled: Recorded<DeploymentCancelled>,
+    covers: Recorded<CoverRequested>,
 }
 
 impl Module for Fakes {
@@ -335,7 +414,12 @@ impl Module for Fakes {
         provide_rate_cards(app, self.cards.clone());
         provide_portal_users(app, self.portal.clone());
         provide_notifier(app, self.notices.clone());
+        provide_workforce(app, self.staff.clone());
         record(app, &self.activated);
+        record(app, &self.deployed);
+        record(app, &self.ended);
+        record(app, &self.cancelled);
+        record(app, &self.covers);
     }
 }
 
@@ -351,8 +435,18 @@ pub struct Booted {
     pub portal: Portal,
     /// What the notifier was asked for.
     pub notices: Recording,
+    /// The workforce of HR.
+    pub staff: Staff,
     /// `ContractActivated`.
     pub activated: Recorded<ContractActivated>,
+    /// `DeploymentActivated`.
+    pub deployed: Recorded<DeploymentActivated>,
+    /// `DeploymentEnded`.
+    pub ended: Recorded<DeploymentEnded>,
+    /// `DeploymentCancelled`.
+    pub cancelled: Recorded<DeploymentCancelled>,
+    /// `CoverRequested`.
+    pub covers: Recorded<CoverRequested>,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// The contracts made, for their references.
@@ -505,6 +599,53 @@ impl Booted {
         request
     }
 
+    /// A deployment of `employee` as a guard on the day shift at `site`, from
+    /// 1 February 2027 to `end`, in `status` (a fixture).
+    pub async fn deployment(
+        &self,
+        contract: &ClientContract,
+        site: &Site,
+        employee: EmployeeId,
+        end: Option<NaiveDate>,
+        status: DeploymentStatus,
+    ) -> Deployment {
+        let mut deployment = Deployment {
+            employee_id: employee.0,
+            client_contract_id: contract.id,
+            client_party_id: contract.client_party_id,
+            site_id: site.id,
+            role: "guard".into(),
+            shift_type: "day".into(),
+            shift_start: Some("07:00".into()),
+            shift_end: Some("19:00".into()),
+            start_date: date(2027, 2, 1),
+            end_date: end,
+            status,
+            ..Deployment::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        deployment
+            .insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        deployment
+    }
+
+    /// Links the deployment to the request it fills (a fixture).
+    pub async fn fills(&self, deployment: &Deployment, request: &ManpowerRequest) {
+        Deployment::query()
+            .where_(Deployment::ID.eq(deployment.id))
+            .update(self.db(), &[("request_id", &Some(request.id))])
+            .await
+            .unwrap();
+    }
+
+    /// The deployment `id` as it is now.
+    pub async fn reload_deployment(&self, id: i64) -> Deployment {
+        Deployment::find_or_404(self.db(), id).await.unwrap()
+    }
+
     /// The request `id` as it is now.
     pub async fn reload_request(&self, id: i64) -> ManpowerRequest {
         ManpowerRequest::find_or_404(self.db(), id).await.unwrap()
@@ -545,14 +686,24 @@ pub async fn boot() -> Booted {
     parties.know(FOODS, "Desert Foods LLC");
     let cards = Cards::default();
     let portal = Portal::default();
+    let staff = Staff::default();
     let notices = Recording::default();
     let activated = Recorded::default();
+    let deployed = Recorded::default();
+    let ended = Recorded::default();
+    let cancelled = Recorded::default();
+    let covers = Recorded::default();
     let fakes = Fakes {
         parties: parties.clone(),
         cards: cards.clone(),
         portal: portal.clone(),
+        staff: staff.clone(),
         notices: notices.clone(),
         activated: activated.clone(),
+        deployed: deployed.clone(),
+        ended: ended.clone(),
+        cancelled: cancelled.clone(),
+        covers: covers.clone(),
     };
     let app = App::new()
         .module(Auth::new())
@@ -606,8 +757,13 @@ pub async fn boot() -> Booted {
         parties,
         cards,
         portal,
+        staff,
         notices,
         activated,
+        deployed,
+        ended,
+        cancelled,
+        covers,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),
         _views: views,

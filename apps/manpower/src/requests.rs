@@ -11,13 +11,13 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
-use wl_kernel::PartyId;
 use wl_kernel::documents::today;
-use wl_kernel::portal::portal_users;
 use wl_kernel::rate_cards::rate_cards;
 
+use crate::access::may_write;
 use crate::contract::{ClientContract, ContractStatus};
 use crate::db::{answer, refused};
+use crate::deployments;
 use crate::notices;
 use crate::permissions;
 use crate::request::{CANCEL, ManpowerRequest, RequestInput, SUBMIT};
@@ -50,50 +50,6 @@ pub struct NewRequest {
 /// The request `id`, or 404.
 async fn load(state: &AppState, id: i64) -> Result<ManpowerRequest> {
     ManpowerRequest::find_or_404(&state.db, id).await
-}
-
-/// Whether `by` may write requests of `client`: staff holding `permission`
-/// in the client company, or the client approver of the company in the
-/// portal (`MPW.ACL.01`).
-pub(crate) async fn may_write(
-    state: &AppState,
-    by: &AuthUser,
-    client: PartyId,
-    permission: &str,
-    portal_too: bool,
-) -> Result<bool> {
-    if by.has_permission_in(permission, &permissions::client_scope(client.0)) {
-        return Ok(true);
-    }
-    if !portal_too {
-        return Ok(false);
-    }
-    let acting = portal_users(state)
-        .acting_for(&state.db, by.id, client, today())
-        .await?;
-    Ok(acting.is_some_and(|user| user.has_any_role(permissions::CLIENT_APPROVER_PORTAL_ROLES)))
-}
-
-/// Whether `by` may see the records of `client`: staff holding one of
-/// `permissions` in the client company, or any user the client has granted
-/// access in the portal (`MPW.ACL.01`: only their own company).
-pub(crate) async fn may_see(
-    state: &AppState,
-    by: &AuthUser,
-    client: PartyId,
-    permissions: &[&str],
-) -> Result<bool> {
-    let scope = crate::permissions::client_scope(client.0);
-    if permissions
-        .iter()
-        .any(|permission| by.has_permission_in(permission, &scope))
-    {
-        return Ok(true);
-    }
-    Ok(portal_users(state)
-        .acting_for(&state.db, by.id, client, today())
-        .await?
-        .is_some())
 }
 
 /// Creates a `draft` request.
@@ -275,7 +231,9 @@ pub async fn cancel(
     {
         return Err(Error::Forbidden);
     }
-    let _outcome = request
+    let reason_for_deployments = english("manpower.request.cancelled_deployments", &[]);
+    let mut tx = state.db.begin().await?;
+    let first = request
         .transition(CANCEL)
         .by(by)
         .reason(reason)
@@ -283,8 +241,16 @@ pub async fn cancel(
             problems: Vec::new(),
             by: Some(by.id),
         })
-        .run(state)
+        .run_in(&mut tx)
         .await
         .map_err(answer)?;
+    let (outcomes, planned) =
+        deployments::cancel_planned_of_request(&mut tx, id, &reason_for_deployments).await?;
+    tx.commit().await?;
+    first.emit(state).await?;
+    for outcome in outcomes {
+        outcome.emit(state).await?;
+    }
+    deployments::announce_all_cancelled(state, &planned, &reason_for_deployments).await?;
     load(state, id).await
 }

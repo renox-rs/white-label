@@ -1,9 +1,13 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+mod access;
 pub mod contract;
 pub mod contracts;
+pub mod cover;
 mod db;
+pub mod deployment;
+pub mod deployments;
 pub mod events;
 pub mod notices;
 pub mod pages;
@@ -18,9 +22,16 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use contract::{BillingCycle, ClientContract, ContractStatus};
-pub use events::ContractActivated;
+pub use deployment::{Deployment, DeploymentKind, DeploymentStatus};
+pub use events::{
+    ContractActivated, CoverRequested, DeploymentActivated, DeploymentCancelled, DeploymentEnded,
+};
 pub use request::{ManpowerRequest, RequestKind, RequestStatus};
 pub use site::Site;
+
+/// The name of the daily scheduled task that ends the deployments whose end
+/// date has passed.
+pub const END_DATE_TASK: &str = "manpower:deployment-end-daily";
 
 /// The Manpower module. Add it to the app with
 /// `.module(manpower::Manpower)`.
@@ -41,7 +52,8 @@ impl Module for Manpower {
 
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::ContractsPage>()
-            .view_data::<pages::RequestsPage>();
+            .view_data::<pages::RequestsPage>()
+            .view_data::<pages::DeploymentsPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -63,10 +75,22 @@ impl Module for Manpower {
         );
         app.model::<Site>()
             .model::<ClientContract>()
-            .model::<ManpowerRequest>();
+            .model::<ManpowerRequest>()
+            .model::<Deployment>();
         contract::register();
         request::register();
+        // `MPW.RUL.06`: an approved leave opens the cover requests the
+        // contract requires.
+        cover::listen(app);
+        deployment::register();
         notices::register_types();
+        // Deployments whose end date has passed end by themselves: daily at
+        // 02:00 Asia/Dubai.
+        app.schedule()
+            .daily_at("02:00", END_DATE_TASK, |state: AppState| async move {
+                deployments::daily(&state).await
+            })
+            .timezone("Asia/Dubai");
         // A site is a scope roles are assigned in, shown by its name.
         wl_kernel::scopes::register_label(site::SUBJECT_TYPE, |db, id| {
             let id = id.to_owned();
@@ -90,5 +114,9 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "manpower/requests.html",
         include_str!("../views/manpower/requests.html"),
+    ),
+    (
+        "manpower/deployments.html",
+        include_str!("../views/manpower/deployments.html"),
     ),
 ];

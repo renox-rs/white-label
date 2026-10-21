@@ -5,6 +5,7 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 
 use crate::contract::ClientContract;
+use crate::deployment::Deployment;
 use crate::request::ManpowerRequest;
 
 /// A 422 with `message`, like a refused guard.
@@ -49,6 +50,23 @@ pub(crate) async fn set_request(
     all.push(("updated_at", &stamp));
     ManpowerRequest::query()
         .where_(ManpowerRequest::ID.eq(id))
+        .update(&mut *tx, &all)
+        .await?;
+    Ok(())
+}
+
+/// Sets columns of deployment `id` other than the status and stamps
+/// `updated_at`.
+pub(crate) async fn set_deployment(
+    tx: &mut Transaction,
+    id: i64,
+    columns: &[(&str, &(dyn ToDbValue + Sync))],
+) -> Result {
+    let mut all: Vec<(&str, &(dyn ToDbValue + Sync))> = columns.to_vec();
+    let stamp = now();
+    all.push(("updated_at", &stamp));
+    Deployment::query()
+        .where_(Deployment::ID.eq(id))
         .update(&mut *tx, &all)
         .await?;
     Ok(())
