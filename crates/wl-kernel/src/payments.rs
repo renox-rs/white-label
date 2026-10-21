@@ -979,6 +979,33 @@ pub struct RefundFailed {
 
 impl Event for RefundFailed {}
 
+/// A refund was approved, or went back to `approved` for a retry or a new
+/// method (`approve`, `retry`, `change_method`): it now claims its source.
+/// The owner of a source outside `wl-payments` takes the amount from it: the
+/// payer credit balance records a *refund* movement with the approval
+/// (`FIN.ACL.16`: the refund's approval is the movement's approval). It is
+/// idempotent on the owner's side; [`RefundFailed`] gives the amount back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefundApproved {
+    /// The refund.
+    pub refund: RefundId,
+    /// Who is to be paid.
+    pub party: PartyId,
+    /// The legal entity paying.
+    pub legal_entity_id: i64,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// What the refund is paid out of.
+    pub source: RefundSource,
+    /// The user who approved it; `None` when the system did (a late payment
+    /// refund) or the refund goes back to `approved` after a failure.
+    pub approved_by: Option<i64>,
+}
+
+impl Event for RefundApproved {}
+
 /// The subject type of a payment link, for [`Subject`] references.
 pub const PAYMENT_LINK_SUBJECT_TYPE: &str = "payments.payment_link";
 
@@ -1409,6 +1436,24 @@ mod tests {
         let back: RefundFailed = renox::serde_json::from_value(json).unwrap();
         assert_eq!(back, e);
     }
+    #[test]
+    fn the_refund_approved_event_names_its_source_and_approver() {
+        let e = RefundApproved {
+            refund: RefundId(9),
+            party: PartyId(4),
+            legal_entity_id: 1,
+            amount: 120_000,
+            currency: "AED".into(),
+            source: RefundSource::PayerCredit(Subject::new("invoicing.payer_credit", 4)),
+            approved_by: Some(7),
+        };
+        let json = renox::serde_json::to_value(&e).unwrap();
+        assert_eq!(json["source"]["kind"], "payer_credit");
+        assert_eq!(json["approved_by"], 7);
+        let back: RefundApproved = renox::serde_json::from_value(json).unwrap();
+        assert_eq!(back, e);
+    }
+
     #[test]
     fn a_chargeback_ends_lost_or_accepted() {
         let outcomes: Vec<_> = ChargebackOutcome::ALL.iter().map(|o| o.as_str()).collect();

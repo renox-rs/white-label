@@ -746,6 +746,53 @@ pub trait PayerBills: Send + Sync + 'static {
     }
 }
 
+/// The subject of the credit balance of `payer`, what a refund of it names as
+/// its source: `invoicing.payer_credit:<payer party id>`. The balance itself is
+/// per legal entity and currency; the refund names both.
+pub fn payer_credit_subject(payer: PartyId) -> Subject {
+    Subject::new(PAYER_CREDIT_SUBJECT_TYPE, payer.0)
+}
+
+/// What wl-payments reads of a payer's credit balance (wl-invoicing §3 *Payer
+/// credit balance*): the refundable balance guard of a refund whose source is
+/// the balance. `wl-invoicing` provides it with [`provide_payer_credits`];
+/// without that module the balance is 0, so no refund of it is asked.
+pub trait PayerCredits: Send + Sync + 'static {
+    /// The credit balance `payer` has with `legal_entity_id` in `currency`, in
+    /// fils: what an insurer or payer paid in excess and has not had set off
+    /// against recoupments or refunded.
+    fn balance<'a>(
+        &'a self,
+        _db: &'a Db,
+        _payer: PartyId,
+        _legal_entity_id: i64,
+        _currency: &'a str,
+    ) -> PayerBillFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+}
+
+/// The payer credits when `invoicing` is off: no balance.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPayerCredits;
+
+impl PayerCredits for NoPayerCredits {}
+
+/// Makes `credits` the app's [`PayerCredits`]; `wl-invoicing` calls it in
+/// `register`.
+pub fn provide_payer_credits(app: &mut Registry, credits: impl PayerCredits) {
+    let credits: Arc<dyn PayerCredits> = Arc::new(credits);
+    app.provide(credits);
+}
+
+/// The app's [`PayerCredits`], or [`NoPayerCredits`] when none is provided.
+pub fn payer_credits(state: &AppState) -> Arc<dyn PayerCredits> {
+    match state.provided::<Arc<dyn PayerCredits>>() {
+        Some(credits) => Arc::clone(&credits),
+        None => Arc::new(NoPayerCredits),
+    }
+}
+
 /// The payer bills when `invoicing` is off: none exist and every action is
 /// refused.
 #[derive(Debug, Clone, Copy, Default)]
@@ -771,6 +818,13 @@ pub fn payer_bills(state: &AppState) -> Arc<dyn PayerBills> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_credit_of_a_payer_is_a_subject_of_its_own() {
+        let subject = payer_credit_subject(PartyId(4));
+        assert_eq!(subject.to_string(), "invoicing.payer_credit:4");
+        assert_eq!(subject.subject_type, PAYER_CREDIT_SUBJECT_TYPE);
+    }
 
     #[test]
     fn a_payer_bill_id_is_a_subject_and_a_plain_number() {
