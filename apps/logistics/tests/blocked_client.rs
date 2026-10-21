@@ -55,8 +55,20 @@ fn csv() -> &'static str {
 /// The client's approved remittance of AED 500, the client blocked after the
 /// draft was approved.
 async fn approved_and_blocked() -> (World, PartyId, logistics::Remittance) {
+    let (w, client, approved, _spare) = approved_and_blocked_with_spare().await;
+    (w, client, approved)
+}
+
+/// As [`approved_and_blocked`], and a second shipment (ORD-2, COD 200) that
+/// was booked before the block and is still to be delivered: a blocked client
+/// books nothing new, but what was booked goes on.
+async fn approved_and_blocked_with_spare()
+-> (World, PartyId, logistics::Remittance, logistics::Shipment) {
     let (w, client) = scene().await;
     w.delivered(client, "ORD-1", "500").await;
+    let spare = w
+        .book_with(&w.dispatcher, client, "ORD-2", &[("cod", "200")])
+        .await;
     w.block_party(client, "non_payment").await;
     // The Monday draft is created although the client is blocked.
     w.rule().await;
@@ -71,7 +83,7 @@ async fn approved_and_blocked() -> (World, PartyId, logistics::Remittance) {
     .assert_status(303);
     let approved = w.remittance(&draft).await;
     assert_eq!(approved.status, RemittanceStatus::Approved);
-    (w, client, approved)
+    (w, client, approved, spare)
 }
 
 /// AC1: given client C blocked for *non-payment*, a portal booking and a CSV
@@ -220,7 +232,7 @@ async fn unblocking_makes_the_waiting_remittance_payable() {
 /// the accountant who requested the exception cannot approve it.
 #[renox::test]
 async fn an_exception_approved_by_the_company_admin_lets_one_payment_go_ahead() {
-    let (w, client, approved) = approved_and_blocked().await;
+    let (w, client, approved, spare) = approved_and_blocked_with_spare().await;
     let pay = format!("/remittances/{}/pay", approved.id);
 
     // Amal asks for the exception; nothing is paid.
@@ -274,7 +286,8 @@ async fn an_exception_approved_by_the_company_admin_lets_one_payment_go_ahead() 
     assert_eq!(Payment::query().count(w.db()).await.unwrap(), 1);
 
     // The next remittance of the still blocked client waits again.
-    w.delivered(client, "ORD-2", "200").await;
+    let (_out, delivery) = w.out_for_delivery(&spare).await;
+    w.deliver_stop(&delivery, "200.00").await.assert_status(303);
     w.rule().await;
     let next = w
         .remittances_of(client)
