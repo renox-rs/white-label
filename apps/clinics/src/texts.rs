@@ -16,6 +16,52 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.appointments.patient", "Patient"),
     ("clinics.appointments.service", "Service"),
     ("clinics.appointments.visit_date", "Visit date"),
+    (
+        "clinics.appointments.problem.cancelled",
+        "This appointment is cancelled.",
+    ),
+    (
+        "clinics.appointments.problem.checked_in",
+        "The patient is already checked in; the cover can no longer change here.",
+    ),
+    (
+        "clinics.appointments.problem.other_patient",
+        "This policy belongs to another patient.",
+    ),
+    // The insurance policies.
+    ("clinics.policies.title", "Insurance policies"),
+    (
+        "clinics.policies.subtitle",
+        "The patients' cover with their payers.",
+    ),
+    ("clinics.policies.new", "New policy"),
+    (
+        "clinics.policies.new_description",
+        "The patient and the payer (parties), the plan, the member id and the dates on the card.",
+    ),
+    ("clinics.policies.patient_party", "Patient (party number)"),
+    ("clinics.policies.payer_party", "Payer (party number)"),
+    ("clinics.policies.patient", "Patient"),
+    ("clinics.policies.payer", "Payer"),
+    ("clinics.policies.plan", "Plan"),
+    ("clinics.policies.member_id", "Member id"),
+    ("clinics.policies.valid_from", "Valid from"),
+    ("clinics.policies.valid_to", "Valid to"),
+    ("clinics.policies.card_valid_to", "Card valid to"),
+    ("clinics.policies.valid_today", "Valid"),
+    ("clinics.policies.expired", "Expired"),
+    ("clinics.policies.empty", "No insurance policies yet"),
+    ("clinics.policies.created", "Policy recorded."),
+    ("clinics.policies.card_updated", "Card updated."),
+    ("clinics.policies.problem.plan", "The plan is required."),
+    (
+        "clinics.policies.problem.member_id",
+        "The member id is required.",
+    ),
+    (
+        "clinics.policies.problem.dates",
+        "The policy cannot end before it starts.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the

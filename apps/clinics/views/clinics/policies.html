@@ -1,0 +1,32 @@
+{#- clinics: the insurance policies of the patients, newest first, and the
+    action that records one. The card image is not here (CLN.ACL.12). Replace
+    it with resources/views/clinics/policies.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['policies.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['policies.title']" :subtitle="tx['policies.subtitle']">
+      <template rx-if="can_manage">
+        <rx-action-sheet id="policy-new" :label="tx['policies.new']" :action="route('clinics.policy_create')"
+                         :title="tx['policies.new']" :description="tx['policies.new_description']" :submit-label="tx['policies.new']" icon="plus">
+          <rx-input name="patient" :label="tx['policies.patient_party']" id="policy-new-patient" required/>
+          <rx-input name="payer" :label="tx['policies.payer_party']" id="policy-new-payer" required/>
+          <rx-input name="plan" :label="tx['policies.plan']" id="policy-new-plan" required/>
+          <rx-input name="member_id" :label="tx['policies.member_id']" id="policy-new-member" required/>
+          <rx-input name="valid_from" type="date" :label="tx['policies.valid_from']" :value="today" id="policy-new-from"/>
+          <rx-input name="valid_to" type="date" :label="tx['policies.valid_to']" id="policy-new-to"/>
+          <rx-input name="card_valid_to" type="date" :label="tx['policies.card_valid_to']" id="policy-new-card"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="policies" as="row" :key="row.id" :caption="tx['policies.title']" card>
+      <rx-column :label="tx['policies.patient']">{{ row.patient }}</rx-column>
+      <rx-column :label="tx['policies.payer']" hide-narrow>{{ row.payer }}</rx-column>
+      <rx-column :label="tx['policies.plan']">{{ row.plan }}</rx-column>
+      <rx-column :label="tx['policies.member_id']" hide-narrow>{{ row.member_id }}</rx-column>
+      <rx-column :label="tx['policies.valid_from']" hide-narrow>{{ row.valid_from }}</rx-column>
+      <rx-column :label="tx['policies.valid_to']">{{ row.valid_to }}</rx-column>
+      <rx-column :label="tx['policies.card_valid_to']" hide-narrow>{{ row.card_valid_to }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['policies.empty']" icon="shield-check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

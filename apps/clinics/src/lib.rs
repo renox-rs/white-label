@@ -4,7 +4,10 @@
 pub mod appointment;
 pub mod appointments;
 mod db;
+pub mod pages;
 pub mod permissions;
+pub mod policies;
+pub mod policy;
 pub mod reasons;
 pub mod seed;
 mod texts;
@@ -13,10 +16,19 @@ pub mod visit_machine;
 pub mod visits;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use appointment::Appointment;
+pub use policy::{EligibilityCheck, InsurancePolicy};
 pub use visit::{Visit, VisitStatus};
+
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory (`resources/views/clinics/policies.html`).
+const VIEWS: &[(&str, &str)] = &[(
+    "clinics/policies.html",
+    include_str!("../views/clinics/policies.html"),
+)];
 
 /// Dirhams as text from fils: `AED 450.00`.
 pub fn money_text(fils: i64) -> String {
@@ -41,18 +53,45 @@ impl Module for Clinics {
         "clinics"
     }
 
+    fn routes(&self) -> Routes {
+        pages::routes()
+    }
+
     fn migrations(&self) -> &'static [Migration] {
         renox::migrations!()
     }
 
     fn register(&self, app: &mut Registry) {
-        app.model::<Appointment>().model::<Visit>();
+        app.view_data::<pages::policies::IndexPage>();
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
+        app.model::<Appointment>()
+            .model::<Visit>()
+            .model::<InsurancePolicy>()
+            .model::<EligibilityCheck>();
         visit_machine::register();
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
         appointments::register(app);
         // The check-in opens the visit, which follows the booking.
         visits::register(app);
+        // In the app group of the staff sidebar; the label is the host's
+        // `nav.insurance_policies` text.
+        app.nav(
+            "app",
+            NavLink::route("clinics.policies", "nav.insurance_policies")
+                .icon("shield-check")
+                .group("nav.app")
+                .order(70)
+                .permission(permissions::POLICIES_VIEW),
+        );
     }
 }
 

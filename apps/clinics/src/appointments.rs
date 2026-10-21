@@ -10,6 +10,10 @@ use wl_kernel::parties::PARTY_SUBJECT_TYPE;
 use wl_kernel::scheduling::{BookingBooked, BookingCancelled, BookingRescheduled};
 
 use crate::appointment::Appointment;
+use crate::db::refused;
+use crate::policy::InsurancePolicy;
+use crate::texts::english;
+use crate::visit::Visit;
 
 /// `BookingBooked`: the clinic keeps its record of the booking. The patient
 /// is the booking's subject when that is a party; a second event for the
@@ -76,6 +80,48 @@ pub async fn on_cancelled(state: &AppState, event: &BookingCancelled) -> Result 
         )
         .await?;
     Ok(())
+}
+
+/// Books the appointment of `booking` with the insurance policy `policy`: it
+/// is an *insured* visit from now on, and the check-in asks for the
+/// eligibility result and the coverage outcome (`CLN.ACL.15`).
+///
+/// # Errors
+///
+/// A 404 for an unknown appointment or policy; a 422 when the appointment is
+/// cancelled, the patient is already checked in, or the policy is another
+/// patient's.
+pub async fn attach_policy(state: &AppState, booking: i64, policy: i64) -> Result<Appointment> {
+    let appointment = Appointment::of_booking(&state.db, booking)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let found = InsurancePolicy::find_or_404(&state.db, policy).await?;
+    if appointment.is_cancelled() {
+        return Err(refused(english("clinics.appointments.problem.cancelled", &[])));
+    }
+    if Visit::of_booking(&state.db, booking).await?.is_some() {
+        return Err(refused(english(
+            "clinics.appointments.problem.checked_in",
+            &[],
+        )));
+    }
+    if appointment
+        .patient_party_id
+        .is_some_and(|patient| patient != found.patient_party_id)
+    {
+        return Err(refused(english(
+            "clinics.appointments.problem.other_patient",
+            &[],
+        )));
+    }
+    Appointment::query()
+        .where_(Appointment::ID.eq(appointment.id))
+        .update(
+            &state.db,
+            &[("policy_id", &Some(policy)), ("updated_at", &now())],
+        )
+        .await?;
+    Appointment::find_or_404(&state.db, appointment.id).await
 }
 
 /// Registers the listeners.
