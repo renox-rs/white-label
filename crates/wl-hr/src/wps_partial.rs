@@ -30,12 +30,15 @@
 //! [`crate::payroll::REGENERATE_BY_SYSTEM`]) with the same effects, for a
 //! bank result that arrives without a user.
 //!
+//! The recovery adjustments of a supplementary run are created here
+//! ([`crate::supplementary`]) and the salary cost is posted to the cost objects
+//! after the commit ([`crate::payroll_events`]).
+//!
 //! Decisions on what is not built yet: the payment of a line moved out to a
 //! non-WPS method is recorded on the line (method and reference); recording it
-//! as a payment in wl-payments (`FIN.PAY.01`), the salary cost on cost objects
-//! (`FIN.CST.01`) and the recovery adjustments of a supplementary run come
-//! with BL-HRM-16 to 18. The payslip document (`DOC.GEN.01`) is made by
-//! wl-documents; the line records that it is published.
+//! as a payment in wl-payments (`FIN.PAY.01`) comes with the payments contract.
+//! The payslip document (`DOC.GEN.01`) is made by wl-documents; the line
+//! records that it is published.
 
 use renox::db::{Transaction, now};
 use renox::prelude::*;
@@ -177,6 +180,7 @@ pub(crate) fn confirm_paid() -> Transition<PayrollRun> {
         ])
         .to(PayrollRunStatus::Paid)
         .effect(|run: &PayrollRun, ctx, tx| {
+            let run_row = run.clone();
             let id = run.id;
             let version = run.sif_version;
             let input = ctx.input_as::<ConfirmInput>().unwrap_or_default();
@@ -224,8 +228,16 @@ pub(crate) fn confirm_paid() -> Transition<PayrollRun> {
                         ),
                     ));
                 }
+                // A correction line with a net of zero or less goes to no bank:
+                // it is settled by the confirmation of the run itself.
+                let correction = run_row.run_type == crate::supplementary::SUPPLEMENTARY;
                 for line in lines {
-                    if line.status == LineStatus::Included && line.sif_version.is_some() {
+                    let sent = line.status == LineStatus::Included && line.sif_version.is_some();
+                    let settled = correction
+                        && line.status == LineStatus::Included
+                        && line.sif_version.is_none()
+                        && line.net_amount <= 0;
+                    if sent || settled {
                         PayrollLine::query()
                             .where_(PayrollLine::ID.eq(line.id))
                             .update(
@@ -237,12 +249,13 @@ pub(crate) fn confirm_paid() -> Transition<PayrollRun> {
                             )
                             .await?;
                     }
-                    if line.status == LineStatus::Paid
-                        || (line.status == LineStatus::Included && line.sif_version.is_some())
-                    {
+                    if line.status == LineStatus::Paid || sent || settled {
                         publish_payslip_in(tx, line.id).await?;
                     }
                 }
+                // The negative differences of a supplementary run are recovered
+                // now that the correction is final.
+                crate::supplementary::settle_negatives_in(tx, &run_row).await?;
                 Ok(())
             })
         })

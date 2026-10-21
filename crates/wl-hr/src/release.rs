@@ -228,6 +228,8 @@ fn copy_of(line: &PayrollLine, run_id: i64) -> PayrollLine {
         variable_amount: line.variable_amount,
         difference_amount: line.difference_amount,
         deductions_amount: line.deductions_amount,
+        cost_object_type: line.cost_object_type.clone(),
+        cost_object_id: line.cost_object_id,
         status: LineStatus::Included,
         source_line_id: Some(line.id),
         ..PayrollLine::default()

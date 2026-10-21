@@ -8,6 +8,7 @@
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::documents::today;
+use wl_kernel::invoicing::{PostCost, post_cost};
 use wl_kernel::{
     EmployeeId, FailedPayrollLine, PayrollLinesFailed, PayrollRunId, PayrollRunPaid,
     PayrollRunReturned,
@@ -145,7 +146,41 @@ async fn paid(state: &AppState, run_id: i64) -> Result {
             employees: paid.iter().map(|l| EmployeeId(l.employee_id)).collect(),
         })
         .await?;
+    post_costs(state, &run).await?;
     // `HRM.RUL.12`: lines whose hold cleared while this run was being paid are
     // released now that it is `paid`.
     crate::release::propose(state).await.map(|_| ())
+}
+
+/// `confirm_paid`: the cost of each paid line is posted to its cost object
+/// (`FIN.CST.01`): the gross pay of a regular or off-cycle line, the signed
+/// difference of a supplementary line, so the cost of a correction lands on
+/// the same cost objects as the paid run. The key names the line, so a second
+/// call posts nothing more.
+async fn post_costs(state: &AppState, run: &PayrollRun) -> Result {
+    let supplementary = run.run_type == crate::supplementary::SUPPLEMENTARY;
+    for line in run.lines(&state.db).await? {
+        let (Some(kind), Some(id)) = (line.cost_object_type.as_deref(), line.cost_object_id) else {
+            continue;
+        };
+        if line.status != LineStatus::Paid {
+            continue;
+        }
+        let amount = if supplementary {
+            line.net_amount
+        } else {
+            line.net_amount + line.deductions_amount
+        };
+        if amount == 0 {
+            continue;
+        }
+        let request = PostCost::new(
+            run.subject(),
+            format!("hr.payroll_line:{}", line.id),
+            wl_kernel::Subject::new(kind, id),
+            amount,
+        );
+        post_cost(state, request).await?;
+    }
+    Ok(())
 }

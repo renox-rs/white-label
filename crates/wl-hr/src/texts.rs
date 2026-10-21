@@ -292,6 +292,51 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.payroll.cap.court_debt", "Court debts (25%)"),
     ("wl_hr.payroll.cap.damage", "Damage (5 days' wage)"),
     ("wl_hr.payroll.cap.total", "All deductions (50%)"),
+    // Correcting a paid run (issue #207).
+    (
+        "wl_hr.payroll.supplementary",
+        "Correct with a supplementary run",
+    ),
+    ("wl_hr.payroll.supplementary_runs", "Supplementary runs"),
+    (
+        "wl_hr.payroll.supplementary_reason",
+        "Why the run is corrected",
+    ),
+    (
+        "wl_hr.payroll.supplementary_rows",
+        "Affected employees, one per row: employee id = corrected net in dirhams = component",
+    ),
+    (
+        "wl_hr.payroll.supplementary_hint",
+        "The paid run is not changed. The run lists only the employees whose pay differs from what was paid.",
+    ),
+    (
+        "wl_hr.payroll.supplementary_made",
+        "Supplementary run made.",
+    ),
+    ("wl_hr.payroll.corrects", "Corrects a paid run"),
+    ("wl_hr.payroll.corrects_link", "Open the paid run"),
+    ("wl_hr.payroll.component", "Component"),
+    (
+        "wl_hr.payroll.supplementary_reason_required",
+        "Give the reason for the correction.",
+    ),
+    (
+        "wl_hr.payroll.supplementary_run_not_paid",
+        "Only a paid run is corrected by a supplementary run.",
+    ),
+    (
+        "wl_hr.payroll.supplementary_nothing_to_correct",
+        "No employee has a difference to the pay already made.",
+    ),
+    (
+        "wl_hr.payroll.supplementary_correction_invalid",
+        "Each employee is listed once, with a corrected net of zero or more.",
+    ),
+    (
+        "wl_hr.payroll.supplementary_recovery_note",
+        "Overpayment found by supplementary run :run",
+    ),
     // Releasing held lines (issue #208).
     (
         "wl_hr.payroll.late_warning",

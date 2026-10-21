@@ -60,6 +60,11 @@ pub struct FinalSettlement {
     pub reason: String,
     /// `employee` or `estate`.
     pub payee: String,
+    /// The recoveries added while it is not paid, AED fils: a negative
+    /// difference of a supplementary run for the employee who left
+    /// ([`crate::supplementary`]). The amounts of the settlement itself come
+    /// with BL-HRM-22 to 24.
+    pub recoveries: i64,
     /// Where it stands; changed only by the machine.
     pub status: SettlementStatus,
     /// When the row was created.

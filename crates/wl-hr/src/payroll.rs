@@ -152,6 +152,11 @@ pub struct PayrollRun {
     pub rejection_notice: Option<String>,
     /// The note on the fix entered at `resubmit`.
     pub resubmit_note: Option<String>,
+    /// On a supplementary run: the original paid run it corrects
+    /// ([`crate::supplementary`]).
+    pub corrects: Option<i64>,
+    /// On a supplementary run: why it was made.
+    pub reason: Option<String>,
     /// The day the MD and the accountant were told that the rejection is
     /// still open before the WPS due date (`HRM.RUL.11`, once per run).
     pub escalated_on: Option<NaiveDate>,
@@ -213,6 +218,14 @@ pub struct PayrollLine {
     /// An exception the preparer reviews, e.g. `missing_timesheet`
     /// ([`crate::calculation::MISSING_TIMESHEET`]).
     pub exception: Option<String>,
+    /// On a line of a supplementary run: the component the difference is in
+    /// (overtime, allowance, ...).
+    pub component: Option<String>,
+    /// The cost object the cost of the line is posted to at `confirm_paid`
+    /// (`FIN.CST.01`): its subject type, e.g. `construction.project`.
+    pub cost_object_type: Option<String>,
+    /// The cost object's id.
+    pub cost_object_id: Option<i64>,
     /// On a line of an off-cycle run, or one carried into a regular run: the
     /// held line it pays ([`crate::release`]).
     pub source_line_id: Option<i64>,

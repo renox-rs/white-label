@@ -27,6 +27,7 @@ use wl_kernel::documents::{
     SopAcknowledgements, SopFuture, SopStaff, Validity, provide_guard,
     provide_sop_acknowledgements,
 };
+use wl_kernel::invoicing::{CostPoster, PostCost, SupplierBillFuture, provide_cost_poster};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
@@ -402,6 +403,7 @@ struct Fakes {
     sops: SopDesk,
     docs: DocDesk,
     timesheets: TimesheetDesk,
+    costs: CostDesk,
     started: Arc<Mutex<Vec<OnboardingStarted>>>,
     completed: Arc<Mutex<Vec<OnboardingCompleted>>>,
     activated: Arc<Mutex<Vec<EmployeeActivated>>>,
@@ -518,6 +520,31 @@ impl Timesheets for TimesheetDesk {
     }
 }
 
+/// The cost poster: the cost posted to cost objects, once per key.
+#[derive(Clone, Default)]
+pub struct CostDesk {
+    posted: Arc<Mutex<Vec<PostCost>>>,
+}
+
+impl CostDesk {
+    /// What was posted, oldest first.
+    pub fn posted(&self) -> Vec<PostCost> {
+        self.posted.lock().unwrap().clone()
+    }
+}
+
+impl CostPoster for CostDesk {
+    fn post<'a>(&'a self, _state: &'a AppState, request: PostCost) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async move {
+            let mut posted = self.posted.lock().unwrap();
+            if !posted.iter().any(|p| p.key == request.key) {
+                posted.push(request);
+            }
+            Ok(())
+        })
+    }
+}
+
 /// The hours of timesheet `timesheet` of `employee` in November: `(day,
 /// category, minutes)` rows.
 pub fn hours_of(
@@ -568,6 +595,7 @@ impl Module for Fakes {
         provide_sop_acknowledgements(app, self.sops.clone());
         provide_guard(app, self.docs.clone());
         provide_timesheets(app, self.timesheets.clone());
+        provide_cost_poster(app, self.costs.clone());
         record(app, &self.started);
         record(app, &self.completed);
         record(app, &self.activated);
@@ -598,6 +626,8 @@ pub struct Booted {
     pub docs: DocDesk,
     /// The hours of the timesheets.
     pub timesheets: TimesheetDesk,
+    /// The cost posted to cost objects.
+    pub costs: CostDesk,
     /// `OnboardingStarted`.
     pub started: Recorded<OnboardingStarted>,
     /// `OnboardingCompleted`.
@@ -808,6 +838,33 @@ impl Booted {
                 fixed_wage: wage,
                 net_amount: net,
                 status: LineStatus::Included,
+                ..PayrollLine::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// A `paid` line of `run` for `employee` with a fixed wage and a net, in
+    /// fils, whose cost is posted to `cost_object`.
+    pub async fn paid_line(
+        &self,
+        run: &PayrollRun,
+        employee: &Employee,
+        wage: i64,
+        net: i64,
+        cost_object: &Subject,
+    ) -> PayrollLine {
+        PayrollLine::create(
+            self.db(),
+            PayrollLine {
+                run_id: run.id,
+                employee_id: employee.id,
+                fixed_wage: wage,
+                net_amount: net,
+                status: LineStatus::Paid,
+                cost_object_type: Some(cost_object.subject_type.clone()),
+                cost_object_id: Some(cost_object.subject_id),
                 ..PayrollLine::default()
             },
         )
@@ -1092,6 +1149,7 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         sops: SopDesk::default(),
         docs: DocDesk::default(),
         timesheets: TimesheetDesk::default(),
+        costs: CostDesk::default(),
         started: Arc::default(),
         completed: Arc::default(),
         activated: Arc::default(),
@@ -1113,12 +1171,13 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         Recorded(fakes.paid.clone()),
         fakes.tasks.clone(),
     );
-    let (notices, checklists, sops, docs, timesheets) = (
+    let (notices, checklists, sops, docs, timesheets, costs) = (
         fakes.notices.clone(),
         fakes.checklists.clone(),
         fakes.sops.clone(),
         fakes.docs.clone(),
         fakes.timesheets.clone(),
+        fakes.costs.clone(),
     );
     let (started, completed, activated, changed) = (
         Recorded(fakes.started.clone()),
@@ -1230,6 +1289,7 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         sops,
         docs,
         timesheets,
+        costs,
         started,
         completed,
         activated,

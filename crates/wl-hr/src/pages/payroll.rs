@@ -6,6 +6,7 @@
 //! | `GET /hr/payroll/{id}` | `wl_hr.payroll_run` | `payroll.view` |
 //! | `POST /hr/payroll/{id}/transitions/calculate` | `wl_hr.payroll_calculate` | `payroll.view` and `payroll.prepare`; asks the timesheets for the hours first |
 //! | `POST /hr/payroll/{id}/transitions/{name}` | `wl_hr.payroll_transitions.*` | `payroll.view` and the transition's permission |
+//! | `POST /hr/payroll/{id}/supplementary` | `wl_hr.payroll_supplementary` | `payroll.prepare` |
 //! | `POST /hr/payroll/{id}/carry/{line}` | `wl_hr.payroll_carry` | `payroll.prepare` |
 //! | `POST /hr/payroll/differences/{id}/convert` | `wl_hr.payroll_difference_convert` | `payroll.prepare` |
 //! | `POST /hr/payroll/{id}/rejection` | `wl_hr.payroll_rejection` | `payroll.prepare` |
@@ -34,6 +35,7 @@ use crate::payroll::{
 };
 use crate::release;
 use crate::sif::SifFile;
+use crate::supplementary::{self, Correction};
 use crate::wps_partial::{self, OTHER_METHODS};
 use crate::wps_rejection::{REASON_FILE_FORMAT, REASONS, RejectionInput, ResubmitInput};
 use crate::{permissions, texts};
@@ -69,6 +71,8 @@ pub fn routes() -> Routes {
                 .name("wl_hr.payroll_partial")
                 .post("/hr/payroll/{id}/confirm", confirm_paid)
                 .name("wl_hr.payroll_confirm")
+                .post("/hr/payroll/{id}/supplementary", create_supplementary)
+                .name("wl_hr.payroll_supplementary")
                 .post("/hr/payroll/{id}/carry/{line}", carry_line)
                 .name("wl_hr.payroll_carry")
                 .post("/hr/payroll/differences/{id}/convert", convert_difference)
@@ -156,6 +160,8 @@ pub struct LineView {
     pub warning: String,
     /// On a carried line: why it was carried.
     pub carried: String,
+    /// On a line of a supplementary run: the component of the difference.
+    pub component: String,
 }
 
 /// A held line of a paid run that the regular run can carry.
@@ -232,6 +238,8 @@ pub(crate) struct ShowPage {
     exceptions: Vec<ExceptionView>,
     differences: Vec<DifferenceView>,
     carryable: Vec<CarryView>,
+    corrections: Vec<CorrectionView>,
+    can_correct: bool,
     actions: Vec<ActionView>,
     approve_blocked: bool,
     can_approve: bool,
@@ -274,6 +282,23 @@ pub struct RunView {
     pub status: String,
     /// The badge kind.
     pub status_kind: &'static str,
+    /// On a supplementary run: the paid run it corrects.
+    pub corrects: Option<i64>,
+    /// On a supplementary run: why it was made.
+    pub reason: String,
+}
+
+/// A supplementary run that corrects the run shown.
+#[derive(Serialize, Debug, Clone)]
+pub struct CorrectionView {
+    /// The primary key.
+    pub id: i64,
+    /// The status in the page's language.
+    pub status: String,
+    /// The badge kind.
+    pub status_kind: &'static str,
+    /// Why it was made.
+    pub reason: String,
 }
 
 /// `GET /hr/payroll/{id}`.
@@ -377,11 +402,24 @@ async fn show(
             run_type: run.run_type.clone(),
             status: text(&lang, &format!("payroll.status.{}", run.status.as_str())),
             status_kind: run_kind(run.status),
+            corrects: run.corrects,
+            reason: run.reason.clone().unwrap_or_default(),
         },
         lines,
         exceptions,
         differences: difference_lines,
         carryable: carry_views,
+        corrections: supplementary::of_original(&state.db, id)
+            .await?
+            .into_iter()
+            .map(|r| CorrectionView {
+                id: r.id,
+                status: text(&lang, &format!("payroll.status.{}", r.status.as_str())),
+                status_kind: run_kind(r.status),
+                reason: r.reason.unwrap_or_default(),
+            })
+            .collect(),
+        can_correct: prepares && run.status == PayrollRunStatus::Paid,
         actions,
         approve_blocked: approve_blocked && run.status == PayrollRunStatus::Calculated,
         can_approve: user.has_permission(permissions::PAYROLL_APPROVE),
@@ -475,6 +513,7 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
         deductions: aed(line.deductions_amount),
         warning: line.late_warning.clone().unwrap_or_default(),
         carried: line.carry_reason.clone().unwrap_or_default(),
+        component: line.component.clone().unwrap_or_default(),
     }
 }
 
@@ -501,6 +540,70 @@ async fn calculate(
         .await
         .map_err(TransitionError::into_error)?;
     Ok(back.into_response())
+}
+
+/// The form that makes a supplementary run.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct SupplementaryForm {
+    /// Why the paid run is corrected.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub reason: String,
+    /// The affected employees, one per row:
+    /// `<employee id>=<corrected net in dirhams>[=<component>]`.
+    #[validate(max = 5000)]
+    #[serde(default)]
+    pub corrections: String,
+}
+
+/// `3000`, `3000.5` or `3000.50` dirhams as fils.
+fn parse_aed(text: &str) -> Option<i64> {
+    let (whole, fraction) = text.trim().split_once('.').unwrap_or((text.trim(), ""));
+    if fraction.len() > 2 || !fraction.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let whole: i64 = whole.parse().ok()?;
+    let fraction: i64 = format!("{fraction:0<2}").parse().ok()?;
+    whole.checked_mul(100)?.checked_add(fraction)
+}
+
+/// The corrections of a form: `12=3000.00=overtime`, one per row.
+fn parse_corrections(text: &str) -> Result<Vec<Correction>> {
+    let bad = || Error::BadRequest("corrections".to_owned());
+    let mut corrections = Vec::new();
+    for row in text.lines().map(str::trim).filter(|r| !r.is_empty()) {
+        let mut parts = row.splitn(3, '=');
+        let employee_id = parts.next().and_then(|p| p.trim().parse().ok());
+        let correct_net = parts.next().and_then(parse_aed);
+        let (Some(employee_id), Some(correct_net)) = (employee_id, correct_net) else {
+            return Err(bad());
+        };
+        corrections.push(Correction {
+            employee_id,
+            correct_net,
+            component: parts.next().unwrap_or_default().trim().to_owned(),
+        });
+    }
+    Ok(corrections)
+}
+
+/// `POST /hr/payroll/{id}/supplementary`: the preparer makes a supplementary
+/// run that corrects the paid run.
+async fn create_supplementary(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: renox::Back,
+    Path(id): Path<i64>,
+    Valid(form): Valid<SupplementaryForm>,
+) -> Result<Response> {
+    let corrections = parse_corrections(&form.corrections)?;
+    supplementary::create(&state, &user, id, &form.reason, &corrections).await?;
+    Ok((
+        Toast::success(text(&lang, "payroll.supplementary_made")),
+        back,
+    )
+        .into_response())
 }
 
 /// The form that carries a released held line into a regular run.

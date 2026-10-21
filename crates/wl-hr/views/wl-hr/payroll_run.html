@@ -6,6 +6,24 @@
   <rx-stack>
     <rx-page-header :title="tx['payroll.title'] ~ ' ' ~ run.period" :subtitle="run.run_type"
                     :badge="run.status" :badge-kind="run.status_kind"/>
+    <template rx-if="run.corrects">
+      <rx-alert kind="info" :message="tx['payroll.corrects'] ~ ': ' ~ run.reason"/>
+      <a href="{{ route('wl_hr.payroll_run', run.corrects) }}">{{ tx['payroll.corrects_link'] }}</a>
+    </template>
+    <template rx-if="can_correct">
+      <rx-action-sheet id="correct-run" :label="tx['payroll.supplementary']" :action="route('wl_hr.payroll_supplementary', run.id)"
+                       :title="tx['payroll.supplementary']" :description="tx['payroll.supplementary_hint']" :submit-label="tx['payroll.supplementary']" icon="pencil">
+        <rx-input name="reason" :label="tx['payroll.supplementary_reason']" id="correct-run-reason" required/>
+        <rx-textarea name="corrections" :label="tx['payroll.supplementary_rows']" id="correct-run-rows" required/>
+      </rx-action-sheet>
+    </template>
+    <template rx-if="corrections">
+      <rx-table :rows="corrections" as="correction" :key="correction.id" :caption="tx['payroll.supplementary_runs']" card>
+        <rx-column :label="tx['payroll.title']"><a href="{{ route('wl_hr.payroll_run', correction.id) }}">#{{ correction.id }}</a></rx-column>
+        <rx-column :label="tx['fields.status']"><rx-badge :kind="correction.status_kind" :text="correction.status"/></rx-column>
+        <rx-column :label="tx['payroll.reason']">{{ correction.reason }}</rx-column>
+      </rx-table>
+    </template>
     <template rx-if="actions">
       <rx-transition-actions :actions="actions" :action="'/hr/payroll/' ~ run.id ~ '/transitions'"/>
     </template>
@@ -95,6 +113,7 @@
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['payroll.lines']" card>
       <rx-column :label="tx['payroll.employee']">{{ line.employee }}</rx-column>
       <rx-column :label="tx['payroll.wage']" hide-narrow>{{ line.wage }}</rx-column>
+      <rx-column :label="tx['payroll.component']" hide-narrow>{{ line.component }}</rx-column>
       <rx-column :label="tx['payroll.hours']" hide-narrow>
         {{ line.hours }}
         <template rx-if="line.provisional"><rx-badge kind="warning" :text="tx['payroll.provisional']"/></template>
