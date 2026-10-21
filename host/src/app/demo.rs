@@ -47,6 +47,30 @@ pub async fn for_view(ctx: renox::view::ViewContext) -> Result<Option<Demo>> {
             });
         }
     }
+    for login in super::construction_demo::LOGINS {
+        if User::find_by_email(&ctx.state.db, login.email)
+            .await?
+            .is_some()
+        {
+            accounts.push(Account {
+                name: login.name,
+                email: login.email,
+                label: login.label,
+            });
+        }
+    }
+    for login in super::logistics_demo::LOGINS {
+        if User::find_by_email(&ctx.state.db, login.email)
+            .await?
+            .is_some()
+        {
+            accounts.push(Account {
+                name: login.name,
+                email: login.email,
+                label: login.label,
+            });
+        }
+    }
     for &(name, email, role) in PEOPLE {
         if User::find_by_email(&ctx.state.db, email).await?.is_some() {
             accounts.push(Account {

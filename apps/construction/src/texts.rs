@@ -5,6 +5,8 @@ use std::fmt::Display;
 
 use renox::prelude::*;
 
+use crate::screen_texts::SCREEN_TEXTS;
+
 /// Every key the app uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
     // The project machine.
@@ -779,6 +781,7 @@ pub(crate) fn t(lang: &Lang, key: &str) -> String {
 pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> String {
     let text = TEXTS
         .iter()
+        .chain(SCREEN_TEXTS)
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
     let mut data = renox::serde_json::Map::new();
@@ -795,6 +798,7 @@ pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> St
 pub(crate) fn template(key: &str) -> &'static str {
     TEXTS
         .iter()
+        .chain(SCREEN_TEXTS)
         .find(|(k, _)| *k == key)
         .map_or("", |(_, text)| *text)
 }
@@ -805,7 +809,11 @@ mod tests {
 
     #[test]
     fn keys_are_unique_and_prefixed() {
-        let mut keys: Vec<&str> = TEXTS.iter().map(|(key, _)| *key).collect();
+        let mut keys: Vec<&str> = TEXTS
+            .iter()
+            .chain(SCREEN_TEXTS)
+            .map(|(key, _)| *key)
+            .collect();
         assert!(keys.iter().all(|key| key.starts_with("construction.")));
         let count = keys.len();
         keys.sort_unstable();

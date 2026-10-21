@@ -82,7 +82,7 @@ fn names(keys: &[&str]) -> String {
 }
 
 /// The document kind `key` as registered, in words.
-fn kind_text(key: &str) -> String {
+pub(crate) fn kind_text(key: &str) -> String {
     let Some(kind) = wl_documents::kinds::kind_seeds()
         .into_iter()
         .find(|k| k.key == key)
@@ -145,7 +145,7 @@ fn kind_text(key: &str) -> String {
 
 /// The notification type `key` as registered: its group, whether it is
 /// statutory and its give-up reactions.
-fn type_text(key: &str) -> String {
+pub(crate) fn type_text(key: &str) -> String {
     match notification_type(key) {
         None => format!("{key}: not registered"),
         Some(def) => {
@@ -352,7 +352,12 @@ async fn show(State(state): State<AppState>) -> Result<Response> {
     let settings = state
         .provided::<ComplianceSettings>()
         .ok_or(Error::NotFound)?;
-    let rows = rows(&settings.client_app, &settings.owner_role);
+    // The 03 client has its own table (BL-LOG-25).
+    let rows = if settings.client_app == super::logistics_seed::LOGISTICS {
+        super::logistics_settings::compliance_rows(&settings.owner_role)
+    } else {
+        rows(&settings.client_app, &settings.owner_role)
+    };
     Ok(view("settings/compliance.html", context! { rows }).into_response())
 }
 

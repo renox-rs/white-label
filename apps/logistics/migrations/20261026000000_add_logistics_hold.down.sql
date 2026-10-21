@@ -1,0 +1,12 @@
+DROP TABLE "logistics_address_changes";
+ALTER TABLE "logistics_shipments" DROP COLUMN claim_ticket_number;
+ALTER TABLE "logistics_shipments" DROP COLUMN claim_ticket_id;
+ALTER TABLE "logistics_shipments" DROP COLUMN company_liable;
+ALTER TABLE "logistics_shipments" DROP COLUMN address_confirmed_by;
+ALTER TABLE "logistics_shipments" DROP COLUMN address_confirmed_at;
+ALTER TABLE "logistics_shipments" DROP COLUMN hold_instruction_at;
+ALTER TABLE "logistics_shipments" DROP COLUMN hold_instruction_by;
+ALTER TABLE "logistics_shipments" DROP COLUMN hold_instruction;
+ALTER TABLE "logistics_shipments" DROP COLUMN hold_photos;
+ALTER TABLE "logistics_shipments" DROP COLUMN held_from;
+ALTER TABLE "logistics_shipments" DROP COLUMN hold_reason;

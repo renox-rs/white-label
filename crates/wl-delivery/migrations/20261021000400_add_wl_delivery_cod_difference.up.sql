@@ -1,0 +1,32 @@
+-- A cash on delivery collected short (wl-delivery §4.1 `deliver`,
+-- `WRK.ACL.09`, #159): the proof keeps the reason of the difference, who
+-- absorbs it and the approval request that allowed it.
+ALTER TABLE "wl_delivery_proofs" ADD COLUMN cod_difference_reason TEXT;
+ALTER TABLE "wl_delivery_proofs" ADD COLUMN absorbed_by TEXT;
+ALTER TABLE "wl_delivery_proofs" ADD COLUMN approval_request_id INTEGER;
+
+-- The configurable difference reasons (recipient short of cash, disputes
+-- the amount, agreed discount, no change) with the absorber they default to.
+CREATE TABLE "wl_delivery_cod_reasons" (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name_en TEXT NOT NULL,
+    name_ar TEXT NOT NULL DEFAULT '',
+    default_absorbed_by TEXT NOT NULL DEFAULT 'customer',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT,
+    updated_at TEXT
+);
+
+-- What the approver chose on an approval request of this module: who
+-- absorbs a cash difference (#159), or what happens to cash already handed
+-- over when a delivery is reversed (#161). Read by the approved transition.
+CREATE TABLE "wl_delivery_approval_choices" (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL UNIQUE,
+    absorbed_by TEXT,
+    cash_treatment TEXT,
+    chosen_by INTEGER,
+    created_at TEXT,
+    updated_at TEXT
+);

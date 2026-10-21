@@ -1,0 +1,31 @@
+{#- wl-inventory: the suppliers of an item: the preferred supplier first, then
+    the alternatives by rank, with lead time, minimum order, last price (for a
+    holder of the stock cost permission), the flags (on hold, watched,
+    inactive, certificates to check) and the link to each supplier's score.
+    Replace it with resources/views/wl-inventory/item_suppliers.html in the
+    app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="subtitle">
+      <rx-link-button rx-if="request_url" :href="request_url" :label="tx['suppliers.request']" icon="clock" variant="secondary"/>
+    </rx-page-header>
+    <rx-alert rx-if="not costs" kind="info" :message="tx['suppliers.price_hidden']"/>
+    <rx-table :rows="rows" as="row" :key="row.name" :caption="title">
+      <rx-column :label="tx['supplier']">
+        <rx-stack>
+          <span><a rx-if="row.score_url" href="{{ row.score_url }}">{{ row.name }}</a><span rx-else>{{ row.name }}</span></span>
+          <span>
+            <rx-badge :kind="row.role_kind" :text="row.role"/>
+            <template rx-for="flag in row.flags"> <rx-badge :kind="flag.kind" :text="flag.text"/></template>
+          </span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['suppliers.rank']" align="num" hide-narrow>{{ row.rank if row.rank else tx['no_value'] }}</rx-column>
+      <rx-column :label="tx['lead_time']" align="num" hide-narrow>{{ row.lead_time_days }}</rx-column>
+      <rx-column :label="tx['suppliers.min_order']" align="num" hide-narrow>{{ row.min_order or tx['no_value'] }}</rx-column>
+      <rx-column :label="tx['suppliers.code']" hide-narrow>{{ row.code or tx['no_value'] }}</rx-column>
+      <rx-column :label="tx['last_price']" align="num">{{ row.price.unit_price | money(currency=row.price.currency) if row.price else tx['no_value'] }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['suppliers.empty']" :message="tx['suppliers.empty_text']" icon="truck"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

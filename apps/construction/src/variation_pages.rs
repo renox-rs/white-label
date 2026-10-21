@@ -20,12 +20,14 @@
 
 use std::collections::BTreeMap;
 
+use renox::axum::http::HeaderMap;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 
 use crate::pages::{answer, date_field, refused, text};
 use crate::permissions;
 use crate::project::Project;
+use crate::screens;
 use crate::texts::t;
 use crate::variation::{self, Abandoning, Decision, NewVariation, VariationKind};
 
@@ -267,10 +269,13 @@ async fn withdraw_variation(
 }
 
 /// `GET /construction/projects/{id}/variation-report`: every variation with
-/// its price, the amount the client approved and the gap, in JSON.
+/// its price, the amount the client approved and the gap: JSON, or a page
+/// for a browser ([`wl_kernel::negotiate::wants_html`]).
 async fn variation_report(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response> {
     let project = Project::find_or_404(&state.db, id).await?;
@@ -286,6 +291,9 @@ async fn variation_report(
         return Err(Error::Forbidden);
     }
     let lines = variation::report_of(&state.db, id).await?;
+    if wl_kernel::negotiate::wants_html(&headers) {
+        return Ok(screens::variations::page(&lang, &project, &lines));
+    }
     let body = renox::serde_json::to_string(&lines)
         .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
     Ok(([("content-type", "application/json")], body).into_response())

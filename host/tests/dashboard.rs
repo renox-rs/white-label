@@ -204,3 +204,28 @@ async fn a_manager_of_one_building_counts_the_units_of_that_building_only() {
     // The shared modules' tiles need their page's permission.
     assert!(tile(&html, "Overdue invoices").is_none());
 }
+
+/// The recent activity reads in words: an action with a text is shown with
+/// it, one without is made readable from its key, and no raw key is shown.
+#[renox::test]
+async fn the_recent_activity_reads_in_words_not_in_keys() {
+    let scene = scene().await;
+    scene.app.acting_as(&scene.admin);
+    for action in [
+        "inventory.item_supplier_added",
+        "something_new.was_done_here",
+    ] {
+        renox::audit::record(
+            scene.app.db(),
+            renox::audit::Entry::new(action).user(scene.admin.id),
+        )
+        .await
+        .unwrap();
+    }
+    let page = scene.app.get("/dashboard").await;
+    page.assert_ok()
+        .assert_see("Supplier added to an item")
+        .assert_see("Something new was done here")
+        .assert_dont_see("inventory.item_supplier_added")
+        .assert_dont_see("something_new.was_done_here");
+}

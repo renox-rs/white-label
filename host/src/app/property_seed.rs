@@ -164,6 +164,7 @@ pub fn sales_for(client_app: &str) -> WlSales {
         super::construction_seed::CONSTRUCTION => super::construction_seed::sales(module),
         "accounting" => super::accounting_seed::sales_for(client_app),
         super::clinics_seed::CLINICS => super::clinics_seed::sales(module),
+        super::logistics_seed::LOGISTICS => super::logistics_seed::sales(module),
         _ => module,
     }
 }
@@ -178,6 +179,7 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
         super::construction_seed::CONSTRUCTION => super::construction_seed::hr(module, owner_role),
         "accounting" => super::accounting_seed::hr_for(client_app, owner_role),
         super::clinics_seed::CLINICS => super::clinics_seed::hr(module, owner_role),
+        super::logistics_seed::LOGISTICS => super::logistics_seed::hr(module),
         _ => module,
     }
 }

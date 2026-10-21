@@ -86,6 +86,10 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         // The 05 money values (BL-CLN-05, BL-CLN-16): see
         // [`super::clinics_money::invoicing`].
         super::clinics_seed::CLINICS => super::clinics_money::invoicing(module, entities),
+        // 03 `FIN.ACL.15`, `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23`,
+        // `FIN.RUL.24`, `FIN.ACL.21` and the e-invoicing scope (BL-LOG-26,
+        // BL-LOG-25): see [`super::logistics_seed::invoicing`].
+        "logistics" => super::logistics_seed::invoicing(module, entities),
         // The retainer of an engagement bills itself: its cycle invoices
         // are issued at once, so that ending the engagement can credit the
         // cycle already invoiced in advance (BL-ACC-06).
@@ -147,6 +151,10 @@ pub fn payments_for(client_app: &str) -> WlPayments {
             // The property manager is told of a bounce and at the reminder,
             // and decides beside the accountant (items 10 and 11).
             .cheque_manager(PROPERTY_MANAGER, true),
+        // 03: a driver's cash shortage up to AED 50 is written off by the
+        // operations manager; the manager of a driver is that role. Salary
+        // deduction stays off (`FIN.ACL.19`, open item L-20).
+        "logistics" => super::logistics_seed::payments(module),
         "construction" => super::construction_seed::payments(module),
         // 04: a bounced cheque adds no fee; the billing role decides with the
         // engagement manager (BL-ACC-24).
@@ -154,6 +162,20 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // 05: pending payments, late confirmation, refund retry and
         // chargebacks (BL-CLN-16).
         super::clinics_seed::CLINICS => super::clinics_money::payments(module),
+        _ => module,
+    }
+}
+
+/// The delivery module for `client_app` (wl-delivery §4 vertical mapping):
+/// 03 offers *client*, *business* and *driver* to the approver of a cash
+/// difference (never the customer, none preselected, `WRK.ACL.09`), and its
+/// drivers' cash escalation is the vertical's own rule (`LOG.RUL.13`, which
+/// replaces `FIN.RUL.22`), and a run can be aborted for *driver unreachable*
+/// (the reason `LOG.RUL.13` uses, BL-DLV-08).
+pub fn delivery_for(client_app: &str) -> wl_delivery::WlDelivery {
+    let module = wl_delivery::WlDelivery::new();
+    match client_app {
+        "logistics" => super::logistics_seed::delivery(module),
         _ => module,
     }
 }
@@ -555,13 +577,20 @@ impl Module for NegativeFlow {
 
 async fn show(State(state): State<AppState>) -> Result<Response> {
     let settings = state.provided::<NegativeFlow>().ok_or(Error::NotFound)?;
-    let rows = rows(&settings.client_app, &settings.entities);
+    // The 03 client has its own table (BL-LOG-26): the rows of the Property
+    // client name Property's tickets, leases and cheques.
+    let rows = if settings.client_app == super::logistics_seed::LOGISTICS {
+        super::logistics_settings::money_rows(&settings.entities)
+    } else {
+        rows(&settings.client_app, &settings.entities)
+    };
     Ok(view("settings/negative_flow.html", context! { rows }).into_response())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::roles::OPERATIONS_MANAGER;
 
     fn entities() -> Vec<String> {
         vec!["PGP".to_owned(), "PGFZ".to_owned()]
@@ -613,6 +642,18 @@ mod tests {
     fn another_client_keeps_the_module_defaults() {
         assert!(!invoicing_for("other", &entities()).config().portal_disputes);
         assert!(!payments_for("other").config().deductions_dispute);
+    }
+
+    #[test]
+    fn the_logistics_client_writes_off_a_shortage_up_to_aed_50_and_never_deducts_wages() {
+        let payments = payments_for("logistics");
+        let config = payments.config();
+        assert_eq!(config.cash_write_off_limit, 5_000);
+        assert_eq!(config.cash_manager_role, OPERATIONS_MANAGER);
+        // L-20 is a setting, off unless a client turns it on.
+        assert!(!config.cash_salary_deduction);
+        assert!(!payments_for("property").config().cash_salary_deduction);
+        assert_eq!(payments_for("other").config().cash_write_off_limit, 0);
     }
 
     #[test]

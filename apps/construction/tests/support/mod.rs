@@ -908,6 +908,8 @@ pub struct Booted {
     clock_days: std::sync::atomic::AtomicI64,
     /// The projects made, for their codes.
     made: std::sync::atomic::AtomicI64,
+    /// Keeps the views directory alive.
+    _views: tempfile::TempDir,
 }
 
 impl Booted {
@@ -1186,6 +1188,16 @@ impl Booted {
         self.app.get(path).await
     }
 
+    /// A GET as `by` the way a browser sends it.
+    pub async fn browse(&self, by: &User, path: &str) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .request()
+            .header("accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+            .get(path)
+            .await
+    }
+
     /// `by` asks for the termination of `project`.
     pub async fn ask_to_terminate(
         &self,
@@ -1287,7 +1299,18 @@ pub async fn boot() -> Booted {
         .module(fakes);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
-    let app = TestApp::new(app).await;
+    // The pages extend the app's layout; a vertical's test has no host, so it
+    // brings the smallest one.
+    let views = tempfile::tempdir().expect("a temporary views directory");
+    let layout = views.path().join("layouts/app.html");
+    std::fs::create_dir_all(layout.parent().unwrap()).unwrap();
+    std::fs::write(
+        &layout,
+        "<!doctype html>\n<html><body><rx-outlet name=\"content\"/></body></html>\n",
+    )
+    .unwrap();
+    let dir = views.path().to_path_buf();
+    let app = TestApp::with_config(app, |c| c.views_path = dir).await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())
         .await
@@ -1363,5 +1386,6 @@ pub async fn boot() -> Booted {
         terminated: Recorded(terminated),
         clock_days: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),
+        _views: views,
     }
 }

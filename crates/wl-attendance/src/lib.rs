@@ -30,6 +30,7 @@ mod texts;
 pub mod timesheet;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use config::AttendanceConfig;
@@ -45,10 +46,16 @@ pub use timesheet::{Timesheet, TimesheetStatus};
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
-const VIEWS: &[(&str, &str)] = &[(
-    "wl-attendance/crew.html",
-    include_str!("../views/wl-attendance/crew.html"),
-)];
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-attendance/crew.html",
+        include_str!("../views/wl-attendance/crew.html"),
+    ),
+    (
+        "wl-attendance/crew_form.html",
+        include_str!("../views/wl-attendance/crew_form.html"),
+    ),
+];
 
 /// The module's permissions (wl-attendance §6).
 pub mod permissions {
@@ -151,7 +158,8 @@ impl Module for WlAttendance {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.view_data::<crew::CrewPage>();
+        app.view_data::<crew::CrewPage>()
+            .view_data::<crew::CrewForm>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -161,6 +169,16 @@ impl Module for WlAttendance {
                 }
             }
         });
+        // The crew list in the app group of the sidebar; the label is the
+        // app's `nav.crew` text.
+        app.nav(
+            "app",
+            NavLink::route("wl_attendance.crew", "nav.crew")
+                .icon("users")
+                .group("nav.app")
+                .order(50)
+                .permission(permissions::MARK),
+        );
         app.model::<WorkLocation>();
         app.model::<AttendanceRecord>();
         app.model::<AttendanceFlag>();

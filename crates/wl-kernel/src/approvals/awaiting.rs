@@ -71,6 +71,87 @@ pub struct AwaitingItem {
     pub url: Option<String>,
 }
 
+/// The actions the platform's modules ask approval for, in words.
+const ACTION_LABELS: &[(&str, &str)] = &[
+    ("accounting.resume", "Resume an engagement"),
+    ("accounting.return_file", "File a return"),
+    ("accounting.tax_profile_change", "Change a tax profile"),
+    ("accounting.wip_write_off", "Write off work in progress"),
+    (
+        "campaigns.cost_over_budget",
+        "Approve a campaign cost over its budget",
+    ),
+    (
+        "construction.deduction_accept",
+        "Accept a deduction above the limit",
+    ),
+    (
+        "construction.po_subcontractor_registration",
+        "Order from a subcontractor without a valid registration",
+    ),
+    ("construction.project_terminate", "Terminate a project"),
+    (
+        "construction.retention_deduction_accept",
+        "Accept a deduction from the retention above the limit",
+    ),
+    ("construction.variation_abandon", "Abandon a variation"),
+    ("documents.block_override", "Override a document block"),
+    ("hr.report_absconding", "Report a worker as absconded"),
+    ("inventory.goods_receipt_post", "Post an over-receipt"),
+    (
+        "inventory.landed_cost_adjust",
+        "Post a landed cost adjustment",
+    ),
+    ("inventory.purchase_order_revise", "Revise a purchase order"),
+    (
+        "inventory.supplier_return_credit",
+        "Credit a return to a supplier",
+    ),
+    (
+        "inventory.supplier_return_dispatch",
+        "Dispatch a return to a supplier",
+    ),
+    ("invoicing.budget_approval", "Approve the company budget"),
+    ("invoicing.dispute_credit", "Credit a disputed invoice"),
+    ("invoicing.owner_drawing", "Approve an owner drawing"),
+    ("invoicing.write_off", "Write off an invoice"),
+    ("kernel.late_entry", "Approve a late attendance entry"),
+    (
+        "notifications.broadcast_approval",
+        "Send a broadcast to its audience",
+    ),
+    (
+        "parties.block_exception",
+        "Allow an exception for a blocked party",
+    ),
+    (
+        "parties.confirm_match",
+        "Confirm a possible screening match",
+    ),
+    ("payments.pay", "Pay out"),
+    ("payments.refund", "Pay a refund"),
+    ("payments.reverse", "Reverse a payment"),
+    ("property.lease_cancel", "Cancel a lease"),
+    ("property.lease_force_terminate", "End a lease by force"),
+    ("property.owner_invoice", "Invoice an owner"),
+    ("property.owner_payout", "Pay an owner"),
+];
+
+/// The action key of a request in words: the app's text
+/// `wl_kernel.approvals.action_<key with underscores>` when it has one, else
+/// the platform's, else the key itself.
+pub fn action_label(lang: &Lang, action: &str) -> String {
+    let key = format!("wl_kernel.approvals.action_{}", action.replace('.', "_"));
+    let found = lang.t(&key, &[]);
+    if found != key {
+        return found;
+    }
+    ACTION_LABELS
+        .iter()
+        .find(|(known, _)| *known == action)
+        .map_or_else(|| action.to_owned(), |(_, label)| (*label).to_owned())
+}
+
 /// The dashboard's approvals for `user` ([`awaiting`]), with the subject's
 /// page from the registry.
 pub async fn awaiting_items(db: &Db, user: &User, lang: &Lang) -> Result<Vec<AwaitingItem>> {
@@ -82,7 +163,7 @@ pub async fn awaiting_items(db: &Db, user: &User, lang: &Lang) -> Result<Vec<Awa
             title: texts::t_with(
                 lang,
                 "wl_kernel.approvals.awaiting.item",
-                &[("action", &request.action)],
+                &[("action", &action_label(lang, &request.action))],
             ),
             url: subject_url(&request.subject_type, request.subject_id),
             subject_type: request.subject_type,
@@ -94,6 +175,15 @@ pub async fn awaiting_items(db: &Db, user: &User, lang: &Lang) -> Result<Vec<Awa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_action_is_labelled_once() {
+        let mut keys: Vec<&str> = ACTION_LABELS.iter().map(|(key, _)| *key).collect();
+        let count = keys.len();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), count, "an action is labelled twice");
+    }
 
     #[test]
     fn a_registered_link_names_the_subjects_page() {

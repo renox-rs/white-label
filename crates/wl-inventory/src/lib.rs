@@ -40,6 +40,8 @@ pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
 pub mod scope_stock;
+mod screen_texts;
+mod screens;
 pub mod shortage_alert;
 pub mod stock_count;
 pub mod stock_hold;
@@ -55,6 +57,7 @@ pub mod transfer;
 use std::sync::Arc;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use config::{InventoryConfig, RejectionReason, ScoreSettings};
@@ -353,6 +356,39 @@ impl Module for WlInventory {
     }
 
     fn register(&self, app: &mut Registry) {
+        app.view_data::<screens::SuppliersPage>()
+            .view_data::<screens::ReorderPage>()
+            .view_data::<screens::ScorePage>()
+            .view_data::<screens::RequestsPage>()
+            .view_data::<screens::RequestPage>();
+        app.templates(|env| {
+            for (name, source) in screens::VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
+        // The requests that wait for a second person, in the app group of the
+        // sidebar; the label is the app's `nav.preferred_requests` text.
+        app.nav(
+            "app",
+            NavLink::route("wl_inventory.preferred_requests", "nav.preferred_requests")
+                .icon("truck")
+                .group("nav.app")
+                .order(60)
+                .when(|user| {
+                    [
+                        permissions::ITEM_SUPPLIERS_APPROVE,
+                        permissions::ITEM_SUPPLIERS_MANAGE,
+                    ]
+                    .iter()
+                    .any(|permission| {
+                        user.allows(permission) || user.has_permission_anywhere(permission)
+                    })
+                }),
+        );
         app.model::<Item>();
         app.model::<Location>();
         app.model::<ItemSupplier>();

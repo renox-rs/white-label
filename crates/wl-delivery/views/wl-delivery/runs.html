@@ -1,0 +1,15 @@
+{#- wl-delivery: the runs list and the form that plans a run. Replace it
+    with resources/views/wl-delivery/runs.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['runs.title']">
+  <rx-page-header :title="tx['runs.title']">
+    <rx-action-sheet rx-if="can_dispatch" id="new-run" :label="tx['runs.new']" :action="route('wl_delivery.runs_store')"
+                     :title="tx['runs.new']" :description="tx['runs.new_description']" :submit-label="tx['runs.create']" icon="plus">
+      <rx-input name="run_date" type="date" :label="tx['fields.date']" id="new-run-date" required/>
+      <rx-input name="driver_user_id" type="number" :label="tx['fields.driver']" id="new-run-driver" required/>
+      <rx-select name="vehicle_type" :label="tx['fields.vehicle_type']" :options="vehicle_types" :selected="'van'" id="new-run-type" required/>
+      <rx-input name="vehicle_asset_id" type="number" :label="tx['fields.vehicle']" :hint="tx['fields.vehicle_hint']" id="new-run-vehicle"/>
+      <rx-input name="depot" :label="tx['fields.depot']" id="new-run-depot"/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="runs"/>
+</rx-page>

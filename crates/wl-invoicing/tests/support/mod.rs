@@ -55,8 +55,8 @@ use wl_kernel::subscriptions::{
     SubscriptionCancelled, SubscriptionPastDue, SubscriptionSettled, SubscriptionSuspended,
 };
 use wl_kernel::tickets::{
-    ContractCover, OpenTicket, ServiceContractCoverage, ServiceContractId, TaskCreator,
-    TicketFuture, TicketId, TicketRef,
+    ContractCover, OpenTicket, ServiceContractCoverage, ServiceContractId, TaskComment,
+    TaskCreator, TicketFuture, TicketId, TicketRef,
 };
 use wl_kernel::{ClientConfig, PartyId, Subject};
 
@@ -700,6 +700,7 @@ impl BankStatements for ForecastDesk {
 pub struct TicketDesk {
     opened: Arc<Mutex<Vec<OpenTicket>>>,
     resolved: Arc<Mutex<Vec<(TicketId, String)>>>,
+    comments: Arc<Mutex<Vec<(TicketId, TaskComment)>>>,
     off: Arc<AtomicBool>,
 }
 
@@ -712,6 +713,11 @@ impl TicketDesk {
     /// The tickets resolved by their source, with the note.
     pub fn resolved(&self) -> Vec<(TicketId, String)> {
         self.resolved.lock().unwrap().clone()
+    }
+
+    /// The comments added to tickets, with their ticket.
+    pub fn comments(&self) -> Vec<(TicketId, TaskComment)> {
+        self.comments.lock().unwrap().clone()
     }
 
     /// Switches ticketing off (`true`) or on again.
@@ -752,6 +758,18 @@ impl TaskCreator for TicketDesk {
                 .unwrap()
                 .push((ticket, note.to_owned()));
             Ok(true)
+        })
+    }
+
+    fn comment<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        comment: TaskComment,
+    ) -> TicketFuture<'a, ()> {
+        Box::pin(async move {
+            self.comments.lock().unwrap().push((ticket, comment));
+            Ok(())
         })
     }
 }

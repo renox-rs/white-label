@@ -24,11 +24,17 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::accounting_seed::parties_for;
 pub use app::clinics_money;
 pub use app::clinics_seed;
+pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
-pub use app::negative_flow::{invoicing_for, payments_for};
+pub use app::logistics_demo;
+pub use app::logistics_rules;
+pub use app::logistics_seed;
+pub use app::logistics_settings;
+pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
 pub use app::roles;
 
 use wl_invoicing::WlInvoicing;
@@ -65,7 +71,13 @@ pub fn try_app() -> Result<renox::App, ConfigError> {
 /// they are refused before anything is booted (`main.rs`): `migrate:fresh`
 /// drops every table, `db:seed` and `property:demo` make the demo logins
 /// (admin@example.com / password123).
-pub const DEMO_COMMANDS: &[&str] = &["migrate:fresh", "db:seed", demo_data::COMMAND];
+pub const DEMO_COMMANDS: &[&str] = &[
+    "migrate:fresh",
+    "db:seed",
+    demo_data::COMMAND,
+    construction_demo::COMMAND,
+    app::logistics_demo::COMMAND,
+];
 
 /// The refusal for `command` when `app_env` is a production environment.
 ///
@@ -157,6 +169,8 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The connections of the Clinics client and their manual fallbacks
     // (BL-CLN-15).
     app::clinics_seed::register_integrations(&client_app);
+    app::logistics_seed::register_integrations(&client_app);
+    app::logistics_rules::register_critical(&client_app);
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
@@ -182,7 +196,7 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         app = app.module(app::property_seed::PropertySeed);
         // The demo company, after the installs: `property:demo`, and `db:seed`
         // in local (never in production).
-        app = app.module(app::demo_data::DemoSeed::new(demo_client));
+        app = app.module(app::demo_data::DemoSeed::new(demo_client.clone()));
     }
     // The 04 client's lead sources, checklists and SOPs (BL-ACC-23).
     if client_app == "accounting" {
@@ -196,6 +210,16 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // BL-CON-18).
     if client_app == app::construction_seed::CONSTRUCTION {
         app = app.module(app::construction_seed::ConstructionSeed);
+        // The demo company, after the installs: `construction:demo`, and
+        // `db:seed` in local (never in production).
+        app = app.module(app::construction_demo::DemoSeed::new(demo_client));
+    }
+    // The Logistics client's demo company, in local only (`logistics:demo`,
+    // and `db:seed`).
+    if client_app == "logistics" {
+        app = app.module(app::logistics_seed::LogisticsSeed);
+        app = app.module(app::logistics_rules::LogisticsRules);
+        app = app.module(app::logistics_demo::LogisticsDemo);
     }
     // The page that shows the shared modules' settings of this client.
     let app = app
@@ -230,12 +254,18 @@ fn with_brand(app: renox::App, name: &str) -> renox::App {
 }
 
 /// The vertical apps built so far, as `[client] app` names them.
-pub const VERTICALS: &[&str] = &["property", "accounting", "construction", "clinics"];
+pub const VERTICALS: &[&str] = &[
+    "property",
+    "accounting",
+    "construction",
+    "clinics",
+    "logistics",
+];
 
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction` and `clinics`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics` and `logistics`"
     ))
 }
 
@@ -256,6 +286,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "accounting" => Ok(app.module(accounting::Accounting)),
         "construction" => Ok(app.module(construction::Construction)),
         "clinics" => Ok(app.module(clinics::Clinics)),
+        "logistics" => Ok(app.module(logistics::Logistics)),
         other => Err(unbuilt_vertical(other)),
     }
 }
@@ -276,6 +307,7 @@ fn enable(
             app::property_seed::register_documents(client_app);
             app::accounting_seed::register_documents(client_app);
             app::clinics_seed::register_documents(client_app);
+            app::logistics_seed::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
             }
@@ -318,6 +350,7 @@ fn enable(
         }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
         "scheduling" => Ok(app.module(app::clinics_seed::scheduling_for(client_app))),
+        "delivery" => Ok(app.module(app::negative_flow::delivery_for(client_app))),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
         ))),

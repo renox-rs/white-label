@@ -6,12 +6,14 @@
 use accounting::permissions as acc;
 use clinics::permissions as cln;
 use construction::permissions as con;
+use logistics::permissions as log;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
 use wl_attendance::permissions as attendance;
+use wl_delivery::permissions as delivery;
 use wl_documents::permissions as documents;
 use wl_hr::permissions as hr;
 use wl_inventory::permissions as inventory;
@@ -109,6 +111,38 @@ pub const NURSE: &str = cln::NURSE_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
+/// The dispatcher: puts deliveries on runs, plans and dispatches runs, and
+/// manages deliveries (wl-delivery §6, 03 roles).
+pub const DISPATCHER: &str = "dispatcher";
+/// The operations manager of a logistics client: approves and reverses
+/// deliveries, approves a COD difference (`WRK.ACL.09`), counts and recounts
+/// drivers' cash, raises a later shortage against a driver and writes small
+/// shortages off within the limit (wl-payments §6, 03 roles; the second
+/// approver of a write-off is another holder of `cash.write_off`).
+pub const OPERATIONS_MANAGER: &str = "operations_manager";
+/// The documentation officer of a logistics client: works the freight jobs
+/// and their customs and shipping documents, delivers, closes and reopens them
+/// (03 §3.1, `LOG.JOB.01`).
+pub const DOCUMENTATION_OFFICER: &str = log::DOCUMENTATION_OFFICER_ROLE;
+/// The fleet manager of a logistics client: vehicles, their documents,
+/// services, fuel and fines; the responsible role of the vehicle document
+/// kinds and the one told when a vehicle is grounded (03 §3.1, `LOG.RUL.10`).
+pub const FLEET_MANAGER: &str = log::FLEET_MANAGER_ROLE;
+/// The cashier of a logistics client: counts the cash drivers hand over and
+/// writes off a shortage up to the limit (03 §3.3, `FIN.ACL.05`,
+/// `FIN.ACL.06`).
+pub const CASHIER: &str = log::CASHIER_ROLE;
+/// A driver or rider: sees today's stops of their own runs and records their
+/// outcomes (wl-delivery §6, `WRK.ACL.05`).
+pub const DRIVER: &str = "driver";
+/// Hub staff: scan parcels in and out of a depot (03 §3.1, `LOG.HUB.01`).
+pub const HUB_STAFF: &str = log::HUB_STAFF_ROLE;
+/// Customer service of a logistics client: answers the client's queries and
+/// flags a COD statement it contests (03 §3.1, `LOG.ACL.12`).
+pub const CUSTOMER_SERVICE: &str = log::CUSTOMER_SERVICE_ROLE;
+/// A client user of a logistics company: books, tracks, voids and cancels its
+/// own shipments in the portal (03 §3.1, `LOG.ACL.02`, `LOG.ACL.09`).
+pub const SHIPPING_CLIENT: &str = log::CLIENT_ROLE;
 /// A site supervisor: marks attendance of the crews and people of their
 /// location and corrects it within the window (wl-attendance §6, `HRM.ACL.01`).
 pub const SUPERVISOR: &str = "supervisor";
@@ -160,6 +194,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             parties::CREATE,
             parties::UPDATE,
             parties::BLOCK,
+            // 03 has no finance manager: the company admin approves the
+            // exception that lets a blocked client's remittance be paid
+            // (`PTY.ACL.03`, BL-LOG-19).
+            parties::BLOCK_EXCEPTION,
             parties::EXPORT,
             documents::VIEW,
             documents::UPLOAD,
@@ -235,6 +273,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::EXPENSES_VIEW,
             payments::EXPENSES_SUBMIT,
             payments::EXPENSES_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            payments::CASH_WRITE_OFF,
             sales::CAMPAIGNS_VIEW,
             sales::CAMPAIGNS_MANAGE,
             sales::CAMPAIGNS_COSTS_MANAGE,
@@ -267,6 +308,39 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::LEAVE_VIEW,
             hr::LEAVE_REQUEST,
             hr::LEAVE_APPROVE,
+            delivery::VIEW,
+            delivery::DISPATCH,
+            delivery::COMPLETE,
+            delivery::MANAGE,
+            delivery::RUNS_VIEW,
+            delivery::RUNS_DISPATCH,
+            delivery::RUNS_DRIVE,
+            delivery::POD_VIEW,
+            delivery::REVERSE,
+            delivery::APPROVE_COD_DIFFERENCE,
+            log::SHIPMENTS_VIEW,
+            log::SHIPMENTS_BOOK,
+            log::SHIPMENTS_MANAGE,
+            log::SHIPMENTS_SCAN,
+            log::SHIPMENTS_DELIVER,
+            log::SHIPMENTS_VOID,
+            log::SHIPMENTS_CANCEL,
+            log::SHIPMENTS_APPROVE_LOSS,
+            log::SHIPMENTS_APPROVE_DISPOSAL,
+            log::FREIGHT_MANAGE,
+            log::JOBS_VIEW,
+            log::JOBS_MANAGE,
+            log::JOBS_DELIVER,
+            log::JOBS_CLOSE,
+            log::JOBS_BILL_CANCELLED,
+            log::REMITTANCES_VIEW,
+            log::REMITTANCES_PREPARE,
+            log::REMITTANCES_APPROVE,
+            log::REMITTANCES_PAY,
+            // A change of the remittance bank account is asked here and
+            // approved by a second user (`LOG.ACL.13`).
+            log::REMITTANCES_REQUEST_ACCOUNT,
+            log::REMITTANCES_DISPUTE,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -320,6 +394,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::PERMITS_MANAGE,
             cln::APPOINTMENTS_CALL,
             inventory::RECALLS_MANAGE,
+            // The last prices and the supplier scores (`STK.SUP.01`).
+            inventory::STOCK_COST_VIEW,
+            inventory::SUPPLIER_SCORES_VIEW,
             con::PROJECTS_VIEW,
             con::PROJECTS_MANAGE,
             con::PROJECTS_TERMINATE,
@@ -609,6 +686,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             con::GUARANTEES_MANAGE,
             invoices::VIEW,
             invoices::CREDIT,
+            // 03: the accountant requests a write-off, which the operations
+            // manager or the company admin approves (`FIN.ACL.15`).
+            invoices::WRITE_OFF,
             invoices::VAT_VIEW,
             invoices::VAT_PREPARE,
             invoices::VAT_REVIEW,
@@ -630,6 +710,21 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::PAYER_BILLS_ISSUE,
             invoices::PAYER_BILLS_RECONCILE,
             invoices::PAYER_BILLS_WRITE_OFF,
+            // 03: prepares and pays COD remittances; a second accountant
+            // approves them and the adjustment lines (`LOG.ACL.07`,
+            // `LOG.ACL.12`).
+            log::JOBS_VIEW,
+            // The accountant decides whether a cost billed to a cancelled job
+            // is invoiced (BL-LOG-23).
+            log::JOBS_BILL_CANCELLED,
+            log::REMITTANCES_VIEW,
+            log::REMITTANCES_PREPARE,
+            log::REMITTANCES_APPROVE,
+            log::REMITTANCES_PAY,
+            // A change of the remittance bank account is asked here and
+            // approved by a second user (`LOG.ACL.13`).
+            log::REMITTANCES_REQUEST_ACCOUNT,
+            log::REMITTANCES_DISPUTE,
             // The accountant works the deadline tasks (04 compliance
             // calendar, wl-ticketing §4.4).
             tickets::TASKS_VIEW,
@@ -666,6 +761,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::EXPENSES_VIEW,
             payments::EXPENSES_SUBMIT,
             payments::EXPENSES_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
         ],
     ),
     (
@@ -678,6 +775,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::CASHFLOW_VIEW,
             payments::EXPENSES_VIEW,
             payments::EXPENSES_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_WRITE_OFF,
             parties::VIEW,
             parties::BLOCK_EXCEPTION,
         ],
@@ -761,6 +860,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::LANDED_COSTS_POST,
             inventory::ITEM_SUPPLIERS_MANAGE,
             inventory::RECALLS_MANAGE,
+            inventory::STOCK_COST_VIEW,
+            inventory::SUPPLIER_SCORES_VIEW,
         ],
     ),
     (
@@ -799,6 +900,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::PURCHASE_ORDERS_ISSUE,
             inventory::ITEM_SUPPLIERS_MANAGE,
             inventory::ITEM_SUPPLIERS_APPROVE,
+            inventory::STOCK_COST_VIEW,
+            inventory::SUPPLIER_SCORES_VIEW,
         ],
     ),
     (
@@ -949,6 +1052,130 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         NURSE,
         &[scheduling::VIEW, cln::VISITS_VIEW, cln::CHARGES_DESK],
+    ),
+    (
+        DISPATCHER,
+        &[
+            delivery::VIEW,
+            delivery::DISPATCH,
+            delivery::MANAGE,
+            delivery::RUNS_VIEW,
+            delivery::RUNS_DISPATCH,
+            delivery::POD_VIEW,
+            // The dispatcher asks to reverse a delivery; the operations
+            // manager or the company admin approves (`WRK.ACL.10`).
+            delivery::REVERSE,
+            log::SHIPMENTS_VIEW,
+            log::SHIPMENTS_BOOK,
+            log::SHIPMENTS_MANAGE,
+            log::SHIPMENTS_VOID,
+            log::SHIPMENTS_CANCEL,
+            log::FREIGHT_MANAGE,
+        ],
+    ),
+    (
+        OPERATIONS_MANAGER,
+        &[
+            // The late e-POD of a driver beyond 24 hours is approved here
+            // (`PLT.ACL.10`), and the digest of voids and late entries goes
+            // to the managers who hold it (`PLT.RUL.06`).
+            wl_kernel::permissions::LATE_ENTRIES_APPROVE,
+            // 03 has no HR role: the operations manager owns the onboarding
+            // checklists of the depot, and `HRM.RUL.17` tells it of a step
+            // that is 5 days overdue (`HRM.ONB.01`).
+            hr::ONBOARDING_VIEW,
+            hr::ONBOARDING_MANAGE,
+            delivery::VIEW,
+            delivery::DISPATCH,
+            delivery::MANAGE,
+            delivery::RUNS_VIEW,
+            delivery::RUNS_DISPATCH,
+            delivery::POD_VIEW,
+            delivery::REVERSE,
+            delivery::APPROVE_COD_DIFFERENCE,
+            payments::VIEW,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            payments::CASH_WRITE_OFF,
+            log::REMITTANCES_VIEW,
+            log::SHIPMENTS_VIEW,
+            log::SHIPMENTS_BOOK,
+            log::SHIPMENTS_MANAGE,
+            log::SHIPMENTS_VOID,
+            log::SHIPMENTS_CANCEL,
+            log::SHIPMENTS_APPROVE_LOSS,
+            log::SHIPMENTS_APPROVE_DISPOSAL,
+            log::FREIGHT_MANAGE,
+            log::JOBS_VIEW,
+        ],
+    ),
+    (
+        FLEET_MANAGER,
+        &[
+            delivery::RUNS_VIEW,
+            documents::VIEW,
+            documents::UPLOAD,
+            log::SHIPMENTS_VIEW,
+        ],
+    ),
+    (
+        CASHIER,
+        &[
+            delivery::RUNS_VIEW,
+            payments::VIEW,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            payments::CASH_WRITE_OFF,
+        ],
+    ),
+    (
+        DOCUMENTATION_OFFICER,
+        &[
+            log::SHIPMENTS_VIEW,
+            log::FREIGHT_MANAGE,
+            log::JOBS_VIEW,
+            log::JOBS_MANAGE,
+            log::JOBS_DELIVER,
+            log::JOBS_CLOSE,
+            // The documentation officer issues the supplementary invoice of a
+            // reopened job (BL-LOG-22) and sees the invoices of its jobs
+            // (`LOG.ACL.11`).
+            invoices::VIEW,
+            invoices::ISSUE,
+        ],
+    ),
+    (
+        DRIVER,
+        &[
+            delivery::RUNS_DRIVE,
+            delivery::COMPLETE,
+            log::SHIPMENTS_SCAN,
+            log::SHIPMENTS_DELIVER,
+        ],
+    ),
+    (HUB_STAFF, &[log::SHIPMENTS_VIEW, log::SHIPMENTS_SCAN]),
+    (
+        CUSTOMER_SERVICE,
+        &[
+            log::SHIPMENTS_VIEW,
+            log::REMITTANCES_VIEW,
+            log::REMITTANCES_DISPUTE,
+            tickets::VIEW,
+            tickets::CREATE,
+        ],
+    ),
+    (
+        SHIPPING_CLIENT,
+        &[
+            log::SHIPMENTS_BOOK,
+            log::SHIPMENTS_VOID,
+            log::SHIPMENTS_CANCEL,
+            // The client asks to change its remittance bank account in the
+            // portal (`LOG.ACL.13`).
+            log::REMITTANCES_REQUEST_ACCOUNT,
+            // It disputes a paid statement in the portal (`LOG.ACL.12`).
+            log::REMITTANCES_DISPUTE,
+        ],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),
     (MEMBER, &[]),

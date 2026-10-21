@@ -1,0 +1,96 @@
+{#- logistics: a freight job: the move, its milestones, containers and hold
+    reason (what the client sees in the portal), and for staff its cost and
+    revenue lines, margin at each close and the actions the person may run.
+    Replace it with resources/views/logistics/freight_job.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="job.number">
+  <rx-stack>
+    <rx-page-header :title="job.number" :subtitle="tx['job_title']" :badge="status_label" :badge-kind="status_kind">
+      {% for action in actions %}
+      <rx-action-sheet :id="action.slug ~ '-' ~ job.id" :label="action.label" :action="action.url"
+                       :title="action.label" :description="action.label" :submit-label="action.label" icon="send">
+        {% for field in action.fields %}
+        <rx-input :name="field.name" :label="field.label" :id="action.slug ~ '-' ~ field.name ~ '-' ~ job.id"/>
+        {% endfor %}
+      </rx-action-sheet>
+      {% endfor %}
+    </rx-page-header>
+    <rx-card rx-if="hold_label" :title="tx['job_on_hold']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['job_hold_reason']" :value="hold_label"/>
+        <rx-entry :label="tx['note']" rx-if="job.hold_note" :value="job.hold_note"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['job_number']" :value="job.number" copyable/>
+        <rx-entry :label="tx['client']" :value="job.client_party_id"/>
+        <rx-entry :label="tx['job_description']" :value="job.description"/>
+        <rx-entry :label="tx['job_mode']" :value="job.mode"/>
+        <rx-entry :label="tx['job_origin']" rx-if="job.origin" :value="job.origin"/>
+        <rx-entry :label="tx['job_destination']" rx-if="job.destination" :value="job.destination"/>
+        <rx-entry :label="tx['job_eta']" rx-if="eta" :value="eta"/>
+        <rx-entry :label="tx['job_bl_awb']" rx-if="job.bl_awb" :value="job.bl_awb"/>
+        <rx-entry :label="tx['job_declaration']" rx-if="job.declaration_no" :value="job.declaration_no"/>
+        <rx-entry :label="tx['job_pod']" rx-if="job.pod_ref" :value="job.pod_ref"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="events" as="event" :key="event.at" :caption="tx['events']" card>
+      <rx-column :label="tx['when']">{{ event.at }}</rx-column>
+      <rx-column :label="tx['what']">{{ event.kind }}</rx-column>
+      <rx-column :label="tx['note']" hide-narrow>{{ event.note }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_events']" icon="history"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="containers" as="container" :key="container.number" :caption="tx['job_containers']" card>
+      <rx-column :label="tx['job_container']">{{ container.number }}</rx-column>
+      <rx-column :label="tx['job_size']" hide-narrow>{{ container.size }}</rx-column>
+      <rx-column :label="tx['job_port_storage_end']" hide-narrow>{{ container.port_storage_end }}</rx-column>
+      <rx-column :label="tx['job_demurrage_end']" hide-narrow>{{ container.demurrage_end }}</rx-column>
+      <rx-column :label="tx['job_detention_end']" hide-narrow>{{ container.detention_end }}</rx-column>
+      <rx-column :label="tx['job_collected_on']" hide-narrow>{{ container.collected_on }}</rx-column>
+      <rx-column :label="tx['job_returned_empty_on']" hide-narrow>{{ container.returned_empty_on }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['job_no_containers']" icon="container"/></rx-slot>
+    </rx-table>
+    {% if staff %}
+    <rx-table :rows="free_time" as="entry" :key="entry.id" :caption="tx['job_free_time_log']" card>
+      <rx-column :label="tx['job_container']">{{ entry.container }}</rx-column>
+      <rx-column :label="tx['job_charge']">{{ entry.charge }}</rx-column>
+      <rx-column :label="tx['when']">{{ entry.day }}</rx-column>
+      <rx-column :label="tx['note']" hide-narrow>{{ entry.note }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['job_no_free_time_log']" icon="calendar"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['job_lines']" card>
+      <rx-column :label="tx['kind']">{{ line.kind }}</rx-column>
+      <rx-column :label="tx['job_line']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['amount']" align="num">{{ line.amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['job_liability']" hide-narrow>{{ line.liability }}</rx-column>
+      <rx-column :label="tx['job_liability_reason']" hide-narrow>{{ line.reason }}</rx-column>
+      <rx-column :label="tx['job_days']" align="num" hide-narrow>{{ line.days }}</rx-column>
+      <rx-column :label="tx['job_decision']" hide-narrow>{{ line.decision }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['job_no_lines']" icon="receipt"/></rx-slot>
+    </rx-table>
+    <rx-card :title="tx['job_cancellation']" rx-if="cancellation">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['job_cancel_stage']" :value="cancellation.stage"/>
+        <rx-entry :label="tx['note']" :value="cancellation.reason"/>
+        <rx-entry :label="tx['job_cancel_charge']" :value="cancellation.charge" format="money"/>
+        <rx-entry :label="tx['job_cancel_recharged']" :value="cancellation.recharged" format="money"/>
+        <rx-entry :label="tx['job_cancel_absorbed']" :value="cancellation.absorbed" format="money"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['job_margin']" rx-if="figures">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['job_revenue']" :value="figures.revenue" format="money"/>
+        <rx-entry :label="tx['job_cost']" :value="figures.cost" format="money"/>
+        <rx-entry :label="tx['job_margin']" :value="figures.margin" format="money"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="margins" as="margin" :key="margin.close_no" :caption="tx['job_margins']" card>
+      <rx-column :label="tx['job_close_no']" align="num">{{ margin.close_no }}</rx-column>
+      <rx-column :label="tx['job_revenue']" align="num">{{ margin.revenue | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['job_cost']" align="num">{{ margin.cost | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['job_margin']" align="num">{{ margin.margin | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['when']" hide-narrow>{{ margin.at }}</rx-column>
+    </rx-table>
+    {% endif %}
+  </rx-stack>
+</rx-page>

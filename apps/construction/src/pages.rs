@@ -2,6 +2,7 @@
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
+//! | `GET /construction/projects` | `construction.projects` | `projects.view` or `projects.manage` in a project |
 //! | `POST /construction/projects/award` | `construction.project_award` | `projects.award` |
 //! | `POST /construction/ipas/{id}/submit` | `construction.ipa_submit` | `ipas.submit` in the project |
 //! | `POST /construction/ipas/{id}/certificate` | `construction.ipa_certificate` | `ipas.certify` in the project |
@@ -34,11 +35,14 @@
 //! | `POST /construction/projects/{id}/retention-notice/dismiss` | `construction.retention_notice_dismiss` | `retentions.manage` in the project |
 //!
 //! The approval of a termination is the kernel's: the MD finds the request
-//! under "Needs your action". The closing screen answers in JSON with the
-//! final account and the warnings of what is still open.
+//! under "Needs your action". The IPA, the closing screen (the final account
+//! and the warnings of what is still open) and, in `variation_pages`, the
+//! variation report answer a page when the request names `text/html` and
+//! JSON otherwise ([`wl_kernel::negotiate`]); the projects list is a page.
 
 use std::collections::BTreeMap;
 
+use renox::axum::http::HeaderMap;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
@@ -59,6 +63,7 @@ use crate::permissions;
 use crate::project::Project;
 use crate::release;
 use crate::retention_deduction::{self, NewRetentionDeduction};
+use crate::screens::{self, closing::Closing};
 use crate::submission;
 use crate::termination::{self, TerminateRequest, TerminationReason};
 use crate::texts::t;
@@ -68,6 +73,8 @@ use crate::vat_notice;
 /// The routes.
 pub fn routes() -> Routes {
     Routes::new()
+        .get("/construction/projects", projects_index)
+        .name("construction.projects")
         .post("/construction/projects/award", award)
         .name("construction.project_award")
         .post("/construction/ipas/{id}/submit", submit_ipa)
@@ -438,6 +445,8 @@ struct IpaView {
 async fn show_ipa(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response> {
     let found = Ipa::find_or_404(&state.db, id).await?;
@@ -452,6 +461,20 @@ async fn show_ipa(
     .any(|permission| user.has_permission_in(permission, &scope))
     {
         return Err(Error::Forbidden);
+    }
+    if wl_kernel::negotiate::wants_html(&headers) {
+        let replaced = match found.replaces_id {
+            Some(earlier) => Ipa::find(&state.db, earlier).await?,
+            None => None,
+        };
+        let lines = deduction::lines_of(&state.db, id).await?;
+        return Ok(screens::ipa::page(
+            &lang,
+            &found,
+            &project,
+            replaced.as_ref(),
+            &lines,
+        ));
     }
     let view = IpaView {
         id: found.id,
@@ -559,6 +582,8 @@ struct RetentionDeductionView {
 async fn closing(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response> {
     let project = Project::find_or_404(&state.db, id).await?;
@@ -570,6 +595,26 @@ async fn closing(
     }
     let account = ipa::final_account_of(&state.db, id).await?;
     let warnings = final_account::closing_warnings(&state, id).await?;
+    let deductions = deduction::final_account_items(&state.db, id).await?;
+    let retention_deductions = retention_deduction::contested_of(&state.db, id).await?;
+    let calls = call::claims_of(&state.db, id).await?;
+    let claims = variation::claims_of(&state.db, id).await?;
+    let unrecovered = variation::unrecovered_of(&state.db, id).await?;
+    if wl_kernel::negotiate::wants_html(&headers) {
+        return Ok(screens::closing::page(
+            &lang,
+            &Closing {
+                project: &project,
+                account: account.as_ref(),
+                warnings: warnings.texts(),
+                deductions: &deductions,
+                retention_deductions: &retention_deductions,
+                calls: &calls,
+                claims: &claims,
+                unrecovered: &unrecovered,
+            },
+        ));
+    }
     let view = ClosingView {
         status: project.status.as_str(),
         termination_reason: project.termination_reason.clone(),
@@ -585,13 +630,8 @@ async fn closing(
         }),
         warning_texts: warnings.texts(),
         warnings,
-        contested_deductions: deduction::final_account_items(&state.db, id)
-            .await?
-            .iter()
-            .map(DeductionView::of)
-            .collect(),
-        contested_retention_deductions: retention_deduction::contested_of(&state.db, id)
-            .await?
+        contested_deductions: deductions.iter().map(DeductionView::of).collect(),
+        contested_retention_deductions: retention_deductions
             .iter()
             .map(|line| RetentionDeductionView {
                 id: line.id,
@@ -602,8 +642,7 @@ async fn closing(
                 status: line.status.as_str(),
             })
             .collect(),
-        guarantee_call_claims: call::claims_of(&state.db, id)
-            .await?
+        guarantee_call_claims: calls
             .iter()
             .map(|claim| GuaranteeCallView {
                 id: claim.id,
@@ -612,20 +651,29 @@ async fn closing(
                 amount_paid: claim.amount_paid.unwrap_or_default(),
             })
             .collect(),
-        variation_claims: variation::claims_of(&state.db, id)
-            .await?
-            .iter()
-            .map(VariationView::of)
-            .collect(),
-        unrecovered_variations: variation::unrecovered_of(&state.db, id)
-            .await?
-            .iter()
-            .map(VariationView::of)
-            .collect(),
+        variation_claims: claims.iter().map(VariationView::of).collect(),
+        unrecovered_variations: unrecovered.iter().map(VariationView::of).collect(),
     };
     let body = renox::serde_json::to_string(&view)
         .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
     Ok(([("content-type", "application/json")], body).into_response())
+}
+
+/// `GET /construction/projects`: the projects the person may see, as a
+/// page. 403 for a person who holds neither `projects.view` nor
+/// `projects.manage` in any project.
+async fn projects_index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+) -> Result<Response> {
+    let may = [permissions::PROJECTS_VIEW, permissions::PROJECTS_MANAGE]
+        .iter()
+        .any(|permission| user.allows(permission) || user.has_permission_anywhere(permission));
+    if !may {
+        return Err(Error::Forbidden);
+    }
+    screens::projects::page(&state, &user, &lang).await
 }
 
 /// `POST /construction/projects/{id}/settle`.

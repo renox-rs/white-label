@@ -1,0 +1,44 @@
+# The demo client of F2 (02 Construction): a Dubai fit-out and MEP
+# subcontractor. Data is fictional. Boot it with
+# CLIENT_CONFIG=clients/demo-construction/client.toml; `construction:demo`
+# (and `db:seed` in local) fills it with the demo company.
+
+[client]
+name    = "Al Waha Interiors & Fit-out LLC"
+app     = "construction"
+domain  = "demo.alwaha.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#B45309"
+second       = "#1D4ED8"
+display_font = "Poppins"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "hr", "attendance", "inventory", "portal"]
+
+[[legal_entities]]
+code      = "AWI"
+name_en   = "Al Waha Interiors & Fit-out LLC"
+name_ar   = "الواحة للتصميم الداخلي والتجهيز ذ.م.م"
+emirate   = "dubai"
+licensing_authority = "Dubai Department of Economy and Tourism"
+trade_licence_no = "7654321"
+trn       = "100000000000003"
+address_en = "Office 305, Al Quoz Business Centre, Al Quoz Industrial 3, Dubai"
+default   = true
+
+# The UAE public holidays the business-day counts skip, for example the site
+# working days of an absence case (`CON.RUL.08`). Fixed dates are listed; the
+# moon-sighted ones follow the official announcement and are amended here
+# each year.
+[calendar]
+holidays = [
+  "2026-01-01",
+  "2026-03-20", "2026-03-21", "2026-03-22",
+  "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29",
+  "2026-06-16",
+  "2026-08-25",
+  "2026-12-02", "2026-12-03",
+  "2027-01-01",
+]

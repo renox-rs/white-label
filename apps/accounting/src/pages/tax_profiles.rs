@@ -5,6 +5,7 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `GET /accounting/clients/{party}/tax-profile` | `accounting.tax_profile` | `tax_profiles.view` |
+//! | `POST /accounting/clients/{party}/tax-profile` | `accounting.tax_profile_record` | `tax_profiles.manage` (the first version only) |
 //! | `POST /accounting/clients/{party}/tax-profile/change` | `accounting.tax_profile_change` | `tax_profiles.manage` |
 //! | `POST /accounting/clients/{party}/tax-profile/contact` | `accounting.tax_profile_contact` | `tax_profiles.manage` |
 //! | `GET /accounting/tax-profile-changes/{id}` | `accounting.tax_profile_change_show` | `tax_profiles.view` (the link of the approval request) |
@@ -21,7 +22,7 @@ use wl_kernel::documents::today;
 
 use super::{Texts, invalid, party_name, require, text, user_name};
 use crate::permissions;
-use crate::tax_profile::{TaxProfile, VatPeriod};
+use crate::tax_profile::{self, TaxProfile, VatPeriod};
 use crate::tax_profile_change::{self, TaxProfileChange};
 use crate::texts;
 
@@ -30,6 +31,8 @@ pub fn routes() -> Routes {
     Routes::new()
         .get("/accounting/clients/{party}/tax-profile", show)
         .name("accounting.tax_profile")
+        .post("/accounting/clients/{party}/tax-profile", record_first)
+        .name("accounting.tax_profile_record")
         .post("/accounting/clients/{party}/tax-profile/change", change)
         .name("accounting.tax_profile_change")
         .post("/accounting/clients/{party}/tax-profile/contact", contact)
@@ -77,6 +80,7 @@ pub(crate) struct ShowPage {
     versions: Vec<VersionRow>,
     waiting: Option<PendingView>,
     can_manage: bool,
+    can_record: bool,
     periods: Vec<[String; 2]>,
     period_selected: String,
     trn: String,
@@ -171,6 +175,7 @@ async fn show(
         versions: rows,
         waiting: pending,
         can_manage: user.has_permission(permissions::TAX_PROFILES_MANAGE) && !versions.is_empty(),
+        can_record: user.has_permission(permissions::TAX_PROFILES_MANAGE) && versions.is_empty(),
         periods,
         period_selected: latest.vat_period.as_str().to_owned(),
         trn: latest.trn.clone().unwrap_or_default(),
@@ -240,6 +245,53 @@ fn date_of(value: &str, field: &str) -> Result<Option<NaiveDate>> {
         .map_err(|_| invalid(&format!("{field}: YYYY-MM-DD")))
 }
 
+/// The profile the form describes, without its effective date.
+fn profile_of(form: &ChangeForm, party: i64) -> Result<TaxProfile> {
+    let vat_period = VatPeriod::ALL
+        .iter()
+        .copied()
+        .find(|p| p.as_str() == form.vat_period.trim())
+        .unwrap_or_default();
+    Ok(TaxProfile {
+        client_party_id: party,
+        trn: optional(&form.trn),
+        vat_registered: ticked(&form.vat_registered),
+        vat_period,
+        vat_first_period_end: date_of(&form.vat_first_period_end, "vat_first_period_end")?,
+        financial_year_end: date_of(&form.financial_year_end, "financial_year_end")?,
+        ct_registration_no: optional(&form.ct_registration_no),
+        small_business_relief: ticked(&form.small_business_relief),
+        qfzp: ticked(&form.qfzp),
+        ..TaxProfile::default()
+    })
+}
+
+/// `POST /accounting/clients/{party}/tax-profile`: records the first version
+/// of the client's profile, the onboarding record `activate` waits for (04
+/// §4.1 step 7). It counts as approved by the user who records it
+/// (`tax_profile::record`); a client that has a profile changes it with
+/// [`change`], which another manager approves (`ACC.ACL.13`).
+async fn record_first(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(party): Path<i64>,
+    Form(form): Form<ChangeForm>,
+) -> Result<Response> {
+    require(&user, permissions::TAX_PROFILES_MANAGE)?;
+    let effective = date_of(&form.effective_date, "effective_date")?
+        .ok_or_else(|| invalid("effective_date: YYYY-MM-DD"))?;
+    let mut profile = profile_of(&form, party)?;
+    profile.effective_date = effective;
+    profile.notes = optional(&form.note);
+    tax_profile::record(&state.db, Some(user.id), profile).await?;
+    Ok((
+        Toast::success(text(&lang, "tax_profile.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
 /// `POST /accounting/clients/{party}/tax-profile/change`.
 async fn change(
     State(state): State<AppState>,
@@ -251,23 +303,7 @@ async fn change(
     require(&user, permissions::TAX_PROFILES_MANAGE)?;
     let effective = date_of(&form.effective_date, "effective_date")?
         .ok_or_else(|| invalid("effective_date: YYYY-MM-DD"))?;
-    let vat_period = VatPeriod::ALL
-        .iter()
-        .copied()
-        .find(|p| p.as_str() == form.vat_period.trim())
-        .unwrap_or_default();
-    let proposed = TaxProfile {
-        client_party_id: party,
-        trn: optional(&form.trn),
-        vat_registered: ticked(&form.vat_registered),
-        vat_period,
-        vat_first_period_end: date_of(&form.vat_first_period_end, "vat_first_period_end")?,
-        financial_year_end: date_of(&form.financial_year_end, "financial_year_end")?,
-        ct_registration_no: optional(&form.ct_registration_no),
-        small_business_relief: ticked(&form.small_business_relief),
-        qfzp: ticked(&form.qfzp),
-        ..TaxProfile::default()
-    };
+    let proposed = profile_of(&form, party)?;
     tax_profile_change::request(
         &state,
         &user,

@@ -7,6 +7,21 @@
 <rx-page layout="layouts/app.html" :title="tx['tax_profile.title']">
   <rx-stack>
     <rx-page-header :title="tx['tax_profile.title']" :subtitle="client">
+      <template rx-if="can_record">
+        <rx-action-sheet id="tax-profile-record" :label="tx['tax_profile.record']" :action="route('accounting.tax_profile_record', party)"
+                         :title="tx['tax_profile.record']" :description="tx['tax_profile.record_description']" :submit-label="tx['tax_profile.record']" icon="plus">
+          <rx-input name="trn" :label="tx['tax_profile.field.trn']" id="tax-profile-record-trn"/>
+          <rx-checkbox name="vat_registered" :label="tx['tax_profile.field.vat_registered']" id="tax-profile-record-vat-registered"/>
+          <rx-select name="vat_period" :label="tx['tax_profile.field.vat_period']" :options="periods" :selected="'not_registered'" id="tax-profile-record-vat-period"/>
+          <rx-input name="vat_first_period_end" type="date" :label="tx['tax_profile.field.vat_first_period_end']" id="tax-profile-record-vat-first"/>
+          <rx-input name="financial_year_end" type="date" :label="tx['tax_profile.field.financial_year_end']" id="tax-profile-record-year-end"/>
+          <rx-input name="ct_registration_no" :label="tx['tax_profile.field.ct_registration_no']" id="tax-profile-record-ct"/>
+          <rx-checkbox name="small_business_relief" :label="tx['tax_profile.field.small_business_relief']" id="tax-profile-record-sbr"/>
+          <rx-checkbox name="qfzp" :label="tx['tax_profile.field.qfzp']" id="tax-profile-record-qfzp"/>
+          <rx-input name="effective_date" type="date" :label="tx['tax_profile.effective']" :value="today" id="tax-profile-record-effective" required/>
+          <rx-textarea name="note" :label="tx['tax_profile.field.notes']" id="tax-profile-record-note"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_manage">
         <rx-action-sheet id="tax-profile-change" :label="tx['tax_profile.change']" :action="route('accounting.tax_profile_change', party)"
                          :title="tx['tax_profile.change']" :description="tx['tax_profile.change_description']" :submit-label="tx['tax_profile.change']" icon="pencil">

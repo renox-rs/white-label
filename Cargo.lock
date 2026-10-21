@@ -959,12 +959,14 @@ dependencies = [
  "clinics",
  "construction",
  "http-body-util",
+ "logistics",
  "property",
  "renox",
  "serde",
  "sha2 0.11.1",
  "tower",
  "wl-attendance",
+ "wl-delivery",
  "wl-documents",
  "wl-hr",
  "wl-inventory",
@@ -1465,6 +1467,22 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "logistics"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-attendance",
+ "wl-delivery",
+ "wl-hr",
+ "wl-invoicing",
+ "wl-kernel",
+ "wl-parties",
+ "wl-payments",
+]
 
 [[package]]
 name = "matchers"
@@ -3504,6 +3522,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "wl-delivery"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-documents",
+ "wl-hr",
+ "wl-kernel",
+ "wl-payments",
+ "wl-ticketing",
+]
+
+[[package]]
 name = "wl-documents"
 version = "0.1.0"
 dependencies = [
@@ -3544,6 +3576,7 @@ dependencies = [
  "serde",
  "sha2 0.11.1",
  "tempfile",
+ "wl-delivery",
  "wl-kernel",
  "wl-payments",
  "wl-ticketing",

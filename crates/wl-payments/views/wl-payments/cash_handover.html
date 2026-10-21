@@ -1,0 +1,97 @@
+{#- wl-payments: a cash handover's page: its status and amounts, the actions
+    (count, recount, record a recovery, recover, write off, and a salary
+    deduction when the client turned it on), what was collected, the counts,
+    the recoveries, the postings and the history. Replace it with
+    resources/views/wl-payments/cash_handover.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="holder_name" :back="route('wl_payments.cash.index')" :back-label="tx['cash.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="can_count" :id="'count-cash-' ~ handover.id" :label="tx['cash.count.action']" :action="route('wl_payments.cash.count', handover.id)"
+                       :title="tx['cash.count.title']" :description="tx['cash.count.description']" :submit-label="tx['cash.count.submit']" icon="calculator">
+        <rx-input name="counted" :label="tx['cash.counted']" :hint="tx['cash.amount_hint']" :id="'count-amount-' ~ handover.id" required/>
+        <rx-checkbox name="absent" :label="tx['cash.absent']" :id="'count-absent-' ~ handover.id"/>
+        <rx-textarea name="note" :label="tx['cash.note']" :id="'count-note-' ~ handover.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_recount" :id="'recount-cash-' ~ handover.id" :label="tx['cash.recount.action']" :action="route('wl_payments.cash.recount', handover.id)"
+                       :title="tx['cash.recount.title']" :description="tx['cash.recount.description']" :submit-label="tx['cash.recount.submit']" icon="calculator">
+        <rx-input name="counted" :label="tx['cash.counted']" :hint="tx['cash.amount_hint']" :id="'recount-amount-' ~ handover.id" required/>
+        <rx-select name="holder_present" :label="tx['cash.holder_present']" :options="presence" :selected="''" :id="'recount-present-' ~ handover.id"/>
+        <rx-checkbox name="absent" :label="tx['cash.absent']" :id="'recount-absent-' ~ handover.id"/>
+        <rx-textarea name="note" :label="tx['cash.note']" :id="'recount-note-' ~ handover.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_record" :id="'recovery-cash-' ~ handover.id" :label="tx['cash.recovery.action']" :action="route('wl_payments.cash.recovery', handover.id)"
+                       :title="tx['cash.recovery.title']" :description="tx['cash.recovery.description']" :submit-label="tx['cash.recovery.submit']" icon="hand-coins">
+        <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['cash.amount_hint']" :id="'recovery-amount-' ~ handover.id" required/>
+        <rx-textarea name="note" :label="tx['cash.note']" :id="'recovery-note-' ~ handover.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_deduct" :id="'deduction-cash-' ~ handover.id" :label="tx['cash.deduction.action']" :action="route('wl_payments.cash.deduction', handover.id)"
+                       :title="tx['cash.deduction.title']" :description="tx['cash.deduction.description']" :submit-label="tx['cash.deduction.submit']" icon="wallet">
+        <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['cash.amount_hint']" :id="'deduction-amount-' ~ handover.id" required/>
+        <rx-textarea name="note" :label="tx['cash.note']" :id="'deduction-note-' ~ handover.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_recover" :id="'recover-cash-' ~ handover.id" :label="tx['cash.recover.action']" :action="route('wl_payments.cash.recover', handover.id)"
+                       :title="tx['cash.recover.title']" :description="tx['cash.recover.description']" :submit-label="tx['cash.recover.submit']" icon="circle-check">
+        <rx-input name="amount" :label="tx['cash.recover.amount']" :hint="tx['cash.recover.amount_hint']" :id="'recover-amount-' ~ handover.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_write_off" :id="'write-off-cash-' ~ handover.id" :label="tx['cash.write_off.action']" :action="route('wl_payments.cash.write_off', handover.id)"
+                       :title="tx['cash.write_off.title']" :description="tx['cash.write_off.description']" :submit-label="tx['cash.write_off.submit']"
+                       icon="file-x" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['cash.write_off.reason']" :id="'write-off-reason-' ~ handover.id" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card :title="tx['cash.sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['cash.holder']" :value="holder_name"/>
+        <rx-entry :label="tx['cash.period']" :value="period"/>
+        <rx-entry :label="tx['cash.kind']" :value="kind_label"/>
+        <rx-entry :label="tx['cash.source']" rx-if="source_label" :value="source_label"/>
+        <rx-entry :label="tx['cash.expected']" :value="expected"/>
+        <rx-entry :label="tx['cash.counted']" :value="counted"/>
+        <rx-entry :label="tx['cash.difference']" :value="difference"/>
+        <rx-entry :label="tx['cash.overage']" :value="overage"/>
+        <rx-entry :label="tx['cash.recovered']" :value="recovered"/>
+        <rx-entry :label="tx['cash.rest']" :value="rest"/>
+        <rx-entry :label="tx['cash.written_off']" :value="written_off"/>
+        <rx-entry :label="tx['cash.reason']" rx-if="handover.reason" :value="handover.reason" span="2"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="recoveries" as="recovery" :key="recovery.id" :caption="tx['cash.sections.recoveries']" card>
+      <rx-column :label="tx['cash.recovery.kind']">{{ recovery.kind }}</rx-column>
+      <rx-column :label="tx['fields.amount']">{{ recovery.amount }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="recovery.status_kind" :text="recovery.status"/></rx-column>
+      <rx-column :label="tx['cash.note']" hide-narrow>{{ recovery.note }}</rx-column>
+      <rx-column :label="tx['cash.actions']">
+        <rx-confirm rx-if="recovery.can_acknowledge" :id="'ack-' ~ recovery.id" :label="tx['cash.acknowledge.action']" :action="route('wl_payments.cash.acknowledge', recovery.id)" method="POST"
+                    :title="tx['cash.acknowledge.title']" :message="tx['cash.acknowledge.message']" :confirm-label="tx['cash.acknowledge.action']" icon="check"/>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cash.no_recoveries']" icon="hand-coins"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="counts" as="count" :key="count.id" :caption="tx['cash.sections.counts']" card>
+      <rx-column :label="tx['cash.count.kind']">{{ count.kind }}</rx-column>
+      <rx-column :label="tx['cash.counted']">{{ count.amount }}</rx-column>
+      <rx-column :label="tx['cash.counter']">{{ count.counter }}</rx-column>
+      <rx-column :label="tx['cash.holder_present']" hide-narrow>{{ count.holder }}</rx-column>
+      <rx-column :label="tx['cash.note']" hide-narrow>{{ count.note }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cash.no_counts']" icon="calculator"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="entries" as="entry" :key="entry.id" :caption="tx['cash.sections.entries']" card>
+      <rx-column :label="tx['cash.source']">{{ entry.source }}</rx-column>
+      <rx-column :label="tx['fields.amount']">{{ entry.amount }}</rx-column>
+      <rx-column :label="tx['cash.note']" hide-narrow>{{ entry.note }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cash.no_entries']" icon="banknote"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="postings" as="posting" :key="posting.id" :caption="tx['cash.sections.postings']" card>
+      <rx-column :label="tx['cash.posting.kind']">{{ posting.kind }}</rx-column>
+      <rx-column :label="tx['fields.amount']">{{ posting.amount }}</rx-column>
+      <rx-column :label="tx['cash.location']" hide-narrow>{{ posting.location }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cash.no_postings']" icon="landmark"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

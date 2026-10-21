@@ -125,6 +125,10 @@ pub fn parties_for(client_app: &str) -> WlParties {
             .freeze_task_due_hours(24)
             .report_task_due_hours(24)
             .exception_approver(COMPLIANCE),
+        // 03 has no finance manager: the company admin approves the exception
+        // that lets a blocked client's COD remittance be paid, never the
+        // requester (`PTY.ACL.03`, BL-LOG-19).
+        "logistics" => module.exception_approver(wl_kernel::COMPANY_ADMIN_ROLE),
         _ => module,
     }
 }

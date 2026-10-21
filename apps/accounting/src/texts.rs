@@ -69,6 +69,11 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.engagements.ended_on", "Ended on"),
     ("accounting.engagements.cdd", "CDD file"),
     ("accounting.engagements.open_cdd", "Open the CDD file"),
+    (
+        "accounting.engagements.open_cdd_message",
+        "Starts the client's customer due diligence file, with the client company as its first screened party. The engagement can be activated once the file is approved.",
+    ),
+    ("accounting.engagements.cdd_opened", "The CDD file is open."),
     ("accounting.engagements.activate", "Activate"),
     (
         "accounting.engagements.activate_message",
@@ -244,6 +249,12 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.tax_profile.empty", "No tax profile recorded"),
     ("accounting.tax_profile.effective", "Effective from"),
     ("accounting.tax_profile.approved_by", "Approved by"),
+    ("accounting.tax_profile.record", "Record the tax profile"),
+    (
+        "accounting.tax_profile.record_description",
+        "The client's tax facts at onboarding. The engagement can be activated once the profile is complete; later changes to what drives the calendar wait for a manager other than you.",
+    ),
+    ("accounting.tax_profile.recorded", "Tax profile recorded."),
     ("accounting.tax_profile.change", "Change the profile"),
     (
         "accounting.tax_profile.change_description",

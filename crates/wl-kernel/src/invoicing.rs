@@ -824,6 +824,19 @@ pub trait Invoicer: Send + Sync + 'static {
         Box::pin(async { Ok(Vec::new()) })
     }
 
+    /// The open invoices of `party` with a balance (`issued`, `partially_paid`
+    /// or `overdue`; disputed ones included, with their flag), oldest due
+    /// date first, then oldest id: what a vertical nets against money it owes
+    /// the party (03 Logistics COD netting, `LOG.COD.01`). The default has
+    /// none (invoicing is not enabled).
+    fn open_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+    ) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// Flags an issued, partly paid or overdue invoice as disputed and
     /// returns the dispute's id. The flag is not a state change. The default
     /// refuses (422): invoicing is not enabled.
