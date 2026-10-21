@@ -39,6 +39,12 @@
           <rx-input name="starts_at" type="datetime-local" :label="tx['booking.starts_at']" :value="starts_input" id="reschedule-booking-start" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_waive">
+        <rx-action-sheet id="waive-deposit" :label="tx['deposit.waive']" :action="route('wl_scheduling.booking_waive_deposit', booking.id)"
+                         :title="tx['deposit.waive']" :submit-label="tx['deposit.waive']" icon="refresh-cw">
+          <rx-textarea name="reason" :label="tx['booking.reason']" id="waive-deposit-reason"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_cancel">
         <rx-action-sheet id="cancel-booking" :label="tx['booking.cancel']" :action="route('wl_scheduling.booking_cancel', booking.id)"
                          :title="tx['booking.cancel']" :submit-label="tx['booking.cancel']" icon="x">
@@ -58,6 +64,7 @@
         <rx-entry :label="tx['booking.source']" :value="source"/>
         <rx-entry :label="tx['booking.notes']" :value="notes" :placeholder="tx['none']"/>
         <rx-entry :label="tx['booking.cancel_reason']" :value="cancel_reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['deposit.title']" :value="deposit" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
   </rx-stack>

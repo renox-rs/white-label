@@ -12,6 +12,7 @@
 //! | `POST /scheduling/bookings/{id}/cancel` | `wl_scheduling.booking_cancel` | `bookings.manage` |
 //! | `POST /scheduling/bookings/{id}/mark-no-show` | `wl_scheduling.booking_no_show` | `bookings.manage` |
 //! | `POST /scheduling/bookings/{id}/complete` | `wl_scheduling.booking_complete` | `bookings.manage` |
+//! | `POST /scheduling/bookings/{id}/waive-deposit` | `wl_scheduling.booking_waive_deposit` | `bookings.waive_deposit` |
 //! | `POST /scheduling/bookings/{id}/check-in` | `wl_scheduling.booking_check_in` | `bookings.checkin` |
 //! | `POST /scheduling/bookings/{id}/start` | `wl_scheduling.booking_start` | `bookings.checkin` |
 //!
@@ -30,6 +31,7 @@ use wl_kernel::scheduling::Initiator;
 use wl_kernel::{PartyId, Subject};
 
 use crate::booking::{Booking, BookingStatus, REASON_CODES, WALKED_OUT};
+use crate::deposit::{self, money_text};
 use crate::resource::{Resource, ServiceType};
 use crate::service::{self, Actor, CancelRequest, NewBooking};
 use crate::{permissions, texts};
@@ -67,6 +69,12 @@ pub fn routes() -> Routes {
                 .post("/scheduling/bookings/{id}/complete", complete)
                 .name("wl_scheduling.booking_complete")
                 .require_permission(permissions::MANAGE),
+        )
+        .merge(
+            Routes::new()
+                .post("/scheduling/bookings/{id}/waive-deposit", waive_deposit)
+                .name("wl_scheduling.booking_waive_deposit")
+                .require_permission(permissions::WAIVE_DEPOSIT),
         )
         .merge(
             Routes::new()
@@ -227,6 +235,8 @@ pub(crate) struct ShowPage {
     can_no_show: bool,
     can_cancel: bool,
     starts_input: String,
+    deposit: String,
+    can_waive: bool,
 }
 
 /// `GET /scheduling/bookings/{id}`.
@@ -289,7 +299,22 @@ async fn show(
         can_no_show: manage && matches!(status, BookingStatus::Booked | BookingStatus::Confirmed),
         can_cancel: manage && status.is_open(),
         starts_input: local_text(booking.starts_at),
+        deposit: deposit_text(&lang, &booking),
+        can_waive: user.has_permission(permissions::WAIVE_DEPOSIT) && booking.deposit_forfeited > 0,
     }))
+}
+
+/// The deposit in one line: the amount and what became of it, empty for a
+/// booking without one.
+fn deposit_text(lang: &Lang, booking: &Booking) -> String {
+    if booking.deposit_amount <= 0 {
+        return String::new();
+    }
+    let state = match booking.deposit_outcome.as_deref() {
+        Some(outcome) => text(lang, &format!("deposit.{outcome}")),
+        None => text(lang, "deposit.held"),
+    };
+    format!("{} · {state}", money_text(booking.deposit_amount))
 }
 
 fn done(lang: &Lang, key: &str, id: i64) -> Result<Response> {
@@ -441,6 +466,21 @@ async fn cancel(
         .await
         .map_err(|refusal| refusal.into_error(&lang))?;
     done(&lang, "booking.cancelled", id)
+}
+
+/// `POST /scheduling/bookings/{id}/waive-deposit`: `reason` is required; the
+/// route needs `bookings.waive_deposit`.
+async fn waive_deposit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    deposit::waive(&state, id, field(&form, "reason"), Actor::staff(user.id))
+        .await
+        .map_err(|refusal| refusal.into_error(&lang))?;
+    done(&lang, "deposit.waived", id)
 }
 
 /// `POST /scheduling/bookings/{id}/mark-no-show`.
