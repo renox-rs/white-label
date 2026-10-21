@@ -359,7 +359,7 @@ pub async fn flag_bookings(
             resource_id,
             ConflictCause::Eligibility,
             None,
-            Some(&item),
+            Some(item.as_str()),
             &group,
             at,
         )

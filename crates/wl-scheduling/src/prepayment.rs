@@ -343,7 +343,7 @@ async fn refund_late(
             .where_(PrepaymentRefund::PAYMENT_ID.eq(event.payment.0))
             .exists(&state.db)
             .await?;
-        return if claimed { Ok(()) } else { Err(error) };
+        return if claimed { Ok(()) } else { Err(error.into()) };
     }
     let entity = LegalEntity::default_entity(&state.db).await?;
     let request = RefundRequest {
