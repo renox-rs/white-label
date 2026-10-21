@@ -150,6 +150,9 @@ pub struct World {
     pub docs: User,
     /// A user who can see freight jobs and work them but not close them.
     pub docs_limited: User,
+    /// The client the freight job helpers open their jobs for: Souq Express
+    /// unless a test sets another.
+    pub job_client: Mutex<PartyId>,
     /// The party directory (the real wl-payments knows the clients through
     /// it); blocking a client is done here. Not used when the real
     /// wl-parties is booted ([`boot_with_parties`]).
@@ -209,13 +212,13 @@ impl Module for Probe {
 
 /// The app booted with the real wl-delivery.
 pub async fn boot() -> World {
-    boot_with(false, false).await
+    boot_with(false, false, false).await
 }
 
 /// The app booted with the real wl-delivery and the real wl-payments (the
 /// payout of a COD remittance is a voucher there).
 pub async fn boot_with_payments() -> World {
-    boot_with(true, false).await
+    boot_with(true, false, false).await
 }
 
 /// The app booted with the real wl-delivery, wl-payments and wl-parties: the
@@ -223,10 +226,17 @@ pub async fn boot_with_payments() -> World {
 /// block is the real block guard and the company admin approves the exception
 /// of `PTY.ACL.03`.
 pub async fn boot_with_parties() -> World {
-    boot_with(true, true).await
+    boot_with(true, true, false).await
 }
 
-async fn boot_with(real_payments: bool, real_parties: bool) -> World {
+/// [`boot_with_parties`] with the real wl-invoicing too: the drafts are real
+/// invoices (`World::invoices` stays empty), issued by users who hold
+/// `invoices.issue`.
+pub async fn boot_with_invoicing() -> World {
+    boot_with(true, true, true).await
+}
+
+async fn boot_with(real_payments: bool, real_parties: bool, real_invoicing: bool) -> World {
     let real_payments = real_payments || real_parties;
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
@@ -273,9 +283,15 @@ async fn boot_with(real_payments: bool, real_parties: bool) -> World {
         .provide(notifier)
         .provide(portal_users)
         .provide(task_creator)
-        .provide(invoicer)
         .provide(shift_calendar)
         .provide(history);
+    // The recording stand-in answers the invoicing contract unless the real
+    // wl-invoicing does.
+    let app = if real_invoicing {
+        app.module(wl_invoicing::WlInvoicing::new())
+    } else {
+        app.provide(invoicer)
+    };
     let app = if real_parties {
         // The real wl-parties is the directory and the block guard; 03 has no
         // finance manager, so the company admin approves an exception.
@@ -296,7 +312,7 @@ async fn boot_with(real_payments: bool, real_parties: bool) -> World {
     let app = record(app, &shipment_delivered);
     let app = record(app, &shipment_lost);
     let app = record(app, &absences);
-    let client = if real_payments {
+    let client = if real_payments || real_invoicing {
         CLIENT.replace(
             "[\"parties\", \"delivery\"]",
             "[\"parties\", \"invoicing\", \"delivery\", \"payments\"]",
@@ -379,6 +395,10 @@ async fn boot_with(real_payments: bool, real_parties: bool) -> World {
         perm::JOBS_DELIVER,
         perm::JOBS_CLOSE,
         perm::FREIGHT_MANAGE,
+        // As the host gives the documentation officer: it issues the
+        // supplementary invoice of a reopened job.
+        wl_invoicing::permissions::VIEW,
+        wl_invoicing::permissions::ISSUE,
     ];
     let docs = make_user(app.db(), "Dalia", &documentation).await;
     let docs_limited = make_user(
@@ -411,6 +431,7 @@ async fn boot_with(real_payments: bool, real_parties: bool) -> World {
         bashar,
         docs,
         docs_limited,
+        job_client: Mutex::new(SOUQ),
         parties,
         portal,
         shifts,

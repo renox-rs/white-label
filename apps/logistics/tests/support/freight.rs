@@ -6,16 +6,17 @@
 use logistics::{FreightJob, FreightStatus};
 use renox::prelude::*;
 
-use super::{SOUQ, World};
+use super::World;
 
 impl World {
     /// The documentation officer opens a sea job for Souq Express.
     pub async fn open_job(&self) -> FreightJob {
+        let client = *self.job_client.lock().unwrap();
         self.post(
             &self.docs,
             "/freight",
             &[
-                ("client_party_id", SOUQ.0.to_string().as_str()),
+                ("client_party_id", client.0.to_string().as_str()),
                 ("description", "1 x 40HC of kitchenware"),
                 ("mode", "sea"),
                 ("origin", "Shanghai"),
