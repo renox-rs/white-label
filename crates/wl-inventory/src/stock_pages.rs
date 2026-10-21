@@ -3,6 +3,10 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `POST /stock-holds` | `wl_inventory.hold_place` | `stock.hold` (at the location, for a hold on a location) |
+//! | `POST /stock-hold-lines/{id}/release` | `wl_inventory.hold_line_release` | `lots.release` at the location; a second person for a listed reason |
+//! | `POST /stock-hold-lines/{id}/discard` | `wl_inventory.hold_line_discard` | `lots.release` at the location; a second person above the value |
+//! | `POST /stock-hold-lines/{id}/return-to-supplier` | `wl_inventory.hold_line_return` | `lots.release` at the location |
+//! | `POST /stock-holds/{id}/cancel` | `wl_inventory.hold_cancel` | `lots.release` in the hold's scope |
 //! | `POST /stock-issues` | `wl_inventory.stock_issue` | `stock.issue` at the location |
 //! | `POST /pending-issues/{id}/clear` | `wl_inventory.pending_clear` | `stock.adjust` at the location |
 //! | `POST /transfers/{id}/send` | `wl_inventory.transfer_send` | `stock.transfer` at the source |
@@ -23,6 +27,7 @@ use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
+use crate::hold_decide::{DecideOutcome, Decision, cancel, decide};
 use crate::hold_service::{NewHold, NewScope, place_as, warnings_for};
 use crate::permissions;
 use crate::texts;
@@ -33,6 +38,14 @@ pub fn routes() -> Routes {
     Routes::new()
         .post("/stock-holds", place_hold)
         .name("wl_inventory.hold_place")
+        .post("/stock-hold-lines/{id}/release", release_line)
+        .name("wl_inventory.hold_line_release")
+        .post("/stock-hold-lines/{id}/discard", discard_line)
+        .name("wl_inventory.hold_line_discard")
+        .post("/stock-hold-lines/{id}/return-to-supplier", return_line)
+        .name("wl_inventory.hold_line_return")
+        .post("/stock-holds/{id}/cancel", cancel_hold)
+        .name("wl_inventory.hold_cancel")
         .post("/stock-issues", issue_stock)
         .name("wl_inventory.stock_issue")
         .post("/pending-issues/{id}/clear", clear_pending_issue)
@@ -138,6 +151,100 @@ async fn place_hold(
         renox::HxRefresh,
     )
         .into_response())
+}
+
+/// Decides line `id` and answers with the toast: decided, or waiting for a
+/// second person.
+async fn decide_line(
+    state: &AppState,
+    user: &AuthUser,
+    texts: (String, String),
+    id: i64,
+    decision: Decision,
+) -> Result<Response> {
+    let (decided, waiting) = texts;
+    match decide(state, user, id, decision).await {
+        Ok(DecideOutcome::Decided(_)) => {
+            Ok((Toast::success(decided), renox::HxRefresh).into_response())
+        }
+        Ok(DecideOutcome::Waiting(_)) => {
+            Ok((Toast::success(waiting), renox::HxRefresh).into_response())
+        }
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The toasts of a decision: decided, and waiting for a second person.
+fn line_texts(lang: &Lang) -> (String, String) {
+    (text(lang, "hold.decided"), text(lang, "hold.waiting"))
+}
+
+/// `POST /stock-hold-lines/{id}/release`: the quantity is available again;
+/// for a listed reason (`recall`) a second person approves first.
+async fn release_line(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    decide_line(&state, &user, line_texts(&lang), id, Decision::Release).await
+}
+
+/// `POST /stock-hold-lines/{id}/discard`: the quantity is wasted; above the
+/// wastage value a second person approves first.
+async fn discard_line(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    decide_line(&state, &user, line_texts(&lang), id, Decision::Discard).await
+}
+
+/// `POST /stock-hold-lines/{id}/return-to-supplier`: the quantity goes to
+/// quarantine and onto a draft return to the lot's supplier.
+async fn return_line(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    decide_line(&state, &user, line_texts(&lang), id, Decision::ReturnToSupplier).await
+}
+
+/// What a user enters to cancel a hold.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct CancelForm {
+    /// Why; *placed in error* when empty.
+    #[validate(max = 200)]
+    pub reason: Option<String>,
+}
+
+/// `POST /stock-holds/{id}/cancel`: cancels a hold placed in error, before
+/// any line is decided; never a recall's.
+async fn cancel_hold(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<CancelForm>,
+) -> Result<Response> {
+    let reason = form
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+        .map_or_else(|| text(&lang, "hold.cancel_reason"), str::to_owned);
+    match cancel(&state, &user, id, &reason).await {
+        Ok(_) => Ok((
+            Toast::success(text(&lang, "hold.cancelled")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
 }
 
 /// What a user enters to issue stock.

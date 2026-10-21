@@ -7,6 +7,7 @@ pub mod chase;
 pub mod config;
 mod events;
 pub mod goods_receipt;
+pub mod hold_decide;
 pub mod hold_line;
 pub mod hold_service;
 pub mod item;
@@ -451,6 +452,7 @@ impl Module for WlInventory {
             .step_permission(permissions::LOTS_RELEASE)
             .register();
         events::register(app);
+        hold_decide::register(app);
         // `STK.RUL.08`: the notice type and the daily chase of the returns
         // that stay `dispatched`.
         chase::register_types();

@@ -799,6 +799,45 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.hold.lines_body",
         "{{ added }} line(s) of stock moved into a held location and joined hold {{ number }} ({{ reason }}). They stay unavailable until decided.",
     ),
+    // Deciding the lines of a stock hold, closing and cancelling it.
+    (
+        "wl_inventory.hold.not_open",
+        "The hold is not open: its lines can no longer be decided.",
+    ),
+    (
+        "wl_inventory.hold.expired_lot",
+        "The lot has expired: its stock can only be discarded or returned to the supplier.",
+    ),
+    (
+        "wl_inventory.hold.no_supplier",
+        "The lot has no supplier to return it to.",
+    ),
+    (
+        "wl_inventory.hold.stock_moved",
+        "The held quantity is no longer all at the location; count the stock before deciding.",
+    ),
+    (
+        "wl_inventory.hold.lines_undecided",
+        "A hold closes only when every line is decided.",
+    ),
+    (
+        "wl_inventory.hold.recall_cannot_cancel",
+        "A recall's hold cannot be cancelled: it closes with the recall.",
+    ),
+    (
+        "wl_inventory.hold.line_decided",
+        "A hold with a decided line cannot be cancelled.",
+    ),
+    ("wl_inventory.hold.decided", "The line is decided."),
+    (
+        "wl_inventory.hold.waiting",
+        "A second person must approve first; the line stays undecided until then.",
+    ),
+    ("wl_inventory.hold.cancelled", "The hold is cancelled."),
+    (
+        "wl_inventory.hold.cancel_reason",
+        "placed in error",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",
