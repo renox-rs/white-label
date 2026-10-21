@@ -250,6 +250,35 @@ pub struct BroadcastStopped {
 
 impl Event for BroadcastStopped {}
 
+/// How a broadcast stands, for the module that asked for it (a campaign's
+/// report in `wl-sales`): the counts `wl-notify` keeps, and the parties whose
+/// message was sent. It holds no names and no addresses.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BroadcastReport {
+    /// The broadcast.
+    pub broadcast: BroadcastId,
+    /// Its state: `pending_approval`, `scheduled`, `sending`, `completed` or
+    /// `cancelled`.
+    pub status: String,
+    /// When it goes (or went) out.
+    pub send_at: DateTime,
+    /// The estimate at the request: members who would pass the checks.
+    pub estimate: i64,
+    /// The messages queued; `None` until it started.
+    pub recipients: Option<i64>,
+    /// The members left out, counted by reason (`no_consent`, `opted_out`,
+    /// `frequency_cap`, ...), the messages suppressed at send time included.
+    pub excluded: BTreeMap<String, i64>,
+    /// The messages delivered to the device or mailbox.
+    pub delivered: i64,
+    /// The recipients who opted out of this broadcast.
+    pub opted_out: i64,
+    /// Why it was cancelled (the approver's comment, or a code).
+    pub cancel_reason: Option<String>,
+    /// The parties whose message reached `sent` or later.
+    pub reached: Vec<crate::parties::PartyId>,
+}
+
 /// The 422 of a broadcast request while the notify module is off.
 pub(crate) fn broadcasts_off() -> Error {
     Error::Status(

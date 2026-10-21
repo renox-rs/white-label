@@ -34,7 +34,7 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::broadcast::{BroadcastId, BroadcastRequest, broadcasts_off};
+use crate::broadcast::{BroadcastId, BroadcastReport, BroadcastRequest, broadcasts_off};
 use crate::parties::PartyId;
 use crate::subject::Subject;
 
@@ -665,6 +665,30 @@ pub trait Notifier: Send + Sync + 'static {
         _request: BroadcastRequest,
     ) -> NotifyFuture<'a, BroadcastId> {
         Box::pin(async { Err(broadcasts_off()) })
+    }
+
+    /// Cancels a broadcast that has not started (`pending_approval` or
+    /// `scheduled`) because its requester ended, with `reason` as the stored
+    /// reason. Returns whether it was cancelled; a broadcast that already
+    /// started, ended or is unknown is left alone. The default, and
+    /// [`NoNotifier`], cancel nothing.
+    fn cancel_broadcast<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: BroadcastId,
+        _reason: &'a str,
+    ) -> NotifyFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// How a broadcast stands: its counts and the parties reached. The
+    /// default, and [`NoNotifier`], know none.
+    fn broadcast_report<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: BroadcastId,
+    ) -> NotifyFuture<'a, Option<BroadcastReport>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// Sends a one-time code to `request.to` for `request.purpose` about

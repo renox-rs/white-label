@@ -16,7 +16,7 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::Subject;
-use wl_kernel::broadcast::{BroadcastId, BroadcastRequest};
+use wl_kernel::broadcast::{BroadcastId, BroadcastReport, BroadcastRequest};
 use wl_kernel::notify::{
     self, FALLBACK_KIND, MessageId, NoticeStatus, NotificationTypeDef, Notifier, NotifyChannel,
     NotifyFuture, NotifyRecipient, NotifyRequest, OtpRequest, OtpSent, OtpVerdict,
@@ -51,6 +51,23 @@ impl Notifier for Messages {
         request: BroadcastRequest,
     ) -> NotifyFuture<'a, BroadcastId> {
         Box::pin(broadcasts::request(state, request))
+    }
+
+    fn cancel_broadcast<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: BroadcastId,
+        reason: &'a str,
+    ) -> NotifyFuture<'a, bool> {
+        Box::pin(broadcasts::cancel_for_requester(state, id.0, reason))
+    }
+
+    fn broadcast_report<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: BroadcastId,
+    ) -> NotifyFuture<'a, Option<BroadcastReport>> {
+        Box::pin(broadcasts::report(state, id.0))
     }
 
     fn send_otp<'a>(

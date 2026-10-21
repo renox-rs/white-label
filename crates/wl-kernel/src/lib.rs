@@ -75,7 +75,8 @@ pub use block_guard::{
 };
 pub use broadcast::{
     BROADCAST_SUBJECT_TYPE, BroadcastCancelReason, BroadcastCancelled, BroadcastCompleted,
-    BroadcastId, BroadcastRequest, BroadcastRequesters, BroadcastStopped, NoRequesters,
+    BroadcastId, BroadcastReport, BroadcastRequest, BroadcastRequesters, BroadcastStopped,
+    NoRequesters,
     RequesterCheck,
 };
 pub use budgets::{

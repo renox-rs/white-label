@@ -69,7 +69,7 @@ pub struct Resolution {
 /// Resolves the segment of `broadcast` at `at` with the providers of `state`.
 pub async fn resolve(state: &AppState, broadcast: &Broadcast, at: DateTime) -> Result<Resolution> {
     let members = segments::segments(state)
-        .members(&state.db, broadcast.segment(), at)
+        .members_in(state, broadcast.segment(), at)
         .await?;
     resolve_members(
         &state.db,
