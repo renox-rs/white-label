@@ -18,6 +18,11 @@
           <rx-input name="end_date" type="date" :label="tx['campaigns.fields.end_date']" id="reopen-campaign-end-date" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_request_broadcast">
+        <rx-form method="POST" :action="route('wl_sales.campaign_broadcast', campaign.id)">
+          <rx-button type="submit" :label="tx['retention.request_again']" variant="secondary" icon="refresh-cw"/>
+        </rx-form>
+      </template>
       <template rx-if="can_delete">
         <rx-confirm :id="'delete-campaign-' ~ campaign.id" :label="tx['campaigns.delete.action']" :action="route('wl_sales.campaign_delete', campaign.id)" method="POST"
                     :title="tx['campaigns.delete.confirm_title']" :message="tx['campaigns.delete.confirm_message']" :confirm-label="tx['campaigns.delete.action']" :cancel-label="tx['cancel']" icon="trash-2"/>
@@ -46,6 +51,29 @@
         <rx-entry rx-if="send_at" :label="tx['campaigns.fields.send_at']" :value="send_at"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="retention">
+      <rx-card :title="tx['retention.title']">
+        <rx-stack>
+          <rx-alert rx-if="retention.not_sent" kind="warning" :message="tx['retention.not_sent'] ~ ': ' ~ retention.not_sent"/>
+          <rx-infolist columns="2">
+            <rx-entry :label="tx['campaigns.fields.segment']" :value="retention.segment" :placeholder="tx['campaigns.none']"/>
+            <rx-entry :label="tx['retention.requester']" :value="retention.requester" :placeholder="tx['campaigns.none']"/>
+            <rx-entry :label="tx['retention.state']" :value="retention.state"/>
+            <rx-entry :label="tx['retention.recipients']" :value="retention.recipients" :placeholder="tx['campaigns.none']"/>
+            <rx-entry :label="tx['retention.delivered']" :value="retention.delivered"/>
+            <rx-entry :label="tx['retention.opted_out']" :value="retention.opted_out"/>
+            <rx-entry :label="tx['retention.returned'] ~ ' (' ~ retention.response_days ~ ' ' ~ tx['retention.days'] ~ ')'" :value="retention.returned"/>
+            <rx-entry :label="tx['retention.returned_value']" :value="retention.returned_value"/>
+            <rx-entry :label="tx['retention.cost']" :value="retention.cost"/>
+          </rx-infolist>
+          <rx-table :rows="retention.excluded" as="item" :key="item[0]" :caption="tx['retention.excluded']" card>
+            <rx-column :label="tx['retention.reason']">{{ item[0] }}</rx-column>
+            <rx-column :label="tx['retention.count']">{{ item[1] }}</rx-column>
+            <rx-slot name="empty"><rx-empty :title="tx['retention.no_excluded']" icon="inbox"/></rx-slot>
+          </rx-table>
+        </rx-stack>
+      </rx-card>
+    </template>
     <rx-card :title="tx['campaigns.sections.costs']">
       <rx-stack>
         <rx-infolist columns="2">
