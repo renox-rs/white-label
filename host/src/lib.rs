@@ -28,6 +28,7 @@ pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
 pub use app::logistics_demo;
+pub use app::accounting_seed::parties_for;
 pub use app::negative_flow::{invoicing_for, payments_for};
 pub use app::roles;
 

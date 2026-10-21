@@ -4,6 +4,7 @@
 pub mod account;
 pub mod adjustment;
 pub mod billing;
+pub mod block;
 pub mod booking;
 pub mod cancel;
 pub mod cash_watch;
@@ -13,6 +14,7 @@ mod credit;
 pub mod disposal;
 pub mod dispute;
 mod events;
+pub mod freight;
 pub mod hold;
 pub mod loss;
 mod loss_pages;
@@ -57,6 +59,7 @@ pub use adjustment::{AdjustmentLine, AdjustmentStatus};
 pub use cash_watch::CashWatch;
 pub use cod::{CodLoss, CodRule};
 pub use dispute::StatementDispute;
+pub use freight::{FreightJob, FreightStatus};
 pub use netting::Offset;
 pub use statement::Statement;
 pub use reversal::{Reversal, ReversalInput, ShipmentRefunds};
@@ -81,6 +84,7 @@ impl Module for Logistics {
             .merge(remittance_pages::routes())
             .merge(account::routes())
             .merge(dispute::routes())
+            .merge(freight::routes())
             .merge(cod::routes())
             .merge(reversal_pages::routes())
             .merge(loss_pages::routes())
@@ -123,6 +127,7 @@ impl Module for Logistics {
             .model::<Remittance>()
             .model::<RemittanceLine>()
             .model::<AdjustmentLine>()
+            .model::<FreightJob>()
             .model::<StatementDispute>()
             .model::<PaymentReturn>()
             .model::<AccountChange>()
@@ -138,6 +143,9 @@ impl Module for Logistics {
         wl_kernel::delivery::provide_manual_refunds(app, ShipmentRefunds);
         // The remittance and its adjustment lines have machines of their own.
         renox::state_machine::register::<Remittance>();
+        // `pay` and `repay` are money out: a blocked client is refused and the
+        // company admin can approve an exception (`PTY.ACL.03`).
+        remittance_machine::subject_machine().register();
         renox::state_machine::register::<AdjustmentLine>();
         renox::state_machine::register::<AccountChange>();
         // `LOG.ACL.13`: a change not both approved and confirmed lapses.

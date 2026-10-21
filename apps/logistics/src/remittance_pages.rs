@@ -8,7 +8,7 @@
 //! | `POST /remittances/build` | `logistics.remittance_build` | `remittances.prepare` |
 //! | `POST /remittances/{id}/approve` | `logistics.remittance_approve` | `remittances.approve` |
 //! | `POST /remittances/{id}/reopen` | `logistics.remittance_reopen` | `remittances.approve` |
-//! | `POST /remittances/{id}/pay` | `logistics.remittance_pay` | `remittances.pay` |
+//! | `POST /remittances/{id}/pay` | `logistics.remittance_pay` | `remittances.pay` (field `block_exception`: ask the company admin for an exception while the client is blocked) |
 //! | `POST /remittances/{id}/return-payment` | `logistics.remittance_return_payment` | `remittances.pay` (fields `advice`, `reason`) |
 //! | `POST /remittances/{id}/repay` | `logistics.remittance_repay` | `remittances.pay` (field `payment_reference`) |
 //! | `POST /remittances/{id}/confirm-account` | `logistics.remittance_confirm_account` | `remittances.pay`, or a client user of the company (field `note`) |
@@ -30,11 +30,12 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
 use wl_kernel::PartyId;
+use wl_kernel::block_guard::{self, ActionKind, BlockRefusalView, GuardOutcome};
 
 use crate::account::{self, AccountChange, AccountChangeStatus};
 use crate::adjustment::{self, AdjustmentLine, AdjustmentStatus, NewAdjustment};
 use crate::booking;
-use crate::pages::{Fields, Texts, field, tx};
+use crate::pages::{Fields, Texts, checked, field, tx};
 use crate::permissions;
 use crate::remit;
 use crate::remittance::{Remittance, RemittanceStatus};
@@ -282,6 +283,9 @@ pub(crate) struct ShowPage {
     lines: Vec<LineRow>,
     offsets: Vec<OffsetRow>,
     returns: Vec<ReturnRow>,
+    /// The client is blocked and its payment waits: the refusal with the
+    /// "Request exception" form (`PTY.ACL.03`).
+    refusal: Option<BlockRefusalView>,
     can_dispute: bool,
     can_resolve: bool,
     can_return: bool,
@@ -364,6 +368,36 @@ async fn show(
                 && line.prepared_by == Some(user.id),
         })
         .collect();
+    let waiting_to_pay = matches!(
+        remittance.status,
+        RemittanceStatus::Approved | RemittanceStatus::PaymentReturned
+    );
+    let refusal = if waiting_to_pay
+        && !remittance.block_exception_granted
+        && user.has_permission(permissions::REMITTANCES_PAY)
+    {
+        let mut tx = state.db.begin().await?;
+        let outcome = block_guard::guard(&state)
+            .check_in(&mut tx, Some(&user), remittance.client(), ActionKind::MoneyOut)
+            .await?;
+        match outcome {
+            GuardOutcome::Allowed => None,
+            GuardOutcome::Blocked(refused) => {
+                let step = if remittance.status == RemittanceStatus::Approved {
+                    "pay"
+                } else {
+                    "repay"
+                };
+                Some(refused.view(
+                    &lang,
+                    &format!("/remittances/{}/{step}", remittance.id),
+                    &[],
+                ))
+            }
+        }
+    } else {
+        None
+    };
     let draft = remittance.status == RemittanceStatus::Draft;
     let approved = remittance.status == RemittanceStatus::Approved;
     Ok(View::typed(ShowPage {
@@ -373,6 +407,7 @@ async fn show(
         lines,
         offsets,
         returns,
+        refusal,
         can_dispute: matches!(
             remittance.status,
             RemittanceStatus::Approved | RemittanceStatus::Paid
@@ -464,6 +499,12 @@ async fn pay(
     Path(id): Path<i64>,
     Form(form): Fields,
 ) -> Result<Response> {
+    if checked(&form, "block_exception") {
+        remit::ask_exception(&state, &user, id)
+            .await
+            .map_err(answer)?;
+        return back_to(&lang, "logistics.remittance_exception_asked", id);
+    }
     remit::pay(&state, &user, id, &field(&form, "payment_reference"))
         .await
         .map_err(answer)?;
@@ -486,7 +527,8 @@ async fn return_payment(
 }
 
 /// `POST /remittances/{id}/repay`: `payment_reference`, the new bank
-/// reference.
+/// reference; `block_exception` asks for an exception while the client is
+/// blocked.
 async fn repay(
     State(state): State<AppState>,
     user: AuthUser,
@@ -494,6 +536,12 @@ async fn repay(
     Path(id): Path<i64>,
     Form(form): Fields,
 ) -> Result<Response> {
+    if checked(&form, "block_exception") {
+        remit::ask_exception(&state, &user, id)
+            .await
+            .map_err(answer)?;
+        return back_to(&lang, "logistics.remittance_exception_asked", id);
+    }
     remit::repay(&state, &user, id, &field(&form, "payment_reference"))
         .await
         .map_err(answer)?;

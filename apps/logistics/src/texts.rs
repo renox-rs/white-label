@@ -401,7 +401,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "logistics.remittance.client_blocked",
-        "This client is on hold: the remittance waits.",
+        "Client on hold: the remittance waits for the unblock or an approved exception.",
     ),
     (
         "logistics.remittance.nothing_to_pay",
@@ -914,6 +914,30 @@ const TEXTS: &[(&str, &str)] = &[
         "Your message was added to the open question.",
     ),
     ("logistics.remittance_dispute_resolved", "The dispute is resolved."),
+    // A blocked client (`PTY.ACL.03`, BL-LOG-19).
+    (
+        "logistics.blocked.neutral",
+        "This request cannot be completed online. Please contact us.",
+    ),
+    (
+        "logistics.freight.description_needed",
+        "Say what is shipped.",
+    ),
+    ("logistics.freight.note_needed", "Give the note."),
+    ("logistics.freight_opened", "Freight job opened."),
+    ("logistics.freight_noted", "Note added to the freight job."),
+    (
+        "logistics.remittance.exception_pending",
+        "An exception for this client is already waiting for the company admin.",
+    ),
+    (
+        "logistics.remittance.exception_not_pay",
+        "An exception is asked for a remittance that waits to be paid.",
+    ),
+    (
+        "logistics.remittance_exception_asked",
+        "The exception is asked from the company admin.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

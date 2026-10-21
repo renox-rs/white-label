@@ -346,6 +346,12 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ),
     ("logistics.screen.remit_outcome", "Outcome (upheld or adjusted)"),
     ("logistics.screen.remit_outcome_amount", "Adjustment in dirhams (for adjusted)"),
+    ("logistics.screen.client_on_hold", "Client on hold"),
+    ("logistics.screen.remit_exception", "Request an exception"),
+    (
+        "logistics.screen.remit_exception_description",
+        "The client is on hold. The company admin, not you, approves a one-off exception.",
+    ),
     ("logistics.screen.remit_number", "Remittance"),
     ("logistics.screen.remit_cod", "COD"),
     ("logistics.screen.remit_fees", "Fees"),

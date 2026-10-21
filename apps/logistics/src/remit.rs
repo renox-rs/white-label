@@ -44,10 +44,11 @@ use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::LegalEntity;
+use wl_kernel::approvals::{self, ApprovalRequest};
+use wl_kernel::block_guard;
 use wl_kernel::PartyId;
 use wl_kernel::delivery::DeliveryId;
 use wl_kernel::documents::{DUBAI_OFFSET_SECONDS, today};
-use wl_kernel::parties::{self, PartyStatus};
 use wl_kernel::invoicing::{InvoiceId, InvoiceSummary};
 use wl_kernel::payments::{
     self, AllocationTarget, PaymentId, PaymentMethod, PaymentSource, RecordPayment,
@@ -55,6 +56,7 @@ use wl_kernel::payments::{
 };
 
 use crate::adjustment::{AdjustmentLine, AdjustmentStatus, source};
+use crate::block;
 use crate::booking;
 use crate::netting::{self, Offset};
 use crate::notices::{tell_accountants, tell_party};
@@ -742,10 +744,10 @@ pub async fn pay(
         .map(|text| text.trim().to_owned())
         .filter(|text| !text.is_empty());
     let reference = reference.trim().to_owned();
-    let blocked = parties::directory(state)
-        .status(&state.db, remittance.client())
-        .await?
-        == Some(PartyStatus::Blocked);
+    // A blocked client waits for the unblock, or for one approved exception
+    // (`PTY.ACL.03`).
+    let blocked = block::on_hold(state, remittance.client()).await?
+        && !remittance.block_exception_granted;
     let mut input = RemittanceInput {
         payment_reference: Some(reference.clone()),
         bank_account: account.clone(),
@@ -965,10 +967,10 @@ pub async fn repay(
         .map(|text| text.trim().to_owned())
         .filter(|text| !text.is_empty());
     let reference = reference.trim().to_owned();
-    let blocked = parties::directory(state)
-        .status(&state.db, remittance.client())
-        .await?
-        == Some(PartyStatus::Blocked);
+    // A blocked client waits for the unblock, or for one approved exception
+    // (`PTY.ACL.03`).
+    let blocked = block::on_hold(state, remittance.client()).await?
+        && !remittance.block_exception_granted;
     let changed = account
         .as_deref()
         .is_some_and(|now| Some(now) != remittance.bank_account.as_deref());
@@ -1029,6 +1031,47 @@ pub async fn repay(
     let paid = load(state, id).await?;
     statement::publish(&state.db, &paid).await?;
     Ok(paid)
+}
+
+/// `user` (`remittances.pay`) asks the company admin for an exception that
+/// lets the payment of remittance `id` go ahead although its client is
+/// blocked (`PTY.ACL.03`): `pay` for an approved remittance, `repay` for a
+/// returned one. The company admin, never the requester, approves it; the
+/// kernel then marks the remittance, and the next `pay` (or `repay`) goes
+/// ahead once.
+///
+/// # Errors
+///
+/// `Forbidden` without `remittances.pay`; `Guard` (422) when the remittance is
+/// not waiting to be paid, when the client is not blocked and when an
+/// exception is already pending.
+pub async fn ask_exception(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+) -> std::result::Result<ApprovalRequest, TransitionError> {
+    if !user.has_permission(permissions::REMITTANCES_PAY) {
+        return Err(TransitionError::Forbidden);
+    }
+    let remittance = load(state, id).await?;
+    let transition = match remittance.status {
+        RemittanceStatus::Approved => PAY,
+        RemittanceStatus::PaymentReturned => REPAY,
+        _ => return Err(guard(english("logistics.remittance.exception_not_pay", &[]))),
+    };
+    let mut tx = state.db.begin().await?;
+    let request = block_guard::request_exception_in(
+        state,
+        &mut tx,
+        user,
+        &remittance.subject(),
+        transition,
+        renox::serde_json::json!({}),
+    )
+    .await?;
+    tx.commit().await?;
+    approvals::announce_request(state, &request).await?;
+    Ok(request)
 }
 
 /// Sets whether the contract of `client` allows netting open invoices

@@ -97,6 +97,9 @@ pub struct Remittance {
     pub payment_number: Option<String>,
     /// The account it was paid to.
     pub bank_account: Option<String>,
+    /// The company admin approved an exception for the blocked client: the
+    /// next `pay` or `repay` goes ahead once (`PTY.ACL.03`, BL-LOG-19).
+    pub block_exception_granted: bool,
     /// Why `pay` sent it back to a draft, for the accountant (BL-LOG-16).
     pub message: Option<String>,
     /// When the client's confirmation that the account the transfer was

@@ -39,6 +39,7 @@
         <rx-input name="payment_reference" :label="tx['remit_reference']" :id="'repay-reference-' ~ remittance.id" required/>
       </rx-action-sheet>
     </rx-page-header>
+    {% if refusal %}<rx-include template="wl-kernel/block_refusal.html"/>{% endif %}
     <rx-card :title="tx['details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['remit_number']" :value="remittance.number" copyable/>

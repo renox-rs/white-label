@@ -19,7 +19,12 @@
       </rx-column>
       <rx-column :label="tx['parcels']" align="num" hide-narrow>{{ shipment.parcels }}</rx-column>
       <rx-column :label="tx['cod']" align="num" hide-narrow>{{ shipment.cod_amount | money(currency='AED') }}</rx-column>
-      <rx-column :label="tx['state']"><rx-badge :kind="shipment.status_kind" :text="shipment.status"/></rx-column>
+      <rx-column :label="tx['state']">
+        <rx-stack>
+          <rx-badge :kind="shipment.status_kind" :text="shipment.status"/>
+          <rx-badge rx-if="shipment.client_on_hold" kind="warning" :text="tx['client_on_hold']"/>
+        </rx-stack>
+      </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['empty']" :message="tx['empty_text']" icon="package"/></rx-slot>
     </rx-table>
   </rx-stack>

@@ -187,6 +187,10 @@ pub(crate) struct Row {
     cod_amount: i64,
     status: String,
     status_kind: &'static str,
+    /// The shipment waits for its pickup and its client is blocked: the
+    /// dispatcher sees *client on hold* (`PTY.ACL.03`); it may still be picked
+    /// up.
+    client_on_hold: bool,
     url: String,
 }
 
@@ -207,9 +211,19 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .limit(200)
         .get(&state.db)
         .await?;
+    // Whether each client that has a shipment waiting for pickup is blocked.
+    let mut on_hold: BTreeMap<i64, bool> = BTreeMap::new();
+    for s in shipments.iter().filter(|s| s.status == ShipmentStatus::Created) {
+        if !on_hold.contains_key(&s.client_party_id) {
+            let blocked = crate::block::on_hold(&state, s.client()).await?;
+            on_hold.insert(s.client_party_id, blocked);
+        }
+    }
     let shipments = shipments
         .iter()
         .map(|s| Row {
+            client_on_hold: s.status == ShipmentStatus::Created
+                && on_hold.get(&s.client_party_id).copied().unwrap_or(false),
             id: s.id,
             number: s.number.clone(),
             client_reference: s.client_reference.clone().unwrap_or_default(),

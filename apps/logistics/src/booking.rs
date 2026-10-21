@@ -154,6 +154,8 @@ pub async fn book(
     if !may_book_for(state, user, new.client).await? {
         return Err(TransitionError::Forbidden);
     }
+    // A blocked client books nothing new, with the neutral text (`PTY.ACL.03`).
+    crate::block::refuse_start(state, new.client).await?;
     create(state, Some(user.id), new).await
 }
 
@@ -404,6 +406,16 @@ pub async fn import_csv(
     if !may_book_for(state, user, client).await? {
         return Err(TransitionError::Forbidden);
     }
+    // For a blocked client every row is refused with the neutral text, also
+    // in a dry run (`PTY.ACL.03`).
+    let blocked = match crate::block::refuse_start(state, client).await {
+        Ok(()) => None,
+        Err(TransitionError::Guard(message)) => Some(message),
+        Err(other) => return Err(other),
+    };
+    if let (Some(message), false) = (&blocked, dry_run) {
+        return Err(guard(message.clone()));
+    }
     let mut lines = text.lines().enumerate();
     let Some((_, header)) = lines.next() else {
         return Err(guard(english("logistics.booking.csv_empty", &[])));
@@ -435,6 +447,8 @@ pub async fn import_csv(
                     let reference = clean_reference(&new.client_reference);
                     if let Some(problem) = problem_with(&new) {
                         Err(problem)
+                    } else if let Some(message) = &blocked {
+                        Err(message.clone())
                     } else if dry_run {
                         let used = match &reference {
                             Some(reference) => {

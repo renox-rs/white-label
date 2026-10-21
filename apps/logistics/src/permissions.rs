@@ -22,6 +22,10 @@ pub const SHIPMENTS_VOID: &str = "shipments.void";
 /// user of the shipment's company (`LOG.ACL.09`).
 pub const SHIPMENTS_CANCEL: &str = "shipments.cancel";
 
+/// Open and work freight jobs (03 §6 *Freight job*): the dispatcher and the
+/// operations manager (BL-LOG-19).
+pub const FREIGHT_MANAGE: &str = "freight.manage";
+
 /// Approve a request to mark a shipment off a delivery lost (`LOG.ACL.14`):
 /// the operations manager, and the company admin, who holds every permission.
 /// The requester never approves.
@@ -70,6 +74,7 @@ pub const ALL: &[&str] = &[
     REMITTANCES_PAY,
     REMITTANCES_REQUEST_ACCOUNT,
     REMITTANCES_DISPUTE,
+    FREIGHT_MANAGE,
 ];
 
 /// The operations manager runs a depot (§3.1). The host's

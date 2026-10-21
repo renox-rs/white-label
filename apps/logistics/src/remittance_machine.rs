@@ -15,10 +15,12 @@
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
+use wl_kernel::SubjectMachine;
+use wl_kernel::block_guard::ActionKind;
 use serde::{Deserialize, Serialize};
 
 use crate::permissions;
-use crate::remittance::{Remittance, RemittanceStatus};
+use crate::remittance::{Remittance, RemittanceStatus, SUBJECT_TYPE};
 use crate::texts::english;
 
 /// `approve`: draft → approved.
@@ -35,6 +37,11 @@ pub const PAY: &str = "pay";
 pub const RETURN_PAYMENT: &str = "return_payment";
 /// `repay`: payment_returned → paid (BL-LOG-17).
 pub const REPAY: &str = "repay";
+/// `pay_approved`: the kernel runs it when the company admin approved an
+/// exception for a blocked client; the next `pay` goes ahead (BL-LOG-19).
+pub const PAY_APPROVED: &str = "pay_approved";
+/// `repay_approved`: as [`PAY_APPROVED`] for `repay`.
+pub const REPAY_APPROVED: &str = "repay_approved";
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -150,9 +157,17 @@ fn reopen(name: &'static str, by_system: bool) -> Transition<Remittance> {
             Box::pin(async move {
                 let none: Option<i64> = None;
                 let no_time: Option<renox::db::DateTime> = None;
+                let spent = false;
                 Remittance::query()
                     .where_(Remittance::ID.eq(id))
-                    .update(&mut *tx, &[("approved_by", &none), ("approved_at", &no_time)])
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("approved_by", &none),
+                            ("approved_at", &no_time),
+                            ("block_exception_granted", &spent),
+                        ],
+                    )
                     .await?;
                 Ok(())
             })
@@ -224,6 +239,8 @@ fn pay() -> Transition<Remittance> {
             Box::pin(async move {
                 let at = Some(renox::db::now());
                 let reference = input.payment_reference.map(|text| text.trim().to_owned());
+                // An approved exception serves one payment (`PTY.ACL.03`).
+                let spent = false;
                 Remittance::query()
                     .where_(Remittance::ID.eq(id))
                     .update(
@@ -235,6 +252,7 @@ fn pay() -> Transition<Remittance> {
                             ("payment_id", &input.payment_id),
                             ("payment_number", &input.payment_number),
                             ("bank_account", &input.bank_account),
+                            ("block_exception_granted", &spent),
                         ],
                     )
                     .await?;
@@ -365,6 +383,7 @@ fn repay() -> Transition<Remittance> {
                 let no_time: Option<renox::db::DateTime> = None;
                 let no_user: Option<i64> = None;
                 let no_text: Option<String> = None;
+                let spent = false;
                 Remittance::query()
                     .where_(Remittance::ID.eq(id))
                     .update(
@@ -379,8 +398,32 @@ fn repay() -> Transition<Remittance> {
                             ("account_confirmed_at", &no_time),
                             ("account_confirmed_by", &no_user),
                             ("account_confirmed_note", &no_text),
+                            ("block_exception_granted", &spent),
                         ],
                     )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// `pay_approved` and `repay_approved` (system): the company admin approved
+/// the exception for the blocked client. The remittance stays where it is and
+/// is marked, so the next `pay` (or `repay`) goes ahead once (`PTY.ACL.03`).
+fn exception(name: &'static str, at: RemittanceStatus) -> Transition<Remittance> {
+    Transition::new(name)
+        .label("Exception approved")
+        .tone("info")
+        .system()
+        .from([at])
+        .to(at)
+        .effect(|r: &Remittance, _ctx, tx| {
+            let id = r.id;
+            Box::pin(async move {
+                let granted = true;
+                Remittance::query()
+                    .where_(Remittance::ID.eq(id))
+                    .update(&mut *tx, &[("block_exception_granted", &granted)])
                     .await?;
                 Ok(())
             })
@@ -396,7 +439,19 @@ pub fn transitions() -> Vec<Transition<Remittance>> {
         pay(),
         return_payment(),
         repay(),
+        exception(PAY_APPROVED, RemittanceStatus::Approved),
+        exception(REPAY_APPROVED, RemittanceStatus::PaymentReturned),
     ]
+}
+
+/// The remittance in the kernel's registry: `pay` and `repay` are money out to
+/// the client, so a blocked client is refused and the company admin can approve
+/// an exception (`PTY.ACL.03`, BL-LOG-19).
+pub fn subject_machine() -> SubjectMachine {
+    SubjectMachine::of::<Remittance>(SUBJECT_TYPE)
+        .block_guarded(PAY, ActionKind::MoneyOut, |r: &Remittance| Some(r.client()))
+        .block_guarded(REPAY, ActionKind::MoneyOut, |r: &Remittance| Some(r.client()))
+        .build()
 }
 
 impl StateMachine for Remittance {
@@ -427,7 +482,16 @@ mod tests {
     fn the_machine_declares_the_four_states_and_its_transitions() {
         let machine = Remittance::machine();
         assert_eq!(machine.states().len(), 4);
-        for name in [APPROVE, REOPEN, REOPEN_SYSTEM, PAY, RETURN_PAYMENT, REPAY] {
+        for name in [
+            APPROVE,
+            REOPEN,
+            REOPEN_SYSTEM,
+            PAY,
+            RETURN_PAYMENT,
+            REPAY,
+            PAY_APPROVED,
+            REPAY_APPROVED,
+        ] {
             assert!(machine.find(name).is_ok(), "{name}");
         }
         assert_eq!(machine.find(PAY).unwrap().from_states(), ["approved"]);

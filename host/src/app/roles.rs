@@ -161,6 +161,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             parties::CREATE,
             parties::UPDATE,
             parties::BLOCK,
+            // 03 has no finance manager: the company admin approves the
+            // exception that lets a blocked client's remittance be paid
+            // (`PTY.ACL.03`, BL-LOG-19).
+            parties::BLOCK_EXCEPTION,
             parties::EXPORT,
             documents::VIEW,
             documents::UPLOAD,
@@ -264,6 +268,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_CANCEL,
             log::SHIPMENTS_APPROVE_LOSS,
             log::SHIPMENTS_APPROVE_DISPOSAL,
+            log::FREIGHT_MANAGE,
             log::REMITTANCES_VIEW,
             log::REMITTANCES_PREPARE,
             log::REMITTANCES_APPROVE,
@@ -821,6 +826,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_MANAGE,
             log::SHIPMENTS_VOID,
             log::SHIPMENTS_CANCEL,
+            log::FREIGHT_MANAGE,
         ],
     ),
     (
@@ -846,6 +852,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::SHIPMENTS_CANCEL,
             log::SHIPMENTS_APPROVE_LOSS,
             log::SHIPMENTS_APPROVE_DISPOSAL,
+            log::FREIGHT_MANAGE,
         ],
     ),
     (
