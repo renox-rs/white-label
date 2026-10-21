@@ -38,7 +38,7 @@ fn merged(survivor: i64, merged: i64) -> PartiesMerged {
 fn blocked(party: i64) -> PartyBlocked {
     PartyBlocked {
         party: PartyId(party),
-        display_reason: "on_hold".to_owned(),
+        display_reason: "fraud_review".to_owned(),
     }
 }
 
@@ -169,7 +169,9 @@ async fn a_blocked_member_earns_nothing_is_refused_on_hold_and_earns_again_after
             &[("points", "600")],
         )
         .await
-        .assert_status(422);
+        .assert_status(422)
+        .assert_see("This party is on hold")
+        .assert_dont_see("fraud_review");
     // The sale completes and earns nothing.
     t.app
         .post(
@@ -188,7 +190,9 @@ async fn a_blocked_member_earns_nothing_is_refused_on_hold_and_earns_again_after
             &[("code", m.code.as_str())],
         )
         .await
-        .assert_status(422);
+        .assert_status(422)
+        .assert_see("This party is on hold")
+        .assert_dont_see("fraud_review");
 
     // Unblocked: the pause clears and the next sale earns.
     parties.directory.set(7, PartyStatus::Active);
@@ -227,7 +231,9 @@ async fn merging_into_a_blocked_survivor_moves_the_points_paused() {
             &[("points", "500")],
         )
         .await
-        .assert_status(422);
+        .assert_status(422)
+        .assert_see("This party is on hold")
+        .assert_dont_see("fraud_review");
     assert!(shop.mail.otp_requests().is_empty());
 
     // Until P is unblocked.
