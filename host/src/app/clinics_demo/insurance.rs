@@ -10,6 +10,7 @@ use wl_invoicing::{PayerAgreement, VatRecipient};
 
 use super::super::demo_data::day;
 use super::people::{AHMED, FATIMA, JOHN, KHALID, LAYAN, PRIYA, YOUSEF};
+use clinics::authorisations::{self, NewAuthorisation};
 use super::Seed;
 
 /// The payers' prices of the services, in fils.
@@ -114,6 +115,36 @@ impl Seed {
         for payer in [0, 2] {
             clinics::authorisations::require_for(&self.state, self.payers[payer], "procedure")
                 .await?;
+        }
+        Ok(())
+    }
+
+    /// The prior authorisations: Khalid's is approved, Priya's waits for the
+    /// payer (her procedure is flagged until it is approved).
+    pub(crate) async fn authorisations(&mut self) -> Result {
+        let billing = self.user("billing@palmgrove.example");
+        let (billing_id, email) = (billing.id, "billing@palmgrove.example");
+        for (patient, approve, reference) in [(KHALID, true, "GS-PA-90417"), (PRIYA, false, "")] {
+            let policy = self.policy_of(patient).unwrap_or_default();
+            let created = authorisations::create(
+                &self.state,
+                Some(billing_id),
+                NewAuthorisation::new(policy, 1).service("procedure"),
+            )
+            .await?;
+            let id = created.id;
+            self.driver
+                .post(email, &format!("/clinics/authorisations/{id}/request"), &[("reference", "")])
+                .await?;
+            if approve {
+                self.driver
+                    .post(
+                        email,
+                        &format!("/clinics/authorisations/{id}/approve"),
+                        &[("reference", reference), ("valid_until", &day(30).to_string())],
+                    )
+                    .await?;
+            }
         }
         Ok(())
     }

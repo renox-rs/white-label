@@ -50,6 +50,7 @@ mod insurance;
 mod money;
 mod notes;
 mod people;
+mod staffing;
 mod stock;
 mod trade;
 
@@ -395,6 +396,8 @@ impl Seed {
         self.insurance().await?;
         self.stock().await?;
         self.desk().await?;
+        self.staffing().await?;
+        self.authorisations().await?;
         self.claims().await?;
         self.recall().await?;
         self.trade().await?;
