@@ -4,6 +4,7 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `GET /hr/payroll/{id}` | `wl_hr.payroll_run` | `payroll.view` |
+//! | `GET /hr/payroll/{id}/sif/{version}` | `wl_hr.payroll_sif` | `payroll.view`; downloads the file and audits it; a run never submitted has none (422) |
 //! | `POST /hr/payroll/{id}/transitions/calculate` | `wl_hr.payroll_calculate` | `payroll.view` and `payroll.prepare`; asks the timesheets for the hours first |
 //! | `POST /hr/payroll/{id}/transitions/{name}` | `wl_hr.payroll_transitions.*` | `payroll.view` and the transition's permission |
 //! | `POST /hr/payroll/{id}/supplementary` | `wl_hr.payroll_supplementary` | `payroll.prepare` |
@@ -50,6 +51,8 @@ pub fn routes() -> Routes {
             Routes::new()
                 .get("/hr/payroll/{id}", show)
                 .name("wl_hr.payroll_run")
+                .get("/hr/payroll/{id}/sif/{version}", download_sif)
+                .name("wl_hr.payroll_sif")
                 .post("/hr/payroll/{id}/transitions/calculate", calculate)
                 .name("wl_hr.payroll_calculate")
                 .group(
@@ -162,6 +165,8 @@ pub struct LineView {
     pub failed: bool,
     /// Whether its payslip is published.
     pub payslip: bool,
+    /// Whether the bank paid it.
+    pub paid: bool,
     /// The timesheet hours the line was calculated from, e.g. `160 h`.
     pub hours: String,
     /// Whether the hours are provisional (the timesheet is not approved yet).
@@ -263,6 +268,10 @@ pub(crate) struct ShowPage {
     actions: Vec<ActionView>,
     approve_blocked: bool,
     submit_blocked: String,
+    approve_same_user: bool,
+    result_summary: String,
+    documents_url: String,
+    can_upload_result: bool,
 
     can_approve: bool,
     can_comment: bool,
@@ -289,6 +298,10 @@ pub struct SifView {
     pub lines: i64,
     /// The sum of the nets, dirhams.
     pub total: String,
+    /// The download of the file.
+    pub url: String,
+    /// The bank's result or confirmation recorded against it.
+    pub confirmation: String,
 }
 
 /// The run's header.
@@ -433,8 +446,35 @@ async fn show(
             needs_reason: action.needs_reason,
         });
     }
+    // The approver who prepared the run cannot approve it (`HRM.ACL.04`): the
+    // button is shown disabled with the reason, not left out.
+    let approve_same_user = run.status == PayrollRunStatus::Calculated
+        && user.has_permission(permissions::PAYROLL_APPROVE)
+        && run.prepared_by == Some(user.id);
+    let result_summary = if matches!(
+        run.status,
+        PayrollRunStatus::PartiallyRejected | PayrollRunStatus::Paid
+    ) && lines.iter().any(|l| l.failed)
+    {
+        texts::t_with(
+            &lang,
+            "wl_hr.payroll.result_summary",
+            &[
+                ("paid", &lines.iter().filter(|l| l.paid).count()),
+                ("failed", &lines.iter().filter(|l| l.failed).count()),
+            ],
+        )
+    } else {
+        String::new()
+    };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
+        approve_same_user,
+        result_summary,
+        documents_url: format!("/documents/of/{}/{}", run.subject().subject_type, run.id),
+        can_upload_result: user.has_permission("documents.upload")
+            && !run.status.is_unsent()
+            && run.sif_version > 0,
         run: RunView {
             id: run.id,
             period: run.period.clone(),
@@ -472,6 +512,8 @@ async fn show(
                 name: f.file_name,
                 lines: f.line_count,
                 total: aed(f.total),
+                url: format!("/hr/payroll/{id}/sif/{}", f.version),
+                confirmation: f.confirmation.unwrap_or_default(),
             })
             .collect(),
         can_record_rejection: prepares && run.status == PayrollRunStatus::Submitted,
@@ -538,6 +580,7 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
         comment: line.approver_comment.clone().unwrap_or_default(),
         failed: line.status == LineStatus::Failed,
         payslip: line.payslip_published_at.is_some(),
+        paid: line.status == LineStatus::Paid,
         hours: if line.hours_minutes == 0 {
             String::new()
         } else {
@@ -959,4 +1002,44 @@ async fn pay_other(
     wps_partial::pay_line_other_way(&state, id, &form.method, &form.reference, Some(user.id))
         .await?;
     Ok((Toast::success(text(&lang, "payroll.other_paid")), back).into_response())
+}
+
+/// `GET /hr/payroll/{id}/sif/{version}`: the salary file as a download. The
+/// download is audited. A run that was never submitted has no file.
+async fn download_sif(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((id, version)): Path<(i64, i64)>,
+) -> Result<Response> {
+    let run = PayrollRun::find_or_404(&state.db, id).await?;
+    let file = SifFile::of_run(&state.db, id)
+        .await?
+        .into_iter()
+        .find(|f| f.version == version);
+    let Some(file) = file else {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            text(&lang, "payroll.no_sif"),
+        ));
+    };
+    renox::audit::record(
+        &state.db,
+        renox::audit::Entry::new("hr.payroll.sif_downloaded")
+            .user(user.id)
+            .subject(PayrollRun::TABLE, run.id)
+            .data(renox::serde_json::json!({ "version": file.version, "file": file.file_name })),
+    )
+    .await?;
+    Ok((
+        [
+            ("content-type", "text/plain; charset=utf-8".to_owned()),
+            (
+                "content-disposition",
+                format!("attachment; filename=\"{}\"", file.file_name),
+            ),
+        ],
+        file.content,
+    )
+        .into_response())
 }

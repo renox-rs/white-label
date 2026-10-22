@@ -43,6 +43,7 @@
     <template rx-if="can_record_partial">
       <rx-action-sheet id="record-partial" :label="tx['payroll.record_partial']" :action="route('wl_hr.payroll_partial', run.id)"
                        :title="tx['payroll.record_partial']" :description="tx['payroll.partial_hint']" :submit-label="tx['payroll.record_partial']" icon="list-checks">
+        <rx-link-button :href="documents_url" :label="tx['payroll.upload_result']"/>
         <rx-input name="result_file" :label="tx['payroll.result_file']" id="record-partial-file" required/>
         <rx-textarea name="failed" :label="tx['payroll.failed_lines']" id="record-partial-failed" required/>
       </rx-action-sheet>
@@ -52,6 +53,15 @@
                        :title="tx['payroll.confirm_paid']" :submit-label="tx['payroll.confirm_paid']" variant="primary" icon="check">
         <rx-input name="confirmation" :label="tx['payroll.confirmation']" id="confirm-paid-confirmation"/>
       </rx-action-sheet>
+    </template>
+    <template rx-if="approve_same_user">
+      <rx-button :label="tx['payroll.approve']" variant="primary" :disabled-reason="tx['payroll.same_user']"/>
+    </template>
+    <template rx-if="result_summary">
+      <rx-alert kind="warning" :message="result_summary"/>
+    </template>
+    <template rx-if="can_upload_result">
+      <rx-link-button :href="documents_url" :label="tx['payroll.upload_result']"/>
     </template>
     <template rx-if="submit_blocked">
       <rx-button :label="tx['payroll.submit']" variant="primary" :disabled-reason="submit_blocked"/>
@@ -111,6 +121,8 @@
         <rx-column :label="tx['payroll.file_name']">{{ file.name }}</rx-column>
         <rx-column :label="tx['payroll.file_lines']" hide-narrow>{{ file.lines }}</rx-column>
         <rx-column :label="tx['payroll.file_total']" hide-narrow>{{ file.total }}</rx-column>
+        <rx-column :label="tx['payroll.file_result']" hide-narrow>{{ file.confirmation }}</rx-column>
+        <rx-column :label="tx['payroll.download_sif']"><a href="{{ file.url }}">{{ tx['payroll.download_sif'] }}</a></rx-column>
       </rx-table>
     </template>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['payroll.lines']" card>

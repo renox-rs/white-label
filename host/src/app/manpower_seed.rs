@@ -145,6 +145,10 @@ pub fn kind_seed(spec: &KindSpec) -> KindSeed {
     if spec.guards != Guards::Nothing && spec.override_mode == Override::Never {
         kind = kind.legal_block();
     }
+    if spec.key == seed::BANK_RESULT.key {
+        // The banks send their result as a text, CSV or XML file, or a PDF.
+        kind = kind.file_types(&["csv", "txt", "xml", "xlsx", "pdf"]);
+    }
     let condition = BlockCondition::new("role", seed::SECURITY_ROLES);
     for guarded in seed::DEPLOYMENT_GUARDS
         .into_iter()
@@ -167,7 +171,10 @@ pub fn kind_seed(spec: &KindSpec) -> KindSeed {
 /// Registers the Manpower kinds with wl-documents and turns on the two
 /// registration kinds 09 uses with the MD as responsible role.
 pub fn register_documents() {
-    for spec in seed::KINDS.iter().chain([&seed::SIGNED_TIMESHEET]) {
+    for spec in seed::KINDS
+        .iter()
+        .chain([&seed::SIGNED_TIMESHEET, &seed::BANK_RESULT])
+    {
         register_kind(kind_seed(spec));
     }
     let mut settings = VerticalSettings::new().enabled(&[TRADEMARK, OTHER]);
@@ -230,6 +237,17 @@ pub fn grant_roles(client_app: &str) {
         seed::ACCOUNTANT,
         &[wl_invoicing::permissions::RATE_CARDS_VIEW],
     );
+    // The payroll roles upload the bank's result file of a run (#510), and HR
+    // and the PRO read and add the documents of a worker (#511).
+    for role in [seed::HR, seed::ACCOUNTANT, seed::PRO] {
+        super::roles::grant_extra(
+            role,
+            &[
+                wl_documents::permissions::VIEW,
+                wl_documents::permissions::UPLOAD,
+            ],
+        );
+    }
     for role in [seed::HR, seed::ACCOUNTANT] {
         super::roles::grant_extra(
             role,

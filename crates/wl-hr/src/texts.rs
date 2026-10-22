@@ -1465,6 +1465,22 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.notices.settlement_overdue_body",
         "The final settlement of {{ employee }} (last working day {{ last_working_day }}) was due on {{ deadline }} and is still not paid.",
     ),
+    // The run page: the file and the bank's result (#510).
+    (
+        "wl_hr.payroll.no_sif",
+        "This run has no salary file yet. Submit the approved run first.",
+    ),
+    ("wl_hr.payroll.download_sif", "Download SIF"),
+    ("wl_hr.payroll.file_result", "Bank's result"),
+    ("wl_hr.payroll.upload_result", "Upload bank result"),
+    (
+        "wl_hr.payroll.upload_hint",
+        "Upload the file the bank sent back, then record its number below.",
+    ),
+    (
+        "wl_hr.payroll.result_summary",
+        "The bank paid :paid line(s) and rejected :failed line(s). Fix each rejected line or move it out of the run, then regenerate the file.",
+    ),
     // The lists of payroll runs and final settlements (#510).
     ("wl_hr.payroll.list.title", "Payroll runs"),
     (

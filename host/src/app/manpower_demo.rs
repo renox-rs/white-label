@@ -875,7 +875,9 @@ impl Seed {
     /// second user (Anil), one cooling (Ravi).
     async fn pay_accounts(&self) -> Result {
         for (index, worker) in WORKERS.iter().enumerate() {
-            if matches!(index, W_NOEL | W_DAWIT) {
+            // Noel has not started: no account yet. Dawit, who is leaving, is
+            // still paid through WPS until his last day.
+            if index == W_NOEL {
                 continue;
             }
             let (status, requested_by, approved_by) = match index {

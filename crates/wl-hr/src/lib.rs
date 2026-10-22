@@ -337,6 +337,21 @@ impl Module for WlHr {
                 }
             }
         });
+        // The run's name where its documents are listed (the bank's result).
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::workforce::PAYROLL_RUN_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(PayrollRun::find(db, id).await?.map(|run| {
+                        format!(
+                            "{} {}",
+                            texts::english("wl_hr.payroll.title", &[]),
+                            run.period
+                        )
+                    }))
+                })
+            },
+        );
         app.model::<Employee>();
         app.model::<EmployeeScope>();
         app.model::<OnboardingTemplate>();
