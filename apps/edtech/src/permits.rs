@@ -120,7 +120,7 @@ fn due_morning(day: NaiveDate) -> Option<renox::db::DateTime> {
 
 /// The scope of a campus subject: its registered scope, else a scope of its own
 /// type and id (as wl-scheduling does for a branch with no resolver).
-async fn campus_scope(db: &Db, campus: &Subject) -> Result<Scope> {
+pub(crate) async fn campus_scope(db: &Db, campus: &Subject) -> Result<Scope> {
     let registered = wl_kernel::scopes::scope_of(db, campus).await?;
     Ok(if registered.is_global() {
         Scope::new(&campus.subject_type, campus.subject_id)

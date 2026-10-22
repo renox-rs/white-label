@@ -84,6 +84,7 @@
       <rx-column :label="tx['sessions.tutor']" hide-narrow>{{ row.tutor }}</rx-column>
       <rx-column :label="tx['sessions.make_up']" hide-narrow>{{ row.make_up }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-column :label="tx['sessions.flag_column']" hide-narrow>{{ row.flag }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['batches.no_sessions']" icon="calendar-days"/></rx-slot>
     </rx-table>
   </rx-stack>

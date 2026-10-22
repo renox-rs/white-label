@@ -44,10 +44,13 @@ mod texts_hold;
 mod texts_lapse;
 mod texts_permit;
 mod texts_reissue;
+mod texts_alert;
 mod texts_tutor;
 mod texts_more;
 mod texts_seats;
 pub mod transfer;
+pub mod tutor_alert;
+pub mod tutor_alerts;
 pub mod tutor_assignment;
 pub mod tutors;
 pub mod waiting;
@@ -65,6 +68,7 @@ pub use enrolment::{
     InstalmentStatus,
 };
 pub use session::{Session, SessionStatus};
+pub use tutor_alert::TutorAlert;
 pub use tutor_assignment::TutorAssignment;
 pub use waiting::BatchWaiting;
 
@@ -182,6 +186,7 @@ impl Module for EdTech {
             .model::<Instalment>()
             .model::<Certificate>()
             .model::<TutorAssignment>()
+            .model::<TutorAlert>()
             .model::<BatchWaiting>()
             .model::<Chargeback>();
         // The batch and its sessions: the machines, the start of a batch on its
@@ -199,6 +204,11 @@ impl Module for EdTech {
         permits::register();
         permits::listen(app);
         notices::register_types();
+        // A tutor who will not be eligible or available: the sessions flagged,
+        // the coordinator's task and the centre manager told a day before
+        // (`EDU.RUL.12`).
+        tutor_alerts::register();
+        tutor_alerts::listen(app);
         // A bill or a document that names a record shows `ENR-0007`, not
         // `edtech.enrolment:7`.
         register_labels();

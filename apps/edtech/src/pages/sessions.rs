@@ -95,6 +95,9 @@ pub struct SessionRow {
     pub status: String,
     /// The badge kind.
     pub status_kind: &'static str,
+    /// "Tutor not available or not eligible" while the session is flagged
+    /// (`EDU.RUL.12`); empty otherwise.
+    pub flag: String,
 }
 
 /// The row of `session` of batch `batch`.
@@ -114,6 +117,16 @@ pub(crate) fn row_of(lang: &Lang, session: &Session, batch: &str) -> SessionRow 
         },
         status: status_text(lang, session.status),
         status_kind: status_kind(session.status),
+        flag: flag_text(lang, session),
+    }
+}
+
+/// The words of the flag of `session`, empty when it is not flagged.
+pub(crate) fn flag_text(lang: &Lang, session: &Session) -> String {
+    if session.is_flagged() {
+        text(lang, "sessions.flag")
+    } else {
+        String::new()
     }
 }
 
@@ -169,6 +182,9 @@ pub(crate) struct ShowPage {
     start_time: String,
     can_attend: bool,
     can_change: bool,
+    flagged: bool,
+    flag: String,
+    flag_reason: String,
 }
 
 /// `GET /edtech/sessions/{id}`.
@@ -203,6 +219,13 @@ async fn show(
             && session.starts_at <= now()
             && user.has_permission(permissions::SESSIONS_TEACH),
         can_change: scheduled && user.has_permission(permissions::BATCHES_MANAGE),
+        flagged: session.is_flagged(),
+        flag: flag_text(&lang, &session),
+        flag_reason: session
+            .flag_reason
+            .as_deref()
+            .map(crate::tutor_alerts::reason_text)
+            .unwrap_or_default(),
     }))
 }
 
