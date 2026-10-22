@@ -15,7 +15,13 @@ use wl_payments::cash_till;
 use support::cash::date;
 use support::{Booted, boot};
 
-fn closed(session: i64, till: &str, cashier: &User, expected: i64, counted: i64) -> TillSessionClosed {
+fn closed(
+    session: i64,
+    till: &str,
+    cashier: &User,
+    expected: i64,
+    counted: i64,
+) -> TillSessionClosed {
     TillSessionClosed {
         session,
         till: till.to_owned(),
@@ -62,9 +68,15 @@ async fn a_short_till_session_creates_a_short_handover_of_the_till_for_its_cashi
     assert_eq!(shortages.len(), 1);
     assert_eq!(shortages[0].holder_till.as_deref(), Some("T1"));
     assert_eq!(shortages[0].responsible_user, k.id);
-    assert_eq!(shortages[0].till_session.as_ref().map(|s| s.subject_id), Some(7));
     assert_eq!(
-        shortages[0].till_session.as_ref().map(|s| s.subject_type.as_str()),
+        shortages[0].till_session.as_ref().map(|s| s.subject_id),
+        Some(7)
+    );
+    assert_eq!(
+        shortages[0]
+            .till_session
+            .as_ref()
+            .map(|s| s.subject_type.as_str()),
         Some(TILL_SESSION_SUBJECT_TYPE)
     );
     assert_eq!(shortages[0].difference, 5_000);

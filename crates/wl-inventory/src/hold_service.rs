@@ -23,7 +23,8 @@ use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::inventory::{
     HeldLine, HoldDecision, HoldLineView, HoldView, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE,
-    LocationInfo, LOT_SUBJECT_TYPE, STOCK_HOLD_LINE_SUBJECT_TYPE, STOCK_HOLD_SUBJECT_TYPE, StockHoldPlaced,
+    LOT_SUBJECT_TYPE, LocationInfo, STOCK_HOLD_LINE_SUBJECT_TYPE, STOCK_HOLD_SUBJECT_TYPE,
+    StockHoldPlaced,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 

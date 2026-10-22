@@ -22,7 +22,9 @@ use wl_kernel::documents::dubai_text;
 use wl_payments::refund::Refund;
 use wl_sales::{ReturnKind, ReturnResolution, ReturnStatus, SalesReturn};
 
-use support::payouts::{AGGREGATOR, completed, file, import, reload, sales_of, staff, statement, void};
+use support::payouts::{
+    AGGREGATOR, completed, file, import, reload, sales_of, staff, statement, void,
+};
 use support::{World, boot_own_riders};
 
 /// The returns of the sales order of `order`.
@@ -57,8 +59,12 @@ async fn line_of(w: &World, statement: &fnb::PayoutStatement, number: &str) -> P
 
 /// The accountant matches the statement.
 async fn match_it(w: &World, by: &User, statement: &fnb::PayoutStatement) -> TestResponse {
-    w.post(by, &format!("/payouts/{}/match", statement.id), &[("x", "")])
-        .await
+    w.post(
+        by,
+        &format!("/payouts/{}/match", statement.id),
+        &[("x", "")],
+    )
+    .await
 }
 
 /// AC1: given a statement line of AED 25.00 on ORD-1001, reason "Food was
@@ -97,7 +103,10 @@ async fn a_refund_line_becomes_a_return_refunded_by_the_channel_and_no_money_lea
     assert_eq!(made.complaint_category.as_deref(), Some("cold"));
     assert_eq!(made.responsible_party.as_deref(), Some("business"));
     assert!(made.credit_note_id.is_none(), "no credit note");
-    assert!(payments_of(&w, &order).await.is_empty(), "no refund payment");
+    assert!(
+        payments_of(&w, &order).await.is_empty(),
+        "no refund payment"
+    );
     assert!(
         ApprovalRequest::pending_about(w.db(), &made.subject())
             .await
@@ -145,15 +154,27 @@ async fn an_unmapped_refund_reason_blocks_match_until_the_party_is_set() {
 
     // A party outside the two is refused; the accountant sets one.
     let path = format!("/payouts/{}/lines/{}/party", st.id, line.id);
-    w.post(&s.accountant, &path, &[("party", "rider"), ("category", "other")])
-        .await
-        .assert_status(422);
-    w.post(&s.reader, &path, &[("party", "aggregator"), ("category", "other")])
-        .await
-        .assert_status(403);
-    w.post(&s.accountant, &path, &[("party", "aggregator"), ("category", "other")])
-        .await
-        .assert_status(303);
+    w.post(
+        &s.accountant,
+        &path,
+        &[("party", "rider"), ("category", "other")],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &s.reader,
+        &path,
+        &[("party", "aggregator"), ("category", "other")],
+    )
+    .await
+    .assert_status(403);
+    w.post(
+        &s.accountant,
+        &path,
+        &[("party", "aggregator"), ("category", "other")],
+    )
+    .await
+    .assert_status(303);
     match_it(&w, &s.accountant, &st).await.assert_status(303);
 
     let returns = returns_of(&w, &order).await;
@@ -166,7 +187,10 @@ async fn an_unmapped_refund_reason_blocks_match_until_the_party_is_set() {
         .await
         .unwrap()
         .expect("a mapping was learnt");
-    assert_eq!((map.category.as_str(), map.party.as_str()), ("other", "aggregator"));
+    assert_eq!(
+        (map.category.as_str(), map.party.as_str()),
+        ("other", "aggregator")
+    );
 }
 
 /// AC3: disputing that line and resolving it with "aggregator reverses the
@@ -196,9 +220,13 @@ async fn a_refund_the_aggregator_takes_back_reverses_its_return() {
     w.post(&s.accountant, &dispute, &[("reason", "")])
         .await
         .assert_status(422);
-    w.post(&s.accountant, &dispute, &[("reason", "Rider was at fault"), (field.as_str(), "on")])
-        .await
-        .assert_status(303);
+    w.post(
+        &s.accountant,
+        &dispute,
+        &[("reason", "Rider was at fault"), (field.as_str(), "on")],
+    )
+    .await
+    .assert_status(303);
     let disputed = reload(&w, &st).await;
     assert_eq!(disputed.status, PayoutStatus::Disputed);
     assert!(line_of(&w, &st, "ORD-1001").await.disputed);
@@ -224,7 +252,10 @@ async fn a_refund_the_aggregator_takes_back_reverses_its_return() {
 
     let resolved = reload(&w, &st).await;
     assert_eq!(resolved.status, PayoutStatus::Matched);
-    assert_eq!(resolved.resolve_note.as_deref(), Some("Aggregator reverses the refund"));
+    assert_eq!(
+        resolved.resolve_note.as_deref(),
+        Some("Aggregator reverses the refund")
+    );
     assert_eq!(resolved.receivable_amount, 4_800, "the refund is paid back");
     let returns = returns_of(&w, &order).await;
     assert_eq!(returns.len(), 1);
@@ -263,7 +294,10 @@ async fn a_statement_disputed_before_it_is_matched_makes_its_return_once() {
     )
     .await
     .assert_status(303);
-    assert!(returns_of(&w, &order).await.is_empty(), "nothing is matched yet");
+    assert!(
+        returns_of(&w, &order).await.is_empty(),
+        "nothing is matched yet"
+    );
 
     // The answer matches it: the receivable is booked and the return made.
     w.post(
@@ -366,7 +400,9 @@ async fn a_line_with_no_order_can_be_explained_instead() {
     let st = statement(&w, "AGG-W44").await;
     let line = line_of(&w, &st, "FEE-OCT").await;
     let path = format!("/payouts/{}/lines/{}/explain", st.id, line.id);
-    w.post(&s.accountant, &path, &[("note", "  ")]).await.assert_status(422);
+    w.post(&s.accountant, &path, &[("note", "  ")])
+        .await
+        .assert_status(422);
     w.post(&s.accountant, &path, &[("note", "Monthly platform fee")])
         .await
         .assert_status(303);
@@ -389,13 +425,19 @@ async fn unmatched_lines_above_the_limit_open_a_task_for_the_accountant() {
     )
     .await
     .assert_status(303);
-    assert!(w.tickets.opened().is_empty(), "AED 60.00 is under the limit");
+    assert!(
+        w.tickets.opened().is_empty(),
+        "AED 60.00 is under the limit"
+    );
 
     import(
         &w,
         &s.accountant,
         "AGG-BIG",
-        &file(&["ORD-7002,60.00,12.00,0,0,48.00,", "ORD-7003,95.00,19.00,0,0,76.00,"]),
+        &file(&[
+            "ORD-7002,60.00,12.00,0,0,48.00,",
+            "ORD-7003,95.00,19.00,0,0,76.00,",
+        ]),
     )
     .await
     .assert_status(303);
@@ -416,7 +458,13 @@ async fn an_aggregator_cancelled_order_is_a_difference_until_a_statement_pays_it
     let s = staff(&w).await;
     let customer = w.customer("Cancelled customer").await;
     let placed = w
-        .place_via_external(AGGREGATOR, Some("ORD-8001"), customer, "on_account", &[("shawarma-plate", "1", "60.00")])
+        .place_via_external(
+            AGGREGATOR,
+            Some("ORD-8001"),
+            customer,
+            "on_account",
+            &[("shawarma-plate", "1", "60.00")],
+        )
         .await;
     let ready = w.cook(&placed).await;
     w.post(
@@ -461,7 +509,9 @@ async fn an_aggregator_cancelled_order_is_a_difference_until_a_statement_pays_it
     .assert_status(303);
     let paying = statement(&w, "AGG-W46").await;
     assert!(differences(w.db(), &paying).await.unwrap().is_empty());
-    match_it(&w, &s.accountant, &paying).await.assert_status(303);
+    match_it(&w, &s.accountant, &paying)
+        .await
+        .assert_status(303);
     let paid = w.reload(&cancelled).await;
     assert_eq!(paid.compensation_statement_id, Some(paying.id));
     assert!(paid.compensation_matched_at.is_some());

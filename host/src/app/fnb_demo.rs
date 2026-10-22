@@ -45,8 +45,8 @@ use wl_sales::sales_order::{
 use wl_sales::sales_orders::external_key;
 
 use super::roles::{
-    self, ACCOUNTANT, AREA_MANAGER, CASHIER, DRIVER, HEAD_CHEF, KITCHEN_MANAGER, LINE_COOK,
-    MEMBER, MENU_MANAGER, OPERATIONS_DIRECTOR, STOREKEEPER,
+    self, ACCOUNTANT, AREA_MANAGER, CASHIER, DRIVER, HEAD_CHEF, KITCHEN_MANAGER, LINE_COOK, MEMBER,
+    MENU_MANAGER, OPERATIONS_DIRECTOR, STOREKEEPER,
 };
 use super::seed::PASSWORD;
 
@@ -451,15 +451,14 @@ async fn adopt_confirmed_orders(state: &AppState) -> Result {
         .get(&state.db)
         .await?;
     for sales in confirmed {
-        if FnbOrder::of_sales_order(&state.db, sales.id).await?.is_some() {
+        if FnbOrder::of_sales_order(&state.db, sales.id)
+            .await?
+            .is_some()
+        {
             continue;
         }
-        if let Some(order) = fnb::placing::open(
-            state,
-            SalesOrderId(sales.id),
-            FnbOrderStatus::Accepted,
-        )
-        .await?
+        if let Some(order) =
+            fnb::placing::open(state, SalesOrderId(sales.id), FnbOrderStatus::Accepted).await?
         {
             fnb::kitchen::on_accepted(state, &order).await?;
         }
@@ -905,28 +904,70 @@ async fn kitchen_record(
     };
     match story.key {
         // The customer was not home (customer side).
-        "FNBD-5" => failed(&mut order, "not_home", reason::CUSTOMER_UNREACHABLE, side::CUSTOMER, party::CUSTOMER),
+        "FNBD-5" => failed(
+            &mut order,
+            "not_home",
+            reason::CUSTOMER_UNREACHABLE,
+            side::CUSTOMER,
+            party::CUSTOMER,
+        ),
         // The run was aborted (outlet side).
-        "FNBD-6" => failed(&mut order, "run_aborted", reason::RUN_ABORTED, side::OUTLET, party::BUSINESS),
+        "FNBD-6" => failed(
+            &mut order,
+            "run_aborted",
+            reason::RUN_ABORTED,
+            side::OUTLET,
+            party::BUSINESS,
+        ),
         // Closed after a customer-side failure: nothing refunded, the cashier
         // may ask for a refund within 7 days.
         "FNBD-7" => {
-            failed(&mut order, "not_home", reason::CUSTOMER_UNREACHABLE, side::CUSTOMER, party::CUSTOMER);
+            failed(
+                &mut order,
+                "not_home",
+                reason::CUSTOMER_UNREACHABLE,
+                side::CUSTOMER,
+                party::CUSTOMER,
+            );
             closed(&mut order, decision::NO_REFUND, 0, 48);
         }
         // A cash order failed and closed 40 days ago, and one failed now.
         "FNBD-8" => {
-            failed(&mut order, "no_cash", reason::NO_CASH, side::CUSTOMER, party::CUSTOMER);
+            failed(
+                &mut order,
+                "no_cash",
+                reason::NO_CASH,
+                side::CUSTOMER,
+                party::CUSTOMER,
+            );
             closed(&mut order, decision::NOT_APPLICABLE, 0, 24 * 40 - 1);
         }
-        "FNBD-9" => failed(&mut order, "refused", reason::REFUSED, side::CUSTOMER, party::CUSTOMER),
+        "FNBD-9" => failed(
+            &mut order,
+            "refused",
+            reason::REFUSED,
+            side::CUSTOMER,
+            party::CUSTOMER,
+        ),
         "FNBD-4" | "FNBD-17" | "FNBD-18" => {
             order.completed_at = Some(placed + TimeDelta::minutes(40));
         }
         // Cancelled by the customer from the order page, refunded in full.
-        "FNBD-11" => cancelled(&mut order, cancel_reason::CUSTOMER_REQUEST, party::CUSTOMER, true, 5),
+        "FNBD-11" => cancelled(
+            &mut order,
+            cancel_reason::CUSTOMER_REQUEST,
+            party::CUSTOMER,
+            true,
+            5,
+        ),
         // The aggregator cancelled it: no refund, the aggregator pays.
-        "FNBD-12" => cancelled(&mut order, cancel_reason::AGGREGATOR_CANCELLED, party::AGGREGATOR, false, 6),
+        "FNBD-12" => cancelled(
+            &mut order,
+            cancel_reason::AGGREGATOR_CANCELLED,
+            party::AGGREGATOR,
+            false,
+            6,
+        ),
         _ => {}
     }
     let mut tx = db.begin().await?;
@@ -953,9 +994,7 @@ fn cancelled(order: &mut FnbOrder, why: &str, to_blame: &str, by_customer: bool,
     order.cancel_party = Some(to_blame.to_owned());
     order.cancelled_by_customer = by_customer;
     order.cancelled_at = Some(renox::db::now() - TimeDelta::hours(hours_ago));
-    order.close_reason = Some(
-        fnb::cancel::reason_text(why, "")
-    );
+    order.close_reason = Some(fnb::cancel::reason_text(why, ""));
     order.compensation_expected = to_blame == party::AGGREGATOR;
     if order.paid_amount > 0 {
         order.refund_decision = Some(decision::FULL_REFUND.to_owned());
@@ -1020,7 +1059,11 @@ async fn tickets_for(
 /// the orders are; the delivery has no run.
 async fn delivered_delivery(state: &AppState, order: &FnbOrder) -> Result {
     let db = &state.db;
-    let collected = if order.is_cash_on_delivery() { order.total } else { 0 };
+    let collected = if order.is_cash_on_delivery() {
+        order.total
+    } else {
+        0
+    };
     let request = DeliveryRequest::new(order.subject(), &order.recipient_name)
         .address(&order.address, &order.area)
         .phone(&order.recipient_phone)
@@ -1053,10 +1096,7 @@ async fn delivered_delivery(state: &AppState, order: &FnbOrder) -> Result {
         .where_(Delivery::ID.eq(delivery.id))
         .update(
             db,
-            &[
-                ("status", &DeliveryStatus::Delivered),
-                ("attempts", &1_i64),
-            ],
+            &[("status", &DeliveryStatus::Delivered), ("attempts", &1_i64)],
         )
         .await?;
     FnbOrder::query()
@@ -1074,7 +1114,11 @@ async fn ask_delivery(state: &AppState, order: &FnbOrder) -> Result {
         .phone(&order.recipient_phone)
         .perishable()
         .promise(order.placed_at.unwrap_or_else(renox::db::now), 45)
-        .collect(if order.is_cash_on_delivery() { order.total } else { 0 })
+        .collect(if order.is_cash_on_delivery() {
+            order.total
+        } else {
+            0
+        })
         .item(DeliveryItem::new(&format!("Order {}", order.number), 1_000));
     let delivery = Deliveries::request(state, request).await?;
     FnbOrder::query()
@@ -1176,8 +1220,12 @@ async fn payout_statements(state: &AppState) -> Result<usize> {
         .await?
         .is_none()
     {
-        let statement =
-            import_as(state, accountant, &ask("AGG-A-2026-W41", MATCHED_STATEMENT, 14)).await?;
+        let statement = import_as(
+            state,
+            accountant,
+            &ask("AGG-A-2026-W41", MATCHED_STATEMENT, 14),
+        )
+        .await?;
         match_statement(state, None, statement.id).await?;
         made += 1;
     }
@@ -1219,7 +1267,9 @@ async fn payout_statements(state: &AppState) -> Result<usize> {
             ..PayoutStatement::default()
         };
         let mut tx = db.begin().await?;
-        wrong.insert_in_state(&mut tx, PayoutStatus::Voided, "demo seed").await?;
+        wrong
+            .insert_in_state(&mut tx, PayoutStatus::Voided, "demo seed")
+            .await?;
         let mut line = PayoutLine {
             statement_id: wrong.id,
             line_no: 1,
@@ -1443,8 +1493,16 @@ async fn production(state: &AppState) -> Result<usize> {
     let t5 = received_lot(db, &tomato, "T5", &central, 40_000, 6).await?;
     let t7 = received_lot(db, &tomato, "T7", &central, 30_000, 3).await?;
     // Made from T7; the sauce lot is then held.
-    let (held, held_lot) =
-        produced_batch(state, &recipe, &sauce, &central, (&tomato, &t7, 12_000), 10_000, 2).await?;
+    let (held, held_lot) = produced_batch(
+        state,
+        &recipe,
+        &sauce,
+        &central,
+        (&tomato, &t7, 12_000),
+        10_000,
+        2,
+    )
+    .await?;
     place(
         state,
         NewHold {
@@ -1456,7 +1514,16 @@ async fn production(state: &AppState) -> Result<usize> {
     )
     .await?;
     // Made from T5 and fine.
-    produced_batch(state, &recipe, &sauce, &central, (&tomato, &t5, 12_000), 8_000, 4).await?;
+    produced_batch(
+        state,
+        &recipe,
+        &sauce,
+        &central,
+        (&tomato, &t5, 12_000),
+        8_000,
+        4,
+    )
+    .await?;
     // Planned: the chef starts it.
     let number = fnb::BATCH_SERIES
         .next_allowing_gaps(db, None, None, today())
@@ -1481,7 +1548,11 @@ async fn production(state: &AppState) -> Result<usize> {
 
 /// A location `code` named `name` under `parent`, made when there is none.
 async fn sub_location(db: &Db, code: &str, name: &str, parent: &Location) -> Result<Location> {
-    if let Some(found) = Location::query().where_(Location::CODE.eq(code)).first(db).await? {
+    if let Some(found) = Location::query()
+        .where_(Location::CODE.eq(code))
+        .first(db)
+        .await?
+    {
         return Ok(found);
     }
     let mut location = Location::new(code, name);
@@ -1492,7 +1563,14 @@ async fn sub_location(db: &Db, code: &str, name: &str, parent: &Location) -> Res
 
 /// `quantity_milli` of the plain (not lot-tracked) item `code`, received at
 /// `location` when nothing of it was.
-async fn stocked(db: &Db, code: &str, name: &str, location: &Location, quantity_milli: i64, cost: i64) -> Result {
+async fn stocked(
+    db: &Db,
+    code: &str,
+    name: &str,
+    location: &Location,
+    quantity_milli: i64,
+    cost: i64,
+) -> Result {
     let item = match Item::query().where_(Item::CODE.eq(code)).first(db).await? {
         Some(item) => item,
         None => {
@@ -1539,9 +1617,25 @@ async fn cold_units(state: &AppState) -> Result<usize> {
     let marina = kitchen_stock(state).await?;
     let fridge_location = sub_location(db, "OUT1-F2", "Fridge 2", &marina).await?;
     let freezer_location = sub_location(db, "OUT1-FR1", "Freezer 1", &marina).await?;
-    stocked(db, "CHICKEN-FRESH", "Fresh chicken", &fridge_location, 6_000, 1_800).await?;
+    stocked(
+        db,
+        "CHICKEN-FRESH",
+        "Fresh chicken",
+        &fridge_location,
+        6_000,
+        1_800,
+    )
+    .await?;
     stocked(db, "CREAM", "Cream", &fridge_location, 2_000, 1_200).await?;
-    stocked(db, "CHICKEN-FROZEN", "Frozen chicken", &freezer_location, 20_000, 1_500).await?;
+    stocked(
+        db,
+        "CHICKEN-FROZEN",
+        "Frozen chicken",
+        &freezer_location,
+        20_000,
+        1_500,
+    )
+    .await?;
     let outlet = Outlet::by_code(db, "marina").await?.map(|outlet| outlet.id);
     let mut made = Vec::new();
     for (code, name, unit_kind, location) in [
@@ -1600,7 +1694,11 @@ async fn recall_story(state: &AppState) -> Result<usize> {
     if Recall::query().count(db).await? > 0 {
         return Ok(0);
     }
-    let Some(tomato) = Item::query().where_(Item::CODE.eq("TOMATO")).first(db).await? else {
+    let Some(tomato) = Item::query()
+        .where_(Item::CODE.eq("TOMATO"))
+        .first(db)
+        .await?
+    else {
         return Ok(0);
     };
     let Some(sauce) = Item::query()
@@ -1613,7 +1711,12 @@ async fn recall_story(state: &AppState) -> Result<usize> {
     let marina = kitchen_stock(state).await?;
     let central = central_stock(state).await?;
     // Every menu item uses the sauce.
-    for code in ["shawarma-plate", "falafel-wrap", "hummus-bowl", "kunafa-tray"] {
+    for code in [
+        "shawarma-plate",
+        "falafel-wrap",
+        "hummus-bowl",
+        "kunafa-tray",
+    ] {
         let Some(item) = MenuItem::by_code(db, code).await? else {
             continue;
         };
@@ -1646,7 +1749,12 @@ async fn recall_story(state: &AppState) -> Result<usize> {
         Some(t5) => {
             let mut found = None;
             for batch in &batches {
-                if batch.inputs(db).await?.iter().any(|input| input.lot_id == t5.id) {
+                if batch
+                    .inputs(db)
+                    .await?
+                    .iter()
+                    .any(|input| input.lot_id == t5.id)
+                {
                     found = batch.lot_id;
                 }
             }
@@ -1802,12 +1910,22 @@ async fn outage_and_closings(
     let refused = paper_order::enter_as(
         state,
         cashier,
-        &paper_ask(&marina, "P-0099", 8_400, late_at, "Printout found after the outage"),
+        &paper_ask(
+            &marina,
+            "P-0099",
+            8_400,
+            late_at,
+            "Printout found after the outage",
+        ),
     )
     .await;
     println!(
         "Marina {old}: closing approved, late entry {}.",
-        if refused.is_err() { "refused" } else { "recorded" }
+        if refused.is_err() {
+            "refused"
+        } else {
+            "recorded"
+        }
     );
     made += 1;
 
@@ -1842,11 +1960,23 @@ async fn outage_and_closings(
     let entered = paper_order::enter_as(
         state,
         cashier,
-        &paper_ask(&sharjah, "P-0107", 12_600, at, "Terminal was down, ticket found next morning"),
+        &paper_ask(
+            &sharjah,
+            "P-0107",
+            12_600,
+            at,
+            "Terminal was down, ticket found next morning",
+        ),
     )
     .await;
     match (entered, area) {
-        (Ok(wl_kernel::late_entries::Entered::Pending { approval_request_id, .. }), Some(area)) => {
+        (
+            Ok(wl_kernel::late_entries::Entered::Pending {
+                approval_request_id,
+                ..
+            }),
+            Some(area),
+        ) => {
             if let Err(error) =
                 wl_kernel::approvals::approve(state, approval_request_id, area, "").await
             {

@@ -23,10 +23,10 @@ use serde::Serialize;
 use wl_kernel::Subject;
 use wl_kernel::sales::{COUNTER_SALE_SUBJECT_TYPE, SALES_ORDER_SUBJECT_TYPE};
 
+use crate::config::config_of;
 use crate::notices::aed;
 use crate::pages::counter_sales::parse_milli;
 use crate::sales_return::{ReturnKind, ReturnResolution, ReturnStatus, SalesReturn};
-use crate::config::config_of;
 use crate::sales_return_machine::{RECEIVE, RESOLVE, REVERSE, ResolveInput};
 use crate::sales_returns::{self, NewReturn, ResolveOutcome};
 use crate::{permissions, texts};
@@ -240,10 +240,20 @@ async fn show(
         } else {
             String::new()
         },
-        resolution_options: ["credit_note", "refund", "replacement", "refunded_by_channel"]
-            .iter()
-            .map(|n| [(*n).to_owned(), text(&lang, &format!("returns.resolution.{n}"))])
-            .collect(),
+        resolution_options: [
+            "credit_note",
+            "refund",
+            "replacement",
+            "refunded_by_channel",
+        ]
+        .iter()
+        .map(|n| {
+            [
+                (*n).to_owned(),
+                text(&lang, &format!("returns.resolution.{n}")),
+            ]
+        })
+        .collect(),
         category_options: options(&lang, "returns.category", &config.complaint_categories),
         party_options: options(&lang, "returns.party", &config.responsible_parties),
         sales_return: r,

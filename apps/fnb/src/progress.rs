@@ -16,8 +16,8 @@
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::inventory::{
-    LineComponent, SaleLineStock, SaleLineStockSource, StockFuture, ITEM_SUBJECT_TYPE,
-    LOCATION_SUBJECT_TYPE,
+    ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LineComponent, SaleLineStock, SaleLineStockSource,
+    StockFuture,
 };
 use wl_kernel::sales::{
     FulfilmentProgress, SALES_ORDER_SUBJECT_TYPE, SalesFuture, SalesOrderId, order_desk,
@@ -38,7 +38,11 @@ pub(crate) async fn started(db: &Db, order: &FnbOrder, lines: &[i64]) -> Result<
             order.status,
             FnbOrderStatus::Placed | FnbOrderStatus::Accepted | FnbOrderStatus::Rejected
         );
-        return Ok(if past_accepted { lines.to_vec() } else { Vec::new() });
+        return Ok(if past_accepted {
+            lines.to_vec()
+        } else {
+            Vec::new()
+        });
     }
     Ok(lines
         .iter()

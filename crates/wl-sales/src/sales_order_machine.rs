@@ -49,8 +49,8 @@ use wl_kernel::Subject;
 use wl_kernel::sales::{FulfilledLine, SALES_ORDER_SUBJECT_TYPE};
 
 use crate::permissions;
-use crate::sale_line::SaleLine;
 use crate::promo_code::PromoCode;
+use crate::sale_line::SaleLine;
 use crate::sales_order::{FulfilmentRecord, OrderPaymentStatus, SalesOrder, SalesOrderStatus};
 use crate::texts::english;
 
@@ -336,7 +336,10 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
                         .update(
                             &mut *tx,
                             &[
-                                ("payment_status", &OrderPaymentStatus::Pending.as_str().to_owned()),
+                                (
+                                    "payment_status",
+                                    &OrderPaymentStatus::Pending.as_str().to_owned(),
+                                ),
                                 ("payment_due_at", &due),
                             ],
                         )
@@ -410,7 +413,13 @@ fn confirm_payment(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
             Box::pin(async move {
                 SalesOrder::query()
                     .where_(SalesOrder::ID.eq(id))
-                    .update(&mut *tx, &[("payment_status", &OrderPaymentStatus::Received.as_str().to_owned())])
+                    .update(
+                        &mut *tx,
+                        &[(
+                            "payment_status",
+                            &OrderPaymentStatus::Received.as_str().to_owned(),
+                        )],
+                    )
                     .await?;
                 if confirms {
                     let stamp = Some(now());
@@ -443,7 +452,10 @@ fn payment_failed() -> Transition<SalesOrder> {
                         &mut *tx,
                         &[
                             ("reason", &reason),
-                            ("payment_status", &OrderPaymentStatus::Failed.as_str().to_owned()),
+                            (
+                                "payment_status",
+                                &OrderPaymentStatus::Failed.as_str().to_owned(),
+                            ),
                         ],
                     )
                     .await?;

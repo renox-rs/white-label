@@ -1262,7 +1262,9 @@ impl LineOutcomeKind {
 
     /// The outcome called `text`.
     pub fn parse(text: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|kind| kind.as_str() == text.trim())
+        Self::ALL
+            .into_iter()
+            .find(|kind| kind.as_str() == text.trim())
     }
 
     /// Whether choosing it needs a manager on its own (`SAL.ACL.05`: *finish

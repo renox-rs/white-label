@@ -297,8 +297,7 @@ pub async fn amend(
     let quantity = if ask.quantity.trim().is_empty() {
         line.open_milli()
     } else {
-        units_to_milli(&ask.quantity)
-            .ok_or_else(|| refused(english("fnb.amend.quantity", &[])))?
+        units_to_milli(&ask.quantity).ok_or_else(|| refused(english("fnb.amend.quantity", &[])))?
     };
     let price = if ask.price.trim().is_empty() {
         None
@@ -351,10 +350,7 @@ pub async fn amend(
     let outcome = order_desk(state).amend(state, user, request).await?;
     let text = english(
         "fnb.amend.history",
-        &[
-            ("reason", &reason),
-            ("time", &call_time),
-        ],
+        &[("reason", &reason), ("time", &call_time)],
     );
     record(
         state,
@@ -370,12 +366,19 @@ pub async fn amend(
     )
     .await?;
     if outcome == ChangeOutcome::Done {
-        run_if_unmoved(state, &order, name, user, &text, OrderInput {
-            aggregator: false,
-            customer_agreed: true,
-            started_changed: false,
-            ..OrderInput::default()
-        })
+        run_if_unmoved(
+            state,
+            &order,
+            name,
+            user,
+            &text,
+            OrderInput {
+                aggregator: false,
+                customer_agreed: true,
+                started_changed: false,
+                ..OrderInput::default()
+            },
+        )
         .await?;
     }
     Ok(outcome)
@@ -420,7 +423,9 @@ pub async fn cancel_line(
         .into_iter()
         .filter(|ticket| ticket.sale_line_id == line.id)
         .collect();
-    let bumped = tickets.iter().any(|ticket| ticket.status == TicketStatus::Done);
+    let bumped = tickets
+        .iter()
+        .any(|ticket| ticket.status == TicketStatus::Done);
     if bumped {
         return Err(refused(english("fnb.line.bumped", &[])));
     }
@@ -435,7 +440,10 @@ pub async fn cancel_line(
     let started = tickets.iter().any(|ticket| ticket.status.is_started());
     let outcome_kind = if started {
         match LineOutcomeKind::parse(&ask.outcome).filter(|kind| {
-            matches!(kind, LineOutcomeKind::ReturnToStock | LineOutcomeKind::Scrap)
+            matches!(
+                kind,
+                LineOutcomeKind::ReturnToStock | LineOutcomeKind::Scrap
+            )
         }) {
             Some(kind) => Some(kind),
             None => {
@@ -481,11 +489,18 @@ pub async fn cancel_line(
     )
     .await?;
     if outcome == ChangeOutcome::Done {
-        run_if_unmoved(state, &order, name, user, &text, OrderInput {
-            line_reason_code: Some(code),
-            line_bumped: false,
-            ..OrderInput::default()
-        })
+        run_if_unmoved(
+            state,
+            &order,
+            name,
+            user,
+            &text,
+            OrderInput {
+                line_reason_code: Some(code),
+                line_bumped: false,
+                ..OrderInput::default()
+            },
+        )
         .await?;
     }
     Ok(outcome)

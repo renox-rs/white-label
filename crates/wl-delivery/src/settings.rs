@@ -229,7 +229,10 @@ impl DeliverySettings {
     /// The perishable policy of `source_type`: the client's, else the module
     /// default (*discard*). The rule reads it at the failed attempt.
     pub fn perishable_policy(&self, source_type: &str) -> PerishablePolicy {
-        self.perishable.get(source_type).copied().unwrap_or_default()
+        self.perishable
+            .get(source_type)
+            .copied()
+            .unwrap_or_default()
     }
 
     /// Sets the wastage value, in fils, above which a discard needs a second

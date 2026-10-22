@@ -36,7 +36,9 @@ use crate::cash_handover::{CashEntry, CashHandover, CashHolder};
 pub async fn of_session(db: &Db, session: i64) -> Result<Option<CashHandover>> {
     CashHandover::query()
         .where_(CashHandover::KIND.eq(HandoverKind::Period))
-        .where_(CashHandover::PERIOD_TYPE.eq(wl_kernel::sales::TILL_SESSION_SUBJECT_TYPE.to_owned()))
+        .where_(
+            CashHandover::PERIOD_TYPE.eq(wl_kernel::sales::TILL_SESSION_SUBJECT_TYPE.to_owned()),
+        )
         .where_(CashHandover::PERIOD_ID.eq(session))
         .order_by(CashHandover::ID)
         .first(db)
@@ -140,7 +142,11 @@ pub async fn create_from_session(
 /// # Errors
 ///
 /// Database errors.
-pub async fn demo(state: &AppState, cashier_user: i64, date: renox::chrono::NaiveDate) -> Result<usize> {
+pub async fn demo(
+    state: &AppState,
+    cashier_user: i64,
+    date: renox::chrono::NaiveDate,
+) -> Result<usize> {
     let mut made = 0;
     for (session, expected, counted) in [(9_001, 400_000, 395_000), (9_002, 250_000, 250_000)] {
         if of_session(&state.db, session).await?.is_some() {

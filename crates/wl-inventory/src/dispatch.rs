@@ -25,9 +25,7 @@
 
 use renox::auth::permissions::Scope;
 use renox::prelude::*;
-use renox::state_machine::{
-    Machine, StateMachine, Transition, TransitionCtx, TransitionError,
-};
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
@@ -137,7 +135,11 @@ impl Dispatch {
 
 /// One line of a dispatch. Quantities are thousandths of the base unit.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_inventory_dispatch_lines", index(dispatch_id), index(sale_line_id))]
+#[model(
+    table = "wl_inventory_dispatch_lines",
+    index(dispatch_id),
+    index(sale_line_id)
+)]
 pub struct DispatchLine {
     /// The primary key.
     pub id: i64,
@@ -408,10 +410,13 @@ impl StateMachine for Dispatch {
                 };
                 Box::pin(async move { problem.map_or(Ok(()), Err) })
             })
-            .guard("stock_available_and_not_held", |_dispatch: &Dispatch, ctx| {
-                let problem = pick_input(ctx).and_then(|input| input.stock_problem);
-                Box::pin(async move { problem.map_or(Ok(()), Err) })
-            });
+            .guard(
+                "stock_available_and_not_held",
+                |_dispatch: &Dispatch, ctx| {
+                    let problem = pick_input(ctx).and_then(|input| input.stock_problem);
+                    Box::pin(async move { problem.map_or(Ok(()), Err) })
+                },
+            );
         Machine::new()
             .initial([Draft])
             .state(Draft)
@@ -443,9 +448,7 @@ impl StateMachine for Dispatch {
                     .reason_required(),
             ))
             .transition(cancel_rules(
-                Transition::new(CANCEL_BY_SYSTEM)
-                    .label("Cancel")
-                    .system(),
+                Transition::new(CANCEL_BY_SYSTEM).label("Cancel").system(),
             ))
     }
 }

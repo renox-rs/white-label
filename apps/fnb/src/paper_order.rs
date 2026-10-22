@@ -30,8 +30,8 @@ use renox::chrono::{NaiveDate, NaiveTime};
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::serde_json::json;
-use serde::{Deserialize, Serialize};
 use renox::state_machine::StateMachine;
+use serde::{Deserialize, Serialize};
 use wl_kernel::documents::DUBAI_OFFSET_SECONDS;
 use wl_kernel::late_entries::{self, Entered, EntrySpec, Period};
 use wl_kernel::machines::BoxFuture;
@@ -185,10 +185,19 @@ fn create_paper_order<'a>(
             &mut *tx,
             PaperOrder {
                 outlet_id,
-                channel: new.payload["channel"].as_str().unwrap_or_default().to_owned(),
-                reference: new.payload["reference"].as_str().unwrap_or_default().to_owned(),
+                channel: new.payload["channel"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                reference: new.payload["reference"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
                 amount: new.payload["amount"].as_i64().unwrap_or_default(),
-                method: new.payload["method"].as_str().unwrap_or(method::CASH).to_owned(),
+                method: new.payload["method"]
+                    .as_str()
+                    .unwrap_or(method::CASH)
+                    .to_owned(),
                 note: new.payload["note"].as_str().unwrap_or_default().to_owned(),
                 occurred_at: Some(new.occurred_at),
                 entered_at: Some(new.entered_at),
@@ -230,10 +239,9 @@ fn period_for<'a>(
             .await?;
         Ok(match closing.map(|c| c.status) {
             Some(ClosingStatus::Submitted) => Period::Closed,
-            Some(ClosingStatus::Approved) => Period::Locked(english(
-                "fnb.paper.problem.locked",
-                &[("date", &date)],
-            )),
+            Some(ClosingStatus::Approved) => {
+                Period::Locked(english("fnb.paper.problem.locked", &[("date", &date)]))
+            }
             _ => Period::Open,
         })
     })
@@ -349,14 +357,23 @@ pub async fn enter_as(state: &AppState, user_id: i64, ask: &PaperAsk) -> Result<
     let reference_text = if ask.outage_reference.trim().is_empty() {
         outage
             .as_ref()
-            .map(|o| english("fnb.paper.outage_reference", &[("id", &o.id), ("outlet", &outlet.name)]))
+            .map(|o| {
+                english(
+                    "fnb.paper.outage_reference",
+                    &[("id", &o.id), ("outlet", &outlet.name)],
+                )
+            })
             .unwrap_or_default()
     } else {
         ask.outage_reference.clone()
     };
     let subject_type = {
         let own = subject_for(&outlet.code);
-        if late_entries::get(&own).is_some() { own } else { GENERAL_SUBJECT.to_owned() }
+        if late_entries::get(&own).is_some() {
+            own
+        } else {
+            GENERAL_SUBJECT.to_owned()
+        }
     };
     let mut spec = EntrySpec::new(&subject_type, user_id, at)
         .scope(outlet.scope())
@@ -386,7 +403,9 @@ async fn adjustment_task(
     reference: &str,
     amount: i64,
 ) -> Result {
-    let date = closing.business_date.unwrap_or_else(wl_kernel::documents::today);
+    let date = closing
+        .business_date
+        .unwrap_or_else(wl_kernel::documents::today);
     let next = date.succ_opt().unwrap_or(date);
     let title = english(
         "fnb.paper.task_title",

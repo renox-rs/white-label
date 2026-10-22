@@ -95,8 +95,16 @@ async fn the_demo_client_boots_and_the_demo_company_is_made_once() {
         .get(app.db())
         .await
         .unwrap();
-    assert!(failed.iter().any(|o| o.failure_side.as_deref() == Some(side::CUSTOMER)));
-    assert!(failed.iter().any(|o| o.failure_side.as_deref() == Some(side::OUTLET)));
+    assert!(
+        failed
+            .iter()
+            .any(|o| o.failure_side.as_deref() == Some(side::CUSTOMER))
+    );
+    assert!(
+        failed
+            .iter()
+            .any(|o| o.failure_side.as_deref() == Some(side::OUTLET))
+    );
     let closed = FnbOrder::query()
         .where_(FnbOrder::REFUND_DECISION.eq(Some(decision::NO_REFUND.to_owned())))
         .count(app.db())
@@ -137,7 +145,10 @@ async fn the_demo_screens_open_for_the_kitchen_manager_and_not_for_the_cook() {
         .expect("a failed order");
 
     app.acting_as(&manager);
-    app.get("/orders").await.assert_ok().assert_see("Delivery failed");
+    app.get("/orders")
+        .await
+        .assert_ok()
+        .assert_see("Delivery failed");
     app.get(&format!("/orders/{}", failed.id))
         .await
         .assert_ok()

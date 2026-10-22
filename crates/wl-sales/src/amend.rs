@@ -261,16 +261,25 @@ pub fn evaluate(order: &SalesOrder, lines: &[SaleLine], asked: &AmendInput) -> A
             .iter_mut()
             .find(|l| l.id == change.line && l.kind == KIND_ITEM)
         else {
-            first(&mut problem, english("wl_sales.orders.problem.unknown_line", &[]));
+            first(
+                &mut problem,
+                english("wl_sales.orders.problem.unknown_line", &[]),
+            );
             continue;
         };
         let position = line.line_no.to_string();
         if input.changes[..n].iter().any(|c| c.line == change.line) {
-            first(&mut problem, english("wl_sales.orders.problem.quantity", &[]));
+            first(
+                &mut problem,
+                english("wl_sales.orders.problem.quantity", &[]),
+            );
         } else if change.quantity_milli < 0 || change.unit_price < 0 || change.discount < 0 {
             first(
                 &mut problem,
-                english("wl_sales.amend.problem.negative", &[("position", &position)]),
+                english(
+                    "wl_sales.amend.problem.negative",
+                    &[("position", &position)],
+                ),
             );
         } else if change.quantity_milli < line.fulfilled_milli + line.cancelled_milli {
             first(
@@ -291,7 +300,8 @@ pub fn evaluate(order: &SalesOrder, lines: &[SaleLine], asked: &AmendInput) -> A
                 ),
             );
         }
-        let figures_changed = line.unit_price != change.unit_price || line.discount != change.discount;
+        let figures_changed =
+            line.unit_price != change.unit_price || line.discount != change.discount;
         changed |= figures_changed || line.quantity_milli != change.quantity_milli;
         if figures_changed {
             top_bps = top_bps.max(discount_bps(
@@ -786,11 +796,19 @@ mod tests {
         let change = |input: AmendInput| input.line(1, 12_000, 4_000, 0);
         let mut off = ask("x");
         off.channel_ok = false;
-        assert!(evaluate(&order(SalesOrderStatus::Confirmed), &base, &change(off)).problem.is_some());
         assert!(
-            evaluate(&order(SalesOrderStatus::Confirmed), &base, &change(ask("  ")))
+            evaluate(&order(SalesOrderStatus::Confirmed), &base, &change(off))
                 .problem
                 .is_some()
+        );
+        assert!(
+            evaluate(
+                &order(SalesOrderStatus::Confirmed),
+                &base,
+                &change(ask("  "))
+            )
+            .problem
+            .is_some()
         );
         assert!(
             evaluate(
@@ -802,9 +820,13 @@ mod tests {
             .is_some()
         );
         assert!(
-            evaluate(&order(SalesOrderStatus::Fulfilled), &base, &change(ask("x")))
-                .problem
-                .is_some()
+            evaluate(
+                &order(SalesOrderStatus::Fulfilled),
+                &base,
+                &change(ask("x"))
+            )
+            .problem
+            .is_some()
         );
     }
 

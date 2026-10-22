@@ -10,8 +10,14 @@ pub(crate) const TILL_TEXTS: &[(&str, &str)] = &[
         "wl_sales.till.problem.not_counted",
         "Enter the cash counted in the till (zero or more).",
     ),
-    ("wl_sales.till.problem.float", "The opening float cannot be negative."),
-    ("wl_sales.till.problem.till", "Give the till a name, like T1."),
+    (
+        "wl_sales.till.problem.float",
+        "The opening float cannot be negative.",
+    ),
+    (
+        "wl_sales.till.problem.till",
+        "Give the till a name, like T1.",
+    ),
     (
         "wl_sales.till.problem.exists",
         "This till already has a session for that day. Reopen it to correct it.",
@@ -20,7 +26,10 @@ pub(crate) const TILL_TEXTS: &[(&str, &str)] = &[
         "wl_sales.till.problem.not_open",
         "Only a session that is open is counted and closed.",
     ),
-    ("wl_sales.till.problem.amount", "That is not an amount: write it like 250.00."),
+    (
+        "wl_sales.till.problem.amount",
+        "That is not an amount: write it like 250.00.",
+    ),
     // History.
     ("wl_sales.till.history.opened", "Till session opened"),
     // Toasts.
@@ -56,7 +65,10 @@ pub(crate) const TILL_TEXTS: &[(&str, &str)] = &[
     ("wl_sales.till.status.closed", "Closed"),
     ("wl_sales.till.status.reviewed", "Reviewed"),
     ("wl_sales.till.count", "Count and close"),
-    ("wl_sales.till.count_title", "Count the cash and close the till"),
+    (
+        "wl_sales.till.count_title",
+        "Count the cash and close the till",
+    ),
     (
         "wl_sales.till.count_description",
         "Enter the cash in the drawer. A shortage goes to the till's cash handover, to recover from the cashier or write off.",
@@ -70,7 +82,10 @@ pub(crate) const TILL_TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_sales.till.reason", "Reason"),
     ("wl_sales.till.review", "Mark reviewed"),
-    ("wl_sales.till.review_message", "Mark this closed session as checked?"),
+    (
+        "wl_sales.till.review_message",
+        "Mark this closed session as checked?",
+    ),
     ("wl_sales.till.reopened_times", "Reopened"),
     ("wl_sales.till.last_reason", "Last reopening"),
     ("wl_sales.till.none", "None"),

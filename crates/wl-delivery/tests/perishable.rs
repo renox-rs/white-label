@@ -59,9 +59,7 @@ async fn run_with(w: &World, deliveries: &[&Delivery]) -> wl_delivery::Run {
 /// `delivery` on a run that left, then failed with `reason`.
 async fn failed(w: &World, delivery: &Delivery, reason: &str) -> (Delivery, wl_delivery::Run) {
     let run = run_with(w, &[delivery]).await;
-    w.fail(&w.driver, delivery, reason)
-        .await
-        .assert_status(303);
+    w.fail(&w.driver, delivery, reason).await.assert_status(303);
     (w.reload(delivery).await, run)
 }
 
@@ -70,7 +68,10 @@ async fn discard(w: &World, delivery: &Delivery) -> renox::testing::TestResponse
     w.post(
         &w.driver,
         &format!("/driver/stops/{}/discard", delivery.id),
-        &[("reason", "Spoilt in the heat"), ("photo", "discard-photo-1")],
+        &[
+            ("reason", "Spoilt in the heat"),
+            ("photo", "discard-photo-1"),
+        ],
     )
     .await
 }
@@ -445,5 +446,8 @@ async fn the_rule_acts_once_per_failed_attempt() {
         .unwrap();
 
     assert_eq!(w.notices.of_type("delivery.perishable_failed").len(), told);
-    assert_eq!(w.reload(&after).await.resolution.as_deref(), Some("discard"));
+    assert_eq!(
+        w.reload(&after).await.resolution.as_deref(),
+        Some("discard")
+    );
 }

@@ -23,11 +23,11 @@ pub mod web;
 use renox::prelude::*;
 
 pub use connection::{ConnectionStatus, IntegrationConnection, transitions};
-pub use devices::{DeviceBeat, DeviceSettings};
 pub use def::{
-    DEFAULT_DOWN_AFTER_MINUTES, DeviceSpec, Delivery, DueFn, EntryFn, Inbound, IntegrationDef, Match, MatchFn,
-    Outbound, SendFn, all, call_failed, down_at, get, register, retry_wait,
+    DEFAULT_DOWN_AFTER_MINUTES, Delivery, DeviceSpec, DueFn, EntryFn, Inbound, IntegrationDef,
+    Match, MatchFn, Outbound, SendFn, all, call_failed, down_at, get, register, retry_wait,
 };
+pub use devices::{DeviceBeat, DeviceSettings};
 pub use events::IntegrationStatusChanged;
 pub use queue::{CallStatus, QueuedCall};
 pub use reconcile::{Line, LineKind, Reconciliation};

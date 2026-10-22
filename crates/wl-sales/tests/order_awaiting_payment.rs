@@ -136,9 +136,18 @@ async fn the_same_payment_delivered_twice_confirms_once() {
     t.state().emit(event.clone()).await.unwrap();
     t.state().emit(event).await.unwrap();
 
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
     assert_eq!(online.confirmed.lock().unwrap().len(), 1);
-    assert_eq!(OrderPayment::of_order(t.db(), order.id).await.unwrap().len(), 1);
+    assert_eq!(
+        OrderPayment::of_order(t.db(), order.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     assert!(online.gateway.refunds().is_empty());
 }
 

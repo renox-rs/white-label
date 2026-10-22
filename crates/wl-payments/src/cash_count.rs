@@ -233,7 +233,13 @@ pub(crate) fn transitions() -> Vec<Transition<CashHandover>> {
         counting(RECOUNT, "Recount", Short, Counted),
         counting(RECOUNT_SHORT, "Recount (still short)", Short, Short),
         counting_by(COUNT_TILL, "Count (till session)", Open, Counted, true),
-        counting_by(COUNT_TILL_SHORT, "Count (till session, short)", Open, Short, true),
+        counting_by(
+            COUNT_TILL_SHORT,
+            "Count (till session, short)",
+            Open,
+            Short,
+            true,
+        ),
     ]
 }
 
@@ -336,7 +342,8 @@ async fn after_count(state: &AppState, event: &Transitioned<CashHandover>) -> Re
         COUNT_TILL,
         COUNT_TILL_SHORT,
     ]
-    .contains(&event.transition.as_str()) {
+    .contains(&event.transition.as_str())
+    {
         return Ok(());
     }
     let handover = CashHandover::find_or_404(&state.db, event.key).await?;
@@ -370,10 +377,7 @@ pub(crate) fn shortage_event(handover: &CashHandover) -> CashShortage {
         responsible_user: handover.responsible_user_id,
         period_kind: handover.period_kind,
         period: handover.period_subject(),
-        till_session: handover
-            .holder_till
-            .as_ref()
-            .and(handover.period_subject()),
+        till_session: handover.holder_till.as_ref().and(handover.period_subject()),
         holder_till: handover.holder_till.clone(),
         difference: handover.difference,
         missing_cheques: Vec::new(),

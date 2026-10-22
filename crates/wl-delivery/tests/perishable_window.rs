@@ -168,9 +168,7 @@ async fn a_stop_that_is_not_perishable_needs_no_arrival() {
     let r1 = dispatched_run(&w, &w.driver, &[&tiles]).await;
     let r2 = dispatched_run(&w, &w.other_driver, &[]).await;
 
-    propose(&w, &r1, &r2, &[(&tiles, None)])
-        .await
-        .assert_ok();
+    propose(&w, &r1, &r2, &[(&tiles, None)]).await.assert_ok();
 
     assert_eq!(proposals(&w, &r1).await.len(), 1);
 }

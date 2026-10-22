@@ -409,7 +409,10 @@ mod tests {
 
     #[test]
     fn a_reference_is_compared_trimmed_and_without_case() {
-        assert_eq!(reference_key(" tb-2026-10-W2 "), reference_key("TB-2026-10-w2"));
+        assert_eq!(
+            reference_key(" tb-2026-10-W2 "),
+            reference_key("TB-2026-10-w2")
+        );
         assert_eq!(aggregator_key(" Aggregator_A "), "aggregator_a");
     }
 

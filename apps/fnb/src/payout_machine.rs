@@ -95,16 +95,19 @@ fn matching(name: &'static str, by_user: bool) -> Transition<PayoutStatement> {
     };
     base.from([PayoutStatus::Imported])
         .to(PayoutStatus::Matched)
-        .guard("every_line_matched_or_explained", |_s: &PayoutStatement, ctx| {
-            let unmatched = input_of(ctx).unmatched;
-            Box::pin(async move {
-                if unmatched > 0 {
-                    Err(english("fnb.payout.problem.unmatched", &[]))
-                } else {
-                    Ok(())
-                }
-            })
-        })
+        .guard(
+            "every_line_matched_or_explained",
+            |_s: &PayoutStatement, ctx| {
+                let unmatched = input_of(ctx).unmatched;
+                Box::pin(async move {
+                    if unmatched > 0 {
+                        Err(english("fnb.payout.problem.unmatched", &[]))
+                    } else {
+                        Ok(())
+                    }
+                })
+            },
+        )
         .guard("every_refund_has_a_party", |_s: &PayoutStatement, ctx| {
             let missing = input_of(ctx).refunds_without_party;
             Box::pin(async move {
@@ -230,7 +233,11 @@ fn void_rules(transition: Transition<PayoutStatement>) -> Transition<PayoutState
             set(
                 tx,
                 id,
-                &[("void_reason", &reason), ("voided_at", &at), ("voided_by", &by)],
+                &[
+                    ("void_reason", &reason),
+                    ("voided_at", &at),
+                    ("voided_by", &by),
+                ],
             )
             .await
         })

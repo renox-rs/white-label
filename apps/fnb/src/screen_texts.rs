@@ -130,7 +130,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.cancel_outcome", "The kitchen started"),
     ("fnb.screen.cancellation", "Cancellation"),
     ("fnb.screen.cancelled_by", "Cancelled by"),
-    ("fnb.screen.cancelled_by_customer", "The customer, from the order page"),
+    (
+        "fnb.screen.cancelled_by_customer",
+        "The customer, from the order page",
+    ),
     ("fnb.screen.cancelled_at", "Cancelled at"),
     ("fnb.screen.compensation", "Compensation expected"),
     (
@@ -162,10 +165,22 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ),
     ("fnb.screen.amend_line", "Line to change"),
     ("fnb.screen.amend_new_item", "Replace it with"),
-    ("fnb.screen.amend_keep", "Keep the item, change quantity or price"),
-    ("fnb.screen.amend_quantity", "Quantity (leave empty to keep)"),
-    ("fnb.screen.amend_price", "Price of one unit before VAT, AED (leave empty to keep, or take the menu's)"),
-    ("fnb.screen.amend_agreed", "The customer agreed on the phone"),
+    (
+        "fnb.screen.amend_keep",
+        "Keep the item, change quantity or price",
+    ),
+    (
+        "fnb.screen.amend_quantity",
+        "Quantity (leave empty to keep)",
+    ),
+    (
+        "fnb.screen.amend_price",
+        "Price of one unit before VAT, AED (leave empty to keep, or take the menu's)",
+    ),
+    (
+        "fnb.screen.amend_agreed",
+        "The customer agreed on the phone",
+    ),
     ("fnb.screen.amend_call_time", "Time of the call (hh:mm)"),
     ("fnb.screen.amend_submit", "Amend the order"),
     ("fnb.screen.line_cancel", "Cancel a line"),
@@ -175,7 +190,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "A paid line is refunded and its ticket removed. A line the kitchen started needs an outcome and a manager's approval. A bumped line cannot be cancelled.",
     ),
     ("fnb.screen.line_cancel_line", "Line"),
-    ("fnb.screen.line_cancel_outcome", "If the kitchen started it"),
+    (
+        "fnb.screen.line_cancel_outcome",
+        "If the kitchen started it",
+    ),
     ("fnb.screen.line_cancel_submit", "Cancel the line"),
     ("fnb.screen.changes", "Changes"),
     ("fnb.screen.no_changes", "No change was made"),
@@ -185,21 +203,36 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.revision", "Revision"),
     ("fnb.screen.change.amend", "Amended"),
     ("fnb.screen.change.cancel_line", "Line cancelled"),
-    ("fnb.screen.expected", "Refunds expected from the aggregator"),
+    (
+        "fnb.screen.expected",
+        "Refunds expected from the aggregator",
+    ),
     ("fnb.screen.no_expected", "None"),
     // The aggregator's rider who does not arrive (BL-FNB-06).
     ("fnb.screen.pickup", "Waiting for the aggregator's rider"),
     ("fnb.screen.ready_at", "Ready at"),
-    ("fnb.screen.pickup_alert_at", "Kitchen manager told to chase"),
+    (
+        "fnb.screen.pickup_alert_at",
+        "Kitchen manager told to chase",
+    ),
     ("fnb.screen.pickup_task_at", "Task to record what happened"),
     ("fnb.screen.picked_up_late", "Picked up late"),
-    ("fnb.screen.picked_up_late_title", "The rider collected the order late"),
+    (
+        "fnb.screen.picked_up_late_title",
+        "The rider collected the order late",
+    ),
     (
         "fnb.screen.picked_up_late_message",
         "The order is completed.",
     ),
-    ("fnb.screen.aggregator_cancelled", "Cancelled by the aggregator"),
-    ("fnb.screen.aggregator_cancelled_title", "The aggregator cancelled the order"),
+    (
+        "fnb.screen.aggregator_cancelled",
+        "Cancelled by the aggregator",
+    ),
+    (
+        "fnb.screen.aggregator_cancelled_title",
+        "The aggregator cancelled the order",
+    ),
     (
         "fnb.screen.aggregator_cancelled_message",
         "The order is cancelled with the aggregator responsible. The food is logged as wastage, nobody is refunded and the aggregator is expected to pay for the food. Your choice is the manager's approval.",
@@ -228,9 +261,18 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.reverse_reason", "Why"),
     ("fnb.screen.reverse_liability", "Who is responsible"),
     ("fnb.screen.reverse_submit", "Ask to reverse"),
-    ("fnb.screen.reverse_reason.marked_by_mistake", "Marked delivered by mistake"),
-    ("fnb.screen.reverse_reason.recipient_denies", "The recipient denies it"),
-    ("fnb.screen.reverse_reason.wrong_recipient", "Handed to the wrong person"),
+    (
+        "fnb.screen.reverse_reason.marked_by_mistake",
+        "Marked delivered by mistake",
+    ),
+    (
+        "fnb.screen.reverse_reason.recipient_denies",
+        "The recipient denies it",
+    ),
+    (
+        "fnb.screen.reverse_reason.wrong_recipient",
+        "Handed to the wrong person",
+    ),
     ("fnb.screen.liability.driver", "The rider"),
     ("fnb.screen.liability.business", "The business"),
     ("fnb.screen.liability.client", "The customer"),
@@ -241,8 +283,14 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.reversal_amount", "Refunded"),
     ("fnb.screen.reversed_at", "Reversed at"),
     ("fnb.screen.refunded_after", "Refunded after completion"),
-    ("fnb.screen.resolution.refund", "A refund (a manager approves, the cashier records how it is paid)"),
-    ("fnb.screen.resolution.credit_note", "Credit note only: no refund payment, nothing is owed"),
+    (
+        "fnb.screen.resolution.refund",
+        "A refund (a manager approves, the cashier records how it is paid)",
+    ),
+    (
+        "fnb.screen.resolution.credit_note",
+        "Credit note only: no refund payment, nothing is owed",
+    ),
     ("fnb.screen.return_party.driver_or_rider", "Rider"),
     ("fnb.screen.return_party.business", "Business"),
     ("fnb.screen.return_party.customer", "Customer"),
@@ -282,7 +330,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ),
     // The checkout.
     ("fnb.screen.checkout_title", "Payment"),
-    ("fnb.screen.checkout_subtitle", "How you can pay for this order."),
+    (
+        "fnb.screen.checkout_subtitle",
+        "How you can pay for this order.",
+    ),
     ("fnb.screen.checkout_methods", "Payment methods"),
     (
         "fnb.screen.checkout_gateway_down",
@@ -290,7 +341,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ),
     ("fnb.screen.pay_online", "Pay online"),
     ("fnb.screen.pay_cash", "Pay cash on delivery"),
-    ("fnb.screen.online_only", "Online payment only for this order"),
+    (
+        "fnb.screen.online_only",
+        "Online payment only for this order",
+    ),
     // States and words.
     ("fnb.screen.status.placed", "Placed"),
     ("fnb.screen.status.accepted", "Accepted"),
@@ -312,11 +366,20 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.payment.on_account", "On account"),
     ("fnb.screen.payment.cash", "Cash"),
     ("fnb.screen.payment.card", "Card"),
-    ("fnb.screen.reason.customer_unreachable", "Customer unreachable"),
+    (
+        "fnb.screen.reason.customer_unreachable",
+        "Customer unreachable",
+    ),
     ("fnb.screen.reason.wrong_address", "Wrong address"),
     ("fnb.screen.reason.refused", "Refused"),
-    ("fnb.screen.reason.refused_late", "Refused: the order was late"),
-    ("fnb.screen.reason.refused_wrong_item", "Refused: wrong item"),
+    (
+        "fnb.screen.reason.refused_late",
+        "Refused: the order was late",
+    ),
+    (
+        "fnb.screen.reason.refused_wrong_item",
+        "Refused: wrong item",
+    ),
     ("fnb.screen.reason.no_cash", "No cash"),
     ("fnb.screen.reason.rider_issue", "Rider issue"),
     ("fnb.screen.reason.run_aborted", "Run aborted"),
@@ -330,6 +393,12 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.outcome.scrap", "Scrap (posted as wastage)"),
     ("fnb.screen.decision.full_refund", "Full refund"),
     ("fnb.screen.decision.no_refund", "No refund"),
-    ("fnb.screen.decision.manager_approved", "Manager-approved refund"),
-    ("fnb.screen.decision.not_applicable", "Not applicable (cash on delivery)"),
+    (
+        "fnb.screen.decision.manager_approved",
+        "Manager-approved refund",
+    ),
+    (
+        "fnb.screen.decision.not_applicable",
+        "Not applicable (cash on delivery)",
+    ),
 ];

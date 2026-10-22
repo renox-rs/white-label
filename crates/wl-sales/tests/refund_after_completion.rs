@@ -18,7 +18,9 @@ use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::sales::{ReturnResolved, ReturnReversed};
 use wl_sales::permissions as perm;
 use wl_sales::sales_returns::{self, NewReturn};
-use wl_sales::{ReturnResolution, ReturnStatus, SaleLine, SalesOrder, SalesOrderStatus, SalesReturn, WlSales};
+use wl_sales::{
+    ReturnResolution, ReturnStatus, SaleLine, SalesOrder, SalesOrderStatus, SalesReturn, WlSales,
+};
 
 use support::Booted;
 use support::changes::{Changes, hand_over, lines, place, reload};
@@ -100,7 +102,10 @@ async fn completed(
     channel: &str,
     items: &[(&str, &str)],
 ) -> (SalesOrder, Vec<SaleLine>) {
-    let rows: Vec<(&str, &str, &str)> = items.iter().map(|(code, price)| (*code, "1", *price)).collect();
+    let rows: Vec<(&str, &str, &str)> = items
+        .iter()
+        .map(|(code, price)| (*code, "1", *price))
+        .collect();
     let order = place(t, c, channel, "on_account", &rows).await;
     let lines = lines(t, &order).await;
     for (n, line) in lines.iter().enumerate() {
@@ -226,9 +231,15 @@ async fn the_approval_resolves_the_return_requests_the_refund_and_carries_the_co
     assert_eq!(events[0].resolution, "refund");
     assert_eq!(events[0].value, 6_000);
     assert_eq!(events[0].complaint_category.as_deref(), Some("cold"));
-    assert_eq!(events[0].responsible_party.as_deref(), Some("driver_or_rider"));
+    assert_eq!(
+        events[0].responsible_party.as_deref(),
+        Some("driver_or_rider")
+    );
     // The order stays as it was: fulfilled.
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Fulfilled);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Fulfilled
+    );
     // The order page shows the amount refunded.
     t.app
         .get(&format!("/sales-orders/{}", order.id))
@@ -300,7 +311,10 @@ async fn without_a_complaint_category_the_refund_is_refused() {
         .await
         .assert_status(422);
     assert_eq!(
-        SalesReturn::find_or_404(t.db(), raised.id).await.unwrap().status,
+        SalesReturn::find_or_404(t.db(), raised.id)
+            .await
+            .unwrap()
+            .status,
         ReturnStatus::Requested
     );
     assert!(c.gateway.refunds().is_empty());
@@ -370,7 +384,10 @@ async fn a_channel_refund_on_a_counter_order_is_refused() {
         .await
         .assert_status(422);
     assert_eq!(
-        SalesReturn::find_or_404(t.db(), raised.id).await.unwrap().status,
+        SalesReturn::find_or_404(t.db(), raised.id)
+            .await
+            .unwrap()
+            .status,
         ReturnStatus::Requested
     );
 }
@@ -382,13 +399,8 @@ async fn a_channel_refund_on_a_counter_order_is_refused() {
 async fn a_channel_refund_is_reversed_and_a_paid_refund_is_not() {
     let (t, c, seen) = boot().await;
     t.app.acting_as(&cashier(&t).await);
-    let (order, items) = completed(
-        &t,
-        &c,
-        "talabat",
-        &[("wrap", "25.00"), ("cola", "30.00")],
-    )
-    .await;
+    let (order, items) =
+        completed(&t, &c, "talabat", &[("wrap", "25.00"), ("cola", "30.00")]).await;
     let by_channel = sales_returns::refund_by_channel(
         t.state(),
         NewReturn::no_goods(order.subject())
@@ -433,7 +445,10 @@ async fn a_channel_refund_is_reversed_and_a_paid_refund_is_not() {
     assert_eq!(reload(&t, order.id).await.refunded_amount, 3_000);
     let events = seen.reversed.lock().unwrap().clone();
     assert_eq!(events.len(), 1);
-    assert_eq!((events[0].value, events[0].reason.as_str()), (2_500, "statement voided"));
+    assert_eq!(
+        (events[0].value, events[0].reason.as_str()),
+        (2_500, "statement voided")
+    );
     // Reversing twice is refused: `reversed` is final.
     assert!(
         sales_returns::reverse_by_channel(t.state(), by_channel.id, "again")
@@ -513,9 +528,14 @@ async fn a_rejected_approval_leaves_the_return_requested() {
     let raised = latest(&t).await;
     let request = waiting(&t, &raised).await.remove(0);
 
-    approvals::reject(t.state(), request.id, &manager(&t).await, "Not the driver's fault")
-        .await
-        .unwrap();
+    approvals::reject(
+        t.state(),
+        request.id,
+        &manager(&t).await,
+        "Not the driver's fault",
+    )
+    .await
+    .unwrap();
 
     let after = SalesReturn::find_or_404(t.db(), raised.id).await.unwrap();
     assert_eq!(after.status, ReturnStatus::Requested);
@@ -554,10 +574,7 @@ async fn someone_who_cannot_handle_returns_only_records_the_refund() {
     t.app.acting_as(&cashier(&t).await);
     let (order, items) = completed(&t, &c, "phone", &[("pizza", "60.00")]).await;
     let clerk = t
-        .user(
-            "Omar",
-            &[perm::SALES_ORDERS_VIEW, perm::RETURNS_REQUEST],
-        )
+        .user("Omar", &[perm::SALES_ORDERS_VIEW, perm::RETURNS_REQUEST])
         .await;
     t.app.acting_as(&clerk);
 

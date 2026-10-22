@@ -114,7 +114,10 @@ async fn a_phone_order_starts_accepted_with_its_kitchen_tickets() {
     assert_eq!(order.payment_mode, "cash_on_delivery");
     assert_eq!(order.paid_amount, 0);
     assert_eq!(
-        KitchenTicket::of_order(w.db(), order.id).await.unwrap().len(),
+        KitchenTicket::of_order(w.db(), order.id)
+            .await
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -125,11 +128,18 @@ async fn bumping_a_queued_ticket_starts_and_finishes_the_order() {
     let w = boot_own_riders().await;
     let c = customer(&w).await;
     let order = w.place_via("phone", c, "cash_on_delivery", &PLATE).await;
-    let ticket = KitchenTicket::of_order(w.db(), order.id).await.unwrap().remove(0);
-
-    w.post(&w.cook, &format!("/tickets/{}/bump", ticket.id), &[("x", "")])
+    let ticket = KitchenTicket::of_order(w.db(), order.id)
         .await
-        .assert_status(303);
+        .unwrap()
+        .remove(0);
+
+    w.post(
+        &w.cook,
+        &format!("/tickets/{}/bump", ticket.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
 
     assert_eq!(w.reload(&order).await.status, FnbOrderStatus::Ready);
 }
@@ -143,8 +153,12 @@ async fn only_a_manager_accepts_an_order_and_only_once() {
     let placed = w.place(c, "online", &PLATE).await;
     let path = format!("/orders/{}/accept", placed.id);
 
-    w.post(&w.cook, &path, &[("x", "")]).await.assert_forbidden();
-    w.post(&w.cashier, &path, &[("x", "")]).await.assert_forbidden();
+    w.post(&w.cook, &path, &[("x", "")])
+        .await
+        .assert_forbidden();
+    w.post(&w.cashier, &path, &[("x", "")])
+        .await
+        .assert_forbidden();
     assert_eq!(w.reload(&placed).await.status, FnbOrderStatus::Placed);
 
     w.post(&w.manager, &path, &[("x", "")])
@@ -190,9 +204,13 @@ async fn dispatch_waits_for_a_rider_and_the_page_says_so() {
         .assert_ok()
         .assert_see("put the delivery of the order on a run")
         .assert_dont_see("Dispatch the order");
-    w.post(&w.manager, &format!("/orders/{}/dispatch", ready.id), &[("x", "")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.manager,
+        &format!("/orders/{}/dispatch", ready.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(w.reload(&ready).await.status, FnbOrderStatus::Ready);
 
     // With the delivery assigned to a run, the manager may dispatch by hand.
@@ -210,9 +228,13 @@ async fn dispatch_waits_for_a_rider_and_the_page_says_so() {
         .await
         .assert_ok()
         .assert_see("Dispatch the order");
-    w.post(&w.manager, &format!("/orders/{}/dispatch", ready.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.manager,
+        &format!("/orders/{}/dispatch", ready.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.reload(&ready).await.status, FnbOrderStatus::Dispatched);
 }
 
@@ -225,19 +247,31 @@ async fn a_pickup_order_is_completed_by_the_manager() {
     w.post(
         &w.manager,
         &format!("/orders/{}/details", order.id),
-        &[("kind", "pickup"), ("recipient_name", "Mariam"), ("address", "")],
+        &[
+            ("kind", "pickup"),
+            ("recipient_name", "Mariam"),
+            ("address", ""),
+        ],
     )
     .await
     .assert_status(303);
     let ready = w.cook(&w.reload(&order).await).await;
     assert!(ready.delivery_id.is_none(), "a pickup asks for no delivery");
 
-    w.post(&w.cook, &format!("/orders/{}/complete", ready.id), &[("x", "")])
-        .await
-        .assert_forbidden();
-    w.post(&w.manager, &format!("/orders/{}/complete", ready.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.cook,
+        &format!("/orders/{}/complete", ready.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &w.manager,
+        &format!("/orders/{}/complete", ready.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
 
     assert_eq!(w.reload(&ready).await.status, FnbOrderStatus::Completed);
     assert_eq!(
@@ -259,7 +293,11 @@ async fn a_delivery_needs_an_address() {
     w.post(
         &w.manager,
         &format!("/orders/{}/details", order.id),
-        &[("kind", "delivery"), ("recipient_name", "Mariam"), ("address", " ")],
+        &[
+            ("kind", "delivery"),
+            ("recipient_name", "Mariam"),
+            ("address", " "),
+        ],
     )
     .await
     .assert_status(422);
@@ -301,7 +339,10 @@ async fn the_kitchen_reports_the_lines_it_started_to_the_sales_module() {
     let w = boot_own_riders().await;
     let c = customer(&w).await;
     let order = w.place_via("phone", c, "cash_on_delivery", &PLATE).await;
-    let ticket = KitchenTicket::of_order(w.db(), order.id).await.unwrap().remove(0);
+    let ticket = KitchenTicket::of_order(w.db(), order.id)
+        .await
+        .unwrap()
+        .remove(0);
     let progress = fulfilment_progress(w.state());
     let lines = [ticket.sale_line_id];
 
@@ -311,9 +352,13 @@ async fn the_kitchen_reports_the_lines_it_started_to_the_sales_module() {
         .unwrap();
     assert!(before.is_empty());
 
-    w.post(&w.cook, &format!("/tickets/{}/start", ticket.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.cook,
+        &format!("/tickets/{}/start", ticket.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
 
     let after = progress
         .started_lines(w.state(), SalesOrderId(order.sales_order_id), &lines)
@@ -330,7 +375,10 @@ async fn the_stock_side_of_a_line_is_its_recipe_at_the_outlets_store() {
     let w = boot_own_riders().await;
     let c = customer(&w).await;
     let order = w.place_via("phone", c, "cash_on_delivery", &PLATE).await;
-    let ticket = KitchenTicket::of_order(w.db(), order.id).await.unwrap().remove(0);
+    let ticket = KitchenTicket::of_order(w.db(), order.id)
+        .await
+        .unwrap()
+        .remove(0);
 
     // By the sales order, and by the F&B order a delivery names.
     for subject in [
@@ -347,9 +395,11 @@ async fn the_stock_side_of_a_line_is_its_recipe_at_the_outlets_store() {
         assert!(!stock.consumed);
         assert_eq!(stock.value, 2_200, "2 plates at AED 11.00 cost");
         assert_eq!(stock.components.len(), 2);
-        assert!(stock
-            .components
-            .iter()
-            .any(|c| c.item.subject_id == w.chicken.id && c.per_unit_milli == 250));
+        assert!(
+            stock
+                .components
+                .iter()
+                .any(|c| c.item.subject_id == w.chicken.id && c.per_unit_milli == 250)
+        );
     }
 }

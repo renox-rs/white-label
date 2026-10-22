@@ -37,10 +37,10 @@ use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition};
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::integrations::{IntegrationConnection, IntegrationStatusChanged, devices};
 use wl_kernel::role_tasks::{self, RoleTask};
 use wl_kernel::tickets::task_creator;
-use wl_kernel::Subject;
 
 use crate::catalogue::{Brand, Outlet};
 use crate::notices::tell_holders;
@@ -106,12 +106,7 @@ pub enum OutageStatus {
 
 /// An outlet's outage: the period its channels were paused.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(
-    table = "fnb_outages",
-    state_machine,
-    index(outlet_id),
-    index(status)
-)]
+#[model(table = "fnb_outages", state_machine, index(outlet_id), index(status))]
 pub struct Outage {
     /// The primary key.
     pub id: i64,
@@ -329,7 +324,11 @@ fn devices_down_transition() -> Transition<Outage> {
                 set(
                     tx,
                     id,
-                    &[("devices_back_at", &none), ("last_prompt_at", &none), ("prompts", &0_i64)],
+                    &[
+                        ("devices_back_at", &none),
+                        ("last_prompt_at", &none),
+                        ("prompts", &0_i64),
+                    ],
                 )
                 .await
             })
@@ -399,7 +398,12 @@ pub fn task_key(outage: &Outage) -> String {
 
 /// Pauses the D2C channels of `outlet` in the transaction that opens `outage`
 /// and links them to it.
-async fn pause_d2c(tx: &mut Transaction, outlet_id: i64, outage_id: i64, by: Option<i64>) -> Result {
+async fn pause_d2c(
+    tx: &mut Transaction,
+    outlet_id: i64,
+    outage_id: i64,
+    by: Option<i64>,
+) -> Result {
     let paused = true;
     let at = Some(now());
     let outage = Some(outage_id);
@@ -520,7 +524,11 @@ async fn announce_pause(state: &AppState, outlet: &Outlet, outage: &Outage) -> R
         )
         .description(&english(
             "fnb.outage.task_body",
-            &[("outlet", &outlet.name), ("brands", &brands), ("link", &link)],
+            &[
+                ("outlet", &outlet.name),
+                ("brands", &brands),
+                ("link", &link),
+            ],
         )),
     )
     .await?;
@@ -770,9 +778,7 @@ pub async fn run_prompts(state: &AppState, at: DateTime) -> Result<usize> {
         .get(&state.db)
         .await?
     {
-        let due = outage
-            .last_prompt_at
-            .is_none_or(|last| at - last >= wait);
+        let due = outage.last_prompt_at.is_none_or(|last| at - last >= wait);
         if due {
             prompt(state, &outage, at).await?;
             sent += 1;
@@ -864,10 +870,7 @@ pub(crate) fn register_connection(kitchen: &crate::settings::KitchenDevices) {
         .scope(&format!("outlet:{}", kitchen.outlet))
         .owner_role(permissions::KITCHEN_MANAGER_ROLE)
         .screens(["fnb.outlet_channels"])
-        .fallback(
-            &english("fnb.outage.fallback", &[]),
-            None,
-        )
+        .fallback(&english("fnb.outage.fallback", &[]), None)
         .active_window(&kitchen.from, &kitchen.to)
         .group(kitchen.devices.iter().cloned())
         .down_after_minutes(kitchen.down_after_minutes)
@@ -876,9 +879,11 @@ pub(crate) fn register_connection(kitchen: &crate::settings::KitchenDevices) {
 
 /// Registers the listener of the devices connection and the scheduled prompt.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: IntegrationStatusChanged, state: AppState| async move {
-        on_status_changed(&state, event).await
-    });
+    app.listen(
+        |event: IntegrationStatusChanged, state: AppState| async move {
+            on_status_changed(&state, event).await
+        },
+    );
     app.schedule()
         .every_minutes(1, PROMPT_TASK, |state: AppState| async move {
             run_prompts(&state, now()).await.map(|_| ())

@@ -134,10 +134,7 @@ fn start() -> Transition<ProductionBatch> {
                 let at = Some(renox::db::now());
                 ProductionBatch::query()
                     .where_(ProductionBatch::ID.eq(id))
-                    .update(
-                        &mut *tx,
-                        &[("started_at", &at), ("started_by", &run.by)],
-                    )
+                    .update(&mut *tx, &[("started_at", &at), ("started_by", &run.by)])
                     .await?;
                 Ok(())
             })
@@ -161,21 +158,24 @@ fn finish() -> Transition<ProductionBatch> {
                 }
             })
         })
-        .guard("expiry_not_later_than_inputs", |_batch: &ProductionBatch, ctx| {
-            let run = run_of(ctx);
-            Box::pin(async move {
-                let Some(expiry) = run.expiry else {
-                    return Err(english("fnb.batch.problem.expiry_needed", &[]));
-                };
-                match run.earliest_input_expiry {
-                    Some(earliest) if expiry > earliest => Err(english(
-                        "fnb.batch.problem.expiry_later",
-                        &[("expiry", &expiry), ("earliest", &earliest)],
-                    )),
-                    _ => Ok(()),
-                }
-            })
-        })
+        .guard(
+            "expiry_not_later_than_inputs",
+            |_batch: &ProductionBatch, ctx| {
+                let run = run_of(ctx);
+                Box::pin(async move {
+                    let Some(expiry) = run.expiry else {
+                        return Err(english("fnb.batch.problem.expiry_needed", &[]));
+                    };
+                    match run.earliest_input_expiry {
+                        Some(earliest) if expiry > earliest => Err(english(
+                            "fnb.batch.problem.expiry_later",
+                            &[("expiry", &expiry), ("earliest", &earliest)],
+                        )),
+                        _ => Ok(()),
+                    }
+                })
+            },
+        )
         .effect(|batch: &ProductionBatch, ctx, tx| {
             let id = batch.id;
             let run = run_of(ctx);
@@ -249,9 +249,7 @@ fn consume() -> Transition<ProductionBatch> {
 }
 
 /// The effect of every discard: the reason is kept on the batch.
-fn discard_effect(
-    transition: Transition<ProductionBatch>,
-) -> Transition<ProductionBatch> {
+fn discard_effect(transition: Transition<ProductionBatch>) -> Transition<ProductionBatch> {
     transition.effect(|batch: &ProductionBatch, ctx, tx| {
         let id = batch.id;
         let reason = ctx.reason().map(str::to_owned);

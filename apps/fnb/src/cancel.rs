@@ -294,7 +294,10 @@ pub async fn by_staff(
             .find(|(sale_line, _)| *sale_line == line.id)
             .and_then(|(_, name)| LineOutcomeKind::parse(name))
             .filter(|kind| {
-                matches!(kind, LineOutcomeKind::ReturnToStock | LineOutcomeKind::Scrap)
+                matches!(
+                    kind,
+                    LineOutcomeKind::ReturnToStock | LineOutcomeKind::Scrap
+                )
             });
         match picked {
             Some(kind) => outcomes.push((line.id, kind)),
@@ -446,10 +449,7 @@ pub(crate) async fn on_cancelled(state: &AppState, event: SalesOrderCancelled) -
         "fnb.cancel.history",
         &[
             ("number", &order.number),
-            (
-                "reason",
-                &input.close_reason.clone().unwrap_or_default(),
-            ),
+            ("reason", &input.close_reason.clone().unwrap_or_default()),
         ],
     );
     let _outcome = order
@@ -487,7 +487,11 @@ pub(crate) async fn after_cancelled(state: &AppState, id: i64) -> Result {
     // A ready order's delivery was asked for: it is taken back.
     if let Some(delivery) = order.delivery_id
         && let Err(error) = requester(state)
-            .cancel(state, DeliveryId(delivery), &english("fnb.cancel.delivery_reason", &[]))
+            .cancel(
+                state,
+                DeliveryId(delivery),
+                &english("fnb.cancel.delivery_reason", &[]),
+            )
             .await
     {
         eprintln!(

@@ -49,7 +49,10 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
         "wl_sales.amend.problem.channel",
         "Orders of this channel are changed on the channel's own system.",
     ),
-    ("wl_sales.amend.problem.reason", "Give the reason for the amendment."),
+    (
+        "wl_sales.amend.problem.reason",
+        "Give the reason for the amendment.",
+    ),
     (
         "wl_sales.amend.problem.moved",
         "The order was changed since you opened it. Reload it and try again.",
@@ -72,7 +75,10 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
         "The amendment would leave nothing on the order: cancel the order instead.",
     ),
     // Revisions kept read-only.
-    ("wl_sales.amend.revision_title", "Order :number, revision :revision"),
+    (
+        "wl_sales.amend.revision_title",
+        "Order :number, revision :revision",
+    ),
     ("wl_sales.revisions.title", "Earlier revisions"),
     ("wl_sales.revisions.view", "Read"),
     ("wl_sales.revisions.when", "Replaced on"),
@@ -97,13 +103,22 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
     ),
     // Cancelling a line or the remaining lines (BL-SAL-08, BL-SAL-09).
     ("wl_sales.cancelling.started", "Preparation started"),
-    ("wl_sales.cancelling.outcome_label", "What happens to the goods"),
+    (
+        "wl_sales.cancelling.outcome_label",
+        "What happens to the goods",
+    ),
     (
         "wl_sales.cancelling.outcome_none",
         "Not needed: preparation has not started",
     ),
-    ("wl_sales.cancelling.outcome.return_to_stock", "Return to stock"),
-    ("wl_sales.cancelling.outcome.finish_to_stock", "Finish to stock"),
+    (
+        "wl_sales.cancelling.outcome.return_to_stock",
+        "Return to stock",
+    ),
+    (
+        "wl_sales.cancelling.outcome.finish_to_stock",
+        "Finish to stock",
+    ),
     ("wl_sales.cancelling.outcome.scrap", "Scrap"),
     ("wl_sales.cancelling.fee", "Cancellation fee"),
     (
@@ -123,7 +138,10 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
         "wl_sales.cancelling.waiting",
         "A manager must approve this cancellation first. Nothing changes until then.",
     ),
-    ("wl_sales.cancelling.remaining", "Cancel the remaining lines"),
+    (
+        "wl_sales.cancelling.remaining",
+        "Cancel the remaining lines",
+    ),
     (
         "wl_sales.cancelling.remaining_description",
         "Every line that is still open is cancelled and the order is complete. Give the outcome of each line whose preparation started.",
@@ -192,7 +210,10 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
         "wl_sales.returns.refund_line_hint",
         "An amount with VAT, such as 60.00. Leave empty for a line that is not refunded.",
     ),
-    ("wl_sales.returns.refund_ticket", "Complaint ticket (number, optional)"),
+    (
+        "wl_sales.returns.refund_ticket",
+        "Complaint ticket (number, optional)",
+    ),
     ("wl_sales.returns.refund_done", "The refund is requested."),
     (
         "wl_sales.returns.refund_waiting",
@@ -227,7 +248,10 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
     ("wl_sales.returns.category.missing_item", "Missing item"),
     ("wl_sales.returns.category.wrong_item", "Wrong item"),
     ("wl_sales.returns.category.quality", "Quality"),
-    ("wl_sales.returns.category.service_not_delivered", "Service not delivered"),
+    (
+        "wl_sales.returns.category.service_not_delivered",
+        "Service not delivered",
+    ),
     ("wl_sales.returns.category.other", "Other"),
     ("wl_sales.returns.party.business", "The business"),
     ("wl_sales.returns.party.driver_or_rider", "Driver or rider"),
@@ -283,8 +307,14 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
         "This refund needs a manager, but no approval policy exists for it.",
     ),
     // The credit check an amendment re-runs.
-    ("wl_sales.credit.hold_reason", "Credit limit exceeded by an amendment."),
-    ("wl_sales.credit.task_title", "Order :number is on credit hold"),
+    (
+        "wl_sales.credit.hold_reason",
+        "Credit limit exceeded by an amendment.",
+    ),
+    (
+        "wl_sales.credit.task_title",
+        "Order :number is on credit hold",
+    ),
     (
         "wl_sales.credit.task_body",
         "An amendment raised order :number to :total and the customer's credit limit is exceeded. Review the account and release the order or ask for payment.",
@@ -302,8 +332,14 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
     ("wl_sales.settle.kind.refund", "Refund"),
     ("wl_sales.settle.kind.credit_note", "Credit note"),
     ("wl_sales.settle.kind.extra_invoice", "Extra invoice"),
-    ("wl_sales.settle.kind.fee_invoice", "Cancellation fee invoice"),
-    ("wl_sales.settle.kind.draft_updated", "Draft invoice updated"),
+    (
+        "wl_sales.settle.kind.fee_invoice",
+        "Cancellation fee invoice",
+    ),
+    (
+        "wl_sales.settle.kind.draft_updated",
+        "Draft invoice updated",
+    ),
     ("wl_sales.settle.status.open", "Waiting for the customer"),
     ("wl_sales.settle.status.paid", "Paid"),
     ("wl_sales.settle.status.expired", "Expired unpaid"),
@@ -312,7 +348,10 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
     ("wl_sales.settle.status.requested", "Requested"),
     ("wl_sales.settle.status.done", "Done"),
     ("wl_sales.settle.status.failed", "Failed: a person must act"),
-    ("wl_sales.settle.held", "Held until the payment link is paid"),
+    (
+        "wl_sales.settle.held",
+        "Held until the payment link is paid",
+    ),
     (
         "wl_sales.settle.expired_hint",
         "The payment link for the increase expired unpaid. The added quantity stays reserved but is not released. Resend the link or amend the order back.",
@@ -337,8 +376,14 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
         "wl_sales.settle.amend_back_reason",
         "The payment link of the increase expired unpaid.",
     ),
-    ("wl_sales.settle.extra_line", ":description (amendment, revision :revision)"),
-    ("wl_sales.settle.fee_line", "Cancellation fee for order :number"),
+    (
+        "wl_sales.settle.extra_line",
+        ":description (amendment, revision :revision)",
+    ),
+    (
+        "wl_sales.settle.fee_line",
+        "Cancellation fee for order :number",
+    ),
     (
         "wl_sales.settle.no_gateway",
         "No payment link could be made: no payment gateway is available.",

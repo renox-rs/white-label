@@ -360,15 +360,17 @@ pub async fn trace(state: &AppState, recall_id: i64) -> Result<Trace> {
                 let (outlet_id, outlet) =
                     outlet_of(&state.db, holder.location.as_ref().map(|l| l.subject_id)).await?;
                 let Some(day) = holder.on else { continue };
-                let group = unknown.entry((outlet_id, day)).or_insert_with(|| UnknownGroup {
-                    outlet_id,
-                    outlet,
-                    day,
-                    sales: 0,
-                    channels: String::new(),
-                    lines: Vec::new(),
-                    notice: holder.notice.clone(),
-                });
+                let group = unknown
+                    .entry((outlet_id, day))
+                    .or_insert_with(|| UnknownGroup {
+                        outlet_id,
+                        outlet,
+                        day,
+                        sales: 0,
+                        channels: String::new(),
+                        lines: Vec::new(),
+                        notice: holder.notice.clone(),
+                    });
                 group.sales = group.sales.max(holder.sales);
                 group.lines.push(holder.line.clone());
                 group.notice = merged_notice(&group.notice, &holder.notice);
@@ -381,11 +383,8 @@ pub async fn trace(state: &AppState, recall_id: i64) -> Result<Trace> {
                 let Some(order) = FnbOrder::find(&state.db, subject.subject_id).await? else {
                     continue;
                 };
-                let (_, outlet) = outlet_of(
-                    &state.db,
-                    holder.location.as_ref().map(|l| l.subject_id),
-                )
-                .await?;
+                let (_, outlet) =
+                    outlet_of(&state.db, holder.location.as_ref().map(|l| l.subject_id)).await?;
                 if !customers.contains_key(&party.0) {
                     let name = directory(state)
                         .display_name(&state.db, party, "en")
@@ -428,7 +427,9 @@ pub async fn trace(state: &AppState, recall_id: i64) -> Result<Trace> {
     groups.sort_by(|a, b| (a.day, &a.outlet).cmp(&(b.day, &b.outlet)));
     let mut people: Vec<CustomerGroup> = customers.into_values().collect();
     for person in &mut people {
-        person.orders.sort_by_key(|order| (order.day, order.order_id));
+        person
+            .orders
+            .sort_by_key(|order| (order.day, order.order_id));
     }
     Ok(Trace {
         customers: people,
@@ -527,7 +528,9 @@ pub async fn notify(state: &AppState, by: &AuthUser, recall_id: i64) -> Result<V
             return Err(error);
         }
         for order in pending {
-            tracer.set_notice(state, &order.line, true, Some(by.id)).await?;
+            tracer
+                .set_notice(state, &order.line, true, Some(by.id))
+                .await?;
         }
         renox::audit::record(
             &state.db,
@@ -576,7 +579,10 @@ pub async fn decide_public(
     if !public_decision::ALL.contains(&decision) {
         return Err(refused(english("fnb.recall.problem.decision", &[])));
     }
-    if RecallDecision::of_recall(&state.db, recall_id).await?.is_some() {
+    if RecallDecision::of_recall(&state.db, recall_id)
+        .await?
+        .is_some()
+    {
         return Err(refused(english("fnb.recall.problem.decided", &[])));
     }
     let note = note.trim().to_owned();
@@ -609,7 +615,10 @@ pub async fn decide_public(
     if let Some(open) = tasks.find_open(state, &public_task_key(recall_id)).await? {
         let closing = english(
             "fnb.recall.task_closed",
-            &[("decision", &english(&format!("fnb.screen.recall.decision.{decision}"), &[]))],
+            &[(
+                "decision",
+                &english(&format!("fnb.screen.recall.decision.{decision}"), &[]),
+            )],
         );
         tasks.complete(state, open.id, &closing).await?;
     }
@@ -631,7 +640,11 @@ pub(crate) async fn on_traced(state: &AppState, event: RecallTraced) -> Result {
         .lines
         .iter()
         .any(|line: &TracedHolder| line.subject.is_none() && line.notice == "pending");
-    if unknown && RecallDecision::of_recall(&state.db, recall_id).await?.is_none() {
+    if unknown
+        && RecallDecision::of_recall(&state.db, recall_id)
+            .await?
+            .is_none()
+    {
         let task = RoleTask::new(
             event.recall.clone(),
             permissions::OPERATIONS_DIRECTOR_ROLE,
@@ -651,7 +664,10 @@ pub(crate) async fn on_traced(state: &AppState, event: RecallTraced) -> Result {
             &english("fnb.recall.authority_title", &[("number", &event.number)]),
             &authority_task_key(recall_id),
         )
-        .description(&english("fnb.recall.authority_body", &[("number", &event.number)]));
+        .description(&english(
+            "fnb.recall.authority_body",
+            &[("number", &event.number)],
+        ));
         role_tasks::open(state, task).await?;
     }
     Ok(())
@@ -671,14 +687,13 @@ pub fn notice_types() -> Vec<NotificationTypeDef> {
             .urgency(Urgency::Urgent)
             .give_up(&[GiveUpReaction::StaffTask])
             .staff_role(permissions::OPERATIONS_DIRECTOR_ROLE)
-            .channels(&[NotifyChannel::Sms, NotifyChannel::Whatsapp, NotifyChannel::Email])
-            .template(NotifyChannel::Email, "en", Some(&subject), &body)
-            .template(
+            .channels(&[
+                NotifyChannel::Sms,
+                NotifyChannel::Whatsapp,
                 NotifyChannel::Email,
-                "ar",
-                Some(SUBJECT_AR),
-                BODY_AR,
-            ),
+            ])
+            .template(NotifyChannel::Email, "en", Some(&subject), &body)
+            .template(NotifyChannel::Email, "ar", Some(SUBJECT_AR), BODY_AR),
     ]
 }
 
@@ -695,7 +710,7 @@ pub(crate) fn register(app: &mut Registry) {
     for def in notice_types() {
         notify::register_type(def);
     }
-    app.listen(|event: RecallTraced, state: AppState| async move {
-        on_traced(&state, event).await
-    });
+    app.listen(
+        |event: RecallTraced, state: AppState| async move { on_traced(&state, event).await },
+    );
 }

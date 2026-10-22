@@ -87,7 +87,10 @@ async fn the_demo_has_marina_in_an_outage_with_paused_brands_and_a_late_paper_or
     let db = app.db();
     let marina = Outlet::by_code(db, "marina").await.unwrap().unwrap();
     let sharjah = Outlet::by_code(db, "sharjah").await.unwrap().unwrap();
-    let open = Outage::open_of(db, marina.id).await.unwrap().expect("an outage");
+    let open = Outage::open_of(db, marina.id)
+        .await
+        .unwrap()
+        .expect("an outage");
     assert_eq!(open.status, OutageStatus::Paused);
     let paused: Vec<OutletChannel> = OutletChannel::of_outlet(db, marina.id)
         .await
@@ -96,14 +99,31 @@ async fn the_demo_has_marina_in_an_outage_with_paused_brands_and_a_late_paper_or
         .filter(|c| c.kind == channel_kind::D2C)
         .collect();
     assert_eq!(paused.len(), 2);
-    assert!(paused.iter().all(|c| c.paused && c.outage_id == Some(open.id)));
+    assert!(
+        paused
+            .iter()
+            .all(|c| c.paused && c.outage_id == Some(open.id))
+    );
     let habibi = Brand::by_code(db, "habibi").await.unwrap().unwrap();
-    assert!(!outage::accepts_orders(db, marina.id, habibi.id).await.unwrap());
-    assert!(outage::accepts_orders(db, sharjah.id, habibi.id).await.unwrap());
+    assert!(
+        !outage::accepts_orders(db, marina.id, habibi.id)
+            .await
+            .unwrap()
+    );
+    assert!(
+        outage::accepts_orders(db, sharjah.id, habibi.id)
+            .await
+            .unwrap()
+    );
     assert!(Outage::open_of(db, sharjah.id).await.unwrap().is_none());
 
     let orders = PaperOrder::latest(db, marina.id, 10).await.unwrap();
-    assert!(orders.iter().any(|p| p.late && p.outage_id == Some(open.id)), "{orders:?}");
+    assert!(
+        orders
+            .iter()
+            .any(|p| p.late && p.outage_id == Some(open.id)),
+        "{orders:?}"
+    );
     // Seeding again changes nothing.
     app.kernel()
         .call(host::fnb_demo::COMMAND, Vec::<String>::new())
@@ -132,7 +152,10 @@ async fn the_demo_has_a_closing_reopened_by_a_late_entry_and_one_that_refused_it
     assert_eq!(reopened.len(), 1, "{closings:?}");
     let sharjah = Outlet::by_code(db, "sharjah").await.unwrap().unwrap();
     assert_eq!(reopened[0].outlet_id, sharjah.id);
-    assert_eq!(reopened[0].reopen_reason.as_deref(), Some("Late entries after an outage"));
+    assert_eq!(
+        reopened[0].reopen_reason.as_deref(),
+        Some("Late entries after an outage")
+    );
     assert_eq!(reopened[0].variance, Some(-3_500));
     let late = PaperOrder::of_day(db, sharjah.id, reopened[0].business_date.unwrap())
         .await
@@ -149,10 +172,12 @@ async fn the_demo_has_a_closing_reopened_by_a_late_entry_and_one_that_refused_it
     assert_eq!(handover.difference, 3_500);
     // And the approved closing refused a paper order: nothing of it was kept.
     let marina = Outlet::by_code(db, "marina").await.unwrap().unwrap();
-    assert!(PaperOrder::of_day(db, marina.id, approved[0].business_date.unwrap())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        PaperOrder::of_day(db, marina.id, approved[0].business_date.unwrap())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// AC: the screens open for the roles that hold them and not for the cook.
@@ -171,7 +196,10 @@ async fn the_outage_and_closing_screens_open_for_the_roles_that_hold_them() {
         .assert_see("Marina Kitchen")
         .assert_see("Temporarily closed")
         .assert_see("Resume the channels");
-    app.get("/closings").await.assert_ok().assert_see("Sharjah Kitchen");
+    app.get("/closings")
+        .await
+        .assert_ok()
+        .assert_see("Sharjah Kitchen");
     app.get("/ordering/habibi")
         .await
         .assert_ok()
@@ -186,7 +214,9 @@ async fn the_outage_and_closing_screens_open_for_the_roles_that_hold_them() {
         .await
         .unwrap()
         .expect("an approved closing");
-    app.get(&format!("/closings/{}", approved.id)).await.assert_ok();
+    app.get(&format!("/closings/{}", approved.id))
+        .await
+        .assert_ok();
 
     app.acting_as(&cashier);
     app.get("/till-sessions").await.assert_ok().assert_see("T2");

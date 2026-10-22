@@ -30,9 +30,10 @@ async fn count(db: &Db) -> i64 {
 #[renox::test]
 async fn a_second_import_of_the_number_on_the_channel_is_refused_and_names_the_first() {
     let (t, _) = boot_online().await;
-    let Imported::Created(first) = sales_orders::import(t.state(), None, order("talabat", "TB-555"))
-        .await
-        .unwrap()
+    let Imported::Created(first) =
+        sales_orders::import(t.state(), None, order("talabat", "TB-555"))
+            .await
+            .unwrap()
     else {
         panic!("the first import makes the order");
     };
@@ -63,7 +64,13 @@ async fn a_second_import_of_the_number_on_the_channel_is_refused_and_names_the_f
 async fn the_order_form_refuses_a_number_the_channel_used() {
     let (t, _) = boot_online().await;
     t.app.acting_as(&seller(&t).await);
-    let first = draft_order(&t, "talabat", "on_account", &[("external_number", "TB-555")]).await;
+    let first = draft_order(
+        &t,
+        "talabat",
+        "on_account",
+        &[("external_number", "TB-555")],
+    )
+    .await;
     t.app
         .post(
             "/sales-orders",
@@ -123,7 +130,13 @@ async fn two_imports_at_the_same_moment_make_one_order() {
 async fn a_cancelled_order_still_counts_as_used() {
     let (t, _) = boot_online().await;
     t.app.acting_as(&seller(&t).await);
-    let first = draft_order(&t, "talabat", "on_account", &[("external_number", "TB-555")]).await;
+    let first = draft_order(
+        &t,
+        "talabat",
+        "on_account",
+        &[("external_number", "TB-555")],
+    )
+    .await;
     t.app
         .post(
             &format!("/sales-orders/{}/cancel", first.id),
@@ -150,7 +163,9 @@ async fn orders_without_an_external_number_are_not_checked() {
         let made = sales_orders::import(
             t.state(),
             None,
-            NewSalesOrder::new(PartyId(7)).channel("phone").external_number("  "),
+            NewSalesOrder::new(PartyId(7))
+                .channel("phone")
+                .external_number("  "),
         )
         .await
         .unwrap();

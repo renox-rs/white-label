@@ -62,10 +62,7 @@ use crate::{close, failed, fulfilment, pickup, placing};
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
 pub(crate) const VIEWS: &[(&str, &str)] = &[
-    (
-        "fnb/orders.html",
-        include_str!("../views/fnb/orders.html"),
-    ),
+    ("fnb/orders.html", include_str!("../views/fnb/orders.html")),
     ("fnb/order.html", include_str!("../views/fnb/order.html")),
     (
         "fnb/kitchen.html",
@@ -100,7 +97,8 @@ const DELIVERIES_REVERSE: &str = "deliveries.reverse";
 
 /// Every text of the screens, by the name a template reads.
 pub(crate) fn tx(lang: &Lang) -> Texts {
-    every().filter_map(|(key, _)| Some((key.strip_prefix(PREFIX)?, t(lang, key))))
+    every()
+        .filter_map(|(key, _)| Some((key.strip_prefix(PREFIX)?, t(lang, key))))
         .collect()
 }
 
@@ -397,13 +395,12 @@ async fn show(
     if order.status == DeliveryFailed {
         notes.push(t(&lang, "fnb.screen.note_one_attempt"));
     }
-    let refund_problem = if user.has_permission(permissions::ORDERS_REFUND_REQUEST)
-        && order.closed_at.is_some()
-    {
-        refunds::problem(&state, &order).await?
-    } else {
-        None
-    };
+    let refund_problem =
+        if user.has_permission(permissions::ORDERS_REFUND_REQUEST) && order.closed_at.is_some() {
+            refunds::problem(&state, &order).await?
+        } else {
+            None
+        };
     let can_refund = user.has_permission(permissions::ORDERS_REFUND_REQUEST)
         && order.closed_at.is_some()
         && refund_problem.is_none();
@@ -466,17 +463,19 @@ async fn show(
         .filter(|line| !all_started.contains(&line.id))
         .map(|line| [line.id.to_string(), line.description.clone()])
         .collect();
-    let can_amend =
-        holds_amend && matches!(order.status, Placed | Accepted) && !aggregator && !amend_lines.is_empty();
+    let can_amend = holds_amend
+        && matches!(order.status, Placed | Accepted)
+        && !aggregator
+        && !amend_lines.is_empty();
     if holds_amend && matches!(order.status, Placed | Accepted) && aggregator {
         notes.push(t(&lang, "fnb.amend.aggregator"));
     }
     let open_lines: Vec<[String; 2]> = open_item_lines
         .iter()
         .filter(|line| {
-            !tickets_of_order
-                .iter()
-                .any(|ticket| ticket.sale_line_id == line.id && ticket.status == crate::ticket::TicketStatus::Done)
+            !tickets_of_order.iter().any(|ticket| {
+                ticket.sale_line_id == line.id && ticket.status == crate::ticket::TicketStatus::Done
+            })
         })
         .map(|line| [line.id.to_string(), line.description.clone()])
         .collect();
@@ -555,7 +554,10 @@ async fn show(
         .map(|ticket| TicketRow {
             description: ticket.description.clone(),
             station: ticket.station.clone(),
-            status: t(&lang, &format!("fnb.screen.ticket.{}", ticket.status.as_str())),
+            status: t(
+                &lang,
+                &format!("fnb.screen.ticket.{}", ticket.status.as_str()),
+            ),
         })
         .collect();
     let history = renox::state_machine::history(&state.db, FnbOrder::TABLE, order.id)
@@ -622,7 +624,12 @@ async fn show(
             .collect(),
         outcomes: ["return_to_stock", "scrap"]
             .iter()
-            .map(|o| [(*o).to_owned(), t(&lang, &format!("fnb.screen.outcome.{o}"))])
+            .map(|o| {
+                [
+                    (*o).to_owned(),
+                    t(&lang, &format!("fnb.screen.outcome.{o}")),
+                ]
+            })
             .collect(),
         started,
         can_amend,
@@ -631,11 +638,21 @@ async fn show(
         can_reverse,
         reverse_reasons: ["marked_by_mistake", "recipient_denies", "wrong_recipient"]
             .iter()
-            .map(|r| [(*r).to_owned(), t(&lang, &format!("fnb.screen.reverse_reason.{r}"))])
+            .map(|r| {
+                [
+                    (*r).to_owned(),
+                    t(&lang, &format!("fnb.screen.reverse_reason.{r}")),
+                ]
+            })
             .collect(),
         liabilities: ["driver", "business", "client", "none"]
             .iter()
-            .map(|l| [(*l).to_owned(), t(&lang, &format!("fnb.screen.liability.{l}"))])
+            .map(|l| {
+                [
+                    (*l).to_owned(),
+                    t(&lang, &format!("fnb.screen.liability.{l}")),
+                ]
+            })
             .collect(),
         refunded_after,
         reversal_resolution_label: order
@@ -763,7 +780,9 @@ async fn dispatch(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    fulfilment::dispatch(&state, &user, id).await.map_err(answer)?;
+    fulfilment::dispatch(&state, &user, id)
+        .await
+        .map_err(answer)?;
     back_to(&lang, "fnb.dispatched", id)
 }
 
@@ -774,7 +793,9 @@ async fn complete(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    fulfilment::complete(&state, &user, id).await.map_err(answer)?;
+    fulfilment::complete(&state, &user, id)
+        .await
+        .map_err(answer)?;
     back_to(&lang, "fnb.completed", id)
 }
 
@@ -786,7 +807,9 @@ async fn close_failed(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    close::close_by_user(&state, &user, id).await.map_err(answer)?;
+    close::close_by_user(&state, &user, id)
+        .await
+        .map_err(answer)?;
     back_to(&lang, "fnb.closed", id)
 }
 
@@ -798,8 +821,14 @@ async fn responsible(
     Path(id): Path<i64>,
     Form(form): Fields,
 ) -> Result<Response> {
-    failed::change_party(&state, &user, id, &field(&form, "party"), &field(&form, "note"))
-        .await?;
+    failed::change_party(
+        &state,
+        &user,
+        id,
+        &field(&form, "party"),
+        &field(&form, "note"),
+    )
+    .await?;
     back_to(&lang, "fnb.party_changed", id)
 }
 
@@ -865,7 +894,10 @@ async fn amend_order(
         quantity: field(&form, "quantity"),
         price: field(&form, "price"),
         reason: field(&form, "reason"),
-        customer_agreed: matches!(field(&form, "customer_agreed").as_str(), "on" | "1" | "true"),
+        customer_agreed: matches!(
+            field(&form, "customer_agreed").as_str(),
+            "on" | "1" | "true"
+        ),
         call_time: field(&form, "call_time"),
     };
     match changes::amend(&state, &user, id, ask).await? {
@@ -1039,7 +1071,10 @@ async fn kitchen(State(state): State<AppState>, user: AuthUser, lang: Lang) -> R
             description: ticket.description.clone(),
             quantity: format!("{}", ticket.quantity_milli / 1_000),
             station: ticket.station.clone(),
-            status: t(&lang, &format!("fnb.screen.ticket.{}", ticket.status.as_str())),
+            status: t(
+                &lang,
+                &format!("fnb.screen.ticket.{}", ticket.status.as_str()),
+            ),
             can_start: ticket.status == TicketStatus::Queued,
         });
     }
@@ -1067,7 +1102,11 @@ async fn ticket_step(
         .run(state)
         .await
         .map_err(answer)?;
-    Ok((Toast::success(t(lang, toast)), Redirect::route("fnb.kitchen", &[])?).into_response())
+    Ok((
+        Toast::success(t(lang, toast)),
+        Redirect::route("fnb.kitchen", &[])?,
+    )
+        .into_response())
 }
 
 /// `POST /tickets/{id}/start`.
@@ -1133,7 +1172,9 @@ async fn cod_customers(
             customer: name,
             off_at: flag.cod_off_at.map(|at| at.to_string()).unwrap_or_default(),
             order: order.as_ref().map(|o| o.number.clone()).unwrap_or_default(),
-            order_url: order.map(|o| format!("/orders/{}", o.id)).unwrap_or_default(),
+            order_url: order
+                .map(|o| format!("/orders/{}", o.id))
+                .unwrap_or_default(),
         });
     }
     Ok(View::typed(CodPage {

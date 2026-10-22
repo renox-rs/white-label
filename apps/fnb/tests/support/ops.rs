@@ -47,8 +47,12 @@ pub async fn boot_ops() -> (World, Ops) {
         .kitchen_devices("marina", "11:00", "02:00", &["kds-1", "kds-2"])
         .kitchen_devices("sharjah", "10:00", "23:00", &["kds-s1"]);
     let w = boot_with(own_riders(), fnb).await;
-    fnb::seed::demo_channels(w.db()).await.expect("the channels seed");
-    wl_kernel::approvals::install(w.db()).await.expect("the approval policies");
+    fnb::seed::demo_channels(w.db())
+        .await
+        .expect("the channels seed");
+    wl_kernel::approvals::install(w.db())
+        .await
+        .expect("the approval policies");
     let kitchen = make_user(
         w.db(),
         "Mounir",
@@ -97,8 +101,14 @@ pub async fn boot_ops() -> (World, Ops) {
         &[perm::CLOSING_VIEW, perm::CLOSING_APPROVE, sperm::POS_REVIEW],
     )
     .await;
-    let marina = Outlet::by_code(w.db(), "marina").await.unwrap().expect("marina");
-    let sharjah = Outlet::by_code(w.db(), "sharjah").await.unwrap().expect("sharjah");
+    let marina = Outlet::by_code(w.db(), "marina")
+        .await
+        .unwrap()
+        .expect("marina");
+    let sharjah = Outlet::by_code(w.db(), "sharjah")
+        .await
+        .unwrap()
+        .expect("sharjah");
     (
         w,
         Ops {

@@ -144,11 +144,7 @@ impl PaymentRecorder for Gateway {
         Box::pin(async { Err(off()) })
     }
 
-    fn find<'a>(
-        &'a self,
-        _db: &'a Db,
-        id: PaymentId,
-    ) -> PaymentFuture<'a, Option<PaymentSummary>> {
+    fn find<'a>(&'a self, _db: &'a Db, id: PaymentId) -> PaymentFuture<'a, Option<PaymentSummary>> {
         Box::pin(async move {
             Ok(self
                 .0
@@ -200,7 +196,9 @@ impl PaymentRecorder for Gateway {
                 return Err(off());
             }
             book.refunds.push((request, by));
-            Ok(RefundId(i64::try_from(book.refunds.len()).unwrap_or(i64::MAX)))
+            Ok(RefundId(
+                i64::try_from(book.refunds.len()).unwrap_or(i64::MAX),
+            ))
         })
     }
 }
@@ -355,7 +353,11 @@ pub async fn draft_order(
     mode: &str,
     extra: &[(&str, &str)],
 ) -> SalesOrder {
-    let mut form = vec![("party_id", "7"), ("channel", channel), ("payment_mode", mode)];
+    let mut form = vec![
+        ("party_id", "7"),
+        ("channel", channel),
+        ("payment_mode", mode),
+    ];
     form.extend_from_slice(extra);
     t.app.post("/sales-orders", &form).await.assert_status(303);
     let order = SalesOrder::query()
@@ -367,7 +369,11 @@ pub async fn draft_order(
     t.app
         .post(
             &format!("/sales-orders/{}/lines", order.id),
-            &[("item_code", "meal"), ("unit_price", "100.00"), ("quantity", "1")],
+            &[
+                ("item_code", "meal"),
+                ("unit_price", "100.00"),
+                ("quantity", "1"),
+            ],
         )
         .await
         .assert_status(303);

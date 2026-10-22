@@ -61,7 +61,10 @@ async fn a_sale_consuming_more_than_is_on_hand_posts_and_leaves_the_balance_nega
         .into_iter()
         .filter(|m| m.movement_type == MovementType::Consume)
         .collect();
-    assert_eq!(consumed.iter().map(|m| m.quantity_milli).sum::<i64>(), 5_000);
+    assert_eq!(
+        consumed.iter().map(|m| m.quantity_milli).sum::<i64>(),
+        5_000
+    );
     // The average cost is not changed by the negative consumption.
     assert_eq!(consumed.last().map(|m| m.unit_cost), Some(300));
     assert_eq!(t.negative.all().len(), 1);
@@ -80,7 +83,11 @@ async fn the_next_receipt_covers_the_negative_quantity_and_the_difference_is_the
     t.consume(&item, &outlet1, 5_000, &sale(1)).await;
     let (order, line) = t.order(&outlet1, &item, 10_000, 400).await;
     let receipt = t
-        .receipt(&order, &outlet1, vec![DraftLine::on(line.id, 10_000, 10_000)])
+        .receipt(
+            &order,
+            &outlet1,
+            vec![DraftLine::on(line.id, 10_000, 10_000)],
+        )
         .await;
     let keeper = t.storekeeper("Amal").await;
 
@@ -90,7 +97,10 @@ async fn the_next_receipt_covers_the_negative_quantity_and_the_difference_is_the
     let variances = PriceVariance::of_receipt(t.db(), receipt.id).await.unwrap();
     assert_eq!(variances.len(), 1);
     assert_eq!(variances[0].quantity_milli, 3_000);
-    assert_eq!((variances[0].cost_used, variances[0].receipt_cost), (300, 400));
+    assert_eq!(
+        (variances[0].cost_used, variances[0].receipt_cost),
+        (300, 400)
+    );
     assert_eq!(variances[0].amount, 300);
     assert!(variances[0].posted);
     let posted = t.costs.posted();
@@ -108,13 +118,22 @@ async fn a_receipt_at_a_balance_that_is_not_negative_has_no_price_variance() {
     t.stock_in(&item, &outlet1, None, 2_000, 300).await;
     let (order, line) = t.order(&outlet1, &item, 10_000, 400).await;
     let receipt = t
-        .receipt(&order, &outlet1, vec![DraftLine::on(line.id, 10_000, 10_000)])
+        .receipt(
+            &order,
+            &outlet1,
+            vec![DraftLine::on(line.id, 10_000, 10_000)],
+        )
         .await;
     let keeper = t.storekeeper("Amal").await;
 
     t.post_as(&keeper, &receipt).await.assert_ok();
 
-    assert!(PriceVariance::of_receipt(t.db(), receipt.id).await.unwrap().is_empty());
+    assert!(
+        PriceVariance::of_receipt(t.db(), receipt.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(t.costs.posted().is_empty());
 }
 
@@ -183,7 +202,13 @@ async fn lot_tracked_items_and_blocking_locations_still_make_pending_issues() {
     let lot_done = t.consume(&tracked, &outlet1, 3_000, &sale(3)).await;
     let block_done = t.consume(&plain, &blocking, 3_000, &sale(4)).await;
 
-    assert_eq!((lot_done.posted_milli, lot_done.short_milli), (1_000, 2_000));
-    assert_eq!((block_done.posted_milli, block_done.short_milli), (0, 3_000));
+    assert_eq!(
+        (lot_done.posted_milli, lot_done.short_milli),
+        (1_000, 2_000)
+    );
+    assert_eq!(
+        (block_done.posted_milli, block_done.short_milli),
+        (0, 3_000)
+    );
     assert_eq!(t.open_pending().await.len(), 2);
 }

@@ -144,7 +144,10 @@ async fn after_the_manager_turns_it_on_one_new_failure_does_not_turn_it_off() {
 
     // One new failure: the two before are not counted.
     failure(&w, "website", c, "cash_on_delivery", "not_home").await;
-    assert!(cod_allowed(&w, c).await, "one failure since it was turned on");
+    assert!(
+        cod_allowed(&w, c).await,
+        "one failure since it was turned on"
+    );
 
     // The second since it was turned on turns it off again.
     failure(&w, "website", c, "cash_on_delivery", "wrong_address").await;
@@ -275,7 +278,9 @@ async fn only_the_kitchen_manager_turns_cash_on_delivery_back_on() {
         .assert_see("Customer C")
         .assert_see("Turn cash on delivery on");
     w.get(&w.cashier, "/customers/cod").await.assert_forbidden();
-    w.post(&w.cashier, &path, &[("x", "")]).await.assert_forbidden();
+    w.post(&w.cashier, &path, &[("x", "")])
+        .await
+        .assert_forbidden();
     assert!(!cod_allowed(&w, c).await);
 
     w.post(&w.manager, &path, &[("x", "")])

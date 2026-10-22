@@ -89,7 +89,11 @@ pub const COST_CODE: &str = "wastage";
 
 /// What was done for one cancelled line of an event.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_inventory_cancel_effects", unique(effect_key), index(order_id))]
+#[model(
+    table = "wl_inventory_cancel_effects",
+    unique(effect_key),
+    index(order_id)
+)]
 pub struct CancelEffect {
     /// The primary key.
     pub id: i64,
@@ -357,8 +361,7 @@ async fn apply_line(state: &AppState, request: LineRequest) -> Result {
             // wastage value.
             let reported = if recipe.quantity_milli > 0 {
                 i64::try_from(
-                    i128::from(recipe.value) * i128::from(left)
-                        / i128::from(recipe.quantity_milli),
+                    i128::from(recipe.value) * i128::from(left) / i128::from(recipe.quantity_milli),
                 )
                 .unwrap_or(recipe.value)
             } else {
@@ -389,7 +392,11 @@ async fn apply_line(state: &AppState, request: LineRequest) -> Result {
         action = "task";
     }
     for dispatch in &tasks {
-        notes.push(format!("dispatch {} already {}", dispatch.id, dispatch.status.as_str()));
+        notes.push(format!(
+            "dispatch {} already {}",
+            dispatch.id,
+            dispatch.status.as_str()
+        ));
     }
     let mut effect = CancelEffect {
         effect_key: request.key.clone(),
@@ -449,7 +456,10 @@ async fn finish(
 /// The task for the dispatcher: the cancellation arrived for a dispatch
 /// that already left; the goods follow the delivery.
 async fn dispatcher_task(state: &AppState, dispatch: &Dispatch, request: &LineRequest) -> Result {
-    let key = format!("inventory.dispatch_cancelled:{}:{}", dispatch.id, request.line);
+    let key = format!(
+        "inventory.dispatch_cancelled:{}:{}",
+        dispatch.id, request.line
+    );
     let creator = tickets::task_creator(state);
     if creator.find_open(state, &key).await?.is_some() {
         return Ok(());
@@ -457,7 +467,10 @@ async fn dispatcher_task(state: &AppState, dispatch: &Dispatch, request: &LineRe
     let number = dispatch.number();
     let line = request.line.to_string();
     let status = dispatch.status.as_str();
-    let title = said("wl_inventory.dispatch.cancel_task_title", &[("dispatch", &number)]);
+    let title = said(
+        "wl_inventory.dispatch.cancel_task_title",
+        &[("dispatch", &number)],
+    );
     let description = said(
         "wl_inventory.dispatch.cancel_task_body",
         &[("dispatch", &number), ("line", &line), ("status", status)],
@@ -554,10 +567,7 @@ pub async fn on_amended(state: &AppState, event: &SalesOrderAmended) -> Result {
         apply_line(
             state,
             LineRequest {
-                key: format!(
-                    "amended:{}:{}:{}",
-                    event.order, event.revision, line.line
-                ),
+                key: format!("amended:{}:{}:{}", event.order, event.revision, line.line),
                 order: order.clone(),
                 line: line.line,
                 quantity_milli: Some(lowered),

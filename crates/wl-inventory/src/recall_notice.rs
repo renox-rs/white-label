@@ -261,12 +261,7 @@ pub async fn waive(
 ///
 /// 422 without a reason, for a recall that is not `traced` or a line that is
 /// not `pending`; `NotFound`.
-pub async fn waive_by(
-    state: &AppState,
-    by: i64,
-    line_id: i64,
-    reason: &str,
-) -> Result<RecallLine> {
+pub async fn waive_by(state: &AppState, by: i64, line_id: i64, reason: &str) -> Result<RecallLine> {
     let line = RecallLine::find_or_404(&state.db, line_id).await?;
     let recall = Recall::find_or_404(&state.db, line.recall_id).await?;
     let refused = |message: String| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message);

@@ -545,7 +545,13 @@ fn number(lang: &Lang, field: &str, text: &Option<String>, form: &SettingsForm) 
     text.as_deref()
         .map(str::trim)
         .and_then(|t| t.parse::<i64>().ok())
-        .ok_or_else(|| invalid(field, texts::t(lang, "wl_kernel.integrations.device.interval_range"), form))
+        .ok_or_else(|| {
+            invalid(
+                field,
+                texts::t(lang, "wl_kernel.integrations.device.interval_range"),
+                form,
+            )
+        })
 }
 
 async fn settings(
@@ -592,7 +598,10 @@ async fn settings(
         Error::BadRequest(message) => invalid("heartbeat_seconds", message, &form),
         other => other,
     })?;
-    let toast = Toast::success(texts::t(&lang, "wl_kernel.integrations.toast.settings_saved"));
+    let toast = Toast::success(texts::t(
+        &lang,
+        "wl_kernel.integrations.toast.settings_saved",
+    ));
     Ok((toast, back).into_response())
 }
 

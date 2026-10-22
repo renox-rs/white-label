@@ -36,8 +36,8 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::StateMachine;
-use wl_kernel::documents::today;
 use wl_kernel::documents::DUBAI_OFFSET_SECONDS;
+use wl_kernel::documents::today;
 use wl_kernel::late_entries::{self, Entered, EntrySpec};
 use wl_kernel::machines::BoxFuture;
 use wl_kernel::role_tasks::{self, RoleTask};
@@ -49,8 +49,8 @@ use wl_kernel::{LateEntryDef, NewRecord};
 use crate::changes::ExpectedRefund;
 use crate::order::FnbOrder;
 use crate::payout::{
-    ImportPreset, LateOrder, PayoutLine, PayoutStatement, PayoutStatus, ReasonMap, STATEMENT_SERIES,
-    SUBJECT_TYPE, aggregator_key, line_state, reference_key,
+    ImportPreset, LateOrder, PayoutLine, PayoutStatement, PayoutStatus, ReasonMap,
+    STATEMENT_SERIES, SUBJECT_TYPE, aggregator_key, line_state, reference_key,
 };
 use crate::payout_csv::{self, ParsedLine};
 use crate::payout_machine::{DISPUTE, MATCH, MATCH_SYSTEM, PayoutInput, RESOLVE, SETTLE};
@@ -153,14 +153,20 @@ async fn find_order(state: &AppState, aggregator: &str, number: &str) -> Result<
 
 /// The category and the proposed party of a refund reason, from the
 /// aggregator's mapping.
-async fn mapped(state: &AppState, aggregator: &str, reason: &str) -> Result<(Option<String>, Option<String>)> {
+async fn mapped(
+    state: &AppState,
+    aggregator: &str,
+    reason: &str,
+) -> Result<(Option<String>, Option<String>)> {
     if reason.trim().is_empty() {
         return Ok((None, None));
     }
-    Ok(match ReasonMap::find_for(&state.db, aggregator, reason).await? {
-        Some(map) => (Some(map.category), Some(map.party)),
-        None => (None, None),
-    })
+    Ok(
+        match ReasonMap::find_for(&state.db, aggregator, reason).await? {
+            Some(map) => (Some(map.category), Some(map.party)),
+            None => (None, None),
+        },
+    )
 }
 
 /// Imports the statement of `ask` as `user`.
@@ -235,7 +241,10 @@ pub async fn import_as(
         ..PayoutStatement::default()
     };
     let mut tx = state.db.begin().await?;
-    let history = english("fnb.payout.history.imported", &[("file", &statement.file_name)]);
+    let history = english(
+        "fnb.payout.history.imported",
+        &[("file", &statement.file_name)],
+    );
     // The partial unique index refuses a duplicate that raced this import.
     let inserted = statement
         .insert_in_state(&mut tx, PayoutStatus::Imported, &history)
@@ -346,7 +355,9 @@ async fn unmatched_task(state: &AppState, id: i64) -> Result {
             ("link", &format!("/payouts/{id}")),
         ],
     ));
-    let ticket = role_tasks::open(state, task).await?.map(|opened| opened.id.0);
+    let ticket = role_tasks::open(state, task)
+        .await?
+        .map(|opened| opened.id.0);
     PayoutStatement::query()
         .where_(PayoutStatement::ID.eq(id))
         .update(&state.db, &[("task_id", &ticket)])
@@ -673,8 +684,22 @@ pub async fn match_statement(
     let history = english("fnb.payout.history.matched", &[]);
     let builder = statement.transition(if by.is_some() { MATCH } else { MATCH_SYSTEM });
     let outcome = match by {
-        Some(user) => builder.by(user).reason(history).input(&input).run(state).await,
-        None => builder.by_system().reason(history).input(&input).run(state).await,
+        Some(user) => {
+            builder
+                .by(user)
+                .reason(history)
+                .input(&input)
+                .run(state)
+                .await
+        }
+        None => {
+            builder
+                .by_system()
+                .reason(history)
+                .input(&input)
+                .run(state)
+                .await
+        }
     };
     let _ = outcome.map_err(|e| e.into_error())?;
     let statement = PayoutStatement::find_or_404(&state.db, id).await?;
@@ -720,7 +745,10 @@ pub async fn dispute(
     let task = RoleTask::new(
         statement.subject(),
         permissions::ACCOUNTANT_ROLE,
-        &english("fnb.payout.task.dispute_title", &[("number", &statement.number)]),
+        &english(
+            "fnb.payout.task.dispute_title",
+            &[("number", &statement.number)],
+        ),
         &dispute_key(id),
     )
     .description(&english(
@@ -731,7 +759,9 @@ pub async fn dispute(
             ("link", &format!("/payouts/{id}")),
         ],
     ));
-    let ticket = role_tasks::open(state, task).await?.map(|opened| opened.id.0);
+    let ticket = role_tasks::open(state, task)
+        .await?
+        .map(|opened| opened.id.0);
     PayoutStatement::query()
         .where_(PayoutStatement::ID.eq(id))
         .update(&state.db, &[("dispute_task_id", &ticket)])
@@ -779,7 +809,10 @@ pub async fn resolve(
             return Err(Error::NotFound);
         };
         if !line.disputed || !line.is_refund() {
-            return Err(refused(english("fnb.payout.problem.not_disputed_refund", &[])));
+            return Err(refused(english(
+                "fnb.payout.problem.not_disputed_refund",
+                &[],
+            )));
         }
     }
     let mut added = adjustment;
@@ -905,7 +938,10 @@ pub struct Difference {
 ///
 /// Database errors.
 pub async fn differences(db: &Db, statement: &PayoutStatement) -> Result<Vec<Difference>> {
-    if matches!(statement.status, PayoutStatus::Voided | PayoutStatus::Settled) {
+    if matches!(
+        statement.status,
+        PayoutStatus::Voided | PayoutStatus::Settled
+    ) {
         return Ok(Vec::new());
     }
     let lines = PayoutLine::of_statement(db, statement.id).await?;

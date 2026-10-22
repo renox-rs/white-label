@@ -33,8 +33,8 @@ use wl_kernel::delivery::DeliveryReversed;
 use wl_kernel::sales::{NoGoodsRefund, order_desk};
 
 use crate::fulfilment::order_of_delivery;
-use crate::notices::{about, tell_customer, tell_managers};
 use crate::money::aed;
+use crate::notices::{about, tell_customer, tell_managers};
 use crate::order::{FnbOrder, FnbOrderStatus};
 use crate::permissions;
 use crate::texts::english;

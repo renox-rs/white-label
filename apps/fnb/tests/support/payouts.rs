@@ -50,7 +50,11 @@ pub async fn staff(w: &World) -> Staff {
         late_cashier: make_user(
             w.db(),
             "Lina",
-            &[perm::RECONCILIATION_VIEW, perm::LATE_ORDERS_ENTER, perm::ORDERS_VIEW],
+            &[
+                perm::RECONCILIATION_VIEW,
+                perm::LATE_ORDERS_ENTER,
+                perm::ORDERS_VIEW,
+            ],
         )
         .await,
         reader: make_user(w.db(), "Rana", &[perm::RECONCILIATION_VIEW]).await,

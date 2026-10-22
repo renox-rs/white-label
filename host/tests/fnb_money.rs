@@ -49,9 +49,13 @@ fn week(n: u64) -> NaiveDate {
 
 /// The approval policy of `action` for `amount` fils.
 async fn policy_at(app: &TestApp, action: &str, amount: i64) -> Option<ApprovalPolicy> {
-    ApprovalPolicy::for_action(app.db(), action, &renox::serde_json::json!({ "amount": amount }))
-        .await
-        .unwrap()
+    ApprovalPolicy::for_action(
+        app.db(),
+        action,
+        &renox::serde_json::json!({ "amount": amount }),
+    )
+    .await
+    .unwrap()
 }
 
 /// AC (Delivery 1): a failed F&B delivery is never queued for reattempt; with
@@ -65,7 +69,10 @@ async fn a_failed_delivery_returns_or_discards_and_is_never_reattempted() {
     let policy = delivery.perishable_policy(ORDER_SOURCE);
     assert_eq!(policy.on_failed_visit, PerishableAction::Return);
     assert_eq!(policy.on_abort, PerishableAction::Discard);
-    assert!(!delivery.attempt_rule(), "no reattempt rule for cooked food");
+    assert!(
+        !delivery.attempt_rule(),
+        "no reattempt rule for cooked food"
+    );
     let reasons = FailureReason::active_ones(app.db()).await.unwrap();
     for code in ["rider_issue", "refused_late", "refused_wrong_item"] {
         let reason = reasons
@@ -109,7 +116,10 @@ async fn the_customer_may_refuse_a_line_at_the_door() {
     assert!(delivery.partial_acceptance(ORDER_SOURCE));
     assert_eq!(delivery.promise_minutes(ORDER_SOURCE), Some(45));
     assert_eq!(delivery.untraced_days(), 7);
-    let fnb_settings = app.state().provided::<fnb::settings::FnbSettings>().unwrap();
+    let fnb_settings = app
+        .state()
+        .provided::<fnb::settings::FnbSettings>()
+        .unwrap();
     assert_eq!(fnb_settings.refused_refund_limit, 5_000);
     // A Burger of AED 40.00 is within it, a basket above AED 50.00 is not.
     assert!(4_000 <= fnb_settings.refused_refund_limit);
@@ -151,7 +161,10 @@ async fn the_sales_settings_are_the_06_values() {
     assert_eq!(sales.cancel_outcomes, ["return_to_stock", "scrap"]);
     assert!(sales.offers_outcome("scrap"));
     assert!(!sales.offers_outcome("finish_to_stock"));
-    assert_eq!((sales.cancellation_fee_bps, sales.cancellation_fee_amount), (0, 0));
+    assert_eq!(
+        (sales.cancellation_fee_bps, sales.cancellation_fee_amount),
+        (0, 0)
+    );
     assert_eq!(sales.cancel_approval_limit, 5_000);
     assert_eq!(sales.online_payment_window_minutes, 15);
 }
@@ -164,7 +177,10 @@ async fn a_no_goods_refund_above_aed_50_needs_the_kitchen_manager() {
     let sales = wl_sales::config::config_of(app.state());
     assert_eq!(sales.refund_approval_limit, 5_000);
     assert!(5_100 > sales.refund_approval_limit);
-    assert!(holds(KITCHEN_MANAGER, wl_sales::permissions::RETURNS_APPROVE));
+    assert!(holds(
+        KITCHEN_MANAGER,
+        wl_sales::permissions::RETURNS_APPROVE
+    ));
     assert!(!holds(CASHIER, wl_sales::permissions::RETURNS_APPROVE));
     assert!(holds(CASHIER, wl_sales::permissions::RETURNS_REQUEST));
     assert!(sales.complaint_categories.iter().any(|c| c == "wrong_item"));
@@ -204,7 +220,10 @@ async fn a_chargeback_cannot_be_accepted_by_the_person_who_opened_it() {
         );
     }
     assert!(holds(ACCOUNTANT, wl_payments::permissions::CHARGEBACK));
-    assert!(!holds(KITCHEN_MANAGER, wl_payments::permissions::CHARGEBACK));
+    assert!(!holds(
+        KITCHEN_MANAGER,
+        wl_payments::permissions::CHARGEBACK
+    ));
 }
 
 /// AC (Cash 1): a rider's handover cannot be counted by the rider (the
@@ -215,8 +234,16 @@ async fn a_chargeback_cannot_be_accepted_by_the_person_who_opened_it() {
 async fn a_shortage_up_to_aed_20_is_written_off_and_above_it_the_area_manager_approves() {
     let app = fnb_booted().await;
     assert_eq!(wl_payments::cash_settle::limit(app.state()), 2_000);
-    assert!(policy_at(&app, wl_payments::cash_settle::ACTION, 1_500).await.is_none());
-    assert!(policy_at(&app, wl_payments::cash_settle::ACTION, 2_000).await.is_none());
+    assert!(
+        policy_at(&app, wl_payments::cash_settle::ACTION, 1_500)
+            .await
+            .is_none()
+    );
+    assert!(
+        policy_at(&app, wl_payments::cash_settle::ACTION, 2_000)
+            .await
+            .is_none()
+    );
     let policy = policy_at(&app, wl_payments::cash_settle::ACTION, 2_500)
         .await
         .expect("AED 25.00 needs an approval");
@@ -224,7 +251,10 @@ async fn a_shortage_up_to_aed_20_is_written_off_and_above_it_the_area_manager_ap
     let step = &policy.steps.0[0];
     assert!(step.allows(AREA_MANAGER));
     assert!(step.allows(ADMIN));
-    assert!(!step.allows(KITCHEN_MANAGER), "the one who asks cannot approve");
+    assert!(
+        !step.allows(KITCHEN_MANAGER),
+        "the one who asks cannot approve"
+    );
     assert!(!step.allows(CASHIER));
 
     let count = wl_payments::permissions::CASH_COUNT;
@@ -235,8 +265,14 @@ async fn a_shortage_up_to_aed_20_is_written_off_and_above_it_the_area_manager_ap
         host::roles::grants_of(CASHIER).contains(&count),
         "the cashier counts"
     );
-    assert!(holds(KITCHEN_MANAGER, wl_payments::permissions::CASH_WRITE_OFF));
-    assert!(holds(AREA_MANAGER, wl_payments::permissions::CASH_WRITE_OFF));
+    assert!(holds(
+        KITCHEN_MANAGER,
+        wl_payments::permissions::CASH_WRITE_OFF
+    ));
+    assert!(holds(
+        AREA_MANAGER,
+        wl_payments::permissions::CASH_WRITE_OFF
+    ));
 
     let payments = app.state().provided::<PaymentsConfig>().unwrap();
     assert!(
@@ -344,18 +380,19 @@ async fn the_forecast_has_thirteen_weeks_from_monday_and_runs_at_six() {
     assert_eq!(config.cash_alert_roles, [OPERATIONS_DIRECTOR, ACCOUNTANT]);
     assert_eq!(config.cash_threshold_of("ZCD"), 5_000_000);
     assert_eq!(config.cash_threshold_of("ZCS"), 5_000_000);
-    let inputs = cash_forecast_load::load(
-        app.state(),
-        &config,
-        std::slice::from_ref(&zcd),
-        today(),
-    )
-    .await
-    .unwrap();
+    let inputs =
+        cash_forecast_load::load(app.state(), &config, std::slice::from_ref(&zcd), today())
+            .await
+            .unwrap();
     let forecast: Forecast = cash_forecast::assemble(&inputs);
     assert_eq!(forecast.weeks.len(), 13);
     assert_eq!(forecast.weeks[0].start, this_monday());
-    assert!(forecast.weeks.iter().all(|w| w.start.weekday() == Weekday::Mon));
+    assert!(
+        forecast
+            .weeks
+            .iter()
+            .all(|w| w.start.weekday() == Weekday::Mon)
+    );
 
     use renox::Module;
     let mut registry = renox::Registry::default();
@@ -380,7 +417,8 @@ async fn the_forecast_has_thirteen_weeks_from_monday_and_runs_at_six() {
 /// owner role (the accountant) and the accountant at 100%; the categories of
 /// 06 exist and the accountant owns them.
 #[renox::test]
-async fn the_budget_is_approved_by_the_operations_director_and_the_accountant_owns_the_categories() {
+async fn the_budget_is_approved_by_the_operations_director_and_the_accountant_owns_the_categories()
+{
     let app = fnb_booted().await;
     let config = app.state().provided::<InvoicingConfig>().unwrap();
     assert!(!config.drawings_self_approve);
@@ -389,11 +427,26 @@ async fn the_budget_is_approved_by_the_operations_director_and_the_accountant_ow
     assert_eq!(config.budget_variance_role, ACCOUNTANT);
     assert_eq!(config.budget_category_owner.as_deref(), Some(ACCOUNTANT));
     assert!(holds(ACCOUNTANT, wl_invoicing::permissions::BUDGETS_MANAGE));
-    assert!(!holds(ACCOUNTANT, wl_invoicing::permissions::BUDGETS_APPROVE));
-    assert!(holds(OPERATIONS_DIRECTOR, wl_invoicing::permissions::BUDGETS_APPROVE));
-    assert!(holds(OPERATIONS_DIRECTOR, wl_invoicing::permissions::DRAWINGS_APPROVE));
-    assert!(!holds(ACCOUNTANT, wl_invoicing::permissions::DRAWINGS_APPROVE));
-    assert!(holds(OPERATIONS_DIRECTOR, wl_invoicing::permissions::CASHFLOW_VIEW));
+    assert!(!holds(
+        ACCOUNTANT,
+        wl_invoicing::permissions::BUDGETS_APPROVE
+    ));
+    assert!(holds(
+        OPERATIONS_DIRECTOR,
+        wl_invoicing::permissions::BUDGETS_APPROVE
+    ));
+    assert!(holds(
+        OPERATIONS_DIRECTOR,
+        wl_invoicing::permissions::DRAWINGS_APPROVE
+    ));
+    assert!(!holds(
+        ACCOUNTANT,
+        wl_invoicing::permissions::DRAWINGS_APPROVE
+    ));
+    assert!(holds(
+        OPERATIONS_DIRECTOR,
+        wl_invoicing::permissions::CASHFLOW_VIEW
+    ));
 
     let categories = BudgetCategory::listed(app.db(), true).await.unwrap();
     for category in categories.iter().filter(|c| !c.is_drawings()) {

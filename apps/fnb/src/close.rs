@@ -60,9 +60,9 @@ pub struct Food {
 /// What the sales order says about the money now: what the customer paid.
 async fn paid_of(state: &AppState, order: &FnbOrder) -> Result<(i64, Option<OrderView>)> {
     let view = order_desk(state).find(state, order.sales_order()).await?;
-    let paid = view
-        .as_ref()
-        .map_or(order.paid_amount, |view| if view.prepaid { view.gross_total } else { 0 });
+    let paid = view.as_ref().map_or(order.paid_amount, |view| {
+        if view.prepaid { view.gross_total } else { 0 }
+    });
     Ok((paid, view))
 }
 
@@ -267,7 +267,10 @@ async fn refund(state: &AppState, order: &FnbOrder, view: &OrderView) -> Result 
         }
         Err(error) => {
             let problem = error.to_string();
-            eprintln!("fnb: no refund was asked for order {}: {problem}", order.number);
+            eprintln!(
+                "fnb: no refund was asked for order {}: {problem}",
+                order.number
+            );
             tell_managers(
                 state,
                 order,

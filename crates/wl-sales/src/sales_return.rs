@@ -209,7 +209,7 @@ pub struct SalesReturnLine {
     pub updated_at: Option<DateTime>,
 }
 
-#[cfg(test)
+#[cfg(test)]
 mod tests {
     use super::*;
 

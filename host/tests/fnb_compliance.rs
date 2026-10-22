@@ -26,7 +26,9 @@ use wl_inventory::{Item, Location, NegativeStockPolicy};
 use wl_kernel::compliance::service::recipients;
 use wl_kernel::compliance::{AlertKind, Raised, is_critical, raise, schedule_subject};
 use wl_kernel::documents::today;
-use wl_kernel::integrations::{self, ConnectionStatus, IntegrationConnection, go_down, report_failure};
+use wl_kernel::integrations::{
+    self, ConnectionStatus, IntegrationConnection, go_down, report_failure,
+};
 use wl_kernel::late_entries::limits_for;
 use wl_kernel::notify::{GiveUpReaction, notification_type};
 use wl_kernel::{PartyId, Subject};
@@ -93,7 +95,11 @@ async fn an_outlet_kitchen_goes_negative_on_an_untracked_item_and_a_tracked_one_
         NegativeStockPolicy::Block,
         "the central kitchen blocks"
     );
-    assert_eq!(comp::outlet_stock(app.db()).await.unwrap(), 0, "a second run changes nothing");
+    assert_eq!(
+        comp::outlet_stock(app.db()).await.unwrap(),
+        0,
+        "a second run changes nothing"
+    );
 
     let mut onions = Item::new("ONION", "Onions", "kg");
     onions.save(app.db()).await.unwrap();
@@ -138,7 +144,9 @@ async fn an_outlet_kitchen_goes_negative_on_an_untracked_item_and_a_tracked_one_
         .await
         .unwrap();
     assert!(creamed.pending_issue.is_some(), "lot-tracked cream waits");
-    let open = wl_inventory::pending_issue::open_of(app.db()).await.unwrap();
+    let open = wl_inventory::pending_issue::open_of(app.db())
+        .await
+        .unwrap();
     assert_eq!(open.len(), 1);
 }
 
@@ -165,11 +173,17 @@ async fn the_stock_values_are_the_06_ones() {
     assert_eq!(config.return_chase_days, 30);
     assert_eq!(config.order_limits_fils, [500_000]);
     assert_eq!(config.reminder_hours("temperature", None), 2);
-    assert_eq!(config.escalation_role("temperature", None), Some(KITCHEN_MANAGER));
+    assert_eq!(
+        config.escalation_role("temperature", None),
+        Some(KITCHEN_MANAGER)
+    );
     assert_eq!(config.score.window_months, 1);
     assert_eq!(config.score.threshold, 70);
     assert!(config.preferred_change_needs_approval);
-    assert_eq!(config.recall_notices_route.as_deref(), Some("fnb.recall_trace"));
+    assert_eq!(
+        config.recall_notices_route.as_deref(),
+        Some("fnb.recall_trace")
+    );
 }
 
 /// AC (Stock 4): Outlet 1's head chef decides a hold line at Outlet 1 and not
@@ -207,7 +221,10 @@ async fn an_outlets_head_chef_decides_its_hold_lines_and_not_the_other_outlets()
     };
     let at_outlet1 = at(scope1).await;
     assert!(at_outlet1.contains(&chef.id), "Outlet 1's head chef");
-    assert!(at_outlet1.contains(&deputy.id), "Outlet 1's kitchen manager");
+    assert!(
+        at_outlet1.contains(&deputy.id),
+        "Outlet 1's kitchen manager"
+    );
     let at_outlet2 = at(scope2).await;
     assert!(!at_outlet2.contains(&chef.id), "not at Outlet 2");
     assert!(!at_outlet2.contains(&deputy.id), "not at Outlet 2");
@@ -258,7 +275,10 @@ async fn an_expired_health_card_alerts_the_owner_and_blocks_nothing() {
         .unwrap()
         .expect("the health card kind");
     assert!(kind.compliance_critical, "the owner is told on expiry");
-    assert!(kind.blocks(app.db()).await.unwrap().is_empty(), "blocks nothing");
+    assert!(
+        kind.blocks(app.db()).await.unwrap().is_empty(),
+        "blocks nothing"
+    );
     assert_eq!(kind.responsible_role.as_deref(), Some(KITCHEN_MANAGER));
     assert_eq!(kind.reminder_offsets.0, comp::CARD_REMINDERS);
 
@@ -364,7 +384,11 @@ async fn gives_up(
         .await
         .unwrap()
         .into_iter()
-        .filter(|t| t.source_key.as_deref().is_some_and(|k| k.starts_with(&prefix)))
+        .filter(|t| {
+            t.source_key
+                .as_deref()
+                .is_some_and(|k| k.starts_with(&prefix))
+        })
         .collect()
 }
 
@@ -401,7 +425,10 @@ async fn the_three_notification_types_take_their_groups_and_give_up_as_06_says()
     )
     .await;
     assert!(!mail.attempts().is_empty(), "the notice was e-mailed");
-    assert!(tasks.is_empty(), "an order status that gives up opens no task");
+    assert!(
+        tasks.is_empty(),
+        "an order status that gives up opens no task"
+    );
 
     let other = company(&app, "Omar Trading LLC").await;
     let tasks = gives_up(
@@ -457,7 +484,11 @@ async fn with_the_gateway_down_the_checkout_offers_cash_on_delivery_only() {
     let app = fnb_booted().await;
     for (key, owner, words) in [
         (comp::DELIVERECT, KITCHEN_MANAGER, "quick entry"),
-        (integrations::PAYMENT_GATEWAY, "accountant", "Cash on delivery"),
+        (
+            integrations::PAYMENT_GATEWAY,
+            "accountant",
+            "Cash on delivery",
+        ),
         (integrations::SMS, KITCHEN_MANAGER, "phone"),
     ] {
         let def = integrations::get(key).unwrap_or_else(|| panic!("{key}"));
@@ -501,7 +532,14 @@ async fn with_the_gateway_down_the_checkout_offers_cash_on_delivery_only() {
 async fn the_lead_sources_and_the_campaign_approval_are_the_06_ones() {
     let app = fnb_booted().await;
     for code in [
-        "walk_in", "website", "social", "paid_ads", "aggregator", "referral", "event", "partner",
+        "walk_in",
+        "website",
+        "social",
+        "paid_ads",
+        "aggregator",
+        "referral",
+        "event",
+        "partner",
         "other",
     ] {
         let source = LeadSource::by_code(app.db(), code)
@@ -546,7 +584,11 @@ async fn the_loyalty_and_campaign_values_are_the_06_ones() {
         .await
         .unwrap()
         .expect("the programme");
-    assert_eq!(programme.points_for(20_000), 200, "AED 200 earns 200 points");
+    assert_eq!(
+        programme.points_for(20_000),
+        200,
+        "AED 200 earns 200 points"
+    );
     assert_eq!(programme.points_for(0), 0);
     assert_eq!(programme.point_value, 5);
     assert_eq!(programme.min_redeem_points, 100);
@@ -557,7 +599,10 @@ async fn the_loyalty_and_campaign_values_are_the_06_ones() {
     assert_eq!(sales.adjustment_limit, 500);
     assert!(sales.confirm_redemption_by_code);
     assert_eq!(wl_notify::cap::settings(app.state()).max, 2);
-    assert_eq!(wl_notify::broadcast::settings(app.state()).approval_above, 200);
+    assert_eq!(
+        wl_notify::broadcast::settings(app.state()).approval_above,
+        200
+    );
     let window = wl_notify::SendWindow::query()
         .where_(wl_notify::SendWindow::CHANNEL.eq(wl_kernel::notify::NotifyChannel::Sms))
         .first(app.db())
@@ -596,7 +641,10 @@ async fn hiring_a_line_cook_starts_the_checklist_and_the_sops_are_seeded() {
             .unwrap()
             .unwrap_or_else(|| panic!("{name}"));
         assert_eq!(template.job_roles, role);
-        assert!(!template.blocks_activation, "{name}: completion blocks nothing");
+        assert!(
+            !template.blocks_activation,
+            "{name}: completion blocks nothing"
+        );
     }
     let cook = person(&app, "Rizwan", LINE_COOK).await;
     let party = tenant(&app, "Rizwan Ahmed").await;
@@ -619,7 +667,12 @@ async fn hiring_a_line_cook_starts_the_checklist_and_the_sops_are_seeded() {
         .await
         .unwrap();
     let owners: Vec<&str> = steps.iter().map(|s| s.owner.as_str()).collect();
-    for owner in ["role:kitchen_manager", "role:head_chef", "employee", "manager"] {
+    for owner in [
+        "role:kitchen_manager",
+        "role:head_chef",
+        "employee",
+        "manager",
+    ] {
         assert!(owners.contains(&owner), "{owner}");
     }
     assert_eq!(

@@ -7,8 +7,8 @@
 mod support;
 
 use renox::chrono::TimeDelta;
-use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::PartyId;
+use wl_kernel::notify::NotifyRecipient;
 use wl_sales::notices::ORDER_PAYMENT_FAILED;
 use wl_sales::online_payment::lapse_due;
 use wl_sales::sales_orders;
@@ -37,9 +37,14 @@ async fn an_order_without_confirmation_is_cancelled_when_the_window_ends() {
     let due = order.payment_due_at.expect("the window was stamped");
 
     // A second before the window ends nothing happens.
-    let early = lapse_due(t.state(), due - TimeDelta::seconds(1)).await.unwrap();
+    let early = lapse_due(t.state(), due - TimeDelta::seconds(1))
+        .await
+        .unwrap();
     assert_eq!(early, 0);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::AwaitingPayment);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::AwaitingPayment
+    );
     assert!(online.cancelled.lock().unwrap().is_empty());
 
     // The window ends.
@@ -49,7 +54,11 @@ async fn an_order_without_confirmation_is_cancelled_when_the_window_ends() {
     assert_eq!(order.status, SalesOrderStatus::Cancelled);
     assert_eq!(order.payment_status, OrderPaymentStatus::Failed);
     assert!(
-        order.reason.as_deref().unwrap_or_default().contains("payment failed"),
+        order
+            .reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("payment failed"),
         "{:?}",
         order.reason
     );
@@ -75,10 +84,15 @@ async fn a_failed_payment_cancels_at_once_and_the_timer_later_does_nothing() {
         .emit(online.gateway.failed(&order, 51, TOTAL))
         .await
         .unwrap();
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Cancelled);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
     assert_eq!(online.cancelled.lock().unwrap().len(), 1);
 
-    let later = lapse_due(t.state(), due + TimeDelta::minutes(1)).await.unwrap();
+    let later = lapse_due(t.state(), due + TimeDelta::minutes(1))
+        .await
+        .unwrap();
     assert_eq!(later, 0);
     assert_eq!(online.cancelled.lock().unwrap().len(), 1);
     assert_eq!(online.mail.of_type(ORDER_PAYMENT_FAILED).len(), 1);
@@ -97,10 +111,15 @@ async fn a_confirmed_order_is_not_cancelled_by_the_timer() {
         .await
         .unwrap();
 
-    let lapsed = lapse_due(t.state(), due + TimeDelta::hours(1)).await.unwrap();
+    let lapsed = lapse_due(t.state(), due + TimeDelta::hours(1))
+        .await
+        .unwrap();
 
     assert_eq!(lapsed, 0);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
     assert!(online.cancelled.lock().unwrap().is_empty());
 }
 
@@ -141,11 +160,18 @@ async fn the_promo_code_use_of_a_failed_order_is_available_again() {
     summer(&t).await;
 
     let first = waiting(&t, &[("promo_code", "summer")]).await;
-    assert_eq!(uses(&t).await, 1, "the use is taken when the order is placed");
+    assert_eq!(
+        uses(&t).await,
+        1,
+        "the use is taken when the order is placed"
+    );
     // While the order waits the code is used up for another order.
     let blocked = draft_order(&t, "website", "online", &[("promo_code", "SUMMER")]).await;
     t.app
-        .post(&format!("/sales-orders/{}/submit", blocked.id), &[("x", "")])
+        .post(
+            &format!("/sales-orders/{}/submit", blocked.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(422);
 
@@ -153,7 +179,11 @@ async fn the_promo_code_use_of_a_failed_order_is_available_again() {
         .emit(online.gateway.failed(&first, 53, TOTAL))
         .await
         .unwrap();
-    assert_eq!(uses(&t).await, 0, "the failed order does not consume the code");
+    assert_eq!(
+        uses(&t).await,
+        0,
+        "the failed order does not consume the code"
+    );
 
     let again = submit(&t, blocked.id).await;
     assert_eq!(again.status, SalesOrderStatus::AwaitingPayment);
@@ -166,15 +196,19 @@ async fn the_customer_is_told_the_payment_failed() {
     let (t, online) = boot_online().await;
     t.app.acting_as(&seller(&t).await);
     let order = waiting(&t, &[]).await;
-    lapse_due(t.state(), order.payment_due_at.unwrap()).await.unwrap();
+    lapse_due(t.state(), order.payment_due_at.unwrap())
+        .await
+        .unwrap();
 
     let sent = online.mail.of_type(ORDER_PAYMENT_FAILED);
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].subject, order.subject());
-    assert!(sent[0]
-        .recipients
-        .iter()
-        .any(|r| matches!(r, NotifyRecipient::Party { id } if *id == PartyId(7))));
+    assert!(
+        sent[0]
+            .recipients
+            .iter()
+            .any(|r| matches!(r, NotifyRecipient::Party { id } if *id == PartyId(7)))
+    );
     assert_eq!(sent[0].data["number"], order.number.as_str());
 }
 
@@ -184,10 +218,19 @@ async fn a_failed_order_cannot_be_paid_again() {
     let (t, _online) = boot_online().await;
     t.app.acting_as(&seller(&t).await);
     let order = waiting(&t, &[]).await;
-    lapse_due(t.state(), order.payment_due_at.unwrap()).await.unwrap();
+    lapse_due(t.state(), order.payment_due_at.unwrap())
+        .await
+        .unwrap();
 
-    assert!(sales_orders::confirm_payment(t.state(), order.id, TOTAL).await.is_err());
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Cancelled);
+    assert!(
+        sales_orders::confirm_payment(t.state(), order.id, TOTAL)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
 }
 
 /// Edge: the job's own screen: the order page shows it cancelled with the reason.
@@ -196,7 +239,9 @@ async fn the_order_page_shows_the_failed_payment() {
     let (t, _online) = boot_online().await;
     t.app.acting_as(&seller(&t).await);
     let order = waiting(&t, &[]).await;
-    lapse_due(t.state(), order.payment_due_at.unwrap()).await.unwrap();
+    lapse_due(t.state(), order.payment_due_at.unwrap())
+        .await
+        .unwrap();
     t.app
         .get(&format!("/sales-orders/{}", order.id))
         .await

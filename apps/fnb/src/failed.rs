@@ -41,7 +41,13 @@ use crate::texts::english;
 /// the same list as wl-delivery's own. As (code, English name, Arabic name,
 /// counts against the attempts, allows a reattempt).
 pub const FAILURE_REASONS: [(&str, &str, &str, bool, bool); 3] = [
-    ("rider_issue", "Rider issue", "مشكلة في المندوب", false, false),
+    (
+        "rider_issue",
+        "Rider issue",
+        "مشكلة في المندوب",
+        false,
+        false,
+    ),
     (
         "refused_late",
         "Refused: the order was late",

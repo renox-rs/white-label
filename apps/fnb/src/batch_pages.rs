@@ -265,7 +265,11 @@ async fn show(
             lot,
             quantity: milli_text(input.quantity_milli),
             expiry,
-            status_kind: if status == "on_hold" { "warning" } else { "info" },
+            status_kind: if status == "on_hold" {
+                "warning"
+            } else {
+                "info"
+            },
             status: if status.is_empty() {
                 String::new()
             } else {
@@ -324,7 +328,10 @@ async fn show(
             quantity: milli_text(w.quantity_milli),
             value: w.value,
             reason: w.reason,
-            posted_by: t(&lang, &format!("fnb.screen.batch.posted_by.{}", w.posted_by)),
+            posted_by: t(
+                &lang,
+                &format!("fnb.screen.batch.posted_by.{}", w.posted_by),
+            ),
         });
     let mut notes = Vec::new();
     match batch.status {

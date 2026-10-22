@@ -21,7 +21,7 @@ use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::documents::today;
 use wl_sales::sale_line::SaleLine;
 
-use support::payouts::{completed, complaints_clerk, file, import, staff, statement, void};
+use support::payouts::{complaints_clerk, completed, file, import, staff, statement, void};
 use support::{World, boot_own_riders};
 
 /// One shawarma plate at AED 95.00 (ORD-950).
@@ -44,7 +44,11 @@ async fn delivered(w: &World, lines: &[(&str, &str, &str)]) -> FnbOrder {
     w.deliver_stop(&delivery, "0").await.assert_status(303);
     let done = w.reload(&order).await;
     assert_eq!(done.status, FnbOrderStatus::Completed);
-    assert_eq!(done.rider_user_id, Some(w.rider.id), "the rider of the last run");
+    assert_eq!(
+        done.rider_user_id,
+        Some(w.rider.id),
+        "the rider of the last run"
+    );
     done
 }
 
@@ -110,7 +114,10 @@ async fn a_complaint_blamed_on_the_rider_writes_one_rider_fault_for_the_rider_of
     let manager = support::make_user(
         w.db(),
         "Mona",
-        &[fnb::permissions::RIDER_FAULTS_VIEW, fnb::permissions::ORDERS_VIEW],
+        &[
+            fnb::permissions::RIDER_FAULTS_VIEW,
+            fnb::permissions::ORDERS_VIEW,
+        ],
     )
     .await;
     for viewer in [&s.hr, &manager] {
@@ -152,22 +159,47 @@ async fn the_refunds_report_shows_the_complaint_under_cold_and_rider() {
         brand: order.brand_id,
         ..around_today()
     };
-    assert_eq!(reports::refunds(w.db(), &by_brand).await.unwrap().facts.len(), 1);
+    assert_eq!(
+        reports::refunds(w.db(), &by_brand)
+            .await
+            .unwrap()
+            .facts
+            .len(),
+        1
+    );
     let other_brand = ReportFilter {
         brand: Some(order.brand_id.unwrap_or(0) + 1000),
         ..around_today()
     };
-    assert!(reports::refunds(w.db(), &other_brand).await.unwrap().facts.is_empty());
+    assert!(
+        reports::refunds(w.db(), &other_brand)
+            .await
+            .unwrap()
+            .facts
+            .is_empty()
+    );
     let other_channel = ReportFilter {
         channel: Some("aggregator_a".to_owned()),
         ..around_today()
     };
-    assert!(reports::refunds(w.db(), &other_channel).await.unwrap().facts.is_empty());
+    assert!(
+        reports::refunds(w.db(), &other_channel)
+            .await
+            .unwrap()
+            .facts
+            .is_empty()
+    );
     let last_month = ReportFilter {
         to: Some(today() - TimeDelta::days(40)),
         ..ReportFilter::default()
     };
-    assert!(reports::refunds(w.db(), &last_month).await.unwrap().facts.is_empty());
+    assert!(
+        reports::refunds(w.db(), &last_month)
+            .await
+            .unwrap()
+            .facts
+            .is_empty()
+    );
 
     // The page: the person with the permission sees it, others do not.
     let from = (today() - TimeDelta::days(1)).to_string();
@@ -178,7 +210,9 @@ async fn the_refunds_report_shows_the_complaint_under_cold_and_rider() {
         .assert_see("Cold")
         .assert_see("Rider")
         .assert_see("30.00");
-    w.get(&w.cashier, "/reports/refunds").await.assert_status(403);
+    w.get(&w.cashier, "/reports/refunds")
+        .await
+        .assert_status(403);
 }
 
 /// AC3: the failed deliveries report lists ORD-504 under customer
@@ -193,7 +227,9 @@ async fn the_failed_deliveries_report_lists_the_order_under_customer_unreachable
     w.fail_stop(&delivery, "not_home").await.assert_status(303);
     assert_eq!(order.total, 6_000);
 
-    let groups = reports::failed_deliveries(w.db(), &around_today()).await.unwrap();
+    let groups = reports::failed_deliveries(w.db(), &around_today())
+        .await
+        .unwrap();
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].reason, reason::CUSTOMER_UNREACHABLE);
     assert_eq!(groups[0].orders.len(), 1);
@@ -203,14 +239,21 @@ async fn the_failed_deliveries_report_lists_the_order_under_customer_unreachable
         channel: Some("aggregator_a".to_owned()),
         ..around_today()
     };
-    assert!(reports::failed_deliveries(w.db(), &other_channel).await.unwrap().is_empty());
+    assert!(
+        reports::failed_deliveries(w.db(), &other_channel)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     w.get(&s.reports, "/reports/failed-deliveries")
         .await
         .assert_ok()
         .assert_see(&order.number)
         .assert_see("Customer unreachable");
-    w.get(&w.nobody, "/reports/failed-deliveries").await.assert_status(403);
+    w.get(&w.nobody, "/reports/failed-deliveries")
+        .await
+        .assert_status(403);
 }
 
 /// `close_failed` with the rider responsible adds the fault; a customer-side
@@ -222,12 +265,17 @@ async fn a_failed_delivery_closed_with_the_rider_responsible_writes_a_rider_faul
     // The rider could not go on: the party proposed is the rider.
     let customer = w.customer("Mariam Al Hosani R").await;
     let (order, delivery, run) = w.dispatched(customer, "online", &PLATE).await;
-    w.fail_stop(&delivery, "rider_issue").await.assert_status(303);
+    w.fail_stop(&delivery, "rider_issue")
+        .await
+        .assert_status(303);
     w.bring_back(&delivery, &run).await;
     let closed = w.reload(&order).await;
     assert_eq!(closed.status, FnbOrderStatus::Cancelled);
     assert_eq!(closed.responsible_party.as_deref(), Some(party::RIDER));
-    assert_eq!(closed.refund_decision.as_deref(), Some(decision::FULL_REFUND));
+    assert_eq!(
+        closed.refund_decision.as_deref(),
+        Some(decision::FULL_REFUND)
+    );
 
     let faults = RiderFault::newest(w.db(), None, 10).await.unwrap();
     assert_eq!(faults.len(), 1);
@@ -236,7 +284,10 @@ async fn a_failed_delivery_closed_with_the_rider_responsible_writes_a_rider_faul
     assert_eq!(faults[0].category, reason::RIDER_ISSUE);
     assert_eq!(faults[0].amount, 8_500);
     assert!(faults[0].sales_return_id.is_none());
-    w.get(&s.hr, "/rider-faults").await.assert_ok().assert_see(&order.number);
+    w.get(&s.hr, "/rider-faults")
+        .await
+        .assert_ok()
+        .assert_see(&order.number);
 
     // The customer was not home: no fault.
     let customer = w.customer("Mariam Al Hosani C").await;
@@ -264,9 +315,13 @@ async fn the_refunds_report_includes_the_aggregator_refund_taken_from_a_payout()
     .await
     .assert_status(303);
     let st = statement(&w, "AGG-W41").await;
-    w.post(&s.accountant, &format!("/payouts/{}/match", st.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &s.accountant,
+        &format!("/payouts/{}/match", st.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
 
     let report = reports::refunds(w.db(), &around_today()).await.unwrap();
     assert_eq!(report.groups.len(), 1);
@@ -282,7 +337,14 @@ async fn the_refunds_report_includes_the_aggregator_refund_taken_from_a_payout()
         channel: Some("aggregator_a".to_owned()),
         ..around_today()
     };
-    assert_eq!(reports::refunds(w.db(), &channel).await.unwrap().facts.len(), 1);
+    assert_eq!(
+        reports::refunds(w.db(), &channel)
+            .await
+            .unwrap()
+            .facts
+            .len(),
+        1
+    );
     w.get(&s.reports, "/reports/refunds")
         .await
         .assert_ok()
@@ -298,5 +360,11 @@ async fn the_refunds_report_includes_the_aggregator_refund_taken_from_a_payout()
     approvals::approve(w.state(), request.id, &s.approver, "")
         .await
         .unwrap();
-    assert!(reports::refunds(w.db(), &around_today()).await.unwrap().facts.is_empty());
+    assert!(
+        reports::refunds(w.db(), &around_today())
+            .await
+            .unwrap()
+            .facts
+            .is_empty()
+    );
 }

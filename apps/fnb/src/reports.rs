@@ -29,9 +29,7 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::dubai_date;
-use wl_kernel::sales::{
-    ReturnResolved, ReturnReversed, SALES_ORDER_SUBJECT_TYPE,
-};
+use wl_kernel::sales::{ReturnResolved, ReturnReversed, SALES_ORDER_SUBJECT_TYPE};
 use wl_kernel::workforce::workforce;
 
 use crate::money::net_of;
@@ -51,7 +49,11 @@ pub mod source {
 
 /// A refund after completion, as the report reads it.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "fnb_refund_facts", unique(sales_return_id), index(occurred_on))]
+#[model(
+    table = "fnb_refund_facts",
+    unique(sales_return_id),
+    index(occurred_on)
+)]
 pub struct RefundFact {
     /// The primary key.
     pub id: i64,
@@ -126,7 +128,9 @@ impl RiderFault {
     ///
     /// Database errors.
     pub async fn newest(db: &Db, employee: Option<i64>, limit: u64) -> Result<Vec<RiderFault>> {
-        let mut query = RiderFault::query().order_by_desc(RiderFault::ID).limit(limit);
+        let mut query = RiderFault::query()
+            .order_by_desc(RiderFault::ID)
+            .limit(limit);
         if let Some(employee) = employee {
             query = query.where_(RiderFault::EMPLOYEE_ID.eq(employee));
         }
@@ -405,7 +409,9 @@ pub async fn failed_deliveries(db: &Db, filter: &ReportFilter) -> Result<Vec<Fai
             continue;
         };
         let day = order.failed_at.map(dubai_date);
-        if day.is_some_and(|d| !filter.has_day(d)) || (day.is_none() && (filter.from.is_some() || filter.to.is_some())) {
+        if day.is_some_and(|d| !filter.has_day(d))
+            || (day.is_none() && (filter.from.is_some() || filter.to.is_some()))
+        {
             continue;
         }
         if !filter.has(order.brand_id, order.outlet_id, &order.channel) {

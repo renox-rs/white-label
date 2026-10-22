@@ -356,13 +356,21 @@ pub fn inventory(module: WlInventory) -> WlInventory {
 /// The stock module for a client: the 06 values for F&B, the given module for
 /// any other.
 pub fn inventory_for(client_app: &str, module: WlInventory) -> WlInventory {
-    if client_app == FNB { inventory(module) } else { module }
+    if client_app == FNB {
+        inventory(module)
+    } else {
+        module
+    }
 }
 
 /// The delivery module for a client: the 06 values for F&B, the module's own
 /// for any other.
 pub fn delivery_for(client_app: &str, module: WlDelivery) -> WlDelivery {
-    if client_app == FNB { delivery(module) } else { module }
+    if client_app == FNB {
+        delivery(module)
+    } else {
+        module
+    }
 }
 
 /// What the extra grants of the F&B client are: the permissions of the roles

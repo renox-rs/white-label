@@ -406,10 +406,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Nothing is queued.",
     ),
     // Devices at a site (BL-KRN-07).
-    (
-        "wl_kernel.integrations.device.silent",
-        "No heartbeat from",
-    ),
+    ("wl_kernel.integrations.device.silent", "No heartbeat from"),
     (
         "wl_kernel.integrations.device.not_a_device",
         "This connection is not a device's.",
@@ -427,35 +424,62 @@ const TEXTS: &[(&str, &str)] = &[
         "Give the window as two times such as 10:00 and 23:00, or leave both empty for always.",
     ),
     ("wl_kernel.integrations.page.device", "Device connection"),
-    ("wl_kernel.integrations.page.heartbeat_interval", "Heartbeat every"),
+    (
+        "wl_kernel.integrations.page.heartbeat_interval",
+        "Heartbeat every",
+    ),
     ("wl_kernel.integrations.page.seconds", ":seconds seconds"),
     ("wl_kernel.integrations.page.window", "Active window"),
     ("wl_kernel.integrations.page.window_always", "Always"),
-    ("wl_kernel.integrations.page.window_text", ":from to :to (Asia/Dubai)"),
+    (
+        "wl_kernel.integrations.page.window_text",
+        ":from to :to (Asia/Dubai)",
+    ),
     ("wl_kernel.integrations.page.grouped", "Grouping"),
     (
         "wl_kernel.integrations.page.grouped_yes",
         "One connection for the devices of the scope: down only when none answers",
     ),
-    ("wl_kernel.integrations.page.grouped_no", "One connection per device"),
+    (
+        "wl_kernel.integrations.page.grouped_no",
+        "One connection per device",
+    ),
     ("wl_kernel.integrations.page.scope", "Scope"),
     ("wl_kernel.integrations.page.devices", "Devices"),
     ("wl_kernel.integrations.page.device_name", "Device"),
-    ("wl_kernel.integrations.page.last_heartbeat", "Last heartbeat"),
+    (
+        "wl_kernel.integrations.page.last_heartbeat",
+        "Last heartbeat",
+    ),
     ("wl_kernel.integrations.page.device_state", "State"),
     ("wl_kernel.integrations.page.device_answering", "Answering"),
     ("wl_kernel.integrations.page.device_silent", "Silent"),
-    ("wl_kernel.integrations.page.device_idle", "Outside the active window"),
+    (
+        "wl_kernel.integrations.page.device_idle",
+        "Outside the active window",
+    ),
     ("wl_kernel.integrations.page.never", "Never"),
-    ("wl_kernel.integrations.page.devices_empty", "No device has registered yet."),
+    (
+        "wl_kernel.integrations.page.devices_empty",
+        "No device has registered yet.",
+    ),
     ("wl_kernel.integrations.page.settings", "Settings"),
     (
         "wl_kernel.integrations.page.settings_title",
         "Heartbeat, active window and grouping",
     ),
-    ("wl_kernel.integrations.page.interval_seconds", "Heartbeat interval (seconds)"),
-    ("wl_kernel.integrations.page.window_from", "Active from (HH:MM)"),
-    ("wl_kernel.integrations.page.window_to", "Active until (HH:MM)"),
+    (
+        "wl_kernel.integrations.page.interval_seconds",
+        "Heartbeat interval (seconds)",
+    ),
+    (
+        "wl_kernel.integrations.page.window_from",
+        "Active from (HH:MM)",
+    ),
+    (
+        "wl_kernel.integrations.page.window_to",
+        "Active until (HH:MM)",
+    ),
     (
         "wl_kernel.integrations.page.window_hint",
         "Silence outside the window is not counted. Leave both empty for always.",

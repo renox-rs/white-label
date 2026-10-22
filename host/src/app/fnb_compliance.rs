@@ -43,8 +43,8 @@ use wl_documents::registrations::{
 };
 use wl_documents::{KindSeed, Sop, SopReader, register_kind};
 use wl_hr::{OnboardingTemplate, StepInput, TemplateInput};
-use wl_inventory::location::NegativeStockPolicy;
 use wl_inventory::Location;
+use wl_inventory::location::NegativeStockPolicy;
 use wl_kernel::compliance::CriticalRule;
 use wl_kernel::documents::{DocumentFuture, ReminderSchedule, register_reminder_schedule};
 use wl_kernel::integrations::{Delivery, IntegrationDef, Outbound};
@@ -155,13 +155,15 @@ impl ReminderSchedule for OutletOf {
     ) -> DocumentFuture<'a, Option<Vec<Scope>>> {
         Box::pin(async move {
             if subject.subject_type == OUTLET_SUBJECT_TYPE {
-                return Ok(Some(vec![Scope::new(OUTLET_SUBJECT_TYPE, subject.subject_id)]));
+                return Ok(Some(vec![Scope::new(
+                    OUTLET_SUBJECT_TYPE,
+                    subject.subject_id,
+                )]));
             }
             if subject.subject_type != EMPLOYEE_SUBJECT_TYPE {
                 return Ok(None);
             }
-            let Some(employee) = wl_hr::Employee::find(&state.db, subject.subject_id).await?
-            else {
+            let Some(employee) = wl_hr::Employee::find(&state.db, subject.subject_id).await? else {
                 return Ok(None);
             };
             let outlets = employee.scopes(&state.db).await?;
@@ -247,7 +249,8 @@ pub const GATEWAY_FALLBACK_AR: &str = "الدفع الإلكتروني في مو
 /// unavailable and orders are taken by phone.
 pub const SMS_FALLBACK_EN: &str = "Login by one-time code is unavailable: the login screen shows the outlet's phone. Take the orders by phone.";
 /// See [`SMS_FALLBACK_EN`].
-pub const SMS_FALLBACK_AR: &str = "تسجيل الدخول برمز لمرة واحدة غير متاح: تعرض شاشة الدخول هاتف الفرع. استقبل الطلبات بالهاتف.";
+pub const SMS_FALLBACK_AR: &str =
+    "تسجيل الدخول برمز لمرة واحدة غير متاح: تعرض شاشة الدخول هاتف الفرع. استقبل الطلبات بالهاتف.";
 
 /// The send handler of a connection nothing is queued for: the manual way is
 /// the fallback.
@@ -375,9 +378,19 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         role: LINE_COOK,
         steps: &[
             WELCOME,
-            ("Kitchen walk-through and food safety", HEAD_CHEF_STEP, 2, "task"),
+            (
+                "Kitchen walk-through and food safety",
+                HEAD_CHEF_STEP,
+                2,
+                "task",
+            ),
             ("Station training", HEAD_CHEF_STEP, 5, "task"),
-            ("Access to the kitchen display", KITCHEN_MANAGER_STEP, 2, "task"),
+            (
+                "Access to the kitchen display",
+                KITCHEN_MANAGER_STEP,
+                2,
+                "task",
+            ),
             EMPLOYEE_DOCUMENTS,
             SOP_STEP,
         ],
@@ -387,8 +400,18 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         role: CASHIER,
         steps: &[
             WELCOME,
-            ("Till and order entry training", KITCHEN_MANAGER_STEP, 3, "task"),
-            ("Cash handling and refunds walk-through", KITCHEN_MANAGER_STEP, 3, "task"),
+            (
+                "Till and order entry training",
+                KITCHEN_MANAGER_STEP,
+                3,
+                "task",
+            ),
+            (
+                "Cash handling and refunds walk-through",
+                KITCHEN_MANAGER_STEP,
+                3,
+                "task",
+            ),
             EMPLOYEE_DOCUMENTS,
             SOP_STEP,
         ],
@@ -398,8 +421,18 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         role: DRIVER,
         steps: &[
             WELCOME,
-            ("Rider app and proof of delivery training", KITCHEN_MANAGER_STEP, 2, "task"),
-            ("Cash handover and food handling", KITCHEN_MANAGER_STEP, 3, "task"),
+            (
+                "Rider app and proof of delivery training",
+                KITCHEN_MANAGER_STEP,
+                2,
+                "task",
+            ),
+            (
+                "Cash handover and food handling",
+                KITCHEN_MANAGER_STEP,
+                3,
+                "task",
+            ),
             EMPLOYEE_DOCUMENTS,
             SOP_STEP,
         ],
@@ -409,8 +442,18 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         role: STOREKEEPER,
         steps: &[
             WELCOME,
-            ("Receiving, lots and temperature checks", HEAD_CHEF_STEP, 3, "task"),
-            ("Stock counts and purchase orders", KITCHEN_MANAGER_STEP, 3, "task"),
+            (
+                "Receiving, lots and temperature checks",
+                HEAD_CHEF_STEP,
+                3,
+                "task",
+            ),
+            (
+                "Stock counts and purchase orders",
+                KITCHEN_MANAGER_STEP,
+                3,
+                "task",
+            ),
             EMPLOYEE_DOCUMENTS,
             SOP_STEP,
         ],
@@ -420,8 +463,18 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         role: KITCHEN_MANAGER,
         steps: &[
             ("Welcome and introductions", "role:area_manager", 1, "task"),
-            ("Daily closing, cash and delivery walk-through", "role:area_manager", 3, "task"),
-            ("Food safety and recall walk-through", HEAD_CHEF_STEP, 3, "task"),
+            (
+                "Daily closing, cash and delivery walk-through",
+                "role:area_manager",
+                3,
+                "task",
+            ),
+            (
+                "Food safety and recall walk-through",
+                HEAD_CHEF_STEP,
+                3,
+                "task",
+            ),
             EMPLOYEE_DOCUMENTS,
             SOP_STEP,
         ],

@@ -16,12 +16,12 @@ use wl_kernel::sales::{OpenTill, SalesFuture, TillDesk, TillSessionClosed, TillV
 
 use crate::counter_sale::CounterSale;
 use crate::counter_sale_machine::METHOD_ACCOUNT;
+use crate::permissions;
+use crate::texts::english;
 use crate::till_session::{
     CLOSE, CLOSE_SYSTEM, REOPEN, REOPEN_SYSTEM, REVIEW, REVIEW_SYSTEM, START_COUNT,
     START_COUNT_SYSTEM, TillInput, TillSession, TillSessionStatus,
 };
-use crate::permissions;
-use crate::texts::english;
 
 /// A 422 with the English text `key`.
 fn refused(key: &str) -> Error {

@@ -57,7 +57,10 @@ async fn not_home_fails_the_prepaid_order_with_customer_unreachable_and_tells_th
 
     let after = w.reload(&order).await;
     assert_eq!(after.status, FnbOrderStatus::DeliveryFailed);
-    assert_eq!(after.failure_reason.as_deref(), Some(reason::CUSTOMER_UNREACHABLE));
+    assert_eq!(
+        after.failure_reason.as_deref(),
+        Some(reason::CUSTOMER_UNREACHABLE)
+    );
     assert_eq!(after.delivery_reason.as_deref(), Some("not_home"));
     assert_eq!(after.failure_side.as_deref(), Some(side::CUSTOMER));
     assert_eq!(after.responsible_party.as_deref(), Some(party::CUSTOMER));
@@ -83,7 +86,10 @@ async fn not_home_fails_the_prepaid_order_with_customer_unreachable_and_tells_th
     )
     .await
     .assert_status(422);
-    assert_eq!(w.delivery(&delivery).await.status, DeliveryStatus::Attempted);
+    assert_eq!(
+        w.delivery(&delivery).await.status,
+        DeliveryStatus::Attempted
+    );
 }
 
 /// AC2: given a cash order ORD-502 and the rider records *no cash*, the order
@@ -104,7 +110,9 @@ async fn no_cash_fails_the_cash_order_and_it_is_left_out_of_the_riders_expected_
     assert_eq!(after.failure_reason.as_deref(), Some(reason::NO_CASH));
     assert_eq!(after.failure_side.as_deref(), Some(side::CUSTOMER));
     let run = wl_delivery::Run::find_or_404(w.db(), run.id).await.unwrap();
-    let expected = wl_delivery::close::cash_expected(w.db(), &run).await.unwrap();
+    let expected = wl_delivery::close::cash_expected(w.db(), &run)
+        .await
+        .unwrap();
     assert_eq!(expected, 0, "nothing was collected, so nothing is expected");
 }
 
@@ -126,7 +134,11 @@ async fn a_run_aborted_with_no_hand_over_in_time_fails_the_order_with_run_aborte
     .assert_ok();
     // The receiving run could arrive 60 minutes after the order was placed;
     // the promise is 45.
-    let placed = w.delivery(&delivery).await.placed_at.expect("a placed time");
+    let placed = w
+        .delivery(&delivery)
+        .await
+        .placed_at
+        .expect("a placed time");
     let late = (placed + TimeDelta::minutes(60) + TimeDelta::hours(4))
         .format("%Y-%m-%d %H:%M")
         .to_string();
@@ -177,7 +189,11 @@ async fn a_stop_handed_over_in_time_stays_dispatched_when_the_run_is_aborted() {
     )
     .await
     .assert_ok();
-    let placed = w.delivery(&delivery).await.placed_at.expect("a placed time");
+    let placed = w
+        .delivery(&delivery)
+        .await
+        .placed_at
+        .expect("a placed time");
     let in_time = (placed + TimeDelta::minutes(35) + TimeDelta::hours(4))
         .format("%Y-%m-%d %H:%M")
         .to_string();
@@ -243,9 +259,18 @@ async fn a_second_identical_event_changes_nothing_and_leaves_one_history_row() {
     assert_eq!(failures.len(), 1, "one history row for the failure");
     assert_eq!(failures[0].from_state.as_deref(), Some("dispatched"));
     assert_eq!(failures[0].to_state, "delivery_failed");
-    assert_eq!(w.reload(&order).await.status, FnbOrderStatus::DeliveryFailed);
+    assert_eq!(
+        w.reload(&order).await.status,
+        FnbOrderStatus::DeliveryFailed
+    );
     // The customer was told once.
-    assert_eq!(customer_titles(&w).iter().filter(|t| t.starts_with("We could not")).count(), 1);
+    assert_eq!(
+        customer_titles(&w)
+            .iter()
+            .filter(|t| t.starts_with("We could not"))
+            .count(),
+        1
+    );
 }
 
 /// An event that arrives after the order moved on (a late `DeliveryAttemptFailed`
@@ -281,12 +306,37 @@ async fn a_late_failure_of_a_completed_order_is_ignored() {
 async fn the_cause_of_a_refusal_decides_the_side_and_each_reason_is_mapped() {
     let w = boot_own_riders().await;
     let table = [
-        ("refused_late", reason::REFUSED_LATE, side::OUTLET, party::BUSINESS),
-        ("refused_wrong_item", reason::REFUSED_WRONG_ITEM, side::OUTLET, party::BUSINESS),
+        (
+            "refused_late",
+            reason::REFUSED_LATE,
+            side::OUTLET,
+            party::BUSINESS,
+        ),
+        (
+            "refused_wrong_item",
+            reason::REFUSED_WRONG_ITEM,
+            side::OUTLET,
+            party::BUSINESS,
+        ),
         ("refused", reason::REFUSED, side::CUSTOMER, party::CUSTOMER),
-        ("wrong_address", reason::WRONG_ADDRESS, side::CUSTOMER, party::CUSTOMER),
-        ("access_denied", reason::CUSTOMER_UNREACHABLE, side::CUSTOMER, party::CUSTOMER),
-        ("rider_issue", reason::RIDER_ISSUE, side::OUTLET, party::RIDER),
+        (
+            "wrong_address",
+            reason::WRONG_ADDRESS,
+            side::CUSTOMER,
+            party::CUSTOMER,
+        ),
+        (
+            "access_denied",
+            reason::CUSTOMER_UNREACHABLE,
+            side::CUSTOMER,
+            party::CUSTOMER,
+        ),
+        (
+            "rider_issue",
+            reason::RIDER_ISSUE,
+            side::OUTLET,
+            party::RIDER,
+        ),
     ];
     for (code, expected, expected_side, expected_party) in table {
         let (order, delivery, _run) = prepaid(&w).await;
@@ -295,7 +345,11 @@ async fn the_cause_of_a_refusal_decides_the_side_and_each_reason_is_mapped() {
         assert_eq!(after.status, FnbOrderStatus::DeliveryFailed, "{code}");
         assert_eq!(after.failure_reason.as_deref(), Some(expected), "{code}");
         assert_eq!(after.failure_side.as_deref(), Some(expected_side), "{code}");
-        assert_eq!(after.responsible_party.as_deref(), Some(expected_party), "{code}");
+        assert_eq!(
+            after.responsible_party.as_deref(),
+            Some(expected_party),
+            "{code}"
+        );
         assert_eq!(after.delivery_reason.as_deref(), Some(code), "{code}");
     }
 }
@@ -327,13 +381,18 @@ async fn the_order_page_shows_the_failure_and_no_user_can_fail_a_delivery_by_han
     // While it is out for delivery nobody is offered a manual failure.
     for user in [&w.manager, &w.dispatcher, &w.cashier] {
         let offered = w.offered(user, &order).await;
-        assert!(!offered.iter().any(|name| name == "fail_delivery"), "{offered:?}");
+        assert!(
+            !offered.iter().any(|name| name == "fail_delivery"),
+            "{offered:?}"
+        );
     }
     let tried = w.try_run(&w.manager, &order, "fail_delivery").await;
     assert_ne!(tried, "ok", "a user cannot run the system's transition");
     assert_eq!(w.reload(&order).await.status, FnbOrderStatus::Dispatched);
 
-    w.fail_stop(&delivery, "wrong_address").await.assert_status(303);
+    w.fail_stop(&delivery, "wrong_address")
+        .await
+        .assert_status(303);
 
     w.get(&w.manager, &format!("/orders/{}", order.id))
         .await
@@ -344,7 +403,10 @@ async fn the_order_page_shows_the_failure_and_no_user_can_fail_a_delivery_by_han
         .assert_see("No reattempt")
         .assert_dont_see("Put the delivery back in the queue");
     let offered = w.offered(&w.manager, &w.reload(&order).await).await;
-    assert!(!offered.iter().any(|name| name == "fail_delivery"), "{offered:?}");
+    assert!(
+        !offered.iter().any(|name| name == "fail_delivery"),
+        "{offered:?}"
+    );
 }
 
 /// The kitchen manager changes the party proposed as responsible with a note;
@@ -353,7 +415,9 @@ async fn the_order_page_shows_the_failure_and_no_user_can_fail_a_delivery_by_han
 async fn the_kitchen_manager_changes_the_proposed_party_with_a_note() {
     let w = boot_own_riders().await;
     let (order, delivery, _run) = prepaid(&w).await;
-    w.fail_stop(&delivery, "rider_issue").await.assert_status(303);
+    w.fail_stop(&delivery, "rider_issue")
+        .await
+        .assert_status(303);
     let path = format!("/orders/{}/responsible", order.id);
     assert_eq!(
         w.reload(&order).await.responsible_party.as_deref(),
@@ -363,9 +427,13 @@ async fn the_kitchen_manager_changes_the_proposed_party_with_a_note() {
     w.post(&w.manager, &path, &[("party", "business"), ("note", "")])
         .await
         .assert_status(422);
-    w.post(&w.nobody, &path, &[("party", "business"), ("note", "Van was not serviced")])
-        .await
-        .assert_forbidden();
+    w.post(
+        &w.nobody,
+        &path,
+        &[("party", "business"), ("note", "Van was not serviced")],
+    )
+    .await
+    .assert_forbidden();
     w.post(
         &w.manager,
         &path,
@@ -376,7 +444,10 @@ async fn the_kitchen_manager_changes_the_proposed_party_with_a_note() {
 
     let after = w.reload(&order).await;
     assert_eq!(after.responsible_party.as_deref(), Some(party::BUSINESS));
-    assert_eq!(after.responsible_note.as_deref(), Some("The van was not serviced"));
+    assert_eq!(
+        after.responsible_note.as_deref(),
+        Some("The van was not serviced")
+    );
     assert_eq!(after.responsible_changed_by, Some(w.manager.id));
     // The reason itself is the rider's as the delivery recorded it.
     assert_eq!(after.failure_reason.as_deref(), Some(reason::RIDER_ISSUE));

@@ -153,9 +153,13 @@ async fn a_held_lot_puts_its_batch_on_hold_and_releasing_it_brings_it_back() {
     // The chef releases the line of the quality hold alone (not a listed
     // reason), the lot is released and the batch is produced again.
     let line = lines_of(&w, &placed).await.remove(0);
-    w.post(&k.chef, &format!("/stock-hold-lines/{}/release", line.id), &[])
-        .await
-        .assert_ok();
+    w.post(
+        &k.chef,
+        &format!("/stock-hold-lines/{}/release", line.id),
+        &[],
+    )
+    .await
+    .assert_ok();
     assert_eq!(lot_now(&w, &l20).await.status, LotStatus::Released);
     let back = reload(&w, &b2).await;
     assert_eq!(back.status, BatchStatus::Produced);
@@ -179,9 +183,13 @@ async fn discarding_the_lot_discards_the_batch_with_one_wastage_movement() {
 
     // A hold line is the only way out of a hold: the chef discards it.
     let line = lines_of(&w, &placed).await.remove(0);
-    w.post(&k.chef, &format!("/stock-hold-lines/{}/discard", line.id), &[])
-        .await
-        .assert_ok();
+    w.post(
+        &k.chef,
+        &format!("/stock-hold-lines/{}/discard", line.id),
+        &[],
+    )
+    .await
+    .assert_ok();
 
     let gone = reload(&w, &b2).await;
     assert_eq!(gone.status, BatchStatus::Discarded);
@@ -280,15 +288,13 @@ async fn a_discard_above_the_limit_waits_for_the_kitchen_manager_and_posts_once(
     // Two batches: 10 kg (AED 150) and 20 kg (AED 300) of sauce.
     let small = plan(&w, &k).await;
     start(&w, &k.chef, &k, &small, &t5).await.assert_status(303);
-    finish(&w, &k.chef, &small, "10", 4).await.assert_status(303);
+    finish(&w, &k.chef, &small, "10", 4)
+        .await
+        .assert_status(303);
     let big = plan(&w, &k).await;
-    w.post(
-        &k.chef,
-        &format!("/batches/{}/start", big.id),
-        &[("x", "")],
-    )
-    .await
-    .assert_status(303);
+    w.post(&k.chef, &format!("/batches/{}/start", big.id), &[("x", "")])
+        .await
+        .assert_status(303);
     finish(&w, &k.chef, &big, "20", 4).await.assert_status(303);
 
     // AED 150: the chef discards alone; one wastage movement.
@@ -319,13 +325,20 @@ async fn a_discard_above_the_limit_waits_for_the_kitchen_manager_and_posts_once(
     .assert_status(303);
     assert_eq!(reload(&w, &big).await.status, BatchStatus::Produced);
     let big_lot = made_lot(&w, &big).await;
-    assert!(wastage_of(&w, &big_lot).await.is_empty(), "nothing posted yet");
+    assert!(
+        wastage_of(&w, &big_lot).await.is_empty(),
+        "nothing posted yet"
+    );
     let request = ApprovalRequest::pending_about(w.db(), &big.subject())
         .await
         .unwrap()
         .pop()
         .expect("a request waits");
-    assert!(approvals::approve(w.state(), request.id, &k.chef, "").await.is_err());
+    assert!(
+        approvals::approve(w.state(), request.id, &k.chef, "")
+            .await
+            .is_err()
+    );
     approvals::approve(w.state(), request.id, &k.manager, "")
         .await
         .expect("the manager approves");
@@ -343,17 +356,29 @@ async fn a_planned_batch_is_cancelled_and_a_started_one_is_not() {
     let k = kitchen(&w).await;
     let t5 = lot(&w, &k.tomato, "T5", &k.central, 40_000, 6).await;
     let planned = plan(&w, &k).await;
-    w.post(&k.chef, &format!("/batches/{}/cancel", planned.id), &[("x", "")])
-        .await
-        .assert_status(303);
-    assert!(fnb::ProductionBatch::find(w.db(), planned.id)
-        .await
-        .unwrap()
-        .is_none());
+    w.post(
+        &k.chef,
+        &format!("/batches/{}/cancel", planned.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
+    assert!(
+        fnb::ProductionBatch::find(w.db(), planned.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     let started = plan(&w, &k).await;
-    start(&w, &k.chef, &k, &started, &t5).await.assert_status(303);
-    w.post(&k.chef, &format!("/batches/{}/cancel", started.id), &[("x", "")])
+    start(&w, &k.chef, &k, &started, &t5)
         .await
-        .assert_status(422);
+        .assert_status(303);
+    w.post(
+        &k.chef,
+        &format!("/batches/{}/cancel", started.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(422);
 }

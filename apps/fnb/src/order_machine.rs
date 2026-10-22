@@ -335,14 +335,18 @@ fn close_failed(name: &'static str, by_user: bool) -> Transition<FnbOrder> {
         let original = order.clone();
         let input = input_of(ctx);
         Box::pin(async move {
-            let (chosen, amount) = proposed_decision(&original, input.paid_amount, input.customer_side_refund);
+            let (chosen, amount) =
+                proposed_decision(&original, input.paid_amount, input.customer_side_refund);
             let decision = Some(chosen.to_owned());
             let at = Some(renox::db::now());
             let reason = input.close_reason.clone();
             // Food is posted as wastage once: by the discard, or by the scrap
             // of the cancellation that follows.
             let posted = original.wastage_posted || input.wastage_posted;
-            let wastage = input.wastage_ref.clone().or_else(|| original.wastage_ref.clone());
+            let wastage = input
+                .wastage_ref
+                .clone()
+                .or_else(|| original.wastage_ref.clone());
             FnbOrder::query()
                 .where_(FnbOrder::ID.eq(original.id))
                 .update(
@@ -514,19 +518,22 @@ fn cancel_line(name: &'static str, state: FnbOrderStatus) -> Transition<FnbOrder
         .reason_required()
         .from([state])
         .to(state)
-        .guard("item_unavailable_or_customer_request", |_order: &FnbOrder, ctx| {
-            let ok = input_of(ctx)
-                .line_reason_code
-                .as_deref()
-                .is_some_and(|code| LINE_REASONS.contains(&code));
-            Box::pin(async move {
-                if ok {
-                    Ok(())
-                } else {
-                    Err(english("fnb.line.reason", &[]))
-                }
-            })
-        })
+        .guard(
+            "item_unavailable_or_customer_request",
+            |_order: &FnbOrder, ctx| {
+                let ok = input_of(ctx)
+                    .line_reason_code
+                    .as_deref()
+                    .is_some_and(|code| LINE_REASONS.contains(&code));
+                Box::pin(async move {
+                    if ok {
+                        Ok(())
+                    } else {
+                        Err(english("fnb.line.reason", &[]))
+                    }
+                })
+            },
+        )
         .guard("line_not_bumped", |_order: &FnbOrder, ctx| {
             let bumped = input_of(ctx).line_bumped;
             Box::pin(async move {
@@ -685,7 +692,8 @@ mod tests {
             (decision::FULL_REFUND, 8_500)
         );
         let customer = failed(side::CUSTOMER, "online");
-        assert_eq!(proposed_decision(&customer, 6_000, false),
+        assert_eq!(
+            proposed_decision(&customer, 6_000, false),
             (decision::NO_REFUND, 0)
         );
         // The open item L-33 as a setting: the client may refund these too.

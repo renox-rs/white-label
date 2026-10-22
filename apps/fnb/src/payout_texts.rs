@@ -6,19 +6,34 @@
 pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
     // Toasts.
     ("fnb.payout.imported", "Payout statement imported."),
-    ("fnb.payout.matched", "Payout statement matched: the receivable is booked."),
-    ("fnb.payout.disputed", "Payout statement disputed: a follow-up task was made."),
+    (
+        "fnb.payout.matched",
+        "Payout statement matched: the receivable is booked.",
+    ),
+    (
+        "fnb.payout.disputed",
+        "Payout statement disputed: a follow-up task was made.",
+    ),
     ("fnb.payout.resolved", "Dispute resolved."),
     ("fnb.payout.party_set", "Responsible party set."),
     ("fnb.payout.explained", "Line explained."),
-    ("fnb.payout.late_entered", "Order entered late; the statements of the aggregator are matched again."),
+    (
+        "fnb.payout.late_entered",
+        "Order entered late; the statements of the aggregator are matched again.",
+    ),
     ("fnb.payout.late_pending", "Late entry sent for approval."),
     // What the history says.
     ("fnb.payout.history.imported", "Imported from {{ file }}"),
     ("fnb.payout.history.matched", "Matched"),
-    ("fnb.payout.refund_reason", "Refunded by the aggregator on {{ number }}"),
+    (
+        "fnb.payout.refund_reason",
+        "Refunded by the aggregator on {{ number }}",
+    ),
     // Refusals.
-    ("fnb.payout.problem.identity", "Choose the aggregator and give the statement reference."),
+    (
+        "fnb.payout.problem.identity",
+        "Choose the aggregator and give the statement reference.",
+    ),
     (
         "fnb.payout.problem.duplicate",
         "The statement {{ reference }} of {{ aggregator }} is already imported as {{ number }} (see /payouts/{{ id }}). Void that one first if it was the wrong file.",
@@ -27,7 +42,10 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
         "fnb.payout.problem.no_preset",
         "There is no column preset for {{ aggregator }}: add it before importing its files.",
     ),
-    ("fnb.payout.problem.file", "The file cannot be read. {{ problem }}"),
+    (
+        "fnb.payout.problem.file",
+        "The file cannot be read. {{ problem }}",
+    ),
     (
         "fnb.payout.problem.unmatched",
         "Match is not possible while a line has no order: enter the order as a late entry, or explain the line.",
@@ -44,31 +62,73 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
         "fnb.payout.problem.closed",
         "The statement is matched, settled or void: its lines no longer change here.",
     ),
-    ("fnb.payout.problem.party", "The responsible party is business or aggregator."),
-    ("fnb.payout.problem.not_refund", "Only a refund line has a responsible party."),
-    ("fnb.payout.problem.category", "That complaint category is not on the list."),
-    ("fnb.payout.problem.note", "Write why the line has no order."),
-    ("fnb.payout.problem.has_order", "The line has its order: there is nothing to explain."),
-    ("fnb.payout.problem.not_imported", "Only an imported statement is matched."),
-    ("fnb.payout.problem.not_disputed", "Only a disputed statement is resolved."),
-    ("fnb.payout.problem.answer", "Write the aggregator's answer."),
+    (
+        "fnb.payout.problem.party",
+        "The responsible party is business or aggregator.",
+    ),
+    (
+        "fnb.payout.problem.not_refund",
+        "Only a refund line has a responsible party.",
+    ),
+    (
+        "fnb.payout.problem.category",
+        "That complaint category is not on the list.",
+    ),
+    (
+        "fnb.payout.problem.note",
+        "Write why the line has no order.",
+    ),
+    (
+        "fnb.payout.problem.has_order",
+        "The line has its order: there is nothing to explain.",
+    ),
+    (
+        "fnb.payout.problem.not_imported",
+        "Only an imported statement is matched.",
+    ),
+    (
+        "fnb.payout.problem.not_disputed",
+        "Only a disputed statement is resolved.",
+    ),
+    (
+        "fnb.payout.problem.answer",
+        "Write the aggregator's answer.",
+    ),
     (
         "fnb.payout.problem.not_disputed_refund",
         "Only a disputed refund line can be taken back by the aggregator.",
     ),
-    ("fnb.payout.problem.amount", "That is not an amount in dirhams."),
-    ("fnb.payout.problem.late_day", "Give the day the order happened."),
+    (
+        "fnb.payout.problem.amount",
+        "That is not an amount in dirhams.",
+    ),
+    (
+        "fnb.payout.problem.late_day",
+        "Give the day the order happened.",
+    ),
     ("fnb.payout.problem.late_time", "Give the time as HH:MM."),
-    ("fnb.payout.problem.late_number", "Give the aggregator and the order number."),
-    ("fnb.payout.problem.late_exists", "That order is recorded already."),
+    (
+        "fnb.payout.problem.late_number",
+        "Give the aggregator and the order number.",
+    ),
+    (
+        "fnb.payout.problem.late_exists",
+        "That order is recorded already.",
+    ),
     // The tasks.
-    ("fnb.payout.task.unmatched_title", "Reconcile {{ number }}: unmatched lines"),
+    (
+        "fnb.payout.task.unmatched_title",
+        "Reconcile {{ number }}: unmatched lines",
+    ),
     (
         "fnb.payout.task.unmatched_body",
         "Lines of payout statement {{ number }} worth {{ amount }} have no order. Enter the orders as late entries or explain the lines: {{ link }}",
     ),
     ("fnb.payout.task.matched", "The statement was matched."),
-    ("fnb.payout.task.dispute_title", "Follow up the dispute of {{ number }}"),
+    (
+        "fnb.payout.task.dispute_title",
+        "Follow up the dispute of {{ number }}",
+    ),
     (
         "fnb.payout.task.dispute_body",
         "Payout statement {{ number }} is disputed with the aggregator: {{ reason }}. Record its answer when it comes: {{ link }}",
@@ -81,7 +141,10 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
         "What the aggregators pay for the orders of a period, matched to the orders.",
     ),
     ("fnb.screen.payout.import", "Import a statement"),
-    ("fnb.screen.payout.import_title", "Import a payout statement"),
+    (
+        "fnb.screen.payout.import_title",
+        "Import a payout statement",
+    ),
     (
         "fnb.screen.payout.import_description",
         "Paste the CSV from the aggregator's partner portal. The columns are read with the aggregator's preset.",
@@ -116,7 +179,10 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
         "The net payout is booked as owed by the aggregator and each refund line becomes a sales return, refunded by the channel.",
     ),
     ("fnb.screen.payout.dispute", "Dispute"),
-    ("fnb.screen.payout.dispute_title", "Dispute lines with the aggregator"),
+    (
+        "fnb.screen.payout.dispute_title",
+        "Dispute lines with the aggregator",
+    ),
     (
         "fnb.screen.payout.dispute_description",
         "Tick the lines the aggregator got wrong, for example a refund the kitchen did not cause. A follow-up task is made.",
@@ -133,9 +199,15 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
         "fnb.screen.payout.adjustment_hint",
         "What the answer adds to the receivable in dirhams; a minus sign takes from it.",
     ),
-    ("fnb.screen.payout.reverse_refund", "The aggregator takes the refund back"),
+    (
+        "fnb.screen.payout.reverse_refund",
+        "The aggregator takes the refund back",
+    ),
     ("fnb.screen.payout.late", "Enter a missing order"),
-    ("fnb.screen.payout.late_title", "Enter an order as a late entry"),
+    (
+        "fnb.screen.payout.late_title",
+        "Enter an order as a late entry",
+    ),
     (
         "fnb.screen.payout.late_description",
         "The statement names an order the kitchen never recorded. Enter it with the aggregator's number and the time it happened.",
@@ -143,7 +215,10 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.payout.late_number", "Aggregator order number"),
     ("fnb.screen.payout.late_day", "Day it happened"),
     ("fnb.screen.payout.late_time", "Time it happened"),
-    ("fnb.screen.payout.late_time_hint", "HH:MM; noon when blank."),
+    (
+        "fnb.screen.payout.late_time_hint",
+        "HH:MM; noon when blank.",
+    ),
     ("fnb.screen.payout.late_gross", "Order value with VAT"),
     ("fnb.screen.payout.late_reason", "Why it is late"),
     (
@@ -162,21 +237,30 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.payout.dispute_reason", "Why it is disputed"),
     ("fnb.screen.payout.resolve_note", "The aggregator's answer"),
     ("fnb.screen.payout.void_reason", "Why it was voided"),
-    ("fnb.screen.payout.differences", "Differences with the orders"),
+    (
+        "fnb.screen.payout.differences",
+        "Differences with the orders",
+    ),
     ("fnb.screen.payout.lines_title", "Lines"),
     ("fnb.screen.payout.order", "Aggregator order"),
     ("fnb.screen.payout.return", "Sales return"),
     ("fnb.screen.payout.return_made", "Refunded by the channel"),
     ("fnb.screen.payout.return_taken_back", "Taken back"),
     ("fnb.screen.payout.set_party", "Set the party"),
-    ("fnb.screen.payout.set_party_title", "Who is responsible for the refund"),
+    (
+        "fnb.screen.payout.set_party_title",
+        "Who is responsible for the refund",
+    ),
     (
         "fnb.screen.payout.set_party_description",
         "Business when the kitchen caused it; aggregator when it did not. Match waits for it.",
     ),
     ("fnb.screen.payout.category", "Complaint category"),
     ("fnb.screen.payout.explain", "Explain"),
-    ("fnb.screen.payout.explain_title", "Explain a line with no order"),
+    (
+        "fnb.screen.payout.explain_title",
+        "Explain a line with no order",
+    ),
     (
         "fnb.screen.payout.explain_description",
         "Say why the line is fine without an order, for example a fee of the aggregator.",
@@ -215,7 +299,10 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.payout.category.missing_item", "Missing item"),
     ("fnb.screen.payout.category.wrong_item", "Wrong item"),
     ("fnb.screen.payout.category.quality", "Quality"),
-    ("fnb.screen.payout.category.service_not_delivered", "Not delivered"),
+    (
+        "fnb.screen.payout.category.service_not_delivered",
+        "Not delivered",
+    ),
     ("fnb.screen.payout.category.other", "Other"),
     (
         "fnb.screen.payout.difference.compensation",
@@ -226,7 +313,10 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
         "A line was cancelled on the order: no refund on the statement",
     ),
     // The reports (BL-FNB-08).
-    ("fnb.screen.report.refunds_title", "Refunds after completion"),
+    (
+        "fnb.screen.report.refunds_title",
+        "Refunds after completion",
+    ),
     (
         "fnb.screen.report.refunds_subtitle",
         "By complaint category and responsible party, including the refunds the aggregators deduct from their payouts.",
@@ -242,9 +332,15 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
         "Entries on the riders' records. They are for the kitchen manager and HR and never change pay.",
     ),
     ("fnb.screen.report.faults_empty", "No rider faults"),
-    ("fnb.screen.report.refunds_empty", "No refunds in the period"),
+    (
+        "fnb.screen.report.refunds_empty",
+        "No refunds in the period",
+    ),
     ("fnb.screen.report.refunds_list", "Refunds"),
-    ("fnb.screen.report.failed_empty", "No failed deliveries in the period"),
+    (
+        "fnb.screen.report.failed_empty",
+        "No failed deliveries in the period",
+    ),
     ("fnb.screen.report.by_category", "By category and party"),
     ("fnb.screen.report.from", "From"),
     ("fnb.screen.report.to", "To"),
@@ -262,5 +358,8 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.report.rider", "Rider"),
     ("fnb.screen.report.resolution.refund", "Refund"),
     ("fnb.screen.report.resolution.credit_note", "Credit note"),
-    ("fnb.screen.report.resolution.refunded_by_channel", "Refunded by the aggregator"),
+    (
+        "fnb.screen.report.resolution.refunded_by_channel",
+        "Refunded by the aggregator",
+    ),
 ];

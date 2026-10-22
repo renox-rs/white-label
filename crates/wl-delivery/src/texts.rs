@@ -724,8 +724,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.attempted.waiting_approval",
         "The wastage is above the limit: a second person has to approve the discard.",
     ),
-    ("wl_delivery.attempted.resolution.return", "The goods go back to the origin: confirm them there and the delivery is returned."),
-    ("wl_delivery.attempted.resolution.discard", "The driver discards the goods with a photo and a reason."),
+    (
+        "wl_delivery.attempted.resolution.return",
+        "The goods go back to the origin: confirm them there and the delivery is returned.",
+    ),
+    (
+        "wl_delivery.attempted.resolution.discard",
+        "The driver discards the goods with a photo and a reason.",
+    ),
     ("wl_delivery.attempted.title", "After the failed visit"),
     ("wl_delivery.attempted.reattempt", "Reattempt"),
     (
@@ -747,7 +753,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_delivery.attempted.discard_photo", "Photo reference"),
     ("wl_delivery.attempted.discarded_at", "Discarded at"),
     ("wl_delivery.attempted.wastage", "Wastage at cost"),
-    ("wl_delivery.attempted.waiting_title", "Waiting for approval"),
+    (
+        "wl_delivery.attempted.waiting_title",
+        "Waiting for approval",
+    ),
     (
         "wl_delivery.attempted.waiting",
         "The wastage is above the limit. A second person has to approve the discard before it is recorded.",
@@ -758,8 +767,14 @@ const TEXTS: &[(&str, &str)] = &[
         "This food cannot be delivered again. Photograph it, say why it is discarded and submit.",
     ),
     ("wl_delivery.attempted.discard", "Discard"),
-    ("wl_delivery.actions.reattempted", "The delivery is back in the queue."),
-    ("wl_delivery.actions.returned", "The delivery is returned to the origin."),
+    (
+        "wl_delivery.actions.reattempted",
+        "The delivery is back in the queue.",
+    ),
+    (
+        "wl_delivery.actions.returned",
+        "The delivery is returned to the origin.",
+    ),
     // The hand-over window of a perishable stop (#166).
     (
         "wl_delivery.hand_over.arrival_needed",
@@ -788,8 +803,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.notices.perishable_failed_body",
         "The visit of {{ number }} failed and its goods cannot be delivered again: {{ action }}. {{ link }}",
     ),
-    ("wl_delivery.notices.action_discard", "the driver discards them with a photo"),
-    ("wl_delivery.notices.action_return", "they go back to the origin"),
+    (
+        "wl_delivery.notices.action_discard",
+        "the driver discards them with a photo",
+    ),
+    (
+        "wl_delivery.notices.action_return",
+        "they go back to the origin",
+    ),
     (
         "wl_delivery.notices.returned_subject",
         "Delivery {{ number }} returned",

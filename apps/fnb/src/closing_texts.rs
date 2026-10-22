@@ -5,13 +5,22 @@
 /// Every text of the daily closing.
 pub(crate) const CLOSING_TEXTS: &[(&str, &str)] = &[
     // History.
-    ("fnb.closing.history.opened", "Closing opened for the business day"),
+    (
+        "fnb.closing.history.opened",
+        "Closing opened for the business day",
+    ),
     ("fnb.closing.history.submitted", "Closing submitted"),
     ("fnb.closing.till_reopened", "The closing was reopened"),
-    ("fnb.closing.reopen_late_reason", "Late entries after an outage"),
+    (
+        "fnb.closing.reopen_late_reason",
+        "Late entries after an outage",
+    ),
     // Toasts.
     ("fnb.closing.opened", "Closing opened."),
-    ("fnb.closing.submitted", "Closing submitted. Its cash was counted in the till."),
+    (
+        "fnb.closing.submitted",
+        "Closing submitted. Its cash was counted in the till.",
+    ),
     ("fnb.closing.approved", "Closing approved."),
     ("fnb.closing.reopened", "Closing reopened for correction."),
     (
@@ -49,7 +58,10 @@ pub(crate) const CLOSING_TEXTS: &[(&str, &str)] = &[
         "fnb.closing.problem.till_reviewed",
         "The till session of this closing was reviewed and cannot be counted again.",
     ),
-    ("fnb.closing.problem.cutoff_time", "Give the cut-off as a time, like 04:00."),
+    (
+        "fnb.closing.problem.cutoff_time",
+        "Give the cut-off as a time, like 04:00.",
+    ),
     // The notice to the kitchen manager when a late entry reopened the closing.
     (
         "fnb.closing.reopened_title",
@@ -78,14 +90,20 @@ pub(crate) const CLOSING_TEXTS: &[(&str, &str)] = &[
         "A closing is made with the first order of a business day, or open today's here.",
     ),
     ("fnb.screen.closing.open", "Open today's closing"),
-    ("fnb.screen.closing.open_title", "Open the closing of today's business day"),
+    (
+        "fnb.screen.closing.open_title",
+        "Open the closing of today's business day",
+    ),
     (
         "fnb.screen.closing.open_description",
         "The closing of an outlet exists once its first order of the day arrives; open it here for a day with no orders yet.",
     ),
     ("fnb.screen.closing.cutoff", "Business-day cut-off"),
     ("fnb.screen.closing.cutoff_set", "Change the cut-off"),
-    ("fnb.screen.closing.cutoff_title", "Change the business-day cut-off"),
+    (
+        "fnb.screen.closing.cutoff_title",
+        "Change the business-day cut-off",
+    ),
     (
         "fnb.screen.closing.cutoff_description",
         "Orders before the cut-off belong to the previous day. A change applies from the next business day only.",
@@ -99,18 +117,30 @@ pub(crate) const CLOSING_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.closing.status.reopened", "Reopened"),
     ("fnb.screen.closing.status.approved", "Approved"),
     ("fnb.screen.closing.submit", "Submit the closing"),
-    ("fnb.screen.closing.submit_title", "Count the till and submit the closing"),
+    (
+        "fnb.screen.closing.submit_title",
+        "Count the till and submit the closing",
+    ),
     (
         "fnb.screen.closing.submit_description",
         "Enter the cash in the drawer and confirm the closing checklist. A shortage goes to the till's cash handover, to recover from the cashier or write off.",
     ),
-    ("fnb.screen.closing.checklist", "The closing checklist is completed"),
+    (
+        "fnb.screen.closing.checklist",
+        "The closing checklist is completed",
+    ),
     ("fnb.screen.closing.cash", "Cash counted (AED)"),
     ("fnb.screen.closing.cashier", "Cashier"),
-    ("fnb.screen.closing.cashier_hint", "A shortage is recovered from the cashier."),
+    (
+        "fnb.screen.closing.cashier_hint",
+        "A shortage is recovered from the cashier.",
+    ),
     ("fnb.screen.closing.approve", "Approve"),
     ("fnb.screen.closing.approve_title", "Approve the closing"),
-    ("fnb.screen.closing.approve_message", "Approve this closing? It cannot be reopened afterwards."),
+    (
+        "fnb.screen.closing.approve_message",
+        "Approve this closing? It cannot be reopened afterwards.",
+    ),
     ("fnb.screen.closing.reopen", "Reopen"),
     ("fnb.screen.closing.reopen_title", "Reopen the closing"),
     (
@@ -127,7 +157,10 @@ pub(crate) const CLOSING_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.closing.last_reason", "Last reopening"),
     ("fnb.screen.closing.paper_orders", "Paper orders of the day"),
     ("fnb.screen.closing.late_count", "Late entries"),
-    ("fnb.screen.closing.notes", "Why some actions are not available"),
+    (
+        "fnb.screen.closing.notes",
+        "Why some actions are not available",
+    ),
     (
         "fnb.screen.closing.note_cutoff",
         "The closing can be submitted only after the cut-off of the next morning.",

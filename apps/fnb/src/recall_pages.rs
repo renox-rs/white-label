@@ -189,12 +189,20 @@ async fn show(
                 .map(|c| c.name.clone())
                 .unwrap_or_default(),
             orders: n.order_numbers.clone(),
-            sent_at: n.sent_at.map(wl_kernel::documents::dubai_text).unwrap_or_default(),
+            sent_at: n
+                .sent_at
+                .map(wl_kernel::documents::dubai_text)
+                .unwrap_or_default(),
         })
         .collect();
     let decisions = public_decision::ALL
         .iter()
-        .map(|d| [(*d).to_owned(), t(&lang, &format!("fnb.screen.recall.decision.{d}"))])
+        .map(|d| {
+            [
+                (*d).to_owned(),
+                t(&lang, &format!("fnb.screen.recall.decision.{d}")),
+            ]
+        })
         .collect();
     let mut notes = vec![t(&lang, "fnb.screen.recall.note_possible")];
     if settings(&state).authority_notice_task {

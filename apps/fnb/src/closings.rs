@@ -314,8 +314,22 @@ pub async fn submit(
     let history = english("fnb.closing.history.submitted", &[]);
     let builder = closing.transition(if by.is_some() { SUBMIT } else { SUBMIT_SYSTEM });
     let outcome = match by {
-        Some(user) => builder.by(user).reason(history).input(&input).run(state).await,
-        None => builder.by_system().reason(history).input(&input).run(state).await,
+        Some(user) => {
+            builder
+                .by(user)
+                .reason(history)
+                .input(&input)
+                .run(state)
+                .await
+        }
+        None => {
+            builder
+                .by_system()
+                .reason(history)
+                .input(&input)
+                .run(state)
+                .await
+        }
     };
     let _ = outcome.map_err(|e| e.into_error())?;
     DailyClosing::find_or_404(&state.db, id).await
@@ -340,7 +354,11 @@ pub async fn approve(state: &AppState, by: Option<&AuthUser>, id: i64) -> Result
         require(user, permissions::CLOSING_APPROVE)?;
     }
     let closing = DailyClosing::find_or_404(&state.db, id).await?;
-    let builder = closing.transition(if by.is_some() { APPROVE } else { APPROVE_SYSTEM });
+    let builder = closing.transition(if by.is_some() {
+        APPROVE
+    } else {
+        APPROVE_SYSTEM
+    });
     let outcome = match by {
         Some(user) => builder.by(user).run(state).await,
         None => builder.by_system().run(state).await,
@@ -423,7 +441,12 @@ pub(crate) async fn on_late_entry(state: &AppState, event: LateEntryRecorded) ->
     let date = closing
         .business_date
         .unwrap_or_else(wl_kernel::documents::today);
-    reopen_till(state, &closing, &english("fnb.closing.reopen_late_reason", &[])).await?;
+    reopen_till(
+        state,
+        &closing,
+        &english("fnb.closing.reopen_late_reason", &[]),
+    )
+    .await?;
     tell_holders(
         state,
         closing.subject(),
@@ -455,12 +478,7 @@ pub(crate) async fn on_late_entry(state: &AppState, event: LateEntryRecorded) ->
 /// # Errors
 ///
 /// 403 without `closing.cutoff`; 422 for a text that is not a time of day.
-pub async fn set_cutoff(
-    state: &AppState,
-    user: &AuthUser,
-    id: i64,
-    time: &str,
-) -> Result<Outlet> {
+pub async fn set_cutoff(state: &AppState, user: &AuthUser, id: i64, time: &str) -> Result<Outlet> {
     require(user, permissions::CLOSING_CUTOFF)?;
     let Some(minutes) = parse_clock(time) else {
         return Err(refused(english("fnb.closing.problem.cutoff_time", &[])));

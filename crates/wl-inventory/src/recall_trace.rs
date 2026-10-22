@@ -705,8 +705,8 @@ impl LotTrace for InventoryTrace {
             let (RECALL_LINE_SUBJECT_TYPE, Some(by)) = (line.subject_type.as_str(), by) else {
                 return Ok(false);
             };
-            let found = crate::recall_line::RecallLine::find_or_404(&state.db, line.subject_id)
-                .await?;
+            let found =
+                crate::recall_line::RecallLine::find_or_404(&state.db, line.subject_id).await?;
             if found.notice_status != NoticeStatus::Pending {
                 return Ok(false);
             }

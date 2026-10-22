@@ -31,11 +31,11 @@ use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
-    AmendOrder, CancelByVertical, CancelLine, CancelOrder, ChangeOutcome, FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment,
-    ChannelRefund, NoGoodsRefund, OrderLineView, OrderView, ReverseFulfilment, SALES_ORDER_SUBJECT_TYPE, SalesFuture,
-    SalesOrderCancelled, SalesOrderClosed, SalesOrderConfirmed, SalesOrderDesk,
-    SalesOrderFulfilled, SalesOrderFulfilmentReversed, SalesOrderId, SalesOrderPlaced,
-    SalesOrderRejected,
+    AmendOrder, CancelByVertical, CancelLine, CancelOrder, ChangeOutcome, ChannelRefund,
+    FulfilOrder, FulfilledLine, FulfilmentOutcome, NoGoodsRefund, OrderFulfilment, OrderLineView,
+    OrderView, ReverseFulfilment, SALES_ORDER_SUBJECT_TYPE, SalesFuture, SalesOrderCancelled,
+    SalesOrderClosed, SalesOrderConfirmed, SalesOrderDesk, SalesOrderFulfilled,
+    SalesOrderFulfilmentReversed, SalesOrderId, SalesOrderPlaced, SalesOrderRejected,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -47,9 +47,9 @@ use crate::sales_order::{
 };
 use crate::sales_order_machine::{
     ACCEPT, CLOSE, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, CloseInput, FULFIL,
-    FULFIL_LAST, FulfilInput,
-    PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT, REVERSE_FULFILMENT_ALL, ReverseInput,
-    SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE, SubmitInput,
+    FULFIL_LAST, FulfilInput, PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT,
+    REVERSE_FULFILMENT_ALL, ReverseInput, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE,
+    SubmitInput,
 };
 use crate::texts::english;
 
@@ -299,7 +299,8 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
     let config = config_of(state);
     let online = order.payment_mode == PAYMENT_ONLINE;
     // Paid already (the gateway answered before the order was placed): no wait.
-    let prepaid = online && crate::online_payment::paid_before_submit(state, &order, t.gross).await?;
+    let prepaid =
+        online && crate::online_payment::paid_before_submit(state, &order, t.gross).await?;
     let input = SubmitInput {
         line_count: lines.len() as i64,
         net: t.net,
@@ -686,11 +687,7 @@ impl SalesOrderDesk for Desk {
         })
     }
 
-    fn cancel<'a>(
-        &'a self,
-        state: &'a AppState,
-        request: CancelByVertical,
-    ) -> SalesFuture<'a, ()> {
+    fn cancel<'a>(&'a self, state: &'a AppState, request: CancelByVertical) -> SalesFuture<'a, ()> {
         Box::pin(async move {
             let choices = request
                 .outcomes
@@ -732,7 +729,12 @@ impl SalesOrderDesk for Desk {
                     .iter()
                     .find(|line| line.id == change.line)
                     .map_or(0, |line| line.discount);
-                input = input.line(change.line, change.quantity_milli, change.unit_price, discount);
+                input = input.line(
+                    change.line,
+                    change.quantity_milli,
+                    change.unit_price,
+                    discount,
+                );
             }
             for added in &request.added {
                 input = input.add(&added.item_code, added.quantity_milli, added.unit_price);
@@ -743,9 +745,9 @@ impl SalesOrderDesk for Desk {
             }
             match crate::amend::amend(state, user, order.id, input).await? {
                 crate::amend::AmendOutcome::Amended(_) => Ok(ChangeOutcome::Done),
-                crate::amend::AmendOutcome::Waiting(waiting) => {
-                    Ok(ChangeOutcome::Waiting { request: waiting.id })
-                }
+                crate::amend::AmendOutcome::Waiting(waiting) => Ok(ChangeOutcome::Waiting {
+                    request: waiting.id,
+                }),
             }
         })
     }
@@ -884,9 +886,9 @@ impl SalesOrderDesk for Desk {
 fn change_of(outcome: crate::cancel_lines::CancelOutcome) -> ChangeOutcome {
     match outcome {
         crate::cancel_lines::CancelOutcome::Done(_) => ChangeOutcome::Done,
-        crate::cancel_lines::CancelOutcome::Waiting(waiting) => {
-            ChangeOutcome::Waiting { request: waiting.id }
-        }
+        crate::cancel_lines::CancelOutcome::Waiting(waiting) => ChangeOutcome::Waiting {
+            request: waiting.id,
+        },
     }
 }
 

@@ -26,7 +26,10 @@ use crate::ticket::{
 ///
 /// Database errors.
 pub async fn on_accepted(state: &AppState, order: &FnbOrder) -> Result {
-    if !KitchenTicket::of_order(&state.db, order.id).await?.is_empty() {
+    if !KitchenTicket::of_order(&state.db, order.id)
+        .await?
+        .is_empty()
+    {
         return Ok(());
     }
     let Some(view) = order_desk(state).find(state, order.sales_order()).await? else {
@@ -83,9 +86,7 @@ pub(crate) async fn on_ticket(state: &AppState, event: &Transitioned<KitchenTick
         crate::cancel::refuse_waiting(state, ticket.order_id).await?;
     }
     match event.transition.as_str() {
-        TICKET_START => {
-            move_order(state, ticket.order_id, FnbOrderStatus::Accepted, START).await
-        }
+        TICKET_START => move_order(state, ticket.order_id, FnbOrderStatus::Accepted, START).await,
         BUMP => {
             let tickets = KitchenTicket::of_order(&state.db, ticket.order_id).await?;
             let all_bumped = tickets
@@ -93,11 +94,16 @@ pub(crate) async fn on_ticket(state: &AppState, event: &Transitioned<KitchenTick
                 .all(|t| matches!(t.status, TicketStatus::Done | TicketStatus::Voided));
             if !all_bumped {
                 // At least the order has started.
-                return move_order(state, ticket.order_id, FnbOrderStatus::Accepted, START)
-                    .await;
+                return move_order(state, ticket.order_id, FnbOrderStatus::Accepted, START).await;
             }
             move_order(state, ticket.order_id, FnbOrderStatus::Accepted, START).await?;
-            move_order(state, ticket.order_id, FnbOrderStatus::Preparing, MARK_READY).await
+            move_order(
+                state,
+                ticket.order_id,
+                FnbOrderStatus::Preparing,
+                MARK_READY,
+            )
+            .await
         }
         _ => Ok(()),
     }
@@ -134,10 +140,9 @@ pub(crate) async fn sync_tickets(state: &AppState, order_id: i64) -> Result {
             .filter(|ticket| ticket.sale_line_id == line.id)
             .collect();
         if open == 0 {
-            for ticket in own
-                .iter()
-                .filter(|ticket| matches!(ticket.status, TicketStatus::Queued | TicketStatus::InPrep))
-            {
+            for ticket in own.iter().filter(|ticket| {
+                matches!(ticket.status, TicketStatus::Queued | TicketStatus::InPrep)
+            }) {
                 let _outcome = ticket
                     .transition(VOID)
                     .by_system()
@@ -157,10 +162,9 @@ pub(crate) async fn sync_tickets(state: &AppState, order_id: i64) -> Result {
             };
             ticket.insert(&state.db).await?;
         } else {
-            for ticket in own
-                .iter()
-                .filter(|ticket| ticket.status == TicketStatus::Queued && ticket.quantity_milli != open)
-            {
+            for ticket in own.iter().filter(|ticket| {
+                ticket.status == TicketStatus::Queued && ticket.quantity_milli != open
+            }) {
                 KitchenTicket::query()
                     .where_(KitchenTicket::ID.eq(ticket.id))
                     .update(&state.db, &[("quantity_milli", &open)])

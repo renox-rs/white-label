@@ -43,9 +43,9 @@ use crate::sale_line::{KIND_ITEM, NewLine, SaleLine, totals};
 use crate::sales_order::{OrderPayment, SalesOrder, SalesOrderStatus};
 use crate::sales_order_machine::{SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE};
 use crate::sales_orders::{self, Imported, NewSalesOrder};
+use crate::{permissions, texts};
 use wl_kernel::approvals::ApprovalRequest;
 use wl_kernel::sales::{LineOutcomeKind, fulfilment_progress};
-use crate::{permissions, texts};
 
 /// The texts a template reads as `tx['orders.title']`.
 type Texts = BTreeMap<&'static str, String>;
@@ -429,7 +429,10 @@ async fn show(
             amount: money(s.amount),
             status: text(&lang, &format!("settle.status.{}", s.status)),
             link: s.link_path.clone().unwrap_or_default(),
-            due: s.due_at.map(wl_kernel::documents::dubai_text).unwrap_or_default(),
+            due: s
+                .due_at
+                .map(wl_kernel::documents::dubai_text)
+                .unwrap_or_default(),
             note: s.note.clone().unwrap_or_default(),
         })
         .collect();
@@ -445,7 +448,9 @@ async fn show(
         .unwrap_or_default();
     let handed_over = matches!(
         order.status,
-        SalesOrderStatus::PartiallyFulfilled | SalesOrderStatus::Fulfilled | SalesOrderStatus::Closed
+        SalesOrderStatus::PartiallyFulfilled
+            | SalesOrderStatus::Fulfilled
+            | SalesOrderStatus::Closed
     );
     let member =
         crate::loyalty_account::label_of(&state, order.loyalty_account_id, &lang.locale).await?;
@@ -516,7 +521,8 @@ async fn show(
         can_cancel_remaining: order.status == SalesOrderStatus::PartiallyFulfilled
             && user.has_permission(permissions::SALES_ORDERS_CANCEL),
         can_refund: handed_over && user.has_permission(permissions::RETURNS_REQUEST),
-        refund_blocked: if !handed_over && user.has_permission(permissions::RETURNS_REQUEST)
+        refund_blocked: if !handed_over
+            && user.has_permission(permissions::RETURNS_REQUEST)
             && matches!(order.status, SalesOrderStatus::Confirmed)
         {
             text(&lang, "returns.refund_blocked")
@@ -758,7 +764,11 @@ async fn cancel_whole(
 ) -> Result<Response> {
     let reason = form.get("reason").map_or("", |v| v.trim());
     if reason.is_empty() {
-        return Err(invalid("reason", text(&lang, "orders.errors.reason"), &form));
+        return Err(invalid(
+            "reason",
+            text(&lang, "orders.errors.reason"),
+            &form,
+        ));
     }
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
     let mut choices = Vec::new();
@@ -788,10 +798,18 @@ async fn refund_order(
 ) -> Result<Response> {
     let get = |key: &str| form.get(key).map_or("", |v| v.trim());
     if get("category").is_empty() {
-        return Err(invalid("category", text(&lang, "returns.problem.complaint"), &form));
+        return Err(invalid(
+            "category",
+            text(&lang, "returns.problem.complaint"),
+            &form,
+        ));
     }
     if get("party").is_empty() {
-        return Err(invalid("party", text(&lang, "returns.problem.complaint"), &form));
+        return Err(invalid(
+            "party",
+            text(&lang, "returns.problem.complaint"),
+            &form,
+        ));
     }
     let mut new = crate::sales_returns::NewReturn::no_goods(order.subject())
         .reason(get("reason"))
@@ -813,18 +831,20 @@ async fn refund_order(
             .ok_or_else(|| invalid(&key, text(&lang, "orders.errors.amount"), &form))?;
         new = new.refund_line(line.id, amount);
     }
-    let (toast, to) = match crate::sales_returns::refund_after_completion(&state, &user, new).await?
-    {
-        crate::sales_returns::RefundOutcome::Resolved(done) => {
-            (Toast::success(text(&lang, "returns.refund_done")), done.id)
-        }
-        crate::sales_returns::RefundOutcome::Waiting(created, _) => {
-            (Toast::info(text(&lang, "returns.refund_waiting")), created.id)
-        }
-        crate::sales_returns::RefundOutcome::Requested(created) => {
-            (Toast::info(text(&lang, "returns.refund_recorded")), created.id)
-        }
-    };
+    let (toast, to) =
+        match crate::sales_returns::refund_after_completion(&state, &user, new).await? {
+            crate::sales_returns::RefundOutcome::Resolved(done) => {
+                (Toast::success(text(&lang, "returns.refund_done")), done.id)
+            }
+            crate::sales_returns::RefundOutcome::Waiting(created, _) => (
+                Toast::info(text(&lang, "returns.refund_waiting")),
+                created.id,
+            ),
+            crate::sales_returns::RefundOutcome::Requested(created) => (
+                Toast::info(text(&lang, "returns.refund_recorded")),
+                created.id,
+            ),
+        };
     Ok((toast, Redirect::route("wl_sales.sales_return", &[&to])?).into_response())
 }
 
@@ -906,8 +926,7 @@ async fn cancel_remaining(
             ..WantedLine::default()
         });
     }
-    let outcome =
-        cancel_lines::cancel_remaining(&state, &user, order.id, reason, choices).await?;
+    let outcome = cancel_lines::cancel_remaining(&state, &user, order.id, reason, choices).await?;
     cancel_answer(&lang, order.id, &outcome, "cancelling.remaining_done")
 }
 
@@ -933,8 +952,9 @@ async fn amend_order(
         let discount_key = format!("line_{}_discount", line.id);
         let quantity = match get(&quantity_key) {
             "" => line.quantity_milli,
-            v => parse_milli(v)
-                .ok_or_else(|| invalid(&quantity_key, text(&lang, "orders.errors.number"), &form))?,
+            v => parse_milli(v).ok_or_else(|| {
+                invalid(&quantity_key, text(&lang, "orders.errors.number"), &form)
+            })?,
         };
         let price = match get(&price_key) {
             "" => line.unit_price,
@@ -943,17 +963,18 @@ async fn amend_order(
         };
         let discount = match get(&discount_key) {
             "" => line.discount,
-            v => parse_fils(v)
-                .ok_or_else(|| invalid(&discount_key, text(&lang, "orders.errors.amount"), &form))?,
+            v => parse_fils(v).ok_or_else(|| {
+                invalid(&discount_key, text(&lang, "orders.errors.amount"), &form)
+            })?,
         };
         input = input.line(line.id, quantity, price, discount);
     }
     if !get("add_item").is_empty() {
         let quantity = match get("add_quantity") {
             "" => 1000,
-            v => parse_milli(v)
-                .filter(|q| *q > 0)
-                .ok_or_else(|| invalid("add_quantity", text(&lang, "orders.errors.number"), &form))?,
+            v => parse_milli(v).filter(|q| *q > 0).ok_or_else(|| {
+                invalid("add_quantity", text(&lang, "orders.errors.number"), &form)
+            })?,
         };
         let price = parse_fils(get("add_price"))
             .filter(|p| *p >= 0)
@@ -968,7 +989,11 @@ async fn amend_order(
         )),
         AmendOutcome::Waiting(_) => Toast::info(text(&lang, "amend.waiting")),
     };
-    Ok((toast, Redirect::route("wl_sales.sales_order", &[&order.id])?).into_response())
+    Ok((
+        toast,
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
 }
 
 /// `POST /sales-orders/{id}/resend-link`: a new payment link for the increase
@@ -999,7 +1024,11 @@ async fn amend_back(
         AmendOutcome::Amended(_) => Toast::success(text(&lang, "settle.amended_back")),
         AmendOutcome::Waiting(_) => Toast::info(text(&lang, "amend.waiting")),
     };
-    Ok((toast, Redirect::route("wl_sales.sales_order", &[&order.id])?).into_response())
+    Ok((
+        toast,
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
 }
 
 /// One line of an earlier revision as its page shows it.

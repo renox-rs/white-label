@@ -39,7 +39,10 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
         "fnb/outlet_channels.html",
         include_str!("../views/fnb/outlet_channels.html"),
     ),
-    ("fnb/ordering.html", include_str!("../views/fnb/ordering.html")),
+    (
+        "fnb/ordering.html",
+        include_str!("../views/fnb/ordering.html"),
+    ),
 ];
 
 /// The routes.
@@ -65,7 +68,11 @@ pub fn routes() -> Routes {
 fn channel_word(lang: &Lang, channel: &str) -> String {
     let key = format!("fnb.screen.channels.paper_channel.{channel}");
     let word = t(lang, &key);
-    if word == key { channel.to_owned() } else { word }
+    if word == key {
+        channel.to_owned()
+    } else {
+        word
+    }
 }
 
 /// One channel of an outlet.
@@ -190,7 +197,10 @@ async fn block_of(
         .into_iter()
         .map(|o| OutageRow {
             source: t(lang, &format!("fnb.screen.channels.source.{}", o.source)),
-            status: t(lang, &format!("fnb.screen.channels.status.{}", o.status.as_str())),
+            status: t(
+                lang,
+                &format!("fnb.screen.channels.status.{}", o.status.as_str()),
+            ),
             status_kind: match o.status {
                 OutageStatus::Paused => "error",
                 OutageStatus::DevicesBack => "info",
@@ -249,12 +259,24 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
     }
     let methods = method::ALL
         .iter()
-        .map(|m| [(*m).to_owned(), t(&lang, &format!("fnb.screen.channels.paper_method.{m}"))])
+        .map(|m| {
+            [
+                (*m).to_owned(),
+                t(&lang, &format!("fnb.screen.channels.paper_method.{m}")),
+            ]
+        })
         .collect();
-    let paper_channels = ["counter", "phone", "website", "aggregator_a", "aggregator_b", "aggregator_c"]
-        .iter()
-        .map(|c| [(*c).to_owned(), channel_word(&lang, c)])
-        .collect();
+    let paper_channels = [
+        "counter",
+        "phone",
+        "website",
+        "aggregator_a",
+        "aggregator_b",
+        "aggregator_c",
+    ]
+    .iter()
+    .map(|c| [(*c).to_owned(), channel_word(&lang, c)])
+    .collect();
     Ok(View::typed(ChannelsPage {
         tx: tx(&lang),
         outlets: blocks,
@@ -383,7 +405,9 @@ async fn ordering(
     lang: Lang,
     Path(code): Path<String>,
 ) -> Result<Response> {
-    let brand = Brand::by_code(&state.db, &code).await?.ok_or(Error::NotFound)?;
+    let brand = Brand::by_code(&state.db, &code)
+        .await?
+        .ok_or(Error::NotFound)?;
     let kitchens = outage::ordering_of(&state.db, &brand)
         .await?
         .into_iter()

@@ -54,10 +54,16 @@ async fn a_payment_after_the_timeout_is_refunded_and_the_order_stays_cancelled()
     let (t, online) = boot_online().await;
     t.app.acting_as(&seller(&t).await);
     let order = waiting(&t).await;
-    lapse_due(t.state(), order.payment_due_at.unwrap() + TimeDelta::seconds(1))
-        .await
-        .unwrap();
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Cancelled);
+    lapse_due(
+        t.state(),
+        order.payment_due_at.unwrap() + TimeDelta::seconds(1),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
 
     t.state()
         .emit(online.gateway.received(&order, 61, TOTAL))
@@ -65,7 +71,10 @@ async fn a_payment_after_the_timeout_is_refunded_and_the_order_stays_cancelled()
         .unwrap();
 
     assert_refunded(&online, &order, 61, TOTAL);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Cancelled);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
     assert!(online.confirmed.lock().unwrap().is_empty());
     let handled = OrderPayment::of_order(t.db(), order.id).await.unwrap();
     assert_eq!(handled.len(), 1);
@@ -100,7 +109,10 @@ async fn a_payment_for_a_rejected_order_is_refunded() {
         )
         .await
         .assert_status(303);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Rejected);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Rejected
+    );
     assert!(online.gateway.refunds().is_empty());
 
     // The payment that arrives after the rejection goes back.
@@ -110,7 +122,10 @@ async fn a_payment_for_a_rejected_order_is_refunded() {
         .unwrap();
 
     assert_refunded(&online, &order, 63, TOTAL);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Rejected);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Rejected
+    );
 }
 
 /// AC3: Given an order already paid, a second payment of the same amount is
@@ -125,7 +140,10 @@ async fn a_second_payment_of_a_paid_order_is_refunded_in_full() {
         .emit(online.gateway.received(&order, 64, TOTAL))
         .await
         .unwrap();
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
 
     t.state()
         .emit(online.gateway.received(&order, 65, TOTAL))
@@ -133,7 +151,10 @@ async fn a_second_payment_of_a_paid_order_is_refunded_in_full() {
         .unwrap();
 
     assert_refunded(&online, &order, 65, TOTAL);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
     assert_eq!(online.confirmed.lock().unwrap().len(), 1);
 }
 
@@ -157,8 +178,13 @@ async fn a_payment_of_another_amount_is_refunded_and_the_order_still_times_out()
         SalesOrderStatus::AwaitingPayment
     );
     // Nothing needs to run again after the timeout.
-    lapse_due(t.state(), order.payment_due_at.unwrap()).await.unwrap();
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Cancelled);
+    lapse_due(t.state(), order.payment_due_at.unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
     assert_eq!(online.gateway.refunds().len(), 1);
 }
 
@@ -168,14 +194,22 @@ async fn the_same_late_payment_delivered_twice_is_refunded_once() {
     let (t, online) = boot_online().await;
     t.app.acting_as(&seller(&t).await);
     let order = waiting(&t).await;
-    lapse_due(t.state(), order.payment_due_at.unwrap()).await.unwrap();
+    lapse_due(t.state(), order.payment_due_at.unwrap())
+        .await
+        .unwrap();
 
     let event = online.gateway.received(&order, 67, TOTAL);
     t.state().emit(event.clone()).await.unwrap();
     t.state().emit(event).await.unwrap();
 
     assert_refunded(&online, &order, 67, TOTAL);
-    assert_eq!(OrderPayment::of_order(t.db(), order.id).await.unwrap().len(), 1);
+    assert_eq!(
+        OrderPayment::of_order(t.db(), order.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 /// Edge: a refund wl-payments refuses is kept as such, and the manager is told
@@ -185,7 +219,9 @@ async fn a_refused_refund_is_left_to_the_manager() {
     let (t, online) = boot_online().await;
     t.app.acting_as(&seller(&t).await);
     let order = waiting(&t).await;
-    lapse_due(t.state(), order.payment_due_at.unwrap()).await.unwrap();
+    lapse_due(t.state(), order.payment_due_at.unwrap())
+        .await
+        .unwrap();
     online.gateway.refuse_refunds(true);
 
     t.state()
@@ -199,7 +235,10 @@ async fn a_refused_refund_is_left_to_the_manager() {
     let tasks = online.desk.opened();
     assert_eq!(tasks.len(), 1);
     assert!(tasks[0].description.contains("could not be requested"));
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Cancelled);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
 }
 
 /// Edge: a payment that is not for a sales order of this module changes
@@ -216,5 +255,10 @@ async fn a_payment_for_no_order_is_left_alone() {
     t.state().emit(stray).await.unwrap();
 
     assert!(online.gateway.refunds().is_empty());
-    assert!(OrderPayment::of_order(t.db(), order.id).await.unwrap().is_empty());
+    assert!(
+        OrderPayment::of_order(t.db(), order.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }

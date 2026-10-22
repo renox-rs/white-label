@@ -20,34 +20,64 @@ pub(crate) const COLD_TEXTS: &[(&str, &str)] = &[
     ("fnb.cold.at_most", "at most {{ limit }}"),
     ("fnb.cold.at_least", "at least {{ limit }}"),
     // Refusals.
-    ("fnb.cold.problem.identity", "Give the unit a code and a name."),
-    ("fnb.cold.problem.kind", "Choose fridge, freezer or hot-holding unit."),
+    (
+        "fnb.cold.problem.identity",
+        "Give the unit a code and a name.",
+    ),
+    (
+        "fnb.cold.problem.kind",
+        "Choose fridge, freezer or hot-holding unit.",
+    ),
     (
         "fnb.cold.problem.location",
         "A unit that logs temperatures needs a stock location: choose the location of the unit.",
     ),
-    ("fnb.cold.problem.code_used", "The code {{ code }} is used by another unit."),
-    ("fnb.cold.problem.range", "The lowest reading in range is above the highest."),
-    ("fnb.cold.problem.inactive", "This unit no longer logs temperatures."),
+    (
+        "fnb.cold.problem.code_used",
+        "The code {{ code }} is used by another unit.",
+    ),
+    (
+        "fnb.cold.problem.range",
+        "The lowest reading in range is above the highest.",
+    ),
+    (
+        "fnb.cold.problem.inactive",
+        "This unit no longer logs temperatures.",
+    ),
     (
         "fnb.cold.problem.temperature",
         "That is not a temperature: write it in degrees, like 4 or 8.5.",
     ),
-    ("fnb.cold.problem.decision", "Choose release, discard or return to the supplier."),
+    (
+        "fnb.cold.problem.decision",
+        "Choose release, discard or return to the supplier.",
+    ),
     (
         "fnb.cold.problem.evidence",
         "Record the reading and the minutes the food was out of range before deciding the line.",
     ),
     ("fnb.cold.problem.no_hold", "The unit has no stock on hold."),
-    ("fnb.cold.problem.not_the_units_line", "That line is not on this unit's hold."),
-    ("fnb.cold.problem.stock_off", "The stock module is off: the line cannot be decided."),
+    (
+        "fnb.cold.problem.not_the_units_line",
+        "That line is not on this unit's hold.",
+    ),
+    (
+        "fnb.cold.problem.stock_off",
+        "The stock module is off: the line cannot be decided.",
+    ),
     // The equipment task and the notice to the chef and the kitchen manager.
-    ("fnb.cold.task_title", "{{ unit }} reads {{ reading }}, out of range"),
+    (
+        "fnb.cold.task_title",
+        "{{ unit }} reads {{ reading }}, out of range",
+    ),
     (
         "fnb.cold.task_body",
         "{{ unit }} read {{ reading }} degrees; its range is {{ range }}. The stock in it is on hold until the chef decides each line. Check the equipment and the door seal, then call the technician if it stays out of range. {{ link }}",
     ),
-    ("fnb.cold.notice_title", "{{ unit }} is out of range: its stock is on hold"),
+    (
+        "fnb.cold.notice_title",
+        "{{ unit }} is out of range: its stock is on hold",
+    ),
     (
         "fnb.cold.notice_body",
         "{{ unit }} read {{ reading }} degrees (range {{ range }}). The food in it is on hold: do not use, move or sell it. The chef decides each line: release, discard or return to the supplier.",
@@ -59,7 +89,10 @@ pub(crate) const COLD_TEXTS: &[(&str, &str)] = &[
         "Temperature readings of the cold units; a reading out of range holds the food in the unit.",
     ),
     ("fnb.screen.cold.create", "Set up a unit"),
-    ("fnb.screen.cold.create_title", "Set up a fridge, freezer or hot-holding unit"),
+    (
+        "fnb.screen.cold.create_title",
+        "Set up a fridge, freezer or hot-holding unit",
+    ),
     (
         "fnb.screen.cold.create_description",
         "Each unit is a stock location of the outlet: the food in it is what a reading out of range holds.",
@@ -84,13 +117,19 @@ pub(crate) const COLD_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.cold.on_hold", "On temperature hold"),
     ("fnb.screen.cold.in_use", "In use"),
     ("fnb.screen.cold.record", "Record a reading"),
-    ("fnb.screen.cold.record_title", "Record a temperature reading"),
+    (
+        "fnb.screen.cold.record_title",
+        "Record a temperature reading",
+    ),
     (
         "fnb.screen.cold.record_description",
         "A reading outside the range holds the food in the unit, opens an equipment task and tells the chef and the kitchen manager.",
     ),
     ("fnb.screen.cold.temperature", "Temperature"),
-    ("fnb.screen.cold.temperature_hint", "Degrees, like 4 or 8.5."),
+    (
+        "fnb.screen.cold.temperature_hint",
+        "Degrees, like 4 or 8.5.",
+    ),
     ("fnb.screen.cold.empty", "No cold units yet"),
     (
         "fnb.screen.cold.empty_text",
@@ -129,10 +168,16 @@ pub(crate) const COLD_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.cold.line.undecided", "Waiting for the chef"),
     ("fnb.screen.cold.line.released", "Released"),
     ("fnb.screen.cold.line.discarded", "Discarded"),
-    ("fnb.screen.cold.line.returned_to_supplier", "Returned to the supplier"),
+    (
+        "fnb.screen.cold.line.returned_to_supplier",
+        "Returned to the supplier",
+    ),
     ("fnb.screen.cold.decision.release", "Release"),
     ("fnb.screen.cold.decision.discard", "Discard (wastage)"),
-    ("fnb.screen.cold.decision.return_to_supplier", "Return to the supplier"),
+    (
+        "fnb.screen.cold.decision.return_to_supplier",
+        "Return to the supplier",
+    ),
     (
         "fnb.screen.cold.note_on_hold",
         "The food in this unit is on temperature hold: it cannot be used in a recipe, moved or counted as available. Stock moved in while the hold is open joins it. Each line is decided by the chef; a discard above AED 200 needs the kitchen manager.",

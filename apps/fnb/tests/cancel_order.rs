@@ -112,9 +112,13 @@ async fn a_customer_cancels_a_placed_prepaid_order_and_is_refunded_in_full() {
     page.assert_ok();
     assert!(page.text().contains("Cancel my order"));
 
-    w.post(&user, &format!("/my/orders/{}/cancel", placed.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &user,
+        &format!("/my/orders/{}/cancel", placed.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
 
     let cancelled = w.reload(&placed).await;
     assert_eq!(cancelled.status, FnbOrderStatus::Cancelled);
@@ -124,7 +128,10 @@ async fn a_customer_cancels_a_placed_prepaid_order_and_is_refunded_in_full() {
         cancelled.cancel_reason_code.as_deref(),
         Some(cancel_reason::CUSTOMER_REQUEST)
     );
-    assert_eq!(cancelled.refund_decision.as_deref(), Some(decision::FULL_REFUND));
+    assert_eq!(
+        cancelled.refund_decision.as_deref(),
+        Some(decision::FULL_REFUND)
+    );
     assert_eq!(cancelled.refund_amount, 4_000);
     assert!(!cancelled.compensation_expected);
     // AED 40.00 is asked of wl-payments from the order, for the customer.
@@ -133,8 +140,15 @@ async fn a_customer_cancels_a_placed_prepaid_order_and_is_refunded_in_full() {
     assert_eq!(refunds[0].amount, 4_000);
     assert_eq!(refunds[0].requested_by, Some(user.id));
     // Nothing reached the kitchen.
-    assert!(KitchenTicket::of_order(w.db(), cancelled.id).await.unwrap().is_empty());
-    let sales = SalesOrder::find_or_404(w.db(), cancelled.sales_order_id).await.unwrap();
+    assert!(
+        KitchenTicket::of_order(w.db(), cancelled.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let sales = SalesOrder::find_or_404(w.db(), cancelled.sales_order_id)
+        .await
+        .unwrap();
     assert_eq!(sales.status, SalesOrderStatus::Cancelled);
 }
 
@@ -150,14 +164,22 @@ async fn a_customer_cannot_see_or_cancel_the_order_of_another() {
     w.get(&stranger, &format!("/my/orders/{}", placed.id))
         .await
         .assert_status(404);
-    w.post(&stranger, &format!("/my/orders/{}/cancel", placed.id), &[("x", "")])
-        .await
-        .assert_status(404);
+    w.post(
+        &stranger,
+        &format!("/my/orders/{}/cancel", placed.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(404);
     assert_eq!(w.reload(&placed).await.status, FnbOrderStatus::Placed);
     // Someone who acts for nobody is turned away too.
-    w.post(&w.nobody, &format!("/my/orders/{}/cancel", placed.id), &[("x", "")])
-        .await
-        .assert_status(404);
+    w.post(
+        &w.nobody,
+        &format!("/my/orders/{}/cancel", placed.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(404);
 }
 
 /// AC2: given ORD-601 accepted a second earlier, the customer cancel is
@@ -171,7 +193,11 @@ async fn once_the_outlet_accepted_the_order_the_customer_cannot_cancel_it() {
     w.accept(&placed).await;
 
     let answer = w
-        .post(&user, &format!("/my/orders/{}/cancel", placed.id), &[("x", "")])
+        .post(
+            &user,
+            &format!("/my/orders/{}/cancel", placed.id),
+            &[("x", "")],
+        )
         .await;
     answer.assert_status(422);
     assert!(answer.text().contains("already accepted"));
@@ -194,17 +220,29 @@ async fn a_cancelled_order_cannot_be_accepted() {
     let c = customer(&w).await;
     let user = w.customer_user("Mariam", c).await;
     let placed = w.place(c, "online", &WRAP).await;
-    w.post(&user, &format!("/my/orders/{}/cancel", placed.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &user,
+        &format!("/my/orders/{}/cancel", placed.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
 
-    w.post(&w.manager, &format!("/orders/{}/accept", placed.id), &[("x", "")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.manager,
+        &format!("/orders/{}/accept", placed.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(w.reload(&placed).await.status, FnbOrderStatus::Cancelled);
     // A second cancel says it is cancelled already.
     let again = w
-        .post(&user, &format!("/my/orders/{}/cancel", placed.id), &[("x", "")])
+        .post(
+            &user,
+            &format!("/my/orders/{}/cancel", placed.id),
+            &[("x", "")],
+        )
         .await;
     again.assert_status(422);
     assert!(again.text().contains("already cancelled"));
@@ -245,7 +283,11 @@ async fn a_paid_order_above_fifty_dirhams_waits_for_a_manager_and_then_is_refund
         .assert_status(422);
 
     // The requester cannot approve; a manager does.
-    assert!(approvals::approve(w.state(), requests[0].id, &w.cashier, "").await.is_err());
+    assert!(
+        approvals::approve(w.state(), requests[0].id, &w.cashier, "")
+            .await
+            .is_err()
+    );
     approvals::approve(w.state(), requests[0].id, &w.manager, "")
         .await
         .unwrap();
@@ -285,7 +327,10 @@ async fn a_small_unpaid_order_is_cancelled_by_the_cashier_at_once() {
     assert_eq!(cancelled.status, FnbOrderStatus::Cancelled);
     assert!(waiting_for(&w, &cancelled).await.is_empty());
     assert!(refunds_of(&w, &cancelled).await.is_empty());
-    assert_eq!(cancelled.refund_decision.as_deref(), Some(decision::NOT_APPLICABLE));
+    assert_eq!(
+        cancelled.refund_decision.as_deref(),
+        Some(decision::NOT_APPLICABLE)
+    );
     for ticket in KitchenTicket::of_order(w.db(), cancelled.id).await.unwrap() {
         assert_eq!(ticket.status, TicketStatus::Voided);
     }
@@ -301,17 +346,24 @@ async fn cancelling_a_started_order_needs_an_outcome_and_a_manager_and_scraps_th
     let placed = w.place(c, "online", &PLATE).await;
     let accepted = w.accept(&placed).await;
     let preparing = start_cooking(&w, &accepted).await;
-    let ticket = KitchenTicket::of_order(w.db(), preparing.id).await.unwrap().remove(0);
+    let ticket = KitchenTicket::of_order(w.db(), preparing.id)
+        .await
+        .unwrap()
+        .remove(0);
     assert_eq!(ticket.status, TicketStatus::InPrep);
     let path = format!("/orders/{}/cancel", preparing.id);
 
     // The page asks for the outcome of the started line.
-    let page = w.get(&w.cashier, &format!("/orders/{}", preparing.id)).await;
+    let page = w
+        .get(&w.cashier, &format!("/orders/{}", preparing.id))
+        .await;
     page.assert_ok();
     assert!(page.text().contains("outcome_"));
 
     // No outcome: refused, nothing waits.
-    let missing = w.post(&w.cashier, &path, &ask("kitchen_issue", "business")).await;
+    let missing = w
+        .post(&w.cashier, &path, &ask("kitchen_issue", "business"))
+        .await;
     missing.assert_status(422);
     assert!(missing.text().contains("started"));
     assert!(waiting_for(&w, &preparing).await.is_empty());
@@ -320,7 +372,12 @@ async fn cancelling_a_started_order_needs_an_outcome_and_a_manager_and_scraps_th
     w.post(
         &w.cashier,
         &path,
-        &[("reason", "kitchen_issue"), ("party", "business"), ("note", ""), (outcome.as_str(), "finish_to_stock")],
+        &[
+            ("reason", "kitchen_issue"),
+            ("party", "business"),
+            ("note", ""),
+            (outcome.as_str(), "finish_to_stock"),
+        ],
     )
     .await
     .assert_status(422);
@@ -329,7 +386,12 @@ async fn cancelling_a_started_order_needs_an_outcome_and_a_manager_and_scraps_th
     w.post(
         &w.cashier,
         &path,
-        &[("reason", "kitchen_issue"), ("party", "business"), ("note", ""), (outcome.as_str(), "scrap")],
+        &[
+            ("reason", "kitchen_issue"),
+            ("party", "business"),
+            ("note", ""),
+            (outcome.as_str(), "scrap"),
+        ],
     )
     .await
     .assert_status(303);
@@ -362,7 +424,10 @@ async fn a_done_ticket_stays_done_when_the_order_is_cancelled() {
     let c = customer(&w).await;
     let placed = w.place(c, "cash_on_delivery", &BOWL).await;
     let ready = w.cook(&w.accept(&placed).await).await;
-    let ticket = KitchenTicket::of_order(w.db(), ready.id).await.unwrap().remove(0);
+    let ticket = KitchenTicket::of_order(w.db(), ready.id)
+        .await
+        .unwrap()
+        .remove(0);
     let outcome = format!("outcome_{}", ticket.sale_line_id);
 
     // The kitchen manager's own cancel of a started line waits for the other
@@ -370,7 +435,12 @@ async fn a_done_ticket_stays_done_when_the_order_is_cancelled() {
     w.post(
         &w.manager,
         &format!("/orders/{}/cancel", ready.id),
-        &[("reason", "kitchen_issue"), ("party", "business"), ("note", ""), (outcome.as_str(), "scrap")],
+        &[
+            ("reason", "kitchen_issue"),
+            ("party", "business"),
+            ("note", ""),
+            (outcome.as_str(), "scrap"),
+        ],
     )
     .await
     .assert_status(303);
@@ -404,7 +474,9 @@ async fn a_ticket_that_starts_withdraws_a_waiting_cancellation() {
     start_cooking(&w, &accepted).await;
 
     assert!(waiting_for(&w, &accepted).await.is_empty());
-    let ended = ApprovalRequest::find_or_404(w.db(), request.id).await.unwrap();
+    let ended = ApprovalRequest::find_or_404(w.db(), request.id)
+        .await
+        .unwrap();
     assert_eq!(ended.status, ApprovalStatus::Withdrawn);
     let now = w.reload(&accepted).await;
     assert_eq!(now.status, FnbOrderStatus::Preparing);
@@ -447,8 +519,17 @@ async fn an_order_entered_in_error_is_the_businesss_and_orders_are_never_voided(
     // There is no `void` on the order's machine and none is offered.
     assert!(FnbOrder::machine().find("void").is_err());
     let other = w.place(c, "cash_on_delivery", &BOWL).await;
-    assert!(w.try_run(&w.manager, &other, "void").await.starts_with("error"));
-    assert!(!w.offered(&w.manager, &other).await.iter().any(|name| name == "void"));
+    assert!(
+        w.try_run(&w.manager, &other, "void")
+            .await
+            .starts_with("error")
+    );
+    assert!(
+        !w.offered(&w.manager, &other)
+            .await
+            .iter()
+            .any(|name| name == "void")
+    );
 }
 
 /// AC6: an aggregator order cancelled with the party *aggregator* is flagged
@@ -457,7 +538,9 @@ async fn an_order_entered_in_error_is_the_businesss_and_orders_are_never_voided(
 async fn an_aggregator_order_cancelled_by_the_aggregator_expects_compensation_and_no_refund() {
     let w = boot_own_riders().await;
     let c = customer(&w).await;
-    let order = w.place_via("aggregator_a", c, "on_account", &BIG_PLATE).await;
+    let order = w
+        .place_via("aggregator_a", c, "on_account", &BIG_PLATE)
+        .await;
     assert_eq!(order.status, FnbOrderStatus::Accepted);
 
     // Only an aggregator's order can blame the aggregator.
@@ -466,7 +549,11 @@ async fn an_aggregator_order_cancelled_by_the_aggregator_expects_compensation_an
     w.post(
         &w.cashier,
         &format!("/orders/{}/cancel", direct.id),
-        &[("reason", "other"), ("party", "aggregator"), ("note", "no rider")],
+        &[
+            ("reason", "other"),
+            ("party", "aggregator"),
+            ("note", "no rider"),
+        ],
     )
     .await
     .assert_status(422);
@@ -474,7 +561,11 @@ async fn an_aggregator_order_cancelled_by_the_aggregator_expects_compensation_an
     w.post(
         &w.cashier,
         &format!("/orders/{}/cancel", order.id),
-        &[("reason", "other"), ("party", "aggregator"), ("note", "The rider never came")],
+        &[
+            ("reason", "other"),
+            ("party", "aggregator"),
+            ("note", "The rider never came"),
+        ],
     )
     .await
     .assert_status(303);
@@ -489,7 +580,9 @@ async fn an_aggregator_order_cancelled_by_the_aggregator_expects_compensation_an
         assert_eq!(ticket.status, TicketStatus::Voided);
     }
     // The page shows the flag.
-    let page = w.get(&w.manager, &format!("/orders/{}", cancelled.id)).await;
+    let page = w
+        .get(&w.manager, &format!("/orders/{}", cancelled.id))
+        .await;
     page.assert_ok();
     assert!(page.text().contains("Compensation expected"));
 }
@@ -511,9 +604,13 @@ async fn only_the_holders_of_orders_cancel_cancel_and_the_form_is_checked() {
     w.post(&w.nobody, &path, &ask("customer_request", "customer"))
         .await
         .assert_forbidden();
-    w.post(&w.cashier, &path, &[("reason", "other"), ("party", "business"), ("note", " ")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.cashier,
+        &path,
+        &[("reason", "other"), ("party", "business"), ("note", " ")],
+    )
+    .await
+    .assert_status(422);
     w.post(&w.cashier, &path, &ask("because", "business"))
         .await
         .assert_status(422);

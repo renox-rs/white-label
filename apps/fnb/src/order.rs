@@ -441,17 +441,62 @@ mod tests {
     #[test]
     fn the_reasons_of_wl_delivery_map_to_the_orders_with_their_side_and_party() {
         let table = [
-            ("not_home", reason::CUSTOMER_UNREACHABLE, side::CUSTOMER, party::CUSTOMER),
-            ("access_denied", reason::CUSTOMER_UNREACHABLE, side::CUSTOMER, party::CUSTOMER),
-            ("wrong_address", reason::WRONG_ADDRESS, side::CUSTOMER, party::CUSTOMER),
+            (
+                "not_home",
+                reason::CUSTOMER_UNREACHABLE,
+                side::CUSTOMER,
+                party::CUSTOMER,
+            ),
+            (
+                "access_denied",
+                reason::CUSTOMER_UNREACHABLE,
+                side::CUSTOMER,
+                party::CUSTOMER,
+            ),
+            (
+                "wrong_address",
+                reason::WRONG_ADDRESS,
+                side::CUSTOMER,
+                party::CUSTOMER,
+            ),
             ("refused", reason::REFUSED, side::CUSTOMER, party::CUSTOMER),
-            ("refused_to_pay", reason::NO_CASH, side::CUSTOMER, party::CUSTOMER),
+            (
+                "refused_to_pay",
+                reason::NO_CASH,
+                side::CUSTOMER,
+                party::CUSTOMER,
+            ),
             ("no_cash", reason::NO_CASH, side::CUSTOMER, party::CUSTOMER),
-            ("refused_late", reason::REFUSED_LATE, side::OUTLET, party::BUSINESS),
-            ("refused_wrong_item", reason::REFUSED_WRONG_ITEM, side::OUTLET, party::BUSINESS),
-            ("rider_issue", reason::RIDER_ISSUE, side::OUTLET, party::RIDER),
-            ("not_attempted", reason::RIDER_ISSUE, side::OUTLET, party::RIDER),
-            ("run_aborted", reason::RUN_ABORTED, side::OUTLET, party::BUSINESS),
+            (
+                "refused_late",
+                reason::REFUSED_LATE,
+                side::OUTLET,
+                party::BUSINESS,
+            ),
+            (
+                "refused_wrong_item",
+                reason::REFUSED_WRONG_ITEM,
+                side::OUTLET,
+                party::BUSINESS,
+            ),
+            (
+                "rider_issue",
+                reason::RIDER_ISSUE,
+                side::OUTLET,
+                party::RIDER,
+            ),
+            (
+                "not_attempted",
+                reason::RIDER_ISSUE,
+                side::OUTLET,
+                party::RIDER,
+            ),
+            (
+                "run_aborted",
+                reason::RUN_ABORTED,
+                side::OUTLET,
+                party::BUSINESS,
+            ),
         ];
         for (code, expected, expected_side, expected_party) in table {
             let mapped = map_reason(code);

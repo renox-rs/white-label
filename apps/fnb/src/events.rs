@@ -29,11 +29,11 @@ use wl_kernel::delivery::{
     DeliveryOutForDelivery, DeliveryReturned, DeliveryReversed, RunHandedOver,
 };
 use wl_kernel::payments::RefundApproved;
-use wl_kernel::voids::RecordVoided;
 use wl_kernel::sales::{
-    ReturnResolved, ReturnReversed, SalesOrderAmended, SalesOrderCancelled, SalesOrderConfirmed, SalesOrderLineCancelled,
-    SalesOrderPlaced, SalesOrderRejected,
+    ReturnResolved, ReturnReversed, SalesOrderAmended, SalesOrderCancelled, SalesOrderConfirmed,
+    SalesOrderLineCancelled, SalesOrderPlaced, SalesOrderRejected,
 };
+use wl_kernel::voids::RecordVoided;
 
 use crate::order::FnbOrder;
 use crate::order_machine::{
@@ -85,9 +85,11 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: SalesOrderAmended, state: AppState| async move {
         changes::on_amended(&state, event).await
     });
-    app.listen(|event: SalesOrderLineCancelled, state: AppState| async move {
-        changes::on_line_cancelled(&state, event).await
-    });
+    app.listen(
+        |event: SalesOrderLineCancelled, state: AppState| async move {
+            changes::on_line_cancelled(&state, event).await
+        },
+    );
     app.listen(
         |event: Transitioned<FnbOrder>, state: AppState| async move {
             after_order(&state, &event).await
@@ -104,9 +106,11 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: RunHandedOver, state: AppState| async move {
         fulfilment::on_handed_over(&state, event).await
     });
-    app.listen(|event: DeliveryOutForDelivery, state: AppState| async move {
-        fulfilment::on_out_for_delivery(&state, event).await
-    });
+    app.listen(
+        |event: DeliveryOutForDelivery, state: AppState| async move {
+            fulfilment::on_out_for_delivery(&state, event).await
+        },
+    );
     app.listen(|event: DeliveryDelivered, state: AppState| async move {
         fulfilment::on_delivered(&state, event).await
     });

@@ -6,9 +6,15 @@
 pub(crate) const BATCH_TEXTS: &[(&str, &str)] = &[
     // Toasts.
     ("fnb.batch.planned", "Batch planned."),
-    ("fnb.batch.started", "Batch started: the ingredient lots are recorded."),
+    (
+        "fnb.batch.started",
+        "Batch started: the ingredient lots are recorded.",
+    ),
     ("fnb.batch.finished", "Batch finished: its lot is in stock."),
-    ("fnb.batch.discarded", "Batch discarded: the wastage is posted."),
+    (
+        "fnb.batch.discarded",
+        "Batch discarded: the wastage is posted.",
+    ),
     (
         "fnb.batch.discard_waiting",
         "The discard waits for a second person to approve the wastage.",
@@ -19,9 +25,15 @@ pub(crate) const BATCH_TEXTS: &[(&str, &str)] = &[
         "fnb.batch.problem.no_lots",
         "Pick an ingredient lot for every ingredient before starting the batch.",
     ),
-    ("fnb.batch.problem.yield", "Enter the yield that came out, above zero."),
+    (
+        "fnb.batch.problem.yield",
+        "Enter the yield that came out, above zero.",
+    ),
     ("fnb.batch.problem.bad_yield", "That is not a quantity."),
-    ("fnb.batch.problem.expiry_needed", "Enter the expiry day of the lot the batch made."),
+    (
+        "fnb.batch.problem.expiry_needed",
+        "Enter the expiry day of the lot the batch made.",
+    ),
     (
         "fnb.batch.problem.expiry_later",
         "The expiry {{ expiry }} is later than {{ earliest }}, the earliest expiry of the ingredient lots used.",
@@ -59,14 +71,26 @@ pub(crate) const BATCH_TEXTS: &[(&str, &str)] = &[
         "fnb.batch.problem.no_location",
         "The outlet has no stock location to take the ingredients from.",
     ),
-    ("fnb.batch.problem.not_planned", "Only a planned batch is started or cancelled."),
-    ("fnb.batch.problem.not_in_production", "Only a batch in production is finished."),
-    ("fnb.batch.problem.discard_reason", "Give the reason for discarding the batch."),
+    (
+        "fnb.batch.problem.not_planned",
+        "Only a planned batch is started or cancelled.",
+    ),
+    (
+        "fnb.batch.problem.not_in_production",
+        "Only a batch in production is finished.",
+    ),
+    (
+        "fnb.batch.problem.discard_reason",
+        "Give the reason for discarding the batch.",
+    ),
     (
         "fnb.batch.problem.discard_on_hold",
         "A batch on hold is discarded by deciding its stock hold line as discard, so the hold's approvals apply.",
     ),
-    ("fnb.batch.problem.not_produced", "Only a produced batch is discarded here."),
+    (
+        "fnb.batch.problem.not_produced",
+        "Only a produced batch is discarded here.",
+    ),
     (
         "fnb.batch.problem.stock_off",
         "The stock module is off: the batch cannot be finished.",
@@ -145,8 +169,14 @@ pub(crate) const BATCH_TEXTS: &[(&str, &str)] = &[
         "What is left of the batch is logged as wastage. Above AED 200 a second person approves it.",
     ),
     ("fnb.screen.batch.cancel", "Cancel the batch"),
-    ("fnb.screen.batch.cancel_title", "Cancel this planned batch?"),
-    ("fnb.screen.batch.cancel_message", "A planned batch that never started is deleted."),
+    (
+        "fnb.screen.batch.cancel_title",
+        "Cancel this planned batch?",
+    ),
+    (
+        "fnb.screen.batch.cancel_message",
+        "A planned batch that never started is deleted.",
+    ),
     ("fnb.screen.batch.details", "Batch"),
     ("fnb.screen.batch.lot", "Lot"),
     ("fnb.screen.batch.lot_status", "Lot state"),

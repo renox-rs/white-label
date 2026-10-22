@@ -84,7 +84,10 @@ async fn two_units_of_an_unstarted_line_are_cancelled_and_the_order_goes_on() {
     let events = c.line_cancelled.lock().unwrap().clone();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].order.0, order.id);
-    assert_eq!((events[0].line, events[0].quantity_milli), (items[0].id, 2_000));
+    assert_eq!(
+        (events[0].line, events[0].quantity_milli),
+        (items[0].id, 2_000)
+    );
     assert_eq!(events[0].reason, "out of stock");
     assert_eq!((events[0].outcome, events[0].fee), (None, 0));
     // An order on account: nothing to refund.
@@ -193,10 +196,8 @@ async fn a_rejected_cancellation_changes_nothing() {
 /// stock and scrap only; *finish to stock* needs a work order).
 #[renox::test]
 async fn an_outcome_the_vertical_does_not_offer_is_refused() {
-    let (t, c) = boot_changes_with(
-        WlSales::new().cancel_outcomes(&["return_to_stock", "scrap"]),
-    )
-    .await;
+    let (t, c) =
+        boot_changes_with(WlSales::new().cancel_outcomes(&["return_to_stock", "scrap"])).await;
     t.app.acting_as(&clerk(&t).await);
     let order = place(
         &t,
@@ -247,7 +248,9 @@ async fn ten_percent_of_a_started_line_is_the_fee() {
         .assert_status(303);
     let request = waiting(&t, &order).await.remove(0);
     let mia = manager(&t).await;
-    approvals::approve(t.state(), request.id, &mia, "").await.unwrap();
+    approvals::approve(t.state(), request.id, &mia, "")
+        .await
+        .unwrap();
 
     let refunds = c.gateway.refunds();
     assert_eq!(refunds.len(), 1);
@@ -261,7 +264,10 @@ async fn ten_percent_of_a_started_line_is_the_fee() {
     let kinds: Vec<&str> = steps.iter().map(|s| s.kind.as_str()).collect();
     assert!(kinds.contains(&SETTLE_REFUND) && kinds.contains(&SETTLE_FEE_INVOICE));
     let events = c.line_cancelled.lock().unwrap().clone();
-    assert_eq!((events[0].outcome, events[0].fee), (Some(LineOutcomeKind::Scrap), 800));
+    assert_eq!(
+        (events[0].outcome, events[0].fee),
+        (Some(LineOutcomeKind::Scrap), 800)
+    );
     assert!(!events[0].fee_waived);
     assert_eq!(lines(&t, &order).await[0].cancel_fee, 800);
 }
@@ -299,7 +305,9 @@ async fn a_waived_fee_is_recorded_and_not_billed() {
     .assert_status(303);
     let request = waiting(&t, &order).await.remove(0);
     let mia = manager(&t).await;
-    approvals::approve(t.state(), request.id, &mia, "").await.unwrap();
+    approvals::approve(t.state(), request.id, &mia, "")
+        .await
+        .unwrap();
 
     assert_eq!(c.gateway.refunds()[0].0.amount, 8_000);
     assert!(c.ledger.drafts().is_empty());
@@ -347,7 +355,10 @@ async fn an_issued_invoice_gets_a_credit_note_for_the_cancelled_value() {
     let credits = c.ledger.credits();
     assert_eq!(credits.len(), 1);
     assert_eq!(credits[0].0, 101);
-    assert_eq!((credits[0].1[0].invoice_line, credits[0].1[0].net), (1, 4_000));
+    assert_eq!(
+        (credits[0].1[0].invoice_line, credits[0].1[0].net),
+        (1, 4_000)
+    );
     let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
     assert_eq!(
         (steps[0].kind.as_str(), steps[0].amount),
@@ -390,7 +401,10 @@ async fn cancelling_all_of_the_only_line_of_a_confirmed_order_is_refused() {
     cancel(&t, &order, "1", "3", &[]).await.assert_status(422);
 
     assert_eq!(lines(&t, &order).await[0].cancelled_milli, 0);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
     // More than is open is refused too.
     cancel(&t, &order, "1", "4", &[]).await.assert_status(422);
 }

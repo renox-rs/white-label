@@ -65,7 +65,11 @@ pub fn parse_tenths(text: &str) -> Option<i64> {
         return None;
     }
     let whole: i64 = whole.parse().ok()?;
-    let tenth: i64 = if tenth.is_empty() { 0 } else { tenth.parse().ok()? };
+    let tenth: i64 = if tenth.is_empty() {
+        0
+    } else {
+        tenth.parse().ok()?
+    };
     let value = whole.checked_mul(10)?.checked_add(tenth)?;
     Some(if negative { -value } else { value })
 }

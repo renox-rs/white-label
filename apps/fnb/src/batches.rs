@@ -219,13 +219,22 @@ async fn problem_with(
         .lot_info(state, &lot_subject(lot_id))
         .await?
     else {
-        return Ok(Some(english("fnb.batch.problem.lot_unknown", &[("item", &line.item_code)])));
+        return Ok(Some(english(
+            "fnb.batch.problem.lot_unknown",
+            &[("item", &line.item_code)],
+        )));
     };
     if info.item.subject_id != line.item_id {
-        return Ok(Some(english("fnb.batch.problem.lot_wrong", &[("lot", &info.number), ("item", &line.item_code)])));
+        return Ok(Some(english(
+            "fnb.batch.problem.lot_wrong",
+            &[("lot", &info.number), ("item", &line.item_code)],
+        )));
     }
     if info.status == "on_hold" {
-        return Ok(Some(english("fnb.batch.problem.lot_on_hold", &[("lot", &info.number)])));
+        return Ok(Some(english(
+            "fnb.batch.problem.lot_on_hold",
+            &[("lot", &info.number)],
+        )));
     }
     if info.status != "released" {
         return Ok(Some(english(
@@ -234,7 +243,10 @@ async fn problem_with(
         )));
     }
     if info.expiry_date.is_some_and(|day| day < today()) {
-        return Ok(Some(english("fnb.batch.problem.lot_expired", &[("lot", &info.number)])));
+        return Ok(Some(english(
+            "fnb.batch.problem.lot_expired",
+            &[("lot", &info.number)],
+        )));
     }
     if info.left_milli < needed_milli {
         return Ok(Some(english(
@@ -282,7 +294,10 @@ pub async fn start(
                 .map(|lot| lot.lot.subject_id)
         });
         let Some(lot_id) = lot_id else {
-            problems.push(english("fnb.batch.problem.lot_missing", &[("item", &line.item_code)]));
+            problems.push(english(
+                "fnb.batch.problem.lot_missing",
+                &[("item", &line.item_code)],
+            ));
             continue;
         };
         if let Some(problem) = problem_with(state, line, proposal.needed_milli, lot_id).await? {
@@ -654,9 +669,7 @@ pub async fn with_status(db: &Db, status: BatchStatus) -> Result<Vec<ProductionB
 
 /// Registers the listeners of the lot events and of a committed discard.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: LotHeld, state: AppState| async move {
-        on_lot_held(&state, event).await
-    });
+    app.listen(|event: LotHeld, state: AppState| async move { on_lot_held(&state, event).await });
     app.listen(|event: LotReleased, state: AppState| async move {
         on_lot_released(&state, event).await
     });

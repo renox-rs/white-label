@@ -24,8 +24,8 @@ use wl_kernel::invoicing::{PostCost, post_cost};
 
 use crate::balance;
 use crate::item::{Item, value_of};
-use crate::location::NegativeStockPolicy;
 use crate::location::Location;
+use crate::location::NegativeStockPolicy;
 
 /// The cost code of the price variance.
 pub const COST_CODE: &str = "price_variance";

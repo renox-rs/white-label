@@ -37,6 +37,7 @@ use wl_kernel::tickets::{TaskComment, TicketId, task_creator};
 
 use crate::config::config_of;
 use crate::counter_sale::{CounterSale, CounterSaleStatus};
+use crate::permissions;
 use crate::sale_line::{KIND_ITEM, SaleLine, ratio_half_up};
 use crate::sales_order::{SalesOrder, SalesOrderStatus};
 use crate::sales_return::{
@@ -46,7 +47,6 @@ use crate::sales_return_machine::{
     RECEIVE, REJECT, RESOLVE, RESOLVE_APPROVED, RESOLVE_SYSTEM, REVERSE, REVERSE_SYSTEM,
     ReceiveInput, ResolveInput,
 };
-use crate::permissions;
 use crate::texts::english;
 
 /// The approval policies' action key of a refund or credit after completion
@@ -256,11 +256,13 @@ pub async fn request(state: &AppState, new: NewReturn) -> Result<SalesReturn> {
         return Err(refused("wl_sales.returns.problem.amounts_for_goods"));
     }
     let config = config_of(state);
-    if new.complaint_category.is_some() && !listed(&config.complaint_categories, &new.complaint_category)
+    if new.complaint_category.is_some()
+        && !listed(&config.complaint_categories, &new.complaint_category)
     {
         return Err(refused("wl_sales.returns.problem.category"));
     }
-    if new.responsible_party.is_some() && !listed(&config.responsible_parties, &new.responsible_party)
+    if new.responsible_party.is_some()
+        && !listed(&config.responsible_parties, &new.responsible_party)
     {
         return Err(refused("wl_sales.returns.problem.party"));
     }
@@ -504,7 +506,9 @@ pub async fn resolve(
     let r = SalesReturn::find_or_404(&state.db, id).await?;
     let input = checked(state, &r, input, Some(by.id)).await?;
     if input.needs_approval {
-        return ask_approval(state, by, &r, &input).await.map(ResolveOutcome::Waiting);
+        return ask_approval(state, by, &r, &input)
+            .await
+            .map(ResolveOutcome::Waiting);
     }
     let _ = r
         .transition(RESOLVE)
@@ -540,7 +544,10 @@ async fn ask_approval(
         return Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, problem));
     }
     let waiting = ApprovalRequest::pending_about(&state.db, &r.subject()).await?;
-    if waiting.iter().any(|request| request.action == ACTION_REFUND) {
+    if waiting
+        .iter()
+        .any(|request| request.action == ACTION_REFUND)
+    {
         return Err(refused("wl_sales.returns.problem.pending"));
     }
     let payload = renox::serde_json::to_value(input)
@@ -912,5 +919,7 @@ pub(crate) fn register(app: &mut Registry) {
     approvals::register_final_check(SALES_RETURN_SUBJECT_TYPE, |tx, request| {
         Box::pin(recheck(tx, request))
     });
-    approvals::register_subject_link(SALES_RETURN_SUBJECT_TYPE, |id| format!("/sales-returns/{id}"));
+    approvals::register_subject_link(SALES_RETURN_SUBJECT_TYPE, |id| {
+        format!("/sales-returns/{id}")
+    });
 }

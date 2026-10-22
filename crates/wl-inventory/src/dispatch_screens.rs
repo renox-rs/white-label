@@ -19,9 +19,7 @@ use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::dubai_text;
 
-use crate::dispatch::{
-    DISPATCH_SUBJECT_TYPE, Dispatch, DispatchStatus, cancel, lines_of, pick,
-};
+use crate::dispatch::{DISPATCH_SUBJECT_TYPE, Dispatch, DispatchStatus, cancel, lines_of, pick};
 use crate::item::Item;
 use crate::location::Location;
 use crate::permissions;
@@ -77,12 +75,18 @@ pub(crate) const DISPATCH_TEXTS: &[(&str, &str)] = &[
         "wl_inventory.dispatch.no_permission",
         "You need the dispatch permission at this location.",
     ),
-    ("wl_inventory.dispatch.no_lines", "A dispatch needs at least one line."),
+    (
+        "wl_inventory.dispatch.no_lines",
+        "A dispatch needs at least one line.",
+    ),
     (
         "wl_inventory.dispatch.bad_line",
         "A dispatch line needs a known item and a quantity above zero.",
     ),
-    ("wl_inventory.dispatch.not_draft", "Only a draft dispatch can be picked."),
+    (
+        "wl_inventory.dispatch.not_draft",
+        "Only a draft dispatch can be picked.",
+    ),
     ("wl_inventory.dispatch.status_draft", "Draft"),
     ("wl_inventory.dispatch.status_picked", "Picked"),
     ("wl_inventory.dispatch.status_dispatched", "Dispatched"),
@@ -224,7 +228,10 @@ async fn dispatches(State(state): State<AppState>, user: AuthUser, lang: Lang) -
             when: dispatch.created_at.map(dubai_text).unwrap_or_default(),
         });
     }
-    Ok(View::typed(DispatchesPage { tx: tx(&lang), rows }))
+    Ok(View::typed(DispatchesPage {
+        tx: tx(&lang),
+        rows,
+    }))
 }
 
 fn refused(message: impl Into<String>) -> Error {

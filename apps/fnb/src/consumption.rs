@@ -62,10 +62,9 @@ pub async fn post(state: &AppState, id: i64) -> Result<usize> {
             continue;
         };
         for component in item.recipe(&state.db).await? {
-            let used = i64::try_from(
-                i128::from(component.per_unit_milli) * i128::from(quantity) / 1_000,
-            )
-            .unwrap_or(0);
+            let used =
+                i64::try_from(i128::from(component.per_unit_milli) * i128::from(quantity) / 1_000)
+                    .unwrap_or(0);
             if used <= 0 {
                 continue;
             }

@@ -174,11 +174,17 @@ async fn refunds(
         .iter()
         .map(|f| RefundRow {
             order: f.order_number.clone(),
-            order_url: f.order_id.map(|id| format!("/orders/{id}")).unwrap_or_default(),
+            order_url: f
+                .order_id
+                .map(|id| format!("/orders/{id}"))
+                .unwrap_or_default(),
             channel: f.channel.clone(),
             category: category(&f.category),
             party: party(&f.party),
-            resolution: t(&lang, &format!("fnb.screen.report.resolution.{}", f.resolution)),
+            resolution: t(
+                &lang,
+                &format!("fnb.screen.report.resolution.{}", f.resolution),
+            ),
             day: f.occurred_on.to_string(),
             gross: f.gross,
             net: f.net,
@@ -308,7 +314,9 @@ async fn rider_faults(
     if !user.has_permission(permissions::RIDER_FAULTS_VIEW) {
         return Err(Error::Forbidden);
     }
-    let employee = query.get("employee").and_then(|v| v.trim().parse::<i64>().ok());
+    let employee = query
+        .get("employee")
+        .and_then(|v| v.trim().parse::<i64>().ok());
     let mut rows = Vec::new();
     for fault in RiderFault::newest(&state.db, employee, 200).await? {
         let rider = match fault.rider_user_id {

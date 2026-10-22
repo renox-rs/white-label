@@ -74,12 +74,23 @@ async fn the_kitchen_manager_is_told_to_chase_the_aggregator_after_fifteen_minut
     assert_eq!(after(&w, &order, 14).await, Done::default());
     assert!(w.notices.of_type(NOTICE).is_empty());
 
-    assert_eq!(after(&w, &order, 15).await, Done { alerts: 1, tasks: 0 });
+    assert_eq!(
+        after(&w, &order, 15).await,
+        Done {
+            alerts: 1,
+            tasks: 0
+        }
+    );
     let told = w.notices.users_of_type(NOTICE);
     assert!(told.contains(&w.manager.id) && told.contains(&w.manager_b.id));
     assert!(!told.contains(&w.cook.id) && !told.contains(&w.cashier.id));
     let notice = w.notices.of_type(NOTICE).remove(0);
-    assert!(notice.data["title"].as_str().unwrap().contains("Chase the aggregator"));
+    assert!(
+        notice.data["title"]
+            .as_str()
+            .unwrap()
+            .contains("Chase the aggregator")
+    );
     assert!(notice.data["body"].as_str().unwrap().contains("15 minutes"));
     // Once; nothing is cancelled, nothing is refunded, no task yet.
     assert_eq!(after(&w, &order, 16).await, Done::default());
@@ -96,7 +107,13 @@ async fn the_task_at_forty_five_minutes_cancels_the_order_with_the_aggregator_re
     let w = boot_own_riders().await;
     let order = ready(&w).await;
 
-    assert_eq!(after(&w, &order, 45).await, Done { alerts: 1, tasks: 1 });
+    assert_eq!(
+        after(&w, &order, 45).await,
+        Done {
+            alerts: 1,
+            tasks: 1
+        }
+    );
     let opened = w.tickets.opened();
     assert_eq!(opened.len(), 1);
     assert!(opened[0].title.contains("Record what happened"));
@@ -119,9 +136,15 @@ async fn the_task_at_forty_five_minutes_cancels_the_order_with_the_aggregator_re
     assert!(!none.text().contains("Picked up late"));
 
     let path = format!("/orders/{}/pickup/cancel", order.id);
-    w.post(&w.cashier, &path, &[("x", "")]).await.assert_forbidden();
-    w.post(&w.cook, &path, &[("x", "")]).await.assert_forbidden();
-    w.post(&w.manager, &path, &[("x", "")]).await.assert_status(303);
+    w.post(&w.cashier, &path, &[("x", "")])
+        .await
+        .assert_forbidden();
+    w.post(&w.cook, &path, &[("x", "")])
+        .await
+        .assert_forbidden();
+    w.post(&w.manager, &path, &[("x", "")])
+        .await
+        .assert_status(303);
 
     let cancelled = w.reload(&order).await;
     assert_eq!(cancelled.status, FnbOrderStatus::Cancelled);
@@ -153,7 +176,9 @@ async fn the_task_at_forty_five_minutes_cancels_the_order_with_the_aggregator_re
     .await
     .unwrap();
     assert!(waiting.is_empty());
-    let sales = SalesOrder::find_or_404(w.db(), cancelled.sales_order_id).await.unwrap();
+    let sales = SalesOrder::find_or_404(w.db(), cancelled.sales_order_id)
+        .await
+        .unwrap();
     assert_eq!(sales.status, SalesOrderStatus::Cancelled);
     // The task closed itself.
     assert_eq!(w.tickets.closed(), vec![1]);
@@ -166,9 +191,13 @@ async fn an_order_collected_before_forty_five_minutes_gets_no_task_and_an_open_o
     let w = boot_own_riders().await;
     let early = ready(&w).await;
     assert_eq!(after(&w, &early, 15).await.alerts, 1);
-    w.post(&w.manager, &format!("/orders/{}/complete", early.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.manager,
+        &format!("/orders/{}/complete", early.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.reload(&early).await.status, FnbOrderStatus::Completed);
     assert_eq!(after(&w, &early, 45).await, Done::default());
     assert!(w.tickets.opened().is_empty());
@@ -177,9 +206,13 @@ async fn an_order_collected_before_forty_five_minutes_gets_no_task_and_an_open_o
     let late = ready(&w).await;
     assert_eq!(after(&w, &late, 45).await.tasks, 1);
     assert!(w.tickets.closed().is_empty());
-    w.post(&w.manager, &format!("/orders/{}/complete", late.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.manager,
+        &format!("/orders/{}/complete", late.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(w.tickets.closed(), vec![1]);
 }
 
@@ -191,8 +224,12 @@ async fn picked_up_late_completes_the_order_and_closes_the_task() {
     after(&w, &order, 45).await;
     let path = format!("/orders/{}/pickup/late", order.id);
 
-    w.post(&w.cashier, &path, &[("x", "")]).await.assert_forbidden();
-    w.post(&w.manager, &path, &[("x", "")]).await.assert_status(303);
+    w.post(&w.cashier, &path, &[("x", "")])
+        .await
+        .assert_forbidden();
+    w.post(&w.manager, &path, &[("x", "")])
+        .await
+        .assert_status(303);
 
     let done = w.reload(&order).await;
     assert_eq!(done.status, FnbOrderStatus::Completed);
@@ -200,7 +237,9 @@ async fn picked_up_late_completes_the_order_and_closes_the_task() {
     assert_eq!(wastage_of(&w, &w.chicken).await.len(), 0);
     assert_eq!(w.tickets.closed(), vec![1]);
     // A second choice finds nothing waiting.
-    w.post(&w.manager, &path, &[("x", "")]).await.assert_status(422);
+    w.post(&w.manager, &path, &[("x", "")])
+        .await
+        .assert_status(422);
 }
 
 /// A direct order that waits for its own rider is not an aggregator's: the
@@ -214,9 +253,13 @@ async fn a_direct_order_is_not_watched_for_an_aggregators_rider() {
     assert!(w.notices.of_type(NOTICE).is_empty());
     assert!(w.tickets.opened().is_empty());
     for tail in ["late", "cancel"] {
-        w.post(&w.manager, &format!("/orders/{}/pickup/{tail}", direct.id), &[("x", "")])
-            .await
-            .assert_status(422);
+        w.post(
+            &w.manager,
+            &format!("/orders/{}/pickup/{tail}", direct.id),
+            &[("x", "")],
+        )
+        .await
+        .assert_status(422);
     }
     assert_eq!(w.reload(&direct).await.status, FnbOrderStatus::Ready);
 }
@@ -228,8 +271,20 @@ async fn the_minutes_and_the_rule_are_settings() {
     let quick = boot_with(own_riders(), Fnb::new().aggregator_pickup(5, 10)).await;
     let order = ready(&quick).await;
     assert_eq!(after(&quick, &order, 4).await, Done::default());
-    assert_eq!(after(&quick, &order, 5).await, Done { alerts: 1, tasks: 0 });
-    assert_eq!(after(&quick, &order, 10).await, Done { alerts: 0, tasks: 1 });
+    assert_eq!(
+        after(&quick, &order, 5).await,
+        Done {
+            alerts: 1,
+            tasks: 0
+        }
+    );
+    assert_eq!(
+        after(&quick, &order, 10).await,
+        Done {
+            alerts: 0,
+            tasks: 1
+        }
+    );
 
     let off = boot_with(own_riders(), Fnb::new().aggregator_pickup_rule(false)).await;
     let order = ready(&off).await;

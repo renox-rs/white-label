@@ -16,11 +16,11 @@ use fnb::{Brand, PaperOrder};
 use renox::prelude::*;
 use wl_kernel::integrations::ConnectionStatus;
 
-use support::ops::{
-    MARINA, SHARJAH, Ops, beat, boot_ops, day_after, dubai_at, go_to, now_of, status_of, tick,
-};
 use renox::testing::TestResponse;
 use support::World;
+use support::ops::{
+    MARINA, Ops, SHARJAH, beat, boot_ops, day_after, dubai_at, go_to, now_of, status_of, tick,
+};
 
 const NOTICE: &str = "fnb.staff_notice";
 
@@ -50,7 +50,10 @@ async fn marina_down(w: &World, marina: i64) -> Outage {
     // Sharjah's device keeps answering.
     beat(w, SHARJAH, "kds-s1").await;
     tick(w).await;
-    Outage::open_of(w.db(), marina).await.unwrap().expect("the outage opened")
+    Outage::open_of(w.db(), marina)
+        .await
+        .unwrap()
+        .expect("the outage opened")
 }
 
 /// A paper order P-0001 of AED 42.00 that happened at 20:20 on `day`, posted
@@ -89,16 +92,32 @@ async fn silent_devices_pause_the_outlets_brands_and_tell_both_managers() {
 
     let marina = d2c(&w, o.marina.id).await;
     assert_eq!(marina.len(), 2, "Zaatar Grill and Habibi Bowls");
-    assert!(marina.iter().all(|c| c.paused && c.outage_id == Some(outage.id)));
+    assert!(
+        marina
+            .iter()
+            .all(|c| c.paused && c.outage_id == Some(outage.id))
+    );
 
     // The ordering page shows Marina closed.
     let habibi = Brand::by_code(w.db(), "habibi").await.unwrap().unwrap();
     let zaatar = Brand::by_code(w.db(), "zaatar").await.unwrap().unwrap();
-    assert!(!outage::accepts_orders(w.db(), o.marina.id, zaatar.id).await.unwrap());
-    assert!(!outage::accepts_orders(w.db(), o.marina.id, habibi.id).await.unwrap());
+    assert!(
+        !outage::accepts_orders(w.db(), o.marina.id, zaatar.id)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !outage::accepts_orders(w.db(), o.marina.id, habibi.id)
+            .await
+            .unwrap()
+    );
     let page = w.get(&w.nobody, "/ordering/zaatar").await;
     page.assert_ok();
-    assert!(page.text().contains("Temporarily closed"), "{}", page.text());
+    assert!(
+        page.text().contains("Temporarily closed"),
+        "{}",
+        page.text()
+    );
 
     // Both managers are told, and the kitchen manager has the task.
     let told = w.notices.users_of_type(NOTICE);
@@ -114,12 +133,21 @@ async fn a_brand_cooked_by_another_outlet_stays_orderable_there() {
     let (w, o) = boot_ops().await;
     let outage = marina_down(&w, o.marina.id).await;
     let habibi = Brand::by_code(w.db(), "habibi").await.unwrap().unwrap();
-    assert!(outage::accepts_orders(w.db(), o.sharjah.id, habibi.id).await.unwrap());
+    assert!(
+        outage::accepts_orders(w.db(), o.sharjah.id, habibi.id)
+            .await
+            .unwrap()
+    );
     let kitchens = outage::ordering_of(w.db(), &habibi).await.unwrap();
     let open: Vec<(&str, bool)> = kitchens.iter().map(|k| (k.name.as_str(), k.open)).collect();
     assert_eq!(open, [("Marina Kitchen", false), ("Sharjah Kitchen", true)]);
     assert!(d2c(&w, o.sharjah.id).await.iter().all(|c| !c.paused));
-    assert!(Outage::open_of(w.db(), o.sharjah.id).await.unwrap().is_none());
+    assert!(
+        Outage::open_of(w.db(), o.sharjah.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     // An aggregator's tablet is paused by hand, not by the rule.
     let tablets: Vec<OutletChannel> = OutletChannel::of_outlet(w.db(), o.marina.id)
         .await
@@ -143,7 +171,12 @@ async fn silence_outside_the_opening_hours_triggers_nothing() {
     go_to(&w, dubai_at(1, "03:10")).await;
     tick(&w).await;
     assert_ne!(status_of(&w, MARINA).await, ConnectionStatus::Down);
-    assert!(Outage::open_of(w.db(), o.marina.id).await.unwrap().is_none());
+    assert!(
+        Outage::open_of(w.db(), o.marina.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert!(d2c(&w, o.marina.id).await.iter().all(|c| !c.paused));
 }
 
@@ -181,23 +214,38 @@ async fn the_manager_is_asked_to_resume_and_the_channels_stay_paused_until_then(
         .unwrap();
     assert_eq!(sent, 1);
     assert_eq!(
-        Outage::find_or_404(w.db(), outage.id).await.unwrap().prompts,
+        Outage::find_or_404(w.db(), outage.id)
+            .await
+            .unwrap()
+            .prompts,
         2
     );
     assert!(d2c(&w, o.marina.id).await.iter().all(|c| c.paused));
 
     // A person without the permission cannot resume; the manager does.
-    w.post(&w.nobody, &format!("/outages/{}/resume", outage.id), &[("x", "")])
-        .await
-        .assert_forbidden();
-    w.post(&o.kitchen, &format!("/outages/{}/resume", outage.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.nobody,
+        &format!("/outages/{}/resume", outage.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &o.kitchen,
+        &format!("/outages/{}/resume", outage.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     let resumed = Outage::find_or_404(w.db(), outage.id).await.unwrap();
     assert_eq!(resumed.status, OutageStatus::Resumed);
     assert_eq!(resumed.resumed_by, Some(o.kitchen.id));
     assert!(d2c(&w, o.marina.id).await.iter().all(|c| !c.paused));
-    assert_eq!(w.tickets.closed().len(), 1, "the kitchen manager's task closes");
+    assert_eq!(
+        w.tickets.closed().len(),
+        1,
+        "the kitchen manager's task closes"
+    );
     // No more prompts once resumed.
     let sent = outage::run_prompts(&state, at + renox::chrono::TimeDelta::minutes(40))
         .await
@@ -232,13 +280,19 @@ async fn a_paper_order_entered_late_carries_the_flag_and_its_business_time() {
     go_to(&w, dubai_at(1, "21:30")).await;
     let day = day_after(1).to_string();
     // Seventy minutes late: a reason is needed.
-    paper(&w, &o.till, o.marina.id, &day, "").await.assert_status(422);
+    paper(&w, &o.till, o.marina.id, &day, "")
+        .await
+        .assert_status(422);
     assert_eq!(PaperOrder::query().count(w.db()).await.unwrap(), 0);
     paper(&w, &o.till, o.marina.id, &day, "Internet was down")
         .await
         .assert_status(303);
 
-    let paper = PaperOrder::query().first(w.db()).await.unwrap().expect("recorded");
+    let paper = PaperOrder::query()
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("recorded");
     assert!(paper.late, "the late-entry flag");
     assert_eq!(paper.late_reason.as_deref(), Some("Internet was down"));
     assert_eq!(paper.amount, 4_200);
@@ -265,16 +319,23 @@ async fn a_manager_pauses_the_channels_by_hand_and_a_cashier_cannot() {
     w.post(&o.till, &path, &[("reason", "Oven broken")])
         .await
         .assert_forbidden();
-    w.post(&o.area, &path, &[("reason", "")]).await.assert_status(422);
+    w.post(&o.area, &path, &[("reason", "")])
+        .await
+        .assert_status(422);
     w.post(&o.area, &path, &[("reason", "Oven broken")])
         .await
         .assert_status(303);
-    let outage = Outage::open_of(w.db(), o.sharjah.id).await.unwrap().expect("paused");
+    let outage = Outage::open_of(w.db(), o.sharjah.id)
+        .await
+        .unwrap()
+        .expect("paused");
     assert_eq!(outage.source, outage::source::MANUAL);
     assert_eq!(outage.reason.as_deref(), Some("Oven broken"));
     assert!(d2c(&w, o.sharjah.id).await.iter().all(|c| c.paused));
     // A second pause is refused: it is paused already.
-    w.post(&o.area, &path, &[("reason", "Again")]).await.assert_status(422);
+    w.post(&o.area, &path, &[("reason", "Again")])
+        .await
+        .assert_status(422);
     // One aggregator's tablet is marked paused and resumed on its own.
     let tablet = OutletChannel::of_outlet(w.db(), o.sharjah.id)
         .await
@@ -282,23 +343,37 @@ async fn a_manager_pauses_the_channels_by_hand_and_a_cashier_cannot() {
         .into_iter()
         .find(|c| c.kind == channel_kind::AGGREGATOR)
         .unwrap();
-    w.post(&o.area, &format!("/outlet-channels/{}/pause", tablet.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &o.area,
+        &format!("/outlet-channels/{}/pause", tablet.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     let paused = OutletChannel::find_or_404(w.db(), tablet.id).await.unwrap();
     assert!(paused.paused);
     assert_eq!(paused.outage_id, Some(outage.id));
-    w.post(&o.till, &format!("/outages/{}/resume", outage.id), &[("x", "")])
-        .await
-        .assert_forbidden();
-    w.post(&o.area, &format!("/outages/{}/resume", outage.id), &[("x", "")])
-        .await
-        .assert_status(303);
-    assert!(OutletChannel::of_outlet(w.db(), o.sharjah.id)
-        .await
-        .unwrap()
-        .iter()
-        .all(|c| !c.paused));
+    w.post(
+        &o.till,
+        &format!("/outages/{}/resume", outage.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &o.area,
+        &format!("/outages/{}/resume", outage.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
+    assert!(
+        OutletChannel::of_outlet(w.db(), o.sharjah.id)
+            .await
+            .unwrap()
+            .iter()
+            .all(|c| !c.paused)
+    );
 }
 
 /// The brand's checkout of a paused kitchen takes no order: it says the kitchen
@@ -307,20 +382,34 @@ async fn a_manager_pauses_the_channels_by_hand_and_a_cashier_cannot() {
 #[renox::test]
 async fn the_checkout_of_a_paused_kitchen_takes_no_order() {
     let (w, o) = boot_ops().await;
-    let before = w.get(&o.till, "/checkout/payment?brand=zaatar&outlet=marina").await;
+    let before = w
+        .get(&o.till, "/checkout/payment?brand=zaatar&outlet=marina")
+        .await;
     before.assert_ok();
     assert!(before.text().contains("pay-online"), "{}", before.text());
     marina_down(&w, o.marina.id).await;
-    let closed = w.get(&o.till, "/checkout/payment?brand=zaatar&outlet=marina").await;
+    let closed = w
+        .get(&o.till, "/checkout/payment?brand=zaatar&outlet=marina")
+        .await;
     closed.assert_ok();
-    assert!(closed.text().contains("kitchen-closed"), "{}", closed.text());
+    assert!(
+        closed.text().contains("kitchen-closed"),
+        "{}",
+        closed.text()
+    );
     assert!(!closed.text().contains("pay-online"));
     // Habibi Bowls is still cooked at Sharjah.
     let open = w.get(&o.till, "/checkout/payment?brand=habibi").await;
     assert!(open.text().contains("pay-online"), "{}", open.text());
-    let sharjah = w.get(&o.till, "/checkout/payment?brand=habibi&outlet=sharjah").await;
+    let sharjah = w
+        .get(&o.till, "/checkout/payment?brand=habibi&outlet=sharjah")
+        .await;
     assert!(sharjah.text().contains("pay-online"));
     // The brand with no other kitchen is closed for everyone.
     let zaatar = w.get(&o.till, "/checkout/payment?brand=zaatar").await;
-    assert!(zaatar.text().contains("kitchen-closed"), "{}", zaatar.text());
+    assert!(
+        zaatar.text().contains("kitchen-closed"),
+        "{}",
+        zaatar.text()
+    );
 }

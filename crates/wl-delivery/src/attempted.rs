@@ -593,9 +593,13 @@ async fn finish_return(state: &AppState, delivery_id: i64) -> Result {
 async fn finish_discard(state: &AppState, delivery_id: i64) -> Result {
     let delivery = Delivery::find_or_404(&state.db, delivery_id).await?;
     let reason = delivery.discard_reason.clone().unwrap_or_default();
-    let request =
-        wastage_request(&state.db, &delivery, &reason, delivery.discard_photo_ref.as_deref())
-            .await?;
+    let request = wastage_request(
+        &state.db,
+        &delivery,
+        &reason,
+        delivery.discard_photo_ref.as_deref(),
+    )
+    .await?;
     let recorded = delivery_wastage(state).record(state, &request).await?;
     let (kind, id, value) = match &recorded {
         Some(done) => (

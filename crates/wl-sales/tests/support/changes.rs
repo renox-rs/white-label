@@ -90,7 +90,11 @@ impl Invoicer for Ledger {
     ) -> InvoiceFuture<'a, bool> {
         Box::pin(async move {
             let mut book = self.0.lock().unwrap();
-            let status = book.status.get(&id.0).copied().unwrap_or(InvoiceStatus::Draft);
+            let status = book
+                .status
+                .get(&id.0)
+                .copied()
+                .unwrap_or(InvoiceStatus::Draft);
             if status != InvoiceStatus::Draft {
                 return Ok(false);
             }
@@ -99,11 +103,7 @@ impl Invoicer for Ledger {
         })
     }
 
-    fn find<'a>(
-        &'a self,
-        _db: &'a Db,
-        id: InvoiceId,
-    ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+    fn find<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
         Box::pin(async move {
             let status = self
                 .0
@@ -334,7 +334,11 @@ pub async fn place(
     t.app
         .post(
             "/sales-orders",
-            &[("party_id", "7"), ("channel", channel), ("payment_mode", mode)],
+            &[
+                ("party_id", "7"),
+                ("channel", channel),
+                ("payment_mode", mode),
+            ],
         )
         .await
         .assert_status(303);

@@ -98,8 +98,7 @@ impl Outlet {
     /// outlet's cut-off (an order at 01:30 belongs to the day before).
     pub fn business_date(&self, at: DateTime) -> NaiveDate {
         let current = business_date_at(at, self.cutoff_minutes.unwrap_or(DEFAULT_CUTOFF_MINUTES));
-        if let (Some(minutes), Some(from)) =
-            (self.pending_cutoff_minutes, self.pending_cutoff_from)
+        if let (Some(minutes), Some(from)) = (self.pending_cutoff_minutes, self.pending_cutoff_from)
         {
             let next = business_date_at(at, minutes);
             if next >= from {
@@ -126,7 +125,10 @@ impl Outlet {
     ///
     /// Database errors.
     pub async fn by_code(db: &Db, code: &str) -> Result<Option<Outlet>> {
-        Outlet::query().where_(Outlet::CODE.eq(code)).first(db).await
+        Outlet::query()
+            .where_(Outlet::CODE.eq(code))
+            .first(db)
+            .await
     }
 
     /// The outlet as a [`Subject`]: `fnb.outlet:3`.

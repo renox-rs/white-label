@@ -174,7 +174,11 @@ pub fn window_opened_at(window: Option<(i64, i64)>, at: DateTime) -> Option<Date
     } else {
         wall.date().pred_opt()?
     };
-    let opened = day.and_hms_opt(u32::try_from(start / 60).ok()?, u32::try_from(start % 60).ok()?, 0)?;
+    let opened = day.and_hms_opt(
+        u32::try_from(start / 60).ok()?,
+        u32::try_from(start % 60).ok()?,
+        0,
+    )?;
     Some(instant(opened))
 }
 
@@ -194,7 +198,11 @@ pub struct Evaluation {
 /// The devices of `connection` at `at`: silent when no heartbeat came within
 /// one interval plus half an interval of the previous one (or of the window
 /// start). Pure; call it inside the window.
-pub fn evaluate(connection: &IntegrationConnection, devices: &[DeviceBeat], at: DateTime) -> Evaluation {
+pub fn evaluate(
+    connection: &IntegrationConnection,
+    devices: &[DeviceBeat],
+    at: DateTime,
+) -> Evaluation {
     let window = window_of(connection);
     let opened = if in_window(window, at) {
         window_opened_at(window, at)
@@ -338,7 +346,10 @@ pub async fn heartbeat(state: &AppState, key: &str, device: Option<&str>) -> Res
             "wl_kernel.integrations.device.not_a_device",
         )));
     }
-    let name = device.map(str::trim).filter(|d| !d.is_empty()).unwrap_or(key);
+    let name = device
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+        .unwrap_or(key);
     let row = ensure_device(&state.db, key, name).await?;
     let at = now();
     DeviceBeat::query()
@@ -547,7 +558,10 @@ mod tests {
             window_opened_at(night, dubai("01:00:00")),
             Some(dubai("22:00:00") - Duration::days(1))
         );
-        assert_eq!(window_opened_at(night, dubai("23:00:00")), Some(dubai("22:00:00")));
+        assert_eq!(
+            window_opened_at(night, dubai("23:00:00")),
+            Some(dubai("22:00:00"))
+        );
     }
 
     #[test]
@@ -568,7 +582,10 @@ mod tests {
         let devices = [device("kds", Some(last), last)];
         let c = connection(Some(("10:00", "23:00")), false);
         let opened = evaluate(&c, &devices, dubai("10:01:29"));
-        assert!(opened.silent.is_empty(), "the window start is the reference");
+        assert!(
+            opened.silent.is_empty(),
+            "the window start is the reference"
+        );
         let missed = evaluate(&c, &devices, dubai("10:01:30"));
         assert_eq!(missed.silent, ["kds"]);
         assert_eq!(missed.failed_since, Some(dubai("10:00:00")));

@@ -25,7 +25,9 @@ use wl_kernel::sales::{
 
 use crate::amend::{self, AmendDetail};
 use crate::cancel_lines::{self, CancelDetail};
-use crate::order_change::{KIND_AMEND, KIND_CANCEL, KIND_CANCEL_LINE, KIND_CANCEL_REMAINING, OrderChange};
+use crate::order_change::{
+    KIND_AMEND, KIND_CANCEL, KIND_CANCEL_LINE, KIND_CANCEL_REMAINING, OrderChange,
+};
 use crate::order_notices;
 use crate::sales_order::SalesOrder;
 use crate::texts::english;
@@ -38,7 +40,9 @@ fn refused(message: impl Into<String>) -> Error {
 /// Whether the transition `name` is one of the changes of this module
 /// (a user's or the kernel's `_approved` twin).
 pub(crate) fn is_change(name: &str) -> bool {
-    let base = name.strip_suffix(wl_kernel::machines::APPROVED_SUFFIX).unwrap_or(name);
+    let base = name
+        .strip_suffix(wl_kernel::machines::APPROVED_SUFFIX)
+        .unwrap_or(name);
     amend::TRANSITIONS.iter().any(|(n, _)| *n == base)
         || [
             cancel_lines::CANCEL_LINE,
@@ -79,8 +83,14 @@ pub(crate) async fn request_or_run<I: Serialize>(
         let payload = renox::serde_json::to_value(input)
             .map_err(|e| Error::Internal(renox::anyhow::Error::new(e)))?;
         let mut tx = state.db.begin().await?;
-        let require = Require::new(action, order.subject(), name, user.id, order.status.as_str())
-            .payload(payload);
+        let require = Require::new(
+            action,
+            order.subject(),
+            name,
+            user.id,
+            order.status.as_str(),
+        )
+        .payload(payload);
         return match approvals::require_in(&mut tx, &require).await? {
             Required::Pending(request) => {
                 tx.commit().await?;
@@ -147,13 +157,19 @@ async fn amended(state: &AppState, change: &OrderChange) -> Result {
         .await?;
     if let Err(error) = crate::credit::check_after_amend(state, order.id, detail.value_before).await
     {
-        eprintln!("sales: credit check of order {} failed: {error}", order.number);
+        eprintln!(
+            "sales: credit check of order {} failed: {error}",
+            order.number
+        );
     }
     let order = SalesOrder::find_or_404(&state.db, change.order_id).await?;
     if !detail.no_money
         && let Err(error) = crate::settle::amendment(state, &order, change, &detail).await
     {
-        eprintln!("sales: the money of the amendment of order {} failed: {error}", order.number);
+        eprintln!(
+            "sales: the money of the amendment of order {} failed: {error}",
+            order.number
+        );
     }
     order_notices::order_revised(state, &order, &detail).await
 }
@@ -180,7 +196,10 @@ async fn cancelled(state: &AppState, change: &OrderChange) -> Result {
             .await?;
     }
     if let Err(error) = crate::settle::cancellation(state, &order, change, &detail).await {
-        eprintln!("sales: the money of the cancellation of order {} failed: {error}", order.number);
+        eprintln!(
+            "sales: the money of the cancellation of order {} failed: {error}",
+            order.number
+        );
     }
     order_notices::lines_cancelled(state, &order, &detail).await
 }
@@ -202,7 +221,10 @@ async fn order_cancelled(state: &AppState, change: &OrderChange) -> Result {
         })
         .await?;
     if let Err(error) = crate::settle::cancellation(state, &order, change, &detail).await {
-        eprintln!("sales: the money of the cancellation of order {} failed: {error}", order.number);
+        eprintln!(
+            "sales: the money of the cancellation of order {} failed: {error}",
+            order.number
+        );
     }
     Ok(())
 }

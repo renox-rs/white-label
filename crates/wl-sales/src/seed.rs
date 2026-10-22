@@ -355,7 +355,15 @@ pub async fn demo_order_changes(db: &Db, party: i64) -> Result<usize> {
     {
         let placed = total(db, &placed).await?;
         let lines = SaleLine::of(db, &placed.subject()).await?;
-        keep(db, &placed, 1, "Two more meals for the guests", &lines, &[(lines[0].id, 10_000)]).await?;
+        keep(
+            db,
+            &placed,
+            1,
+            "Two more meals for the guests",
+            &lines,
+            &[(lines[0].id, 10_000)],
+        )
+        .await?;
         let detail = AmendDetail {
             revision_before: 1,
             revision_after: 2,
@@ -457,9 +465,15 @@ pub async fn demo_order_changes(db: &Db, party: i64) -> Result<usize> {
                 db,
                 &[
                     ("cancelled_milli", &3_000_i64),
-                    ("cancel_outcome", &Some(LineOutcomeKind::Scrap.as_str().to_owned())),
+                    (
+                        "cancel_outcome",
+                        &Some(LineOutcomeKind::Scrap.as_str().to_owned()),
+                    ),
                     ("cancel_fee", &fee),
-                    ("cancel_reason", &Some("The dessert was prepared and the guests left".to_owned())),
+                    (
+                        "cancel_reason",
+                        &Some("The dessert was prepared and the guests left".to_owned()),
+                    ),
                 ],
             )
             .await?;
@@ -541,8 +555,7 @@ pub async fn demo_order_cancellations(db: &Db, party: i64) -> Result<usize> {
     };
     use crate::sales_orders::external_key;
     use crate::sales_return::{
-        RETURN_SERIES, ReturnKind, ReturnResolution, ReturnStatus, SalesReturn,
-        SalesReturnLine,
+        RETURN_SERIES, ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, SalesReturnLine,
     };
     use wl_kernel::invoicing::VatCategory;
     use wl_kernel::sales::LineOutcomeKind;

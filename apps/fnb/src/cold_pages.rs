@@ -61,7 +61,12 @@ pub fn routes() -> Routes {
 fn kind_options(lang: &Lang) -> Vec<[String; 2]> {
     kind::ALL
         .iter()
-        .map(|k| [(*k).to_owned(), t(lang, &format!("fnb.screen.cold.kind.{k}"))])
+        .map(|k| {
+            [
+                (*k).to_owned(),
+                t(lang, &format!("fnb.screen.cold.kind.{k}")),
+            ]
+        })
         .collect()
 }
 
@@ -130,7 +135,12 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .locations(&state)
         .await?
         .into_iter()
-        .map(|l| [l.location.subject_id.to_string(), format!("{} / {}", l.code, l.name)])
+        .map(|l| {
+            [
+                l.location.subject_id.to_string(),
+                format!("{} / {}", l.code, l.name),
+            ]
+        })
         .collect();
     Ok(View::typed(ColdUnitsPage {
         tx: tx(&lang),
@@ -282,7 +292,12 @@ async fn show(
     }
     let decisions = cold::decision::ALL
         .iter()
-        .map(|d| [(*d).to_owned(), t(&lang, &format!("fnb.screen.cold.decision.{d}"))])
+        .map(|d| {
+            [
+                (*d).to_owned(),
+                t(&lang, &format!("fnb.screen.cold.decision.{d}")),
+            ]
+        })
         .collect();
     Ok(View::typed(ShowColdUnitPage {
         tx: tx(&lang),

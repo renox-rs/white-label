@@ -13,12 +13,12 @@ mod support;
 
 use renox::chrono::TimeDelta;
 use renox::db::now;
+use wl_kernel::Subject;
 use wl_kernel::approvals;
 use wl_kernel::invoicing::InvoiceStatus;
 use wl_kernel::payments::RefundSource;
 use wl_kernel::sales::{FulfilOrder, FulfilledLine, SalesOrderId, order_fulfilment};
 use wl_kernel::tickets::Assignee;
-use wl_kernel::Subject;
 use wl_sales::order_change::{
     OrderSettlement, SETTLE_CREDIT_NOTE, SETTLE_DRAFT_UPDATED, SETTLE_EXTRA_INVOICE, SETTLE_LINK,
     SETTLE_REFUND, STATUS_EXPIRED, STATUS_OPEN, STATUS_PAID, STATUS_REVERTED,
@@ -42,7 +42,12 @@ async fn bill(t: &support::Booted, order: &SalesOrder, invoice: i64) {
 }
 
 /// Tries to hand over `quantity_milli` of the first line of `order`.
-async fn try_hand_over(t: &support::Booted, order: &SalesOrder, quantity_milli: i64, n: i64) -> bool {
+async fn try_hand_over(
+    t: &support::Booted,
+    order: &SalesOrder,
+    quantity_milli: i64,
+    n: i64,
+) -> bool {
     let line = lines(t, order).await.remove(0);
     order_fulfilment(t.state())
         .fulfil(
@@ -87,7 +92,11 @@ async fn a_prepaid_increase_sends_a_payment_link_for_the_difference() {
     let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
     assert_eq!(steps.len(), 1);
     assert_eq!(
-        (steps[0].kind.as_str(), steps[0].status.as_str(), steps[0].amount),
+        (
+            steps[0].kind.as_str(),
+            steps[0].status.as_str(),
+            steps[0].amount
+        ),
         (SETTLE_LINK, STATUS_OPEN, 6_000)
     );
     assert_eq!(steps[0].link_path.as_deref(), Some("/pay/link-2"));
@@ -153,7 +162,10 @@ async fn an_unpaid_link_gives_the_outlet_manager_a_task_and_amend_back_removes_t
         .await
         .assert_status(303);
     let link = c.gateway.links().last().cloned().unwrap();
-    assert!(link.expires_at <= now() + TimeDelta::minutes(16), "the website window");
+    assert!(
+        link.expires_at <= now() + TimeDelta::minutes(16),
+        "the website window"
+    );
     let before = c.gateway.links().len();
 
     // Fifteen minutes pass without a payment.
@@ -186,7 +198,10 @@ async fn an_unpaid_link_gives_the_outlet_manager_a_task_and_amend_back_removes_t
 
     // Amend back: revision 3 at AED 200, nothing charged or refunded.
     t.app
-        .post(&format!("/sales-orders/{}/amend-back", order.id), &[("x", "")])
+        .post(
+            &format!("/sales-orders/{}/amend-back", order.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     let back = reload(&t, order.id).await;
@@ -217,7 +232,10 @@ async fn resending_the_link_makes_a_new_link_for_the_same_amount() {
         .unwrap();
 
     t.app
-        .post(&format!("/sales-orders/{}/resend-link", order.id), &[("x", "")])
+        .post(
+            &format!("/sales-orders/{}/resend-link", order.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
 
@@ -230,7 +248,10 @@ async fn resending_the_link_makes_a_new_link_for_the_same_amount() {
     assert_eq!(c.mail.of_type(LINK_NOTICE).len(), 2);
     // Nothing to resend once the link is open: the page offers nothing.
     t.app
-        .post(&format!("/sales-orders/{}/resend-link", order.id), &[("x", "")])
+        .post(
+            &format!("/sales-orders/{}/resend-link", order.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(422);
 }
@@ -316,7 +337,9 @@ async fn nothing_is_refunded_before_the_approval() {
     let request = waiting(&t, &order).await.remove(0);
 
     let mia = manager(&t).await;
-    approvals::approve(t.state(), request.id, &mia, "").await.unwrap();
+    approvals::approve(t.state(), request.id, &mia, "")
+        .await
+        .unwrap();
 
     let refunds = c.gateway.refunds();
     assert_eq!(refunds.len(), 1);
@@ -355,9 +378,15 @@ async fn an_issued_invoice_is_corrected_by_a_credit_note_and_never_edited() {
     assert_eq!(credits.len(), 1);
     assert_eq!(credits[0].0, 101);
     assert_eq!(credits[0].1.len(), 1);
-    assert_eq!((credits[0].1[0].invoice_line, credits[0].1[0].net), (1, 40_000));
+    assert_eq!(
+        (credits[0].1[0].invoice_line, credits[0].1[0].net),
+        (1, 40_000)
+    );
     assert_eq!(credits[0].2, "order amended");
-    assert!(c.ledger.updates().is_empty(), "an issued invoice is never edited");
+    assert!(
+        c.ledger.updates().is_empty(),
+        "an issued invoice is never edited"
+    );
     assert!(c.ledger.drafts().is_empty());
     let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
     assert_eq!(
@@ -418,5 +447,8 @@ async fn a_draft_invoice_is_updated_to_the_new_revision() {
     assert!(c.ledger.credits().is_empty() && c.ledger.drafts().is_empty());
     let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
     assert_eq!(steps[0].kind, SETTLE_DRAFT_UPDATED);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
 }

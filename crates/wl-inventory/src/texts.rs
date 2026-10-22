@@ -1015,7 +1015,8 @@ mod tests {
             .iter()
             .chain(SCREEN_TEXTS)
             .chain(STOCK_TEXTS)
-            .chain(DISPATCH_TEXTS) {
+            .chain(DISPATCH_TEXTS)
+        {
             assert!(key.starts_with("wl_inventory."), "{key}");
             assert!(seen.insert(*key), "{key} twice");
         }

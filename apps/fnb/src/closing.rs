@@ -127,11 +127,7 @@ impl DailyClosing {
     /// # Errors
     ///
     /// Database errors.
-    pub async fn of_day(
-        db: &Db,
-        outlet_id: i64,
-        date: NaiveDate,
-    ) -> Result<Option<DailyClosing>> {
+    pub async fn of_day(db: &Db, outlet_id: i64, date: NaiveDate) -> Result<Option<DailyClosing>> {
         DailyClosing::query()
             .where_(DailyClosing::OUTLET_ID.eq(outlet_id))
             .where_(DailyClosing::BUSINESS_DATE.eq(date))
@@ -360,6 +356,9 @@ mod tests {
             machine.find(SUBMIT).unwrap().guard_names(),
             ["checklist_done", "cash_counted", "cutoff_passed"]
         );
-        assert_eq!(machine.find(SUBMIT).unwrap().from_states(), ["open", "reopened"]);
+        assert_eq!(
+            machine.find(SUBMIT).unwrap().from_states(),
+            ["open", "reopened"]
+        );
     }
 }

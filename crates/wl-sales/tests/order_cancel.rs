@@ -73,11 +73,18 @@ async fn cancelling_a_started_order_waits_for_a_manager_and_changes_nothing() {
         .assert_ok()
         .assert_see("Cancel the order");
 
-    cancel(&t, &order, &[(outcome.as_str(), "scrap"), (fee.as_str(), "0")])
-        .await
-        .assert_status(303);
+    cancel(
+        &t,
+        &order,
+        &[(outcome.as_str(), "scrap"), (fee.as_str(), "0")],
+    )
+    .await
+    .assert_status(303);
 
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
     let requests = waiting(&t, &order).await;
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].action, "sales.order_cancel");
@@ -94,9 +101,13 @@ async fn the_approval_cancels_the_order_refunds_it_all_and_carries_the_outcome()
     c.started.mark(items[0].id);
     let outcome = format!("line_{}_outcome", items[0].id);
     let fee = format!("line_{}_fee", items[0].id);
-    cancel(&t, &order, &[(outcome.as_str(), "scrap"), (fee.as_str(), "0")])
-        .await
-        .assert_status(303);
+    cancel(
+        &t,
+        &order,
+        &[(outcome.as_str(), "scrap"), (fee.as_str(), "0")],
+    )
+    .await
+    .assert_status(303);
     let request = waiting(&t, &order).await.remove(0);
 
     let mia = manager(&t).await;
@@ -122,7 +133,10 @@ async fn the_approval_cancels_the_order_refunds_it_all_and_carries_the_outcome()
     let after = lines(&t, &done).await;
     assert_eq!(after[0].cancel_outcome.as_deref(), Some("scrap"));
     assert_eq!(after[1].cancel_outcome, None);
-    assert_eq!((after[0].cancelled_milli, after[1].cancelled_milli), (1_000, 1_000));
+    assert_eq!(
+        (after[0].cancelled_milli, after[1].cancelled_milli),
+        (1_000, 1_000)
+    );
 }
 
 /// AC3: Given fee 10% on line 1, the refund is AED 112 and a fee document of
@@ -161,11 +175,23 @@ async fn a_ten_percent_fee_is_kept_from_the_refund_and_billed_on_a_fee_document(
     assert_eq!(refunds.len(), 1);
     assert_eq!(refunds[0].0.amount, 11_200);
     let drafts = c.ledger.drafts();
-    assert_eq!(drafts.len(), 1, "only the fee is billed, not the cancelled order");
+    assert_eq!(
+        drafts.len(),
+        1,
+        "only the fee is billed, not the cancelled order"
+    );
     assert_eq!(drafts[0].1.lines[0].gross(), 800);
     let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
-    assert!(steps.iter().any(|s| s.kind == SETTLE_REFUND && s.amount == 11_200));
-    assert!(steps.iter().any(|s| s.kind == SETTLE_FEE_INVOICE && s.amount == 800));
+    assert!(
+        steps
+            .iter()
+            .any(|s| s.kind == SETTLE_REFUND && s.amount == 11_200)
+    );
+    assert!(
+        steps
+            .iter()
+            .any(|s| s.kind == SETTLE_FEE_INVOICE && s.amount == 800)
+    );
     let events = c.cancelled.lock().unwrap().clone();
     assert_eq!(events[0].outcomes[0].fee, 800);
 }
@@ -187,7 +213,10 @@ async fn the_requester_cannot_approve_the_cancellation() {
             .is_err()
     );
 
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
     // A second request of the same kind waits behind the first.
     cancel(&t, &order, &[(outcome.as_str(), "return_to_stock")])
         .await
@@ -205,7 +234,10 @@ async fn a_small_paid_order_with_nothing_started_is_cancelled_at_once_and_refund
     cancel(&t, &order, &[]).await.assert_status(303);
 
     assert!(waiting(&t, &order).await.is_empty());
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Cancelled);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
     let refunds = c.gateway.refunds();
     assert_eq!(refunds.len(), 1);
     assert_eq!(refunds[0].0.amount, 3_000);
@@ -223,7 +255,10 @@ async fn a_paid_order_above_the_limit_needs_a_manager_even_when_nothing_started(
     cancel(&t, &order, &[]).await.assert_status(303);
 
     assert_eq!(waiting(&t, &order).await.len(), 1);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
     assert!(c.cancelled.lock().unwrap().is_empty());
 }
 
@@ -235,7 +270,10 @@ async fn the_limit_is_a_setting_of_the_client() {
     t.app.acting_as(&clerk(&t).await);
     let order = place(&t, &c, "phone", "online", &[("meal", "1", "120.00")]).await;
     cancel(&t, &order, &[]).await.assert_status(303);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Cancelled);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
 }
 
 /// Edge: an order on account with nothing started is cancelled at once with
@@ -246,7 +284,10 @@ async fn an_unpaid_order_with_nothing_started_is_cancelled_at_once() {
 
     cancel(&t, &order, &[]).await.assert_status(303);
 
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Cancelled);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
     assert!(c.gateway.refunds().is_empty());
     assert_eq!(c.cancelled.lock().unwrap().len(), 1);
 }
@@ -256,7 +297,10 @@ async fn an_unpaid_order_with_nothing_started_is_cancelled_at_once() {
 async fn a_blank_reason_is_refused() {
     let (t, _c, order, _items, _sam) = world("on_account").await;
     t.app
-        .post(&format!("/sales-orders/{}/cancel", order.id), &[("reason", "")])
+        .post(
+            &format!("/sales-orders/{}/cancel", order.id),
+            &[("reason", "")],
+        )
         .await
         .assert_status(422);
 }
@@ -271,7 +315,10 @@ async fn cancel_is_not_offered_once_something_was_handed_over() {
 
     cancel(&t, &partly, &[]).await.assert_status(422);
 
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::PartiallyFulfilled);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::PartiallyFulfilled
+    );
     assert!(c.cancelled.lock().unwrap().is_empty());
     // The page says why and points to the remaining lines; the generic
     // transition route cannot run `cancel` either.
@@ -295,10 +342,8 @@ async fn cancel_is_not_offered_once_something_was_handed_over() {
 /// leaves the order alone.
 #[renox::test]
 async fn a_started_line_needs_an_offered_outcome_and_a_rejection_changes_nothing() {
-    let (t, c) = boot_changes_with(
-        WlSales::new().cancel_outcomes(&["return_to_stock", "scrap"]),
-    )
-    .await;
+    let (t, c) =
+        boot_changes_with(WlSales::new().cancel_outcomes(&["return_to_stock", "scrap"])).await;
     t.app.acting_as(&clerk(&t).await);
     let order = place(
         &t,
@@ -326,7 +371,10 @@ async fn a_started_line_needs_an_offered_outcome_and_a_rejection_changes_nothing
     approvals::reject(t.state(), request.id, &mia, "Keep it")
         .await
         .unwrap();
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
     assert!(c.gateway.refunds().is_empty());
     assert!(c.cancelled.lock().unwrap().is_empty());
 }

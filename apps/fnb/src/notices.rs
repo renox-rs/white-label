@@ -32,7 +32,11 @@ pub fn customer_notice_type() -> NotificationTypeDef {
         .group(notify::GROUP_TRACKING)
         .category(Category::Transactional)
         .give_up(&[GiveUpReaction::None])
-        .channels(&[NotifyChannel::Sms, NotifyChannel::Whatsapp, NotifyChannel::Email])
+        .channels(&[
+            NotifyChannel::Sms,
+            NotifyChannel::Whatsapp,
+            NotifyChannel::Email,
+        ])
         .template(
             NotifyChannel::Email,
             "en",
@@ -112,7 +116,9 @@ pub(crate) async fn tell_managers(
 ) -> Result<Vec<i64>> {
     let holders = match order.outlet_id {
         Some(id) => match Outlet::find(&state.db, id).await? {
-            Some(outlet) => users_with_permission_in(&state.db, permission, &outlet.scope()).await?,
+            Some(outlet) => {
+                users_with_permission_in(&state.db, permission, &outlet.scope()).await?
+            }
             None => renox::auth::permissions::users_with_permission(&state.db, permission).await?,
         },
         None => renox::auth::permissions::users_with_permission(&state.db, permission).await?,

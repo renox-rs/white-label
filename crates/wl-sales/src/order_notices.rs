@@ -6,9 +6,9 @@
 
 use renox::prelude::*;
 use renox::serde_json::json;
+use wl_kernel::COMPANY_ADMIN_ROLE;
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::role_tasks::{self, RoleTask};
-use wl_kernel::COMPANY_ADMIN_ROLE;
 
 use crate::amend::AmendDetail;
 use crate::cancel_lines::CancelDetail;

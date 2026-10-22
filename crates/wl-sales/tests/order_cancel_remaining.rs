@@ -24,17 +24,17 @@ use support::changes::{
 /// A `partially_fulfilled` order of party 7: line 1 (2 × AED 20) handed over,
 /// line 2 (3 × AED 10) and line 3 (1 × AED 5) open. `mode` is `on_account` or
 /// `online` (paid in full: AED 75).
-async fn world(
-    t: &Booted,
-    c: &Changes,
-    mode: &str,
-) -> (SalesOrder, Vec<SaleLine>) {
+async fn world(t: &Booted, c: &Changes, mode: &str) -> (SalesOrder, Vec<SaleLine>) {
     let order = place(
         t,
         c,
         "phone",
         mode,
-        &[("tee", "2", "20.00"), ("cap", "3", "10.00"), ("pin", "1", "5.00")],
+        &[
+            ("tee", "2", "20.00"),
+            ("cap", "3", "10.00"),
+            ("pin", "1", "5.00"),
+        ],
     )
     .await;
     let items = lines(t, &order).await;
@@ -97,7 +97,10 @@ async fn the_remaining_lines_are_cancelled_and_the_order_is_fulfilled() {
     assert_eq!(after[1].open_milli(), 0);
     let events = c.line_cancelled.lock().unwrap().clone();
     assert_eq!(events.len(), 1);
-    assert_eq!((events[0].line, events[0].quantity_milli), (items[1].id, 3_000));
+    assert_eq!(
+        (events[0].line, events[0].quantity_milli),
+        (items[1].id, 3_000)
+    );
     assert_eq!(events[0].reason, "the guests left");
     assert_eq!((events[0].outcome, events[0].fee), (None, 0));
     // The invoice bills what was handed over only.
@@ -148,19 +151,33 @@ async fn a_started_line_needs_an_outcome_and_a_manager() {
         reload(&t, order.id).await.status,
         SalesOrderStatus::PartiallyFulfilled
     );
-    assert!(lines(&t, &order).await.iter().all(|l| l.cancelled_milli == 0));
+    assert!(
+        lines(&t, &order)
+            .await
+            .iter()
+            .all(|l| l.cancelled_milli == 0)
+    );
     let request = waiting(&t, &order).await.remove(0);
     assert_eq!(request.action, "sales.order_cancel_remaining");
     assert_eq!(request.requester_id, sam.id);
-    assert!(approvals::approve(t.state(), request.id, &sam, "").await.is_err());
+    assert!(
+        approvals::approve(t.state(), request.id, &sam, "")
+            .await
+            .is_err()
+    );
 
     let mia = manager(&t).await;
-    approvals::approve(t.state(), request.id, &mia, "").await.unwrap();
+    approvals::approve(t.state(), request.id, &mia, "")
+        .await
+        .unwrap();
 
     let done = reload(&t, order.id).await;
     assert_eq!(done.status, SalesOrderStatus::Fulfilled);
     let after = lines(&t, &done).await;
-    assert_eq!((after[1].cancelled_milli, after[2].cancelled_milli), (3_000, 1_000));
+    assert_eq!(
+        (after[1].cancelled_milli, after[2].cancelled_milli),
+        (3_000, 1_000)
+    );
     assert_eq!(after[1].cancel_outcome.as_deref(), Some("return_to_stock"));
     assert_eq!(after[2].cancel_outcome, None);
     let events = c.line_cancelled.lock().unwrap().clone();
@@ -196,7 +213,9 @@ async fn fees_are_kept_from_the_refund_and_a_waived_fee_is_not() {
         .assert_status(303);
     let request = waiting(&t, &order).await.remove(0);
     let mia = manager(&t).await;
-    approvals::approve(t.state(), request.id, &mia, "").await.unwrap();
+    approvals::approve(t.state(), request.id, &mia, "")
+        .await
+        .unwrap();
 
     // Line 2: share AED 30, fee 10% = AED 3. Line 3: share AED 5, fee waived.
     let refunds = c.gateway.refunds();
@@ -237,7 +256,12 @@ async fn a_rejected_request_leaves_the_order_as_it_was() {
         reload(&t, order.id).await.status,
         SalesOrderStatus::PartiallyFulfilled
     );
-    assert!(lines(&t, &order).await.iter().all(|l| l.cancelled_milli == 0));
+    assert!(
+        lines(&t, &order)
+            .await
+            .iter()
+            .all(|l| l.cancelled_milli == 0)
+    );
     assert!(c.gateway.refunds().is_empty());
     assert!(c.line_cancelled.lock().unwrap().is_empty());
 }
@@ -259,11 +283,18 @@ async fn a_request_whose_order_moved_while_it_waited_fails() {
     hand_over(&t, &order, &items[2], 1_000, 2).await;
 
     let mia = manager(&t).await;
-    approvals::approve(t.state(), request.id, &mia, "").await.unwrap();
+    approvals::approve(t.state(), request.id, &mia, "")
+        .await
+        .unwrap();
 
     let now_order = reload(&t, order.id).await;
     assert_eq!(now_order.status, SalesOrderStatus::PartiallyFulfilled);
-    assert!(lines(&t, &now_order).await.iter().all(|l| l.cancelled_milli == 0));
+    assert!(
+        lines(&t, &now_order)
+            .await
+            .iter()
+            .all(|l| l.cancelled_milli == 0)
+    );
     assert!(c.line_cancelled.lock().unwrap().is_empty());
 }
 
@@ -282,7 +313,10 @@ async fn nothing_handed_over_means_the_whole_order_is_cancelled_instead() {
         .assert_see("cancel the order instead")
         .assert_dont_see("cancel-order-remaining");
     cancel_rest(&t, &order, &[]).await.assert_status(422);
-    assert_eq!(reload(&t, order.id).await.status, SalesOrderStatus::Confirmed);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Confirmed
+    );
 }
 
 /// Edge: only a holder of `sales_orders.cancel` cancels the remaining lines.

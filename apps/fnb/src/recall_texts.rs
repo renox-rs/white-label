@@ -5,8 +5,14 @@
 /// Every text of the recall trace.
 pub(crate) const RECALL_TEXTS: &[(&str, &str)] = &[
     // Toasts.
-    ("fnb.recall.notified", "The customers are told: one notice each."),
-    ("fnb.recall.decided", "The decision on the public notice is recorded."),
+    (
+        "fnb.recall.notified",
+        "The customers are told: one notice each.",
+    ),
+    (
+        "fnb.recall.decided",
+        "The decision on the public notice is recorded.",
+    ),
     // What the lines are waived with.
     (
         "fnb.recall.waive_no_contact",
@@ -21,15 +27,24 @@ pub(crate) const RECALL_TEXTS: &[(&str, &str)] = &[
         "fnb.recall.problem.nobody_to_tell",
         "Every customer of this recall is told or waived already.",
     ),
-    ("fnb.recall.problem.decision", "Choose a public notice or no public notice."),
-    ("fnb.recall.problem.decided", "The decision on the public notice is already recorded."),
+    (
+        "fnb.recall.problem.decision",
+        "Choose a public notice or no public notice.",
+    ),
+    (
+        "fnb.recall.problem.decided",
+        "The decision on the public notice is already recorded.",
+    ),
     (
         "fnb.recall.problem.note",
         "Write why no public notice is published: the sales without a known customer are waived with it.",
     ),
     // The notice to the customer: no product, no lot.
     ("fnb.recall.label", "Food safety notice"),
-    ("fnb.recall.subject", "Food safety notice from {{ company }}"),
+    (
+        "fnb.recall.subject",
+        "Food safety notice from {{ company }}",
+    ),
     (
         "fnb.recall.body",
         "{{ company }}: a supplier recalled an ingredient we used in our food. Your order {{ orders }} ({{ days }}) may be affected. Please do not eat any food left from it and contact us.",
@@ -43,7 +58,10 @@ pub(crate) const RECALL_TEXTS: &[(&str, &str)] = &[
         "fnb.recall.task_body",
         "Recall {{ number }} reached sales without a known customer (aggregators and the counter). Decide whether a public notice is published and tell the aggregators; record the decision on the recall page. {{ link }}",
     ),
-    ("fnb.recall.task_closed", "Decision recorded: {{ decision }}"),
+    (
+        "fnb.recall.task_closed",
+        "Decision recorded: {{ decision }}",
+    ),
     (
         "fnb.recall.authority_title",
         "Recall {{ number }}: notify the authority",
@@ -66,20 +84,29 @@ pub(crate) const RECALL_TEXTS: &[(&str, &str)] = &[
         "Each customer gets one message listing all their possible orders, by SMS or e-mail. A customer whose account is closed is waived.",
     ),
     ("fnb.screen.recall.public", "Public notice"),
-    ("fnb.screen.recall.public_title", "Public notice and the aggregators"),
+    (
+        "fnb.screen.recall.public_title",
+        "Public notice and the aggregators",
+    ),
     (
         "fnb.screen.recall.public_description",
         "The customers of the aggregators and of the counter are not known, so they are not messaged. Decide whether a public notice is published and tell the aggregators.",
     ),
     ("fnb.screen.recall.public_submit", "Record the decision"),
     ("fnb.screen.recall.decision", "Decision"),
-    ("fnb.screen.recall.aggregators_told", "The aggregators are told"),
+    (
+        "fnb.screen.recall.aggregators_told",
+        "The aggregators are told",
+    ),
     (
         "fnb.screen.recall.note_hint",
         "Needed when no public notice is published.",
     ),
     ("fnb.screen.recall.report", "Export the recall report"),
-    ("fnb.screen.recall.decision_title", "Decision on the public notice"),
+    (
+        "fnb.screen.recall.decision_title",
+        "Decision on the public notice",
+    ),
     ("fnb.screen.recall.decided_at", "Decided"),
     ("fnb.screen.recall.customers", "Customers of direct orders"),
     ("fnb.screen.recall.customer", "Customer"),
@@ -91,12 +118,18 @@ pub(crate) const RECALL_TEXTS: &[(&str, &str)] = &[
         "fnb.screen.recall.no_customers_text",
         "No order of a known customer was made while the lot was on hand at an outlet.",
     ),
-    ("fnb.screen.recall.unknown", "Sales without a known customer"),
+    (
+        "fnb.screen.recall.unknown",
+        "Sales without a known customer",
+    ),
     ("fnb.screen.recall.outlet", "Outlet"),
     ("fnb.screen.recall.day", "Day"),
     ("fnb.screen.recall.sales", "Sales"),
     ("fnb.screen.recall.channels", "Channels"),
-    ("fnb.screen.recall.no_unknown", "No sale without a known customer"),
+    (
+        "fnb.screen.recall.no_unknown",
+        "No sale without a known customer",
+    ),
     (
         "fnb.screen.recall.no_unknown_text",
         "No aggregator or counter sale was made while the lot was on hand at an outlet.",
@@ -109,8 +142,14 @@ pub(crate) const RECALL_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.recall.mark.confirmed", "Confirmed"),
     ("fnb.screen.recall.mark.uncertain", "Lot uncertain"),
     ("fnb.screen.recall.mark.possible", "Possible"),
-    ("fnb.screen.recall.decision.public_notice", "Public notice published, aggregators told"),
-    ("fnb.screen.recall.decision.no_public_notice", "No public notice"),
+    (
+        "fnb.screen.recall.decision.public_notice",
+        "Public notice published, aggregators told",
+    ),
+    (
+        "fnb.screen.recall.decision.no_public_notice",
+        "No public notice",
+    ),
     (
         "fnb.screen.recall.note_possible",
         "Sales consume ingredients by recipe without recording which lot went into the food, so an order is only ever possible: its outlet had the recalled lot, or a batch made from it, on hand at the time of the order.",

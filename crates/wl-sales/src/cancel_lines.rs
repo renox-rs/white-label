@@ -299,10 +299,16 @@ pub fn plan(
         ),
     };
     if !state_ok {
-        first(&mut problem, english("wl_sales.cancelling.problem.state", &[]));
+        first(
+            &mut problem,
+            english("wl_sales.cancelling.problem.state", &[]),
+        );
     }
     if input.ask.reason.is_empty() {
-        first(&mut problem, english("wl_sales.cancelling.problem.reason", &[]));
+        first(
+            &mut problem,
+            english("wl_sales.cancelling.problem.reason", &[]),
+        );
     }
     let items: Vec<&SaleLine> = lines.iter().filter(|l| l.kind == KIND_ITEM).collect();
     // The quantity asked of each line.
@@ -319,7 +325,10 @@ pub fn plan(
                         if wanted.quantity_milli <= 0
                             || wanted.quantity_milli > line.open_milli() =>
                     {
-                        first(&mut problem, english("wl_sales.orders.problem.quantity", &[]));
+                        first(
+                            &mut problem,
+                            english("wl_sales.orders.problem.quantity", &[]),
+                        );
                     }
                     Some(line) => chosen.push((line, wanted, wanted.quantity_milli)),
                 }
@@ -333,13 +342,19 @@ pub fn plan(
                 chosen.push((line, wanted.unwrap_or(&BLANK), line.open_milli()));
             }
             if chosen.is_empty() {
-                first(&mut problem, english("wl_sales.cancelling.problem.nothing_open", &[]));
+                first(
+                    &mut problem,
+                    english("wl_sales.cancelling.problem.nothing_open", &[]),
+                );
             }
         }
         CancelKind::Order => {
             // Nothing handed over: `cancel_remaining` is for the rest.
             if items.iter().any(|l| l.fulfilled_milli > 0) {
-                first(&mut problem, english("wl_sales.cancelling.problem.fulfilled", &[]));
+                first(
+                    &mut problem,
+                    english("wl_sales.cancelling.problem.fulfilled", &[]),
+                );
             }
             for line in items.iter().copied().filter(|l| l.open_milli() > 0) {
                 let wanted = ask.lines.iter().find(|w| w.line == line.id);
@@ -363,7 +378,10 @@ pub fn plan(
             match wanted.outcome {
                 None => first(
                     &mut problem,
-                    english("wl_sales.cancelling.problem.outcome", &[("position", &position)]),
+                    english(
+                        "wl_sales.cancelling.problem.outcome",
+                        &[("position", &position)],
+                    ),
                 ),
                 Some(kind) if !facts.offered.iter().any(|o| o == kind.as_str()) => first(
                     &mut problem,
@@ -381,7 +399,10 @@ pub fn plan(
                 if fee < 0 || fee > share {
                     first(
                         &mut problem,
-                        english("wl_sales.cancelling.problem.fee", &[("position", &position)]),
+                        english(
+                            "wl_sales.cancelling.problem.fee",
+                            &[("position", &position)],
+                        ),
                     );
                 } else {
                     cancelled.fee = fee;
@@ -501,7 +522,13 @@ fn rules(
 pub(crate) fn transitions() -> Vec<Transition<SalesOrder>> {
     use SalesOrderStatus::{Confirmed, Fulfilled, PartiallyFulfilled};
     let table = [
-        (CANCEL_LINE, Confirmed, Confirmed, CancelKind::Line, "Cancel a line"),
+        (
+            CANCEL_LINE,
+            Confirmed,
+            Confirmed,
+            CancelKind::Line,
+            "Cancel a line",
+        ),
         (
             CANCEL_LINE_PARTLY,
             PartiallyFulfilled,
@@ -1130,7 +1157,10 @@ mod tests {
         assert_eq!(paid.problem, None);
         assert!(paid.approval && !paid.complete);
         assert_eq!(paid.lines.len(), 2);
-        assert_eq!(transition_for(&paid, SalesOrderStatus::Confirmed), CANCEL_ORDER);
+        assert_eq!(
+            transition_for(&paid, SalesOrderStatus::Confirmed),
+            CANCEL_ORDER
+        );
         f.paid = 3_000;
         let small = plan(
             &order(SalesOrderStatus::Confirmed),
@@ -1186,7 +1216,11 @@ mod tests {
         let machine = SalesOrder::machine();
         for (name, from, to) in [
             (CANCEL_LINE, "confirmed", "confirmed"),
-            (CANCEL_LINE_PARTLY, "partially_fulfilled", "partially_fulfilled"),
+            (
+                CANCEL_LINE_PARTLY,
+                "partially_fulfilled",
+                "partially_fulfilled",
+            ),
             (CANCEL_LINE_LAST, "partially_fulfilled", "fulfilled"),
             (CANCEL_REMAINING, "partially_fulfilled", "fulfilled"),
         ] {

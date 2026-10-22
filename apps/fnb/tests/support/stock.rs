@@ -207,7 +207,13 @@ pub async fn plan(w: &World, k: &Kitchen) -> ProductionBatch {
 }
 
 /// `POST /batches/{id}/start` as `by` picking `lot` for the only ingredient.
-pub async fn start(w: &World, by: &User, k: &Kitchen, batch: &ProductionBatch, lot: &Lot) -> TestResponse {
+pub async fn start(
+    w: &World,
+    by: &User,
+    k: &Kitchen,
+    batch: &ProductionBatch,
+    lot: &Lot,
+) -> TestResponse {
     let name = format!("lot_{}", k.line.id);
     let id = lot.id.to_string();
     w.post(
@@ -238,7 +244,9 @@ pub async fn finish(
 
 /// `batch`, as stored now.
 pub async fn reload(w: &World, batch: &ProductionBatch) -> ProductionBatch {
-    ProductionBatch::find_or_404(w.db(), batch.id).await.unwrap()
+    ProductionBatch::find_or_404(w.db(), batch.id)
+        .await
+        .unwrap()
 }
 
 /// `lot`, as stored now.

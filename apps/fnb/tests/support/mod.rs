@@ -17,9 +17,9 @@ use renox::chrono::{NaiveDate, TimeDelta};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
+use wl_delivery::permissions as dperm;
 use wl_delivery::reasons::FailureReason;
 use wl_delivery::{Delivery, NewRun, PerishableAction, Run, VehicleType, WlDelivery, seed};
-use wl_delivery::permissions as dperm;
 use wl_inventory::item::value_of;
 use wl_inventory::movement::StockMovement;
 use wl_inventory::{Item, Location, WlInventory};
@@ -639,13 +639,9 @@ impl World {
         .assert_status(303);
         if mode == "online" {
             let submitted = SalesOrder::find_or_404(self.db(), sales.id).await.unwrap();
-            wl_sales::sales_orders::confirm_payment(
-                self.state(),
-                sales.id,
-                submitted.gross_total,
-            )
-            .await
-            .expect("the gateway confirmed the payment");
+            wl_sales::sales_orders::confirm_payment(self.state(), sales.id, submitted.gross_total)
+                .await
+                .expect("the gateway confirmed the payment");
         }
         let order = FnbOrder::of_sales_order(self.db(), sales.id)
             .await
@@ -656,7 +652,14 @@ impl World {
             &format!("/orders/{}/details", order.id),
             &[
                 // An aggregator's rider collects at the pass.
-                ("kind", if channel.starts_with("aggregator") { "pickup" } else { "delivery" }),
+                (
+                    "kind",
+                    if channel.starts_with("aggregator") {
+                        "pickup"
+                    } else {
+                        "delivery"
+                    },
+                ),
                 ("recipient_name", "Mariam Al Hosani"),
                 ("recipient_phone", "+971500000000"),
                 ("address", "Villa 12, Al Barsha 2"),
@@ -877,7 +880,10 @@ impl World {
         self.post(
             &self.rider,
             &format!("/driver/stops/{}/discard", delivery.id),
-            &[("reason", "Spoilt in the heat"), ("photo", "discard-photo-1")],
+            &[
+                ("reason", "Spoilt in the heat"),
+                ("photo", "discard-photo-1"),
+            ],
         )
         .await
     }

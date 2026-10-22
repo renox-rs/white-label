@@ -141,7 +141,9 @@ async fn open_task(state: &AppState, order: &FnbOrder, minutes: i64, now: DateTi
         ],
     ))
     .due_at(now);
-    let ticket = role_tasks::open(state, task).await?.map(|opened| opened.id.0);
+    let ticket = role_tasks::open(state, task)
+        .await?
+        .map(|opened| opened.id.0);
     let at = Some(renox::db::now());
     FnbOrder::query()
         .where_(FnbOrder::ID.eq(order.id))

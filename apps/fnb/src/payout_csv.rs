@@ -163,9 +163,8 @@ pub fn parse(content: &str, preset: &ImportPreset) -> Result<Vec<ParsedLine>, St
     let mut lines = Vec::new();
     for (i, row) in body.iter().enumerate() {
         let number = i64::try_from(i + 1).unwrap_or(i64::MAX);
-        let cell = |at: Option<usize>| -> &str {
-            at.and_then(|at| row.get(at)).map_or("", |f| f.trim())
-        };
+        let cell =
+            |at: Option<usize>| -> &str { at.and_then(|at| row.get(at)).map_or("", |f| f.trim()) };
         let order_number = cell(Some(order_at)).to_owned();
         if order_number.is_empty() {
             return Err(format!("Line {number} has no order number."));
@@ -261,7 +260,11 @@ mod tests {
     fn the_net_is_worked_out_when_the_file_has_no_net_column() {
         let mut preset = preset();
         preset.net_column = String::new();
-        let lines = parse("Order ID,Gross,Commission,Promo,Refund\nX,100,15,5,10\n", &preset).unwrap();
+        let lines = parse(
+            "Order ID,Gross,Commission,Promo,Refund\nX,100,15,5,10\n",
+            &preset,
+        )
+        .unwrap();
         assert_eq!(lines[0].net, 7_000);
     }
 }

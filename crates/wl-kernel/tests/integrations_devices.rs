@@ -153,9 +153,12 @@ async fn world() -> World {
     let notices = Notices::default();
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(
-        App::new().module(Auth::new()).module(Permissions).module(Kitchen {
-            notices: notices.clone(),
-        }),
+        App::new()
+            .module(Auth::new())
+            .module(Permissions)
+            .module(Kitchen {
+                notices: notices.clone(),
+            }),
         config,
     )
     .expect("the kernel applies");
@@ -168,7 +171,9 @@ async fn world() -> World {
     app.fake_events();
     let db = app.db();
     permissions::define_role(db, "admin", &[]).await.unwrap();
-    permissions::define_role(db, "outlet_manager", &[]).await.unwrap();
+    permissions::define_role(db, "outlet_manager", &[])
+        .await
+        .unwrap();
     permissions::define_role(
         db,
         "integrations_manager",
@@ -316,7 +321,10 @@ async fn a_missed_heartbeat_degrades_the_device_and_n_minutes_of_silence_take_it
     assert_eq!(degraded.status, ConnectionStatus::Degraded);
     assert_eq!(degraded.failed_since, Some(heard));
     assert!(degraded.last_error.unwrap_or_default().contains(MARINA));
-    assert_eq!(w.changes(MARINA), [("up".to_owned(), "degraded".to_owned())]);
+    assert_eq!(
+        w.changes(MARINA),
+        [("up".to_owned(), "degraded".to_owned())]
+    );
 
     // 12:05:00: N minutes of silence from the last heartbeat.
     w.tick(60 * 3).await;
@@ -462,7 +470,11 @@ async fn a_group_is_down_only_when_no_device_answers() {
             .expect("the task runs");
     }
     let group = w.connection(JBR).await;
-    assert_eq!(group.status, ConnectionStatus::Degraded, "one device answers");
+    assert_eq!(
+        group.status,
+        ConnectionStatus::Degraded,
+        "one device answers"
+    );
     assert_eq!(
         group.failed_since,
         Some(w.last_heartbeat(JBR, "kds-1").await),
@@ -552,7 +564,10 @@ async fn the_admin_sets_the_heartbeat_interval_window_and_grouping() {
     assert_eq!(ok.status.as_u16(), 303, "{}", ok.text());
     let saved = w.connection(MARINA).await;
     assert_eq!(saved.heartbeat_seconds, 120);
-    assert_eq!((saved.window_start, saved.window_end), (Some(600), Some(1380)));
+    assert_eq!(
+        (saved.window_start, saved.window_end),
+        (Some(600), Some(1380))
+    );
     assert_eq!(saved.down_after_minutes, 8);
     assert!(saved.grouped);
 
@@ -582,7 +597,11 @@ async fn the_interval_decides_when_a_heartbeat_is_missed() {
         .assert_status(303);
     w.beat(MARINA, None).await;
     w.tick(120).await;
-    assert_eq!(w.status(MARINA).await, ConnectionStatus::Up, "2 minutes < 3");
+    assert_eq!(
+        w.status(MARINA).await,
+        ConnectionStatus::Up,
+        "2 minutes < 3"
+    );
     w.tick(61).await;
     assert_eq!(w.status(MARINA).await, ConnectionStatus::Degraded);
 }
@@ -597,7 +616,10 @@ async fn a_device_sends_its_heartbeat_with_its_own_permission() {
     assert_eq!(w.status(MARINA).await, ConnectionStatus::Down);
 
     w.app.acting_as(&w.viewer);
-    let denied = w.app.post(&format!("/devices/{MARINA}/heartbeat"), &[("x", "")]).await;
+    let denied = w
+        .app
+        .post(&format!("/devices/{MARINA}/heartbeat"), &[("x", "")])
+        .await;
     assert_eq!(denied.status.as_u16(), 403, "{}", denied.text());
 
     w.app.acting_as(&w.device);

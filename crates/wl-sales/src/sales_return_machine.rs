@@ -183,7 +183,11 @@ async fn move_refunded(
     delta: i64,
     capped: bool,
 ) -> Result {
-    let cap = if capped { " AND refunded_amount + ? <= gross_total" } else { "" };
+    let cap = if capped {
+        " AND refunded_amount + ? <= gross_total"
+    } else {
+        ""
+    };
     let query = renox::db::sql(format!(
         "UPDATE {} SET refunded_amount = refunded_amount + ?, updated_at = ? \
          WHERE id = ? AND refunded_amount + ? >= 0{cap}",
@@ -262,12 +266,15 @@ fn resolving(
                 })
             },
         )
-        .guard("channel_refund_on_an_aggregator_order", |_r: &SalesReturn, ctx| {
-            let wrong = ctx.input_as::<ResolveInput>().is_ok_and(|i| {
-                i.resolution == Some(ReturnResolution::RefundedByChannel) && i.not_aggregator
-            });
-            Box::pin(async move { check(!wrong, "wl_sales.returns.problem.channel_order") })
-        })
+        .guard(
+            "channel_refund_on_an_aggregator_order",
+            |_r: &SalesReturn, ctx| {
+                let wrong = ctx.input_as::<ResolveInput>().is_ok_and(|i| {
+                    i.resolution == Some(ReturnResolution::RefundedByChannel) && i.not_aggregator
+                });
+                Box::pin(async move { check(!wrong, "wl_sales.returns.problem.channel_order") })
+            },
+        )
         .guard("credit_note_named", |_r: &SalesReturn, ctx| {
             let input = ctx.input_as::<ResolveInput>().ok();
             Box::pin(async move {
@@ -284,16 +291,17 @@ fn resolving(
             Box::pin(async move { problem.map_or(Ok(()), Err) })
         })
         .guard("approved_above_the_limit", move |_r: &SalesReturn, ctx| {
-            let waits = user && ctx.input_as::<ResolveInput>().is_ok_and(|i| i.needs_approval);
+            let waits = user
+                && ctx
+                    .input_as::<ResolveInput>()
+                    .is_ok_and(|i| i.needs_approval);
             Box::pin(async move { check(!waits, "wl_sales.returns.problem.needs_approval") })
         })
         .guard("channel_refund_only", move |_r: &SalesReturn, ctx| {
             let wrong = channel_only
-                && ctx
-                    .input_as::<ResolveInput>()
-                    .is_ok_and(|i| {
-                        i.resolution != Some(ReturnResolution::RefundedByChannel) && !i.by_vertical
-                    });
+                && ctx.input_as::<ResolveInput>().is_ok_and(|i| {
+                    i.resolution != Some(ReturnResolution::RefundedByChannel) && !i.by_vertical
+                });
             Box::pin(async move { check(!wrong, "wl_sales.returns.problem.channel_only") })
         })
         .effect(|r: &SalesReturn, ctx, tx| {

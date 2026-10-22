@@ -26,9 +26,7 @@ use serde::Serialize;
 
 use crate::money::parse_dirhams;
 use crate::pages::{Fields, Texts, field, tx};
-use crate::payout::{
-    ImportPreset, PayoutLine, PayoutStatement, PayoutStatus, line_state,
-};
+use crate::payout::{ImportPreset, PayoutLine, PayoutStatement, PayoutStatus, line_state};
 use crate::payouts::{
     self, CATEGORIES, ImportAsk, LateOrderAsk, PARTIES, differences, unmatched_amount,
 };
@@ -41,10 +39,7 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
         "fnb/payouts.html",
         include_str!("../views/fnb/payouts.html"),
     ),
-    (
-        "fnb/payout.html",
-        include_str!("../views/fnb/payout.html"),
-    ),
+    ("fnb/payout.html", include_str!("../views/fnb/payout.html")),
 ];
 
 /// The routes.
@@ -82,7 +77,10 @@ fn status_kind(status: PayoutStatus) -> &'static str {
 
 /// The word of a status.
 fn status_word(lang: &Lang, status: PayoutStatus) -> String {
-    t(lang, &format!("fnb.screen.payout.status.{}", status.as_str()))
+    t(
+        lang,
+        &format!("fnb.screen.payout.status.{}", status.as_str()),
+    )
 }
 
 /// Whether a form field is ticked.
@@ -346,9 +344,12 @@ async fn show(
         });
     }
     let unmatched = i64::try_from(raw.iter().filter(|l| l.is_unmatched()).count()).unwrap_or(0);
-    let without_party =
-        i64::try_from(raw.iter().filter(|l| l.is_refund() && l.party.is_none()).count())
-            .unwrap_or(0);
+    let without_party = i64::try_from(
+        raw.iter()
+            .filter(|l| l.is_refund() && l.party.is_none())
+            .count(),
+    )
+    .unwrap_or(0);
     let mut notes = Vec::new();
     if statement.status == PayoutStatus::Imported {
         if unmatched > 0 {
@@ -371,8 +372,7 @@ async fn show(
         });
     }
     let actions = statement.available(&user, &state.db).await?;
-    let void_action =
-        wl_kernel::voids::web::action_for(&statement.subject(), &actions, &lang);
+    let void_action = wl_kernel::voids::web::action_for(&statement.subject(), &actions, &lang);
     let can_match = manager && statement.status == PayoutStatus::Imported;
     let disputable: Vec<LineView> = lines.iter().filter(|l| !l.disputed).cloned().collect();
     let reversible: Vec<LineView> = lines

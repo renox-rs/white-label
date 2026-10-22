@@ -22,8 +22,7 @@ use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::PartyId;
 use wl_kernel::notify::NotifyChannel;
 use wl_kernel::sales::{
-    OrderView, SalesOrderConfirmed, SalesOrderId, SalesOrderPlaced, SalesOrderRejected,
-    order_desk,
+    OrderView, SalesOrderConfirmed, SalesOrderId, SalesOrderPlaced, SalesOrderRejected, order_desk,
 };
 
 use crate::catalogue::{MenuItem, Outlet};

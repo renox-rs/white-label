@@ -430,7 +430,8 @@ impl WlSales {
     /// The channels whose orders are changed on the channel's own system, so
     /// `amend` is not offered (§7, default: the aggregators).
     pub fn aggregator_channels(mut self, channels: &[&str]) -> Self {
-        self.config.aggregator_channels = channels.iter().map(|c| c.trim().to_lowercase()).collect();
+        self.config.aggregator_channels =
+            channels.iter().map(|c| c.trim().to_lowercase()).collect();
         self
     }
 
@@ -505,8 +506,7 @@ impl WlSales {
     /// The responsible parties of a *no goods* return (stored names; default
     /// business, driver_or_rider, aggregator, supplier, customer).
     pub fn responsible_parties(mut self, parties: &[&str]) -> Self {
-        self.config.responsible_parties =
-            parties.iter().map(|c| c.trim().to_lowercase()).collect();
+        self.config.responsible_parties = parties.iter().map(|c| c.trim().to_lowercase()).collect();
         self
     }
 

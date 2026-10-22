@@ -59,7 +59,10 @@ async fn open_review(w: &World, delivery: &Delivery) {
     )
     .await
     .assert_ok();
-    assert_eq!(w.delivery(delivery).await.status, DeliveryStatus::UnderReview);
+    assert_eq!(
+        w.delivery(delivery).await.status,
+        DeliveryStatus::UnderReview
+    );
 }
 
 /// The kitchen manager asks to reverse the delivery and the second one
@@ -123,7 +126,11 @@ async fn reversing_the_delivery_of_a_prepaid_order_refunds_it_in_full_and_it_sta
     reverse(&w, &delivery).await;
 
     let after = w.reload(&order).await;
-    assert_eq!(after.status, FnbOrderStatus::Completed, "never reopened or cancelled");
+    assert_eq!(
+        after.status,
+        FnbOrderStatus::Completed,
+        "never reopened or cancelled"
+    );
     assert_eq!(after.refund_decision, None);
     let returns = returns_of(&w, &after).await;
     assert_eq!(returns.len(), 1);
@@ -136,19 +143,19 @@ async fn reversing_the_delivery_of_a_prepaid_order_refunds_it_in_full_and_it_sta
     assert_eq!(ret.complaint_category.as_deref(), Some("other"));
     assert!(ret.reason.contains("not delivered"));
     // No second approval: the kitchen manager's reversal counts.
-    let waiting = ApprovalRequest::pending_about(
-        w.db(),
-        &Subject::new(SALES_RETURN_SUBJECT_TYPE, ret.id),
-    )
-    .await
-    .unwrap();
+    let waiting =
+        ApprovalRequest::pending_about(w.db(), &Subject::new(SALES_RETURN_SUBJECT_TYPE, ret.id))
+            .await
+            .unwrap();
     assert!(waiting.is_empty());
     // AED 95.00 is asked of wl-payments, and the order's amount refunded is
     // the whole amount.
     let refunds = refunds_of(&w, &after).await;
     assert_eq!(refunds.len(), 1);
     assert_eq!(refunds[0].amount, 9_500);
-    let sales = SalesOrder::find_or_404(w.db(), after.sales_order_id).await.unwrap();
+    let sales = SalesOrder::find_or_404(w.db(), after.sales_order_id)
+        .await
+        .unwrap();
     assert_eq!(sales.refunded_amount, 9_500);
     // The order remembers the return.
     assert_eq!(after.reversal_return_id, Some(ret.id));
@@ -190,7 +197,9 @@ async fn reversing_cash_nobody_handed_over_is_a_credit_note_and_leaves_the_rider
     assert_eq!(after.reversal_resolution.as_deref(), Some("credit_note"));
     // No refund payment; the amount due is cleared.
     assert!(refunds_of(&w, &after).await.is_empty());
-    let sales = SalesOrder::find_or_404(w.db(), after.sales_order_id).await.unwrap();
+    let sales = SalesOrder::find_or_404(w.db(), after.sales_order_id)
+        .await
+        .unwrap();
     assert_eq!(sales.refunded_amount, 7_000);
     // The cash left the rider's expected cash.
     let handover = custody(w.state())
@@ -216,13 +225,18 @@ async fn an_upheld_review_raises_no_return() {
     .await
     .assert_ok();
 
-    assert_eq!(w.delivery(&delivery).await.status, DeliveryStatus::Delivered);
+    assert_eq!(
+        w.delivery(&delivery).await.status,
+        DeliveryStatus::Delivered
+    );
     let after = w.reload(&order).await;
     assert_eq!(after.status, FnbOrderStatus::Completed);
     assert!(returns_of(&w, &after).await.is_empty());
     assert!(refunds_of(&w, &after).await.is_empty());
     assert_eq!(after.reversal_return_id, None);
-    let sales = SalesOrder::find_or_404(w.db(), after.sales_order_id).await.unwrap();
+    let sales = SalesOrder::find_or_404(w.db(), after.sales_order_id)
+        .await
+        .unwrap();
     assert_eq!(sales.refunded_amount, 0);
 }
 
@@ -248,7 +262,9 @@ async fn the_rider_cannot_open_or_approve_the_reversal() {
     w.post(&w.rider, &approve, &[("cash_treatment", "")])
         .await
         .assert_forbidden();
-    let own = w.post(&w.manager, &approve, &[("cash_treatment", "")]).await;
+    let own = w
+        .post(&w.manager, &approve, &[("cash_treatment", "")])
+        .await;
     assert_ne!(own.status.as_u16(), 200);
     assert!(returns_of(&w, &order).await.is_empty());
     assert!(refunds_of(&w, &order).await.is_empty());

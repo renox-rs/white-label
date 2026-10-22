@@ -79,7 +79,10 @@ async fn a_quantity_increase_makes_revision_two_keeps_revision_one_and_passes_th
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].order.0, order.id);
     assert_eq!(events[0].revision, 2);
-    assert_eq!((events[0].value_before, events[0].value_after), (400_000, 480_000));
+    assert_eq!(
+        (events[0].value_before, events[0].value_after),
+        (400_000, 480_000)
+    );
     assert_eq!(
         (
             events[0].lines[0].quantity_before_milli,
@@ -110,12 +113,11 @@ async fn an_increase_over_the_credit_limit_puts_the_order_on_hold_and_tells_the_
     assert_eq!(now.status, SalesOrderStatus::CreditHold);
     assert_eq!(now.held_from.as_deref(), Some("confirmed"));
     assert_eq!(c.mail.of_type(CREDIT_HOLD).len(), 1);
-    assert!(
-        c.desk
-            .opened()
-            .iter()
-            .any(|task| task.source_key.as_deref().is_some_and(|k| k.starts_with("sales.credit_hold")))
-    );
+    assert!(c.desk.opened().iter().any(|task| {
+        task.source_key
+            .as_deref()
+            .is_some_and(|k| k.starts_with("sales.credit_hold"))
+    }));
 }
 
 /// AC3: Given a reduction to AED 3,600, no credit check runs.
@@ -174,7 +176,10 @@ async fn after_fulfilment_started_a_manager_other_than_the_requester_approves_th
         .unwrap();
 
     let done = reload(&t, order.id).await;
-    assert_eq!((done.revision, done.status), (2, SalesOrderStatus::Confirmed));
+    assert_eq!(
+        (done.revision, done.status),
+        (2, SalesOrderStatus::Confirmed)
+    );
     assert_eq!(lines(&t, &done).await[0].quantity_milli, 12_000);
     assert_eq!(c.amended.lock().unwrap().len(), 1);
     assert!(waiting(&t, &done).await.is_empty());
@@ -334,7 +339,10 @@ async fn the_second_of_two_amendments_on_the_same_revision_is_refused() {
         .assert_status(422);
 
     let now = reload(&t, order.id).await;
-    assert_eq!((now.revision, lines(&t, &now).await[0].quantity_milli), (2, 12_000));
+    assert_eq!(
+        (now.revision, lines(&t, &now).await[0].quantity_milli),
+        (2, 12_000)
+    );
 }
 
 /// Edge: an amendment may add a line; amending while on credit hold keeps the
@@ -354,12 +362,19 @@ async fn a_line_is_added_an_order_on_hold_stays_on_hold_and_the_guards_hold() {
         &t,
         &held,
         "A dessert",
-        &[("add_item", "dessert"), ("add_quantity", "2"), ("add_price", "10.00")],
+        &[
+            ("add_item", "dessert"),
+            ("add_quantity", "2"),
+            ("add_price", "10.00"),
+        ],
     )
     .await
     .assert_status(303);
     let now = reload(&t, order.id).await;
-    assert_eq!((now.revision, now.status), (3, SalesOrderStatus::CreditHold));
+    assert_eq!(
+        (now.revision, now.status),
+        (3, SalesOrderStatus::CreditHold)
+    );
     assert_eq!(lines(&t, &now).await.len(), 2);
     assert_eq!(now.gross_total, 482_000);
     assert_eq!(c.amended.lock().unwrap().len(), 2);

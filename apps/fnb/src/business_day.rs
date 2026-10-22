@@ -70,10 +70,22 @@ mod tests {
     #[test]
     fn an_order_before_the_cut_off_belongs_to_the_day_before() {
         let day = |text: &str| NaiveDate::parse_from_str(text, "%Y-%m-%d").unwrap();
-        assert_eq!(business_date_at(dubai("2026-10-16 01:30"), 240), day("2026-10-15"));
-        assert_eq!(business_date_at(dubai("2026-10-16 03:59"), 240), day("2026-10-15"));
-        assert_eq!(business_date_at(dubai("2026-10-16 04:00"), 240), day("2026-10-16"));
-        assert_eq!(business_date_at(dubai("2026-10-15 21:00"), 240), day("2026-10-15"));
+        assert_eq!(
+            business_date_at(dubai("2026-10-16 01:30"), 240),
+            day("2026-10-15")
+        );
+        assert_eq!(
+            business_date_at(dubai("2026-10-16 03:59"), 240),
+            day("2026-10-15")
+        );
+        assert_eq!(
+            business_date_at(dubai("2026-10-16 04:00"), 240),
+            day("2026-10-16")
+        );
+        assert_eq!(
+            business_date_at(dubai("2026-10-15 21:00"), 240),
+            day("2026-10-15")
+        );
     }
 
     #[test]

@@ -29,9 +29,7 @@ use crate::catalogue::{Brand, DEFAULT_PROMISE_MINUTES};
 use crate::consumption;
 use crate::notices::tell_customer;
 use crate::order::{FnbOrder, FnbOrderStatus};
-use crate::order_machine::{
-    COMPLETE, COMPLETE_SYSTEM, DISPATCH, DISPATCH_SYSTEM, OrderInput,
-};
+use crate::order_machine::{COMPLETE, COMPLETE_SYSTEM, DISPATCH, DISPATCH_SYSTEM, OrderInput};
 use crate::texts::english;
 
 /// The subject type of the sale line a delivery line is copied from.
@@ -83,7 +81,11 @@ pub(crate) async fn request_delivery(state: &AppState, id: i64) -> Result {
         // What is still open: a line cancelled or replaced is not paid for.
         request = request.collect(crate::changes::open_total(&view));
     }
-    for line in view.lines.iter().filter(|l| l.is_item && l.open_milli() > 0) {
+    for line in view
+        .lines
+        .iter()
+        .filter(|l| l.is_item && l.open_milli() > 0)
+    {
         // The amount of the open part of the line, so that cash on delivery
         // collects the accepted lines only when one is refused at the door.
         let worth = if line.quantity_milli > 0 {
@@ -181,17 +183,16 @@ pub(crate) async fn on_handed_over(state: &AppState, event: RunHandedOver) -> Re
 }
 
 /// `DeliveryOutForDelivery`: the run left with the order's delivery.
-pub(crate) async fn on_out_for_delivery(
-    state: &AppState,
-    event: DeliveryOutForDelivery,
-) -> Result {
+pub(crate) async fn on_out_for_delivery(state: &AppState, event: DeliveryOutForDelivery) -> Result {
     let Some(order) = order_of_delivery(state, &event.source, event.delivery).await? else {
         return Ok(());
     };
     if order.status != FnbOrderStatus::Ready {
         eprintln!(
             "fnb: delivery {} left but order {} is {}: ignored",
-            event.delivery, order.number, order.status.as_str()
+            event.delivery,
+            order.number,
+            order.status.as_str()
         );
         return Ok(());
     }
@@ -215,7 +216,9 @@ pub(crate) async fn on_delivered(state: &AppState, event: DeliveryDelivered) -> 
     ) {
         eprintln!(
             "fnb: delivery {} was delivered but order {} is {}: ignored",
-            event.delivery, order.number, order.status.as_str()
+            event.delivery,
+            order.number,
+            order.status.as_str()
         );
         return Ok(());
     }

@@ -118,8 +118,13 @@ pub const DEFAULT_COMPLAINT_CATEGORIES: &[&str] = &[
 ];
 
 /// The responsible parties of a *no goods* return (§7).
-pub const DEFAULT_RESPONSIBLE_PARTIES: &[&str] =
-    &["business", "driver_or_rider", "aggregator", "supplier", "customer"];
+pub const DEFAULT_RESPONSIBLE_PARTIES: &[&str] = &[
+    "business",
+    "driver_or_rider",
+    "aggregator",
+    "supplier",
+    "customer",
+];
 
 /// The outcomes a cancellation after fulfilment started may choose from,
 /// before the vertical narrows them (§7).

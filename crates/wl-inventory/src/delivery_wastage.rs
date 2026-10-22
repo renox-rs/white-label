@@ -38,10 +38,7 @@ pub const MOVEMENT_SUBJECT_TYPE: &str = "inventory.stock_movement";
 pub struct InventoryWastage;
 
 /// The recipe of each line of `request` that has one, with the quantity.
-async fn recipes(
-    state: &AppState,
-    request: &DiscardWastage,
-) -> Result<Vec<(SaleLineStock, i64)>> {
+async fn recipes(state: &AppState, request: &DiscardWastage) -> Result<Vec<(SaleLineStock, i64)>> {
     let source = sale_line_stock(state);
     let mut found = Vec::new();
     for line in &request.lines {

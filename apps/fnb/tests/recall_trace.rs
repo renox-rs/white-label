@@ -87,7 +87,9 @@ async fn story(w: &World) -> Story {
     let t7 = lot(w, &k.tomato, "T7", &k.central, 30_000, 20).await;
     let batch = plan(w, &k).await;
     start(w, &k.chef, &k, &batch, &t7).await.assert_status(303);
-    finish(w, &k.chef, &batch, "10", 10).await.assert_status(303);
+    finish(w, &k.chef, &batch, "10", 10)
+        .await
+        .assert_status(303);
     let l20 = made_lot(w, &batch).await;
     // 6 kg of B2's lot go to Outlet 1.
     let mover = make_user(w.db(), "Tariq", &[iperm::STOCK_TRANSFER, iperm::STOCK_VIEW]).await;
@@ -106,8 +108,10 @@ async fn story(w: &World) -> Story {
     )
     .await
     .unwrap();
-    w.post(&mover, &format!("/transfers/{}/send", transfer.id), &[]).await;
-    w.post(&mover, &format!("/transfers/{}/receive", transfer.id), &[]).await;
+    w.post(&mover, &format!("/transfers/{}/send", transfer.id), &[])
+        .await;
+    w.post(&mover, &format!("/transfers/{}/receive", transfer.id), &[])
+        .await;
 
     let c = w.customer("Customer C").await;
     let d = w.customer("Customer D").await;
@@ -126,7 +130,10 @@ async fn story(w: &World) -> Story {
         }
     }
     // The sauce is used up at Outlet 1 on the last day.
-    for (place, left) in wl_inventory::balance::lot_locations(w.db(), l20.id).await.unwrap() {
+    for (place, left) in wl_inventory::balance::lot_locations(w.db(), l20.id)
+        .await
+        .unwrap()
+    {
         if place == w.store.id {
             let mut gone = StockMovement::leaving(
                 MovementType::Wastage,
@@ -150,7 +157,10 @@ async fn story(w: &World) -> Story {
         "/recalls",
         &[
             ("source", "supplier"),
-            ("reason", "The supplier found contamination in tomato lot T7"),
+            (
+                "reason",
+                "The supplier found contamination in tomato lot T7",
+            ),
             ("items", items.as_str()),
             ("lot_numbers", "T7"),
         ],
@@ -185,7 +195,10 @@ async fn a_recall_holds_the_batch_and_lists_the_possible_orders_per_customer() {
     assert_eq!(reload(&w, &s.batch).await.status, BatchStatus::OnHold);
     assert_eq!(made_lot(&w, &s.batch).await.status, LotStatus::OnHold);
     assert_eq!(
-        wl_inventory::Lot::find_or_404(w.db(), s.t7.id).await.unwrap().status,
+        wl_inventory::Lot::find_or_404(w.db(), s.t7.id)
+            .await
+            .unwrap()
+            .status,
         LotStatus::OnHold
     );
 
@@ -220,12 +233,20 @@ async fn aggregator_sales_are_four_groups_and_the_owner_gets_the_decision_task()
     let found = recall::trace(w.state(), s.recall.id).await.unwrap();
     assert_eq!(found.unknown.len(), 4, "one group per outlet and day");
     assert!(found.unknown.iter().all(|g| g.sales == 1));
-    assert!(found.unknown.iter().all(|g| g.channels.contains("aggregator_a")));
+    assert!(
+        found
+            .unknown
+            .iter()
+            .all(|g| g.channels.contains("aggregator_a"))
+    );
     assert!(found.unknown.iter().all(|g| g.notice == "pending"));
     let tasks = w.tickets.opened_with(&recall::public_task_key(s.recall.id));
     assert_eq!(tasks.len(), 1, "the owner gets one decision task");
     assert!(
-        found.customers.iter().all(|g| ["Customer C", "Customer D"].contains(&g.name.as_str())),
+        found
+            .customers
+            .iter()
+            .all(|g| ["Customer C", "Customer D"].contains(&g.name.as_str())),
         "no aggregator customer is listed as a customer"
     );
 }
@@ -256,9 +277,16 @@ async fn a_customer_with_two_possible_orders_gets_one_notice() {
         })
         .collect();
     assert_eq!(to_c.len(), 1, "C gets one notice");
-    let orders = to_c[0].data["orders"].as_str().unwrap_or_default().to_owned();
+    let orders = to_c[0].data["orders"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
     for order in &s.c_orders {
-        assert!(orders.contains(&order.number), "{orders} lists {}", order.number);
+        assert!(
+            orders.contains(&order.number),
+            "{orders} lists {}",
+            order.number
+        );
     }
     for request in &sent {
         assert!(request.recipients.iter().all(|r| matches!(
@@ -267,10 +295,10 @@ async fn a_customer_with_two_possible_orders_gets_one_notice() {
         )));
     }
     let after = recall::trace(w.state(), s.recall.id).await.unwrap();
-    assert!(after
-        .customers
-        .iter()
-        .all(|g| g.notice() == "sent"), "every line of a told customer is sent");
+    assert!(
+        after.customers.iter().all(|g| g.notice() == "sent"),
+        "every line of a told customer is sent"
+    );
     assert_eq!(after.notices.len(), 2);
     // Telling again has nobody left to tell.
     w.post(
@@ -295,9 +323,13 @@ async fn the_owner_decides_the_public_notice_and_the_lines_are_settled() {
     w.get(&s.k.manager, &format!("/recalls/{}/orders", s.recall.id))
         .await
         .assert_ok();
-    w.post(&s.k.manager, &path, &[("decision", "no_public_notice"), ("note", "x")])
-        .await
-        .assert_status(403);
+    w.post(
+        &s.k.manager,
+        &path,
+        &[("decision", "no_public_notice"), ("note", "x")],
+    )
+    .await
+    .assert_status(403);
     // No public notice needs the owner's reason.
     w.post(&s.k.owner, &path, &[("decision", "no_public_notice")])
         .await
@@ -373,12 +405,11 @@ async fn the_recall_page_of_the_stock_module_links_to_the_customers_page() {
     let w = boot_recall().await;
     let s = story(&w).await;
 
-    let page = w
-        .get(&s.k.chef, &format!("/recalls/{}", s.recall.id))
-        .await;
+    let page = w.get(&s.k.chef, &format!("/recalls/{}", s.recall.id)).await;
     page.assert_ok();
     assert!(
-        page.text().contains(&format!("/recalls/{}/orders", s.recall.id)),
+        page.text()
+            .contains(&format!("/recalls/{}/orders", s.recall.id)),
         "{}",
         page.text()
     );
@@ -412,6 +443,9 @@ async fn a_completed_order_consumes_its_recipe_only_when_the_setting_is_on() {
         .get(on.db())
         .await
         .unwrap();
-    assert!(!movements.is_empty(), "the recipe is consumed, theoretically");
+    assert!(
+        !movements.is_empty(),
+        "the recipe is consumed, theoretically"
+    );
     assert!(on.reload(&done).await.consumption_posted);
 }

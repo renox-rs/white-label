@@ -61,7 +61,7 @@ use crate::config::config_of;
 use crate::order_change::{
     OrderChange, OrderRevision, OrderSettlement, SETTLE_CREDIT_NOTE, SETTLE_DRAFT_UPDATED,
     SETTLE_EXTRA_INVOICE, SETTLE_FEE_INVOICE, SETTLE_LINK, SETTLE_REFUND, STATUS_DONE,
-    STATUS_EXPIRED, STATUS_FAILED, STATUS_OPEN, STATUS_PAID, STATUS_RESENT, STATUS_REQUESTED,
+    STATUS_EXPIRED, STATUS_FAILED, STATUS_OPEN, STATUS_PAID, STATUS_REQUESTED, STATUS_RESENT,
     STATUS_REVERTED,
 };
 use crate::order_notices;
@@ -127,7 +127,10 @@ async fn failed(
     amount: i64,
     why: &str,
 ) -> Result<OrderSettlement> {
-    eprintln!("sales: order {}: {kind} of {amount} failed: {why}", order.number);
+    eprintln!(
+        "sales: order {}: {kind} of {amount} failed: {why}",
+        order.number
+    );
     OrderSettlement::create(
         &state.db,
         OrderSettlement {
@@ -160,12 +163,7 @@ fn invoice_draft(order: &SalesOrder, lines: &[SaleLine]) -> InvoiceDraft {
 }
 
 /// The net of `quantity_milli` of an item at `unit_price` less `discount`.
-fn net_of(
-    quantity_milli: i64,
-    unit_price: i64,
-    discount: i64,
-    category: VatCategory,
-) -> i64 {
+fn net_of(quantity_milli: i64, unit_price: i64, discount: i64, category: VatCategory) -> i64 {
     DraftLine::new("", unit_price, category)
         .quantity_milli(quantity_milli)
         .discount(discount)
@@ -232,7 +230,15 @@ async fn amendment_invoice(
             .update_draft(&state.db, id, invoice_draft(order, lines))
             .await?;
         let status = if done { STATUS_DONE } else { STATUS_FAILED };
-        let row = store(state, order, Some(change.id), SETTLE_DRAFT_UPDATED, 0, status).await?;
+        let row = store(
+            state,
+            order,
+            Some(change.id),
+            SETTLE_DRAFT_UPDATED,
+            0,
+            status,
+        )
+        .await?;
         OrderSettlement::query()
             .where_(OrderSettlement::ID.eq(row.id))
             .update(&state.db, &[("reference_id", &Some(invoice))])
@@ -246,12 +252,14 @@ async fn amendment_invoice(
     let mut extra: Vec<DraftLine> = Vec::new();
     let mut extra_gross = 0;
     for line in lines.iter().filter(|l| l.kind == KIND_ITEM) {
-        let old = kept
-            .iter()
-            .find(|k| k.line == line.id)
-            .map_or(0, |k| {
-                net_of(k.quantity_milli, k.unit_price, k.discount, line.vat_category)
-            });
+        let old = kept.iter().find(|k| k.line == line.id).map_or(0, |k| {
+            net_of(
+                k.quantity_milli,
+                k.unit_price,
+                k.discount,
+                line.vat_category,
+            )
+        });
         let new = line.net();
         if new < old {
             credits.push(CreditLine::new(line.line_no, old - new));
@@ -261,7 +269,10 @@ async fn amendment_invoice(
                 DraftLine::new(
                     &english(
                         "wl_sales.settle.extra_line",
-                        &[("description", &line.description), ("revision", &order.revision)],
+                        &[
+                            ("description", &line.description),
+                            ("revision", &order.revision),
+                        ],
                     ),
                     new - old,
                     line.vat_category,
@@ -311,8 +322,7 @@ async fn amendment_invoice(
         }
     }
     if !extra.is_empty() {
-        let mut draft =
-            InvoiceDraft::new(order.party(), order.subject()).currency(&order.currency);
+        let mut draft = InvoiceDraft::new(order.party(), order.subject()).currency(&order.currency);
         if let Some(entity) = order.legal_entity_id {
             draft = draft.legal_entity(entity);
         }
@@ -361,7 +371,15 @@ pub(crate) async fn refund(
     by: Option<i64>,
 ) -> Result {
     let Some(entity) = entity_of(state, order).await? else {
-        failed(state, order, change, SETTLE_REFUND, amount, "no legal entity").await?;
+        failed(
+            state,
+            order,
+            change,
+            SETTLE_REFUND,
+            amount,
+            "no legal entity",
+        )
+        .await?;
         return Ok(());
     };
     let request = RefundRequest {
@@ -374,16 +392,35 @@ pub(crate) async fn refund(
         gateway_txn: None,
         reason,
     };
-    match payment_recorder(state).request_refund(state, request, by).await {
+    match payment_recorder(state)
+        .request_refund(state, request, by)
+        .await
+    {
         Ok(id) => {
-            let row = store(state, order, change, SETTLE_REFUND, amount, STATUS_REQUESTED).await?;
+            let row = store(
+                state,
+                order,
+                change,
+                SETTLE_REFUND,
+                amount,
+                STATUS_REQUESTED,
+            )
+            .await?;
             OrderSettlement::query()
                 .where_(OrderSettlement::ID.eq(row.id))
                 .update(&state.db, &[("reference_id", &Some(id.0))])
                 .await?;
         }
         Err(error) => {
-            failed(state, order, change, SETTLE_REFUND, amount, &error.to_string()).await?;
+            failed(
+                state,
+                order,
+                change,
+                SETTLE_REFUND,
+                amount,
+                &error.to_string(),
+            )
+            .await?;
         }
     }
     Ok(())
@@ -459,8 +496,15 @@ async fn open_link(
             Ok(row)
         }
         Err(error) => {
-            let row =
-                failed(state, order, change, SETTLE_LINK, amount, &error.to_string()).await?;
+            let row = failed(
+                state,
+                order,
+                change,
+                SETTLE_LINK,
+                amount,
+                &error.to_string(),
+            )
+            .await?;
             expired_task(state, order, &row).await?;
             Ok(row)
         }
@@ -508,7 +552,11 @@ async fn expired_task(state: &AppState, order: &SalesOrder, link: &OrderSettleme
 /// # Errors
 ///
 /// A database error, or an event listener's.
-pub(crate) async fn on_link_paid(state: &AppState, order: &SalesOrder, amount: i64) -> Result<bool> {
+pub(crate) async fn on_link_paid(
+    state: &AppState,
+    order: &SalesOrder,
+    amount: i64,
+) -> Result<bool> {
     let mut found = None;
     for status in [STATUS_OPEN, STATUS_EXPIRED] {
         found = OrderSettlement::links(&state.db, order.id, status)
@@ -603,7 +651,11 @@ async fn expired_link(state: &AppState, order: &SalesOrder) -> Result<OrderSettl
 ///
 /// 403 without `sales_orders.amend`; 422 when no expired link waits or the
 /// order is no longer open.
-pub async fn resend_link(state: &AppState, user: &AuthUser, order_id: i64) -> Result<OrderSettlement> {
+pub async fn resend_link(
+    state: &AppState,
+    user: &AuthUser,
+    order_id: i64,
+) -> Result<OrderSettlement> {
     if !user.has_permission(crate::permissions::SALES_ORDERS_AMEND) {
         return Err(Error::Forbidden);
     }
@@ -648,8 +700,8 @@ pub async fn amend_back(state: &AppState, user: &AuthUser, order_id: i64) -> Res
     };
     let kept = previous.lines();
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
-    let mut input = AmendInput::new(&english("wl_sales.settle.amend_back_reason", &[]))
-        .seen_at(order.revision);
+    let mut input =
+        AmendInput::new(&english("wl_sales.settle.amend_back_reason", &[])).seen_at(order.revision);
     for line in lines.iter().filter(|l| l.kind == KIND_ITEM) {
         let (quantity, price, discount) = kept.iter().find(|k| k.line == line.id).map_or(
             (
@@ -659,9 +711,7 @@ pub async fn amend_back(state: &AppState, user: &AuthUser, order_id: i64) -> Res
             ),
             |k| (k.quantity_milli, k.unit_price, k.discount),
         );
-        if quantity != line.quantity_milli
-            || price != line.unit_price
-            || discount != line.discount
+        if quantity != line.quantity_milli || price != line.unit_price || discount != line.discount
         {
             input = input.line(line.id, quantity, price, discount);
         }
@@ -742,7 +792,15 @@ async fn cancellation_invoice(
             .update_draft(&state.db, id, invoice_draft(order, lines))
             .await?;
         let status = if done { STATUS_DONE } else { STATUS_FAILED };
-        let row = store(state, order, Some(change.id), SETTLE_DRAFT_UPDATED, 0, status).await?;
+        let row = store(
+            state,
+            order,
+            Some(change.id),
+            SETTLE_DRAFT_UPDATED,
+            0,
+            status,
+        )
+        .await?;
         OrderSettlement::query()
             .where_(OrderSettlement::ID.eq(row.id))
             .update(&state.db, &[("reference_id", &Some(invoice))])

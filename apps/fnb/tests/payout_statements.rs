@@ -64,7 +64,11 @@ async fn importing_a_statement_again_is_refused_and_names_the_existing_one() {
         );
         assert!(again.text().contains(&format!("/payouts/{}", first.id)));
     }
-    assert_eq!(statements(&w).await.len(), 1, "no second statement was made");
+    assert_eq!(
+        statements(&w).await.len(),
+        1,
+        "no second statement was made"
+    );
 }
 
 /// Only a holder of `reconciliation.manage` imports; a reader sees the list.
@@ -74,14 +78,21 @@ async fn only_the_accountant_imports_and_a_reader_only_looks() {
     let s = staff(&w).await;
     let content = file(&["TB-5001,60.00,12.00,0,0,48.00,"]);
 
-    import(&w, &s.reader, "TB-1", &content).await.assert_status(403);
-    import(&w, &w.nobody, "TB-1", &content).await.assert_status(403);
+    import(&w, &s.reader, "TB-1", &content)
+        .await
+        .assert_status(403);
+    import(&w, &w.nobody, "TB-1", &content)
+        .await
+        .assert_status(403);
     assert!(statements(&w).await.is_empty());
 
     import(&w, &s.accountant, "TB-1", &content)
         .await
         .assert_status(303);
-    w.get(&s.reader, "/payouts").await.assert_ok().assert_see("TB-1");
+    w.get(&s.reader, "/payouts")
+        .await
+        .assert_ok()
+        .assert_see("TB-1");
     w.get(&w.nobody, "/payouts").await.assert_status(403);
 }
 
@@ -132,7 +143,10 @@ async fn voiding_a_matched_statement_needs_approval_and_reverses_the_receivable_
         let returns = returns_of(&w, order).await;
         assert_eq!(returns.len(), 1);
         assert_eq!(returns[0].kind, ReturnKind::NoGoods);
-        assert_eq!(returns[0].resolution, Some(ReturnResolution::RefundedByChannel));
+        assert_eq!(
+            returns[0].resolution,
+            Some(ReturnResolution::RefundedByChannel)
+        );
         assert_eq!(returns[0].status, ReturnStatus::Resolved);
         assert_eq!(sales_of(&w, order).await.refunded_amount, amount);
     }
@@ -163,7 +177,10 @@ async fn voiding_a_matched_statement_needs_approval_and_reverses_the_receivable_
     for order in [&first, &second] {
         let returns = returns_of(&w, order).await;
         assert_eq!(returns[0].status, ReturnStatus::Reversed);
-        assert_eq!(returns[0].closing_reason.as_deref(), Some("statement voided"));
+        assert_eq!(
+            returns[0].closing_reason.as_deref(),
+            Some("statement voided")
+        );
         assert_eq!(sales_of(&w, order).await.refunded_amount, 0);
     }
     // The number is kept, never deleted and never given again.
@@ -217,11 +234,18 @@ async fn after_the_void_the_reference_can_be_imported_again_with_a_new_number() 
 async fn a_void_without_a_reason_is_refused() {
     let w = boot_own_riders().await;
     let s = staff(&w).await;
-    import(&w, &s.accountant, "TB-9", &file(&["TB-5001,60.00,12.00,0,0,48.00,"]))
-        .await
-        .assert_status(303);
+    import(
+        &w,
+        &s.accountant,
+        "TB-9",
+        &file(&["TB-5001,60.00,12.00,0,0,48.00,"]),
+    )
+    .await
+    .assert_status(303);
     let st = statement(&w, "TB-9").await;
-    void(&w, &s.accountant, st.id, "   ").await.assert_status(422);
+    void(&w, &s.accountant, st.id, "   ")
+        .await
+        .assert_status(422);
     assert_eq!(reload(&w, &st).await.status, PayoutStatus::Imported);
 }
 
@@ -240,9 +264,13 @@ async fn a_settled_statement_cannot_be_voided() {
     .await
     .assert_status(303);
     let st = statement(&w, "TB-2026-10-W3").await;
-    w.post(&s.accountant, &format!("/payouts/{}/match", st.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &s.accountant,
+        &format!("/payouts/{}/match", st.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     fnb::payouts::settle(w.state(), st.id).await.unwrap();
     assert_eq!(reload(&w, &st).await.status, PayoutStatus::Settled);
 

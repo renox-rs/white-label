@@ -243,7 +243,11 @@ pub async fn turn_on(state: &AppState, user: &AuthUser, party: PartyId) -> Resul
         .where_(CustomerFlag::ID.eq(flag.id))
         .update(
             &state.db,
-            &[("cod_allowed", &true), ("cod_on_at", &now), ("cod_on_by", &by)],
+            &[
+                ("cod_allowed", &true),
+                ("cod_on_at", &now),
+                ("cod_on_by", &by),
+            ],
         )
         .await?;
     CustomerFlag::find_or_404(&state.db, flag.id).await

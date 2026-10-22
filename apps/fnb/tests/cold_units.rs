@@ -19,11 +19,13 @@ use wl_inventory::hold_reminder::{ESCALATION_NOTICE, REMINDER_NOTICE};
 use wl_inventory::item::value_of;
 use wl_inventory::permissions as iperm;
 use wl_inventory::transfer::{NewTransfer, NewTransferLine};
-use wl_inventory::{HoldLineStatus, Item, Location, StockHold, StockHoldLine, StockMovement, WlInventory};
+use wl_inventory::{
+    HoldLineStatus, Item, Location, StockHold, StockHoldLine, StockMovement, WlInventory,
+};
+use wl_kernel::Subject;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::inventory::{ConsumeRequest, stock_service};
 use wl_kernel::notify::NotifyRecipient;
-use wl_kernel::Subject;
 use wl_payments::WlPayments;
 
 use support::stock::{Kitchen, kitchen};
@@ -101,7 +103,12 @@ async fn fridge(w: &World, k: &Kitchen) -> Fridge {
         .await
         .unwrap()
         .expect("the unit is set up");
-    let logger = make_user(w.db(), "Lena", &[perm::TEMPERATURE_LOG, perm::TEMPERATURE_VIEW]).await;
+    let logger = make_user(
+        w.db(),
+        "Lena",
+        &[perm::TEMPERATURE_LOG, perm::TEMPERATURE_VIEW],
+    )
+    .await;
     Fridge {
         unit,
         location,
@@ -112,7 +119,12 @@ async fn fridge(w: &World, k: &Kitchen) -> Fridge {
 }
 
 /// `by` records `degrees` for the unit.
-async fn read(w: &World, by: &User, unit: &ColdUnit, degrees: &str) -> renox::testing::TestResponse {
+async fn read(
+    w: &World,
+    by: &User,
+    unit: &ColdUnit,
+    degrees: &str,
+) -> renox::testing::TestResponse {
     w.post(
         by,
         &format!("/cold-units/{}/readings", unit.id),
@@ -132,7 +144,9 @@ async fn temperature_holds(w: &World) -> Vec<StockHold> {
 }
 
 async fn lines_of(w: &World, hold: &StockHold) -> Vec<StockHoldLine> {
-    wl_inventory::stock_hold::lines_of(w.db(), hold.id).await.unwrap()
+    wl_inventory::stock_hold::lines_of(w.db(), hold.id)
+        .await
+        .unwrap()
 }
 
 /// AC1: given Fridge 2 (at most 5 degrees, location OUT1-F2) with 6 kg of
@@ -148,13 +162,18 @@ async fn a_reading_out_of_range_holds_the_food_and_opens_one_task() {
 
     let holds = temperature_holds(&w).await;
     assert_eq!(holds.len(), 1, "one hold");
-    assert_eq!(holds[0].reference_type.as_deref(), Some("fnb.temperature_reading"));
+    assert_eq!(
+        holds[0].reference_type.as_deref(),
+        Some("fnb.temperature_reading")
+    );
     assert_eq!(holds[0].location_id, Some(f.location.id));
     let lines = lines_of(&w, &holds[0]).await;
     assert_eq!(lines.len(), 2, "chicken and cream");
     let held: i64 = lines.iter().map(|l| l.quantity_milli).sum();
     assert_eq!(held, 8_000);
-    let tasks = w.tickets.opened_with(&format!("fnb.cold_unit:{}", f.unit.id));
+    let tasks = w
+        .tickets
+        .opened_with(&format!("fnb.cold_unit:{}", f.unit.id));
     assert_eq!(tasks.len(), 1, "one equipment task");
     let told = w.notices.users_of_type("fnb.staff_notice");
     assert!(told.contains(&k.chef.id), "the chef is told");
@@ -162,7 +181,10 @@ async fn a_reading_out_of_range_holds_the_food_and_opens_one_task() {
     let unit = ColdUnit::find_or_404(w.db(), f.unit.id).await.unwrap();
     assert_eq!(unit.hold_id, Some(holds[0].id));
     assert!(unit.ticket_number.is_some());
-    let reading = TemperatureReading::of_unit(w.db(), unit.id, 5).await.unwrap().remove(0);
+    let reading = TemperatureReading::of_unit(w.db(), unit.id, 5)
+        .await
+        .unwrap()
+        .remove(0);
     assert!(!reading.in_range);
     assert_eq!(reading.tenths, 90);
     assert_eq!(reading.hold_id, Some(holds[0].id));
@@ -180,8 +202,15 @@ async fn a_second_reading_joins_the_same_hold_and_task() {
 
     let holds = temperature_holds(&w).await;
     assert_eq!(holds.len(), 1, "no second hold");
-    assert_eq!(w.tickets.opened_with(&format!("fnb.cold_unit:{}", f.unit.id)).len(), 1);
-    let readings = TemperatureReading::of_unit(w.db(), f.unit.id, 5).await.unwrap();
+    assert_eq!(
+        w.tickets
+            .opened_with(&format!("fnb.cold_unit:{}", f.unit.id))
+            .len(),
+        1
+    );
+    let readings = TemperatureReading::of_unit(w.db(), f.unit.id, 5)
+        .await
+        .unwrap();
     assert_eq!(readings.len(), 2);
     assert!(readings.iter().all(|r| r.hold_id == Some(holds[0].id)));
 }
@@ -197,7 +226,10 @@ async fn a_reading_in_range_places_no_hold() {
 
     assert!(temperature_holds(&w).await.is_empty());
     assert!(w.tickets.opened().is_empty());
-    let reading = TemperatureReading::of_unit(w.db(), f.unit.id, 5).await.unwrap().remove(0);
+    let reading = TemperatureReading::of_unit(w.db(), f.unit.id, 5)
+        .await
+        .unwrap()
+        .remove(0);
     assert!(reading.in_range);
 }
 
@@ -250,7 +282,8 @@ async fn stock_moved_in_warns_and_joins_the_open_hold() {
     )
     .await
     .unwrap();
-    w.post(&mover, &format!("/transfers/{}/send", transfer.id), &[]).await;
+    w.post(&mover, &format!("/transfers/{}/send", transfer.id), &[])
+        .await;
 
     let warned = w
         .post(&mover, &format!("/transfers/{}/receive", transfer.id), &[])
@@ -270,7 +303,11 @@ async fn stock_moved_in_warns_and_joins_the_open_hold() {
     let holds = temperature_holds(&w).await;
     assert_eq!(holds.len(), 1);
     let lines = lines_of(&w, &holds[0]).await;
-    assert_eq!(lines.len(), 3, "the moved stock is a new line of the same hold");
+    assert_eq!(
+        lines.len(),
+        3,
+        "the moved stock is a new line of the same hold"
+    );
     assert!(lines.iter().any(|l| l.quantity_milli == 3_000));
     assert!(lines.iter().all(|l| l.status == HoldLineStatus::Undecided));
 }
@@ -284,7 +321,10 @@ async fn undecided_lines_remind_the_chef_after_two_hours_and_the_manager_after_f
     permissions::define_role(w.db(), "kitchen_manager", &[perm::TEMPERATURE_VIEW])
         .await
         .unwrap();
-    k.manager.assign_role(w.db(), "kitchen_manager").await.unwrap();
+    k.manager
+        .assign_role(w.db(), "kitchen_manager")
+        .await
+        .unwrap();
     let f = fridge(&w, &k).await;
     read(&w, &f.logger, &f.unit, "9").await.assert_status(303);
     let start = renox::db::now();
@@ -299,7 +339,11 @@ async fn undecided_lines_remind_the_chef_after_two_hours_and_the_manager_after_f
         .unwrap();
     assert_eq!(two.reminders, 1);
     assert_eq!(two.escalations, 0);
-    assert!(w.notices.users_of_type(REMINDER_NOTICE).contains(&k.chef.id));
+    assert!(
+        w.notices
+            .users_of_type(REMINDER_NOTICE)
+            .contains(&k.chef.id)
+    );
     assert!(w.notices.of_type(ESCALATION_NOTICE).is_empty());
 
     let four = wl_inventory::hold_reminder::run(w.state(), start + TimeDelta::minutes(245))
@@ -307,9 +351,11 @@ async fn undecided_lines_remind_the_chef_after_two_hours_and_the_manager_after_f
         .unwrap();
     assert_eq!(four.escalations, 1);
     let escalated = w.notices.of_type(ESCALATION_NOTICE);
-    assert!(escalated.iter().any(|request| request
-        .recipients
-        .contains(&NotifyRecipient::User { id: k.manager.id })));
+    assert!(escalated.iter().any(|request| {
+        request
+            .recipients
+            .contains(&NotifyRecipient::User { id: k.manager.id })
+    }));
 }
 
 /// AC6: the chef releases the cream with reading 9 degrees and 40 minutes
@@ -337,7 +383,10 @@ async fn the_chef_releases_alone_and_a_discard_above_the_limit_needs_the_manager
     .assert_status(303);
     let released = StockHoldLine::find_or_404(w.db(), cream.id).await.unwrap();
     assert_eq!(released.status, HoldLineStatus::Released);
-    let note = HoldDecisionRecord::of_line(w.db(), cream.id).await.unwrap().unwrap();
+    let note = HoldDecisionRecord::of_line(w.db(), cream.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(note.reading_tenths, 90);
     assert_eq!(note.minutes_out, 40);
     assert_eq!(note.decision, "release");
@@ -350,7 +399,9 @@ async fn the_chef_releases_alone_and_a_discard_above_the_limit_needs_the_manager
     )
     .await
     .assert_status(303);
-    let waiting = StockHoldLine::find_or_404(w.db(), chicken.id).await.unwrap();
+    let waiting = StockHoldLine::find_or_404(w.db(), chicken.id)
+        .await
+        .unwrap();
     assert_eq!(waiting.status, HoldLineStatus::Undecided);
     let line_subject = waiting.subject();
     let request = ApprovalRequest::pending_about(w.db(), &line_subject)
@@ -358,12 +409,18 @@ async fn the_chef_releases_alone_and_a_discard_above_the_limit_needs_the_manager
         .unwrap()
         .pop()
         .expect("the discard waits for a second person");
-    assert!(approvals::approve(w.state(), request.id, &k.chef, "").await.is_err());
+    assert!(
+        approvals::approve(w.state(), request.id, &k.chef, "")
+            .await
+            .is_err()
+    );
     approvals::approve(w.state(), request.id, &k.manager, "")
         .await
         .expect("the kitchen manager approves");
 
-    let discarded = StockHoldLine::find_or_404(w.db(), chicken.id).await.unwrap();
+    let discarded = StockHoldLine::find_or_404(w.db(), chicken.id)
+        .await
+        .unwrap();
     assert_eq!(discarded.status, HoldLineStatus::Discarded);
     let wastage: Vec<_> = StockMovement::query()
         .where_(StockMovement::ITEM_ID.eq(f.chicken.id))
@@ -375,7 +432,11 @@ async fn the_chef_releases_alone_and_a_discard_above_the_limit_needs_the_manager
     assert_eq!(wastage[0].quantity_milli, 6_000);
     assert_eq!(wastage[0].value, 24_000);
     let closed = StockHold::find_or_404(w.db(), hold.id).await.unwrap();
-    assert_ne!(closed.status, wl_inventory::stock_hold::HoldStatus::Open, "every line is decided");
+    assert_ne!(
+        closed.status,
+        wl_inventory::stock_hold::HoldStatus::Open,
+        "every line is decided"
+    );
 }
 
 /// A line is not decided without the reading and the minutes out of range, and
@@ -393,18 +454,35 @@ async fn a_line_needs_the_reading_and_the_minutes_and_the_chef() {
     w.post(&k.chef, &path, &[("decision", "release"), ("reading", "9")])
         .await
         .assert_status(422);
-    w.post(&k.chef, &path, &[("decision", "release"), ("minutes", "40")])
-        .await
-        .assert_status(422);
-    w.post(&k.chef, &path, &[("decision", "keep"), ("reading", "9"), ("minutes", "40")])
-        .await
-        .assert_status(422);
-    w.post(&f.logger, &path, &[("decision", "release"), ("reading", "9"), ("minutes", "40")])
-        .await
-        .assert_status(403);
+    w.post(
+        &k.chef,
+        &path,
+        &[("decision", "release"), ("minutes", "40")],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &k.chef,
+        &path,
+        &[("decision", "keep"), ("reading", "9"), ("minutes", "40")],
+    )
+    .await
+    .assert_status(422);
+    w.post(
+        &f.logger,
+        &path,
+        &[("decision", "release"), ("reading", "9"), ("minutes", "40")],
+    )
+    .await
+    .assert_status(403);
     let still = StockHoldLine::find_or_404(w.db(), line.id).await.unwrap();
     assert_eq!(still.status, HoldLineStatus::Undecided);
-    assert!(HoldDecisionRecord::of_line(w.db(), line.id).await.unwrap().is_none());
+    assert!(
+        HoldDecisionRecord::of_line(w.db(), line.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 /// A unit cannot be set up for temperature logs without a stock location, and
@@ -422,9 +500,15 @@ async fn a_unit_needs_a_stock_location_and_a_manager_to_set_it_up() {
         ]
     };
 
-    w.post(&k.manager, "/cold-units", &form("")).await.assert_status(422);
-    w.post(&k.manager, "/cold-units", &form("99999")).await.assert_status(422);
-    w.post(&k.chef, "/cold-units", &form("1")).await.assert_status(403);
+    w.post(&k.manager, "/cold-units", &form(""))
+        .await
+        .assert_status(422);
+    w.post(&k.manager, "/cold-units", &form("99999"))
+        .await
+        .assert_status(422);
+    w.post(&k.chef, "/cold-units", &form("1"))
+        .await
+        .assert_status(403);
     assert!(ColdUnit::query().count(w.db()).await.unwrap() == 0);
 }
 
@@ -438,7 +522,9 @@ async fn only_the_cooks_and_managers_record_a_reading() {
     read(&w, &w.nobody, &f.unit, "4").await.assert_status(403);
     w.get(&w.nobody, "/cold-units").await.assert_status(403);
     w.get(&f.logger, "/cold-units").await.assert_ok();
-    w.get(&f.logger, &format!("/cold-units/{}", f.unit.id)).await.assert_ok();
+    w.get(&f.logger, &format!("/cold-units/{}", f.unit.id))
+        .await
+        .assert_ok();
 }
 
 /// A failed run (the unit's location is gone) is retried and, after the last
@@ -457,7 +543,12 @@ async fn a_reaction_that_keeps_failing_alerts_the_owner() {
         ..ColdUnit::default()
     };
     broken.insert(w.db()).await.unwrap();
-    let cook = make_user(w.db(), "Lena2", &[perm::TEMPERATURE_LOG, perm::TEMPERATURE_VIEW]).await;
+    let cook = make_user(
+        w.db(),
+        "Lena2",
+        &[perm::TEMPERATURE_LOG, perm::TEMPERATURE_VIEW],
+    )
+    .await;
     let _ = &k;
 
     read(&w, &cook, &broken, "9").await.assert_status(303);
@@ -469,7 +560,9 @@ async fn a_reaction_that_keeps_failing_alerts_the_owner() {
             .unwrap();
     }
 
-    let kept = TemperatureReading::of_unit(w.db(), broken.id, 5).await.unwrap();
+    let kept = TemperatureReading::of_unit(w.db(), broken.id, 5)
+        .await
+        .unwrap();
     assert_eq!(kept.len(), 1, "the reading is kept");
     assert!(kept[0].reacted_at.is_none());
     let alerts = wl_kernel::compliance::ComplianceAlert::query()

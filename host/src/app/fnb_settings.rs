@@ -407,7 +407,10 @@ fn open(mut row: Row, item: &str) -> Row {
 }
 
 fn days(list: &[i64]) -> String {
-    list.iter().map(i64::to_string).collect::<Vec<_>>().join("/")
+    list.iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// The connection `key` as registered: its owner role and fallback.
@@ -492,115 +495,361 @@ pub fn compliance_rows(owner_role: &str) -> Vec<Row> {
         .map(|t| late_entry_text(t))
         .collect();
     vec![
-        row("1", "Stock", "Negative stock policy",
-            format!("an outlet's kitchen allows automatic consumption below zero for items that are not lot-tracked (allow_consumption); the central kitchen ({}) and lot-tracked items block", comp::CENTRAL_OUTLET),
-            "stock locations: F&B seed (`fnb:install`)", "§7.2 settings"),
-        row("2", "Stock", "Pending issue and negative balance alert (STK.RUL.06)",
-            format!("after {} hours the holders of stock.adjust at the outlet (the storekeeper) get a task and the manager is told", stock.pending_alert_hours),
-            "WlInventory::pending_alert_hours", "§4.4"),
-        row("3", "Stock", "Goods receipt rejection evidence",
-            format!("reason temperature needs the reading from the receiving checklist: {}", on(temperature)),
-            "WlInventory::rejection_reason", "§7.2 settings"),
-        row("4", "Stock", "Returns to supplier not credited (STK.RUL.08)",
-            format!("chased after {} days", stock.return_chase_days), "WlInventory::return_chase_days", "§4.4"),
-        row("5", "Stock", "Stock hold deciders (lots.release)",
-            format!("the head chef of the outlet ({HEAD}: the role is assigned in the scope of the outlet, and the stock location of the outlet carries that scope); the outlet's {KITCHEN_MANAGER} as deputy; a chef of another outlet cannot decide", HEAD = super::roles::HEAD_CHEF),
-            "role grants in the outlet's scope; locations: F&B seed", "§7.2 settings"),
-        row("6", "Stock", "Hold reminder (STK.RUL.07)",
-            format!("H = {} hours for a temperature hold, then {} (escalation after twice H)",
+        row(
+            "1",
+            "Stock",
+            "Negative stock policy",
+            format!(
+                "an outlet's kitchen allows automatic consumption below zero for items that are not lot-tracked (allow_consumption); the central kitchen ({}) and lot-tracked items block",
+                comp::CENTRAL_OUTLET
+            ),
+            "stock locations: F&B seed (`fnb:install`)",
+            "§7.2 settings",
+        ),
+        row(
+            "2",
+            "Stock",
+            "Pending issue and negative balance alert (STK.RUL.06)",
+            format!(
+                "after {} hours the holders of stock.adjust at the outlet (the storekeeper) get a task and the manager is told",
+                stock.pending_alert_hours
+            ),
+            "WlInventory::pending_alert_hours",
+            "§4.4",
+        ),
+        row(
+            "3",
+            "Stock",
+            "Goods receipt rejection evidence",
+            format!(
+                "reason temperature needs the reading from the receiving checklist: {}",
+                on(temperature)
+            ),
+            "WlInventory::rejection_reason",
+            "§7.2 settings",
+        ),
+        row(
+            "4",
+            "Stock",
+            "Returns to supplier not credited (STK.RUL.08)",
+            format!("chased after {} days", stock.return_chase_days),
+            "WlInventory::return_chase_days",
+            "§4.4",
+        ),
+        row(
+            "5",
+            "Stock",
+            "Stock hold deciders (lots.release)",
+            format!(
+                "the head chef of the outlet ({HEAD}: the role is assigned in the scope of the outlet, and the stock location of the outlet carries that scope); the outlet's {KITCHEN_MANAGER} as deputy; a chef of another outlet cannot decide",
+                HEAD = super::roles::HEAD_CHEF
+            ),
+            "role grants in the outlet's scope; locations: F&B seed",
+            "§7.2 settings",
+        ),
+        row(
+            "6",
+            "Stock",
+            "Hold reminder (STK.RUL.07)",
+            format!(
+                "H = {} hours for a temperature hold, then {} (escalation after twice H)",
                 stock.reminder_hours("temperature", None),
-                stock.escalation_role("temperature", None).unwrap_or("nobody")),
-            "WlInventory::hold_reminder_hours_for_reason", "§7.2"),
-        row("7", "Stock", "Hold reasons needing a second person (STK.ACL.05)",
-            stock.hold_second_person_reasons.join(", ") + ": another holder of lots.release releases; a temperature line is released by the chef alone",
-            "WlInventory::hold_second_person_reasons", "§3.3"),
-        row("8", "Stock", "Wastage approval (STK.ACL.02)",
-            format!("above {} by the {KITCHEN_MANAGER}, never the person who recorded it", aed(stock.wastage_approval_fils)),
-            "WlInventory::wastage_approval_fils", "§3.3"),
-        row("9", "Stock", "Purchase order approval (STK.ACL.03)",
-            format!("above {} the area manager approves", stock.order_limits_fils.first().map_or_else(|| "no limit".to_owned(), |l| aed(*l))),
-            "WlInventory::order_limits_fils", "§3.3"),
-        row("10", "Stock", "Recall owner",
-            format!("the owner role ({owner_role}) with the head chef; the customers are told on the F&B page of the recall ({}); a notice that gives up gives the owner a task", stock.recall_notices_route.clone().unwrap_or_default()),
-            "WlInventory::recall_notices_route", "§7.2 settings"),
-        open(row("11", "Compliance", "Compliance-critical rules (owner alert, PLT.RUL.04)",
-            critical.join("; "),
-            "marked by the host for this client; a missed or failed run alerts the owner", "§7.2"),
-            "FNB.RUL.03 and FNB.RUL.04 are marked; the scheduled runs themselves are not built (DEFERRED-fnb-settings)"),
-        row("12", "Compliance", "Owner alert recipients",
-            format!("the owner role ({owner_role}), and the company admin ({})", super::roles::ADMIN),
-            "client.toml [roles] owner", "§7.2"),
-        open(row("13", "Documents", "Health card and PIC certificate expiry (DOC.EXP.01, DOC.RUL.01, DOC.RUL.03)",
-            format!("reminders {} days before; the owner is told on expiry; no transition is blocked in the MVP; the reminders go to the {KITCHEN_MANAGER} of the employee's outlet. {}",
-                days(&comp::CARD_REMINDERS), kinds[2..].join(" | ")),
-            SEED, "§4.6"),
-            "AU-15 (the validity is the expiry printed on the card)"),
-        row("14", "Documents", "Responsible role per document kind",
-            format!("trade licence: {OPERATIONS_DIRECTOR_ROLE}; food permit, health card, PIC certificate: {KITCHEN_MANAGER} of the outlet; Halal certificate: {}; Trademark registration and Other certification: {OPERATIONS_DIRECTOR_ROLE}", super::roles::STOREKEEPER),
-            SEED, "§7.2 settings"),
-        row("15", "Documents", "Trade licence and food permit",
-            format!("{} | {}", kinds[0], kinds[1]), SEED, "§7.2 settings"),
-        row("16", "Notices", "Notification types and groups",
-            types.join(" | ") + " | the order status message that gives up creates no task; a recall notice that gives up gives the recall owner a task",
-            SEED, "§7.2; wl-notify §5.4"),
-        row("17", "Kernel", "Records that support void",
-            "payout statement; orders are cancelled, receipts reversed by a sales return".to_owned(),
-            "registered by the F&B app", "§7.2 settings"),
-        row("18", "Late entry", "Late entry after an outage (PLT.ACL.10)",
-            format!("business time = when it happened; flagged with a reason after M = {} minutes; the {AREA} approves after N = {} hours or into a submitted daily closing; types: {}",
-                comp::LATE_ENTRY_FLAG_MINUTES, comp::LATE_ENTRY_APPROVAL_HOURS, late.join(", "), AREA = super::roles::AREA_MANAGER),
-            "limits seeded by `fnb:install`, editable per entity", "§4.6, §7.2 settings"),
-        row("19", "Integrations", "Device connections",
-            format!("kitchen devices per outlet, active in the opening hours, down after {} minutes: {}",
+                stock
+                    .escalation_role("temperature", None)
+                    .unwrap_or("nobody")
+            ),
+            "WlInventory::hold_reminder_hours_for_reason",
+            "§7.2",
+        ),
+        row(
+            "7",
+            "Stock",
+            "Hold reasons needing a second person (STK.ACL.05)",
+            stock.hold_second_person_reasons.join(", ")
+                + ": another holder of lots.release releases; a temperature line is released by the chef alone",
+            "WlInventory::hold_second_person_reasons",
+            "§3.3",
+        ),
+        row(
+            "8",
+            "Stock",
+            "Wastage approval (STK.ACL.02)",
+            format!(
+                "above {} by the {KITCHEN_MANAGER}, never the person who recorded it",
+                aed(stock.wastage_approval_fils)
+            ),
+            "WlInventory::wastage_approval_fils",
+            "§3.3",
+        ),
+        row(
+            "9",
+            "Stock",
+            "Purchase order approval (STK.ACL.03)",
+            format!(
+                "above {} the area manager approves",
+                stock
+                    .order_limits_fils
+                    .first()
+                    .map_or_else(|| "no limit".to_owned(), |l| aed(*l))
+            ),
+            "WlInventory::order_limits_fils",
+            "§3.3",
+        ),
+        row(
+            "10",
+            "Stock",
+            "Recall owner",
+            format!(
+                "the owner role ({owner_role}) with the head chef; the customers are told on the F&B page of the recall ({}); a notice that gives up gives the owner a task",
+                stock.recall_notices_route.clone().unwrap_or_default()
+            ),
+            "WlInventory::recall_notices_route",
+            "§7.2 settings",
+        ),
+        open(
+            row(
+                "11",
+                "Compliance",
+                "Compliance-critical rules (owner alert, PLT.RUL.04)",
+                critical.join("; "),
+                "marked by the host for this client; a missed or failed run alerts the owner",
+                "§7.2",
+            ),
+            "FNB.RUL.03 and FNB.RUL.04 are marked; the scheduled runs themselves are not built (DEFERRED-fnb-settings)",
+        ),
+        row(
+            "12",
+            "Compliance",
+            "Owner alert recipients",
+            format!(
+                "the owner role ({owner_role}), and the company admin ({})",
+                super::roles::ADMIN
+            ),
+            "client.toml [roles] owner",
+            "§7.2",
+        ),
+        open(
+            row(
+                "13",
+                "Documents",
+                "Health card and PIC certificate expiry (DOC.EXP.01, DOC.RUL.01, DOC.RUL.03)",
+                format!(
+                    "reminders {} days before; the owner is told on expiry; no transition is blocked in the MVP; the reminders go to the {KITCHEN_MANAGER} of the employee's outlet. {}",
+                    days(&comp::CARD_REMINDERS),
+                    kinds[2..].join(" | ")
+                ),
+                SEED,
+                "§4.6",
+            ),
+            "AU-15 (the validity is the expiry printed on the card)",
+        ),
+        row(
+            "14",
+            "Documents",
+            "Responsible role per document kind",
+            format!(
+                "trade licence: {OPERATIONS_DIRECTOR_ROLE}; food permit, health card, PIC certificate: {KITCHEN_MANAGER} of the outlet; Halal certificate: {}; Trademark registration and Other certification: {OPERATIONS_DIRECTOR_ROLE}",
+                super::roles::STOREKEEPER
+            ),
+            SEED,
+            "§7.2 settings",
+        ),
+        row(
+            "15",
+            "Documents",
+            "Trade licence and food permit",
+            format!("{} | {}", kinds[0], kinds[1]),
+            SEED,
+            "§7.2 settings",
+        ),
+        row(
+            "16",
+            "Notices",
+            "Notification types and groups",
+            types.join(" | ")
+                + " | the order status message that gives up creates no task; a recall notice that gives up gives the recall owner a task",
+            SEED,
+            "§7.2; wl-notify §5.4",
+        ),
+        row(
+            "17",
+            "Kernel",
+            "Records that support void",
+            "payout statement; orders are cancelled, receipts reversed by a sales return"
+                .to_owned(),
+            "registered by the F&B app",
+            "§7.2 settings",
+        ),
+        row(
+            "18",
+            "Late entry",
+            "Late entry after an outage (PLT.ACL.10)",
+            format!(
+                "business time = when it happened; flagged with a reason after M = {} minutes; the {AREA} approves after N = {} hours or into a submitted daily closing; types: {}",
+                comp::LATE_ENTRY_FLAG_MINUTES,
+                comp::LATE_ENTRY_APPROVAL_HOURS,
+                late.join(", "),
+                AREA = super::roles::AREA_MANAGER
+            ),
+            "limits seeded by `fnb:install`, editable per entity",
+            "§4.6, §7.2 settings",
+        ),
+        row(
+            "19",
+            "Integrations",
+            "Device connections",
+            format!(
+                "kitchen devices per outlet, active in the opening hours, down after {} minutes: {}",
                 fnb_seed::OUTAGE_DOWN_MINUTES,
-                ["marina", "sharjah"].iter().map(|o| format!("fnb.devices.{o}")).collect::<Vec<_>>().join(", ")),
-            HOST, "wl-kernel §7"),
-        row("20", "Integrations", "Fallbacks (wl-kernel §5.14)",
-            [comp::DELIVERECT, integrations::PAYMENT_GATEWAY, integrations::SMS].iter().map(|k| connection_text(k)).collect::<Vec<_>>().join(" | "),
-            SEED, "§7.2 settings"),
-        row("21", "Integrations", "Business-day cut-off per outlet",
-            "04:00 (a change applies from the next business day)".to_owned(), "Outlet cut-off (BL-FNB-15)", "§7.2 settings"),
-        row("22", "Sales", "Lead sources used (SAL.CRM.02)",
-            format!("the nine of the module: walk-in, website, social, paid ads, aggregator, referral, event, partner (corporate catering), other; a direct customer takes the source of their first order; a source requires a campaign: {}",
-                if sales.campaign_required_sources.is_empty() { "none".to_owned() } else { sales.campaign_required_sources.join(", ") }),
-            "sources: the module's list; none turned off", "§5; §7.2 settings"),
-        row("23", "Sales", "Campaign channels (SAL.CRM.02, SAL.ACL.07)",
-            format!("Instagram, TikTok, search ads, aggregator promotions, SMS, email (the module's fixed list: TikTok and aggregator promotions are recorded as other online); a cost entry over the budget needs a manager: {}", on(sales.over_budget_approval)),
-            "approval: F&B seed", "§5; §7.2 settings"),
-        row("24", "Stock", "Supplier scorecard (STK.SUP.01, STK.RUL.09, STK.ACL.07)",
-            format!("score 0-100, weights {:?}; a monthly snapshot below {} over a {}-month window opens a review task for the storekeeper / purchaser, the area manager told; making another supplier preferred needs a second person: {}",
-                stock.score.weights, stock.score.threshold, stock.score.window_months, on(stock.preferred_change_needs_approval)),
-            "WlInventory::supplier_score", "§5; §7.2 settings"),
-        row("25", "Sales", "Loyalty earn and redeem (SAL.LOY.01, SAL.RUL.07)",
-            format!("{} earns 1 point per AED 1 on direct orders (none on aggregator orders: no member is attached); {} points = {} discount, at most {}% of the order, confirmed by a one-time code: {}",
-                comp::LOYALTY_NAME, comp::LOYALTY_MIN_REDEEM, aed(comp::LOYALTY_MIN_REDEEM * comp::LOYALTY_POINT_VALUE_FILS),
-                comp::LOYALTY_MAX_SHARE_BPS / 100, on(sales.confirm_redemption_by_code)),
-            "programme: F&B seed", "§5; §7.2 settings"),
-        open(row("26", "Sales", "Loyalty expiry, adjustments, segments and campaigns (SAL.RUL.08, SAL.ACL.07, NTF.RUL.02, NTF.ACL.03)",
-            format!("points expire {} months after they are earned, the member reminded {} days before; a manual adjustment above {} points needs a manager; segments: regulars (3 or more orders in 30 days), lapsed (no order in 45 days); campaigns only to opted-in customers, sent {:02}:00-{:02}:00, at most {} marketing messages per customer in 7 days; a broadcast to more than {} recipients needs a second person",
-                comp::LOYALTY_VALIDITY_MONTHS, sales.expiry_reminder_days, sales.adjustment_limit,
-                comp::SEND_WINDOW_MINUTES.0 / 60, comp::SEND_WINDOW_MINUTES.1 / 60,
-                comp::MARKETING_CAP, comp::BROADCAST_APPROVAL_ABOVE),
-            "WlSales, WlNotify and the F&B seed", "§5; §7.2 settings"),
-            "A-15 (VAT on the discounted supply of a redemption)"),
-        row("27", "Staff", "Onboarding checklists (HRM.ONB.01, HRM.RUL.16, HRM.RUL.17, HRM.ACL.10)",
-            format!("{}; started when the employee record is created in onboarding; tasks to the {} of the outlet, the head chef and the employee; the employee's own steps only by them; completion blocks nothing; HRM.RUL.17 reminds on the first run after the due date, then every {} days, and tells HR and the line manager after {} days",
-                onboarding.join("; "), hr.manager_role,
-                wl_hr::reminders::REMIND_EVERY, wl_hr::reminders::ESCALATE_AFTER),
-            "checklists: F&B seed; reminder days: default of the module", "§5; §7.2 settings"),
-        row("28", "Staff", "SOP library (HRM.ONB.01, DOC.RUL.04, HRM.ACL.10)",
-            format!("{}; DOC.RUL.04 asks each reader to acknowledge within {} days, reminds every {} days and tells the reader's manager and the SOP owner role after {} days overdue; only the reader acknowledges; a new version asks again",
+                ["marina", "sharjah"]
+                    .iter()
+                    .map(|o| format!("fnb.devices.{o}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            HOST,
+            "wl-kernel §7",
+        ),
+        row(
+            "20",
+            "Integrations",
+            "Fallbacks (wl-kernel §5.14)",
+            [
+                comp::DELIVERECT,
+                integrations::PAYMENT_GATEWAY,
+                integrations::SMS,
+            ]
+            .iter()
+            .map(|k| connection_text(k))
+            .collect::<Vec<_>>()
+            .join(" | "),
+            SEED,
+            "§7.2 settings",
+        ),
+        row(
+            "21",
+            "Integrations",
+            "Business-day cut-off per outlet",
+            "04:00 (a change applies from the next business day)".to_owned(),
+            "Outlet cut-off (BL-FNB-15)",
+            "§7.2 settings",
+        ),
+        row(
+            "22",
+            "Sales",
+            "Lead sources used (SAL.CRM.02)",
+            format!(
+                "the nine of the module: walk-in, website, social, paid ads, aggregator, referral, event, partner (corporate catering), other; a direct customer takes the source of their first order; a source requires a campaign: {}",
+                if sales.campaign_required_sources.is_empty() {
+                    "none".to_owned()
+                } else {
+                    sales.campaign_required_sources.join(", ")
+                }
+            ),
+            "sources: the module's list; none turned off",
+            "§5; §7.2 settings",
+        ),
+        row(
+            "23",
+            "Sales",
+            "Campaign channels (SAL.CRM.02, SAL.ACL.07)",
+            format!(
+                "Instagram, TikTok, search ads, aggregator promotions, SMS, email (the module's fixed list: TikTok and aggregator promotions are recorded as other online); a cost entry over the budget needs a manager: {}",
+                on(sales.over_budget_approval)
+            ),
+            "approval: F&B seed",
+            "§5; §7.2 settings",
+        ),
+        row(
+            "24",
+            "Stock",
+            "Supplier scorecard (STK.SUP.01, STK.RUL.09, STK.ACL.07)",
+            format!(
+                "score 0-100, weights {:?}; a monthly snapshot below {} over a {}-month window opens a review task for the storekeeper / purchaser, the area manager told; making another supplier preferred needs a second person: {}",
+                stock.score.weights,
+                stock.score.threshold,
+                stock.score.window_months,
+                on(stock.preferred_change_needs_approval)
+            ),
+            "WlInventory::supplier_score",
+            "§5; §7.2 settings",
+        ),
+        row(
+            "25",
+            "Sales",
+            "Loyalty earn and redeem (SAL.LOY.01, SAL.RUL.07)",
+            format!(
+                "{} earns 1 point per AED 1 on direct orders (none on aggregator orders: no member is attached); {} points = {} discount, at most {}% of the order, confirmed by a one-time code: {}",
+                comp::LOYALTY_NAME,
+                comp::LOYALTY_MIN_REDEEM,
+                aed(comp::LOYALTY_MIN_REDEEM * comp::LOYALTY_POINT_VALUE_FILS),
+                comp::LOYALTY_MAX_SHARE_BPS / 100,
+                on(sales.confirm_redemption_by_code)
+            ),
+            "programme: F&B seed",
+            "§5; §7.2 settings",
+        ),
+        open(
+            row(
+                "26",
+                "Sales",
+                "Loyalty expiry, adjustments, segments and campaigns (SAL.RUL.08, SAL.ACL.07, NTF.RUL.02, NTF.ACL.03)",
+                format!(
+                    "points expire {} months after they are earned, the member reminded {} days before; a manual adjustment above {} points needs a manager; segments: regulars (3 or more orders in 30 days), lapsed (no order in 45 days); campaigns only to opted-in customers, sent {:02}:00-{:02}:00, at most {} marketing messages per customer in 7 days; a broadcast to more than {} recipients needs a second person",
+                    comp::LOYALTY_VALIDITY_MONTHS,
+                    sales.expiry_reminder_days,
+                    sales.adjustment_limit,
+                    comp::SEND_WINDOW_MINUTES.0 / 60,
+                    comp::SEND_WINDOW_MINUTES.1 / 60,
+                    comp::MARKETING_CAP,
+                    comp::BROADCAST_APPROVAL_ABOVE
+                ),
+                "WlSales, WlNotify and the F&B seed",
+                "§5; §7.2 settings",
+            ),
+            "A-15 (VAT on the discounted supply of a redemption)",
+        ),
+        row(
+            "27",
+            "Staff",
+            "Onboarding checklists (HRM.ONB.01, HRM.RUL.16, HRM.RUL.17, HRM.ACL.10)",
+            format!(
+                "{}; started when the employee record is created in onboarding; tasks to the {} of the outlet, the head chef and the employee; the employee's own steps only by them; completion blocks nothing; HRM.RUL.17 reminds on the first run after the due date, then every {} days, and tells HR and the line manager after {} days",
+                onboarding.join("; "),
+                hr.manager_role,
+                wl_hr::reminders::REMIND_EVERY,
+                wl_hr::reminders::ESCALATE_AFTER
+            ),
+            "checklists: F&B seed; reminder days: default of the module",
+            "§5; §7.2 settings",
+        ),
+        row(
+            "28",
+            "Staff",
+            "SOP library (HRM.ONB.01, DOC.RUL.04, HRM.ACL.10)",
+            format!(
+                "{}; DOC.RUL.04 asks each reader to acknowledge within {} days, reminds every {} days and tells the reader's manager and the SOP owner role after {} days overdue; only the reader acknowledges; a new version asks again",
                 sops.join("; "),
                 wl_documents::sops::service::DEFAULT_ACK_DUE_DAYS,
                 wl_documents::acknowledgements::run::REMIND_EVERY,
-                wl_documents::acknowledgements::run::ESCALATE_AFTER),
-            "SOPs and readers: F&B seed; days: default of the module", "§5; §7.2 settings"),
-        row("29", "Registrations", "Registration and certification kinds (DOC.EXP.01, DOC.RUL.01)",
-            format!("Halal certificate (item for central kitchen products, supplier party for supplier ingredients; responsible role {}), Trademark registration ({} days; the brand is the mark; subject the legal entity) and Other certification ({} days; legal entity), the last two with {OPERATIONS_DIRECTOR_ROLE}; no blocks",
+                wl_documents::acknowledgements::run::ESCALATE_AFTER
+            ),
+            "SOPs and readers: F&B seed; days: default of the module",
+            "§5; §7.2 settings",
+        ),
+        row(
+            "29",
+            "Registrations",
+            "Registration and certification kinds (DOC.EXP.01, DOC.RUL.01)",
+            format!(
+                "Halal certificate (item for central kitchen products, supplier party for supplier ingredients; responsible role {}), Trademark registration ({} days; the brand is the mark; subject the legal entity) and Other certification ({} days; legal entity), the last two with {OPERATIONS_DIRECTOR_ROLE}; no blocks",
                 super::roles::STOREKEEPER,
                 days(&wl_documents::registrations::REGISTRATIONS[0].reminders),
-                days(&wl_documents::registrations::REGISTRATIONS[4].reminders)),
-            "default of the module, on for 06 (roles: F&B seed)", "§5; §7.2 settings"),
+                days(&wl_documents::registrations::REGISTRATIONS[4].reminders)
+            ),
+            "default of the module, on for 06 (roles: F&B seed)",
+            "§5; §7.2 settings",
+        ),
     ]
 }
 

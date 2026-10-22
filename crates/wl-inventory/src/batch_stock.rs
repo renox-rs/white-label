@@ -20,7 +20,7 @@
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::inventory::{
-    BatchStock, ITEM_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotInfo, Produced, ProduceBatch, StockFuture,
+    BatchStock, ITEM_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotInfo, ProduceBatch, Produced, StockFuture,
     Wasted,
 };
 
@@ -139,8 +139,9 @@ async fn produce(state: &AppState, request: ProduceBatch) -> Result<Option<Produ
         ..Lot::default()
     };
     out.insert(&mut tx).await?;
-    let unit_cost = i64::try_from(i128::from(total_value) * 1_000 / i128::from(request.quantity_milli))
-        .unwrap_or(0);
+    let unit_cost =
+        i64::try_from(i128::from(total_value) * 1_000 / i128::from(request.quantity_milli))
+            .unwrap_or(0);
     let mut made = StockMovement::moving(
         MovementType::Produce,
         item.id,
@@ -179,7 +180,10 @@ async fn wasted(db: &Db, lot_id: i64) -> Result<Wasted> {
 async fn waste(state: &AppState, lot_id: i64, reason: &str, by: Option<i64>) -> Result<Wasted> {
     let lot = Lot::find_or_404(&state.db, lot_id).await?;
     if lot.status == LotStatus::OnHold {
-        return Err(refused(said("wl_inventory.batch.on_hold", &[("lot", &lot.number)])));
+        return Err(refused(said(
+            "wl_inventory.batch.on_hold",
+            &[("lot", &lot.number)],
+        )));
     }
     let item = Item::find_or_404(&state.db, lot.item_id).await?;
     let source = Subject::new(LOT_SUBJECT_TYPE, lot.id);

@@ -139,7 +139,9 @@ async fn substituting_an_item_refunds_the_difference_and_the_ticket_shows_the_su
     .assert_status(303);
 
     // Revision 2 is in force, revision 1 is kept.
-    let sales = SalesOrder::find_or_404(w.db(), accepted.sales_order_id).await.unwrap();
+    let sales = SalesOrder::find_or_404(w.db(), accepted.sales_order_id)
+        .await
+        .unwrap();
     assert_eq!(sales.revision, 2);
     assert_eq!(sales.gross_total, 4_500);
     let kept = OrderRevision::query()
@@ -172,7 +174,11 @@ async fn substituting_an_item_refunds_the_difference_and_the_ticket_shows_the_su
     assert_eq!(notes[0].requested_by, Some(w.cashier.id));
     assert_eq!(notes[0].status, "done");
     assert_eq!(w.reload(&accepted).await.status, FnbOrderStatus::Accepted);
-    assert!(history_of(&w, &accepted).await.contains(&"amend".to_owned()));
+    assert!(
+        history_of(&w, &accepted)
+            .await
+            .contains(&"amend".to_owned())
+    );
 }
 
 /// AC2: amending to Steak (AED 70.00) sends a AED 15.00 payment link; the
@@ -238,7 +244,11 @@ async fn cancelling_a_paid_line_refunds_it_and_removes_its_ticket() {
     let notes = ChangeNote::of_order(w.db(), accepted.id).await.unwrap();
     assert_eq!(notes[0].kind, "cancel_line");
     assert_eq!(notes[0].sale_line_id, Some(fries.sale_line_id));
-    assert!(history_of(&w, &accepted).await.contains(&"cancel_line".to_owned()));
+    assert!(
+        history_of(&w, &accepted)
+            .await
+            .contains(&"cancel_line".to_owned())
+    );
     // The order is still accepted and the other line is cooked as before.
     assert_eq!(w.reload(&accepted).await.status, FnbOrderStatus::Accepted);
 }
@@ -250,7 +260,9 @@ async fn cancelling_a_paid_line_refunds_it_and_removes_its_ticket() {
 async fn an_aggregator_order_is_not_amended_here_and_a_cancelled_line_is_flagged_for_the_payout() {
     let w = boot_own_riders().await;
     let c = customer(&w).await;
-    let order = w.place_via("aggregator_a", c, "on_account", &TWO_LINES).await;
+    let order = w
+        .place_via("aggregator_a", c, "on_account", &TWO_LINES)
+        .await;
     assert_eq!(order.status, FnbOrderStatus::Accepted);
     let tickets = tickets_of(&w, &order).await;
     let line = tickets[0].sale_line_id.to_string();
@@ -269,7 +281,10 @@ async fn an_aggregator_order_is_not_amended_here_and_a_cancelled_line_is_flagged
     page.assert_ok();
     assert!(!page.text().contains("Replace it with"));
     assert_eq!(
-        SalesOrder::find_or_404(w.db(), order.sales_order_id).await.unwrap().revision,
+        SalesOrder::find_or_404(w.db(), order.sales_order_id)
+            .await
+            .unwrap()
+            .revision,
         1
     );
 
@@ -311,7 +326,10 @@ async fn the_only_open_line_cannot_be_cancelled() {
         .await;
     answer.assert_status(422);
     assert!(answer.text().contains("last open line"));
-    assert_eq!(tickets_of(&w, &accepted).await[0].status, TicketStatus::Queued);
+    assert_eq!(
+        tickets_of(&w, &accepted).await[0].status,
+        TicketStatus::Queued
+    );
     assert!(refunds_of(&w, &accepted).await.is_empty());
     // The page says so instead of offering the button.
     let page = w.get(&w.cashier, &format!("/orders/{}", accepted.id)).await;
@@ -341,7 +359,11 @@ async fn a_placed_order_is_amended_before_it_is_accepted() {
     .await
     .assert_status(303);
     assert!(tickets_of(&w, &placed).await.is_empty());
-    assert!(history_of(&w, &placed).await.contains(&"amend_placed".to_owned()));
+    assert!(
+        history_of(&w, &placed)
+            .await
+            .contains(&"amend_placed".to_owned())
+    );
 
     let accepted = w.accept(&placed).await;
     let tickets = tickets_of(&w, &accepted).await;
@@ -362,15 +384,21 @@ async fn an_amendment_needs_the_agreement_the_time_of_the_call_and_the_permissio
 
     let mut not_agreed = amend_form(&line, "", "20.00");
     not_agreed.retain(|(name, _)| *name != "customer_agreed");
-    w.post(&w.cashier, &path, &not_agreed).await.assert_status(422);
+    w.post(&w.cashier, &path, &not_agreed)
+        .await
+        .assert_status(422);
     let mut bad_time = amend_form(&line, "", "20.00");
     bad_time.retain(|(name, _)| *name != "call_time");
     bad_time.push(("call_time", "evening"));
-    w.post(&w.cashier, &path, &bad_time).await.assert_status(422);
+    w.post(&w.cashier, &path, &bad_time)
+        .await
+        .assert_status(422);
     let mut no_reason = amend_form(&line, "", "20.00");
     no_reason.retain(|(name, _)| *name != "reason");
     no_reason.push(("reason", " "));
-    w.post(&w.cashier, &path, &no_reason).await.assert_status(422);
+    w.post(&w.cashier, &path, &no_reason)
+        .await
+        .assert_status(422);
     w.post(&w.cook, &path, &amend_form(&line, "", "20.00"))
         .await
         .assert_forbidden();
@@ -382,7 +410,10 @@ async fn an_amendment_needs_the_agreement_the_time_of_the_call_and_the_permissio
     .await
     .assert_forbidden();
     assert_eq!(
-        SalesOrder::find_or_404(w.db(), accepted.sales_order_id).await.unwrap().revision,
+        SalesOrder::find_or_404(w.db(), accepted.sales_order_id)
+            .await
+            .unwrap()
+            .revision,
         1
     );
 
@@ -391,7 +422,10 @@ async fn an_amendment_needs_the_agreement_the_time_of_the_call_and_the_permissio
         .await
         .assert_status(303);
     assert_eq!(
-        SalesOrder::find_or_404(w.db(), accepted.sales_order_id).await.unwrap().gross_total,
+        SalesOrder::find_or_404(w.db(), accepted.sales_order_id)
+            .await
+            .unwrap()
+            .gross_total,
         2_800 + 1_200
     );
 }
@@ -423,18 +457,17 @@ async fn a_started_order_is_not_amended_and_a_bumped_line_is_not_cancelled() {
         assert!(refused.text().contains("placed or accepted"));
     }
     assert_eq!(
-        SalesOrder::find_or_404(w.db(), accepted.sales_order_id).await.unwrap().revision,
+        SalesOrder::find_or_404(w.db(), accepted.sales_order_id)
+            .await
+            .unwrap()
+            .revision,
         1
     );
 
     // A bumped line is not cancelled.
-    w.post(
-        &w.cook,
-        &format!("/tickets/{}/bump", main.id),
-        &[("x", "")],
-    )
-    .await
-    .assert_status(303);
+    w.post(&w.cook, &format!("/tickets/{}/bump", main.id), &[("x", "")])
+        .await
+        .assert_status(303);
     let bumped = w
         .post(
             &w.cashier,
@@ -444,7 +477,10 @@ async fn a_started_order_is_not_amended_and_a_bumped_line_is_not_cancelled() {
         .await;
     bumped.assert_status(422);
     assert!(bumped.text().contains("bumped"));
-    assert_eq!(tickets_of(&w, &accepted).await[0].status, TicketStatus::Done);
+    assert_eq!(
+        tickets_of(&w, &accepted).await[0].status,
+        TicketStatus::Done
+    );
 }
 
 /// `SAL.ACL.05`: a started line needs an outcome and a manager; with *scrap*
@@ -459,9 +495,13 @@ async fn cancelling_a_started_line_needs_an_outcome_and_a_manager_and_scraps_the
     let (main, fries) = (&tickets[0], &tickets[1]);
     // The fries are cooked and bumped; the main is cooking.
     start(&w, fries).await;
-    w.post(&w.cook, &format!("/tickets/{}/bump", fries.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.cook,
+        &format!("/tickets/{}/bump", fries.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     start(&w, main).await;
     assert_eq!(w.reload(&accepted).await.status, FnbOrderStatus::Preparing);
     let line = main.sale_line_id.to_string();
@@ -483,7 +523,11 @@ async fn cancelling_a_started_line_needs_an_outcome_and_a_manager_and_scraps_the
     .unwrap()
     .remove(0);
     assert_eq!(request.action, "sales.order_cancel_line");
-    assert!(approvals::approve(w.state(), request.id, &w.cashier, "").await.is_err());
+    assert!(
+        approvals::approve(w.state(), request.id, &w.cashier, "")
+            .await
+            .is_err()
+    );
     assert!(wastage_of(&w, &w.chicken).await.is_empty());
 
     approvals::approve(w.state(), request.id, &w.manager, "")
@@ -526,9 +570,13 @@ async fn the_delivery_of_a_cash_order_collects_only_what_is_still_open() {
             continue;
         }
         start(&w, &ticket).await;
-        w.post(&w.cook, &format!("/tickets/{}/bump", ticket.id), &[("x", "")])
-            .await
-            .assert_status(303);
+        w.post(
+            &w.cook,
+            &format!("/tickets/{}/bump", ticket.id),
+            &[("x", "")],
+        )
+        .await
+        .assert_status(303);
     }
     let ready = w.reload(&accepted).await;
     assert_eq!(ready.status, FnbOrderStatus::Ready);

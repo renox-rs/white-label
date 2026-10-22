@@ -38,6 +38,7 @@
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::automation::{RuleRunSpec, run_rule};
 use wl_kernel::compliance::CriticalRule;
 use wl_kernel::inventory::{
@@ -45,7 +46,6 @@ use wl_kernel::inventory::{
     STOCK_HOLD_SUBJECT_TYPE, stock_hold_service,
 };
 use wl_kernel::role_tasks::{self, RoleTask};
-use wl_kernel::Subject;
 
 use crate::money::tenths_text;
 use crate::notices::tell_holders;
@@ -337,7 +337,10 @@ pub async fn create_unit(state: &AppState, user: &AuthUser, ask: &UnitAsk) -> Re
         .exists(&state.db)
         .await?
     {
-        return Err(refused(english("fnb.cold.problem.code_used", &[("code", &code)])));
+        return Err(refused(english(
+            "fnb.cold.problem.code_used",
+            &[("code", &code)],
+        )));
     }
     let (min, max) = if ask.min_tenths.is_none() && ask.max_tenths.is_none() {
         default_range(&ask.kind)
@@ -403,7 +406,11 @@ pub async fn record(
 /// Runs the rule for `reading` as a kernel rule run: a failure is retried and,
 /// after the last attempt, alerts the owner.
 async fn run(state: &AppState, unit: &ColdUnit, reading: &TemperatureReading) -> Result {
-    let spec = RuleRunSpec::new(RULE, unit.subject(), format!("{RULE}:reading:{}", reading.id));
+    let spec = RuleRunSpec::new(
+        RULE,
+        unit.subject(),
+        format!("{RULE}:reading:{}", reading.id),
+    );
     let (unit_id, reading_id) = (unit.id, reading.id);
     run_rule(state, spec, move |state: AppState| async move {
         react(&state, unit_id, reading_id).await
@@ -462,7 +469,10 @@ pub async fn react(state: &AppState, unit_id: i64, reading_id: i64) -> Result {
     let key = task_key(&unit);
     let title = english(
         "fnb.cold.task_title",
-        &[("unit", &unit.name), ("reading", &tenths_text(reading.tenths))],
+        &[
+            ("unit", &unit.name),
+            ("reading", &tenths_text(reading.tenths)),
+        ],
     );
     let description = english(
         "fnb.cold.task_body",
@@ -475,8 +485,13 @@ pub async fn react(state: &AppState, unit_id: i64, reading_id: i64) -> Result {
     );
     let ticket = role_tasks::open(
         state,
-        RoleTask::new(unit.subject(), permissions::KITCHEN_MANAGER_ROLE, &title, &key)
-            .description(&description),
+        RoleTask::new(
+            unit.subject(),
+            permissions::KITCHEN_MANAGER_ROLE,
+            &title,
+            &key,
+        )
+        .description(&description),
     )
     .await?;
     let now = renox::db::now();
@@ -639,7 +654,11 @@ pub async fn decide(
         ..HoldDecisionRecord::default()
     };
     note.insert(&state.db).await?;
-    Ok(if waiting { Decided::Waiting } else { Decided::Done })
+    Ok(if waiting {
+        Decided::Waiting
+    } else {
+        Decided::Done
+    })
 }
 
 /// The hold of `unit` with its lines, when it has one.

@@ -37,7 +37,10 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
         "fnb/closings.html",
         include_str!("../views/fnb/closings.html"),
     ),
-    ("fnb/closing.html", include_str!("../views/fnb/closing.html")),
+    (
+        "fnb/closing.html",
+        include_str!("../views/fnb/closing.html"),
+    ),
 ];
 
 /// The routes.
@@ -61,7 +64,10 @@ pub fn routes() -> Routes {
 }
 
 fn status_word(lang: &Lang, status: ClosingStatus) -> String {
-    t(lang, &format!("fnb.screen.closing.status.{}", status.as_str()))
+    t(
+        lang,
+        &format!("fnb.screen.closing.status.{}", status.as_str()),
+    )
 }
 
 fn status_kind(status: ClosingStatus) -> &'static str {
@@ -241,7 +247,10 @@ async fn show(
         .into_iter()
         .map(|p| PaperRow {
             reference: p.reference,
-            channel: t(&lang, &format!("fnb.screen.channels.paper_channel.{}", p.channel)),
+            channel: t(
+                &lang,
+                &format!("fnb.screen.channels.paper_channel.{}", p.channel),
+            ),
             amount: aed(p.amount),
             business_time: p
                 .occurred_at
@@ -261,26 +270,47 @@ async fn show(
         ClosingStatus::Submitted => notes.push(t(&lang, "fnb.screen.closing.note_submitted")),
         _ => {}
     }
-    let cashiers = renox::auth::permissions::users_with_permission(&state.db, permissions::POS_SELL)
-        .await?
-        .into_iter()
-        .map(|u| [u.id.to_string(), u.name])
-        .collect();
+    let cashiers =
+        renox::auth::permissions::users_with_permission(&state.db, permissions::POS_SELL)
+            .await?
+            .into_iter()
+            .map(|u| [u.id.to_string(), u.name])
+            .collect();
     let methods = method::ALL
         .iter()
-        .map(|m| [(*m).to_owned(), t(&lang, &format!("fnb.screen.channels.paper_method.{m}"))])
+        .map(|m| {
+            [
+                (*m).to_owned(),
+                t(&lang, &format!("fnb.screen.channels.paper_method.{m}")),
+            ]
+        })
         .collect();
-    let paper_channels = ["counter", "phone", "website", "aggregator_a", "aggregator_b", "aggregator_c"]
-        .iter()
-        .map(|c| [(*c).to_owned(), t(&lang, &format!("fnb.screen.channels.paper_channel.{c}"))])
-        .collect();
+    let paper_channels = [
+        "counter",
+        "phone",
+        "website",
+        "aggregator_a",
+        "aggregator_b",
+        "aggregator_c",
+    ]
+    .iter()
+    .map(|c| {
+        [
+            (*c).to_owned(),
+            t(&lang, &format!("fnb.screen.channels.paper_channel.{c}")),
+        ]
+    })
+    .collect();
     Ok(View::typed(ShowClosingPage {
         tx: tx(&lang),
         date: date.to_string(),
         status: status_word(&lang, closing.status),
         status_kind: status_kind(closing.status),
         cutoff: clock_text(outlet.cutoff_for(date)),
-        cutoff_pending: outlet.pending_cutoff_minutes.map(clock_text).unwrap_or_default(),
+        cutoff_pending: outlet
+            .pending_cutoff_minutes
+            .map(clock_text)
+            .unwrap_or_default(),
         cutoff_from: outlet
             .pending_cutoff_from
             .map(|d| d.to_string())
@@ -291,14 +321,21 @@ async fn show(
         channels: channels
             .into_iter()
             .map(|c| ChannelRow {
-                channel: t(&lang, &format!("fnb.screen.channels.paper_channel.{}", c.channel)),
+                channel: t(
+                    &lang,
+                    &format!("fnb.screen.channels.paper_channel.{}", c.channel),
+                ),
                 orders: c.orders,
                 gross: aed(c.gross),
             })
             .collect(),
         paper,
         late_count: late_entries,
-        expected: if closing.counted_cash.is_some() { aed(closing.expected_cash) } else { String::new() },
+        expected: if closing.counted_cash.is_some() {
+            aed(closing.expected_cash)
+        } else {
+            String::new()
+        },
         counted: closing.counted_cash.map(aed).unwrap_or_default(),
         variance: closing.variance.map(aed).unwrap_or_default(),
         cashiers,

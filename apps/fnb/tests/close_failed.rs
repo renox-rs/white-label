@@ -73,7 +73,10 @@ async fn failed_and_returned(
 ) -> fnb::FnbOrder {
     let (order, delivery, run) = dispatched(w, mode, lines).await;
     w.fail_stop(&delivery, code).await.assert_status(303);
-    assert_eq!(w.reload(&order).await.status, FnbOrderStatus::DeliveryFailed);
+    assert_eq!(
+        w.reload(&order).await.status,
+        FnbOrderStatus::DeliveryFailed
+    );
     w.bring_back(&delivery, &run).await;
     w.reload(&order).await
 }
@@ -87,17 +90,26 @@ async fn a_discarded_run_aborted_order_is_closed_with_a_full_refund_and_one_wast
     let w = boot_own_riders().await;
     let (order, delivery, run) = dispatched(&w, "online", &PLATE).await;
     w.abort(&run, "breakdown").await.assert_ok();
-    assert_eq!(w.reload(&order).await.status, FnbOrderStatus::DeliveryFailed);
+    assert_eq!(
+        w.reload(&order).await.status,
+        FnbOrderStatus::DeliveryFailed
+    );
 
     w.discard(&delivery).await.assert_status(303);
 
     let closed = w.reload(&order).await;
     assert_eq!(closed.status, FnbOrderStatus::Cancelled);
-    assert_eq!(closed.refund_decision.as_deref(), Some(decision::FULL_REFUND));
+    assert_eq!(
+        closed.refund_decision.as_deref(),
+        Some(decision::FULL_REFUND)
+    );
     assert_eq!(closed.refund_amount, 8_500);
     assert_eq!(closed.responsible_party.as_deref(), Some(party::BUSINESS));
     assert_eq!(closed.failure_reason.as_deref(), Some(reason::RUN_ABORTED));
-    assert_eq!(w.delivery(&delivery).await.status, DeliveryStatus::Discarded);
+    assert_eq!(
+        w.delivery(&delivery).await.status,
+        DeliveryStatus::Discarded
+    );
     // AED 85.00 is asked of wl-payments at once, from the order.
     let refunds = refunds_of(&w, &closed).await;
     assert_eq!(refunds.len(), 1);
@@ -106,7 +118,9 @@ async fn a_discarded_run_aborted_order_is_closed_with_a_full_refund_and_one_wast
     assert_eq!(refunds[0].requested_by, None, "the system asked");
     assert_eq!(closed.refund_id, Some(refunds[0].id));
     // The sales order is cancelled and the payment is the refund's alone.
-    let sales = SalesOrder::find_or_404(w.db(), closed.sales_order_id).await.unwrap();
+    let sales = SalesOrder::find_or_404(w.db(), closed.sales_order_id)
+        .await
+        .unwrap();
     assert_eq!(sales.status, SalesOrderStatus::Cancelled);
     assert_eq!(sales.reason.as_deref(), Some("failed delivery"));
     // The discard posted the wastage; the cancellation posted no second one.
@@ -134,7 +148,9 @@ async fn a_returned_customer_side_order_is_closed_with_no_refund_and_the_food_as
     assert_eq!(closed.refund_id, None);
     assert_eq!(closed.responsible_party.as_deref(), Some(party::CUSTOMER));
     assert!(refunds_of(&w, &closed).await.is_empty());
-    let sales = SalesOrder::find_or_404(w.db(), closed.sales_order_id).await.unwrap();
+    let sales = SalesOrder::find_or_404(w.db(), closed.sales_order_id)
+        .await
+        .unwrap();
     assert_eq!(sales.status, SalesOrderStatus::Cancelled);
     // The food is wastage, reason *failed delivery*, with the order as
     // reference: 2 plates use 0.5 kg of chicken and 0.3 kg of rice.
@@ -168,7 +184,9 @@ async fn returned_food_never_comes_back_as_stock_the_only_new_movement_is_the_wa
         assert_eq!(after.len(), before + 1, "one new movement of {}", item.code);
         let added = &after[before..];
         assert!(
-            added.iter().all(|m| m.movement_type == MovementType::Wastage),
+            added
+                .iter()
+                .all(|m| m.movement_type == MovementType::Wastage),
             "{added:?}"
         );
     }
@@ -179,7 +197,9 @@ async fn returned_food_never_comes_back_as_stock_the_only_new_movement_is_the_wa
 async fn a_repeated_return_event_posts_no_second_wastage_and_no_second_refund() {
     let w = boot_own_riders().await;
     let (order, delivery, run) = dispatched(&w, "online", &PLATE).await;
-    w.fail_stop(&delivery, "rider_issue").await.assert_status(303);
+    w.fail_stop(&delivery, "rider_issue")
+        .await
+        .assert_status(303);
     w.bring_back(&delivery, &run).await;
     let closed = w.reload(&order).await;
     assert_eq!(closed.status, FnbOrderStatus::Cancelled);
@@ -207,9 +227,13 @@ async fn the_cashier_asks_for_a_refund_and_a_kitchen_manager_approves_it_never_t
     let closed = failed_and_returned(&w, "online", &TWO_PLATES, "not_home").await;
     let path = format!("/orders/{}/refund", closed.id);
 
-    w.post(&w.cashier, &path, &[("amount", "30.00"), ("reason", "The customer called later")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.cashier,
+        &path,
+        &[("amount", "30.00"), ("reason", "The customer called later")],
+    )
+    .await
+    .assert_status(303);
 
     let asked = refunds_of(&w, &closed).await;
     assert_eq!(asked.len(), 1);
@@ -221,7 +245,10 @@ async fn the_cashier_asks_for_a_refund_and_a_kitchen_manager_approves_it_never_t
     w.post(&w.cashier, &approve, &[("x", "")])
         .await
         .assert_forbidden();
-    assert_eq!(refunds_of(&w, &closed).await[0].status, RefundStatus::Requested);
+    assert_eq!(
+        refunds_of(&w, &closed).await[0].status,
+        RefundStatus::Requested
+    );
 
     // The kitchen manager approves.
     w.post(&w.manager_b, &approve, &[("x", "")])
@@ -233,9 +260,15 @@ async fn the_cashier_asks_for_a_refund_and_a_kitchen_manager_approves_it_never_t
     assert_eq!(approved[0].approved_by, Some(w.manager_b.id));
     assert_eq!(approved[0].amount, 3_000);
     let order = w.reload(&closed).await;
-    assert_eq!(order.refund_decision.as_deref(), Some(decision::MANAGER_APPROVED));
+    assert_eq!(
+        order.refund_decision.as_deref(),
+        Some(decision::MANAGER_APPROVED)
+    );
     assert_eq!(order.refund_amount, 3_000);
-    let ask = fnb::RefundAsk::of_order(w.db(), order.id).await.unwrap().remove(0);
+    let ask = fnb::RefundAsk::of_order(w.db(), order.id)
+        .await
+        .unwrap()
+        .remove(0);
     assert_eq!(ask.approved_by, Some(w.manager_b.id));
     assert!(ask.approved_at.is_some());
     // The order page lists it.
@@ -268,8 +301,14 @@ async fn a_user_who_holds_both_permissions_still_cannot_approve_their_own_reques
     )
     .await
     .assert_status(422);
-    assert_eq!(refunds_of(&w, &closed).await[0].status, RefundStatus::Requested);
-    assert_eq!(w.reload(&closed).await.refund_decision.as_deref(), Some(decision::NO_REFUND));
+    assert_eq!(
+        refunds_of(&w, &closed).await[0].status,
+        RefundStatus::Requested
+    );
+    assert_eq!(
+        w.reload(&closed).await.refund_decision.as_deref(),
+        Some(decision::NO_REFUND)
+    );
 }
 
 /// AC3 (window): a refund is asked within 7 days of the cancellation, and one
@@ -295,35 +334,55 @@ async fn a_refund_is_asked_within_seven_days_and_refused_after_and_never_above_w
 
     // 6 days 23 hours after the cancellation: still inside the window.
     w.travel(TimeDelta::days(6) + TimeDelta::hours(23));
-    w.post(&w.cashier, &path, &[("amount", "10.00"), ("reason", "Late apology")])
-        .await
-        .assert_status(303);
+    w.post(
+        &w.cashier,
+        &path,
+        &[("amount", "10.00"), ("reason", "Late apology")],
+    )
+    .await
+    .assert_status(303);
 
     // 7 days 1 hour after: refused.
     w.travel(TimeDelta::hours(2));
-    w.post(&w.cashier, &path, &[("amount", "10.00"), ("reason", "Too late")])
-        .await
-        .assert_status(422)
-        .assert_see("refund request window closed");
+    w.post(
+        &w.cashier,
+        &path,
+        &[("amount", "10.00"), ("reason", "Too late")],
+    )
+    .await
+    .assert_status(422)
+    .assert_see("refund request window closed");
     assert_eq!(refunds_of(&w, &closed).await.len(), 1);
 }
 
 /// Only a failure on the customer's side with nothing refunded is asked for;
 /// the cashier who is not given the permission cannot ask.
 #[renox::test]
-async fn a_refund_is_not_asked_for_an_order_refunded_in_full_or_by_someone_without_the_permission() {
+async fn a_refund_is_not_asked_for_an_order_refunded_in_full_or_by_someone_without_the_permission()
+{
     let w = boot_own_riders().await;
     let refunded = failed_and_returned(&w, "online", &PLATE, "rider_issue").await;
-    assert_eq!(refunded.refund_decision.as_deref(), Some(decision::FULL_REFUND));
+    assert_eq!(
+        refunded.refund_decision.as_deref(),
+        Some(decision::FULL_REFUND)
+    );
     let path = format!("/orders/{}/refund", refunded.id);
 
-    w.post(&w.cashier, &path, &[("amount", "10.00"), ("reason", "More")])
-        .await
-        .assert_status(422);
+    w.post(
+        &w.cashier,
+        &path,
+        &[("amount", "10.00"), ("reason", "More")],
+    )
+    .await
+    .assert_status(422);
     w.post(&w.cook, &path, &[("amount", "10.00"), ("reason", "More")])
         .await
         .assert_forbidden();
-    assert_eq!(refunds_of(&w, &refunded).await.len(), 1, "only the full refund");
+    assert_eq!(
+        refunds_of(&w, &refunded).await.len(),
+        1,
+        "only the full refund"
+    );
 }
 
 /// AC4: given *refused* with cause *wrong item*, the refund is full and the
@@ -335,8 +394,14 @@ async fn refused_for_a_wrong_item_is_refunded_in_full_and_the_business_is_respon
     let closed = failed_and_returned(&w, "online", &PLATE, "refused_wrong_item").await;
 
     assert_eq!(closed.status, FnbOrderStatus::Cancelled);
-    assert_eq!(closed.failure_reason.as_deref(), Some(reason::REFUSED_WRONG_ITEM));
-    assert_eq!(closed.refund_decision.as_deref(), Some(decision::FULL_REFUND));
+    assert_eq!(
+        closed.failure_reason.as_deref(),
+        Some(reason::REFUSED_WRONG_ITEM)
+    );
+    assert_eq!(
+        closed.refund_decision.as_deref(),
+        Some(decision::FULL_REFUND)
+    );
     assert_eq!(closed.refund_amount, 8_500);
     assert_eq!(closed.responsible_party.as_deref(), Some(party::BUSINESS));
     assert_eq!(refunds_of(&w, &closed).await[0].amount, 8_500);
@@ -366,7 +431,10 @@ async fn a_cash_order_is_closed_with_not_applicable_and_no_refund() {
     let closed = failed_and_returned(&w, "cash_on_delivery", &PLATE, "rider_issue").await;
 
     assert_eq!(closed.status, FnbOrderStatus::Cancelled);
-    assert_eq!(closed.refund_decision.as_deref(), Some(decision::NOT_APPLICABLE));
+    assert_eq!(
+        closed.refund_decision.as_deref(),
+        Some(decision::NOT_APPLICABLE)
+    );
     assert_eq!(closed.refund_amount, 0);
     assert!(refunds_of(&w, &closed).await.is_empty());
     assert_eq!(wastage_of(&w, &w.chicken).await.len(), 1);
@@ -381,7 +449,10 @@ async fn the_customer_side_default_is_a_setting_not_a_decision_in_code() {
 
     let closed = failed_and_returned(&w, "online", &PLATE, "not_home").await;
 
-    assert_eq!(closed.refund_decision.as_deref(), Some(decision::FULL_REFUND));
+    assert_eq!(
+        closed.refund_decision.as_deref(),
+        Some(decision::FULL_REFUND)
+    );
     assert_eq!(closed.refund_amount, 8_500);
     assert_eq!(refunds_of(&w, &closed).await.len(), 1);
     // The party is still the customer's.
@@ -398,8 +469,13 @@ async fn a_manager_closes_a_failed_delivery_by_hand_without_a_second_approval() 
     w.fail_stop(&delivery, "no_cash").await.assert_status(303);
     let path = format!("/orders/{}/close", order.id);
 
-    w.post(&w.cashier, &path, &[("x", "")]).await.assert_forbidden();
-    assert_eq!(w.reload(&order).await.status, FnbOrderStatus::DeliveryFailed);
+    w.post(&w.cashier, &path, &[("x", "")])
+        .await
+        .assert_forbidden();
+    assert_eq!(
+        w.reload(&order).await.status,
+        FnbOrderStatus::DeliveryFailed
+    );
     w.get(&w.manager, &format!("/orders/{}", order.id))
         .await
         .assert_ok()

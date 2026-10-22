@@ -15,11 +15,11 @@ pub mod closing;
 pub mod closing_pages;
 mod closing_texts;
 pub mod closings;
-pub mod consumption;
 pub mod cod;
 pub mod cold;
 pub mod cold_pages;
 mod cold_texts;
+pub mod consumption;
 mod events;
 pub mod failed;
 pub mod fulfilment;
@@ -45,11 +45,11 @@ pub mod placing;
 pub mod progress;
 pub mod recall;
 pub mod recall_pages;
-pub mod refunds;
 mod recall_texts;
+pub mod refunds;
+pub mod refused;
 mod report_pages;
 pub mod reports;
-pub mod refused;
 pub mod reversal;
 mod screen_texts;
 pub mod seed;
@@ -75,8 +75,7 @@ pub use order_machine::OrderInput;
 pub use outage::{Outage, OutageStatus, OutletChannel};
 pub use paper_order::PaperOrder;
 pub use payout::{
-    ImportPreset, LateOrder, PayoutLine, PayoutStatement, PayoutStatus, ReasonMap,
-    STATEMENT_SERIES,
+    ImportPreset, LateOrder, PayoutLine, PayoutStatement, PayoutStatus, ReasonMap, STATEMENT_SERIES,
 };
 pub use payout_machine::PayoutInput;
 pub use recall::{RecallDecision, RecallNotice};

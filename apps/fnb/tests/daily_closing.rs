@@ -54,13 +54,21 @@ async fn open_till(w: &World, o: &Ops, day: NaiveDate, float: i64) -> TillView {
 }
 
 /// `by` submits the closing with the cash counted in AED.
-async fn submit(w: &World, by: &User, o: &Ops, closing: &DailyClosing, counted: &str, checklist: bool) -> TestResponse {
+async fn submit(
+    w: &World,
+    by: &User,
+    o: &Ops,
+    closing: &DailyClosing,
+    counted: &str,
+    checklist: bool,
+) -> TestResponse {
     let cashier = o.till.id.to_string();
     let mut fields = vec![("counted", counted), ("cashier", cashier.as_str())];
     if checklist {
         fields.push(("checklist", "on"));
     }
-    w.post(by, &format!("/closings/{}/submit", closing.id), &fields).await
+    w.post(by, &format!("/closings/{}/submit", closing.id), &fields)
+        .await
 }
 
 async fn reload(w: &World, closing: &DailyClosing) -> DailyClosing {
@@ -111,7 +119,11 @@ async fn an_order_before_the_cut_off_belongs_to_the_day_before_and_its_closing()
     let customer = w.customer("Night Owl").await;
     go_to(&w, dubai_at(2, "01:30")).await;
     let early = w
-        .place(customer, "cash_on_delivery", &[("shawarma-plate", "1", "60.00")])
+        .place(
+            customer,
+            "cash_on_delivery",
+            &[("shawarma-plate", "1", "60.00")],
+        )
         .await;
     let early = FnbOrder::find_or_404(w.db(), early.id).await.unwrap();
     assert_eq!(early.outlet_id, Some(o.marina.id));
@@ -119,7 +131,11 @@ async fn an_order_before_the_cut_off_belongs_to_the_day_before_and_its_closing()
 
     go_to(&w, dubai_at(2, "04:10")).await;
     let later = w
-        .place(customer, "cash_on_delivery", &[("falafel-wrap", "1", "18.00")])
+        .place(
+            customer,
+            "cash_on_delivery",
+            &[("falafel-wrap", "1", "18.00")],
+        )
         .await;
     let later = FnbOrder::find_or_404(w.db(), later.id).await.unwrap();
     assert_eq!(later.business_date, Some(day_after(2)));
@@ -152,16 +168,28 @@ async fn a_cut_off_change_applies_from_the_next_business_day() {
     outlet.cutoff_minutes = Some(240);
     outlet.pending_cutoff_minutes = Some(120);
     outlet.pending_cutoff_from = Some(date("2026-10-17"));
-    assert_eq!(outlet.business_date(at("2026-10-16 03:00")), date("2026-10-15"));
-    assert_eq!(outlet.business_date(at("2026-10-17 03:00")), date("2026-10-17"));
+    assert_eq!(
+        outlet.business_date(at("2026-10-16 03:00")),
+        date("2026-10-15")
+    );
+    assert_eq!(
+        outlet.business_date(at("2026-10-17 03:00")),
+        date("2026-10-17")
+    );
     assert_eq!(outlet.cutoff_for(date("2026-10-16")), 240);
     assert_eq!(outlet.cutoff_for(date("2026-10-17")), 120);
 
     // Through the screen: the area manager sets it, a kitchen manager cannot.
     let path = format!("/outlets/{}/cutoff", o.marina.id);
-    w.post(&o.kitchen, &path, &[("time", "02:00")]).await.assert_forbidden();
-    w.post(&o.area, &path, &[("time", "late")]).await.assert_status(422);
-    w.post(&o.area, &path, &[("time", "02:00")]).await.assert_status(303);
+    w.post(&o.kitchen, &path, &[("time", "02:00")])
+        .await
+        .assert_forbidden();
+    w.post(&o.area, &path, &[("time", "late")])
+        .await
+        .assert_status(422);
+    w.post(&o.area, &path, &[("time", "02:00")])
+        .await
+        .assert_status(303);
     let saved = Outlet::find_or_404(w.db(), o.marina.id).await.unwrap();
     assert_eq!(saved.cutoff_minutes, None, "today's cut-off is kept");
     assert_eq!(saved.pending_cutoff_minutes, Some(120));
@@ -183,19 +211,33 @@ async fn the_closing_is_refused_before_the_cut_off_and_submitted_after_it() {
     let refused = submit(&w, &o.kitchen, &o, &closing, "100.00", true).await;
     refused.assert_status(422);
     assert!(refused.text().contains("04:00"), "{}", refused.text());
-    assert!(refused.text().contains(&dubai_at(2, "04:00").format("%Y").to_string()));
+    assert!(
+        refused
+            .text()
+            .contains(&dubai_at(2, "04:00").format("%Y").to_string())
+    );
     assert_eq!(reload(&w, &closing).await.status, ClosingStatus::Open);
-    let still = till_desk(w.state()).find(w.state(), till.id).await.unwrap().unwrap();
+    let still = till_desk(w.state())
+        .find(w.state(), till.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(still.status, "open", "the till was not counted");
 
     go_to(&w, dubai_at(2, "04:05")).await;
     submit(&w, &o.kitchen, &o, &closing, "100.00", false)
         .await
         .assert_status(422);
-    submit(&w, &o.kitchen, &o, &closing, "", true).await.assert_status(422);
-    w.post(&o.till, &format!("/closings/{}/submit", closing.id), &[("counted", "100.00"), ("checklist", "on")])
+    submit(&w, &o.kitchen, &o, &closing, "", true)
         .await
-        .assert_forbidden();
+        .assert_status(422);
+    w.post(
+        &o.till,
+        &format!("/closings/{}/submit", closing.id),
+        &[("counted", "100.00"), ("checklist", "on")],
+    )
+    .await
+    .assert_forbidden();
     submit(&w, &o.kitchen, &o, &closing, "100.00", true)
         .await
         .assert_status(303);
@@ -204,7 +246,11 @@ async fn the_closing_is_refused_before_the_cut_off_and_submitted_after_it() {
     assert_eq!(done.counted_cash, Some(10_000));
     assert_eq!(done.variance, Some(0));
     assert_eq!(done.till_session_id, Some(till.id));
-    let counted = till_desk(w.state()).find(w.state(), till.id).await.unwrap().unwrap();
+    let counted = till_desk(w.state())
+        .find(w.state(), till.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(counted.status, "closed");
 }
 
@@ -221,14 +267,20 @@ async fn a_shortage_at_closing_creates_a_till_handover_with_the_difference() {
         .await
         .assert_status(303);
     let done = reload(&w, &closing).await;
-    assert_eq!((done.expected_cash, done.counted_cash, done.variance), (10_000, Some(6_500), Some(-3_500)));
+    assert_eq!(
+        (done.expected_cash, done.counted_cash, done.variance),
+        (10_000, Some(6_500), Some(-3_500))
+    );
     let handover = cash_till::of_session(w.db(), till.id)
         .await
         .unwrap()
         .expect("the closed till session made a handover");
     assert_eq!(handover.status, HandoverStatus::Short);
     assert_eq!(handover.difference, 3_500, "AED 35.00 short");
-    assert_eq!(handover.holder_till.as_deref(), Some(o.marina.till_key().as_str()));
+    assert_eq!(
+        handover.holder_till.as_deref(),
+        Some(o.marina.till_key().as_str())
+    );
     assert_eq!(handover.responsible_user_id, o.till.id);
 }
 
@@ -250,32 +302,56 @@ async fn a_late_entry_into_a_submitted_closing_waits_for_the_area_manager_and_re
     // Nothing is recorded and the closing is still locked.
     assert_eq!(PaperOrder::query().count(w.db()).await.unwrap(), 0);
     assert_eq!(reload(&w, &closing).await.status, ClosingStatus::Submitted);
-    let entry = LateEntry::query().first(w.db()).await.unwrap().expect("the late entry is stored");
+    let entry = LateEntry::query()
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("the late entry is stored");
     assert!(entry.needs_approval);
-    let pending = ApprovalRequest::pending_about(w.db(), &entry.subject()).await.unwrap();
+    let pending = ApprovalRequest::pending_about(w.db(), &entry.subject())
+        .await
+        .unwrap();
     assert_eq!(pending.len(), 1, "one approval for the area manager");
 
     // The requester cannot approve it; the area manager does.
-    assert!(wl_kernel::approvals::approve(w.state(), pending[0].id, &o.till, "").await.is_err());
+    assert!(
+        wl_kernel::approvals::approve(w.state(), pending[0].id, &o.till, "")
+            .await
+            .is_err()
+    );
     wl_kernel::approvals::approve(w.state(), pending[0].id, &o.area, "")
         .await
         .expect("the area manager approves");
 
-    let paper = PaperOrder::query().first(w.db()).await.unwrap().expect("recorded on approval");
+    let paper = PaperOrder::query()
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("recorded on approval");
     assert!(paper.late);
     assert_eq!(paper.business_date, Some(day));
     assert_eq!(paper.reopened_closing_id, Some(closing.id));
     let reopened = reload(&w, &closing).await;
     assert_eq!(reopened.status, ClosingStatus::Reopened);
-    assert_eq!(reopened.reopen_reason.as_deref(), Some("Late entries after an outage"));
+    assert_eq!(
+        reopened.reopen_reason.as_deref(),
+        Some("Late entries after an outage")
+    );
     assert_eq!(reopened.reopen_count, 1);
     // The kitchen manager is told, and the till can be counted again.
     assert!(w.notices.users_of_type(NOTICE).contains(&o.kitchen.id));
-    let till = till_desk(w.state()).find(w.state(), reopened.till_session_id.unwrap()).await.unwrap().unwrap();
+    let till = till_desk(w.state())
+        .find(w.state(), reopened.till_session_id.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(till.status, "open");
     // The paper order is in the closing's sales.
     let totals = closings::totals(w.db(), &reopened).await.unwrap();
-    assert_eq!((totals.paper_orders, totals.late_entries, totals.gross), (1, 1, 3_500));
+    assert_eq!(
+        (totals.paper_orders, totals.late_entries, totals.gross),
+        (1, 1, 3_500)
+    );
     // And it is submitted again.
     submit(&w, &o.kitchen, &o, &reopened, "100.00", true)
         .await
@@ -291,9 +367,13 @@ async fn a_late_entry_into_an_approved_closing_is_refused_with_a_task_for_the_ar
     let (w, o) = boot_ops().await;
     let day = day_after(1);
     let closing = submitted(&w, &o, day, 2).await;
-    w.post(&o.area, &format!("/closings/{}/approve", closing.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &o.area,
+        &format!("/closings/{}/approve", closing.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(reload(&w, &closing).await.status, ClosingStatus::Approved);
 
     go_to(&w, dubai_at(2, "09:00")).await;
@@ -304,9 +384,13 @@ async fn a_late_entry_into_an_approved_closing_is_refused_with_a_task_for_the_ar
     assert_eq!(LateEntry::query().count(w.db()).await.unwrap(), 0);
 
     // No reopen is offered: the closing is terminal.
-    w.post(&o.area, &format!("/closings/{}/reopen", closing.id), &[("reason", "One more")])
-        .await
-        .assert_status(422);
+    w.post(
+        &o.area,
+        &format!("/closings/{}/reopen", closing.id),
+        &[("reason", "One more")],
+    )
+    .await
+    .assert_status(422);
     let page = w.get(&o.area, &format!("/closings/{}", closing.id)).await;
     page.assert_ok();
     assert!(!page.text().contains("closing-reopen"), "no reopen sheet");
@@ -316,7 +400,11 @@ async fn a_late_entry_into_an_approved_closing_is_refused_with_a_task_for_the_ar
     let key = format!("fnb.closing_adjustment:{}:P-0007", closing.id);
     let tasks = w.tickets.opened_with(&key);
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].title.contains(&day_after(2).to_string()), "{}", tasks[0].title);
+    assert!(
+        tasks[0].title.contains(&day_after(2).to_string()),
+        "{}",
+        tasks[0].title
+    );
 }
 
 /// Must not let anyone but the area manager reopen a submitted closing; the
@@ -328,26 +416,43 @@ async fn only_the_area_manager_reopens_a_submitted_closing() {
     let day = day_after(1);
     let closing = submitted(&w, &o, day, 2).await;
     let path = format!("/closings/{}/reopen", closing.id);
-    w.post(&o.kitchen, &path, &[("reason", "Miscounted")]).await.assert_forbidden();
-    w.post(&o.accountant, &path, &[("reason", "Miscounted")]).await.assert_forbidden();
-    w.post(&o.area, &path, &[("reason", "")]).await.assert_status(422);
+    w.post(&o.kitchen, &path, &[("reason", "Miscounted")])
+        .await
+        .assert_forbidden();
+    w.post(&o.accountant, &path, &[("reason", "Miscounted")])
+        .await
+        .assert_forbidden();
+    w.post(&o.area, &path, &[("reason", "")])
+        .await
+        .assert_status(422);
     w.post(&o.area, &path, &[("reason", "Miscounted the float")])
         .await
         .assert_status(303);
     let reopened = reload(&w, &closing).await;
     assert_eq!(reopened.status, ClosingStatus::Reopened);
-    assert_eq!(reopened.reopen_reason.as_deref(), Some("Miscounted the float"));
+    assert_eq!(
+        reopened.reopen_reason.as_deref(),
+        Some("Miscounted the float")
+    );
     assert_eq!(reopened.reopened_by, Some(o.area.id));
-    let till = till_desk(w.state()).find(w.state(), reopened.till_session_id.unwrap()).await.unwrap().unwrap();
+    let till = till_desk(w.state())
+        .find(w.state(), reopened.till_session_id.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(till.status, "open");
     // Submitted again with the right count.
     submit(&w, &o.kitchen, &o, &reopened, "100.00", true)
         .await
         .assert_status(303);
     // The accountant approves it.
-    w.post(&o.accountant, &format!("/closings/{}/approve", closing.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    w.post(
+        &o.accountant,
+        &format!("/closings/{}/approve", closing.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     assert_eq!(reload(&w, &closing).await.status, ClosingStatus::Approved);
 }
 
@@ -358,23 +463,44 @@ async fn the_closing_screens_are_for_the_roles_that_hold_the_permissions() {
     let (w, o) = boot_ops().await;
     let closing = closing_of(&w, &o, day_after(1)).await;
     w.get(&w.nobody, "/closings").await.assert_forbidden();
-    w.get(&w.nobody, &format!("/closings/{}", closing.id)).await.assert_forbidden();
+    w.get(&w.nobody, &format!("/closings/{}", closing.id))
+        .await
+        .assert_forbidden();
     let list = w.get(&o.kitchen, "/closings").await;
     list.assert_ok();
     assert!(list.text().contains("Marina Kitchen"));
-    w.post(&o.kitchen, &format!("/closings/{}/approve", closing.id), &[("x", "")])
-        .await
-        .assert_forbidden();
-    w.post(&o.till, "/closings", &[("outlet", &o.marina.id.to_string())])
-        .await
-        .assert_forbidden();
-    w.post(&o.kitchen, "/closings", &[("outlet", &o.marina.id.to_string())])
-        .await
-        .assert_status(303);
+    w.post(
+        &o.kitchen,
+        &format!("/closings/{}/approve", closing.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &o.till,
+        "/closings",
+        &[("outlet", &o.marina.id.to_string())],
+    )
+    .await
+    .assert_forbidden();
+    w.post(
+        &o.kitchen,
+        "/closings",
+        &[("outlet", &o.marina.id.to_string())],
+    )
+    .await
+    .assert_status(303);
     // A service call as the system runs the system twin.
-    let ask = SubmitAsk { counted: 0, checklist_done: true, cashier: Some(o.till.id) };
+    let ask = SubmitAsk {
+        counted: 0,
+        checklist_done: true,
+        cashier: Some(o.till.id),
+    };
     go_to(&w, dubai_at(3, "05:00")).await;
     let state = w.state().clone();
-    let result = w.app.at_travelled_time(closings::submit(&state, None, closing.id, &ask)).await;
+    let result = w
+        .app
+        .at_travelled_time(closings::submit(&state, None, closing.id, &ask))
+        .await;
     assert_eq!(result.unwrap().status, ClosingStatus::Submitted);
 }

@@ -151,7 +151,11 @@ async fn the_cash_sales_of_the_session_are_part_of_what_the_till_should_hold() {
         )
         .await
         .assert_status(303);
-    let view = till_desk(t.state()).find(t.state(), session.id).await.unwrap().unwrap();
+    let view = till_desk(t.state())
+        .find(t.state(), session.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(view.cash_sales, 10_500);
     assert_eq!(view.expected, 20_500);
     till_sessions::submit_count(t.state(), None, session.id, 20_500)
@@ -176,23 +180,34 @@ async fn a_closed_session_is_reopened_with_a_reason_and_reviewed() {
     let session = till_sessions::open(t.state(), None, open_till(cora.id, 0))
         .await
         .unwrap();
-    till_sessions::submit_count(t.state(), None, session.id, 0).await.unwrap();
+    till_sessions::submit_count(t.state(), None, session.id, 0)
+        .await
+        .unwrap();
 
     // The cashier cannot reopen or review.
     t.app.acting_as(&cora);
     t.app
-        .post(&format!("/till-sessions/{}/reopen", session.id), &[("reason", "typo")])
+        .post(
+            &format!("/till-sessions/{}/reopen", session.id),
+            &[("reason", "typo")],
+        )
         .await
         .assert_status(403);
     t.app
-        .post(&format!("/till-sessions/{}/review", session.id), &[("x", "")])
+        .post(
+            &format!("/till-sessions/{}/review", session.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(403);
 
     t.app.acting_as(&mia);
     // A reopening needs its reason.
     t.app
-        .post(&format!("/till-sessions/{}/reopen", session.id), &[("reason", "")])
+        .post(
+            &format!("/till-sessions/{}/reopen", session.id),
+            &[("reason", "")],
+        )
         .await
         .assert_status(422);
     t.app
@@ -205,12 +220,20 @@ async fn a_closed_session_is_reopened_with_a_reason_and_reviewed() {
     let reopened = TillSession::find_or_404(t.db(), session.id).await.unwrap();
     assert_eq!(reopened.status, TillSessionStatus::Open);
     assert_eq!(reopened.reopen_count, 1);
-    assert_eq!(reopened.reopen_reason.as_deref(), Some("Counted the wrong drawer"));
+    assert_eq!(
+        reopened.reopen_reason.as_deref(),
+        Some("Counted the wrong drawer")
+    );
     assert_eq!(reopened.counted_cash, None);
 
-    till_sessions::submit_count(t.state(), None, session.id, 0).await.unwrap();
+    till_sessions::submit_count(t.state(), None, session.id, 0)
+        .await
+        .unwrap();
     t.app
-        .post(&format!("/till-sessions/{}/review", session.id), &[("x", "")])
+        .post(
+            &format!("/till-sessions/{}/review", session.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(303);
     let reviewed = TillSession::find_or_404(t.db(), session.id).await.unwrap();
@@ -231,7 +254,10 @@ async fn the_kernel_desk_runs_a_session_for_a_vertical() {
         .expect("the sales module provides the desk");
     assert_eq!(view.status, "open");
     assert_eq!(view.expected, 5_000);
-    let closed = desk.submit_count(t.state(), None, view.id, 4_000).await.unwrap();
+    let closed = desk
+        .submit_count(t.state(), None, view.id, 4_000)
+        .await
+        .unwrap();
     assert_eq!(closed.status, "closed");
     assert_eq!(closed.variance, Some(-1_000));
     assert_eq!(seen.0.lock().unwrap().len(), 1);

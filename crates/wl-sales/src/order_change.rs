@@ -285,10 +285,7 @@ impl OrderSettlement {
             .where_(OrderSettlement::ID.eq(id))
             .update(
                 db,
-                &[
-                    ("status", &status.to_owned()),
-                    ("updated_at", &now()),
-                ],
+                &[("status", &status.to_owned()), ("updated_at", &now())],
             )
             .await?;
         Ok(())

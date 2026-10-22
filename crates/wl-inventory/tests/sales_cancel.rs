@@ -103,11 +103,18 @@ async fn a_picked_dispatch_of_the_cancelled_line_is_cancelled_and_its_reservatio
     assert_eq!(t.available(&item, &store, None).await, 2_000);
 
     t.state()
-        .emit(line_cancelled(11, 3_000, Some(LineOutcomeKind::ReturnToStock)))
+        .emit(line_cancelled(
+            11,
+            3_000,
+            Some(LineOutcomeKind::ReturnToStock),
+        ))
         .await
         .unwrap();
 
-    assert_eq!(reload(&t, &dispatch).await.status, DispatchStatus::Cancelled);
+    assert_eq!(
+        reload(&t, &dispatch).await.status,
+        DispatchStatus::Cancelled
+    );
     assert_eq!(t.available(&item, &store, None).await, 5_000);
     assert!(wastage_of(&t, &item).await.is_empty());
     let effects = CancelEffect::of_order(t.db(), ORDER).await.unwrap();
@@ -128,7 +135,11 @@ async fn a_dispatch_with_other_lines_keeps_them_when_one_line_is_cancelled() {
     let dispatch = picked(&t, &store, &[(&rice, 2_000, 11), (&oil, 1_000, 12)]).await;
 
     t.state()
-        .emit(line_cancelled(11, 2_000, Some(LineOutcomeKind::ReturnToStock)))
+        .emit(line_cancelled(
+            11,
+            2_000,
+            Some(LineOutcomeKind::ReturnToStock),
+        ))
         .await
         .unwrap();
 
@@ -255,7 +266,10 @@ async fn scrapping_picked_goods_posts_wastage_and_removes_the_line() {
     assert_eq!(waste.len(), 1);
     assert_eq!((waste[0].quantity_milli, waste[0].value), (2_000, 800));
     assert_eq!(waste[0].source(), order());
-    assert_eq!(reload(&t, &dispatch).await.status, DispatchStatus::Cancelled);
+    assert_eq!(
+        reload(&t, &dispatch).await.status,
+        DispatchStatus::Cancelled
+    );
 }
 
 /// AC4: *finish to stock* moves nothing and posts no wastage.
@@ -268,7 +282,11 @@ async fn finish_to_stock_posts_no_movement() {
     let before = t.movements_of(&item).await.len();
 
     t.state()
-        .emit(line_cancelled(41, 2_000, Some(LineOutcomeKind::FinishToStock)))
+        .emit(line_cancelled(
+            41,
+            2_000,
+            Some(LineOutcomeKind::FinishToStock),
+        ))
         .await
         .unwrap();
 
@@ -307,11 +325,18 @@ async fn a_dispatch_that_already_left_is_logged_and_the_dispatcher_gets_a_task()
     line.insert(t.db()).await.unwrap();
 
     t.state()
-        .emit(line_cancelled(51, 2_000, Some(LineOutcomeKind::ReturnToStock)))
+        .emit(line_cancelled(
+            51,
+            2_000,
+            Some(LineOutcomeKind::ReturnToStock),
+        ))
         .await
         .unwrap();
 
-    assert_eq!(reload(&t, &dispatch).await.status, DispatchStatus::Dispatched);
+    assert_eq!(
+        reload(&t, &dispatch).await.status,
+        DispatchStatus::Dispatched
+    );
     assert_eq!(lines_of(t.db(), dispatch.id).await.unwrap().len(), 1);
     let effects = CancelEffect::of_order(t.db(), ORDER).await.unwrap();
     assert_eq!(effects[0].action, "task");
@@ -337,7 +362,10 @@ async fn the_same_cancellation_twice_is_applied_once() {
     t.state().emit(event).await.unwrap();
 
     assert_eq!(wastage_of(&t, &item).await.len(), 1);
-    assert_eq!(CancelEffect::of_order(t.db(), ORDER).await.unwrap().len(), 1);
+    assert_eq!(
+        CancelEffect::of_order(t.db(), ORDER).await.unwrap().len(),
+        1
+    );
 }
 
 /// A cancelled order acts on each started line's outcome and cancels what had
@@ -378,7 +406,10 @@ async fn a_cancelled_order_applies_each_outcome_and_cancels_the_rest_of_its_disp
         .await
         .unwrap();
 
-    assert_eq!(reload(&t, &dispatch).await.status, DispatchStatus::Cancelled);
+    assert_eq!(
+        reload(&t, &dispatch).await.status,
+        DispatchStatus::Cancelled
+    );
     assert!(wastage_of(&t, &rice).await.is_empty());
     assert_eq!(wastage_of(&t, &cake).await.len(), 1);
     assert_eq!(t.available(&rice, &store, None).await, 5_000);
@@ -452,7 +483,10 @@ async fn the_dispatch_screen_picks_and_cancels_for_a_dispatcher_only() {
     t.app.acting_as(&dispatcher);
     t.app
         .htmx()
-        .post(&format!("/dispatches/{}/cancel", dispatch.id), &[("reason", " ")])
+        .post(
+            &format!("/dispatches/{}/cancel", dispatch.id),
+            &[("reason", " ")],
+        )
         .await
         .assert_status(422);
     t.browse(&dispatcher, "/dispatches").await.assert_ok();
