@@ -8,6 +8,8 @@ mod support;
 
 use edtech::batch_machine::{BatchInput, CHANGE_TUTOR};
 use edtech::batches;
+use edtech::attendance::Mark;
+use edtech::corrections;
 use edtech::session_machine::{CANCEL, CORRECT_ATTENDANCE};
 use edtech::sessions;
 use edtech::{Batch, BatchStatus, Session, SessionStatus};
@@ -307,25 +309,45 @@ async fn edu_base_a_tutor_submits_the_attendance_of_a_session_that_started() {
     assert!(matches!(refused, Err(Error::Forbidden)));
 }
 
-/// The correction of attendance is declared with its reason: it needs one and
-/// leaves a held session held.
+/// Correcting the attendance of a held session needs a reason, and it leaves a
+/// held session held (BL-EDU-14 gives the correction its body).
 #[renox::test]
 async fn edu_base_correcting_attendance_needs_a_reason() {
     let t = boot().await;
     let batch = running(&t).await;
     let past = t.past_session(&batch, 1, 1).await;
+    let student = t.person(1, "Sara Ali");
+    let enrolment = t.enrolment_in(&batch, student, edtech::EnrolmentStatus::Active).await;
     let tariq = t.teacher().await;
+    let amal = t.coordinator().await;
     sessions::submit_attendance(t.state(), &tariq, past.id).await.unwrap();
-    let held = Session::find_or_404(t.db(), past.id).await.unwrap();
 
-    let bare = held.transition(CORRECT_ATTENDANCE).by(&tariq).run(t.state()).await;
-    assert!(matches!(bare, Err(TransitionError::ReasonRequired)));
-    held.transition(CORRECT_ATTENDANCE)
-        .by(&tariq)
-        .reason("marked Sara absent by mistake")
-        .run(t.state())
+    let bare = corrections::correct_attendance(
+        t.state(),
+        &amal,
+        past.id,
+        &[(enrolment.id, Mark::Absent)],
+        " ",
+    )
+    .await;
+    assert!(bare.is_err(), "a reason is needed");
+    let bare_run = Session::find_or_404(t.db(), past.id)
         .await
-        .expect("it is corrected");
+        .unwrap()
+        .transition(CORRECT_ATTENDANCE)
+        .by(&tariq)
+        .run(t.state())
+        .await;
+    assert!(bare_run.is_err(), "the machine refuses a bare run too");
+    corrections::correct_attendance(
+        t.state(),
+        &amal,
+        past.id,
+        &[(enrolment.id, Mark::Absent)],
+        "marked Sara absent by mistake",
+    )
+    .await
+    .expect("it is corrected");
     let again = Session::find_or_404(t.db(), past.id).await.unwrap();
     assert_eq!(again.status, SessionStatus::Held);
 }
