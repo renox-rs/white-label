@@ -423,6 +423,7 @@ impl Seed {
         self.trade().await?;
         self.money().await?;
         self.notes().await?;
+        self.sms_outage().await?;
         renox::audit::record(
             self.db(),
             renox::audit::Entry::new(DONE_ACTION).subject(MARKER_SUBJECT, 1),

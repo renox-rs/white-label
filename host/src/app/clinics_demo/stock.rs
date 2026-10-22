@@ -18,6 +18,8 @@ use wl_inventory::transfer::{self, NewTransfer, NewTransferLine};
 use wl_inventory::{
     Item, Location, Lot, LotStatus, PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus,
 };
+use wl_kernel::integrations::{self, ConnectionStatus, IntegrationConnection};
+use wl_kernel::notify::{MessageGaveUp, MessageId, NotifyRecipient};
 use wl_kernel::{PartyId, PartyKind, Subject};
 use wl_parties::{CompanyDetails, NewParty, PartyRole};
 
@@ -217,6 +219,7 @@ impl Seed {
             )
             .await?;
         self.recall_id = recall.id;
+        self.undeliverable_notice(recall.id).await?;
         Ok(())
     }
 
@@ -274,6 +277,64 @@ impl Seed {
                 STORE,
                 &format!("/purchase-orders/{}/receive", made[0]),
                 &[("delivery_note", "DN-88231")],
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// One patient's notice could not be delivered on any channel (the demo
+    /// makes the give-up wl-notify's worker would report): the notice goes
+    /// back to the front desk of its branch, which sees it under *Recall
+    /// calls* and records the call.
+    async fn undeliverable_notice(&self, recall: i64) -> Result {
+        let notices = clinics::RecallNotice::of_recall(self.db(), recall).await?;
+        let mut chosen = None;
+        for notice in &notices {
+            let scope = clinics::recalls::notice_scope(self.db(), notice).await?;
+            if scope.id() == BUSINESS_BAY.to_string() {
+                chosen = Some(notice);
+                break;
+            }
+        }
+        let Some(notice) = chosen.or(notices.first()) else {
+            return Ok(());
+        };
+        let patient = PartyId(notice.party_id);
+        let gave_up = MessageGaveUp {
+            message: MessageId(0),
+            type_key: clinics::recall_notice::NOTICE_TYPE.to_owned(),
+            subject: Subject::new(
+                clinics::recall_notice::RECALL_NOTICE_SUBJECT_TYPE,
+                notice.id,
+            ),
+            subject_label: None,
+            recipient: NotifyRecipient::Party { id: patient },
+            gave_up_at: renox::db::now(),
+            contact_point: None,
+            channels_tried: Vec::new(),
+            statutory: false,
+            reactions: Vec::new(),
+            alternative_of: None,
+            contact_of: None,
+        };
+        clinics::recalls::on_gave_up(&self.state, &gave_up).await
+    }
+
+    /// The SMS connection went down three hours ago: reminders cannot go, and
+    /// the front desk phones the patients of the next 24 hours (*Appointments
+    /// to call*, 05 §8).
+    pub(crate) async fn sms_outage(&self) -> Result {
+        IntegrationConnection::query()
+            .where_(IntegrationConnection::KEY.eq(integrations::SMS))
+            .update(
+                self.db(),
+                &[
+                    ("status", &ConnectionStatus::Down),
+                    (
+                        "status_changed_at",
+                        &Some(renox::db::now() - renox::chrono::Duration::hours(3)),
+                    ),
+                ],
             )
             .await?;
         Ok(())

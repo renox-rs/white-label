@@ -3,7 +3,7 @@
 
 mod support;
 
-use host::roles::{MEMBER, RECEPTIONIST, STOREKEEPER};
+use host::roles::{CLINIC_MANAGER, MEMBER, OWNER, RECEPTIONIST, STOREKEEPER};
 use support::{clinics_booted, person};
 
 /// The receptionist books through the picker and works the waiting list, and
@@ -78,4 +78,30 @@ async fn the_storekeeper_reaches_the_stock_screens_and_the_receptionist_does_not
         .await
         .assert_ok()
         .assert_dont_see("Receive stock");
+}
+
+/// The clinic manager follows the recalls (the list and the page, which links
+/// to the patients and notices) and the owner decides them; the receptionist
+/// reaches neither.
+#[renox::test]
+async fn the_clinic_manager_follows_the_recalls_and_the_receptionist_does_not() {
+    let app = clinics_booted().await;
+    let mona = person(&app, "Mona", CLINIC_MANAGER).await;
+    let olga = person(&app, "Olga", OWNER).await;
+    let rita = person(&app, "Rita", RECEPTIONIST).await;
+
+    for user in [&mona, &olga] {
+        app.acting_as(user);
+        app.get("/recalls").await.assert_ok();
+        app.get("/dashboard")
+            .await
+            .assert_ok()
+            .assert_see("Recalls");
+    }
+    app.acting_as(&rita);
+    app.get("/recalls").await.assert_forbidden();
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_dont_see(">Recalls<");
 }

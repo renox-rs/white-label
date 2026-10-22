@@ -1058,6 +1058,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::STOCK_HOLD,
+            // The clinic manager follows a recall (how many were told) and
+            // sends its notices; the owner decides and closes it.
+            inventory::RECALLS_VIEW,
             inventory::LOTS_RELEASE,
             // `STK.RUL.06`: told when a pending issue stays open for 24
             // hours (the holders of `stock.approve` in the branch).

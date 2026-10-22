@@ -123,6 +123,9 @@ pub fn inventory(client_app: &str, module: WlInventory) -> WlInventory {
         .hold_second_person_reasons(seed::SECOND_PERSON_HOLD_REASONS)
         .hold_reminder_hours(seed::HOLD_REMINDER_HOURS)
         .hold_reminder_hours_for_reason(seed::SUSPECT_HOLD_REASON, seed::HOLD_REMINDER_HOURS)
+        // The patients of a recall are named and told on the clinic's own
+        // page, with the audit their health data needs (`CLN.ACL.01`).
+        .recall_notices_route("clinics.recall")
 }
 
 /// The budget categories are owned by the accountant (`FIN.BUD.01`,

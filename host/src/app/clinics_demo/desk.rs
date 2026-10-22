@@ -303,10 +303,13 @@ impl Seed {
                     .unwrap_or(wall);
                 // The seed may run at any hour: a story of today stays inside
                 // the opening hours (08:00 to 19:00, the last hour is room
-                // for the longest service), else the booking is refused.
+                // for the longest service), else the booking is refused. A
+                // time outside them wraps round the window, so two stories of
+                // one doctor keep their distance.
                 let first = wall.date().and_hms_opt(8, 0, 0).unwrap_or(wall);
-                let last = wall.date().and_hms_opt(19, 0, 0).unwrap_or(wall);
-                wall.clamp(first, last)
+                let window = 11 * 60;
+                let into = (wall - first).num_minutes().rem_euclid(window);
+                first + Duration::minutes(into)
             }
         }
     }
