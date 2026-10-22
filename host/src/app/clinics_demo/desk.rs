@@ -297,9 +297,16 @@ impl Seed {
                 // Rounded to the minute, so the booking is the same minute.
                 let at = renox::db::now() + Duration::minutes(minutes);
                 let wall = self.wall(at);
-                wall.date()
+                let wall = wall
+                    .date()
                     .and_hms_opt(wall.hour(), wall.minute(), 0)
-                    .unwrap_or(wall)
+                    .unwrap_or(wall);
+                // The seed may run at any hour: a story of today stays inside
+                // the opening hours (08:00 to 19:00, the last hour is room
+                // for the longest service), else the booking is refused.
+                let first = wall.date().and_hms_opt(8, 0, 0).unwrap_or(wall);
+                let last = wall.date().and_hms_opt(19, 0, 0).unwrap_or(wall);
+                wall.clamp(first, last)
             }
         }
     }
