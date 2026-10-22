@@ -36,13 +36,14 @@ use renox::Environment;
 use renox::chrono::{Days, NaiveDate};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
+use wl_attendance::record::AttendanceStatus;
 use wl_attendance::timesheet::{ApprovalBasis, ApproverKind};
-use wl_attendance::{Timesheet, TimesheetStatus};
+use wl_attendance::{AttendanceRecord, Timesheet, TimesheetStatus, WorkLocation};
 use wl_documents::{Document, DocumentKind, DocumentStatus};
 use wl_hr::pay_account::{PayAccount, PayAccountStatus};
 use wl_hr::payroll::{LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
 use wl_hr::settlement::{FinalSettlement, SettlementStatus};
-use wl_hr::visa::VisaCase;
+use wl_hr::visa::{VisaCase, VisaCaseStatus, VisaCaseStep};
 use wl_hr::{EmployeeStatus, NewEmployee, SalaryStructure, employees};
 use wl_invoicing::rate_card::{RateCard, RateCardLine, RateCardVersion, Unit, VersionStatus};
 use wl_invoicing::rate_cards::{self, LineInput};
@@ -447,6 +448,7 @@ impl Seed {
         let sites = self.sites(&clients).await?;
         let requests = self.requests(&contracts, &sites).await?;
         let deployments = self.deployments(&contracts, &sites, &requests).await?;
+        self.attendance(&deployments, &sites).await?;
         self.timesheets(&deployments).await?;
         self.payroll().await?;
         self.exits().await?;
@@ -1176,6 +1178,62 @@ impl Seed {
         Ok(deployments)
     }
 
+    /// A work location per site, and the attendance of the workers on site:
+    /// the supervisor marked them present on each of the last seven days
+    /// (07:00 to 15:00), but Kamal, who has not been seen for nine days, which
+    /// is what the absence rule (`MPW.RUL.09`) opens a case for.
+    async fn attendance(&self, deployments: &[Deployment], sites: &[Site]) -> Result {
+        let mut locations = Vec::new();
+        for site in sites {
+            locations.push(
+                WorkLocation::create(
+                    self.db(),
+                    WorkLocation {
+                        name: site.name.clone(),
+                        scope_type: Some(manpower::permissions::SITE_SCOPE_TYPE.to_owned()),
+                        scope_id: Some(site.id),
+                        ..WorkLocation::default()
+                    },
+                )
+                .await?,
+            );
+        }
+        let at = |n: i64, hour: u32| day(n).and_hms_opt(hour, 0, 0).unwrap_or_default().and_utc();
+        for deployment in deployments {
+            if deployment.status != DeploymentStatus::Active {
+                continue;
+            }
+            let Some(index) = sites.iter().position(|s| s.id == deployment.site_id) else {
+                continue;
+            };
+            let kamal = deployment.employee_id == self.employees[W_KAMAL].0;
+            let days: Vec<i64> = if kamal {
+                (-20..=-9).collect()
+            } else {
+                (-6..=0).collect()
+            };
+            for n in days {
+                let record = AttendanceRecord {
+                    employee_id: deployment.employee_id,
+                    location_id: locations[index].id,
+                    date: day(n),
+                    // 07:00 to 15:00 in Dubai, UTC+4.
+                    check_in: at(n, 3),
+                    check_out: Some(at(n, 11)),
+                    recorded_by: Some(self.account_manager),
+                    recorded_at: at(n, 11),
+                    status: AttendanceStatus::Accepted,
+                    ..AttendanceRecord::default()
+                };
+                fixture!(self.db(), record, AttendanceStatus::Accepted);
+            }
+        }
+        // The absence rule runs at 02:00 in real life; the demo has it run
+        // once, so the case of the worker who has not turned up is open.
+        manpower::absence::run_on(&self.state, day(0)).await?;
+        Ok(())
+    }
+
     /// Timesheets: open, submitted to an external approver (the client's) and
     /// approved.
     async fn timesheets(&self, deployments: &[Deployment]) -> Result {
@@ -1266,12 +1324,21 @@ impl Seed {
             ..FinalSettlement::default()
         };
         fixture!(self.db(), settlement, SettlementStatus::Draft);
-        VisaCase::create(
+        // The entry permit was done three days ago: the case is in progress.
+        let case = VisaCase {
+            employee_id: self.employees[W_NOEL].0,
+            case_type: wl_hr::visa::TYPE_NEW.to_owned(),
+            status: VisaCaseStatus::InProgress,
+            ..VisaCase::default()
+        };
+        let case = fixture!(self.db(), case, VisaCaseStatus::InProgress);
+        VisaCaseStep::create(
             self.db(),
-            VisaCase {
-                employee_id: self.employees[W_NOEL].0,
-                case_type: wl_hr::visa::TYPE_NEW.to_owned(),
-                ..VisaCase::default()
+            VisaCaseStep {
+                case_id: case.id,
+                step_type: "entry_permit".to_owned(),
+                done_on: Some(day(-3)),
+                ..VisaCaseStep::default()
             },
         )
         .await?;
