@@ -2240,3 +2240,138 @@ async fn edu_17_a_tutors_clearance_expiring_tells_the_coordinator_of_each_campus
     assert!(dalia_text.contains(&four.number()), "{dalia_text}");
     assert!(!dalia_text.contains(&three.number()), "{dalia_text}");
 }
+
+// ---- #452: a campaign with cost entries, its report and the over-budget wait --------------------
+
+/// #452 point 10, run with the real wl-sales: the campaign "Instagram" (channel
+/// recorded as meta, source social) has a budget of AED 5,000 and two cost
+/// entries (AED 3,000 and AED 1,000), 20 leads of which 5 are won and 4 new
+/// customers with a first enrolment invoice of AED 1,500 each excluding VAT.
+/// The report row shows leads, conversion, cost per lead, CAC and ROAS; a cost
+/// entry of AED 2,000 takes the campaign over its budget, so it waits for a
+/// manager (not the requester) and is counted only once approved.
+#[renox::test]
+async fn edu_17_a_campaign_reports_its_cost_per_lead_cac_and_roas_and_waits_over_budget() {
+    use wl_kernel::sales::{Attribute, FirstSale, campaign_attribution};
+    use wl_sales::costs::{self, CostInput};
+    use wl_sales::report::{self, Filter, GroupBy, Viewer};
+    let w = boot().await;
+    let (marketer, _) = w.staff("Maya", host::roles::MARKETING).await;
+    let (manager, _) = w.staff("Mo", host::roles::MARKETING_MANAGER).await;
+    let source = wl_sales::LeadSource::by_code(w.db(), "social")
+        .await
+        .unwrap()
+        .expect("social is offered")
+        .id;
+    let campaign = wl_sales::Campaign {
+        name: "Instagram October".into(),
+        code: "IG-OCT".into(),
+        purpose: Some(wl_sales::Purpose::Acquisition),
+        marketing_channel: Some(wl_sales::MarketingChannel::Meta),
+        lead_source_id: Some(source),
+        owner_id: Some(marketer.id),
+        start_date: Some(day(-20)),
+        end_date: Some(day(20)),
+        budget: Some(500_000),
+        ..wl_sales::Campaign::default()
+    }
+    .store(w.db())
+    .await
+    .unwrap()
+    .unwrap();
+    wl_sales::Campaign::query()
+        .where_(wl_sales::Campaign::ID.eq(campaign.id))
+        .update(w.db(), &[("status", &"active")])
+        .await
+        .unwrap();
+    let entry = |amount: i64| CostInput {
+        campaign_id: campaign.id,
+        entry_date: day(-5),
+        amount,
+        description: "Instagram ads".into(),
+        requested_by: marketer.id,
+        manages_costs: false,
+    };
+    for amount in [300_000, 100_000] {
+        let saved = costs::save(w.state(), entry(amount)).await.unwrap().unwrap();
+        assert_eq!(saved.status, wl_sales::CostStatus::Approved, "within the budget");
+    }
+    for i in 0..20 {
+        let new = wl_sales::NewLead::web_form(None, &format!("Lead {i}")).campaign_code("IG-OCT");
+        let wl_sales::Captured::Created(lead) = wl_sales::lead::capture(w.state(), new, day(-4))
+            .await
+            .unwrap()
+            .unwrap()
+        else {
+            panic!("a lead was expected");
+        };
+        if i < 5 {
+            wl_sales::Lead::query()
+                .where_(wl_sales::Lead::ID.eq(lead.id))
+                .update(
+                    w.db(),
+                    &[("status", &"won"), ("won_at", &Some(renox::db::now()))],
+                )
+                .await
+                .unwrap();
+        }
+    }
+    let attribution = campaign_attribution(w.state());
+    for n in 0..4 {
+        let party = PartyId(500 + n);
+        attribution
+            .attribute(w.state(), Attribute::party(party, "social").campaign("IG-OCT"))
+            .await
+            .unwrap();
+        attribution
+            .record_first_sale(
+                w.state(),
+                FirstSale::new(
+                    party,
+                    wl_kernel::Subject::new("invoicing.invoice", 700 + n),
+                    150_000,
+                    day(-2),
+                ),
+            )
+            .await
+            .unwrap();
+    }
+
+    let config = wl_sales::config::config_of(w.state());
+    let row = |facts: &report::Facts| {
+        report::compute(facts, &Filter::default(), GroupBy::Campaign, &Viewer::all()).rows[0].cells()
+    };
+    let facts = report::load(w.db(), &config).await.unwrap();
+    let cells = row(&facts);
+    assert_eq!(cells.leads, "20");
+    assert_eq!(cells.won, "5");
+    assert_eq!(cells.conversion, "25.0%");
+    assert_eq!(cells.customers, "4");
+    assert_eq!(cells.value, "6,000.00");
+    assert_eq!(cells.cost, "4,000.00");
+    assert_eq!(cells.cost_per_lead, "200.00");
+    assert_eq!(cells.cac, "1,000.00");
+    assert_eq!(cells.roas, "1.50");
+
+    // AED 2,000 more takes the campaign over its AED 5,000 budget.
+    let over = costs::save(w.state(), entry(200_000)).await.unwrap().unwrap();
+    assert_eq!(over.status, wl_sales::CostStatus::PendingApproval, "it waits");
+    let request = over.approval_request_id.expect("a request for a manager");
+    let facts = report::load(w.db(), &config).await.unwrap();
+    assert_eq!(row(&facts).cost, "4,000.00", "a waiting entry is not counted");
+    assert!(
+        wl_kernel::approvals::approve(w.state(), request, &marketer, "")
+            .await
+            .is_err(),
+        "the requester does not approve it"
+    );
+    wl_kernel::approvals::approve(w.state(), request, &manager, "")
+        .await
+        .expect("a manager approves");
+    let facts = report::load(w.db(), &config).await.unwrap();
+    let cells = row(&facts);
+    assert_eq!(cells.cost, "6,000.00");
+    assert_eq!(cells.cost_per_lead, "300.00");
+    assert_eq!(cells.cac, "1,500.00");
+    assert_eq!(cells.roas, "1.00");
+}
