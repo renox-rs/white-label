@@ -535,7 +535,12 @@ A paid course fee reopened by a chargeback (`InvoiceReopened`) does not change t
 enrolment by itself; the enrolment's counsellor (or, when that user is no longer active, the
 counsellors of the enrolment's campus) gets a task to collect or `withdraw`. A refund that
 fails (`RefundFailed`) leaves the enrolment `withdrawn`; wl-invoicing restores the credit note
-balance.
+balance. The approval of a `withdraw` that gives a refund (`FIN.ACL.04`) is decided by a holder of
+`enrolments.approve_refund` (the centre manager, the accountant) who is not the user who asked; a
+withdrawal that gives no refund (from `pending_payment`, or one that only leaves an amount owed)
+needs no approval and runs at once. The refund the approver saw is the one that is paid, whatever
+sessions are held meanwhile. `transfer` moves a student to another `open` or `running` batch of
+the same course.
 
 #### Session
 
