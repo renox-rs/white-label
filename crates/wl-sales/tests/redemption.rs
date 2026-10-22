@@ -1080,7 +1080,7 @@ async fn cancelling_a_confirmed_order_gives_back_all_the_redeemed_points() {
 
     t.app
         .post(
-            &format!("/sales-orders/{}/transitions/cancel", order.id),
+            &format!("/sales-orders/{}/cancel", order.id),
             &[("reason", "Customer changed mind")],
         )
         .await

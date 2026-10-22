@@ -126,7 +126,7 @@ async fn a_cancelled_order_still_counts_as_used() {
     let first = draft_order(&t, "talabat", "on_account", &[("external_number", "TB-555")]).await;
     t.app
         .post(
-            &format!("/sales-orders/{}/transitions/cancel", first.id),
+            &format!("/sales-orders/{}/cancel", first.id),
             &[("reason", "Customer called")],
         )
         .await

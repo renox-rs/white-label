@@ -341,7 +341,7 @@ async fn cancelling_needs_a_reason_and_an_order_in_a_state_it_leaves() {
     let (t, seen) = boot().await;
     t.app.acting_as(&seller(&t).await);
     let order = confirmed(&t).await;
-    let url = format!("/sales-orders/{}/transitions/cancel", order.id);
+    let url = format!("/sales-orders/{}/cancel", order.id);
     t.app.post(&url, &[("reason", "")]).await.assert_status(422);
     t.app
         .post(&url, &[("reason", "Customer changed his mind")])
