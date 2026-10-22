@@ -11,6 +11,7 @@ pub mod dashboard;
 pub mod demo;
 pub mod demo_data;
 pub mod edtech_seed;
+pub mod edtech_settings;
 pub mod home;
 pub mod logistics_demo;
 pub mod logistics_rules;

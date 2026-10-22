@@ -165,6 +165,7 @@ pub fn sales_for(client_app: &str) -> WlSales {
         super::manpower_seed::MANPOWER => super::manpower_seed::sales(module),
         "accounting" => super::accounting_seed::sales_for(client_app),
         super::clinics_seed::CLINICS => super::clinics_seed::sales(module),
+        super::edtech_seed::EDTECH => super::edtech_settings::sales(module),
         super::logistics_seed::LOGISTICS => super::logistics_seed::sales(module),
         _ => module,
     }

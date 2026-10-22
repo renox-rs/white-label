@@ -22,8 +22,10 @@
 //! - the HR settings ([`hr`]): the centre manager is the line manager of a
 //!   tutor;
 //! - the seed ([`EdtechSeed`], command `edtech:install`): the service types
-//!   every centre starts with and the ticket categories. It adds what the
-//!   database lacks and keeps what the client changed.
+//!   every centre starts with and the ticket categories, then the values of the
+//!   shared sales, staff, notification and document modules
+//!   ([`super::edtech_settings`], BL-EDU-17). It adds what the database lacks
+//!   and keeps what the client changed.
 //!
 //! Decisions: the kinds are not marked compliance-critical in wl-documents
 //! (and so not `legal_block`): `EDU.RUL.13` tells the coordinator, the centre
@@ -40,8 +42,8 @@ use std::sync::Arc;
 use edtech::permissions::{CENTRE_MANAGER_ROLE, COORDINATOR_ROLE, COUNSELLOR_ROLE};
 use edtech::seed::{
     self, CENTRE_LOOK_AHEAD_DAYS, CENTRE_PERMIT_KIND, COURSE_APPROVAL_KIND, COURSE_SUBJECT_TYPE,
-    GUARDIAN_CONSENT_KIND, POLICE_CLEARANCE_KIND, REMINDER_DAYS, REQUIRED_QUALIFICATIONS,
-    STUDENT_ID_KIND, STUDENT_ID_REMINDER_DAYS, TUTOR_LOOK_AHEAD_DAYS, TUTOR_PERMIT_KIND,
+    GUARDIAN_CONSENT_KIND, POLICE_CLEARANCE_KIND, REMINDER_DAYS, STUDENT_ID_KIND,
+    STUDENT_ID_REMINDER_DAYS, TUTOR_LOOK_AHEAD_DAYS, TUTOR_PERMIT_KIND,
 };
 use renox::prelude::*;
 use wl_documents::registrations::{
@@ -245,12 +247,16 @@ pub struct Installed {
     pub service_types: usize,
     /// Ticket categories created.
     pub categories: usize,
+    /// What the shared settings stored (BL-EDU-17): lead sources turned off,
+    /// checklists, SOPs, send windows, the loyalty programme and notification
+    /// reactions.
+    pub settings: usize,
 }
 
 impl Installed {
     /// Everything created.
     pub fn total(&self) -> usize {
-        self.service_types + self.categories
+        self.service_types + self.categories + self.settings
     }
 }
 
@@ -272,6 +278,7 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     if on("ticketing") {
         installed.categories = install_categories(&state.db).await?;
     }
+    installed.settings = super::edtech_settings::install_for(state, &on).await?.total();
     Ok(installed)
 }
 
@@ -288,7 +295,7 @@ async fn install_service_types(state: &AppState) -> Result<usize> {
         let mut service = ServiceType::new_in(state, spec.code, spec.name_en, spec.minutes);
         service.name_ar = Some(spec.name_ar.to_owned());
         service.self_bookable = false;
-        service.required_qualifications = REQUIRED_QUALIFICATIONS.to_owned();
+        service.required_qualifications = spec.qualifications.to_owned();
         service.save(&state.db).await?;
         created += 1;
     }
@@ -337,7 +344,7 @@ impl Module for EdtechSeed {
     fn register(&self, app: &mut Registry) {
         app.command(
             "edtech:install",
-            "Store the EdTech service types and ticket categories, where the database lacks them",
+            "Store the EdTech service types, ticket categories, lead sources, loyalty programme, send windows, checklists, SOPs and notification reactions, where the database lacks them",
             |_args, state: AppState| async move {
                 let installed = install(&state).await?;
                 println!("{} EdTech defaults created.", installed.total());

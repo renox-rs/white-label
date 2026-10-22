@@ -32,6 +32,7 @@ pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
 pub use app::edtech_seed;
+pub use app::edtech_settings;
 pub use app::logistics_demo;
 pub use app::logistics_rules;
 pub use app::logistics_seed;
@@ -175,6 +176,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The connections of the Clinics client and their manual fallbacks
     // (BL-CLN-15).
     app::clinics_seed::register_integrations(&client_app);
+    // The connections of the EdTech client and their manual fallbacks, and
+    // the owner alert of `DOC.RUL.03` (BL-EDU-17).
+    app::edtech_settings::register_integrations(&client_app);
+    app::edtech_settings::register_critical(&client_app);
     // The manual fallbacks of the integrations of a manpower agency (BL-MPW-20).
     app::manpower_seed::register_integrations(&client_app);
     // HR and the accountant see the confidential labour cases and grievances
@@ -347,7 +352,11 @@ fn enable(
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
-            let module = app::clinics_seed::notify_for(client_app);
+            let module = if client_app == app::edtech_seed::EDTECH {
+                app::edtech_settings::notify_for()
+            } else {
+                app::clinics_seed::notify_for(client_app)
+            };
             Ok(app.module(match tuning.notify.take() {
                 Some(tune) => tune(module),
                 None => module,
