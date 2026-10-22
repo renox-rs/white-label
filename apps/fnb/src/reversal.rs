@@ -187,3 +187,37 @@ pub(crate) async fn on_reversed(state: &AppState, event: DeliveryReversed) -> Re
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::order::payment;
+
+    fn order(mode: &str) -> FnbOrder {
+        FnbOrder {
+            payment_mode: mode.to_owned(),
+            status: FnbOrderStatus::Completed,
+            ..FnbOrder::default()
+        }
+    }
+
+    #[test]
+    fn the_liability_of_the_reversal_names_the_party_of_the_return() {
+        assert_eq!(party_of("driver"), RIDER_PARTY);
+        assert_eq!(party_of("business"), "business");
+        assert_eq!(party_of("none"), "business");
+        assert_eq!(party_of("client"), "customer");
+    }
+
+    #[test]
+    fn only_cash_nobody_handed_over_is_resolved_by_credit_note() {
+        // Prepaid: a refund, whatever happened to the delivery's cash.
+        assert!(!credit_only(&order(payment::ONLINE), None));
+        // Cash on delivery: credit note only, unless the cash was kept.
+        let cash = order(payment::CASH_ON_DELIVERY);
+        assert!(credit_only(&cash, None));
+        assert!(credit_only(&cash, Some("removed")));
+        assert!(credit_only(&cash, Some("refunded")));
+        assert!(!credit_only(&cash, Some("kept")));
+    }
+}
