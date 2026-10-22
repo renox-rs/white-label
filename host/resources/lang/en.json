@@ -33,6 +33,7 @@
     "bank_statements": "Bank statements",
     "campaigns": "Campaigns",
     "counter_sales": "Counter sales",
+    "till_sessions": "Till sessions",
     "sales_orders": "Sales orders",
     "sales_returns": "Sales returns",
     "loyalty": "Loyalty",
@@ -116,7 +117,9 @@
     "failed_report": "Failed deliveries",
     "rider_faults": "Rider faults",
     "batches": "Production batches",
-    "cold_units": "Fridges and freezers"
+    "cold_units": "Fridges and freezers",
+    "outlet_channels": "Outlet channels",
+    "closings": "Daily closings"
   },
   "patterns": {
     "art": {

@@ -952,3 +952,68 @@ mod tests {
         assert_eq!(LeadSource::query().count(db).await.unwrap(), 10);
     }
 }
+
+/// Demo rows for the till sessions (DEMO-DATA.md §06): the till `T2` of the
+/// cashier `cashier_user` on `date`, opened with a float of AED 300.00, one
+/// cash counter sale of AED 100.00 on it, counted at AED 365.00 against the
+/// AED 400.00 it should hold: AED 35.00 short, so closing it makes the till's
+/// cash handover with the shortage (`wl-payments` listens to
+/// `TillSessionClosed`). Idempotent: a till with a session for that day is
+/// skipped. Returns how many sessions it made.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn demo_till_sessions(
+    state: &AppState,
+    cashier_user: i64,
+    date: renox::chrono::NaiveDate,
+) -> Result<usize> {
+    use crate::counter_sale::{CounterSale, CounterSalePayment, CounterSaleStatus};
+    use crate::till_session::TillSession;
+    use crate::till_sessions;
+    use wl_kernel::sales::OpenTill;
+
+    if TillSession::of_day(&state.db, "T2", date).await?.is_some() {
+        return Ok(0);
+    }
+    let session = till_sessions::open(
+        state,
+        None,
+        OpenTill {
+            till: "T2".to_owned(),
+            location: None,
+            legal_entity_id: None,
+            business_date: date,
+            cashier_user,
+            float: 30_000,
+        },
+    )
+    .await?;
+    // The cash sale is stored completed, as the other demo sales are.
+    let mut sale = CounterSale {
+        number: "RCPT-DEMO-T2".to_owned(),
+        cashier_user_id: cashier_user,
+        till_session_id: Some(session.id),
+        currency: "AED".to_owned(),
+        net_total: 9_524,
+        vat_total: 476,
+        gross_total: 10_000,
+        status: CounterSaleStatus::Completed,
+        completed_at: Some(renox::db::now()),
+        ..CounterSale::default()
+    };
+    let mut tx = state.db.begin().await?;
+    sale.insert_in_state(&mut tx, CounterSaleStatus::Completed, "demo")
+        .await?;
+    tx.commit().await?;
+    let mut tender = CounterSalePayment {
+        counter_sale_id: sale.id,
+        method: "cash".to_owned(),
+        amount: 10_000,
+        ..CounterSalePayment::default()
+    };
+    tender.insert(&state.db).await?;
+    till_sessions::submit_count(state, None, session.id, 36_500).await?;
+    Ok(1)
+}

@@ -1820,6 +1820,7 @@ pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
     TEXTS
         .iter()
         .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_till::TILL_TEXTS.iter())
         .map(|(key, _)| (key.trim_start_matches("wl_sales."), t(lang, key)))
         .collect()
 }
@@ -1830,6 +1831,7 @@ pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
     let text = TEXTS
         .iter()
         .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_till::TILL_TEXTS.iter())
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
     let params: Vec<(&str, String)> = params.iter().map(|(k, v)| (*k, v.to_string())).collect();
@@ -1845,6 +1847,7 @@ mod tests {
         let mut keys: Vec<&str> = TEXTS
             .iter()
             .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+            .chain(crate::texts_till::TILL_TEXTS.iter())
             .map(|(key, _)| *key)
             .collect();
         assert!(keys.iter().all(|key| key.starts_with("wl_sales.")));

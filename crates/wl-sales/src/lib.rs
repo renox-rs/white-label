@@ -69,6 +69,9 @@ pub mod settle;
 pub mod terms;
 mod texts;
 mod texts_changes;
+mod texts_till;
+pub mod till_session;
+pub mod till_sessions;
 pub mod voids;
 
 use renox::db::Migration;
@@ -107,6 +110,7 @@ pub use sales_return::{ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, 
 pub use segment::{MatchMode, Rule, Segment, SegmentRefused};
 pub use segments::{SegmentRule, SegmentRules};
 pub use terms::{LoyaltyTermsChange, TermsChange};
+pub use till_session::{TillSession, TillSessionStatus};
 
 /// The campaign services under the names of the plan: `campaigns::delete`
 /// and `campaigns::run_daily`.
@@ -195,6 +199,14 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-sales/portal_loyalty.html"),
     ),
     (
+        "wl-sales/till_sessions.html",
+        include_str!("../views/wl-sales/till_sessions.html"),
+    ),
+    (
+        "wl-sales/till_session.html",
+        include_str!("../views/wl-sales/till_session.html"),
+    ),
+    (
         "wl-sales/segments.html",
         include_str!("../views/wl-sales/segments.html"),
     ),
@@ -228,6 +240,14 @@ pub mod permissions {
     pub const LEADS_MANAGE: &str = "leads.manage";
     /// Ring up and complete counter sales.
     pub const POS_SELL: &str = "pos.sell";
+    /// Open a till session (the drawer of a shift or a day) with a float.
+    pub const POS_OPEN_TILL: &str = "pos.open_till";
+    /// Count and close a till session.
+    pub const POS_CLOSE_TILL: &str = "pos.close_till";
+    /// Reopen a closed till session for a correction, with a reason.
+    pub const POS_REOPEN_TILL: &str = "pos.reopen_till";
+    /// Mark a closed till session reviewed (a manager or the accountant).
+    pub const POS_REVIEW: &str = "pos.review";
     /// See sales orders.
     pub const SALES_ORDERS_VIEW: &str = "sales_orders.view";
     /// Enter, edit and submit sales orders.
@@ -655,6 +675,8 @@ impl Module for WlSales {
             .view_data::<pages::campaigns::ShowPage>()
             .view_data::<pages::counter_sales::IndexPage>()
             .view_data::<pages::counter_sales::ShowPage>()
+            .view_data::<pages::till_sessions::IndexPage>()
+            .view_data::<pages::till_sessions::ShowPage>()
             .view_data::<pages::sales_orders::IndexPage>()
             .view_data::<pages::sales_orders::ShowPage>()
             .view_data::<pages::sales_orders::RevisionPage>()
@@ -692,6 +714,7 @@ impl Module for WlSales {
         app.model::<SaleLine>();
         app.model::<CounterSale>();
         app.model::<CounterSalePayment>();
+        app.model::<till_session::TillSession>();
         app.model::<SalesOrder>();
         app.model::<FulfilmentRecord>();
         app.model::<SalesReturn>();
@@ -720,6 +743,9 @@ impl Module for WlSales {
         package_reopen::register(app);
         // The counter sale: its machine and the `CounterSaleCompleted` event.
         counter_sales::register(app);
+        // The till session: its machine, `TillSessionClosed` and the kernel's
+        // `TillDesk`.
+        till_sessions::register(app);
         // The sales order: its machine, its events and the kernel's
         // `OrderFulfilment`.
         sales_orders::register(app);
@@ -781,6 +807,14 @@ impl Module for WlSales {
                 .group("nav.app")
                 .order(51)
                 .permission(permissions::POS_SELL),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.till_sessions", "nav.till_sessions")
+                .icon("wallet")
+                .group("nav.app")
+                .order(56)
+                .permission(permissions::POS_OPEN_TILL),
         );
         app.nav(
             "app",

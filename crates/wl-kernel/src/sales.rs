@@ -808,6 +808,130 @@ impl TillSessionClosed {
 
 impl Event for TillSessionClosed {}
 
+/// A till session as a vertical reads it (wl-sales §4.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TillView {
+    /// The session (`sales.till_session:<id>`).
+    pub id: i64,
+    /// The till (register) it runs on.
+    pub till: String,
+    /// The outlet or branch of the till.
+    pub location: Option<String>,
+    /// The trading day.
+    pub business_date: NaiveDate,
+    /// `open`, `counting`, `closed` or `reviewed`.
+    pub status: String,
+    /// The cashier of the session.
+    pub cashier_user: i64,
+    /// The opening float, in fils.
+    pub float: i64,
+    /// The cash taken by counter sales on the session, in fils.
+    pub cash_sales: i64,
+    /// The card payments taken by counter sales on the session, in fils.
+    pub card_sales: i64,
+    /// The cash the till should hold (float plus cash sales), in fils.
+    pub expected: i64,
+    /// The cash counted at the close, in fils.
+    pub counted: Option<i64>,
+    /// Counted less expected, in fils (negative: a shortage).
+    pub variance: Option<i64>,
+}
+
+/// What opens a till session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenTill {
+    /// The till (register), e.g. `T1`.
+    pub till: String,
+    /// The outlet or branch.
+    pub location: Option<String>,
+    /// The legal entity of the cash.
+    pub legal_entity_id: Option<i64>,
+    /// The trading day.
+    pub business_date: NaiveDate,
+    /// The cashier of the session.
+    pub cashier_user: i64,
+    /// The opening float, in fils.
+    pub float: i64,
+}
+
+/// What a vertical may ask of the till sessions without depending on
+/// `wl-sales`: open one, read it, count and close it, reopen it and mark it
+/// reviewed. A `by` of `None` runs the system twin of the transition (a seed,
+/// a job, or a vertical that checked its own permission first). `wl-sales`
+/// provides it; without it [`till_desk`] gives [`NoTillDesk`], which knows no
+/// session.
+pub trait TillDesk: Send + Sync + 'static {
+    /// Opens a session; `None` when the sales module is off. 422 when the
+    /// till already has a session for that day.
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<&'a AuthUser>,
+        _till: OpenTill,
+    ) -> SalesFuture<'a, Option<TillView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The session `id`, or `None`.
+    fn find<'a>(&'a self, _state: &'a AppState, _id: i64) -> SalesFuture<'a, Option<TillView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Counts the session `id` and closes it with the `counted` cash
+    /// (`start_count` and `close`); emits [`TillSessionClosed`] after the
+    /// commit.
+    fn submit_count<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<&'a AuthUser>,
+        _id: i64,
+        _counted: i64,
+    ) -> SalesFuture<'a, TillView> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Reopens a closed session, with the reason.
+    fn reopen<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<&'a AuthUser>,
+        _id: i64,
+        _reason: &'a str,
+    ) -> SalesFuture<'a, TillView> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Marks a closed session reviewed.
+    fn review<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<&'a AuthUser>,
+        _id: i64,
+    ) -> SalesFuture<'a, TillView> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+}
+
+/// The desk when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoTillDesk;
+
+impl TillDesk for NoTillDesk {}
+
+/// Makes `desk` the app's [`TillDesk`]; `wl-sales` calls it in `register`.
+pub fn provide_till_desk(app: &mut Registry, desk: impl TillDesk) {
+    let desk: Arc<dyn TillDesk> = Arc::new(desk);
+    app.provide(desk);
+}
+
+/// The app's [`TillDesk`], or [`NoTillDesk`] when none is provided.
+pub fn till_desk(state: &AppState) -> Arc<dyn TillDesk> {
+    match state.provided::<Arc<dyn TillDesk>>() {
+        Some(desk) => Arc::clone(&desk),
+        None => Arc::new(NoTillDesk),
+    }
+}
+
 /// A sales order reached `confirmed` for the first time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SalesOrderConfirmed {
