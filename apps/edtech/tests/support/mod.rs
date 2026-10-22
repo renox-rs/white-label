@@ -553,6 +553,58 @@ impl Centre {
             .expect("the enrolment lapses")
     }
 
+    /// The first invoice of `enrolment` is paid in full and announced as
+    /// wl-invoicing does, which activates the enrolment. Answers it as it is
+    /// then.
+    pub async fn pay_first(&self, enrolment: &Enrolment) -> Enrolment {
+        let id = enrolment.first_invoice_id.expect("a first invoice");
+        let gross = self
+            .books
+            .all()
+            .into_iter()
+            .find(|invoice| invoice.id == id)
+            .expect("the invoice")
+            .gross();
+        self.books.pay(id, gross);
+        self.state()
+            .emit(wl_kernel::invoicing::InvoicePaid {
+                invoice: wl_kernel::invoicing::InvoiceId(id),
+                party: enrolment.payer(),
+                source: enrolment.subject(),
+            })
+            .await
+            .expect("the payment is announced");
+        Enrolment::find_or_404(self.db(), enrolment.id)
+            .await
+            .expect("the enrolment")
+    }
+
+    /// Party `id` is blocked: the directory says so and `PartyBlocked` is
+    /// emitted, as wl-parties does after the commit.
+    pub async fn block(&self, id: i64) {
+        self.people.set_blocked(id, true);
+        self.state()
+            .emit(wl_kernel::PartyBlocked {
+                party: wl_kernel::PartyId(id),
+                display_reason: "on_hold".to_owned(),
+            })
+            .await
+            .expect("the block is announced");
+    }
+
+    /// Party `id` is unblocked: the directory says so and `PartyUnblocked` is
+    /// emitted.
+    pub async fn unblock(&self, id: i64) {
+        self.people.set_blocked(id, false);
+        self.state()
+            .emit(wl_kernel::PartyUnblocked {
+                party: wl_kernel::PartyId(id),
+                display_reason: "on_hold".to_owned(),
+            })
+            .await
+            .expect("the unblock is announced");
+    }
+
     /// A `held` session of `batch` that started `days` days ago (a fixture).
     pub async fn held_session(&self, batch: &Batch, number: i64, days: i64) -> Session {
         let date = day(-days);

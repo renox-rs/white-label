@@ -167,3 +167,20 @@ async fn edu_12_the_termination_policy_is_the_centre_managers_and_in_words() {
     assert!(!grants(roles::ACADEMIC_COORDINATOR).contains(&edu::BATCHES_APPROVE));
     assert!(grants(roles::CENTRE_MANAGER).contains(&edu::BATCHES_APPROVE));
 }
+
+/// A blocked payer or student pauses their enrolments (BL-EDU-04,
+/// wl-parties §5.6): the kind `enrolment` has the block effect *pause*, decided
+/// by the centre manager, and only the centre manager withdraws an enrolment
+/// while it is blocked.
+#[renox::test]
+async fn edu_04_the_enrolment_pauses_on_a_block_and_the_centre_manager_decides() {
+    use renox::auth::permissions::Scope;
+    use wl_kernel::block_effects::{BlockEffect, effect_for};
+
+    let _app = edtech_booted().await;
+    let rule = effect_for("enrolment", &Scope::global());
+    assert_eq!(rule.effect, BlockEffect::Pause);
+    assert_eq!(rule.decider_role.as_deref(), Some(edu::CENTRE_MANAGER_ROLE));
+    assert!(grants(roles::CENTRE_MANAGER).contains(&edu::ENROLMENTS_APPROVE));
+    assert!(!grants(roles::COUNSELLOR).contains(&edu::ENROLMENTS_APPROVE));
+}

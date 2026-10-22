@@ -32,11 +32,12 @@ use wl_kernel::subscriptions::{
 };
 use wl_kernel::{PartyId, Subject};
 
-/// The parties the centre knows, with their guardians.
+/// The parties the centre knows, with their guardians and the ones blocked.
 #[derive(Clone, Default)]
 pub struct People {
     names: Arc<Mutex<BTreeMap<i64, String>>>,
     guardians: Arc<Mutex<BTreeMap<i64, Vec<PartyId>>>>,
+    blocked: Arc<Mutex<Vec<i64>>>,
 }
 
 impl People {
@@ -55,14 +56,33 @@ impl People {
             .push(PartyId(guardian));
     }
 
+    /// Party `id` is blocked (`true`) or active again (`false`). The test then
+    /// emits `PartyBlocked` or `PartyUnblocked`, as wl-parties does.
+    pub fn set_blocked(&self, id: i64, blocked: bool) {
+        let mut all = self.blocked.lock().unwrap();
+        all.retain(|party| *party != id);
+        if blocked {
+            all.push(id);
+        }
+    }
+
+    fn status_of(&self, id: i64) -> PartyStatus {
+        if self.blocked.lock().unwrap().contains(&id) {
+            PartyStatus::Blocked
+        } else {
+            PartyStatus::Active
+        }
+    }
+
     fn summary(&self, id: i64) -> Option<PartySummary> {
+        let status = self.status_of(id);
         self.names.lock().unwrap().get(&id).map(|name| PartySummary {
             id: PartyId(id),
             code: format!("P-{id:05}"),
             kind: PartyKind::Person,
             display_name: name.clone(),
-            status: PartyStatus::Active,
-            display_block_reason: None,
+            status,
+            display_block_reason: (status == PartyStatus::Blocked).then(|| "on_hold".to_owned()),
         })
     }
 }
@@ -117,7 +137,8 @@ impl PartyDirectory for People {
 
     fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
         let known = self.names.lock().unwrap().contains_key(&party.0);
-        Box::pin(async move { Ok(known.then_some(PartyStatus::Active)) })
+        let status = self.status_of(party.0);
+        Box::pin(async move { Ok(known.then_some(status)) })
     }
 
     fn guardians<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Vec<PartyId>> {
@@ -761,12 +782,29 @@ impl Subscriptions for Subs {
 pub struct Packages {
     sold: Arc<Mutex<Vec<SellPackage>>>,
     credits: Arc<Mutex<Vec<(i64, String, i64)>>>,
+    ends: Arc<Mutex<BTreeMap<i64, NaiveDate>>>,
+    extended: Arc<Mutex<Vec<(i64, i64, String)>>>,
 }
 
 impl Packages {
     /// The packages sold, oldest first.
     pub fn sold(&self) -> Vec<SellPackage> {
         self.sold.lock().unwrap().clone()
+    }
+
+    /// Package `id` is valid through `end`.
+    pub fn set_end(&self, id: i64, end: NaiveDate) {
+        self.ends.lock().unwrap().insert(id, end);
+    }
+
+    /// The last day package `id` is valid, if it has one.
+    pub fn end_of(&self, id: i64) -> Option<NaiveDate> {
+        self.ends.lock().unwrap().get(&id).copied()
+    }
+
+    /// The extensions asked of the ledger: package, days, reason.
+    pub fn extended(&self) -> Vec<(i64, i64, String)> {
+        self.extended.lock().unwrap().clone()
     }
 
     /// `party` holds `credits` of `item` now.
@@ -798,6 +836,25 @@ impl PackageLedger for Packages {
         _request: wl_kernel::sales::ConsumePackage,
     ) -> SalesFuture<'a, PackageConsumption> {
         Box::pin(async { Ok(PackageConsumption::NoCredit) })
+    }
+
+    fn extend_days<'a>(
+        &'a self,
+        _state: &'a AppState,
+        package: PackageId,
+        days: i64,
+        why: &'a str,
+    ) -> SalesFuture<'a, Option<NaiveDate>> {
+        self.extended
+            .lock()
+            .unwrap()
+            .push((package.0, days, why.to_owned()));
+        let mut ends = self.ends.lock().unwrap();
+        let moved = ends.get_mut(&package.0).map(|end| {
+            *end += renox::chrono::TimeDelta::days(days);
+            *end
+        });
+        Box::pin(async move { Ok(moved) })
     }
 
     fn balance<'a>(&'a self, _db: &'a Db, party: PartyId, item: &'a str) -> SalesFuture<'a, i64> {
