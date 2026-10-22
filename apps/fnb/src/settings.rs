@@ -24,6 +24,10 @@ pub const DEFAULT_PICKUP_CHASE_MINUTES: i64 = 15;
 /// record what happened (`FNB.RUL.16`, M).
 pub const DEFAULT_PICKUP_TASK_MINUTES: i64 = 45;
 
+/// An unmatched amount on an imported payout statement above which the
+/// accountant gets a reconciliation task (`FNB.RUL.10`, X: AED 100), in fils.
+pub const DEFAULT_PAYOUT_TASK_FILS: i64 = 10_000;
+
 /// The settings. `Default` is the spec's defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnbSettings {
@@ -47,6 +51,11 @@ pub struct FnbSettings {
     pub pickup_task_minutes: i64,
     /// Whether `FNB.RUL.16` is on.
     pub pickup_rule: bool,
+    /// The unmatched amount of an imported payout statement above which the
+    /// accountant gets a task, in fils (`FNB.RUL.10`, X).
+    pub payout_task_fils: i64,
+    /// Whether `FNB.RUL.10` is on.
+    pub payout_rule: bool,
 }
 
 impl Default for FnbSettings {
@@ -60,6 +69,8 @@ impl Default for FnbSettings {
             pickup_chase_minutes: DEFAULT_PICKUP_CHASE_MINUTES,
             pickup_task_minutes: DEFAULT_PICKUP_TASK_MINUTES,
             pickup_rule: true,
+            payout_task_fils: DEFAULT_PAYOUT_TASK_FILS,
+            payout_rule: true,
         }
     }
 }
@@ -87,5 +98,7 @@ mod tests {
             (15, 45)
         );
         assert!(settings.pickup_rule);
+        assert_eq!(settings.payout_task_fils, 10_000);
+        assert!(settings.payout_rule);
     }
 }

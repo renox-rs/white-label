@@ -353,6 +353,11 @@ pub struct FnbOrder {
     /// An aggregator order cancelled with the party *aggregator*: the payout
     /// reconciliation expects the aggregator to pay for the food.
     pub compensation_expected: bool,
+    /// The payout statement that paid the compensation (BL-FNB-10): cleared
+    /// when that statement is voided.
+    pub compensation_statement_id: Option<i64>,
+    /// When the payout statement matched the compensation.
+    pub compensation_matched_at: Option<DateTime>,
     /// The lifecycle state; changed only by a transition.
     pub status: FnbOrderStatus,
     /// When the row was created.

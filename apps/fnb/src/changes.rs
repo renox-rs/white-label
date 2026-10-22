@@ -127,6 +127,9 @@ pub struct ExpectedRefund {
     pub reason: String,
     /// When the payout statement matched it.
     pub matched_at: Option<DateTime>,
+    /// The payout statement that matched it; cleared when the statement is
+    /// voided.
+    pub statement_id: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

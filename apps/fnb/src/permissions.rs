@@ -28,8 +28,33 @@ pub const KDS_WORK: &str = "kds.work";
 /// manager.
 pub const CUSTOMERS_COD: &str = "customers.cod";
 
+/// See the aggregator payout statements, their lines and differences (§3.1
+/// accountant: reconciliation).
+pub const RECONCILIATION_VIEW: &str = "reconciliation.view";
+/// Import, match, dispute, resolve and void an aggregator payout statement
+/// (§7.1 *Payout statement*): the accountant. Voiding a matched or disputed
+/// statement, whose receivable is booked, needs a second holder's approval
+/// (`PLT.ACL.09`).
+pub const RECONCILIATION_MANAGE: &str = "reconciliation.manage";
+/// Enter an order a payout statement names and the kitchen never recorded, as
+/// a late entry with the aggregator's order number (`PLT.ACL.10`): the cashier
+/// and the accountant.
+pub const LATE_ORDERS_ENTER: &str = "orders.late_entry";
+/// The failed deliveries and the refunds after completion by category and
+/// responsible party (§10): the accountant, the kitchen manager, the area
+/// manager and the operations director.
+pub const REPORTS_VIEW: &str = "fnb_reports.view";
+/// The *rider fault* entries on a rider's record (BL-FNB-08): the kitchen
+/// manager and HR; other riders never see them.
+pub const RIDER_FAULTS_VIEW: &str = "rider_faults.view";
+
 /// Every permission of the app.
 pub const ALL: &[&str] = &[
+    RECONCILIATION_VIEW,
+    RECONCILIATION_MANAGE,
+    LATE_ORDERS_ENTER,
+    REPORTS_VIEW,
+    RIDER_FAULTS_VIEW,
     ORDERS_VIEW,
     ORDERS_MANAGE,
     ORDERS_CANCEL,
@@ -64,5 +89,8 @@ pub const CASHIER_ROLE: &str = "cashier";
 /// The rider (own fleet) delivers in the driver PWA (§3.1). The host's
 /// `roles::DRIVER`.
 pub const RIDER_ROLE: &str = "driver";
+/// The accountant imports and reconciles the payout statements (§3.1). The
+/// host's `roles::ACCOUNTANT`.
+pub const ACCOUNTANT_ROLE: &str = "accountant";
 /// The scope type of an outlet: roles are assigned per outlet (§3.2).
 pub const OUTLET_SCOPE: &str = "fnb.outlet";

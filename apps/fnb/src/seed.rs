@@ -7,6 +7,7 @@
 use renox::prelude::*;
 
 use crate::catalogue::{Brand, MenuItem, Outlet, RecipeLine};
+use crate::payout::{ImportPreset, ReasonMap};
 
 /// The brands: code, name, delivery promise in minutes.
 pub const BRANDS: [(&str, &str, i64); 3] = [
@@ -138,4 +139,112 @@ pub async fn demo_catalogue(
         installed.items += 1;
     }
     Ok(installed)
+}
+
+/// The column presets of the aggregators' payout files: aggregator, name,
+/// delimiter and the headers of the order number, gross, commission,
+/// promotions, refund, net and refund reason. The real files are not
+/// published; these are the demo's, built the way onboarding builds the first
+/// client's (`FNB.REC.01`, decided 2026-10-15).
+pub const PAYOUT_PRESETS: [(&str, &str, &str, [&str; 7]); 3] = [
+    (
+        "aggregator_a",
+        "Aggregator A weekly CSV",
+        ",",
+        [
+            "Order ID",
+            "Gross",
+            "Commission",
+            "Promo",
+            "Refund",
+            "Net",
+            "Refund reason",
+        ],
+    ),
+    (
+        "aggregator_b",
+        "Aggregator B settlement CSV",
+        ";",
+        [
+            "Order no",
+            "Order value",
+            "Fee",
+            "Discount",
+            "Refunded",
+            "Payout",
+            "Reason",
+        ],
+    ),
+    (
+        "aggregator_c",
+        "Aggregator C statement CSV",
+        ",",
+        [
+            "Reference",
+            "Total",
+            "Commission",
+            "Promotion",
+            "Refund",
+            "Net",
+            "Refund note",
+        ],
+    ),
+];
+
+/// The aggregators' refund reasons the demo maps: aggregator, the reason as
+/// printed, the complaint category and the proposed responsible party. A
+/// reason not here (*Customer changed mind*) is set by the accountant.
+pub const PAYOUT_REASONS: [(&str, &str, &str, &str); 5] = [
+    ("aggregator_a", "Food was cold", "cold", "business"),
+    ("aggregator_a", "Missing item", "missing_item", "business"),
+    ("aggregator_a", "Wrong item", "wrong_item", "business"),
+    ("aggregator_a", "Rider was late", "late", "aggregator"),
+    ("aggregator_b", "Cold food", "cold", "business"),
+];
+
+/// Adds the column presets and the refund reason mappings the database lacks;
+/// what exists is kept as the client changed it. Returns how many rows it
+/// added.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn install_payouts(db: &Db) -> Result<usize> {
+    let mut added = 0;
+    for (aggregator, name, delimiter, columns) in PAYOUT_PRESETS {
+        if ImportPreset::of(db, aggregator).await?.is_some() {
+            continue;
+        }
+        let [order, gross, commission, promo, refund, net, reason] = columns;
+        let mut preset = ImportPreset {
+            aggregator: aggregator.to_owned(),
+            name: name.to_owned(),
+            delimiter: delimiter.to_owned(),
+            order_column: order.to_owned(),
+            gross_column: gross.to_owned(),
+            commission_column: commission.to_owned(),
+            promo_column: promo.to_owned(),
+            refund_column: refund.to_owned(),
+            net_column: net.to_owned(),
+            reason_column: reason.to_owned(),
+            ..ImportPreset::default()
+        };
+        preset.insert(db).await?;
+        added += 1;
+    }
+    for (aggregator, reason, category, party) in PAYOUT_REASONS {
+        if ReasonMap::find_for(db, aggregator, reason).await?.is_some() {
+            continue;
+        }
+        let mut map = ReasonMap {
+            aggregator: aggregator.to_owned(),
+            reason_key: reason.trim().to_lowercase(),
+            category: category.to_owned(),
+            party: party.to_owned(),
+            ..ReasonMap::default()
+        };
+        map.insert(db).await?;
+        added += 1;
+    }
+    Ok(added)
 }
