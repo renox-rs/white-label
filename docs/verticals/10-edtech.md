@@ -646,6 +646,7 @@ stateDiagram-v2
 | `issue` | draft | issued | `certificates.issue` | `EDU.ACL.06` criteria met; `document_valid` for the centre permit, and for the course approval when the certificate states it (§9); for a reissued draft both checks use the enrolment's completion date | number and verification code assigned; PDF in the portal; a superseded certificate's page now links this one |
 | `reissue` | issued | superseded | `certificates.issue` | reason (name or date correction, changed result that still meets the criteria; otherwise `revoke`); the corrected data saved | new draft created, linked to the old one, numbered when issued; the old page shows "superseded, replacement pending" until then; a recorded KHDA attestation is copied only if the coordinator confirms; student notified when the new one is issued |
 | `revoke` | issued | revoked | `certificates.revoke` (company admin) | reason given | public verification shows *revoked*; student notified |
+| `print_copy` | issued | issued | `certificates.issue` | — | the same document is regenerated with the same number and verification code, marked nowhere; nothing about the certificate changes; the run is counted and kept in its history (§4.4 *A copy is lost*) |
 
 ```mermaid
 stateDiagram-v2
@@ -653,9 +654,15 @@ stateDiagram-v2
   draft --> issued: issue
   issued --> superseded: reissue
   issued --> revoked: revoke
+  issued --> issued: print_copy
   superseded --> [*]
   revoked --> [*]
 ```
+
+A certificate is never edited: a wrong name or date is a `reissue` and a result that no longer
+meets the criteria is a `revoke`. The student is told, with the new number and the page that
+verifies it, when the reissued draft is issued, not when the draft is made; the guardian is told
+for a student under 18. `reissue` and `print_copy` are offered only on an issued certificate.
 
 ### 7.2 Automations
 
