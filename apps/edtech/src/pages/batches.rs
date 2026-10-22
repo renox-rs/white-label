@@ -7,6 +7,8 @@
 //! | `GET /edtech/batches/{id}` | `edtech.batch` | `batches.view` |
 //! | `POST /edtech/batches/{id}/open` | `edtech.batch_open` | `batches.manage` |
 //! | `POST /edtech/batches/{id}/tutor` | `edtech.batch_tutor` | `batches.manage` |
+//! | `POST /edtech/batches/{id}/waiting` | `edtech.batch_waiting` | `enrolments.manage` |
+//! | `POST /edtech/waiting/{id}/remove` | `edtech.waiting_remove` | `enrolments.manage` |
 //!
 //! The page of a batch lists its sessions (see [`super::sessions`]).
 //!
@@ -16,20 +18,23 @@
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
-use wl_kernel::documents::today;
+use wl_kernel::documents::{dubai_text, today};
 
 use super::sessions::{SessionRow, row_of};
 use super::{
-    Texts, parse_date, parse_number, parse_optional_id, parse_weekdays, require, text,
+    Texts, optional_party_of, parse_date, parse_number, parse_optional_id, parse_weekdays,
+    party_of, require, text,
 };
 use crate::batch::{Batch, BatchStatus};
 use crate::batches::{self, NewBatch};
 use crate::course::Course;
+use crate::enrolments::party_name;
 use crate::permissions;
 use crate::seats;
 use crate::session::Session;
 use crate::texts;
 use crate::tutors;
+use crate::waiting::{self, BatchWaiting};
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
@@ -44,6 +49,10 @@ pub fn routes() -> Routes {
         .name("edtech.batch_open")
         .post("/edtech/batches/{id}/tutor", tutor)
         .name("edtech.batch_tutor")
+        .post("/edtech/batches/{id}/waiting", join_waiting)
+        .name("edtech.batch_waiting")
+        .post("/edtech/waiting/{id}/remove", remove_waiting)
+        .name("edtech.waiting_remove")
         .require_auth()
 }
 
@@ -252,9 +261,26 @@ pub(crate) struct ShowPage {
     room: String,
     sessions: Vec<SessionRow>,
     tutor_history: Vec<TutorRow>,
+    waiting: Vec<WaitingRow>,
     from_date: String,
     can_open: bool,
     can_change_tutor: bool,
+    can_wait: bool,
+    can_unwait: bool,
+    show_waiting: bool,
+}
+
+/// One entry of the waiting list of the page.
+#[derive(Serialize, Debug, Clone)]
+pub struct WaitingRow {
+    /// The primary key.
+    pub id: i64,
+    /// The student's name.
+    pub student: String,
+    /// The payer's name.
+    pub payer: String,
+    /// When the entry was added.
+    pub since: String,
 }
 
 /// One tutor assignment of the page.
@@ -306,6 +332,18 @@ async fn show(
                 .map_or_else(|| text(&lang, "none"), |day| day.to_string()),
         })
         .collect();
+    let mut waiting_rows = Vec::new();
+    for entry in BatchWaiting::of_batch(&state.db, batch.id).await? {
+        waiting_rows.push(WaitingRow {
+            id: entry.id,
+            student: party_name(&state, &lang.locale, entry.student_party_id).await,
+            payer: party_name(&state, &lang.locale, entry.payer_party_id).await,
+            since: entry
+                .created_at
+                .map_or_else(|| text(&lang, "none"), dubai_text),
+        });
+    }
+    let manage_enrolments = user.has_permission(permissions::ENROLMENTS_MANAGE);
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: batch.id,
@@ -321,6 +359,10 @@ async fn show(
         room: resource_text(&lang, batch.room_resource_id),
         sessions: rows,
         tutor_history: history,
+        waiting: waiting_rows,
+        can_wait: batch.status == BatchStatus::Open && manage_enrolments,
+        can_unwait: manage_enrolments,
+        show_waiting: user.has_permission(permissions::ENROLMENTS_VIEW),
         from_date: today().to_string(),
         can_open: batch.status == BatchStatus::Planned
             && user.has_permission(permissions::BATCHES_MANAGE),
@@ -376,6 +418,51 @@ async fn tutor(
     tutors::change_batch_tutor(&state, &user, id, resource, employee, from).await?;
     Ok((
         Toast::success(text(&lang, "tutors.changed")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that puts a student on the waiting list.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct WaitingForm {
+    /// The student (party).
+    #[serde(default)]
+    pub student: String,
+    /// The payer (party), when not the student.
+    #[serde(default)]
+    pub payer: String,
+}
+
+/// `POST /edtech/batches/{id}/waiting`.
+async fn join_waiting(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<WaitingForm>,
+) -> Result<Response> {
+    require(&user, permissions::ENROLMENTS_MANAGE)?;
+    let student = party_of(&state, &form.student).await?;
+    let payer = optional_party_of(&state, &form.payer).await?;
+    waiting::join(&state, &user, id, student, payer).await?;
+    Ok((
+        Toast::success(text(&lang, "waiting.added")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /edtech/waiting/{id}/remove`.
+async fn remove_waiting(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    waiting::remove(&state, &user, id).await?;
+    Ok((
+        Toast::success(text(&lang, "waiting.removed")),
         renox::HxRefresh,
     )
         .into_response())

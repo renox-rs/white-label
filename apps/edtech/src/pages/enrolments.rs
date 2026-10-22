@@ -12,6 +12,7 @@
 //! | `POST /edtech/enrolments/{id}/freeze` | `edtech.enrolment_freeze` | `enrolments.manage` |
 //! | `POST /edtech/enrolments/{id}/unfreeze` | `edtech.enrolment_unfreeze` | `enrolments.manage` |
 //! | `POST /edtech/enrolments/{id}/withdraw` | `edtech.enrolment_withdraw` | `enrolments.manage` |
+//! | `POST /edtech/enrolments/{id}/transfer` | `edtech.enrolment_transfer` | `enrolments.manage` |
 //!
 //! The list shows each enrolment with the student, what it is for, the fee and
 //! its status in words. The new enrolment form picks the student, the guardian
@@ -66,6 +67,8 @@ pub fn routes() -> Routes {
         .name("edtech.enrolment_unfreeze")
         .post("/edtech/enrolments/{id}/withdraw", withdraw)
         .name("edtech.enrolment_withdraw")
+        .post("/edtech/enrolments/{id}/transfer", transfer)
+        .name("edtech.enrolment_transfer")
         .require_auth()
 }
 
@@ -393,6 +396,7 @@ pub(crate) struct ShowPage {
     can_freeze: bool,
     can_unfreeze: bool,
     can_withdraw: bool,
+    can_transfer: bool,
     show_preview: bool,
     show_withdrawn: bool,
     has_batch: bool,
@@ -517,6 +521,9 @@ async fn show(
         can_freeze: matches!(e.status, EnrolmentStatus::Active) && manage,
         can_unfreeze: e.status == EnrolmentStatus::Frozen && manage,
         can_withdraw: live && manage,
+        can_transfer: manage
+            && e.kind == EnrolmentKind::Course
+            && matches!(e.status, EnrolmentStatus::Active | EnrolmentStatus::Frozen),
         show_preview: live,
         show_withdrawn: e.status == EnrolmentStatus::Withdrawn,
         has_batch: e.batch_id.is_some(),
@@ -611,4 +618,29 @@ async fn withdraw(
 ) -> Result<Response> {
     enrolments::withdraw(&state, Some(&user), id, &form.reason).await?;
     done(&lang, "enrolments.withdrawn")
+}
+
+/// The form of `transfer`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TransferForm {
+    /// The target batch's number.
+    #[serde(default)]
+    pub target: String,
+}
+
+/// `POST /edtech/enrolments/{id}/transfer`.
+async fn transfer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TransferForm>,
+) -> Result<Response> {
+    let target = parse_number(&form.target)?;
+    let moved = crate::transfer::transfer(&state, Some(&user), id, target).await?;
+    Ok((
+        Toast::success(text(&lang, "transfer.done")),
+        renox::HxRedirect(format!("/edtech/enrolments/{}", moved.id)),
+    )
+        .into_response())
 }

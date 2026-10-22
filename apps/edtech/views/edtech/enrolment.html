@@ -26,6 +26,12 @@
         <rx-confirm :id="'enrolment-unfreeze-' ~ id" :label="tx['enrolments.unfreeze']" :action="route('edtech.enrolment_unfreeze', id)" method="POST"
                     :title="tx['enrolments.unfreeze']" :message="tx['enrolments.unfreeze_message']" :confirm-label="tx['enrolments.unfreeze']" :cancel-label="tx['button_cancel']" icon="check"/>
       </template>
+      <template rx-if="can_transfer">
+        <rx-action-sheet :id="'enrolment-transfer-' ~ id" :label="tx['transfer.action']" :action="route('edtech.enrolment_transfer', id)"
+                         :title="tx['transfer.action']" :description="tx['transfer.description']" :submit-label="tx['transfer.action']" icon="users">
+          <rx-input name="target" type="number" :label="tx['transfer.target']" :id="'enrolment-transfer-target-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_withdraw">
         <rx-action-sheet :id="'enrolment-withdraw-' ~ id" :label="tx['enrolments.withdraw']" :action="route('edtech.enrolment_withdraw', id)"
                          :title="tx['enrolments.withdraw']" :description="tx['enrolments.withdraw_description']" :submit-label="tx['enrolments.withdraw']" icon="trash">

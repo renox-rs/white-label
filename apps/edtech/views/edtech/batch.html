@@ -16,6 +16,13 @@
           <rx-input name="from" type="date" :label="tx['tutors.from']" :value="from_date" :id="'batch-tutor-from-' ~ id" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_wait">
+        <rx-action-sheet :id="'batch-waiting-' ~ id" :label="tx['waiting.add']" :action="route('edtech.batch_waiting', id)"
+                         :title="tx['waiting.add']" :description="tx['waiting.add_description']" :submit-label="tx['waiting.add']" icon="plus">
+          <rx-select name="student" :label="tx['waiting.student']" :options="[]" :placeholder="tx['enrolments.party_placeholder']" options-url="{{ route('edtech.party_options') }}" :id="'batch-waiting-student-' ~ id" required/>
+          <rx-select name="payer" :label="tx['waiting.payer']" :options="[]" :placeholder="tx['enrolments.party_placeholder']" options-url="{{ route('edtech.party_options') }}" :id="'batch-waiting-payer-' ~ id"/>
+        </rx-action-sheet>
+      </template>
     </rx-page-header>
     <rx-card :title="tx['batches.details']">
       <rx-infolist columns="2">
@@ -28,6 +35,20 @@
         <rx-entry :label="tx['batches.room']" :value="room"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="show_waiting">
+      <rx-table :rows="waiting" as="row" :key="row.id" :caption="tx['waiting.title']" card>
+        <rx-column :label="tx['waiting.student']">{{ row.student }}</rx-column>
+        <rx-column :label="tx['waiting.payer']" hide-narrow>{{ row.payer }}</rx-column>
+        <rx-column :label="tx['waiting.since']">{{ row.since }}</rx-column>
+        <rx-column :label="tx['waiting.remove']">
+          <template rx-if="can_unwait">
+            <rx-confirm :id="'waiting-remove-' ~ row.id" :label="tx['waiting.remove']" :action="route('edtech.waiting_remove', row.id)" method="POST"
+                        :title="tx['waiting.remove']" :message="tx['waiting.remove_message']" :confirm-label="tx['waiting.remove']" :cancel-label="tx['button_cancel']" icon="trash"/>
+          </template>
+        </rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['waiting.empty']" icon="users"/></rx-slot>
+      </rx-table>
+    </template>
     <rx-table :rows="tutor_history" as="row" :key="row.from" :caption="tx['tutors.history']" card>
       <rx-column :label="tx['batches.tutor']">{{ row.tutor }}</rx-column>
       <rx-column :label="tx['tutors.scope']">{{ row.scope }}</rx-column>
