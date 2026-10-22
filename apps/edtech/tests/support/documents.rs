@@ -34,6 +34,8 @@ fn kind_name(kind: &str) -> &str {
     match kind {
         "centre_permit" => "Centre permit",
         "course_approval" => "Course approval",
+        "police_clearance" => "Police clearance",
+        "tutor_permit" => "Tutor permit",
         other => other,
     }
 }
@@ -83,6 +85,20 @@ impl Documents {
             .lock()
             .unwrap()
             .insert((subject.to_string(), kind.to_owned()), expires);
+    }
+
+    /// `subject` has one more document of `kind`, valid through `expires`: it
+    /// is valid while any of its documents is (a permit that ran out and a
+    /// freelance visa that did not).
+    pub fn also(&self, subject: &Subject, kind: &str, expires: NaiveDate) {
+        let key = (subject.to_string(), kind.to_owned());
+        let mut all = self.expiries.lock().unwrap();
+        let later = match all.get(&key) {
+            Some(None) => return,
+            Some(Some(old)) => (*old).max(expires),
+            None => expires,
+        };
+        all.insert(key, Some(later));
     }
 
     /// `subject` has no document of `kind`.

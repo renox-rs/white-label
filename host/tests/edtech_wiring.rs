@@ -87,6 +87,29 @@ async fn edu_base_the_document_kinds_carry_their_blocks() {
     assert_eq!(attendance.len(), 2);
 }
 
+/// BL-EDU-08: every transition the tutor kinds block has a `BlockSubjects`
+/// provider, so the real wl-documents guard can answer it; a record that is not
+/// there guards nothing.
+#[renox::test]
+async fn edu_08_the_tutor_transitions_have_providers_in_the_host() {
+    let app = edtech_booted().await;
+    let provided = wl_kernel::documents::guarded_transitions();
+    for guarded in [
+        "batch.open",
+        "batch.change_tutor",
+        "session.change_tutor",
+        "session.reschedule",
+        "session.submit_attendance",
+    ] {
+        assert!(provided.iter().any(|g| g == guarded), "{guarded}");
+    }
+    let outcome = guard(app.state())
+        .check(app.state(), "session.reschedule", 999, wl_kernel::documents::today())
+        .await
+        .unwrap();
+    assert!(outcome.is_ok());
+}
+
 /// The roles of 10 §3.1 exist and hold the app's permissions: the tutor
 /// teaches but plans nothing, the coordinator plans, the centre manager
 /// approves and exceeds capacity, the counsellor only looks.

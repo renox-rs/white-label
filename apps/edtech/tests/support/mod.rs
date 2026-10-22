@@ -720,3 +720,84 @@ impl Centre {
         session
     }
 }
+
+use std::sync::atomic::{AtomicI64, Ordering};
+
+use wl_hr::employee::{self, EmployeeStatus, EmploymentType, NewEmployee};
+use wl_kernel::PartyId;
+use wl_kernel::workforce::EmployeeId;
+
+/// The next party number of a tutor made by [`Centre::employed_tutor`].
+static NEXT_TUTOR_PARTY: AtomicI64 = AtomicI64::new(900);
+
+impl Centre {
+    /// A tutor who is an employee of wl-hr (active; a freelancer when
+    /// `freelance`) and a person resource of wl-scheduling with that employee
+    /// behind it. Answers the resource and the employee's number.
+    pub async fn employed_tutor(&self, name: &str, freelance: bool) -> (Resource, i64) {
+        let party = NEXT_TUTOR_PARTY.fetch_add(1, Ordering::SeqCst);
+        self.people.add(party, name);
+        let mut new =
+            NewEmployee::new(PartyId(party), "tutor", day(-400)).status(EmployeeStatus::Active);
+        if freelance {
+            new = new.employment_type(EmploymentType::Freelance);
+        }
+        let hired = employee::create(self.state(), new)
+            .await
+            .expect("the tutor is hired");
+        let mut resource = Resource::new(name, ResourceType::Person);
+        resource.employee_id = Some(hired.id);
+        resource.save(self.db()).await.unwrap();
+        (resource, hired.id)
+    }
+
+    /// The subject the documents of employee `employee` are attached to.
+    pub fn employee_subject(employee: i64) -> wl_kernel::Subject {
+        EmployeeId(employee).subject()
+    }
+
+    /// The course `KIDS-1`, for minors (defined once).
+    pub async fn minors_course(&self) -> Course {
+        if let Some(found) = Course::by_code(self.db(), "KIDS-1").await.unwrap() {
+            return found;
+        }
+        let amal = self.coordinator().await;
+        courses::create(
+            self.state(),
+            &amal,
+            NewCourse::new("KIDS-1", "Kids mathematics", "Mathematics", 30).for_minors(),
+        )
+        .await
+        .expect("the course is defined")
+    }
+
+    /// A batch of `course` planned by the coordinator on `weekdays` at 18:00 for
+    /// 90 minutes over four weeks from `first`, with `tutor` (and the employee
+    /// behind it) and `room`.
+    pub async fn batch_with(
+        &self,
+        course: &Course,
+        (tutor, employee): (&Resource, Option<i64>),
+        room: &Resource,
+        first: NaiveDate,
+        weekdays: &[i64],
+    ) -> Batch {
+        let amal = self.coordinator().await;
+        batches::create(
+            self.state(),
+            &amal,
+            NewBatch::new(
+                course.id,
+                12,
+                (first, first + TimeDelta::days(27)),
+                weekdays,
+                "18:00",
+                90,
+            )
+            .tutor(tutor.id, employee)
+            .room(room.id, Some(room.capacity)),
+        )
+        .await
+        .expect("the batch is planned")
+    }
+}

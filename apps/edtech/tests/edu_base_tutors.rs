@@ -166,10 +166,10 @@ async fn edu_base_a_session_with_its_own_tutor_is_recorded() {
         .any(|r| r.session_id.is_none() && r.tutor_resource_id == layla.id && r.valid_to.is_none()));
 }
 
-/// The slot where BL-EDU-08 checks the tutor's documents passes today, and
-/// only `batches.manage` changes a tutor.
+/// The guard of BL-EDU-08 asks nothing of a tutor with no employee when the
+/// batch has no minors, and only `batches.manage` changes a tutor.
 #[renox::test]
-async fn edu_base_the_eligibility_slot_passes_and_only_the_coordinator_changes_a_tutor() {
+async fn edu_base_an_adult_batch_needs_no_document_and_only_the_coordinator_changes_a_tutor() {
     let t = boot().await;
     let layla = t.tutor("Layla").await;
     let nour = t.tutor("Nour").await;
@@ -178,7 +178,7 @@ async fn edu_base_the_eligibility_slot_passes_and_only_the_coordinator_changes_a
         resource_id: nour.id,
         employee_id: None,
     };
-    tutors::tutor_eligible(t.state(), &tutor, &[monday(), monday() + TimeDelta::days(30)])
+    tutors::tutor_eligible(t.state(), &tutor, &batch, &[monday(), monday() + TimeDelta::days(30)])
         .await
         .unwrap();
 
