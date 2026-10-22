@@ -32,6 +32,31 @@ pub const DEFAULT_PAYOUT_TASK_FILS: i64 = 10_000;
 /// chef who recorded it (`STK.ACL.02`, AED 200), in fils.
 pub const DEFAULT_WASTAGE_APPROVAL_FILS: i64 = 20_000;
 
+/// Minutes of silence of an outlet's kitchen devices that pause its channels
+/// (`FNB.RUL.15`, N).
+pub const DEFAULT_OUTAGE_DOWN_MINUTES: i64 = 5;
+
+/// Minutes between the prompts to resume the channels while the devices answer
+/// and the channels are paused (`FNB.RUL.15`, R).
+pub const DEFAULT_OUTAGE_PROMPT_MINUTES: i64 = 15;
+
+/// The kitchen devices of one outlet, registered as a device connection
+/// (`fnb.devices.<code>`) active during the outlet's opening hours.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KitchenDevices {
+    /// The outlet's code.
+    pub outlet: String,
+    /// When the opening hours begin, `HH:MM` (Asia/Dubai).
+    pub from: String,
+    /// When they end, `HH:MM`; before `from`, they run over midnight.
+    pub to: String,
+    /// The devices of the outlet (kitchen displays and tills); the connection
+    /// is `down` only when none of them answers.
+    pub devices: Vec<String>,
+    /// N: the minutes of silence before the connection goes `down`.
+    pub down_after_minutes: i64,
+}
+
 /// The settings. `Default` is the spec's defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnbSettings {
@@ -75,6 +100,13 @@ pub struct FnbSettings {
     /// recall (open item AU-20, authority notification). Off until the lawyer
     /// answers: the recall report is exported and sent by hand.
     pub authority_notice_task: bool,
+    /// Whether `FNB.RUL.15` pauses an outlet's channels when its kitchen
+    /// devices go silent.
+    pub outage_rule: bool,
+    /// R: the minutes between the prompts to resume the channels.
+    pub outage_prompt_minutes: i64,
+    /// The outlets whose kitchen devices are a device connection.
+    pub kitchen_devices: Vec<KitchenDevices>,
 }
 
 impl Default for FnbSettings {
@@ -94,6 +126,9 @@ impl Default for FnbSettings {
             walk_in_channels: vec!["pos".to_owned(), "counter".to_owned()],
             recipe_consumption: false,
             authority_notice_task: false,
+            outage_rule: true,
+            outage_prompt_minutes: DEFAULT_OUTAGE_PROMPT_MINUTES,
+            kitchen_devices: Vec::new(),
         }
     }
 }
