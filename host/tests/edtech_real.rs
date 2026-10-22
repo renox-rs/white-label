@@ -2496,3 +2496,213 @@ async fn edu_17_hiring_a_tutor_creates_the_checklist_and_reminds_the_open_steps(
     w.app.run_all_jobs().await;
     assert_eq!(reminded(account.id).await, 2, "and two days after the first");
 }
+
+// ---- #453: the refund of a withdrawal through the app's own path --------------------------------
+
+/// The student of a card-paid, active enrolment withdraws through the app (the
+/// counsellor asks, the centre manager approves): the refund of the credit note
+/// waits in wl-payments, REQUESTED by the counsellor.
+async fn withdrawn_refund(w: &World) -> (Enrolment, Refund, User, String) {
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (dina_user, dina) = w.staff("Dina", COUNSELLOR).await;
+    let (manager_user, _) = w.staff("Mona", host::roles::CENTRE_MANAGER).await;
+    let batch = w.open_batch(&coordinator, "A", day(7)).await;
+    let sara = tenant(&w.app, "Sara Ali").await;
+    let e = enrolments::create(
+        w.state(),
+        &dina,
+        NewEnrolment::course(sara.0, batch.id, 252_000).terms_accepted(),
+    )
+    .await
+    .unwrap();
+    pay_by_card(w, &e).await;
+    let txn = start_payment_txn(w, &e).await;
+    let asked = enrolments::request_withdrawal(w.state(), Some(&dina), e.id, "moving away")
+        .await
+        .unwrap();
+    wl_kernel::approvals::approve(
+        w.state(),
+        asked.approval_request.expect("the centre manager decides"),
+        &manager_user,
+        "",
+    )
+    .await
+    .unwrap();
+    let refund = refunds(w).await.remove(0);
+    assert_eq!(refund.status, wl_payments::refund::RefundStatus::Requested);
+    assert_eq!(refund.requested_by, Some(dina_user.id), "A recorded it");
+    (e, refund, dina_user, txn)
+}
+
+/// The gateway transaction of the card payment of `e`.
+async fn start_payment_txn(w: &World, e: &Enrolment) -> String {
+    Payment::query()
+        .where_(Payment::PAYMENT_LINK_ID.eq(e.payment_link_id.expect("a link")))
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("the payment")
+        .gateway_transaction
+        .expect("a transaction")
+}
+
+/// #453 point 1 on the app's own withdraw-to-refund path (no probe routes): the
+/// refund is recorded by A (the counsellor); A cannot approve it, not even holding
+/// the accountant role; B (another accountant) approves, the accountant pays the
+/// student by bank transfer and the refund is `paid`.
+#[renox::test]
+async fn edu_18_a_withdrawal_refund_needs_another_approver_and_is_paid() {
+    use wl_kernel::payments::PaymentMethod;
+    use wl_payments::refund::RefundStatus;
+    let w = boot().await;
+    let (_, rita) = w.staff("Rita", host::roles::ACCOUNTANT).await;
+    let (e, refund, dina_user, _) = withdrawn_refund(&w).await;
+
+    dina_user
+        .assign_role(w.db(), host::roles::ACCOUNTANT)
+        .await
+        .unwrap();
+    let dina_accountant = w.auth(&dina_user).await;
+    assert!(
+        wl_payments::refund::approve(w.state(), &dina_accountant, &refund)
+            .await
+            .is_err(),
+        "the recorder does not approve their own refund"
+    );
+    assert_eq!(refunds(&w).await[0].status, RefundStatus::Requested);
+    let approved = wl_payments::refund::approve(w.state(), &rita, &refund)
+        .await
+        .expect("B approves");
+    assert!(approved.approved_by.is_some());
+    assert_ne!(approved.approved_by, approved.requested_by);
+    let paid = wl_payments::refund::pay(w.state(), &rita, &approved, PaymentMethod::Transfer, "BANK-88")
+        .await
+        .expect("the transfer is recorded");
+    assert_eq!(paid.status, RefundStatus::Paid);
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Withdrawn);
+}
+
+/// #453 point 1, the failure: the refund of the withdrawal goes back to the card
+/// (the card and its transaction are set on the refund by the test: the app
+/// does not know the transaction, see the deferred line) and the gateway
+/// declines it. 24 hours later (not before) the system retries once; it is
+/// declined again and the accountant has ONE task to pay by another method; the
+/// accountant records a bank transfer to new bank details, another accountant
+/// approves the details, the transfer is paid and the task closes.
+#[renox::test]
+async fn edu_18_a_declined_card_refund_is_retried_once_then_the_accountant_pays_by_transfer() {
+    use wl_kernel::payments::PaymentMethod;
+    use wl_payments::gateway::RefundOutcome;
+    use wl_payments::refund::{RefundStatus, gateway_refund_outcome};
+    use wl_payments::refund_recover::{change_method, retries_of};
+    let w = boot().await;
+    let (_, rita) = w.staff("Rita", host::roles::ACCOUNTANT).await;
+    let (_, rana) = w.staff("Rana", host::roles::ACCOUNTANT).await;
+    let (e, refund, _, txn) = withdrawn_refund(&w).await;
+    Refund::query()
+        .where_(Refund::ID.eq(refund.id))
+        .update(
+            w.db(),
+            &[
+                ("method", &Some(PaymentMethod::Gateway)),
+                ("gateway_txn", &Some(txn)),
+            ],
+        )
+        .await
+        .unwrap();
+    let refund = Refund::find_or_404(w.db(), refund.id).await.unwrap();
+    let approved = wl_payments::refund::approve(w.state(), &rita, &refund)
+        .await
+        .expect("B approves");
+
+    let attempt = wl_payments::refund::send_to_gateway(w.state(), &rita, &approved)
+        .await
+        .expect("sent to the gateway");
+    let failed = gateway_refund_outcome(
+        w.state(),
+        attempt.gateway_ref.as_deref().expect("a reference"),
+        RefundOutcome::Declined {
+            reason: "card expired".to_owned(),
+        },
+    )
+    .await
+    .unwrap()
+    .expect("applied");
+    assert_eq!(failed.status, RefundStatus::Failed);
+    assert!(
+        wl_payments::FollowupTask::open_for(w.db(), "accountant")
+            .await
+            .unwrap()
+            .is_empty(),
+        "the system retries first"
+    );
+
+    // Not two minutes before 24 hours after the failure; once after it.
+    w.app.travel(Duration::from_secs(24 * 3600 - 120));
+    w.app.run_scheduled(wl_payments::refund_retry::TASK).await.unwrap();
+    assert_eq!(retries_of(w.db(), refund.id).await.unwrap(), 0);
+    w.app.travel(Duration::from_secs(300));
+    w.app.run_scheduled(wl_payments::refund_retry::TASK).await.unwrap();
+    assert_eq!(retries_of(w.db(), refund.id).await.unwrap(), 1);
+    assert_eq!(
+        Refund::find_or_404(w.db(), refund.id).await.unwrap().status,
+        RefundStatus::Approved
+    );
+
+    // The retry is declined too: no third attempt, one task for the accountant.
+    let second = wl_payments::RefundAttempt::latest(w.db(), refund.id)
+        .await
+        .unwrap()
+        .expect("an attempt")
+        .gateway_ref
+        .expect("a reference");
+    gateway_refund_outcome(
+        w.state(),
+        &second,
+        RefundOutcome::Declined {
+            reason: "card closed".to_owned(),
+        },
+    )
+    .await
+    .unwrap();
+    w.app.travel(Duration::from_secs(200 * 3600));
+    w.app.run_scheduled(wl_payments::refund_retry::TASK).await.unwrap();
+    assert_eq!(retries_of(w.db(), refund.id).await.unwrap(), 1, "no third attempt");
+    let tasks = wl_payments::FollowupTask::open_for(w.db(), "accountant")
+        .await
+        .unwrap();
+    assert_eq!(tasks.len(), 1, "one task to pay by another method");
+    assert_eq!(tasks[0].refund_id, Some(refund.id));
+
+    // The accountant records the other method.
+    let failed = Refund::find_or_404(w.db(), refund.id).await.unwrap();
+    let changed = change_method(
+        w.state(),
+        &rita,
+        &failed,
+        PaymentMethod::Transfer,
+        Some("AE070331234567890123456"),
+    )
+    .await
+    .expect("the accountant changes the method");
+    let ready = if changed.status == RefundStatus::Requested {
+        wl_payments::refund::approve(w.state(), &rana, &changed)
+            .await
+            .expect("another accountant approves the new details")
+    } else {
+        changed
+    };
+    assert_eq!(ready.method, Some(PaymentMethod::Transfer));
+    let paid = wl_payments::refund::pay(w.state(), &rita, &ready, PaymentMethod::Transfer, "BANK-89")
+        .await
+        .expect("the transfer is recorded as paid");
+    assert_eq!(paid.status, RefundStatus::Paid);
+    assert!(
+        wl_payments::FollowupTask::open_for(w.db(), "accountant")
+            .await
+            .unwrap()
+            .is_empty(),
+        "the task closed"
+    );
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Withdrawn);
+}
