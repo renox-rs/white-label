@@ -146,6 +146,41 @@ pub async fn tell_family(
     Ok(())
 }
 
+/// Tells the family of every enrolment in `enrolments` something, each party
+/// once: a guardian who pays for two students of the same batch gets one
+/// message, not two (BL-EDU-09: "each student or guardian gets one message").
+/// An enrolment whose parties were all told already is skipped.
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub async fn tell_families(
+    state: &AppState,
+    enrolments: &[Enrolment],
+    title: &str,
+    body: &str,
+) -> Result {
+    let mut told: Vec<PartyId> = Vec::new();
+    for enrolment in enrolments {
+        let fresh: Vec<PartyId> = family_of(enrolment)
+            .into_iter()
+            .filter(|party| !told.contains(party))
+            .collect();
+        if fresh.is_empty() {
+            continue;
+        }
+        let mut request = NotifyRequest::new(FAMILY_NOTICE, enrolment.subject())
+            .subject_label(&enrolment.number())
+            .data(renox::serde_json::json!({ "title": title, "body": body }));
+        for party in &fresh {
+            request = request.to_party(*party);
+        }
+        notify::notifier(state).notify(state, request).await?;
+        told.extend(fresh);
+    }
+    Ok(())
+}
+
 /// Tells the student of `enrolment` (the guardian of a student under 18, else
 /// the student) something, and nobody else.
 ///

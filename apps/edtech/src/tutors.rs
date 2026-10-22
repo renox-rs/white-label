@@ -206,11 +206,12 @@ pub async fn change_batch_tutor(
         )
     };
     tutor_eligible(state, &tutor, &batch, &dates).await?;
-    let clashes =
-        sessions::conflicts(&state.db, Some(resource), None, &slots, Except::default()).await?;
-    sessions::no_clash(&clashes)?;
     if batch.status == BatchStatus::Planned {
+        // Like the running branch: the tutor's calendar is locked and checked
+        // in the transaction that sets the tutor, so a second change at the
+        // same moment waits and then sees what this one left.
         let mut tx = state.db.begin().await?;
+        reserve(&mut tx, resource, &slots, Except::default()).await?;
         set_batch(
             &mut tx,
             id,
@@ -224,6 +225,9 @@ pub async fn change_batch_tutor(
         tx.commit().await?;
         return Batch::find_or_404(&state.db, id).await;
     }
+    let clashes =
+        sessions::conflicts(&state.db, Some(resource), None, &slots, Except::default()).await?;
+    sessions::no_clash(&clashes)?;
     let name = if batch.status == BatchStatus::Running {
         CHANGE_TUTOR_RUNNING
     } else {
@@ -270,9 +274,8 @@ pub async fn tell_batch_change(state: &AppState, batch_id: i64) -> Result {
             ("course", &course),
         ],
     );
-    for enrolment in Enrolment::seated_in(&state.db, batch_id).await? {
-        notices::tell_family(state, &enrolment, &title, &body).await?;
-    }
+    let seated = Enrolment::seated_in(&state.db, batch_id).await?;
+    notices::tell_families(state, &seated, &title, &body).await?;
     Ok(())
 }
 
@@ -300,9 +303,8 @@ pub async fn tell_session_change(state: &AppState, session_id: i64) -> Result {
             ("time", &when),
         ],
     );
-    for enrolment in Enrolment::seated_in(&state.db, batch.id).await? {
-        notices::tell_family(state, &enrolment, &title, &body).await?;
-    }
+    let seated = Enrolment::seated_in(&state.db, batch.id).await?;
+    notices::tell_families(state, &seated, &title, &body).await?;
     Ok(())
 }
 
