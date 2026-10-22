@@ -35,6 +35,7 @@ use wl_sales::permissions as sperm;
 use wl_sales::{SalesOrder, WlSales};
 
 pub mod notices;
+pub mod payouts;
 pub mod tickets;
 
 use notices::Notices;
@@ -93,7 +94,7 @@ pub fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
     })
 }
 
-async fn make_user(db: &Db, name: &str, grants: &[&str]) -> User {
+pub async fn make_user(db: &Db, name: &str, grants: &[&str]) -> User {
     let email = format!("{}@example.com", name.to_lowercase());
     let user = User::register(db, name, &email, "password123")
         .await
@@ -570,18 +571,32 @@ impl World {
         mode: &str,
         lines: &[(&str, &str, &str)],
     ) -> FnbOrder {
+        self.place_via_external(channel, None, customer, mode, lines)
+            .await
+    }
+
+    /// [`place_via`](Self::place_via) with the order number of the channel's
+    /// own system (an aggregator's), which a payout statement names.
+    pub async fn place_via_external(
+        &self,
+        channel: &str,
+        external: Option<&str>,
+        customer: PartyId,
+        mode: &str,
+        lines: &[(&str, &str, &str)],
+    ) -> FnbOrder {
         let party = customer.0.to_string();
-        self.post(
-            &self.cashier,
-            "/sales-orders",
-            &[
-                ("party_id", party.as_str()),
-                ("channel", channel),
-                ("payment_mode", mode),
-            ],
-        )
-        .await
-        .assert_status(303);
+        let mut head = vec![
+            ("party_id", party.as_str()),
+            ("channel", channel),
+            ("payment_mode", mode),
+        ];
+        if let Some(external) = external {
+            head.push(("external_number", external));
+        }
+        self.post(&self.cashier, "/sales-orders", &head)
+            .await
+            .assert_status(303);
         let sales = SalesOrder::query()
             .order_by_desc(SalesOrder::ID)
             .first(self.db())
