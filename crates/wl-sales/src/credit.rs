@@ -13,7 +13,7 @@
 //! BL-SAL-10: the default has none, so the check passes.
 
 use renox::prelude::*;
-use renox::state_machine::{Machine, Transition};
+use renox::state_machine::{Machine, StateMachine, Transition};
 use wl_kernel::sales::credit_exposure;
 
 use crate::order_notices;
@@ -106,7 +106,6 @@ pub async fn check_after_amend(state: &AppState, order_id: i64, old_gross: i64) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renox::state_machine::StateMachine;
 
     #[test]
     fn the_exposure_is_the_rest_plus_the_order_at_its_new_total() {

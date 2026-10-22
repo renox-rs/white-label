@@ -15,6 +15,7 @@
 //!   the final re-check and the link from "Needs your action" to the order.
 
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use serde::Serialize;
 use wl_kernel::approvals::{self, ApprovalRequest, Require, Required};
 use wl_kernel::sales::{
