@@ -187,6 +187,24 @@ pub type SendFn = Arc<
 pub type DueFn =
     Arc<dyn for<'a> Fn(&'a AppState, &'a Outbound) -> BoxFuture<'a, Result<bool>> + Send + Sync>;
 
+/// What a device connection adds to a definition (BL-KRN-07): the heartbeat
+/// interval, the active window, the scope and the devices of a group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceSpec {
+    /// The outlet, branch or site the devices belong to.
+    pub scope: Option<String>,
+    /// The seconds between heartbeats (default 60).
+    pub heartbeat_seconds: i64,
+    /// The active window as minutes after midnight in Asia/Dubai (start, end);
+    /// `None`: always.
+    pub window: Option<(i64, i64)>,
+    /// Whether the connection groups the devices of the scope.
+    pub grouped: bool,
+    /// The devices expected to send heartbeats (a single-device connection
+    /// has none: the connection's key stands for the device).
+    pub devices: Vec<String>,
+}
+
 /// An external system a module calls. Built with [`IntegrationDef::of`].
 #[derive(Clone)]
 #[must_use = "a connection is only tracked once registered"]
@@ -202,6 +220,7 @@ pub struct IntegrationDef {
     due: Option<DueFn>,
     matcher: Option<MatchFn>,
     entry: Option<EntryFn>,
+    device: Option<DeviceSpec>,
 }
 
 impl fmt::Debug for IntegrationDef {
@@ -240,7 +259,81 @@ impl IntegrationDef {
             due: None,
             matcher: None,
             entry: None,
+            device: None,
         }
+    }
+
+    /// Starts the device connection `key` of `module` (BL-KRN-07): a device
+    /// at a site that calls the platform, whose health signal is its
+    /// heartbeat ([`crate::integrations::heartbeat`]). Each heartbeat counts as
+    /// a successful call and a missed one as a failed call, so `degrade`,
+    /// `go_down` and `recover` work as for any connection. Defaults: a
+    /// heartbeat every minute, always active, one connection for one device.
+    pub fn device(key: &str, module: &str) -> Self {
+        let mut def = IntegrationDef::of(key, module, |_state, _call| {
+            // Nothing is ever sent to a device.
+            Box::pin(async { Ok(Delivery::Sent) })
+        });
+        def.device = Some(DeviceSpec {
+            scope: None,
+            heartbeat_seconds: super::connection::DEFAULT_HEARTBEAT_SECONDS,
+            window: None,
+            grouped: false,
+            devices: Vec::new(),
+        });
+        def
+    }
+
+    /// The scope (outlet, branch, site) of a device connection.
+    pub fn scope(mut self, scope: &str) -> Self {
+        if let Some(device) = &mut self.device {
+            device.scope = Some(scope.to_owned());
+        }
+        self
+    }
+
+    /// The seconds between the heartbeats of a device connection.
+    ///
+    /// # Panics
+    ///
+    /// On a connection that is not a device's or an interval of zero.
+    pub fn heartbeat_seconds(mut self, seconds: i64) -> Self {
+        assert!(seconds > 0, "{}: a heartbeat interval above 0", self.key);
+        let device = self.device.as_mut().expect("a device connection");
+        device.heartbeat_seconds = seconds;
+        self
+    }
+
+    /// The hours when silence counts, as `10:00` and `23:00` in Asia/Dubai.
+    /// A window that closes before it opens runs over midnight.
+    ///
+    /// # Panics
+    ///
+    /// On a connection that is not a device's or a time that is not `HH:MM`.
+    pub fn active_window(mut self, from: &str, to: &str) -> Self {
+        let start = super::devices::parse_clock(from).expect("a window start as HH:MM");
+        let end = super::devices::parse_clock(to).expect("a window end as HH:MM");
+        let device = self.device.as_mut().expect("a device connection");
+        device.window = Some((start, end));
+        self
+    }
+
+    /// Groups the `devices` of the scope in this one connection: it is `down`
+    /// only when none of them answers.
+    ///
+    /// # Panics
+    ///
+    /// On a connection that is not a device's.
+    pub fn group<S: Into<String>>(mut self, devices: impl IntoIterator<Item = S>) -> Self {
+        let device = self.device.as_mut().expect("a device connection");
+        device.grouped = true;
+        device.devices = devices.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// What makes this a device connection, if it is one.
+    pub fn device_spec(&self) -> Option<&DeviceSpec> {
+        self.device.as_ref()
     }
 
     /// The role responsible for the connection (e.g. `accountant` for the
