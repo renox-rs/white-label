@@ -484,7 +484,7 @@ impl Seed {
             ),
             consult(
                 LAYAN,
-                When::Day(-20, 11, 0),
+                When::Day(-24, 11, 0),
                 true,
                 End::Completed,
                 vec![("consultation", 1, false)],

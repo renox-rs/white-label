@@ -10,9 +10,6 @@ impl Seed {
 }
 
 impl Seed {
-    pub(crate) async fn claims(&mut self) -> Result {
-        Ok(())
-    }
     pub(crate) async fn recall(&mut self) -> Result {
         Ok(())
     }

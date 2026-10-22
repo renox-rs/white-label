@@ -44,6 +44,7 @@
 //!
 //! Every login has the password of [`super::seed::PASSWORD`].
 
+mod claims;
 mod desk;
 mod insurance;
 mod money;

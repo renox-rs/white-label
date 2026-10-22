@@ -53,7 +53,7 @@ impl Seed {
         let terms: [(&str, i64, i64, Option<&str>, (i64, i64, i64), bool); 3] = [
             ("Gulf Shield Gold", 2_000, 5_000, Some("Gold"), (30, 30, 2), false),
             ("Crescent Basic", 1_000, 0, Some("Basic"), (14, 21, 1), true),
-            ("Oasis Select", 3_000, 0, None, (7, 14, 1), false),
+            ("Oasis Select", 3_000, 0, None, (21, 14, 1), false),
         ];
         for (index, (name, copay, deductible, plan, windows, late)) in terms.iter().enumerate() {
             let payer = self.payers[index];
