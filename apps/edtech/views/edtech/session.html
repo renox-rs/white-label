@@ -12,6 +12,15 @@
           </template>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_correct">
+        <rx-action-sheet :id="'session-correction-' ~ id" :label="tx['corrections.action']" :action="route('edtech.session_correction', id)"
+                         :title="tx['corrections.action']" :description="tx['corrections.description']" :submit-label="tx['corrections.action']" icon="check">
+          <template rx-for="row in attend_rows">
+            <rx-select :name="'mark_' ~ row.id" :label="row.label" :options="mark_options" :selected="row.selected" :id="'session-correction-mark-' ~ row.id"/>
+          </template>
+          <rx-input name="reason" :label="tx['corrections.reason']" :id="'session-correction-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_roster">
         <rx-action-sheet :id="'session-student-' ~ id" :label="tx['attendance.add']" :action="route('edtech.session_student', id)"
                          :title="tx['attendance.add']" :description="tx['attendance.add_description']" :submit-label="tx['attendance.add']" icon="plus">

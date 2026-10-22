@@ -4,10 +4,10 @@
 //!
 //! Decisions:
 //!
-//! - The completion criteria of `EDU.ACL.06` are, in this base, that the
-//!   enrolment is `completed` (the batch ended, or the credits are used up).
-//!   Attendance thresholds and pass marks come with the gradebook (`EDU.ASM.01`
-//!   is Later).
+//! - The completion criteria of `EDU.ACL.06` are that the enrolment is
+//!   `completed` (the batch ended, or the credits are used up) and its attendance
+//!   at least 80% ([`crate::completion`]; an enrolment with no mark has none to
+//!   judge). Pass marks come with the gradebook (`EDU.ASM.01` is Later).
 //! - Only a course enrolment gets a certificate; a package or a membership
 //!   has none.
 //! - A reissued draft is issued with the enrolment's completion date as the
@@ -45,9 +45,24 @@ pub struct Corrections {
     pub copy_attestation: bool,
 }
 
-/// Whether the completion criteria of `enrolment` are met (`EDU.ACL.06`).
+/// Whether the enrolment is `completed`, the first of the completion criteria
+/// of `EDU.ACL.06`.
 pub fn criteria_met(enrolment: &Enrolment) -> bool {
     enrolment.status == EnrolmentStatus::Completed
+}
+
+/// Whether the completion criteria of `enrolment` are met (`EDU.ACL.06`): it is
+/// `completed` and its attendance is at least 80% (an enrolment with no mark has
+/// none to judge, [`crate::completion`]).
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn criteria(db: &Db, enrolment: &Enrolment) -> Result<bool> {
+    if !criteria_met(enrolment) {
+        return Ok(false);
+    }
+    crate::completion::attendance_met(db, enrolment.id).await
 }
 
 /// The draft certificate of a completed enrolment, when it should have one:
@@ -58,7 +73,7 @@ pub fn criteria_met(enrolment: &Enrolment) -> bool {
 ///
 /// The database's errors.
 pub async fn evaluate(state: &AppState, enrolment: &Enrolment) -> Result<Option<Certificate>> {
-    if enrolment.kind != EnrolmentKind::Course || !criteria_met(enrolment) {
+    if enrolment.kind != EnrolmentKind::Course || !criteria(&state.db, enrolment).await? {
         return Ok(None);
     }
     let live = Certificate::of_enrolment(&state.db, enrolment.id)
@@ -111,7 +126,7 @@ async fn input_for(
         today()
     };
     Ok(CertificateInput {
-        criteria_met: Some(criteria_met(&enrolment)),
+        criteria_met: Some(criteria(&state.db, &enrolment).await?),
         on_date: Some(on_date),
         by: Some(by.id),
         ..CertificateInput::default()

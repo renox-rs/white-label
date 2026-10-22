@@ -27,7 +27,7 @@ pub const IN_A_ROW: i64 = 2;
 
 /// The marks of `enrolment_id` in sessions that took place, oldest session first,
 /// with the session's start.
-async fn held_marks(db: &Db, enrolment_id: i64) -> Result<Vec<(Attendance, Session)>> {
+pub(crate) async fn held_marks(db: &Db, enrolment_id: i64) -> Result<Vec<(Attendance, Session)>> {
     let mut found = Vec::new();
     for row in Attendance::of_enrolment(db, enrolment_id).await? {
         if let Some(session) = Session::find(db, row.session_id).await?

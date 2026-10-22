@@ -5,7 +5,8 @@
 //! | [`RESCHEDULE`] | scheduled | scheduled | `batches.manage` | `new_time_given` |
 //! | [`CHANGE_TUTOR`] | scheduled | scheduled | `batches.manage` | `new_tutor_given` |
 //! | [`SUBMIT_ATTENDANCE`] | scheduled | held | `sessions.teach` | `start_passed`, `every_student_marked` |
-//! | [`CORRECT_ATTENDANCE`] | held | held | `sessions.teach` | `within_window` (slot, BL-EDU-14) |
+//! | [`CORRECT_ATTENDANCE`] | held | held | `sessions.teach` | `within_window`, `something_to_correct`, a reason |
+//! | [`CORRECT_ATTENDANCE_COORDINATOR`] | held | held | `batches.manage` | `something_to_correct`, a reason |
 //! | [`CANCEL`] / [`CANCEL_SYSTEM`] | scheduled | cancelled | `batches.manage` / system (a batch `cancel` or `terminate`) | a reason |
 //!
 //! Decisions:
@@ -29,9 +30,14 @@
 //!   the absences evaluated (`EDU.RUL.02`, [`crate::absences`]). That a tutor marks
 //!   only the attendance of the batches assigned to them (`EDU.ACL.03`) needs the
 //!   tutor-to-user link of wl-hr and is not checked here.
-//! - `correct_attendance` is declared with its reason and the slot of
-//!   `EDU.ACL.04` and `EDU.ACL.16` (the tutor within 24 hours, then the
-//!   coordinator); BL-EDU-14 gives it its body.
+//! - `correct_attendance` is the tutor's within 24 hours of the scheduled end
+//!   (`EDU.ACL.04`, the guard `within_window` reads the end and the clock), and
+//!   after that the coordinator's own twin
+//!   [`CORRECT_ATTENDANCE_COORDINATOR`] (`EDU.ACL.16`), as a transition has one
+//!   kind of access. Both need a reason; the service ([`crate::corrections`])
+//!   works out the marks that change and the effect stores them with the credit
+//!   each now costs; the credits, the make-up rights, the guardian, the
+//!   completion and the certificate follow it.
 
 use renox::chrono::NaiveDate;
 use renox::db::{DateTime, now};
@@ -54,8 +60,14 @@ pub const RESCHEDULE: &str = "reschedule";
 pub const CHANGE_TUTOR: &str = "change_tutor";
 /// `scheduled → held`: the tutor submitted the attendance.
 pub const SUBMIT_ATTENDANCE: &str = "submit_attendance";
-/// `held → held`: the attendance is corrected.
+/// `held → held`: the tutor corrects the attendance within 24 hours of the end.
 pub const CORRECT_ATTENDANCE: &str = "correct_attendance";
+/// `held → held`: the academic coordinator corrects the attendance, with a
+/// reason, at any time.
+pub const CORRECT_ATTENDANCE_COORDINATOR: &str = "correct_attendance_coordinator";
+/// The hours after the scheduled end that the tutor may correct the attendance
+/// (`EDU.ACL.04`).
+pub const TUTOR_WINDOW_HOURS: i64 = 24;
 /// `scheduled → cancelled`: the session did not take place.
 pub const CANCEL: &str = "cancel";
 /// `scheduled → cancelled`: the batch was cancelled or terminated.
@@ -134,7 +146,8 @@ impl StateMachine for Session {
             .transition(reschedule())
             .transition(change_tutor())
             .transition(submit_attendance())
-            .transition(correct_attendance())
+            .transition(correct_attendance(CORRECT_ATTENDANCE, false))
+            .transition(correct_attendance(CORRECT_ATTENDANCE_COORDINATOR, true))
             .transition(cancel(CANCEL, false))
             .transition(cancel(CANCEL_SYSTEM, true))
     }
@@ -263,16 +276,39 @@ fn submit_attendance() -> Transition<Session> {
         })
 }
 
-/// `correct_attendance`: declared with its reason; BL-EDU-14 fills the slot.
-fn correct_attendance() -> Transition<Session> {
-    Transition::new(CORRECT_ATTENDANCE)
+/// `correct_attendance`: the marks in the run's input replace the marks of the
+/// session, with the credit each now costs. The tutor's twin only within
+/// [`TUTOR_WINDOW_HOURS`] of the scheduled end; the coordinator's any time.
+fn correct_attendance(name: &'static str, coordinator: bool) -> Transition<Session> {
+    let transition = Transition::new(name)
         .label("Correct attendance")
-        .permission(permissions::SESSIONS_TEACH)
+        .permission(if coordinator {
+            permissions::BATCHES_MANAGE
+        } else {
+            permissions::SESSIONS_TEACH
+        })
         .from([SessionStatus::Held])
         .to(SessionStatus::Held)
-        .reason_required()
-        .guard("within_window", |_s: &Session, _ctx| {
-            Box::pin(async { Ok::<(), String>(()) })
+        .reason_required();
+    let transition = if coordinator {
+        transition
+    } else {
+        transition.guard("within_window", |s: &Session, _ctx| {
+            let ok = now() <= s.ends_at + renox::chrono::Duration::hours(TUTOR_WINDOW_HOURS);
+            Box::pin(async move { check(ok, "edtech.corrections.problem.window_over") })
+        })
+    };
+    transition
+        .guard("something_to_correct", |_s: &Session, ctx| {
+            let ok = !input_of(ctx).marks.is_empty();
+            Box::pin(async move { check(ok, "edtech.corrections.problem.nothing") })
+        })
+        .effect(|s: &Session, ctx, tx| {
+            let session = s.clone();
+            let input = input_of(ctx);
+            Box::pin(async move {
+                attendance::store_marks(tx, &session, &input.marks, input.by, true).await
+            })
         })
 }
 
@@ -330,6 +366,7 @@ mod tests {
             (CHANGE_TUTOR, vec!["scheduled"], "scheduled"),
             (SUBMIT_ATTENDANCE, vec!["scheduled"], "held"),
             (CORRECT_ATTENDANCE, vec!["held"], "held"),
+            (CORRECT_ATTENDANCE_COORDINATOR, vec!["held"], "held"),
             (CANCEL, vec!["scheduled"], "cancelled"),
             (CANCEL_SYSTEM, vec!["scheduled"], "cancelled"),
         ];
@@ -357,9 +394,15 @@ mod tests {
         assert_eq!(guards(RESCHEDULE), ["new_time_given"]);
         assert_eq!(guards(CHANGE_TUTOR), ["new_tutor_given"]);
         assert_eq!(guards(SUBMIT_ATTENDANCE), ["start_passed", "every_student_marked"]);
-        assert_eq!(guards(CORRECT_ATTENDANCE), ["within_window"]);
+        assert_eq!(guards(CORRECT_ATTENDANCE), ["within_window", "something_to_correct"]);
+        assert_eq!(guards(CORRECT_ATTENDANCE_COORDINATOR), ["something_to_correct"]);
         assert!(guards(CANCEL).is_empty());
-        for name in [CANCEL, CANCEL_SYSTEM, CORRECT_ATTENDANCE] {
+        for name in [
+            CANCEL,
+            CANCEL_SYSTEM,
+            CORRECT_ATTENDANCE,
+            CORRECT_ATTENDANCE_COORDINATOR,
+        ] {
             assert!(machine.find(name).unwrap().needs_reason(), "{name}");
         }
     }

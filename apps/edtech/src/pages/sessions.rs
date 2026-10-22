@@ -8,6 +8,7 @@
 //! | `POST /edtech/sessions/{id}/students` | `edtech.session_student` | `enrolments.manage` or `batches.manage` |
 //! | `POST /edtech/sessions/{id}/notice` | `edtech.session_notice` | `enrolments.manage` or `batches.manage` |
 //! | `POST /edtech/sessions/{id}/excuse` | `edtech.session_excuse` | `batches.manage` |
+//! | `POST /edtech/sessions/{id}/correction` | `edtech.session_correction` | `sessions.teach` within 24 hours of the end, else `batches.manage` |
 //! | `POST /edtech/sessions/{id}/reschedule` | `edtech.session_reschedule` | `batches.manage` |
 //! | `POST /edtech/sessions/{id}/tutor` | `edtech.session_tutor` | `batches.manage` |
 //! | `POST /edtech/sessions/{id}/cancel` | `edtech.session_cancel` | `batches.manage` |
@@ -57,6 +58,8 @@ pub fn routes() -> Routes {
         .name("edtech.session_notice")
         .post("/edtech/sessions/{id}/excuse", excuse_late)
         .name("edtech.session_excuse")
+        .post("/edtech/sessions/{id}/correction", correct_attendance)
+        .name("edtech.session_correction")
         .require_auth()
 }
 
@@ -214,6 +217,7 @@ pub(crate) struct ShowPage {
     student_options: Vec<[String; 2]>,
     can_roster: bool,
     can_excuse: bool,
+    can_correct: bool,
 }
 
 /// One student of the roster of a session.
@@ -321,10 +325,10 @@ async fn show(
         attend_rows.push(AttendRow {
             id: student.enrolment.id,
             label: label.clone(),
-            selected: if mark == Mark::Excused {
-                "excused".to_owned()
-            } else {
+            selected: if mark == Mark::Pending {
                 "present".to_owned()
+            } else {
+                mark.as_str().to_owned()
             },
         });
         student_options.push([student.enrolment.id.to_string(), label]);
@@ -406,6 +410,7 @@ async fn show(
             && (user.has_permission(permissions::ENROLMENTS_MANAGE)
                 || user.has_permission(permissions::BATCHES_MANAGE)),
         can_excuse: scheduled && user.has_permission(permissions::BATCHES_MANAGE),
+        can_correct: crate::corrections::may_correct(&user, &session),
     }))
 }
 
@@ -437,6 +442,32 @@ async fn attendance(
     }
     sessions::submit_attendance_marked(&state, &user, id, &given, true).await?;
     done(&lang, "sessions.attendance_done")
+}
+
+/// `POST /edtech/sessions/{id}/correction`: a `mark_<enrolment>` per student and a
+/// `reason`.
+async fn correct_attendance(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let mut given = Vec::new();
+    for (name, value) in &form {
+        let Some(enrolment) = name.strip_prefix("mark_") else {
+            continue;
+        };
+        if value.trim().is_empty() {
+            continue;
+        }
+        let mark = Mark::parse(value)
+            .ok_or_else(|| invalid(&text(&lang, "attendance.problem.mark")))?;
+        given.push((parse_number(enrolment)?, mark));
+    }
+    let reason = form.get("reason").map_or("", String::as_str);
+    crate::corrections::correct_attendance(&state, &user, id, &given, reason).await?;
+    done(&lang, "corrections.done")
 }
 
 /// The field `name` of a form as a number.

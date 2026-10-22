@@ -115,6 +115,47 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "edtech.credits.task_done",
         "The credit was taken from a package.",
     ),
+    // The correction of the attendance (BL-EDU-14).
+    ("edtech.corrections.action", "Correct attendance"),
+    (
+        "edtech.corrections.description",
+        "Change the marks that were wrong and say why. Credits, make-up rights and the certificates that depend on them follow.",
+    ),
+    ("edtech.corrections.reason", "Reason"),
+    ("edtech.corrections.done", "Attendance corrected."),
+    (
+        "edtech.corrections.problem.not_held",
+        "Only the attendance of a session that took place can be corrected.",
+    ),
+    (
+        "edtech.corrections.problem.reason",
+        "A reason is needed to correct the attendance.",
+    ),
+    (
+        "edtech.corrections.problem.window_over",
+        "The tutor can correct the attendance until 24 hours after the session ends. Ask the academic coordinator, who corrects it with a reason.",
+    ),
+    (
+        "edtech.corrections.problem.nothing",
+        "The marks are as they were: there is nothing to correct.",
+    ),
+    (
+        "edtech.corrections.guardian_title",
+        "The attendance of :student on :date was corrected",
+    ),
+    (
+        "edtech.corrections.guardian_body",
+        "The attendance of :student on :date was corrected and is now: :mark. An earlier message about sessions missed in a row does not apply to that day any more.",
+    ),
+    // The certificate whose criteria a correction no longer meets.
+    (
+        "edtech.completion.task_title",
+        "Reissue or revoke certificate :certificate: attendance is now :percent%",
+    ),
+    (
+        "edtech.completion.task_body",
+        "After a correction of the attendance, :student has :percent% in the course, below the :threshold% the certificate :certificate asks for. The certificate is unchanged. Reissue it if the result still meets the criteria, or ask the company admin to revoke it.",
+    ),
     // The alert of `EDU.RUL.02`.
     (
         "edtech.absences.title",
