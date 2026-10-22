@@ -109,13 +109,15 @@ pub fn delivery(module: WlDelivery) -> WlDelivery {
 /// (`STK.RUL.07`, lowered from 24 for food).
 pub const TEMPERATURE_HOLD_REMINDER_HOURS: i64 = 2;
 
-/// The stock module with the 06 client's values: a temperature hold is
+/// The stock module with the 06 client's values: a wastage above AED 200 needs
+/// a second person (`STK.ACL.02`), a temperature hold is
 /// reminded after 2 hours and escalated to the kitchen manager after 4
 /// (`STK.RUL.07`), only a recall hold needs a second holder of `lots.release`
 /// to release (`STK.ACL.05`), a goods receipt rejection for `temperature`
 /// needs the reading (BL-FNB-12).
 pub fn inventory(module: WlInventory) -> WlInventory {
     module
+        .wastage_approval_fils(WASTAGE_APPROVAL_FILS)
         .hold_reminder_hours_for_reason("temperature", TEMPERATURE_HOLD_REMINDER_HOURS)
         .hold_escalation_role_for_reason("temperature", KITCHEN_MANAGER)
         .hold_second_person_reasons(&["recall"])

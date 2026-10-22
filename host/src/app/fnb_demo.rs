@@ -242,6 +242,10 @@ async fn run(state: AppState, forced: bool) -> Result {
     // because its lot is held, one planned (BL-FNB-11).
     let batches = production(&state).await?;
     println!("{batches} production batches made for the central kitchen.");
+    // The fridge that read 9 degrees: its chicken and cream are on hold
+    // (BL-FNB-12).
+    let units = cold_units(&state).await?;
+    println!("{units} cold units made for the Marina kitchen.");
     // The rider who does not arrive (`FNB.RUL.16`): the kitchen manager is
     // told for the order ready for 20 minutes and has the task for the one
     // ready for 50.
@@ -1388,4 +1392,110 @@ async fn production(state: &AppState) -> Result<usize> {
         .await?;
     tx.commit().await?;
     Ok(3)
+}
+
+/// A location `code` named `name` under `parent`, made when there is none.
+async fn sub_location(db: &Db, code: &str, name: &str, parent: &Location) -> Result<Location> {
+    if let Some(found) = Location::query().where_(Location::CODE.eq(code)).first(db).await? {
+        return Ok(found);
+    }
+    let mut location = Location::new(code, name);
+    location.parent_id = Some(parent.id);
+    location.save(db).await?;
+    Ok(location)
+}
+
+/// `quantity_milli` of the plain (not lot-tracked) item `code`, received at
+/// `location` when nothing of it was.
+async fn stocked(db: &Db, code: &str, name: &str, location: &Location, quantity_milli: i64, cost: i64) -> Result {
+    let item = match Item::query().where_(Item::CODE.eq(code)).first(db).await? {
+        Some(item) => item,
+        None => {
+            let mut item = Item::new(code, name, "kg");
+            item.average_cost = cost;
+            item.save(db).await?;
+            item
+        }
+    };
+    let there = StockMovement::query()
+        .where_(StockMovement::ITEM_ID.eq(item.id))
+        .where_(StockMovement::TO_LOCATION_ID.eq(location.id))
+        .count(db)
+        .await?;
+    if there == 0 {
+        let source = Subject::new("inventory.goods_receipt", 9_200);
+        let mut moved = StockMovement::receive(
+            item.id,
+            None,
+            location.id,
+            quantity_milli,
+            item.average_cost,
+            value_of(quantity_milli, item.average_cost),
+            &source,
+            None,
+        );
+        moved.save(db).await?;
+    }
+    Ok(())
+}
+
+/// The Marina kitchen's cold units (BL-FNB-12): Fridge 2 (OUT1-F2) holds 6 kg
+/// of chicken and 2 kg of cream and read 9 degrees at 14:00 and 8 degrees half
+/// an hour later, so its stock is on one temperature hold with one equipment
+/// task, and Freezer 1 read minus 20 and is fine. Returns how many units it
+/// made. The readings are stored and reacted to by the system: a seed has no
+/// signed-in cook.
+async fn cold_units(state: &AppState) -> Result<usize> {
+    use fnb::cold::{ColdUnit, TemperatureReading, default_range, kind, react};
+    let db = &state.db;
+    if ColdUnit::query().count(db).await? > 0 {
+        return Ok(0);
+    }
+    let marina = kitchen_stock(state).await?;
+    let fridge_location = sub_location(db, "OUT1-F2", "Fridge 2", &marina).await?;
+    let freezer_location = sub_location(db, "OUT1-FR1", "Freezer 1", &marina).await?;
+    stocked(db, "CHICKEN-FRESH", "Fresh chicken", &fridge_location, 6_000, 1_800).await?;
+    stocked(db, "CREAM", "Cream", &fridge_location, 2_000, 1_200).await?;
+    stocked(db, "CHICKEN-FROZEN", "Frozen chicken", &freezer_location, 20_000, 1_500).await?;
+    let outlet = Outlet::by_code(db, "marina").await?.map(|outlet| outlet.id);
+    let mut made = Vec::new();
+    for (code, name, unit_kind, location) in [
+        ("OUT1-F2", "Fridge 2", kind::FRIDGE, &fridge_location),
+        ("OUT1-FR1", "Freezer 1", kind::FREEZER, &freezer_location),
+    ] {
+        let (min, max) = default_range(unit_kind);
+        let mut unit = ColdUnit {
+            code: code.to_owned(),
+            name: name.to_owned(),
+            kind: unit_kind.to_owned(),
+            outlet_id: outlet,
+            location_id: location.id,
+            min_tenths: min,
+            max_tenths: max,
+            active: true,
+            ..ColdUnit::default()
+        };
+        unit.insert(db).await?;
+        made.push(unit);
+    }
+    let now = renox::db::now();
+    for (unit, tenths, minutes_ago) in [
+        (&made[1], -200, 60),
+        (&made[0], 40, 300),
+        (&made[0], 90, 180),
+        (&made[0], 80, 150),
+    ] {
+        let mut reading = TemperatureReading {
+            unit_id: unit.id,
+            tenths,
+            in_range: unit.in_range(tenths),
+            recorded_at: now - TimeDelta::minutes(minutes_ago),
+            ..TemperatureReading::default()
+        };
+        reading.insert(db).await?;
+        if !reading.in_range {
+            react(state, unit.id, reading.id).await?;
+        }
+    }
+    Ok(made.len())
 }
