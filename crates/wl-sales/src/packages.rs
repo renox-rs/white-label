@@ -18,7 +18,7 @@ use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::invoicing::{InvoiceId, InvoicePaid, invoicer};
 use wl_kernel::sales::{
     ConsumePackage, PackageActivated, PackageConsumed, PackageConsumption, PackageExpired,
-    PackageExtended, PackageLedger, SalesFuture,
+    PackageExtended, PackageId, PackageLedger, PackageSales, SalesFuture, SellPackage,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -367,6 +367,38 @@ pub async fn run_expiry(state: &AppState, today: NaiveDate) -> Result<usize> {
     Ok(expired)
 }
 
+/// The kernel's [`PackageSales`] for the verticals: an enrolment for a package
+/// of sessions sells one (10 `EDU.ENR.01`).
+pub(crate) struct Sales;
+
+impl PackageSales for Sales {
+    fn sell<'a>(
+        &'a self,
+        state: &'a AppState,
+        sale: SellPackage,
+    ) -> SalesFuture<'a, Option<PackageId>> {
+        Box::pin(async move {
+            let mut new = NewPackage::new(sale.holder, &sale.item, sale.credits)
+                .item_name(&sale.item_name)
+                .price(sale.price);
+            if let Some(payer) = sale.payer {
+                new = new.payer(payer);
+            }
+            if let Some(months) = sale.validity_months {
+                new = new.validity_months(months);
+            }
+            if let Some(invoice) = sale.invoice {
+                new = new.invoice(InvoiceId(invoice));
+            }
+            if let Some(user) = sale.sold_by {
+                new = new.sold_by(user);
+            }
+            let package = sell(state, new).await?;
+            Ok(Some(package.package_id()))
+        })
+    }
+}
+
 /// The kernel's [`PackageLedger`] for the verticals and `wl-scheduling`.
 pub(crate) struct Ledger;
 
@@ -530,6 +562,7 @@ async fn announce(state: &AppState, event: &Transitioned<Package>) -> Result {
 pub(crate) fn register(app: &mut Registry) {
     renox::state_machine::register::<Package>();
     wl_kernel::sales::provide_package_ledger(app, Ledger);
+    wl_kernel::sales::provide_package_sales(app, Sales);
     app.listen(|event: Transitioned<Package>, state: AppState| async move {
         announce(&state, &event).await
     });

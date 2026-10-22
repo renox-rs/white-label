@@ -2152,6 +2152,36 @@ async fn without_sales_attribution_and_lead_conversion_do_nothing() {
     assert_eq!(renox::serde_json::to_value(merged).unwrap()["merged"], 2);
 }
 
+/// 10 EdTech (base for #450): without the `sales` module no package is sold
+/// and none has credits, so an enrolment for a package has no package.
+#[renox::test]
+async fn without_sales_no_package_is_sold_and_none_has_credits() {
+    use wl_kernel::sales::{ConsumePackage, PackageConsumption, SellPackage};
+    use wl_kernel::{Subject, package_ledger, package_sales};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let sale = SellPackage::new(PartyId(3), "ielts_10", 10, 150_000)
+        .payer(PartyId(4))
+        .invoice(9)
+        .sold_by(2);
+    assert!(
+        package_sales(app.state())
+            .sell(app.state(), sale)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let request = ConsumePackage::new(PartyId(3), "ielts_10", 1, Subject::new("edtech.session", 1));
+    assert_eq!(
+        package_ledger(app.state())
+            .consume(app.state(), request)
+            .await
+            .unwrap(),
+        PackageConsumption::NoCredit
+    );
+}
+
 /// #216, #217: without the `hr`, `ticketing` and `documents` modules nobody
 /// works anywhere, no checklist is started and no SOP is pending.
 #[renox::test]

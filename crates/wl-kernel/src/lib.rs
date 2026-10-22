@@ -212,6 +212,7 @@ pub use sales::{
     PackageConsumption, PackageExpired, PackageExtended, PackageId, PackageLedger, package_ledger,
     provide_package_ledger,
 };
+pub use sales::{NoPackageSales, PackageSales, SellPackage, package_sales, provide_package_sales};
 pub use sales::{NoSelfPayPrices, SelfPayPrices, provide_self_pay_prices, self_pay_prices};
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
