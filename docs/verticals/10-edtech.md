@@ -558,6 +558,14 @@ system's `extend` of wl-sales, which is not an extension the package's limit cou
 or the student is blocked, only a holder of `enrolments.approve` (the centre manager) may `withdraw`
 the enrolment.
 
+`EDU.RUL.14` runs on the cause of the pause. A pause the user asked for (the guardian or staff on the
+subscription, cause `user`) freezes the enrolment with the cause *linked* and its end removes that
+cause; a pause the enrolment asked for itself (cause `agreement`) and a block's (cause `party_block`) are
+not heard, and a freeze with the cause *linked* or *block* pauses nothing, so nothing loops. Staff
+freezing the enrolment pause the subscription after the commit, unless it is already `paused`, and
+the last cause's end resumes it when no other pause cause is left. A subscription that resumes into
+`past_due` still unfreezes the enrolment.
+
 #### Session
 
 | State | Tone | Terminal | Meaning |
