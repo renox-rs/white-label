@@ -1908,3 +1908,97 @@ async fn edu_13_a_cancelled_batch_refunds_everything_through_the_real_payments()
     assert_eq!(all[0].requested_by, Some(coordinator_user.id));
     assert_eq!(all[0].approved_by, None);
 }
+
+// ---- #451: who may reissue a certificate, with the roles of the host ----------------------------
+
+/// #451 point 1 and the refusal: with the host's own roles, the academic
+/// coordinator reissues an issued certificate (superseded, a linked draft with the
+/// corrected name); a counsellor and a tutor, who lack
+/// `certificates.issue`, are refused by the service and by the page, for the
+/// reissue and for the copy, and nothing changes.
+#[renox::test]
+async fn edu_16_only_a_user_who_may_issue_reissues_or_copies() {
+    let w = boot().await;
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (dina_user, dina) = w.staff("Dina", COUNSELLOR).await;
+    let (tariq_user, tariq) = w.staff("Tariq", host::roles::TUTOR).await;
+    let batch = w.open_batch(&coordinator, "A", day(7)).await;
+    let student = tenant(&w.app, "Ahmad Yusuf").await;
+    let e = enrolments::create(
+        w.state(),
+        &dina,
+        NewEnrolment::course(student.0, batch.id, 252_000).terms_accepted(),
+    )
+    .await
+    .unwrap();
+    enrolments::activate(w.state(), Some(&dina), e.id)
+        .await
+        .unwrap();
+    enrolments::complete(w.state(), e.id).await.unwrap();
+    let draft = edtech::Certificate::of_enrolment(w.db(), e.id)
+        .await
+        .unwrap()
+        .remove(0);
+    let issued = edtech::certificates::issue(w.state(), &coordinator, draft.id)
+        .await
+        .unwrap();
+    assert_eq!(issued.number.as_deref(), Some("CRT-0001"));
+    let corrected = || edtech::certificates::Corrections {
+        student_name: Some("Ahmed Yusuf".to_owned()),
+        ..Default::default()
+    };
+
+    for (who, user) in [(&dina, &dina_user), (&tariq, &tariq_user)] {
+        let refused = edtech::certificates::reissue(
+            w.state(),
+            who,
+            issued.id,
+            "name correction",
+            corrected(),
+        )
+        .await;
+        assert!(matches!(refused, Err(Error::Forbidden)), "{}", user.name);
+        let copy = edtech::certificates::print_copy(w.state(), who, issued.id).await;
+        assert!(matches!(copy, Err(Error::Forbidden)), "{}", user.name);
+        w.app.acting_as(user);
+        for action in ["reissue", "copy"] {
+            w.app
+                .htmx()
+                .post(
+                    &format!("/edtech/certificates/{}/{action}", issued.id),
+                    &[("reason", "name correction")],
+                )
+                .await
+                .assert_forbidden();
+        }
+    }
+    let still = edtech::Certificate::find_or_404(w.db(), issued.id).await.unwrap();
+    assert_eq!(still.status, edtech::CertificateStatus::Issued);
+    assert_eq!(
+        edtech::Certificate::of_enrolment(w.db(), e.id)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "no draft was made"
+    );
+
+    let draft = edtech::certificates::reissue(
+        w.state(),
+        &coordinator,
+        issued.id,
+        "name correction",
+        corrected(),
+    )
+    .await
+    .expect("the coordinator reissues");
+    assert_eq!(draft.status, edtech::CertificateStatus::Draft);
+    assert_eq!(draft.supersedes_id, Some(issued.id));
+    assert_eq!(
+        edtech::Certificate::find_or_404(w.db(), issued.id)
+            .await
+            .unwrap()
+            .status,
+        edtech::CertificateStatus::Superseded
+    );
+}
