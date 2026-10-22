@@ -699,12 +699,17 @@ pub async fn cancellation(
     let shares: i64 = detail.lines.iter().map(|l| l.share).sum();
     let fees: i64 = detail.lines.iter().map(|l| l.fee).sum();
     if is_prepaid(order) && shares - fees > 0 {
+        let why = if detail.whole {
+            "wl_sales.settle.reason_order_cancelled"
+        } else {
+            "wl_sales.settle.reason_cancelled"
+        };
         refund(
             state,
             order,
             Some(change.id),
             shares - fees,
-            english("wl_sales.settle.reason_cancelled", &[]),
+            english(why, &[]),
             change.changed_by,
         )
         .await?;

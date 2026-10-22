@@ -15,6 +15,14 @@
 //! covers *finish to stock*, *scrap* and a waived fee). The plan is pure, so
 //! the service, the guards, the effect and the final re-check agree.
 //!
+//! **The whole order (BL-SAL-07).** `cancel` (`draft`, `pending_acceptance`,
+//! `credit_hold`, `confirmed → cancelled`) takes the same plan with
+//! [`CancelKind::Order`]: every open line is cancelled, nothing may be
+//! fulfilled, and a started line needs an outcome. A manager approves when
+//! a line started (`SAL.ACL.05`) or when the order was paid and its value is
+//! above [`SalesConfig::cancel_approval_limit`] (`SAL.ACL.01`, AED 50 in 06).
+//! One `SalesOrderCancelled` carries the outcome and fee of each started line.
+//!
 //! **Transitions.** `cancel_line` (`confirmed`, stays), `cancel_line_partly`
 //! (`partially_fulfilled`, stays), `cancel_line_last` (`partially_fulfilled →
 //! fulfilled` when nothing is open any more) and `cancel_remaining`
@@ -47,7 +55,7 @@ use wl_kernel::sales::{LineOutcomeKind, fulfilment_progress};
 
 use crate::amend::lines_in;
 use crate::config::config_of;
-use crate::order_change::{KIND_CANCEL_LINE, KIND_CANCEL_REMAINING, OrderChange};
+use crate::order_change::{KIND_CANCEL, KIND_CANCEL_LINE, KIND_CANCEL_REMAINING, OrderChange};
 use crate::permissions;
 use crate::sale_line::{KIND_ITEM, SaleLine, ratio_half_up};
 use crate::sales_order::{SalesOrder, SalesOrderStatus};
@@ -64,6 +72,9 @@ pub const CANCEL_LINE_PARTLY: &str = "cancel_line_partly";
 pub const CANCEL_LINE_LAST: &str = "cancel_line_last";
 /// `partially_fulfilled → fulfilled`: every open line cancelled.
 pub const CANCEL_REMAINING: &str = "cancel_remaining";
+/// `draft | pending_acceptance | credit_hold | confirmed → cancelled`: the
+/// whole order (BL-SAL-07).
+pub const CANCEL_ORDER: &str = "cancel";
 
 /// The approval policies' action key of `cancel_line` after fulfilment of the
 /// line started.
@@ -71,6 +82,9 @@ pub const ACTION_LINE: &str = "sales.order_cancel_line";
 /// The approval policies' action key of `cancel_remaining` after fulfilment
 /// of a line started.
 pub const ACTION_REMAINING: &str = "sales.order_cancel_remaining";
+/// The approval policies' action key of `cancel` of a whole order after
+/// fulfilment of a line started, or of a paid order above the limit.
+pub const ACTION_ORDER: &str = "sales.order_cancel";
 
 /// What the user asks to cancel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -81,6 +95,8 @@ pub enum CancelKind {
     Line,
     /// Every open line (`cancel_remaining`).
     Remaining,
+    /// The whole order (`cancel`).
+    Order,
 }
 
 /// What the user chose for one line: the quantity (a line cancelled alone),
@@ -154,6 +170,12 @@ pub struct PlanFacts {
     pub fee_bps: i64,
     /// The default fee as an amount in fils, when no percentage is set.
     pub fee_amount: i64,
+    /// What the customer paid for the order, in fils (0 when nothing was
+    /// paid in advance): read by the cancel of a whole order.
+    pub paid: i64,
+    /// A paid order above this value (fils) needs a manager to cancel it
+    /// (`SAL.ACL.01`).
+    pub approval_limit: i64,
 }
 
 /// One line of a cancellation, as planned.
@@ -209,6 +231,8 @@ pub struct CancelDetail {
     pub lines: Vec<CancelledLine>,
     /// Whether the order is `fulfilled` now.
     pub complete: bool,
+    /// Whether the whole order was cancelled (`cancel`, BL-SAL-07).
+    pub whole: bool,
 }
 
 impl CancelInput {
@@ -259,6 +283,13 @@ pub fn plan(
             SalesOrderStatus::Confirmed | SalesOrderStatus::PartiallyFulfilled
         ),
         CancelKind::Remaining => order.status == SalesOrderStatus::PartiallyFulfilled,
+        CancelKind::Order => matches!(
+            order.status,
+            SalesOrderStatus::Draft
+                | SalesOrderStatus::PendingAcceptance
+                | SalesOrderStatus::CreditHold
+                | SalesOrderStatus::Confirmed
+        ),
     };
     if !state_ok {
         first(&mut problem, english("wl_sales.cancelling.problem.state", &[]));
@@ -296,6 +327,16 @@ pub fn plan(
             }
             if chosen.is_empty() {
                 first(&mut problem, english("wl_sales.cancelling.problem.nothing_open", &[]));
+            }
+        }
+        CancelKind::Order => {
+            // Nothing handed over: `cancel_remaining` is for the rest.
+            if items.iter().any(|l| l.fulfilled_milli > 0) {
+                first(&mut problem, english("wl_sales.cancelling.problem.fulfilled", &[]));
+            }
+            for line in items.iter().copied().filter(|l| l.open_milli() > 0) {
+                let wanted = ask.lines.iter().find(|w| w.line == line.id);
+                chosen.push((line, wanted.unwrap_or(&BLANK), line.open_milli()));
             }
         }
     }
@@ -352,7 +393,7 @@ pub fn plan(
                     .map_or(0, |p| p.quantity_milli)
         })
         .sum();
-    input.complete = open_after <= 0 && !planned.is_empty();
+    input.complete = ask.kind != CancelKind::Order && open_after <= 0 && !planned.is_empty();
     if ask.kind == CancelKind::Line && input.complete && order.status == SalesOrderStatus::Confirmed
     {
         // Nothing fulfilled and nothing left open: that is `cancel`.
@@ -361,7 +402,8 @@ pub fn plan(
             english("wl_sales.orders.problem.cancel_line_last", &[]),
         );
     }
-    input.approval = planned.iter().any(|p| p.started);
+    input.approval = planned.iter().any(|p| p.started)
+        || (ask.kind == CancelKind::Order && facts.paid > facts.approval_limit);
     input.amount = i64::from(input.approval);
     input.lines = planned;
     input.problem = problem;
@@ -380,6 +422,7 @@ static BLANK: WantedLine = WantedLine {
 /// The transition that carries out `input` on an order in `status`.
 pub fn transition_for(input: &CancelInput, status: SalesOrderStatus) -> &'static str {
     match input.ask.kind {
+        CancelKind::Order => CANCEL_ORDER,
         CancelKind::Remaining => CANCEL_REMAINING,
         CancelKind::Line if input.complete => CANCEL_LINE_LAST,
         CancelKind::Line if status == SalesOrderStatus::PartiallyFulfilled => CANCEL_LINE_PARTLY,
@@ -392,6 +435,7 @@ pub fn action_of(kind: CancelKind) -> &'static str {
     match kind {
         CancelKind::Line => ACTION_LINE,
         CancelKind::Remaining => ACTION_REMAINING,
+        CancelKind::Order => ACTION_ORDER,
     }
 }
 
@@ -418,13 +462,13 @@ fn refused(message: impl Into<String>) -> Error {
 /// `to_complete` says whether the target is `fulfilled`.
 fn rules(
     transition: Transition<SalesOrder>,
-    from: SalesOrderStatus,
+    from: &[SalesOrderStatus],
     to: SalesOrderStatus,
     kind: CancelKind,
 ) -> Transition<SalesOrder> {
     let to_fulfilled = to == SalesOrderStatus::Fulfilled;
     transition
-        .from([from])
+        .from(from.iter().copied())
         .to(to)
         .guard("cancellation_allowed", move |_o: &SalesOrder, ctx| {
             let verdict = match input_of(ctx) {
@@ -481,7 +525,7 @@ pub(crate) fn transitions() -> Vec<Transition<SalesOrder>> {
                 .tone("danger")
                 .permission(permissions::SALES_ORDERS_CANCEL)
                 .reason_required(),
-            from,
+            &[from],
             to,
             kind,
         ));
@@ -490,11 +534,37 @@ pub(crate) fn transitions() -> Vec<Transition<SalesOrder>> {
                 .label(label)
                 .tone("danger")
                 .system(),
-            from,
+            &[from],
             to,
             kind,
         ));
     }
+    // `cancel` of the whole order and its twin (BL-SAL-07).
+    let leaves = [
+        SalesOrderStatus::Draft,
+        SalesOrderStatus::PendingAcceptance,
+        SalesOrderStatus::CreditHold,
+        Confirmed,
+    ];
+    all.push(rules(
+        Transition::new(CANCEL_ORDER)
+            .label("Cancel")
+            .tone("danger")
+            .permission(permissions::SALES_ORDERS_CANCEL)
+            .reason_required(),
+        &leaves,
+        SalesOrderStatus::Cancelled,
+        CancelKind::Order,
+    ));
+    all.push(rules(
+        Transition::new(wl_kernel::machines::approved(CANCEL_ORDER))
+            .label("Cancel")
+            .tone("danger")
+            .system(),
+        &leaves,
+        SalesOrderStatus::Cancelled,
+        CancelKind::Order,
+    ));
     all
 }
 
@@ -558,13 +628,24 @@ async fn cancel_in(
             .update(&mut *tx, &[("fulfilled_at", &done), ("updated_at", &stamp)])
             .await?;
     }
+    let whole = found.ask.kind == CancelKind::Order;
+    if whole {
+        // The reason of the cancelled order, as `reject` keeps it.
+        let reason = Some(found.ask.reason.clone());
+        SalesOrder::query()
+            .where_(SalesOrder::ID.eq(order.id))
+            .update(&mut *tx, &[("reason", &reason), ("updated_at", &stamp)])
+            .await?;
+    }
     let kind = match found.ask.kind {
         CancelKind::Line => KIND_CANCEL_LINE,
         CancelKind::Remaining => KIND_CANCEL_REMAINING,
+        CancelKind::Order => KIND_CANCEL,
     };
     let detail = CancelDetail {
         lines: found.lines.clone(),
         complete: found.complete,
+        whole,
     };
     OrderChange::record(tx, order.id, kind, &found.ask.reason, run.by, &detail).await?;
     Ok(())
@@ -595,6 +676,12 @@ async fn facts_of(state: &AppState, order: &SalesOrder, lines: &[SaleLine]) -> R
         offered: config.cancel_outcomes.clone(),
         fee_bps: config.cancellation_fee_bps,
         fee_amount: config.cancellation_fee_amount,
+        paid: if crate::settle::is_prepaid(order) {
+            order.gross_total
+        } else {
+            0
+        },
+        approval_limit: config.cancel_approval_limit,
     })
 }
 
@@ -703,6 +790,37 @@ pub async fn cancel_remaining(
     .await
 }
 
+/// Cancels the whole order `id` as `user` with `reason` (`cancel`). Every
+/// line whose fulfilment started needs an outcome in `choices` (and a
+/// manager's approval, `SAL.ACL.05`); a paid order above the setting
+/// [`SalesConfig::cancel_approval_limit`] needs the approval too
+/// (`SAL.ACL.01`). Nothing may be fulfilled: `cancel_remaining` is for that.
+///
+/// # Errors
+///
+/// 403 without `sales_orders.cancel`; 422 when the order is not in a state
+/// `cancel` leaves, something was fulfilled, the reason is blank, a started
+/// line has no outcome, or a request for the order is already waiting.
+pub async fn cancel_order(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    reason: &str,
+    choices: Vec<WantedLine>,
+) -> Result<CancelOutcome> {
+    run(
+        state,
+        user,
+        id,
+        CancelAsk {
+            kind: CancelKind::Order,
+            reason: reason.to_owned(),
+            lines: choices,
+        },
+    )
+    .await
+}
+
 /// The final check of a request for a cancellation: before the approved
 /// transition runs, the plan is made again on the order as it is; the
 /// request fails when the quantities are no longer open or the order's target
@@ -757,6 +875,7 @@ mod tests {
             offered: vec!["return_to_stock".into(), "scrap".into()],
             fee_bps: 0,
             fee_amount: 0,
+            ..PlanFacts::default()
         }
     }
 
@@ -937,6 +1056,72 @@ mod tests {
             &facts(&[]),
         );
         assert!(wrong_state.problem.is_some());
+    }
+
+    #[test]
+    fn a_paid_order_above_the_limit_or_with_a_started_line_needs_a_manager() {
+        let lines = [line(1, 2_000, 4_000), line(2, 1_000, 4_000)];
+        let mut f = facts(&[]);
+        f.approval_limit = 5_000;
+        f.paid = 12_000;
+        let paid = plan(
+            &order(SalesOrderStatus::Confirmed),
+            &lines,
+            &ask(CancelKind::Order, Vec::new()),
+            &f,
+        );
+        assert_eq!(paid.problem, None);
+        assert!(paid.approval && !paid.complete);
+        assert_eq!(paid.lines.len(), 2);
+        assert_eq!(transition_for(&paid, SalesOrderStatus::Confirmed), CANCEL_ORDER);
+        f.paid = 3_000;
+        let small = plan(
+            &order(SalesOrderStatus::Confirmed),
+            &lines,
+            &ask(CancelKind::Order, Vec::new()),
+            &f,
+        );
+        assert!(!small.approval);
+        f.paid = 0;
+        f.started_lines = vec![1];
+        let started = plan(
+            &order(SalesOrderStatus::Confirmed),
+            &lines,
+            &ask(CancelKind::Order, Vec::new()),
+            &f,
+        );
+        assert!(started.problem.is_some(), "a started line needs an outcome");
+        let with = plan(
+            &order(SalesOrderStatus::Confirmed),
+            &lines,
+            &ask(
+                CancelKind::Order,
+                vec![WantedLine::new(1, 0).outcome(LineOutcomeKind::Scrap)],
+            ),
+            &f,
+        );
+        assert_eq!(with.problem, None);
+        assert!(with.approval);
+    }
+
+    #[test]
+    fn an_order_with_anything_fulfilled_is_not_cancelled_as_a_whole() {
+        let mut done = line(1, 2_000, 1_000);
+        done.fulfilled_milli = 500;
+        let found = plan(
+            &order(SalesOrderStatus::Confirmed),
+            &[done],
+            &ask(CancelKind::Order, Vec::new()),
+            &facts(&[]),
+        );
+        assert!(found.problem.is_some());
+        let partly = plan(
+            &order(SalesOrderStatus::PartiallyFulfilled),
+            &[line(1, 1_000, 1_000)],
+            &ask(CancelKind::Order, Vec::new()),
+            &facts(&[]),
+        );
+        assert!(partly.problem.is_some());
     }
 
     #[test]

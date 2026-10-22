@@ -137,6 +137,25 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
         "Cancel the remaining lines is offered once something was handed over. Nothing was yet: cancel the order instead.",
     ),
     ("wl_sales.cancelling.open", "Open"),
+    // Cancelling the whole order (BL-SAL-07).
+    ("wl_sales.cancelling.order", "Cancel the order"),
+    (
+        "wl_sales.cancelling.order_description",
+        "The whole order is cancelled and what was paid is refunded, less any fee. Give the outcome of each line whose preparation started.",
+    ),
+    ("wl_sales.cancelling.order_done", "The order is cancelled."),
+    (
+        "wl_sales.cancelling.order_approval_hint",
+        "A manager approves a cancellation when preparation started or when a paid order is worth more than the limit of the settings. You cannot approve your own request.",
+    ),
+    (
+        "wl_sales.cancelling.order_blocked",
+        "Something was already handed over, so the order cannot be cancelled as a whole. Cancel the remaining lines instead.",
+    ),
+    (
+        "wl_sales.cancelling.problem.fulfilled",
+        "Something was already handed over: cancel the remaining lines instead.",
+    ),
     (
         "wl_sales.cancelling.problem.state",
         "An order in this state cannot be cancelled this way.",
@@ -211,6 +230,7 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
     ("wl_sales.settle.amended_back", "The order is amended back."),
     ("wl_sales.settle.reason_amended", "order amended"),
     ("wl_sales.settle.reason_cancelled", "order line cancelled"),
+    ("wl_sales.settle.reason_order_cancelled", "order cancelled"),
     (
         "wl_sales.settle.amend_back_reason",
         "The payment link of the increase expired unpaid.",

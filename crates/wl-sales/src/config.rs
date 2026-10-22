@@ -97,6 +97,10 @@ pub const DEFAULT_AMEND_LINK_HOURS: i64 = 24;
 /// A-04 (§10): standard-rated.
 pub const DEFAULT_CANCELLATION_FEE_VAT: &str = "standard";
 
+/// A paid order worth more than this (fils) needs a manager to cancel it
+/// (`SAL.ACL.01`; F&B: AED 50).
+pub const DEFAULT_CANCEL_APPROVAL_LIMIT: i64 = 5_000;
+
 /// The outcomes a cancellation after fulfilment started may choose from,
 /// before the vertical narrows them (§7).
 pub const DEFAULT_CANCEL_OUTCOMES: &[&str] = &["return_to_stock", "finish_to_stock", "scrap"];
@@ -204,6 +208,9 @@ pub struct SalesConfig {
     /// The VAT category of a cancellation fee line: `standard`,
     /// `zero_rated` or `exempt` (§10, open item A-04).
     pub cancellation_fee_vat: String,
+    /// A paid order above this value, in fils, needs a manager to cancel it
+    /// (`SAL.ACL.01`, §7: AED 50).
+    pub cancel_approval_limit: i64,
 }
 
 impl Default for SalesConfig {
@@ -258,6 +265,7 @@ impl Default for SalesConfig {
             cancellation_fee_bps: 0,
             cancellation_fee_amount: 0,
             cancellation_fee_vat: DEFAULT_CANCELLATION_FEE_VAT.to_owned(),
+            cancel_approval_limit: DEFAULT_CANCEL_APPROVAL_LIMIT,
         }
     }
 }

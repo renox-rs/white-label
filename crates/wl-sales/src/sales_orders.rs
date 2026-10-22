@@ -44,7 +44,7 @@ use crate::sales_order::{
     FulfilmentRecord, ORDER_SERIES, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
 };
 use crate::sales_order_machine::{
-    ACCEPT, CANCEL, CLOSE, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, CloseInput, FULFIL,
+    ACCEPT, CLOSE, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, CloseInput, FULFIL,
     FULFIL_LAST, FulfilInput,
     PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT, REVERSE_FULFILMENT_ALL, ReverseInput,
     SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE, SubmitInput,
@@ -642,7 +642,7 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
                 })
                 .await
         }
-        CANCEL | PAYMENT_FAILED => {
+        PAYMENT_FAILED => {
             state
                 .emit(SalesOrderCancelled {
                     order: id,

@@ -44,6 +44,15 @@
         <rx-input name="add_quantity" :label="tx['amend.add_quantity']" id="amend-order-add-quantity"/>
         <rx-input name="add_price" :label="tx['amend.add_price']" id="amend-order-add-price"/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_cancel_order" id="cancel-order" :label="tx['cancelling.order']" :action="route('wl_sales.sales_order_cancel', order.id)"
+                       :title="tx['cancelling.order']" :description="tx['cancelling.order_description'] ~ ' ' ~ tx['cancelling.order_approval_hint']" :submit-label="tx['cancelling.order']" icon="x" danger>
+        <rx-textarea name="reason" :label="tx['orders.reason']" id="cancel-order-reason" required/>
+        <rx-stack rx-for="line in lines">
+          <rx-select rx-if="line.started" :name="'line_' ~ line.id ~ '_outcome'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ tx['cancelling.started'] ~ '): ' ~ tx['cancelling.outcome_label']" :options="outcome_options" :selected="outcome_default" :placeholder="tx['cancelling.outcome_none']" :id="'cancel-order-outcome-' ~ line.id"/>
+          <rx-input rx-if="line.started" :name="'line_' ~ line.id ~ '_fee'" :label="tx['cancelling.fee']" :hint="tx['cancelling.fee_hint']" :id="'cancel-order-fee-' ~ line.id"/>
+          <rx-checkbox rx-if="line.started" :name="'line_' ~ line.id ~ '_waive'" :label="tx['cancelling.waive_fee']" :id="'cancel-order-waive-' ~ line.id"/>
+        </rx-stack>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_cancel_line" id="cancel-order-line" :label="tx['orders.cancel_line']" :action="route('wl_sales.sales_order_cancel_line', order.id)"
                        :title="tx['orders.cancel_line']" :description="tx['orders.cancel_line_description'] ~ ' ' ~ tx['cancelling.approval_hint']" :submit-label="tx['orders.cancel_line']" icon="x" danger>
         <rx-input name="line_no" :label="tx['orders.line_no']" id="cancel-order-line-no" required/>
@@ -76,6 +85,7 @@
     <rx-alert rx-if="waiting_alert" kind="warning" :message="waiting_alert"/>
     <rx-alert rx-if="amend_blocked" kind="info" :message="amend_blocked"/>
     <rx-alert rx-if="remaining_blocked" kind="info" :message="remaining_blocked"/>
+    <rx-alert rx-if="cancel_blocked" kind="info" :message="cancel_blocked"/>
     <rx-alert rx-if="expired_hint" kind="warning" :message="expired_hint"/>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['counter.lines']" card>
       <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>

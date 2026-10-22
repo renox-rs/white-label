@@ -21,7 +21,9 @@
 //!     partially_fulfilled --cancel_remaining--> fulfilled
 //! ```
 //!
-//! `amend` (a family of four, [`crate::amend`]) and `hold` ([`crate::credit`])
+//! `cancel` (with its approval twin, [`crate::cancel_lines`], BL-SAL-07: it
+//! needs the plan of the cancellation as its input, so the generic transition
+//! route cannot run it), `amend` (a family of four, [`crate::amend`]) and `hold` ([`crate::credit`])
 //! come with BL-SAL-05, `cancel_line` and `cancel_remaining` (a family of
 //! four, [`crate::cancel_lines`]) with BL-SAL-08 and BL-SAL-09, each with the
 //! `_approved` twin the kernel runs at the last yes. `release` and the rest
@@ -68,7 +70,8 @@ pub const PAYMENT_FAILED: &str = "payment_failed";
 pub const ACCEPT: &str = "accept";
 /// `pending_acceptance → rejected`: the seller refused.
 pub const REJECT: &str = "reject";
-/// `draft | pending_acceptance | credit_hold | confirmed → cancelled`.
+/// `draft | pending_acceptance | credit_hold | confirmed → cancelled`; declared
+/// with the other cancellations in [`crate::cancel_lines`].
 pub const CANCEL: &str = "cancel";
 /// `confirmed | partially_fulfilled → partially_fulfilled`: quantities handed
 /// over, some still open.
@@ -270,7 +273,6 @@ impl StateMachine for SalesOrder {
             .transition(payment_failed())
             .transition(accept())
             .transition(reject())
-            .transition(cancel())
             .transition(fulfil(FULFIL, PartiallyFulfilled))
             .transition(fulfil(FULFIL_LAST, Fulfilled))
             .transition(reverse(REVERSE_FULFILMENT, PartiallyFulfilled))
@@ -510,22 +512,6 @@ fn reject() -> Transition<SalesOrder> {
         SalesOrderStatus::Rejected,
     )
     .from([SalesOrderStatus::PendingAcceptance])
-}
-
-/// `cancel`: before anything was fulfilled.
-fn cancel() -> Transition<SalesOrder> {
-    ending(
-        CANCEL,
-        "Cancel",
-        permissions::SALES_ORDERS_CANCEL,
-        SalesOrderStatus::Cancelled,
-    )
-    .from([
-        SalesOrderStatus::Draft,
-        SalesOrderStatus::PendingAcceptance,
-        SalesOrderStatus::CreditHold,
-        SalesOrderStatus::Confirmed,
-    ])
 }
 
 /// `fulfil` and `fulfil_last`: the accepted quantities are handed over.

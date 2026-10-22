@@ -9,6 +9,7 @@
 //! | `POST /sales-orders` | `wl_sales.sales_order_create` | `sales_orders.create` (fields `external_number`, `promo_code`) |
 //! | `POST /sales-orders/{id}/lines` | `wl_sales.sales_order_line` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/submit` | `wl_sales.sales_order_submit` | `sales_orders.create` |
+//! | `POST /sales-orders/{id}/cancel` | `wl_sales.sales_order_cancel` | `sales_orders.cancel` (fields `reason`, `line_<id>_outcome`, `line_<id>_fee`, `line_<id>_waive`): the whole order |
 //! | `POST /sales-orders/{id}/cancel-line` | `wl_sales.sales_order_cancel_line` | `sales_orders.cancel` (fields `line_no`, `quantity`, `reason`, `outcome`, `fee`, `waive_fee`) |
 //! | `POST /sales-orders/{id}/cancel-remaining` | `wl_sales.sales_order_cancel_remaining` | `sales_orders.cancel` (fields `reason`, `line_<id>_outcome`, `line_<id>_fee`, `line_<id>_waive`) |
 //! | `POST /sales-orders/{id}/amend` | `wl_sales.sales_order_amend` | `sales_orders.amend` (fields `revision`, `reason`, `line_<id>_quantity`, `_price`, `_discount`, `add_item`, `add_quantity`, `add_price`) |
@@ -16,8 +17,9 @@
 //! | `POST /sales-orders/{id}/resend-link` | `wl_sales.sales_order_resend_link` | `sales_orders.amend` |
 //! | `POST /sales-orders/{id}/amend-back` | `wl_sales.sales_order_amend_back` | `sales_orders.amend` |
 //!
-//! `accept`, `reject` and `cancel` run through the kernel's generic
-//! transition route, with the reason the form gives. The system transitions
+//! `accept` and `reject` run through the kernel's generic transition route,
+//! with the reason the form gives; `cancel` needs the plan of its outcomes and
+//! has the page's own form (BL-SAL-07). The system transitions
 //! (`fulfil`, `confirm_payment`...) are not reachable from a page.
 
 use std::collections::BTreeMap;
@@ -80,6 +82,8 @@ pub fn routes() -> Routes {
         )
         .merge(
             Routes::new()
+                .post("/sales-orders/{id}/cancel", cancel_whole)
+                .name("wl_sales.sales_order_cancel")
                 .post("/sales-orders/{id}/cancel-line", cancel_line)
                 .name("wl_sales.sales_order_cancel_line")
                 .post("/sales-orders/{id}/cancel-remaining", cancel_remaining)
@@ -303,6 +307,8 @@ pub(crate) struct ShowPage {
     amend_blocked: String,
     amend_hint: String,
     can_cancel_remaining: bool,
+    can_cancel_order: bool,
+    cancel_blocked: String,
     remaining_blocked: String,
     can_resolve_link: bool,
     expired_hint: String,
@@ -493,6 +499,22 @@ async fn show(
         ) && user.has_permission(permissions::SALES_ORDERS_CANCEL),
         can_cancel_remaining: order.status == SalesOrderStatus::PartiallyFulfilled
             && user.has_permission(permissions::SALES_ORDERS_CANCEL),
+        // `cancel` leaves the states before anything is handed over; once it
+        // was, the page says why it is not offered.
+        can_cancel_order: matches!(
+            order.status,
+            SalesOrderStatus::Draft
+                | SalesOrderStatus::PendingAcceptance
+                | SalesOrderStatus::CreditHold
+                | SalesOrderStatus::Confirmed
+        ) && user.has_permission(permissions::SALES_ORDERS_CANCEL),
+        cancel_blocked: if order.status == SalesOrderStatus::PartiallyFulfilled
+            && user.has_permission(permissions::SALES_ORDERS_CANCEL)
+        {
+            text(&lang, "cancelling.order_blocked")
+        } else {
+            String::new()
+        },
         // Nothing handed over yet: the whole order is cancelled instead.
         remaining_blocked: if order.status == SalesOrderStatus::Confirmed
             && user.has_permission(permissions::SALES_ORDERS_CANCEL)
@@ -686,6 +708,36 @@ fn cancel_answer(lang: &Lang, order: i64, outcome: &CancelOutcome, done: &str) -
         CancelOutcome::Waiting(_) => Toast::info(text(lang, "cancelling.waiting")),
     };
     Ok((toast, Redirect::route("wl_sales.sales_order", &[&order])?).into_response())
+}
+
+/// `POST /sales-orders/{id}/cancel`: cancels the whole order. Fields: `reason`
+/// and, per line whose preparation started, `line_<id>_outcome`,
+/// `line_<id>_fee` (AED) and `line_<id>_waive`. A started line, or a paid
+/// order above the limit, waits for a manager.
+async fn cancel_whole(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = form.get("reason").map_or("", |v| v.trim());
+    if reason.is_empty() {
+        return Err(invalid("reason", text(&lang, "orders.errors.reason"), &form));
+    }
+    let lines = SaleLine::of(&state.db, &order.subject()).await?;
+    let mut choices = Vec::new();
+    for line in lines.iter().filter(|l| l.kind == KIND_ITEM) {
+        choices.push(WantedLine {
+            line: line.id,
+            outcome: outcome_field(&lang, &form, &format!("line_{}_outcome", line.id))?,
+            fee: fee_field(&lang, &form, &format!("line_{}_fee", line.id))?,
+            waive_fee: ticked(&form, &format!("line_{}_waive", line.id)),
+            ..WantedLine::default()
+        });
+    }
+    let outcome = cancel_lines::cancel_order(&state, &user, order.id, reason, choices).await?;
+    cancel_answer(&lang, order.id, &outcome, "cancelling.order_done")
 }
 
 /// `POST /sales-orders/{id}/cancel-line`: cancels open quantity of one line.

@@ -454,6 +454,14 @@ impl WlSales {
         self
     }
 
+    /// The value, in fils, above which cancelling a paid order needs a manager
+    /// (`SAL.ACL.01`; default AED 50).
+    pub fn cancel_approval_limit(mut self, fils: i64) -> Self {
+        assert!(fils >= 0, "a limit is zero or more");
+        self.config.cancel_approval_limit = fils;
+        self
+    }
+
     /// The role told when an order goes on credit hold (`SAL.RUL.01`); the
     /// company admin when not set.
     pub fn accountant_role(mut self, role: &str) -> Self {

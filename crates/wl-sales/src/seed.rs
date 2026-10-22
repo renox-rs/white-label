@@ -474,6 +474,7 @@ pub async fn demo_order_changes(db: &Db, party: i64) -> Result<usize> {
                 share,
             }],
             complete: true,
+            whole: false,
         };
         OrderChange {
             order_id: placed.id,

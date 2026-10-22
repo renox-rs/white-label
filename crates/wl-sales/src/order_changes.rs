@@ -19,12 +19,13 @@ use renox::state_machine::StateMachine;
 use serde::Serialize;
 use wl_kernel::approvals::{self, ApprovalRequest, Require, Required};
 use wl_kernel::sales::{
-    LineOutcome, SALES_ORDER_SUBJECT_TYPE, SalesOrderAmended, SalesOrderLineCancelled,
+    LineOutcome, SALES_ORDER_SUBJECT_TYPE, SalesOrderAmended, SalesOrderCancelled,
+    SalesOrderLineCancelled,
 };
 
 use crate::amend::{self, AmendDetail};
 use crate::cancel_lines::{self, CancelDetail};
-use crate::order_change::{KIND_AMEND, KIND_CANCEL_LINE, KIND_CANCEL_REMAINING, OrderChange};
+use crate::order_change::{KIND_AMEND, KIND_CANCEL, KIND_CANCEL_LINE, KIND_CANCEL_REMAINING, OrderChange};
 use crate::order_notices;
 use crate::sales_order::SalesOrder;
 use crate::texts::english;
@@ -44,6 +45,7 @@ pub(crate) fn is_change(name: &str) -> bool {
             cancel_lines::CANCEL_LINE_PARTLY,
             cancel_lines::CANCEL_LINE_LAST,
             cancel_lines::CANCEL_REMAINING,
+            cancel_lines::CANCEL_ORDER,
         ]
         .contains(&base)
 }
@@ -118,6 +120,7 @@ pub async fn announce_pending(state: &AppState, order_id: i64) -> Result {
         match change.kind.as_str() {
             KIND_AMEND => amended(state, &change).await?,
             KIND_CANCEL_LINE | KIND_CANCEL_REMAINING => cancelled(state, &change).await?,
+            KIND_CANCEL => order_cancelled(state, &change).await?,
             _ => {}
         }
     }
@@ -182,6 +185,28 @@ async fn cancelled(state: &AppState, change: &OrderChange) -> Result {
     order_notices::lines_cancelled(state, &order, &detail).await
 }
 
+/// A whole order cancelled (BL-SAL-07): the event with the outcome and fee of
+/// each started line (stock and the vertical act on it), then the money: one
+/// refund of what was paid less the fees, and the fee document.
+async fn order_cancelled(state: &AppState, change: &OrderChange) -> Result {
+    let Some(detail) = change.detail_as::<CancelDetail>() else {
+        return Ok(());
+    };
+    let order = SalesOrder::find_or_404(&state.db, change.order_id).await?;
+    state
+        .emit(SalesOrderCancelled {
+            order: order.order_id(),
+            party: order.party(),
+            reason: change.reason.clone(),
+            outcomes: outcomes_of(&detail),
+        })
+        .await?;
+    if let Err(error) = crate::settle::cancellation(state, &order, change, &detail).await {
+        eprintln!("sales: the money of the cancellation of order {} failed: {error}", order.number);
+    }
+    Ok(())
+}
+
 /// The outcomes of a cancellation as the order event carries them
 /// (BL-SAL-07): the started lines only.
 pub fn outcomes_of(detail: &CancelDetail) -> Vec<LineOutcome> {
@@ -207,7 +232,7 @@ async fn recheck(
 ) -> Result<Option<String>> {
     match request.action.as_str() {
         amend::ACTION => amend::recheck(tx, request).await,
-        cancel_lines::ACTION_LINE | cancel_lines::ACTION_REMAINING => {
+        cancel_lines::ACTION_LINE | cancel_lines::ACTION_REMAINING | cancel_lines::ACTION_ORDER => {
             cancel_lines::recheck(tx, request).await
         }
         _ => Ok(None),
@@ -244,7 +269,8 @@ mod tests {
         assert!(is_change("amend_on_hold_approved"));
         assert!(is_change("cancel_line_last"));
         assert!(is_change("cancel_remaining_approved"));
-        assert!(!is_change("cancel"));
+        assert!(is_change("cancel"));
+        assert!(is_change("cancel_approved"));
         assert!(!is_change("fulfil"));
         assert!(!is_change("hold"));
     }
@@ -266,6 +292,7 @@ mod tests {
                 },
             ],
             complete: false,
+            whole: false,
         };
         let outcomes = outcomes_of(&detail);
         assert_eq!(outcomes.len(), 1);
