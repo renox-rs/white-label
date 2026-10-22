@@ -395,6 +395,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::LATE_ORDERS_ENTER,
             fnb_perm::REPORTS_VIEW,
             fnb_perm::RIDER_FAULTS_VIEW,
+            // Production batches, the cold units' temperature holds and the
+            // recall trace (BL-FNB-11, BL-FNB-12, BL-FNB-13).
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::PRODUCTION_MANAGE,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::TEMPERATURE_LOG,
+            fnb_perm::COLD_UNITS_MANAGE,
+            fnb_perm::RECALL_TRACE_VIEW,
+            fnb_perm::RECALL_TRACE_DECIDE,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -1325,6 +1334,14 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::REPORTS_VIEW,
             fnb_perm::RECONCILIATION_VIEW,
             fnb_perm::RECONCILIATION_MANAGE,
+            // Sees the batches and the cold units, opens a recall with the
+            // head chef and decides the public notice (§7.2 *Recall owner*).
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::RECALL_TRACE_VIEW,
+            fnb_perm::RECALL_TRACE_DECIDE,
+            inventory::RECALLS_VIEW,
+            inventory::RECALLS_MANAGE,
             sales::SALES_ORDERS_VIEW,
             sales::SALES_ORDERS_APPROVE,
             delivery::VIEW,
@@ -1352,6 +1369,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::CUSTOMERS_COD,
             fnb_perm::REPORTS_VIEW,
             fnb_perm::RECONCILIATION_VIEW,
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::RECALL_TRACE_VIEW,
             sales::SALES_ORDERS_VIEW,
             sales::SALES_ORDERS_APPROVE,
             delivery::VIEW,
@@ -1382,6 +1402,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // entries of the riders (BL-FNB-08).
             fnb_perm::REPORTS_VIEW,
             fnb_perm::RIDER_FAULTS_VIEW,
+            // Sees the batches, logs the cold units' readings and sets the
+            // units up, reads the recall trace; as the chef's deputy decides
+            // the lines of a temperature hold and approves a discard above
+            // the wastage limit (BL-FNB-11, BL-FNB-12, BL-FNB-13).
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::TEMPERATURE_LOG,
+            fnb_perm::COLD_UNITS_MANAGE,
+            fnb_perm::RECALL_TRACE_VIEW,
+            inventory::LOTS_RELEASE,
             // Accepts and amends orders, cancels and approves a started line
             // (`SAL.ACL.05`), approves a return and a refund above the limit
             // (`SAL.ACL.06`).
@@ -1427,13 +1457,33 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::LEAVE_REQUEST,
             fnb_perm::ORDERS_VIEW,
             fnb_perm::KDS_WORK,
+            // Plans, starts, finishes and discards the production batches,
+            // logs the readings, and with the owner opens a recall and tells
+            // the customers (§3.1, §7.2 *Recall owner*).
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::PRODUCTION_MANAGE,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::TEMPERATURE_LOG,
+            fnb_perm::RECALL_TRACE_VIEW,
+            fnb_perm::RECALL_TRACE_DECIDE,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
+            inventory::RECALLS_VIEW,
+            inventory::RECALLS_MANAGE,
         ],
     ),
-    (LINE_COOK, &[hr::LEAVE_REQUEST, fnb_perm::KDS_WORK]),
+    (
+        LINE_COOK,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::KDS_WORK,
+            // Logs the fridge and freezer readings (`WRK.CHK.01`).
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::TEMPERATURE_LOG,
+        ],
+    ),
     (
         MENU_MANAGER,
         &[

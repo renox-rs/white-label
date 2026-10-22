@@ -238,6 +238,10 @@ async fn run(state: AppState, forced: bool) -> Result {
     let refunds = complaint_refund(&state).await?;
     let statements = payout_statements(&state).await?;
     println!("{refunds} refund after completion and {statements} payout statements made.");
+    // The central kitchen's batches: one produced from a good lot, one on hold
+    // because its lot is held, one planned (BL-FNB-11).
+    let batches = production(&state).await?;
+    println!("{batches} production batches made for the central kitchen.");
     // The rider who does not arrive (`FNB.RUL.16`): the kitchen manager is
     // told for the order ready for 20 minutes and has the task for the one
     // ready for 50.
@@ -1147,4 +1151,241 @@ async fn payout_statements(state: &AppState) -> Result<usize> {
         made += 2;
     }
     Ok(made)
+}
+
+/// A lot-tracked kilogram item `code`, made when there is none, at `cost`
+/// fils a kilogram.
+async fn tracked_item(db: &Db, code: &str, name: &str, cost: i64) -> Result<Item> {
+    if let Some(item) = Item::query().where_(Item::CODE.eq(code)).first(db).await? {
+        return Ok(item);
+    }
+    let mut item = Item::new(code, name, "kg").lot_tracked();
+    item.average_cost = cost;
+    item.save(db).await?;
+    Ok(item)
+}
+
+/// The central production kitchen's stock location, with the outlet of the
+/// same name pointing at it.
+async fn central_stock(state: &AppState) -> Result<Location> {
+    let db = &state.db;
+    let location = match Location::query()
+        .where_(Location::CODE.eq("CENTRAL"))
+        .first(db)
+        .await?
+    {
+        Some(location) => location,
+        None => {
+            let mut location = Location::new("CENTRAL", "Central Production Kitchen");
+            location.negative_stock_policy = NegativeStockPolicy::AllowConsumption;
+            location.save(db).await?;
+            location
+        }
+    };
+    if let Some(mut outlet) = Outlet::by_code(db, "central").await?
+        && outlet.location_id.is_none()
+    {
+        outlet.location_id = Some(location.id);
+        outlet.save(db).await?;
+    }
+    Ok(location)
+}
+
+/// Lot `number` of `item`, `quantity_milli` of it received at `location`,
+/// expiring in `days` days; the lot that exists is kept.
+async fn received_lot(
+    db: &Db,
+    item: &Item,
+    number: &str,
+    location: &Location,
+    quantity_milli: i64,
+    days: i64,
+) -> Result<wl_inventory::Lot> {
+    use wl_inventory::{Lot, LotStatus};
+    if let Some(lot) = Lot::query()
+        .where_(Lot::ITEM_ID.eq(item.id))
+        .where_(Lot::NUMBER.eq(number))
+        .first(db)
+        .await?
+    {
+        return Ok(lot);
+    }
+    let source = Subject::new("inventory.goods_receipt", 9_100);
+    let mut lot = Lot {
+        item_id: item.id,
+        number: number.to_owned(),
+        source_type: Some(source.subject_type.clone()),
+        source_id: Some(source.subject_id),
+        expiry_date: Some(today() + TimeDelta::days(days)),
+        status: LotStatus::Released,
+        ..Lot::default()
+    };
+    lot.save(db).await?;
+    let mut moved = StockMovement::receive(
+        item.id,
+        Some(lot.id),
+        location.id,
+        quantity_milli,
+        item.average_cost,
+        value_of(quantity_milli, item.average_cost),
+        &source,
+        None,
+    );
+    moved.save(db).await?;
+    Ok(lot)
+}
+
+/// A produced batch of `recipe` made from `used_milli` of `ingredient`, with
+/// the output lot numbered like the batch, in stock at `location`, expiring in
+/// `days` days. Stored in its state: a seed has no signed-in chef.
+async fn produced_batch(
+    state: &AppState,
+    recipe: &fnb::BatchRecipe,
+    sauce: &Item,
+    location: &Location,
+    ingredient: (&Item, &wl_inventory::Lot, i64),
+    made_milli: i64,
+    days: i64,
+) -> Result<(fnb::ProductionBatch, wl_inventory::Lot)> {
+    use fnb::batch::{BatchInput, BatchStatus, ProductionBatch};
+    use wl_inventory::{Lot, LotStatus, MovementType};
+    let db = &state.db;
+    let (tomato, tomato_lot, used_milli) = ingredient;
+    let number = fnb::BATCH_SERIES
+        .next_allowing_gaps(db, None, None, today())
+        .await?;
+    let outlet = Outlet::by_code(db, "central").await?;
+    let mut batch = ProductionBatch {
+        number: number.clone(),
+        recipe_id: recipe.id,
+        outlet_id: outlet.map(|outlet| outlet.id),
+        location_id: location.id,
+        planned_yield_milli: made_milli,
+        actual_yield_milli: Some(made_milli),
+        expiry_date: Some(today() + TimeDelta::days(days)),
+        finished_at: Some(renox::db::now() - TimeDelta::hours(5)),
+        started_at: Some(renox::db::now() - TimeDelta::hours(8)),
+        status: BatchStatus::Produced,
+        ..ProductionBatch::default()
+    };
+    let mut tx = db.begin().await?;
+    batch
+        .insert_in_state(&mut tx, BatchStatus::Produced, "demo seed")
+        .await?;
+    let mut input = BatchInput {
+        batch_id: batch.id,
+        item_id: tomato.id,
+        lot_id: tomato_lot.id,
+        quantity_milli: used_milli,
+        ..BatchInput::default()
+    };
+    input.insert(&mut tx).await?;
+    let source = batch.subject();
+    let value = value_of(used_milli, tomato.average_cost);
+    let mut consumed = StockMovement::leaving(
+        MovementType::Consume,
+        tomato.id,
+        Some(tomato_lot.id),
+        location.id,
+        used_milli,
+        tomato.average_cost,
+        value,
+        &source,
+        None,
+        None,
+    );
+    consumed.insert(&mut tx).await?;
+    let mut out = Lot {
+        item_id: sauce.id,
+        number,
+        source_type: Some(source.subject_type.clone()),
+        source_id: Some(source.subject_id),
+        expiry_date: batch.expiry_date,
+        status: LotStatus::Released,
+        ..Lot::default()
+    };
+    out.insert(&mut tx).await?;
+    let unit_cost = i64::try_from(i128::from(value) * 1_000 / i128::from(made_milli)).unwrap_or(0);
+    let mut made = StockMovement::moving(
+        MovementType::Produce,
+        sauce.id,
+        Some(out.id),
+        None,
+        Some(location.id),
+        made_milli,
+        unit_cost,
+        value,
+        &source,
+        None,
+    );
+    made.insert(&mut tx).await?;
+    ProductionBatch::query()
+        .where_(ProductionBatch::ID.eq(batch.id))
+        .update(&mut tx, &[("lot_id", &Some(out.id))])
+        .await?;
+    tx.commit().await?;
+    Ok((ProductionBatch::find_or_404(db, batch.id).await?, out))
+}
+
+/// The central kitchen's batches (BL-FNB-11): `BAT-0001` was made from tomato
+/// lot T7 and its sauce lot is on hold (a quality hold, so the batch is on
+/// hold and blocked everywhere), `BAT-0002` was made from tomato lot T5 and is
+/// in stock, and `BAT-0003` is planned, so the chef can start it and see the
+/// lot on hold refused. Returns how many batches it made.
+async fn production(state: &AppState) -> Result<usize> {
+    use fnb::batch::{BatchStatus, ProductionBatch};
+    use wl_inventory::hold_service::{NewHold, NewScope, place};
+    let db = &state.db;
+    if ProductionBatch::query().count(db).await? > 0 {
+        return Ok(0);
+    }
+    let tomato = tracked_item(db, "TOMATO", "Tomato", 800).await?;
+    let sauce = tracked_item(db, "TOMATO-SAUCE", "Tomato sauce", 1_500).await?;
+    let central = central_stock(state).await?;
+    let recipe = fnb::seed::demo_batch_recipe(
+        db,
+        "tomato-sauce",
+        "Tomato sauce",
+        sauce.id,
+        10_000,
+        &[(tomato.id, "TOMATO", 12_000)],
+    )
+    .await?;
+    let t5 = received_lot(db, &tomato, "T5", &central, 40_000, 6).await?;
+    let t7 = received_lot(db, &tomato, "T7", &central, 30_000, 3).await?;
+    // Made from T7; the sauce lot is then held.
+    let (held, held_lot) =
+        produced_batch(state, &recipe, &sauce, &central, (&tomato, &t7, 12_000), 10_000, 2).await?;
+    place(
+        state,
+        NewHold {
+            reason: "quality".to_owned(),
+            reference: held.subject(),
+            scope: NewScope::Lots(vec![held_lot.id]),
+            by: None,
+        },
+    )
+    .await?;
+    // Made from T5 and fine.
+    produced_batch(state, &recipe, &sauce, &central, (&tomato, &t5, 12_000), 8_000, 4).await?;
+    // Planned: the chef starts it.
+    let number = fnb::BATCH_SERIES
+        .next_allowing_gaps(db, None, None, today())
+        .await?;
+    let outlet = Outlet::by_code(db, "central").await?;
+    let mut planned = ProductionBatch {
+        number,
+        recipe_id: recipe.id,
+        outlet_id: outlet.map(|outlet| outlet.id),
+        location_id: central.id,
+        planned_yield_milli: 10_000,
+        status: BatchStatus::Planned,
+        ..ProductionBatch::default()
+    };
+    let mut tx = db.begin().await?;
+    planned
+        .insert_in_state(&mut tx, BatchStatus::Planned, "demo seed")
+        .await?;
+    tx.commit().await?;
+    Ok(3)
 }

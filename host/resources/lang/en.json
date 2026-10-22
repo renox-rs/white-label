@@ -114,7 +114,8 @@
     "payouts": "Payout statements",
     "refunds_report": "Refunds after completion",
     "failed_report": "Failed deliveries",
-    "rider_faults": "Rider faults"
+    "rider_faults": "Rider faults",
+    "batches": "Production batches"
   },
   "patterns": {
     "art": {
