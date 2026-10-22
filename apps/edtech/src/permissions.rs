@@ -1,0 +1,44 @@
+//! The vertical's permissions (10 EdTech §3). Roles get them in
+//! `host/src/app/roles.rs`; the role names the rules use are the consts at
+//! the end. Bookings of trials, placement tests and one-to-one slots keep
+//! wl-scheduling's own permissions (`bookings.*`).
+
+/// See the courses and programmes.
+pub const COURSES_VIEW: &str = "courses.view";
+/// Define courses and programmes, and record their regulator approval
+/// (`EDU.CRS.01`, `EDU.CRS.02`).
+pub const COURSES_MANAGE: &str = "courses.manage";
+/// See the batches in scope and their seats.
+pub const BATCHES_VIEW: &str = "batches.view";
+/// Plan a batch, open it, change its tutor, cancel it (`EDU.BAT.01`); the
+/// coordinator also requests a termination (`EDU.ACL.15`).
+pub const BATCHES_MANAGE: &str = "batches.manage";
+/// Approve the termination of a running batch (`EDU.ACL.15`: the centre
+/// manager, never the user who requested it).
+pub const BATCHES_APPROVE: &str = "batches.approve";
+/// Take a seat above the batch capacity, up to the room's limit
+/// (`EDU.ACL.17`: the centre manager's alone).
+pub const SEATS_EXCEED: &str = "batches.exceed_capacity";
+/// See the sessions in scope.
+pub const SESSIONS_VIEW: &str = "sessions.view";
+/// Teach: submit the attendance of the sessions of the batches assigned
+/// (`EDU.ACL.03`, `EDU.ACL.04`).
+pub const SESSIONS_TEACH: &str = "sessions.teach";
+
+/// The owner of the centre: told when a centre permit or a course approval
+/// expires (`EDU.RUL.13`) and alerted when a compliance-critical rule fails.
+pub const OWNER_ROLE: &str = "owner";
+/// The centre manager of a campus: runs the timetable, approves what needs
+/// approval and renews the centre permit.
+pub const CENTRE_MANAGER_ROLE: &str = "centre_manager";
+/// The admissions counsellor (the front desk): enquiries, trial classes,
+/// enrolments and the fee collected at the desk.
+pub const COUNSELLOR_ROLE: &str = "counsellor";
+/// The academic coordinator: courses, batches, tutor and room allocation;
+/// the responsible role of the course approval and of the tutor documents.
+pub const COORDINATOR_ROLE: &str = "academic_coordinator";
+/// The tutor or trainer: teaches the sessions of the batches assigned and
+/// marks attendance.
+pub const TUTOR_ROLE: &str = "tutor";
+/// The accountant: invoices, refunds and tutor pay (the host's own role).
+pub const ACCOUNTANT_ROLE: &str = "accountant";
