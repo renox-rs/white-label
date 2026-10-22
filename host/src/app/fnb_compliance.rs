@@ -787,8 +787,9 @@ pub const CENTRAL_OUTLET: &str = "central";
 /// head chef and the kitchen manager of that outlet decide its hold lines,
 /// `STK.ACL.05`) and its negative stock policy (`STK.RUL.06`): an outlet's
 /// kitchen allows automatic consumption below zero for items that are not
-/// lot-tracked, the central kitchen blocks. A location the client edited since
-/// it was created is left as it is. Returns how many locations it changed.
+/// lot-tracked, the central kitchen blocks. Only a location with no scope yet
+/// is set up, so what the client changed afterwards is kept and a second run
+/// changes nothing. Returns how many locations it set up.
 ///
 /// # Errors
 ///
@@ -799,29 +800,18 @@ pub async fn outlet_stock(db: &Db) -> Result<usize> {
         let Some(location_id) = outlet.location_id else {
             continue;
         };
-        let Some(mut location) = Location::find(db, location_id).await? else {
+        let Some(location) = Location::find(db, location_id).await? else {
             continue;
         };
-        let untouched = location.updated_at == location.created_at;
-        if !untouched && location.scope_type.is_some() {
+        if location.scope_type.is_some() {
             continue;
         }
-        let policy = if outlet.code == CENTRAL_OUTLET {
+        let mut location = location.in_scope(&outlet.subject());
+        location.negative_stock_policy = if outlet.code == CENTRAL_OUTLET {
             NegativeStockPolicy::Block
         } else {
             NegativeStockPolicy::AllowConsumption
         };
-        let scope_missing = location.scope_type.is_none();
-        let policy_wrong = untouched && location.negative_stock_policy != policy;
-        if !scope_missing && !policy_wrong {
-            continue;
-        }
-        if scope_missing {
-            location = location.in_scope(&outlet.subject());
-        }
-        if policy_wrong {
-            location.negative_stock_policy = policy;
-        }
         location.save(db).await?;
         changed += 1;
     }

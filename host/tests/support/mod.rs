@@ -252,9 +252,15 @@ const FNB_CLIENT: &str = concat!(
 /// as the demo does (without the demo company): the 06 values as a fresh
 /// deployment has them.
 pub async fn fnb_booted() -> TestApp {
+    fnb_booted_with(host::Tuning::default()).await
+}
+
+/// [`fnb_booted`] with the shared modules tuned (for example a bouncing e-mail
+/// provider).
+pub async fn fnb_booted_with(tuning: host::Tuning) -> TestApp {
     let config = wl_kernel::ClientConfig::load(FNB_CLIENT).expect("the F&B client");
     let app = TestApp::new(
-        host::app_for(config)
+        host::app_for_tuned(config, tuning)
             .expect("the app")
             .provide(noon_clock())
             .module(Probe),
