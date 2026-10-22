@@ -112,8 +112,40 @@ pub mod party {
     pub const RIDER: &str = "rider";
     /// The business.
     pub const BUSINESS: &str = "business";
+    /// The aggregator (a cancellation only: the aggregator owes
+    /// compensation).
+    pub const AGGREGATOR: &str = "aggregator";
     /// Every party, as the kitchen manager may choose.
     pub const ALL: [&str; 3] = [CUSTOMER, RIDER, BUSINESS];
+    /// The parties of a cancellation (`FNB.ACL`: business, aggregator or
+    /// customer; the kitchen is the business).
+    pub const CANCEL: [&str; 3] = [BUSINESS, AGGREGATOR, CUSTOMER];
+}
+
+/// Why an order is cancelled, as the cashier or the manager picks it
+/// (BL-FNB-04).
+pub mod cancel_reason {
+    /// The order was entered by mistake: the responsible party is the
+    /// business and cannot be changed. Orders are never voided.
+    pub const ENTERED_IN_ERROR: &str = "entered_in_error";
+    /// The customer asked.
+    pub const CUSTOMER_REQUEST: &str = "customer_request";
+    /// An item ran out.
+    pub const ITEM_UNAVAILABLE: &str = "item_unavailable";
+    /// The kitchen could not make it.
+    pub const KITCHEN_ISSUE: &str = "kitchen_issue";
+    /// The aggregator cancelled it, or its rider never came (`FNB.RUL.16`).
+    pub const AGGREGATOR_CANCELLED: &str = "aggregator_cancelled";
+    /// Any other reason, in the note.
+    pub const OTHER: &str = "other";
+    /// What a person may pick on the order page.
+    pub const CHOICES: [&str; 5] = [
+        ENTERED_IN_ERROR,
+        CUSTOMER_REQUEST,
+        ITEM_UNAVAILABLE,
+        KITCHEN_ISSUE,
+        OTHER,
+    ];
 }
 
 /// The refund decision of a closed failed delivery (`FNB.ACL.17`).
@@ -281,6 +313,25 @@ pub struct FnbOrder {
     pub closed_at: Option<DateTime>,
     /// Why it was closed, as the cancel reason.
     pub close_reason: Option<String>,
+    /// The party responsible for a cancellation, one of [`party::CANCEL`]
+    /// (BL-FNB-04). Kept on the order while the cancellation waits for a
+    /// manager.
+    pub cancel_party: Option<String>,
+    /// The reason of a cancellation, one of [`cancel_reason`].
+    pub cancel_reason_code: Option<String>,
+    /// The user who asked for the cancellation.
+    pub cancel_requested_by: Option<i64>,
+    /// The approval request of a cancellation that waits for a manager.
+    pub cancel_request_id: Option<i64>,
+    /// The user whose cancellation was made.
+    pub cancelled_by: Option<i64>,
+    /// Whether the customer cancelled it from the order page.
+    pub cancelled_by_customer: bool,
+    /// When it was cancelled.
+    pub cancelled_at: Option<DateTime>,
+    /// An aggregator order cancelled with the party *aggregator*: the payout
+    /// reconciliation expects the aggregator to pay for the food.
+    pub compensation_expected: bool,
     /// The lifecycle state; changed only by a transition.
     pub status: FnbOrderStatus,
     /// When the row was created.

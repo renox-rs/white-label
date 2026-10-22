@@ -113,6 +113,63 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ customer }} had {{ count }} cash orders fail on the customer's side in {{ days }} days (the last: {{ number }}). Cash on delivery is off for this customer. You can turn it back on.",
     ),
     ("fnb.cod.already_on", "Cash on delivery is on for this customer already."),
+    // Cancelling an order (BL-FNB-04).
+    ("fnb.order_cancelled", "Order cancelled."),
+    ("fnb.order_cancel_waiting", "The cancellation waits for a manager's approval."),
+    ("fnb.my_order_cancelled", "Your order is cancelled."),
+    (
+        "fnb.cancel.party_and_reason_needed",
+        "A cancellation needs a reason and the party responsible: the business, the aggregator or the customer.",
+    ),
+    ("fnb.cancel.already_cancelled", "The order is already cancelled."),
+    (
+        "fnb.cancel.already_accepted",
+        "The order is already accepted: the kitchen has it, so it can no longer be cancelled here.",
+    ),
+    (
+        "fnb.cancel.too_late",
+        "The order is out of the door or finished: it can no longer be cancelled.",
+    ),
+    ("fnb.cancel.reason_unknown", "Choose the reason for the cancellation."),
+    ("fnb.cancel.note_needed", "Say in the note why the order is cancelled."),
+    (
+        "fnb.cancel.pending",
+        "A change of this order already waits for a manager's approval.",
+    ),
+    (
+        "fnb.cancel.party_unknown",
+        "Choose who is responsible: the business, the aggregator or the customer.",
+    ),
+    (
+        "fnb.cancel.not_aggregator",
+        "Only an aggregator's order can be cancelled with the aggregator responsible.",
+    ),
+    (
+        "fnb.cancel.outcome_needed",
+        "Choose what happens to {{ item }}: the kitchen started it, so return it to stock or scrap it.",
+    ),
+    ("fnb.cancel.customer_reason", "Cancelled by the customer"),
+    ("fnb.cancel.history", "Order {{ number }} cancelled: {{ reason }}"),
+    ("fnb.cancel.reason.entered_in_error", "Entered in error"),
+    ("fnb.cancel.reason.customer_request", "The customer asked"),
+    ("fnb.cancel.reason.item_unavailable", "An item is not available"),
+    ("fnb.cancel.reason.kitchen_issue", "The kitchen could not make it"),
+    ("fnb.cancel.reason.aggregator_cancelled", "Cancelled by the aggregator"),
+    ("fnb.cancel.reason.other", "Other reason"),
+    ("fnb.cancel.delivery_reason", "The order was cancelled"),
+    ("fnb.cancel.customer_title", "Your order {{ number }} is cancelled"),
+    (
+        "fnb.cancel.customer_body",
+        "Your order {{ number }} is cancelled. Nothing is charged for it.",
+    ),
+    (
+        "fnb.cancel.customer_body_refund",
+        "Your order {{ number }} is cancelled. {{ amount }} is refunded to the way you paid.",
+    ),
+    (
+        "fnb.cancel.withdrawn",
+        "The kitchen started order {{ number }} while the change waited for a manager: ask again.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

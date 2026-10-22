@@ -31,7 +31,7 @@ use crate::ticket::KitchenTicket;
 pub struct KitchenProgress;
 
 /// The sale lines of `order` the kitchen started, among `lines`.
-async fn started(db: &Db, order: &FnbOrder, lines: &[i64]) -> Result<Vec<i64>> {
+pub(crate) async fn started(db: &Db, order: &FnbOrder, lines: &[i64]) -> Result<Vec<i64>> {
     let tickets = KitchenTicket::of_order(db, order.id).await?;
     if tickets.is_empty() {
         let past_accepted = !matches!(

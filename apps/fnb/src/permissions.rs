@@ -8,6 +8,16 @@ pub const ORDERS_VIEW: &str = "orders.view";
 /// it, change the party proposed as responsible for a failed delivery and
 /// close a failed delivery by hand (§7.1 *Order*).
 pub const ORDERS_MANAGE: &str = "orders.manage";
+/// Cancel an order, with a reason and a responsible party, and cancel a line
+/// (§7.1 `cancel`, `cancel_line`): the cashier and the kitchen manager. A
+/// paid order above AED 50, or a line the kitchen started, still needs a
+/// manager's yes in the sales module (`SAL.ACL.01`, `SAL.ACL.05`).
+pub const ORDERS_CANCEL: &str = "orders.cancel";
+/// Amend a placed or accepted direct order after calling the customer (§7.1
+/// `amend`). The spec lists it under `orders.manage`; it is a permission of
+/// its own so a cashier can amend without accepting, dispatching, completing
+/// or closing orders.
+pub const ORDERS_AMEND: &str = "orders.amend";
 /// Request a refund the kitchen manager approves, from a cancelled order, for
 /// a customer-side failure (`FNB.ACL.17`): the cashier. The approval is
 /// `refunds.approve` of wl-payments, never the requester's (`FIN.ACL.04`).
@@ -22,6 +32,8 @@ pub const CUSTOMERS_COD: &str = "customers.cod";
 pub const ALL: &[&str] = &[
     ORDERS_VIEW,
     ORDERS_MANAGE,
+    ORDERS_CANCEL,
+    ORDERS_AMEND,
     ORDERS_REFUND_REQUEST,
     KDS_WORK,
     CUSTOMERS_COD,

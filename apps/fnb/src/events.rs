@@ -3,11 +3,13 @@
 //! re-read the row, never inside an effect.
 //!
 //! - `SalesOrderPlaced`, `SalesOrderConfirmed` and `SalesOrderRejected` start
-//!   and follow the order ([`crate::placing`]);
+//!   and follow the order ([`crate::placing`]), `SalesOrderCancelled` cancels it
+//!   ([`crate::cancel`]);
 //! - after `accept` the tickets are made, after `mark_ready` the delivery is
 //!   requested, after `fail_delivery` the customer is told and `FNB.RUL.14`
 //!   counts, after `close_failed` the sales order is cancelled and the refund
-//!   asked, after `complete` the sales order is fulfilled;
+//!   asked, after `complete` the sales order is fulfilled, after
+//!   `cancel_system` its tickets are voided and the customer told;
 //! - the delivery's events follow the order: `DeliveryAssigned`,
 //!   `RunHandedOver`, `DeliveryOutForDelivery`, `DeliveryDelivered`,
 //!   `DeliveryAttemptFailed`, `DeliveryReturned` and `DeliveryDiscarded`;
@@ -21,15 +23,17 @@ use wl_kernel::delivery::{
     DeliveryOutForDelivery, DeliveryReturned, RunHandedOver,
 };
 use wl_kernel::payments::RefundApproved;
-use wl_kernel::sales::{SalesOrderConfirmed, SalesOrderPlaced, SalesOrderRejected};
+use wl_kernel::sales::{
+    SalesOrderCancelled, SalesOrderConfirmed, SalesOrderPlaced, SalesOrderRejected,
+};
 
 use crate::order::FnbOrder;
 use crate::order_machine::{
-    ACCEPT, CLOSE_FAILED, CLOSE_FAILED_SYSTEM, COMPLETE, COMPLETE_SYSTEM, FAIL_DELIVERY,
-    MARK_READY,
+    ACCEPT, CANCEL_SYSTEM, CLOSE_FAILED, CLOSE_FAILED_SYSTEM, COMPLETE, COMPLETE_SYSTEM,
+    FAIL_DELIVERY, MARK_READY,
 };
 use crate::ticket::KitchenTicket;
-use crate::{close, failed, fulfilment, kitchen, placing, refunds};
+use crate::{cancel, close, failed, fulfilment, kitchen, placing, refunds};
 
 /// What follows a committed transition of an order.
 async fn after_order(state: &AppState, event: &Transitioned<FnbOrder>) -> Result {
@@ -42,6 +46,7 @@ async fn after_order(state: &AppState, event: &Transitioned<FnbOrder>) -> Result
         FAIL_DELIVERY => failed::after_failed(state, event.key).await,
         CLOSE_FAILED | CLOSE_FAILED_SYSTEM => close::after_closed(state, event.key).await,
         COMPLETE | COMPLETE_SYSTEM => fulfilment::after_completed(state, event.key).await,
+        CANCEL_SYSTEM => cancel::after_cancelled(state, event.key).await,
         _ => Ok(()),
     }
 }
@@ -56,6 +61,9 @@ pub(crate) fn register(app: &mut Registry) {
     });
     app.listen(|event: SalesOrderRejected, state: AppState| async move {
         placing::on_rejected(&state, event).await
+    });
+    app.listen(|event: SalesOrderCancelled, state: AppState| async move {
+        cancel::on_cancelled(&state, event).await
     });
     app.listen(
         |event: Transitioned<FnbOrder>, state: AppState| async move {

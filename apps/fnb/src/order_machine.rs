@@ -10,10 +10,16 @@
 //! dispatched --fail_delivery (system, DeliveryAttemptFailed)--> delivery_failed
 //! delivery_failed --close_failed (system: DeliveryReturned or DeliveryDiscarded; or orders.manage)--> cancelled
 //! ready | dispatched --complete (orders.manage, or system: DeliveryDelivered)--> completed
+//! placed | accepted | preparing | ready --cancel_system (the sales order was cancelled)--> cancelled
 //! ```
 //!
-//! Every state of §7.1 is declared with its tone, so the diagram is whole;
-//! `amend`, `cancel_line` and `cancel` come with the issues that own them.
+//! Every state of §7.1 is declared with its tone, so the diagram is whole.
+//!
+//! `cancel` is the sales order's: a person asks the sales order desk
+//! (`orders.cancel`, a manager's yes under `SAL.ACL.01` and `SAL.ACL.05`) or
+//! the customer does from the order page, and the order follows the sales
+//! order's `SalesOrderCancelled` with the system's `cancel_system`, so the two
+//! never disagree ([`crate::cancel`]). There is no `void` on an order.
 //! `accept` and `reject` follow the sales order: the Accept button asks the
 //! sales order desk (`sales_orders.accept`) and the order moves when the
 //! sales order does, so the two never disagree ([`crate::placing`]).
@@ -28,7 +34,7 @@ use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 
-use crate::order::{FnbOrder, FnbOrderStatus, decision, map_reason, side};
+use crate::order::{FnbOrder, FnbOrderStatus, decision, map_reason, party, side};
 use crate::permissions;
 use crate::texts::english;
 
@@ -58,6 +64,9 @@ pub const CLOSE_FAILED_SYSTEM: &str = "close_failed_system";
 pub const COMPLETE: &str = "complete";
 /// `complete`, run by the system on `DeliveryDelivered`.
 pub const COMPLETE_SYSTEM: &str = "complete_system";
+/// `cancel`: placed, accepted, preparing, ready → cancelled, run by the system
+/// when the sales order was cancelled (BL-FNB-04).
+pub const CANCEL_SYSTEM: &str = "cancel_system";
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,9 +97,24 @@ pub struct OrderInput {
     #[serde(default)]
     pub wastage_ref: Option<String>,
     /// Whether the delivery's `discard` already posted the food as wastage
-    /// (`close_failed`).
+    /// (`close_failed`), or the cancellation scrapped started food
+    /// (`cancel_system`).
     #[serde(default)]
     pub wastage_posted: bool,
+    /// The party responsible for the cancellation, one of
+    /// [`party::CANCEL`](crate::order::party::CANCEL) (`cancel_system`).
+    #[serde(default)]
+    pub cancel_party: Option<String>,
+    /// The reason of the cancellation, one of
+    /// [`cancel_reason`](crate::order::cancel_reason) (`cancel_system`).
+    #[serde(default)]
+    pub cancel_reason_code: Option<String>,
+    /// The user whose cancellation it is (`cancel_system`).
+    #[serde(default)]
+    pub cancelled_by: Option<i64>,
+    /// Whether the customer cancelled it (`cancel_system`).
+    #[serde(default)]
+    pub by_customer: bool,
 }
 
 /// The input of a run; the default without one.
@@ -323,6 +347,85 @@ fn complete(name: &'static str, by_user: bool) -> Transition<FnbOrder> {
     })
 }
 
+/// `cancel_system`: the sales order was cancelled. The reason, the
+/// responsible party and who asked were kept on the order when it was asked,
+/// and the listener passes them in the input (`SAL.ACL.01`/`SAL.ACL.05`
+/// approvals are the sales order's).
+fn cancel_system() -> Transition<FnbOrder> {
+    system(
+        CANCEL_SYSTEM,
+        "Cancel",
+        &[
+            FnbOrderStatus::Placed,
+            FnbOrderStatus::Accepted,
+            FnbOrderStatus::Preparing,
+            FnbOrderStatus::Ready,
+        ],
+        FnbOrderStatus::Cancelled,
+    )
+    .guard("reason_and_party_recorded", |_order: &FnbOrder, ctx| {
+        let input = input_of(ctx);
+        let party_ok = input
+            .cancel_party
+            .as_deref()
+            .is_some_and(|chosen| party::CANCEL.contains(&chosen));
+        let reason_ok = input
+            .cancel_reason_code
+            .as_deref()
+            .is_some_and(|code| !code.trim().is_empty());
+        Box::pin(async move {
+            if party_ok && reason_ok {
+                Ok(())
+            } else {
+                Err(english("fnb.cancel.party_and_reason_needed", &[]))
+            }
+        })
+    })
+    .effect(|order: &FnbOrder, ctx, tx| {
+        let original = order.clone();
+        let input = input_of(ctx);
+        Box::pin(async move {
+            let compensation = input.cancel_party.as_deref() == Some(party::AGGREGATOR);
+            let at = Some(renox::db::now());
+            // A prepaid order is refunded in full by the sales order's
+            // cancellation; an aggregator's or a cash order paid nothing.
+            let paid = if input.paid_amount > 0 {
+                input.paid_amount
+            } else {
+                original.paid_amount
+            };
+            let (chosen, amount) = if paid > 0 && !compensation {
+                (decision::FULL_REFUND, paid)
+            } else {
+                (decision::NOT_APPLICABLE, 0)
+            };
+            let decided = Some(chosen.to_owned());
+            let posted = original.wastage_posted || input.wastage_posted;
+            let waiting: Option<i64> = None;
+            FnbOrder::query()
+                .where_(FnbOrder::ID.eq(original.id))
+                .update(
+                    &mut *tx,
+                    &[
+                        ("cancel_party", &input.cancel_party),
+                        ("cancel_reason_code", &input.cancel_reason_code),
+                        ("close_reason", &input.close_reason),
+                        ("cancelled_by", &input.cancelled_by),
+                        ("cancelled_by_customer", &input.by_customer),
+                        ("cancelled_at", &at),
+                        ("compensation_expected", &compensation),
+                        ("refund_decision", &decided),
+                        ("refund_amount", &amount),
+                        ("wastage_posted", &posted),
+                        ("cancel_request_id", &waiting),
+                    ],
+                )
+                .await?;
+            Ok(())
+        })
+    })
+}
+
 /// The transitions of the base and of the failed delivery.
 pub(crate) fn transitions() -> Vec<Transition<FnbOrder>> {
     vec![
@@ -347,6 +450,7 @@ pub(crate) fn transitions() -> Vec<Transition<FnbOrder>> {
         close_failed(CLOSE_FAILED_SYSTEM, false),
         complete(COMPLETE, true),
         complete(COMPLETE_SYSTEM, false),
+        cancel_system(),
     ]
 }
 
@@ -415,9 +519,12 @@ mod tests {
             CLOSE_FAILED_SYSTEM,
             COMPLETE,
             COMPLETE_SYSTEM,
+            CANCEL_SYSTEM,
         ] {
             assert!(machine.find(name).is_ok(), "{name}");
         }
+        // Orders are never voided.
+        assert!(machine.find("void").is_err());
         // No user runs these.
         for name in [
             ACCEPT,
@@ -428,6 +535,7 @@ mod tests {
             FAIL_DELIVERY,
             CLOSE_FAILED_SYSTEM,
             COMPLETE_SYSTEM,
+            CANCEL_SYSTEM,
         ] {
             assert!(machine.find(name).unwrap().is_system(), "{name}");
         }

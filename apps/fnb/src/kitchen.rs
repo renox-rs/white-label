@@ -74,6 +74,10 @@ pub(crate) async fn on_ticket(state: &AppState, event: &Transitioned<KitchenTick
     let Some(ticket) = KitchenTicket::find(&state.db, event.key).await? else {
         return Ok(());
     };
+    // A change that waits for a manager was asked before this line started.
+    if matches!(event.transition.as_str(), TICKET_START | BUMP) {
+        crate::cancel::refuse_waiting(state, ticket.order_id).await?;
+    }
     match event.transition.as_str() {
         TICKET_START => {
             move_order(state, ticket.order_id, FnbOrderStatus::Accepted, START).await
