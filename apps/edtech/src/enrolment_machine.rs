@@ -564,6 +564,8 @@ async fn move_to_target(
         sessions_total: input.target_sessions,
         instalments: i64::try_from(remaining.len()).unwrap_or(1).max(1),
         policy: old.policy.clone(),
+        absence_consumes: old.absence_consumes,
+        excuse_notice_hours: old.excuse_notice_hours,
         terms_accepted_at: old.terms_accepted_at,
         seat_held: true,
         carried_paid: input.carried,

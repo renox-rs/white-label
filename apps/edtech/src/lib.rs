@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod absences;
+pub mod attendance;
 pub mod batch;
 pub mod batch_machine;
 pub mod batches;
@@ -12,6 +14,7 @@ pub mod chargeback;
 pub mod chargebacks;
 pub mod course;
 pub mod courses;
+pub mod credits;
 pub mod documents;
 mod db;
 pub mod eligibility;
@@ -23,6 +26,7 @@ pub mod fees;
 pub mod flags;
 pub mod frozen;
 pub mod lapse;
+pub mod make_up;
 pub mod linked;
 pub mod notices;
 pub mod pages;
@@ -31,6 +35,7 @@ pub mod permissions;
 pub mod plan;
 pub mod reasons;
 pub mod refund;
+pub mod roster;
 pub mod seats;
 pub mod seed;
 pub mod session;
@@ -45,6 +50,7 @@ mod texts_lapse;
 mod texts_permit;
 mod texts_reissue;
 mod texts_alert;
+mod texts_attendance;
 mod texts_tutor;
 mod texts_more;
 mod texts_seats;
@@ -59,6 +65,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use attendance::{Attendance, Mark};
 pub use batch::{Batch, BatchStatus};
 pub use certificate::{Certificate, CertificateStatus};
 pub use chargeback::Chargeback;
@@ -67,6 +74,7 @@ pub use enrolment::{
     Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
     InstalmentStatus,
 };
+pub use make_up::MakeUpRight;
 pub use session::{Session, SessionStatus};
 pub use tutor_alert::TutorAlert;
 pub use tutor_assignment::TutorAssignment;
@@ -187,12 +195,16 @@ impl Module for EdTech {
             .model::<Certificate>()
             .model::<TutorAssignment>()
             .model::<TutorAlert>()
+            .model::<Attendance>()
+            .model::<MakeUpRight>()
             .model::<BatchWaiting>()
             .model::<Chargeback>();
         // The batch and its sessions: the machines, the start of a batch on its
         // first session date, its completion after the last session, and the
         // blocks the sessions make in wl-scheduling.
         batches::register(app);
+        // The credits the marks cost, taken from the packages after the commit.
+        credits::register(app);
         // The enrolments: the machine, the fees and their daily run, the
         // first payment that activates one, and the certificate of one that
         // completes.

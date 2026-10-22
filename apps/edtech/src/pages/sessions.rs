@@ -4,7 +4,10 @@
 //! |---|---|---|
 //! | `GET /edtech/sessions` | `edtech.sessions` | `sessions.view` |
 //! | `GET /edtech/sessions/{id}` | `edtech.session` | `sessions.view` |
-//! | `POST /edtech/sessions/{id}/attendance` | `edtech.session_attendance` | `sessions.teach` |
+//! | `POST /edtech/sessions/{id}/attendance` | `edtech.session_attendance` | `sessions.teach` (a field `mark_<enrolment>` per student) |
+//! | `POST /edtech/sessions/{id}/students` | `edtech.session_student` | `enrolments.manage` or `batches.manage` |
+//! | `POST /edtech/sessions/{id}/notice` | `edtech.session_notice` | `enrolments.manage` or `batches.manage` |
+//! | `POST /edtech/sessions/{id}/excuse` | `edtech.session_excuse` | `batches.manage` |
 //! | `POST /edtech/sessions/{id}/reschedule` | `edtech.session_reschedule` | `batches.manage` |
 //! | `POST /edtech/sessions/{id}/tutor` | `edtech.session_tutor` | `batches.manage` |
 //! | `POST /edtech/sessions/{id}/cancel` | `edtech.session_cancel` | `batches.manage` |
@@ -13,13 +16,19 @@
 //! The list shows the sessions from today, soonest first. The transitions are
 //! the machine's: the pages only read the form and call [`crate::sessions`].
 
+use std::collections::BTreeMap;
+
 use renox::db::now;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 
-use super::{Texts, parse_date, parse_number, require, text};
+use super::{Texts, invalid, parse_date, parse_local_time, parse_number, require, text};
+use crate::attendance::Mark;
 use crate::batch::Batch;
+use crate::enrolment::EnrolmentKind;
+use crate::enrolments::party_name;
+use crate::roster;
 use crate::permissions;
 use crate::session::{Session, SessionStatus};
 use crate::sessions;
@@ -42,6 +51,12 @@ pub fn routes() -> Routes {
         .name("edtech.session_cancel")
         .post("/edtech/sessions/{id}/flag", close_flag)
         .name("edtech.session_flag")
+        .post("/edtech/sessions/{id}/students", add_student)
+        .name("edtech.session_student")
+        .post("/edtech/sessions/{id}/notice", record_notice)
+        .name("edtech.session_notice")
+        .post("/edtech/sessions/{id}/excuse", excuse_late)
+        .name("edtech.session_excuse")
         .require_auth()
 }
 
@@ -192,6 +207,41 @@ pub(crate) struct ShowPage {
     doc_flags: Vec<DocFlagRow>,
     can_close_flag: bool,
     flag_options: Vec<[String; 2]>,
+    students: Vec<StudentRow>,
+    show_students: bool,
+    attend_rows: Vec<AttendRow>,
+    mark_options: Vec<[String; 2]>,
+    student_options: Vec<[String; 2]>,
+    can_roster: bool,
+    can_excuse: bool,
+}
+
+/// One student of the roster of a session.
+#[derive(Serialize, Debug, Clone)]
+pub struct StudentRow {
+    /// The enrolment's number, `ENR-0007`.
+    pub enrolment: String,
+    /// The student's name.
+    pub student: String,
+    /// The mark in words.
+    pub mark: String,
+    /// The badge kind of the mark.
+    pub mark_kind: &'static str,
+    /// The notice of absence and its time, or a dash.
+    pub notice: String,
+    /// Whether the mark used a credit of the package.
+    pub credit: String,
+}
+
+/// One student of the attendance form.
+#[derive(Serialize, Debug, Clone)]
+pub struct AttendRow {
+    /// The enrolment's number, which names the form field.
+    pub id: i64,
+    /// `ENR-0007 · Sara Ali`.
+    pub label: String,
+    /// The mark the form starts with.
+    pub selected: String,
 }
 
 /// One flag of the documents of a session, closed or not.
@@ -224,6 +274,70 @@ async fn show(
     let session = Session::find_or_404(&state.db, id).await?;
     let batch = Batch::find_or_404(&state.db, session.batch_id).await?;
     let scheduled = session.status == SessionStatus::Scheduled;
+    let students = roster::roster(&state.db, &session).await?;
+    let mut student_rows = Vec::new();
+    let mut attend_rows = Vec::new();
+    let mut student_options: Vec<[String; 2]> = Vec::new();
+    for student in &students {
+        let name = party_name(&state, &lang.locale, student.enrolment.student_party_id).await;
+        let label = format!("{} · {name}", student.enrolment.number());
+        let mark = student.mark();
+        let credit = if student.enrolment.kind != EnrolmentKind::Package {
+            text(&lang, "none")
+        } else if student.row.as_ref().is_some_and(|row| row.consumed) {
+            text(&lang, "attendance.credit_used")
+        } else if student.row.as_ref().is_some_and(|row| row.credit_due) {
+            text(&lang, "attendance.credit_waiting")
+        } else {
+            text(&lang, "attendance.credit_not_used")
+        };
+        let notice = student
+            .row
+            .as_ref()
+            .and_then(|row| row.notice_at)
+            .map_or_else(
+                || text(&lang, "none"),
+                |at| {
+                    format!(
+                        "{} {}",
+                        crate::sessions::date_text(at),
+                        crate::sessions::time_text(at)
+                    )
+                },
+            );
+        student_rows.push(StudentRow {
+            enrolment: student.enrolment.number(),
+            student: name,
+            mark: text(&lang, &format!("attendance.mark.{}", mark.as_str())),
+            mark_kind: match mark {
+                Mark::Present | Mark::Late => "success",
+                Mark::Absent => "error",
+                Mark::Excused => "info",
+                Mark::Pending => "warning",
+            },
+            notice,
+            credit,
+        });
+        attend_rows.push(AttendRow {
+            id: student.enrolment.id,
+            label: label.clone(),
+            selected: if mark == Mark::Excused {
+                "excused".to_owned()
+            } else {
+                "present".to_owned()
+            },
+        });
+        student_options.push([student.enrolment.id.to_string(), label]);
+    }
+    let mark_options: Vec<[String; 2]> = [Mark::Present, Mark::Late, Mark::Absent, Mark::Excused]
+        .iter()
+        .map(|mark| {
+            [
+                mark.as_str().to_owned(),
+                text(&lang, &format!("attendance.mark.{}", mark.as_str())),
+            ]
+        })
+        .collect();
     let found = sessions::document_flags(&state, session.id).await?;
     let none = text(&lang, "none");
     let doc_flags: Vec<DocFlagRow> = found
@@ -283,6 +397,15 @@ async fn show(
         can_close_flag: !flag_options.is_empty()
             && user.has_permission(permissions::BATCHES_APPROVE),
         flag_options,
+        show_students: !student_rows.is_empty(),
+        students: student_rows,
+        attend_rows,
+        mark_options,
+        student_options,
+        can_roster: scheduled
+            && (user.has_permission(permissions::ENROLMENTS_MANAGE)
+                || user.has_permission(permissions::BATCHES_MANAGE)),
+        can_excuse: scheduled && user.has_permission(permissions::BATCHES_MANAGE),
     }))
 }
 
@@ -291,15 +414,75 @@ fn done(lang: &Lang, key: &str) -> Result<Response> {
     Ok((Toast::success(text(lang, key)), renox::HxRefresh).into_response())
 }
 
-/// `POST /edtech/sessions/{id}/attendance`.
+/// `POST /edtech/sessions/{id}/attendance`: a `mark_<enrolment>` per student; a
+/// student without one is present (or excused, if a notice 24 hours ahead said so).
 async fn attendance(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    sessions::submit_attendance(&state, &user, id).await?;
+    let mut given = Vec::new();
+    for (name, value) in &form {
+        let Some(enrolment) = name.strip_prefix("mark_") else {
+            continue;
+        };
+        if value.trim().is_empty() {
+            continue;
+        }
+        let mark = Mark::parse(value)
+            .ok_or_else(|| invalid(&text(&lang, "attendance.problem.mark")))?;
+        given.push((parse_number(enrolment)?, mark));
+    }
+    sessions::submit_attendance_marked(&state, &user, id, &given, true).await?;
     done(&lang, "sessions.attendance_done")
+}
+
+/// The field `name` of a form as a number.
+fn number_of(form: &BTreeMap<String, String>, name: &str) -> std::result::Result<i64, Error> {
+    parse_number(form.get(name).map_or("", String::as_str))
+}
+
+/// `POST /edtech/sessions/{id}/students`: an `enrolment` takes the session.
+async fn add_student(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    roster::add_student(&state, &user, id, number_of(&form, "enrolment")?).await?;
+    done(&lang, "attendance.added")
+}
+
+/// `POST /edtech/sessions/{id}/notice`: the `enrolment` gave notice of an absence
+/// at `given_at` (now when blank).
+async fn record_notice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let given_at = parse_local_time(form.get("given_at").map_or("", String::as_str))?
+        .unwrap_or_else(now);
+    roster::record_notice(&state, &user, id, number_of(&form, "enrolment")?, given_at).await?;
+    done(&lang, "attendance.notice_recorded")
+}
+
+/// `POST /edtech/sessions/{id}/excuse`: the coordinator excuses a late notice
+/// with a `reason`.
+async fn excuse_late(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = form.get("reason").map_or("", String::as_str);
+    roster::excuse_late(&state, &user, id, number_of(&form, "enrolment")?, reason).await?;
+    done(&lang, "attendance.excused")
 }
 
 /// The form of `reschedule`.

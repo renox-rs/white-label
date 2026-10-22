@@ -62,6 +62,24 @@ pub(crate) fn parse_optional_id(text: &str) -> std::result::Result<Option<i64>, 
         .ok_or_else(|| invalid("number: 1, 2, 3 ..."))
 }
 
+/// A time typed in a form, `2026-11-09 09:00` (Dubai time); `Ok(None)` when it is
+/// blank.
+pub(crate) fn parse_local_time(
+    text: &str,
+) -> std::result::Result<Option<renox::db::DateTime>, Error> {
+    use renox::chrono::NaiveDateTime;
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let parsed = NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M")
+        .or_else(|_| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M"))
+        .map_err(|_| invalid("time: YYYY-MM-DD HH:MM, Dubai time"))?;
+    Ok(Some(
+        wl_kernel::calendar::BusinessCalendar::default().from_local(parsed),
+    ))
+}
+
 /// A whole number typed in a form.
 pub(crate) fn parse_number(text: &str) -> std::result::Result<i64, Error> {
     text.trim()

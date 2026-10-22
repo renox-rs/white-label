@@ -24,10 +24,14 @@ use wl_kernel::scheduling::{
     AvailabilitySource, SchedulingFuture, SourceBlock, provide_availability_source,
 };
 
+use crate::absences;
+use crate::attendance::Mark;
 use crate::batch::{Batch, BatchStatus};
+use crate::credits;
 use crate::db::refused;
 use crate::permissions;
 use crate::plan::{self, PlannedSession};
+use crate::roster;
 use crate::session::{Session, SessionStatus};
 use crate::session_machine::{
     CANCEL, CHANGE_TUTOR, RESCHEDULE, SUBMIT_ATTENDANCE, SessionInput,
@@ -531,22 +535,52 @@ async fn attendance_flags(
     })
 }
 
-/// `submit_attendance`: the session took place. The batch completes when this
-/// was its last open session ([`on_closed`]). It is **always accepted**: when
-/// the session's tutor did not hold the documents their batch needs on that day
-/// (`EDU.ACL.14`, flag mode of §9) the session is flagged for the centre manager
-/// ([`close_flag`]); the flag changes neither the credits nor the tutor's pay.
+/// `submit_attendance`: the session took place and every student of its roster
+/// came, except those a notice of absence excused in time (the page's start:
+/// "all present"). See [`submit_attendance_marked`] for the marks one by one.
 ///
 /// # Errors
 ///
 /// A 403 without `sessions.teach`; a 422 for a session that is not
 /// `scheduled` or has not started.
 pub async fn submit_attendance(state: &AppState, by: &AuthUser, id: i64) -> Result<Session> {
+    submit_attendance_marked(state, by, id, &[], true).await
+}
+
+/// `submit_attendance` with the marks `given` (the enrolment and its mark).
+/// Every student of the roster is marked: one the tutor does not mention stays
+/// *excused* if a notice 24 hours ahead pre-marked them, else is `present` when
+/// `default_present` and otherwise the submission is refused naming who is
+/// missing. Credits are consumed after the commit by the absence policy of each
+/// package ([`crate::credits`]), absences are evaluated (`EDU.RUL.02`,
+/// [`crate::absences`]), each excused absence earns a make-up right, and the
+/// batch completes when this was its last open session ([`on_closed`]).
+///
+/// The attendance is **always accepted** (BL-EDU-11): when the session's tutor
+/// did not hold the documents their batch needs on that day (`EDU.ACL.14`, flag
+/// mode of §9) the session is flagged for the centre manager ([`close_flag`]);
+/// the flag changes neither the credits nor the tutor's pay.
+///
+/// # Errors
+///
+/// A 403 without `sessions.teach`; a 422 for a session that is not `scheduled`
+/// or has not started, a student not on the roster, an excuse no notice supports
+/// or a student not marked.
+pub async fn submit_attendance_marked(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    given: &[(i64, Mark)],
+    default_present: bool,
+) -> Result<Session> {
     let session = load(state, by, id, permissions::SESSIONS_TEACH).await?;
     let flags = attendance_flags(state, by, &session).await?;
+    let marks = roster::prepare(state, &session, given, default_present).await?;
     let input = SessionInput {
         by: Some(by.id),
         on: Some(today()),
+        marks,
+        marks_complete: Some(true),
         ..SessionInput::default()
     };
     let held = run(state, by, &session, SUBMIT_ATTENDANCE, input).await?;
@@ -716,6 +750,13 @@ pub(crate) fn register(app: &mut Registry) {
             if event.transition == SUBMIT_ATTENDANCE || event.transition == CANCEL {
                 on_closed(&state, event.key).await?;
             }
+            if event.transition == SUBMIT_ATTENDANCE {
+                // After the commit: the credits the marks cost are taken from the
+                // packages (a row the ledger could not serve is kept and tried
+                // again by `edtech:credits`) and the absences are evaluated.
+                let _kept_for_the_job = credits::settle_session(&state, event.key).await;
+                absences::evaluate(&state, event.key).await?;
+            }
             if event.transition == CHANGE_TUTOR {
                 tutors::tell_session_change(&state, event.key).await?;
             }
@@ -730,6 +771,11 @@ pub fn time_text(at: DateTime) -> String {
         .local(at)
         .format("%H:%M")
         .to_string()
+}
+
+/// The day of an instant for the pages: `2026-11-09`.
+pub fn date_text(at: DateTime) -> String {
+    dubai_date(at).to_string()
 }
 
 /// The session's length in whole minutes.

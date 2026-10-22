@@ -155,6 +155,13 @@ pub struct Enrolment {
     pub instalments: i64,
     /// The refund policy accepted at enrolment.
     pub policy: Json<RefundPolicy>,
+    /// The absence policy of the catalogue item, stored at enrolment time
+    /// (`EDU.ACL`, 10 §4.2): whether an absence without a valid notice uses a
+    /// credit of the package (default yes).
+    pub absence_consumes: bool,
+    /// The hours before a session that a notice of absence excuses it (default
+    /// 24); the absence is then excused, uses no credit and gives a make-up right.
+    pub excuse_notice_hours: i64,
     /// When the terms and the refund policy were accepted (`DOC.SIG.01`).
     pub terms_accepted_at: Option<DateTime>,
     /// Whether the batch's seat is counted for this enrolment.

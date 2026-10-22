@@ -4,7 +4,7 @@
 //! |---|---|---|---|---|
 //! | [`RESCHEDULE`] | scheduled | scheduled | `batches.manage` | `new_time_given` |
 //! | [`CHANGE_TUTOR`] | scheduled | scheduled | `batches.manage` | `new_tutor_given` |
-//! | [`SUBMIT_ATTENDANCE`] | scheduled | held | `sessions.teach` | `start_passed`, `every_student_marked` (slot) |
+//! | [`SUBMIT_ATTENDANCE`] | scheduled | held | `sessions.teach` | `start_passed`, `every_student_marked` |
 //! | [`CORRECT_ATTENDANCE`] | held | held | `sessions.teach` | `within_window` (slot, BL-EDU-14) |
 //! | [`CANCEL`] / [`CANCEL_SYSTEM`] | scheduled | cancelled | `batches.manage` / system (a batch `cancel` or `terminate`) | a reason |
 //!
@@ -20,12 +20,15 @@
 //!   state, so no session run is needed. `change_tutor` here is the change of
 //!   one session.
 //! - `submit_attendance` waits for the session to have started (the clock of
-//!   the app, so a test can travel). *Every enrolled student marked*, the
-//!   consumption of package credits and the absence evaluation need the
-//!   enrolments and the attendance records, which come with the enrolment
-//!   (BL-EDU-15 and BL-EDU-14 fill the slots). That a tutor marks only the
-//!   attendance of the batches assigned to them (`EDU.ACL.03`) is answered
-//!   with the tutor-to-user link of wl-hr in BL-EDU-08.
+//!   the app, so a test can travel). *Every student marked* is the service's
+//!   answer ([`crate::roster::prepare`]) carried in the run's input: the roster is
+//!   read from the database, which a guard cannot do. The effect stores the marks
+//!   of the whole roster, with the credit each costs by the absence policy and
+//!   the make-up right of each excused absence ([`crate::attendance`]); the
+//!   credits are taken from the packages after the commit ([`crate::credits`]) and
+//!   the absences evaluated (`EDU.RUL.02`, [`crate::absences`]). That a tutor marks
+//!   only the attendance of the batches assigned to them (`EDU.ACL.03`) needs the
+//!   tutor-to-user link of wl-hr and is not checked here.
 //! - `correct_attendance` is declared with its reason and the slot of
 //!   `EDU.ACL.04` and `EDU.ACL.16` (the tutor within 24 hours, then the
 //!   coordinator); BL-EDU-14 gives it its body.
@@ -37,6 +40,7 @@ use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::dubai_date;
 
+use crate::attendance::{self, MarkInput};
 use crate::flags;
 use crate::permissions;
 use crate::session::{Session, SessionStatus};
@@ -78,6 +82,13 @@ pub struct SessionInput {
     /// The day of the run (Asia/Dubai).
     #[serde(default)]
     pub on: Option<NaiveDate>,
+    /// The marks of every student of the roster ([`SUBMIT_ATTENDANCE`]).
+    #[serde(default)]
+    pub marks: Vec<MarkInput>,
+    /// The service worked out the marks of the whole roster
+    /// ([`SUBMIT_ATTENDANCE`]): the guard `every_student_marked`.
+    #[serde(default)]
+    pub marks_complete: Option<bool>,
 }
 
 fn input_of(ctx: &TransitionCtx) -> SessionInput {
@@ -230,19 +241,24 @@ fn submit_attendance() -> Transition<Session> {
             let ok = s.starts_at <= now();
             Box::pin(async move { check(ok, "edtech.sessions.problem.not_started") })
         })
-        .guard("every_student_marked", |_s: &Session, _ctx| {
-            Box::pin(async { Ok::<(), String>(()) })
+        .guard("every_student_marked", |_s: &Session, ctx| {
+            let ok = input_of(ctx).marks_complete == Some(true);
+            Box::pin(async move { check(ok, "edtech.attendance.problem.not_all_marked") })
         })
         .effect(|s: &Session, ctx, tx| {
-            let id = s.id;
+            let session = s.clone();
             let input = input_of(ctx);
             Box::pin(async move {
                 set(
                     tx,
-                    id,
+                    session.id,
                     &[("held_at", &Some(now())), ("attendance_by", &input.by)],
                 )
-                .await
+                .await?;
+                // The marks of the whole roster, with the credit each costs and
+                // the make-up right of each excused absence, in the same
+                // transaction: a `held` session always has its marks.
+                attendance::store_marks(tx, &session, &input.marks, input.by, false).await
             })
         })
 }

@@ -251,6 +251,7 @@ fn entries() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
         .chain(crate::texts_reissue::TEXTS.iter())
         .chain(crate::texts_tutor::TEXTS.iter())
         .chain(crate::texts_alert::TEXTS.iter())
+        .chain(crate::texts_attendance::TEXTS.iter())
 }
 
 /// The text for `key`: the app's translation when it has one, else the

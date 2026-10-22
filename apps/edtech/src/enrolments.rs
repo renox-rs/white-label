@@ -99,7 +99,16 @@ pub struct NewEnrolment {
     pub policy: RefundPolicy,
     /// Whether the terms and the refund policy are accepted now.
     pub terms_accepted: bool,
+    /// The absence policy of the catalogue item: whether an absence without a
+    /// valid notice uses a credit (default yes).
+    pub absence_consumes: bool,
+    /// The hours before a session a notice of absence excuses it (default 24).
+    pub excuse_notice_hours: i64,
 }
+
+/// The hours of notice that excuse an absence unless the catalogue item says
+/// otherwise (10 §4.2).
+pub const DEFAULT_EXCUSE_NOTICE_HOURS: i64 = 24;
 
 impl NewEnrolment {
     fn base(kind: EnrolmentKind, student: i64, price: i64) -> Self {
@@ -119,6 +128,8 @@ impl NewEnrolment {
             instalments: 1,
             policy: RefundPolicy::default(),
             terms_accepted: false,
+            absence_consumes: true,
+            excuse_notice_hours: DEFAULT_EXCUSE_NOTICE_HOURS,
         }
     }
 
@@ -191,6 +202,15 @@ impl NewEnrolment {
     /// With the terms and the refund policy accepted.
     pub fn terms_accepted(mut self) -> Self {
         self.terms_accepted = true;
+        self
+    }
+
+    /// With the absence policy of the catalogue item: whether an absence
+    /// without a valid notice uses a credit, and the hours before a session a
+    /// notice excuses it.
+    pub fn absence_policy(mut self, consumes: bool, notice_hours: i64) -> Self {
+        self.absence_consumes = consumes;
+        self.excuse_notice_hours = notice_hours;
         self
     }
 }
@@ -329,6 +349,8 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewEnrolment) -> Resul
             1
         },
         policy: Json(new.policy.clone()),
+        absence_consumes: new.absence_consumes,
+        excuse_notice_hours: new.excuse_notice_hours,
         terms_accepted_at: new.terms_accepted.then(now),
         seat_held: batch.is_some(),
         seat_hold_until: Some(now() + Duration::hours(HOLD_HOURS)),
