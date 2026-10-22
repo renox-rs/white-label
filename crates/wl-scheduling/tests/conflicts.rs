@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::documents::dubai_date;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::scheduling::{ConflictCause, Initiator, SourceBlock};
@@ -33,11 +34,12 @@ fn date(text: &str) -> NaiveDate {
 
 fn leave(request: i64, leave_type: &str, from: &str, to: &str) -> LeaveApproved {
     LeaveApproved {
+        leave: Subject::new("hr.leave_request", request),
         employee: EmployeeId(EMPLOYEE),
-        request,
         leave_type: leave_type.to_owned(),
         from: date(from),
         to: date(to),
+        unpaid: leave_type == "unpaid",
     }
 }
 

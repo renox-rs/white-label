@@ -100,6 +100,11 @@ pub mod payer_tax;
 mod payer_texts;
 pub mod period_locks;
 pub mod policy;
+pub mod rate_card;
+mod rate_card_contract;
+mod rate_card_pages;
+pub mod rate_cards;
+pub mod rate_pricing;
 pub mod recover;
 pub mod recovery;
 pub mod refund;
@@ -121,6 +126,7 @@ pub mod unallocate;
 pub mod unallocation;
 pub mod usage;
 pub mod usage_adjustment;
+pub mod usage_billing;
 pub mod vat;
 pub mod vat_adjustment;
 pub mod vat_pages;
@@ -392,6 +398,14 @@ pub mod permissions {
     /// Write off the open amount of a payer bill, or move it to the customer
     /// (`FIN.ACL.14`).
     pub const PAYER_BILLS_WRITE_OFF: &str = "payer_bills.write_off";
+    /// See the rate cards, their versions and lines (`FIN.RAT.01`).
+    pub const RATE_CARDS_VIEW: &str = "rate_cards.view";
+    /// Make rate cards, new versions and their lines, and record the
+    /// client's signed acceptance (`MPW.ACL.16`).
+    pub const RATE_CARDS_MANAGE: &str = "rate_cards.manage";
+    /// Approve a rate card version dated in the past after the client
+    /// accepted it (`MPW.ACL.16`, the MD).
+    pub const RATE_CARDS_APPROVE: &str = "rate_cards.approve";
 }
 
 /// The invoicing module. The host adds it with
@@ -943,6 +957,7 @@ impl Module for WlInvoicing {
             .merge(einvoice_pages::routes())
             .merge(subscription_pages::routes())
             .merge(payer_bill_pages::routes())
+            .merge(rate_card_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -1054,6 +1069,10 @@ impl Module for WlInvoicing {
             .model::<DrawingApproval>()
             .model::<UsageRecord>()
             .model::<UsageAdjustment>()
+            .model::<rate_card::RateCard>()
+            .model::<rate_card::RateCardVersion>()
+            .model::<rate_card::RateCardLine>()
+            .model::<rate_pricing::UsagePricing>()
             .model::<BillRecoding>()
             .model::<Subscription>()
             .model::<SubscriptionPause>()
@@ -1138,6 +1157,7 @@ impl Module for WlInvoicing {
         events::register(app);
         // Hours corrected after billing (§5.2 step 5).
         usage_adjustment::register(app);
+        wl_kernel::usage::provide_usage_recorder(app, usage_billing::Recorder);
         // The customer notice and `InvoiceWrittenOff` after a write-off.
         write_off::register(app);
         // `db:seed`: the demo invoices, as drafts.
@@ -1362,6 +1382,12 @@ impl Module for WlInvoicing {
         // party blocks), the party notices and the daily
         // `invoicing:subscriptions` (billing and `FIN.RUL.06`).
         renox::state_machine::register::<Subscription>();
+        // Rate cards (`FIN.RAT.01`, `MPW.ACL.16`): the version machine and its
+        // approval policy, the contract the verticals ask, and the repricing
+        // of unlocked hours when a version is accepted.
+        rate_card::register();
+        wl_kernel::rate_cards::provide_rate_cards(app, rate_card_contract::Cards);
+        rate_cards::listen(app);
         wl_kernel::subscriptions::provide_subscriptions(app, SubscriptionBook);
         subscriptions::register(app);
         // The subscriptions (`nav.subscriptions`).

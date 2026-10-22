@@ -9,7 +9,10 @@
 //! or globally when neither a machine nor a resolver gives a scope
 //! ([`crate::scopes`]).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use renox::auth::permissions::{Scope, users_with_permission_in, users_with_role_in};
 use renox::auth::{Channel, DatabaseMessage, Notification, Recipient};
@@ -27,6 +30,48 @@ use crate::texts;
 pub const REQUESTED_KIND: &str = "approval-requested";
 /// The kind of the notice that a request ended without a yes.
 pub const DECIDED_KIND: &str = "approval-decided";
+
+/// A hook that names users who may not decide a request on top of the
+/// requester (segregation of duties): for the pay account waiver, the user
+/// who asked for the account change. It runs for requests about one subject
+/// type, only when the request has SoD on.
+pub type ExcludedApprovers = Arc<
+    dyn for<'a> Fn(
+            &'a Db,
+            &'a ApprovalRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<i64>>> + Send + 'a>>
+        + Send
+        + Sync,
+>;
+
+static EXCLUDED: RwLock<BTreeMap<String, ExcludedApprovers>> = RwLock::new(BTreeMap::new());
+
+/// Registers the users who may not decide requests about `subject_type`,
+/// besides their requester, replacing the hook registered before.
+/// Process-wide, like the default policies.
+pub fn register_excluded_approvers<F>(subject_type: impl Into<String>, hook: F)
+where
+    F: for<'a> Fn(
+            &'a Db,
+            &'a ApprovalRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<i64>>> + Send + 'a>>
+        + Send
+        + Sync
+        + 'static,
+{
+    EXCLUDED
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(subject_type.into(), Arc::new(hook));
+}
+
+fn excluded_hook(subject_type: &str) -> Option<ExcludedApprovers> {
+    EXCLUDED
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(subject_type)
+        .cloned()
+}
 
 /// The scope approvers of `request` are looked for in: the subject's, from
 /// [`scopes::scope_of`] (its machine, then a registered resolver); global
@@ -47,6 +92,9 @@ pub async fn step_approvers(db: &Db, request: &ApprovalRequest) -> Result<Vec<Us
     let mut excluded = BTreeSet::new();
     if request.sod {
         excluded.insert(request.requester_id);
+        if let Some(hook) = excluded_hook(&request.subject_type) {
+            excluded.extend(hook(db, request).await?);
+        }
         for decision in request.decisions(db).await? {
             if decision.step != request.current_step {
                 excluded.insert(decision.approver_id);

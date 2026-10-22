@@ -5,15 +5,15 @@
 //! [*] --create--> open
 //! [*] --open_adjustment--> open          (kind adjustment, BL-ATT-07)
 //! open --submit--> submitted
-//! submitted --approve | approve_on_behalf--> approved
+//! submitted --approve | approve_on_behalf | deem_approve--> approved
 //! submitted --reject--> open
 //! approved --reopen--> open
 //! approved --lock--> locked
 //! ```
 //!
-//! `approve`, `approve_on_behalf` and `reject` (submitted to open) are in
-//! [`crate::approval`] (BL-ATT-08); `deem_approve` comes with the deemed
-//! approval issue.
+//! `approve`, `approve_on_behalf`, `reject` (submitted to open) and
+//! `deem_approve` are in [`crate::approval`] (BL-ATT-08, BL-ATT-11), with the
+//! system approval of a reconciliation adjustment (BL-ATT-13).
 //!
 //! The status moves only through the machine. `locked` is terminal: a locked
 //! timesheet is never edited or reopened (`HRM.ACL.08`), and is corrected by
@@ -236,12 +236,21 @@ pub struct Timesheet {
     pub linked_id: Option<i64>,
     /// An adjustment: where it flows.
     pub affects: Option<Affects>,
+    /// An adjustment of a client dispute: the credit note the dispute was
+    /// resolved with (`invoicing.credit_note`), once it is.
+    pub credit_note_id: Option<i64>,
+    /// An adjustment of a client dispute: when the dispute ended `upheld`
+    /// before the adjustment was approved; its `submit` is refused from then.
+    pub dispute_upheld_at: Option<DateTime>,
     /// The user who created it.
     pub created_by: Option<i64>,
     /// The user who submitted it; none for the system.
     pub submitted_by: Option<i64>,
     /// When it was submitted.
     pub submitted_at: Option<DateTime>,
+    /// When the approver was escalated to (`HRM.RUL.15` at E days) for the
+    /// latest `submit`; cleared by the next `submit`.
+    pub escalated_at: Option<DateTime>,
     /// The user who approved it; none for the system (a deemed approval).
     pub approved_by: Option<i64>,
     /// When it was approved.
@@ -402,8 +411,11 @@ impl StateMachine for Timesheet {
                     .reason_required()
                     .guard("not_consumed", |sheet: &Timesheet, _ctx| {
                         let consumed = sheet.consumed();
+                        let provisional = sheet.paid_provisionally_by.is_some();
                         Box::pin(async move {
-                            if consumed {
+                            if provisional {
+                                Err(english("wl_attendance.timesheet.paid_provisionally", &[]))
+                            } else if consumed {
                                 Err(english("wl_attendance.timesheet.consumed", &[]))
                             } else {
                                 Ok(())

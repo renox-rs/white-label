@@ -32,9 +32,10 @@
 //!
 //! - The permission `timesheets.adjust` is checked in the scope of the
 //!   original's context. The system's own `provisional_reconciliation`
-//!   adjustment (BL-ATT-13) and the check that a linked dispute is still
-//!   open (BL-ATT-09, which owns the dispute) are not here: this issue
-//!   checks that a link is given.
+//!   adjustment is made by [`crate::reconcile`] (BL-ATT-13).
+//! - A link to an invoice dispute must be to an open one, and a
+//!   `client_dispute` that affects pay needs attendance evidence
+//!   ([`crate::dispute`], BL-ATT-09).
 //! - A refusal writes nothing: the timesheet and its entries are created in
 //!   one transaction.
 
@@ -44,6 +45,7 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 
 use crate::access;
+use crate::dispute;
 use crate::entry::{self, Category, NewEntry, TimesheetEntry};
 use crate::permissions;
 use crate::service::refuse;
@@ -65,6 +67,9 @@ pub struct OpenAdjustment {
     pub affects: Option<Affects>,
     /// The signed entries.
     pub entries: Vec<NewEntry>,
+    /// Attendance evidence (records of the owner, documents): needed for a
+    /// `client_dispute` that affects payroll ([`crate::dispute`]).
+    pub evidence: Vec<Subject>,
 }
 
 /// The default `affects` of an origin, if it has one.
@@ -148,21 +153,36 @@ pub async fn open(state: &AppState, actor: &AuthUser, input: OpenAdjustment) -> 
     if let Some(message) = entry::below_zero(&standing, &input.entries) {
         return Err(refuse(message));
     }
+    dispute::check_link(state, input.linked.as_ref()).await?;
+    if dispute::needs_evidence(origin, affects) && input.evidence.is_empty() {
+        return Err(refuse(english(
+            "wl_attendance.adjustment.evidence_required",
+            &[],
+        )));
+    }
+    dispute::check_evidence(state, &original, &input.evidence).await?;
 
     let mut tx = state.db.begin().await?;
     let adjustment = create_in(
-        &mut tx, &original, actor.id, &reason, origin, &input, affects,
+        &mut tx,
+        &original,
+        Some(actor.id),
+        &reason,
+        origin,
+        &input,
+        affects,
     )
     .await?;
+    dispute::attach_in(&mut tx, adjustment.id, &input.evidence, Some(actor.id)).await?;
     tx.commit().await?;
     Timesheet::find_or_404(&state.db, adjustment.id).await
 }
 
 /// Inserts the adjustment and its entries inside `tx`.
-async fn create_in(
+pub(crate) async fn create_in(
     tx: &mut Transaction,
     original: &Timesheet,
-    by: i64,
+    by: Option<i64>,
     reason: &str,
     origin: AdjustmentOrigin,
     input: &OpenAdjustment,
@@ -187,7 +207,7 @@ async fn create_in(
             linked_type: input.linked.as_ref().map(|s| s.subject_type.clone()),
             linked_id: input.linked.as_ref().map(|s| s.subject_id),
             affects: Some(affects),
-            created_by: Some(by),
+            created_by: by,
             ..Timesheet::default()
         },
     )

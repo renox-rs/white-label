@@ -1,0 +1,25 @@
+{#- wl-hr: the page of the signed link in the SMS about a new pay account: the
+    worker stops the change without logging in. The link works once and
+    expires with the cooling period. Replace it with
+    resources/views/wl-hr/pay_account_stop.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['pay_account.stop_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['pay_account.stop_title']" :subtitle="tx['pay_account.title'] ~ ' ' ~ number"/>
+    <template rx-if="step == 'ask'">
+      <rx-card :title="tx['pay_account.title'] ~ ' ' ~ number">
+        <rx-stack>
+          <p>{{ tx['pay_account.stop_hint'] }} {{ date }}</p>
+          <rx-confirm id="stop-pay-account" :label="tx['pay_account.stop_button']" :action="action" method="POST"
+                      :title="tx['pay_account.stop_button']" :message="tx['pay_account.stop_confirm']"
+                      :confirm-label="tx['pay_account.stop_button']" :cancel-label="tx['cancel']" icon="ban"/>
+        </rx-stack>
+      </rx-card>
+    </template>
+    <template rx-if="step == 'done'">
+      <rx-alert kind="success" :message="tx['pay_account.stop_done']"/>
+    </template>
+    <template rx-if="step == 'closed'">
+      <rx-alert kind="info" :message="tx['pay_account.stop_closed']"/>
+    </template>
+  </rx-stack>
+</rx-page>

@@ -9,14 +9,38 @@ use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::workforce::{EmployeeId, LeaveCalendar, StaffProfile, Workforce, WorkforceFuture};
 
-use crate::absence::AbsenceReport;
+use crate::absence::{AbsenceReport, ContactAttempt};
 use crate::assignees;
 use crate::employee::{Employee, EmployeeScope, EmployeeStatus};
 use crate::leave::{LeaveRequest, LeaveStatus};
 
-/// The workforce of the HR module.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Staff;
+/// The workforce of the HR module. `portal_days` is how many days the
+/// portal of an employee who exited stays read-only before it closes
+/// ([`crate::HrConfig::portal_days_after_exit`]).
+#[derive(Debug, Clone, Copy)]
+pub struct Staff {
+    /// Days the portal stays read-only after `exit`.
+    pub portal_days: i64,
+}
+
+impl Default for Staff {
+    fn default() -> Self {
+        Staff {
+            portal_days: crate::config::DEFAULT_PORTAL_DAYS_AFTER_EXIT,
+        }
+    }
+}
+
+impl Staff {
+    /// The day the portal of `employee` closes: `exit` plus the days, or
+    /// `None` for an employee who has not exited.
+    pub fn portal_closes_on(&self, employee: &Employee) -> Option<NaiveDate> {
+        let exited = employee
+            .exited_on
+            .filter(|_| employee.status == EmployeeStatus::Exited)?;
+        exited.checked_add_days(Days::new(self.portal_days.unsigned_abs()))
+    }
+}
 
 impl LeaveCalendar for Staff {
     fn approved_leave<'a>(
@@ -130,6 +154,37 @@ impl Workforce for Staff {
         })
     }
 
+    fn is_active<'a>(
+        &'a self,
+        state: &'a AppState,
+        employee: EmployeeId,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(Employee::find(&state.db, employee.0)
+                .await?
+                .is_some_and(|row| row.status == EmployeeStatus::Active))
+        })
+    }
+
+    fn failed_contact_days<'a>(
+        &'a self,
+        db: &'a Db,
+        employee: EmployeeId,
+        after: NaiveDate,
+    ) -> WorkforceFuture<'a, Vec<NaiveDate>> {
+        Box::pin(async move {
+            let mut days: Vec<NaiveDate> = ContactAttempt::of_employee(db, employee.0)
+                .await?
+                .into_iter()
+                .filter(|attempt| attempt.outcome.failed() && attempt.attempted_on > after)
+                .map(|attempt| attempt.attempted_on)
+                .collect();
+            days.sort_unstable();
+            days.dedup();
+            Ok(days)
+        })
+    }
+
     fn access_disabled<'a>(&'a self, db: &'a Db, user_id: i64) -> WorkforceFuture<'a, bool> {
         Box::pin(async move {
             let employees = Employee::query()
@@ -137,7 +192,20 @@ impl Workforce for Staff {
                 .get(db)
                 .await?;
             for employee in employees {
-                if employee.status == EmployeeStatus::Absconded {
+                // Absconded, or the portal account was closed when the
+                // onboarding was cancelled.
+                if matches!(
+                    employee.status,
+                    EmployeeStatus::Absconded | EmployeeStatus::Deceased
+                ) || employee.portal_closed_at.is_some()
+                {
+                    return Ok(true);
+                }
+                // After `exit` the portal is read-only, then closes.
+                if self
+                    .portal_closes_on(&employee)
+                    .is_some_and(|closes| today() >= closes)
+                {
                     return Ok(true);
                 }
                 let report = AbsenceReport::valid_for(db, employee.id).await?;
@@ -146,6 +214,19 @@ impl Workforce for Staff {
                 }
             }
             Ok(false)
+        })
+    }
+
+    fn read_only<'a>(&'a self, db: &'a Db, user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            let employees = Employee::query()
+                .where_(Employee::USER_ID.eq(user_id))
+                .get(db)
+                .await?;
+            Ok(employees.iter().any(|employee| {
+                self.portal_closes_on(employee)
+                    .is_some_and(|closes| today() < closes)
+            }))
         })
     }
 

@@ -10,6 +10,10 @@
 //! the employee is checked in at another location (naming it) or at the same
 //! one (a duplicate); nothing is created then.
 //!
+//! A supervisor's record for a day that is over carries a settled
+//! `late_entry` flag with the day it was entered (wl-attendance §5.1 point 5):
+//! it holds nothing, the record is `accepted` as any other.
+//!
 //! The overlap check and the insert of one employee and day run under one
 //! lock ([`crate::lock`]) and in one transaction; the checks of
 //! [`crate::checks`] flag through the `flag` transition and never refuse.
@@ -30,7 +34,7 @@ use wl_kernel::workforce::{EmployeeId, workforce};
 
 use crate::checks;
 use crate::config::{AttendanceConfig, config_of};
-use crate::flags::{AttendanceFlag, Pending};
+use crate::flags::{self, AttendanceFlag, FlagType, Pending};
 use crate::location::WorkLocation;
 use crate::lock;
 use crate::overlap;
@@ -150,21 +154,32 @@ pub(crate) fn ensure_in_window(state: &AppState, date: NaiveDate) -> Result {
 }
 
 /// Refuses a day after the last working day of the location's context (a
-/// terminated project, `CON.ACL.15`): the app's
+/// terminated project, `CON.ACL.15`), or a worker the context refuses (a
+/// suspended deployment, `MPW.RUL.12`): the app's
 /// [`ContextClosure`](wl_kernel::attendance::ContextClosure) says which.
-async fn ensure_open_day(state: &AppState, location: &WorkLocation, date: NaiveDate) -> Result {
+async fn ensure_open_day(
+    state: &AppState,
+    location: &WorkLocation,
+    employee: EmployeeId,
+    date: NaiveDate,
+) -> Result {
     let Some(context) = location.scope() else {
         return Ok(());
     };
-    let last = wl_kernel::attendance::context_closure(state)
-        .last_working_day(state, &context)
-        .await?;
-    match last {
-        Some(last) if date > last => Err(refuse(english(
+    let closure = wl_kernel::attendance::context_closure(state);
+    let last = closure.last_working_day(state, &context).await?;
+    if let Some(last) = last
+        && date > last
+    {
+        return Err(refuse(english(
             "wl_attendance.record.after_last_day",
             &[("date", &last)],
-        ))),
-        _ => Ok(()),
+        )));
+    }
+    // The context may refuse this worker (09: a suspended deployment).
+    match closure.refuses(state, &context, employee, date).await? {
+        Some(why) => Err(refuse(why)),
+        None => Ok(()),
     }
 }
 
@@ -249,7 +264,7 @@ pub async fn record(state: &AppState, input: NewRecord) -> Result<AttendanceReco
     let date = dubai_date(input.check_in);
     ensure_at_work(state, input.employee).await?;
     ensure_in_window(state, date)?;
-    ensure_open_day(state, &location, date).await?;
+    ensure_open_day(state, &location, input.employee, date).await?;
     if input.check_out.is_some_and(|out| out <= input.check_in) {
         return Err(refuse(english("wl_attendance.record.times", &[])));
     }
@@ -274,6 +289,15 @@ pub async fn record(state: &AppState, input: NewRecord) -> Result<AttendanceReco
         ..AttendanceRecord::default()
     };
     record.insert(&mut tx).await?;
+    // A supervisor who enters a day that is over (HRM.ACL.01, up to the
+    // late-entry window) leaves the `late_entry` note; it holds nothing.
+    if input.method == AttendanceMethod::Supervisor && date < today() {
+        let note = english(
+            "wl_attendance.record.late_entry_note",
+            &[("entered", &dubai_date(now())), ("date", &date)],
+        );
+        flags::note_in(&mut tx, record.id, FlagType::LateEntry, &note, input.by).await?;
+    }
     let mut pending = Pending::default();
     checks::run_in(state, &mut tx, &record, &location, &prepared, &mut pending).await?;
     tx.commit().await?;

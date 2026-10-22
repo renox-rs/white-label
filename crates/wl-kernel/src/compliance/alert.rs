@@ -81,6 +81,10 @@ pub struct ComplianceAlert {
     pub ticket_id: Option<i64>,
     /// The task's number.
     pub ticket_number: Option<String>,
+    /// When the owner was told and the task opened. Empty while the notice
+    /// is still owed: a raise that failed half way is finished by the next
+    /// raise for the occurrence.
+    pub notified_at: Option<DateTime>,
     /// When the alert was raised.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

@@ -7,6 +7,7 @@ use accounting::permissions as acc;
 use clinics::permissions as cln;
 use construction::permissions as con;
 use logistics::permissions as log;
+use manpower::permissions as mpw;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
@@ -166,6 +167,12 @@ pub const QUANTITY_SURVEYOR: &str = con::QS_ROLE;
 /// The HSE officer: told of a midday break flag (`HRM.RUL.13`) and the
 /// responsible role of the ISO certificate (02 §7.2).
 pub const HSE_OFFICER: &str = "hse";
+/// The account manager: owns client accounts, their contracts, requests and
+/// deployments (09 Manpower §3.1); assigned per client company (§3.2).
+pub const ACCOUNT_MANAGER: &str = mpw::ACCOUNT_MANAGER_ROLE;
+/// The PRO (visa officer): works the visa cases of the workers and is told
+/// when a step passes its target (09 Manpower `MPW.RUL.14`).
+pub const PRO: &str = mpw::PRO_ROLE;
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -241,6 +248,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::PAYER_BILLS_ISSUE,
             invoices::PAYER_BILLS_RECONCILE,
             invoices::PAYER_BILLS_WRITE_OFF,
+            // The MD approves a rate card version dated in the past
+            // (`MPW.ACL.16`).
+            invoices::RATE_CARDS_VIEW,
+            invoices::RATE_CARDS_MANAGE,
+            invoices::RATE_CARDS_APPROVE,
             tickets::VIEW,
             tickets::CREATE,
             tickets::ASSIGN,
@@ -303,11 +315,19 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
             hr::EMPLOYEES_EXIT_APPROVE,
+            hr::PAY_ACCOUNTS_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
             hr::LEAVE_VIEW,
             hr::LEAVE_REQUEST,
             hr::LEAVE_APPROVE,
+            hr::PAYROLL_VIEW,
+            hr::PAYROLL_PREPARE,
+            hr::PAYROLL_APPROVE,
+            hr::ADJUSTMENTS_MANAGE,
+            hr::SETTLEMENTS_PREPARE,
+            hr::SETTLEMENTS_APPROVE,
+            hr::SETTLEMENTS_PAY,
             delivery::VIEW,
             delivery::DISPATCH,
             delivery::COMPLETE,
@@ -406,6 +426,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             con::GUARANTEES_MANAGE,
             con::VARIATIONS_RECORD,
             con::VARIATIONS_SUBMIT,
+            mpw::CONTRACTS_VIEW,
+            mpw::CONTRACTS_MANAGE,
+            mpw::SITES_MANAGE,
+            mpw::REQUESTS_VIEW,
+            mpw::REQUESTS_CREATE,
+            mpw::REQUESTS_MANAGE,
+            mpw::DEPLOYMENTS_VIEW,
+            mpw::DEPLOYMENTS_MANAGE,
+            mpw::ABSENCE_MANAGE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -677,6 +706,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
         &[
             acc::AML_RAISE,
             sales::LOYALTY_VIEW,
+            // Told of WPS rejections (`HRM.RUL.11`), reads the run.
+            hr::PAYROLL_VIEW,
+            // Pays the final settlements and records their payments.
+            hr::SETTLEMENTS_PAY,
             prp::UNITS_VIEW,
             prp::LEASES_VIEW,
             prp::LEASES_CANCEL,
@@ -795,6 +828,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // the MD who approves the non-standard exits (`HRM.ACL.07`).
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_EXIT_APPROVE,
+            hr::PAY_ACCOUNTS_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
             scheduling::VIEW,
@@ -813,6 +847,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // The owner of the clinical and infection control SOPs publishes
             // their versions (`DOC.RUL.04`, 05 §7.2).
             documents::SOPS_MANAGE,
+            hr::PAYROLL_VIEW,
+            hr::PAYROLL_APPROVE,
+            // The MD approves the final settlements and resolves their disputes
+            // (`HRM.ACL.04`).
+            hr::SETTLEMENTS_APPROVE,
         ],
     ),
     (
@@ -820,10 +859,19 @@ pub const ROLES: &[(&str, &[&str])] = &[
         &[
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
+            // The absence case of a worker who has not turned up
+            // (`MPW.RUL.09`, 09 Manpower).
+            mpw::ABSENCE_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
             hr::LEAVE_VIEW,
             hr::LEAVE_APPROVE,
+            // HR prepares payroll; the MD approves it (`HRM.ACL.04`).
+            hr::PAYROLL_VIEW,
+            hr::PAYROLL_PREPARE,
+            hr::ADJUSTMENTS_MANAGE,
+            // HR prepares and disputes the final settlements.
+            hr::SETTLEMENTS_PREPARE,
             attendance::VIEW,
             attendance::REVIEW,
             // HR clears a permit flag by correcting or accepting it, and is
@@ -833,7 +881,37 @@ pub const ROLES: &[(&str, &[&str])] = &[
     ),
     (
         SUPERVISOR,
-        &[attendance::VIEW, attendance::MARK, attendance::CORRECT],
+        &[
+            attendance::VIEW,
+            attendance::MARK,
+            attendance::CORRECT,
+            // 09 §3.1: sees the deployments of their site (§3.2).
+            mpw::DEPLOYMENTS_VIEW,
+        ],
+    ),
+    (
+        ACCOUNT_MANAGER,
+        &[
+            mpw::CONTRACTS_VIEW,
+            mpw::CONTRACTS_MANAGE,
+            mpw::SITES_MANAGE,
+            mpw::REQUESTS_VIEW,
+            mpw::REQUESTS_CREATE,
+            mpw::REQUESTS_MANAGE,
+            mpw::DEPLOYMENTS_VIEW,
+            mpw::DEPLOYMENTS_MANAGE,
+            parties::VIEW,
+            documents::VIEW,
+            invoices::VIEW,
+            // The account manager makes the rate card versions of the
+            // client contracts and records the signed acceptance
+            // (`MPW.ACL.16`).
+            invoices::RATE_CARDS_VIEW,
+            invoices::RATE_CARDS_MANAGE,
+            attendance::VIEW,
+            tickets::VIEW,
+            tickets::CREATE,
+        ],
     ),
     (
         STOREKEEPER,
@@ -1178,13 +1256,67 @@ pub const ROLES: &[(&str, &[&str])] = &[
         ],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),
+    (PRO, &[hr::EMPLOYEES_VIEW, hr::VISAS_MANAGE]),
     (MEMBER, &[]),
 ];
 
+/// What a vertical grants a role on top of [`ROLES`] for this deployment only
+/// (09: HR and the accountant see the confidential labour cases and grievances,
+/// which the accountant of 04 must not). Set once when the app is built.
+static EXTRA: std::sync::RwLock<Vec<(&'static str, &'static str)>> =
+    std::sync::RwLock::new(Vec::new());
+
+/// Forgets the extra grants of the deployment built before. Each deployment
+/// starts from here (`app_for_tuned`), so the grants of one vertical never reach
+/// the app of another that is built later in the same process.
+pub fn reset_extra() {
+    EXTRA.write().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
+/// Grants `role` the `extra` permissions for this deployment, besides its row of
+/// [`ROLES`]; [`define`] keeps them, and creates a role that only a vertical
+/// grants (09's `md`). A repeat changes nothing.
+pub fn grant_extra(role: &'static str, extra: &[&'static str]) {
+    let mut found = EXTRA.write().unwrap_or_else(|e| e.into_inner());
+    for permission in extra {
+        if !found.contains(&(role, *permission)) {
+            found.push((role, permission));
+        }
+    }
+}
+
+/// What `role` holds in this deployment: its row of [`ROLES`] and the extra
+/// grants of the vertical ([`grant_extra`]).
+pub fn grants_of(role: &str) -> Vec<&'static str> {
+    let mut grants: Vec<&'static str> = ROLES
+        .iter()
+        .find(|(name, _)| *name == role)
+        .map(|(_, grants)| grants.to_vec())
+        .unwrap_or_default();
+    for (name, permission) in EXTRA.read().unwrap_or_else(|e| e.into_inner()).iter() {
+        if *name == role && !grants.contains(permission) {
+            grants.push(permission);
+        }
+    }
+    grants
+}
+
+/// Every role of this deployment: those of [`ROLES`], then the ones only the
+/// vertical grants ([`grant_extra`]).
+pub fn role_names() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = ROLES.iter().map(|(name, _)| *name).collect();
+    for (name, _) in EXTRA.read().unwrap_or_else(|e| e.into_inner()).iter() {
+        if !names.contains(name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
 /// Creates the roles, or brings their permissions up to date.
 pub async fn define(db: &Db) -> Result {
-    for (role, grants) in ROLES {
-        permissions::define_role(db, role, grants).await?;
+    for role in role_names() {
+        permissions::define_role(db, role, &grants_of(role)).await?;
     }
     Ok(())
 }
@@ -1224,7 +1356,7 @@ pub async fn invite(args: Args, state: AppState) -> Result {
         .unwrap_or_default();
     if let Some(bad) = roles
         .iter()
-        .find(|r| !ROLES.iter().any(|(name, _)| name == *r))
+        .find(|r| !role_names().iter().any(|n| *n == **r))
     {
         return Err(anyhow!("there is no role called {bad}").into());
     }

@@ -98,7 +98,7 @@ impl BlockGuard for Blocks {
 /// The users whose employee was reported as absconded: the workforce switches
 /// their portal access off, as `wl-hr` does from the approved report.
 #[derive(Clone, Default)]
-pub struct Absent(Arc<Mutex<BTreeSet<i64>>>);
+pub struct Absent(Arc<Mutex<BTreeSet<i64>>>, Arc<Mutex<BTreeSet<i64>>>);
 
 impl Absent {
     /// The portal access of `user` is switched off from now on.
@@ -108,6 +108,22 @@ impl Absent {
             .unwrap_or_else(PoisonError::into_inner)
             .insert(user);
     }
+
+    /// The portal of `user` is read-only from now on (the employee exited).
+    pub fn make_read_only(&self, user: i64) {
+        self.1
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(user);
+    }
+
+    /// The portal of `user` is writable again.
+    pub fn make_writable(&self, user: i64) {
+        self.1
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&user);
+    }
 }
 
 impl Workforce for Absent {
@@ -115,6 +131,16 @@ impl Workforce for Absent {
         Box::pin(async move {
             Ok(self
                 .0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .contains(&user_id))
+        })
+    }
+
+    fn read_only<'a>(&'a self, _db: &'a Db, user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(self
+                .1
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .contains(&user_id))

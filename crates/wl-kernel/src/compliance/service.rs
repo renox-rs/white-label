@@ -136,13 +136,23 @@ fn what(alert: &ComplianceAlert) -> String {
 /// the company admin at once, and opens a task for the owner role. One alert
 /// per occurrence: a second call for the same occurrence (a retry, a later
 /// check) does nothing and returns `None`.
+///
+/// Retry-safe: the alert row is stored first, but it only counts as raised
+/// once the notice went out and the task is open (`notified_at`). When the
+/// notifier or the ticketing fails, the error returns and the row stays
+/// without `notified_at`; the next call for the occurrence finds it, tells
+/// and opens the task (the task is found by its source key, so it is opened
+/// once) and returns the alert.
 pub async fn raise(state: &AppState, raised: Raised) -> Result<Option<ComplianceAlert>> {
     let db = &state.db;
-    if ComplianceAlert::of_occurrence(db, &raised.rule, &raised.subject, &raised.occurrence_key)
-        .await?
-        .is_some()
+    if let Some(existing) =
+        ComplianceAlert::of_occurrence(db, &raised.rule, &raised.subject, &raised.occurrence_key)
+            .await?
     {
-        return Ok(None);
+        if existing.notified_at.is_some() || !existing.is_open() {
+            return Ok(None);
+        }
+        return Ok(Some(finish(state, existing).await?));
     }
     let owner = owner_role(state, &raised.rule).await?;
     let created = ComplianceAlert::create(
@@ -167,8 +177,19 @@ pub async fn raise(state: &AppState, raised: Raised) -> Result<Option<Compliance
         Err(error) if error.is_unique_violation() => return Ok(None),
         Err(error) => return Err(error),
     };
+    Ok(Some(finish(state, alert).await?))
+}
+
+/// Tells the owners, opens the task and marks the alert as notified.
+async fn finish(state: &AppState, alert: ComplianceAlert) -> Result<ComplianceAlert> {
     tell(state, &alert).await?;
-    Ok(Some(open_task(state, alert).await?))
+    let alert = open_task(state, alert).await?;
+    ComplianceAlert::where_eq("id", alert.id)
+        .update(&state.db, &[("notified_at", &Some(now()))])
+        .await?;
+    ComplianceAlert::find(&state.db, alert.id)
+        .await?
+        .ok_or(Error::NotFound)
 }
 
 /// Tells the company admin and the owner role, in the app and by e-mail.

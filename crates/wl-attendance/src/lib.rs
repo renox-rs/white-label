@@ -6,10 +6,14 @@ pub mod adjustment;
 pub mod after_last_day;
 pub mod approval;
 pub mod checks;
+pub mod closing;
 pub mod config;
 pub mod crew;
 pub mod crews_affected;
+pub mod deem;
+pub mod dispute;
 pub mod entry;
+pub mod escalation;
 pub mod flags;
 pub mod history;
 pub mod location;
@@ -19,9 +23,11 @@ mod notices;
 pub mod overlap;
 pub mod overtime;
 pub mod pages;
+pub mod payroll;
 pub mod period_end;
 pub mod permit;
 pub mod proposal;
+pub mod reconcile;
 pub mod record;
 pub mod review;
 pub mod service;
@@ -138,6 +144,30 @@ impl WlAttendance {
         self
     }
 
+    /// Days after `submit` at which `HRM.RUL.15` escalates an unanswered
+    /// external timesheet (default 6, calendar days).
+    pub fn escalation_days(mut self, days: i64) -> Self {
+        self.config.escalation_days = days;
+        self
+    }
+
+    /// What payroll pays at the cut-off for a timesheet that an approver of
+    /// `kind` has not approved: `Attendance` (default, the accepted
+    /// attendance hours, provisional) or `Wait` (only for an internal
+    /// approver).
+    ///
+    /// # Errors
+    ///
+    /// [`config::SettingRefused`] for `Wait` with an external approver.
+    pub fn payroll_basis(
+        mut self,
+        kind: timesheet::ApproverKind,
+        basis: config::PayrollBasis,
+    ) -> Result<Self, config::SettingRefused> {
+        self.config.set_payroll_basis(kind, basis)?;
+        Ok(self)
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &AttendanceConfig {
         &self.config
@@ -186,13 +216,20 @@ impl Module for WlAttendance {
         app.model::<Timesheet>();
         app.model::<TimesheetEntry>();
         app.model::<approval::ApprovalEvidence>();
+        app.model::<dispute::AdjustmentEvidence>();
+        app.model::<payroll::ProvisionalHours>();
         app.provide(self.config.clone());
         overtime::provide_entry_hours(app, entry::TimesheetEntryHours);
+        wl_kernel::timesheets::provide_timesheets(app, payroll::AttendanceTimesheets);
         wl_kernel::attendance::provide_attendance_review(app, after_last_day::Reviewer);
         wl_kernel::attendance::provide_attendance_history(app, history::Attended);
+        wl_kernel::timesheets::provide_timesheet_closing(app, closing::Closer);
         renox::state_machine::register::<AttendanceRecord>();
         renox::state_machine::register::<Timesheet>();
         notices::register_types();
+        dispute::register(app);
+        reconcile::register(app);
+        escalation::schedule(app);
         period_end::schedule(app);
         wl_kernel::documents::register_future_work(
             crews_affected::GUARDED,

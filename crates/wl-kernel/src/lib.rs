@@ -39,9 +39,11 @@ pub mod numbering;
 pub mod parties;
 pub mod payer_bills;
 pub mod payments;
+pub mod payroll_calendar;
 pub mod portal;
 pub mod qualifications;
 pub mod quotations;
+pub mod rate_cards;
 pub mod role_tasks;
 pub mod sales;
 pub mod scheduling;
@@ -52,6 +54,9 @@ pub mod subject;
 pub mod subscriptions;
 mod texts;
 pub mod tickets;
+pub mod timesheets;
+pub mod usage;
+pub mod visa_steps;
 pub mod voids;
 pub mod wip;
 pub mod workforce;
@@ -194,6 +199,7 @@ pub use payments::{
     RefundPaid, RefundRequest, RefundSource, ReversalReason, UnpaidRefund,
 };
 pub use qualifications::{NoQualifications, QualificationStatus, Qualifications};
+pub use rate_cards::{NoRateCards, RateCardVersion, RateCards};
 pub use sales::{
     Attribute, AttributionTarget, CampaignActivated, CampaignAttribution, CampaignEnded,
     CampaignId, CustomerAcquired, CustomerAcquisitionChanged, FirstSale, LEAD_SUBJECT_TYPE,
@@ -238,9 +244,13 @@ pub use workforce::{
 /// The kernel's permissions (wl-kernel §6).
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
-    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, LeaveApproved, LeaveCancelled,
-    NoWorkforce, ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted,
-    StaffProfile, Workforce, provide_workforce, workforce,
+    EmployeeExited, EmployeeId, EmployeeNoticeGiven, EmployeeNoticeWithdrawn,
+    EmployeeOnboardingCancelled, EmployeeReinstated, FailedPayrollLine, LeaveApproved,
+    LeaveCancelled, NoWorkforce, ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId,
+    OnboardingStarted, PAY_ACCOUNT_SUBJECT_TYPE, PAYROLL_RUN_SUBJECT_TYPE, PayAccountChanged,
+    PayrollLinesFailed, PayrollRunId, PayrollRunPaid, PayrollRunReturned, SETTLEMENT_SUBJECT_TYPE,
+    SettlementDisputed, SettlementId, SettlementPaid, StaffProfile, VISA_CASE_SUBJECT_TYPE,
+    VisaCaseRejected, Workforce, provide_workforce, workforce,
 };
 
 /// The permission names the kernel declares.

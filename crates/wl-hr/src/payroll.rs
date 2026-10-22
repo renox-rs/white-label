@@ -1,8 +1,31 @@
-//! Payroll runs and lines as far as an exit needs them (wl-hr §4 *Payroll
-//! run*, §5.6, issue #197). The lifecycle of a run (`calculate`, `approve`,
-//! `return`, `reject`, `confirm_paid`, ...) comes with BL-HRM-11 to 18; here
-//! are the run and its lines, and the three transitions that decide which
-//! line goes into which SIF file:
+//! Payroll runs and lines (wl-hr §4 *Payroll run*, §5.3, §5.6, issues #197,
+//! #201 to #208). The run and its lines, and:
+//!
+//! - `calculate` (draft, calculated -> calculated, `payroll.prepare`): the
+//!   user is the preparer; the lines of a `regular` run are calculated from
+//!   the salary structures, the timesheet hours (provisional ones marked) and
+//!   the differences of adjustment timesheets and reconciliations
+//!   ([`crate::calculation`], BL-HRM-16); the period's adjustments are taken
+//!   into the lines.
+//! - `approve` (calculated -> approved, `payroll.approve`): another user than
+//!   the preparer (`HRM.ACL.04`), and refused while a line is above the
+//!   Art. 25 caps (`HRM.ACL.06`, [`crate::caps`]) for every approver.
+//! - `return` (calculated, approved -> draft, `payroll.approve`): the approver
+//!   sends the run back with a reason and a comment on at least one line
+//!   ([`comment_line`]); the approver is cleared and the preparer told
+//!   ([`crate::payroll_events`]). Not possible once the file was sent.
+//!
+//! - `confirm_paid` (submitted, partially_rejected -> paid, `payroll.approve`)
+//!   and the partly failed file: see [`crate::wps_partial`].
+//! - Held lines are released by `HRM.RUL.12` into a draft `off_cycle` run, or
+//!   carried into the next regular run ([`crate::release`], BL-HRM-18); the
+//!   `calculate` of such a run keeps its lines.
+//! - `record_rejection` (submitted -> rejected) and `resubmit` (rejected ->
+//!   submitted), `payroll.prepare`: the bank rejects the whole file and the
+//!   preparer sends a new version for the same lines ([`crate::wps_rejection`]);
+//!   the versions are [`crate::sif::SifFile`]s and are never overwritten.
+//!
+//! The transitions that decide which line goes into which SIF file:
 //!
 //! - `submit` (approved -> submitted): generates SIF version 1 from the lines
 //!   that are `included`. A `held` line is left out, so no line is put in a
@@ -16,32 +39,67 @@
 //!   only the lines that were fixed and are `included` again
 //!   ([`fix_line`]); a `failed` line left refuses it, a `held` line stays out.
 //!
-//! The three are `system` transitions run by [`submit`], [`record_partial`]
-//! and [`regenerate`]; the user-facing ones, with `payroll.prepare`, replace
-//! them with BL-HRM-11 to 14 (decision: this issue builds the base only as
-//! far as the held lines need).
+//! `submit` is a `system` transition run by [`submit`] (the user-facing one
+//! comes with the submit guard of the payroll base). `record_partial` and
+//! `regenerate` are user transitions of `payroll.prepare` since BL-HRM-13
+//! ([`crate::wps_partial`], which also holds `confirm_paid`); the functions
+//! [`record_partial`] and [`regenerate`] run their system twins
+//! ([`RECORD_PARTIAL_BY_SYSTEM`], [`REGENERATE_BY_SYSTEM`]) with the same
+//! effects.
 //!
 //! [`hold_open_lines_in`] is what the exits use: the lines that are
 //! `included` in runs not yet `submitted` (`draft`, `calculated`, `approved`)
 //! become `held` with a reason; a line in a file already sent stays.
 
+use renox::chrono::NaiveDate;
 use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine, Transition, TransitionError};
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 
 use crate::employee::{Employee, EmployeeStatus};
 use crate::texts::english;
+use crate::{adjustment, caps, permissions, sif, wps_partial, wps_rejection};
 
 /// The reason of a line held by the absence report.
 pub const HELD_ABSENCE_REPORT: &str = "absence report";
 
+/// The reason of a line held because the bank reported the employee's active
+/// pay account closed while the new one is still cooling (BL-HRM-20).
+pub const HELD_ACCOUNT_CLOSED: &str = "account closed";
+
+/// The reason of a line held while the employee has an open absence case
+/// (wl-hr §4 *Payroll run* `calculate`).
+pub const HELD_ABSENCE_CASE: &str = "absence case";
+
+/// The reason of a line held because the employee died (`record_death`): never
+/// released, the salary it owes goes into the final settlement.
+pub const HELD_DEATH: &str = "death";
+
+/// The preparer calculates the lines of the run.
+pub const CALCULATE: &str = "calculate";
+/// A second user approves the calculated run.
+pub const APPROVE: &str = "approve";
+/// The approver sends a calculated or approved run back to draft.
+pub const RETURN: &str = "return";
+/// The bank rejected the whole file.
+pub const RECORD_REJECTION: &str = "record_rejection";
+/// A new version of the rejected file, once the cause is fixed.
+pub const RESUBMIT: &str = "resubmit";
 /// The run is ready to be sent.
 pub const SUBMIT: &str = "submit";
-/// The bank's result file shows failed lines.
+/// The bank's result file shows failed lines (`payroll.prepare`).
 pub const RECORD_PARTIAL: &str = "record_partial";
-/// A new SIF file with the fixed lines.
+/// The same as [`RECORD_PARTIAL`], run by the system (a bank result that
+/// arrives without a user, and the tests of the exits): it needs no result
+/// file.
+pub const RECORD_PARTIAL_BY_SYSTEM: &str = "record_partial_by_system";
+/// A new SIF file with the fixed lines (`payroll.prepare`).
 pub const REGENERATE: &str = "regenerate";
+/// The same as [`REGENERATE`], run by the system.
+pub const REGENERATE_BY_SYSTEM: &str = "regenerate_by_system";
+/// Payment is confirmed for every line not held (`payroll.approve`).
+pub const CONFIRM_PAID: &str = "confirm_paid";
 
 /// Where a payroll run stands (§4).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -55,6 +113,8 @@ pub enum PayrollRunStatus {
     Approved,
     /// The SIF file was sent.
     Submitted,
+    /// The bank or exchange house rejected the whole file.
+    Rejected,
     /// The bank paid some lines and failed others.
     PartiallyRejected,
     /// Payment confirmed.
@@ -87,6 +147,27 @@ pub struct PayrollRun {
     pub status: PayrollRunStatus,
     /// How many SIF versions were generated.
     pub sif_version: i64,
+    /// The user who last ran `calculate`: the preparer (`HRM.ACL.04`).
+    pub prepared_by: Option<i64>,
+    /// The user who approved it; empty after `return`.
+    pub approved_by: Option<i64>,
+    /// Why the approver last sent it back to `draft` (`return`).
+    pub return_reason: Option<String>,
+    /// Why the bank rejected the whole file (`file_format`,
+    /// `establishment_id`, `funding`, `other`).
+    pub rejection_reason: Option<String>,
+    /// The bank's rejection notice (a reference to the attached file).
+    pub rejection_notice: Option<String>,
+    /// The note on the fix entered at `resubmit`.
+    pub resubmit_note: Option<String>,
+    /// On a supplementary run: the original paid run it corrects
+    /// ([`crate::supplementary`]).
+    pub corrects: Option<i64>,
+    /// On a supplementary run: why it was made.
+    pub reason: Option<String>,
+    /// The day the MD and the accountant were told that the rejection is
+    /// still open before the WPS due date (`HRM.RUL.11`, once per run).
+    pub escalated_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -125,6 +206,55 @@ pub struct PayrollLine {
     pub employee_id: i64,
     /// The net pay, AED fils.
     pub net_amount: i64,
+    /// The gross fixed wage for the period (basic plus fixed allowances), AED
+    /// fils: the basis of the Art. 25 caps (`HRM.ACL.06`). The payroll
+    /// calculation fills it from the salary structure.
+    pub fixed_wage: i64,
+    /// The pay of the hours that are not `normal` (overtime, night, rest day,
+    /// public holiday), AED fils (BL-HRM-16).
+    pub variable_amount: i64,
+    /// The hours added (+) or taken back (-) by adjustment timesheets and
+    /// reconciliations in this run, AED fils; the recoveries are among the
+    /// deductions.
+    pub difference_amount: i64,
+    /// The adjustments deducted on this line, AED fils.
+    pub deductions_amount: i64,
+    /// The minutes of timesheet hours the line was calculated from.
+    pub hours_minutes: i64,
+    /// Of them, the minutes of timesheets not approved yet (provisional).
+    pub provisional_minutes: i64,
+    /// An exception the preparer reviews, e.g. `missing_timesheet`
+    /// ([`crate::calculation::MISSING_TIMESHEET`]).
+    pub exception: Option<String>,
+    /// On a line of a supplementary run: the component the difference is in
+    /// (overtime, allowance, ...).
+    pub component: Option<String>,
+    /// The cost object the cost of the line is posted to at `confirm_paid`
+    /// (`FIN.CST.01`): its subject type, e.g. `construction.project`.
+    pub cost_object_type: Option<String>,
+    /// The cost object's id.
+    pub cost_object_id: Option<i64>,
+    /// On a line of an off-cycle run, or one carried into a regular run: the
+    /// held line it pays ([`crate::release`]).
+    pub source_line_id: Option<i64>,
+    /// On a held line: the run that finally pays it (set once, when the line
+    /// is added to an off-cycle run or carried into a regular one).
+    pub released_into: Option<i64>,
+    /// On a held line: the day its hold reason cleared.
+    pub hold_cleared_on: Option<NaiveDate>,
+    /// On a carried line: why it was carried into a regular run.
+    pub carry_reason: Option<String>,
+    /// On a carried line: the warning that it pays after the WPS due date of
+    /// its period; empty for a line held by a valid absence report.
+    pub late_warning: Option<String>,
+    /// On a line held for a death: the final settlement that took the salary
+    /// it owes up to the date of death (*settled in the final settlement*).
+    pub settled_in_settlement: Option<i64>,
+    /// On such a line: the amount moved into that settlement, AED fils.
+    pub settled_amount: i64,
+    /// The approver's comment on this line to fix (`return`); cleared by the
+    /// next `calculate`.
+    pub approver_comment: Option<String>,
     /// Where it stands.
     pub status: LineStatus,
     /// Why it is held.
@@ -133,6 +263,13 @@ pub struct PayrollLine {
     pub failure_reason: Option<String>,
     /// The SIF version that carries it; empty when it is in none.
     pub sif_version: Option<i64>,
+    /// When its payslip was published to the employee portal (once).
+    pub payslip_published_at: Option<DateTime>,
+    /// The approved non-WPS way a failed line was paid instead
+    /// (`transfer`, `cheque`, `cash`).
+    pub paid_method: Option<String>,
+    /// That payment's reference, e.g. `TR-88`.
+    pub paid_reference: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -140,6 +277,11 @@ pub struct PayrollLine {
 }
 
 impl PayrollRun {
+    /// The run as a [`Subject`](wl_kernel::Subject), for notices.
+    pub fn subject(&self) -> wl_kernel::Subject {
+        wl_kernel::PayrollRunId(self.id).subject()
+    }
+
     /// The lines of the run, oldest first.
     pub async fn lines(&self, db: &Db) -> Result<Vec<PayrollLine>> {
         PayrollLine::query()
@@ -148,6 +290,76 @@ impl PayrollRun {
             .get(db)
             .await
     }
+}
+
+/// The salary of a line of period `period` (`2026-11`) that is owed up to
+/// `death`, AED fils: the whole net when the period ended on or before the
+/// day of death, nothing when it began after it, else the net pro rata over
+/// the calendar days of the period (rounded down). Decision: the spec says
+/// "the salary they owe up to the date of death" without a method; calendar
+/// days are the simplest one and the preparer can still revise the figure
+/// while the settlement is a draft.
+pub fn owed_until(net: i64, period: &str, death: NaiveDate) -> i64 {
+    let Some((from, to)) = crate::hours::period_bounds(period) else {
+        return 0;
+    };
+    if death >= to {
+        return net.max(0);
+    }
+    if death < from {
+        return 0;
+    }
+    let days = (to - from).num_days() + 1;
+    let owed = (death - from).num_days() + 1;
+    net.max(0) * owed / days
+}
+
+/// Holds the lines of `employee_id` in runs not yet `submitted` for a death,
+/// inside `tx`: `included` lines and lines held for an absence case or an
+/// absence report (the worker will not come back, so nothing releases them)
+/// become `held` with [`HELD_DEATH`]. Returns them with the period of their
+/// run; lines already settled are left. A line in a file already sent stays.
+pub async fn hold_for_death_in(
+    tx: &mut Transaction,
+    employee_id: i64,
+) -> Result<Vec<(PayrollLine, String)>> {
+    let lines = PayrollLine::query()
+        .where_(PayrollLine::EMPLOYEE_ID.eq(employee_id))
+        .where_(PayrollLine::STATUS.is_in([LineStatus::Included, LineStatus::Held]))
+        .where_(PayrollLine::SETTLED_IN_SETTLEMENT.is_null())
+        .where_(PayrollLine::RELEASED_INTO.is_null())
+        .order_by(PayrollLine::ID)
+        .get(&mut *tx)
+        .await?;
+    let mut held = Vec::new();
+    for line in lines {
+        let ours = line.status == LineStatus::Included
+            || [HELD_ABSENCE_CASE, HELD_ABSENCE_REPORT]
+                .contains(&line.held_reason.as_deref().unwrap_or_default());
+        if !ours {
+            continue;
+        }
+        let Some(run) = PayrollRun::find(&mut *tx, line.run_id)
+            .await?
+            .filter(|run| run.status.is_unsent())
+        else {
+            continue;
+        };
+        PayrollLine::query()
+            .where_(PayrollLine::ID.eq(line.id))
+            .update(
+                &mut *tx,
+                &[
+                    ("status", &LineStatus::Held.as_str().to_owned()),
+                    ("held_reason", &Some(HELD_DEATH.to_owned())),
+                    ("hold_cleared_on", &None::<NaiveDate>),
+                    ("updated_at", &now()),
+                ],
+            )
+            .await?;
+        held.push((line, run.period));
+    }
+    Ok(held)
 }
 
 /// A line the bank failed, with the reason from its result file.
@@ -165,6 +377,20 @@ pub struct FailedLine {
 pub struct PartialInput {
     /// The lines the result file shows failed.
     pub failed: Vec<FailedLine>,
+    /// The bank's result file: a reference to the attached file. It is the
+    /// confirmation for the lines it shows paid. The user transition needs
+    /// it; the system one does not.
+    pub result_file: String,
+}
+
+/// The input of `confirm_paid`.
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct ConfirmInput {
+    /// The bank or exchange-house confirmation of the latest SIF version: a
+    /// reference to the attached file. Earlier versions were confirmed by
+    /// the result file of `record_partial`.
+    pub confirmation: String,
 }
 
 impl StateMachine for PayrollRun {
@@ -172,7 +398,9 @@ impl StateMachine for PayrollRun {
     const COLUMN: renox::db::Col<PayrollRun, PayrollRunStatus> = PayrollRun::STATUS;
 
     fn machine() -> Machine<Self> {
-        use PayrollRunStatus::{Approved, Calculated, Draft, Paid, PartiallyRejected, Submitted};
+        use PayrollRunStatus::{
+            Approved, Calculated, Draft, Paid, PartiallyRejected, Rejected, Submitted,
+        };
         Machine::new()
             .initial([Draft])
             .state(Draft)
@@ -183,11 +411,18 @@ impl StateMachine for PayrollRun {
             .tone("info")
             .state(Submitted)
             .tone("info")
+            .state(Rejected)
+            .tone("error")
             .state(PartiallyRejected)
             .tone("warning")
             .state(Paid)
             .tone("success")
             .terminal()
+            .transition(calculate())
+            .transition(approve())
+            .transition(return_run())
+            .transition(wps_rejection::record_rejection())
+            .transition(wps_rejection::resubmit())
             .transition(
                 Transition::new(SUBMIT)
                     .label("Submit")
@@ -196,89 +431,207 @@ impl StateMachine for PayrollRun {
                     .to(Submitted)
                     .effect(|run: &PayrollRun, _ctx, tx| {
                         let id = run.id;
-                        Box::pin(async move { generate_sif_in(tx, id).await })
-                    }),
-            )
-            .transition(
-                Transition::new(RECORD_PARTIAL)
-                    .label("Record partial rejection")
-                    .system()
-                    .from([Submitted])
-                    .to(PartiallyRejected)
-                    .guard("reasons_given", |_run: &PayrollRun, ctx| {
-                        let input = ctx.input_as::<PartialInput>().unwrap_or_default();
-                        let blank = input.failed.iter().any(|f| f.reason.trim().is_empty());
                         Box::pin(async move {
-                            if blank {
-                                Err(english("wl_hr.payroll.reason_required", &[]))
-                            } else {
-                                Ok(())
-                            }
-                        })
-                    })
-                    .effect(|run: &PayrollRun, ctx, tx| {
-                        let id = run.id;
-                        let input = ctx.input_as::<PartialInput>().unwrap_or_default();
-                        Box::pin(async move { record_result_in(tx, id, &input).await })
-                    }),
-            )
-            .transition(
-                Transition::new(REGENERATE)
-                    .label("Regenerate")
-                    .system()
-                    .from([PartiallyRejected])
-                    .to(Submitted)
-                    .effect(|run: &PayrollRun, _ctx, tx| {
-                        let id = run.id;
-                        Box::pin(async move {
-                            let failed = PayrollLine::query()
-                                .where_(PayrollLine::RUN_ID.eq(id))
-                                .where_(PayrollLine::STATUS.eq(LineStatus::Failed))
-                                .count(&mut *tx)
-                                .await?;
-                            if failed > 0 {
-                                return Err(Error::Status(
-                                    StatusCode::UNPROCESSABLE_ENTITY,
-                                    english("wl_hr.payroll.failed_lines_left", &[]),
-                                ));
-                            }
+                            // A line whose account is closed, with the new one
+                            // still cooling, goes into no file.
+                            crate::pay_account_use::hold_closed_in(tx, id).await?;
                             generate_sif_in(tx, id).await
                         })
                     }),
             )
+            .transition(wps_partial::record_partial(false))
+            .transition(wps_partial::record_partial(true))
+            .transition(wps_partial::regenerate(false))
+            .transition(wps_partial::regenerate(true))
+            .transition(wps_partial::confirm_paid())
     }
 }
 
-/// The next SIF version of run `run_id`: every `included` line goes into it
-/// (a held, paid or failed line does not).
-async fn generate_sif_in(tx: &mut Transaction, run_id: i64) -> Result {
-    let Some(run) = PayrollRun::find(&mut *tx, run_id).await? else {
-        return Ok(());
-    };
-    let version = run.sif_version + 1;
+/// `calculate` (draft, calculated -> calculated, `payroll.prepare`): the user
+/// who runs it is the preparer. The lines of a `regular` run are calculated
+/// from the salary structures, the timesheet hours the transition is given as
+/// input and the differences of adjustment timesheets and reconciliations
+/// ([`crate::calculation`]); the adjustments of the run's period are taken
+/// into the lines (`HRM.ACL.06` checks them). The lines of an `off_cycle` or a
+/// `supplementary` run are fixed when the run is made: `calculate` only
+/// records the preparer.
+fn calculate() -> Transition<PayrollRun> {
+    Transition::new(CALCULATE)
+        .label("Calculate")
+        .permission(permissions::PAYROLL_PREPARE)
+        .from([PayrollRunStatus::Draft, PayrollRunStatus::Calculated])
+        .to(PayrollRunStatus::Calculated)
+        .effect(|run: &PayrollRun, ctx, tx| {
+            let run = run.clone();
+            let by = ctx.actor().map(|user| user.id);
+            let input = ctx
+                .input_as::<crate::calculation::CalculateInput>()
+                .unwrap_or_default();
+            Box::pin(async move {
+                let id = run.id;
+                let calculated = crate::calculation::lines_in(tx, &run, &input).await?;
+                if run.run_type == crate::calculation::REGULAR {
+                    adjustment::link_to_run_in(tx, id, &run.period).await?;
+                }
+                crate::calculation::settle_in(tx, id, &calculated).await?;
+                // The comments of a `return` were answered by this calculation.
+                PayrollLine::query()
+                    .where_(PayrollLine::RUN_ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("approver_comment", &None::<String>),
+                            ("updated_at", &now()),
+                        ],
+                    )
+                    .await?;
+                PayrollRun::query()
+                    .where_(PayrollRun::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("prepared_by", &by),
+                            ("approved_by", &None::<i64>),
+                            ("updated_at", &now()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// `approve` (calculated -> approved, `payroll.approve`): not the preparer
+/// (`HRM.ACL.04`), and not while a line is above the Art. 25 caps
+/// (`HRM.ACL.06`, [`caps`]): the check is an effect, so it cannot be skipped
+/// by any permission.
+fn approve() -> Transition<PayrollRun> {
+    Transition::new(APPROVE)
+        .label("Approve")
+        .tone("primary")
+        .permission(permissions::PAYROLL_APPROVE)
+        .from([PayrollRunStatus::Calculated])
+        .to(PayrollRunStatus::Approved)
+        .guard("not_the_preparer", |run: &PayrollRun, ctx| {
+            let problem = preparer_problem(run, ctx);
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|run: &PayrollRun, ctx, tx| {
+            let id = run.id;
+            let period = run.period.clone();
+            let regular = run.run_type == crate::calculation::REGULAR;
+            let by = ctx.actor().map(|user| user.id);
+            Box::pin(async move {
+                // An adjustment entered after `calculate` is taken into its
+                // line now, so the caps see it and the net deducts it.
+                if regular {
+                    let late = adjustment::link_late_in(tx, id, &period).await?;
+                    crate::calculation::settle_in(tx, id, &late).await?;
+                }
+                let problems = caps::problems_in(tx, id).await?;
+                if !problems.is_empty() {
+                    return Err(Error::Status(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        english("wl_hr.payroll.caps_exceeded", &[("count", &problems.len())]),
+                    ));
+                }
+                PayrollRun::query()
+                    .where_(PayrollRun::ID.eq(id))
+                    .update(&mut *tx, &[("approved_by", &by), ("updated_at", &now())])
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// Why the user may not approve or return `run`: they prepared it
+/// (`HRM.ACL.04`).
+fn preparer_problem(run: &PayrollRun, ctx: &TransitionCtx) -> Option<String> {
+    let same = matches!(
+        (ctx.actor(), run.prepared_by),
+        (Some(user), Some(preparer)) if user.id == preparer
+    );
+    same.then(|| english("wl_hr.payroll.same_user", &[]))
+}
+
+/// `return` (calculated, approved -> draft, `payroll.approve`): the approver
+/// sends the run back with a reason and at least one comment on a line to
+/// fix. The approver is cleared; the lines and files stay, and the next
+/// `calculate` recalculates the lines. Not possible once the file was sent:
+/// an amount error is then corrected by a supplementary run (§5.6). The
+/// preparer is told after the commit (`payroll_events`).
+fn return_run() -> Transition<PayrollRun> {
+    Transition::new(RETURN)
+        .label("Return")
+        .tone("danger")
+        .permission(permissions::PAYROLL_APPROVE)
+        .from([PayrollRunStatus::Calculated, PayrollRunStatus::Approved])
+        .to(PayrollRunStatus::Draft)
+        .reason_required()
+        .guard("not_the_preparer", |run: &PayrollRun, ctx| {
+            let problem = preparer_problem(run, ctx);
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|run: &PayrollRun, ctx, tx| {
+            let id = run.id;
+            let reason = ctx.reason().map(str::trim).map(str::to_owned);
+            Box::pin(async move {
+                let commented = PayrollLine::query()
+                    .where_(PayrollLine::RUN_ID.eq(id))
+                    .where_(PayrollLine::APPROVER_COMMENT.is_not_null())
+                    .count(&mut *tx)
+                    .await?;
+                if commented == 0 {
+                    return Err(Error::Status(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        english("wl_hr.payroll.comment_required", &[]),
+                    ));
+                }
+                PayrollRun::query()
+                    .where_(PayrollRun::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("approved_by", &None::<i64>),
+                            ("return_reason", &reason),
+                            ("updated_at", &now()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// Sets or clears the approver's comment on line `line_id` (blank clears
+/// it). The page route checks who may comment.
+pub async fn comment_line(db: &Db, line_id: i64, comment: &str) -> Result<()> {
+    let comment = Some(comment.trim().to_owned()).filter(|c| !c.is_empty());
     PayrollLine::query()
-        .where_(PayrollLine::RUN_ID.eq(run_id))
-        .where_(PayrollLine::STATUS.eq(LineStatus::Included))
+        .where_(PayrollLine::ID.eq(line_id))
         .update(
-            &mut *tx,
-            &[("sif_version", &Some(version)), ("updated_at", &now())],
-        )
-        .await?;
-    PayrollRun::query()
-        .where_(PayrollRun::ID.eq(run_id))
-        .update(
-            &mut *tx,
-            &[("sif_version", &version), ("updated_at", &now())],
+            db,
+            &[("approver_comment", &comment), ("updated_at", &now())],
         )
         .await?;
     Ok(())
+}
+
+/// The next SIF version of run `run_id`: every `included` line goes into it
+/// (a held, paid or failed line does not), see [`sif::generate_in`].
+async fn generate_sif_in(tx: &mut Transaction, run_id: i64) -> Result {
+    sif::generate_in(tx, run_id, None).await
 }
 
 /// The bank's result for run `run_id`: the failed lines are `failed` with
 /// their reason, except the line of an `absconded` employee, which is `held`
 /// with *absence report* and not regenerated; every other line of the file
 /// is `paid`.
-async fn record_result_in(tx: &mut Transaction, run_id: i64, input: &PartialInput) -> Result {
+pub(crate) async fn record_result_in(
+    tx: &mut Transaction,
+    run_id: i64,
+    input: &PartialInput,
+) -> Result {
     let lines = PayrollLine::query()
         .where_(PayrollLine::RUN_ID.eq(run_id))
         .where_(PayrollLine::STATUS.eq(LineStatus::Included))
@@ -290,6 +643,9 @@ async fn record_result_in(tx: &mut Transaction, run_id: i64, input: &PartialInpu
         let (status, held, failed) = match failure {
             None => (LineStatus::Paid, None, None),
             Some(failure) => {
+                if crate::pay_account_use::is_closed_reason(&failure.reason) {
+                    crate::pay_account_use::mark_closed_in(tx, line.employee_id).await?;
+                }
                 let absconded = Employee::find(&mut *tx, line.employee_id)
                     .await?
                     .is_some_and(|e| e.status == EmployeeStatus::Absconded);
@@ -320,7 +676,30 @@ async fn record_result_in(tx: &mut Transaction, run_id: i64, input: &PartialInpu
                 ],
             )
             .await?;
+        if status == LineStatus::Paid {
+            publish_payslip_in(tx, line.id).await?;
+        }
     }
+    Ok(())
+}
+
+/// Publishes the payslip of line `line_id` to the employee portal, once: a
+/// line whose payslip is published keeps the time it was. Decision: the
+/// payslip document itself (`DOC.GEN.01`) is made by wl-documents when it
+/// provides the contract; here the line records that it is published, which
+/// is what the portal and `confirm_paid` read.
+pub(crate) async fn publish_payslip_in(tx: &mut Transaction, line_id: i64) -> Result {
+    PayrollLine::query()
+        .where_(PayrollLine::ID.eq(line_id))
+        .where_(PayrollLine::PAYSLIP_PUBLISHED_AT.is_null())
+        .update(
+            &mut *tx,
+            &[
+                ("payslip_published_at", &Some(now())),
+                ("updated_at", &now()),
+            ],
+        )
+        .await?;
     Ok(())
 }
 
@@ -362,8 +741,11 @@ pub async fn hold_open_lines_in(
     Ok(held)
 }
 
-/// A failed line was fixed (its pay account changed): it is `included`
-/// again, for the next SIF version.
+/// A failed line was fixed: it is `included` again, for the next SIF version.
+/// The change of a pay account does not call this directly: it goes through
+/// [`crate::release::line_fixed`], which does the same for a failed line and
+/// also releases a held one. This stays for the bank-side fixes and the tests
+/// of the WPS flows.
 pub async fn fix_line(db: &Db, line_id: i64) -> Result<()> {
     PayrollLine::query()
         .where_(PayrollLine::ID.eq(line_id))
@@ -412,7 +794,16 @@ pub async fn record_partial(
     id: i64,
     failed: Vec<FailedLine>,
 ) -> std::result::Result<PayrollRun, TransitionError> {
-    run_system(state, id, RECORD_PARTIAL, &PartialInput { failed }).await
+    run_system(
+        state,
+        id,
+        RECORD_PARTIAL_BY_SYSTEM,
+        &PartialInput {
+            failed,
+            ..PartialInput::default()
+        },
+    )
+    .await
 }
 
 /// A new SIF version of run `id` with only the fixed lines.
@@ -420,7 +811,7 @@ pub async fn regenerate(
     state: &AppState,
     id: i64,
 ) -> std::result::Result<PayrollRun, TransitionError> {
-    run_system(state, id, REGENERATE, &PartialInput::default()).await
+    run_system(state, id, REGENERATE_BY_SYSTEM, &PartialInput::default()).await
 }
 
 #[cfg(test)]
@@ -447,11 +838,14 @@ mod tests {
 
     #[test]
     fn the_three_transitions_are_system_transitions_of_the_spec() {
+        // `record_partial` and `regenerate` are user transitions of
+        // `payroll.prepare` since BL-HRM-13 ([`crate::wps_partial`]); the
+        // system runs their twins, with the same states.
         let machine = PayrollRun::machine();
         let table = [
             (SUBMIT, "approved", "submitted"),
-            (RECORD_PARTIAL, "submitted", "partially_rejected"),
-            (REGENERATE, "partially_rejected", "submitted"),
+            (RECORD_PARTIAL_BY_SYSTEM, "submitted", "partially_rejected"),
+            (REGENERATE_BY_SYSTEM, "partially_rejected", "submitted"),
         ];
         for (name, from, to) in table {
             let transition = machine.find(name).unwrap();

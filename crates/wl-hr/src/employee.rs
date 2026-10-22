@@ -98,6 +98,24 @@ pub struct Employee {
     pub cost_rate_per_hour: Option<i64>,
     /// Where the employee stands; changed only by the machine.
     pub status: EmployeeStatus,
+    /// The last working day while the employee serves notice; cleared when
+    /// the notice is withdrawn or the employee is reinstated.
+    pub last_working_day: Option<NaiveDate>,
+    /// How the employment ended: `onboarding_cancelled`, `absconding`, ...
+    pub exit_route: Option<String>,
+    /// When the portal account was closed (`cancel_onboarding`, `record_death`).
+    pub portal_closed_at: Option<DateTime>,
+    /// The date of death (`record_death`).
+    pub date_of_death: Option<NaiveDate>,
+    /// The day the employee exited (`exit`): the portal is read-only from
+    /// then and closes after the setting's number of days.
+    pub exited_on: Option<NaiveDate>,
+    /// The authority's reference of the cancellation of the residence visa,
+    /// recorded when no *cancellation* case was completed (`exit`).
+    pub cancellation_reference: Option<String>,
+    /// The first day an attendance record was saved for the employee, from
+    /// `AttendanceRecorded` (`cancel_onboarding` re-reads it at the approval).
+    pub first_attended_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

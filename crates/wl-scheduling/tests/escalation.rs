@@ -31,11 +31,12 @@ fn date(text: &str) -> NaiveDate {
 
 fn sick(request: i64) -> LeaveApproved {
     LeaveApproved {
+        leave: Subject::new("hr.leave_request", request),
         employee: EmployeeId(EMPLOYEE),
-        request,
         leave_type: "sick".to_owned(),
         from: date(DAY),
         to: date(DAY),
+        unpaid: false,
     }
 }
 

@@ -15,7 +15,14 @@
 //! account, manager, leave) and the employee of a user.
 //!
 //! `wl-hr` also provides [`Qualifications`](crate::qualifications::Qualifications) (`qualification_valid`) and emits
-//! [`QualificationExpiring`] and [`QualificationExpired`].
+//! [`QualificationExpiring`] and [`QualificationExpired`]. Its payroll runs
+//! are announced with [`PayrollRunReturned`] (a run sent back to draft) and
+//! [`PayrollLinesFailed`] (the bank rejected a SIF file, or lines of it) and
+//! [`PayrollRunPaid`] (payment confirmed). A final settlement is announced with
+//! [`SettlementPaid`] and [`SettlementDisputed`]. The non-standard exits are
+//! announced with [`EmployeeOnboardingCancelled`], [`EmployeeNoticeGiven`], [`EmployeeNoticeWithdrawn`],
+//! [`EmployeeAbsconded`] and [`EmployeeReinstated`]; a refused visa with
+//! [`VisaCaseRejected`].
 //!
 //! An employee is referred to by [`EmployeeId`] or as a [`Subject`] of type
 //! [`EMPLOYEE_SUBJECT_TYPE`]; a scope is a [`Subject`] too (a branch).
@@ -94,6 +101,169 @@ impl From<i64> for OnboardingId {
     }
 }
 
+/// The subject type of a payroll run, for [`Subject`] references.
+pub const PAYROLL_RUN_SUBJECT_TYPE: &str = "hr.payroll_run";
+
+/// The id of a payroll run.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct PayrollRunId(pub i64);
+
+impl PayrollRunId {
+    /// The run as a [`Subject`]: `hr.payroll_run:4`.
+    pub fn subject(self) -> Subject {
+        Subject::new(PAYROLL_RUN_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for PayrollRunId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for PayrollRunId {
+    fn from(id: i64) -> Self {
+        PayrollRunId(id)
+    }
+}
+
+/// An approver sent a payroll run back to `draft` with a reason and comments
+/// on the lines to fix (`return`, wl-hr §4 *Payroll run*): the approval is
+/// cleared.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayrollRunReturned {
+    /// The run.
+    pub run: PayrollRunId,
+    /// Its period, e.g. `2026-11`.
+    pub period: String,
+    /// Why it was returned.
+    pub reason: String,
+}
+
+impl Event for PayrollRunReturned {}
+
+/// A payroll line the bank failed, with the bank's reason.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FailedPayrollLine {
+    /// The payroll line's id.
+    pub line: i64,
+    /// The employee it pays.
+    pub employee: EmployeeId,
+    /// Why the bank failed it (the rejection reason of a whole file, or the
+    /// reason from the result file).
+    pub reason: String,
+}
+
+/// The bank or exchange house rejected the whole SIF file
+/// (`record_rejection`), or failed some lines of it (`record_partial`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayrollLinesFailed {
+    /// The run.
+    pub run: PayrollRunId,
+    /// Its period, e.g. `2026-11`.
+    pub period: String,
+    /// The failed lines with their reasons.
+    pub lines: Vec<FailedPayrollLine>,
+}
+
+impl Event for PayrollLinesFailed {}
+
+/// Payment of a payroll run was confirmed (`confirm_paid`): the payslips are
+/// published. Held lines wait for a later run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayrollRunPaid {
+    /// The run.
+    pub run: PayrollRunId,
+    /// Its period, e.g. `2026-11`.
+    pub period: String,
+    /// The sum of the nets of the lines paid, AED fils.
+    pub total: i64,
+    /// The employees paid.
+    pub employees: Vec<EmployeeId>,
+}
+
+impl Event for PayrollRunPaid {}
+
+/// The subject type of a final settlement, for [`Subject`] references.
+pub const SETTLEMENT_SUBJECT_TYPE: &str = "hr.settlement";
+
+/// The id of a final settlement.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct SettlementId(pub i64);
+
+impl SettlementId {
+    /// The settlement as a [`Subject`]: `hr.settlement:4`.
+    pub fn subject(self) -> Subject {
+        Subject::new(SETTLEMENT_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for SettlementId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for SettlementId {
+    fn from(id: i64) -> Self {
+        SettlementId(id)
+    }
+}
+
+/// A final settlement was paid (`pay`, wl-hr §4): the net is with the
+/// employee (or the estate) and the employee may `exit`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettlementPaid {
+    /// The settlement.
+    pub settlement: SettlementId,
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The sum paid against the settlement, AED fils.
+    pub amount: i64,
+}
+
+impl Event for SettlementPaid {}
+
+/// A final settlement was disputed by the worker, a MoHRE complaint or a
+/// court case (`dispute`, wl-hr §4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettlementDisputed {
+    /// The settlement.
+    pub settlement: SettlementId,
+    /// The employee.
+    pub employee: EmployeeId,
+    /// `worker`, `mohre_complaint` or `court`.
+    pub source: String,
+    /// The complaint or case reference.
+    pub reference: String,
+}
+
+impl Event for SettlementDisputed {}
+
+/// The subject type of a pay account, for [`Subject`] references.
+pub const PAY_ACCOUNT_SUBJECT_TYPE: &str = "hr.pay_account";
+
+/// A new pay account became `active` (`activate`, or `waive_cooling` once an
+/// MD approved it): payroll pays the employee into it from the next run
+/// submitted. The account number itself is never in the event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayAccountChanged {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The last 4 digits of the IBAN or card number.
+    pub last4: String,
+    /// The user who approved the account (at `approve`).
+    pub approver: Option<i64>,
+}
+
+impl Event for PayAccountChanged {}
+
 /// An employee became `active` (`activate`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EmployeeActivated {
@@ -109,23 +279,33 @@ impl Event for EmployeeActivated {}
 
 /// A leave request was approved (wl-hr §4 *Leave request*: `approve`, or
 /// `record_sick` at once). `wl-scheduling` blocks the employee's bookable
-/// time and flags the bookings of the days, the rosters and the verticals'
-/// cover rules follow it.
+/// time and flags the bookings of the days; 09 Manpower opens the cover
+/// request for the leave period when the client contract requires cover
+/// (`MPW.RUL.06`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeaveApproved {
-    /// The employee.
+    /// The leave request, `hr.leave_request:5`.
+    pub leave: Subject,
+    /// The employee on leave.
     pub employee: EmployeeId,
-    /// The leave request.
-    pub request: i64,
     /// `annual`, `sick`, `unpaid`, ...
     pub leave_type: String,
-    /// The first day of leave.
+    /// The first day of the leave.
     pub from: NaiveDate,
-    /// The last day of leave, included.
+    /// The last day of the leave.
     pub to: NaiveDate,
+    /// Whether the leave is unpaid.
+    pub unpaid: bool,
 }
 
 impl Event for LeaveApproved {}
+
+impl LeaveApproved {
+    /// The id of the leave request.
+    pub fn request(&self) -> i64 {
+        self.leave.subject_id
+    }
+}
 
 /// An approved or requested leave was cancelled before it started
 /// (`cancel`): the calendars it blocked are released.
@@ -231,6 +411,71 @@ pub struct EmployeeAbsconded {
 
 impl Event for EmployeeAbsconded {}
 
+/// Notice was given to an employee or by one (`give_notice`, wl-hr §4): the
+/// last working day is set. 09 Manpower caps the end date of the employee's
+/// deployments at it and keeps the end date it replaced, which
+/// [`EmployeeNoticeWithdrawn`] restores (`MPW.RUL.12`). `wl-hr` emits it with
+/// `give_notice`, which is not built yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeNoticeGiven {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The last working day.
+    pub last_working_day: NaiveDate,
+}
+
+impl Event for EmployeeNoticeGiven {}
+
+/// A notice was withdrawn by agreement (`withdraw_notice`, approved under
+/// `HRM.ACL.07`): the employee is `active` again, the settlement and the
+/// cancellation visa case are cancelled and the last working day is cleared.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeNoticeWithdrawn {
+    /// The employee.
+    pub employee: EmployeeId,
+}
+
+impl Event for EmployeeNoticeWithdrawn {}
+
+/// An absconded employee was reinstated (`reinstate`, approved under
+/// `HRM.ACL.07`) after the absence report was withdrawn or cancelled. The
+/// vertical closes its absence case; the held pay is released by `HRM.RUL.12`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeReinstated {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The day the worker returned.
+    pub return_date: NaiveDate,
+}
+
+impl Event for EmployeeReinstated {}
+
+/// The subject type of a visa case, for [`Subject`] references.
+pub const VISA_CASE_SUBJECT_TYPE: &str = "hr.visa_case";
+
+/// A visa case was refused by the authority (`reject`). The vertical tells the
+/// employee's active deployments from `visa_expiry`; wl-documents lists the
+/// affected work again in `DocumentExpiring` (`affected`, `DOC.RUL.02`) once the
+/// visa enters its look-ahead window, so wl-hr builds no `affected` list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VisaCaseRejected {
+    /// The case, `hr.visa_case:7`.
+    pub case: Subject,
+    /// `new`, `renewal`, `cancellation` or a configured type.
+    pub case_type: String,
+    /// The employee.
+    pub employee: EmployeeId,
+    /// For a *renewal*: the day the follow-up task is due (N days before the
+    /// current visa expires, today when that day has passed); empty for the
+    /// other types.
+    pub deadline: Option<NaiveDate>,
+    /// For a *renewal*: the expiry date of the current residence visa; empty
+    /// for the other types.
+    pub visa_expiry: Option<NaiveDate>,
+}
+
+impl Event for VisaCaseRejected {}
+
 /// A scope assignment or the job role of an employee was added, changed or
 /// ended. It does not start an onboarding by itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -324,6 +569,41 @@ pub trait Workforce: Send + Sync + 'static {
     /// The default switches nobody off.
     fn access_disabled<'a>(&'a self, _db: &'a Db, _user_id: i64) -> WorkforceFuture<'a, bool> {
         Box::pin(async { Ok(false) })
+    }
+
+    /// Whether the account of user `user_id` belongs to an employee who has
+    /// exited and whose portal is read-only until it closes (`POR.ACL.01`,
+    /// wl-hr `exit`: the portal stays readable for a number of days, then
+    /// [`access_disabled`](Workforce::access_disabled) answers yes). The
+    /// default switches nobody to read-only.
+    fn read_only<'a>(&'a self, _db: &'a Db, _user_id: i64) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Whether `employee` is `active` now: not in onboarding, on leave, in
+    /// notice or gone. A deployment starts only for such an employee (09
+    /// Manpower §7.1 *Deployment* `activate`). The default is no: a guard that
+    /// cannot find the employee does not let the work through.
+    fn is_active<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// The days after `after` (the last day present) up to today on which HR
+    /// recorded a failed attempt to reach `employee` (no answer, unreachable),
+    /// oldest first, each day once. Two such days show that the worker cannot
+    /// be reached (`report_absconding`, ER Art. 28); the vertical's reminders
+    /// to HR stop once there are two (`MPW.RUL.09`). The default has none.
+    fn failed_contact_days<'a>(
+        &'a self,
+        _db: &'a Db,
+        _employee: EmployeeId,
+        _after: NaiveDate,
+    ) -> WorkforceFuture<'a, Vec<NaiveDate>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 
     /// The employee whose account is the user `user_id`, if any. The default

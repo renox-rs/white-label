@@ -162,11 +162,12 @@ pub async fn unpaid_days_of(state: &AppState, leave: &LeaveRequest) -> Result<i6
 /// The kernel event of an approved `leave`.
 pub fn approved_event(leave: &LeaveRequest) -> LeaveApproved {
     LeaveApproved {
+        leave: leave.subject(),
         employee: leave.employee(),
-        request: leave.id,
         leave_type: leave.leave_type.clone(),
         from: leave.from_date,
         to: leave.to_date,
+        unpaid: leave.leave_type == "unpaid",
     }
 }
 

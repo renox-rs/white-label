@@ -37,7 +37,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use renox::chrono::NaiveDate;
-use renox::db::{Transaction, now};
+use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::state_machine::{Transition, TransitionError};
@@ -69,6 +69,19 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
             .tone("primary")
             .from([TimesheetStatus::Open])
             .to(TimesheetStatus::Submitted)
+            .guard("dispute_not_upheld", |sheet: &Timesheet, _ctx| {
+                // An adjustment of a client dispute that ended `upheld` has
+                // no payroll or billing effect and is not submitted
+                // (`crate::dispute`, BL-ATT-09).
+                let upheld = sheet.dispute_upheld_at.is_some();
+                Box::pin(async move {
+                    if upheld {
+                        Err(english("wl_attendance.adjustment.dispute_upheld", &[]))
+                    } else {
+                        Ok(())
+                    }
+                })
+            })
             .effect(|sheet: &Timesheet, ctx, tx| {
                 let sheet = sheet.clone();
                 let by = ctx.actor().map(|user| user.id);
@@ -79,6 +92,19 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
             .system()
             .from([TimesheetStatus::Open])
             .to(TimesheetStatus::Submitted)
+            .guard("dispute_not_upheld", |sheet: &Timesheet, _ctx| {
+                // An adjustment of a client dispute that ended `upheld` has
+                // no payroll or billing effect and is not submitted
+                // (`crate::dispute`, BL-ATT-09).
+                let upheld = sheet.dispute_upheld_at.is_some();
+                Box::pin(async move {
+                    if upheld {
+                        Err(english("wl_attendance.adjustment.dispute_upheld", &[]))
+                    } else {
+                        Ok(())
+                    }
+                })
+            })
             .effect(|sheet: &Timesheet, _ctx, tx| {
                 let sheet = sheet.clone();
                 Box::pin(async move { submit_in(tx, &sheet, None).await })
@@ -99,6 +125,8 @@ async fn submit_in(tx: &mut Transaction, sheet: &Timesheet, by: Option<i64>) -> 
             &[
                 ("submitted_by", &by),
                 ("submitted_at", &Some(now())),
+                // A new submit restarts the clock of `HRM.RUL.15`.
+                ("escalated_at", &Option::<DateTime>::None),
                 ("updated_at", &now()),
             ],
         )

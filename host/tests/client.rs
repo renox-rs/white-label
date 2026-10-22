@@ -78,11 +78,14 @@ async fn the_demo_client_sends_notifications_to_its_parties() {
 #[test]
 fn a_client_of_an_unbuilt_app_or_module_is_refused() {
     let demo = std::fs::read_to_string(host::DEMO_CLIENT).unwrap();
-    let manpower =
-        ClientConfig::parse(&demo.replace(r#"app     = "property""#, r#"app = "manpower""#))
+    let hospitality =
+        ClientConfig::parse(&demo.replace(r#"app     = "property""#, r#"app = "hospitality""#))
             .unwrap();
-    let err = host::app_for(manpower).err().unwrap();
-    assert!(err.0.contains("app `manpower` is not built yet"), "{err}");
+    let err = host::app_for(hospitality).err().unwrap();
+    assert!(
+        err.0.contains("app `hospitality` is not built yet"),
+        "{err}"
+    );
 }
 
 #[test]

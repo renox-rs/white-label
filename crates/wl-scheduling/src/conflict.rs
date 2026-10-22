@@ -403,7 +403,7 @@ pub async fn leave_approved(
         let mut block =
             AvailabilityBlock::manual(resource.id, starts_at, ends_at, &event.leave_type);
         block.source = "leave".to_owned();
-        block.source_ref = Some(event.request.to_string());
+        block.source_ref = Some(event.request().to_string());
         let (_, newly) = add_block(state, block, at).await.map_err(|refusal| {
             Error::Status(StatusCode::UNPROCESSABLE_ENTITY, refusal_text(&refusal))
         })?;

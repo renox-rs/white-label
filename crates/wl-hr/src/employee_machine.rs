@@ -13,6 +13,7 @@
 //! active | on_leave | notice --report_absconding--> absconded
 //! absconded --reinstate--> active
 //! active | on_leave | notice | absconded --record_death--> deceased
+//! notice | absconded | deceased --exit--> exited
 //! ```
 //!
 //! The five non-standard exits are requested by HR (`employees.manage`) and
@@ -21,8 +22,11 @@
 //! kernel defers as an approval request, with a system twin
 //! `<name>_approved` that the kernel runs at the final approval. Both carry
 //! the same guard, so the documents the exit needs are checked at the
-//! request and again at the approval. Their effects come with their own
-//! issues (#195 to #198); this module only moves the status.
+//! request and again at the approval. The effects of `report_absconding` are
+//! in [`crate::absconding`], those of `cancel_onboarding`, `withdraw_notice`
+//! and `reinstate` in [`crate::exit_effects`] and the listener below
+//! (settlement and cancellation case cancelled, the events); those of
+//! `record_death` in [`crate::death`] (#199).
 //!
 //! `activate` (`employees.manage`) is for a record created in `onboarding`.
 //! A minimal record has no statutory items to check (§2). A template that
@@ -35,14 +39,24 @@
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};
-use wl_kernel::workforce::{EmployeeAbsconded, EmployeeActivated, EmployeeId};
+use wl_kernel::documents::today;
+use wl_kernel::workforce::{
+    EmployeeAbsconded, EmployeeActivated, EmployeeId, EmployeeNoticeWithdrawn,
+    EmployeeOnboardingCancelled, EmployeeReinstated,
+};
 
 use crate::absconding;
 use crate::absence::AbsenceReport;
 use crate::activation;
+use crate::death;
 use crate::employee::{Employee, EmployeeStatus};
+use crate::exit;
+use crate::exit_effects;
 use crate::exits::{self, ExitInput};
 use crate::permissions;
+use crate::settlement_close;
+use crate::texts::english;
+use crate::visa;
 
 /// The employee starts work.
 pub const ACTIVATE: &str = "activate";
@@ -67,6 +81,10 @@ pub const REINSTATE_APPROVED: &str = "reinstate_approved";
 pub const RECORD_DEATH: &str = "record_death";
 /// The twin of [`RECORD_DEATH`] that the kernel runs at the approval.
 pub const RECORD_DEATH_APPROVED: &str = "record_death_approved";
+
+/// An absconded or deceased employee exits, and so does one serving notice
+/// (`employees.manage`, no approval; [`crate::exit`]).
+pub const EXIT: &str = crate::exit::EXIT;
 
 /// The user transition `name` and its system twin `approved`, from `from` to
 /// `to`: both need a reason and the documents the exit names
@@ -98,14 +116,27 @@ fn exit_pair<const N: usize>(
                 })
             },
         );
-        // The effects of the exits come with their own issues; this is
-        // `report_absconding`'s (#197): the checks that read the database,
-        // then the report, the held pay, the settlement and the visa case.
+        // The effects of the exits: `report_absconding`'s (#197) are the
+        // checks that read the database, then the report, the held pay, the
+        // settlement and the visa case; those of `cancel_onboarding`,
+        // `withdraw_notice` and `reinstate` are in `exit_effects` (#195, #196,
+        // #198); `record_death`'s are in `death` (#199).
         if name == REPORT_ABSCONDING {
             transition.effect(|employee: &Employee, ctx, tx| {
                 let id = employee.id;
                 let input = ctx.input_as::<ExitInput>().unwrap_or_default();
                 Box::pin(async move { absconding::apply(tx, id, &input).await })
+            })
+        } else if name == RECORD_DEATH {
+            transition.effect(|employee: &Employee, ctx, tx| {
+                let employee = employee.clone();
+                let input = ctx.input_as::<ExitInput>().unwrap_or_default();
+                Box::pin(async move { death::apply(tx, &employee, &input).await })
+            })
+        } else if exit_effects::has_checks(name) {
+            transition.effect(move |employee: &Employee, ctx, tx| {
+                let input = ctx.input_as::<ExitInput>().unwrap_or_default();
+                Box::pin(async move { exit_effects::apply(tx, employee, name, &input).await })
             })
         } else {
             transition
@@ -160,6 +191,18 @@ impl StateMachine for Employee {
                         })
                     }),
             );
+        let machine = machine.transition(
+            Transition::new(EXIT)
+                .label("Exit")
+                .tone("danger")
+                .permission(permissions::EMPLOYEES_MANAGE)
+                .from([Notice, Absconded, Deceased])
+                .to(Exited)
+                .effect(|employee: &Employee, _ctx, tx| {
+                    let employee = employee.clone();
+                    Box::pin(async move { exit::apply(tx, &employee).await })
+                }),
+        );
         let pairs = [
             exit_pair(
                 CANCEL_ONBOARDING,
@@ -233,6 +276,53 @@ pub(crate) fn register(app: &mut Registry) {
                         })
                         .await
                 }
+                CANCEL_ONBOARDING | CANCEL_ONBOARDING_APPROVED => {
+                    // The apps cancel the planned deployments; the onboarding
+                    // cancels itself (`events`).
+                    state
+                        .emit(EmployeeOnboardingCancelled {
+                            employee: EmployeeId(event.key),
+                            reason: event.reason.clone().unwrap_or_default(),
+                        })
+                        .await
+                }
+                WITHDRAW_NOTICE | WITHDRAW_NOTICE_APPROVED => {
+                    // The settlement and the cancellation case are not needed
+                    // any more (the checks made sure nothing was paid).
+                    settlement_close::cancel_open(&state, event.key).await?;
+                    let reason = english("wl_hr.exits.notice_withdrawn_reason", &[]);
+                    visa::cancel_open_cancellations(&state, event.key, &reason).await?;
+                    state
+                        .emit(EmployeeNoticeWithdrawn {
+                            employee: EmployeeId(event.key),
+                        })
+                        .await
+                }
+                REINSTATE | REINSTATE_APPROVED => {
+                    // The settlement and the cancellation case are cancelled;
+                    // the absence report is withdrawn: the lines it held are
+                    // released (`HRM.RUL.12`).
+                    settlement_close::cancel_open(&state, event.key).await?;
+                    let reason = english("wl_hr.exits.reinstated_reason", &[]);
+                    visa::cancel_open_cancellations(&state, event.key, &reason).await?;
+                    crate::release::report_withdrawn(&state, event.key).await?;
+                    let returned = AbsenceReport::query()
+                        .where_(AbsenceReport::EMPLOYEE_ID.eq(event.key))
+                        .order_by_desc(AbsenceReport::ID)
+                        .first(&state.db)
+                        .await?
+                        .and_then(|report| report.returned_on);
+                    state
+                        .emit(EmployeeReinstated {
+                            employee: EmployeeId(event.key),
+                            return_date: returned.unwrap_or_else(today),
+                        })
+                        .await
+                }
+                RECORD_DEATH | RECORD_DEATH_APPROVED => {
+                    death::after_commit(&state, event.key).await
+                }
+                EXIT => exit::after_commit(&state, event.key).await,
                 REPORT_ABSCONDING | REPORT_ABSCONDING_APPROVED => {
                     let Some(report) = AbsenceReport::valid_for(&state.db, event.key).await? else {
                         return Ok(());
@@ -305,6 +395,7 @@ mod tests {
             assert_eq!(twin.from_states(), from, "{approved}");
             assert_eq!(twin.to_state(), Some(to), "{approved}");
         }
-        assert_eq!(machine.transitions().len(), 11);
+        // The five pairs and `activate`, and `exit` (#200).
+        assert_eq!(machine.transitions().len(), 12);
     }
 }

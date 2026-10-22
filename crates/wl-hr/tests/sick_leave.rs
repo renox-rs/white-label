@@ -116,7 +116,7 @@ async fn the_manager_of_the_branch_records_it_and_another_manager_is_refused() {
     let events = t.leave_approved.all();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].employee, employee.employee_id());
-    assert_eq!(events[0].request, request.id);
+    assert_eq!(events[0].request(), request.id);
     assert_eq!(events[0].leave_type, "sick");
     assert_eq!((events[0].from, events[0].to), (nov(2), nov(3)));
 }

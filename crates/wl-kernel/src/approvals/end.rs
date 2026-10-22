@@ -87,6 +87,19 @@ impl End {
         }
     }
 
+    /// The platform cancels the request for the requester because the subject
+    /// no longer needs it (a hold released by payment, a contract that ended),
+    /// with `reason` as the history reason.
+    pub fn withdraw_because(requester_id: i64, reason: &str) -> Self {
+        End {
+            kind: ApprovalEnd::Withdrawn,
+            actor_id: Some(requester_id),
+            reason: reason.trim().to_owned(),
+            comment: None,
+            at_step: None,
+        }
+    }
+
     /// No decision before the expiry time.
     pub fn expire() -> Self {
         End {
@@ -474,6 +487,20 @@ pub async fn withdraw(state: &AppState, id: i64, requester: &User) -> Result<App
     end_now(state, id, End::withdraw(requester.id)).await
 }
 
+/// The platform withdraws pending request `id` because the subject no longer
+/// needs it, with `reason` (e.g. *released by payment*): the same end as the
+/// requester's [`withdraw`], without the requester, and the current step's
+/// approvers and the requester are told. 422 when it already ended.
+pub async fn withdraw_because(state: &AppState, id: i64, reason: &str) -> Result<ApprovalDecided> {
+    let request = pending(&state.db, id).await?;
+    end_now(
+        state,
+        id,
+        End::withdraw_because(request.requester_id, reason),
+    )
+    .await
+}
+
 /// Request `id` expires (run by the platform once `expires_at` has passed;
 /// refused with 422 before): the subject goes back to its state before, the
 /// reservation is released, the requester is told.
@@ -493,6 +520,15 @@ mod tests {
         assert_eq!(end.comment.as_deref(), Some("duplicate"));
         assert_eq!(end.at_step, Some(2));
         assert_eq!(end.transition(), transitions::REJECT);
+    }
+
+    #[test]
+    fn a_withdraw_because_carries_the_given_reason() {
+        let end = End::withdraw_because(4, "  released by payment ");
+        assert_eq!(end.kind(), ApprovalEnd::Withdrawn);
+        assert_eq!(end.actor_id(), Some(4));
+        assert_eq!(end.reason(), "released by payment");
+        assert_eq!(end.transition(), transitions::WITHDRAW);
     }
 
     #[test]

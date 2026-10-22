@@ -30,6 +30,7 @@ use crate::notices;
 use crate::recipients::{self, Resolved};
 use crate::render::{Rendered, render};
 use crate::send::SendMessage;
+use crate::stopped;
 use crate::types::NotificationType;
 
 /// Queues messages in `wl_notify_messages` for the kernel contract.
@@ -43,6 +44,15 @@ impl Notifier for Messages {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         Box::pin(queue(state, request))
+    }
+
+    fn stop_messages_to<'a>(
+        &'a self,
+        state: &'a AppState,
+        recipients: Vec<NotifyRecipient>,
+        reason: &'a str,
+    ) -> NotifyFuture<'a, usize> {
+        Box::pin(async move { stopped::stop(state, &recipients, reason).await })
     }
 
     fn broadcast<'a>(
@@ -183,18 +193,27 @@ pub async fn queue(state: &AppState, request: NotifyRequest) -> Result<Vec<Messa
         planned.push((recipient, resolved));
     }
 
+    let mut stopped_now = Vec::with_capacity(planned.len());
+    for (recipient, _) in &planned {
+        stopped_now.push(stopped::is_stopped(&state.db, recipient).await?);
+    }
+
     let mut tx = state.db.begin().await?;
     let mut ids = Vec::with_capacity(planned.len());
     let mut outcomes = Vec::new();
     let mut bells = Vec::new();
-    for (recipient, resolved) in &planned {
+    for ((recipient, resolved), stopped) in planned.iter().zip(stopped_now) {
         let mut message = compose(&def, &request.subject, recipient, resolved, &request.data);
         message.subject_label.clone_from(&request.subject_label);
         message.insert(&mut tx).await?;
         // The first message of its chain; a fallback keeps this id.
         message.chain_id = Some(message.id);
         message.save(&mut tx).await?;
-        if let Some(reason) = resolved.route.suppress {
+        if let Some(reason) = resolved
+            .route
+            .suppress
+            .or(stopped.then_some(stopped::STOPPED))
+        {
             let outcome = message
                 .transition(SUPPRESS)
                 .by_system()

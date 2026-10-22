@@ -13,7 +13,7 @@ use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
-use renox::testing::TestApp;
+use renox::testing::{TestApp, TestResponse};
 use wl_attendance::permissions as perm;
 use wl_attendance::{
     AttendanceMethod, AttendanceRecord, AttendanceStatus, WlAttendance, WorkLocation,
@@ -26,7 +26,10 @@ use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, Validity,
     provide_guard,
 };
-use wl_kernel::invoicing::{CostPoster, PostCost, SupplierBillFuture, provide_cost_poster};
+use wl_kernel::invoicing::{
+    CostPoster, DisputeOutcome, DisputeState, InvoiceDraft, InvoiceFuture, InvoiceId,
+    InvoiceSummary, Invoicer, PostCost, SupplierBillFuture, provide_cost_poster, provide_invoicer,
+};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
@@ -35,6 +38,9 @@ use wl_kernel::qualifications::{
 };
 use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+};
+use wl_kernel::timesheets::{
+    ApproverResolver, TimesheetReconciliationNeeded, provide_approver_resolver,
 };
 use wl_kernel::workforce::{
     EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
@@ -239,14 +245,93 @@ impl CostRateResolver for TradeRates {
     }
 }
 
+/// The invoice disputes of wl-invoicing, as the kernel's `Invoicer` answers
+/// for them: a dispute is open until it is settled.
+#[derive(Clone, Default)]
+pub struct Disputes(Arc<Mutex<BTreeMap<i64, DisputeState>>>);
+
+impl Disputes {
+    /// Dispute `id` of invoice `invoice` is open.
+    pub fn open(&self, id: i64, invoice: i64) {
+        self.0.lock().unwrap().insert(
+            id,
+            DisputeState {
+                invoice: InvoiceId(invoice),
+                outcome: None,
+            },
+        );
+    }
+
+    /// Dispute `id` was settled with `outcome`.
+    pub fn settle(&self, id: i64, outcome: DisputeOutcome) {
+        if let Some(found) = self.0.lock().unwrap().get_mut(&id) {
+            found.outcome = Some(outcome);
+        }
+    }
+}
+
+impl Invoicer for Disputes {
+    fn draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        _draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, Option<InvoiceId>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: InvoiceId,
+    ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: InvoiceId,
+        _source: Subject,
+        _amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn dispute_state<'a>(
+        &'a self,
+        _db: &'a Db,
+        dispute: i64,
+    ) -> InvoiceFuture<'a, Option<DisputeState>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().get(&dispute).copied()) })
+    }
+}
+
 /// The tasks opened through the kernel's task creator.
 #[derive(Clone, Default)]
-pub struct Tasks(Arc<Mutex<Vec<OpenTicket>>>);
+pub struct Tasks {
+    opened: Arc<Mutex<Vec<OpenTicket>>>,
+    closed: Arc<Mutex<Vec<i64>>>,
+}
 
 impl Tasks {
     /// Every task opened so far.
     pub fn opened(&self) -> Vec<OpenTicket> {
-        self.0.lock().unwrap().clone()
+        self.opened.lock().unwrap().clone()
+    }
+
+    /// The tasks opened with `source_key` that were closed.
+    pub fn closed_with_key(&self, source_key: &str) -> usize {
+        let closed = self.closed.lock().unwrap();
+        self.opened
+            .lock()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .filter(|(n, t)| {
+                t.source_key.as_deref() == Some(source_key)
+                    && closed.contains(&(i64::try_from(*n).unwrap() + 1))
+            })
+            .count()
     }
 }
 
@@ -257,7 +342,7 @@ impl TaskCreator for Tasks {
         ticket: OpenTicket,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(async move {
-            let mut all = self.0.lock().unwrap();
+            let mut all = self.opened.lock().unwrap();
             all.push(ticket);
             let n = all.len();
             Ok(Some(TicketRef {
@@ -273,15 +358,113 @@ impl TaskCreator for Tasks {
         source_key: &'a str,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(async move {
-            let all = self.0.lock().unwrap();
+            let all = self.opened.lock().unwrap();
+            let closed = self.closed.lock().unwrap();
             Ok(all
                 .iter()
                 .position(|t| t.source_key.as_deref() == Some(source_key))
+                .filter(|n| !closed.contains(&(i64::try_from(*n).unwrap() + 1)))
                 .map(|n| TicketRef {
                     id: TicketId(i64::try_from(n).unwrap() + 1),
                     number: format!("TKT-2026-{:04}", n + 1),
                 }))
         })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        _note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            let mut closed = self.closed.lock().unwrap();
+            if closed.contains(&ticket.0) {
+                return Ok(false);
+            }
+            closed.push(ticket.0);
+            Ok(true)
+        })
+    }
+}
+
+/// The contract of a deployment, as the app's `ApproverResolver` answers for
+/// it: the account manager, the client's escalation contact and approvers,
+/// and the days after which silence is approval (none when the contract has
+/// no such clause).
+#[derive(Clone, Default)]
+pub struct Approvers(Arc<Mutex<ApproverSetup>>);
+
+#[derive(Default)]
+struct ApproverSetup {
+    account_manager: Option<i64>,
+    escalation: Vec<NotifyRecipient>,
+    clients: Vec<NotifyRecipient>,
+    deemed_days: Option<i64>,
+}
+
+impl Approvers {
+    /// User `user` is the account manager.
+    pub fn account_manager(&self, user: i64) {
+        self.0.lock().unwrap().account_manager = Some(user);
+    }
+
+    /// User `user` is the client's escalation contact.
+    pub fn escalation_contact(&self, user: i64) {
+        self.0
+            .lock()
+            .unwrap()
+            .escalation
+            .push(NotifyRecipient::User { id: user });
+    }
+
+    /// User `user` is one of the client's approvers.
+    pub fn client_approver(&self, user: i64) {
+        self.0
+            .lock()
+            .unwrap()
+            .clients
+            .push(NotifyRecipient::User { id: user });
+    }
+
+    /// The contract deems a timesheet approved after `days` days of silence
+    /// (`None` removes the clause).
+    pub fn deemed_after(&self, days: Option<i64>) {
+        self.0.lock().unwrap().deemed_days = days;
+    }
+}
+
+impl ApproverResolver for Approvers {
+    fn account_manager<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, Option<i64>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().account_manager) })
+    }
+
+    fn escalation_contacts<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, Vec<NotifyRecipient>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().escalation.clone()) })
+    }
+
+    fn client_approvers<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, Vec<NotifyRecipient>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().clients.clone()) })
+    }
+
+    fn deemed_approval_days<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, Option<i64>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().deemed_days) })
     }
 }
 
@@ -563,15 +746,19 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
 
 /// Records the events and provides the fakes.
 struct Fakes {
+    real_invoicing: bool,
     notices: Recording,
     staff: Staff,
     tasks: Tasks,
     docs: DocDesk,
     quals: Quals,
     posted: Posted,
+    disputes: Disputes,
+    approvers: Approvers,
     recorded: Arc<Mutex<Vec<AttendanceRecorded>>>,
     flagged: Arc<Mutex<Vec<AttendanceFlagged>>>,
     approved: Arc<Mutex<Vec<TimesheetApproved>>>,
+    reconciled: Arc<Mutex<Vec<TimesheetReconciliationNeeded>>>,
 }
 
 impl Module for Fakes {
@@ -587,9 +774,16 @@ impl Module for Fakes {
         provide_qualifications(app, self.quals.clone());
         provide_cost_poster(app, self.posted.clone());
         provide_cost_rates(app, TradeRates);
+        if self.real_invoicing {
+            wl_kernel::parties::provide_directory(app, BlueDunesOnly);
+        } else {
+            provide_invoicer(app, self.disputes.clone());
+        }
+        provide_approver_resolver(app, self.approvers.clone());
         record(app, &self.recorded);
         record(app, &self.flagged);
         record(app, &self.approved);
+        record(app, &self.reconciled);
     }
 }
 
@@ -615,6 +809,12 @@ pub struct Booted {
     pub posted: Posted,
     /// `TimesheetApproved`.
     pub approved: Recorded<TimesheetApproved>,
+    /// `TimesheetReconciliationNeeded`.
+    pub reconciled: Recorded<TimesheetReconciliationNeeded>,
+    /// The invoice disputes.
+    pub disputes: Disputes,
+    /// The contract of the deployments.
+    pub approvers: Approvers,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// Keeps the views directory alive.
@@ -846,16 +1046,103 @@ pub async fn boot() -> Booted {
 /// [`boot`] with `module` and `extra` appended to the client's `client.toml`
 /// (for the `[calendar]`).
 pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
+    boot_full(module, extra, false).await
+}
+
+/// [`boot`] with the real wl-invoicing in place of the fake `Invoicer`: the
+/// invoices, the disputes and the credit notes are wl-invoicing's own. The
+/// legal entity has a TRN and Blue Dunes ([`BLUE_DUNES`]) is the only party.
+pub async fn boot_with_invoicing() -> Booted {
+    boot_full(WlAttendance::new(), "", true).await
+}
+
+/// The party the invoicing tests bill.
+pub const BLUE_DUNES: PartyId = PartyId(1);
+
+/// Answers for Blue Dunes only, as wl-parties would.
+struct BlueDunesOnly;
+
+fn blue_dunes() -> wl_kernel::parties::PartySummary {
+    wl_kernel::parties::PartySummary {
+        id: BLUE_DUNES,
+        code: "P-00001".into(),
+        kind: wl_kernel::parties::PartyKind::Company,
+        display_name: "Blue Dunes LLC".into(),
+        status: wl_kernel::parties::PartyStatus::Active,
+        display_block_reason: None,
+    }
+}
+
+impl wl_kernel::parties::PartyDirectory for BlueDunesOnly {
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<wl_kernel::parties::PartySummary>> {
+        Box::pin(async move { Ok((party == BLUE_DUNES).then(blue_dunes)) })
+    }
+
+    fn find_by_code<'a>(
+        &'a self,
+        _db: &'a Db,
+        code: &'a str,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<wl_kernel::parties::PartySummary>> {
+        Box::pin(async move { Ok((code == "P-00001").then(blue_dunes)) })
+    }
+
+    fn display_name<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _lang: &'a str,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn status<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<wl_kernel::parties::PartyStatus>> {
+        Box::pin(async { Ok(Some(wl_kernel::parties::PartyStatus::Active)) })
+    }
+
+    fn billing_identity<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> wl_kernel::parties::PartyFuture<'a, Option<wl_kernel::parties::BillingIdentity>> {
+        Box::pin(async move {
+            Ok(
+                (party == BLUE_DUNES).then(|| wl_kernel::parties::BillingIdentity {
+                    party,
+                    legal_name_en: "Blue Dunes LLC".into(),
+                    legal_name_ar: None,
+                    trn: Some("100000000000011".into()),
+                    billing_address: Some("Office 12, Business Bay, Dubai".into()),
+                    billing_email: Some("ap@bluedunes.example".into()),
+                    einvoice_recipient_id: None,
+                }),
+            )
+        })
+    }
+}
+
+async fn boot_full(module: WlAttendance, extra: &str, invoicing: bool) -> Booted {
     let fakes = Fakes {
+        real_invoicing: invoicing,
         notices: Recording::default(),
         staff: Staff::default(),
         tasks: Tasks::default(),
         docs: DocDesk::default(),
         quals: Quals::default(),
         posted: Posted::default(),
+        disputes: Disputes::default(),
+        approvers: Approvers::default(),
         recorded: Arc::default(),
         flagged: Arc::default(),
         approved: Arc::default(),
+        reconciled: Arc::default(),
     };
     let (notices, staff, tasks) = (
         fakes.notices.clone(),
@@ -864,6 +1151,8 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     );
     let (docs, quals) = (fakes.docs.clone(), fakes.quals.clone());
     let (posted, approved) = (fakes.posted.clone(), Recorded(fakes.approved.clone()));
+    let (disputes, approvers) = (fakes.disputes.clone(), fakes.approvers.clone());
+    let reconciled = Recorded(fakes.reconciled.clone());
     let (recorded, flagged) = (
         Recorded(fakes.recorded.clone()),
         Recorded(fakes.flagged.clone()),
@@ -874,8 +1163,26 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         .module(renox::audit::Audit)
         .module(module)
         .module(fakes);
+    let app = if invoicing {
+        app.module(wl_invoicing::WlInvoicing::new())
+    } else {
+        app
+    };
+    let client = if invoicing {
+        CLIENT
+            .replace(
+                r#"["parties", "hr", "attendance"]"#,
+                r#"["parties", "hr", "attendance", "invoicing"]"#,
+            )
+            .replace(
+                r#"name_en = "Gulf Build Contracting LLC""#,
+                "name_en = \"Gulf Build Contracting LLC\"\ntrn = \"100000000000003\"",
+            )
+    } else {
+        CLIENT.to_owned()
+    };
     let config =
-        wl_kernel::ClientConfig::parse(&format!("{CLIENT}\n{extra}")).expect("a valid client.toml");
+        wl_kernel::ClientConfig::parse(&format!("{client}\n{extra}")).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     // The pages extend the app's layout; a package test has no app, so it
     // brings the smallest one.
@@ -963,6 +1270,24 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     permissions::define_role(app.db(), "hse", &[perm::VIEW])
         .await
         .unwrap();
+    if invoicing {
+        // The receivables clerk issues invoices and may dispute them.
+        use wl_invoicing::permissions as invoicing_perm;
+        permissions::define_role(
+            app.db(),
+            "receivables",
+            &[
+                invoicing_perm::VIEW,
+                invoicing_perm::CREATE,
+                invoicing_perm::ISSUE,
+                invoicing_perm::CREDIT,
+                invoicing_perm::DISPUTE,
+                invoicing_perm::RECEIVABLES_VIEW,
+            ],
+        )
+        .await
+        .unwrap();
+    }
     Booted {
         app,
         notices,
@@ -974,6 +1299,9 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         flagged,
         posted,
         approved,
+        reconciled,
+        disputes,
+        approvers,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         _views: views,
     }
@@ -982,4 +1310,137 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
 /// A subject for a project.
 pub fn project(id: i64) -> Subject {
     Subject::new("construction.project", id)
+}
+
+/// The cost code of the examples, as a form sends it.
+pub const COST_CODE: &str = "construction.cost_code:3";
+
+/// A locked timesheet of `employee` for `context` with 8 h normal on 2
+/// November against the cost code, used by payroll run 7 (`paid_by`) and
+/// approved by `kind`.
+pub async fn locked_eight_hours(
+    t: &Booted,
+    employee: EmployeeId,
+    context: &Subject,
+    kind: wl_attendance::timesheet::ApproverKind,
+) -> wl_attendance::Timesheet {
+    let mut new = wl_attendance::Timesheet::regular(employee, nov(2), nov(8)).in_context(context);
+    new.paid_by = Some("hr.payroll_run:7".into());
+    new.approver_kind = kind;
+    if kind == wl_attendance::timesheet::ApproverKind::External {
+        new.approver_role = Some("client_approver".into());
+    }
+    let sheet = t
+        .sheet_in(new, wl_attendance::TimesheetStatus::Locked)
+        .await;
+    wl_attendance::TimesheetEntry::create(
+        t.db(),
+        wl_attendance::TimesheetEntry {
+            timesheet_id: sheet.id,
+            employee_id: employee.0,
+            date: nov(2),
+            cost_object_type: Some("construction.cost_code".into()),
+            cost_object_id: Some(3),
+            normal_minutes: 480,
+            billable: true,
+            ..wl_attendance::TimesheetEntry::default()
+        },
+    )
+    .await
+    .unwrap();
+    sheet
+}
+
+/// The entries of a form that takes 8 h of normal hours off 2 November.
+pub fn minus_eight_hours() -> String {
+    format!(
+        r#"[{{"date": "2026-11-02", "category": "normal", "minutes": -480, "cost_object": "{COST_CODE}"}}]"#
+    )
+}
+
+/// `user` posts `form` to `/timesheets/{id}/{action}`.
+pub async fn post_to(
+    t: &Booted,
+    user: &User,
+    sheet: &wl_attendance::Timesheet,
+    action: &str,
+    form: &[(&str, &str)],
+) -> TestResponse {
+    t.app.acting_as(user);
+    t.app
+        .htmx()
+        .post(&format!("/timesheets/{}/{action}", sheet.id), form)
+        .await
+}
+
+/// An 8 h accepted record (07:00 to 15:00) of `employee` on each of `days` of
+/// November, at a site of its own.
+pub async fn accepted_days(t: &Booted, employee: EmployeeId, days: &[u32]) {
+    let site = t.location(&format!("Site {}", employee.0)).await;
+    for day in days {
+        t.fixture(
+            employee,
+            &site,
+            at(*day, 7, 0),
+            Some(at(*day, 15, 0)),
+            AttendanceStatus::Accepted,
+        )
+        .await;
+    }
+}
+
+/// `minutes` of `category` on `day` of November, as an entry of `sheet`
+/// against the deployment.
+pub async fn put_hours(
+    t: &Booted,
+    sheet: &wl_attendance::Timesheet,
+    day: u32,
+    category: &str,
+    minutes: i64,
+) {
+    let mut entry = wl_attendance::TimesheetEntry {
+        timesheet_id: sheet.id,
+        employee_id: sheet.owner_employee_id,
+        date: nov(day),
+        cost_object_type: Some("manpower.deployment".into()),
+        cost_object_id: Some(9),
+        billable: true,
+        ..wl_attendance::TimesheetEntry::default()
+    };
+    match category {
+        "normal" => entry.normal_minutes = minutes,
+        "overtime" => entry.overtime_minutes = minutes,
+        other => panic!("category {other}"),
+    }
+    wl_attendance::TimesheetEntry::create(t.db(), entry)
+        .await
+        .unwrap();
+}
+
+/// A November timesheet of `employee` for the deployment whose client
+/// approves it (role `client_approver`), in `status`.
+pub async fn client_timesheet(
+    t: &Booted,
+    employee: EmployeeId,
+    status: wl_attendance::TimesheetStatus,
+) -> wl_attendance::Timesheet {
+    let mut new = wl_attendance::Timesheet::regular(employee, nov(1), nov(30))
+        .in_context(&Subject::new("manpower.deployment", 9));
+    new.approver_kind = wl_attendance::timesheet::ApproverKind::External;
+    new.approver_role = Some("client_approver".into());
+    t.sheet_in(new, status).await
+}
+
+/// Payroll run 7 pays the provisional hours, as `wl-hr` would at
+/// its `submit`: it asks the hours of November (cut-off on the 25th) and tells
+/// the service it used them.
+pub async fn pay_provisionally(t: &Booted) {
+    use wl_kernel::timesheets::{PayrollPeriod, timesheets};
+    let service = timesheets(t.state());
+    let period = PayrollPeriod::new(nov(1), nov(30), nov(25));
+    let hours = service.hours_for_payroll(t.state(), &period).await.unwrap();
+    service
+        .record_payroll_use(t.state(), &Subject::new("hr.payroll_run", 7), &hours)
+        .await
+        .unwrap();
 }

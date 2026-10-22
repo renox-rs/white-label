@@ -204,6 +204,21 @@ pub trait ContextClosure: Send + Sync + 'static {
     ) -> LabourFuture<'a, Option<NaiveDate>> {
         Box::pin(async { Ok(None) })
     }
+
+    /// Why `employee` may not work in `context` on `date` (in Asia/Dubai), if
+    /// they may not: a record of that day is refused with this text. 09
+    /// Manpower says so for a worker whose deployment is suspended (an
+    /// expired visa or licence: no attendance, no billing). The default is
+    /// none: the context takes the employee.
+    fn refuses<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: &'a Subject,
+        _employee: EmployeeId,
+        _date: NaiveDate,
+    ) -> LabourFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 /// The closure when none is provided: no context closes.
@@ -255,6 +270,35 @@ pub trait AttendanceReview: Send + Sync + 'static {
     ) -> LabourFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
+
+    /// Rejects the attendance of `employee` from `from` on at the work
+    /// locations in `contexts`, with `reason` (09 Manpower: a deployment
+    /// entered in error, whose hours are neither billed nor paid). A record
+    /// that is `recorded`, `flagged` or `accepted` (and not yet in a
+    /// submitted timesheet) is rejected; one `locked`, or in a timesheet
+    /// already submitted, cannot be, and is listed in
+    /// [`WorkRejection::kept`] for an adjustment timesheet (`HRM.ACL.08`).
+    /// The default rejects nothing.
+    fn reject_work<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _contexts: &'a [Subject],
+        _employee: EmployeeId,
+        _from: NaiveDate,
+        _reason: &'a str,
+    ) -> LabourFuture<'a, WorkRejection> {
+        Box::pin(async { Ok(WorkRejection::default()) })
+    }
+}
+
+/// What [`AttendanceReview::reject_work`] did.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct WorkRejection {
+    /// The records rejected now.
+    pub rejected: Vec<AttendanceRecordId>,
+    /// The records that stay because they are locked or in a submitted
+    /// timesheet: an adjustment is needed.
+    pub kept: Vec<AttendanceRecordId>,
 }
 
 /// The review when none is provided: nothing is flagged.

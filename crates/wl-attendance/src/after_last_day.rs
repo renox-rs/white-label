@@ -12,12 +12,17 @@
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_kernel::Subject;
-use wl_kernel::attendance::{AttendanceRecordId, AttendanceReview, LabourFuture};
+use wl_kernel::attendance::{AttendanceRecordId, AttendanceReview, LabourFuture, WorkRejection};
+use wl_kernel::workforce::EmployeeId;
 
+use crate::entry::TimesheetEntry;
 use crate::flags::{self, FlagType, Pending};
 use crate::location::WorkLocation;
-use crate::record::AttendanceRecord;
+use crate::lock;
+use crate::record::{AttendanceRecord, AttendanceStatus, REJECT_BY_SYSTEM};
+use crate::timesheet::{Timesheet, TimesheetStatus};
 
 /// Flags the attendance recorded after `after` at the work locations in
 /// `context` with `note`. Returns the records flagged now; a record that
@@ -90,6 +95,104 @@ pub async fn has_records(state: &AppState, context: &Subject) -> Result<bool> {
         .is_some())
 }
 
+/// Rejects the attendance of `employee` from `from` on at the work locations
+/// in `contexts` with `reason`: a record that is `recorded` or `flagged` is
+/// rejected by the system (its proposed hours leave the open timesheet), and
+/// so is one that is `accepted` when none of its hours is in a timesheet past
+/// `open` yet. A record that is `locked`, or whose hours are in a timesheet
+/// already submitted or approved, is listed in `kept` for an adjustment
+/// timesheet.
+///
+/// Decision (09 Manpower BL-MPW-14, *entered in error*): the spec says only
+/// hours "already in a locked timesheet" need an adjustment, so an accepted
+/// record that no timesheet has taken beyond `open` is rejected too and its
+/// hours are neither billed nor paid. A submitted timesheet keeps the hours
+/// of its entries (its approver has them in front of them), so those records
+/// are kept like locked ones.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn reject_work(
+    state: &AppState,
+    contexts: &[Subject],
+    employee: EmployeeId,
+    from: NaiveDate,
+    reason: &str,
+) -> Result<WorkRejection> {
+    let ids: Vec<i64> = WorkLocation::query()
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .filter(|location| {
+            location
+                .scope()
+                .is_some_and(|scope| contexts.contains(&scope))
+        })
+        .map(|location| location.id)
+        .collect();
+    let mut done = WorkRejection::default();
+    if ids.is_empty() {
+        return Ok(done);
+    }
+    let records = AttendanceRecord::query()
+        .where_(AttendanceRecord::LOCATION_ID.is_in(ids))
+        .where_(AttendanceRecord::EMPLOYEE_ID.eq(employee.0))
+        .where_(AttendanceRecord::DATE.gte(from))
+        .order_by(AttendanceRecord::ID)
+        .get(&state.db)
+        .await?;
+    for record in records {
+        match record.status {
+            AttendanceStatus::Rejected => {}
+            AttendanceStatus::Locked => {
+                done.kept.push(record.record_id());
+            }
+            AttendanceStatus::Accepted
+                if in_a_submitted_timesheet(&state.db, record.id).await? =>
+            {
+                done.kept.push(record.record_id());
+            }
+            AttendanceStatus::Recorded | AttendanceStatus::Flagged | AttendanceStatus::Accepted => {
+                let _day = lock::take(record.employee_id, record.date).await;
+                let mut tx = state.db.begin().await?;
+                let Some(fresh) = AttendanceRecord::find(&mut tx, record.id).await? else {
+                    continue;
+                };
+                let outcome = fresh
+                    .transition(REJECT_BY_SYSTEM)
+                    .by_system()
+                    .reason(reason)
+                    .run_in(&mut tx)
+                    .await
+                    .map_err(|e| e.into_error())?;
+                tx.commit().await?;
+                outcome.emit(state).await?;
+                done.rejected.push(record.record_id());
+            }
+        }
+    }
+    Ok(done)
+}
+
+/// Whether some hours of record `record_id` are in a timesheet that is no
+/// longer `open`.
+async fn in_a_submitted_timesheet(db: &Db, record_id: i64) -> Result<bool> {
+    for entry in TimesheetEntry::query()
+        .where_(TimesheetEntry::ATTENDANCE_RECORD_ID.eq(record_id))
+        .get(db)
+        .await?
+    {
+        if Timesheet::find(db, entry.timesheet_id)
+            .await?
+            .is_some_and(|sheet| sheet.status != TimesheetStatus::Open)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// The module's [`AttendanceReview`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Reviewer;
@@ -111,5 +214,16 @@ impl AttendanceReview for Reviewer {
         context: &'a Subject,
     ) -> LabourFuture<'a, bool> {
         Box::pin(has_records(state, context))
+    }
+
+    fn reject_work<'a>(
+        &'a self,
+        state: &'a AppState,
+        contexts: &'a [Subject],
+        employee: EmployeeId,
+        from: NaiveDate,
+        reason: &'a str,
+    ) -> LabourFuture<'a, WorkRejection> {
+        Box::pin(reject_work(state, contexts, employee, from, reason))
     }
 }

@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 pub mod payer;
+pub mod rates;
 pub mod subscriptions;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -901,6 +902,10 @@ pub struct Booted {
     pub sub_cancelled: Recorded<SubscriptionCancelled>,
     /// The events of the payer bills.
     pub payer: payer::PayerEvents,
+    /// The portal grants of the client companies.
+    pub portal: rates::Portal,
+    /// The timesheets that are locked.
+    pub sheets: rates::Sheets,
 }
 
 impl Booted {
@@ -1738,6 +1743,10 @@ pub async fn boot_all(
     let directory_state = TestDirectory::default();
     let directory: Arc<dyn PartyDirectory> = Arc::new(directory_state.clone());
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
+    let portal = rates::Portal::default();
+    let portal_users: Arc<dyn wl_kernel::portal::PortalUsers> = Arc::new(portal.clone());
+    let sheets = rates::Sheets::default();
+    let timesheets: Arc<dyn wl_kernel::timesheets::Timesheets> = Arc::new(sheets.clone());
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1749,6 +1758,8 @@ pub async fn boot_all(
         .provide(statements)
         .provide(creator)
         .provide(coverage)
+        .provide(portal_users)
+        .provide(timesheets)
         .provide(notifier);
     let app = match poster {
         Some(poster) => app.provide(poster),
@@ -1822,6 +1833,9 @@ pub async fn boot_all(
         perm::PAYER_BILLS_ISSUE,
         perm::PAYER_BILLS_RECONCILE,
         perm::PAYER_BILLS_WRITE_OFF,
+        perm::RATE_CARDS_VIEW,
+        perm::RATE_CARDS_MANAGE,
+        perm::RATE_CARDS_APPROVE,
     ];
     permissions::define_role(app.db(), "admin", &all)
         .await
@@ -1857,6 +1871,14 @@ pub async fn boot_all(
         app.db(),
         "finance_manager",
         &[perm::VIEW, perm::BUDGETS_VIEW, perm::BUDGETS_APPROVE],
+    )
+    .await
+    .unwrap();
+    // The host's `account_manager` role: makes the rate card versions.
+    permissions::define_role(
+        app.db(),
+        "account_manager",
+        &[perm::VIEW, perm::RATE_CARDS_VIEW, perm::RATE_CARDS_MANAGE],
     )
     .await
     .unwrap();
@@ -1909,6 +1931,8 @@ pub async fn boot_all(
         sub_settled,
         sub_cancelled,
         payer: payer_events,
+        portal,
+        sheets,
     }
 }
 

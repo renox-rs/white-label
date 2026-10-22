@@ -117,6 +117,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_attendance.flags.missing_checkout", "Missing check-out"),
     ("wl_attendance.flags.late", "Late"),
     ("wl_attendance.flags.late_entry", "Late entry"),
+    (
+        "wl_attendance.record.late_entry_note",
+        "Entered on :entered for :date",
+    ),
     ("wl_attendance.flags.manual_correction", "Manual correction"),
     ("wl_attendance.flags.duplicate", "Duplicate"),
     (
@@ -238,6 +242,94 @@ const TEXTS: &[(&str, &str)] = &[
         ":date is outside the period of the original timesheet, :from to :to.",
     ),
     ("wl_attendance.adjustment.opened", "Adjustment opened."),
+    // The invoice dispute behind a client dispute adjustment (BL-ATT-09).
+    (
+        "wl_attendance.adjustment.dispute_unknown",
+        "The invoice dispute :dispute does not exist.",
+    ),
+    (
+        "wl_attendance.adjustment.dispute_resolved",
+        "The invoice dispute :dispute is already resolved. Link a dispute that is still open.",
+    ),
+    (
+        "wl_attendance.adjustment.evidence_required",
+        "A client dispute does not cut pay by itself. To affect payroll, attach the attendance evidence: attendance records of the worker or a document.",
+    ),
+    (
+        "wl_attendance.adjustment.bad_evidence",
+        "The evidence must be an attendance record of this worker or a document, as type:id: :detail",
+    ),
+    (
+        "wl_attendance.adjustment.dispute_upheld",
+        "The invoice dispute was resolved upheld, so this adjustment has no effect and cannot be submitted.",
+    ),
+    (
+        "wl_attendance.adjustment.dispute_upheld_approve",
+        "The invoice dispute was resolved upheld, so this adjustment has no effect and cannot be approved.",
+    ),
+    // An external timesheet nobody answers (`HRM.RUL.15`, BL-ATT-10).
+    (
+        "wl_attendance.escalation.task_title",
+        "Collect the signed timesheet of :employee for :from to :to",
+    ),
+    (
+        "wl_attendance.escalation.task_body",
+        "The client has not approved the timesheet of :employee for :from to :to, submitted on :submitted (:days days ago). Collect a signed sheet from the client and approve it on their behalf.",
+    ),
+    (
+        "wl_attendance.escalation.no_manager",
+        "No line manager of the account manager was found, so the staff who may approve on behalf were told.",
+    ),
+    (
+        "wl_attendance.escalation.no_contact",
+        "No escalation contact is on the contract, so only the manager side was told.",
+    ),
+    (
+        "wl_attendance.escalation.no_account_manager",
+        "No account manager is set for this contract, so nobody owns this task yet.",
+    ),
+    (
+        "wl_attendance.escalation.task_done",
+        "The timesheet was approved or sent back.",
+    ),
+    (
+        "wl_attendance.notices.escalated_subject",
+        "No answer on a timesheet: {{ employee }}",
+    ),
+    (
+        "wl_attendance.notices.escalated_body",
+        "The timesheet of {{ employee }} for {{ from }} to {{ to }} was sent for approval on {{ submitted }} and has had no answer for {{ days }} days. Please approve it, or send it back with a reason.",
+    ),
+    // Deemed approval (`HRM.RUL.15` at N, BL-ATT-11).
+    (
+        "wl_attendance.deem.not_external",
+        "Only a timesheet that an external approver approves can be deemed approved.",
+    ),
+    (
+        "wl_attendance.deem.not_due",
+        "The contract has no deemed-approval clause for this timesheet, or its days have not passed since it was submitted.",
+    ),
+    ("wl_attendance.deem.no_hours", "no hours"),
+    (
+        "wl_attendance.deem.dispute_route",
+        "If you do not agree with these hours, tell your account manager. A correction after approval is made as an adjustment timesheet.",
+    ),
+    (
+        "wl_attendance.notices.deemed_subject",
+        "Timesheet deemed approved: {{ employee }}",
+    ),
+    (
+        "wl_attendance.notices.deemed_body",
+        "The timesheet of {{ employee }} for {{ from }} to {{ to }} ({{ hours }}) had no answer for {{ days }} days and is deemed approved, as the contract says. {{ dispute_route }}",
+    ),
+    (
+        "wl_attendance.notices.dispute_upheld_subject",
+        "Dispute upheld: adjustment cannot be submitted",
+    ),
+    (
+        "wl_attendance.notices.dispute_upheld_body",
+        "The invoice dispute linked to your adjustment of {{ employee }} for {{ from }} to {{ to }} was resolved upheld. The invoice stands, so the adjustment has no effect on billing or pay and cannot be submitted.",
+    ),
     // Approving a timesheet (`HRM.ACL.08`, BL-ATT-08).
     (
         "wl_attendance.approval.kind_mismatch",
@@ -269,6 +361,46 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_attendance.timesheet.no_consumer",
         "Name what used the timesheet: a payroll run, an invoice or an export.",
+    ),
+    (
+        "wl_attendance.config.wait_for_external",
+        "The payroll basis `wait` is only for approvers who are the employer's own staff. A timesheet that an external approver approves is paid on the accepted attendance hours, so that salary does not wait for the client.",
+    ),
+    (
+        "wl_attendance.timesheet.paid_provisionally",
+        "Payroll paid this timesheet on provisional hours: it cannot be reopened. Correct it with an adjustment once it is approved.",
+    ),
+    (
+        "wl_attendance.payroll.not_a_timesheet",
+        "Payroll named :subject, which is not a timesheet.",
+    ),
+    (
+        "wl_attendance.payroll.already_paid",
+        "The timesheet :timesheet was already paid, so payroll run :run cannot pay it too.",
+    ),
+    (
+        "wl_attendance.payroll.not_approved",
+        "The timesheet :timesheet is not approved: payroll pays it on provisional hours, not as approved hours.",
+    ),
+    (
+        "wl_attendance.payroll.not_unapproved",
+        "The timesheet :timesheet is locked: payroll pays it as approved hours, not on provisional hours.",
+    ),
+    (
+        "wl_attendance.approval.system_reconciliation_only",
+        "Only an adjustment of origin provisional_reconciliation is approved by the system. Anything else needs its approver.",
+    ),
+    (
+        "wl_attendance.reconcile.reason",
+        "Provisional hours paid by :run reconciled with the approved hours.",
+    ),
+    (
+        "wl_attendance.reconcile.not_locked",
+        "The timesheet :timesheet is not locked yet: it locks when it is approved, and only then is it reconciled.",
+    ),
+    (
+        "wl_attendance.reconcile.bad_run",
+        "The payroll run :run of this timesheet is not a record reference.",
     ),
     (
         "wl_attendance.timesheet.consumed",

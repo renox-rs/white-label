@@ -55,7 +55,7 @@ async fn an_employee_asks_hr_approves_and_the_event_goes_out() {
     let events = t.leave_approved.all();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].employee, employee.employee_id());
-    assert_eq!(events[0].request, request.id);
+    assert_eq!(events[0].request(), request.id);
     assert_eq!((events[0].from, events[0].to), (nov(9), nov(13)));
 }
 
