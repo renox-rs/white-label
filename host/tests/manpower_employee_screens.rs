@@ -7,8 +7,8 @@ mod manpower_screens_support;
 mod support;
 
 use manpower_screens_support::{
-    AMAL, HR, MD, PRO, SUPERVISOR, browse, day, demo, employee, fits_a_phone, no_raw_words, page,
-    says, scalar, words,
+    AMAL, HR, MD, PRO, SUPERVISOR, browse, cells_of_row, day, demo, employee, fits_a_phone,
+    no_raw_words, page, says, scalar, words,
 };
 use renox::testing::TestApp;
 
@@ -65,6 +65,10 @@ async fn the_pro_sees_the_documents_with_validity_and_the_documents_page_names_t
 
     let docs = page(&app, PRO, &format!("/documents/of/hr.employee/{id}")).await;
     says(&docs, &["Wasim Khan"]);
+    assert!(
+        docs.contains("<p class=\"rx-subtitle\">Wasim Khan"),
+        "the subtitle of the page holds the worker's name"
+    );
     assert!(!docs.contains("hr.employee #"), "the page names the worker");
 }
 
@@ -95,10 +99,18 @@ async fn deployments_list_the_client_and_status_and_a_bench_worker_says_so() {
 async fn hr_sees_the_timesheets_with_hours_and_status() {
     let app = demo().await;
     let html = page(&app, HR, &path(&app, "Ravi Kumar").await).await;
-    says(&html, &["Timesheets", "Month", "Hours", " h"]);
-    assert!(
-        html.contains("Submitted") || html.contains("Open") || html.contains("Approved"),
-        "the status in words"
+    says(&html, &["Timesheets", "Month", "Hours"]);
+    // Ravi's sheet: the week it covers, its hours and its status in words.
+    let row = cells_of_row(&html, "Regular");
+    assert_eq!(
+        row,
+        [
+            format!("{} - {}", words(day(-6)), words(day(0))),
+            "58 h".to_owned(),
+            "Regular".to_owned(),
+            "Submitted".to_owned(),
+        ],
+        "the timesheet row"
     );
     no_raw_words(&html);
 }
