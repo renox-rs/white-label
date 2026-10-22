@@ -471,9 +471,11 @@ pub fn down_key(since: DateTime) -> String {
 /// The scheduled run: retries what is due, then runs `go_down` where N
 /// minutes have passed.
 pub async fn run_due(state: &AppState) -> Result<Report> {
-    let mut report = Report::default();
     // Missed heartbeats are the failed calls of the devices (BL-KRN-07).
-    report.devices_changed = super::devices::check(state).await?;
+    let mut report = Report {
+        devices_changed: super::devices::check(state).await?,
+        ..Report::default()
+    };
     let connections = IntegrationConnection::query()
         .where_op("status", "!=", ConnectionStatus::Disabled)
         .order_by(IntegrationConnection::ID)
@@ -598,7 +600,7 @@ pub(crate) fn schedule(app: &mut Registry) {
             let Some(key) = args.value("--connection") else {
                 return Err(Error::BadRequest("--connection KEY is needed".to_owned()));
             };
-            let devices = super::devices::beat_all(&state, &key).await?;
+            let devices = super::devices::beat_all(&state, key).await?;
             println!("{devices} heartbeats recorded for {key}.");
             Ok(())
         },
