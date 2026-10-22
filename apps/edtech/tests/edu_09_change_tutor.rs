@@ -99,11 +99,6 @@ async fn edu_09_the_remaining_sessions_move_to_the_new_tutor_and_everyone_is_tol
     let layla = cleared_tutor(&t, "Layla Hassan").await;
     let nour = cleared_tutor(&t, "Nour Saleh").await;
     let batch = open_batch(&t, &layla, "Room 1").await;
-    batches::start_due(t.state(), monday()).await.unwrap();
-    assert_eq!(
-        Batch::find_or_404(t.db(), batch.id).await.unwrap().status,
-        BatchStatus::Running
-    );
     let (sara, child, mother) = (
         t.person(1, "Sara Ali"),
         t.person(2, "Omar Child"),
@@ -121,6 +116,12 @@ async fn edu_09_the_remaining_sessions_move_to_the_new_tutor_and_everyone_is_tol
     )
     .await
     .unwrap();
+    // Only an open batch takes enrolments: the batch starts once they are in.
+    batches::start_due(t.state(), monday()).await.unwrap();
+    assert_eq!(
+        Batch::find_or_404(t.db(), batch.id).await.unwrap().status,
+        BatchStatus::Running
+    );
     flag_all(&t, &batch).await;
     let from = monday() + TimeDelta::days(7);
     let amal = t.coordinator().await;
