@@ -4,7 +4,7 @@
     resources/views/wl-invoicing/_dispute_sheet.html in the app. -#}
 <rx-action-sheet :id="'dispute-invoice-' ~ invoice.id" :label="tx['dispute.action']" :action="route('wl_invoicing.dispute', invoice.id)"
                  :title="tx['dispute.title']" :description="dispute.description" :submit-label="tx['dispute.submit']"
-                 icon="flag" variant="danger" danger>
+                 icon="triangle-alert" variant="danger" danger>
   <rx-textarea name="reason" :label="tx['dispute.fields.reason']" :id="'dispute-reason-' ~ invoice.id" required/>
   <rx-input name="amount" :label="tx['dispute.fields.amount']" :hint="tx['dispute.fields.amount_hint']" :id="'dispute-amount-' ~ invoice.id"/>
   <rx-checkbox rx-for="line in dispute.lines" :name="'line_' ~ line.position" :label="line.description ~ ' (' ~ line.gross ~ ')'" :id="'dispute-line-' ~ line.position"/>

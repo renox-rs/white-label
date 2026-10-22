@@ -84,7 +84,7 @@
             <rx-input name="regular" :label="tx['screen.preview_regular']" :value="preview.regular" id="preview-regular" inputmode="decimal"/>
             <rx-input name="overtime" :label="tx['screen.preview_overtime']" :value="preview.overtime" id="preview-overtime" inputmode="decimal"/>
             <rx-input name="holiday" :label="tx['screen.preview_holiday']" :value="preview.holiday" id="preview-holiday" inputmode="decimal"/>
-            <rx-button type="submit" :label="tx['screen.preview_submit']" icon="calculator"/>
+            <rx-button type="submit" :label="tx['screen.preview_submit']" icon="cog"/>
           </rx-toolbar>
         </form>
         <rx-alert rx-if="preview.message" kind="warning" :message="preview.message"/>

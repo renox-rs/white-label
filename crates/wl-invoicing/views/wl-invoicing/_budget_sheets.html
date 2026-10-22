@@ -12,7 +12,7 @@
   <rx-input name="note" :label="tx['budget.set.note']" id="set-line-note"/>
 </rx-action-sheet>
 <rx-action-sheet :id="'clear-line-' ~ budget.id" :label="tx['budget.clear.action']" :action="route('wl_invoicing.budget_clear_line', budget.id)"
-                 :title="tx['budget.clear.title']" :description="tx['budget.clear.description']" :submit-label="tx['budget.clear.submit']" icon="eraser">
+                 :title="tx['budget.clear.title']" :description="tx['budget.clear.description']" :submit-label="tx['budget.clear.submit']" icon="x">
   <rx-select name="category_id" :label="tx['budget.set.category']" :options="categories" id="clear-line-category" required/>
   <rx-select name="month" :label="tx['budget.clear.month']" :options="months" id="clear-line-month" required/>
 </rx-action-sheet>
@@ -23,7 +23,7 @@
 </rx-action-sheet>
 <template rx-if="is_revision">
   <rx-action-sheet :id="'revision-reason-' ~ budget.id" :label="tx['budget.reason.action']" :action="route('wl_invoicing.budget_revision_reason', budget.id)"
-                   :title="tx['budget.reason.title']" :description="tx['budget.reason.description']" :submit-label="tx['budget.reason.submit']" icon="message-square">
+                   :title="tx['budget.reason.title']" :description="tx['budget.reason.description']" :submit-label="tx['budget.reason.submit']" icon="mail">
     <rx-textarea name="reason" :label="tx['budget.fields.revision_reason']" id="revision-reason-text" required/>
   </rx-action-sheet>
 </template>

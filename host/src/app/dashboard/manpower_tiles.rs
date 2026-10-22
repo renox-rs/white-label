@@ -109,7 +109,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.contracts_on_hold_one",
             "dashboard.tiles.contracts_on_hold_many",
             "/manpower/contracts?status=on_hold",
-            "pause",
+            "clock",
             Some("clay"),
         );
         let ending = contracts
@@ -121,7 +121,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.contracts_ending_one",
             "dashboard.tiles.contracts_ending_many",
             "/manpower/contracts?ending=60",
-            "calendar-clock",
+            "calendar-days",
             Some("sand"),
         );
     }
@@ -209,7 +209,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.deployments_suspended_one",
             "dashboard.tiles.deployments_suspended_many",
             "/manpower/deployments?status=suspended",
-            "user-x",
+            "user",
             Some("clay"),
         );
     }
@@ -226,7 +226,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.absence_cases_one",
             "dashboard.tiles.absence_cases_many",
             "/manpower/absence",
-            "user-round-x",
+            "user",
             Some("clay"),
         );
     }
@@ -257,7 +257,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.payroll_waiting_one",
             "dashboard.tiles.payroll_waiting_many",
             "/hr/payroll",
-            "wallet",
+            "banknote",
             Some("sand"),
         );
     }

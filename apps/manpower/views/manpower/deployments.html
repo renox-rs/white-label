@@ -8,7 +8,7 @@
     <rx-form-errors/>
     <rx-row rx-if="can_plan">
       <rx-action-sheet id="plan-deployment" :label="tx['action.plan']" :action="route('manpower.deployment_plan')"
-                       :title="tx['action.plan']" :description="tx['deployments.plan_hint_list']" :submit-label="tx['action.plan']" icon="user-plus">
+                       :title="tx['action.plan']" :description="tx['deployments.plan_hint_list']" :submit-label="tx['action.plan']" icon="user">
         <rx-select name="request_id" :label="tx['deployments.request']" :options="plan.requests" :selected="plan.request_selected" required/>
         <rx-select name="employee_id" :label="tx['form.worker']" :options="plan.workers" :selected="plan.worker_selected" :placeholder="tx['form.worker_placeholder']" required/>
         <rx-input name="start_date" type="date" :label="tx['form.start_date']" :value="plan.today" id="plan-deployment-start" required/>

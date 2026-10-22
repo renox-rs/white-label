@@ -21,7 +21,7 @@
                 <rx-action-sheet :id="'reject-' ~ item.id" :label="item.labels.reject" :action="route('wl_kernel.approvals.reject', item.id)" :title="item.labels.reject_title" :submit-label="item.labels.reject" icon="circle-x" danger>
                   <rx-textarea name="comment" :label="item.labels.comment" :hint="item.labels.comment_reject" :id="'reject-comment-' ~ item.id" required/>
                 </rx-action-sheet>
-                <rx-action-sheet :id="'return-' ~ item.id" :label="item.labels.return" :action="route('wl_kernel.approvals.return', item.id)" :title="item.labels.return_title" :submit-label="item.labels.return" icon="undo-2">
+                <rx-action-sheet :id="'return-' ~ item.id" :label="item.labels.return" :action="route('wl_kernel.approvals.return', item.id)" :title="item.labels.return_title" :submit-label="item.labels.return" icon="arrow-left">
                   <rx-textarea name="comment" :label="item.labels.comment" :hint="item.labels.comment_return" :id="'return-comment-' ~ item.id" required/>
                 </rx-action-sheet>
               </rx-row>

@@ -19,7 +19,7 @@
       <rx-column :label="tx['fields.status']"><rx-badge :kind="run.status_kind" :text="run.status"/></rx-column>
       <rx-column :label="tx['payroll.lines']" hide-narrow>{{ run.lines }}</rx-column>
       <rx-column :label="tx['payroll.list.total']">{{ run.total }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['payroll.list.empty']" :message="tx['payroll.list.empty_hint']" icon="wallet"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['payroll.list.empty']" :message="tx['payroll.list.empty_hint']" icon="banknote"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

@@ -13,17 +13,17 @@
     <rx-row>
       <template rx-if="actions.report.shown">
         <rx-action-sheet id="record-report" :label="tx['absence.record_report']" :action="route('manpower.absence_report', id)"
-                         :title="tx['absence.record_report']" :description="tx['absence.record_report_hint']" :submit-label="tx['absence.record_report']" icon="file-check">
+                         :title="tx['absence.record_report']" :description="tx['absence.record_report_hint']" :submit-label="tx['absence.record_report']" icon="file-text">
           <rx-input name="number" :label="tx['absence.report_number']" :value="report_number" id="record-report-number" required/>
           <rx-input name="date" type="date" :label="tx['absence.report_date']" :value="today" id="record-report-date" required/>
         </rx-action-sheet>
       </template>
       <template rx-if="actions.abscond.shown">
         <template rx-if="actions.abscond.blocked">
-          <rx-button :label="tx['absence.abscond']" icon="user-x" :disabled-reason="actions.abscond.blocked"/>
+          <rx-button :label="tx['absence.abscond']" icon="user" :disabled-reason="actions.abscond.blocked"/>
         </template>
         <template rx-else>
-          <rx-link-button :href="employee_url" :label="tx['absence.abscond']" icon="user-x"/>
+          <rx-link-button :href="employee_url" :label="tx['absence.abscond']" icon="user"/>
         </template>
       </template>
       <template rx-if="actions.close.shown">
@@ -60,7 +60,7 @@
       <rx-column :label="tx['absence.ticket']"><a href="{{ ticket.url }}">{{ ticket.number }}</a></rx-column>
       <rx-column :label="tx['absence.ticket_title']" hide-narrow>{{ ticket.title }}</rx-column>
       <rx-column :label="tx['absence.status']">{{ ticket.status }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['absence.tickets_empty']" icon="ticket"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['absence.tickets_empty']" icon="tag"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

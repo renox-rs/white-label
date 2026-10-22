@@ -447,7 +447,7 @@ impl Module for WlHr {
         app.nav(
             "app",
             NavLink::route("wl_hr.payroll_runs", "nav.payroll")
-                .icon("wallet")
+                .icon("banknote")
                 .group("nav.app")
                 .order(61)
                 .permission(permissions::PAYROLL_VIEW),

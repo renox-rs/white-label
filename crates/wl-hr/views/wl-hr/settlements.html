@@ -16,7 +16,7 @@
         {{ settlement.deadline }}
         <template rx-if="settlement.overdue"><rx-badge kind="error" :text="tx['settlement.list.overdue']"/></template>
       </rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['settlement.list.empty']" icon="wallet"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['settlement.list.empty']" icon="banknote"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

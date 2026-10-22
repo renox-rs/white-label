@@ -14,7 +14,7 @@
     <rx-row>
       <template rx-if="actions.sign.shown">
         <rx-action-sheet id="sign-contract" :label="tx['action.sign']" :action="route('manpower.contract_signed', id)"
-                         :title="tx['action.sign']" :description="tx['action.sign_hint']" :submit-label="tx['action.sign']" icon="pen">
+                         :title="tx['action.sign']" :description="tx['action.sign_hint']" :submit-label="tx['action.sign']" icon="pencil">
           <rx-input name="signed_on" type="date" :label="tx['form.signed_on']" :value="today" id="sign-contract-date" required/>
           <rx-input name="document" :label="tx['form.document']" :hint="tx['form.document_hint']" id="sign-contract-document" required/>
         </rx-action-sheet>
@@ -30,14 +30,14 @@
       </template>
       <template rx-if="actions.hold.shown">
         <rx-action-sheet id="hold-contract" :label="tx['action.hold']" :action="route('manpower.contract_hold', id)"
-                         :title="tx['action.hold']" :description="tx['action.hold_hint']" :submit-label="tx['action.hold']" icon="pause">
+                         :title="tx['action.hold']" :description="tx['action.hold_hint']" :submit-label="tx['action.hold']" icon="clock">
           <rx-select name="reason" :label="tx['form.hold_reason']" :options="hold_reasons" :selected="hold_selected"/>
           <rx-input name="text" :label="tx['form.hold_text']" :hint="tx['form.hold_text_hint']" id="hold-contract-text"/>
         </rx-action-sheet>
       </template>
       <template rx-if="actions.release.shown">
         <rx-action-sheet id="release-contract" :label="tx['action.release']" :action="route('manpower.contract_release', id)"
-                         :title="tx['action.release']" :description="tx['action.release_hint']" :submit-label="tx['action.release']" variant="primary" icon="play"/>
+                         :title="tx['action.release']" :description="tx['action.release_hint']" :submit-label="tx['action.release']" variant="primary" icon="arrow-right"/>
       </template>
       <template rx-if="actions.renew.shown">
         <rx-action-sheet id="renew-contract" :label="tx['action.renew']" :action="route('manpower.contract_renew', id)"
@@ -67,7 +67,7 @@
       </template>
       <template rx-if="actions.cancel.shown">
         <rx-action-sheet id="cancel-contract" :label="tx['action.cancel']" :action="route('manpower.contract_cancel', id)"
-                         :title="tx['action.cancel']" :description="tx['action.cancel_hint']" :submit-label="tx['action.cancel']" variant="plain-danger" icon="ban" danger>
+                         :title="tx['action.cancel']" :description="tx['action.cancel_hint']" :submit-label="tx['action.cancel']" variant="plain-danger" icon="circle-x" danger>
           <rx-textarea name="reason" :label="tx['form.cancel_reason']" id="cancel-contract-reason" required/>
         </rx-action-sheet>
       </template>
@@ -175,7 +175,7 @@
                 <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_required']" :id="'reject-comment-' ~ approval.id" required/>
               </rx-action-sheet>
               <rx-action-sheet :id="'return-' ~ approval.id" :label="tx['approval.return']" :action="route('wl_kernel.approvals.return', approval.id)"
-                               :title="tx['approval.return']" :submit-label="tx['approval.return']" icon="undo-2">
+                               :title="tx['approval.return']" :submit-label="tx['approval.return']" icon="arrow-left">
                 <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_required']" :id="'return-comment-' ~ approval.id" required/>
               </rx-action-sheet>
             </template>

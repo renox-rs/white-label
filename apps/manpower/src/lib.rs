@@ -162,7 +162,7 @@ impl Module for Manpower {
         app.nav(
             "app",
             NavLink::route("manpower.absence", "nav.absence")
-                .icon("user-x")
+                .icon("user")
                 .group("nav.app")
                 .order(12)
                 .permission(permissions::ABSENCE_MANAGE),

@@ -10,7 +10,7 @@
       <rx-column :label="tx['subscription.fields.source']" hide-narrow>{{ row.source }}</rx-column>
       <rx-column :label="tx['subscription.fields.status']">{{ row.status }}</rx-column>
       <rx-column :label="tx['subscription.fields.next_cycle']" hide-narrow>{{ row.next_cycle }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['subscription.empty']" icon="repeat"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['subscription.empty']" icon="refresh-cw"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

@@ -15,7 +15,7 @@
       <rx-column :label="tx['absence.contacts']" hide-narrow>{{ case.contacts }}</rx-column>
       <rx-column :label="tx['absence.report']" hide-narrow>{{ case.report }}</rx-column>
       <rx-column :label="tx['absence.status']"><rx-badge :kind="case.status_kind" :text="case.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['absence.empty']" :message="tx['absence.empty_text']" icon="user-x"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['absence.empty']" :message="tx['absence.empty_text']" icon="user"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

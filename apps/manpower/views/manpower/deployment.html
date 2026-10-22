@@ -17,19 +17,19 @@
       </template>
       <template rx-if="actions.extend.shown">
         <rx-action-sheet id="extend-deployment" :label="tx['deployment.extend']" :action="route('manpower.deployment_extend', id)"
-                         :title="tx['deployment.extend']" :description="tx['deployment.extend_hint']" :submit-label="tx['deployment.extend']" icon="calendar-plus">
+                         :title="tx['deployment.extend']" :description="tx['deployment.extend_hint']" :submit-label="tx['deployment.extend']" icon="calendar">
           <rx-input name="end_date" type="date" :label="tx['form.new_end']" :value="new_end" id="extend-deployment-end" required/>
         </rx-action-sheet>
       </template>
       <template rx-if="actions.suspend.shown">
         <rx-action-sheet id="suspend-deployment" :label="tx['deployment.suspend']" :action="route('manpower.deployment_suspend', id)"
-                         :title="tx['deployment.suspend']" :description="tx['deployment.suspend_hint']" :submit-label="tx['deployment.suspend']" icon="pause">
+                         :title="tx['deployment.suspend']" :description="tx['deployment.suspend_hint']" :submit-label="tx['deployment.suspend']" icon="clock">
           <rx-textarea name="reason" :label="tx['deployment.suspend_reason']" id="suspend-deployment-reason" required/>
         </rx-action-sheet>
       </template>
       <template rx-if="actions.resume.shown">
         <rx-action-sheet id="resume-deployment" :label="tx['deployment.resume']" :action="route('manpower.deployment_resume', id)"
-                         :title="tx['deployment.resume']" :description="tx['deployment.resume_hint']" :submit-label="tx['deployment.resume']" variant="primary" icon="play"/>
+                         :title="tx['deployment.resume']" :description="tx['deployment.resume_hint']" :submit-label="tx['deployment.resume']" variant="primary" icon="arrow-right"/>
       </template>
       <template rx-if="actions.cover.shown">
         <rx-action-sheet id="cover-deployment" :label="tx['deployment.cover']" :action="route('manpower.deployment_cover', id)"
@@ -54,7 +54,7 @@
       </template>
       <template rx-if="actions.cancel.shown">
         <rx-action-sheet id="cancel-deployment" :label="tx['action.cancel']" :action="route('manpower.deployment_cancel', id)"
-                         :title="tx['action.cancel']" :description="tx['deployment.cancel_hint']" :submit-label="tx['action.cancel']" variant="plain-danger" icon="ban" danger>
+                         :title="tx['action.cancel']" :description="tx['deployment.cancel_hint']" :submit-label="tx['action.cancel']" variant="plain-danger" icon="circle-x" danger>
           <rx-textarea name="reason" :label="tx['form.cancel_reason']" id="cancel-deployment-reason" required/>
         </rx-action-sheet>
       </template>

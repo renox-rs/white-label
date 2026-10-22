@@ -13,7 +13,7 @@
     <rx-row>
       <template rx-if="actions.submit">
         <rx-action-sheet id="submit-timesheet" :label="tx['action.submit']" :action="route('wl_attendance.timesheet_submit', id)"
-                         :title="tx['action.submit']" :description="tx['action.submit_hint']" :submit-label="tx['action.submit']" variant="primary" icon="send"/>
+                         :title="tx['action.submit']" :description="tx['action.submit_hint']" :submit-label="tx['action.submit']" variant="primary" icon="arrow-right"/>
       </template>
       <template rx-if="actions.approve">
         <template rx-if="actions.approve_blocked">
@@ -32,11 +32,11 @@
       </template>
       <template rx-if="actions.on_behalf">
         <template rx-if="actions.on_behalf_blocked">
-          <rx-button :label="tx['action.on_behalf']" icon="pen" :disabled-reason="actions.on_behalf_blocked"/>
+          <rx-button :label="tx['action.on_behalf']" icon="pencil" :disabled-reason="actions.on_behalf_blocked"/>
         </template>
         <template rx-else>
         <rx-action-sheet id="on-behalf-timesheet" :label="tx['action.on_behalf']" :action="route('wl_attendance.timesheet_approve_on_behalf', id)"
-                         :title="tx['action.on_behalf']" :description="tx['action.on_behalf_hint']" :submit-label="tx['action.on_behalf']" icon="pen">
+                         :title="tx['action.on_behalf']" :description="tx['action.on_behalf_hint']" :submit-label="tx['action.on_behalf']" icon="pencil">
           <rx-input name="document_id" type="number" :label="tx['form.document']" :hint="tx['form.document_hint']" id="on-behalf-timesheet-document" required/>
           <rx-input name="approver_name" :label="tx['form.signed_by']" id="on-behalf-timesheet-name" required/>
           <rx-input name="signed_on" type="date" :label="tx['form.signed_on']" id="on-behalf-timesheet-date" required/>
@@ -46,13 +46,13 @@
       </template>
       <template rx-if="actions.reopen">
         <rx-action-sheet id="reopen-timesheet" :label="tx['action.reopen']" :action="route('wl_attendance.timesheet_reopen', id)"
-                         :title="tx['action.reopen']" :description="tx['action.reopen_hint']" :submit-label="tx['action.reopen']" icon="rotate-ccw">
+                         :title="tx['action.reopen']" :description="tx['action.reopen_hint']" :submit-label="tx['action.reopen']" icon="refresh-cw">
           <rx-textarea name="reason" :label="tx['form.reason']" id="reopen-timesheet-reason" required/>
         </rx-action-sheet>
       </template>
       <template rx-if="actions.adjust">
         <rx-action-sheet id="adjust-timesheet" :label="tx['action.adjust']" :action="route('wl_attendance.adjustment_open', id)"
-                         :title="tx['action.adjust']" :description="tx['action.adjust_hint']" :submit-label="tx['action.adjust']" icon="file-pen">
+                         :title="tx['action.adjust']" :description="tx['action.adjust_hint']" :submit-label="tx['action.adjust']" icon="pencil">
           <rx-textarea name="reason" :label="tx['form.reason']" id="adjust-timesheet-reason" required/>
           <rx-select name="origin" :label="tx['form.origin']" :options="origins" :selected="'attendance_error'" id="adjust-timesheet-origin"/>
           <rx-select name="affects" :label="tx['form.affects']" :options="affects" :selected="'billing'" id="adjust-timesheet-affects"/>
@@ -63,7 +63,7 @@
         </rx-action-sheet>
       </template>
       <rx-link-button rx-if="invoice_url" :href="invoice_url" :label="tx['open_invoice']" icon="receipt"/>
-      <rx-link-button rx-if="original_url" :href="original_url" :label="tx['open_original']" icon="arrow-up-left"/>
+      <rx-link-button rx-if="original_url" :href="original_url" :label="tx['open_original']" icon="arrow-left"/>
     </rx-row>
     <rx-card :title="title">
       <rx-infolist columns="2">
@@ -101,7 +101,7 @@
           <rx-column :label="tx['period']"><a href="{{ adjustment.url }}">{{ adjustment.period }}</a></rx-column>
           <rx-column :label="tx['form.reason']" hide-narrow>{{ adjustment.reason }}</rx-column>
           <rx-column :label="tx['status']"><rx-badge :kind="adjustment.status_kind" :text="adjustment.status"/></rx-column>
-          <rx-slot name="empty"><rx-empty :title="tx['adjustments.empty']" :message="tx['adjustments.empty_text']" icon="file-pen"/></rx-slot>
+          <rx-slot name="empty"><rx-empty :title="tx['adjustments.empty']" :message="tx['adjustments.empty_text']" icon="pencil"/></rx-slot>
         </rx-table>
       </rx-tab>
     </rx-tabs>

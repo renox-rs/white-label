@@ -4,7 +4,7 @@
     with resources/views/wl-invoicing/_write_off_sheet.html in the app. -#}
 <rx-action-sheet :id="'write-off-invoice-' ~ invoice.id" :label="tx['write_off.action']" :action="route('wl_invoicing.write_off', invoice.id)"
                  :title="tx['write_off.title']" :description="write_off_description" :submit-label="tx['write_off.submit']"
-                 icon="ban" variant="danger" danger>
+                 icon="circle-x" variant="danger" danger>
   <rx-select name="reason_code" :label="tx['write_off.reason_code']" :options="reasons" :id="'write-off-reason-' ~ invoice.id" required/>
   <rx-textarea name="reason_text" :label="tx['write_off.reason_text']" :id="'write-off-text-' ~ invoice.id"/>
 </rx-action-sheet>

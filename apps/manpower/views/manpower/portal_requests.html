@@ -47,16 +47,16 @@
         <rx-row>
           <template rx-if="request.submit.shown">
             <template rx-if="request.submit.blocked">
-              <rx-button :label="tx['portal.requests.submit']" variant="primary" icon="send" :disabled-reason="request.submit.blocked"/>
+              <rx-button :label="tx['portal.requests.submit']" variant="primary" icon="arrow-right" :disabled-reason="request.submit.blocked"/>
             </template>
             <template rx-else>
               <rx-action-sheet :id="'portal-submit-request-' ~ request.id" :label="tx['portal.requests.submit']" :action="route('manpower.portal_request_submit', request.id)"
-                               :title="tx['portal.requests.submit']" :description="tx['portal.requests.submit_hint']" :submit-label="tx['portal.requests.submit']" variant="primary" icon="send"/>
+                               :title="tx['portal.requests.submit']" :description="tx['portal.requests.submit_hint']" :submit-label="tx['portal.requests.submit']" variant="primary" icon="arrow-right"/>
             </template>
           </template>
           <template rx-if="request.cancel.shown">
             <rx-action-sheet :id="'portal-cancel-request-' ~ request.id" :label="tx['portal.requests.cancel']" :action="route('manpower.portal_request_cancel', request.id)"
-                             :title="tx['portal.requests.cancel']" :description="tx['portal.requests.cancel_hint']" :submit-label="tx['portal.requests.cancel']" variant="plain-danger" icon="ban" danger>
+                             :title="tx['portal.requests.cancel']" :description="tx['portal.requests.cancel_hint']" :submit-label="tx['portal.requests.cancel']" variant="plain-danger" icon="circle-x" danger>
               <rx-textarea name="reason" :label="tx['portal.requests.reason']" :id="'portal-cancel-request-reason-' ~ request.id" required/>
             </rx-action-sheet>
           </template>

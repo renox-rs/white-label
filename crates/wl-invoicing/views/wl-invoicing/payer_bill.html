@@ -6,9 +6,9 @@
     <rx-page-header :title="title" :subtitle="payer" :back="route('wl_invoicing.payer_bills')" :back-label="tx['payer_bill.title']"
                     :badge="status_label" :badge-kind="status_kind">
       <rx-confirm rx-if="can_issue" :id="'issue-payer-bill-' ~ bill.id" :label="tx['payer_bill.issue.action']" :action="route('wl_invoicing.payer_bill_issue', bill.id)" method="POST"
-                  :title="tx['payer_bill.issue.title']" :message="tx['payer_bill.issue.message']" :confirm-label="tx['payer_bill.issue.action']" icon="send"/>
+                  :title="tx['payer_bill.issue.title']" :message="tx['payer_bill.issue.message']" :confirm-label="tx['payer_bill.issue.action']" icon="arrow-right"/>
       <rx-action-sheet rx-if="can_resubmit" :id="'resubmit-payer-bill-' ~ bill.id" :label="tx['payer_bill.resubmit.action']" :action="route('wl_invoicing.payer_bill_resubmit', bill.id)"
-                       :title="tx['payer_bill.resubmit.title']" :description="tx['payer_bill.resubmit.description']" :submit-label="tx['payer_bill.resubmit.submit']" icon="send">
+                       :title="tx['payer_bill.resubmit.title']" :description="tx['payer_bill.resubmit.description']" :submit-label="tx['payer_bill.resubmit.submit']" icon="arrow-right">
         <rx-textarea name="corrections" :label="tx['payer_bill.resubmit.corrections']" :id="'resubmit-payer-bill-corrections-' ~ bill.id" required/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_reject" :id="'reject-payer-bill-' ~ bill.id" :label="tx['payer_bill.reject.action']" :action="route('wl_invoicing.payer_bill_rejected', bill.id)"
@@ -42,7 +42,7 @@
         <rx-textarea name="reason" :label="tx['payer_bill.close.reason']" :id="'write-off-payer-bill-reason-' ~ bill.id" required/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_close" :id="'transfer-payer-bill-' ~ bill.id" :label="tx['payer_bill.transfer.action']" :action="route('wl_invoicing.payer_bill_transfer', bill.id)"
-                       :title="tx['payer_bill.transfer.title']" :description="tx['payer_bill.transfer.description']" :submit-label="tx['payer_bill.transfer.submit']" icon="send">
+                       :title="tx['payer_bill.transfer.title']" :description="tx['payer_bill.transfer.description']" :submit-label="tx['payer_bill.transfer.submit']" icon="arrow-right">
         <rx-textarea name="reason" :label="tx['payer_bill.close.reason']" :id="'transfer-payer-bill-reason-' ~ bill.id" required/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_void" :id="'void-payer-bill-' ~ bill.id" :label="tx['payer_bill.void.action']" :action="void_action"

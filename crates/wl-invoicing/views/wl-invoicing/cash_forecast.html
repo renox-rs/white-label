@@ -38,7 +38,7 @@
       <rx-column :label="tx['cash.source']" hide-narrow>{{ opening.source }}</rx-column>
       <rx-column :label="tx['cash.movements']" hide-narrow>{{ opening.movements }}</rx-column>
       <rx-column :label="tx['cash.opening']">{{ opening.opening }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['cash.no_accounts']" :message="tx['cash.no_accounts_hint']" icon="landmark"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['cash.no_accounts']" :message="tx['cash.no_accounts_hint']" icon="building-2"/></rx-slot>
     </rx-table>
     <template rx-if="can_manage">
       <rx-form route="wl_invoicing.cash_balances.store" novalidate>
@@ -65,7 +65,7 @@
         <rx-column label="">
           <template rx-if="balance.can_void">
             <rx-action-sheet :id="'void-balance-' ~ balance.id" :label="tx['cash.balances.void']" :action="route('wl_invoicing.cash_balances.void', balance.id)"
-                             :title="tx['cash.balances.void_title']" :submit-label="tx['cash.balances.void']" icon="ban" danger>
+                             :title="tx['cash.balances.void_title']" :submit-label="tx['cash.balances.void']" icon="circle-x" danger>
               <rx-textarea name="reason" :label="tx['cash.balances.void_reason']" :id="'void-reason-' ~ balance.id" required/>
             </rx-action-sheet>
           </template>
