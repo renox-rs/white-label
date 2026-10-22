@@ -549,6 +549,15 @@ needs no approval and runs at once. The refund the approver saw is the one that 
 sessions are held meanwhile. `transfer` moves a student to another `open` or `running` batch of
 the same course.
 
+The block of a payer or a student (`PartyBlocked`) freezes the `active` enrolments they pay for or
+attend with the cause *block*. The cause is removed by `PartyUnblocked` only when neither the payer
+nor the student of the enrolment is still blocked, so an enrolment of a blocked student whose
+guardian is released stays frozen. The package is given back the days from the day the enrolment
+became `frozen` to the day its last cause ended (two causes that overlap give the days once), as the
+system's `extend` of wl-sales, which is not an extension the package's limit counts. While the payer
+or the student is blocked, only a holder of `enrolments.approve` (the centre manager) may `withdraw`
+the enrolment.
+
 #### Session
 
 | State | Tone | Terminal | Meaning |
