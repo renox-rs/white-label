@@ -155,3 +155,53 @@ async fn every_sidebar_link_opens_for_the_admin() {
         );
     }
 }
+
+/// A guest (a worker who opens a signed link, an error page) is shown none of
+/// the staff's sidebar links, though some modules add theirs for anyone
+/// signed in (the review tasks, the broadcasts).
+#[renox::test]
+async fn a_guest_sees_no_staff_link_in_the_sidebar() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let page = app.get("/no-such-page").await;
+    page.assert_status(404);
+    let html = page.text();
+    for label in ["Broadcasts", "Review tasks", "Block overrides"] {
+        assert!(!html.contains(label), "a guest is shown `{label}`");
+    }
+}
+
+/// The phone's tab bar has no room for the modules' links: the menu page
+/// lists every link the person may open, and only those.
+#[renox::test]
+async fn the_menu_page_lists_the_links_the_person_may_open() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    app.get("/menu").await.assert_status(303);
+    let admin = admin(&app).await;
+    app.acting_as(&admin);
+    let page = app.get("/menu").await;
+    page.assert_ok();
+    let html = page.text();
+    for label in ["Invoices", "Parties", "Users"] {
+        assert!(html.contains(label), "the menu has no `{label}` link");
+    }
+    let member = {
+        let mut user = User::register(app.db(), "Mia", "mia@example.com", "secret123")
+            .await
+            .unwrap();
+        user.email_verified_at = Some(renox::db::now());
+        user.save(app.db()).await.unwrap();
+        host::roles::define(app.db()).await.unwrap();
+        user.assign_role(app.db(), host::roles::MEMBER)
+            .await
+            .unwrap();
+        user
+    };
+    app.acting_as(&member);
+    let html = app.get("/menu").await.text();
+    assert!(
+        !html.contains(">Users<"),
+        "a member is not shown the users link"
+    );
+}

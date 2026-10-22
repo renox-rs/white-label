@@ -7,12 +7,14 @@
 //! The billing of the approved last timesheet by `MPW.RUL.05` is in
 //! `manpower_billing.rs`.
 
+mod manpower_support;
 mod support;
 
 use host::roles::{ACCOUNT_MANAGER, ADMIN};
 use manpower::bench::is_on_bench;
 use manpower::permissions::client_scope;
 use manpower::{ClientContract, ContractStatus, Deployment, DeploymentStatus, Site};
+use manpower_support::portal_grant;
 use renox::chrono::Days;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
@@ -196,6 +198,7 @@ async fn the_client_approves_the_closed_timesheet_after_the_contract_has_ended()
         .unwrap();
     let carl = person(&app, "Carl", "client_approver").await;
     let client = company(&app, "Gulf Tower LLC").await;
+    portal_grant(&app, &carl, client, "approver").await;
     let last_day = today().checked_sub_days(Days::new(1)).unwrap();
     let mut contract = ClientContract {
         reference: "CC-0001".into(),

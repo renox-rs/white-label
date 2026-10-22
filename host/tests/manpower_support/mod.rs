@@ -20,6 +20,7 @@ use wl_kernel::documents::{BlockCondition, BlockMode, OverrideMode, today};
 use wl_kernel::workforce::EmployeeId;
 use wl_kernel::{ClientConfig, PartyId, PartyKind};
 use wl_parties::{ContactPoint, ContactType, NewParty, PersonDetails, create};
+use wl_portal::{AccessGrant, GrantStatus};
 
 use crate::support::{company, day, noon_clock, scoped_person, tenant, without_document_kinds};
 
@@ -434,10 +435,16 @@ pub struct Account {
 }
 
 pub async fn account(app: &TestApp) -> Account {
-    let client = company(app, "Gulf Tower LLC").await;
-    let amal = scoped_person(app, "Amal", ACCOUNT_MANAGER, &client_scope(client.0)).await;
+    account_named(app, "Gulf Tower LLC", "CC-0001", "Amal").await
+}
+
+/// Another client company `name` with its own contract `reference` and
+/// account manager `manager`, as [`account`].
+pub async fn account_named(app: &TestApp, name: &str, reference: &str, manager: &str) -> Account {
+    let client = company(app, name).await;
+    let amal = scoped_person(app, manager, ACCOUNT_MANAGER, &client_scope(client.0)).await;
     let mut contract = ClientContract {
-        reference: "CC-0001".into(),
+        reference: reference.into(),
         client_party_id: client.0,
         start_date: day(-200),
         end_date: day(400),
@@ -551,4 +558,27 @@ pub async fn extend(
 /// The deployment `id` as it is now.
 pub async fn reload(app: &TestApp, id: i64) -> Deployment {
     Deployment::find_or_404(app.db(), id).await.unwrap()
+}
+
+/// `user` acts for `client` in the portal with the portal role `roles`
+/// (`owner` or `approver` make them one of the client's approvers).
+pub async fn portal_grant(app: &TestApp, user: &User, client: PartyId, roles: &str) {
+    let person = tenant(app, &format!("{} (portal person)", user.name)).await;
+    let mut grant = AccessGrant {
+        user_id: Some(user.id),
+        person_party_id: person.0,
+        party_id: client.0,
+        audience: "tenant".into(),
+        roles: roles.into(),
+        source: "invitation".into(),
+        valid_from: day(-30),
+        status: GrantStatus::Active,
+        ..AccessGrant::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    grant
+        .insert_in_state(&mut tx, GrantStatus::Active, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
 }

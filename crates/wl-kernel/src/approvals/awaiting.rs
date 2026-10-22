@@ -97,6 +97,7 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ("construction.variation_abandon", "Abandon a variation"),
     ("documents.block_override", "Override a document block"),
     ("hr.report_absconding", "Report a worker as absconded"),
+    ("hr.waive_cooling", "Waive the cooling of a pay account"),
     ("inventory.goods_receipt_post", "Post an over-receipt"),
     (
         "inventory.landed_cost_adjust",
@@ -128,6 +129,11 @@ const ACTION_LABELS: &[(&str, &str)] = &[
         "parties.confirm_match",
         "Confirm a possible screening match",
     ),
+    (
+        "manpower.release",
+        "Release a client contract from a credit hold",
+    ),
+    ("manpower.terminate", "Terminate a client contract"),
     ("payments.pay", "Pay out"),
     ("payments.refund", "Pay a refund"),
     ("payments.reverse", "Reverse a payment"),
@@ -183,6 +189,16 @@ mod tests {
         keys.sort_unstable();
         keys.dedup();
         assert_eq!(keys.len(), count, "an action is labelled twice");
+    }
+
+    #[test]
+    fn the_manpower_and_hr_actions_have_words() {
+        for action in ["manpower.release", "manpower.terminate", "hr.waive_cooling"] {
+            assert!(
+                ACTION_LABELS.iter().any(|(key, _)| *key == action),
+                "{action} shows as a raw key"
+            );
+        }
     }
 
     #[test]

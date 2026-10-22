@@ -9,13 +9,13 @@
       <rx-column :label="tx['deployments.worker']">
         <rx-stack>
           <span>{{ deployment.worker }}</span>
-          <span class="rx-subtitle">{{ deployment.role }} - {{ deployment.site }}</span>
+          <span class="rx-subtitle">{{ deployment.role | replace('_', ' ') | capitalize }} - {{ deployment.site }}</span>
           <span><rx-badge :kind="deployment.status_kind" :text="deployment.status"/></span>
           {% for flag in deployment.flags %}<span><rx-badge kind="warning" :text="flag"/></span>{% endfor %}
         </rx-stack>
       </rx-column>
       <rx-column :label="tx['deployments.shift']" hide-narrow>{{ deployment.shift_type }}</rx-column>
-      <rx-column :label="tx['deployments.period']" hide-narrow>{{ deployment.start_date }} - {{ deployment.end_date }}</rx-column>
+      <rx-column :label="tx['deployments.period']" hide-narrow>{{ deployment.start_date }} - {{ deployment.end_date if deployment.end_date else tx['open_ended'] }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['deployments.empty']" :message="tx['deployments.empty_text']" icon="users"/></rx-slot>
     </rx-table>
   </rx-stack>

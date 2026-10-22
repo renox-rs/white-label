@@ -742,6 +742,29 @@ impl TaskCreator for TicketDesk {
 /// What `record_payroll_use` was told: the run and the hours it used.
 type PayrollUse = (Subject, Vec<PayrollHours>);
 
+/// The client's approvers for the real wl-attendance: every user who holds the
+/// role `client_approver` (the one client of these tests).
+#[derive(Clone, Copy)]
+struct ClientApprovers;
+
+impl wl_kernel::timesheets::ApproverResolver for ClientApprovers {
+    fn client_approvers<'a>(
+        &'a self,
+        state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, Vec<NotifyRecipient>> {
+        Box::pin(async move {
+            Ok(
+                renox::auth::permissions::users_with_role(&state.db, "client_approver")
+                    .await?
+                    .into_iter()
+                    .map(|user| NotifyRecipient::User { id: user.id })
+                    .collect(),
+            )
+        })
+    }
+}
+
 /// The timesheets of wl-attendance: the hours payroll is given at `calculate`
 /// and a log of what `submit` told it was used.
 #[derive(Clone, Default)]
@@ -886,7 +909,9 @@ impl Module for Fakes {
         record(app, &self.paid);
         record(app, &self.settlement_paid);
         record(app, &self.settlement_disputed);
-        if !self.real.attendance {
+        if self.real.attendance {
+            wl_kernel::timesheets::provide_approver_resolver(app, ClientApprovers);
+        } else {
             provide_attendance_history(app, self.attendance.clone());
         }
         if !self.real.ticketing {

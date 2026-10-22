@@ -21,6 +21,7 @@ use renox::db::{Transaction, now};
 use renox::prelude::*;
 use wl_kernel::documents::today;
 
+use crate::employee::Employee;
 use crate::pay_account::{PayAccount, PayAccountStatus};
 use crate::payroll::{HELD_ACCOUNT_CLOSED, LineStatus, PayrollLine};
 
@@ -47,6 +48,56 @@ pub(crate) async fn mark_closed_in(tx: &mut Transaction, employee_id: i64) -> Re
     Ok(())
 }
 
+/// Whether the active account of `employee_id` was reported closed while a new
+/// one is still `cooling`: the line goes into no file until the new one is active.
+async fn closed_while_cooling(tx: &mut Transaction, employee_id: i64) -> Result<bool> {
+    let closed = PayAccount::active_in(&mut *tx, employee_id)
+        .await?
+        .is_some_and(|account| account.closed_reported_on.is_some());
+    if !closed {
+        return Ok(false);
+    }
+    PayAccount::query()
+        .where_(PayAccount::EMPLOYEE_ID.eq(employee_id))
+        .where_(PayAccount::STATUS.eq(PayAccountStatus::Cooling))
+        .exists(&mut *tx)
+        .await
+}
+
+/// The employee numbers of the lines of run `run_id` that would go into the
+/// SIF file (`included`, net above zero) without a WPS-eligible pay account,
+/// that is an `active` one (a bank account or a salary card). A line that is
+/// held for a closed account ([`hold_closed_in`]) needs none. Nothing is
+/// changed.
+pub(crate) async fn without_wps_account_in(
+    tx: &mut Transaction,
+    run_id: i64,
+) -> Result<Vec<String>> {
+    let lines = PayrollLine::query()
+        .where_(PayrollLine::RUN_ID.eq(run_id))
+        .where_(PayrollLine::STATUS.eq(LineStatus::Included))
+        .order_by(PayrollLine::ID)
+        .get(&mut *tx)
+        .await?;
+    let mut missing = Vec::new();
+    for line in lines.into_iter().filter(|l| l.net_amount > 0) {
+        if PayAccount::active_in(&mut *tx, line.employee_id)
+            .await?
+            .is_some()
+            || closed_while_cooling(tx, line.employee_id).await?
+        {
+            continue;
+        }
+        let number = Employee::find(&mut *tx, line.employee_id)
+            .await?
+            .map_or_else(|| format!("#{}", line.employee_id), |e| e.employee_number);
+        if !missing.contains(&number) {
+            missing.push(number);
+        }
+    }
+    Ok(missing)
+}
+
 /// Holds the `included` lines of run `run_id` whose employee's active account
 /// is closed while a new account is still `cooling`, inside `tx`. Returns the
 /// lines held.
@@ -59,18 +110,7 @@ pub(crate) async fn hold_closed_in(tx: &mut Transaction, run_id: i64) -> Result<
         .await?;
     let mut held = Vec::new();
     for line in lines {
-        let closed = PayAccount::active_in(&mut *tx, line.employee_id)
-            .await?
-            .is_some_and(|account| account.closed_reported_on.is_some());
-        if !closed {
-            continue;
-        }
-        let cooling = PayAccount::query()
-            .where_(PayAccount::EMPLOYEE_ID.eq(line.employee_id))
-            .where_(PayAccount::STATUS.eq(PayAccountStatus::Cooling))
-            .exists(&mut *tx)
-            .await?;
-        if !cooling {
+        if !closed_while_cooling(tx, line.employee_id).await? {
             continue;
         }
         PayrollLine::query()

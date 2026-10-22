@@ -11,7 +11,7 @@ mod manpower_support;
 mod support;
 
 use host::roles::{HR, MEMBER};
-use manpower_support::{account, boot, deployment, worker};
+use manpower_support::{account, account_named, boot, deployment, portal_grant, worker};
 use renox::chrono::Duration;
 use renox::db::now;
 use renox::prelude::*;
@@ -257,4 +257,44 @@ async fn a_change_of_the_days_leaves_a_timesheet_already_submitted_as_it_was() {
     // Day 7: the old one is ten days old.
     assert_eq!(run_on(&app, 7).await.deemed, 1);
     assert_eq!(reload(&app, &old).await.status, TimesheetStatus::Approved);
+}
+
+/// BL-MPW-19 (#433), who may approve: a timesheet of Gulf Tower's deployment is
+/// approved only by an approver of Gulf Tower. The approver of Marina Bay,
+/// who holds the same global role `client_approver`, and a member of staff
+/// without the permission are refused (403) and the sheet stays `submitted`;
+/// Gulf Tower's own approver approves it.
+#[renox::test]
+async fn a_client_approver_approves_only_the_timesheets_of_their_own_client() {
+    let app = boot().await;
+    let (cast, worker, deployment) = cast(&app).await;
+    let gulf = manpower::ClientContract::find_or_404(app.db(), cast.contract)
+        .await
+        .unwrap()
+        .client();
+    renox::auth::permissions::define_role(app.db(), "client_approver", &[])
+        .await
+        .unwrap();
+    let marina = account_named(&app, "Marina Bay LLC", "CC-0002", "Mira").await;
+    let own = person(&app, "Gus", "client_approver").await;
+    portal_grant(&app, &own, gulf, "approver").await;
+    let other = person(&app, "Marco", "client_approver").await;
+    portal_grant(&app, &other, marina.client, "approver").await;
+    let staff = person(&app, "Sami", MEMBER).await;
+    let sheet = waiting(&app, worker, deployment, 0).await;
+    let path = format!("/timesheets/{}/approve", sheet.id);
+
+    for refused in [&other, &staff] {
+        app.acting_as(refused);
+        app.htmx().post(&path, &[]).await.assert_status(403);
+        assert_eq!(
+            reload(&app, &sheet).await.status,
+            TimesheetStatus::Submitted
+        );
+    }
+    app.acting_as(&own);
+    app.htmx().post(&path, &[]).await.assert_ok();
+    let approved = reload(&app, &sheet).await;
+    assert_eq!(approved.status, TimesheetStatus::Approved);
+    assert_eq!(approved.approved_by, Some(own.id));
 }

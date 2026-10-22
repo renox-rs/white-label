@@ -96,7 +96,7 @@ pub struct RowView {
 pub(crate) fn row_of(lang: &Lang, settlement: &FinalSettlement) -> RowView {
     RowView {
         id: settlement.id,
-        reason: settlement.reason.clone(),
+        reason: reason_text(&settlement.reason),
         status: text(
             lang,
             &format!("settlement.status.{}", settlement.status.as_str()),
@@ -265,7 +265,7 @@ async fn view_of(
             &format!("settlement.status.{}", settlement.status.as_str()),
         ),
         status_kind: kind(settlement.status),
-        reason: settlement.reason.clone(),
+        reason: reason_text(&settlement.reason),
         payee: text(lang, &format!("settlement.payee.{}", settlement.payee)),
         estate: settlement.payee == PAYEE_ESTATE,
         representative: settlement.representative.clone().unwrap_or_default(),
@@ -683,4 +683,14 @@ async fn acknowledgement(
     }
     acknowledge(&state, id, date("signed_on", &form.signed_on)?).await?;
     Ok((Toast::success(text(&lang, "settlement.acknowledged")), back).into_response())
+}
+
+/// The reason of an exit in words: `end_of_contract` as *End of contract*.
+fn reason_text(reason: &str) -> String {
+    let spaced = reason.replace('_', " ");
+    let mut chars = spaced.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }

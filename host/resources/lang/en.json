@@ -6,6 +6,7 @@
     "account": "Account",
     "users": "Users",
     "activity": "Activity",
+    "menu": "Menu",
     "legal_entities": "Legal entities",
     "parties": "Parties",
     "invoices": "Invoices",
@@ -225,6 +226,10 @@
       "reference": "Spec",
       "open": "Open item"
     }
+  },
+  "menu": {
+    "title": "Menu",
+    "subtitle": "Everything you can open."
   },
   "activity": {
     "title": "Activity",

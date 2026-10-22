@@ -629,6 +629,10 @@ const TEXTS: &[(&str, &str)] = &[
         "suspended: {{ reasons }}, {{ days }} days suspended",
     ),
     (
+        "manpower.deployment.suspended_note_one",
+        "suspended: {{ reasons }}, {{ days }} day suspended",
+    ),
+    (
         "manpower.deployment.suspend_reason",
         "Give the reason: site access withdrawn, investigation or another.",
     ),
@@ -709,6 +713,8 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.contracts.billing", "Billing"),
     ("manpower.screen.contracts.cover", "Cover"),
     ("manpower.screen.contracts.cover_required", "Cover required"),
+    ("manpower.screen.contracts.cover_none", "Not required"),
+    ("manpower.screen.open_ended", "open-ended"),
     (
         "manpower.screen.contracts.held_since",
         "On credit hold since",

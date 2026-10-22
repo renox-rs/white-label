@@ -420,11 +420,11 @@ impl Approvers {
 
     /// User `user` is one of the client's approvers.
     pub fn client_approver(&self, user: i64) {
-        self.0
-            .lock()
-            .unwrap()
-            .clients
-            .push(NotifyRecipient::User { id: user });
+        let mut inner = self.0.lock().unwrap();
+        let one = NotifyRecipient::User { id: user };
+        if !inner.clients.contains(&one) {
+            inner.clients.push(one);
+        }
     }
 
     /// The contract deems a timesheet approved after `days` days of silence
@@ -839,6 +839,10 @@ impl Booted {
             .await
             .unwrap();
         user.assign_role(self.db(), role).await.unwrap();
+        if role == "client_approver" {
+            // The role alone names no client: the resolver names the user.
+            self.approvers.client_approver(user.id);
+        }
         user
     }
 

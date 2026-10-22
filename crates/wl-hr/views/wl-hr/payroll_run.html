@@ -53,6 +53,9 @@
         <rx-input name="confirmation" :label="tx['payroll.confirmation']" id="confirm-paid-confirmation"/>
       </rx-action-sheet>
     </template>
+    <template rx-if="submit_blocked">
+      <rx-button :label="tx['payroll.submit']" variant="primary" :disabled-reason="submit_blocked"/>
+    </template>
     <template rx-if="approve_blocked and can_approve">
       <rx-button :label="tx['payroll.approve']" variant="primary" :disabled-reason="tx['payroll.approve_blocked']"/>
     </template>

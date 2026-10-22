@@ -7,7 +7,7 @@
     <rx-table :rows="requests" as="request" :key="request.id" :caption="tx['requests.title']">
       <rx-column :label="tx['requests.request']">
         <rx-stack>
-          <span>{{ request.role }} - {{ request.site }}</span>
+          <span>{{ request.role | replace('_', ' ') | capitalize }} - {{ request.site }}</span>
           <span class="rx-subtitle">{{ request.client }}</span>
           <span>
             <rx-badge :kind="request.status_kind" :text="request.status"/>
@@ -16,7 +16,7 @@
         </rx-stack>
       </rx-column>
       <rx-column :label="tx['requests.workers']" align="num">{{ request.filled_count }} / {{ request.headcount }}</rx-column>
-      <rx-column :label="tx['requests.period']" hide-narrow>{{ request.start_date }} - {{ request.end_date }}</rx-column>
+      <rx-column :label="tx['requests.period']" hide-narrow>{{ request.start_date }} - {{ request.end_date if request.end_date else tx['open_ended'] }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['requests.empty']" :message="tx['requests.empty_text']" icon="users"/></rx-slot>
     </rx-table>
   </rx-stack>

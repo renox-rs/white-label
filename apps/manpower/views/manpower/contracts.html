@@ -18,7 +18,7 @@
       <rx-column :label="tx['contracts.billing']" hide-narrow>{{ contract.billing_cycle }}</rx-column>
       <rx-column :label="tx['contracts.cover']" hide-narrow>
         <span rx-if="contract.cover_required">{{ tx['contracts.cover_required'] }}</span>
-        <span rx-if="not contract.cover_required">{{ tx['none'] }}</span>
+        <span rx-if="not contract.cover_required">{{ tx['contracts.cover_none'] }}</span>
       </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['contracts.empty']" :message="tx['contracts.empty_text']" icon="file-text"/></rx-slot>
     </rx-table>

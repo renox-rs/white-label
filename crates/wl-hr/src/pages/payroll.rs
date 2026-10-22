@@ -242,6 +242,8 @@ pub(crate) struct ShowPage {
     can_correct: bool,
     actions: Vec<ActionView>,
     approve_blocked: bool,
+    submit_blocked: String,
+
     can_approve: bool,
     can_comment: bool,
     sif_files: Vec<SifView>,
@@ -379,12 +381,29 @@ async fn show(
     }
     let approve_blocked = !exceptions.is_empty();
     let prepares = user.has_permission(permissions::PAYROLL_PREPARE);
+    // `submit` is refused while a line to be paid has no WPS account: the
+    // button is shown disabled with the employees, as `approve` is.
+    let mut submit_blocked = String::new();
+    if run.status == PayrollRunStatus::Approved && prepares {
+        let mut tx = state.db.begin().await?;
+        let missing = crate::pay_account_use::without_wps_account_in(&mut tx, id).await?;
+        if !missing.is_empty() {
+            submit_blocked = texts::t_with(
+                &lang,
+                "wl_hr.payroll.submit_blocked",
+                &[("employees", &missing.join(", "))],
+            );
+        }
+    }
     let mut actions = Vec::new();
     for action in run.available(&user, &state.db).await? {
         if !GENERIC.contains(&action.name.as_str()) {
             continue;
         }
         if approve_blocked && action.name == crate::payroll::APPROVE {
+            continue;
+        }
+        if !submit_blocked.is_empty() && action.name == crate::payroll::SUBMIT {
             continue;
         }
         actions.push(ActionView {
@@ -422,6 +441,7 @@ async fn show(
         can_correct: prepares && run.status == PayrollRunStatus::Paid,
         actions,
         approve_blocked: approve_blocked && run.status == PayrollRunStatus::Calculated,
+        submit_blocked,
         can_approve: user.has_permission(permissions::PAYROLL_APPROVE),
         can_comment: can_comment(&user, &run),
         sif_files: SifFile::of_run(&state.db, id)
@@ -463,9 +483,10 @@ async fn show(
 
 /// The transitions the generic button row runs: they need no input beyond a
 /// reason. The others have a form of their own.
-const GENERIC: [&str; 4] = [
+const GENERIC: [&str; 5] = [
     crate::payroll::CALCULATE,
     crate::payroll::APPROVE,
+    crate::payroll::SUBMIT,
     crate::payroll::RETURN,
     crate::payroll::REGENERATE,
 ];

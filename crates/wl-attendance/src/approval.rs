@@ -12,8 +12,9 @@
 //! **Who approves.** A timesheet has an approver kind. An `internal` one is
 //! approved by a user holding `timesheets.approve` in the scope of its
 //! context. An `external` one is approved by the client's approver, a user who
-//! holds the timesheet's `approver_role` (the portal and the signed emailed
-//! link both end here), or by staff with `timesheets.approve_on_behalf` who
+//! holds the timesheet's `approver_role` and is one of the client's approvers
+//! of the timesheet's context (`ApproverResolver::client_approvers`; the portal
+//! and the signed emailed link both end here), or by staff with `timesheets.approve_on_behalf` who
 //! attach the signed sheet ([`Evidence`]). The kind the actor approves as is
 //! worked out by [`approver_kind_for`] and checked against the timesheet by a
 //! guard, so an internal approver who calls `approve` on an externally
@@ -68,6 +69,8 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::attendance::{CategoryMinutes, TimesheetApproved, cost_rates};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::invoicing::{PostCost, post_cost};
+use wl_kernel::notify::NotifyRecipient;
+use wl_kernel::timesheets::approver_resolver;
 
 use crate::access;
 use crate::entry::{Category, TimesheetEntry};
@@ -441,9 +444,27 @@ async fn copy_approval_in(tx: &mut Transaction, sheet: &Timesheet) -> Result {
     Ok(())
 }
 
-/// Whether `user` holds `role` (globally): the client's approver.
-async fn holds_role(db: &Db, user: i64, role: &str) -> Result<bool> {
-    Ok(users_with_role(db, role)
+/// Whether `user` is a client approver of `sheet`: they hold the timesheet's
+/// `approver_role` and the app's
+/// [`ApproverResolver`](wl_kernel::timesheets::ApproverResolver) names them
+/// among the approvers of the timesheet's context, that is of its client.
+/// The role alone is global and says nothing about which client a user acts
+/// for, so it never suffices (an approver of one client cannot approve the
+/// timesheets of another).
+async fn is_client_approver(state: &AppState, user: i64, sheet: &Timesheet) -> Result<bool> {
+    let Some(role) = sheet.approver_role.as_deref() else {
+        return Ok(false);
+    };
+    let context = sheet.context();
+    let named = approver_resolver(state)
+        .client_approvers(state, context.as_ref())
+        .await?
+        .iter()
+        .any(|r| matches!(r, NotifyRecipient::User { id } if *id == user));
+    if !named {
+        return Ok(false);
+    }
+    Ok(users_with_role(&state.db, role)
         .await?
         .iter()
         .any(|u| u.id == user))
@@ -471,10 +492,7 @@ pub async fn approver_kind_for(
         sheet.context().as_ref(),
     )
     .await?;
-    let external = match sheet.approver_role.as_deref() {
-        Some(role) => holds_role(&state.db, user, role).await?,
-        None => false,
-    };
+    let external = is_client_approver(state, user, sheet).await?;
     Ok(match (sheet.approver_kind, internal, external) {
         (ApproverKind::Internal, true, _) | (_, true, false) => Some(ApproverKind::Internal),
         (ApproverKind::External, _, true) | (_, false, true) => Some(ApproverKind::External),

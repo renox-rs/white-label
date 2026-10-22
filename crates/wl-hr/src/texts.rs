@@ -13,6 +13,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.fields.status", "Status"),
     // Employees.
     ("wl_hr.employees.title", "Employees"),
+    ("wl_hr.employees.details", "Details"),
     (
         "wl_hr.employees.subtitle",
         "Staff records with their onboarding.",
@@ -112,6 +113,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.payroll.limit", "Cap (AED)"),
     ("wl_hr.payroll.cap", "Cap"),
     ("wl_hr.payroll.approve", "Approve"),
+    ("wl_hr.payroll.submit", "Submit"),
     ("wl_hr.payroll.exceptions", "Lines above the Art. 25 caps"),
     (
         "wl_hr.payroll.exceptions_hint",
@@ -120,6 +122,14 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_hr.payroll.approve_blocked",
         "A line is above the Art. 25 caps. Reschedule its recoveries first.",
+    ),
+    (
+        "wl_hr.payroll.submit_no_wps_account",
+        "The run cannot be submitted: no active WPS pay account for :employees. Add or activate their pay accounts, or hold their lines.",
+    ),
+    (
+        "wl_hr.payroll.submit_blocked",
+        "No active WPS pay account for: :employees.",
     ),
     (
         "wl_hr.payroll.caps_exceeded",
@@ -1196,12 +1206,15 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.settlement.method.transfer", "Bank transfer"),
     ("wl_hr.settlement.last_working_day", "Last working day"),
     ("wl_hr.settlement.deadline", "Legal deadline"),
-    ("wl_hr.settlement.unpaid_salary", "Unpaid salary"),
-    ("wl_hr.settlement.leave_encashment", "Leave encashment"),
-    ("wl_hr.settlement.gratuity", "Gratuity"),
-    ("wl_hr.settlement.notice_pay", "Notice pay"),
-    ("wl_hr.settlement.other_dues", "Other dues"),
-    ("wl_hr.settlement.dues", "Dues"),
+    ("wl_hr.settlement.unpaid_salary", "Unpaid salary (AED)"),
+    (
+        "wl_hr.settlement.leave_encashment",
+        "Leave encashment (AED)",
+    ),
+    ("wl_hr.settlement.gratuity", "Gratuity (AED)"),
+    ("wl_hr.settlement.notice_pay", "Notice pay (AED)"),
+    ("wl_hr.settlement.other_dues", "Other dues (AED)"),
+    ("wl_hr.settlement.dues", "Dues (AED)"),
     (
         "wl_hr.settlement.advance_recoveries",
         "Advances and loans to recover",
@@ -1212,18 +1225,18 @@ const TEXTS: &[(&str, &str)] = &[
         "Court debts to recover",
     ),
     ("wl_hr.settlement.damage_recoveries", "Damage to recover"),
-    ("wl_hr.settlement.recoveries", "Recoveries"),
+    ("wl_hr.settlement.recoveries", "Recoveries (AED)"),
     (
         "wl_hr.settlement.offset",
         "Recoveries offset within the Art. 25 caps",
     ),
-    ("wl_hr.settlement.net", "Net"),
+    ("wl_hr.settlement.net", "Net (AED)"),
     (
         "wl_hr.settlement.owed",
         "Due from the employee (recoveries above the caps)",
     ),
-    ("wl_hr.settlement.paid_so_far", "Paid so far"),
-    ("wl_hr.settlement.unpaid", "Net still unpaid"),
+    ("wl_hr.settlement.paid_so_far", "Paid so far (AED)"),
+    ("wl_hr.settlement.unpaid", "Net still unpaid (AED)"),
     ("wl_hr.settlement.statement", "Statement version"),
     ("wl_hr.settlement.closes_on", "Closes without a dispute on"),
     (
@@ -1270,7 +1283,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.settlement.dispute_title", "Dispute"),
     ("wl_hr.settlement.dispute_source", "Source"),
     ("wl_hr.settlement.dispute_reference", "Reference"),
-    ("wl_hr.settlement.undisputed", "Undisputed amount"),
+    ("wl_hr.settlement.undisputed", "Undisputed amount (AED)"),
     ("wl_hr.settlement.hearing_on", "Hearing date"),
     ("wl_hr.settlement.reply_due_on", "Reply due on"),
     ("wl_hr.settlement.ticket", "Labour-case ticket"),
