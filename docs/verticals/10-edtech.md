@@ -776,6 +776,15 @@ coordinator (`EDU.ACL.04`, `EDU.ACL.16`).
   session → tutor) and `FutureWork` (sessions and one-to-one bookings after the expiry
   date). A running batch whose course approval expires is not stopped by the system; the
   centre manager decides (`EDU.RUL.13`) `⚠ open: authority (AU-25)`.
+
+  The centre permit is attached to the legal entity that issues for the campus (the default
+  entity where the campus is linked to none); `batch.open` is judged on the last session date
+  of the batch, `certificate.issue` on the day it is issued (on the enrolment's completion date
+  for a reissued draft). The message of `EDU.RUL.13` is sent once for the reminder 60 days ahead
+  and once on the expiry, and says that a running batch is not stopped and that the centre
+  manager decides whether it finishes (the open question AU-25 is shown to the three people it
+  is sent to, not decided by the system). The renewal task is the centre manager's of the
+  campus for a permit and the academic coordinator's for an approval.
 - **Recordings:** online sessions are recorded only with consent, and recordings are
   retained for a limited period.
 - **Academic records:** KHDA requires learner registers, contracts and training records to
