@@ -366,6 +366,9 @@ async fn the_sidebar_links_the_lists_to_the_roles_that_may_open_them() {
     let app = demo().await;
     let hr = page(&app, HR, "/dashboard").await;
     says(&hr, &["href=\"/hr/payroll\"", "href=\"/hr/settlements\""]);
+    // The links read in words, not as their text keys.
+    says(&hr, &["Payroll runs", "Final settlements"]);
+    assert!(!hr.contains("nav.payroll") && !hr.contains("nav.settlements"));
     let accountant = page(&app, manpower_screens_support::ACCOUNTANT, "/dashboard").await;
     says(
         &accountant,
@@ -381,4 +384,42 @@ async fn the_sidebar_links_the_lists_to_the_roles_that_may_open_them() {
     )
     .await;
     page(&app, manpower_screens_support::ACCOUNTANT, "/hr/payroll").await;
+}
+
+/// The bank's result form: a row that cannot be read is refused in words with
+/// the row, not with a bare key; the row is read by the employee number the
+/// page shows (no line id is needed).
+#[renox::test]
+async fn a_failed_row_is_read_by_employee_number_and_a_bad_row_is_refused_in_words() {
+    let app = demo().await;
+    let id = submitted(&app, 41).await;
+    let path = format!("/hr/payroll/{id}");
+    uploaded(&app, id, "BANK-RES-2").await;
+    let bad = post(
+        &app,
+        HR,
+        &format!("{path}/partial"),
+        &[
+            ("result_file", "BANK-RES-2"),
+            ("failed", "DSM-9999=wrong IBAN"),
+        ],
+    )
+    .await;
+    bad.assert_status(422);
+    let text = bad.text();
+    assert!(text.contains("Cannot read the row"), "{text}");
+    assert!(text.contains("DSM-9999=wrong IBAN"), "{text}");
+    post(
+        &app,
+        HR,
+        &format!("{path}/partial"),
+        &[
+            ("result_file", "BANK-RES-2"),
+            ("failed", "DSM-0001=wrong IBAN"),
+        ],
+    )
+    .await
+    .assert_status(303);
+    let html = page(&app, HR, &path).await;
+    says(&html, &["Partly rejected", "wrong IBAN"]);
 }

@@ -281,7 +281,11 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.payroll.payslip_published", "Published"),
     (
         "wl_hr.payroll.partial_hint",
-        "Attach the bank's result file and list each failed line as <line id>=<reason from the file>, one per row. The other lines of the file are paid.",
+        "Attach the bank's result file and list each failed line as <employee number>=<reason from the file>, one per row, for example DSM-0003=invalid IBAN. The other lines of the file are paid.",
+    ),
+    (
+        "wl_hr.payroll.failed_row_bad",
+        "Cannot read the row \":row\". Write each failed line as <employee number>=<reason>, for example DSM-0003=invalid IBAN, and use a number that is on this run.",
     ),
     ("wl_hr.payroll.failed_lines", "Failed lines"),
     ("wl_hr.payroll.status.draft", "Draft"),

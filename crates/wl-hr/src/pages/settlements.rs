@@ -131,7 +131,9 @@ pub struct SettlementView {
     pub right_document: String,
     /// The last working day.
     pub last_working_day: String,
-    /// The legal deadline.
+    /// The last working day as read on the page (`01 Nov 2026`).
+    pub last_working_day_shown: String,
+    /// The legal deadline, as read on the page (`15 Nov 2026`).
     pub deadline: String,
     /// Unpaid salary.
     pub unpaid_salary: String,
@@ -271,7 +273,14 @@ async fn view_of(
         representative: settlement.representative.clone().unwrap_or_default(),
         right_document: settlement.right_document.clone().unwrap_or_default(),
         last_working_day: day(settlement.last_working_day),
-        deadline: day(settlement.deadline(config.settlement_deadline_days)),
+        last_working_day_shown: settlement
+            .last_working_day
+            .map(crate::pages::payroll::date_text)
+            .unwrap_or_default(),
+        deadline: settlement
+            .deadline(config.settlement_deadline_days)
+            .map(crate::pages::payroll::date_text)
+            .unwrap_or_default(),
         unpaid_salary: aed(settlement.unpaid_salary),
         leave_encashment: aed(settlement.leave_encashment),
         gratuity: aed(settlement.gratuity),

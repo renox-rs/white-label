@@ -478,7 +478,7 @@ async fn show(
         run: RunView {
             id: run.id,
             period: run.period.clone(),
-            run_type: run.run_type.clone(),
+            run_type: text(&lang, &format!("payroll.kind.{}", run.run_type)),
             status: text(&lang, &format!("payroll.status.{}", run.status.as_str())),
             status_kind: run_kind(run.status),
             corrects: run.corrects,
@@ -870,24 +870,64 @@ pub struct PartialForm {
     #[validate(max = 500)]
     #[serde(default)]
     pub result_file: String,
-    /// The failed lines, one per row: `<line id>=<reason from the file>`.
+    /// The failed lines, one per row: `<employee number>=<reason from the file>`.
     #[validate(max = 5000)]
     #[serde(default)]
     pub failed: String,
 }
 
-/// The failed lines of a form: `12=invalid IBAN`, one per row.
-fn parse_failed(text: &str) -> Result<Vec<FailedLine>> {
+/// The failed lines of a form, one per row: `<line id or employee number>=<reason>`,
+/// for example `DSM-0003=invalid IBAN`. A row that does not read so is refused
+/// in words, with the row, not with a bare key; the employee number is the
+/// one the page shows, so nobody has to know a line id.
+async fn parse_failed(
+    state: &AppState,
+    lang: &Lang,
+    run_id: i64,
+    text_of_rows: &str,
+) -> Result<Vec<FailedLine>> {
+    let bad = |row: &str| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::t_with(
+                lang,
+                "wl_hr.payroll.failed_row_bad",
+                &[("row", &row.to_owned())],
+            ),
+        )
+    };
     let mut failed = Vec::new();
-    for row in text.lines().map(str::trim).filter(|r| !r.is_empty()) {
-        let (line, reason) = row
-            .split_once('=')
-            .ok_or_else(|| Error::BadRequest("failed".to_owned()))?;
+    let lines = if text_of_rows.trim().is_empty() {
+        Vec::new()
+    } else {
+        PayrollRun::find_or_404(&state.db, run_id)
+            .await?
+            .lines(&state.db)
+            .await?
+    };
+    for row in text_of_rows
+        .lines()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+    {
+        let (key, reason) = row.split_once('=').ok_or_else(|| bad(row))?;
+        let key = key.trim();
+        let line_id = match key.parse::<i64>() {
+            Ok(id) => id,
+            Err(_) => {
+                let mut found = None;
+                for line in &lines {
+                    let employee = Employee::find(&state.db, line.employee_id).await?;
+                    if employee.is_some_and(|e| e.employee_number.eq_ignore_ascii_case(key)) {
+                        found = Some(line.id);
+                        break;
+                    }
+                }
+                found.ok_or_else(|| bad(row))?
+            }
+        };
         failed.push(FailedLine {
-            line_id: line
-                .trim()
-                .parse()
-                .map_err(|_| Error::BadRequest("failed".to_owned()))?,
+            line_id,
             reason: reason.trim().to_owned(),
         });
     }
@@ -904,7 +944,7 @@ async fn record_partial(
     Valid(form): Valid<PartialForm>,
 ) -> Result<Response> {
     let input = PartialInput {
-        failed: parse_failed(&form.failed)?,
+        failed: parse_failed(&state, &lang, id, &form.failed).await?,
         result_file: form.result_file,
     };
     run_as(&state, &user, id, crate::payroll::RECORD_PARTIAL, &input).await?;
