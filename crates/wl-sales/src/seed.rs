@@ -503,6 +503,369 @@ pub async fn demo_order_changes(db: &Db, party: i64) -> Result<usize> {
     Ok(made)
 }
 
+/// Stores demo orders for the customer `party` so a person can click through
+/// the stories of cancelling an order after fulfilment started (BL-SAL-07)
+/// and of a refund after completion with nothing returned (BL-SAL-14). Each is
+/// found by its external number, so a re-run adds nothing. Returns how many it
+/// made.
+///
+/// Lines are zero-rated so the figures are the stories' (AED 120, AED 90).
+///
+/// - `CXL-1001`: a prepaid `confirmed` order of AED 120 (meal 80, side 40) to
+///   cancel from its page: with the kitchen's `FulfilmentProgress` marking the
+///   meal as started, it asks for an outcome and waits for a manager.
+/// - `CXL-1002`: a prepaid order `cancelled` after the meal was prepared:
+///   outcome *scrap*, fee AED 8, refund AED 112 requested.
+/// - `RFD-1001`: a `fulfilled` order of AED 90 (pizza 60, cola 30) to raise a
+///   refund after completion from (AED 60 waits for a manager, AED 30 does
+///   not).
+/// - `ORD-1001`: a `fulfilled` Talabat order of AED 25 whose customer the
+///   aggregator refunded itself: a no goods return *refunded by the channel*,
+///   to reverse from its page.
+/// - `RFD-1002`: a `fulfilled` order of AED 90 with a refund of AED 30 for a
+///   missing cola resolved by the business (amount refunded AED 30).
+pub async fn demo_order_cancellations(db: &Db, party: i64) -> Result<usize> {
+    use renox::db::now;
+    use renox::state_machine::StateMachine;
+    use wl_kernel::documents::today;
+
+    use crate::cancel_lines::{CancelDetail, CancelledLine};
+    use crate::order_change::{
+        KIND_CANCEL, OrderChange, OrderSettlement, SETTLE_FEE_INVOICE, SETTLE_REFUND,
+        STATUS_REQUESTED,
+    };
+    use crate::sale_line::{NewLine, SaleLine, totals};
+    use crate::sales_order::{
+        ORDER_SERIES, OrderPaymentStatus, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
+    };
+    use crate::sales_orders::external_key;
+    use crate::sales_return::{
+        RETURN_SERIES, ReturnKind, ReturnResolution, ReturnStatus, SalesReturn,
+        SalesReturnLine,
+    };
+    use wl_kernel::invoicing::VatCategory;
+    use wl_kernel::sales::LineOutcomeKind;
+
+    /// The demo order `external` on `channel` in `status` with `lines` (code,
+    /// quantity in thousandths, price), totals stored; `None` when it exists.
+    #[allow(clippy::too_many_arguments)]
+    async fn order(
+        db: &Db,
+        party: i64,
+        channel: &str,
+        external: &str,
+        mode: &str,
+        paid: OrderPaymentStatus,
+        status: SalesOrderStatus,
+        lines: &[(&str, i64, i64)],
+        fulfilled: bool,
+    ) -> Result<Option<(SalesOrder, Vec<SaleLine>)>> {
+        let key = external_key(external);
+        if let Some(key) = &key
+            && SalesOrder::of_external(db, channel, key).await?.is_some()
+        {
+            return Ok(None);
+        }
+        let number = ORDER_SERIES
+            .next_allowing_gaps(db, None, None, today())
+            .await?;
+        let mut order = SalesOrder {
+            number,
+            party_id: party,
+            channel: channel.to_owned(),
+            payment_mode: mode.to_owned(),
+            currency: "AED".to_owned(),
+            revision: 1,
+            external_number: Some(external.to_owned()),
+            external_key: key,
+            payment_status: paid,
+            confirmed_at: Some(now()),
+            fulfilled_at: fulfilled.then(now),
+            ..SalesOrder::default()
+        };
+        let mut tx = db.begin().await?;
+        order.insert_in_state(&mut tx, status, "demo").await?;
+        tx.commit().await?;
+        let order = SalesOrder::find_or_404(db, order.id).await?;
+        for (code, quantity, price) in lines {
+            SaleLine::add(
+                db,
+                &order.subject(),
+                NewLine::new(code, *price)
+                    .quantity_milli(*quantity)
+                    .vat_category(VatCategory::ZeroRated),
+            )
+            .await?;
+        }
+        let rows = SaleLine::of(db, &order.subject()).await?;
+        let t = totals(&rows);
+        SalesOrder::query()
+            .where_(SalesOrder::ID.eq(order.id))
+            .update(
+                db,
+                &[
+                    ("net_total", &t.net),
+                    ("vat_total", &t.vat),
+                    ("gross_total", &t.gross),
+                ],
+            )
+            .await?;
+        if fulfilled {
+            for row in &rows {
+                SaleLine::query()
+                    .where_(SaleLine::ID.eq(row.id))
+                    .update(db, &[("fulfilled_milli", &row.quantity_milli)])
+                    .await?;
+            }
+        }
+        let order = SalesOrder::find_or_404(db, order.id).await?;
+        let rows = SaleLine::of(db, &order.subject()).await?;
+        Ok(Some((order, rows)))
+    }
+
+    /// A resolved no goods return of `value` fils on `line` of `order` with
+    /// `resolution`; raises the order's amount refunded.
+    #[allow(clippy::too_many_arguments)]
+    async fn resolved_return(
+        db: &Db,
+        order: &SalesOrder,
+        line: &SaleLine,
+        value: i64,
+        resolution: ReturnResolution,
+        category: &str,
+        party: &str,
+        reason: &str,
+    ) -> Result<SalesReturn> {
+        let number = RETURN_SERIES
+            .next_allowing_gaps(db, None, None, today())
+            .await?;
+        let mut made = SalesReturn {
+            number,
+            sale_type: wl_kernel::sales::SALES_ORDER_SUBJECT_TYPE.to_owned(),
+            sale_id: order.id,
+            party_id: Some(order.party_id),
+            kind: ReturnKind::NoGoods,
+            resolution: Some(resolution),
+            reason: reason.to_owned(),
+            net_value: value,
+            gross_value: value,
+            complaint_category: Some(category.to_owned()),
+            responsible_party: Some(party.to_owned()),
+            resolved_at: Some(now()),
+            ..SalesReturn::default()
+        };
+        let mut tx = db.begin().await?;
+        made.insert_in_state(&mut tx, ReturnStatus::Resolved, "demo")
+            .await?;
+        tx.commit().await?;
+        SalesReturnLine::create(
+            db,
+            SalesReturnLine {
+                return_id: made.id,
+                sale_line_id: line.id,
+                refund_value: value,
+                ..SalesReturnLine::default()
+            },
+        )
+        .await?;
+        SalesOrder::query()
+            .where_(SalesOrder::ID.eq(order.id))
+            .update(db, &[("refunded_amount", &value)])
+            .await?;
+        SalesReturn::find_or_404(db, made.id).await
+    }
+
+    let mut made = 0;
+
+    // CXL-1001: waiting to be cancelled.
+    if order(
+        db,
+        party,
+        "phone",
+        "CXL-1001",
+        PAYMENT_ONLINE,
+        OrderPaymentStatus::Received,
+        SalesOrderStatus::Confirmed,
+        &[("MEAL", 1_000, 80_00), ("SIDE", 1_000, 40_00)],
+        false,
+    )
+    .await?
+    .is_some()
+    {
+        made += 1;
+    }
+
+    // CXL-1002: cancelled after the meal was prepared.
+    if let Some((cancelled, lines)) = order(
+        db,
+        party,
+        "phone",
+        "CXL-1002",
+        PAYMENT_ONLINE,
+        OrderPaymentStatus::Received,
+        SalesOrderStatus::Cancelled,
+        &[("MEAL", 1_000, 80_00), ("SIDE", 1_000, 40_00)],
+        false,
+    )
+    .await?
+    {
+        let reason = "The guests left before the meal was served";
+        let fee = lines[0].share_of(1_000) / 10;
+        let mut details = Vec::new();
+        for (n, line) in lines.iter().enumerate() {
+            let started = n == 0;
+            SaleLine::query()
+                .where_(SaleLine::ID.eq(line.id))
+                .update(
+                    db,
+                    &[
+                        ("cancelled_milli", &1_000_i64),
+                        (
+                            "cancel_outcome",
+                            &started.then(|| LineOutcomeKind::Scrap.as_str().to_owned()),
+                        ),
+                        ("cancel_fee", &(if started { fee } else { 0 })),
+                        ("cancel_reason", &Some(reason.to_owned())),
+                    ],
+                )
+                .await?;
+            details.push(CancelledLine {
+                line: line.id,
+                quantity_milli: 1_000,
+                started,
+                outcome: started.then_some(LineOutcomeKind::Scrap),
+                fee: if started { fee } else { 0 },
+                fee_waived: false,
+                share: line.share_of(1_000),
+            });
+        }
+        SalesOrder::query()
+            .where_(SalesOrder::ID.eq(cancelled.id))
+            .update(db, &[("reason", &Some(reason.to_owned()))])
+            .await?;
+        let detail = CancelDetail {
+            lines: details,
+            complete: false,
+            whole: true,
+        };
+        OrderChange {
+            order_id: cancelled.id,
+            kind: KIND_CANCEL.to_owned(),
+            reason: reason.to_owned(),
+            detail: renox::serde_json::to_string(&detail).unwrap_or_default(),
+            announced_at: Some(now()),
+            ..OrderChange::default()
+        }
+        .insert(db)
+        .await?;
+        for (kind, amount) in [
+            (SETTLE_REFUND, cancelled.gross_total - fee),
+            (SETTLE_FEE_INVOICE, fee),
+        ] {
+            OrderSettlement::create(
+                db,
+                OrderSettlement {
+                    order_id: cancelled.id,
+                    revision: 1,
+                    kind: kind.to_owned(),
+                    amount,
+                    status: STATUS_REQUESTED.to_owned(),
+                    ..OrderSettlement::default()
+                },
+            )
+            .await?;
+        }
+        made += 1;
+    }
+
+    // RFD-1001: completed, to refund from.
+    if order(
+        db,
+        party,
+        "phone",
+        "RFD-1001",
+        "on_account",
+        OrderPaymentStatus::NotRequired,
+        SalesOrderStatus::Fulfilled,
+        &[("PIZZA", 1_000, 60_00), ("COLA", 1_000, 30_00)],
+        true,
+    )
+    .await?
+    .is_some()
+    {
+        made += 1;
+    }
+
+    // ORD-1001: the aggregator refunded its customer itself.
+    if let Some((talabat, lines)) = order(
+        db,
+        party,
+        "talabat",
+        "ORD-1001",
+        "on_account",
+        OrderPaymentStatus::NotRequired,
+        SalesOrderStatus::Fulfilled,
+        &[("WRAP", 1_000, 25_00)],
+        true,
+    )
+    .await?
+    {
+        resolved_return(
+            db,
+            &talabat,
+            &lines[0],
+            talabat.gross_total,
+            ReturnResolution::RefundedByChannel,
+            "cold",
+            "business",
+            "Talabat refunded the customer",
+        )
+        .await?;
+        made += 1;
+    }
+
+    // RFD-1002: a missing cola refunded by the business.
+    if let Some((done, lines)) = order(
+        db,
+        party,
+        "phone",
+        "RFD-1002",
+        "on_account",
+        OrderPaymentStatus::NotRequired,
+        SalesOrderStatus::Fulfilled,
+        &[("PIZZA", 1_000, 60_00), ("COLA", 1_000, 30_00)],
+        true,
+    )
+    .await?
+    {
+        resolved_return(
+            db,
+            &done,
+            &lines[1],
+            3_000,
+            ReturnResolution::Refund,
+            "missing_item",
+            "business",
+            "The cola was missing",
+        )
+        .await?;
+        OrderSettlement::create(
+            db,
+            OrderSettlement {
+                order_id: done.id,
+                revision: 1,
+                kind: SETTLE_REFUND.to_owned(),
+                amount: 3_000,
+                status: STATUS_REQUESTED.to_owned(),
+                ..OrderSettlement::default()
+            },
+        )
+        .await?;
+        made += 1;
+    }
+    Ok(made)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,6 +894,27 @@ mod tests {
         let walk_in = LeadSource::by_code(db, "walk_in").await.unwrap().unwrap();
         assert_eq!(walk_in.name_en, "Walk in");
         assert!(!walk_in.active);
+    }
+
+    #[renox::test]
+    async fn the_demo_cancellations_and_refunds_are_made_once() {
+        use crate::sales_order::SalesOrder;
+        let app = TestApp::new(
+            App::new()
+                .module(renox::auth::Auth::new())
+                .module(crate::WlSales::new()),
+        )
+        .await;
+        let db = app.db();
+        assert_eq!(demo_order_cancellations(db, 7).await.unwrap(), 5);
+        assert_eq!(demo_order_cancellations(db, 7).await.unwrap(), 0);
+        let key = crate::sales_orders::external_key("ORD-1001").unwrap();
+        let talabat = SalesOrder::of_external(db, "talabat", &key)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(talabat.refunded_amount, 2_500);
+        assert_eq!(talabat.gross_total, 2_500);
     }
 
     #[renox::test]
