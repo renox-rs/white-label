@@ -33,6 +33,7 @@ pub use app::construction_seed;
 pub use app::demo_data;
 pub use app::fnb_demo;
 pub use app::fnb_seed;
+pub use app::fnb_settings;
 pub use app::logistics_demo;
 pub use app::logistics_rules;
 pub use app::logistics_seed;

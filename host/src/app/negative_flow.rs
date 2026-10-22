@@ -591,6 +591,9 @@ async fn show(State(state): State<AppState>) -> Result<Response> {
     // client name Property's tickets, leases and cheques.
     let rows = if settings.client_app == super::logistics_seed::LOGISTICS {
         super::logistics_settings::money_rows(&settings.entities)
+    } else if settings.client_app == super::fnb_seed::FNB {
+        // The 06 client has its own table (BL-FNB-16).
+        super::fnb_settings::money_rows(&settings.entities)
     } else {
         rows(&settings.client_app, &settings.entities)
     };

@@ -1341,6 +1341,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
         OPERATIONS_DIRECTOR,
         &[
             hr::LEAVE_REQUEST,
+            // The owner reads the settings pages of the deployment
+            // (`/settings/negative-flow`, `/settings/compliance`).
+            SETTINGS_VIEW,
             fnb_perm::ORDERS_VIEW,
             // Reads the reports and the payout statements; as a second holder
             // of the reconciliation permission approves the void of a matched
