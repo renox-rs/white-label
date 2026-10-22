@@ -17,6 +17,8 @@
 //! | `POST /orders/{id}/cancel` | `fnb.order_cancel` | `orders.cancel`, fields `reason`, `party`, `note`, `outcome_<line>` |
 //! | `POST /orders/{id}/amend` | `fnb.order_amend` | `orders.amend`, fields `line`, `new_item`, `quantity`, `price`, `reason`, `customer_agreed`, `call_time` |
 //! | `POST /orders/{id}/line-cancel` | `fnb.order_line_cancel` | `orders.cancel`, fields `line`, `reason`, `note`, `outcome` |
+//! | `POST /orders/{id}/pickup/late` | `fnb.order_picked_up_late` | `orders.manage`, an aggregator's `ready` order |
+//! | `POST /orders/{id}/pickup/cancel` | `fnb.order_aggregator_cancelled` | `orders.manage` and `orders.cancel`, an aggregator's `ready` order |
 //! | `GET /my/orders/{id}` | `fnb.my_order` | the order's customer |
 //! | `POST /my/orders/{id}/cancel` | `fnb.my_order_cancel` | the order's customer, while it is `placed` |
 //! | `GET /kitchen` | `fnb.kitchen` | `kds.work` |
@@ -50,7 +52,7 @@ use crate::refunds::{self, RefundAsk};
 use crate::screen_texts::SCREEN_TEXTS;
 use crate::texts::t;
 use crate::ticket::{BUMP, KitchenTicket, START, TicketStatus};
-use crate::{close, failed, fulfilment, placing};
+use crate::{close, failed, fulfilment, pickup, placing};
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
@@ -140,6 +142,10 @@ pub fn routes() -> Routes {
         .name("fnb.order_amend")
         .post("/orders/{id}/line-cancel", cancel_line)
         .name("fnb.order_line_cancel")
+        .post("/orders/{id}/pickup/late", picked_up_late)
+        .name("fnb.order_picked_up_late")
+        .post("/orders/{id}/pickup/cancel", aggregator_cancelled)
+        .name("fnb.order_aggregator_cancelled")
         .get("/my/orders/{id}", my_order)
         .name("fnb.my_order")
         .post("/my/orders/{id}/cancel", my_order_cancel)
@@ -311,6 +317,9 @@ pub(crate) struct ShowPage {
     cancelled_by_label: String,
     can_amend: bool,
     can_cancel_line: bool,
+    aggregator_waiting: bool,
+    can_pickup_late: bool,
+    can_pickup_cancel: bool,
     amend_lines: Vec<[String; 2]>,
     open_lines: Vec<[String; 2]>,
     menu: Vec<[String; 2]>,
@@ -500,6 +509,9 @@ async fn show(
         })
         .collect();
     let revision = view.as_ref().map_or(1, |view| view.revision);
+    // An aggregator's order waiting at the pass: the kitchen manager records
+    // what happened to its rider (`FNB.RUL.16`).
+    let aggregator_waiting = aggregator && order.status == Ready;
     let cancelled_by_label = if order.cancelled_by_customer {
         t(&lang, "fnb.screen.cancelled_by_customer")
     } else {
@@ -589,6 +601,9 @@ async fn show(
         started,
         can_amend,
         can_cancel_line,
+        aggregator_waiting,
+        can_pickup_late: manages && aggregator_waiting,
+        can_pickup_cancel: manages && holds_cancel && aggregator_waiting,
         amend_lines,
         open_lines,
         menu,
@@ -814,6 +829,31 @@ async fn amend_order(
         )
             .into_response()),
     }
+}
+
+/// `POST /orders/{id}/pickup/late`: the aggregator's rider collected the
+/// `ready` order late; it is completed.
+async fn picked_up_late(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    pickup::picked_up_late(&state, &user, id).await?;
+    back_to(&lang, "fnb.picked_up_late", id)
+}
+
+/// `POST /orders/{id}/pickup/cancel`: the aggregator cancelled the `ready`
+/// order; it is cancelled with the aggregator responsible, the food as
+/// wastage, compensation expected and no refund.
+async fn aggregator_cancelled(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    cancel::by_aggregator(&state, &user, id).await?;
+    back_to(&lang, "fnb.aggregator_cancelled", id)
 }
 
 /// `POST /orders/{id}/line-cancel`: fields `line`, `reason`, `note`, `outcome`

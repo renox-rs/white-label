@@ -235,6 +235,14 @@ async fn run(state: AppState, forced: bool) -> Result {
     }
     let made = orders(&state, &customers).await?;
     println!("{made} demo orders made for the Zaatar & Co. kitchen.");
+    // The rider who does not arrive (`FNB.RUL.16`): the kitchen manager is
+    // told for the order ready for 20 minutes and has the task for the one
+    // ready for 50.
+    let watched = fnb::pickup::run(&state, renox::db::now()).await?;
+    println!(
+        "{} aggregator orders to chase, {} tasks to record what happened.",
+        watched.alerts, watched.tasks
+    );
     Ok(())
 }
 
@@ -387,9 +395,12 @@ struct Story {
     status: FnbOrderStatus,
     /// How many hours ago it was placed.
     placed_hours_ago: i64,
+    /// For an order that is `ready`: how many minutes ago it became ready
+    /// (the clock of `FNB.RUL.16`); 0 for the others.
+    ready_minutes_ago: i64,
 }
 
-const STORIES: [Story; 13] = [
+const STORIES: [Story; 15] = [
     Story {
         key: "FNBD-1",
         channel: "website",
@@ -399,6 +410,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::PendingAcceptance,
         status: FnbOrderStatus::Placed,
         placed_hours_ago: 0,
+        ready_minutes_ago: 0,
     },
     Story {
         key: "FNBD-2",
@@ -409,6 +421,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Confirmed,
         status: FnbOrderStatus::Preparing,
         placed_hours_ago: 0,
+        ready_minutes_ago: 0,
     },
     Story {
         key: "FNBD-3",
@@ -419,6 +432,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Confirmed,
         status: FnbOrderStatus::Ready,
         placed_hours_ago: 0,
+        ready_minutes_ago: 10,
     },
     Story {
         key: "FNBD-4",
@@ -429,6 +443,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Fulfilled,
         status: FnbOrderStatus::Completed,
         placed_hours_ago: 26,
+        ready_minutes_ago: 0,
     },
     Story {
         key: "FNBD-5",
@@ -439,6 +454,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Confirmed,
         status: FnbOrderStatus::DeliveryFailed,
         placed_hours_ago: 3,
+        ready_minutes_ago: 0,
     },
     Story {
         key: "FNBD-6",
@@ -449,6 +465,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Confirmed,
         status: FnbOrderStatus::DeliveryFailed,
         placed_hours_ago: 2,
+        ready_minutes_ago: 0,
     },
     Story {
         key: "FNBD-7",
@@ -459,6 +476,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Cancelled,
         status: FnbOrderStatus::Cancelled,
         placed_hours_ago: 50,
+        ready_minutes_ago: 0,
     },
     Story {
         key: "FNBD-8",
@@ -469,6 +487,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Cancelled,
         status: FnbOrderStatus::Cancelled,
         placed_hours_ago: 24 * 40,
+        ready_minutes_ago: 0,
     },
     Story {
         key: "FNBD-9",
@@ -479,6 +498,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Confirmed,
         status: FnbOrderStatus::DeliveryFailed,
         placed_hours_ago: 1,
+        ready_minutes_ago: 0,
     },
     // BL-FNB-04: accepted and not started, above AED 50: the cashier's cancel
     // waits for the kitchen manager.
@@ -491,6 +511,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Confirmed,
         status: FnbOrderStatus::Accepted,
         placed_hours_ago: 0,
+        ready_minutes_ago: 0,
     },
     // BL-FNB-04: cancelled by the customer from the order page while it was
     // placed, refunded in full.
@@ -503,6 +524,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Cancelled,
         status: FnbOrderStatus::Cancelled,
         placed_hours_ago: 5,
+        ready_minutes_ago: 0,
     },
     // BL-FNB-04: an aggregator's order cancelled with the aggregator
     // responsible: no refund, compensation expected on the payout.
@@ -515,6 +537,7 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Cancelled,
         status: FnbOrderStatus::Cancelled,
         placed_hours_ago: 6,
+        ready_minutes_ago: 0,
     },
     // BL-FNB-05: an aggregator's accepted order of two lines: an item ran
     // out, so the cashier records the cancelled line here (no refund, the
@@ -528,6 +551,33 @@ const STORIES: [Story; 13] = [
         sales: SalesOrderStatus::Confirmed,
         status: FnbOrderStatus::Accepted,
         placed_hours_ago: 0,
+        ready_minutes_ago: 0,
+    },
+    // BL-FNB-06: an aggregator's order ready for 20 minutes: the kitchen
+    // manager was told to chase the aggregator on its tablet.
+    Story {
+        key: "FNBD-14",
+        channel: "aggregator_a",
+        customer: 2,
+        mode: "on_account",
+        lines: &[("shawarma-plate", 1)],
+        sales: SalesOrderStatus::Confirmed,
+        status: FnbOrderStatus::Ready,
+        placed_hours_ago: 1,
+        ready_minutes_ago: 20,
+    },
+    // BL-FNB-06: ready for 50 minutes: the kitchen manager also has the task
+    // to record whether the rider came late or the aggregator cancelled.
+    Story {
+        key: "FNBD-15",
+        channel: "aggregator_a",
+        customer: 1,
+        mode: "on_account",
+        lines: &[("falafel-wrap", 2)],
+        sales: SalesOrderStatus::Confirmed,
+        status: FnbOrderStatus::Ready,
+        placed_hours_ago: 1,
+        ready_minutes_ago: 50,
     },
 ];
 
@@ -704,6 +754,8 @@ async fn kitchen_record(
         address: "Villa 12, Al Barsha 2".to_owned(),
         area: "Al Barsha".to_owned(),
         placed_at: Some(placed),
+        ready_at: (story.ready_minutes_ago > 0)
+            .then(|| renox::db::now() - TimeDelta::minutes(story.ready_minutes_ago)),
         accepted_at: (story.status != FnbOrderStatus::Placed).then_some(placed),
         status: story.status,
         ..FnbOrder::default()

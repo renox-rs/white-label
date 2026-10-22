@@ -187,6 +187,23 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.change.cancel_line", "Line cancelled"),
     ("fnb.screen.expected", "Refunds expected from the aggregator"),
     ("fnb.screen.no_expected", "None"),
+    // The aggregator's rider who does not arrive (BL-FNB-06).
+    ("fnb.screen.pickup", "Waiting for the aggregator's rider"),
+    ("fnb.screen.ready_at", "Ready at"),
+    ("fnb.screen.pickup_alert_at", "Kitchen manager told to chase"),
+    ("fnb.screen.pickup_task_at", "Task to record what happened"),
+    ("fnb.screen.picked_up_late", "Picked up late"),
+    ("fnb.screen.picked_up_late_title", "The rider collected the order late"),
+    (
+        "fnb.screen.picked_up_late_message",
+        "The order is completed.",
+    ),
+    ("fnb.screen.aggregator_cancelled", "Cancelled by the aggregator"),
+    ("fnb.screen.aggregator_cancelled_title", "The aggregator cancelled the order"),
+    (
+        "fnb.screen.aggregator_cancelled_message",
+        "The order is cancelled with the aggregator responsible. The food is logged as wastage, nobody is refunded and the aggregator is expected to pay for the food. Your choice is the manager's approval.",
+    ),
     // The kitchen board.
     ("fnb.screen.kitchen_title", "Kitchen"),
     (
