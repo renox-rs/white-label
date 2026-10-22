@@ -389,7 +389,7 @@ struct Story {
     placed_hours_ago: i64,
 }
 
-const STORIES: [Story; 12] = [
+const STORIES: [Story; 13] = [
     Story {
         key: "FNBD-1",
         channel: "website",
@@ -515,6 +515,19 @@ const STORIES: [Story; 12] = [
         sales: SalesOrderStatus::Cancelled,
         status: FnbOrderStatus::Cancelled,
         placed_hours_ago: 6,
+    },
+    // BL-FNB-05: an aggregator's accepted order of two lines: an item ran
+    // out, so the cashier records the cancelled line here (no refund, the
+    // line is flagged for the payout); Amend is not offered on it.
+    Story {
+        key: "FNBD-13",
+        channel: "aggregator_a",
+        customer: 2,
+        mode: "on_account",
+        lines: &[("falafel-wrap", 2), ("hummus-bowl", 1)],
+        sales: SalesOrderStatus::Confirmed,
+        status: FnbOrderStatus::Accepted,
+        placed_hours_ago: 0,
     },
 ];
 

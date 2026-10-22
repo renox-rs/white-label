@@ -15,6 +15,8 @@
 //! | `POST /orders/{id}/responsible` | `fnb.order_responsible` | `orders.manage`, fields `party`, `note` |
 //! | `POST /orders/{id}/refund` | `fnb.order_refund` | `orders.refund_request`, fields `amount`, `reason` |
 //! | `POST /orders/{id}/cancel` | `fnb.order_cancel` | `orders.cancel`, fields `reason`, `party`, `note`, `outcome_<line>` |
+//! | `POST /orders/{id}/amend` | `fnb.order_amend` | `orders.amend`, fields `line`, `new_item`, `quantity`, `price`, `reason`, `customer_agreed`, `call_time` |
+//! | `POST /orders/{id}/line-cancel` | `fnb.order_line_cancel` | `orders.cancel`, fields `line`, `reason`, `note`, `outcome` |
 //! | `GET /my/orders/{id}` | `fnb.my_order` | the order's customer |
 //! | `POST /my/orders/{id}/cancel` | `fnb.my_order_cancel` | the order's customer, while it is `placed` |
 //! | `GET /kitchen` | `fnb.kitchen` | `kds.work` |
@@ -38,6 +40,7 @@ use wl_kernel::PartyId;
 use wl_kernel::sales::{ChangeOutcome, order_desk};
 
 use crate::cancel::{self, StaffCancel};
+use crate::changes::{self, AmendAsk, ChangeNote, ExpectedRefund, LineAsk};
 use crate::cod::{self, CustomerFlag};
 use crate::money::parse_dirhams;
 use crate::order::{FnbOrder, FnbOrderStatus, cancel_reason, kind, party};
@@ -133,6 +136,10 @@ pub fn routes() -> Routes {
         .name("fnb.order_refund")
         .post("/orders/{id}/cancel", cancel_order)
         .name("fnb.order_cancel")
+        .post("/orders/{id}/amend", amend_order)
+        .name("fnb.order_amend")
+        .post("/orders/{id}/line-cancel", cancel_line)
+        .name("fnb.order_line_cancel")
         .get("/my/orders/{id}", my_order)
         .name("fnb.my_order")
         .post("/my/orders/{id}/cancel", my_order_cancel)
@@ -302,8 +309,35 @@ pub(crate) struct ShowPage {
     cancel_reason_label: String,
     cancel_party_label: String,
     cancelled_by_label: String,
+    can_amend: bool,
+    can_cancel_line: bool,
+    amend_lines: Vec<[String; 2]>,
+    open_lines: Vec<[String; 2]>,
+    menu: Vec<[String; 2]>,
+    line_reasons: Vec<[String; 2]>,
+    revision: i64,
+    changes: Vec<ChangeRow>,
+    expected: Vec<ExpectedRow>,
     notes: Vec<String>,
     refund_left: i64,
+}
+
+/// A change made to the order.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ChangeRow {
+    at: String,
+    what: String,
+    by: String,
+    reason: String,
+    call: String,
+    state: String,
+}
+
+/// A refund an aggregator is expected to make.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ExpectedRow {
+    amount: i64,
+    reason: String,
 }
 
 /// A started line of the cancel sheet: it needs an outcome.
@@ -381,6 +415,91 @@ async fn show(
             });
         }
     }
+    // Amend and cancel a line (BL-FNB-05).
+    let holds_amend = user.has_permission(permissions::ORDERS_AMEND);
+    let all_started: Vec<i64> = match &view {
+        Some(view) => cancel::started_lines(&state.db, &order, view)
+            .await?
+            .iter()
+            .map(|line| line.id)
+            .collect(),
+        None => Vec::new(),
+    };
+    let tickets_of_order = KitchenTicket::of_order(&state.db, order.id).await?;
+    let open_item_lines: Vec<&wl_kernel::sales::OrderLineView> = match &view {
+        Some(view) => view
+            .lines
+            .iter()
+            .filter(|line| line.is_item && line.open_milli() > 0)
+            .collect(),
+        None => Vec::new(),
+    };
+    let amend_lines: Vec<[String; 2]> = open_item_lines
+        .iter()
+        .filter(|line| !all_started.contains(&line.id))
+        .map(|line| [line.id.to_string(), line.description.clone()])
+        .collect();
+    let can_amend =
+        holds_amend && matches!(order.status, Placed | Accepted) && !aggregator && !amend_lines.is_empty();
+    if holds_amend && matches!(order.status, Placed | Accepted) && aggregator {
+        notes.push(t(&lang, "fnb.amend.aggregator"));
+    }
+    let open_lines: Vec<[String; 2]> = open_item_lines
+        .iter()
+        .filter(|line| {
+            !tickets_of_order
+                .iter()
+                .any(|ticket| ticket.sale_line_id == line.id && ticket.status == crate::ticket::TicketStatus::Done)
+        })
+        .map(|line| [line.id.to_string(), line.description.clone()])
+        .collect();
+    let line_ready = holds_cancel && matches!(order.status, Accepted | Preparing);
+    if line_ready && open_item_lines.len() < 2 {
+        notes.push(t(&lang, "fnb.line.last"));
+    }
+    let can_cancel_line = line_ready && open_item_lines.len() >= 2 && !cancel_waiting;
+    let menu: Vec<[String; 2]> = if can_amend {
+        crate::catalogue::MenuItem::query()
+            .order_by(crate::catalogue::MenuItem::NAME)
+            .get(&state.db)
+            .await?
+            .into_iter()
+            .map(|item| [item.code, item.name])
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let mut changes = Vec::new();
+    for note in ChangeNote::of_order(&state.db, order.id).await? {
+        let by = match note.requested_by {
+            Some(id) => User::find(&state.db, id)
+                .await?
+                .map(|found| found.name)
+                .unwrap_or_default(),
+            None => String::new(),
+        };
+        changes.push(ChangeRow {
+            at: note.created_at.map(|at| at.to_string()).unwrap_or_default(),
+            what: t(&lang, &format!("fnb.screen.change.{}", note.kind)),
+            by,
+            reason: note.reason.clone(),
+            call: note.call_time.clone().unwrap_or_default(),
+            state: if note.status == changes::WAITING {
+                t(&lang, "fnb.screen.waiting")
+            } else {
+                t(&lang, "fnb.screen.done")
+            },
+        });
+    }
+    let expected: Vec<ExpectedRow> = ExpectedRefund::of_order(&state.db, order.id)
+        .await?
+        .into_iter()
+        .map(|row| ExpectedRow {
+            amount: row.amount,
+            reason: row.reason,
+        })
+        .collect();
+    let revision = view.as_ref().map_or(1, |view| view.revision);
     let cancelled_by_label = if order.cancelled_by_customer {
         t(&lang, "fnb.screen.cancelled_by_customer")
     } else {
@@ -468,6 +587,18 @@ async fn show(
             .map(|o| [(*o).to_owned(), t(&lang, &format!("fnb.screen.outcome.{o}"))])
             .collect(),
         started,
+        can_amend,
+        can_cancel_line,
+        amend_lines,
+        open_lines,
+        menu,
+        line_reasons: changes::LINE_REASON_CODES
+            .iter()
+            .map(|c| [(*c).to_owned(), t(&lang, &format!("fnb.line.reason.{c}"))])
+            .collect(),
+        revision,
+        changes,
+        expected,
         cancel_reason_label: order
             .cancel_reason_code
             .as_deref()
@@ -651,6 +782,59 @@ async fn cancel_order(
         ChangeOutcome::Done => back_to(&lang, "fnb.order_cancelled", id),
         ChangeOutcome::Waiting { .. } => Ok((
             Toast::info(t(&lang, "fnb.order_cancel_waiting")),
+            Redirect::route("fnb.order", &[&id])?,
+        )
+            .into_response()),
+    }
+}
+
+/// `POST /orders/{id}/amend`: fields `line`, `new_item`, `quantity`, `price`,
+/// `reason`, `customer_agreed`, `call_time`.
+async fn amend_order(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let ask = AmendAsk {
+        line: field(&form, "line").trim().parse().unwrap_or(0),
+        new_item: field(&form, "new_item"),
+        quantity: field(&form, "quantity"),
+        price: field(&form, "price"),
+        reason: field(&form, "reason"),
+        customer_agreed: matches!(field(&form, "customer_agreed").as_str(), "on" | "1" | "true"),
+        call_time: field(&form, "call_time"),
+    };
+    match changes::amend(&state, &user, id, ask).await? {
+        ChangeOutcome::Done => back_to(&lang, "fnb.order_amended", id),
+        ChangeOutcome::Waiting { .. } => Ok((
+            Toast::info(t(&lang, "fnb.order_amend_waiting")),
+            Redirect::route("fnb.order", &[&id])?,
+        )
+            .into_response()),
+    }
+}
+
+/// `POST /orders/{id}/line-cancel`: fields `line`, `reason`, `note`, `outcome`
+/// (when the kitchen started the line).
+async fn cancel_line(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let ask = LineAsk {
+        line: field(&form, "line").trim().parse().unwrap_or(0),
+        reason_code: field(&form, "reason"),
+        note: field(&form, "note"),
+        outcome: field(&form, "outcome"),
+    };
+    match changes::cancel_line(&state, &user, id, ask).await? {
+        ChangeOutcome::Done => back_to(&lang, "fnb.line_cancelled", id),
+        ChangeOutcome::Waiting { .. } => Ok((
+            Toast::info(t(&lang, "fnb.line_cancel_waiting")),
             Redirect::route("fnb.order", &[&id])?,
         )
             .into_response()),

@@ -81,6 +81,9 @@ pub struct ChangeNote {
     pub updated_at: Option<DateTime>,
 }
 
+/// The reasons a line is cancelled, as the sheet offers them.
+pub const LINE_REASON_CODES: [&str; 2] = LINE_REASONS;
+
 /// The change is made.
 pub const DONE: &str = "done";
 /// The change waits for a manager.

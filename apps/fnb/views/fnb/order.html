@@ -2,7 +2,7 @@
     what happened when the delivery failed and how it was closed, the refunds
     asked for it, and the actions the person may run (accept, reject, set the
     delivery details, dispatch, complete, close a failed delivery, change the
-    responsible party, ask for a refund, cancel the order). What an action cannot do yet is said
+    responsible party, ask for a refund, cancel the order, amend it, cancel a line). What an action cannot do yet is said
     in the notes. Replace it with resources/views/fnb/order.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="order.number">
   <rx-stack>
@@ -33,6 +33,23 @@
         <rx-select name="party" :label="tx['party']" :id="'party-party-' ~ order.id" :selected="order.responsible_party" :options="parties"/>
         <rx-textarea name="note" :label="tx['note']" :id="'party-note-' ~ order.id" required/>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_amend" :id="'amend-' ~ order.id" :label="tx['amend']" :action="route('fnb.order_amend', order.id)"
+                       :title="tx['amend_title']" :description="tx['amend_description']" :submit-label="tx['amend_submit']" icon="pencil">
+        <rx-select name="line" :label="tx['amend_line']" :id="'amend-line-' ~ order.id" :options="amend_lines" required/>
+        <rx-select name="new_item" :label="tx['amend_new_item']" :id="'amend-item-' ~ order.id" :options="menu" :placeholder="tx['amend_keep']"/>
+        <rx-input name="quantity" type="number" :label="tx['amend_quantity']" :id="'amend-quantity-' ~ order.id"/>
+        <rx-input name="price" :label="tx['amend_price']" :id="'amend-price-' ~ order.id"/>
+        <rx-textarea name="reason" :label="tx['reason']" :id="'amend-reason-' ~ order.id" required/>
+        <rx-checkbox name="customer_agreed" :label="tx['amend_agreed']" :id="'amend-agreed-' ~ order.id"/>
+        <rx-input name="call_time" :label="tx['amend_call_time']" :id="'amend-call-' ~ order.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_cancel_line" :id="'line-cancel-' ~ order.id" :label="tx['line_cancel']" :action="route('fnb.order_line_cancel', order.id)"
+                       :title="tx['line_cancel_title']" :description="tx['line_cancel_description']" :submit-label="tx['line_cancel_submit']" icon="x" variant="danger" danger>
+        <rx-select name="line" :label="tx['line_cancel_line']" :id="'line-cancel-line-' ~ order.id" :options="open_lines" required/>
+        <rx-select name="reason" :label="tx['reason']" :id="'line-cancel-reason-' ~ order.id" :selected="'item_unavailable'" :options="line_reasons"/>
+        <rx-textarea name="note" :label="tx['note']" :id="'line-cancel-note-' ~ order.id"/>
+        <rx-select name="outcome" :label="tx['line_cancel_outcome']" :id="'line-cancel-outcome-' ~ order.id" :selected="'scrap'" :options="outcomes"/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_cancel" :id="'cancel-' ~ order.id" :label="tx['cancel']" :action="route('fnb.order_cancel', order.id)"
                        :title="tx['cancel_title']" :description="tx['cancel_description']" :submit-label="tx['cancel_submit']" icon="ban" variant="danger" danger>
         <rx-select name="reason" :label="tx['reason']" :id="'cancel-reason-' ~ order.id" :selected="'customer_request'" :options="cancel_reasons"/>
@@ -59,6 +76,7 @@
         <rx-entry :label="tx['payment']" :value="payment_label"/>
         <rx-entry :label="tx['total']" :value="order.total" format="money"/>
         <rx-entry :label="tx['paid']" :value="order.paid_amount" format="money"/>
+        <rx-entry :label="tx['revision']" :value="revision"/>
         <rx-entry :label="tx['customer']" :value="order.recipient_name" :placeholder="tx['none']"/>
         <rx-entry :label="tx['phone']" :value="order.recipient_phone" :placeholder="tx['none']"/>
         <rx-entry :label="tx['address']" :value="order.address" :placeholder="tx['none']"/>
@@ -108,6 +126,19 @@
       <rx-column :label="tx['station']">{{ ticket.station }}</rx-column>
       <rx-column :label="tx['state']">{{ ticket.status }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['no_tickets']" icon="chef-hat"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="changes" as="change" :key="change.at" :caption="tx['changes']" card>
+      <rx-column :label="tx['when']">{{ change.at }}</rx-column>
+      <rx-column :label="tx['what']">{{ change.what }}</rx-column>
+      <rx-column :label="tx['by']" hide-narrow>{{ change.by }}</rx-column>
+      <rx-column :label="tx['reason']" hide-narrow>{{ change.reason }}</rx-column>
+      <rx-column :label="tx['call']" hide-narrow>{{ change.call }}</rx-column>
+      <rx-column :label="tx['state']">{{ change.state }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_changes']" icon="pencil"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="expected" :rows="expected" as="row" :key="row.reason" :caption="tx['expected']" card>
+      <rx-column :label="tx['amount']" align="num">{{ row.amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['reason']">{{ row.reason }}</rx-column>
     </rx-table>
     <rx-table :rows="refunds" as="ask" :key="ask.at" :caption="tx['refunds']" card>
       <rx-column :label="tx['when']">{{ ask.at }}</rx-column>
