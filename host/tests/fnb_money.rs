@@ -9,6 +9,8 @@
 
 mod support;
 
+use renox::state_machine::StateMachine;
+
 use host::fnb_seed::{self, ORDER_SOURCE};
 use host::roles::{
     ACCOUNTANT, ADMIN, AREA_MANAGER, CASHIER, DRIVER, KITCHEN_MANAGER, MEMBER, OPERATIONS_DIRECTOR,

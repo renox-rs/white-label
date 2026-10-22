@@ -609,7 +609,7 @@ async fn the_loyalty_and_campaign_values_are_the_06_ones() {
         .await
         .unwrap()
         .expect("the send window");
-    assert_eq!((window.start, window.end), (7 * 60, 21 * 60));
+    assert_eq!((window.start_minute, window.end_minute), (7 * 60, 21 * 60));
     for name in ["Regulars", "Lapsed customers"] {
         let found = wl_sales::Segment::query()
             .where_(wl_sales::Segment::NAME.eq(name))
