@@ -15,6 +15,7 @@ pub mod logistics_rules;
 pub mod logistics_seed;
 pub mod logistics_settings;
 pub mod manpower_demo;
+pub mod manpower_portal;
 pub mod manpower_seed;
 pub mod menu;
 pub mod negative_flow;

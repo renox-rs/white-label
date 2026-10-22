@@ -26,6 +26,7 @@
 pub(crate) mod absence_page;
 pub(crate) mod contract_page;
 pub(crate) mod deployment_page;
+pub(crate) mod portal_page;
 pub(crate) mod request_page;
 
 use std::collections::BTreeMap;
@@ -62,6 +63,18 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
     (
         "manpower/request.html",
         include_str!("../../views/manpower/request.html"),
+    ),
+    (
+        "manpower/portal_requests.html",
+        include_str!("../../views/manpower/portal_requests.html"),
+    ),
+    (
+        "manpower/portal_deployments.html",
+        include_str!("../../views/manpower/portal_deployments.html"),
+    ),
+    (
+        "manpower/portal_timesheets.html",
+        include_str!("../../views/manpower/portal_timesheets.html"),
     ),
 ];
 

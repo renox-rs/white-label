@@ -1654,6 +1654,104 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.request_status.filled", "Filled"),
     ("manpower.screen.request_status.cancelled", "Cancelled"),
     ("manpower.screen.request_status.closed", "Closed"),
+    // The client approver's portal pages (BL-MPW-28).
+    ("manpower.portal.requests_title", "Requests"),
+    ("manpower.portal.deployments_title", "Workers on site"),
+    ("manpower.portal.timesheets_title", "Timesheets"),
+    ("manpower.screen.portal.requests.title", "Requests"),
+    (
+        "manpower.screen.portal.requests.subtitle",
+        "The workers you asked for and where each request stands.",
+    ),
+    ("manpower.screen.portal.requests.new", "New request"),
+    (
+        "manpower.screen.portal.requests.new_hint",
+        "Ask for workers. The request stays a draft until you submit it.",
+    ),
+    ("manpower.screen.portal.requests.request", "Request"),
+    ("manpower.screen.portal.requests.positions", "Positions"),
+    ("manpower.screen.portal.requests.empty", "No requests yet"),
+    (
+        "manpower.screen.portal.requests.empty_text",
+        "Use New request to ask for workers.",
+    ),
+    ("manpower.screen.portal.requests.submit", "Submit"),
+    (
+        "manpower.screen.portal.requests.submit_hint",
+        "Send the request to your account manager.",
+    ),
+    ("manpower.screen.portal.requests.cancel", "Cancel request"),
+    (
+        "manpower.screen.portal.requests.cancel_hint",
+        "The request is closed and the workers planned for it are released.",
+    ),
+    (
+        "manpower.screen.portal.requests.reason",
+        "Why do you cancel it?",
+    ),
+    (
+        "manpower.screen.portal.requests.on_hold",
+        "The contract is on hold. New requests wait.",
+    ),
+    ("manpower.screen.portal.contracts", "Your contracts"),
+    ("manpower.screen.portal.contract", "Contract"),
+    ("manpower.screen.portal.company", "Company"),
+    ("manpower.screen.portal.period", "Period"),
+    ("manpower.screen.portal.status", "Status"),
+    (
+        "manpower.screen.portal.deployments.title",
+        "Workers on site",
+    ),
+    (
+        "manpower.screen.portal.deployments.subtitle",
+        "The workers placed with your company, with their role, site and dates.",
+    ),
+    ("manpower.screen.portal.deployments.worker", "Worker"),
+    ("manpower.screen.portal.deployments.role", "Role"),
+    ("manpower.screen.portal.deployments.site", "Site"),
+    ("manpower.screen.portal.deployments.shift", "Shift"),
+    (
+        "manpower.screen.portal.deployments.empty",
+        "No workers on site yet",
+    ),
+    (
+        "manpower.screen.portal.deployments.empty_text",
+        "They appear here once a worker starts at one of your sites.",
+    ),
+    ("manpower.screen.portal.timesheets.title", "Timesheets"),
+    (
+        "manpower.screen.portal.timesheets.subtitle",
+        "The hours of the workers on your sites, as sent to you for approval.",
+    ),
+    (
+        "manpower.screen.portal.timesheets.waiting_one",
+        "1 timesheet waiting for you",
+    ),
+    (
+        "manpower.screen.portal.timesheets.waiting_many",
+        "{{ count }} timesheets waiting for you",
+    ),
+    ("manpower.screen.portal.timesheets.worker", "Worker"),
+    ("manpower.screen.portal.timesheets.month", "Month"),
+    ("manpower.screen.portal.timesheets.hours", "Hours"),
+    ("manpower.screen.portal.timesheets.work", "Work"),
+    ("manpower.screen.portal.timesheets.adjustment", "Adjustment"),
+    (
+        "manpower.screen.portal.timesheets.waiting",
+        "Waiting for you",
+    ),
+    (
+        "manpower.screen.portal.timesheets.empty",
+        "No timesheets yet",
+    ),
+    (
+        "manpower.screen.portal.timesheets.empty_text",
+        "They appear here when the agency sends you the hours of a month.",
+    ),
+    ("manpower.screen.portal.sheet.submitted", "Submitted"),
+    ("manpower.screen.portal.sheet.escalated", "Escalated"),
+    ("manpower.screen.portal.sheet.approved", "Approved"),
+    ("manpower.screen.portal.sheet.deemed", "Deemed approved"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

@@ -11,6 +11,17 @@
     <rx-link-button rx-if="can('users.manage')" route="users.index" label="{{ t('dashboard.users') }}" icon="users"/>
   </app-hero>
 
+  <template rx-if="portal_waiting">
+    {#- Timesheets waiting for the client approver (Manpower portal). -#}
+    <app-section-head :title="t('dashboard.needs_action.title')" id="portal-waiting-title" :compact="true">
+      <rx-list label="{{ t('dashboard.needs_action.title') }}">
+        <li><app-icon-circle icon="clock" :size="18"/><div class="rx-list__main">
+          <a href="{{ portal_url }}">{{ t('dashboard.portal.timesheets_one') if portal_waiting == 1 else t('dashboard.portal.timesheets_many', count=portal_waiting) }}</a>
+        </div></li>
+      </rx-list>
+    </app-section-head>
+  </template>
+
   <template rx-if="awaiting">
     {#- Approvals the signed-in person may decide
         (wl_kernel::approvals::awaiting_items). -#}

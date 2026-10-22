@@ -134,7 +134,7 @@ pub(crate) struct NewRequestForm {
 }
 
 /// The roles a request can ask for.
-const ROLES: [&str; 6] = [
+pub(crate) const ROLES: [&str; 6] = [
     "worker",
     "security_guard",
     "security_supervisor",
@@ -150,7 +150,7 @@ pub(crate) fn role_key(role: &str) -> String {
 }
 
 /// The shifts the rate cards price.
-const SHIFTS: [&str; 2] = ["day", "night"];
+pub(crate) const SHIFTS: [&str; 2] = ["day", "night"];
 
 /// The options of the *New request* sheet for `user`: the contracts and sites
 /// of the client companies the person writes requests for.

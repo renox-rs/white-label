@@ -28,6 +28,7 @@ pub mod notices;
 pub mod overlap;
 pub mod pages;
 pub mod permissions;
+pub mod portal;
 pub mod release;
 pub mod renewal;
 pub mod request;
@@ -107,7 +108,10 @@ impl Module for Manpower {
             .view_data::<screens::request_page::RequestPage>()
             .view_data::<screens::deployment_page::DeploymentPage>()
             .view_data::<screens::absence_page::CasesPage>()
-            .view_data::<screens::absence_page::CasePage>();
+            .view_data::<screens::absence_page::CasePage>()
+            .view_data::<screens::portal_page::RequestsPage>()
+            .view_data::<screens::portal_page::DeploymentsPage>()
+            .view_data::<screens::portal_page::TimesheetsPage>();
         // An approval of a contract or a request links to its page.
         wl_kernel::approvals::register_subject_link(contract::SUBJECT_TYPE, |id| {
             screens::contract_page::url(id)
@@ -161,6 +165,38 @@ impl Module for Manpower {
                 .order(12)
                 .permission(permissions::ABSENCE_MANAGE),
         );
+        // The client's own users: their company's requests, workers on site
+        // and timesheets (BL-MPW-28). Only the people of the portal see them;
+        // the pages check the grant for the company.
+        for (route, label, icon, order) in [
+            (
+                "manpower.portal_requests",
+                "nav.portal_requests",
+                "users",
+                13,
+            ),
+            (
+                "manpower.portal_deployments",
+                "nav.portal_deployments",
+                "map-pin",
+                14,
+            ),
+            (
+                "manpower.portal_timesheets",
+                "nav.portal_timesheets",
+                "clock",
+                15,
+            ),
+        ] {
+            app.nav(
+                "app",
+                NavLink::route(route, label)
+                    .icon(icon)
+                    .group("nav.app")
+                    .order(order)
+                    .when(wl_kernel::portal::is_portal_only),
+            );
+        }
         app.model::<Site>()
             .model::<ClientContract>()
             .model::<ManpowerRequest>()

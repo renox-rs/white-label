@@ -20,6 +20,12 @@
 //! | `POST /manpower/requests` | `manpower.request_create` | `requests.create` for the client, or the client's approver |
 //! | `POST /manpower/requests/{id}/submit` | `manpower.request_submit` | `requests.create` for the client, or the client's approver |
 //! | `POST /manpower/requests/{id}/cancel` | `manpower.request_cancel` | `requests.manage` for the client, or the client's approver |
+//! | `GET /portal/manpower/requests` | `manpower.portal_requests` | a user acting for a client company in the portal (BL-MPW-28) |
+//! | `POST /portal/manpower/requests` | `manpower.portal_request_create` | the client's approver |
+//! | `POST /portal/manpower/requests/{id}/submit` | `manpower.portal_request_submit` | the client's approver |
+//! | `POST /portal/manpower/requests/{id}/cancel` | `manpower.portal_request_cancel` | the client's approver |
+//! | `GET /portal/manpower/deployments` | `manpower.portal_deployments` | a user acting for a client company |
+//! | `GET /portal/manpower/timesheets` | `manpower.portal_timesheets` | a user acting for a client company (the timesheet's page is `/timesheets/{id}`) |
 //! | `POST /manpower/deployments/{id}/cover` | `manpower.deployment_cover` | `requests.manage` for the client |
 //! | `GET /manpower/deployments` | `manpower.deployments` | `deployments.view` or `deployments.manage` for the client or the site, or the client's portal access (only the workers on site, name, role, site, shift and dates) |
 //! | `GET /manpower/deployments/{id}` | `manpower.deployment` | `deployments.view` or `deployments.manage` for the client or the site (BL-MPW-24) |
@@ -113,6 +119,30 @@ pub fn routes() -> Routes {
         .name("manpower.request_submit")
         .post("/manpower/requests/{id}/cancel", cancel_request)
         .name("manpower.request_cancel")
+        .get("/portal/manpower/requests", screens::portal_page::requests)
+        .name("manpower.portal_requests")
+        .post("/portal/manpower/requests", screens::portal_page::create)
+        .name("manpower.portal_request_create")
+        .post(
+            "/portal/manpower/requests/{id}/submit",
+            screens::portal_page::submit,
+        )
+        .name("manpower.portal_request_submit")
+        .post(
+            "/portal/manpower/requests/{id}/cancel",
+            screens::portal_page::cancel,
+        )
+        .name("manpower.portal_request_cancel")
+        .get(
+            "/portal/manpower/deployments",
+            screens::portal_page::deployments,
+        )
+        .name("manpower.portal_deployments")
+        .get(
+            "/portal/manpower/timesheets",
+            screens::portal_page::timesheets,
+        )
+        .name("manpower.portal_timesheets")
         .get("/manpower/deployments", deployments_index)
         .name("manpower.deployments")
         .get("/manpower/deployments/{id}", screens::deployment_page::show)
@@ -744,6 +774,26 @@ async fn requests_index(
     Ok(Json(rows).into_response())
 }
 
+/// The request a *New request* form describes (the back office's sheet and the
+/// client approver's in the portal send the same fields).
+pub(crate) fn new_request_from(lang: &Lang, form: &BTreeMap<String, String>) -> Result<NewRequest> {
+    Ok(NewRequest {
+        contract_id: number(lang, form, "client_contract_id")?
+            .ok_or_else(|| refused(t(lang, "manpower.problems.contract_missing")))?,
+        site_id: number(lang, form, "site_id")?
+            .ok_or_else(|| refused(t(lang, "manpower.problems.site_missing")))?,
+        role: request_page::role_key(&field(form, "role")),
+        headcount: number(lang, form, "headcount")?
+            .ok_or_else(|| refused(t(lang, "manpower.problems.headcount_missing")))?,
+        shift_type: field(form, "shift_type"),
+        shift_start: Some(field(form, "shift_start")),
+        shift_end: Some(field(form, "shift_end")),
+        start_date: date(lang, form, "start_date")?
+            .ok_or_else(|| refused(t(lang, "manpower.problems.start_missing")))?,
+        end_date: date(lang, form, "end_date")?,
+    })
+}
+
 /// `POST /manpower/requests`: `client_contract_id`, `site_id`, `role`,
 /// `headcount`, `shift_type`, `start_date` and, optionally, `shift_start`,
 /// `shift_end` (`07:00`) and `end_date`.
@@ -753,21 +803,7 @@ async fn create_request(
     lang: Lang,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    let new = NewRequest {
-        contract_id: number(&lang, &form, "client_contract_id")?
-            .ok_or_else(|| refused(t(&lang, "manpower.problems.contract_missing")))?,
-        site_id: number(&lang, &form, "site_id")?
-            .ok_or_else(|| refused(t(&lang, "manpower.problems.site_missing")))?,
-        role: request_page::role_key(&field(&form, "role")),
-        headcount: number(&lang, &form, "headcount")?
-            .ok_or_else(|| refused(t(&lang, "manpower.problems.headcount_missing")))?,
-        shift_type: field(&form, "shift_type"),
-        shift_start: Some(field(&form, "shift_start")),
-        shift_end: Some(field(&form, "shift_end")),
-        start_date: date(&lang, &form, "start_date")?
-            .ok_or_else(|| refused(t(&lang, "manpower.problems.start_missing")))?,
-        end_date: date(&lang, &form, "end_date")?,
-    };
+    let new = new_request_from(&lang, &form)?;
     let created = requests::create(&state, &user, new).await?;
     Ok(done(
         &lang,

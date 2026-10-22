@@ -15,6 +15,7 @@
 mod activity_label;
 mod construction_tiles;
 mod generic_tiles;
+mod manpower_tiles;
 mod property_tiles;
 
 use std::sync::Arc;
@@ -312,6 +313,8 @@ async fn show(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Resu
         .map(|item| context! { title => item.title, url => item.url })
         .collect();
     let awaiting_count = awaiting.len();
+    // The timesheets waiting for a client approver (Manpower portal).
+    let portal_waiting = manpower_tiles::timesheets_waiting(&state, &user).await?;
     Ok(view(
         "dashboard/show.html",
         context! {
@@ -319,6 +322,8 @@ async fn show(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Resu
             needs_action,
             awaiting,
             awaiting_count,
+            portal_waiting,
+            portal_url => manpower_tiles::TIMESHEETS_URL,
             lead => figures.lead,
             tiles => figures.tiles,
             expiring => figures.expiring,

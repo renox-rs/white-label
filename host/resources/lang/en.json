@@ -42,6 +42,9 @@
     "projects": "Projects",
     "contracts": "Client contracts",
     "requests": "Manpower requests",
+    "portal_requests": "Requests",
+    "portal_deployments": "Workers on site",
+    "portal_timesheets": "Timesheets",
     "deployments": "Deployments",
     "shipments": "Shipments",
     "remittances": "COD remittances",
@@ -115,6 +118,10 @@
       "title": "Needs your action",
       "awaiting_one": "1 approval waiting for you",
       "awaiting_many": ":count approvals waiting for you"
+    },
+    "portal": {
+      "timesheets_one": "1 timesheet waiting for you",
+      "timesheets_many": ":count timesheets waiting for you"
     },
     "tiles": {
       "units_available": "Units available",
