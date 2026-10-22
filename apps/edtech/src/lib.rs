@@ -156,6 +156,9 @@ impl Module for EdTech {
         // completes.
         enrolments::register(app);
         certificates::register();
+        // A bill or a document that names a record shows `ENR-0007`, not
+        // `edtech.enrolment:7`.
+        register_labels();
         // In the app group of the staff sidebar; the labels are the host's
         // `nav.courses`, `nav.batches` and `nav.sessions` texts.
         app.nav(
@@ -199,6 +202,47 @@ impl Module for EdTech {
                 .permission(permissions::CERTIFICATES_VIEW),
         );
     }
+}
+
+/// How the documents and bills of other modules name the records of the app:
+/// the batch, the session, the enrolment, the certificate and the tutor
+/// assignment (wl-documents `register_subject_label`), so that a document
+/// kind's `blocks` entry on `batch.open`, `session.reschedule` or
+/// `certificate.issue` shows `BAT-0007` and not `edtech.batch:7`. The
+/// `BlockSubjects` providers themselves are BL-EDU-07's and BL-EDU-08's.
+fn register_labels() {
+    use wl_kernel::documents::register_subject_label;
+    register_subject_label(batch::BATCH_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move { Ok(Batch::find(db, id).await?.map(|batch| batch.number())) })
+    });
+    register_subject_label(session::SESSION_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            let Some(found) = Session::find(db, id).await? else {
+                return Ok(None);
+            };
+            let batch = Batch::find(db, found.batch_id)
+                .await?
+                .map_or_else(|| format!("#{}", found.batch_id), |batch| batch.number());
+            Ok(Some(format!("{batch} · {}", found.number)))
+        })
+    });
+    register_subject_label(enrolment::ENROLMENT_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            Ok(Enrolment::find(db, id)
+                .await?
+                .map(|enrolment| enrolment.number()))
+        })
+    });
+    register_subject_label(certificate::CERTIFICATE_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            Ok(Certificate::find(db, id)
+                .await?
+                .map(|certificate| certificate.label()))
+        })
+    });
+    register_subject_label(course::COURSE_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move { Ok(Course::find(db, id).await?.map(|course| course.title())) })
+    });
 }
 
 #[cfg(test)]
