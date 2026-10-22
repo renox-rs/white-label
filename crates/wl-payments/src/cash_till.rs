@@ -36,7 +36,7 @@ use crate::cash_handover::{CashEntry, CashHandover, CashHolder};
 pub async fn of_session(db: &Db, session: i64) -> Result<Option<CashHandover>> {
     CashHandover::query()
         .where_(CashHandover::KIND.eq(HandoverKind::Period))
-        .where_(CashHandover::PERIOD_TYPE.eq(wl_kernel::sales::TILL_SESSION_SUBJECT_TYPE))
+        .where_(CashHandover::PERIOD_TYPE.eq(wl_kernel::sales::TILL_SESSION_SUBJECT_TYPE.to_owned()))
         .where_(CashHandover::PERIOD_ID.eq(session))
         .order_by(CashHandover::ID)
         .first(db)
