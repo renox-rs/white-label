@@ -248,3 +248,85 @@ impl Centre {
         resource
     }
 }
+
+use edtech::batches::{self, NewBatch};
+use edtech::courses::{self, NewCourse};
+use edtech::{Batch, Course, Session};
+
+impl Centre {
+    /// The course `IELTS-B2` (defined once).
+    pub async fn course(&self) -> Course {
+        if let Some(found) = Course::by_code(self.db(), "IELTS-B2").await.unwrap() {
+            return found;
+        }
+        let amal = self.coordinator().await;
+        courses::create(
+            self.state(),
+            &amal,
+            NewCourse::new("IELTS-B2", "IELTS preparation", "English language", 40).level("B2"),
+        )
+        .await
+        .expect("the course is defined")
+    }
+
+    /// A batch of 12 seats planned by the coordinator on `weekdays` at 18:00
+    /// for 90 minutes over four weeks from `first`, with `tutor` and `room`.
+    pub async fn batch_of(
+        &self,
+        tutor: &Resource,
+        room: &Resource,
+        first: NaiveDate,
+        weekdays: &[i64],
+    ) -> Batch {
+        let course = self.course().await;
+        let amal = self.coordinator().await;
+        batches::create(
+            self.state(),
+            &amal,
+            NewBatch::new(
+                course.id,
+                12,
+                (first, first + TimeDelta::days(27)),
+                weekdays,
+                "18:00",
+                90,
+            )
+            .tutor(tutor.id, None)
+            .room(room.id, Some(room.capacity)),
+        )
+        .await
+        .expect("the batch is planned")
+    }
+
+    /// A batch of the Monday and Wednesday pattern, opened.
+    pub async fn open_batch(&self, tutor: &Resource, room: &Resource, first: NaiveDate) -> Batch {
+        let batch = self.batch_of(tutor, room, first, &[1, 3]).await;
+        let amal = self.coordinator().await;
+        batches::open(self.state(), &amal, batch.id)
+            .await
+            .expect("the batch opens")
+    }
+
+    /// The sessions of `batch`, in date order.
+    pub async fn sessions_of(&self, batch: &Batch) -> Vec<Session> {
+        Session::of_batch(self.db(), batch.id).await.unwrap()
+    }
+
+    /// A `scheduled` session of `batch` that started `days` days ago at 10:00
+    /// for an hour, with the batch's tutor and room.
+    pub async fn past_session(&self, batch: &Batch, number: i64, days: i64) -> Session {
+        let date = day(-days);
+        let mut session = Session {
+            batch_id: batch.id,
+            number,
+            session_date: date,
+            starts_at: at(date, 10, 0),
+            ends_at: at(date, 11, 0),
+            tutor_resource_id: batch.tutor_resource_id,
+            room_resource_id: batch.room_resource_id,
+            ..Session::default()
+        };
+        session.save(self.db()).await.unwrap();
+        session
+    }
+}

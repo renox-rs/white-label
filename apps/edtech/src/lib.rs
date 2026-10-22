@@ -13,6 +13,9 @@ pub mod plan;
 pub mod reasons;
 pub mod seats;
 pub mod seed;
+pub mod session;
+pub mod session_machine;
+pub mod sessions;
 mod texts;
 
 use renox::db::Migration;
@@ -21,6 +24,7 @@ use renox::prelude::*;
 
 pub use batch::{Batch, BatchStatus};
 pub use course::{Course, DeliveryMode};
+pub use session::{Session, SessionStatus};
 
 /// The templates of the pages, under the names the pages ask for. An app
 /// replaces one by putting a file of that name in its own views.
@@ -36,6 +40,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "edtech/batch.html",
         include_str!("../views/edtech/batch.html"),
+    ),
+    (
+        "edtech/sessions.html",
+        include_str!("../views/edtech/sessions.html"),
+    ),
+    (
+        "edtech/session.html",
+        include_str!("../views/edtech/session.html"),
     ),
 ];
 
@@ -73,7 +85,9 @@ impl Module for EdTech {
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::courses::IndexPage>()
             .view_data::<pages::batches::IndexPage>()
-            .view_data::<pages::batches::ShowPage>();
+            .view_data::<pages::batches::ShowPage>()
+            .view_data::<pages::sessions::IndexPage>()
+            .view_data::<pages::sessions::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -83,11 +97,13 @@ impl Module for EdTech {
                 }
             }
         });
-        app.model::<Course>().model::<Batch>();
-        // The batch: its machine, its start when the first session date comes.
+        app.model::<Course>().model::<Batch>().model::<Session>();
+        // The batch and its sessions: the machines, the start of a batch on its
+        // first session date, its completion after the last session, and the
+        // blocks the sessions make in wl-scheduling.
         batches::register(app);
         // In the app group of the staff sidebar; the labels are the host's
-        // `nav.courses` and `nav.batches` texts.
+        // `nav.courses`, `nav.batches` and `nav.sessions` texts.
         app.nav(
             "app",
             NavLink::route("edtech.courses", "nav.courses")
@@ -103,6 +119,14 @@ impl Module for EdTech {
                 .group("nav.app")
                 .order(81)
                 .permission(permissions::BATCHES_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("edtech.sessions", "nav.sessions")
+                .icon("calendar-days")
+                .group("nav.app")
+                .order(82)
+                .permission(permissions::SESSIONS_VIEW),
         );
     }
 }

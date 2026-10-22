@@ -1,0 +1,300 @@
+//! The session pages (10 `EDU.BAT.01`, `EDU.ATT.01`, §7.1 *Session*).
+//!
+//! | Route | Name | Needs |
+//! |---|---|---|
+//! | `GET /edtech/sessions` | `edtech.sessions` | `sessions.view` |
+//! | `GET /edtech/sessions/{id}` | `edtech.session` | `sessions.view` |
+//! | `POST /edtech/sessions/{id}/attendance` | `edtech.session_attendance` | `sessions.teach` |
+//! | `POST /edtech/sessions/{id}/reschedule` | `edtech.session_reschedule` | `batches.manage` |
+//! | `POST /edtech/sessions/{id}/tutor` | `edtech.session_tutor` | `batches.manage` |
+//! | `POST /edtech/sessions/{id}/cancel` | `edtech.session_cancel` | `batches.manage` |
+//!
+//! The list shows the sessions from today, soonest first. The transitions are
+//! the machine's: the pages only read the form and call [`crate::sessions`].
+
+use renox::db::now;
+use renox::prelude::*;
+use serde::{Deserialize, Serialize};
+use wl_kernel::documents::today;
+
+use super::{Texts, parse_date, parse_number, require, text};
+use crate::batch::Batch;
+use crate::permissions;
+use crate::session::{Session, SessionStatus};
+use crate::sessions;
+use crate::texts;
+
+/// The routes of the pages.
+pub fn routes() -> Routes {
+    Routes::new()
+        .get("/edtech/sessions", index)
+        .name("edtech.sessions")
+        .get("/edtech/sessions/{id}", show)
+        .name("edtech.session")
+        .post("/edtech/sessions/{id}/attendance", attendance)
+        .name("edtech.session_attendance")
+        .post("/edtech/sessions/{id}/reschedule", reschedule)
+        .name("edtech.session_reschedule")
+        .post("/edtech/sessions/{id}/tutor", tutor)
+        .name("edtech.session_tutor")
+        .post("/edtech/sessions/{id}/cancel", cancel)
+        .name("edtech.session_cancel")
+        .require_auth()
+}
+
+/// The status as staff read it.
+pub(crate) fn status_text(lang: &Lang, status: SessionStatus) -> String {
+    text(lang, &format!("sessions.status.{}", status.as_str()))
+}
+
+/// The badge kind of a status.
+pub(crate) fn status_kind(status: SessionStatus) -> &'static str {
+    match status {
+        SessionStatus::Scheduled | SessionStatus::Cancelled => "info",
+        SessionStatus::Held => "success",
+    }
+}
+
+/// `18:00 – 19:30`.
+pub(crate) fn time_range(session: &Session) -> String {
+    format!(
+        "{} – {}",
+        sessions::time_text(session.starts_at),
+        sessions::time_text(session.ends_at)
+    )
+}
+
+/// A resource as the page reads it: `Resource 12`, or a dash.
+fn resource_text(lang: &Lang, id: Option<i64>) -> String {
+    id.map_or_else(
+        || text(lang, "none"),
+        |id| format!("{} {id}", text(lang, "batches.resource")),
+    )
+}
+
+/// One session of a list.
+#[derive(Serialize, Debug, Clone)]
+pub struct SessionRow {
+    /// The primary key.
+    pub id: i64,
+    /// Its number in the batch.
+    pub number: i64,
+    /// The batch, `BAT-0007`.
+    pub batch: String,
+    /// The day.
+    pub date: String,
+    /// The start and end.
+    pub time: String,
+    /// The tutor.
+    pub tutor: String,
+    /// The room.
+    pub room: String,
+    /// Whether it was added in place of a cancelled one.
+    pub make_up: String,
+    /// The status.
+    pub status: String,
+    /// The badge kind.
+    pub status_kind: &'static str,
+}
+
+/// The row of `session` of batch `batch`.
+pub(crate) fn row_of(lang: &Lang, session: &Session, batch: &str) -> SessionRow {
+    SessionRow {
+        id: session.id,
+        number: session.number,
+        batch: batch.to_owned(),
+        date: session.session_date.to_string(),
+        time: time_range(session),
+        tutor: resource_text(lang, session.tutor_resource_id),
+        room: resource_text(lang, session.room_resource_id),
+        make_up: if session.make_up {
+            text(lang, "sessions.make_up_yes")
+        } else {
+            String::new()
+        },
+        status: status_text(lang, session.status),
+        status_kind: status_kind(session.status),
+    }
+}
+
+/// What the list page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "edtech/sessions.html")]
+pub(crate) struct IndexPage {
+    tx: Texts,
+    sessions: Vec<SessionRow>,
+}
+
+/// `GET /edtech/sessions`.
+async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+    require(&user, permissions::SESSIONS_VIEW)?;
+    let coming = Session::query()
+        .where_(Session::SESSION_DATE.gte(today()))
+        .order_by(Session::STARTS_AT)
+        .get(&state.db)
+        .await?;
+    let batches = Batch::query().get(&state.db).await?;
+    let rows = coming
+        .iter()
+        .map(|s| {
+            let batch = batches
+                .iter()
+                .find(|b| b.id == s.batch_id)
+                .map_or_else(|| format!("#{}", s.batch_id), Batch::number);
+            row_of(&lang, s, &batch)
+        })
+        .collect();
+    Ok(View::typed(IndexPage {
+        tx: texts::all(&lang),
+        sessions: rows,
+    }))
+}
+
+/// What the page of one session needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "edtech/session.html")]
+pub(crate) struct ShowPage {
+    tx: Texts,
+    id: i64,
+    title: String,
+    batch_id: i64,
+    batch: String,
+    date: String,
+    time: String,
+    tutor: String,
+    room: String,
+    status: String,
+    status_kind: &'static str,
+    cancel_reason: String,
+    start_time: String,
+    can_attend: bool,
+    can_change: bool,
+}
+
+/// `GET /edtech/sessions/{id}`.
+async fn show(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    require(&user, permissions::SESSIONS_VIEW)?;
+    let session = Session::find_or_404(&state.db, id).await?;
+    let batch = Batch::find_or_404(&state.db, session.batch_id).await?;
+    let scheduled = session.status == SessionStatus::Scheduled;
+    Ok(View::typed(ShowPage {
+        tx: texts::all(&lang),
+        id: session.id,
+        title: format!("{} · {}", batch.number(), session.number),
+        batch_id: batch.id,
+        batch: batch.number(),
+        date: session.session_date.to_string(),
+        time: time_range(&session),
+        tutor: resource_text(&lang, session.tutor_resource_id),
+        room: resource_text(&lang, session.room_resource_id),
+        status: status_text(&lang, session.status),
+        status_kind: status_kind(session.status),
+        cancel_reason: session
+            .cancel_reason
+            .clone()
+            .unwrap_or_else(|| text(&lang, "none")),
+        start_time: sessions::time_text(session.starts_at),
+        can_attend: scheduled
+            && session.starts_at <= now()
+            && user.has_permission(permissions::SESSIONS_TEACH),
+        can_change: scheduled && user.has_permission(permissions::BATCHES_MANAGE),
+    }))
+}
+
+/// The toast and refresh that answer a transition.
+fn done(lang: &Lang, key: &str) -> Result<Response> {
+    Ok((Toast::success(text(lang, key)), renox::HxRefresh).into_response())
+}
+
+/// `POST /edtech/sessions/{id}/attendance`.
+async fn attendance(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    sessions::submit_attendance(&state, &user, id).await?;
+    done(&lang, "sessions.attendance_done")
+}
+
+/// The form of `reschedule`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct RescheduleForm {
+    /// The new day, `2026-11-10`.
+    #[serde(default)]
+    pub date: String,
+    /// The new start time, `18:00`.
+    #[serde(default)]
+    pub start_time: String,
+}
+
+/// `POST /edtech/sessions/{id}/reschedule`.
+async fn reschedule(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<RescheduleForm>,
+) -> Result<Response> {
+    let date = parse_date(&form.date)?;
+    sessions::reschedule(&state, &user, id, date, &form.start_time).await?;
+    done(&lang, "sessions.rescheduled")
+}
+
+/// The form of `change_tutor`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TutorForm {
+    /// The new tutor's resource number.
+    #[serde(default)]
+    pub tutor: String,
+    /// The new tutor's employee number.
+    #[serde(default)]
+    pub employee: String,
+}
+
+/// `POST /edtech/sessions/{id}/tutor`.
+async fn tutor(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TutorForm>,
+) -> Result<Response> {
+    let resource = parse_number(&form.tutor)?;
+    let employee = super::parse_optional_id(&form.employee)?;
+    sessions::change_tutor(&state, &user, id, resource, employee).await?;
+    done(&lang, "sessions.tutor_changed")
+}
+
+/// The form of `cancel`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CancelForm {
+    /// Why the session does not take place.
+    #[serde(default)]
+    pub reason: String,
+    /// The day of the make-up session, if one is added.
+    #[serde(default)]
+    pub make_up_on: String,
+}
+
+/// `POST /edtech/sessions/{id}/cancel`.
+async fn cancel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<CancelForm>,
+) -> Result<Response> {
+    let make_up = if form.make_up_on.trim().is_empty() {
+        None
+    } else {
+        Some(parse_date(&form.make_up_on)?)
+    };
+    sessions::cancel(&state, &user, id, &form.reason, make_up).await?;
+    done(&lang, "sessions.cancelled")
+}

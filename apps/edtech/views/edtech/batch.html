@@ -20,5 +20,14 @@
         <rx-entry :label="tx['batches.room']" :value="room"/>
       </rx-infolist>
     </rx-card>
+    <rx-table :rows="sessions" as="row" :key="row.id" :caption="tx['batches.sessions']" card>
+      <rx-column :label="tx['sessions.number']"><a href="{{ route('edtech.session', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['sessions.date']">{{ row.date }}</rx-column>
+      <rx-column :label="tx['sessions.time']">{{ row.time }}</rx-column>
+      <rx-column :label="tx['sessions.tutor']" hide-narrow>{{ row.tutor }}</rx-column>
+      <rx-column :label="tx['sessions.make_up']" hide-narrow>{{ row.make_up }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['batches.no_sessions']" icon="calendar-days"/></rx-slot>
+    </rx-table>
   </rx-stack>
 </rx-page>

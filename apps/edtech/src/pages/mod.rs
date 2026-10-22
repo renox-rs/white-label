@@ -4,6 +4,7 @@
 
 pub mod batches;
 pub mod courses;
+pub mod sessions;
 
 use std::collections::BTreeMap;
 
@@ -20,6 +21,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .merge(courses::routes())
         .merge(batches::routes())
+        .merge(sessions::routes())
 }
 
 /// The app text `key` (without the `edtech.` prefix).

@@ -2,7 +2,7 @@
 //!
 //! | Transition | From | To | By | Guards |
 //! |---|---|---|---|---|
-//! | [`OPEN`] | planned | open | `batches.manage` | `plan_complete`, `sessions_planned` |
+//! | [`OPEN`] | planned | open | `batches.manage` | `plan_complete`, `sessions_planned` (effect: sessions generated) |
 //! | [`CHANGE_TUTOR`] | open | open | `batches.manage` | `new_tutor_given` |
 //! | [`CHANGE_TUTOR_RUNNING`] | running | running | `batches.manage` | `new_tutor_given` |
 //! | [`START`] | open | running | system (first session date) | — |
@@ -35,9 +35,14 @@
 //!   termination, `EDU.ACL.15`). The slots pass today; the issues put the
 //!   check in their bodies. Their effects store the reason and nothing else:
 //!   the enrolments, the refunds and the sessions are those issues'.
-//! - `change_tutor` sets the batch's tutor from the run's input; the sessions
-//!   of the batch's old tutor are reassigned by [`crate::sessions`] after the
-//!   run (BL-EDU-09 makes it all-or-nothing with the eligibility check).
+//! - `open` generates the sessions of the plan in its effect
+//!   ([`crate::sessions::insert_planned`]), after checking once more, inside
+//!   the transaction, that the tutor and the room are free.
+//! - `change_tutor` sets the batch's tutor from the run's input and, in the
+//!   same transaction, moves the `scheduled` sessions of the batch's old tutor
+//!   from the given date to the new one; a session already moved to another
+//!   tutor keeps its own. The service that checks that the new tutor is free
+//!   and eligible on every remaining date, all or nothing, is BL-EDU-09's.
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
@@ -48,6 +53,7 @@ use crate::batch::{Batch, BatchStatus};
 use crate::db::set_batch;
 use crate::permissions;
 use crate::plan::PlannedSession;
+use crate::sessions;
 use crate::texts::english;
 
 /// `planned → open`: open for enrolment; the sessions are generated.
@@ -150,6 +156,11 @@ fn open() -> Transition<Batch> {
             let ok = !input_of(ctx).sessions.is_empty();
             Box::pin(async move { check(ok, "edtech.batches.problem.no_sessions") })
         })
+        .effect(|b: &Batch, ctx, tx| {
+            let batch = b.clone();
+            let input = input_of(ctx);
+            Box::pin(async move { sessions::insert_planned(tx, &batch, &input.sessions).await })
+        })
 }
 
 /// `change_tutor`: the batch's tutor is the one in the input, in the state
@@ -167,8 +178,20 @@ fn change_tutor(name: &'static str, state: BatchStatus) -> Transition<Batch> {
         })
         .effect(|b: &Batch, ctx, tx| {
             let id = b.id;
+            let old = b.tutor_resource_id;
             let input = input_of(ctx);
             Box::pin(async move {
+                if let Some(from) = input.from {
+                    sessions::reassign_remaining(
+                        tx,
+                        id,
+                        from,
+                        old,
+                        input.tutor_resource_id,
+                        input.tutor_employee_id,
+                    )
+                    .await?;
+                }
                 set_batch(
                     tx,
                     id,

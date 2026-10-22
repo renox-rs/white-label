@@ -7,6 +7,8 @@
 //! | `GET /edtech/batches/{id}` | `edtech.batch` | `batches.view` |
 //! | `POST /edtech/batches/{id}/open` | `edtech.batch_open` | `batches.manage` |
 //!
+//! The page of a batch lists its sessions (see [`super::sessions`]).
+//!
 //! The list shows each batch with its dates, its weekly pattern, its tutor and
 //! room, its seats and its status in words. The transitions are the
 //! machine's: the pages only read the form and call [`crate::batches`].
@@ -14,6 +16,7 @@
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::sessions::{SessionRow, row_of};
 use super::{
     Texts, parse_date, parse_number, parse_optional_id, parse_weekdays, require, text,
 };
@@ -22,6 +25,7 @@ use crate::batches::{self, NewBatch};
 use crate::course::Course;
 use crate::permissions;
 use crate::seats;
+use crate::session::Session;
 use crate::texts;
 
 /// The routes of the pages.
@@ -241,6 +245,7 @@ pub(crate) struct ShowPage {
     free_seats: i64,
     tutor: String,
     room: String,
+    sessions: Vec<SessionRow>,
     can_open: bool,
 }
 
@@ -262,6 +267,9 @@ async fn show(
     require(&user, permissions::BATCHES_VIEW)?;
     let batch = Batch::find_or_404(&state.db, id).await?;
     let course = Course::find_or_404(&state.db, batch.course_id).await?;
+    let number = batch.number();
+    let planned = Session::of_batch(&state.db, batch.id).await?;
+    let rows = planned.iter().map(|s| row_of(&lang, s, &number)).collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: batch.id,
@@ -275,6 +283,7 @@ async fn show(
         free_seats: seats::free(&batch),
         tutor: resource_text(&lang, batch.tutor_resource_id),
         room: resource_text(&lang, batch.room_resource_id),
+        sessions: rows,
         can_open: batch.status == BatchStatus::Planned
             && user.has_permission(permissions::BATCHES_MANAGE),
     }))

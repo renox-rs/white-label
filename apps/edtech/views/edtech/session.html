@@ -1,0 +1,40 @@
+{#- edtech: one session: when, who teaches, where, where it stands, and the
+    actions of the tutor and the coordinator. Replace it with
+    resources/views/edtech/session.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="date" :badge="status" :badge-kind="status_kind" :back="route('edtech.batch', batch_id)" :back-label="batch">
+      <template rx-if="can_attend">
+        <rx-confirm :id="'session-attendance-' ~ id" :label="tx['sessions.attendance']" :action="route('edtech.session_attendance', id)" method="POST"
+                    :title="tx['sessions.attendance']" :message="tx['sessions.attendance_message']" :confirm-label="tx['sessions.attendance']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_change">
+        <rx-action-sheet :id="'session-reschedule-' ~ id" :label="tx['sessions.reschedule']" :action="route('edtech.session_reschedule', id)"
+                         :title="tx['sessions.reschedule']" :description="tx['sessions.reschedule_description']" :submit-label="tx['sessions.reschedule']" icon="calendar">
+          <rx-input name="date" type="date" :label="tx['sessions.new_date']" :value="date" :id="'session-reschedule-date-' ~ id" required/>
+          <rx-input name="start_time" :label="tx['sessions.new_time']" :value="start_time" :id="'session-reschedule-time-' ~ id" required/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'session-tutor-' ~ id" :label="tx['sessions.change_tutor']" :action="route('edtech.session_tutor', id)"
+                         :title="tx['sessions.change_tutor']" :description="tx['sessions.change_tutor_description']" :submit-label="tx['sessions.change_tutor']" icon="user">
+          <rx-input name="tutor" type="number" :label="tx['batches.tutor_resource']" :id="'session-tutor-resource-' ~ id" required/>
+          <rx-input name="employee" type="number" :label="tx['batches.tutor_employee']" :id="'session-tutor-employee-' ~ id"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'session-cancel-' ~ id" :label="tx['sessions.cancel']" :action="route('edtech.session_cancel', id)"
+                         :title="tx['sessions.cancel']" :description="tx['sessions.cancel_description']" :submit-label="tx['sessions.cancel']" icon="trash">
+          <rx-input name="reason" :label="tx['sessions.reason']" :id="'session-cancel-reason-' ~ id" required/>
+          <rx-input name="make_up_on" type="date" :label="tx['sessions.make_up_on']" :id="'session-cancel-make-up-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['sessions.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['sessions.batch']" :value="batch"/>
+        <rx-entry :label="tx['sessions.date']" :value="date"/>
+        <rx-entry :label="tx['sessions.time']" :value="time"/>
+        <rx-entry :label="tx['sessions.tutor']" :value="tutor"/>
+        <rx-entry :label="tx['sessions.room']" :value="room"/>
+        <rx-entry :label="tx['sessions.cancel_reason']" :value="cancel_reason"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

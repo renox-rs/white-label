@@ -1,11 +1,12 @@
 //! The batch services (10 §4.2, §7.1 *Batch*, `EDU.BAT.01`): planning one,
-//! opening it and starting it when its first session date comes.
+//! opening it, starting it when its first session date comes and completing it
+//! when its last session is held.
 //!
 //! The machine ([`crate::batch_machine`]) holds the rules a record and its
 //! input can answer; this file gathers what it cannot know (the public
-//! holidays of the centre's calendar, the plan the weekly pattern gives) and
-//! runs the transition. `complete`, `cancel`, `terminate` and `change_tutor`
-//! grow here with BL-EDU-12, BL-EDU-13 and BL-EDU-09.
+//! holidays of the centre's calendar, the plan the weekly pattern gives, the
+//! sessions still open) and runs the transition. `cancel`, `terminate` and the
+//! service of `change_tutor` grow here with BL-EDU-13, BL-EDU-12 and BL-EDU-09.
 
 use std::collections::BTreeSet;
 
@@ -17,11 +18,12 @@ use wl_kernel::calendar::calendar;
 use wl_kernel::documents::today;
 
 use crate::batch::{Batch, BatchStatus};
-use crate::batch_machine::{BatchInput, OPEN, START};
+use crate::batch_machine::{BatchInput, COMPLETE, OPEN, START};
 use crate::course::Course;
 use crate::db::refused;
 use crate::permissions;
 use crate::plan::{self, PlanProblem, PlannedSession};
+use crate::sessions;
 use crate::texts::english;
 
 /// The scheduled task and command that start the batches whose first session
@@ -225,12 +227,74 @@ pub async fn open(state: &AppState, by: &AuthUser, id: i64) -> Result<Batch> {
     run(state, Some(by), id, OPEN, input).await
 }
 
-/// What must hold before a batch opens and the machine cannot see. Nothing yet:
-/// the tutor and the room are checked against the sessions already planned
-/// with the Session entity, and BL-EDU-07 and BL-EDU-08 add the document and
-/// qualification checks.
-async fn before_open(_state: &AppState, _batch: &Batch, _plan: &[PlannedSession]) -> Result {
-    Ok(())
+/// What must hold before a batch opens and the machine cannot see: the tutor
+/// and the room are free for every session of the plan (all or nothing: the
+/// refusal names the days that fail). BL-EDU-07 adds the centre permit and the
+/// course approval valid on the last session date, and BL-EDU-08 the tutor's
+/// eligibility on every session date.
+async fn before_open(state: &AppState, batch: &Batch, plan: &[PlannedSession]) -> Result {
+    sessions::check_free(&state.db, batch, plan).await
+}
+
+/// `start` batch `id`, as the system; a batch that is no longer `open` is left
+/// as it is.
+///
+/// # Errors
+///
+/// The database's errors and the machine's.
+pub async fn start(state: &AppState, id: i64) -> Result {
+    let batch = Batch::find_or_404(&state.db, id).await?;
+    let run = batch
+        .transition(START)
+        .by_system()
+        .input(&BatchInput::default())
+        .run(state)
+        .await;
+    match run {
+        Ok(_) | Err(TransitionError::NotFrom(_)) => Ok(()),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `complete` batch `id`: every session is held or cancelled. A user must hold
+/// `batches.manage`; the system (`by` is `None`) is the run after the last
+/// session.
+///
+/// # Errors
+///
+/// A 403 without `batches.manage`; a 422 unless the batch is `running` and
+/// has no session still waiting for its attendance.
+pub async fn complete(state: &AppState, by: Option<&AuthUser>, id: i64) -> Result<Batch> {
+    if let Some(user) = by
+        && !user.has_permission(permissions::BATCHES_MANAGE)
+    {
+        return Err(Error::Forbidden);
+    }
+    let unsubmitted = sessions::count_scheduled(&state.db, id).await?;
+    let input = BatchInput {
+        unsubmitted: Some(unsubmitted),
+        by: by.map(|user| user.id),
+        ..BatchInput::default()
+    };
+    run(state, None, id, COMPLETE, input).await
+}
+
+/// Completes batch `id` when it is `running` and its last open session has
+/// been held or cancelled. Returns whether it did.
+///
+/// # Errors
+///
+/// The database's errors and the machine's.
+pub async fn complete_if_done(state: &AppState, id: i64) -> Result<bool> {
+    let batch = Batch::find_or_404(&state.db, id).await?;
+    if batch.status != BatchStatus::Running {
+        return Ok(false);
+    }
+    if sessions::count_scheduled(&state.db, id).await? > 0 {
+        return Ok(false);
+    }
+    complete(state, None, id).await?;
+    Ok(true)
 }
 
 /// `start`: the open batches whose first session date has come are running.
@@ -264,18 +328,29 @@ pub async fn start_due(state: &AppState, on: NaiveDate) -> Result<Vec<i64>> {
     Ok(started)
 }
 
-/// The daily run: the batches whose first session date came start.
+/// The daily run: the batches whose first session date came start, and the
+/// running batches without an open session complete. Returns the ids started.
 ///
 /// # Errors
 ///
 /// The database's errors and the machine's.
 pub async fn run_daily(state: &AppState) -> Result<Vec<i64>> {
-    start_due(state, today()).await
+    let started = start_due(state, today()).await?;
+    let running = Batch::query()
+        .where_(Batch::STATUS.eq(BatchStatus::Running))
+        .order_by(Batch::ID)
+        .get(&state.db)
+        .await?;
+    for batch in running {
+        complete_if_done(state, batch.id).await?;
+    }
+    Ok(started)
 }
 
-/// Registers the machine and the daily run.
+/// Registers the machines and the daily run.
 pub(crate) fn register(app: &mut Registry) {
     crate::batch_machine::register();
+    sessions::register(app);
     app.schedule()
         .daily_at(TASK_AT, TASK, |state: AppState| async move {
             run_daily(&state).await.map(|_| ())
@@ -283,7 +358,7 @@ pub(crate) fn register(app: &mut Registry) {
         .timezone(TASK_ZONE);
     app.command(
         TASK,
-        "Start the open batches whose first session date has come",
+        "Start the open batches whose first session date has come and complete the running ones whose sessions are all closed",
         |_args, state: AppState| async move {
             let started = run_daily(&state).await?;
             println!("{} batches started.", started.len());
