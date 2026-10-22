@@ -12,6 +12,7 @@ use edtech::waiting::{self, BatchWaiting};
 use edtech::{Batch, Enrolment, EnrolmentStatus, seats};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use support::{Centre, PRICE, boot, day, next_weekday};
 
 /// An open batch of 12 seats (the room holds 14) starting on the first Monday
@@ -46,38 +47,102 @@ async fn other_desk(t: &Centre) -> renox::AuthUser {
 }
 
 /// Batch B has capacity 12 and 11 seats taken. Counsellor A and counsellor B
-/// try at the same moment: exactly one succeeds, the other is refused with the
-/// other open batch of the course that has a seat and the waiting list. (The
-/// portal has no enrolment screen yet; it would call the same service.)
+/// try at the same moment, on two tasks released together by a barrier (three
+/// rounds, each on a batch of its own): exactly one succeeds, the other is
+/// refused with the other open batch of the course that has a seat and the
+/// waiting list. (The portal has no enrolment screen yet; it would call the
+/// same service.)
 #[renox::test]
 async fn edu_02_two_takers_of_the_last_seat_only_one_wins() {
     let t = boot().await;
+    let (a, other) = (t.desk().await, other_desk(&t).await);
+    for round in 0..3_i64 {
+        let b = open_batch(&t, &format!("B{round}"), day(7)).await;
+        let b2 = open_batch(&t, &format!("C{round}"), day(21)).await;
+        fill(&t, &b, 100 + round * 20, 11, EnrolmentStatus::Active).await;
+        let barrier = std::sync::Arc::new(renox::tokio::sync::Barrier::new(2));
+        let mut tasks = Vec::new();
+        for (who, student) in [(a.clone(), 1_i64), (other.clone(), 2)] {
+            let student = t.person(student + round * 10, &format!("Student {student}-{round}"));
+            let (state, barrier, batch_id) = (t.state().clone(), barrier.clone(), b.id);
+            tasks.push(renox::tokio::spawn(async move {
+                barrier.wait().await;
+                enrolments::create(&state, &who, NewEnrolment::course(student, batch_id, PRICE))
+                    .await
+            }));
+        }
+        let mut answers = Vec::new();
+        for task in tasks {
+            answers.push(task.await.expect("the enrolment task ran"));
+        }
+        let second = answers.pop().unwrap();
+        let first = answers.pop().unwrap();
+        let (won, refused) = match (first, second) {
+            (Ok(won), Err(refused)) | (Err(refused), Ok(won)) => (won, refused),
+            (Ok(_), Ok(_)) => panic!("both took the last seat"),
+            (Err(one), Err(two)) => panic!("neither took it: {one} / {two}"),
+        };
+        assert_eq!(won.status, EnrolmentStatus::PendingPayment);
+        let message = refused.to_string();
+        assert!(message.contains("no free seat"), "{message}");
+        assert!(message.contains(&b2.number()), "the other batch: {message}");
+        assert!(message.contains("waiting list"), "{message}");
+        assert_eq!(seats::available(t.db(), b.id).await.unwrap(), 0);
+        assert_eq!(
+            Batch::find_or_404(t.db(), b.id).await.unwrap().seats_taken,
+            12
+        );
+    }
+}
+
+/// The lock itself, at the level of the transaction: while one transaction has
+/// taken the last seat and not committed, a second taker is held back (it is
+/// still waiting after 300 ms); once the first commits with its enrolment the
+/// second is refused for a full batch. Had the count been read without the lock
+/// the second would have counted 11 and taken the seat too.
+#[renox::test]
+async fn edu_02_the_seat_lock_holds_a_second_taker_until_the_first_commits() {
+    let t = boot().await;
     let b = open_batch(&t, "B", day(7)).await;
-    let b2 = open_batch(&t, "B2", day(21)).await;
     fill(&t, &b, 100, 11, EnrolmentStatus::Active).await;
     let (sara, omar) = (t.person(1, "Sara Ali"), t.person(2, "Omar Khan"));
-    let (a, other) = (t.desk().await, other_desk(&t).await);
+    let other = other_desk(&t).await;
 
-    let (first, second) = renox::tokio::join!(
-        enrolments::create(t.state(), &a, NewEnrolment::course(sara, b.id, PRICE)),
-        enrolments::create(t.state(), &other, NewEnrolment::course(omar, b.id, PRICE)),
-    );
+    let mut tx = t.db().begin_immediate().await.unwrap();
+    seats::take(&mut tx, b.id, 1, seats::Limit::Capacity)
+        .await
+        .unwrap();
+    let (state, batch_id) = (t.state().clone(), b.id);
+    let mut second = renox::tokio::spawn(async move {
+        enrolments::create(&state, &other, NewEnrolment::course(omar, batch_id, PRICE)).await
+    });
+    let waiting =
+        renox::tokio::time::timeout(std::time::Duration::from_millis(300), &mut second).await;
+    assert!(waiting.is_err(), "the second taker waits for the first");
 
-    let (won, refused) = match (first, second) {
-        (Ok(won), Err(refused)) | (Err(refused), Ok(won)) => (won, refused),
-        (Ok(_), Ok(_)) => panic!("both took the last seat"),
-        (Err(one), Err(two)) => panic!("neither took it: {one} / {two}"),
+    let mut first = Enrolment {
+        batch_id: Some(b.id),
+        student_party_id: sara,
+        payer_party_id: sara,
+        price: PRICE,
+        sessions_total: 8,
+        instalments: 1,
+        seat_held: true,
+        status: EnrolmentStatus::PendingPayment,
+        ..Enrolment::default()
     };
-    assert_eq!(won.status, EnrolmentStatus::PendingPayment);
-    let message = refused.to_string();
-    assert!(message.contains("no free seat"), "{message}");
-    assert!(message.contains(&b2.number()), "the other batch: {message}");
-    assert!(message.contains("waiting list"), "{message}");
+    first
+        .insert_in_state(&mut tx, EnrolmentStatus::PendingPayment, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let refused = second
+        .await
+        .expect("the second task ran")
+        .expect_err("the batch is full by now");
+    assert!(refused.to_string().contains("no free seat"), "{refused}");
     assert_eq!(seats::available(t.db(), b.id).await.unwrap(), 0);
-    assert_eq!(
-        Batch::find_or_404(t.db(), b.id).await.unwrap().seats_taken,
-        12
-    );
 }
 
 /// A refusal with no other open batch names only the waiting list.
