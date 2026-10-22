@@ -141,3 +141,29 @@ async fn edu_03_the_withdrawal_policy_is_stored_in_words_and_decided_by_the_cent
     assert!(grants(roles::ACCOUNTANT).contains(&edu::ENROLMENTS_REFUND_APPROVE));
     assert!(!grants(roles::COUNSELLOR).contains(&edu::ENROLMENTS_REFUND_APPROVE));
 }
+
+/// Terminating a running batch is requested by the coordinator and approved by
+/// the centre manager, never the requester (BL-EDU-12, `EDU.ACL.15`): the client
+/// stores the policy, shows it in words and links the batch page.
+#[renox::test]
+async fn edu_12_the_termination_policy_is_the_centre_managers_and_in_words() {
+    use wl_kernel::approvals::{ApprovalPolicy, Step, action_is_labelled, subject_url};
+
+    let app = edtech_booted().await;
+    let policies = ApprovalPolicy::query()
+        .where_(ApprovalPolicy::ACTION.eq("edtech.terminate"))
+        .get(app.db())
+        .await
+        .unwrap();
+    assert_eq!(policies.len(), 1);
+    assert!(policies[0].sod, "the requester never approves");
+    assert_eq!(policies[0].steps.0, [Step::holders_of(edu::BATCHES_APPROVE)]);
+    assert!(action_is_labelled("edtech.terminate"));
+    assert_eq!(
+        subject_url("edtech.batch", 9).as_deref(),
+        Some("/edtech/batches/9")
+    );
+    assert!(grants(roles::ACADEMIC_COORDINATOR).contains(&edu::BATCHES_MANAGE));
+    assert!(!grants(roles::ACADEMIC_COORDINATOR).contains(&edu::BATCHES_APPROVE));
+    assert!(grants(roles::CENTRE_MANAGER).contains(&edu::BATCHES_APPROVE));
+}
