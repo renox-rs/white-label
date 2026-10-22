@@ -86,6 +86,22 @@ pub(crate) async fn label_of(state: &AppState, subject: &Subject) -> (String, Op
             );
         }
     }
+    if subject.subject_type == wl_kernel::workforce::EMPLOYEE_SUBJECT_TYPE {
+        // The employee's name, not `hr.employee #2` (the workforce knows the
+        // person, the directory their name).
+        let profile = wl_kernel::workforce::workforce(state)
+            .staff(state, wl_kernel::workforce::EmployeeId(subject.subject_id))
+            .await
+            .ok()
+            .flatten();
+        if let Some(profile) = profile
+            && let Ok(Some(name)) = wl_kernel::parties::directory(state)
+                .display_name(&state.db, profile.party, "en")
+                .await
+        {
+            return (name, None);
+        }
+    }
     if let Ok(Some(label)) = wl_kernel::documents::subject_label(&state.db, subject).await {
         return (label, None);
     }
