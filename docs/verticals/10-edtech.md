@@ -792,6 +792,16 @@ coordinator (`EDU.ACL.04`, `EDU.ACL.16`).
   manager decides whether it finishes (the open question AU-25 is shown to the three people it
   is sent to, not decided by the system). The renewal task is the centre manager's of the
   campus for a permit and the academic coordinator's for an approval.
+
+  A tutor is assigned (`batch.open`, `batch.change_tutor`, `session.change_tutor`,
+  `session.reschedule`) only when `qualification_valid` passes on **every** session date they
+  would teach, not on the first alone: the police clearance when the course is marked *for
+  minors* or the batch has a `pending_payment`, `active` or `frozen` enrolment of a student
+  under 18, and, for a freelance tutor, the permit or the visa. The permit and the visa are one
+  document kind: a tutor holding either one valid on the date passes. The refusal names the
+  tutor, the document and the first date it does not cover, with the other dates, and never a
+  student. A student under 18 who enrols into a batch whose tutor has no valid clearance is
+  allowed to (`EDU.RUL.12` flags the sessions); the next assignment is then refused.
 - **Recordings:** online sessions are recorded only with consent, and recordings are
   retained for a limited period.
 - **Academic records:** KHDA requires learner registers, contracts and training records to
