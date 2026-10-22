@@ -40,14 +40,43 @@ every status change goes through a state machine that leaves a history row.
   delivery off for a customer after 2 customer-side failures of cash orders in
   90 days; the kitchen manager turns it back on (`/customers/cod`); the
   checkout (`/checkout/payment`) then offers only online payment.
+- **Cancelling** (`cancel`, BL-FNB-04): the customer cancels a `placed` order
+  from `/my/orders/{id}` (full refund, nothing in the kitchen; refused once the
+  outlet accepted it); staff with `orders.cancel` cancel an order with a reason
+  and the responsible party (business, aggregator, customer; *entered in
+  error* is always the business's). The cancel is the sales order's: a paid
+  order above AED 50, or a started line, waits for a manager, each started line
+  needs an outcome (return to stock, scrap), and the order follows
+  `SalesOrderCancelled` with `cancel_system`, its open tickets voided. An
+  aggregator order cancelled with the aggregator responsible issues no refund
+  and expects compensation. A ticket that starts withdraws a waiting request.
+  There is no `void` on an order.
+- **Changing an order** (`changes`, BL-FNB-05): the cashier amends a `placed`
+  or `accepted` direct order after calling the customer (the "customer agreed"
+  tick and the time of the call; the price difference is refunded or charged by
+  payment link; aggregator orders are never amended here) and cancels a line
+  when an item runs out (a started line needs an outcome and a manager; the
+  last open line is refused; an aggregator's cancelled line is flagged for the
+  payout, `ExpectedRefund`). The kitchen tickets follow the sales order's
+  events at once.
+- **The aggregator's rider** (`pickup`, BL-FNB-06): `FNB.RUL.16` tells the
+  kitchen managers to chase the aggregator 15 minutes after an aggregator
+  order is `ready`, and opens a task at 45 for the manager to record *picked
+  up late* (the order completes) or *cancelled by the aggregator* (the order
+  is cancelled with the aggregator responsible, the food as wastage, no refund,
+  compensation expected, no second approval).
+- **A reversed delivery** (`reversal`, BL-FNB-07): on `DeliveryReversed` a
+  completed order is refunded in full by a sales return of kind *no goods*
+  naming the rider, resolved at once, by a refund or (cash on delivery nobody
+  handed over) by credit note only; the order stays `completed`.
 - **Catalogue** (`catalogue`): brands, outlets and menu items with recipes, as
   far as the orders need them. `progress` gives the shared modules the
   kitchen's `FulfilmentProgress` and `SaleLineStockSource`.
 
 ## Permissions
 
-`orders.view`, `.manage` and `.refund_request`, `kds.work` and
-`customers.cod` (`permissions`). The host maps them to the roles of 06 §3.1:
+`orders.view`, `.manage`, `.cancel`, `.amend` and `.refund_request`,
+`kds.work` and `customers.cod` (`permissions`). The host maps them to the roles of 06 §3.1:
 the kitchen manager, the cashier, the line cook, the area manager, the
 operations director and the rider; the company admin holds everything.
 
