@@ -5,7 +5,7 @@
     resources/views/wl-hr/employee.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="employee.name">
   <rx-stack>
-    <rx-page-header :title="employee.name" :subtitle="employee.job_role" :back="route('wl_hr.employees')" :back-label="tx['employees.title']"
+    <rx-page-header :title="employee.name" :subtitle="employee.job_role | replace('_', ' ') | capitalize" :back="route('wl_hr.employees')" :back-label="tx['employees.title']"
                     :badge="employee.status" :badge-kind="employee.status_kind">
       <template rx-if="can_activate">
         <rx-confirm :id="'activate-employee-' ~ employee.id" :label="tx['employees.activate']" :action="'/hr/employees/' ~ employee.id ~ '/transitions/activate'" method="POST"
@@ -27,7 +27,7 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
-    <rx-card :title="tx['employees.title']">
+    <rx-card :title="tx['employees.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['employees.number']" :value="employee.number" :placeholder="tx['none']"/>
         <rx-entry :label="tx['employees.job_title']" :value="job_title" :placeholder="tx['none']"/>

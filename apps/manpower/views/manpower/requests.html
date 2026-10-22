@@ -7,7 +7,7 @@
     <rx-table :rows="requests" as="request" :key="request.id" :caption="tx['requests.title']">
       <rx-column :label="tx['requests.request']">
         <rx-stack>
-          <span>{{ request.role }} - {{ request.site }}</span>
+          <span>{{ request.role | replace('_', ' ') | capitalize }} - {{ request.site }}</span>
           <span class="rx-subtitle">{{ request.client }}</span>
           <span>
             <rx-badge :kind="request.status_kind" :text="request.status"/>
