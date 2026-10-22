@@ -1,0 +1,42 @@
+# The demo client of F9 (09 Manpower): a Dubai manpower supply agency. Data is
+# fictional. Boot it with CLIENT_CONFIG=clients/demo-manpower/client.toml;
+# `manpower:demo` (and `db:seed` in local) fills it with the demo agency.
+
+[client]
+name    = "Desert Star Manpower Services LLC"
+app     = "manpower"
+domain  = "demo.desertstar.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#1D4ED8"
+second       = "#B45309"
+display_font = "Poppins"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "attendance", "portal"]
+
+[[legal_entities]]
+code      = "DSM"
+name_en   = "Desert Star Manpower Services LLC"
+emirate   = "dubai"
+licensing_authority = "Dubai Department of Economy and Tourism"
+trade_licence_no = "8123456"
+trn       = "100000000000003"
+address_en = "Office 1204, Business Bay Tower, Dubai"
+default   = true
+
+# The UAE public holidays the business-day counts skip. Fixed dates are
+# listed; the moon-sighted ones follow the official announcement and are
+# amended here each year.
+[calendar]
+holidays = [
+  "2026-01-01",
+  "2026-03-20", "2026-03-21", "2026-03-22",
+  "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29",
+  "2026-06-16",
+  "2026-08-25",
+  "2026-12-02", "2026-12-03",
+  "2027-01-01",
+  "2027-03-10", "2027-03-11", "2027-03-12",
+]

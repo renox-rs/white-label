@@ -32,6 +32,7 @@ pub use app::logistics_demo;
 pub use app::logistics_rules;
 pub use app::logistics_seed;
 pub use app::logistics_settings;
+pub use app::manpower_demo;
 pub use app::manpower_seed;
 pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
 pub use app::roles;
@@ -75,6 +76,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     demo_data::COMMAND,
     construction_demo::COMMAND,
     app::logistics_demo::COMMAND,
+    app::manpower_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.
@@ -200,11 +202,14 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         app = app.module(app::construction_seed::ConstructionSeed);
         // The demo company, after the installs: `construction:demo`, and
         // `db:seed` in local (never in production).
-        app = app.module(app::construction_demo::DemoSeed::new(demo_client));
+        app = app.module(app::construction_demo::DemoSeed::new(demo_client.clone()));
     }
     // The Manpower client's ticket categories (BL-MPW-14, BL-MPW-17).
     if client_app == app::manpower_seed::MANPOWER {
         app = app.module(app::manpower_seed::ManpowerSeed);
+        // The demo agency, after the installs: `manpower:demo`, and `db:seed`
+        // in local (never in production).
+        app = app.module(app::manpower_demo::ManpowerDemo::new(demo_client.clone()));
     }
     // The Logistics client's demo company, in local only (`logistics:demo`,
     // and `db:seed`).
