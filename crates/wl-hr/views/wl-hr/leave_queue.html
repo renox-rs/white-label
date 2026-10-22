@@ -6,7 +6,7 @@
   <rx-stack>
     <rx-page-header :title="tx['queue.title']" :subtitle="tx['queue.subtitle']"/>
     <rx-table :rows="waiting" as="row" :key="row.id" :caption="tx['queue.title']" card>
-      <rx-column :label="tx['queue.who']"><a href="{{ row.employee_url }}">{{ row.who }}</a></rx-column>
+      <rx-column :label="tx['queue.who']">{{ row.who }}</rx-column>
       <rx-column :label="tx['my_leave.type']">{{ row.kind }}</rx-column>
       <rx-column :label="tx['my_leave.period']">{{ row.period }}</rx-column>
       <rx-column :label="tx['my_leave.days']" hide-narrow>{{ row.days }}</rx-column>
@@ -31,7 +31,7 @@
     </rx-table>
     <rx-card :title="tx['queue.decided']">
       <rx-table :rows="decided" as="row" :key="row.id" :caption="tx['queue.decided']">
-        <rx-column :label="tx['queue.who']"><a href="{{ row.employee_url }}">{{ row.who }}</a></rx-column>
+        <rx-column :label="tx['queue.who']">{{ row.who }}</rx-column>
         <rx-column :label="tx['my_leave.type']">{{ row.kind }}</rx-column>
         <rx-column :label="tx['my_leave.period']">{{ row.period }}</rx-column>
         <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>

@@ -335,7 +335,6 @@ async fn reject(
 pub struct QueueRow {
     id: i64,
     who: String,
-    employee_url: String,
     kind: String,
     period: String,
     days: i64,
@@ -394,7 +393,6 @@ async fn queue(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         let row = QueueRow {
             id: request.id,
             who: employee_name(&state, &lang, &employee).await,
-            employee_url: format!("/hr/employees/{}", employee.id),
             kind: text(&lang, &format!("leave_type.{}", request.leave_type)),
             period: period(request.from_date, request.to_date),
             days: working_days(&cal, request.from_date, request.to_date),
