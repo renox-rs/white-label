@@ -696,6 +696,20 @@ once): `DOC.RUL.03`, `EDU.RUL.12`, `EDU.RUL.13`.
 | `EDU.RUL.13` | `DocumentExpiring` or `DocumentExpired` for the centre permit or a course approval | — | list the `open` and `running` batches of that course (or campus): no new batch `open`, and certificates blocked as in §9; tell the coordinator, the centre manager and the owner in one message; renewal task to the kind's responsible role (§9: centre permit → centre manager; course approval → academic coordinator), due on the expiry date; running batches are not stopped | look-ahead 60 days | on | MVP |
 | `EDU.RUL.14` | subscription `pause` or `resume`; enrolment `freeze` or `unfreeze` | the membership and the enrolment belong together (the subscription was created by the enrolment) and the other side is not already in that state | run the matching transition on the other side, with cause *linked* (it neither triggers this rule again nor counts against the allowance); a subscription resumed into `past_due` still unfreezes the enrolment; `suspended` is not a pause | — | on | MVP |
 
+**`EDU.RUL.12` in the app.** Each trigger is a *tutor alert* (the tutor and the trigger: a
+document that expires on a date, a notice, a block, a leave), kept until it is resolved. A
+manual availability block reaches the rule as wl-scheduling's `AvailabilityBlockAdded`
+(source `manual`; a leave, a roster, a holiday and the tutor's own sessions are not triggers).
+The sessions are flagged only if the tutor's batch needs the document of them (the police
+clearance when minors are enrolled, §9) and the document does not cover the session's day:
+the rule asks `qualification_valid` again, so a renewal already accepted flags nothing. A
+flag is resolved when the tutor is changed, the session moved to a day the tutor can teach or
+cancelled, the document renewed (`DocumentAccepted`, or the next daily run), the block is
+over or the notice withdrawn; the coordinator's task is then completed. The centre manager is
+told once per session when it is still flagged 24 hours before it starts (the job runs every
+15 minutes). Each run is compliance-critical: one that fails is tried again with a backoff
+and the owner and the company admin are alerted after the fifth failure.
+
 **Notification types.** Each type 10 registers names its group (the row of the wl-notify
 §5.4 default table) in `register_type`, which sets its give-up reaction (`NTF.RUL.01`).
 10 marks no type statutory.
