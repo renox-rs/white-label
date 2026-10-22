@@ -1,6 +1,7 @@
 # The demo client of F5 (05 Clinics): a private outpatient clinic with two
 # branches. Data is fictional. Boot it with
-# CLIENT_CONFIG=clients/demo-clinics/client.toml.
+# CLIENT_CONFIG=clients/demo-clinics/client.toml; `clinics:demo` (and `db:seed` in
+# local) fills it with the demo clinic.
 
 [client]
 name    = "Palm Grove Clinic LLC"

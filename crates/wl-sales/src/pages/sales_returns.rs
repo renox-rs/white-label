@@ -107,23 +107,34 @@ pub(crate) struct IndexPage {
     returns: Vec<ReturnRow>,
 }
 
+/// The sale a return is about, by its receipt or order number (the subject
+/// `type:id` where its module has no label).
+async fn sale_label(db: &Db, r: &SalesReturn) -> Result<String> {
+    let sale = r.sale();
+    Ok(wl_kernel::documents::subject_label(db, &sale)
+        .await?
+        .unwrap_or_else(|| sale.to_string()))
+}
+
 /// `GET /sales-returns`: the latest returns, newest first.
 async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let returns = SalesReturn::query()
+    let latest = SalesReturn::query()
         .order_by_desc(SalesReturn::ID)
         .get(&db)
         .await?
         .into_iter()
-        .take(50)
-        .map(|r| ReturnRow {
+        .take(50);
+    let mut returns = Vec::new();
+    for r in latest {
+        returns.push(ReturnRow {
             id: r.id,
             number: r.number.clone(),
-            sale: r.sale().to_string(),
+            sale: sale_label(&db, &r).await?,
             value: money(r.gross_value),
             status_label: text(&lang, &format!("returns.status.{}", r.status.as_str())),
             status_kind: status_kind(r.status),
-        })
-        .collect();
+        });
+    }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         returns,
@@ -173,7 +184,7 @@ async fn show(
         resolution_label: r
             .resolution
             .map(|x| text(&lang, &format!("returns.resolution.{}", x.as_str()))),
-        sale: r.sale().to_string(),
+        sale: sale_label(&state.db, &r).await?,
         net: money(r.net_value),
         gross: money(r.gross_value),
         actions,

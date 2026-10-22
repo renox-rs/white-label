@@ -34,8 +34,9 @@ pub fn routes() -> Routes {
 /// One permit as the list shows it.
 #[derive(Serialize, Debug, Clone)]
 pub struct PermitRow {
-    /// The wl-sales campaign.
-    pub campaign: i64,
+    /// The wl-sales campaign, by its code and name (its number when the
+    /// sales module is off).
+    pub campaign: String,
     /// Whether the campaign promotes services, in words.
     pub promotes: String,
     /// The permit number, or a dash.
@@ -74,7 +75,15 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
     for permit in AdvertisingPermit::listed(&state.db).await? {
         let problem = permit.problem_on(day);
         rows.push(PermitRow {
-            campaign: permit.campaign_id,
+            campaign: wl_kernel::documents::subject_label(
+                &state.db,
+                &wl_kernel::Subject::new(
+                    wl_kernel::sales::CAMPAIGN_SUBJECT_TYPE,
+                    permit.campaign_id,
+                ),
+            )
+            .await?
+            .unwrap_or_else(|| format!("#{}", permit.campaign_id)),
             promotes: text(
                 &lang,
                 if permit.promotes_services {

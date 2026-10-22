@@ -50,6 +50,9 @@ pub const RECALLS_TRACE: &str = "recalls.trace";
 /// Send the notices of a recall to the patients (`STK.ACL.05`: the clinic
 /// manager's).
 pub const RECALLS_NOTIFY: &str = "recalls.notify";
+/// The recall owner's permission, wl-inventory's `recalls.manage` (the trace
+/// page shows the *Waive* button to those who hold it; the route checks it).
+pub const RECALLS_MANAGE: &str = "recalls.manage";
 /// Record the outcome of the call to a patient whose recall notice could not
 /// be delivered (the front desk's, in the branch of the visit).
 pub const RECALLS_CALL: &str = "recalls.call";

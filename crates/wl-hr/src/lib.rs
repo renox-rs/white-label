@@ -103,6 +103,14 @@ pub mod employees {
 /// name under its views directory.
 const VIEWS: &[(&str, &str)] = &[
     (
+        "wl-hr/my_leave.html",
+        include_str!("../views/wl-hr/my_leave.html"),
+    ),
+    (
+        "wl-hr/leave_queue.html",
+        include_str!("../views/wl-hr/leave_queue.html"),
+    ),
+    (
         "wl-hr/employees.html",
         include_str!("../views/wl-hr/employees.html"),
     ),
@@ -330,7 +338,9 @@ impl Module for WlHr {
             .view_data::<pages::pay_accounts::ShowPage>()
             .view_data::<pages::pay_accounts::StopPage>()
             .view_data::<pages::settlements::ShowPage>()
-            .view_data::<pages::templates::IndexPage>();
+            .view_data::<pages::templates::IndexPage>()
+            .view_data::<pages::leave::MyLeavePage>()
+            .view_data::<pages::leave::QueuePage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -471,6 +481,28 @@ impl Module for WlHr {
                     ]
                     .iter()
                     .any(|p| user.has_permission(p))
+                }),
+        );
+        // Leave: the signed-in user's own requests, and the queue of those
+        // waiting for a manager; the labels are the app's `nav.my_leave` and
+        // `nav.leave_queue` texts.
+        app.nav(
+            "app",
+            NavLink::route("wl_hr.my_leave", "nav.my_leave")
+                .icon("calendar")
+                .group("nav.app")
+                .order(58)
+                .permission(permissions::LEAVE_REQUEST),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_hr.leave_queue", "nav.leave_queue")
+                .icon("calendar-check")
+                .group("nav.app")
+                .order(59)
+                .when(|user| {
+                    user.allows(permissions::LEAVE_APPROVE)
+                        || user.has_permission_anywhere(permissions::LEAVE_APPROVE)
                 }),
         );
     }

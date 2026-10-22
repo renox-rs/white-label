@@ -1,0 +1,47 @@
+{#- wl-scheduling: book an appointment for a party: who, what and which day,
+    then the free times of that day, each a button. Replace it with
+    resources/views/wl-scheduling/booking_new.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['new.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['new.title']" :subtitle="tx['new.subtitle']" :back="route('wl_scheduling.bookings')" :back-label="tx['bookings.title']"/>
+    <rx-card :title="tx['new.find']">
+      <rx-form method="GET" action="{{ route('wl_scheduling.booking_new') }}">
+        <rx-form-grid>
+          <rx-select name="party" :label="tx['new.party']" :options="[]" :selected="party" :placeholder="tx['new.party_placeholder']" options-url="{{ route('wl_scheduling.party_options') }}" id="new-party" required/>
+          <rx-select name="service" :label="tx['bookings.service']" :options="services" :selected="service" id="new-service" required/>
+          <rx-select rx-for="kind in kinds" :name="kind.name" :label="kind.label" :options="kind.options" :selected="kind.selected" :id="'new-' ~ kind.name"/>
+          <rx-input name="date" type="date" :label="tx['new.date']" :value="date" id="new-date" required/>
+        </rx-form-grid>
+        <rx-alert rx-if="not searched" kind="info" :message="tx['new.hint']"/>
+        <div class="rx-card__footer">
+          <rx-button type="submit" :label="tx['new.search']"/>
+        </div>
+      </rx-form>
+    </rx-card>
+    <rx-card rx-if="searched" :title="summary">
+      <rx-empty rx-if="no_slots" :title="tx['new.none']" :message="tx['new.none_hint']" icon="calendar-check"/>
+      <rx-stack>
+        <rx-form rx-for="slot in slots" action="{{ route('wl_scheduling.booking_book') }}">
+          <input type="hidden" name="party" value="{{ party }}"/>
+          <input type="hidden" name="service" value="{{ service }}"/>
+          <input type="hidden" name="date" value="{{ date }}"/>
+          <input type="hidden" name="resources" value="{{ slot.resources }}"/>
+          <input type="hidden" name="starts_at" value="{{ slot.starts_at }}"/>
+          <rx-row>
+            <strong>{{ slot.label }}</strong>
+            <span>{{ slot.with }}</span>
+            <rx-button type="submit" :label="tx['new.book']"/>
+          </rx-row>
+        </rx-form>
+      </rx-stack>
+    </rx-card>
+    <rx-form rx-if="searched" action="{{ route('wl_scheduling.waiting_join') }}">
+      <input type="hidden" name="party" value="{{ party }}"/>
+      <input type="hidden" name="service" value="{{ service }}"/>
+      <input type="hidden" name="window_from" value="{{ day_from }}"/>
+      <input type="hidden" name="window_until" value="{{ day_until }}"/>
+      <input type="hidden" name="expires_on" value="{{ expires_on }}"/>
+      <rx-button type="submit" variant="plain" :label="tx['new.waiting']" icon="clock"/>
+    </rx-form>
+  </rx-stack>
+</rx-page>

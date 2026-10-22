@@ -99,8 +99,8 @@ pub struct SaleRow {
     pub id: i64,
     /// The receipt number.
     pub number: String,
-    /// The customer's party id, if the sale names one.
-    pub customer: Option<i64>,
+    /// The customer's name, if the sale names one.
+    pub customer: Option<String>,
     /// The total, `AED 105.00`.
     pub total: String,
     /// The status in words.
@@ -118,22 +118,27 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /counter-sales`: the latest sales, newest first.
-async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let sales = CounterSale::query()
+async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
+    let latest = CounterSale::query()
         .order_by_desc(CounterSale::ID)
-        .get(&db)
+        .get(&state.db)
         .await?
         .into_iter()
-        .take(50)
-        .map(|sale| SaleRow {
+        .take(50);
+    let mut sales = Vec::new();
+    for sale in latest {
+        sales.push(SaleRow {
             id: sale.id,
             number: sale.number.clone(),
-            customer: sale.party_id,
+            customer: match sale.party_id {
+                Some(id) => Some(super::party_name(&state, &lang, id).await),
+                None => None,
+            },
             total: money(sale.gross_total),
             status_label: text(&lang, &format!("counter.status.{}", sale.status.as_str())),
             status_kind: status_kind(sale.status),
-        })
-        .collect();
+        });
+    }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         sales,
@@ -249,7 +254,8 @@ async fn show(
             amount: money(p.amount),
         })
         .collect();
-    let member = crate::loyalty_account::label_of(&state.db, sale.loyalty_account_id).await?;
+    let member =
+        crate::loyalty_account::label_of(&state, sale.loyalty_account_id, &lang.locale).await?;
     let redeem = crate::pages::redeem::view_of(
         &state,
         &user,

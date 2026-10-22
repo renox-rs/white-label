@@ -283,6 +283,16 @@ uses a fictional list).
 **Profile.** Two DHA-licensed branches in Dubai (dental, physiotherapy, aesthetics),
 14 practitioners, 30 other staff. One legal entity.
 
+**Implemented as** `clients/demo-clinics/client.toml` and `host/src/app/clinics_demo/`
+(*Palm Grove Clinic LLC*, two branches, three practitioners, twelve patients, three payers; the
+story is the one of the table below at a smaller size). `APP_ENV=local
+CLIENT_CONFIG=clients/demo-clinics/client.toml cargo run -p host -- migrate`, then
+`-- clinics:demo` (or `-- db:seed`), then `-- serve`; the logins are on the login page, password
+`password123`. Every date is relative to today. Bookings, visits, charges, claims, stock,
+sales and payments are made through the real services and the app's own pages as the user who
+does them; roles are held in all branches (the clinics pages check a permission outside any
+branch), and the branch is the employee's scope in HR.
+
 **Demo users.** Medical director · Clinic manager · Receptionist · Call-centre agent ·
 Practitioner (dentist) · Nurse · Insurance coordinator · Accountant · Patient · Guardian.
 

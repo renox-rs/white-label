@@ -108,6 +108,22 @@ async fn plus_400_is_saved_and_minus_900_waits_for_another_person_who_approves()
     assert_eq!(movements(&t, &m, PointsKind::Adjust).await.len(), 1);
     assert_eq!(account(&t, &m).await.points_balance, 1400);
 
+    // The page lists it with the card: the button is the manager's, the
+    // requester has none.
+    let approve = format!("/approvals/{request}/approve");
+    t.app.acting_as(&floor.mia);
+    t.app
+        .get("/loyalty/adjustments")
+        .await
+        .assert_ok()
+        .assert_see(&approve);
+    t.app.acting_as(&ana);
+    t.app
+        .get("/loyalty/adjustments")
+        .await
+        .assert_ok()
+        .assert_dont_see(&approve);
+
     // The requester cannot approve it.
     assert!(
         approvals::approve(t.state(), request, &ana, "")

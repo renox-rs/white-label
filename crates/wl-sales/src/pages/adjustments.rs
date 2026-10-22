@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use renox::prelude::*;
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
+use wl_kernel::approvals::{self, ApprovalCard};
 
 use crate::adjustment::{AdjustmentStatus, PointsAdjustment};
 use crate::adjustments;
@@ -97,11 +98,15 @@ pub struct AdjustmentRow {
 pub(crate) struct IndexPage {
     tx: Texts,
     adjustments: Vec<AdjustmentRow>,
+    /// The cards of the adjustments that wait for a manager: where the manager
+    /// who is not the requester approves, rejects or returns them.
+    approvals: Vec<ApprovalCard>,
 }
 
 /// `GET /loyalty/adjustments`: the latest adjustments, newest first.
 async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View> {
     let mut rows = Vec::new();
+    let mut cards = Vec::new();
     for a in PointsAdjustment::query()
         .order_by_desc(PointsAdjustment::ID)
         .get(&db)
@@ -113,6 +118,9 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
             .await?
             .map(|account| account.code)
             .unwrap_or_default();
+        if a.status == AdjustmentStatus::PendingApproval {
+            cards.extend(approvals::cards_for(&db, &a.subject(), &user, &lang).await?);
+        }
         rows.push(AdjustmentRow {
             id: a.id,
             code,
@@ -130,6 +138,7 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         adjustments: rows,
+        approvals: cards,
     }))
 }
 

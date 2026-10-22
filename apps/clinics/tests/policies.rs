@@ -24,13 +24,16 @@ async fn a_policy_is_recorded_and_listed() {
     let t = boot().await;
     let desk = t.receptionist().await;
     t.app.acting_as(&desk);
+    t.guardians.name(70, "Pat Lane");
+    t.guardians.name(900, "Crescent Health TPA");
 
+    // The party's number as the Parties list shows it (`P-00070`) is read too.
     t.app
         .htmx()
         .post(
             "/clinics/policies",
             &[
-                ("patient", "70"),
+                ("patient", "P-00070"),
                 ("payer", "900"),
                 ("plan", "Gold Plus"),
                 ("member_id", "M-123"),
@@ -206,4 +209,58 @@ async fn an_appointment_takes_the_policy_of_its_patient() {
             .await
             .is_err()
     );
+}
+
+/// The page refuses what a person gets wrong, in words: a number that is no
+/// party, the patient as their own payer, a card that is on file already.
+#[renox::test]
+async fn the_policy_form_refuses_unknown_parties_and_a_card_on_file() {
+    let t = boot().await;
+    let desk = t.receptionist().await;
+    t.app.acting_as(&desk);
+    t.guardians.name(70, "Pat Lane");
+    t.guardians.name(900, "Crescent Health TPA");
+    let post = |patient: &'static str, payer: &'static str, member: &'static str| {
+        let t = &t;
+        async move {
+            t.app
+                .htmx()
+                .post(
+                    "/clinics/policies",
+                    &[
+                        ("patient", patient),
+                        ("payer", payer),
+                        ("plan", "Basic"),
+                        ("member_id", member),
+                        ("valid_from", "2026-01-01"),
+                        ("valid_to", "2026-12-31"),
+                    ],
+                )
+                .await
+        }
+    };
+    post("Pat", "900", "M-1")
+        .await
+        .assert_status(422)
+        .assert_see("party number");
+    post("70", "9999", "M-1")
+        .await
+        .assert_status(422)
+        .assert_see("no party with the payer");
+    post("9999", "900", "M-1")
+        .await
+        .assert_status(422)
+        .assert_see("no party with the patient");
+    post("70", "P-00070", "M-1")
+        .await
+        .assert_status(422)
+        .assert_see("The payer is the patient");
+    post("70", "900", "M-1").await.assert_ok();
+    post("70", "900", "M-1")
+        .await
+        .assert_status(422)
+        .assert_see("on file already");
+    // Another member id is another card.
+    post("70", "900", "M-2").await.assert_ok();
+    assert_eq!(InsurancePolicy::query().get(t.db()).await.unwrap().len(), 2);
 }

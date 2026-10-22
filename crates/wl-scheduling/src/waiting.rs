@@ -385,6 +385,12 @@ impl NewEntry {
         }
     }
 
+    /// For this patient, vehicle or student.
+    pub fn for_subject(mut self, subject: Subject) -> Self {
+        self.subject = Some(subject);
+        self
+    }
+
     /// Only with this resource.
     pub fn with(mut self, resource_id: i64) -> Self {
         self.resource_id = Some(resource_id);

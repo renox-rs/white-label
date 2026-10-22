@@ -705,6 +705,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         ACCOUNTANT,
         &[
+            hr::LEAVE_REQUEST,
             acc::AML_RAISE,
             sales::LOYALTY_VIEW,
             // Told of WPS rejections (`HRM.RUL.11`), reads the run.
@@ -818,6 +819,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         OWNER,
         &[
+            hr::LEAVE_REQUEST,
             invoices::VIEW,
             invoices::RECEIVABLES_VIEW,
             invoices::SUPPLIER_BILLS_VIEW,
@@ -920,6 +922,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         STOREKEEPER,
         &[
+            hr::LEAVE_REQUEST,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::PURCHASE_ORDERS_VIEW,
@@ -1023,6 +1026,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         MARKETING_MANAGER,
         &[
+            hr::LEAVE_REQUEST,
             cln::PERMITS_VIEW,
             sales::CAMPAIGNS_VIEW,
             sales::CAMPAIGNS_MANAGE,
@@ -1040,6 +1044,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         CLINIC_MANAGER,
         &[
+            // Asks for their own leave and decides the leave of the branch (the queue of leave to decide).
+            hr::LEAVE_REQUEST,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_APPROVE,
             scheduling::VIEW,
             scheduling::VIEW_DETAILS,
             scheduling::MANAGE,
@@ -1062,6 +1070,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::STOCK_HOLD,
+            // The clinic manager follows a recall (how many were told) and
+            // sends its notices; the owner decides and closes it.
+            inventory::RECALLS_VIEW,
             inventory::LOTS_RELEASE,
             // `STK.RUL.06`: told when a pending issue stays open for 24
             // hours (the holders of `stock.approve` in the branch).
@@ -1080,6 +1091,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         PRACTITIONER,
         &[
+            hr::LEAVE_REQUEST,
             scheduling::VIEW,
             cln::VISITS_VIEW,
             cln::CHARGES_CAPTURE,
@@ -1089,6 +1101,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         BILLING_COORDINATOR,
         &[
+            hr::LEAVE_REQUEST,
             scheduling::VIEW,
             cln::VISITS_VIEW,
             cln::POLICIES_VIEW,
@@ -1103,6 +1116,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         RECEPTIONIST,
         &[
+            hr::LEAVE_REQUEST,
             scheduling::VIEW,
             scheduling::MANAGE,
             scheduling::CHECKIN,
@@ -1123,6 +1137,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         CALL_CENTRE_AGENT,
         &[
+            hr::LEAVE_REQUEST,
             scheduling::VIEW,
             scheduling::MANAGE,
             cln::VISITS_VIEW,
@@ -1133,7 +1148,12 @@ pub const ROLES: &[(&str, &[&str])] = &[
     ),
     (
         NURSE,
-        &[scheduling::VIEW, cln::VISITS_VIEW, cln::CHARGES_DESK],
+        &[
+            hr::LEAVE_REQUEST,
+            scheduling::VIEW,
+            cln::VISITS_VIEW,
+            cln::CHARGES_DESK,
+        ],
     ),
     (
         DISPATCHER,

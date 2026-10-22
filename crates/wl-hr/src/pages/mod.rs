@@ -1,6 +1,7 @@
 //! The back-office pages of the HR module, each behind its permission.
 
 pub mod employees;
+pub mod leave;
 pub mod pay_accounts;
 pub mod payroll;
 pub mod payroll_list;
@@ -15,6 +16,7 @@ use renox::prelude::*;
 pub fn routes() -> Routes {
     Routes::new()
         .merge(employees::routes())
+        .merge(leave::routes())
         .merge(pay_accounts::routes())
         .merge(payroll::routes())
         .merge(payroll_list::routes())

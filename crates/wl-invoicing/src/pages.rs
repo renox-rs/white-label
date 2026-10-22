@@ -330,7 +330,7 @@ async fn recovery_rows(db: &Db, lang: &Lang, invoice: &Invoice) -> Result<Vec<Re
         rows.push(RecoveryRow {
             id: recovery.id,
             date: recovery.recovered_on,
-            source: source.to_string(),
+            source: wl_kernel::documents::subject_text(db, &source).await?,
             source_link,
             amount: amount_text(&invoice.currency, recovery.amount),
             vat_share: amount_text("AED", recovery.vat_share),
@@ -500,15 +500,16 @@ async fn show(
             vat: money(c.vat),
         })
         .collect();
-    let allocations = Allocation::query()
+    let mut allocations = Vec::new();
+    for a in Allocation::query()
         .where_(Allocation::INVOICE_ID.eq(invoice.id))
         .order_by(Allocation::ID)
         .get(&db)
         .await?
-        .into_iter()
-        .map(|a| AllocationRow {
+    {
+        allocations.push(AllocationRow {
             id: a.id,
-            source: a.source().to_string(),
+            source: wl_kernel::documents::subject_text(&db, &a.source()).await?,
             amount: money(a.amount),
             allocated_at: a.allocated_at,
             removed: a.removed_at.is_some(),
@@ -516,8 +517,8 @@ async fn show(
             removed_reason: a
                 .removed_at
                 .map(|_| reopen_reason_text(&t, a.removed_reason.as_deref().unwrap_or(""))),
-        })
-        .collect();
+        });
+    }
     let reopened = Unallocation::query()
         .where_(Unallocation::INVOICE_ID.eq(invoice.id))
         .order_by(Unallocation::ID)

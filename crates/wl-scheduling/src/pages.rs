@@ -130,10 +130,21 @@ pub(crate) fn field<'a>(form: &'a BTreeMap<String, String>, name: &str) -> &'a s
     form.get(name).map_or("", |value| value.trim())
 }
 
-pub(crate) fn number(form: &BTreeMap<String, String>, name: &str) -> Result<i64> {
-    field(form, name)
-        .parse()
-        .map_err(|_| Error::BadRequest(name.to_owned()))
+/// A form field that is missing or wrong, as a 422 the sheet shows in words
+/// (never the name of the field).
+pub(crate) fn bad_field(lang: &Lang, name: &str) -> Error {
+    let key = format!("wl_scheduling.problem.field.{name}");
+    let message = texts::t(lang, &key);
+    let message = if message == key {
+        texts::t(lang, "wl_scheduling.problem.field")
+    } else {
+        message
+    };
+    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message)
+}
+
+pub(crate) fn number(form: &BTreeMap<String, String>, name: &str, lang: &Lang) -> Result<i64> {
+    field(form, name).parse().map_err(|_| bad_field(lang, name))
 }
 
 async fn party_name(state: &AppState, lang: &Lang, party: PartyId) -> String {
@@ -182,6 +193,7 @@ pub struct BookingRow {
 pub(crate) struct IndexPage {
     tx: Texts,
     bookings: Vec<BookingRow>,
+    can_manage: bool,
 }
 
 async fn row_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<BookingRow> {
@@ -190,7 +202,7 @@ async fn row_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<Book
         id: booking.id,
         number: booking.number.clone(),
         party: party_name(state, lang, booking.party()).await,
-        service: service.map_or_else(String::new, |s| s.name_en),
+        service: service.map_or_else(String::new, |s| crate::names::name_in(&s, &lang.locale)),
         when: dubai_text(booking.starts_at),
         resources: resource_names(state, booking).await?,
         status: status_text(lang, booking.status),
@@ -199,7 +211,7 @@ async fn row_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<Book
 }
 
 /// `GET /scheduling/bookings`.
-async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
+async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     let mut bookings = Vec::new();
     for booking in Booking::query()
         .order_by_desc(Booking::STARTS_AT)
@@ -212,6 +224,7 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         bookings,
+        can_manage: user.has_permission(permissions::MANAGE),
     }))
 }
 
@@ -277,7 +290,7 @@ async fn show(
             on_booking.push((id.to_string(), resource.name));
         }
     }
-    let others = crate::resource::eligible_resources(&state.db, service.id)
+    let others: Vec<(String, String)> = crate::resource::eligible_resources(&state.db, service.id)
         .await?
         .into_iter()
         .filter(|resource| !held.contains(&resource.id))
@@ -322,7 +335,9 @@ async fn show(
         starts_input: local_text(booking.starts_at),
         deposit: deposit_text(&lang, &booking),
         work_done: work_done_text(&booking),
+        // Offered only when another resource could take the booking over.
         can_reassign: manage
+            && !others.is_empty()
             && matches!(
                 status,
                 BookingStatus::Requested | BookingStatus::Booked | BookingStatus::Confirmed
@@ -389,11 +404,11 @@ async fn create(
         .split(',')
         .filter_map(|id| id.trim().parse().ok())
         .collect();
-    let starts_at = parse_local(field(&form, "starts_at"))
-        .ok_or_else(|| Error::BadRequest("starts_at".to_owned()))?;
+    let starts_at =
+        parse_local(field(&form, "starts_at")).ok_or_else(|| bad_field(&lang, "starts_at"))?;
     let mut new = NewBooking::new(
-        PartyId(number(&form, "party")?),
-        number(&form, "service")?,
+        PartyId(number(&form, "party", &lang)?),
+        number(&form, "service", &lang)?,
         &resources,
         starts_at,
     );
@@ -476,8 +491,8 @@ async fn reschedule(
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    let starts_at = parse_local(field(&form, "starts_at"))
-        .ok_or_else(|| Error::BadRequest("starts_at".to_owned()))?;
+    let starts_at =
+        parse_local(field(&form, "starts_at")).ok_or_else(|| bad_field(&lang, "starts_at"))?;
     let resources: Vec<i64> = field(&form, "resources")
         .split(',')
         .filter_map(|id| id.trim().parse().ok())
@@ -508,8 +523,8 @@ async fn reassign(
     service::reassign(
         &state,
         id,
-        number(&form, "from")?,
-        number(&form, "to")?,
+        number(&form, "from", &lang)?,
+        number(&form, "to", &lang)?,
         field(&form, "reason_code"),
         Actor::staff(user.id),
         renox::db::now(),

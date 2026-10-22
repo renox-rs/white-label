@@ -59,7 +59,7 @@
     </rx-row>
     <rx-table :rows="accounts" as="account" :key="account.id" :caption="tx['loyalty.accounts']" card>
       <rx-column :label="tx['loyalty.code']">{{ account.code }}</rx-column>
-      <rx-column :label="tx['loyalty.party']" hide-narrow>{{ account.party }}</rx-column>
+      <rx-column :label="tx['loyalty.member']">{{ account.party }}</rx-column>
       <rx-column :label="tx['loyalty.mobile']" hide-narrow>{{ account.mobile }}</rx-column>
       <rx-column :label="tx['loyalty.balance']">{{ account.balance }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="account.status_kind" :text="account.status_label"/></rx-column>

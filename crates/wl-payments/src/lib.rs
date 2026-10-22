@@ -579,6 +579,21 @@ impl Module for WlPayments {
     fn register(&self, app: &mut Registry) {
         // The payments of some scopes, for the lists (`scoped.rs`).
         scoped::register();
+        // A page that names a payment (an invoice's allocations): its receipt
+        // number.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::payments::PAYMENT_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(Payment::find(db, id).await?.map(|payment| {
+                        payment
+                            .number
+                            .clone()
+                            .unwrap_or_else(|| format!("Payment #{}", payment.id))
+                    }))
+                })
+            },
+        );
         // Money out to a blocked party waits for an approved exception
         // (`PTY.ACL.03`): the deposit refund is guarded as `money_out`.
         wl_kernel::SubjectMachine::of::<Deposit>(wl_kernel::payments::DEPOSIT_SUBJECT_TYPE)

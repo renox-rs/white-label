@@ -1,0 +1,51 @@
+{#- wl-inventory: one lot: its item, expiry and status, where it is, the holds
+    that cover it and every movement of it. Replace it with
+    resources/views/wl-inventory/lot.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="tx['lot.subtitle']" :back="back" :back-label="tx['stock.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_hold">
+        <rx-action-sheet id="hold-lot" :label="tx['lot.hold']" :action="route('wl_inventory.hold_screen_place')"
+                         :title="tx['lot.hold']" :description="tx['lot.hold_description']" :submit-label="tx['lot.hold']" icon="shield">
+          <input type="hidden" name="lot" value="{{ id }}"/>
+          <rx-select name="reason" :label="tx['hold.reason']" :options="reasons" :selected="'quality'" id="hold-lot-reason"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['lot.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['stock.item']" :value="item"/>
+        <rx-entry :label="tx['stock.lot']" :value="number"/>
+        <rx-entry :label="tx['stock.supplier_lot']" :value="supplier_lot" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['stock.expiry']" :value="expiry"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['lot.where']">
+      <rx-table :rows="places" as="place" :key="place.location" :caption="tx['lot.where']">
+        <rx-column :label="tx['stock.store']">{{ place.location }}</rx-column>
+        <rx-column :label="tx['stock.on_hand']">{{ place.quantity }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['lot.nowhere']" icon="package"/></rx-slot>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="holds" :title="tx['lot.holds']">
+      <rx-table :rows="holds" as="hold" :key="hold.number" :caption="tx['lot.holds']">
+        <rx-column :label="tx['hold.number']"><a href="{{ route('wl_inventory.holds') }}">{{ hold.number }}</a></rx-column>
+        <rx-column :label="tx['hold.reason']">{{ hold.reason }}</rx-column>
+        <rx-column :label="tx['fields.status']"><rx-badge :kind="hold.status_kind" :text="hold.status"/></rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['lot.movements']">
+      <rx-table :rows="movements" as="move" :key="move.when ~ move.kind ~ move.quantity" :caption="tx['lot.movements']">
+        <rx-column :label="tx['move.when']">{{ move.when }}</rx-column>
+        <rx-column :label="tx['move.kind']">{{ move.kind }}</rx-column>
+        <rx-column :label="tx['move.from']" hide-narrow>{{ move.from }}</rx-column>
+        <rx-column :label="tx['move.to']" hide-narrow>{{ move.to }}</rx-column>
+        <rx-column :label="tx['move.quantity']">{{ move.quantity }}</rx-column>
+        <rx-column :label="tx['move.source']" hide-narrow>{{ move.source }}</rx-column>
+        <rx-column :label="tx['move.by']" hide-narrow>{{ move.by }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['lot.no_movements']" icon="package"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

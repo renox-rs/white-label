@@ -102,6 +102,25 @@ pub(crate) fn parse_id(text: &str) -> Option<i64> {
     text.trim().parse().ok()
 }
 
+/// A party typed in a form: its number (`23`) or its code as the Parties list
+/// shows it (`P-00023`).
+pub(crate) fn parse_party(text: &str) -> Option<i64> {
+    let text = text.trim();
+    let digits = text
+        .strip_prefix("P-")
+        .or_else(|| text.strip_prefix("p-"))
+        .unwrap_or(text);
+    digits.parse().ok().filter(|id| *id > 0)
+}
+
+/// Whether the party `id` exists.
+pub(crate) async fn party_exists(state: &AppState, id: i64) -> Result<bool> {
+    Ok(directory(state)
+        .display_name(&state.db, PartyId(id), "en")
+        .await?
+        .is_some())
+}
+
 /// A date typed in a form (`2026-11-10`); `Ok(None)` when it is blank.
 pub(crate) fn parse_date(text: &str) -> std::result::Result<Option<NaiveDate>, Error> {
     let text = text.trim();
@@ -116,6 +135,15 @@ pub(crate) fn parse_date(text: &str) -> std::result::Result<Option<NaiveDate>, E
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_party_is_its_number_or_its_code() {
+        assert_eq!(parse_party("23"), Some(23));
+        assert_eq!(parse_party(" P-00023 "), Some(23));
+        assert_eq!(parse_party("p-7"), Some(7));
+        assert_eq!(parse_party("0"), None);
+        assert_eq!(parse_party("Okoye"), None);
+    }
 
     #[test]
     fn a_blank_date_is_none_and_a_bad_one_is_refused() {

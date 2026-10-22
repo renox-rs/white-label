@@ -106,8 +106,8 @@ pub struct AccountRow {
     pub id: i64,
     /// The member's code.
     pub code: String,
-    /// The member's party id.
-    pub party: i64,
+    /// The member's name.
+    pub party: String,
     /// The mobile number.
     pub mobile: String,
     /// The balance in points, or the visits since the last reward.
@@ -140,7 +140,8 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /loyalty`: the programme and the latest accounts.
-async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+    let db = state.db.clone();
     let programme = LoyaltyProgramme::first_active(&db).await?;
     let per_visit = programme
         .as_ref()
@@ -161,7 +162,7 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
         accounts.push(AccountRow {
             id: a.id,
             code: a.code.clone(),
-            party: a.party_id,
+            party: super::party_name(&state, &lang, a.party_id).await,
             mobile: a.mobile.clone(),
             balance: if per_visit {
                 a.visits
@@ -375,8 +376,8 @@ pub struct ReviewRow {
     pub id: i64,
     /// The member's code.
     pub code: String,
-    /// The member's party id.
-    pub party: i64,
+    /// The member's name.
+    pub party: String,
     /// The day.
     pub on_date: String,
     /// The earning sales of that day so far.
@@ -393,7 +394,8 @@ pub(crate) struct ReviewPage {
 
 /// `GET /loyalty/review`: the accounts that earned on more sales in a day
 /// than the limit and that no manager has reviewed (`SAL.ACL.08`).
-async fn review(State(db): State<Db>, lang: Lang) -> Result<View> {
+async fn review(State(state): State<AppState>, lang: Lang) -> Result<View> {
+    let db = state.db.clone();
     let open = LoyaltyReview::query()
         .where_(LoyaltyReview::RESOLVED_AT.is_null())
         .order_by_desc(LoyaltyReview::ID)
@@ -407,7 +409,7 @@ async fn review(State(db): State<Db>, lang: Lang) -> Result<View> {
         reviews.push(ReviewRow {
             id: item.id,
             code: account.code.clone(),
-            party: account.party_id,
+            party: super::party_name(&state, &lang, account.party_id).await,
             on_date: item.on_date.to_string(),
             sales_count: item.sales_count,
         });

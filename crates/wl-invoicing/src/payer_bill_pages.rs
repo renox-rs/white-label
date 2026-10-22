@@ -29,6 +29,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::payer_bills::{
     PayerAnswer, PayerBillStatus, Recoupment, Remittance, RemittanceLine,
 };
@@ -64,6 +65,8 @@ pub fn routes() -> Routes {
                 .name("wl_invoicing.payer_bills")
                 .get("/payer-bills/{id}", show)
                 .name("wl_invoicing.payer_bill")
+                .get("/payer-agreements/options", agreement_options)
+                .name("wl_invoicing.payer_agreement_options")
                 .group(
                     "/payer-bills",
                     "wl_invoicing.payer_bill_transitions.",
@@ -97,6 +100,58 @@ pub fn routes() -> Routes {
                 .name("wl_invoicing.payer_bill_recoupment")
                 .require_permission(permissions::PAYER_BILLS_RECONCILE),
         )
+}
+
+/// `GET /payer-agreements/options`: the payer agreements a picker offers as
+/// the person types (`?q=`, matched against the agreement's name and the
+/// payer's), or the labels of the values it already holds (`?values=`), as
+/// `name · payer`. Only active agreements are offered for a search; a held
+/// one keeps its label whatever its state. For those who see payer bills.
+async fn agreement_options(
+    State(state): State<AppState>,
+    query: renox::select::OptionQuery,
+) -> Result<Json<Vec<renox::select::SelectOption>>> {
+    let directory = wl_kernel::parties::directory(&state);
+    let mut agreements = Vec::new();
+    if query.is_lookup() {
+        for id in query.values_as::<i64>() {
+            agreements.extend(PayerAgreement::find(&state.db, id).await?);
+        }
+    } else {
+        let needle = query.q.trim().to_lowercase();
+        for agreement in PayerAgreement::query()
+            .where_(PayerAgreement::ACTIVE.eq(true))
+            .order_by(PayerAgreement::NAME)
+            .get(&state.db)
+            .await?
+        {
+            let payer = directory
+                .display_name(&state.db, agreement.payer(), "en")
+                .await?
+                .unwrap_or_default();
+            if needle.is_empty()
+                || agreement.name.to_lowercase().contains(&needle)
+                || payer.to_lowercase().contains(&needle)
+            {
+                agreements.push(agreement);
+            }
+            if agreements.len() >= 20 {
+                break;
+            }
+        }
+    }
+    let mut options = Vec::new();
+    for agreement in agreements {
+        let payer = directory
+            .display_name(&state.db, agreement.payer(), "en")
+            .await?
+            .unwrap_or_default();
+        options.push(renox::select::SelectOption::new(
+            agreement.id,
+            format!("{} · {payer}", agreement.name),
+        ));
+    }
+    Ok(Json(options))
 }
 
 /// The badge colour of a state (the kit has info, success, warning and
@@ -157,6 +212,15 @@ pub(crate) struct IndexPage {
     rows: Vec<Row>,
 }
 
+/// The record a bill comes from, named for people (`VIS-0009`) when its module
+/// registered a label for the type, else `type:id`.
+async fn source_label(state: &AppState, bill: &PayerBill) -> Result<String> {
+    let source = bill.source();
+    Ok(wl_kernel::documents::subject_label(&state.db, &source)
+        .await?
+        .unwrap_or_else(|| source.to_string()))
+}
+
 /// `GET /payer-bills`: every payer bill, newest first.
 async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
     let all = PayerBill::query()
@@ -171,7 +235,7 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
             number: number_text(&lang, &bill),
             payer: party_name(&state, bill.payer()).await?,
             customer: party_name(&state, bill.customer()).await?,
-            source: bill.source().to_string(),
+            source: source_label(&state, &bill).await?,
             status: text(
                 &lang,
                 &format!("payer_bill.status.{}", bill.status.as_str()),
@@ -271,6 +335,9 @@ pub(crate) struct ShowPage {
     recoupments: Vec<RecoupmentRow>,
     credit: String,
     credit_movements: Vec<CreditRow>,
+    /// The approval cards of the requests about the bill (a remittance above
+    /// what is open, a write-off, a void): where the second person decides.
+    approvals: Vec<ApprovalCard>,
     can_issue: bool,
     can_resubmit: bool,
     can_reject: bool,
@@ -386,6 +453,7 @@ async fn show(
     }
     let can_reconcile = user.has_permission(permissions::PAYER_BILLS_RECONCILE);
     let can_issue = user.has_permission(permissions::PAYER_BILLS_ISSUE);
+    let approval_cards = approvals::cards_for(&state.db, &bill.subject(), &user, &lang).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: number_text(&lang, &bill),
@@ -401,7 +469,7 @@ async fn show(
             &lang,
             &format!("payer_bill.recipient.{}", bill.vat_recipient.as_str()),
         ),
-        source: bill.source().to_string(),
+        source: source_label(&state, &bill).await?,
         reference: bill.payer_reference.clone().unwrap_or_default(),
         service_date: day(Some(bill.service_date)),
         claimed: amount_text(&bill.currency, bill.claimed_total),
@@ -414,6 +482,7 @@ async fn show(
         recoupments,
         credit: amount_text(&bill.currency, credit),
         credit_movements,
+        approvals: approval_cards,
         can_close: user.has_permission(permissions::PAYER_BILLS_WRITE_OFF)
             && matches!(
                 bill.status,

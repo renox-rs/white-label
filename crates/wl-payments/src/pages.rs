@@ -29,6 +29,7 @@ use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
 use wl_kernel::PartyId;
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::drawings::PURPOSE;
 use wl_kernel::invoicing::{InvoiceSummary, allocation_proposal, invoicer};
 use wl_kernel::parties::directory;
@@ -728,6 +729,9 @@ pub(crate) struct ShowPage {
     allocate_description: String,
     /// The party's written-off invoices, with the proposed amounts.
     written_off: Vec<WrittenOffRow>,
+    /// The approval cards of the requests about the payment (a chargeback to
+    /// accept, a reversal): where the second person decides.
+    approvals: Vec<ApprovalCard>,
 }
 
 /// The display name of `party`, else `#id`.
@@ -784,12 +788,11 @@ async fn show(
         ("allocated", money(allocated)),
         ("unallocated", money(unallocated)),
     ]);
-    let allocations = Allocation::all_of(&db, payment.id)
-        .await?
-        .into_iter()
-        .map(|a| AllocationRow {
+    let mut allocations = Vec::new();
+    for a in Allocation::all_of(&db, payment.id).await? {
+        allocations.push(AllocationRow {
             id: a.id,
-            target: a.target().to_string(),
+            target: wl_kernel::documents::subject_text(&db, &a.target()).await?,
             amount: money(a.amount),
             allocated_at: a.allocated_at,
             removed: !a.is_active(),
@@ -799,8 +802,8 @@ async fn show(
                 .as_deref()
                 .map(|code| t(&format!("reason.{code}")))
                 .unwrap_or_default(),
-        })
-        .collect();
+        });
+    }
     let tasks = task_rows(
         &state,
         &t,
@@ -862,6 +865,7 @@ async fn show(
     } else {
         Vec::new()
     };
+    let approval_cards = approvals::cards_for(&db, &payment.subject(), &user, &lang).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: payment.number.clone().unwrap_or_else(|| t("no_number")),
@@ -891,6 +895,7 @@ async fn show(
         dispute_label,
         dispute_fee,
         reasons,
+        approvals: approval_cards,
         payment,
     }))
 }

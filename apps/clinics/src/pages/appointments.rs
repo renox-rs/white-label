@@ -31,6 +31,7 @@ use crate::flags::AppointmentFlag;
 use crate::money_text;
 use crate::permissions;
 use crate::policy::{EligibilityCheck, InsurancePolicy};
+use crate::service_names;
 use crate::texts;
 use crate::visit::Visit;
 
@@ -86,7 +87,12 @@ pub(crate) async fn flag_labels(
 }
 
 /// What a prior authorisation gives one service, as a line for staff.
-fn auth_line(lang: &Lang, need: &auth_check::Need) -> String {
+fn auth_line(
+    lang: &Lang,
+    names: &std::collections::BTreeMap<String, String>,
+    need: &auth_check::Need,
+) -> String {
+    let service = service_names::name_of(names, &need.code);
     let numbers = need
         .authorised
         .iter()
@@ -95,12 +101,12 @@ fn auth_line(lang: &Lang, need: &auth_check::Need) -> String {
         .join(", ");
     if need.self_pay == 0 {
         text(lang, "authorisation.line_covered")
-            .replace(":service", &need.code)
+            .replace(":service", &service)
             .replace(":units", &need.units.to_string())
             .replace(":numbers", &numbers)
     } else {
         text(lang, "authorisation.line_short")
-            .replace(":service", &need.code)
+            .replace(":service", &service)
             .replace(":units", &need.units.to_string())
             .replace(":covered", &need.covered().to_string())
             .replace(":self_pay", &need.self_pay.to_string())
@@ -145,6 +151,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .order_by(Appointment::STARTS_AT)
         .get(&state.db)
         .await?;
+    let service_names = service_names::names(&state, &lang.locale).await?;
     let mut rows = Vec::with_capacity(all.len());
     for appointment in &all {
         let visit = Visit::of_booking(&state.db, appointment.booking_id).await?;
@@ -165,7 +172,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
                 Some(id) => party_name(&state, &lang, wl_kernel::PartyId(id)).await,
                 None => text(&lang, "none"),
             },
-            service: appointment.service_code.clone(),
+            service: service_names::name_of(&service_names, &appointment.service_code),
             starts: wl_kernel::documents::dubai_text(appointment.starts_at),
             cover,
             cover_kind: kind,
@@ -223,6 +230,7 @@ async fn show(
     Path(booking): Path<i64>,
 ) -> Result<View> {
     require(&user, permissions::VISITS_VIEW)?;
+    let service_names = service_names::names(&state, &lang.locale).await?;
     let appointment = Appointment::of_booking(&state.db, booking)
         .await?
         .ok_or(Error::NotFound)?;
@@ -280,7 +288,7 @@ async fn show(
                 !short.is_empty() && !auth_check::consented(&state, booking, &short).await?;
             let lines = needs
                 .iter()
-                .map(|need| auth_line(&lang, need))
+                .map(|need| auth_line(&lang, &service_names, need))
                 .collect::<Vec<_>>();
             (lines, unsigned)
         } else {
@@ -300,7 +308,7 @@ async fn show(
         tx: texts::all(&lang),
         booking,
         patient,
-        service: appointment.service_code.clone(),
+        service: service_names::name_of(&service_names, &appointment.service_code),
         visit_date: appointment.visit_date.to_string(),
         cancelled: appointment.is_cancelled(),
         flags: flag_labels(&state, &lang, booking).await?,

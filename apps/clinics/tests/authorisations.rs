@@ -313,11 +313,30 @@ async fn cancel_and_the_payers_list_of_services_that_need_one() {
         .await
         .assert_status(422);
 
+    t.guardians.name(PAYER.0, "Crescent Health TPA");
     list(&t, "laser").await.assert_ok();
     list(&t, "laser").await.assert_ok();
     list(&t, "  ").await.assert_status(422);
+    // A payer number that is no party is refused in words, and P-00900 is 900.
+    t.app
+        .htmx()
+        .post(
+            "/clinics/prior-auth-services",
+            &[("payer", "4242"), ("code", "laser")],
+        )
+        .await
+        .assert_status(422)
+        .assert_see("no party with the payer");
+    t.app
+        .htmx()
+        .post(
+            "/clinics/prior-auth-services",
+            &[("payer", "P-00900"), ("code", "peel")],
+        )
+        .await
+        .assert_ok();
     let listed = PriorAuthService::of_payer(t.db(), PAYER.0).await.unwrap();
-    assert_eq!(listed.len(), 1);
+    assert_eq!(listed.len(), 2);
     assert!(
         PriorAuthService::needed(t.db(), PAYER.0, "laser")
             .await

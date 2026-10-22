@@ -462,6 +462,18 @@ where
         .insert(subject_type.to_owned(), Arc::new(label));
 }
 
+/// The types of record that have a registered label ([`register_subject_label`]),
+/// by name: the kinds of record a page can name, such as the ones a form
+/// offers to pick from.
+pub fn labelled_subject_types() -> Vec<String> {
+    SUBJECT_LABELS
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .keys()
+        .cloned()
+        .collect()
+}
+
 /// The registered label of `subject` ([`register_subject_label`]), if its
 /// type has one and the record is there.
 ///
@@ -478,6 +490,18 @@ pub async fn subject_label(db: &Db, subject: &Subject) -> Result<Option<String>>
         Some(label) => label(db, subject.subject_id).await,
         None => Ok(None),
     }
+}
+
+/// `subject` for people: its registered label ([`subject_label`], like
+/// `INV-2026-0003`), else `type:id`.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn subject_text(db: &Db, subject: &Subject) -> Result<String> {
+    Ok(subject_label(db, subject)
+        .await?
+        .unwrap_or_else(|| subject.to_string()))
 }
 
 /// The label of a subject without a [`BlockSubjects::label`]:

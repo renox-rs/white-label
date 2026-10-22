@@ -158,7 +158,10 @@ fn grid_with(t: Text<'_>) -> Grid {
         )
         .column(
             Column::text("subject", &t("fields.subject"))
-                .computed("{T}.\"subject_type\" || ' #' || {T}.\"subject_id\""),
+                // `clinics.claim` and `4` read as `clinics claim #4`.
+                .computed(
+                    "REPLACE(REPLACE({T}.\"subject_type\", '.', ' '), '_', ' ') || ' #' || {T}.\"subject_id\"",
+                ),
         )
         .column(Column::related(
             "category",
@@ -252,6 +255,10 @@ pub(crate) struct NewPage {
     tx: Texts,
     /// The active categories, `(key, name)`.
     categories: Vec<(String, String)>,
+    /// The kinds of record a ticket can be about, `(type, name)`: those the
+    /// modules and the vertical can name; empty when none can (the form then
+    /// takes the type as text).
+    subject_types: Vec<(String, String)>,
 }
 
 /// `GET /tickets/new`: the staff create form.
@@ -264,9 +271,22 @@ async fn new(State(state): State<AppState>, lang: Lang) -> Result<View> {
         .iter()
         .map(|c| (c.key.clone(), c.name("en").to_owned()))
         .collect();
+    let subject_types = wl_kernel::documents::labelled_subject_types()
+        .into_iter()
+        .map(|kind| {
+            let name = kind.replace(['.', '_'], " ");
+            let mut letters = name.chars();
+            let name = match letters.next() {
+                Some(first) => first.to_uppercase().chain(letters).collect(),
+                None => name,
+            };
+            (kind, name)
+        })
+        .collect();
     Ok(View::typed(NewPage {
         tx: texts::all(&lang),
         categories,
+        subject_types,
     }))
 }
 
@@ -705,6 +725,20 @@ async fn comment_rows(
     Ok(rows)
 }
 
+/// The record a ticket is about, for people: its registered label
+/// (`CLM-0004`) when its module has one, else the type in words and the id
+/// (`clinics claim #4`).
+async fn subject_text(db: &Db, ticket: &Ticket) -> Result<String> {
+    if let Some(label) = wl_kernel::documents::subject_label(db, &ticket.subject()).await? {
+        return Ok(label);
+    }
+    Ok(format!(
+        "{} #{}",
+        ticket.subject_type.replace(['.', '_'], " "),
+        ticket.subject_id
+    ))
+}
+
 /// `GET /tickets/{id}`: the card with its service level times, the actions
 /// for its state, the assign sheet, the reassignment history and the
 /// timeline.
@@ -741,7 +775,7 @@ async fn show(
             .unwrap_or_default(),
         priority: t(&format!("priority.{}", ticket.priority.as_str())),
         channel: t(&format!("channel.{}", ticket.channel.as_str())),
-        subject: format!("{} #{}", ticket.subject_type, ticket.subject_id),
+        subject: subject_text(&state.db, &ticket).await?,
         requester,
         assignee,
         visit: when(&state, ticket.visit_at),

@@ -40,6 +40,7 @@ use crate::lots;
 use crate::money_text;
 use crate::permissions;
 use crate::policy::InsurancePolicy;
+use crate::service_names;
 use crate::texts;
 use crate::visit::{Visit, VisitStatus};
 
@@ -278,6 +279,7 @@ async fn show(
 ) -> Result<View> {
     require(&user, permissions::VISITS_VIEW)?;
     let visit = Visit::find_or_404(&state.db, id).await?;
+    let service_names = service_names::names(&state, &lang.locale).await?;
     let none = text(&lang, "none");
     let patient = match visit.patient_party_id {
         Some(party) => party_name(&state, &lang, wl_kernel::PartyId(party)).await,
@@ -306,7 +308,9 @@ async fn show(
             .map(|hold| {
                 format!(
                     "{}: PA-{:04} ({})",
-                    hold.service_code, hold.authorisation_id, hold.units
+                    service_names::name_of(&service_names, &hold.service_code),
+                    hold.authorisation_id,
+                    hold.units
                 )
             })
             .collect::<Vec<_>>()
@@ -318,9 +322,16 @@ async fn show(
             Some(actor) => user_name(&state.db, actor).await,
             None => text(&lang, "history.system"),
         };
+        // The row of the visit coming to be is the framework's `insert`: it
+        // is the check-in.
+        let transition = if row.transition == "insert" {
+            crate::visit_machine::CHECK_IN
+        } else {
+            row.transition.as_str()
+        };
         rows.push(HistoryRow {
             at: dubai_text(row.at),
-            action: text(&lang, &format!("visits.transition.{}", row.transition)),
+            action: text(&lang, &format!("visits.transition.{transition}")),
             by,
         });
     }
@@ -390,7 +401,10 @@ async fn show(
                     ChargeKind::Consumable => "charges.kind.consumable",
                 },
             ),
-            code: line.code.clone(),
+            code: match line.kind {
+                ChargeKind::Service => service_names::name_of(&service_names, &line.code),
+                ChargeKind::Consumable => line.code.clone(),
+            },
             units: line.units,
             price: money_text(line.unit_price),
             patient: money_text(line.patient_share),
@@ -429,7 +443,7 @@ async fn show(
         number: visit.number(),
         booking: visit.booking_id,
         patient,
-        service: visit.service_code.clone(),
+        service: service_names::name_of(&service_names, &visit.service_code),
         visit_date: visit.visit_date.to_string(),
         status: text(&lang, &format!("visits.status.{}", visit.status.as_str())),
         status_kind: status_kind(visit.status),

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 
-use super::{Texts, invalid, parse_date, parse_id, party_name, require, text};
+use super::{Texts, invalid, parse_date, parse_party, party_exists, party_name, require, text};
 use crate::card_requests;
 use crate::permissions;
 use crate::policies::{self, NewPolicy};
@@ -146,8 +146,19 @@ async fn create(
     Form(form): Form<CreateForm>,
 ) -> Result<Response> {
     require(&user, permissions::POLICIES_MANAGE)?;
-    let patient = parse_id(&form.patient).ok_or_else(|| invalid("patient: 1, 2, 3 ..."))?;
-    let payer = parse_id(&form.payer).ok_or_else(|| invalid("payer: 1, 2, 3 ..."))?;
+    let patient = parse_party(&form.patient)
+        .ok_or_else(|| invalid(&text(&lang, "policies.problem.patient")))?;
+    let payer =
+        parse_party(&form.payer).ok_or_else(|| invalid(&text(&lang, "policies.problem.payer")))?;
+    if patient == payer {
+        return Err(invalid(&text(&lang, "policies.problem.payer_is_patient")));
+    }
+    if !party_exists(&state, patient).await? {
+        return Err(invalid(&text(&lang, "policies.problem.patient_unknown")));
+    }
+    if !party_exists(&state, payer).await? {
+        return Err(invalid(&text(&lang, "policies.problem.payer_unknown")));
+    }
     let from = parse_date(&form.valid_from)?.unwrap_or_else(today);
     let mut new = NewPolicy::new(
         PartyId(patient),
@@ -161,6 +172,9 @@ async fn create(
     }
     if let Some(to) = parse_date(&form.card_valid_to)? {
         new = new.card_valid_to(to);
+    }
+    if policies::is_on_file(&state, &new).await? {
+        return Err(invalid(&text(&lang, "policies.problem.duplicate")));
     }
     policies::create(&state, Some(user.id), new).await?;
     Ok((

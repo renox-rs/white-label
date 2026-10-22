@@ -23,7 +23,8 @@ pub mod web;
 use renox::prelude::*;
 
 pub use awaiting::{
-    AwaitingItem, SubjectLink, awaiting, awaiting_items, register_subject_link, subject_url,
+    AwaitingItem, SubjectLink, action_is_labelled, awaiting, awaiting_items, register_subject_link,
+    subject_url,
 };
 pub use decide::{
     Approval, FinalCheck, approve, approve_in, ensure_approver, register_final_check,

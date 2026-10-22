@@ -76,6 +76,22 @@ pub(crate) fn whole_text(fils: i64) -> String {
     format!("{sign}{grouped}")
 }
 
+/// The links to `documents` with a name for people each (`INV-2026-0003`),
+/// for those that have a page.
+async fn document_links(db: &Db, documents: &[Subject]) -> Result<Vec<(String, String)>> {
+    let mut links = Vec::new();
+    for document in documents {
+        let href = document_link(document);
+        if !href.is_empty() {
+            links.push((
+                wl_kernel::documents::subject_text(db, document).await?,
+                href,
+            ));
+        }
+    }
+    Ok(links)
+}
+
 /// The page of the document a line stands for, as far as it has one.
 pub(crate) fn document_link(document: &Subject) -> String {
     match document.subject_type.as_str() {
@@ -630,11 +646,7 @@ async fn cell(
                 amount: amount_text("AED", line.amount),
                 flags,
                 links: if open {
-                    line.documents
-                        .iter()
-                        .map(|d| (d.to_string(), document_link(d)))
-                        .filter(|(_, href)| !href.is_empty())
-                        .collect()
+                    document_links(&state.db, &line.documents).await?
                 } else {
                     Vec::new()
                 },
@@ -654,12 +666,7 @@ async fn cell(
                 date: String::new(),
                 amount: amount_text("AED", memo.amount),
                 flags: vec![t("cash.flag.not_counted")],
-                links: memo
-                    .documents
-                    .iter()
-                    .map(|d| (d.to_string(), document_link(d)))
-                    .filter(|(_, href)| !href.is_empty())
-                    .collect(),
+                links: document_links(&state.db, &memo.documents).await?,
             });
         }
     }

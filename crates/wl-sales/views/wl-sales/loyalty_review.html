@@ -6,7 +6,7 @@
     <rx-page-header :title="tx['loyalty.review.title']" :subtitle="tx['loyalty.review.subtitle']" :back="route('wl_sales.loyalty')" :back-label="tx['loyalty.title']"/>
     <rx-table :rows="reviews" as="item" :key="item.id" :caption="tx['loyalty.review.title']" card>
       <rx-column :label="tx['loyalty.code']">{{ item.code }}</rx-column>
-      <rx-column :label="tx['loyalty.party']" hide-narrow>{{ item.party }}</rx-column>
+      <rx-column :label="tx['loyalty.member']">{{ item.party }}</rx-column>
       <rx-column :label="tx['loyalty.review.day']">{{ item.on_date }}</rx-column>
       <rx-column :label="tx['loyalty.review.sales']">{{ item.sales_count }}</rx-column>
       <rx-row-actions>

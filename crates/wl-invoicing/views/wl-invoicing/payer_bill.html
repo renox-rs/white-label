@@ -50,6 +50,7 @@
         <rx-textarea name="reason" :label="tx['payer_bill.void.reason']" :id="'void-payer-bill-reason-' ~ bill.id" required/>
       </rx-action-sheet>
     </rx-page-header>
+    <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card :title="tx['payer_bill.sections.summary']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['payer_bill.fields.payer']" :value="payer"/>
