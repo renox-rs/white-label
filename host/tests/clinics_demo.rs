@@ -383,3 +383,27 @@ async fn the_pages_name_a_branch_in_words() {
         .assert_ok()
         .assert_dont_see("clinics.branch");
 }
+
+/// The advertising permits name their campaign (code and name), not its
+/// number.
+#[renox::test]
+async fn the_permits_name_their_campaign() {
+    let app = booted().await;
+    host::clinics_demo::seed(app.kernel()).await.unwrap();
+    let owner = User::find_by_email(app.db(), "owner@palmgrove.example")
+        .await
+        .unwrap()
+        .expect("the demo owner");
+    app.acting_as(&owner);
+    let campaign = renox::db::sql(
+        "select code || ' · ' || name from wl_sales_campaigns where id = (select min(campaign_id) from clinics_advertising_permits)"
+            .to_owned(),
+    )
+    .scalar::<String>(app.db())
+    .await
+    .unwrap();
+    app.get("/clinics/campaign-permits")
+        .await
+        .assert_ok()
+        .assert_see(&campaign);
+}

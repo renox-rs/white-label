@@ -469,6 +469,18 @@ impl Module for WlSales {
     }
 
     fn register(&self, app: &mut Registry) {
+        // A page that holds only a campaign's id (a permit, a document) shows
+        // `SMILE-OCT · Smile month`.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::sales::CAMPAIGN_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(Campaign::find(db, id)
+                        .await?
+                        .map(|campaign| format!("{} · {}", campaign.code, campaign.name)))
+                })
+            },
+        );
         app.view_data::<pages::lead_sources::IndexPage>()
             .view_data::<pages::acquisition::ExceptionsPage>()
             .view_data::<pages::report::ReportPage>()
