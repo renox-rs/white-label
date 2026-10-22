@@ -25,6 +25,20 @@ pub const SESSIONS_VIEW: &str = "sessions.view";
 /// (`EDU.ACL.03`, `EDU.ACL.04`).
 pub const SESSIONS_TEACH: &str = "sessions.teach";
 
+/// See the enrolments in scope.
+pub const ENROLMENTS_VIEW: &str = "enrolments.view";
+/// Enrol a student, activate, freeze, unfreeze and withdraw an enrolment
+/// (`EDU.ENR.01`, `enrolments.manage` of §7.1).
+pub const ENROLMENTS_MANAGE: &str = "enrolments.manage";
+/// Approve a discount above the limit (the centre manager's).
+pub const ENROLMENTS_APPROVE: &str = "enrolments.approve";
+/// See the certificates in scope.
+pub const CERTIFICATES_VIEW: &str = "certificates.view";
+/// Issue and reissue a certificate (`certificates.issue` of §7.1).
+pub const CERTIFICATES_ISSUE: &str = "certificates.issue";
+/// Revoke a certificate (`certificates.revoke`: the company admin).
+pub const CERTIFICATES_REVOKE: &str = "certificates.revoke";
+
 /// The owner of the centre: told when a centre permit or a course approval
 /// expires (`EDU.RUL.13`) and alerted when a compliance-critical rule fails.
 pub const OWNER_ROLE: &str = "owner";

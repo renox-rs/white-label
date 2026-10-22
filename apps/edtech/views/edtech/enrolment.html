@@ -1,0 +1,90 @@
+{#- edtech: one enrolment: who, what for, the fees, the instalments, the
+    freeze causes and the actions of the counsellor. Replace it with
+    resources/views/edtech/enrolment.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="student" :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_terms">
+        <rx-confirm :id="'enrolment-terms-' ~ id" :label="tx['enrolments.accept_terms']" :action="route('edtech.enrolment_terms', id)" method="POST"
+                    :title="tx['enrolments.accept_terms']" :message="tx['enrolments.accept_terms_message']" :confirm-label="tx['enrolments.accept_terms']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_discount">
+        <rx-confirm :id="'enrolment-discount-' ~ id" :label="tx['enrolments.approve_discount']" :action="route('edtech.enrolment_discount', id)" method="POST"
+                    :title="tx['enrolments.approve_discount']" :message="tx['enrolments.approve_discount_message']" :confirm-label="tx['enrolments.approve_discount']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_activate">
+        <rx-confirm :id="'enrolment-activate-' ~ id" :label="tx['enrolments.activate']" :action="route('edtech.enrolment_activate', id)" method="POST"
+                    :title="tx['enrolments.activate']" :message="tx['enrolments.activate_message']" :confirm-label="tx['enrolments.activate']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_freeze">
+        <rx-action-sheet :id="'enrolment-freeze-' ~ id" :label="tx['enrolments.freeze']" :action="route('edtech.enrolment_freeze', id)"
+                         :title="tx['enrolments.freeze']" :description="tx['enrolments.freeze_description']" :submit-label="tx['enrolments.freeze']" icon="calendar">
+          <rx-input name="until" type="date" :label="tx['enrolments.freeze_until']" :id="'enrolment-freeze-until-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_unfreeze">
+        <rx-confirm :id="'enrolment-unfreeze-' ~ id" :label="tx['enrolments.unfreeze']" :action="route('edtech.enrolment_unfreeze', id)" method="POST"
+                    :title="tx['enrolments.unfreeze']" :message="tx['enrolments.unfreeze_message']" :confirm-label="tx['enrolments.unfreeze']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_withdraw">
+        <rx-action-sheet :id="'enrolment-withdraw-' ~ id" :label="tx['enrolments.withdraw']" :action="route('edtech.enrolment_withdraw', id)"
+                         :title="tx['enrolments.withdraw']" :description="tx['enrolments.withdraw_description']" :submit-label="tx['enrolments.withdraw']" icon="trash">
+          <rx-input name="reason" :label="tx['enrolments.reason']" :id="'enrolment-withdraw-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['enrolments.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['enrolments.student']" :value="student"/>
+        <rx-entry :label="tx['enrolments.guardian']" :value="guardian"/>
+        <rx-entry :label="tx['enrolments.payer']" :value="payer"/>
+        <rx-entry :label="tx['enrolments.kind']" :value="kind"/>
+        <rx-entry :label="tx['enrolments.subject']" :value="subject"/>
+        <rx-entry :label="tx['enrolments.terms']" :value="terms"/>
+        <rx-entry :label="tx['enrolments.seat_hold_until']" :value="seat_hold_until"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['enrolments.fees']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['enrolments.price']" :value="price"/>
+        <rx-entry :label="tx['enrolments.discount']" :value="discount"/>
+        <rx-entry :label="tx['enrolments.discount_approval']" :value="discount_state"/>
+        <rx-entry :label="tx['enrolments.fee']" :value="fee"/>
+        <rx-entry :label="tx['enrolments.registration_fee']" :value="registration_fee"/>
+        <rx-entry :label="tx['enrolments.admin_fee']" :value="admin_fee"/>
+        <rx-entry :label="tx['enrolments.instalments']" :value="instalment_count"/>
+      </rx-infolist>
+    </rx-card>
+    <template rx-if="show_preview">
+      <rx-card :title="tx['enrolments.if_leaves']">
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['enrolments.refund']" :value="preview_refund"/>
+          <rx-entry :label="tx['enrolments.owed']" :value="preview_owed"/>
+        </rx-infolist>
+      </rx-card>
+    </template>
+    <template rx-if="show_withdrawn">
+      <rx-card :title="tx['enrolments.withdrawal']">
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['enrolments.reason']" :value="withdrawn_reason"/>
+          <rx-entry :label="tx['enrolments.refund']" :value="withdrawn_refund"/>
+          <rx-entry :label="tx['enrolments.owed']" :value="withdrawn_owed"/>
+        </rx-infolist>
+      </rx-card>
+    </template>
+    <rx-table :rows="instalments" as="row" :key="row.number" :caption="tx['enrolments.instalment_plan']" card>
+      <rx-column :label="tx['enrolments.instalment_no']">{{ row.number }}</rx-column>
+      <rx-column :label="tx['enrolments.due']">{{ row.due }}</rx-column>
+      <rx-column :label="tx['enrolments.fee']">{{ row.amount }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['enrolments.no_instalments']" icon="receipt"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="freezes" as="row" :key="row.since" :caption="tx['enrolments.freezes']" card>
+      <rx-column :label="tx['enrolments.cause']">{{ row.cause }}</rx-column>
+      <rx-column :label="tx['enrolments.since']">{{ row.since }}</rx-column>
+      <rx-column :label="tx['enrolments.freeze_until']">{{ row.until }}</rx-column>
+      <rx-column :label="tx['enrolments.ended']">{{ row.ended }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['enrolments.no_freezes']" icon="calendar"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

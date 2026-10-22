@@ -75,6 +75,8 @@
     "courses": "Courses",
     "batches": "Batches",
     "sessions": "Sessions",
+    "enrolments": "Enrolments",
+    "certificates": "Certificates",
     "negative_flow": "Money settings",
     "compliance_settings": "Compliance settings",
     "tickets": "Tickets",

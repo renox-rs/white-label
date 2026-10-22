@@ -236,6 +236,12 @@ const TEXTS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Every text of the app: this file's and those of the enrolments, the
+/// certificates and the tutors ([`crate::texts_more`]).
+fn entries() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
+    TEXTS.iter().chain(crate::texts_more::TEXTS.iter())
+}
+
 /// The text for `key`: the app's translation when it has one, else the
 /// English one.
 #[allow(dead_code)]
@@ -257,8 +263,7 @@ pub(crate) fn t_with(lang: &Lang, key: &str, params: &[(&str, &dyn Display)]) ->
 /// (`courses.title`), for the templates: `tx['courses.title']`.
 #[allow(dead_code)]
 pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
-    TEXTS
-        .iter()
+    entries()
         .map(|(key, _)| (key.trim_start_matches("edtech."), t(lang, key)))
         .collect()
 }
@@ -267,8 +272,7 @@ pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
 /// it has no text.
 #[allow(dead_code)]
 pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
-    let text = TEXTS
-        .iter()
+    let text = entries()
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
     let params: Vec<(&str, String)> = params.iter().map(|(k, v)| (*k, v.to_string())).collect();
@@ -277,11 +281,11 @@ pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{TEXTS, english};
+    use super::{entries, english};
 
     #[test]
     fn keys_are_unique_and_prefixed() {
-        let mut keys: Vec<&str> = TEXTS.iter().map(|(key, _)| *key).collect();
+        let mut keys: Vec<&str> = entries().map(|(key, _)| *key).collect();
         assert!(keys.iter().all(|key| key.starts_with("edtech.")));
         let count = keys.len();
         keys.sort_unstable();

@@ -13,7 +13,17 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::calendar::BusinessCalendar;
 use wl_kernel::documents::dubai_date;
+use wl_kernel::invoicing::provide_invoicer;
+use wl_kernel::parties::provide_directory;
+use wl_kernel::sales::{provide_package_ledger, provide_package_sales};
+use wl_kernel::subscriptions::provide_subscriptions;
 use wl_scheduling::{Resource, ResourceType, WlScheduling};
+
+/// The stand-ins of the parties, the invoice book, the subscriptions and the
+/// packages the enrolments talk to.
+pub mod money;
+
+pub use money::{Books, Packages, People, Subs};
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -62,14 +72,27 @@ pub fn at(date: NaiveDate, hour: u32, minute: u32) -> DateTime {
     BusinessCalendar::default().from_local(date.and_hms_opt(hour, minute, 0).expect("a time"))
 }
 
-/// Provides the probe route that gives a test the signed-in user.
+/// Provides the probe route that gives a test the signed-in user, and the
+/// stand-ins of the contracts the enrolments use.
 struct Harness {
     who: Arc<Mutex<Option<renox::AuthUser>>>,
+    people: People,
+    books: Books,
+    subs: Subs,
+    packages: Packages,
 }
 
 impl Module for Harness {
     fn name(&self) -> &'static str {
         "edtech-test-harness"
+    }
+
+    fn register(&self, app: &mut Registry) {
+        provide_directory(app, self.people.clone());
+        provide_invoicer(app, self.books.clone());
+        provide_subscriptions(app, self.subs.clone());
+        provide_package_ledger(app, self.packages.clone());
+        provide_package_sales(app, self.packages.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -88,6 +111,14 @@ impl Module for Harness {
 pub struct Centre {
     /// The app.
     pub app: TestApp,
+    /// The parties the centre knows.
+    pub people: People,
+    /// The invoices drafted.
+    pub books: Books,
+    /// The subscriptions started and cancelled.
+    pub subs: Subs,
+    /// The packages sold.
+    pub packages: Packages,
     who: Arc<Mutex<Option<renox::AuthUser>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
@@ -105,6 +136,12 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
     let who = Arc::new(Mutex::new(None));
+    let (people, books, subs, packages) = (
+        People::default(),
+        Books::default(),
+        Subs::default(),
+        Packages::default(),
+    );
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in edtech::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -116,7 +153,13 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
         .module(wl_hr::WlHr::new())
         .module(scheduling_module)
         .module(edtech::EdTech)
-        .module(Harness { who: who.clone() });
+        .module(Harness {
+            who: who.clone(),
+            people: people.clone(),
+            books: books.clone(),
+            subs: subs.clone(),
+            packages: packages.clone(),
+        });
     let listed: Vec<String> = holidays.iter().map(|d| format!("\"{d}\"")).collect();
     let client = CLIENT.replace("{holidays}", &listed.join(", "));
     let config = wl_kernel::ClientConfig::parse(&client).expect("a valid client.toml");
@@ -129,6 +172,10 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
         .expect("wl:install runs");
     Centre {
         app,
+        people,
+        books,
+        subs,
+        packages,
         who,
         _views: views,
     }
@@ -327,6 +374,177 @@ impl Centre {
             ..Session::default()
         };
         session.save(self.db()).await.unwrap();
+        session
+    }
+}
+
+use edtech::enrolments::{self, NewEnrolment};
+use edtech::seats::{self, Limit};
+use edtech::{Enrolment, EnrolmentStatus, SessionStatus};
+use renox::state_machine::StateMachine;
+
+/// The price of the course the enrolment tests sell: AED 2,520 with VAT.
+pub const PRICE: i64 = 252_000;
+
+impl Centre {
+    /// A counsellor at the front desk: enrols and withdraws, never exceeds a
+    /// batch's capacity or approves a discount.
+    pub async fn desk_user(&self) -> User {
+        self.user(
+            "Dina",
+            &[
+                edtech::permissions::COURSES_VIEW,
+                edtech::permissions::BATCHES_VIEW,
+                edtech::permissions::SESSIONS_VIEW,
+                edtech::permissions::ENROLMENTS_VIEW,
+                edtech::permissions::ENROLMENTS_MANAGE,
+                edtech::permissions::CERTIFICATES_VIEW,
+            ],
+        )
+        .await
+    }
+
+    /// The desk counsellor as the signed-in user the services take.
+    pub async fn desk(&self) -> renox::AuthUser {
+        let user = self.desk_user().await;
+        self.auth(&user).await
+    }
+
+    /// The centre manager: enrols above capacity up to the room's limit and
+    /// approves a discount.
+    pub async fn manager_user(&self) -> User {
+        self.user(
+            "Mona",
+            &[
+                edtech::permissions::COURSES_VIEW,
+                edtech::permissions::BATCHES_VIEW,
+                edtech::permissions::BATCHES_MANAGE,
+                edtech::permissions::BATCHES_APPROVE,
+                edtech::permissions::SEATS_EXCEED,
+                edtech::permissions::SESSIONS_VIEW,
+                edtech::permissions::ENROLMENTS_VIEW,
+                edtech::permissions::ENROLMENTS_MANAGE,
+                edtech::permissions::ENROLMENTS_APPROVE,
+                edtech::permissions::CERTIFICATES_VIEW,
+                edtech::permissions::CERTIFICATES_ISSUE,
+            ],
+        )
+        .await
+    }
+
+    /// The centre manager as the signed-in user the services take.
+    pub async fn manager(&self) -> renox::AuthUser {
+        let user = self.manager_user().await;
+        self.auth(&user).await
+    }
+
+    /// The coordinator who issues certificates.
+    pub async fn registrar_user(&self) -> User {
+        self.user(
+            "Rana",
+            &[
+                edtech::permissions::CERTIFICATES_VIEW,
+                edtech::permissions::CERTIFICATES_ISSUE,
+                edtech::permissions::ENROLMENTS_VIEW,
+            ],
+        )
+        .await
+    }
+
+    /// The registrar as the signed-in user the services take.
+    pub async fn registrar(&self) -> renox::AuthUser {
+        let user = self.registrar_user().await;
+        self.auth(&user).await
+    }
+
+    /// The company admin: revokes certificates.
+    pub async fn company_admin_user(&self) -> User {
+        self.user(
+            "Zayed",
+            &[
+                edtech::permissions::CERTIFICATES_VIEW,
+                edtech::permissions::CERTIFICATES_REVOKE,
+            ],
+        )
+        .await
+    }
+
+    /// The company admin as the signed-in user the services take.
+    pub async fn company_admin(&self) -> renox::AuthUser {
+        let user = self.company_admin_user().await;
+        self.auth(&user).await
+    }
+
+    /// Party `id` named `name` in the directory.
+    pub fn person(&self, id: i64, name: &str) -> i64 {
+        self.people.add(id, name);
+        id
+    }
+
+    /// A course enrolment of `student` in `batch` at [`PRICE`], upfront, with
+    /// the terms accepted, made by the desk counsellor.
+    pub async fn enrol(&self, student: i64, batch: &Batch) -> Enrolment {
+        let desk = self.desk().await;
+        enrolments::create(
+            self.state(),
+            &desk,
+            NewEnrolment::course(student, batch.id, PRICE).terms_accepted(),
+        )
+        .await
+        .expect("the student is enrolled")
+    }
+
+    /// An enrolment of `student` in `batch` inserted in `status` (a fixture),
+    /// holding a seat when the status takes one.
+    pub async fn enrolment_in(
+        &self,
+        batch: &Batch,
+        student: i64,
+        status: EnrolmentStatus,
+    ) -> Enrolment {
+        let mut row = Enrolment {
+            batch_id: Some(batch.id),
+            student_party_id: student,
+            payer_party_id: student,
+            price: PRICE,
+            discount_approved: true,
+            sessions_total: 8,
+            instalments: 1,
+            terms_accepted_at: Some(renox::db::now()),
+            seat_held: status.takes_a_seat(),
+            status,
+            ..Enrolment::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        if status.takes_a_seat() {
+            seats::take(&mut tx, batch.id, 1, Limit::Room).await.unwrap();
+        }
+        row.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+        tx.commit().await.unwrap();
+        Enrolment::find_or_404(self.db(), row.id).await.unwrap()
+    }
+
+    /// A `held` session of `batch` that started `days` days ago (a fixture).
+    pub async fn held_session(&self, batch: &Batch, number: i64, days: i64) -> Session {
+        let date = day(-days);
+        let mut session = Session {
+            batch_id: batch.id,
+            number,
+            session_date: date,
+            starts_at: at(date, 10, 0),
+            ends_at: at(date, 11, 0),
+            tutor_resource_id: batch.tutor_resource_id,
+            room_resource_id: batch.room_resource_id,
+            held_at: Some(renox::db::now()),
+            status: SessionStatus::Held,
+            ..Session::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        session
+            .insert_in_state(&mut tx, SessionStatus::Held, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
         session
     }
 }
