@@ -235,6 +235,33 @@ const TEXTS: &[(&str, &str)] = &[
     ("fnb.pickup.cancel_reason", "Cancelled by the aggregator: its rider never arrived"),
     ("fnb.pickup.not_ready", "Only an order that is ready and waiting at the pass is recorded here."),
     ("fnb.pickup.not_aggregator", "Only an aggregator's order is recorded here."),
+    // A reversed delivery (BL-FNB-07).
+    ("fnb.reversal.reason", "not delivered (delivery reversed)"),
+    ("fnb.reversal.customer_title", "Your order {{ number }} is refunded"),
+    (
+        "fnb.reversal.customer_body_refund",
+        "We are sorry your order {{ number }} did not reach you. {{ amount }} is refunded to the way you paid.",
+    ),
+    (
+        "fnb.reversal.customer_body_credit",
+        "We are sorry your order {{ number }} did not reach you. You owe nothing for it ({{ amount }} is cleared).",
+    ),
+    (
+        "fnb.reversal.refund_title",
+        "Refund of order {{ number }} to pay",
+    ),
+    (
+        "fnb.reversal.refund_body",
+        "The delivery of order {{ number }} was reversed. {{ amount }} is refunded to the customer: a manager approves the refund and the cashier records how it is paid.",
+    ),
+    (
+        "fnb.reversal.failed_title",
+        "No refund was raised for order {{ number }}",
+    ),
+    (
+        "fnb.reversal.failed_body",
+        "The delivery of order {{ number }} was reversed, but the refund could not be raised: {{ problem }}",
+    ),
     (
         "fnb.cancel.withdrawn",
         "The kitchen started order {{ number }} while the change waited for a manager: ask again.",

@@ -20,6 +20,7 @@ pub mod pickup;
 pub mod placing;
 pub mod progress;
 pub mod refunds;
+pub mod reversal;
 mod screen_texts;
 pub mod seed;
 pub mod settings;

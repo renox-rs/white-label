@@ -320,6 +320,18 @@ pub struct FnbOrder {
     pub wastage_posted: bool,
     /// When the failed delivery was closed.
     pub closed_at: Option<DateTime>,
+    /// The sales return of kind *no goods* a reversed delivery raised
+    /// (BL-FNB-07).
+    pub reversal_return_id: Option<i64>,
+    /// When the delivery was reversed and the return raised.
+    pub reversed_at: Option<DateTime>,
+    /// How the return was resolved: `refund`, or `credit_note` (cash on
+    /// delivery that nobody handed over: no refund payment).
+    pub reversal_resolution: Option<String>,
+    /// What the return refunds, in fils.
+    pub reversal_amount: i64,
+    /// The party the return names (a stored name of the sales settings).
+    pub reversal_party: Option<String>,
     /// Why it was closed, as the cancel reason.
     pub close_reason: Option<String>,
     /// The party responsible for a cancellation, one of [`party::CANCEL`]

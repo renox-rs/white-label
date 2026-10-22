@@ -14,6 +14,7 @@
 //! - the delivery's events follow the order: `DeliveryAssigned`,
 //!   `RunHandedOver`, `DeliveryOutForDelivery`, `DeliveryDelivered`,
 //!   `DeliveryAttemptFailed`, `DeliveryReturned` and `DeliveryDiscarded`;
+//! - `DeliveryReversed` refunds the completed order ([`crate::reversal`]);
 //! - `RefundApproved` records a manager-approved refund on the order;
 //! - starting and bumping a ticket moves the order ([`crate::kitchen`]).
 
@@ -21,7 +22,7 @@ use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::delivery::{
     DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered, DeliveryDiscarded,
-    DeliveryOutForDelivery, DeliveryReturned, RunHandedOver,
+    DeliveryOutForDelivery, DeliveryReturned, DeliveryReversed, RunHandedOver,
 };
 use wl_kernel::payments::RefundApproved;
 use wl_kernel::sales::{
@@ -35,7 +36,9 @@ use crate::order_machine::{
     FAIL_DELIVERY, MARK_READY,
 };
 use crate::ticket::KitchenTicket;
-use crate::{cancel, changes, close, failed, fulfilment, kitchen, pickup, placing, refunds};
+use crate::{
+    cancel, changes, close, failed, fulfilment, kitchen, pickup, placing, refunds, reversal,
+};
 
 /// What follows a committed transition of an order.
 async fn after_order(state: &AppState, event: &Transitioned<FnbOrder>) -> Result {
@@ -109,6 +112,9 @@ pub(crate) fn register(app: &mut Registry) {
     });
     app.listen(|event: DeliveryDiscarded, state: AppState| async move {
         close::on_discarded(&state, event).await
+    });
+    app.listen(|event: DeliveryReversed, state: AppState| async move {
+        reversal::on_reversed(&state, event).await
     });
     app.listen(|event: RefundApproved, state: AppState| async move {
         refunds::on_refund_approved(&state, event).await
