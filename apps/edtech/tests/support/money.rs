@@ -1054,9 +1054,38 @@ pub struct Packages {
     credits: Arc<Mutex<Vec<(i64, String, i64)>>>,
     ends: Arc<Mutex<BTreeMap<i64, NaiveDate>>>,
     extended: Arc<Mutex<Vec<(i64, i64, String)>>>,
+    used: Arc<Mutex<Vec<(Subject, i64, String)>>>,
+    asked: Arc<Mutex<Vec<Subject>>>,
 }
 
 impl Packages {
+    /// The sources that hold a credit now: the attendance rows (or bookings)
+    /// whose credit was consumed and not given back.
+    pub fn consumed_by(&self) -> Vec<Subject> {
+        self.used
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(source, _, _)| source.clone())
+            .collect()
+    }
+
+    /// Every source `consume` was asked for, whatever the answer.
+    pub fn asked(&self) -> Vec<Subject> {
+        self.asked.lock().unwrap().clone()
+    }
+
+    /// The credits `party` has left of `item`.
+    pub fn left(&self, party: PartyId, item: &str) -> i64 {
+        self.credits
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|(holder, code, _)| *holder == party.0 && code == item)
+            .map_or(0, |(_, _, credits)| *credits)
+    }
+
     /// The packages sold, oldest first.
     pub fn sold(&self) -> Vec<SellPackage> {
         self.sold.lock().unwrap().clone()
@@ -1100,12 +1129,60 @@ impl PackageSales for Packages {
 }
 
 impl PackageLedger for Packages {
+    /// As wl-sales does: a source that holds a credit consumes nothing more
+    /// (`Already`); otherwise the holder's package for the item gives one while
+    /// it has any, else there is `NoCredit`.
     fn consume<'a>(
         &'a self,
         _state: &'a AppState,
-        _request: wl_kernel::sales::ConsumePackage,
+        request: wl_kernel::sales::ConsumePackage,
     ) -> SalesFuture<'a, PackageConsumption> {
-        Box::pin(async { Ok(PackageConsumption::NoCredit) })
+        self.asked.lock().unwrap().push(request.source.clone());
+        let mut used = self.used.lock().unwrap();
+        if used.iter().any(|(source, _, _)| *source == request.source) {
+            return Box::pin(async { Ok(PackageConsumption::Already { package: PackageId(1) }) });
+        }
+        let mut credits = self.credits.lock().unwrap();
+        let answer = match credits
+            .iter_mut()
+            .rev()
+            .find(|(holder, code, left)| {
+                *holder == request.party.0 && *code == request.item && *left >= request.quantity
+            }) {
+            Some((_, _, left)) => {
+                *left -= request.quantity;
+                used.push((request.source.clone(), request.party.0, request.item.clone()));
+                PackageConsumption::Consumed {
+                    package: PackageId(1),
+                    remaining: *left,
+                }
+            }
+            None => PackageConsumption::NoCredit,
+        };
+        Box::pin(async move { Ok(answer) })
+    }
+
+    /// As wl-sales does: the credit the source consumed goes back to its
+    /// package.
+    fn reverse<'a>(&'a self, _state: &'a AppState, source: Subject) -> SalesFuture<'a, bool> {
+        let mut used = self.used.lock().unwrap();
+        let found = used.iter().position(|(held, _, _)| *held == source);
+        let gave_back = match found {
+            Some(index) => {
+                let (_, party, item) = used.remove(index);
+                let mut credits = self.credits.lock().unwrap();
+                if let Some((_, _, left)) = credits
+                    .iter_mut()
+                    .rev()
+                    .find(|(holder, code, _)| *holder == party && *code == item)
+                {
+                    *left += 1;
+                }
+                true
+            }
+            None => false,
+        };
+        Box::pin(async move { Ok(gave_back) })
     }
 
     fn extend_days<'a>(

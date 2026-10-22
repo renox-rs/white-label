@@ -577,6 +577,8 @@ impl Centre {
             discount_approved: true,
             sessions_total: 8,
             instalments: 1,
+            absence_consumes: true,
+            excuse_notice_hours: 24,
             terms_accepted_at: Some(renox::db::now()),
             seat_held: status.takes_a_seat(),
             seat_hold_until: (status == EnrolmentStatus::PendingPayment)
@@ -799,5 +801,54 @@ impl Centre {
         )
         .await
         .expect("the batch is planned")
+    }
+}
+
+impl Centre {
+    /// An enrolment of `student` in the session package `item` (a fixture) in
+    /// `status`, with the default absence policy and `credits` credits in the
+    /// stand-in of the package ledger.
+    pub async fn package_in(
+        &self,
+        student: i64,
+        item: &str,
+        credits: i64,
+        status: EnrolmentStatus,
+    ) -> Enrolment {
+        let mut row = Enrolment {
+            kind: edtech::EnrolmentKind::Package,
+            batch_id: None,
+            student_party_id: student,
+            payer_party_id: student,
+            item_code: Some(item.to_owned()),
+            item_name: Some(format!("Package {item}")),
+            price: PRICE,
+            discount_approved: true,
+            sessions_total: credits,
+            instalments: 1,
+            absence_consumes: true,
+            excuse_notice_hours: 24,
+            terms_accepted_at: Some(renox::db::now()),
+            status,
+            ..Enrolment::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        row.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+        tx.commit().await.unwrap();
+        self.packages.give(PartyId(student), item, credits);
+        Enrolment::find_or_404(self.db(), row.id).await.unwrap()
+    }
+
+    /// The absence policy of `enrolment` is changed: whether an absence
+    /// without a notice uses a credit, and the hours of notice that excuse it.
+    pub async fn set_policy(&self, enrolment: &Enrolment, consumes: bool, hours: i64) {
+        Enrolment::query()
+            .where_(Enrolment::ID.eq(enrolment.id))
+            .update(
+                self.db(),
+                &[("absence_consumes", &consumes), ("excuse_notice_hours", &hours)],
+            )
+            .await
+            .unwrap();
     }
 }
