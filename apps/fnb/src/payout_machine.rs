@@ -186,7 +186,16 @@ fn resolve() -> Transition<PayoutStatement> {
         .reason_required()
         .effect(|s: &PayoutStatement, ctx, tx| {
             let id = s.id;
-            let receivable = s.receivable_amount + input_of(ctx).adjustment;
+            // Disputed before it was matched: the answer matches it too, so
+            // the receivable is booked now from the statement's net total.
+            let unbooked = s.receivable_booked_at.is_none();
+            let base = if unbooked {
+                s.net_total
+            } else {
+                s.receivable_amount
+            };
+            let receivable = base + input_of(ctx).adjustment;
+            let by = ctx.actor().map(|user| user.id);
             let note = ctx.reason().map(|r| r.trim().to_owned());
             Box::pin(async move {
                 let at = Some(renox::db::now());
@@ -199,7 +208,20 @@ fn resolve() -> Transition<PayoutStatement> {
                         ("receivable_amount", &receivable),
                     ],
                 )
-                .await
+                .await?;
+                if unbooked {
+                    set(
+                        tx,
+                        id,
+                        &[
+                            ("matched_at", &at),
+                            ("matched_by", &by),
+                            ("receivable_booked_at", &at),
+                        ],
+                    )
+                    .await?;
+                }
+                Ok(())
             })
         })
 }
