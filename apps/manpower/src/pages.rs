@@ -706,8 +706,13 @@ async fn suspension_note(state: &AppState, deployment: &Deployment) -> Result<Ve
         .collect();
     let reasons = reasons.join(", ");
     let days = deployment.days_suspended(today());
+    let key = if days == 1 {
+        "manpower.deployment.suspended_note_one"
+    } else {
+        "manpower.deployment.suspended_note"
+    };
     Ok(vec![english(
-        "manpower.deployment.suspended_note",
+        key,
         &[("reasons", &reasons), ("days", &days)],
     )])
 }

@@ -629,6 +629,10 @@ const TEXTS: &[(&str, &str)] = &[
         "suspended: {{ reasons }}, {{ days }} days suspended",
     ),
     (
+        "manpower.deployment.suspended_note_one",
+        "suspended: {{ reasons }}, {{ days }} day suspended",
+    ),
+    (
         "manpower.deployment.suspend_reason",
         "Give the reason: site access withdrawn, investigation or another.",
     ),
