@@ -400,9 +400,9 @@ async fn portal_book(
     lang: Lang,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    let party = PartyId(number(&form, "party")?);
+    let party = PartyId(number(&form, "party", &lang)?);
     acts_for(&state, &user, party).await?;
-    let service = ServiceType::find_or_404(&state.db, number(&form, "service")?).await?;
+    let service = ServiceType::find_or_404(&state.db, number(&form, "service", &lang)?).await?;
     let start = parse_local(field(&form, "starts_at"))
         .ok_or_else(|| Error::BadRequest("starts_at".to_owned()))?;
     let at = renox::db::now();
@@ -438,9 +438,9 @@ async fn portal_join(
     lang: Lang,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    let party = PartyId(number(&form, "party")?);
+    let party = PartyId(number(&form, "party", &lang)?);
     acts_for(&state, &user, party).await?;
-    let mut entry = NewEntry::new(party, number(&form, "service")?);
+    let mut entry = NewEntry::new(party, number(&form, "service", &lang)?);
     if let Ok(resource) = field(&form, "resource").parse::<i64>() {
         entry = entry.with(resource);
     }

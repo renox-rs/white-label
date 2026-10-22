@@ -231,7 +231,7 @@ async fn resolve(
             },
         },
         "reschedule" => BulkAction::Reschedule,
-        _ => return Err(Error::BadRequest("action".to_owned())),
+        _ => return Err(super::pages::bad_field(&lang, "action")),
     };
     let result = conflict::bulk_resolve(
         &state,
@@ -274,7 +274,7 @@ async fn create_block(
     let ends_at = parse_local(field(&form, "ends_at")).unwrap_or_else(|| rest_of_day(starts_at));
     let reason = field(&form, "reason");
     let block = AvailabilityBlock::manual(
-        number(&form, "resource")?,
+        number(&form, "resource", &lang)?,
         starts_at,
         ends_at,
         if reason.is_empty() { "other" } else { reason },
