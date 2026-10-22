@@ -2706,3 +2706,139 @@ async fn edu_18_a_declined_card_refund_is_retried_once_then_the_accountant_pays_
     );
     assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Withdrawn);
 }
+
+// ---- #453: the membership charge that fails and the pause allowance, with the real wl-invoicing --
+
+/// The retry notices the parent `payer` has had.
+async fn retries(w: &World, payer: PartyId) -> usize {
+    support::messages_to_party(&w.app, wl_invoicing::subscriptions::RETRY_NOTICE, payer)
+        .await
+        .len()
+}
+
+/// The daily check of the subscriptions on the day `40 + on`, then the jobs.
+async fn check(w: &World, on: i64) {
+    w.app
+        .at_travelled_time(wl_invoicing::subscriptions::evaluate(
+            w.state(),
+            day(40 + on),
+        ))
+        .await
+        .unwrap();
+    w.app.run_all_jobs().await;
+}
+
+/// #453 point 3, run: the membership's first cycle invoice is not paid. The
+/// daily check makes the subscription `past_due`, chases it on days 1, 3 and 7
+/// (the parent gets one retry notice each time and not on the days between) and
+/// then `suspended`, with the host's values 1, 3, 7 and suspension on.
+#[renox::test]
+async fn edu_18_a_membership_charge_that_fails_is_retried_on_days_1_3_7_then_suspended() {
+    use wl_kernel::subscriptions::SubscriptionStatus;
+    let w = boot().await;
+    let (_, desk) = w.staff("Dina", COUNSELLOR).await;
+    let (e, subscription) = membership(&w, &desk, "Sara Ali").await;
+    assert_eq!(
+        wl_invoicing::subscriptions::bill_due(w.state(), day(0))
+            .await
+            .unwrap(),
+        1
+    );
+    // Forty days pass with the invoice unpaid.
+    w.app.travel(Duration::from_secs(40 * 86_400));
+    w.app
+        .at_travelled_time(wl_invoicing::overdue::run(w.state()))
+        .await
+        .unwrap();
+    let payer = PartyId(e.payer_party_id);
+    check(&w, 0).await;
+    assert_eq!(
+        subscription_now(&w, &subscription).await.status,
+        SubscriptionStatus::PastDue
+    );
+    assert_eq!(retries(&w, payer).await, 0);
+    for (on, expected) in [(1, 1), (2, 1), (3, 2), (5, 2)] {
+        check(&w, on).await;
+        assert_eq!(retries(&w, payer).await, expected, "day {on}");
+        assert_eq!(
+            subscription_now(&w, &subscription).await.status,
+            SubscriptionStatus::PastDue,
+            "day {on}"
+        );
+    }
+    // The third retry is the last: with it the subscription is suspended.
+    check(&w, 7).await;
+    assert_eq!(retries(&w, payer).await, 3, "the third retry, on day 7");
+    assert_eq!(
+        subscription_now(&w, &subscription).await.status,
+        SubscriptionStatus::Suspended
+    );
+    check(&w, 10).await;
+    let suspended = subscription_now(&w, &subscription).await;
+    assert_eq!(suspended.status, SubscriptionStatus::Suspended);
+    assert_eq!(retries(&w, payer).await, 3, "no fourth retry");
+}
+
+/// #453 point 3, run: a user may pause the membership for 30 days in a year; the
+/// 31st day is refused. The refusal changes nothing; after the 30 days the
+/// allowance is used and a further day is refused.
+#[renox::test]
+async fn edu_18_a_membership_pause_of_30_days_is_allowed_and_the_31st_day_is_refused() {
+    use wl_kernel::subscriptions::{PauseCause, PauseSubscription, SubscriptionStatus};
+    let w = boot().await;
+    let (_, desk) = w.staff("Dina", COUNSELLOR).await;
+    let (_, accountant) = w.staff("Rita", host::roles::ACCOUNTANT).await;
+    let (e, subscription) = membership(&w, &desk, "Sara Ali").await;
+
+    let too_long = wl_invoicing::subscriptions::pause(
+        w.state(),
+        &subscription,
+        &PauseSubscription::new(PauseCause::User, day(0))
+            .reason("travelling")
+            .until(day(31)),
+        Some(&accountant),
+    )
+    .await;
+    assert!(too_long.is_err(), "31 days are refused");
+    assert_eq!(
+        subscription_now(&w, &subscription).await.status,
+        SubscriptionStatus::Active,
+        "nothing changed"
+    );
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Active);
+
+    wl_invoicing::subscriptions::pause(
+        w.state(),
+        &subscription,
+        &PauseSubscription::new(PauseCause::User, day(0))
+            .reason("travelling")
+            .until(day(30)),
+        Some(&accountant),
+    )
+    .await
+    .expect("30 days are allowed");
+    let paused = subscription_now(&w, &subscription).await;
+    assert_eq!(paused.status, SubscriptionStatus::Paused);
+    assert_eq!(paused.pause_days_used, 30);
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Frozen);
+
+    wl_invoicing::subscriptions::resume(
+        w.state(),
+        &subscription,
+        PauseCause::User,
+        day(30),
+        Some(&accountant),
+    )
+    .await
+    .unwrap();
+    let again = wl_invoicing::subscriptions::pause(
+        w.state(),
+        &subscription,
+        &PauseSubscription::new(PauseCause::User, day(30))
+            .reason("again")
+            .until(day(31)),
+        Some(&accountant),
+    )
+    .await;
+    assert!(again.is_err(), "the year's 30 days are used");
+}
