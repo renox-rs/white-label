@@ -678,3 +678,137 @@ async fn edu_08_the_clearance_decides_open_and_reschedule_in_the_real_guard() {
         .unwrap();
     assert_eq!(moved.session_date, early);
 }
+
+// ---- #441: a chargeback through the real wl-payments and wl-invoicing --------------------------
+
+/// The first invoice of `e` as stored by the real wl-invoicing.
+async fn invoice_of(w: &World, e: &Enrolment) -> wl_invoicing::Invoice {
+    wl_invoicing::Invoice::find_or_404(w.db(), e.first_invoice_id.expect("an invoice"))
+        .await
+        .unwrap()
+}
+
+/// The accountant allocates the card payment `payment` to the first invoice
+/// of `e` (wl-payments does not allocate a payment on a link by itself, see
+/// the deferred line "#441 payment link allocation").
+async fn allocate_to_invoice(w: &World, e: &Enrolment, payment: &Payment) {
+    wl_payments::allocate::allocate(
+        w.state(),
+        wl_kernel::payments::PaymentId(payment.id),
+        wl_kernel::payments::AllocationTarget::Invoice(wl_kernel::invoicing::InvoiceId(
+            e.first_invoice_id.expect("an invoice"),
+        )),
+        payment.amount,
+        None,
+    )
+    .await
+    .expect("the payment is allocated");
+}
+
+/// #441 points 1 and 2 with the real modules. The AED 2,520.00 fee is paid by
+/// card (wl-payments allocates it, wl-invoicing marks it paid, the enrolment
+/// activates); the bank charges the payment back (`gateway_dispute_opened`):
+/// wl-payments reverses it, wl-invoicing reopens the invoice, and the counsellor
+/// gets one task with the amount and both links while the enrolment stays
+/// `active`. The counsellor sends a payment link for the money; when it is paid
+/// the invoice is paid again and the task closes.
+#[renox::test]
+async fn edu_06_a_charged_back_card_payment_reopens_the_invoice_and_gives_one_task() {
+    use wl_kernel::invoicing::InvoiceStatus;
+    use wl_kernel::tickets::task_creator;
+    let w = boot().await;
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (dina_user, dina) = w.staff("Dina", COUNSELLOR).await;
+    let batch = w.open_batch(&coordinator, "A", day(7)).await;
+    let sara = tenant(&w.app, "Sara Ali").await;
+    let e = enrolments::create(
+        w.state(),
+        &dina,
+        NewEnrolment::course(sara.0, batch.id, 252_000).terms_accepted(),
+    )
+    .await
+    .unwrap();
+    let payment = start_payment(&w, &e).await;
+    let txn = payment.gateway_transaction.clone().expect("a transaction");
+    online::gateway_succeeded(w.state(), &txn, payment.amount)
+        .await
+        .unwrap()
+        .expect("received");
+    allocate_to_invoice(&w, &e, &payment).await;
+    assert_eq!(
+        invoice_of(&w, &e).await.status,
+        InvoiceStatus::Paid,
+        "the payment settled INV"
+    );
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Active);
+
+    wl_payments::chargeback::gateway_dispute_opened(
+        w.state(),
+        &txn,
+        &wl_payments::chargeback::DisputeOpened::new("dp_1"),
+    )
+    .await
+    .unwrap()
+    .expect("charged back");
+
+    let reopened = invoice_of(&w, &e).await;
+    assert_ne!(reopened.status, InvoiceStatus::Paid, "the invoice reopened");
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Active);
+    let key = edtech::chargebacks::task_key(e.id);
+    let found = task_creator(w.state())
+        .find_open(w.state(), &key)
+        .await
+        .unwrap()
+        .expect("the counsellor's task");
+    let ticket = wl_ticketing::Ticket::find_or_404(w.db(), found.id.0)
+        .await
+        .unwrap();
+    assert_eq!(ticket.assignee_user_id, Some(dina_user.id));
+    let text = format!("{} {}", ticket.title, ticket.description);
+    assert!(text.contains("2,520.00"), "{text}");
+    assert!(
+        text.contains(&edtech::chargebacks::collect_path(e.id)),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("/edtech/enrolments/{}", e.id)),
+        "{text}"
+    );
+    assert_eq!(
+        wl_ticketing::Ticket::query()
+            .where_(wl_ticketing::Ticket::SOURCE_KEY.eq(key.clone()))
+            .count(w.db())
+            .await
+            .unwrap(),
+        1,
+        "one task"
+    );
+
+    // The counsellor sends a link for the money; it is paid; the task closes.
+    let path = edtech::chargebacks::send_link(w.state(), &dina, e.id)
+        .await
+        .unwrap();
+    let after_link = reload(&w, &e).await;
+    assert_eq!(after_link.payment_link_path.as_deref(), Some(path.as_str()));
+    let again = start_payment(&w, &after_link).await;
+    assert_eq!(again.amount, 252_000);
+    online::gateway_succeeded(
+        w.state(),
+        again.gateway_transaction.as_deref().unwrap(),
+        again.amount,
+    )
+    .await
+    .unwrap()
+    .expect("received");
+    allocate_to_invoice(&w, &e, &again).await;
+    assert_eq!(invoice_of(&w, &e).await.status, InvoiceStatus::Paid);
+    assert!(
+        task_creator(w.state())
+            .find_open(w.state(), &key)
+            .await
+            .unwrap()
+            .is_none(),
+        "the task closed"
+    );
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Active);
+}

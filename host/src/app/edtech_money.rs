@@ -52,6 +52,12 @@ use super::negative_flow::{Row, aed};
 /// each given the cash-flow threshold of AED 25,000.
 pub fn invoicing(module: WlInvoicing, entities: &[String]) -> WlInvoicing {
     let mut module = module
+        // The fee invoice of an enrolment is issued at once, so that the first
+        // payment, made on the payment link, is allocated to it and activates
+        // the enrolment (`EDU.RUL.11`); the membership's cycle invoices bill
+        // themselves (`FIN.RUL.06`).
+        .auto_issue_source(edtech::enrolment::ENROLMENT_SUBJECT_TYPE)
+        .auto_issue_source("invoicing.subscription")
         // `FIN.ACL.15`: every write-off is approved.
         .write_off_approvers(&money::WRITE_OFF_APPROVERS)
         // A corporate contact does not dispute in the portal until the
