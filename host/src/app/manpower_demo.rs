@@ -382,18 +382,32 @@ async fn run_command(client: wl_kernel::ClientConfig, state: AppState, said: boo
     }
     let app = crate::app_for(client).map_err(|e| renox::anyhow::anyhow!("{e}"))?;
     let kernel = app.config((*state.config).clone()).boot().await?;
-    let state = kernel.state().clone();
-    if is_seeded(&state.db).await? {
+    if !seed(&kernel).await? {
         println!("The demo agency is there already.");
         return Ok(());
     }
-    let driver = Driver::new(kernel.router());
-    Box::pin(Seed::new(state, driver).run()).await?;
     println!("The demo agency is made. Log in with any of these (password {PASSWORD}):");
     for login in LOGINS {
         println!("  {:<40} {}", login.email, login.label);
     }
     Ok(())
+}
+
+/// Seeds the demo agency into the database `kernel` is on; `false` when it is
+/// there already and nothing was made. (The app must have been installed:
+/// the legal entity of `client.toml` exists.)
+///
+/// # Errors
+///
+/// The database's errors, and the message of the rule a demo record broke.
+pub async fn seed(kernel: &renox::Kernel) -> Result<bool> {
+    let state = kernel.state().clone();
+    if is_seeded(&state.db).await? {
+        return Ok(false);
+    }
+    let driver = Driver::new(kernel.router());
+    Box::pin(Seed::new(state, driver).run()).await?;
+    Ok(true)
 }
 
 /// The demo is there once its last step recorded that it is done.
