@@ -259,3 +259,35 @@ pub fn no_raw_words(html: &str) {
         }
     }
 }
+
+/// The id of the employee called `name` in the demo.
+pub async fn employee(app: &TestApp, name: &str) -> i64 {
+    scalar(
+        app,
+        &format!(
+            "select e.id from wl_hr_employees e join wl_parties_parties p on p.id = e.party_id \
+             where p.legal_name_en = '{name}'"
+        ),
+    )
+    .await
+}
+
+/// The first deployment of the worker called `name` in the demo.
+pub async fn deployment_of(app: &TestApp, name: &str) -> i64 {
+    let employee = employee(app, name).await;
+    scalar(
+        app,
+        &format!("select min(id) from manpower_deployments where employee_id = {employee}"),
+    )
+    .await
+}
+
+/// Asserts the phone structure of `html`: every table scrolls inside its own
+/// box (the kit's table wrapper), so nothing widens the page.
+pub fn fits_a_phone(html: &str) {
+    assert_eq!(
+        html.matches("<table").count(),
+        html.matches("rx-table-wrap").count(),
+        "every table scrolls inside its own box"
+    );
+}
