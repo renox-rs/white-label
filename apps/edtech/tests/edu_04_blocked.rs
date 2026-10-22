@@ -256,15 +256,13 @@ async fn edu_04_the_package_is_given_back_the_days_it_stood_frozen() {
     let f = family(&t).await;
     let package = f.e2.package_id.expect("the package of E2");
     t.packages.set_end(package, day(50));
+    // The block freezes E2 today (the transition records the day) and is lifted
+    // ten days later, by the clock, not by writing the column.
     t.block(GUARDIAN).await;
-    // The block began ten days ago.
-    Enrolment::query()
-        .where_(Enrolment::ID.eq(f.e2.id))
-        .update(t.db(), &[("frozen_on", &Some(day(-10)))])
-        .await
-        .unwrap();
-
-    t.unblock(GUARDIAN).await;
+    assert_eq!(reload(&t, &f.e2).await.frozen_on, Some(day(0)));
+    t.app.travel(std::time::Duration::from_secs(10 * 24 * 3600));
+    t.app.at_travelled_time(t.unblock(GUARDIAN)).await;
+    t.app.travel_back();
 
     assert_eq!(reload(&t, &f.e2).await.status, EnrolmentStatus::Active);
     assert_eq!(t.packages.end_of(package), Some(day(60)));
