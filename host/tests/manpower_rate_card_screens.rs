@@ -200,6 +200,10 @@ async fn accepting_needs_the_signed_document_and_then_the_lines_are_read_only() 
         &html,
         &[
             "Accepted",
+            "Accepted on",
+            &words(day(0)),
+            "Accepted by",
+            "Amal Youssef",
             "rate-card-v2-signed.pdf",
             "never edited",
             "Security guard",
