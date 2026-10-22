@@ -812,3 +812,174 @@ async fn edu_06_a_charged_back_card_payment_reopens_the_invoice_and_gives_one_ta
     );
     assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Active);
 }
+
+// ---- #440: the membership and the enrolment, with the real wl-invoicing ------------------------
+
+/// An active membership enrolment of a new student (AED 315.00 a month) whose
+/// real subscription was started on activation.
+async fn membership(
+    w: &World,
+    desk: &AuthUser,
+    name: &str,
+) -> (Enrolment, wl_invoicing::Subscription) {
+    let student = tenant(&w.app, name).await;
+    let e = enrolments::create(
+        w.state(),
+        desk,
+        NewEnrolment::membership(student.0, "club", "Conversation club", 31_500).terms_accepted(),
+    )
+    .await
+    .unwrap();
+    let active = enrolments::activate(w.state(), Some(desk), e.id)
+        .await
+        .unwrap();
+    assert_eq!(active.status, EnrolmentStatus::Active);
+    let id = active.subscription_id.expect("a subscription was started");
+    let subscription = wl_invoicing::Subscription::find_or_404(w.db(), id)
+        .await
+        .unwrap();
+    assert_eq!(
+        subscription.status,
+        wl_kernel::subscriptions::SubscriptionStatus::Active
+    );
+    (active, subscription)
+}
+
+async fn subscription_now(w: &World, s: &wl_invoicing::Subscription) -> wl_invoicing::Subscription {
+    wl_invoicing::Subscription::find_or_404(w.db(), s.id)
+        .await
+        .unwrap()
+}
+
+/// #440 points 1 and 4 with the real subscription: the guardian pauses the
+/// membership for 14 days (a user pause of wl-invoicing), the enrolment is
+/// frozen with the *linked* cause and no day counted against the allowance; the
+/// enrolment history shows each step once; when the pause is ended the
+/// enrolment is active and nothing is asked of the subscription a second time.
+#[renox::test]
+async fn edu_05_a_real_pause_freezes_the_enrolment_and_its_end_unfreezes_it_once() {
+    use wl_kernel::subscriptions::{PauseCause, PauseSubscription, SubscriptionStatus};
+    let w = boot().await;
+    let (_, desk) = w.staff("Dina", COUNSELLOR).await;
+    let (_, accountant) = w.staff("Rita", host::roles::ACCOUNTANT).await;
+    let (e, subscription) = membership(&w, &desk, "Sara Ali").await;
+
+    wl_invoicing::subscriptions::pause(
+        w.state(),
+        &subscription,
+        &PauseSubscription::new(PauseCause::User, day(0))
+            .reason("travelling")
+            .until(day(14)),
+        Some(&accountant),
+    )
+    .await
+    .expect("the user pause runs");
+
+    let paused = subscription_now(&w, &subscription).await;
+    assert_eq!(paused.status, SubscriptionStatus::Paused);
+    assert_eq!(
+        paused.pause_days_used, 14,
+        "the module counts the allowance"
+    );
+    let frozen = reload(&w, &e).await;
+    assert_eq!(frozen.status, EnrolmentStatus::Frozen);
+    let rows = edtech::EnrolmentFreeze::open_of(w.db(), e.id)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].cause, edtech::FreezeCause::Linked);
+    assert_eq!(rows[0].counted_days, 0, "the days are counted once, by M");
+    assert_eq!(rows[0].until_on, Some(day(14)));
+    let open = wl_invoicing::SubscriptionPause::open_of(w.db(), subscription.id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1, "no second pause was asked of M");
+
+    wl_invoicing::subscriptions::resume(
+        w.state(),
+        &subscription,
+        PauseCause::User,
+        day(0),
+        Some(&accountant),
+    )
+    .await
+    .expect("the pause ends");
+
+    assert_eq!(
+        subscription_now(&w, &subscription).await.status,
+        SubscriptionStatus::Active
+    );
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Active);
+    assert!(
+        edtech::EnrolmentFreeze::open_of(w.db(), e.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let steps: Vec<String> = renox::state_machine::history(w.db(), "edtech_enrolments", e.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| row.transition)
+        .collect();
+    assert_eq!(
+        steps.iter().filter(|s| s.starts_with("freeze")).count(),
+        1,
+        "{steps:?}"
+    );
+    assert_eq!(
+        steps.iter().filter(|s| s.starts_with("unfreeze")).count(),
+        1,
+        "{steps:?}"
+    );
+}
+
+/// #440 point 2 with the real subscription: staff freeze the enrolment for 14
+/// days; the real subscription is paused with the agreement's cause (one pause,
+/// asked once) and counts none of the days against the member's allowance, the
+/// enrolment counted its 15 days; unfreezing resumes the subscription.
+#[renox::test]
+async fn edu_05_a_real_freeze_pauses_the_subscription_once_and_unfreezing_resumes_it() {
+    use wl_kernel::subscriptions::{PauseCause, SubscriptionStatus};
+    let w = boot().await;
+    let (_, desk) = w.staff("Dina", COUNSELLOR).await;
+    let (e, subscription) = membership(&w, &desk, "Omar Hassan").await;
+
+    enrolments::freeze(
+        w.state(),
+        Some(&desk),
+        e.id,
+        edtech::FreezeCause::Student,
+        Some(day(14)),
+    )
+    .await
+    .unwrap();
+
+    let paused = subscription_now(&w, &subscription).await;
+    assert_eq!(paused.status, SubscriptionStatus::Paused);
+    assert_eq!(
+        paused.pause_days_used, 0,
+        "the days are counted by the enrolment"
+    );
+    let open = wl_invoicing::SubscriptionPause::open_of(w.db(), subscription.id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].cause, PauseCause::Agreement);
+    assert_eq!(
+        edtech::EnrolmentFreeze::counted_in_year(w.db(), e.student_party_id, day(0))
+            .await
+            .unwrap(),
+        15
+    );
+
+    enrolments::unfreeze(w.state(), Some(&desk), e.id, edtech::FreezeCause::Student)
+        .await
+        .unwrap();
+
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Active);
+    assert_eq!(
+        subscription_now(&w, &subscription).await.status,
+        SubscriptionStatus::Active
+    );
+}
