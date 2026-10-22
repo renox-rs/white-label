@@ -836,6 +836,26 @@ pub async fn ordering_of(db: &Db, brand: &Brand) -> Result<Vec<OutletOrdering>> 
     Ok(found)
 }
 
+/// Whether the brand's checkout takes an order: for the kitchen `outlet_code`
+/// when one is named, else when any kitchen that cooks the brand is open (a
+/// brand no outlet manages takes orders). A paused kitchen takes none.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn takes_orders(db: &Db, brand: &Brand, outlet_code: Option<&str>) -> Result<bool> {
+    match outlet_code {
+        Some(code) => match Outlet::by_code(db, code).await? {
+            Some(outlet) => accepts_orders(db, outlet.id, brand.id).await,
+            None => Ok(false),
+        },
+        None => {
+            let kitchens = ordering_of(db, brand).await?;
+            Ok(kitchens.is_empty() || kitchens.iter().any(|k| k.open))
+        }
+    }
+}
+
 /// Registers the device connection of one outlet's kitchen devices (BL-KRN-07):
 /// active in the outlet's opening hours, grouped (`down` only when no device
 /// answers), `down` after N minutes of silence, with the manual fallback.

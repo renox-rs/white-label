@@ -5,11 +5,12 @@
 <rx-page layout="layouts/app.html" :title="tx['checkout_title']">
   <rx-stack>
     <rx-page-header :title="tx['checkout_title']" :subtitle="tx['checkout_subtitle']"/>
-    <rx-card :title="tx['checkout_methods']">
+    <rx-alert rx-if="closed" id="kitchen-closed" kind="error" :message="tx['ordering.closed_text']"/>
+    <rx-card rx-if="not closed" :title="tx['checkout_methods']">
       <rx-stack>
         <p rx-if="online" id="pay-online">{{ tx['pay_online'] }}</p>
         <p rx-if="cash_on_delivery" id="pay-cash">{{ tx['pay_cash'] }}</p>
-        <p rx-if="not cash_on_delivery" id="online-only">{{ tx['online_only'] }}</p>
+        <p rx-if="not cash_on_delivery and not closed" id="online-only">{{ tx['online_only'] }}</p>
       </rx-stack>
     </rx-card>
   </rx-stack>

@@ -300,3 +300,27 @@ async fn a_manager_pauses_the_channels_by_hand_and_a_cashier_cannot() {
         .iter()
         .all(|c| !c.paused));
 }
+
+/// The brand's checkout of a paused kitchen takes no order: it says the kitchen
+/// is temporarily closed and offers nothing to pay with; the kitchen that is
+/// open, or a brand with another kitchen open, checks out as before.
+#[renox::test]
+async fn the_checkout_of_a_paused_kitchen_takes_no_order() {
+    let (w, o) = boot_ops().await;
+    let before = w.get(&o.till, "/checkout/payment?brand=zaatar&outlet=marina").await;
+    before.assert_ok();
+    assert!(before.text().contains("pay-online"), "{}", before.text());
+    marina_down(&w, o.marina.id).await;
+    let closed = w.get(&o.till, "/checkout/payment?brand=zaatar&outlet=marina").await;
+    closed.assert_ok();
+    assert!(closed.text().contains("kitchen-closed"), "{}", closed.text());
+    assert!(!closed.text().contains("pay-online"));
+    // Habibi Bowls is still cooked at Sharjah.
+    let open = w.get(&o.till, "/checkout/payment?brand=habibi").await;
+    assert!(open.text().contains("pay-online"), "{}", open.text());
+    let sharjah = w.get(&o.till, "/checkout/payment?brand=habibi&outlet=sharjah").await;
+    assert!(sharjah.text().contains("pay-online"));
+    // The brand with no other kitchen is closed for everyone.
+    let zaatar = w.get(&o.till, "/checkout/payment?brand=zaatar").await;
+    assert!(zaatar.text().contains("kitchen-closed"), "{}", zaatar.text());
+}

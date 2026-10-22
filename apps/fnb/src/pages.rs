@@ -1165,12 +1165,14 @@ pub(crate) struct CheckoutPage {
     tx: Texts,
     online: bool,
     cash_on_delivery: bool,
+    closed: bool,
 }
 
 /// `GET /checkout/payment`: what the signed-in customer can pay with. With
 /// cash on delivery off (`FNB.RUL.14`) only online payment is offered, with the
 /// line "Online payment only for this order". Staff taking a phone order give
-/// the customer as `?party=`.
+/// the customer as `?party=`. `?brand=` (and `?outlet=`) name the kitchen: when
+/// its channels are paused the page says it is temporarily closed.
 async fn checkout_payment(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1188,10 +1190,27 @@ async fn checkout_payment(
             cash_on_delivery: true,
         },
     };
+    // A kitchen whose channels are paused (`FNB.RUL.15`) takes no order: the
+    // checkout of the brand says so and offers nothing to pay with.
+    let closed = match query.get("brand") {
+        Some(code) => match crate::catalogue::Brand::by_code(&state.db, code).await? {
+            Some(brand) => {
+                !crate::outage::takes_orders(
+                    &state.db,
+                    &brand,
+                    query.get("outlet").map(String::as_str),
+                )
+                .await?
+            }
+            None => false,
+        },
+        None => false,
+    };
     Ok(View::typed(CheckoutPage {
         tx: tx(&lang),
-        online: options.online,
-        cash_on_delivery: options.cash_on_delivery,
+        online: options.online && !closed,
+        cash_on_delivery: options.cash_on_delivery && !closed,
+        closed,
     })
     .into_response())
 }
