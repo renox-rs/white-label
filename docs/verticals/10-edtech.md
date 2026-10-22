@@ -745,6 +745,17 @@ Trial and one-to-one booking messages keep the wl-scheduling group (*Booking con
 and reminders*). Types sent only to staff users name no group and take `none`: staff always
 also get the in-app notification (wl-notify §5.1).
 
+**The notification types and the settings in the app (BL-EDU-17).** The messages to
+students and guardians are one type, `edtech.family_notice` (WhatsApp, then e-mail);
+terms, refund policy and consent requests are `edtech.terms_request`; a message to staff
+is `edtech.notice`. The invoice and membership types are the shared modules' and the
+host gives them the reactions above. The one-to-one service type asks the police
+clearance of its tutor whoever the student is (wl-scheduling's eligibility names no
+student, so a clearance asked "only for a minor" cannot be told apart); a freelance tutor
+needs the permit or visa too. The owner decides the override of a police clearance block
+when the client switches it to `with_approval`. The four segments of the loyalty row are
+not seeded yet; the rest of the rows are.
+
 **Settings for the shared sales, finance, staff and document capabilities (10
 defaults):**
 
