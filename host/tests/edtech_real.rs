@@ -1335,3 +1335,359 @@ async fn edu_11_a_valid_clearance_gives_no_flag_in_the_real_guard() {
         "valid through the class day"
     );
 }
+
+// ---- #450, #449, #446: the credits of a package, against the real wl-sales ledger ----------------
+
+const PACK: &str = "pack10";
+
+/// The local time `hour:minute` of `date` (Asia/Dubai) as an instant.
+fn local(date: NaiveDate, hour: u32, minute: u32) -> renox::db::DateTime {
+    wl_kernel::BusinessCalendar::default().from_local(
+        date.and_hms_opt(hour, minute, 0).expect("a time"),
+    )
+}
+
+/// The `n`th session (from 0) of `batch`, set to start at `starts` and last
+/// 90 minutes, as a class that has been (or will be) given then.
+async fn session_at(
+    w: &World,
+    batch: &Batch,
+    n: usize,
+    starts: renox::db::DateTime,
+) -> edtech::Session {
+    let mut session = edtech::Session::of_batch(w.db(), batch.id)
+        .await
+        .unwrap()
+        .remove(n);
+    session.session_date = wl_kernel::documents::dubai_date(starts);
+    session.starts_at = starts;
+    session.ends_at = starts + TimeDelta::minutes(90);
+    session.save(w.db()).await.unwrap();
+    session
+}
+
+/// A student with an ACTIVE package of `credits` credits (AED 150.00 each plus
+/// VAT is the price asked), sold by wl-sales and paid on its invoice; answers
+/// the enrolment and the party.
+async fn package_student(
+    w: &World,
+    desk: &AuthUser,
+    name: &str,
+    credits: i64,
+    policy: Option<(bool, i64)>,
+) -> (Enrolment, i64) {
+    use wl_kernel::sales::package_ledger;
+    let party = tenant(&w.app, name).await;
+    let mut new = NewEnrolment::package(party.0, PACK, "Ten classes", credits, credits * 15_750)
+        .terms_accepted();
+    if let Some((consumes, hours)) = policy {
+        new = new.absence_policy(consumes, hours);
+    }
+    let e = enrolments::create(w.state(), desk, new).await.unwrap();
+    let invoice = invoice_of(w, &e).await;
+    wl_kernel::invoicing::invoicer(w.state())
+        .allocate(
+            w.state(),
+            wl_kernel::invoicing::InvoiceId(invoice.id),
+            wl_kernel::Subject::new("payments.payment", 9_000 + e.id),
+            invoice.gross_total,
+        )
+        .await
+        .expect("the package is paid");
+    let active = reload(w, &e).await;
+    assert_eq!(active.status, EnrolmentStatus::Active, "paid, so active");
+    assert_eq!(
+        package_ledger(w.state())
+            .balance(w.db(), PartyId(party.0), PACK)
+            .await
+            .unwrap(),
+        credits,
+        "wl-sales holds the credits"
+    );
+    (active, party.0)
+}
+
+/// The credits wl-sales says `party` can use.
+async fn credits_left(w: &World, party: i64) -> i64 {
+    wl_kernel::sales::package_ledger(w.state())
+        .balance(w.db(), PartyId(party), PACK)
+        .await
+        .unwrap()
+}
+
+/// The open batch with a coordinator, a desk and a tutor, ready for classes.
+struct Class {
+    batch: Batch,
+    coordinator: AuthUser,
+    desk: AuthUser,
+    tutor: AuthUser,
+}
+
+async fn class(w: &World) -> Class {
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (_, desk) = w.staff("Dina", COUNSELLOR).await;
+    let (_, tutor) = w.staff("Tariq", host::roles::TUTOR).await;
+    let batch = w.open_batch(&coordinator, "A", day(7)).await;
+    Class {
+        batch,
+        coordinator,
+        desk,
+        tutor,
+    }
+}
+
+async fn mark_row(
+    w: &World,
+    session: &edtech::Session,
+    e: &Enrolment,
+) -> edtech::attendance::Attendance {
+    edtech::attendance::Attendance::find_of(w.db(), session.id, e.id)
+        .await
+        .unwrap()
+        .expect("a row")
+}
+
+/// #450 points 1 to 3 against the real ledger: a 10-credit package; absent with
+/// no notice uses one credit (nine left in wl-sales, the row consumed); a
+/// notice 26 hours ahead excuses (nothing used, one make-up right); a notice two
+/// hours ahead leaves the absence unexcused and it uses a credit.
+#[renox::test]
+async fn edu_15_the_real_ledger_charges_the_unexcused_absence_only() {
+    use edtech::attendance::Mark;
+    let w = boot().await;
+    let c = class(&w).await;
+    let (e, party) = package_student(&w, &c.desk, "Sara Ali", 10, None).await;
+    let first = session_at(&w, &c.batch, 0, local(day(-6), 18, 0)).await;
+    let early = session_at(&w, &c.batch, 1, local(day(-4), 18, 0)).await;
+    let late = session_at(&w, &c.batch, 2, local(day(-2), 18, 0)).await;
+    for s in [&first, &early, &late] {
+        edtech::roster::add_student(w.state(), &c.desk, s.id, e.id)
+            .await
+            .unwrap();
+    }
+
+    edtech::sessions::submit_attendance_marked(
+        w.state(),
+        &c.tutor,
+        first.id,
+        &[(e.id, Mark::Absent)],
+        false,
+    )
+    .await
+    .unwrap();
+    let absent = mark_row(&w, &first, &e).await;
+    assert!(absent.credit_due && absent.consumed);
+    assert_eq!(credits_left(&w, party).await, 9, "one credit used");
+
+    // 26 hours ahead excuses.
+    let noticed = edtech::roster::record_notice(
+        w.state(),
+        &c.desk,
+        early.id,
+        e.id,
+        early.starts_at - TimeDelta::hours(26),
+    )
+    .await
+    .unwrap();
+    assert_eq!(noticed.mark, Mark::Excused);
+    edtech::sessions::submit_attendance_marked(w.state(), &c.tutor, early.id, &[], false)
+        .await
+        .unwrap();
+    assert!(!mark_row(&w, &early, &e).await.consumed);
+    assert_eq!(credits_left(&w, party).await, 9, "an excused absence is free");
+    let rights = edtech::make_up::open_rights(w.db(), &reload(&w, &e).await)
+        .await
+        .unwrap();
+    assert_eq!(rights.len(), 1);
+    assert_eq!(rights[0].session_id, early.id);
+
+    // Two hours ahead is too late: the absence is unexcused.
+    let tardy = edtech::roster::record_notice(
+        w.state(),
+        &c.desk,
+        late.id,
+        e.id,
+        late.starts_at - TimeDelta::hours(2),
+    )
+    .await
+    .unwrap();
+    assert_eq!(tardy.mark, Mark::Pending);
+    edtech::sessions::submit_attendance_marked(
+        w.state(),
+        &c.tutor,
+        late.id,
+        &[(e.id, Mark::Absent)],
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(mark_row(&w, &late, &e).await.consumed);
+    assert_eq!(credits_left(&w, party).await, 8);
+}
+
+/// #450 point 4 against the real ledger: an enrolment whose policy says an
+/// unexcused absence consumes nothing keeps its credits when absent, and the
+/// student who came still uses one.
+#[renox::test]
+async fn edu_15_the_real_ledger_keeps_the_credit_when_the_policy_does_not_charge_absences() {
+    use edtech::attendance::Mark;
+    let w = boot().await;
+    let c = class(&w).await;
+    let (e, party) = package_student(&w, &c.desk, "Sara Ali", 10, Some((false, 24))).await;
+    let absent_day = session_at(&w, &c.batch, 0, local(day(-5), 18, 0)).await;
+    let present_day = session_at(&w, &c.batch, 1, local(day(-3), 18, 0)).await;
+    for s in [&absent_day, &present_day] {
+        edtech::roster::add_student(w.state(), &c.desk, s.id, e.id)
+            .await
+            .unwrap();
+    }
+    edtech::sessions::submit_attendance_marked(
+        w.state(),
+        &c.tutor,
+        absent_day.id,
+        &[(e.id, Mark::Absent)],
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(!mark_row(&w, &absent_day, &e).await.consumed);
+    assert_eq!(credits_left(&w, party).await, 10, "nothing consumed");
+
+    edtech::sessions::submit_attendance_marked(
+        w.state(),
+        &c.tutor,
+        present_day.id,
+        &[(e.id, Mark::Present)],
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(credits_left(&w, party).await, 9, "attending uses one");
+}
+
+/// #450 point 5 against the real ledger: a cancelled session consumes nothing
+/// of a package student on its roster, and a membership student of the batch
+/// consumes nothing of any ledger.
+#[renox::test]
+async fn edu_15_the_real_ledger_is_not_asked_for_a_cancelled_session() {
+    let w = boot().await;
+    let c = class(&w).await;
+    let (e, party) = package_student(&w, &c.desk, "Sara Ali", 10, None).await;
+    let cancelled = session_at(&w, &c.batch, 0, local(day(2), 18, 0)).await;
+    edtech::roster::add_student(w.state(), &c.desk, cancelled.id, e.id)
+        .await
+        .unwrap();
+
+    let done = edtech::sessions::cancel(w.state(), &c.coordinator, cancelled.id, "Tutor sick", None)
+        .await
+        .unwrap();
+    assert_eq!(done.status, edtech::SessionStatus::Cancelled);
+    assert_eq!(credits_left(&w, party).await, 10, "nothing consumed");
+    let package = wl_sales::Package::query()
+        .where_(wl_sales::Package::HOLDER_PARTY_ID.eq(party))
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("the package");
+    assert_eq!(package.credits_used, 0);
+}
+
+/// #449 points 3 and 4 against the real ledger: the tutor marks absent without
+/// notice (a credit used), then corrects to excused (the credit comes back in
+/// wl-sales) and then to present (one is used again); each only the difference.
+#[renox::test]
+async fn edu_14_a_correction_moves_the_real_ledger_by_the_difference() {
+    use edtech::attendance::Mark;
+    let w = boot().await;
+    let c = class(&w).await;
+    let (e, party) = package_student(&w, &c.desk, "Sara Ali", 10, None).await;
+    // Ended two hours ago: the tutor is inside the 24 hours.
+    let ended = renox::db::now() - TimeDelta::hours(2);
+    let session = session_at(&w, &c.batch, 0, ended - TimeDelta::minutes(90)).await;
+    edtech::roster::add_student(w.state(), &c.desk, session.id, e.id)
+        .await
+        .unwrap();
+    edtech::sessions::submit_attendance_marked(
+        w.state(),
+        &c.tutor,
+        session.id,
+        &[(e.id, Mark::Absent)],
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(credits_left(&w, party).await, 9);
+
+    edtech::corrections::correct_attendance(
+        w.state(),
+        &c.tutor,
+        session.id,
+        &[(e.id, Mark::Excused)],
+        "the mother called before",
+    )
+    .await
+    .unwrap();
+    assert_eq!(credits_left(&w, party).await, 10, "the credit came back");
+    assert!(!mark_row(&w, &session, &e).await.consumed);
+
+    edtech::corrections::correct_attendance(
+        w.state(),
+        &c.tutor,
+        session.id,
+        &[(e.id, Mark::Present)],
+        "she came after all",
+    )
+    .await
+    .unwrap();
+    assert_eq!(credits_left(&w, party).await, 9, "attending uses one");
+    assert!(mark_row(&w, &session, &e).await.consumed);
+
+    // Present to present changes nothing.
+    edtech::corrections::correct_attendance(
+        w.state(),
+        &c.tutor,
+        session.id,
+        &[(e.id, Mark::Late)],
+        "arrived late",
+    )
+    .await
+    .unwrap();
+    assert_eq!(credits_left(&w, party).await, 9);
+}
+
+/// #446 point 1, the credits: a flagged session still uses the credit of a
+/// package student who came, in the real wl-sales ledger.
+#[renox::test]
+async fn edu_11_a_flagged_session_still_uses_the_real_credit() {
+    use edtech::attendance::Mark;
+    let w = boot().await;
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (_, desk) = w.staff("Dina", COUNSELLOR).await;
+    let (batch, clearance) = minors_batch_of(&w, &coordinator, "Layla Hassan").await;
+    let (e, party) = package_student(&w, &desk, "Sara Ali", 10, None).await;
+    let session = session_at(&w, &batch, 0, local(day(-3), 18, 0)).await;
+    edtech::roster::add_student(w.state(), &desk, session.id, e.id)
+        .await
+        .unwrap();
+    expires(&clearance, day(-5), &w).await;
+    let (_, tariq) = w.staff("Tariq", host::roles::TUTOR).await;
+
+    edtech::sessions::submit_attendance_marked(
+        w.state(),
+        &tariq,
+        session.id,
+        &[(e.id, Mark::Present)],
+        false,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        edtech::sessions::document_flags(w.state(), session.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(credits_left(&w, party).await, 9, "the flag changes no credit");
+}
