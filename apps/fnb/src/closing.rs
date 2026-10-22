@@ -23,7 +23,7 @@
 //! twin is for a seed, a job or the late-entry handler.
 
 use renox::chrono::NaiveDate;
-use renox::db::{DateTime, now};
+use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};

@@ -24,7 +24,7 @@
 //! close creates (recover from the cashier or write off, `FIN.ACL.06`).
 
 use renox::chrono::NaiveDate;
-use renox::db::{DateTime, now};
+use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};

@@ -30,6 +30,7 @@ use renox::chrono::{NaiveDate, NaiveTime};
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::serde_json::json;
+use serde::{Deserialize, Serialize};
 use renox::state_machine::StateMachine;
 use wl_kernel::documents::DUBAI_OFFSET_SECONDS;
 use wl_kernel::late_entries::{self, Entered, EntrySpec, Period};
@@ -159,7 +160,9 @@ fn create_paper_order<'a>(
 ) -> BoxFuture<'a, Result<i64>> {
     Box::pin(async move {
         let outlet_id = new.payload["outlet_id"].as_i64().unwrap_or_default();
-        let outlet = Outlet::find_or_404(&mut *tx, outlet_id).await?;
+        let outlet = Outlet::find(&mut *tx, outlet_id)
+            .await?
+            .ok_or(Error::NotFound)?;
         let date = outlet.business_date(new.occurred_at);
         let mut reopened = None;
         if let Some(closing) = DailyClosing::query()
