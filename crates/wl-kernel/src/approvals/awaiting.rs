@@ -96,7 +96,19 @@ const ACTION_LABELS: &[(&str, &str)] = &[
         "Accept a deduction from the retention above the limit",
     ),
     ("construction.variation_abandon", "Abandon a variation"),
+    (
+        "delivery.deliver_short",
+        "Approve a delivery with a cash difference",
+    ),
+    ("delivery.discard", "Approve discarding returned goods"),
+    ("delivery.mark_lost", "Mark a delivery as lost"),
+    (
+        "delivery.reverse_delivery",
+        "Approve reversing a delivered order",
+    ),
     ("documents.block_override", "Override a document block"),
+    ("fnb.batch_discard", "Approve discarding a production batch"),
+    ("fnb.payout_void", "Void a payout statement"),
     ("hr.cancel_onboarding", "Cancel an onboarding"),
     (
         "hr.record_death",
@@ -176,6 +188,17 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ("property.lease_force_terminate", "End a lease by force"),
     ("property.owner_invoice", "Invoice an owner"),
     ("property.owner_payout", "Pay an owner"),
+    ("sales.order_amend", "Approve a change to an order"),
+    ("sales.order_cancel", "Approve cancelling an order"),
+    (
+        "sales.order_cancel_line",
+        "Approve cancelling a line of an order",
+    ),
+    (
+        "sales.order_cancel_remaining",
+        "Approve cancelling the rest of an order",
+    ),
+    ("sales.return_refund", "Approve a refund after completion"),
     ("sales.void", "Void a sale"),
 ];
 
