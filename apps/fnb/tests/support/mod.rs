@@ -56,7 +56,7 @@ name = "Zaatar & Co. Kitchens LLC"
 app = "fnb"
 
 [modules]
-enabled = ["parties", "payments", "sales", "inventory", "delivery"]
+enabled = ["parties", "invoicing", "payments", "sales", "inventory", "delivery"]
 
 [[legal_entities]]
 code = "ZCK"
@@ -840,7 +840,14 @@ impl World {
             ("cash_collected".into(), cash.into()),
         ];
         for line in &lines {
-            fields.push((format!("delivered_{}", line.id), "1".into()));
+            fields.push((
+                format!("delivered_{}", line.id),
+                format!(
+                    "{}.{:03}",
+                    line.quantity_milli / 1000,
+                    line.quantity_milli % 1000
+                ),
+            ));
             fields.push((format!("refused_{}", line.id), "0".into()));
         }
         let borrowed: Vec<(&str, &str)> = fields
