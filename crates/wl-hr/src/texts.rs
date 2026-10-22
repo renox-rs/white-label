@@ -1465,6 +1465,49 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.notices.settlement_overdue_body",
         "The final settlement of {{ employee }} (last working day {{ last_working_day }}) was due on {{ deadline }} and is still not paid.",
     ),
+    // The lists of payroll runs and final settlements (#510).
+    ("wl_hr.payroll.list.title", "Payroll runs"),
+    (
+        "wl_hr.payroll.list.subtitle",
+        "One run for each month: calculate, approve, send to the bank, confirm.",
+    ),
+    ("wl_hr.payroll.list.new", "New run"),
+    (
+        "wl_hr.payroll.list.new_hint",
+        "Makes the regular run of the month and calculates its lines from the salary structures and the timesheet hours.",
+    ),
+    ("wl_hr.payroll.list.new_submit", "Start the run"),
+    ("wl_hr.payroll.list.period", "Month"),
+    ("wl_hr.payroll.list.kind", "Kind"),
+    ("wl_hr.payroll.list.total", "Total net"),
+    ("wl_hr.payroll.list.empty", "No payroll runs yet"),
+    (
+        "wl_hr.payroll.list.empty_hint",
+        "Start the run of a month to see its lines here.",
+    ),
+    (
+        "wl_hr.payroll.list.bad_period",
+        "Give the month as year and month, for example 2026-10.",
+    ),
+    (
+        "wl_hr.payroll.list.period_taken",
+        "A regular run for :period already exists. Open it from the list.",
+    ),
+    ("wl_hr.payroll.kind.regular", "Regular"),
+    ("wl_hr.payroll.kind.off_cycle", "Off-cycle"),
+    ("wl_hr.payroll.kind.supplementary", "Supplementary"),
+    ("wl_hr.settlement.list.title", "Final settlements"),
+    (
+        "wl_hr.settlement.list.subtitle",
+        "What each leaver is owed, with the legal deadline to pay it.",
+    ),
+    ("wl_hr.settlement.list.employee", "Employee"),
+    ("wl_hr.settlement.list.dues", "Dues"),
+    ("wl_hr.settlement.list.recoveries", "Recoveries"),
+    ("wl_hr.settlement.list.net", "Net"),
+    ("wl_hr.settlement.list.paid", "Paid"),
+    ("wl_hr.settlement.list.overdue", "Overdue"),
+    ("wl_hr.settlement.list.empty", "No final settlements yet"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

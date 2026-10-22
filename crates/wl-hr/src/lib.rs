@@ -115,6 +115,14 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-hr/payroll_run.html"),
     ),
     (
+        "wl-hr/payroll_runs.html",
+        include_str!("../views/wl-hr/payroll_runs.html"),
+    ),
+    (
+        "wl-hr/settlements.html",
+        include_str!("../views/wl-hr/settlements.html"),
+    ),
+    (
         "wl-hr/templates.html",
         include_str!("../views/wl-hr/templates.html"),
     ),
@@ -314,6 +322,8 @@ impl Module for WlHr {
         app.view_data::<pages::employees::IndexPage>()
             .view_data::<pages::employees::ShowPage>()
             .view_data::<pages::payroll::ShowPage>()
+            .view_data::<pages::payroll_list::IndexPage>()
+            .view_data::<pages::settlement_list::IndexPage>()
             .view_data::<pages::pay_accounts::ShowPage>()
             .view_data::<pages::pay_accounts::StopPage>()
             .view_data::<pages::settlements::ShowPage>()
@@ -415,6 +425,30 @@ impl Module for WlHr {
                 .group("nav.app")
                 .order(60)
                 .permission(permissions::EMPLOYEES_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_hr.payroll_runs", "nav.payroll")
+                .icon("wallet")
+                .group("nav.app")
+                .order(61)
+                .permission(permissions::PAYROLL_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_hr.settlements", "nav.settlements")
+                .icon("file-text")
+                .group("nav.app")
+                .order(62)
+                .when(|user| {
+                    [
+                        permissions::SETTLEMENTS_PREPARE,
+                        permissions::SETTLEMENTS_APPROVE,
+                        permissions::SETTLEMENTS_PAY,
+                    ]
+                    .iter()
+                    .any(|p| user.has_permission(p))
+                }),
         );
     }
 }

@@ -97,8 +97,28 @@ pub(crate) fn aed(fils: i64) -> String {
     format!("{sign}{}.{:02}", fils / 100, fils % 100)
 }
 
+/// `fils` as `AED 12,500.00`, for the lists.
+pub(crate) fn aed_text(fils: i64) -> String {
+    let plain = aed(fils.abs());
+    let (whole, fraction) = plain.split_once('.').unwrap_or((&plain, "00"));
+    let mut grouped = String::new();
+    for (i, digit) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    let sign = if fils < 0 { "-" } else { "" };
+    format!("{sign}AED {grouped}.{fraction}")
+}
+
+/// A date as `01 Nov 2026`.
+pub(crate) fn date_text(date: renox::chrono::NaiveDate) -> String {
+    date.format("%d %b %Y").to_string()
+}
+
 /// The badge kind of a run status.
-fn run_kind(status: PayrollRunStatus) -> &'static str {
+pub(crate) fn run_kind(status: PayrollRunStatus) -> &'static str {
     match status {
         PayrollRunStatus::Draft => "info",
         PayrollRunStatus::Calculated | PayrollRunStatus::Approved => "info",

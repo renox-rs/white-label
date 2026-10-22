@@ -69,7 +69,7 @@ fn text(lang: &Lang, key: &str) -> String {
 }
 
 /// The badge kind of a status.
-fn kind(status: SettlementStatus) -> &'static str {
+pub(crate) fn kind(status: SettlementStatus) -> &'static str {
     match status {
         SettlementStatus::Draft | SettlementStatus::Cancelled => "info",
         SettlementStatus::Approved | SettlementStatus::Paid | SettlementStatus::Closed => "success",
@@ -686,7 +686,7 @@ async fn acknowledgement(
 }
 
 /// The reason of an exit in words: `end_of_contract` as *End of contract*.
-fn reason_text(reason: &str) -> String {
+pub(crate) fn reason_text(reason: &str) -> String {
     let spaced = reason.replace('_', " ");
     let mut chars = spaced.chars();
     chars

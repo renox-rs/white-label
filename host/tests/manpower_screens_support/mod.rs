@@ -34,6 +34,10 @@ pub const ADMIN: &str = "admin@desertstar.example";
 pub const SUPERVISOR: &str = "supervisor@desertstar.example";
 /// HR.
 pub const HR: &str = "hr@desertstar.example";
+/// The accountant.
+pub const ACCOUNTANT: &str = "accountant@desertstar.example";
+/// The government relations officer (PRO).
+pub const PRO: &str = "pro@desertstar.example";
 
 /// The demo agency, seeded.
 pub async fn demo() -> TestApp {
