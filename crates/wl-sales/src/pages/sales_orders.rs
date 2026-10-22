@@ -244,7 +244,8 @@ async fn show(
             .contains(&a.name.as_str())
         })
         .collect();
-    let member = crate::loyalty_account::label_of(&state.db, order.loyalty_account_id).await?;
+    let member =
+        crate::loyalty_account::label_of(&state, order.loyalty_account_id, &lang.locale).await?;
     let redeem = crate::pages::redeem::view_of(
         &state,
         &user,

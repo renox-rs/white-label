@@ -334,14 +334,26 @@ pub async fn enrol(state: &AppState, e: Enrolment) -> Result<LoyaltyAccount> {
 }
 
 /// The member of the account as the page of a sale shows it, `LYL-0001
-/// (party 7)`; `None` for no account.
-pub async fn label_of(db: &Db, account: Option<i64>) -> Result<Option<String>> {
+/// (Amal Rashid)`: by the party's name in `locale`, else by its number
+/// (`party 7`); `None` for no account.
+pub async fn label_of(
+    state: &AppState,
+    account: Option<i64>,
+    locale: &str,
+) -> Result<Option<String>> {
     let Some(id) = account else {
         return Ok(None);
     };
-    Ok(LoyaltyAccount::find(db, id)
-        .await?
-        .map(|a| format!("{} (party {})", a.code, a.party_id)))
+    let Some(account) = LoyaltyAccount::find(&state.db, id).await? else {
+        return Ok(None);
+    };
+    let name = wl_kernel::parties::directory(state)
+        .display_name(&state.db, wl_kernel::PartyId(account.party_id), locale)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("party {}", account.party_id));
+    Ok(Some(format!("{} ({name})", account.code)))
 }
 
 #[cfg(test)]

@@ -254,7 +254,8 @@ async fn show(
             amount: money(p.amount),
         })
         .collect();
-    let member = crate::loyalty_account::label_of(&state.db, sale.loyalty_account_id).await?;
+    let member =
+        crate::loyalty_account::label_of(&state, sale.loyalty_account_id, &lang.locale).await?;
     let redeem = crate::pages::redeem::view_of(
         &state,
         &user,
