@@ -193,7 +193,16 @@ pub async fn raise(state: &AppState, enrolment: &Enrolment) -> Result<Enrolment>
             ],
         )
         .await?;
-    Enrolment::find_or_404(&state.db, enrolment.id).await
+    let stored = Enrolment::find_or_404(&state.db, enrolment.id).await?;
+    // The first payment is asked through a payment link that expires with the
+    // seat hold (`EDU.RUL.11`); without payments there is none.
+    let Some(invoice) = first_invoice else {
+        return Ok(stored);
+    };
+    let Some(summary) = invoicer(state).find(&state.db, invoice).await? else {
+        return Ok(stored);
+    };
+    crate::lapse::open_link(state, &stored, summary.gross_total).await
 }
 
 /// The description of instalment `number` of `total`.

@@ -382,6 +382,9 @@ pub(crate) struct ShowPage {
     terms: String,
     discount_state: String,
     seat_hold_until: String,
+    paid: String,
+    balance: String,
+    payment_link: String,
     preview_refund: String,
     preview_owed: String,
     withdrawn_refund: String,
@@ -466,6 +469,13 @@ async fn show(
             status: super::certificates::status_text(&lang, c.status),
         })
         .collect();
+    // The balance of a first payment that was only part paid.
+    let (paid, balance) = if pending {
+        let paid = enrolments::paid_of(&state, &e).await?;
+        (money_text(paid), money_text((e.fee() + e.registration_fee - paid).max(0)))
+    } else {
+        (none.clone(), none.clone())
+    };
     let (preview_refund, preview_owed) = preview
         .as_ref()
         .map_or((String::new(), String::new()), |r| {
@@ -505,6 +515,13 @@ async fn show(
             .seat_hold_until
             .filter(|_| pending)
             .map_or_else(|| none.clone(), |at| dubai_text(at)),
+        paid,
+        balance,
+        payment_link: e
+            .payment_link_path
+            .clone()
+            .filter(|_| pending)
+            .unwrap_or_else(|| none.clone()),
         preview_refund,
         preview_owed,
         withdrawn_refund: money_text(e.refund_amount),

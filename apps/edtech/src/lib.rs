@@ -14,6 +14,8 @@ pub mod enrolment;
 pub mod enrolment_machine;
 pub mod enrolments;
 pub mod fees;
+pub mod lapse;
+pub mod notices;
 pub mod pages;
 pub mod permissions;
 pub mod plan;
@@ -25,6 +27,7 @@ pub mod session;
 pub mod session_machine;
 pub mod sessions;
 mod texts;
+mod texts_lapse;
 mod texts_more;
 mod texts_seats;
 pub mod transfer;
@@ -161,6 +164,7 @@ impl Module for EdTech {
         // completes.
         enrolments::register(app);
         certificates::register();
+        notices::register_types();
         // A bill or a document that names a record shows `ENR-0007`, not
         // `edtech.enrolment:7`.
         register_labels();

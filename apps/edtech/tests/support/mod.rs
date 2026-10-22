@@ -512,6 +512,8 @@ impl Centre {
             instalments: 1,
             terms_accepted_at: Some(renox::db::now()),
             seat_held: status.takes_a_seat(),
+            seat_hold_until: (status == EnrolmentStatus::PendingPayment)
+                .then(|| renox::db::now() + TimeDelta::hours(48)),
             status,
             ..Enrolment::default()
         };
@@ -522,6 +524,16 @@ impl Centre {
         row.insert_in_state(&mut tx, status, "fixture").await.unwrap();
         tx.commit().await.unwrap();
         Enrolment::find_or_404(self.db(), row.id).await.unwrap()
+    }
+
+    /// The seat hold of `enrolment` runs out and it lapses: `lapse` run a
+    /// minute after the hold ends.
+    pub async fn lapse(&self, enrolment: &Enrolment) -> Enrolment {
+        let until = enrolment.seat_hold_until.expect("a seat hold");
+        edtech::lapse::lapse_one(self.state(), enrolment.id, until + TimeDelta::minutes(1))
+            .await
+            .expect("the run works")
+            .expect("the enrolment lapses")
     }
 
     /// A `held` session of `batch` that started `days` days ago (a fixture).

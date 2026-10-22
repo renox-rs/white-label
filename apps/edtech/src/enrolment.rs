@@ -160,6 +160,13 @@ pub struct Enrolment {
     pub seat_held: bool,
     /// The seat is held until then (`pending_payment`; `EDU.RUL.11`).
     pub seat_hold_until: Option<DateTime>,
+    /// The type of the payment link made for the first payment
+    /// (`payments.payment_link`).
+    pub payment_link_type: Option<String>,
+    /// The id of the payment link.
+    pub payment_link_id: Option<i64>,
+    /// The path of the link's public page, `/pay/...`.
+    pub payment_link_path: Option<String>,
     /// The first invoice (`invoicing.invoice`); its payment activates it.
     pub first_invoice_id: Option<i64>,
     /// The package sold for it (`sales.package`).
@@ -203,6 +210,14 @@ impl Enrolment {
     /// The enrolment as a [`Subject`]: `edtech.enrolment:7`.
     pub fn subject(&self) -> Subject {
         Subject::new(ENROLMENT_SUBJECT_TYPE, self.id)
+    }
+
+    /// The payment link made for the first payment, as a [`Subject`].
+    pub fn payment_link(&self) -> Option<Subject> {
+        match (&self.payment_link_type, self.payment_link_id) {
+            (Some(kind), Some(id)) => Some(Subject::new(kind, id)),
+            _ => None,
+        }
     }
 
     /// The student as a [`PartyId`].

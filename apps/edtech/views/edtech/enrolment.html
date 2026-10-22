@@ -48,6 +48,9 @@
         <rx-entry :label="tx['enrolments.subject']" :value="subject"/>
         <rx-entry :label="tx['enrolments.terms']" :value="terms"/>
         <rx-entry :label="tx['enrolments.seat_hold_until']" :value="seat_hold_until"/>
+        <rx-entry :label="tx['enrolments.paid']" :value="paid"/>
+        <rx-entry :label="tx['enrolments.balance']" :value="balance"/>
+        <rx-entry :label="tx['enrolments.payment_link']" :value="payment_link"/>
       </rx-infolist>
     </rx-card>
     <rx-card :title="tx['enrolments.fees']">

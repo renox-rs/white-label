@@ -439,21 +439,6 @@ pub async fn activate(state: &AppState, by: Option<&AuthUser>, id: i64) -> Resul
     run(state, by, id, (ACTIVATE, ACTIVATE_SYSTEM), None, input).await
 }
 
-/// `lapse`, as the system: the seat hold of a `pending_payment` enrolment is
-/// given up and its seat released (`EDU.RUL.11`). BL-EDU-01 puts the hold, the
-/// payment and the gateway checks before it.
-///
-/// # Errors
-///
-/// A 422 unless the enrolment is `pending_payment`.
-pub async fn lapse(state: &AppState, id: i64) -> Result<Enrolment> {
-    let input = EnrolmentInput {
-        on: Some(today()),
-        ..EnrolmentInput::default()
-    };
-    run(state, None, id, (LAPSE, LAPSE), None, input).await
-}
-
 /// The days from `on` to `until`, both counted.
 fn days_between(on: NaiveDate, until: NaiveDate) -> i64 {
     (until - on).num_days() + 1
@@ -702,6 +687,9 @@ async fn after(state: &AppState, event: &Transitioned<Enrolment>) -> Result {
                     .await?;
             }
         }
+        LAPSE => {
+            crate::lapse::after_lapse(state, &enrolment).await?;
+        }
         COMPLETE => {
             crate::certificates::evaluate(state, &enrolment).await?;
         }
@@ -740,6 +728,7 @@ async fn on_invoice_paid(state: &AppState, event: &InvoicePaid) -> Result {
 pub(crate) fn register(app: &mut Registry) {
     crate::enrolment_machine::register();
     fees::register(app);
+    crate::lapse::register(app);
     app.listen(|event: Transitioned<Enrolment>, state: AppState| async move {
         after(&state, &event).await
     });

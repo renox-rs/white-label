@@ -297,7 +297,7 @@ async fn edu_base_seats_are_taken_up_to_the_capacity() {
     assert!(matches!(full, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
     tx.rollback().await.unwrap();
 
-    edtech::enrolments::lapse(t.state(), held.id).await.unwrap();
+    t.lapse(&held).await;
     assert_eq!(seats::available(t.db(), batch.id).await.unwrap(), 1);
     let mut tx = t.db().begin_immediate().await.unwrap();
     seats::take(&mut tx, batch.id, 1, Limit::Capacity)

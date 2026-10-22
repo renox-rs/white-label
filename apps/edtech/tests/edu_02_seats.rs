@@ -220,7 +220,7 @@ async fn edu_02_after_a_lapse_a_new_enrolment_succeeds() {
     let full = enrolments::create(t.state(), &desk, NewEnrolment::course(sara, b.id, PRICE)).await;
     assert!(full.is_err(), "the batch is full while the hold lasts");
 
-    let lapsed = enrolments::lapse(t.state(), held.id).await.unwrap();
+    let lapsed = t.lapse(&held).await;
     assert_eq!(lapsed.status, EnrolmentStatus::Lapsed);
 
     let again = enrolments::create(t.state(), &desk, NewEnrolment::course(sara, b.id, PRICE))
@@ -276,7 +276,7 @@ async fn edu_02_the_waiting_list_is_a_plain_list_that_holds_no_seat() {
     let twice = waiting::join(t.state(), &desk, b.id, sara, None).await;
     assert!(twice.is_err(), "once on the list");
 
-    enrolments::lapse(t.state(), held.id).await.unwrap();
+    t.lapse(&held).await;
     assert_eq!(seats::available(t.db(), b.id).await.unwrap(), 1);
     assert_eq!(
         BatchWaiting::of_batch(t.db(), b.id).await.unwrap().len(),

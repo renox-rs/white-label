@@ -3,7 +3,7 @@
 //! | Transition | From | To | By | Guards |
 //! |---|---|---|---|---|
 //! | [`ACTIVATE`] / [`ACTIVATE_SYSTEM`] | pending_payment | active | `enrolments.manage` / system (first payment) | `terms_accepted`, `discount_approved` |
-//! | [`LAPSE`] | pending_payment | lapsed | system (`EDU.RUL.11`) | `no_payment` (slot, BL-EDU-01) |
+//! | [`LAPSE`] | pending_payment | lapsed | system (`EDU.RUL.11`) | `no_payment` |
 //! | [`FREEZE`] / [`FREEZE_SYSTEM`] | active, frozen | frozen | `enrolments.manage` / system | `cause_given`, `within_allowance` |
 //! | [`UNFREEZE`] / [`UNFREEZE_SYSTEM`] | frozen | active | `enrolments.manage` / system | `cause_given`, `no_cause_left` |
 //! | [`COMPLETE`] | active | completed | system | — |
@@ -26,8 +26,10 @@
 //!   enrolment only adds its cause". Each cause is a row
 //!   ([`EnrolmentFreeze`]); `unfreeze` runs only when the last cause is gone
 //!   (the service ends the other causes without a transition).
-//! - `lapse` is declared with the guard slot BL-EDU-01 fills; it releases the
-//!   seat. `transfer` takes the seat of the target batch atomically in its
+//! - `lapse` is the system's alone: its guard `no_payment` reads the facts the
+//!   service gathers in [`LapseFacts`] (the hold ended, nothing paid, no payment
+//!   pending at the gateway) and its effect releases the seat
+//!   ([`crate::lapse`]). `transfer` takes the seat of the target batch atomically in its
 //!   effect and creates the enrolment that replaces the old one (BL-EDU-02,
 //!   [`crate::transfer`]). The package `extend` by the frozen
 //!   days and the membership `pause`/`resume` (`EDU.RUL.14`) are BL-EDU-05's;
@@ -128,6 +130,22 @@ pub struct EnrolmentInput {
     /// The value that moves to the new enrolment, in fils ([`TRANSFER`]).
     #[serde(default)]
     pub carried: i64,
+    /// The facts a `lapse` needs ([`LAPSE`]).
+    #[serde(default)]
+    pub lapse: Option<LapseFacts>,
+}
+
+/// What the service found out before it ran `lapse` (`EDU.RUL.11`): the guard
+/// cannot read the database.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LapseFacts {
+    /// The moment of the run.
+    pub at: DateTime,
+    /// What the enrolment's invoices have received, in fils.
+    pub paid: i64,
+    /// Whether an online payment of the enrolment is still `pending` at the
+    /// gateway.
+    pub pending: bool,
 }
 
 fn input_of(ctx: &TransitionCtx) -> EnrolmentInput {
@@ -246,21 +264,41 @@ fn activate(name: &'static str, system: bool) -> Transition<Enrolment> {
     })
 }
 
-/// `lapse`: the seat hold expired without payment. The guard `no_payment` is
-/// the slot BL-EDU-01 fills (nothing paid, no payment pending at the gateway).
+/// `lapse`: the seat hold expired without payment (`EDU.RUL.11`). The guard
+/// `no_payment` holds when the hold ended, nothing was paid (a partial payment
+/// is a payment) and no payment is pending at the gateway; the effect releases
+/// the seat. A `lapsed` enrolment never reopens: the state is terminal.
 fn lapse() -> Transition<Enrolment> {
     Transition::new(LAPSE)
         .label("Lapse")
         .system()
         .from([EnrolmentStatus::PendingPayment])
         .to(EnrolmentStatus::Lapsed)
-        .guard("no_payment", |_e: &Enrolment, _ctx| {
-            Box::pin(async { Ok::<(), String>(()) })
+        .guard("no_payment", |e: &Enrolment, ctx| {
+            let verdict = lapse_problem(e, input_of(ctx).lapse.as_ref());
+            Box::pin(async move { verdict.map_or(Ok(()), Err) })
         })
         .effect(|e: &Enrolment, _ctx, tx| {
             let e = e.clone();
             Box::pin(async move { release_seat(tx, &e).await })
         })
+}
+
+/// Why `enrolment` cannot lapse given `facts`, in words; `None` when it can.
+pub fn lapse_problem(enrolment: &Enrolment, facts: Option<&LapseFacts>) -> Option<String> {
+    let Some(facts) = facts else {
+        return Some(english("edtech.lapse.problem.no_facts", &[]));
+    };
+    if facts.paid > 0 {
+        return Some(english("edtech.lapse.problem.paid", &[]));
+    }
+    if facts.pending {
+        return Some(english("edtech.lapse.problem.pending", &[]));
+    }
+    match enrolment.seat_hold_until {
+        Some(until) if facts.at >= until => None,
+        _ => Some(english("edtech.lapse.problem.not_due", &[])),
+    }
 }
 
 /// `freeze`: the enrolment is paused for a cause; the cause is stored.
