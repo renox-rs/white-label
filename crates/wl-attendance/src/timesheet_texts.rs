@@ -132,6 +132,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "Nothing has happened to this timesheet yet",
     ),
     ("wl_attendance.sheet.history.system", "System"),
+    ("wl_attendance.sheet.history.agency", "The agency"),
     (
         "wl_attendance.sheet.history.signed",
         "Signed sheet: {{ name }}, {{ date }}",

@@ -245,6 +245,58 @@ async fn the_approver_approves_a_sheet_and_cannot_reject_without_a_reason() {
     );
 }
 
+/// AC3 (what the client may read): a sheet the agency approved on behalf of the
+/// client shows the approver no link to the signed sheet (a file of the agency's
+/// documents he cannot open) and no staff name, in the facts or the history;
+/// the staff keep both.
+#[renox::test]
+async fn an_on_behalf_approved_sheet_shows_the_client_no_staff_name_and_no_document_link() {
+    let app = demo().await;
+    let wasim = sheet_of(&app, "Wasim Khan").await;
+    let route = format!("/timesheets/{wasim}");
+    post(&app, AMAL, &format!("{route}/submit"), &[])
+        .await
+        .assert_ok();
+    let document = scalar(&app, "select min(id) from wl_documents_documents").await;
+    let signed_on = day(0).to_string();
+    post(
+        &app,
+        AMAL,
+        &format!("{route}/approve-on-behalf"),
+        &[
+            ("document_id", &document.to_string()),
+            ("approver_name", "Omar Haddad"),
+            ("signed_on", &signed_on),
+        ],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(stored(&app, wasim).await.status, TimesheetStatus::Approved);
+
+    let staff = page(&app, AMAL, &route).await;
+    says(
+        &staff,
+        &[
+            "Amal Youssef",
+            "Omar Haddad",
+            &format!("/documents/{document}/file"),
+        ],
+    );
+
+    let client = page(&app, CARL, &route).await;
+    says(
+        &client,
+        &["Approved", "The agency", "Approved on behalf of the client"],
+    );
+    for hidden in ["Amal Youssef", "/documents/", "Omar Haddad"] {
+        assert!(
+            !client.contains(hidden),
+            "the client approver is shown `{hidden}`"
+        );
+    }
+    no_raw_words(&client);
+}
+
 /// AC4: the approver of another client opens or approves a Gulf Tower sheet and
 /// gets 404, nothing changes; the Gulf Tower approver meets 404 on the sheet of
 /// Al Quoz; each sees only his own company's rows.

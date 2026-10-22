@@ -669,6 +669,47 @@ async fn user_name(db: &Db, id: Option<i64>, fallback: &str) -> String {
         .map_or_else(|| fallback.to_owned(), |user| user.name)
 }
 
+/// Who did what, as the viewer may read it. The client sees the names of its
+/// own people and *The agency* for the staff (their names are not the
+/// client's to know); staff see every name.
+struct Names<'a> {
+    state: &'a AppState,
+    seen: Seen,
+    viewer: i64,
+    client_party: Option<i64>,
+    system: String,
+    agency: String,
+}
+
+impl Names<'_> {
+    async fn of(&self, actor: Option<i64>) -> String {
+        let Some(id) = actor else {
+            return self.system.clone();
+        };
+        if self.seen == Seen::Portal && id != self.viewer && !self.is_of_the_client(id).await {
+            return self.agency.clone();
+        }
+        user_name(&self.state.db, actor, &self.system).await
+    }
+
+    async fn is_of_the_client(&self, id: i64) -> bool {
+        let Some(party) = self.client_party else {
+            return false;
+        };
+        wl_kernel::portal::portal_users(self.state)
+            .acting_for(
+                &self.state.db,
+                id,
+                wl_kernel::PartyId(party),
+                wl_kernel::documents::today(),
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some()
+    }
+}
+
 /// `GET /timesheets/{id}`: one timesheet, as a page or JSON.
 async fn show(
     State(state): State<AppState>,
@@ -700,6 +741,20 @@ async fn build(
     let db = &state.db;
     let system = text(lang, "history.system");
     let not_yet = text(lang, "fact.not_yet");
+    let names = Names {
+        state,
+        seen,
+        viewer: user.id,
+        client_party: if seen == Seen::Portal {
+            describe(state, sheet)
+                .await
+                .and_then(|info| info.client_party)
+        } else {
+            None
+        },
+        system: system.clone(),
+        agency: text(lang, "history.agency"),
+    };
     let history = renox::state_machine::history(db, Timesheet::TABLE, sheet.id).await?;
     let was_sent_back = history
         .last()
@@ -781,7 +836,7 @@ async fn build(
                 "fact.on",
                 &[
                     ("date", &date_text(dubai_date(at))),
-                    ("who", &user_name(db, sheet.submitted_by, &system).await),
+                    ("who", &names.of(sheet.submitted_by).await),
                 ],
             ),
             None => not_yet.clone(),
@@ -800,7 +855,7 @@ async fn build(
                 "fact.on",
                 &[
                     ("date", &date_text(dubai_date(at))),
-                    ("who", &user_name(db, sheet.approved_by, &system).await),
+                    ("who", &names.of(sheet.approved_by).await),
                 ],
             ),
             _ => not_yet.clone(),
@@ -907,14 +962,20 @@ async fn build(
                 .format("%d %b %Y %H:%M")
                 .to_string(),
             what: transition_text(lang, &row.transition),
-            by: user_name(db, row.actor_id, &system).await,
+            by: names.of(row.actor_id).await,
             reason: row.reason.clone().unwrap_or_default(),
         });
     }
 
     // The signed sheets of an approval on behalf.
-    let signed = ApprovalEvidence::of_timesheet(db, sheet.id)
-        .await?
+    // The file is the agency's evidence (`documents.review`): the client's own
+    // approver is not offered a link he cannot open.
+    let evidence = if seen == Seen::Portal {
+        Vec::new()
+    } else {
+        ApprovalEvidence::of_timesheet(db, sheet.id).await?
+    };
+    let signed = evidence
         .into_iter()
         .map(|evidence| Signed {
             label: filled(
