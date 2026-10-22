@@ -214,7 +214,12 @@ pub fn evaluate(
     let mut silent_since: Vec<DateTime> = Vec::new();
     let mut latest: Option<DateTime> = None;
     for device in devices {
-        let mut reference = device.since().unwrap_or(at);
+        // A heartbeat is missed after "the previous one (or the window
+        // start)": a device that never sent one has no previous heartbeat, so
+        // it is silent only from the start of the active window.
+        let Some(mut reference) = device.last_heartbeat_at.or(opened) else {
+            continue;
+        };
         if let Some(opened) = opened {
             reference = reference.max(opened);
         }
@@ -607,11 +612,22 @@ mod tests {
     }
 
     #[test]
-    fn a_device_that_never_beat_counts_from_the_time_it_was_stored() {
+    fn a_device_that_never_beat_has_no_previous_heartbeat_and_counts_from_the_window_start() {
         let stored = dubai("12:00:00");
         let devices = [device("kds", None, stored)];
         let c = connection(None, false);
-        assert!(evaluate(&c, &devices, dubai("12:01:00")).silent.is_empty());
-        assert_eq!(evaluate(&c, &devices, dubai("12:02:00")).silent, ["kds"]);
+        assert!(
+            evaluate(&c, &devices, dubai("12:30:00")).silent.is_empty(),
+            "no window and no heartbeat: nothing was missed"
+        );
+        let windowed = connection(Some(("10:00", "23:00")), false);
+        assert!(
+            evaluate(&windowed, &devices, dubai("10:01:29"))
+                .silent
+                .is_empty()
+        );
+        let missed = evaluate(&windowed, &devices, dubai("10:01:30"));
+        assert_eq!(missed.silent, ["kds"]);
+        assert_eq!(missed.failed_since, Some(dubai("10:00:00")));
     }
 }
