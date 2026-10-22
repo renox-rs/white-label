@@ -381,7 +381,11 @@ pub async fn sessions_from(
                 record: session.subject(),
                 date: session.session_date,
                 label: format!("{} · {}", batch.number(), session.number),
-                scope: None,
+                // The campus of the batch: the coordinator of each campus where
+                // the tutor has affected sessions is told, and only of those.
+                scope: batch
+                    .campus()
+                    .map(|campus| renox::auth::permissions::Scope::new(&campus.subject_type, campus.subject_id)),
             });
         }
     }

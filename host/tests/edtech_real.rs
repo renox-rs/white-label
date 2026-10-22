@@ -18,7 +18,7 @@ use host::roles::{ACADEMIC_COORDINATOR, COUNSELLOR};
 use renox::chrono::{NaiveDate, TimeDelta};
 use renox::prelude::*;
 use renox::testing::TestApp;
-use support::{day, noon_clock, person, tenant};
+use support::{day, noon_clock, person, scoped_person, tenant};
 use wl_kernel::PartyId;
 use wl_kernel::payments::{PaymentFailureKind, PaymentStatus};
 use wl_payments::Payment;
@@ -2135,4 +2135,108 @@ async fn edu_17_a_notice_that_bounces_at_both_guardians_gives_the_counsellor_one
     let tasks = give_up_tasks_of_enrolments(&w).await;
     assert_eq!(tasks.len(), 1, "one task");
     assert_eq!(tasks[0].assignee_user_id, Some(counsellor.id));
+}
+
+// ---- #452: the clearance of a tutor who teaches in two campuses -----------------------------------
+
+/// A minors batch of `tutor` at `campus`, on `days` of the week, from the
+/// first Monday on or after `from`, opened while the clearance is valid.
+async fn campus_batch(
+    w: &World,
+    coordinator: &AuthUser,
+    course: &Course,
+    tutor: (i64, i64),
+    campus: i64,
+    days: &[i64],
+    from: NaiveDate,
+) -> Batch {
+    let mut room = wl_scheduling::Resource::new(
+        &format!("Room {campus}"),
+        wl_scheduling::ResourceType::Room,
+    );
+    room.capacity = 14;
+    room.save(w.db()).await.unwrap();
+    let first = monday_from(from);
+    let planned = batches::create(
+        w.state(),
+        coordinator,
+        NewBatch::new(
+            course.id,
+            12,
+            (first, first + TimeDelta::days(27)),
+            days,
+            "18:00",
+            90,
+        )
+        .tutor(tutor.0, Some(tutor.1))
+        .room(room.id, Some(14))
+        .campus(wl_kernel::Subject::new("test.campus", campus)),
+    )
+    .await
+    .expect("the batch is planned");
+    batches::open(w.state(), coordinator, planned.id)
+        .await
+        .expect("the batch opens")
+}
+
+/// #452 point 7, run: the tutor Layla teaches a minors batch at campus 3 and
+/// another at campus 4; her police clearance ends in 25 days, so sessions of both
+/// come after it. The look-ahead run (30 days) tells the academic coordinator of
+/// campus 3 about the sessions of campus 3 only, the coordinator of campus 4
+/// about campus 4 only, and the coordinator of campus 5, who has no session
+/// affected, nothing.
+#[renox::test]
+async fn edu_17_a_tutors_clearance_expiring_tells_the_coordinator_of_each_campus_affected() {
+    use renox::auth::permissions::Scope;
+    let w = boot().await;
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    w.permit_until(day(400)).await;
+    let (layla, employee) = employed(&w, "Layla Hassan").await;
+    let clearance = record_document(
+        &w.app,
+        "police_clearance",
+        wl_kernel::workforce::EmployeeId(employee).subject(),
+        day(400),
+    )
+    .await;
+    let kids = courses::create(
+        w.state(),
+        &coordinator,
+        NewCourse::new("KIDS-1", "Kids mathematics", "Mathematics", 30).for_minors(),
+    )
+    .await
+    .unwrap();
+    let three = campus_batch(&w, &coordinator, &kids, (layla.id, employee), 3, &[1, 3], day(7)).await;
+    let four = campus_batch(&w, &coordinator, &kids, (layla.id, employee), 4, &[2, 4], day(7)).await;
+    let cora = scoped_person(&w.app, "Cora", ACADEMIC_COORDINATOR, &Scope::new("test.campus", 3)).await;
+    let dalia = scoped_person(&w.app, "Dalia", ACADEMIC_COORDINATOR, &Scope::new("test.campus", 4)).await;
+    let eman = scoped_person(&w.app, "Eman", ACADEMIC_COORDINATOR, &Scope::new("test.campus", 5)).await;
+
+    expires(&clearance, day(25), &w).await;
+    wl_documents::expiry::run(w.state(), wl_kernel::documents::today())
+        .await
+        .unwrap();
+
+    let text = |messages: &[wl_notify::Message]| {
+        messages
+            .iter()
+            .map(|m| format!("{} {}", m.rendered_subject.clone().unwrap_or_default(), m.rendered_body))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let for_cora = support::messages_to(&w.app, "documents.expiring", &cora).await;
+    let for_dalia = support::messages_to(&w.app, "documents.expiring", &dalia).await;
+    assert_eq!(for_cora.len(), 1, "campus 3 is told once");
+    assert_eq!(for_dalia.len(), 1, "campus 4 is told once");
+    assert!(
+        support::messages_to(&w.app, "documents.expiring", &eman)
+            .await
+            .is_empty(),
+        "campus 5 has no affected session"
+    );
+    let (cora_text, dalia_text) = (text(&for_cora), text(&for_dalia));
+    assert!(cora_text.contains(&three.number()), "{cora_text}");
+    assert!(!cora_text.contains(&four.number()), "{cora_text}");
+    assert!(dalia_text.contains(&four.number()), "{dalia_text}");
+    assert!(!dalia_text.contains(&three.number()), "{dalia_text}");
 }
