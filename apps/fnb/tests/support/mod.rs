@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use fnb::permissions as perm;
 use fnb::{Fnb, FnbOrder, FnbOrderStatus, KitchenTicket};
 use renox::auth::{Permissions, permissions};
-use renox::chrono::TimeDelta;
+use renox::chrono::{NaiveDate, TimeDelta};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
@@ -26,6 +26,7 @@ use wl_inventory::{Item, Location, WlInventory};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 use wl_kernel::notify::Notifier;
+use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::tickets::TaskCreator;
 use wl_kernel::{ClientConfig, Subject};
 use wl_payments::WlPayments;
@@ -153,8 +154,52 @@ impl Module for Probe {
     }
 }
 
+/// Who acts for which customer in the portal: the users the tests link to a
+/// party (`wl-portal` is not part of the F&B tests).
+#[derive(Clone, Default)]
+pub struct Portal(Arc<Mutex<Vec<(i64, i64)>>>);
+
+impl PortalUsers for Portal {
+    fn parties_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        user: i64,
+        _on: NaiveDate,
+    ) -> PortalFuture<'a, Vec<PortalUser>> {
+        let found: Vec<PortalUser> = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(linked, _)| *linked == user)
+            .map(|(linked, party)| PortalUser {
+                user_id: *linked,
+                person: PartyId(*party),
+                acting_for: PartyId(*party),
+                roles: vec!["owner".to_owned()],
+            })
+            .collect();
+        Box::pin(async move { Ok(found) })
+    }
+}
+
+/// Provides the [`Portal`].
+struct PortalProbe(Portal);
+
+impl Module for PortalProbe {
+    fn name(&self) -> &'static str {
+        "portal_probe"
+    }
+
+    fn register(&self, app: &mut Registry) {
+        provide_portal_users(app, self.0.clone());
+    }
+}
+
 /// The app under test.
 pub struct World {
+    /// The customers' portal links.
+    pub portal: Portal,
     /// The app.
     pub app: TestApp,
     /// Keeps the views directory alive.
@@ -249,6 +294,7 @@ pub async fn boot_with(delivery: WlDelivery, fnb: Fnb) -> World {
     std::fs::write(&path, LAYOUT).unwrap();
 
     let notices = Notices::default();
+    let portal = Portal::default();
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
     let tickets = TicketDesk::default();
     let task_creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
@@ -262,11 +308,13 @@ pub async fn boot_with(delivery: WlDelivery, fnb: Fnb) -> World {
         .module(
             WlSales::new()
                 .cancel_outcomes(&["return_to_stock", "scrap"])
-                .order_acceptance_channels(&["website"]),
+                .order_acceptance_channels(&["website"])
+                .aggregator_channels(&["aggregator_a"]),
         )
         .module(WlInventory::new())
         .module(fnb)
         .module(Probe)
+        .module(PortalProbe(portal.clone()))
         .provide(notifier)
         .provide(task_creator);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
@@ -287,14 +335,20 @@ pub async fn boot_with(delivery: WlDelivery, fnb: Fnb) -> World {
     let manager_grants = [
         perm::ORDERS_VIEW,
         perm::ORDERS_MANAGE,
+        perm::ORDERS_CANCEL,
+        perm::ORDERS_AMEND,
         perm::KDS_WORK,
         perm::CUSTOMERS_COD,
         sperm::SALES_ORDERS_VIEW,
         sperm::SALES_ORDERS_ACCEPT,
+        sperm::SALES_ORDERS_CANCEL,
+        sperm::SALES_ORDERS_AMEND,
+        sperm::SALES_ORDERS_APPROVE,
         pperm::VIEW,
         pperm::REFUNDS_APPROVE,
         dperm::VIEW,
         dperm::MANAGE,
+        dperm::REVERSE,
     ];
     let manager = make_user(app.db(), "Mia", &manager_grants).await;
     let manager_b = make_user(app.db(), "Basel", &manager_grants).await;
@@ -304,8 +358,12 @@ pub async fn boot_with(delivery: WlDelivery, fnb: Fnb) -> World {
         &[
             perm::ORDERS_VIEW,
             perm::ORDERS_REFUND_REQUEST,
+            perm::ORDERS_CANCEL,
+            perm::ORDERS_AMEND,
             sperm::SALES_ORDERS_VIEW,
             sperm::SALES_ORDERS_CREATE,
+            sperm::SALES_ORDERS_CANCEL,
+            sperm::SALES_ORDERS_AMEND,
         ],
     )
     .await;
@@ -352,6 +410,7 @@ pub async fn boot_with(delivery: WlDelivery, fnb: Fnb) -> World {
     store.negative_stock_policy = wl_inventory::location::NegativeStockPolicy::AllowConsumption;
     store.save(app.db()).await.unwrap();
     let world = World {
+        portal,
         app,
         _views: views,
         notices,
@@ -402,6 +461,14 @@ impl World {
     pub async fn get(&self, by: &User, path: &str) -> TestResponse {
         self.app.acting_as(by);
         self.app.get(path).await
+    }
+
+    /// A signed-in user who acts for the customer `party` in the portal and
+    /// holds no permission (a customer follows and cancels their own order).
+    pub async fn customer_user(&self, name: &str, party: PartyId) -> User {
+        let user = make_user(self.db(), name, &[]).await;
+        self.portal.0.lock().unwrap().push((user.id, party.0));
+        user
     }
 
     /// 20 kg of chicken and rice in the outlet's store at AED 10 a kilo.
@@ -542,7 +609,8 @@ impl World {
             &self.manager,
             &format!("/orders/{}/details", order.id),
             &[
-                ("kind", "delivery"),
+                // An aggregator's rider collects at the pass.
+                ("kind", if channel.starts_with("aggregator") { "pickup" } else { "delivery" }),
                 ("recipient_name", "Mariam Al Hosani"),
                 ("recipient_phone", "+971500000000"),
                 ("address", "Villa 12, Al Barsha 2"),

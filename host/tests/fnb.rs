@@ -49,6 +49,12 @@ fn the_roles_hold_the_order_permissions() {
     }
     assert!(holds(KITCHEN_MANAGER, "refunds.approve"));
     assert!(holds(KITCHEN_MANAGER, "sales_orders.accept"));
+    // It cancels and amends orders and approves the cancel of a started line.
+    assert!(holds(KITCHEN_MANAGER, perm::ORDERS_CANCEL));
+    assert!(holds(KITCHEN_MANAGER, perm::ORDERS_AMEND));
+    assert!(holds(KITCHEN_MANAGER, "sales_orders.approve"));
+    assert!(holds(ADMIN, perm::ORDERS_CANCEL));
+    assert!(!holds(LINE_COOK, perm::ORDERS_CANCEL));
     // The line cook works the tickets and sees nothing else of the orders.
     assert!(holds(LINE_COOK, perm::KDS_WORK));
     assert!(!holds(LINE_COOK, perm::ORDERS_VIEW));
@@ -67,6 +73,11 @@ async fn the_cashier_asks_for_a_refund_and_never_approves_one() {
     assert!(grants.contains(&perm::ORDERS_VIEW));
     assert!(!grants.contains(&perm::ORDERS_MANAGE));
     assert!(!grants.contains(&"refunds.approve"));
+    // The cashier cancels an order or a line and amends a direct order; a
+    // manager approves above AED 50 or for a started line.
+    assert!(grants.contains(&perm::ORDERS_CANCEL));
+    assert!(grants.contains(&perm::ORDERS_AMEND));
+    assert!(!grants.contains(&"sales_orders.approve"));
 }
 
 #[renox::test]
