@@ -14,6 +14,8 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
+use crate::exit::ExitOutcome;
+
 /// The subject type of a batch.
 pub const BATCH_SUBJECT_TYPE: &str = "edtech.batch";
 
@@ -98,6 +100,18 @@ pub struct Batch {
     pub cancel_reason: Option<String>,
     /// Why the batch was terminated.
     pub termination_reason: Option<String>,
+    /// What the `cancel` or `terminate` did with each enrolment, written by its
+    /// effect and read once after the commit ([`crate::exit`]).
+    pub exit_log: Json<Vec<ExitOutcome>>,
+    /// The user who asked for the `cancel` or `terminate`: told when a transfer
+    /// fell back to a withdrawal.
+    pub exit_requested_by: Option<i64>,
+    /// The termination is for a regulatory reason (approval expired or
+    /// revoked): the centre manager and the owner are told.
+    pub exit_regulatory: bool,
+    /// When the people were told and the money documents made; the claim that
+    /// keeps the after-commit step to one run.
+    pub exit_finished_at: Option<DateTime>,
     /// The lifecycle state; changed only by a transition.
     pub status: BatchStatus,
     /// The user who planned it.

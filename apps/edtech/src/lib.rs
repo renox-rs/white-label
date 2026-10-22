@@ -13,6 +13,7 @@ mod db;
 pub mod enrolment;
 pub mod enrolment_machine;
 pub mod enrolments;
+pub mod exit;
 pub mod fees;
 pub mod lapse;
 pub mod notices;

@@ -9,6 +9,8 @@
 //! | `POST /edtech/batches/{id}/tutor` | `edtech.batch_tutor` | `batches.manage` |
 //! | `POST /edtech/batches/{id}/waiting` | `edtech.batch_waiting` | `enrolments.manage` |
 //! | `POST /edtech/waiting/{id}/remove` | `edtech.waiting_remove` | `enrolments.manage` |
+//! | `POST /edtech/batches/{id}/cancel` | `edtech.batch_cancel` | `batches.manage` |
+//! | `POST /edtech/batches/{id}/terminate` | `edtech.batch_terminate` | `batches.manage` |
 //!
 //! The page of a batch lists its sessions (see [`super::sessions`]).
 //!
@@ -16,8 +18,11 @@
 //! room, its seats and its status in words. The transitions are the
 //! machine's: the pages only read the form and call [`crate::batches`].
 
+use std::collections::BTreeMap;
+
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::{dubai_text, today};
 
 use super::sessions::{SessionRow, row_of};
@@ -28,7 +33,9 @@ use super::{
 use crate::batch::{Batch, BatchStatus};
 use crate::batches::{self, NewBatch};
 use crate::course::Course;
+use crate::enrolment::Enrolment;
 use crate::enrolments::party_name;
+use crate::exit::ExitChoice;
 use crate::permissions;
 use crate::seats;
 use crate::session::Session;
@@ -53,6 +60,10 @@ pub fn routes() -> Routes {
         .name("edtech.batch_waiting")
         .post("/edtech/waiting/{id}/remove", remove_waiting)
         .name("edtech.waiting_remove")
+        .post("/edtech/batches/{id}/cancel", cancel)
+        .name("edtech.batch_cancel")
+        .post("/edtech/batches/{id}/terminate", terminate)
+        .name("edtech.batch_terminate")
         .require_auth()
 }
 
@@ -268,6 +279,23 @@ pub(crate) struct ShowPage {
     can_wait: bool,
     can_unwait: bool,
     show_waiting: bool,
+    can_cancel: bool,
+    can_terminate: bool,
+    exit_rows: Vec<ExitRow>,
+    exit_options: Vec<[String; 2]>,
+    reason_options: Vec<[String; 2]>,
+    pending: bool,
+    approvals: Vec<ApprovalCard>,
+}
+
+/// One enrolment of the page that a `cancel` or `terminate` must say a choice
+/// for.
+#[derive(Serialize, Debug, Clone)]
+pub struct ExitRow {
+    /// The enrolment's number (`7`), which names the form field.
+    pub id: i64,
+    /// `ENR-0007 · Sara Ali`.
+    pub label: String,
 }
 
 /// One entry of the waiting list of the page.
@@ -344,6 +372,49 @@ async fn show(
         });
     }
     let manage_enrolments = user.has_permission(permissions::ENROLMENTS_MANAGE);
+    let manage_batches = user.has_permission(permissions::BATCHES_MANAGE);
+    let can_cancel = manage_batches && matches!(batch.status, BatchStatus::Planned | BatchStatus::Open);
+    let can_terminate = manage_batches && batch.status == BatchStatus::Running;
+    let mut exit_rows = Vec::new();
+    let mut exit_options = Vec::new();
+    if can_cancel || can_terminate {
+        for e in Enrolment::seated_in(&state.db, batch.id).await? {
+            exit_rows.push(ExitRow {
+                id: e.id,
+                label: format!(
+                    "{} · {}",
+                    e.number(),
+                    party_name(&state, &lang.locale, e.student_party_id).await
+                ),
+            });
+        }
+        exit_options.push(["withdraw".to_owned(), text(&lang, "exit.withdraw")]);
+        let others = Batch::query()
+            .where_(Batch::COURSE_ID.eq(batch.course_id))
+            .where_(Batch::STATUS.is_in([BatchStatus::Open, BatchStatus::Running]))
+            .order_by(Batch::ID)
+            .get(&state.db)
+            .await?;
+        for other in others.iter().filter(|o| o.id != batch.id) {
+            exit_options.push([
+                other.id.to_string(),
+                format!(
+                    "{} {} · {} {}",
+                    text(&lang, "exit.transfer_to"),
+                    other.number(),
+                    seats::free(other),
+                    text(&lang, "enrolments.seats_free")
+                ),
+            ]);
+        }
+    }
+    let reason_options = batches::TERMINATION_REASONS
+        .iter()
+        .map(|(code, _)| [(*code).to_owned(), text(&lang, &format!("batches.termination.{code}"))])
+        .collect();
+    let subject = batch.subject();
+    let pending = !approvals::pending_for(&state.db, &subject).await?.is_empty();
+    let approval_cards = approvals::cards_for(&state.db, &subject, &user, &lang).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: batch.id,
@@ -363,6 +434,13 @@ async fn show(
         can_wait: batch.status == BatchStatus::Open && manage_enrolments,
         can_unwait: manage_enrolments,
         show_waiting: user.has_permission(permissions::ENROLMENTS_VIEW),
+        can_cancel,
+        can_terminate,
+        exit_rows,
+        exit_options,
+        reason_options,
+        pending,
+        approvals: approval_cards,
         from_date: today().to_string(),
         can_open: batch.status == BatchStatus::Planned
             && user.has_permission(permissions::BATCHES_MANAGE),
@@ -466,4 +544,69 @@ async fn remove_waiting(
         renox::HxRefresh,
     )
         .into_response())
+}
+
+/// The choices of a form: a field `choice_<enrolment>` holds `withdraw` or the
+/// number of the batch the student moves to.
+fn choices_of(form: &BTreeMap<String, String>) -> std::result::Result<Vec<ExitChoice>, Error> {
+    let mut choices = Vec::new();
+    for (name, value) in form {
+        let Some(id) = name.strip_prefix("choice_") else {
+            continue;
+        };
+        let enrolment = parse_number(id)?;
+        let value = value.trim();
+        if value.is_empty() || value == "withdraw" {
+            choices.push(ExitChoice::withdraw(enrolment));
+        } else {
+            choices.push(ExitChoice::transfer(enrolment, parse_number(value)?));
+        }
+    }
+    Ok(choices)
+}
+
+/// `POST /edtech/batches/{id}/cancel`: a `reason` and a `choice_<enrolment>` per
+/// enrolment.
+async fn cancel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = form.get("reason").cloned().unwrap_or_default();
+    batches::cancel(&state, &user, id, &reason, choices_of(&form)?).await?;
+    Ok((
+        Toast::success(text(&lang, "batches.cancelled")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /edtech/batches/{id}/terminate`: a `reason`, a `note` and a
+/// `choice_<enrolment>` per enrolment.
+async fn terminate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let code = form.get("reason").cloned().unwrap_or_default();
+    let note = form.get("note").cloned();
+    let asked = batches::terminate(
+        &state,
+        &user,
+        id,
+        &code,
+        note.as_deref(),
+        choices_of(&form)?,
+    )
+    .await?;
+    let key = if asked.approval_request.is_some() {
+        "batches.termination_sent"
+    } else {
+        "batches.terminated"
+    };
+    Ok((Toast::success(text(&lang, key)), renox::HxRefresh).into_response())
 }

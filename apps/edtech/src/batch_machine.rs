@@ -7,8 +7,8 @@
 //! | [`CHANGE_TUTOR_RUNNING`] | running | running | `batches.manage` | `new_tutor_given` |
 //! | [`START`] | open | running | system (first session date) | — |
 //! | [`COMPLETE`] | running | completed | system (last session held; `batches.manage` through the service) | `attendance_submitted` |
-//! | [`CANCEL`] | planned, open | cancelled | `batches.manage` | `enrolment_choices` (slot, BL-EDU-13) |
-//! | [`TERMINATE`] | running | terminated | `batches.manage` | `enrolment_choices`, `approved` (slots, BL-EDU-12) |
+//! | [`CANCEL`] | planned, open | cancelled | `batches.manage` | a reason, `enrolment_choices` |
+//! | [`TERMINATE`] / [`TERMINATE_APPROVED`] | running | terminated | `batches.manage`, approved by the centre manager (`EDU.ACL.15`) / the kernel after the approval | a reason, `enrolment_choices`, `approved` |
 //!
 //! Decisions:
 //!
@@ -29,12 +29,22 @@
 //!   transition has one end state, so there is one per state
 //!   ([`CHANGE_TUTOR`], [`CHANGE_TUTOR_RUNNING`]) and the service picks the one
 //!   of the batch's state (as wl-scheduling does for `reassign`).
-//! - `cancel` and `terminate` are declared with their reason and the guard
-//!   slots of BL-EDU-13 and BL-EDU-12 (the choice *transfer to batch X* or
-//!   *withdraw* per enrolment; the centre manager's approval of a
-//!   termination, `EDU.ACL.15`). The slots pass today; the issues put the
-//!   check in their bodies. Their effects store the reason and nothing else:
-//!   the enrolments, the refunds and the sessions are those issues'.
+//! - `cancel` (before the batch runs, BL-EDU-13) and `terminate` (while it runs,
+//!   BL-EDU-12) end the batch early. The coordinator names, per enrolment,
+//!   *transfer to batch X* or *withdraw* (default withdraw); the service checks
+//!   the choices and carries them in [`BatchInput`], and the guard
+//!   `enrolment_choices` refuses a run that does not carry them. The effects
+//!   ([`crate::exit`]) cancel the sessions still `scheduled`, move or withdraw
+//!   each enrolment and log what they did; the people are told and the money
+//!   documents made after the commit. `terminate` is the action
+//!   `edtech.terminate` of the kernel's approvals (`EDU.ACL.15`,
+//!   [`terminate_policy`]): the coordinator's run is deferred as a request that
+//!   a holder of `batches.approve` other than the requester decides, and the
+//!   kernel runs [`TERMINATE_APPROVED`] (the same guards and effects) after the
+//!   approval, with the input the request kept. The guard `approved` of the
+//!   user's run asks that the service found the approval policy in force, so a
+//!   policy taken away cannot let a termination through unapproved; the twin's
+//!   asks that the request names who asked.
 //! - `open` generates the sessions of the plan in its effect
 //!   ([`crate::sessions::insert_planned`]), after checking once more, inside
 //!   the transaction, that the tutor and the room are free.
@@ -48,9 +58,12 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
+use wl_kernel::SubjectMachine;
+use wl_kernel::approvals::{self, PolicyDefault};
 
-use crate::batch::{Batch, BatchStatus};
+use crate::batch::{BATCH_SUBJECT_TYPE, Batch, BatchStatus};
 use crate::db::set_batch;
+use crate::exit::{self, ExitChoice, ExitKind, ExitPaid};
 use crate::permissions;
 use crate::plan::PlannedSession;
 use crate::sessions;
@@ -71,6 +84,10 @@ pub const COMPLETE: &str = "complete";
 pub const CANCEL: &str = "cancel";
 /// `running → terminated`: stopped after it started.
 pub const TERMINATE: &str = "terminate";
+/// `running → terminated`: the kernel runs it after the centre manager approved.
+pub const TERMINATE_APPROVED: &str = "terminate_approved";
+/// The approval action of `terminate` (`EDU.ACL.15`).
+pub const TERMINATE_ACTION: &str = "edtech.terminate";
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -93,6 +110,26 @@ pub struct BatchInput {
     /// The user who acted, when the run is the system's on a user's behalf.
     #[serde(default)]
     pub by: Option<i64>,
+    /// Why the batch ends early ([`CANCEL`], [`TERMINATE`]); the kernel hands it
+    /// to the approved run.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// What to do with each enrolment ([`CANCEL`], [`TERMINATE`]).
+    #[serde(default)]
+    pub choices: Vec<ExitChoice>,
+    /// What each had paid when the exit was asked.
+    #[serde(default)]
+    pub paid: Vec<ExitPaid>,
+    /// The service has checked the choices.
+    #[serde(default)]
+    pub choices_checked: bool,
+    /// The reason is regulatory (approval expired or revoked): the centre
+    /// manager and the owner are told.
+    #[serde(default)]
+    pub regulatory: bool,
+    /// The service found the approval policy of `terminate` in force.
+    #[serde(default)]
+    pub approval_ready: bool,
 }
 
 fn input_of(ctx: &TransitionCtx) -> BatchInput {
@@ -133,7 +170,8 @@ impl StateMachine for Batch {
             .transition(start())
             .transition(complete())
             .transition(cancel())
-            .transition(terminate())
+            .transition(terminate(TERMINATE, false))
+            .transition(terminate(TERMINATE_APPROVED, true))
     }
 }
 
@@ -236,8 +274,9 @@ fn complete() -> Transition<Batch> {
         })
 }
 
-/// `cancel`: the batch did not run. The slot `enrolment_choices` is where
-/// BL-EDU-13 checks the choice per enrolment.
+/// `cancel`: the batch did not run. The choices per enrolment are checked
+/// (`enrolment_choices`); the effect cancels the sessions, moves or withdraws
+/// each enrolment with a full refund and logs it ([`crate::exit`]).
 fn cancel() -> Transition<Batch> {
     Transition::new(CANCEL)
         .label("Cancel")
@@ -245,42 +284,78 @@ fn cancel() -> Transition<Batch> {
         .from([BatchStatus::Planned, BatchStatus::Open])
         .to(BatchStatus::Cancelled)
         .reason_required()
-        .guard("enrolment_choices", |_b: &Batch, _ctx| {
-            Box::pin(async { Ok::<(), String>(()) })
+        .guard("enrolment_choices", |_b: &Batch, ctx| {
+            let ok = input_of(ctx).choices_checked;
+            Box::pin(async move { check(ok, "edtech.exit.problem.choices") })
         })
         .effect(|b: &Batch, ctx, tx| {
-            let id = b.id;
+            let batch = b.clone();
+            let input = input_of(ctx);
             let reason = ctx.reason().map(str::to_owned);
-            Box::pin(async move { set_batch(tx, id, &[("cancel_reason", &reason)]).await })
+            Box::pin(async move {
+                exit::run_in(tx, &batch, &input, reason, ExitKind::Cancel).await
+            })
         })
 }
 
-/// `terminate`: the batch stopped after it started. The slots
-/// `enrolment_choices` and `approved` are where BL-EDU-12 checks the choice per
-/// enrolment and the centre manager's approval (`EDU.ACL.15`).
-fn terminate() -> Transition<Batch> {
-    Transition::new(TERMINATE)
-        .label("Terminate")
-        .permission(permissions::BATCHES_MANAGE)
+/// `terminate`: the batch stopped after it started. A coordinator's run is
+/// deferred for the centre manager's approval (`EDU.ACL.15`); the kernel runs
+/// the system's twin after it.
+fn terminate(name: &'static str, system: bool) -> Transition<Batch> {
+    let transition = Transition::new(name)
+        .label(if system { "Terminate (approved)" } else { "Terminate" })
         .from([BatchStatus::Running])
         .to(BatchStatus::Terminated)
-        .reason_required()
-        .guard("enrolment_choices", |_b: &Batch, _ctx| {
-            Box::pin(async { Ok::<(), String>(()) })
+        .reason_required();
+    let transition = if system {
+        transition.system()
+    } else {
+        transition.permission(permissions::BATCHES_MANAGE)
+    };
+    transition
+        .guard("enrolment_choices", |_b: &Batch, ctx| {
+            let ok = input_of(ctx).choices_checked;
+            Box::pin(async move { check(ok, "edtech.exit.problem.choices") })
         })
-        .guard("approved", |_b: &Batch, _ctx| {
-            Box::pin(async { Ok::<(), String>(()) })
+        .guard("approved", move |_b: &Batch, ctx| {
+            let input = input_of(ctx);
+            let ok = if system {
+                input.by.is_some()
+            } else {
+                input.approval_ready
+            };
+            Box::pin(async move { check(ok, "edtech.exit.problem.approval") })
         })
         .effect(|b: &Batch, ctx, tx| {
-            let id = b.id;
+            let batch = b.clone();
+            let input = input_of(ctx);
             let reason = ctx.reason().map(str::to_owned);
-            Box::pin(async move { set_batch(tx, id, &[("termination_reason", &reason)]).await })
+            Box::pin(async move {
+                exit::run_in(tx, &batch, &input, reason, ExitKind::Terminate).await
+            })
         })
 }
 
-/// Registers the machine for `rnx state:diagram`.
+/// The default approval policy of `terminate` (`EDU.ACL.15`): every request
+/// needs one step by a holder of `batches.approve` (the centre manager), never
+/// the user who asked.
+pub fn terminate_policy() -> PolicyDefault {
+    PolicyDefault::new(TERMINATE_ACTION).step_permission(permissions::BATCHES_APPROVE)
+}
+
+/// The batch in the kernel's registry, so the approvals can run
+/// [`TERMINATE_APPROVED`] after the approval.
+pub fn subject_machine() -> SubjectMachine {
+    SubjectMachine::of::<Batch>(BATCH_SUBJECT_TYPE).build()
+}
+
+/// Registers the machine for `rnx state:diagram` and with the kernel, the
+/// approval policy of `terminate` and the page the approvals link to.
 pub(crate) fn register() {
+    subject_machine().register();
     renox::state_machine::register::<Batch>();
+    terminate_policy().register();
+    approvals::register_subject_link(BATCH_SUBJECT_TYPE, |id| format!("/edtech/batches/{id}"));
 }
 
 #[cfg(test)]
@@ -314,6 +389,7 @@ mod tests {
             (COMPLETE, vec!["running"], "completed"),
             (CANCEL, vec!["planned", "open"], "cancelled"),
             (TERMINATE, vec!["running"], "terminated"),
+            (TERMINATE_APPROVED, vec!["running"], "terminated"),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to) in expected {
@@ -340,12 +416,14 @@ mod tests {
         assert_eq!(guards(CHANGE_TUTOR_RUNNING), ["new_tutor_given"]);
         assert_eq!(guards(COMPLETE), ["attendance_submitted"]);
         assert_eq!(guards(CANCEL), ["enrolment_choices"]);
-        assert_eq!(guards(TERMINATE), ["enrolment_choices", "approved"]);
+        for name in [TERMINATE, TERMINATE_APPROVED] {
+            assert_eq!(guards(name), ["enrolment_choices", "approved"]);
+        }
         assert!(guards(START).is_empty());
-        for name in [CANCEL, TERMINATE] {
+        for name in [CANCEL, TERMINATE, TERMINATE_APPROVED] {
             assert!(machine.find(name).unwrap().needs_reason(), "{name}");
         }
-        for name in [START, COMPLETE] {
+        for name in [START, COMPLETE, TERMINATE_APPROVED] {
             assert!(machine.find(name).unwrap().is_system(), "{name}");
         }
     }

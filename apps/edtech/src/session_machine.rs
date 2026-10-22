@@ -6,7 +6,7 @@
 //! | [`CHANGE_TUTOR`] | scheduled | scheduled | `batches.manage` | `new_tutor_given` |
 //! | [`SUBMIT_ATTENDANCE`] | scheduled | held | `sessions.teach` | `start_passed`, `every_student_marked` (slot) |
 //! | [`CORRECT_ATTENDANCE`] | held | held | `sessions.teach` | `within_window` (slot, BL-EDU-14) |
-//! | [`CANCEL`] | scheduled | cancelled | `batches.manage` | a reason |
+//! | [`CANCEL`] / [`CANCEL_SYSTEM`] | scheduled | cancelled | `batches.manage` / system (a batch `cancel` or `terminate`) | a reason |
 //!
 //! Decisions:
 //!
@@ -52,6 +52,8 @@ pub const SUBMIT_ATTENDANCE: &str = "submit_attendance";
 pub const CORRECT_ATTENDANCE: &str = "correct_attendance";
 /// `scheduled → cancelled`: the session did not take place.
 pub const CANCEL: &str = "cancel";
+/// `scheduled → cancelled`: the batch was cancelled or terminated.
+pub const CANCEL_SYSTEM: &str = "cancel_system";
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,7 +122,8 @@ impl StateMachine for Session {
             .transition(change_tutor())
             .transition(submit_attendance())
             .transition(correct_attendance())
-            .transition(cancel())
+            .transition(cancel(CANCEL, false))
+            .transition(cancel(CANCEL_SYSTEM, true))
     }
 }
 
@@ -235,14 +238,20 @@ fn correct_attendance() -> Transition<Session> {
         })
 }
 
-/// `cancel`: the session did not take place.
-fn cancel() -> Transition<Session> {
-    Transition::new(CANCEL)
+/// `cancel`: the session did not take place. The system's twin is run by the
+/// batch's `cancel` and `terminate` for every session still `scheduled`.
+fn cancel(name: &'static str, system: bool) -> Transition<Session> {
+    let transition = Transition::new(name)
         .label("Cancel")
-        .permission(permissions::BATCHES_MANAGE)
         .from([SessionStatus::Scheduled])
         .to(SessionStatus::Cancelled)
-        .reason_required()
+        .reason_required();
+    let transition = if system {
+        transition.system()
+    } else {
+        transition.permission(permissions::BATCHES_MANAGE)
+    };
+    transition
         .effect(|s: &Session, ctx, tx| {
             let id = s.id;
             let reason = ctx.reason().map(str::to_owned);
@@ -281,13 +290,14 @@ mod tests {
             (SUBMIT_ATTENDANCE, vec!["scheduled"], "held"),
             (CORRECT_ATTENDANCE, vec!["held"], "held"),
             (CANCEL, vec!["scheduled"], "cancelled"),
+            (CANCEL_SYSTEM, vec!["scheduled"], "cancelled"),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to) in expected {
             let transition = machine.find(name).unwrap();
             assert_eq!(transition.from_states(), from, "{name}");
             assert_eq!(transition.to_state(), Some(to), "{name}");
-            assert!(!transition.is_system(), "{name}");
+            assert_eq!(transition.is_system(), name == CANCEL_SYSTEM, "{name}");
         }
     }
 
@@ -308,7 +318,7 @@ mod tests {
         assert_eq!(guards(SUBMIT_ATTENDANCE), ["start_passed", "every_student_marked"]);
         assert_eq!(guards(CORRECT_ATTENDANCE), ["within_window"]);
         assert!(guards(CANCEL).is_empty());
-        for name in [CANCEL, CORRECT_ATTENDANCE] {
+        for name in [CANCEL, CANCEL_SYSTEM, CORRECT_ATTENDANCE] {
             assert!(machine.find(name).unwrap().needs_reason(), "{name}");
         }
     }

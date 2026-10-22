@@ -233,22 +233,26 @@ async fn edu_base_an_open_batch_starts_on_its_first_session_date() {
     assert_eq!(history.last().map(|row| row.transition.as_str()), Some(START));
 }
 
-/// `cancel` is declared for a planned or open batch and needs a reason;
-/// `terminate` only leaves a running batch (the bodies are BL-EDU-13 and
-/// BL-EDU-12).
+/// `cancel` is for a planned or open batch and needs a reason and the choice
+/// per enrolment the service checks; `terminate` only leaves a running batch and
+/// needs the centre manager's approval (BL-EDU-13 and BL-EDU-12 test the bodies).
 #[renox::test]
 async fn edu_base_cancel_and_terminate_are_declared_with_their_reason() {
     let t = boot().await;
     let amal = t.coordinator().await;
 
     let planned_batch = batch_in(&t, BatchStatus::Planned).await;
-    let missing = planned_batch.transition(CANCEL).by(&amal).run(t.state()).await;
-    assert!(matches!(missing, Err(TransitionError::ReasonRequired)));
-    planned_batch
+    // The transition alone is refused: nobody checked the choices.
+    let unchecked = planned_batch
         .transition(CANCEL)
         .by(&amal)
         .reason("too few students")
         .run(t.state())
+        .await;
+    assert!(matches!(unchecked, Err(TransitionError::Guard(_))));
+    let missing = batches::cancel(t.state(), &amal, planned_batch.id, " ", Vec::new()).await;
+    assert!(missing.is_err());
+    batches::cancel(t.state(), &amal, planned_batch.id, "too few students", Vec::new())
         .await
         .expect("a planned batch is cancelled");
     let cancelled = Batch::find_or_404(t.db(), planned_batch.id).await.unwrap();
@@ -265,16 +269,17 @@ async fn edu_base_cancel_and_terminate_are_declared_with_their_reason() {
     assert!(matches!(early, Err(TransitionError::NotFrom(_))));
 
     let running = batch_in(&t, BatchStatus::Running).await;
-    running
+    let unapproved = running
         .transition(TERMINATE)
         .by(&amal)
         .reason("tutor unavailable")
         .run(t.state())
-        .await
-        .expect("a running batch is terminated");
-    let stopped = Batch::find_or_404(t.db(), running.id).await.unwrap();
-    assert_eq!(stopped.status, BatchStatus::Terminated);
-    assert_eq!(stopped.termination_reason.as_deref(), Some("tutor unavailable"));
+        .await;
+    assert!(matches!(unapproved, Err(TransitionError::Guard(_))));
+    assert_eq!(
+        Batch::find_or_404(t.db(), running.id).await.unwrap().status,
+        BatchStatus::Running
+    );
 }
 
 /// Seats are counted from the enrolments: twelve holders fill a batch of

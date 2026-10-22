@@ -226,6 +226,11 @@ pub fn calculate(input: &RefundInput) -> Refund {
     }
 }
 
+/// Nothing was paid, nothing is credited or billed (`pending_payment`).
+pub fn nothing_paid() -> Refund {
+    Refund::zero(RefundOutcome::NothingPaid)
+}
+
 /// The refund of a batch `terminate` (10 §7.1 *Batch* `terminate`): what was
 /// paid for the course (`paid` less the registration fee, which is only
 /// refunded by a `cancel`) divided by the sessions, times the sessions not

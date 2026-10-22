@@ -274,6 +274,30 @@ pub async fn held_until<'c, E: Executor<'c>>(db: E, batch_id: i64, on: NaiveDate
     Ok(i64::try_from(held).unwrap_or(i64::MAX))
 }
 
+/// The sessions a tutor taught between `from` and `until`, both days included:
+/// the sessions `held` of the tutor, which the monthly timesheet collects
+/// (`EDU.RUL.10`). A cancelled session, as those of a batch `cancel` or
+/// `terminate`, is not taught and is not in it.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn taught_in<'c, E: Executor<'c>>(
+    db: E,
+    tutor_resource_id: i64,
+    from: NaiveDate,
+    until: NaiveDate,
+) -> Result<Vec<Session>> {
+    Session::query()
+        .where_(Session::TUTOR_RESOURCE_ID.eq(tutor_resource_id))
+        .where_(Session::STATUS.eq(SessionStatus::Held))
+        .where_(Session::SESSION_DATE.gte(from))
+        .where_(Session::SESSION_DATE.lte(until))
+        .order_by(Session::STARTS_AT)
+        .get(db)
+        .await
+}
+
 /// The sessions of batch `batch_id` that still count for the students: every
 /// one that is not `cancelled`.
 ///

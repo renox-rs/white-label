@@ -5,22 +5,27 @@
 //! The machine ([`crate::batch_machine`]) holds the rules a record and its
 //! input can answer; this file gathers what it cannot know (the public
 //! holidays of the centre's calendar, the plan the weekly pattern gives, the
-//! sessions still open) and runs the transition. `cancel`, `terminate` and the
-//! service of `change_tutor` grow here with BL-EDU-13, BL-EDU-12 and BL-EDU-09.
+//! sessions still open) and runs the transition. `cancel` (BL-EDU-13) and
+//! `terminate` (BL-EDU-12) are here; the service of `change_tutor` grows with
+//! BL-EDU-09.
 
 use std::collections::BTreeSet;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError};
+use renox::state_machine::{Outcome, StateMachine, TransitionError, Transitioned};
+use wl_kernel::approvals::{ApprovalPolicy, announce, submit::REQUEST_KEY};
 use wl_kernel::Subject;
 use wl_kernel::calendar::calendar;
 use wl_kernel::documents::today;
 
 use crate::batch::{Batch, BatchStatus};
-use crate::batch_machine::{BatchInput, COMPLETE, OPEN, START};
+use crate::batch_machine::{
+    BatchInput, CANCEL, COMPLETE, OPEN, START, TERMINATE, TERMINATE_ACTION, TERMINATE_APPROVED,
+};
 use crate::course::Course;
 use crate::db::refused;
+use crate::exit::{self, ExitChoice, ExitKind};
 use crate::permissions;
 use crate::plan::{self, PlanProblem, PlannedSession};
 use crate::sessions;
@@ -357,10 +362,175 @@ pub async fn run_daily(state: &AppState) -> Result<Vec<i64>> {
     Ok(started)
 }
 
+/// `cancel`: the batch will not run. The coordinator gives a reason and,
+/// per enrolment, *transfer to batch X* or *withdraw* (the default). The
+/// sessions are cancelled, a transfer takes its seat in the target at that
+/// moment (a seat that is gone makes it a withdrawal and the coordinator is
+/// told), every withdrawal is refunded in full, registration fee included, and
+/// the family is told ([`crate::exit`]); each refund waits for its own approval
+/// (`FIN.ACL.04`).
+///
+/// # Errors
+///
+/// A 403 without `batches.manage`; a 422 in words for a batch that is not
+/// `planned` or `open`, a missing reason, or a choice that cannot be done.
+pub async fn cancel(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    reason: &str,
+    choices: Vec<ExitChoice>,
+) -> Result<Batch> {
+    if !by.has_permission(permissions::BATCHES_MANAGE) {
+        return Err(Error::Forbidden);
+    }
+    let batch = Batch::find_or_404(&state.db, id).await?;
+    if !matches!(batch.status, BatchStatus::Planned | BatchStatus::Open) {
+        return Err(refused(english("edtech.batches.problem.cancel_status", &[])));
+    }
+    let reason = reason.trim();
+    if reason.is_empty() {
+        return Err(refused(english("edtech.batches.problem.cancel_reason", &[])));
+    }
+    let (plan, paid) = exit::validate(state, &batch, &choices).await?;
+    let input = BatchInput {
+        by: Some(by.id),
+        reason: Some(reason.to_owned()),
+        choices: plan,
+        paid,
+        choices_checked: true,
+        ..BatchInput::default()
+    };
+    let _outcome = batch
+        .transition(CANCEL)
+        .by(by)
+        .reason(reason)
+        .input(&input)
+        .run(state)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Batch::find_or_404(&state.db, id).await
+}
+
+/// The reasons a running batch is terminated for, and whether each is
+/// regulatory (the centre manager and the owner are told).
+pub const TERMINATION_REASONS: &[(&str, bool)] = &[
+    ("tutor_unavailable", false),
+    ("approval_expired", true),
+    ("approval_revoked", true),
+    ("venue", false),
+    ("too_few_students", false),
+];
+
+/// Whether the termination reason `code` is regulatory: the approval expired or
+/// was revoked.
+pub fn is_regulatory(code: &str) -> bool {
+    TERMINATION_REASONS
+        .iter()
+        .any(|(known, regulatory)| *known == code && *regulatory)
+}
+
+/// What a request to terminate a batch came to.
+#[derive(Debug, Clone)]
+pub struct Termination {
+    /// The batch: `running` while the centre manager decides.
+    pub batch: Batch,
+    /// The approval request that waits for the centre manager.
+    pub approval_request: Option<i64>,
+}
+
+/// `terminate`: the coordinator asks to stop a running batch for the reason
+/// `code` (one of [`TERMINATION_REASONS`], with an optional `note`) and names,
+/// per enrolment, *transfer to batch X* or *withdraw* (the default). The kernel
+/// defers the run as a request that a holder of `batches.approve` other than the
+/// coordinator decides (`EDU.ACL.15`); sessions go on until then. At the approval
+/// the remaining sessions are cancelled, the enrolments are moved or withdrawn
+/// with the unused sessions refunded pro rata and no admin fee, and the people
+/// are told ([`crate::exit`]).
+///
+/// # Errors
+///
+/// A 403 without `batches.manage`; a 422 in words for a batch that is not
+/// `running`, an unknown reason, a choice that cannot be done, or no approval
+/// policy in force.
+pub async fn terminate(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    code: &str,
+    note: Option<&str>,
+    choices: Vec<ExitChoice>,
+) -> Result<Termination> {
+    if !by.has_permission(permissions::BATCHES_MANAGE) {
+        return Err(Error::Forbidden);
+    }
+    let batch = Batch::find_or_404(&state.db, id).await?;
+    if batch.status != BatchStatus::Running {
+        return Err(refused(english("edtech.batches.problem.terminate_status", &[])));
+    }
+    let code = code.trim();
+    if !TERMINATION_REASONS.iter().any(|(known, _)| *known == code) {
+        return Err(refused(english("edtech.batches.problem.terminate_reason", &[])));
+    }
+    let label = english(&format!("edtech.batches.termination.{code}"), &[]);
+    let reason = match note.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(note) => format!("{label}: {note}"),
+        None => label,
+    };
+    let (plan, paid) = exit::validate(state, &batch, &choices).await?;
+    let mut input = BatchInput {
+        by: Some(by.id),
+        reason: Some(reason.clone()),
+        choices: plan,
+        paid,
+        choices_checked: true,
+        regulatory: is_regulatory(code),
+        ..BatchInput::default()
+    };
+    // A policy taken away must not let a termination through unapproved.
+    let value = renox::serde_json::to_value(&input).unwrap_or(renox::serde_json::Value::Null);
+    input.approval_ready = ApprovalPolicy::for_action(&state.db, TERMINATE_ACTION, &value)
+        .await?
+        .is_some();
+    let outcome = batch
+        .transition(TERMINATE)
+        .by(by)
+        .reason(reason)
+        .input(&input)
+        .run(state)
+        .await
+        .map_err(TransitionError::into_error)?;
+    announce(state, &outcome).await?;
+    let approval_request = match &outcome {
+        Outcome::Pending(pending) => pending
+            .data
+            .get(REQUEST_KEY)
+            .and_then(renox::serde_json::Value::as_i64),
+        Outcome::Done(_) => None,
+    };
+    Ok(Termination {
+        batch: Batch::find_or_404(&state.db, id).await?,
+        approval_request,
+    })
+}
+
 /// Registers the machines and the daily run.
 pub(crate) fn register(app: &mut Registry) {
     crate::batch_machine::register();
     sessions::register(app);
+    // A batch that ended early: the money documents, the notices and the log
+    // of what happened to each enrolment, once, after the commit.
+    app.listen(|event: Transitioned<Batch>, state: AppState| async move {
+        let kind = match event.transition.as_str() {
+            CANCEL => Some(ExitKind::Cancel),
+            TERMINATE | TERMINATE_APPROVED => Some(ExitKind::Terminate),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            exit::finish(&state, event.key, kind).await?;
+        }
+        Ok(())
+    });
     app.schedule()
         .daily_at(TASK_AT, TASK, |state: AppState| async move {
             run_daily(&state).await.map(|_| ())

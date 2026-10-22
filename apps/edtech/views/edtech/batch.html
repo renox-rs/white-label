@@ -23,7 +23,28 @@
           <rx-select name="payer" :label="tx['waiting.payer']" :options="[]" :placeholder="tx['enrolments.party_placeholder']" options-url="{{ route('edtech.party_options') }}" :id="'batch-waiting-payer-' ~ id"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_cancel">
+        <rx-action-sheet :id="'batch-cancel-' ~ id" :label="tx['batches.cancel']" :action="route('edtech.batch_cancel', id)"
+                         :title="tx['batches.cancel']" :description="tx['batches.cancel_description']" :submit-label="tx['batches.cancel']" icon="trash" danger>
+          <rx-input name="reason" :label="tx['batches.reason']" :id="'batch-cancel-reason-' ~ id" required/>
+          <template rx-for="row in exit_rows">
+            <rx-select :name="'choice_' ~ row.id" :label="row.label" :options="exit_options" :selected="'withdraw'" :id="'batch-cancel-choice-' ~ row.id"/>
+          </template>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_terminate">
+        <rx-action-sheet :id="'batch-terminate-' ~ id" :label="tx['batches.terminate']" :action="route('edtech.batch_terminate', id)"
+                         :title="tx['batches.terminate']" :description="tx['batches.terminate_description']" :submit-label="tx['batches.terminate']" icon="trash" danger>
+          <rx-select name="reason" :label="tx['batches.reason']" :options="reason_options" :selected="'venue'" :id="'batch-terminate-reason-' ~ id"/>
+          <rx-input name="note" :label="tx['batches.termination_note']" :id="'batch-terminate-note-' ~ id"/>
+          <template rx-for="row in exit_rows">
+            <rx-select :name="'choice_' ~ row.id" :label="row.label" :options="exit_options" :selected="'withdraw'" :id="'batch-terminate-choice-' ~ row.id"/>
+          </template>
+        </rx-action-sheet>
+      </template>
     </rx-page-header>
+    <rx-alert rx-if="pending" kind="warning" :message="tx['batches.pending_approval']"/>
+    <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card :title="tx['batches.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['batches.course']" :value="course"/>
