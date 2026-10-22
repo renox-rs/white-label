@@ -115,6 +115,30 @@ pub async fn tell_family(
     Ok(())
 }
 
+/// Tells the student of `enrolment` (the guardian of a student under 18, else
+/// the student) something, and nobody else.
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub async fn tell_student(
+    state: &AppState,
+    enrolment: &Enrolment,
+    title: &str,
+    body: &str,
+) -> Result {
+    let party = family_of(enrolment)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| enrolment.student());
+    let request = NotifyRequest::new(FAMILY_NOTICE, enrolment.subject())
+        .subject_label(&enrolment.number())
+        .data(renox::serde_json::json!({ "title": title, "body": body }))
+        .to_party(party);
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
 /// The users who hold the global role `role`.
 ///
 /// # Errors

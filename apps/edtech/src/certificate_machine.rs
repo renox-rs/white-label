@@ -5,6 +5,7 @@
 //! | [`ISSUE`] | draft | issued | `certificates.issue` | `criteria_met` (`EDU.ACL.06`), `document_valid` (BL-EDU-07) |
 //! | [`REISSUE`] | issued | superseded | `certificates.issue` | a reason, `criteria_met` |
 //! | [`REVOKE`] | issued | revoked | `certificates.revoke` | a reason |
+//! | [`PRINT_COPY`] | issued | issued | `certificates.issue` | — |
 //!
 //! Decisions:
 //!
@@ -46,6 +47,9 @@ pub const ISSUE: &str = "issue";
 pub const REISSUE: &str = "reissue";
 /// `issued → revoked`: withdrawn.
 pub const REVOKE: &str = "revoke";
+/// `issued → issued`: a lost copy is printed again; nothing about the
+/// certificate changes, the run is only kept in its history.
+pub const PRINT_COPY: &str = "print_copy";
 
 /// The numbers of the certificates: `CRT-0150`, across the centre, never
 /// reset, never skipped.
@@ -143,6 +147,7 @@ impl StateMachine for Certificate {
             .transition(issue())
             .transition(reissue())
             .transition(revoke())
+            .transition(print_copy())
     }
 }
 
@@ -267,6 +272,34 @@ fn revoke() -> Transition<Certificate> {
         })
 }
 
+/// `print_copy`: the copy of an issued certificate is printed again, the same
+/// document with the same number and code, marked nowhere. The state and the
+/// number do not change; the history keeps who printed it and when
+/// (BL-EDU-16).
+fn print_copy() -> Transition<Certificate> {
+    Transition::new(PRINT_COPY)
+        .label("Print a copy")
+        .permission(permissions::CERTIFICATES_ISSUE)
+        .from([CertificateStatus::Issued])
+        .to(CertificateStatus::Issued)
+        .effect(|c: &Certificate, ctx, tx| {
+            let (id, printed) = (c.id, c.copies_printed);
+            let by = input_of(ctx).by;
+            Box::pin(async move {
+                set(
+                    tx,
+                    id,
+                    &[
+                        ("copies_printed", &(printed + 1)),
+                        ("last_copy_on", &Some(today())),
+                        ("last_copy_by", &by),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
 /// Registers the machine for `rnx state:diagram`.
 pub(crate) fn register() {
     renox::state_machine::register::<Certificate>();
@@ -297,6 +330,7 @@ mod tests {
             (ISSUE, "draft", "issued"),
             (REISSUE, "issued", "superseded"),
             (REVOKE, "issued", "revoked"),
+            (PRINT_COPY, "issued", "issued"),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to) in expected {
@@ -322,6 +356,7 @@ mod tests {
         assert_eq!(guards(ISSUE), ["criteria_met", "document_valid"]);
         assert_eq!(guards(REISSUE), ["criteria_met"]);
         assert!(guards(REVOKE).is_empty());
+        assert!(guards(PRINT_COPY).is_empty());
         for name in [REISSUE, REVOKE] {
             assert!(machine.find(name).unwrap().needs_reason(), "{name}");
         }

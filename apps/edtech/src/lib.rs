@@ -41,6 +41,7 @@ mod texts_exit;
 mod texts_hold;
 mod texts_lapse;
 mod texts_permit;
+mod texts_reissue;
 mod texts_more;
 mod texts_seats;
 pub mod transfer;
@@ -108,6 +109,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/edtech/certificate.html"),
     ),
     (
+        "edtech/certificate_print.html",
+        include_str!("../views/edtech/certificate_print.html"),
+    ),
+    (
         "edtech/verify.html",
         include_str!("../views/edtech/verify.html"),
     ),
@@ -155,6 +160,7 @@ impl Module for EdTech {
             .view_data::<pages::enrolments::CollectPage>()
             .view_data::<pages::certificates::IndexPage>()
             .view_data::<pages::certificates::ShowPage>()
+            .view_data::<pages::certificates::PrintPage>()
             .view_data::<pages::certificates::VerifyPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
@@ -183,7 +189,7 @@ impl Module for EdTech {
         // first payment that activates one, and the certificate of one that
         // completes.
         enrolments::register(app);
-        certificates::register();
+        certificates::register(app);
         // The centre permit and the course approval block `batch.open` and
         // `certificate.issue`; their expiry tells the centre (`EDU.RUL.13`).
         documents::register();

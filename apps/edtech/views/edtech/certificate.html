@@ -8,6 +8,21 @@
         <rx-confirm :id="'certificate-issue-' ~ id" :label="tx['certificates.issue']" :action="route('edtech.certificate_issue', id)" method="POST"
                     :title="tx['certificates.issue']" :message="tx['certificates.issue_message']" :confirm-label="tx['certificates.issue']" :cancel-label="tx['button_cancel']" icon="check"/>
       </template>
+      <template rx-if="can_copy">
+        <rx-confirm :id="'certificate-copy-' ~ id" :label="tx['certificates.copy']" :action="route('edtech.certificate_copy', id)" method="POST"
+                    :title="tx['certificates.copy']" :message="tx['certificates.copy_message']" :confirm-label="tx['certificates.copy']" :cancel-label="tx['button_cancel']" icon="printer"/>
+      </template>
+      <template rx-if="can_reissue">
+        <rx-action-sheet :id="'certificate-reissue-' ~ id" :label="tx['certificates.reissue']" :action="route('edtech.certificate_reissue', id)"
+                         :title="tx['certificates.reissue']" :description="tx['certificates.reissue_description']" :submit-label="tx['certificates.reissue']" icon="file-text">
+          <rx-input name="reason" :label="tx['certificates.reissue_reason']" :id="'certificate-reissue-reason-' ~ id" required/>
+          <rx-input name="student_name" :label="tx['certificates.corrected_name']" :value="student" :id="'certificate-reissue-name-' ~ id"/>
+          <rx-input name="completion_date" type="date" :label="tx['certificates.corrected_date']" :value="completed_value" :id="'certificate-reissue-date-' ~ id"/>
+          <template rx-if="has_attestation">
+            <rx-checkbox name="copy_attestation" :label="tx['certificates.copy_attestation']" :id="'certificate-reissue-attestation-' ~ id"/>
+          </template>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_revoke">
         <rx-action-sheet :id="'certificate-revoke-' ~ id" :label="tx['certificates.revoke']" :action="route('edtech.certificate_revoke', id)"
                          :title="tx['certificates.revoke']" :description="tx['certificates.revoke_description']" :submit-label="tx['certificates.revoke']" icon="trash">
@@ -27,6 +42,9 @@
         <rx-entry :label="tx['certificates.replaces']" :value="replaces"/>
         <rx-entry :label="tx['certificates.replaced_by']" :value="replaced_by"/>
         <rx-entry :label="tx['certificates.revoke_reason']" :value="revoke_reason"/>
+        <rx-entry :label="tx['certificates.reissue_reason_shown']" :value="reissue_reason"/>
+        <rx-entry :label="tx['certificates.attestation']" :value="attestation"/>
+        <rx-entry :label="tx['certificates.copies']" :value="copies"/>
       </rx-infolist>
     </rx-card>
   </rx-stack>

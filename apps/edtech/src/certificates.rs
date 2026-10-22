@@ -21,12 +21,12 @@
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError};
+use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::documents::today;
 use wl_kernel::parties::directory;
 
 use crate::certificate::{Certificate, CertificateStatus, new_code};
-use crate::certificate_machine::{CertificateInput, ISSUE, REISSUE, REVOKE};
+use crate::certificate_machine::{CertificateInput, ISSUE, PRINT_COPY, REISSUE, REVOKE};
 use crate::course::Course;
 use crate::batch::Batch;
 use crate::db::refused;
@@ -102,9 +102,11 @@ async fn input_for(
     by: &AuthUser,
 ) -> Result<CertificateInput> {
     let enrolment = Enrolment::find_or_404(&state.db, certificate.enrolment_id).await?;
-    // A reissued draft is checked on the day the course was completed.
+    // A reissued draft is checked on the day the course was completed (the
+    // enrolment's), so a correct certificate earned under a valid approval can
+    // be reissued after the approval expired.
     let on_date = if certificate.supersedes_id.is_some() {
-        certificate.completion_date
+        enrolment.completed_on.unwrap_or(certificate.completion_date)
     } else {
         today()
     };
@@ -188,6 +190,24 @@ pub async fn reissue(
         .first(&state.db)
         .await?
         .ok_or_else(|| refused(english("edtech.certificates.problem.no_draft", &[])))
+}
+
+/// `print_copy`: a lost copy of the issued certificate is printed again. The
+/// same document is regenerated with the same number and code; the state and
+/// the number do not change and the run is kept in the history. The QR image
+/// and the PDF are wl-documents' (`DOC.GEN.01`); the page the copy opens
+/// ([`crate::pages::certificates`]) shows what they print.
+///
+/// # Errors
+///
+/// A 403 without `certificates.issue`; a 422 unless the certificate is `issued`.
+pub async fn print_copy(state: &AppState, by: &AuthUser, id: i64) -> Result<Certificate> {
+    let certificate = Certificate::find_or_404(&state.db, id).await?;
+    let input = CertificateInput {
+        by: Some(by.id),
+        ..CertificateInput::default()
+    };
+    run(state, by, &certificate, PRINT_COPY, None, input).await
 }
 
 /// `revoke`: the certificate is withdrawn for `reason` (the company admin).
@@ -287,7 +307,48 @@ pub async fn verify(db: &Db, code: &str) -> Result<Verification> {
     })
 }
 
-/// Registers the machine.
-pub(crate) fn register() {
+/// After a reissued draft was issued: the student (the guardian of a minor)
+/// is told the corrected certificate is ready, with its number and the page
+/// that verifies it. The old certificate's page links the new number from
+/// that moment (the machine's effect).
+///
+/// # Errors
+///
+/// The database's and the notifier's errors.
+pub async fn after_issue(state: &AppState, id: i64) -> Result {
+    let Some(certificate) = Certificate::find(&state.db, id).await? else {
+        return Ok(());
+    };
+    let (Some(old_id), Some(number)) = (certificate.supersedes_id, certificate.number.clone())
+    else {
+        return Ok(());
+    };
+    let Some(enrolment) = Enrolment::find(&state.db, certificate.enrolment_id).await? else {
+        return Ok(());
+    };
+    let old = Certificate::find(&state.db, old_id)
+        .await?
+        .map_or_else(|| "-".to_owned(), |old| old.label());
+    let title = english("edtech.certificates.reissued_title", &[]);
+    let body = english(
+        "edtech.certificates.reissued_body",
+        &[
+            ("course", &certificate.course_title),
+            ("number", &number),
+            ("old", &old),
+            ("path", &certificate.verification_path()),
+        ],
+    );
+    crate::notices::tell_student(state, &enrolment, &title, &body).await
+}
+
+/// Registers the machine and the notice of a reissued certificate.
+pub(crate) fn register(app: &mut Registry) {
     crate::certificate_machine::register();
+    app.listen(|event: Transitioned<Certificate>, state: AppState| async move {
+        if event.transition == ISSUE {
+            after_issue(&state, event.key).await?;
+        }
+        Ok(())
+    });
 }

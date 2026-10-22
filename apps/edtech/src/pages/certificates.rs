@@ -7,13 +7,19 @@
 //! | `GET /edtech/certificates/{id}` | `edtech.certificate` | `certificates.view` |
 //! | `POST /edtech/certificates/{id}/issue` | `edtech.certificate_issue` | `certificates.issue` |
 //! | `POST /edtech/certificates/{id}/revoke` | `edtech.certificate_revoke` | `certificates.revoke` |
+//! | `POST /edtech/certificates/{id}/reissue` | `edtech.certificate_reissue` | `certificates.issue` |
+//! | `POST /edtech/certificates/{id}/copy` | `edtech.certificate_copy` | `certificates.issue` |
+//! | `GET /edtech/certificates/{id}/print` | `edtech.certificate_print` | `certificates.view` |
 //! | `GET /verify/certificate/{code}` | `edtech.verify_certificate` | nobody (public) |
 //!
 //! The public page needs no login: the verification code printed on the
 //! certificate is the credential. It says whether the certificate is valid,
 //! superseded (and by which number, or that the replacement is pending) or
 //! revoked, and shows no more than the number, the name, the course and the
-//! dates. The reissue form and the printed copy are BL-EDU-16's.
+//! dates. The coordinator reissues an issued certificate with a reason and the
+//! corrected data (never an edit of the issued one) and prints a lost copy again
+//! (`print_copy`: the same document, the same number and code, nothing changes);
+//! neither is offered for a draft, a revoked or a superseded certificate.
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -35,6 +41,12 @@ pub fn routes() -> Routes {
         .name("edtech.certificate_issue")
         .post("/edtech/certificates/{id}/revoke", revoke)
         .name("edtech.certificate_revoke")
+        .post("/edtech/certificates/{id}/reissue", reissue)
+        .name("edtech.certificate_reissue")
+        .post("/edtech/certificates/{id}/copy", copy)
+        .name("edtech.certificate_copy")
+        .get("/edtech/certificates/{id}/print", print)
+        .name("edtech.certificate_print")
         .require_auth()
 }
 
@@ -134,6 +146,13 @@ pub(crate) struct ShowPage {
     revoke_reason: String,
     can_issue: bool,
     can_revoke: bool,
+    can_reissue: bool,
+    can_copy: bool,
+    copies: i64,
+    attestation: String,
+    has_attestation: bool,
+    reissue_reason: String,
+    completed_value: String,
 }
 
 /// `GET /edtech/certificates/{id}`.
@@ -178,6 +197,13 @@ async fn show(
         can_issue: c.status == CertificateStatus::Draft && certificates::may_issue(&user),
         can_revoke: c.status == CertificateStatus::Issued
             && user.has_permission(permissions::CERTIFICATES_REVOKE),
+        can_reissue: c.status == CertificateStatus::Issued && certificates::may_issue(&user),
+        can_copy: c.status == CertificateStatus::Issued && certificates::may_issue(&user),
+        copies: c.copies_printed,
+        attestation: c.attestation_ref.clone().unwrap_or_else(|| none.clone()),
+        has_attestation: c.attestation_ref.is_some(),
+        reissue_reason: c.reissue_reason.clone().unwrap_or_else(|| none.clone()),
+        completed_value: c.completion_date.to_string(),
     }))
 }
 
@@ -286,4 +312,113 @@ async fn verify(
     page.issued = shown.issued_on.map_or_else(|| none.clone(), |d| d.to_string());
     page.revoked = shown.revoked_on.map_or(none, |d| d.to_string());
     Ok(View::typed(page))
+}
+
+/// The form of `reissue`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ReissueForm {
+    /// Why the certificate is reissued (a name or date correction, a changed
+    /// result that still meets the criteria).
+    #[serde(default)]
+    pub reason: String,
+    /// The corrected name; blank keeps the printed one.
+    #[serde(default)]
+    pub student_name: String,
+    /// The corrected completion date; blank keeps the printed one.
+    #[serde(default)]
+    pub completion_date: String,
+    /// Ticked when the coordinator confirms that the recorded KHDA attestation
+    /// is copied to the new draft.
+    #[serde(default)]
+    pub copy_attestation: String,
+}
+
+/// `POST /edtech/certificates/{id}/reissue`: the certificate is superseded and a
+/// linked draft carries the corrections; the page of the draft opens.
+async fn reissue(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ReissueForm>,
+) -> Result<Response> {
+    let corrections = certificates::Corrections {
+        student_name: Some(form.student_name.trim().to_owned()).filter(|name| !name.is_empty()),
+        completion_date: if form.completion_date.trim().is_empty() {
+            None
+        } else {
+            Some(super::parse_date(&form.completion_date)?)
+        },
+        copy_attestation: super::ticked(&form.copy_attestation),
+    };
+    let draft = certificates::reissue(&state, &user, id, &form.reason, corrections).await?;
+    Ok((
+        Toast::success(text(&lang, "certificates.reissued_done")),
+        renox::HxRedirect(format!("/edtech/certificates/{}", draft.id)),
+    )
+        .into_response())
+}
+
+/// `POST /edtech/certificates/{id}/copy`: the lost copy is printed again; the
+/// printable page opens.
+async fn copy(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    certificates::print_copy(&state, &user, id).await?;
+    Ok((
+        Toast::success(text(&lang, "certificates.copy_done")),
+        renox::HxRedirect(format!("/edtech/certificates/{id}/print")),
+    )
+        .into_response())
+}
+
+/// What the printable page of a certificate needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "edtech/certificate_print.html")]
+pub(crate) struct PrintPage {
+    tx: Texts,
+    id: i64,
+    number: String,
+    student: String,
+    course: String,
+    approval: String,
+    has_approval: bool,
+    completed: String,
+    issued: String,
+    code: String,
+    verify_path: String,
+    copies: i64,
+}
+
+/// `GET /edtech/certificates/{id}/print`: the certificate as it is printed: the
+/// same wording, number and verification code for the original and every copy.
+async fn print(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    require(&user, permissions::CERTIFICATES_VIEW)?;
+    let c = Certificate::find_or_404(&state.db, id).await?;
+    if c.status != CertificateStatus::Issued {
+        return Err(super::invalid(&text(&lang, "certificates.problem.not_printable")));
+    }
+    let none = text(&lang, "none");
+    Ok(View::typed(PrintPage {
+        tx: texts::all(&lang),
+        id: c.id,
+        number: c.label(),
+        student: c.student_name.clone(),
+        course: c.course_title.clone(),
+        approval: c.approval_no.clone().unwrap_or_else(|| none.clone()),
+        has_approval: c.states_approval && c.approval_no.is_some(),
+        completed: c.completion_date.to_string(),
+        issued: c.issued_on.map_or(none, |d| d.to_string()),
+        code: c.verification_code.clone(),
+        verify_path: c.verification_path(),
+        copies: c.copies_printed,
+    }))
 }

@@ -96,6 +96,12 @@ pub struct Certificate {
     /// A recorded KHDA attestation, copied to a reissue only when the
     /// coordinator confirms.
     pub attestation_ref: Option<String>,
+    /// How many times a lost copy was printed again (`print_copy`).
+    pub copies_printed: i64,
+    /// The day the last copy was printed.
+    pub last_copy_on: Option<NaiveDate>,
+    /// The user who printed it.
+    pub last_copy_by: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: CertificateStatus,
     /// When the row was created.

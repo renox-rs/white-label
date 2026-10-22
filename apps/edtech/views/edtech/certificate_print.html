@@ -1,0 +1,24 @@
+{#- edtech: the certificate as it is printed: the original and every copy read
+    the same, with the same number and verification code. The QR image and the
+    PDF are wl-documents' (DOC.GEN.01); this page prints the wording and the
+    code. Replace it with resources/views/edtech/certificate_print.html in the
+    app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="tx['certificates.print_title']" :subtitle="number" :back="route('edtech.certificate', id)" :back-label="number"/>
+    <rx-card :title="course">
+      <rx-infolist columns="1">
+        <rx-entry :label="tx['certificates.print_awarded']" :value="student"/>
+        <rx-entry :label="tx['certificates.course']" :value="course"/>
+        <template rx-if="has_approval">
+          <rx-entry :label="tx['certificates.approval']" :value="approval"/>
+        </template>
+        <rx-entry :label="tx['certificates.completed']" :value="completed"/>
+        <rx-entry :label="tx['certificates.issued']" :value="issued"/>
+        <rx-entry :label="tx['certificates.number']" :value="number"/>
+        <rx-entry :label="tx['certificates.code']" :value="code"/>
+        <rx-entry :label="tx['certificates.verify_page']" :value="verify_path"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>
