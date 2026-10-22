@@ -544,6 +544,12 @@ pub async fn boot_with_money() -> Clinic {
     boot_with(false, false, true).await
 }
 
+/// Like [`boot`] with the real wl-invoicing, wl-payments and wl-inventory: the
+/// modules whose routes the clinic's pages link to.
+pub async fn boot_full() -> Clinic {
+    boot_with(false, true, true).await
+}
+
 /// Like [`boot`] with the real wl-inventory: the branch stores, lots and
 /// pending issues the consumables of a visit are issued from.
 pub async fn boot_with_stock() -> Clinic {

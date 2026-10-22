@@ -193,6 +193,7 @@ pub struct BookingRow {
 pub(crate) struct IndexPage {
     tx: Texts,
     bookings: Vec<BookingRow>,
+    can_manage: bool,
 }
 
 async fn row_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<BookingRow> {
@@ -210,7 +211,7 @@ async fn row_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<Book
 }
 
 /// `GET /scheduling/bookings`.
-async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
+async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     let mut bookings = Vec::new();
     for booking in Booking::query()
         .order_by_desc(Booking::STARTS_AT)
@@ -223,6 +224,7 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         bookings,
+        can_manage: user.has_permission(permissions::MANAGE),
     }))
 }
 

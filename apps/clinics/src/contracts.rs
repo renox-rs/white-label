@@ -144,16 +144,8 @@ pub const DEFAULT_REMINDER_DAYS: i64 = 7;
 /// clinic manager gets a task.
 pub const TASK_DAYS_BEFORE: i64 = 2;
 
-/// Records a contract.
-///
-/// # Errors
-///
-/// A 422 for a copay outside 0 to 10,000 basis points, a negative
-/// deductible, an end before the start, a first-submission window below one
-/// day, or a resubmission window or limit that is negative; a reminder N that
-/// is negative or not below the first-submission window (`CLN.RUL.03`: "N
-/// must be below the submission window").
-pub async fn create(state: &AppState, by: Option<i64>, new: NewContract) -> Result<PayerContract> {
+/// The terms of a contract the way [`create`] and [`update`] take them.
+fn check_terms(new: &NewContract) -> Result {
     if !(0..=10_000).contains(&new.copay_bp)
         || new.deductible < 0
         || new.first_submission_days < 1
@@ -167,6 +159,21 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewContract) -> Resu
     if reminder < 0 || reminder >= new.first_submission_days {
         return Err(refused(english("clinics.contract.problem.reminder", &[])));
     }
+    Ok(())
+}
+
+/// Records a contract.
+///
+/// # Errors
+///
+/// A 422 for a copay outside 0 to 10,000 basis points, a negative
+/// deductible, an end before the start, a first-submission window below one
+/// day, or a resubmission window or limit that is negative; a reminder N that
+/// is negative or not below the first-submission window (`CLN.RUL.03`: "N
+/// must be below the submission window").
+pub async fn create(state: &AppState, by: Option<i64>, new: NewContract) -> Result<PayerContract> {
+    check_terms(&new)?;
+    let reminder = new.reminder();
     let mut contract = PayerContract {
         payer_party_id: new.payer.0,
         plan: new.plan,
@@ -184,6 +191,63 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewContract) -> Resu
         ..PayerContract::default()
     };
     contract.save(&state.db).await?;
+    Ok(contract)
+}
+
+/// Changes the terms of contract `id` to those of `new`: the agreement, the
+/// copay, the deductible, the last day, the windows, the late-claims switch
+/// and the reminder days. The payer, the plan and the first day name the
+/// contract and cannot change (a different one is a new contract); a charge
+/// already split keeps the terms it was split under, and the claims and
+/// reminders read the windows as they stand. Each change is audited with the
+/// terms before and after.
+///
+/// # Errors
+///
+/// A 404 for an unknown contract; a 422 for the payer, the plan or the first
+/// day changed, and for the terms [`create`] refuses.
+pub async fn update(
+    state: &AppState,
+    by: Option<i64>,
+    id: i64,
+    new: NewContract,
+) -> Result<PayerContract> {
+    let mut contract = PayerContract::find_or_404(&state.db, id).await?;
+    if new.payer.0 != contract.payer_party_id
+        || new.plan != contract.plan
+        || new.valid_from != contract.valid_from
+    {
+        return Err(refused(english("clinics.contract.problem.identity", &[])));
+    }
+    check_terms(&new)?;
+    let before = renox::serde_json::json!({
+        "agreement": contract.agreement_id,
+        "copay_bp": contract.copay_bp,
+        "deductible": contract.deductible,
+        "valid_to": contract.valid_to,
+        "first_submission_days": contract.first_submission_days,
+        "resubmission_days": contract.resubmission_days,
+        "resubmission_limit": contract.resubmission_limit,
+        "accepts_late_claims": contract.accepts_late_claims,
+        "reminder_days": contract.reminder_days,
+    });
+    contract.agreement_id = new.agreement;
+    contract.copay_bp = new.copay_bp;
+    contract.deductible = new.deductible;
+    contract.valid_to = new.valid_to;
+    contract.first_submission_days = new.first_submission_days;
+    contract.resubmission_days = new.resubmission_days;
+    contract.resubmission_limit = new.resubmission_limit;
+    contract.accepts_late_claims = new.accepts_late_claims;
+    contract.reminder_days = new.reminder();
+    contract.save(&state.db).await?;
+    let mut entry = renox::audit::Entry::new("clinics.contract_updated")
+        .subject("clinics.payer_contract", contract.id)
+        .data(renox::serde_json::json!({ "before": before }));
+    if let Some(user) = by {
+        entry = entry.user(user);
+    }
+    renox::audit::record(&state.db, entry).await?;
     Ok(contract)
 }
 

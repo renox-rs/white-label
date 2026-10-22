@@ -867,3 +867,48 @@ async fn a_branch_manager_reads_the_trace_rows_of_her_branch() {
     assert_eq!(viewers.len(), 2, "{viewers:?}");
     assert!(viewers.contains(&mona.id) && viewers.contains(&mia.id));
 }
+
+/// The trace names the lot of each line (its number, never the product) and
+/// how far the notices are; the recall's owner waives a line with a reason,
+/// the clinic manager without `recalls.manage` has no button.
+#[renox::test]
+async fn the_trace_names_the_lot_and_the_owner_waives_a_line() {
+    let d = desk_with_stock().await;
+    name_patients(&d);
+    let s = store(&d, 10, 0).await;
+    used_filler(&d, P1, 1, 9, 1, "L1").await;
+    used_filler(&d, P2, 2, 10, 1, "L1").await;
+    let recall = open_recall(&d, s.item.id, "L1").await;
+    let path = format!("/clinics/recalls/{}", recall.id);
+    let mia = manager(&d).await;
+    let nina =
+        d.t.user("Nina", &[RECALLS_TRACE, RECALLS_NOTIFY, VISITS_VIEW])
+            .await;
+
+    let page = d.get(&mia, &path).await;
+    page.assert_ok()
+        .assert_see("L1")
+        .assert_see("Told: 0. Waived: 0. Still to tell: 2.")
+        .assert_see("Why the patient need not be told");
+    let text = page.text();
+    for secret in ["Filler", "filler", REASON] {
+        assert!(!text.contains(secret), "the trace page shows `{secret}`");
+    }
+    d.get(&nina, &path)
+        .await
+        .assert_ok()
+        .assert_dont_see("Why the patient need not be told");
+
+    let listed = lines(&d, &recall).await;
+    d.post(
+        &mia,
+        &format!("/recall-lines/{}/waive", listed[0].id),
+        &[("reason", "Told in person")],
+    )
+    .await
+    .assert_ok();
+    d.get(&mia, &path)
+        .await
+        .assert_ok()
+        .assert_see("Told: 0. Waived: 1. Still to tell: 1.");
+}

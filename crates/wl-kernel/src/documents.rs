@@ -462,6 +462,18 @@ where
         .insert(subject_type.to_owned(), Arc::new(label));
 }
 
+/// The types of record that have a registered label ([`register_subject_label`]),
+/// by name: the kinds of record a page can name, such as the ones a form
+/// offers to pick from.
+pub fn labelled_subject_types() -> Vec<String> {
+    SUBJECT_LABELS
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .keys()
+        .cloned()
+        .collect()
+}
+
 /// The registered label of `subject` ([`register_subject_label`]), if its
 /// type has one and the record is there.
 ///

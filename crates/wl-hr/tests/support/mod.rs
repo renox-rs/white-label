@@ -1943,6 +1943,10 @@ async fn boot_full(
         perm::LEAVE_APPROVE,
     ];
     permissions::define_role(app.db(), "hr", &hr).await.unwrap();
+    // Staff ask for their own leave (`leave.request`).
+    permissions::define_role(app.db(), "staff", &[perm::LEAVE_REQUEST])
+        .await
+        .unwrap();
     permissions::define_role(
         app.db(),
         "owner",

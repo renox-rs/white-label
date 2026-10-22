@@ -1,0 +1,56 @@
+{#- wl-inventory: one goods receipt: its lines (what was ordered, received,
+    accepted and rejected, the lot and its expiry), the sheet that enters a
+    line, and the button that posts. A post above the over-receipt tolerance
+    waits for a second person and shows its approval card. Replace it with
+    resources/views/wl-inventory/receipt.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="supplier" :back="route('wl_inventory.receipts')" :back-label="tx['receipts.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_post">
+        <rx-action-sheet id="post-receipt" :label="tx['receipt.post']" :action="route('wl_inventory.receipt_post', id)"
+                         :title="tx['receipt.post']" :description="tx['receipt.post_description']" :submit-label="tx['receipt.post']" icon="check"/>
+      </template>
+      <template rx-if="can_reverse">
+        <rx-action-sheet id="reverse-receipt" :label="tx['receipt.reverse']" :action="route('wl_inventory.receipt_reverse', id)"
+                         :title="tx['receipt.reverse']" :description="tx['receipt.reverse_description']" :submit-label="tx['receipt.reverse']" icon="rotate-ccw"/>
+      </template>
+    </rx-page-header>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card :title="tx['receipt.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['orders.supplier']" :value="supplier"/>
+        <rx-entry :label="tx['orders.number']" :value="order" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['stock.store']" :value="location"/>
+        <rx-entry :label="tx['receipts.delivery_note']" :value="delivery_note" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['receipt.lines']" card>
+      <rx-column :label="tx['stock.item']">{{ line.item }}</rx-column>
+      <rx-column :label="tx['receipt.ordered']" hide-narrow>{{ line.ordered }}</rx-column>
+      <rx-column :label="tx['receipt.received']">{{ line.received }} {{ line.unit }}</rx-column>
+      <rx-column :label="tx['receipt.accepted']">{{ line.accepted }} {{ line.unit }}</rx-column>
+      <rx-column :label="tx['receipt.rejected']" hide-narrow>{{ line.rejected }} {{ line.unit }} {{ line.reason }}</rx-column>
+      <rx-column :label="tx['stock.lot']" hide-narrow>{{ line.lot }}</rx-column>
+      <rx-column :label="tx['stock.expiry']" hide-narrow>{{ line.expiry }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="can_edit">
+          <rx-action-sheet :id="'line-' ~ line.id" :label="tx['receipt.enter']" :action="route('wl_inventory.receipt_line', id, line.id)"
+                           :title="line.item" :description="tx['receipt.enter_description']" :submit-label="tx['receipt.save']" icon="pencil">
+            <rx-input name="received" :label="tx['receipt.received']" :value="line.received" :suffix="line.unit" :id="'line-received-' ~ line.id" required/>
+            <rx-input name="accepted" :label="tx['receipt.accepted']" :value="line.accepted" :suffix="line.unit" :id="'line-accepted-' ~ line.id" required/>
+            <rx-input name="rejected" :label="tx['receipt.rejected']" :value="line.rejected" :suffix="line.unit" :id="'line-rejected-' ~ line.id"/>
+            <rx-select name="reason" :label="tx['receipt.reason']" :options="reasons" :selected="line.reason_code" :id="'line-reason-' ~ line.id"/>
+            <rx-select name="handling" :label="tx['receipt.handling']" :options="handlings" :selected="line.handling_code" :id="'line-handling-' ~ line.id"/>
+            <rx-select name="outcome" :label="tx['receipt.outcome']" :options="outcomes" :selected="line.outcome_code" :id="'line-outcome-' ~ line.id"/>
+            <rx-input name="evidence" :label="tx['receipt.evidence']" :value="line.evidence" :id="'line-evidence-' ~ line.id"/>
+            <template rx-if="line.lot_tracked">
+              <rx-input name="lot" :label="tx['stock.lot']" :value="line.lot" :id="'line-lot-' ~ line.id"/>
+              <rx-input name="expiry" type="date" :label="tx['stock.expiry']" :value="line.expiry" :id="'line-expiry-' ~ line.id"/>
+            </template>
+          </rx-action-sheet>
+        </template>
+      </rx-row-actions>
+    </rx-table>
+  </rx-stack>
+</rx-page>

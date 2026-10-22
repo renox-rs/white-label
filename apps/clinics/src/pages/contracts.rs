@@ -4,16 +4,21 @@
 //! |---|---|---|
 //! | `GET /clinics/contracts` | `clinics.contracts` | `insurance_policies.view` |
 //! | `POST /clinics/contracts` | `clinics.contract_create` | `insurance.manage` |
+//! | `POST /clinics/contracts/{id}` | `clinics.contract_update` | `insurance.manage` |
 //! | `POST /clinics/contract-tariffs` | `clinics.contract_tariff` | `insurance.manage` |
 //! | `POST /clinics/contract-missed-window` | `clinics.contract_missed_window` | `contracts.missed_window_billing` (the owner's) |
 //!
 //! The list shows each contract with the terms the charge split reads and the
-//! tariff of its services.
+//! tariff of its services. A contract is edited in place: the agreement it is
+//! billed under (picked by name from the payer agreements), the copay, the
+//! deductible, the last day, the windows and the reminder; the payer, the plan
+//! and the first day name the contract and stay (a different one is a new
+//! contract). Each change is audited with the terms before it.
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
-use wl_kernel::PartyId;
-use wl_kernel::documents::today;
+use wl_kernel::documents::{subject_label, today};
+use wl_kernel::{PartyId, Subject};
 
 use super::claims::parse_aed;
 use super::{
@@ -35,6 +40,8 @@ pub fn routes() -> Routes {
         .name("clinics.contracts")
         .post("/clinics/contracts", create)
         .name("clinics.contract_create")
+        .post("/clinics/contracts/{id}", update)
+        .name("clinics.contract_update")
         .post("/clinics/contract-tariffs", tariff)
         .name("clinics.contract_tariff")
         .post("/clinics/contract-missed-window", missed_window)
@@ -67,6 +74,24 @@ pub struct ContractRow {
     pub windows: String,
     /// Whether the patient may be billed for a share not submitted in time.
     pub missed_billing: String,
+    /// The agreement's id, for the edit form's picker.
+    pub agreement_id: String,
+    /// The copay as the edit form shows it (`20`, `12.5`).
+    pub copay_edit: String,
+    /// The deductible as the edit form shows it (`50.00`).
+    pub deductible_edit: String,
+    /// The last day as the edit form shows it.
+    pub valid_to_edit: String,
+    /// The first-submission days.
+    pub first_days: i64,
+    /// The resubmission days.
+    pub resubmission_days: i64,
+    /// The resubmission limit.
+    pub resubmission_limit: i64,
+    /// The reminder days.
+    pub reminder_days: i64,
+    /// `yes` or `no`.
+    pub late_edit: &'static str,
 }
 
 /// What the list page needs.
@@ -149,9 +174,24 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             id: c.id,
             payer,
             plan: c.plan.clone().unwrap_or_else(|| dash.clone()),
-            agreement: c
-                .agreement_id
-                .map_or_else(|| dash.clone(), |id| format!("#{id}")),
+            agreement: match c.agreement_id {
+                Some(id) => subject_label(
+                    &state.db,
+                    &Subject::new(wl_kernel::invoicing::PAYER_AGREEMENT_SUBJECT_TYPE, id),
+                )
+                .await?
+                .unwrap_or_else(|| format!("#{id}")),
+                None => dash.clone(),
+            },
+            agreement_id: c.agreement_id.map(|id| id.to_string()).unwrap_or_default(),
+            copay_edit: percent(c.copay_bp).trim_end_matches('%').to_owned(),
+            deductible_edit: format!("{}.{:02}", c.deductible / 100, c.deductible % 100),
+            valid_to_edit: c.valid_to.map(|d| d.to_string()).unwrap_or_default(),
+            first_days: c.first_submission_days,
+            resubmission_days: c.resubmission_days,
+            resubmission_limit: c.resubmission_limit,
+            reminder_days: c.reminder_days,
+            late_edit: if c.accepts_late_claims { "yes" } else { "no" },
             copay: percent(c.copay_bp),
             deductible: money_text(c.deductible),
             valid_from: c.valid_from.to_string(),
@@ -264,14 +304,27 @@ async fn create(
         return Err(invalid(&text(&lang, "policies.problem.payer_unknown")));
     }
     let from = parse_date(&form.valid_from)?.unwrap_or_else(today);
-    let mut new = NewContract::new(PartyId(payer), from).plan(&form.plan);
+    let new = NewContract::new(PartyId(payer), from).plan(&form.plan);
+    let new = apply_terms(new, &form, &lang)?;
+    contracts::create(&state, Some(user.id), new).await?;
+    Ok((
+        Toast::success(text(&lang, "contract.created")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The terms a contract form sets on `new`: the agreement, the copay, the
+/// deductible, the last day, the windows, the late-claims switch and the
+/// reminder days (a blank field keeps the default).
+fn apply_terms(mut new: NewContract, form: &ContractForm, lang: &Lang) -> Result<NewContract> {
     if let Some(agreement) = parse_id(&form.agreement) {
         new = new.agreement(agreement);
     }
     if !form.copay.trim().is_empty() {
         new = new.copay_bp(
             parse_percent(&form.copay)
-                .ok_or_else(|| invalid(&text(&lang, "contract.problem.copay")))?,
+                .ok_or_else(|| invalid(&text(lang, "contract.problem.copay")))?,
         );
     }
     if !form.deductible.trim().is_empty() {
@@ -298,9 +351,26 @@ async fn create(
         new = new
             .reminder_days(parse_id(&form.reminder_days).ok_or_else(|| invalid("reminder: days"))?);
     }
-    contracts::create(&state, Some(user.id), new).await?;
+    Ok(new)
+}
+
+/// `POST /clinics/contracts/{id}`: changes the terms of a contract; the
+/// payer, the plan and the first day stay as they are.
+async fn update(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ContractForm>,
+) -> Result<Response> {
+    require(&user, permissions::AUTHORISATIONS_MANAGE)?;
+    let stored = PayerContract::find_or_404(&state.db, id).await?;
+    let new = NewContract::new(stored.payer(), stored.valid_from)
+        .plan(stored.plan.as_deref().unwrap_or_default());
+    let new = apply_terms(new, &form, &lang)?;
+    contracts::update(&state, Some(user.id), id, new).await?;
     Ok((
-        Toast::success(text(&lang, "contract.created")),
+        Toast::success(text(&lang, "contract.updated")),
         renox::HxRefresh,
     )
         .into_response())

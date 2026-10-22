@@ -43,6 +43,9 @@ pub const INVOICE_SUBJECT_TYPE: &str = "invoicing.invoice";
 /// The subject type of an invoice dispute: `invoicing.dispute:7`.
 pub const DISPUTE_SUBJECT_TYPE: &str = "invoicing.dispute";
 
+/// The subject type of a payer agreement (its label is its name and payer).
+pub const PAYER_AGREEMENT_SUBJECT_TYPE: &str = "invoicing.payer_agreement";
+
 /// The subject type of a credit note, for [`Subject`] references.
 pub const CREDIT_NOTE_SUBJECT_TYPE: &str = "invoicing.credit_note";
 

@@ -1,0 +1,78 @@
+{#- wl-inventory: one recall: why it was opened, its lots and where they are
+    now, the stock hold that blocks them, how many affected parties were told,
+    and the affected lines by lot and record (never a name: the vertical's own
+    page names and tells them). The owner traces again, waives a line, closes
+    the recall and takes its report. Replace it with
+    resources/views/wl-inventory/recall.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="reason" :back="route('wl_inventory.recalls')" :back-label="tx['recalls.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <rx-link-button rx-if="notices_route" :href="route(notices_route, id)" :label="tx['recall.parties']" icon="users"/>
+      <template rx-if="own_notices">
+        <rx-action-sheet id="recall-notices" :label="tx['recall.send']" :action="route('wl_inventory.recall_notices', id)"
+                         :title="tx['recall.send']" :description="tx['recall.send_description']" :submit-label="tx['recall.send']" icon="send">
+          <input type="hidden" name="lines" value="{{ pending_ids }}"/>
+          <rx-select name="template" :label="tx['recall.template']" :options="templates" :selected="'customer'" id="recall-notices-template"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_manage">
+        <rx-action-sheet id="recall-trace" :label="tx['recall.trace_again']" :action="route('wl_inventory.recall_trace', id)"
+                         :title="tx['recall.trace_again']" :description="tx['recall.trace_description']" :submit-label="tx['recall.trace_again']" icon="refresh-cw"/>
+      </template>
+      <template rx-if="can_close">
+        <rx-action-sheet id="recall-close" :label="tx['recall.close']" :action="route('wl_inventory.recall_close', id)"
+                         :title="tx['recall.close']" :description="tx['recall.close_description']" :submit-label="tx['recall.close']" icon="check"/>
+      </template>
+      <rx-link-button rx-if="has_report" :href="route('wl_inventory.recall_report', id)" :label="tx['recall.report']" icon="file-text"/>
+    </rx-page-header>
+    <rx-alert rx-for="blocker in blockers" kind="warning" :message="blocker"/>
+    <rx-card :title="tx['recall.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['recalls.source']" :value="source"/>
+        <rx-entry :label="tx['recalls.opened']" :value="opened"/>
+        <rx-entry :label="tx['recall.opened_by']" :value="opened_by" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['recall.told']" :value="told ~ ' / ' ~ affected"/>
+        <rx-entry :label="tx['recall.waived']" :value="waived"/>
+        <rx-entry :label="tx['recall.to_tell']" :value="to_tell"/>
+        <rx-entry rx-if="closed" :label="tx['recall.closed']" :value="closed"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['recall.lots']">
+      <rx-table :rows="lots" as="lot" :key="lot.number" :caption="tx['recall.lots']">
+        <rx-column :label="tx['stock.lot']">{{ lot.number }}</rx-column>
+        <rx-column :label="tx['stock.item']" hide-narrow>{{ lot.item }}</rx-column>
+        <rx-column :label="tx['stock.expiry']" hide-narrow>{{ lot.expiry }}</rx-column>
+        <rx-column :label="tx['recall.now']">{{ lot.places }}</rx-column>
+        <rx-column :label="tx['fields.status']"><rx-badge :kind="lot.status_kind" :text="lot.status"/></rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="holds" :title="tx['recall.hold']">
+      <rx-table :rows="holds" as="hold" :key="hold.number" :caption="tx['recall.hold']">
+        <rx-column :label="tx['hold.number']">{{ hold.number }}</rx-column>
+        <rx-column :label="tx['fields.status']"><rx-badge :kind="hold.status_kind" :text="hold.status"/></rx-column>
+        <rx-column :label="tx['recall.undecided']">{{ hold.undecided }}</rx-column>
+      </rx-table>
+      <rx-link-button rx-if="sees_holds" route="wl_inventory.holds" :label="tx['recall.decide']" variant="plain" icon="shield"/>
+    </rx-card>
+    <rx-card :title="tx['recall.lines']">
+      <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['recall.lines']">
+        <rx-column :label="tx['stock.lot']">{{ line.lot }}</rx-column>
+        <rx-column :label="tx['recall.record']">{{ line.record }}</rx-column>
+        <rx-column :label="tx['recall.day']" hide-narrow>{{ line.day }}</rx-column>
+        <rx-column :label="tx['recall.proof']" hide-narrow><rx-badge :kind="line.mark_kind" :text="line.mark"/></rx-column>
+        <rx-column :label="tx['recall.party']" hide-narrow>{{ line.party }}</rx-column>
+        <rx-column :label="tx['recall.notice']"><rx-badge :kind="line.notice_kind" :text="line.notice"/></rx-column>
+        <rx-row-actions>
+          <template rx-if="line.can_waive">
+            <rx-action-sheet :id="'waive-' ~ line.id" :label="tx['recall.waive']" :action="route('wl_inventory.recall_line_waive', line.id)"
+                             :title="tx['recall.waive']" :description="tx['recall.waive_description']" :submit-label="tx['recall.waive']" icon="ban">
+              <rx-textarea name="reason" :label="tx['recall.waive_reason']" :id="'waive-reason-' ~ line.id" required/>
+            </rx-action-sheet>
+          </template>
+        </rx-row-actions>
+        <rx-slot name="empty"><rx-empty :title="tx['recall.no_lines']" icon="triangle-alert"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

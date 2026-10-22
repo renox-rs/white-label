@@ -103,14 +103,8 @@ const SAMIR_LOGIN: &str = "samir@palmgrove.example";
 const JUMEIRAH_DESK: &str = "reception.jumeirah@palmgrove.example";
 const BAY_DESK: &str = "reception.bay@palmgrove.example";
 
-/// The opening hours of every resource: every hour of every day, so the
-/// appointments of today, set from the clock of the run, are always inside them.
-const OPEN: (i64, i64) = (0, 24 * 60);
-
-/// The latest start (minutes after midnight) of an appointment set from the
-/// clock: a slot that starts later could run past midnight, which no day's
-/// opening hours cover.
-const LATEST_START: u32 = 22 * 60 + 30;
+/// The opening hours of every resource: every day 08:00 to 20:00.
+const OPEN: (i64, i64) = (8 * 60, 20 * 60);
 
 impl Seed {
     /// The instant of an Asia/Dubai wall time.
@@ -303,17 +297,19 @@ impl Seed {
                 // Rounded to the minute, so the booking is the same minute.
                 let at = renox::db::now() + Duration::minutes(minutes);
                 let wall = self.wall(at);
-                let start = wall
+                let wall = wall
                     .date()
                     .and_hms_opt(wall.hour(), wall.minute(), 0)
                     .unwrap_or(wall);
-                if start.hour() * 60 + start.minute() > LATEST_START {
-                    wall.date()
-                        .and_hms_opt(LATEST_START / 60, LATEST_START % 60, 0)
-                        .unwrap_or(start)
-                } else {
-                    start
-                }
+                // The seed may run at any hour: a story of today stays inside
+                // the opening hours (08:00 to 19:00, the last hour is room
+                // for the longest service), else the booking is refused. A
+                // time outside them wraps round the window, so two stories of
+                // one doctor keep their distance.
+                let first = wall.date().and_hms_opt(8, 0, 0).unwrap_or(wall);
+                let window = 11 * 60;
+                let into = (wall - first).num_minutes().rem_euclid(window);
+                first + Duration::minutes(into)
             }
         }
     }

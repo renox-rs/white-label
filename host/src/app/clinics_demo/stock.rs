@@ -15,14 +15,20 @@ use renox::state_machine::StateMachine;
 use wl_inventory::item::value_of;
 use wl_inventory::movement::StockMovement;
 use wl_inventory::transfer::{self, NewTransfer, NewTransferLine};
-use wl_inventory::{Item, Location, Lot, LotStatus};
-use wl_kernel::Subject;
+use wl_inventory::{
+    Item, Location, Lot, LotStatus, PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus,
+};
+use wl_kernel::integrations::{self, ConnectionStatus, IntegrationConnection};
+use wl_kernel::notify::{MessageGaveUp, MessageId, NotifyRecipient};
+use wl_kernel::{PartyId, PartyKind, Subject};
+use wl_parties::{CompanyDetails, NewParty, PartyRole};
 
 use super::super::demo_data::day;
 use super::{BUSINESS_BAY, JUMEIRAH, Seed, branch};
 
 const STORE: &str = "store@palmgrove.example";
 const OWNER: &str = "owner@palmgrove.example";
+const ADMIN: &str = "admin@palmgrove.example";
 const BAY_MANAGER: &str = "manager.bay@palmgrove.example";
 
 /// The lot of anaesthetic cartridges the supplier recalls.
@@ -119,6 +125,11 @@ impl Seed {
             self.receive(&cartridges, &bay, Some(lot.id), units, 4_500)
                 .await?;
         }
+        // Jumeirah has a lot of cartridges of its own, so the store's page has
+        // a lot to show the storekeeper there.
+        let lot = self.lot(&cartridges, "L-A2310", 300).await?;
+        self.receive(&cartridges, &jumeirah, Some(lot.id), 25, 4_500)
+            .await?;
         self.stores = vec![jumeirah.id, bay.id];
         self.items = vec![gloves.id, syringes.id, cartridges.id];
         Ok(())
@@ -208,6 +219,124 @@ impl Seed {
             )
             .await?;
         self.recall_id = recall.id;
+        self.undeliverable_notice(recall.id).await?;
+        Ok(())
+    }
+
+    /// Two purchase orders to the clinic's medical supplier for the Jumeirah
+    /// store, issued by the administrator: for the first the storekeeper has
+    /// started the goods receipt (a draft waits for what really arrived), the
+    /// second still waits for its goods.
+    pub(crate) async fn orders(&mut self) -> Result {
+        let jumeirah = self.stores[0];
+        let (gloves, syringes, cartridges) = (self.items[0], self.items[1], self.items[2]);
+        let supplier = wl_parties::create(
+            &self.state,
+            NewParty {
+                kind: PartyKind::Company,
+                legal_name_en: "Gulf Medical Supplies LLC".to_owned(),
+                company: Some(CompanyDetails {
+                    legal_form: Some("llc".to_owned()),
+                    trade_licence_no: Some("882015".to_owned()),
+                    ..CompanyDetails::default()
+                }),
+                roles: vec![PartyRole {
+                    role_key: "supplier".to_owned(),
+                    ..PartyRole::default()
+                }],
+                source: "seed".to_owned(),
+                ..NewParty::default()
+            },
+        )
+        .await?;
+        let supplier = PartyId(supplier.party_id().0);
+        let mut made = Vec::new();
+        for (lines, days) in [
+            (vec![(gloves, 20, 1_200), (cartridges, 10, 4_500)], 2),
+            (vec![(syringes, 24, 900)], 5),
+        ] {
+            let mut order = PurchaseOrder::new(supplier, jumeirah);
+            order.expected_date = Some(day(days));
+            let mut tx = self.db().begin().await?;
+            order
+                .insert_in_state(&mut tx, PurchaseOrderStatus::Draft, "Written by the clinic")
+                .await?;
+            tx.commit().await?;
+            for (position, (item, boxes, price)) in (1..).zip(lines) {
+                PurchaseOrderLine::new(order.id, position, item, boxes * 1_000, price)
+                    .save(self.db())
+                    .await?;
+            }
+            self.driver
+                .post(ADMIN, &format!("/purchase-orders/{}/issue", order.id), &[])
+                .await?;
+            made.push(order.id);
+        }
+        self.driver
+            .post(
+                STORE,
+                &format!("/purchase-orders/{}/receive", made[0]),
+                &[("delivery_note", "DN-88231")],
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// One patient's notice could not be delivered on any channel (the demo
+    /// makes the give-up wl-notify's worker would report): the notice goes
+    /// back to the front desk of its branch, which sees it under *Recall
+    /// calls* and records the call.
+    async fn undeliverable_notice(&self, recall: i64) -> Result {
+        let notices = clinics::RecallNotice::of_recall(self.db(), recall).await?;
+        let mut chosen = None;
+        for notice in &notices {
+            let scope = clinics::recalls::notice_scope(self.db(), notice).await?;
+            if scope.id() == BUSINESS_BAY.to_string() {
+                chosen = Some(notice);
+                break;
+            }
+        }
+        let Some(notice) = chosen.or(notices.first()) else {
+            return Ok(());
+        };
+        let patient = PartyId(notice.party_id);
+        let gave_up = MessageGaveUp {
+            message: MessageId(0),
+            type_key: clinics::recall_notice::NOTICE_TYPE.to_owned(),
+            subject: Subject::new(
+                clinics::recall_notice::RECALL_NOTICE_SUBJECT_TYPE,
+                notice.id,
+            ),
+            subject_label: None,
+            recipient: NotifyRecipient::Party { id: patient },
+            gave_up_at: renox::db::now(),
+            contact_point: None,
+            channels_tried: Vec::new(),
+            statutory: false,
+            reactions: Vec::new(),
+            alternative_of: None,
+            contact_of: None,
+        };
+        clinics::recalls::on_gave_up(&self.state, &gave_up).await
+    }
+
+    /// The SMS connection went down three hours ago: reminders cannot go, and
+    /// the front desk phones the patients of the next 24 hours (*Appointments
+    /// to call*, 05 §8).
+    pub(crate) async fn sms_outage(&self) -> Result {
+        IntegrationConnection::query()
+            .where_(IntegrationConnection::KEY.eq(integrations::SMS))
+            .update(
+                self.db(),
+                &[
+                    ("status", &ConnectionStatus::Down),
+                    (
+                        "status_changed_at",
+                        &Some(renox::db::now() - renox::chrono::Duration::hours(3)),
+                    ),
+                ],
+            )
+            .await?;
         Ok(())
     }
 }

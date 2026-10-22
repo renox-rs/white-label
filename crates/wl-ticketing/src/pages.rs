@@ -255,6 +255,10 @@ pub(crate) struct NewPage {
     tx: Texts,
     /// The active categories, `(key, name)`.
     categories: Vec<(String, String)>,
+    /// The kinds of record a ticket can be about, `(type, name)`: those the
+    /// modules and the vertical can name; empty when none can (the form then
+    /// takes the type as text).
+    subject_types: Vec<(String, String)>,
 }
 
 /// `GET /tickets/new`: the staff create form.
@@ -267,9 +271,22 @@ async fn new(State(state): State<AppState>, lang: Lang) -> Result<View> {
         .iter()
         .map(|c| (c.key.clone(), c.name("en").to_owned()))
         .collect();
+    let subject_types = wl_kernel::documents::labelled_subject_types()
+        .into_iter()
+        .map(|kind| {
+            let name = kind.replace(['.', '_'], " ");
+            let mut letters = name.chars();
+            let name = match letters.next() {
+                Some(first) => first.to_uppercase().chain(letters).collect(),
+                None => name,
+            };
+            (kind, name)
+        })
+        .collect();
     Ok(View::typed(NewPage {
         tx: texts::all(&lang),
         categories,
+        subject_types,
     }))
 }
 

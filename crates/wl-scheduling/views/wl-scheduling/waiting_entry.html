@@ -1,0 +1,42 @@
+{#- wl-scheduling: one waiting-list entry: what it waits for, the free times
+    that match it (each can be offered), and the offer on hold. Replace it with
+    resources/views/wl-scheduling/waiting_entry.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="entry.party">
+  <rx-stack>
+    <rx-page-header :title="entry.party" :subtitle="entry.service" :back="route('wl_scheduling.waiting_list')" :back-label="tx['waiting.title']"
+                    :badge="entry.status" :badge-kind="entry.status_kind">
+      <template rx-if="can_accept">
+        <rx-confirm id="accept-offer" :label="tx['waiting.accept']" :action="route('wl_scheduling.waiting_accept', entry.id)" method="POST"
+                    :title="tx['waiting.accept']" :message="entry.offer" :confirm-label="tx['waiting.accept']" :cancel-label="tx['cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_withdraw">
+        <rx-confirm id="remove-entry" :label="tx['waiting.remove']" :action="route('wl_scheduling.waiting_withdraw', entry.id)" method="POST"
+                    :title="tx['waiting.remove']" :message="tx['waiting.remove_message']" :confirm-label="tx['waiting.remove']" :cancel-label="tx['cancel']" icon="x"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['waiting.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['waiting.party']" :value="entry.party"/>
+        <rx-entry :label="tx['waiting.service']" :value="entry.service"/>
+        <rx-entry :label="tx['waiting.with']" :value="entry.with"/>
+        <rx-entry :label="tx['waiting.window']" :value="entry.window"/>
+        <rx-entry :label="tx['waiting.expires_on']" :value="expires" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['waiting.offer']" :value="entry.offer" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="can_offer" :title="tx['waiting.matching']">
+      <rx-empty rx-if="no_slots" :title="tx['waiting.no_match']" icon="calendar-check"/>
+      <rx-stack>
+        <rx-form rx-for="slot in slots" action="{{ route('wl_scheduling.waiting_offer', entry.id) }}">
+          <input type="hidden" name="resource" value="{{ slot.resources }}"/>
+          <input type="hidden" name="starts_at" value="{{ slot.starts_at }}"/>
+          <rx-row>
+            <strong>{{ slot.label }}</strong>
+            <span>{{ slot.with }}</span>
+            <rx-button type="submit" :label="tx['waiting.offer_it']"/>
+          </rx-row>
+        </rx-form>
+      </rx-stack>
+    </rx-card>
+  </rx-stack>
+</rx-page>

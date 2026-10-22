@@ -9,7 +9,7 @@
 //! | `POST /stock-holds/{id}/cancel` | `wl_inventory.hold_cancel` | `lots.release` in the hold's scope |
 //! | `POST /recalls` | `wl_inventory.recall_open` | `recalls.manage` |
 //! | `POST /stock-issues` | `wl_inventory.stock_issue` | `stock.issue` at the location |
-//! | `GET /pending-issues` | `wl_inventory.pending_list` | `stock.adjust` (the pending issues at the locations in its scope) |
+//! | `GET /pending-issues` | `wl_inventory.pending_list` | `stock.adjust` (the pending issues at the locations in its scope); a page for a browser ([`crate::stock_screens`]), JSON for the rest |
 //! | `POST /pending-issues/{id}/clear` | `wl_inventory.pending_clear` | `stock.adjust` at the location |
 //! | `POST /transfers/{id}/send` | `wl_inventory.transfer_send` | `stock.transfer` at the source |
 //! | `POST /transfers/{id}/receive` | `wl_inventory.transfer_receive` | `stock.transfer` at the destination |
@@ -437,9 +437,18 @@ pub struct PendingRow {
 /// `GET /pending-issues`: the open pending issues, oldest first, at the
 /// locations where the user holds `stock.adjust`, as JSON. Decision: the
 /// storekeeper's page lists only what the storekeeper may clear.
-async fn list_pending_issues(State(state): State<AppState>, user: AuthUser) -> Result<Response> {
+async fn list_pending_issues(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    headers: renox::axum::http::HeaderMap,
+) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::STOCK_ADJUST) {
         return Err(Error::Forbidden);
+    }
+    // A browser gets the page; everything else gets the JSON.
+    if wl_kernel::negotiate::wants_html(&headers) {
+        return crate::stock_screens::pending_page(&state, &user, &lang).await;
     }
     let mut rows = Vec::new();
     for pending in crate::pending_issue::open_of(&state.db).await? {

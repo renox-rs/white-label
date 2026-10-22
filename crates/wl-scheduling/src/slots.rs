@@ -464,6 +464,53 @@ pub async fn nearest(
     Ok(kept)
 }
 
+/// The free slots of `service` for staff to pick from: one list over the
+/// `sets` of resources (each set is one resource of every type the service
+/// needs), between `from` and `until`, by start, at most `limit`. A slot a
+/// resource may not deliver (`ResourceEligibility`) is left out.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn listing(
+    state: &AppState,
+    service: &ServiceType,
+    sets: &[Vec<Resource>],
+    from: DateTime,
+    until: DateTime,
+    limit: usize,
+    now: DateTime,
+) -> Result<Vec<FreeSlot>> {
+    let step = config_of(state).slot_step_minutes;
+    let mut tx = state.db.begin().await?;
+    let mut found = Vec::new();
+    for set in sets {
+        found.extend(free_in(&mut tx, service, set, from, until, step, limit * 3, now).await?);
+    }
+    tx.rollback().await?;
+    found.sort_by_key(|slot| (slot.start, slot.resource_ids.clone()));
+    let mut kept = Vec::new();
+    for slot in found {
+        let set = sets
+            .iter()
+            .find(|set| {
+                set.iter().map(|resource| resource.id).collect::<Vec<_>>() == slot.resource_ids
+            })
+            .cloned()
+            .unwrap_or_default();
+        if crate::service::check_eligible(state, service, &set, slot.start)
+            .await
+            .is_ok()
+        {
+            kept.push(slot);
+        }
+        if kept.len() >= limit {
+            break;
+        }
+    }
+    Ok(kept)
+}
+
 /// Whether every resource of `slot` may deliver the service at its start.
 async fn eligible_slot(
     state: &AppState,

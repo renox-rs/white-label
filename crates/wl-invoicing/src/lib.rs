@@ -983,6 +983,19 @@ impl Module for WlInvoicing {
                 }
             })
         });
+        // Where a page names a payer agreement (a vertical's contract): its
+        // name.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::invoicing::PAYER_AGREEMENT_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    let Some(agreement) = PayerAgreement::find(db, id).await? else {
+                        return Ok(None);
+                    };
+                    Ok(Some(agreement.name))
+                })
+            },
+        );
         // Where a page names an invoice (a cheque's documents): its number.
         wl_kernel::documents::register_subject_label(
             wl_kernel::invoicing::INVOICE_SUBJECT_TYPE,

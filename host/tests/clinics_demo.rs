@@ -134,6 +134,24 @@ async fn the_clinics_demo_has_every_state_and_is_seeded_once() {
     assert_eq!(
         count(
             &app,
+            "select count(*) from clinics_recall_notices where gave_up_at is not null"
+        )
+        .await,
+        1,
+        "one recall notice could not be delivered: a call for the front desk"
+    );
+    assert_eq!(
+        count(
+            &app,
+            "select count(*) from wl_integration_connections where key = 'sms' and status = 'down'"
+        )
+        .await,
+        1,
+        "the SMS connection is down: the front desk has appointments to call"
+    );
+    assert_eq!(
+        count(
+            &app,
             "select count(*) from wl_payments_payments where dispute_reference is not null"
         )
         .await,
@@ -199,6 +217,8 @@ async fn every_login_of_the_demo_clinic_opens_its_pages() {
             "/dashboard".into(),
             "/scheduling/bookings".into(),
             format!("/scheduling/bookings/{booking}"),
+            "/scheduling/bookings/new".into(),
+            "/scheduling/waiting-list".into(),
             "/clinics/appointments".into(),
             format!("/clinics/appointments/{booking}"),
             format!("/clinics/visits/{visit}"),
@@ -225,6 +245,10 @@ async fn every_login_of_the_demo_clinic_opens_its_pages() {
             "/scheduling/conflicts".into(),
             format!("/clinics/recalls/{recall}"),
             "/clinics/recall-calls".into(),
+            "/recalls".into(),
+            format!("/recalls/{recall}"),
+            "/stock".into(),
+            "/stock/holds".into(),
         ]);
         pages
     };
@@ -235,6 +259,9 @@ async fn every_login_of_the_demo_clinic_opens_its_pages() {
                 pages.extend([
                     format!("/hr/employees/{employee}"),
                     "/pending-issues".into(),
+                    "/stock/transfers".into(),
+                    "/purchase-orders".into(),
+                    "/goods-receipts".into(),
                     "/counter-sales".into(),
                     "/parties".into(),
                     "/invoices".into(),
@@ -248,6 +275,10 @@ async fn every_login_of_the_demo_clinic_opens_its_pages() {
                 "/dashboard".into(),
                 "/clinics/campaign-permits".into(),
                 format!("/clinics/recalls/{recall}"),
+                "/recalls".into(),
+                format!("/recalls/{recall}"),
+                "/stock".into(),
+                "/stock/holds".into(),
             ],
             "manager.jumeirah@palmgrove.example" | "manager.bay@palmgrove.example" => manager(),
             "reception.jumeirah@palmgrove.example" | "reception.bay@palmgrove.example" => {
@@ -267,7 +298,15 @@ async fn every_login_of_the_demo_clinic_opens_its_pages() {
                 "/clinics/appointments".into(),
                 format!("/clinics/visits/{visit}"),
             ],
-            "store@palmgrove.example" => vec!["/dashboard".into(), "/pending-issues".into()],
+            "store@palmgrove.example" => vec![
+                "/dashboard".into(),
+                "/pending-issues".into(),
+                "/stock".into(),
+                "/stock/holds".into(),
+                "/stock/transfers".into(),
+                "/purchase-orders".into(),
+                "/goods-receipts".into(),
+            ],
             "billing@palmgrove.example" => billing(),
             "callcentre@palmgrove.example" => vec![
                 "/dashboard".into(),
@@ -294,7 +333,19 @@ async fn every_login_of_the_demo_clinic_opens_its_pages() {
             .await
             .unwrap()
             .unwrap_or_else(|| panic!("the demo login {}", login.email));
-        for path in pages_of(login.email) {
+        let mut pages = pages_of(login.email);
+        // Everyone asks for their own leave; the managers and the
+        // administrator decide the leave of their scopes.
+        pages.push("/hr/leave".into());
+        if matches!(
+            login.email,
+            "admin@palmgrove.example"
+                | "manager.jumeirah@palmgrove.example"
+                | "manager.bay@palmgrove.example"
+        ) {
+            pages.push("/hr/leave/queue".into());
+        }
+        for path in pages {
             app.acting_as(&user);
             let page = app.get(&path).await;
             if page.status.as_u16() != 200 {
@@ -490,4 +541,28 @@ async fn the_money_pages_name_the_documents_they_link() {
         .await
         .assert_ok()
         .assert_dont_see("invoicing.invoice:");
+}
+
+/// A payer contract names the agreement it is billed under (`Gulf Shield
+/// Gold`), never `#3`, and the coordinator can change its terms.
+#[renox::test]
+async fn the_contracts_name_their_agreement_and_can_be_changed() {
+    let app = booted().await;
+    host::clinics_demo::seed(app.kernel()).await.unwrap();
+    let billing = User::find_by_email(app.db(), "billing@palmgrove.example")
+        .await
+        .unwrap()
+        .expect("the demo billing coordinator");
+    app.acting_as(&billing);
+    app.get("/clinics/contracts")
+        .await
+        .assert_ok()
+        .assert_see("Gulf Shield Gold")
+        .assert_see("Change the terms")
+        .assert_dont_see(">#1<");
+    // The picker of the agreement answers for the coordinator.
+    app.get("/payer-agreements/options?q=gold")
+        .await
+        .assert_ok()
+        .assert_see("Gulf Shield Gold");
 }

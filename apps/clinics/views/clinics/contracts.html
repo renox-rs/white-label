@@ -10,7 +10,7 @@
                          :title="tx['contract.new']" :description="tx['contract.new_description']" :submit-label="tx['contract.new']" icon="plus">
           <rx-input name="payer" :label="tx['policies.payer_party']" id="contract-new-payer" required/>
           <rx-input name="plan" :label="tx['contract.plan']" id="contract-new-plan"/>
-          <rx-input name="agreement" type="number" :label="tx['contract.agreement']" id="contract-new-agreement"/>
+          <rx-select name="agreement" :label="tx['contract.agreement']" :options="[]" :placeholder="tx['contract.agreement_placeholder']" options-url="{{ route('wl_invoicing.payer_agreement_options') }}" id="contract-new-agreement"/>
           <rx-input name="copay" type="text" inputmode="decimal" :label="tx['contract.copay']" value="0" id="contract-new-copay"/>
           <rx-input name="deductible" type="text" inputmode="decimal" :label="tx['contract.deductible']" value="0" id="contract-new-deductible"/>
           <rx-input name="valid_from" type="date" :label="tx['contract.valid_from']" :value="today" id="contract-new-from"/>
@@ -48,6 +48,22 @@
       <rx-column :label="tx['contract.windows']" hide-narrow>{{ row.windows }}</rx-column>
       <rx-column :label="tx['contract.missed_billing']" hide-narrow>{{ row.missed_billing }}</rx-column>
       <rx-column :label="tx['contract.tariffs']" hide-narrow>{{ row.tariffs }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="can_manage">
+          <rx-action-sheet :id="'contract-edit-' ~ row.id" :label="tx['contract.edit']" :action="route('clinics.contract_update', row.id)"
+                           :title="tx['contract.edit']" :description="row.payer ~ ' · ' ~ row.plan ~ ' · ' ~ tx['contract.edit_description']" :submit-label="tx['contract.edit']" icon="pencil">
+            <rx-select name="agreement" :label="tx['contract.agreement']" :options="[]" :selected="row.agreement_id" :placeholder="tx['contract.agreement_placeholder']" options-url="{{ route('wl_invoicing.payer_agreement_options') }}" :id="'contract-edit-agreement-' ~ row.id"/>
+            <rx-input name="copay" type="text" inputmode="decimal" :label="tx['contract.copay']" :value="row.copay_edit" :id="'contract-edit-copay-' ~ row.id"/>
+            <rx-input name="deductible" type="text" inputmode="decimal" :label="tx['contract.deductible']" :value="row.deductible_edit" :id="'contract-edit-deductible-' ~ row.id"/>
+            <rx-input name="valid_to" type="date" :label="tx['contract.valid_to']" :value="row.valid_to_edit" :id="'contract-edit-to-' ~ row.id"/>
+            <rx-input name="first_submission_days" type="number" :label="tx['contract.first_submission_days']" :value="row.first_days" :id="'contract-edit-first-' ~ row.id"/>
+            <rx-input name="resubmission_days" type="number" :label="tx['contract.resubmission_days']" :value="row.resubmission_days" :id="'contract-edit-resubmission-' ~ row.id"/>
+            <rx-input name="resubmission_limit" type="number" :label="tx['contract.resubmission_limit']" :value="row.resubmission_limit" :id="'contract-edit-limit-' ~ row.id"/>
+            <rx-input name="reminder_days" type="number" :label="tx['contract.reminder_days']" :value="row.reminder_days" :id="'contract-edit-reminder-' ~ row.id"/>
+            <rx-select name="accepts_late_claims" :label="tx['contract.accepts_late_claims']" :options="late_options" :selected="row.late_edit" :id="'contract-edit-late-' ~ row.id"/>
+          </rx-action-sheet>
+        </template>
+      </rx-row-actions>
       <rx-slot name="empty"><rx-empty :title="tx['contract.empty']" icon="receipt"/></rx-slot>
     </rx-table>
   </rx-stack>
