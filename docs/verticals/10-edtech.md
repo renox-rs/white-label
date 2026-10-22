@@ -566,6 +566,16 @@ freezing the enrolment pause the subscription after the commit, unless it is alr
 the last cause's end resumes it when no other pause cause is left. A subscription that resumes into
 `past_due` still unfreezes the enrolment.
 
+The task for a payment charged back is made for an invoice whose source is the enrolment (the course
+fee, an instalment, a package, the registration fee) when wl-invoicing reopens it because its payment
+was reversed (`InvoiceReopened`, whatever the reversal reason: a chargeback, a bank return); the
+cycle invoices of a membership have the subscription as source and make none. There is one open task
+per enrolment: it goes to the counsellor, else to the counsellors of the campus (the first holds it, all
+are told), is due in two working days and carries the amount, the payer and the links *send payment
+link* and *withdraw*; another reopened invoice adds a comment to it. It closes when every reopened
+invoice is paid again, or when the student is withdrawn. A counsellor who is no longer active is an
+employee wl-hr no longer lists, or a user who no longer holds `enrolments.manage` in the campus.
+
 #### Session
 
 | State | Tone | Terminal | Meaning |
