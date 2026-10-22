@@ -151,8 +151,12 @@ pub struct LineView {
     pub employee: String,
     /// The gross fixed wage, dirhams.
     pub wage: String,
+    /// `wage` as `AED 2,550.00`.
+    pub wage_text: String,
     /// The net pay, dirhams.
     pub net: String,
+    /// `net` as `AED 2,550.00`.
+    pub net_text: String,
     /// The status in the page's language.
     pub status: String,
     /// The badge kind.
@@ -176,11 +180,17 @@ pub struct LineView {
     pub exception: String,
     /// The pay of overtime and the like, dirhams.
     pub variable: String,
+    /// `variable` as `AED 2,550.00`.
+    pub variable_text: String,
     /// The hours added or taken back by adjustments and reconciliations,
     /// dirhams, signed.
     pub difference: String,
+    /// `difference` as `AED 2,550.00`.
+    pub difference_text: String,
     /// The deductions, dirhams.
     pub deductions: String,
+    /// `deductions` as `AED 2,550.00`.
+    pub deductions_text: String,
     /// On a carried line: the warning that it pays after the WPS due date.
     pub warning: String,
     /// On a carried line: why it was carried.
@@ -198,6 +208,8 @@ pub struct CarryView {
     pub employee: String,
     /// The amount it pays, dirhams.
     pub amount: String,
+    /// `amount` as `AED 2,550.00`.
+    pub amount_text: String,
     /// The period of the run it was held in.
     pub held_in: String,
     /// Why it was held.
@@ -222,6 +234,8 @@ pub struct DifferenceView {
     pub hours: String,
     /// The amount, dirhams, signed.
     pub amount: String,
+    /// `amount` as `AED 2,550.00`.
+    pub amount_text: String,
     /// Whether the preparer can turn it into a recovery plan: it is negative
     /// and the run is still being prepared.
     pub can_convert: bool,
@@ -236,8 +250,12 @@ pub struct ExceptionView {
     pub cap: String,
     /// The deductions counted against it, dirhams.
     pub amount: String,
+    /// `amount` as `AED 2,550.00`.
+    pub amount_text: String,
     /// The cap, dirhams.
     pub limit: String,
+    /// `limit` as `AED 2,550.00`.
+    pub limit_text: String,
 }
 
 /// One action the user may run.
@@ -298,6 +316,8 @@ pub struct SifView {
     pub lines: i64,
     /// The sum of the nets, dirhams.
     pub total: String,
+    /// `total` as `AED 2,550.00`.
+    pub total_text: String,
     /// The download of the file.
     pub url: String,
     /// The bank's result or confirmation recorded against it.
@@ -370,6 +390,7 @@ async fn show(
             category: difference.category.clone(),
             hours: hours_text(difference.minutes),
             amount: aed(difference.amount),
+            amount_text: aed_text(difference.amount),
             can_convert: difference.status == differences::OPEN
                 && difference.amount < 0
                 && matches!(
@@ -395,6 +416,7 @@ async fn show(
                 line_id: held.id,
                 employee,
                 amount: aed(held.net_amount),
+                amount_text: aed_text(held.net_amount),
                 held_in,
                 reason: held.held_reason.clone().unwrap_or_default(),
                 warning: release::warning_for(&state, &held, &run)
@@ -409,7 +431,9 @@ async fn show(
             employee: names.get(&problem.employee_id).cloned().unwrap_or_default(),
             cap: text(&lang, &format!("payroll.cap.{}", problem.scope.key())),
             amount: aed(problem.amount),
+            amount_text: aed_text(problem.amount),
             limit: aed(problem.cap),
+            limit_text: aed_text(problem.cap),
         });
     }
     let approve_blocked = !exceptions.is_empty();
@@ -512,6 +536,7 @@ async fn show(
                 name: f.file_name,
                 lines: f.line_count,
                 total: aed(f.total),
+                total_text: aed_text(f.total),
                 url: format!("/hr/payroll/{id}/sif/{}", f.version),
                 confirmation: f.confirmation.unwrap_or_default(),
             })
@@ -569,7 +594,9 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
         id: line.id,
         employee,
         wage: aed(line.fixed_wage),
+        wage_text: aed_text(line.fixed_wage),
         net: aed(line.net_amount),
+        net_text: aed_text(line.net_amount),
         status: text(lang, &format!("payroll.line.{}", line.status.as_str())),
         status_kind: line_kind(line.status),
         reason: line
@@ -593,8 +620,11 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
             .map(|e| text(lang, &format!("payroll.exception.{e}")))
             .unwrap_or_default(),
         variable: aed(line.variable_amount),
+        variable_text: aed_text(line.variable_amount),
         difference: aed(line.difference_amount),
+        difference_text: aed_text(line.difference_amount),
         deductions: aed(line.deductions_amount),
+        deductions_text: aed_text(line.deductions_amount),
         warning: line.late_warning.clone().unwrap_or_default(),
         carried: line.carry_reason.clone().unwrap_or_default(),
         component: line.component.clone().unwrap_or_default(),

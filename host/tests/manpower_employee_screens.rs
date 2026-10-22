@@ -72,6 +72,37 @@ async fn the_pro_sees_the_documents_with_validity_and_the_documents_page_names_t
     assert!(!docs.contains("hr.employee #"), "the page names the worker");
 }
 
+/// The hire date of the employee page and of the list reads `01 Nov 2026`.
+#[renox::test]
+async fn the_hire_date_reads_as_a_day_month_year_in_words() {
+    let app = demo().await;
+    let id = employee(&app, "Wasim Khan").await;
+    let hired = manpower_screens_support::text(
+        &app,
+        &format!("select cast(hire_date as text) from wl_hr_employees where id = {id}"),
+    )
+    .await;
+    let hired = renox::chrono::NaiveDate::parse_from_str(&hired[..10], "%Y-%m-%d").unwrap();
+    let on_page = page(&app, HR, &format!("/hr/employees/{id}")).await;
+    says(&on_page, &["Hire date", &words(hired)]);
+    assert!(!on_page.contains(&hired.to_string()), "no ISO date");
+    let list = page(&app, HR, "/hr/employees").await;
+    says(&list, &[&words(hired)]);
+    assert!(!list.contains(&format!(">{hired}<")), "no ISO date");
+}
+
+/// *Start an onboarding* is not the main button of an active worker's page.
+#[renox::test]
+async fn start_an_onboarding_is_not_the_primary_button_of_an_active_worker() {
+    let app = demo().await;
+    let html = page(&app, HR, &path(&app, "Wasim Khan").await).await;
+    says(&html, &["Start an onboarding"]);
+    assert!(
+        html.contains("rx-button--secondary\" type=\"button\" data-rx-open=\"start-onboarding\""),
+        "the trigger of the onboarding sheet is a secondary button"
+    );
+}
+
 /// AC3: a deployed worker's *Deployments* lists the client, site and status in
 /// words; a worker without a deployment says *On the bench*.
 #[renox::test]

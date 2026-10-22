@@ -21,7 +21,7 @@
       </template>
       <template rx-if="can_manage">
         <rx-action-sheet id="start-onboarding" :label="tx['onboarding.start']" :action="route('wl_hr.onboarding_start', employee.id)"
-                         :title="tx['onboarding.start_title']" :description="tx['onboarding.start_description']" :submit-label="tx['onboarding.start']" variant="primary" icon="plus">
+                         :title="tx['onboarding.start_title']" :description="tx['onboarding.start_description']" :submit-label="tx['onboarding.start']" icon="plus">
           <rx-select name="template" :label="tx['onboarding.template']" :options="templates" required/>
           <rx-input name="start_date" type="date" :label="tx['onboarding.start_date']" :value="today" id="start-onboarding-date"/>
         </rx-action-sheet>
@@ -35,7 +35,7 @@
             <rx-entry :label="tx['employees.number']" :value="employee.number" :placeholder="tx['none']"/>
             <rx-entry :label="tx['employees.job_title']" :value="job_title" :placeholder="tx['none']"/>
             <rx-entry :label="tx['employees.employment_type']" :value="employment_type"/>
-            <rx-entry :label="tx['employees.hire_date']" :value="employee.hire_date"/>
+            <rx-entry :label="tx['employees.hire_date']" :value="employee.hire_date_text"/>
             <rx-entry :label="tx['employees.scopes']" :value="scopes" :placeholder="tx['none']"/>
           </rx-infolist>
         </rx-card>

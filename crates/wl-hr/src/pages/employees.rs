@@ -157,6 +157,8 @@ pub struct EmployeeRow {
     pub job_role: String,
     /// The hire date.
     pub hire_date: String,
+    /// The hire date as `01 Nov 2026`.
+    pub hire_date_text: String,
     /// The status in the page's language.
     pub status: String,
     /// The badge kind.
@@ -211,6 +213,7 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
             number: employee.employee_number.clone(),
             job_role: employee.job_role.clone(),
             hire_date: employee.hire_date.to_string(),
+            hire_date_text: super::payroll::date_text(employee.hire_date),
             status: text(
                 &lang,
                 &format!("employees.status.{}", employee.status.as_str()),
@@ -658,6 +661,7 @@ async fn show(
         number: employee.employee_number.clone(),
         job_role: employee.job_role.clone(),
         hire_date: employee.hire_date.to_string(),
+        hire_date_text: super::payroll::date_text(employee.hire_date),
         status: text(
             &lang,
             &format!("employees.status.{}", employee.status.as_str()),

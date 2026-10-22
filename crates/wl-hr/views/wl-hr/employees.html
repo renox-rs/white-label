@@ -8,7 +8,7 @@
       <rx-column :label="tx['employees.name']"><a href="{{ route('wl_hr.employee', employee.id) }}">{{ employee.name }}</a></rx-column>
       <rx-column :label="tx['employees.number']" hide-narrow>{{ employee.number }}</rx-column>
       <rx-column :label="tx['employees.job_role']">{{ employee.job_role | replace('_', ' ') | capitalize }}</rx-column>
-      <rx-column :label="tx['employees.hire_date']" hide-narrow>{{ employee.hire_date }}</rx-column>
+      <rx-column :label="tx['employees.hire_date']" hide-narrow>{{ employee.hire_date_text }}</rx-column>
       <rx-column :label="tx['employees.progress']" hide-narrow>{{ employee.progress }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="employee.status_kind" :text="employee.status"/></rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['employees.empty']" icon="users"/></rx-slot>

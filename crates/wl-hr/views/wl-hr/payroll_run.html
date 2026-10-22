@@ -82,8 +82,8 @@
           <rx-table :rows="exceptions" as="exception" :key="exception.employee ~ exception.cap" :caption="tx['payroll.exceptions']">
             <rx-column :label="tx['payroll.employee']">{{ exception.employee }}</rx-column>
             <rx-column :label="tx['payroll.cap']">{{ exception.cap }}</rx-column>
-            <rx-column :label="tx['payroll.amount']">{{ exception.amount }}</rx-column>
-            <rx-column :label="tx['payroll.limit']">{{ exception.limit }}</rx-column>
+            <rx-column :label="tx['payroll.amount']">{{ exception.amount_text }}</rx-column>
+            <rx-column :label="tx['payroll.limit']">{{ exception.limit_text }}</rx-column>
           </rx-table>
         </rx-stack>
       </rx-card>
@@ -92,7 +92,7 @@
       <rx-card :title="tx['payroll.carryable']">
         <rx-table :rows="carryable" as="held" :key="held.line_id" :caption="tx['payroll.carryable']">
           <rx-column :label="tx['payroll.employee']">{{ held.employee }}</rx-column>
-          <rx-column :label="tx['payroll.net']">{{ held.amount }}</rx-column>
+          <rx-column :label="tx['payroll.net']">{{ held.amount_text }}</rx-column>
           <rx-column :label="tx['payroll.released_into']" hide-narrow>{{ held.held_in }}</rx-column>
           <rx-column :label="tx['payroll.reason']" hide-narrow>{{ held.reason }}</rx-column>
           <rx-column :label="tx['payroll.warning']">
@@ -110,7 +110,7 @@
         <rx-column :label="tx['payroll.employee']">{{ difference.employee }}</rx-column>
         <rx-column :label="tx['payroll.difference_source']">{{ difference.source }}</rx-column>
         <rx-column :label="tx['payroll.hours']" hide-narrow>{{ difference.hours }} {{ difference.category }}</rx-column>
-        <rx-column :label="tx['payroll.difference_amount']">{{ difference.amount }}</rx-column>
+        <rx-column :label="tx['payroll.difference_amount']">{{ difference.amount_text }}</rx-column>
         <rx-column :label="tx['payroll.comment']">
           <template rx-if="difference.can_convert">
             <rx-action-sheet :id="'convert-difference-' ~ difference.id" :label="tx['payroll.convert']" :action="route('wl_hr.payroll_difference_convert', difference.id)"
@@ -126,22 +126,22 @@
         <rx-column :label="tx['payroll.file_version']">{{ file.version }}</rx-column>
         <rx-column :label="tx['payroll.file_name']">{{ file.name }}</rx-column>
         <rx-column :label="tx['payroll.file_lines']" hide-narrow>{{ file.lines }}</rx-column>
-        <rx-column :label="tx['payroll.file_total']" hide-narrow>{{ file.total }}</rx-column>
+        <rx-column :label="tx['payroll.file_total']" hide-narrow>{{ file.total_text }}</rx-column>
         <rx-column :label="tx['payroll.file_result']" hide-narrow>{{ file.confirmation }}</rx-column>
         <rx-column :label="tx['payroll.download_sif']"><a href="{{ file.url }}">{{ tx['payroll.download_sif'] }}</a></rx-column>
       </rx-table>
     </template>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['payroll.lines']" card>
       <rx-column :label="tx['payroll.employee']">{{ line.employee }}</rx-column>
-      <rx-column :label="tx['payroll.wage']" hide-narrow>{{ line.wage }}</rx-column>
+      <rx-column :label="tx['payroll.wage']" hide-narrow>{{ line.wage_text }}</rx-column>
       <rx-column :label="tx['payroll.component']" hide-narrow>{{ line.component }}</rx-column>
       <rx-column :label="tx['payroll.hours']" hide-narrow>
         {{ line.hours }}
         <template rx-if="line.provisional"><rx-badge kind="warning" :text="tx['payroll.provisional']"/></template>
       </rx-column>
-      <rx-column :label="tx['payroll.variable']" hide-narrow>{{ line.variable }}</rx-column>
-      <rx-column :label="tx['payroll.deductions']" hide-narrow>{{ line.deductions }}</rx-column>
-      <rx-column :label="tx['payroll.net']">{{ line.net }}</rx-column>
+      <rx-column :label="tx['payroll.variable']" hide-narrow>{{ line.variable_text }}</rx-column>
+      <rx-column :label="tx['payroll.deductions']" hide-narrow>{{ line.deductions_text }}</rx-column>
+      <rx-column :label="tx['payroll.net']">{{ line.net_text }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="line.status_kind" :text="line.status"/></rx-column>
       <rx-column :label="tx['payroll.reason']" hide-narrow>
         {{ line.reason }}

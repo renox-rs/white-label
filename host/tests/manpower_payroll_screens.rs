@@ -6,8 +6,8 @@ mod manpower_screens_support;
 mod support;
 
 use manpower_screens_support::{
-    ADMIN, HR, MD, SUPERVISOR, browse, day, demo, fits_a_phone, landed, no_raw_words, page, post,
-    says, scalar, words,
+    ADMIN, HR, MD, SUPERVISOR, browse, cells_of_row, day, demo, fits_a_phone, landed, no_raw_words,
+    page, post, says, scalar, words,
 };
 
 /// AC1: HR opens `/hr/payroll` and sees the runs with period, status in words
@@ -92,6 +92,42 @@ async fn the_settlement_list_shows_status_amounts_and_deadline_and_the_superviso
 
 /// Starts and calculates the regular run of the month `n` days away as `email`;
 /// the id of the run.
+/// Every cell of every table of `html` that is a bare amount such as `2550.00`.
+fn bare_amounts(html: &str) -> Vec<String> {
+    html.split("<td")
+        .skip(1)
+        .filter_map(|cell| {
+            let cell = cell.split_once('>')?.1.split("</td>").next()?;
+            let cell = cell.trim();
+            let digits = cell.trim_start_matches('-');
+            let (whole, fraction) = digits.split_once('.')?;
+            (!whole.is_empty()
+                && whole.chars().all(|c| c.is_ascii_digit())
+                && fraction.len() == 2
+                && fraction.chars().all(|c| c.is_ascii_digit()))
+            .then(|| cell.to_owned())
+        })
+        .collect()
+}
+
+/// The run page shows its amounts as `AED 2,550.00`, not as bare `2550.00`.
+#[renox::test]
+async fn the_run_page_shows_amounts_in_aed_with_a_thousands_comma() {
+    let app = demo().await;
+    let id = started(&app, HR, 40).await;
+    let html = page(&app, HR, &format!("/hr/payroll/{id}")).await;
+    assert_eq!(bare_amounts(&html), Vec::<String>::new(), "bare amounts");
+    let ravi = cells_of_row(&html, "Ravi Kumar");
+    assert!(
+        ravi.iter().any(|cell| cell.starts_with("AED ")),
+        "an amount in AED: {ravi:?}"
+    );
+    assert!(
+        ravi.iter().any(|cell| cell.contains(',')),
+        "a thousands comma: {ravi:?}"
+    );
+}
+
 async fn started(app: &renox::testing::TestApp, email: &str, n: i64) -> i64 {
     let month = day(n).format("%Y-%m").to_string();
     let made = post(app, email, "/hr/payroll", &[("period", &month)]).await;
