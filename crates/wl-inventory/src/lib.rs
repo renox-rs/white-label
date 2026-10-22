@@ -35,6 +35,7 @@ mod recall_pages;
 pub mod recall_trace;
 pub mod receipt_post;
 pub mod receipt_reverse;
+mod receipt_screens;
 pub mod reorder;
 pub mod return_credit;
 pub mod return_dispatch;
@@ -46,13 +47,16 @@ pub mod shortage_alert;
 pub mod stock_count;
 pub mod stock_hold;
 mod stock_pages;
+mod stock_screens;
 pub mod stock_service;
+mod stock_ui_texts;
 mod supplier_pages;
 pub mod supplier_return;
 pub mod supplier_review;
 pub mod supplier_score;
 mod texts;
 pub mod transfer;
+mod transfer_screens;
 
 use std::sync::Arc;
 
@@ -349,6 +353,9 @@ impl Module for WlInventory {
             .merge(preferred_change::routes())
             .merge(stock_pages::routes())
             .merge(recall_pages::routes())
+            .merge(stock_screens::routes())
+            .merge(transfer_screens::routes())
+            .merge(receipt_screens::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -360,9 +367,17 @@ impl Module for WlInventory {
             .view_data::<screens::ReorderPage>()
             .view_data::<screens::ScorePage>()
             .view_data::<screens::RequestsPage>()
-            .view_data::<screens::RequestPage>();
+            .view_data::<screens::RequestPage>()
+            .view_data::<stock_screens::StockPage>()
+            .view_data::<stock_screens::LotPage>()
+            .view_data::<stock_screens::HoldsPage>()
+            .view_data::<stock_screens::PendingPage>()
+            .view_data::<transfer_screens::TransfersPage>()
+            .view_data::<receipt_screens::OrdersPage>()
+            .view_data::<receipt_screens::ReceiptsPage>()
+            .view_data::<receipt_screens::ReceiptPage>();
         app.templates(|env| {
-            for (name, source) in screens::VIEWS {
+            for (name, source) in screens::VIEWS.iter().chain(stock_screens::VIEWS) {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
                     renox::view::add_template(env, *name, *source)
@@ -389,6 +404,63 @@ impl Module for WlInventory {
                     })
                 }),
         );
+        // The stock screens, in the app group of the sidebar for those who
+        // hold the permission of each somewhere; the labels are the app's
+        // `nav.stock`, `nav.receive_stock`, `nav.stock_transfers`,
+        // `nav.stock_holds` and `nav.pending_issues` texts.
+        for (route, label, icon, order, held) in [
+            (
+                "wl_inventory.stock",
+                "nav.stock",
+                "package",
+                64,
+                &[permissions::STOCK_VIEW][..],
+            ),
+            (
+                "wl_inventory.orders",
+                "nav.receive_stock",
+                "inbox",
+                65,
+                &[permissions::GOODS_RECEIPTS_POST][..],
+            ),
+            (
+                "wl_inventory.transfers",
+                "nav.stock_transfers",
+                "truck",
+                66,
+                &[permissions::STOCK_TRANSFER][..],
+            ),
+            (
+                "wl_inventory.holds",
+                "nav.stock_holds",
+                "shield",
+                67,
+                &[permissions::STOCK_HOLD, permissions::LOTS_RELEASE][..],
+            ),
+            (
+                "wl_inventory.pending_list",
+                "nav.pending_issues",
+                "clipboard-list",
+                68,
+                &[permissions::STOCK_ADJUST][..],
+            ),
+        ] {
+            app.nav(
+                "app",
+                NavLink::route(route, label)
+                    .icon(icon)
+                    .group("nav.app")
+                    .order(order)
+                    .when(move |user| {
+                        held.iter().any(|permission| {
+                            user.allows(permission) || user.has_permission_anywhere(permission)
+                        })
+                    }),
+            );
+        }
+        // A page that holds only the id of a lot, a hold, a transfer or a
+        // receipt (an approval, a message) shows its number.
+        stock_screens::register_labels();
         app.model::<Item>();
         app.model::<Location>();
         app.model::<ItemSupplier>();

@@ -4,6 +4,7 @@
 use renox::prelude::*;
 
 use crate::screen_texts::SCREEN_TEXTS;
+use crate::stock_ui_texts::STOCK_TEXTS;
 
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
@@ -955,6 +956,7 @@ pub(crate) fn english(key: &str) -> &str {
     TEXTS
         .iter()
         .chain(SCREEN_TEXTS)
+        .chain(STOCK_TEXTS)
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| text)
 }
@@ -991,7 +993,7 @@ mod tests {
     #[test]
     fn every_key_is_in_the_package_namespace_and_unique() {
         let mut seen = std::collections::BTreeSet::new();
-        for (key, _) in TEXTS.iter().chain(SCREEN_TEXTS) {
+        for (key, _) in TEXTS.iter().chain(SCREEN_TEXTS).chain(STOCK_TEXTS) {
             assert!(key.starts_with("wl_inventory."), "{key}");
             assert!(seen.insert(*key), "{key} twice");
         }
