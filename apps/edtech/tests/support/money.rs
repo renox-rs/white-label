@@ -205,9 +205,15 @@ pub struct Books {
     payments: Arc<Mutex<Vec<(i64, i64)>>>,
     notes: Arc<Mutex<Vec<Noted>>>,
     discarded: Arc<Mutex<Vec<i64>>>,
+    taken: Arc<Mutex<Vec<(i64, i64, i64)>>>,
 }
 
 impl Books {
+    /// What credit notes gave to their refunds: (note, refund, amount).
+    pub fn taken(&self) -> Vec<(i64, i64, i64)> {
+        self.taken.lock().unwrap().clone()
+    }
+
     /// `amount` fils were paid on invoice `id`.
     pub fn pay(&self, id: i64, amount: i64) {
         self.payments.lock().unwrap().push((id, amount));
@@ -272,7 +278,15 @@ impl Books {
             legal_entity_id: Some(1),
             currency: "AED".to_owned(),
             gross_total: note.gross,
-            remaining: note.gross,
+            remaining: note.gross
+                - self
+                    .taken
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|(id, _, _)| *id == note.id)
+                    .map(|(_, _, amount)| amount)
+                    .sum::<i64>(),
         }
     }
 
@@ -426,6 +440,21 @@ impl Invoicer for Books {
         let lines = lines.iter().map(|l| (l.invoice_line, l.net)).collect();
         let id = self.credit(invoice.0, lines, &reason, false);
         Box::pin(async move { Ok(CreditNoteId(id)) })
+    }
+
+    fn take_credit_for_refund<'a>(
+        &'a self,
+        _state: &'a AppState,
+        credit_note: CreditNoteId,
+        refund: Subject,
+        _attempt: i64,
+        amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        self.taken
+            .lock()
+            .unwrap()
+            .push((credit_note.0, refund.subject_id, amount));
+        Box::pin(async { Ok(()) })
     }
 
     fn find_credit_note<'a>(

@@ -73,6 +73,10 @@ pub struct Settlement {
     pub refunded_notes: Vec<i64>,
     /// The refunds asked of wl-payments.
     pub refunds: Vec<i64>,
+    /// The credit notes whose balance was given to their refund, so the same
+    /// credit is not refunded twice and a failed refund gives it back
+    /// (BL-INV-08).
+    pub taken_notes: Vec<i64>,
     /// The invoice for the amount owed.
     pub owed_invoice: Option<i64>,
     /// Every step is done.
@@ -299,39 +303,58 @@ async fn credit_and_refund(state: &AppState, e: &Enrolment, plan: &mut Settlemen
     }
     let notes = plan.credit_notes.clone();
     for note in notes {
-        if plan.refunded_notes.contains(&note) {
-            continue;
-        }
         let id = wl_kernel::invoicing::CreditNoteId(note);
         let Some(summary) = books.find_credit_note(&state.db, id).await? else {
             continue;
         };
-        if summary.remaining <= 0 {
-            continue;
+        if !plan.refunded_notes.contains(&note) {
+            if summary.remaining <= 0 {
+                continue;
+            }
+            let entity = match summary.legal_entity_id {
+                Some(entity) => entity,
+                None => LegalEntity::default_entity(&state.db).await?.id,
+            };
+            let refund = payment_recorder(state)
+                .request_refund(
+                    state,
+                    RefundRequest {
+                        source: RefundSource::CreditNote(id.subject()),
+                        party: PartyId(e.payer_party_id),
+                        legal_entity_id: entity,
+                        amount: summary.remaining,
+                        currency: DEFAULT_CURRENCY.to_owned(),
+                        method: None,
+                        gateway_txn: None,
+                        reason: reason.clone(),
+                    },
+                    plan.requested_by,
+                )
+                .await?;
+            plan.refunded_notes.push(note);
+            plan.refunds.push(refund.0);
+            store(state, e.id, plan).await?;
         }
-        let entity = match summary.legal_entity_id {
-            Some(entity) => entity,
-            None => LegalEntity::default_entity(&state.db).await?.id,
-        };
-        let refund = payment_recorder(state)
-            .request_refund(
-                state,
-                RefundRequest {
-                    source: RefundSource::CreditNote(id.subject()),
-                    party: PartyId(e.payer_party_id),
-                    legal_entity_id: entity,
-                    amount: summary.remaining,
-                    currency: DEFAULT_CURRENCY.to_owned(),
-                    method: None,
-                    gateway_txn: None,
-                    reason: reason.clone(),
-                },
-                plan.requested_by,
-            )
-            .await?;
-        plan.refunded_notes.push(note);
-        plan.refunds.push(refund.0);
-        store(state, e.id, plan).await?;
+        // The refund exists: the credit note gives its balance to it, so the
+        // same credit is not refunded twice, and a refund that fails gives
+        // it back (BL-INV-08).
+        if !plan.taken_notes.contains(&note)
+            && summary.remaining > 0
+            && let Some(index) = plan.refunded_notes.iter().position(|n| *n == note)
+            && let Some(refund) = plan.refunds.get(index).copied()
+        {
+            books
+                .take_credit_for_refund(
+                    state,
+                    id,
+                    wl_kernel::payments::RefundId(refund).subject(),
+                    1,
+                    summary.remaining,
+                )
+                .await?;
+            plan.taken_notes.push(note);
+            store(state, e.id, plan).await?;
+        }
     }
     Ok(())
 }

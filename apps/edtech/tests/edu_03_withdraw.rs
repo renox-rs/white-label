@@ -443,6 +443,12 @@ async fn edu_03_a_failed_refund_leaves_the_enrolment_withdrawn() {
         1,
         "the credit note is not made again"
     );
+    assert_eq!(
+        t.books.taken().len(),
+        1,
+        "the credit note gave its balance to the refund once, so a failure can give it back"
+    );
+    assert_eq!(t.books.taken()[0].2, 178_500);
     assert_eq!(t.cash.refunds().len(), 1);
 }
 

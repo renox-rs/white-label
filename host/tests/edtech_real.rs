@@ -983,3 +983,174 @@ async fn edu_05_a_real_freeze_pauses_the_subscription_once_and_unfreezing_resume
         SubscriptionStatus::Active
     );
 }
+
+// ---- #438: the withdrawal of a membership, with the real wl-invoicing ---------------------------
+
+/// #438 point 4 with the real subscription: the first cycle of the membership
+/// is billed and paid; the student withdraws; the subscription is cancelled at
+/// once by wl-invoicing, which makes its own pro rata credit note for the unused
+/// part of the cycle; the vertical makes no second credit note, asks for no
+/// refund and the enrolment is `withdrawn`.
+#[renox::test]
+async fn edu_03_a_withdrawn_membership_is_cancelled_with_its_own_pro_rata_credit() {
+    use wl_kernel::subscriptions::{SubscriptionStatus, subscriptions};
+    let w = boot().await;
+    let (_, desk) = w.staff("Dina", COUNSELLOR).await;
+    let (e, subscription) = membership(&w, &desk, "Sara Ali").await;
+    assert_eq!(
+        wl_invoicing::subscriptions::bill_due(w.state(), day(0))
+            .await
+            .unwrap(),
+        1
+    );
+    let cycle = wl_invoicing::subscriptions::cycle_invoices(w.db(), subscription.id)
+        .await
+        .unwrap()
+        .remove(0)
+        .1;
+    wl_kernel::invoicing::invoicer(w.state())
+        .allocate(
+            w.state(),
+            wl_kernel::invoicing::InvoiceId(cycle.id),
+            wl_kernel::Subject::new("payments.payment", 1),
+            cycle.gross_total,
+        )
+        .await
+        .expect("the cycle is paid");
+
+    let asked = enrolments::request_withdrawal(w.state(), Some(&desk), e.id, "moving")
+        .await
+        .unwrap();
+
+    assert_eq!(asked.enrolment.status, EnrolmentStatus::Withdrawn);
+    assert!(asked.approval_request.is_none());
+    let summaries = subscriptions(w.state())
+        .of_agreement(w.db(), &e.subject())
+        .await
+        .unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].status, SubscriptionStatus::Cancelled);
+    assert_eq!(summaries[0].cancelled_on, Some(day(0)));
+    let note = summaries[0]
+        .final_credit_note
+        .expect("wl-invoicing credited the unused part");
+    let notes = wl_invoicing::CreditNote::query().get(w.db()).await.unwrap();
+    assert_eq!(
+        notes.len(),
+        1,
+        "the subscription's credit note is the only one"
+    );
+    assert_eq!(notes[0].id, note);
+    assert!(notes[0].gross_total > 0 && notes[0].gross_total <= cycle.gross_total);
+    assert!(
+        Refund::query().count(w.db()).await.unwrap() == 0,
+        "no refund was asked by the vertical"
+    );
+}
+
+/// #438 points 1 and 6 with the real modules. The AED 2,520.00 fee is paid on the
+/// card and allocated; the student withdraws at once and the refund waits for
+/// the centre manager (`FIN.ACL.04`); wl-invoicing makes the one credit note and
+/// asks wl-payments for the refund out of it; the accountant approves, pays and
+/// then marks the transfer failed (the bank returned it): wl-invoicing gives the
+/// credit note its balance back, the enrolment stays `withdrawn` and no second
+/// credit note is made.
+#[renox::test]
+async fn edu_03_a_failed_refund_reopens_the_credit_note_balance() {
+    use wl_kernel::payments::{PaymentMethod, RefundFailureKind};
+    let w = boot().await;
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (_, dina) = w.staff("Dina", COUNSELLOR).await;
+    let (manager_user, _) = w.staff("Mona", host::roles::CENTRE_MANAGER).await;
+    let (_, rita) = w.staff("Rita", host::roles::ACCOUNTANT).await;
+    let batch = w.open_batch(&coordinator, "A", day(7)).await;
+    let sara = tenant(&w.app, "Sara Ali").await;
+    let e = enrolments::create(
+        w.state(),
+        &dina,
+        NewEnrolment::course(sara.0, batch.id, 252_000).terms_accepted(),
+    )
+    .await
+    .unwrap();
+    let payment = start_payment(&w, &e).await;
+    online::gateway_succeeded(
+        w.state(),
+        payment.gateway_transaction.as_deref().unwrap(),
+        payment.amount,
+    )
+    .await
+    .unwrap()
+    .expect("received");
+    allocate_to_invoice(&w, &e, &payment).await;
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Active);
+
+    let asked = enrolments::request_withdrawal(w.state(), Some(&dina), e.id, "moving")
+        .await
+        .unwrap();
+    let request = asked
+        .approval_request
+        .expect("the refund waits for approval");
+    assert_eq!(asked.enrolment.status, EnrolmentStatus::Active);
+    wl_kernel::approvals::approve(w.state(), request, &manager_user, "")
+        .await
+        .unwrap();
+
+    let gone = reload(&w, &e).await;
+    assert_eq!(gone.status, EnrolmentStatus::Withdrawn);
+    let notes = wl_invoicing::CreditNote::query().get(w.db()).await.unwrap();
+    assert_eq!(notes.len(), 1, "one credit note");
+    let note = &notes[0];
+    assert!(note.gross_total > 0);
+    let refunds = Refund::query().get(w.db()).await.unwrap();
+    assert_eq!(refunds.len(), 1);
+    let refund = &refunds[0];
+    assert_eq!(refund.amount, note.gross_total);
+    assert_eq!(
+        note.remaining, 0,
+        "the refund holds the balance of the note"
+    );
+
+    let approved = wl_payments::refund::approve(w.state(), &rita, refund)
+        .await
+        .expect("a person other than the recorder approves");
+    let paid = wl_payments::refund::pay(
+        w.state(),
+        &rita,
+        &approved,
+        PaymentMethod::Transfer,
+        "BANK-9",
+    )
+    .await
+    .expect("the transfer is paid");
+    let after_pay = wl_invoicing::CreditNote::find_or_404(w.db(), note.id)
+        .await
+        .unwrap();
+    assert_eq!(after_pay.remaining, 0, "and still does once paid");
+
+    wl_payments::refund::fail(
+        w.state(),
+        &rita,
+        &paid,
+        RefundFailureKind::BankReturn,
+        "returned by the bank",
+    )
+    .await
+    .expect("the refund is marked failed");
+
+    let reopened = wl_invoicing::CreditNote::find_or_404(w.db(), note.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        reopened.remaining, note.gross_total,
+        "the balance of the credit note is open again"
+    );
+    assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Withdrawn);
+    assert_eq!(
+        wl_invoicing::CreditNote::query()
+            .count(w.db())
+            .await
+            .unwrap(),
+        1,
+        "no second credit note"
+    );
+}
