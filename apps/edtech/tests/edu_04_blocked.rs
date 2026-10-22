@@ -140,7 +140,12 @@ async fn edu_04_blocking_the_payer_freezes_the_active_enrolments_and_tells_nobod
             rows[0].counted_days, 0,
             "a block uses none of the allowance"
         );
-        assert!(frozen.seat_held, "the seat is kept");
+        // A course keeps its seat; a package never held one.
+        assert_eq!(
+            frozen.seat_held,
+            frozen.batch_id.is_some(),
+            "the seat is kept"
+        );
     }
     assert_eq!(seats::count_in(t.db(), f.batch.id).await.unwrap(), seated);
     assert_eq!(t.messages.sent().len(), told, "nothing is sent to G");
