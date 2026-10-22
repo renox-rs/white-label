@@ -99,13 +99,17 @@ pub(crate) async fn label_of(state: &AppState, subject: &Subject) -> (String, Op
                 .display_name(&state.db, profile.party, "en")
                 .await
         {
-            return (name, None);
+            let back =
+                wl_kernel::approvals::subject_url(&subject.subject_type, subject.subject_id);
+            return (name, back);
         }
     }
+    // Where the module of the record registered its page, the way back to it.
+    let back = wl_kernel::approvals::subject_url(&subject.subject_type, subject.subject_id);
     if let Ok(Some(label)) = wl_kernel::documents::subject_label(&state.db, subject).await {
-        return (label, None);
+        return (label, back);
     }
-    (wl_kernel::documents::default_subject_label(subject), None)
+    (wl_kernel::documents::default_subject_label(subject), back)
 }
 
 /// `Forbidden` unless the record is in the user's reach.

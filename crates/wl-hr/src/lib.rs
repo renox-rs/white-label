@@ -355,6 +355,11 @@ impl Module for WlHr {
                 })
             },
         );
+        // Back from the documents page of a run to the run.
+        wl_kernel::approvals::register_subject_link(
+            wl_kernel::workforce::PAYROLL_RUN_SUBJECT_TYPE,
+            |id| format!("/hr/payroll/{id}"),
+        );
         app.model::<Employee>();
         app.model::<EmployeeScope>();
         app.model::<OnboardingTemplate>();

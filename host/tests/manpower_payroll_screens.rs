@@ -128,6 +128,19 @@ async fn the_run_page_shows_amounts_in_aed_with_a_thousands_comma() {
     );
 }
 
+/// The documents page of a run goes back to the run, and the one of a worker back
+/// to the worker.
+#[renox::test]
+async fn the_documents_page_of_a_run_has_a_back_link_to_the_run() {
+    let app = demo().await;
+    let id = started(&app, HR, 40).await;
+    let docs = page(&app, HR, &format!("/documents/of/hr.payroll_run/{id}")).await;
+    says(&docs, &[&format!("href=\"/hr/payroll/{id}\"")]);
+    let worker = manpower_screens_support::employee(&app, "Wasim Khan").await;
+    let docs = page(&app, HR, &format!("/documents/of/hr.employee/{worker}")).await;
+    says(&docs, &[&format!("href=\"/hr/employees/{worker}\"")]);
+}
+
 async fn started(app: &renox::testing::TestApp, email: &str, n: i64) -> i64 {
     let month = day(n).format("%Y-%m").to_string();
     let made = post(app, email, "/hr/payroll", &[("period", &month)]).await;
