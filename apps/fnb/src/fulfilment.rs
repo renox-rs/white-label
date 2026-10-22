@@ -97,11 +97,14 @@ pub(crate) async fn request_delivery(state: &AppState, id: i64) -> Result {
         } else {
             0
         };
-        request = request.item(
-            DeliveryItem::new(&line.description, line.open_milli())
-                .source_line(Subject::new(SALE_LINE_SUBJECT_TYPE, line.id))
-                .amount(worth),
-        );
+        let mut item = DeliveryItem::new(&line.description, line.open_milli())
+            .source_line(Subject::new(SALE_LINE_SUBJECT_TYPE, line.id));
+        // Only cash on delivery collects by line: a prepaid order has nothing
+        // to collect, and an amount on its lines would ask for the cash.
+        if order.is_cash_on_delivery() {
+            item = item.amount(worth);
+        }
+        request = request.item(item);
     }
     match requester(state).request(state, request).await {
         Ok(delivery) => {
