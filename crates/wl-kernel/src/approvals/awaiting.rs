@@ -184,10 +184,15 @@ pub fn action_label(lang: &Lang, action: &str) -> String {
     if found != key {
         return found;
     }
+    platform_label(action).map_or_else(|| action.to_owned(), str::to_owned)
+}
+
+/// The platform's words for the approval action `action`, if it has any.
+pub(crate) fn platform_label(action: &str) -> Option<&'static str> {
     ACTION_LABELS
         .iter()
         .find(|(known, _)| *known == action)
-        .map_or_else(|| action.to_owned(), |(_, label)| (*label).to_owned())
+        .map(|(_, label)| *label)
 }
 
 /// Whether the platform has words for the approval action `action` (an app

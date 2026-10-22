@@ -425,7 +425,14 @@ fn build_card(
         id: request.id,
         title: tr.t_with(
             "wl_kernel.approvals.card.title",
-            &[("action", &request.action)],
+            &[(
+                "action",
+                &match tr.0 {
+                    Some(lang) => super::awaiting::action_label(lang, &request.action),
+                    None => super::awaiting::platform_label(&request.action)
+                        .map_or_else(|| request.action.clone(), str::to_owned),
+                },
+            )],
         ),
         action: request.action.clone(),
         status: request.status.to_string(),
@@ -852,7 +859,7 @@ mod tests {
             },
             Tr(None),
         );
-        assert_eq!(card.title, "Approval: payments.refund");
+        assert_eq!(card.title, "Approval: Pay a refund");
         assert_eq!(card.status, "pending");
         assert_eq!(card.status_label, "Pending approval");
         assert_eq!(card.status_kind, "warning");
