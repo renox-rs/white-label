@@ -9,7 +9,7 @@
       <template rx-if="can_import">
         <rx-action-sheet id="payout-import" :label="tx['payout.import']" :action="route('fnb.payout_import')"
                          :title="tx['payout.import_title']" :description="tx['payout.import_description']" :submit-label="tx['payout.import']" icon="upload">
-          <rx-select name="aggregator" :label="tx['payout.aggregator']" id="payout-import-aggregator" :options="aggregators" :selected="aggregators[0][0]"/>
+          <rx-select name="aggregator" :label="tx['payout.aggregator']" id="payout-import-aggregator" :options="aggregators" :selected="''" :placeholder="tx['payout.aggregator']"/>
           <rx-input name="reference" :label="tx['payout.reference']" :hint="tx['payout.reference_hint']" id="payout-import-reference" required/>
           <rx-input name="file_name" :label="tx['payout.file_name']" id="payout-import-file"/>
           <rx-input name="period_from" type="date" :label="tx['payout.period_from']" id="payout-import-from"/>

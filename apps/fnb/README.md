@@ -69,6 +69,30 @@ every status change goes through a state machine that leaves a history row.
   completed order is refunded in full by a sales return of kind *no goods*
   naming the rider, resolved at once, by a refund or (cash on delivery nobody
   handed over) by credit note only; the order stays `completed`.
+- **Aggregator payout statements** (`payout`, `payout_csv`, `payout_machine`,
+  `payouts`, `payout_pages`; BL-FNB-09, BL-FNB-10, `FNB.REC.01`): the
+  accountant imports the aggregator's CSV with the column preset of that
+  aggregator (Excel is saved as CSV first). A statement with the same
+  aggregator and reference (trimmed, without case) as one that is not void is
+  refused and the refusal names the existing one. Lines are matched to orders
+  by the aggregator's own number (or to an order entered late by the cashier).
+  `match` books the net payout as the receivable and turns each refund line
+  into a sales return of kind *no goods*, resolved *refunded by the channel*
+  (no refund payment, no credit note, no approval), with the reason mapped to a
+  category and a party; an unmapped reason is set by the accountant first.
+  `dispute` / `resolve` raise a follow-up task and let a refund the aggregator
+  takes back run `reverse`. `void` is the kernel's (`PLT.ACL.09`): a matched or
+  disputed statement needs a second holder's approval, its receivable and
+  matching are reversed, its returns reversed with *statement voided*, the
+  number is kept, the reference can be imported again. A settled statement
+  cannot be voided. `FNB.RUL.10` opens a task for the accountant when the
+  unmatched lines of an import exceed AED 100.
+- **Reports and rider faults** (`reports`, `report_pages`; BL-FNB-08): a *no
+  goods* return of an order is kept as a refund fact (category, party, net and
+  gross) for the refunds report, which includes the aggregators' refunds; the
+  failed deliveries report groups failures by reason. A return or a closed
+  failed delivery blamed on the rider writes a *rider fault* for the rider of
+  the last run, for the kitchen manager and HR only, with no pay effect.
 - **Catalogue** (`catalogue`): brands, outlets and menu items with recipes, as
   far as the orders need them. `progress` gives the shared modules the
   kitchen's `FulfilmentProgress` and `SaleLineStockSource`.
@@ -76,7 +100,8 @@ every status change goes through a state machine that leaves a history row.
 ## Permissions
 
 `orders.view`, `.manage`, `.cancel`, `.amend` and `.refund_request`,
-`kds.work` and `customers.cod` (`permissions`). The host maps them to the roles of 06 §3.1:
+`kds.work`, `customers.cod`, `reconciliation.view` and `.manage`,
+`orders.late_entry`, `fnb_reports.view` and `rider_faults.view` (`permissions`). The host maps them to the roles of 06 §3.1:
 the kitchen manager, the cashier, the line cook, the area manager, the
 operations director and the rider; the company admin holds everything.
 
