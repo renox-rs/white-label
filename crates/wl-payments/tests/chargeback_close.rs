@@ -388,8 +388,21 @@ async fn accepting_a_chargeback_needs_another_persons_approval_and_tells_the_gat
         .assert_forbidden();
     assert_eq!(t.reload(&payment).await.status, PaymentStatus::ChargedBack);
 
+    // The payment's page has the card with the button for the second person,
+    // and none for the one who asked.
+    t.app
+        .get(&format!("/payments/{}", payment.id))
+        .await
+        .assert_ok()
+        .assert_dont_see(&approve);
+
     // Another user does.
     t.app.acting_as(&b);
+    t.app
+        .get(&format!("/payments/{}", payment.id))
+        .await
+        .assert_ok()
+        .assert_see(&approve);
     t.app
         .htmx()
         .post(&approve, &[("comment", "")])

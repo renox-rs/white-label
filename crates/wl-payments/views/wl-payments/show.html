@@ -16,6 +16,7 @@
         <rx-transition-actions :actions="actions" action="/payments/{{ payment.id }}/transitions"/>
       </template>
     </rx-page-header>
+    <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card :title="tx['sections.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['fields.number']" :value="payment.number" copyable :placeholder="tx['no_number']"/>
