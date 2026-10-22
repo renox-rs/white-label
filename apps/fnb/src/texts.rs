@@ -35,7 +35,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("fnb.dispatch.not_delivery", "Only an order for delivery is dispatched."),
     (
         "fnb.dispatch.no_rider",
-        "Dispatch is not available yet: put the order's delivery on a run with a rider first.",
+        "Dispatch is not available yet: put the delivery of the order on a run with a rider first.",
     ),
     ("fnb.delivery.customer", "Customer"),
     (

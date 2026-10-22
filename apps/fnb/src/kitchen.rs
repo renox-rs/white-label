@@ -21,7 +21,7 @@ use crate::ticket::{BUMP, DEFAULT_STATION, KitchenTicket, START as TICKET_START,
 /// # Errors
 ///
 /// Database errors.
-pub(crate) async fn on_accepted(state: &AppState, order: &FnbOrder) -> Result {
+pub async fn on_accepted(state: &AppState, order: &FnbOrder) -> Result {
     if !KitchenTicket::of_order(&state.db, order.id).await?.is_empty() {
         return Ok(());
     }

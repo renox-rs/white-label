@@ -80,7 +80,7 @@ async fn brand_of(db: &Db, view: &OrderView) -> Result<Option<i64>> {
 /// # Errors
 ///
 /// Database errors.
-pub(crate) async fn open(
+pub async fn open(
     state: &AppState,
     id: SalesOrderId,
     status: FnbOrderStatus,
