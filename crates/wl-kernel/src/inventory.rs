@@ -1115,6 +1115,77 @@ pub trait StockHoldService: Send + Sync + 'static {
     ) -> StockFuture<'a, Option<Subject>> {
         Box::pin(async { Ok(None) })
     }
+
+    /// The hold with its lines and what was decided for them; `None` when
+    /// the module is off or the hold is unknown.
+    fn view<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _hold: &'a Subject,
+    ) -> StockFuture<'a, Option<HoldView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// `user` decides a line of a hold (`release`, `discard` or
+    /// `return_to_supplier`). The module's own rules apply: the permission in
+    /// the location's scope, a second person for a listed reason or a
+    /// discard above the wastage value. `None` when the module is off.
+    fn decide<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _line: &'a Subject,
+        _outcome: &'a str,
+    ) -> StockFuture<'a, Option<HoldDecision>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// One line of a stock hold, as another module reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HoldLineView {
+    /// The line, `inventory.stock_hold_line:7`.
+    pub line: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The item's code.
+    pub item_code: String,
+    /// The item's name.
+    pub item_name: String,
+    /// The location the quantity is at, `inventory.location:2`.
+    pub location: Subject,
+    /// The lot, `inventory.lot:4`.
+    pub lot: Option<Subject>,
+    /// The quantity held, in thousandths.
+    pub quantity_milli: i64,
+    /// The value at the item's average cost, in fils.
+    pub value: i64,
+    /// `undecided`, `released`, `discarded` or `returned_to_supplier`.
+    pub status: String,
+}
+
+/// A stock hold with its lines.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HoldView {
+    /// The hold, `inventory.stock_hold:3`.
+    pub hold: Subject,
+    /// Its number, `HLD-2026-0001`.
+    pub number: String,
+    /// `recall`, `quality`, `temperature`, `complaint` or `other`.
+    pub reason: String,
+    /// Whether the hold is still `open`.
+    pub open: bool,
+    /// The lines, oldest first.
+    pub lines: Vec<HoldLineView>,
+}
+
+/// What deciding a line of a hold did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HoldDecision {
+    /// The line is decided.
+    Decided,
+    /// A second person must approve first; the line stays `undecided`.
+    Waiting,
 }
 
 /// The hold service when `inventory` is off: nothing is held.
@@ -1384,6 +1455,22 @@ pub trait LotTrace: Send + Sync + 'static {
     ) -> TraceFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
+
+    /// A vertical whose owner decided that the party of `line`
+    /// (`inventory.recall_line:7`) need not be told (06: the public notice
+    /// for sales without a known customer) waives it with `reason`. The
+    /// vertical has checked who may decide. Returns whether the line
+    /// changed; a line that was not `pending` or a closed recall change
+    /// nothing.
+    fn waive<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _line: &'a Subject,
+        _reason: &'a str,
+        _by: Option<i64>,
+    ) -> TraceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 }
 
 /// The trace when `inventory` is off: nothing is known.
@@ -1441,3 +1528,160 @@ pub struct RecallClosed {
 }
 
 impl Event for RecallClosed {}
+
+/// A production batch's use of one ingredient lot (wl-inventory §3 lot
+/// genealogy).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BatchInput {
+    /// The ingredient lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The quantity of it that went into the batch, in thousandths.
+    pub quantity_milli: i64,
+}
+
+/// A production batch finishes: the ingredient lots are consumed and the
+/// output lot is made (06 F&B §7.1 *Production batch* `finish`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProduceBatch {
+    /// The item that is made, `inventory.item:9`.
+    pub item: Subject,
+    /// Where the ingredients are taken from and the output arrives,
+    /// `inventory.location:2`.
+    pub location: Subject,
+    /// The quantity made (the actual yield), in thousandths.
+    pub quantity_milli: i64,
+    /// The number of the output lot.
+    pub lot_number: String,
+    /// The last day the output can be used.
+    pub expiry: NaiveDate,
+    /// The batch: the source of every movement, so a recall trace follows the
+    /// ingredient lots to the output lot.
+    pub source: Subject,
+    /// The ingredient lots used, with the quantity of each.
+    pub inputs: Vec<BatchInput>,
+    /// The user who finishes the batch.
+    pub by: Option<i64>,
+}
+
+/// What a finished batch made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Produced {
+    /// The output lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The reason of the hold an ingredient lot was on when the batch
+    /// finished (the caller holds the output lot with it), else `None`.
+    pub held_reason: Option<String>,
+}
+
+/// A lot as a vertical reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LotInfo {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The lot number.
+    pub number: String,
+    /// The last day it can be used.
+    pub expiry_date: Option<NaiveDate>,
+    /// `quarantine`, `released`, `on_hold`, `expired`, `rejected` or
+    /// `depleted`.
+    pub status: String,
+    /// Why it is on hold, while it is.
+    pub held_reason: Option<String>,
+    /// What is left of it in all locations, in thousandths.
+    pub left_milli: i64,
+}
+
+/// Quantity and value of the wastage posted against a lot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Wasted {
+    /// The quantity, in thousandths.
+    pub quantity_milli: i64,
+    /// Its value at the cost it was posted at, in fils.
+    pub value: i64,
+    /// How many wastage movements there are.
+    pub movements: i64,
+}
+
+/// The stock side of a production batch (06 F&B §7.1 *Production batch*,
+/// wl-inventory §3 *Lot*). Without the inventory module [`batch_stock`] gives
+/// [`NoBatchStock`], which makes nothing.
+pub trait BatchStock: Send + Sync + 'static {
+    /// The lot, with its status and what is left.
+    fn lot_info<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _lot: &'a Subject,
+    ) -> StockFuture<'a, Option<LotInfo>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Consumes the ingredient lots (a lot on hold is consumed too: the food
+    /// was used) and makes the output lot with its expiry and the `produce`
+    /// movement. `None` when the module is off.
+    fn produce<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ProduceBatch,
+    ) -> StockFuture<'a, Option<Produced>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Puts the whole lot on hold with `reason` (`recall`, `quality`,
+    /// `temperature`...), caused by `reference`; `LotHeld` follows. Returns
+    /// whether a hold was placed.
+    fn hold_lot<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _lot: &'a Subject,
+        _reason: &'a str,
+        _reference: &'a Subject,
+    ) -> StockFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Posts what is left of a lot that is not on hold as wastage with
+    /// `reason`, as `by`. Returns the quantity and value posted.
+    fn waste_lot<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _lot: &'a Subject,
+        _reason: &'a str,
+        _by: Option<i64>,
+    ) -> StockFuture<'a, Wasted> {
+        Box::pin(async { Ok(Wasted::default()) })
+    }
+
+    /// The wastage already posted against the lot (the discard of a hold
+    /// posts it): the batch's wastage entry links it and posts no second
+    /// movement.
+    fn wasted_of_lot<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _lot: &'a Subject,
+    ) -> StockFuture<'a, Wasted> {
+        Box::pin(async { Ok(Wasted::default()) })
+    }
+}
+
+/// The batch stock when `inventory` is off: nothing is made.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoBatchStock;
+
+impl BatchStock for NoBatchStock {}
+
+/// Makes `stock` the app's [`BatchStock`]; `wl-inventory` calls it in
+/// `register`.
+pub fn provide_batch_stock(app: &mut Registry, stock: impl BatchStock) {
+    let stock: Arc<dyn BatchStock> = Arc::new(stock);
+    app.provide(stock);
+}
+
+/// The app's [`BatchStock`], or [`NoBatchStock`] when none is provided.
+pub fn batch_stock(state: &AppState) -> Arc<dyn BatchStock> {
+    match state.provided::<Arc<dyn BatchStock>>() {
+        Some(stock) => Arc::clone(&stock),
+        None => Arc::new(NoBatchStock),
+    }
+}

@@ -3,6 +3,7 @@
 
 mod arrival;
 pub mod balance;
+pub mod batch_stock;
 pub mod chase;
 pub mod config;
 pub mod delivery_wastage;
@@ -654,6 +655,9 @@ impl Module for WlInventory {
         // `StockHoldService`: a vertical automation places a hold on the
         // stock at a location (06: an out-of-range reading).
         wl_kernel::inventory::provide_stock_hold_service(app, hold_service::InventoryHolds);
+        // `BatchStock`: a production batch consumes its ingredient lots and
+        // makes its output lot (06 F&B).
+        wl_kernel::inventory::provide_batch_stock(app, batch_stock::InventoryBatches);
         hold_service::register_types();
         // `STK.RUL.06`: the storekeeper is told when stock runs short, and
         // after H hours gets a task and the manager is told.
