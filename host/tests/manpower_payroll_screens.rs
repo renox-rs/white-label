@@ -358,3 +358,27 @@ async fn a_whole_file_rejection_is_recorded_and_resubmit_is_offered() {
     says(&html, &["Rejected", "Resubmit"]);
     no_raw_words(&html);
 }
+
+/// The sidebar: HR and the MD reach the payroll runs from it, the accountant
+/// reaches the settlements; the supervisor sees neither link.
+#[renox::test]
+async fn the_sidebar_links_the_lists_to_the_roles_that_may_open_them() {
+    let app = demo().await;
+    let hr = page(&app, HR, "/dashboard").await;
+    says(&hr, &["href=\"/hr/payroll\"", "href=\"/hr/settlements\""]);
+    let accountant = page(&app, manpower_screens_support::ACCOUNTANT, "/dashboard").await;
+    says(
+        &accountant,
+        &["href=\"/hr/payroll\"", "href=\"/hr/settlements\""],
+    );
+    let supervisor = page(&app, SUPERVISOR, "/dashboard").await;
+    assert!(!supervisor.contains("href=\"/hr/payroll\""));
+    assert!(!supervisor.contains("href=\"/hr/settlements\""));
+    page(
+        &app,
+        manpower_screens_support::ACCOUNTANT,
+        "/hr/settlements",
+    )
+    .await;
+    page(&app, manpower_screens_support::ACCOUNTANT, "/hr/payroll").await;
+}
