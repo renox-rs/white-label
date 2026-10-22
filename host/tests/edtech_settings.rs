@@ -418,8 +418,12 @@ async fn edu_17_the_registered_types_carry_their_groups_and_reactions() {
     assert_eq!(staff.group_key, "");
     assert_eq!(staff.give_up.0, [GiveUpReaction::None]);
 
+    // The booking messages keep the group wl-scheduling registered them under
+    // (10 §7.2: "keep the wl-scheduling group"); the vertical does not move them.
     let booking = row(&app, wl_scheduling::notices::REMINDER).await;
-    assert_eq!(booking.group_key, notify::GROUP_BOOKINGS);
+    let registered = notification_type(wl_scheduling::notices::REMINDER).expect("registered");
+    assert_eq!(booking.group_key, registered.group);
+    assert_eq!(booking.group_key, "scheduling");
 
     for def in notify::notification_types() {
         if def.key.starts_with("edtech.") || def.key.starts_with("invoice.") {
