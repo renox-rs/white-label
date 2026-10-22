@@ -5,7 +5,8 @@
 //! | `GET /sales-orders` | `wl_sales.sales_orders` | `sales_orders.view` |
 //! | `GET /sales-orders/{id}` | `wl_sales.sales_order` | `sales_orders.view` |
 //! | `POST /sales-orders/{id}/transitions/{name}` | `wl_sales.sales_order_transitions.` | the transition's own |
-//! | `POST /sales-orders` | `wl_sales.sales_order_create` | `sales_orders.create` |
+//! | `GET /sales-orders?awaiting=1` | `wl_sales.sales_orders` | `sales_orders.view`: the orders waiting for their online payment |
+//! | `POST /sales-orders` | `wl_sales.sales_order_create` | `sales_orders.create` (fields `external_number`, `promo_code`) |
 //! | `POST /sales-orders/{id}/lines` | `wl_sales.sales_order_line` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/submit` | `wl_sales.sales_order_submit` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/cancel-line` | `wl_sales.sales_order_cancel_line` | `sales_orders.cancel` |
@@ -27,11 +28,11 @@ use crate::notices::aed;
 use crate::pages::campaigns::parse_fils;
 use crate::pages::counter_sales::parse_milli;
 use crate::sale_line::{NewLine, SaleLine, totals};
-use crate::sales_order::{SalesOrder, SalesOrderStatus};
+use crate::sales_order::{OrderPayment, SalesOrder, SalesOrderStatus};
 use crate::sales_order_machine::{
     CANCEL_LINE, CANCEL_LINE_PARTLY, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE,
 };
-use crate::sales_orders::{self, NewSalesOrder};
+use crate::sales_orders::{self, Imported, NewSalesOrder};
 use crate::{permissions, texts};
 
 /// The texts a template reads as `tx['orders.title']`.
@@ -131,15 +132,32 @@ pub(crate) struct IndexPage {
     tx: Texts,
     orders: Vec<OrderRow>,
     can_create: bool,
+    awaiting: bool,
+    awaiting_count: i64,
 }
 
-/// `GET /sales-orders`: the latest orders, newest first.
-async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View> {
-    let orders = SalesOrder::query()
+/// `GET /sales-orders`: the latest orders, newest first. An order waiting for
+/// its online payment is not in the list; `?awaiting=1` lists those instead
+/// (BL-SAL-02: they are invisible to fulfilment until the payment is
+/// confirmed).
+async fn index(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    Query(query): Query<BTreeMap<String, String>>,
+) -> Result<View> {
+    let awaiting = matches!(query.get("awaiting").map(String::as_str), Some("1"));
+    let rows = SalesOrder::query()
         .order_by_desc(SalesOrder::ID)
         .get(&db)
-        .await?
+        .await?;
+    let awaiting_count = rows
+        .iter()
+        .filter(|o| o.status == SalesOrderStatus::AwaitingPayment)
+        .count() as i64;
+    let orders = rows
         .into_iter()
+        .filter(|o| (o.status == SalesOrderStatus::AwaitingPayment) == awaiting)
         .take(50)
         .map(|order| OrderRow {
             id: order.id,
@@ -155,6 +173,8 @@ async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View>
         tx: texts::all(&lang),
         orders,
         can_create: user.has_permission(permissions::SALES_ORDERS_CREATE),
+        awaiting,
+        awaiting_count,
     }))
 }
 
@@ -175,10 +195,29 @@ pub struct LineRow {
     pub gross: String,
 }
 
+/// One online payment handled for the order, as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub struct PaymentRow {
+    /// The row id.
+    pub id: i64,
+    /// The payment id in wl-payments.
+    pub payment: i64,
+    /// The amount, `AED 85.00`.
+    pub amount: String,
+    /// What was done with it, in words.
+    pub outcome: String,
+    /// The refund asked of wl-payments, if any.
+    pub refund: String,
+}
+
 /// What the order page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/sales_order.html")]
 pub(crate) struct ShowPage {
+    payment_label: String,
+    payment_due: String,
+    awaiting_hint: String,
+    payments: Vec<PaymentRow>,
     tx: Texts,
     order: SalesOrder,
     title: String,
@@ -262,7 +301,38 @@ async fn show(
             | SalesOrderStatus::Cancelled
             | SalesOrderStatus::Rejected
     );
+    let payments = OrderPayment::of_order(&state.db, order.id)
+        .await?
+        .into_iter()
+        .map(|p| PaymentRow {
+            id: p.id,
+            payment: p.payment_id,
+            amount: money(p.amount),
+            outcome: text(&lang, &format!("orders.outcome.{}", p.outcome)),
+            refund: p.refund_id.map(|r| r.to_string()).unwrap_or_default(),
+        })
+        .collect();
+    let payment_due = order
+        .payment_due_at
+        .map(wl_kernel::documents::dubai_text)
+        .unwrap_or_default();
+    let awaiting_hint = if order.status == SalesOrderStatus::AwaitingPayment {
+        texts::t_with(
+            &lang,
+            "wl_sales.orders.awaiting_hint",
+            &[("due", &payment_due)],
+        )
+    } else {
+        String::new()
+    };
     Ok(View::typed(ShowPage {
+        payment_label: text(
+            &lang,
+            &format!("orders.payment_status.{}", order.payment_status.as_str()),
+        ),
+        payment_due,
+        awaiting_hint,
+        payments,
         tx: texts::all(&lang),
         title: order.number.clone(),
         status_label: text(&lang, &format!("orders.status.{}", order.status.as_str())),
@@ -311,12 +381,29 @@ async fn create(
         }
         new = new.payment_mode(get("payment_mode"));
     }
-    let order = sales_orders::create(&state, Some(user.id), new).await?;
-    Ok((
-        Toast::success(text(&lang, "orders.created")),
-        Redirect::route("wl_sales.sales_order", &[&order.id])?,
-    )
-        .into_response())
+    if !get("external_number").is_empty() {
+        new = new.external_number(get("external_number"));
+    }
+    if !get("promo_code").is_empty() {
+        new = new.promo_code(get("promo_code"));
+    }
+    match sales_orders::import(&state, Some(user.id), new).await? {
+        Imported::Created(order) => Ok((
+            Toast::success(text(&lang, "orders.created")),
+            Redirect::route("wl_sales.sales_order", &[&order.id])?,
+        )
+            .into_response()),
+        // The channel sent that number before: say which order it is.
+        Imported::Duplicate { id, number } => Err(invalid(
+            "external_number",
+            texts::t_with(
+                &lang,
+                "wl_sales.orders.problem.duplicate_external",
+                &[("number", &number), ("id", &id)],
+            ),
+            &form,
+        )),
+    }
 }
 
 /// `POST /sales-orders/{id}/lines`: adds a line to the draft order.

@@ -41,6 +41,7 @@
         <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
       </template>
     </rx-page-header>
+    <rx-alert rx-if="awaiting_hint" kind="info" :message="awaiting_hint"/>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['counter.lines']" card>
       <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>
       <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>
@@ -57,9 +58,20 @@
         <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
         <rx-entry :label="tx['orders.payment_mode']" :value="order.payment_mode"/>
         <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>
+        <rx-entry rx-if="order.external_number" :label="tx['orders.external_number']" :value="order.external_number"/>
+        <rx-entry rx-if="order.payment_mode == 'online'" :label="tx['orders.payment_label']" :value="payment_label"/>
+        <rx-entry rx-if="payment_due and order.payment_mode == 'online'" :label="tx['orders.payment_due']" :value="payment_due"/>
+        <rx-entry rx-if="order.payment_link and order.status == 'awaiting_payment'" :label="tx['orders.payment_link']" :value="order.payment_link"/>
         <rx-entry rx-if="member" :label="tx['loyalty.member']" :value="member"/>
         <rx-entry rx-if="redeem.summary" :label="tx['redeem.redeem']" :value="redeem.summary"/>
       </rx-infolist>
     </rx-card>
+    <rx-table rx-if="order.payment_mode == 'online'" :rows="payments" as="payment" :key="payment.id" :caption="tx['orders.payments']" card>
+      <rx-column :label="tx['orders.payment_id']">{{ payment.payment }}</rx-column>
+      <rx-column :label="tx['orders.payment_amount']">{{ payment.amount }}</rx-column>
+      <rx-column :label="tx['orders.payment_outcome']">{{ payment.outcome }}</rx-column>
+      <rx-column :label="tx['orders.payment_refund']" hide-narrow>{{ payment.refund }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['orders.payments_empty']" icon="inbox"/></rx-slot>
+    </rx-table>
   </rx-stack>
 </rx-page>

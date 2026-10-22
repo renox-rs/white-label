@@ -18,9 +18,13 @@
 //!   order as its source and the order's lines (§7 *Invoice timing for
 //!   orders*, on fulfilment). Invoicing at confirmation or periodically, and
 //!   an invoice per hand-over, come with BL-SAL-13.
-//! - `PaymentReceived` and `PaymentFailed` are not wired here
-//!   (BL-SAL-02, BL-SAL-03): [`confirm_payment`] and [`payment_failed`] are
-//!   the services those listeners call.
+//! - `PaymentReceived` and `PaymentFailed` are wired in
+//!   [`crate::online_payment`] (BL-SAL-02 to BL-SAL-04): [`confirm_payment`]
+//!   and [`payment_failed`] are the services its listeners call.
+//! - An order from a channel with an external order number is entered with
+//!   [`import`], which refuses a number the channel used before and names the
+//!   existing order (BL-SAL-01); [`create`] is the same call that turns the
+//!   refusal into a 409.
 
 use renox::prelude::*;
 use renox::serde_json::Value;
@@ -35,6 +39,7 @@ use wl_kernel::sales::{
 use wl_kernel::{PartyId, Subject};
 
 use crate::config::config_of;
+use crate::promo_code::PromoCode;
 use crate::sale_line::{KIND_ITEM, NewLine, SaleLine, totals};
 use crate::sales_order::{
     FulfilmentRecord, ORDER_SERIES, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
@@ -64,6 +69,11 @@ pub struct NewSalesOrder {
     pub payment_mode: String,
     /// The legal entity whose order it is.
     pub legal_entity: Option<i64>,
+    /// The order number in the channel's own system (BL-SAL-01).
+    pub external_number: Option<String>,
+    /// The promo code the order uses; a use is taken when it is submitted
+    /// (BL-SAL-02) and given back if its online payment fails (BL-SAL-03).
+    pub promo_code: Option<String>,
 }
 
 impl NewSalesOrder {
@@ -74,7 +84,21 @@ impl NewSalesOrder {
             channel: "phone".to_owned(),
             payment_mode: crate::sales_order::PAYMENT_ON_ACCOUNT.to_owned(),
             legal_entity: None,
+            external_number: None,
+            promo_code: None,
         }
+    }
+
+    /// With the number the channel gave the order (an aggregator's).
+    pub fn external_number(mut self, number: &str) -> Self {
+        self.external_number = Some(number.to_owned());
+        self
+    }
+
+    /// Using the promo code `code`.
+    pub fn promo_code(mut self, code: &str) -> Self {
+        self.promo_code = Some(code.to_owned());
+        self
     }
 
     /// Through `channel`.
@@ -96,26 +120,140 @@ impl NewSalesOrder {
     }
 }
 
-/// Enters a draft order; `by` is the user id.
-pub async fn create(state: &AppState, by: Option<i64>, new: NewSalesOrder) -> Result<SalesOrder> {
+/// What entering an order from a channel gave.
+#[derive(Debug, Clone)]
+pub enum Imported {
+    /// The draft order that was made.
+    Created(SalesOrder),
+    /// The channel used that external number before: no order was made, and
+    /// this is the existing one (its id and number), so the integration can
+    /// link to it.
+    Duplicate {
+        /// The existing order's id.
+        id: i64,
+        /// The existing order's number, e.g. `SO-2026-0101`.
+        number: String,
+    },
+}
+
+/// An external order number compared as the channel's unique key: trimmed and
+/// lower case. `None` for a blank number, which is not checked.
+pub fn external_key(number: &str) -> Option<String> {
+    let key = number.trim().to_lowercase();
+    (!key.is_empty()).then_some(key)
+}
+
+/// The promo code `code` as a row to hold a use of, refused (422) when it
+/// does not exist, ended, or its uses are used up.
+async fn promo_of(state: &AppState, code: &str) -> Result<PromoCode> {
+    let found = PromoCode::query()
+        .where_(PromoCode::CODE.eq(code.trim().to_uppercase()))
+        .first(&state.db)
+        .await?;
+    let Some(promo) = found else {
+        return Err(refused("wl_sales.orders.problem.promo_unknown"));
+    };
+    if promo
+        .valid_to
+        .is_some_and(|last| last < wl_kernel::documents::today())
+    {
+        return Err(refused("wl_sales.orders.problem.promo_ended"));
+    }
+    if promo.used_up() {
+        return Err(refused("wl_sales.orders.problem.promo_used_up"));
+    }
+    Ok(promo)
+}
+
+/// Enters a draft order from a channel (BL-SAL-01); `by` is the user id.
+///
+/// An external order number (compared trimmed and case-insensitive) that the
+/// channel used before, also on an order since cancelled or rejected, makes no
+/// order: the result names the existing one. Two imports at the same moment
+/// cannot both pass, because the unique key on (channel, normalised number)
+/// refuses the second insert. A blank number, and the setting *unique external
+/// order number* off, skip the check.
+///
+/// # Errors
+///
+/// 422 for an unknown, ended or used-up promo code.
+pub async fn import(state: &AppState, by: Option<i64>, new: NewSalesOrder) -> Result<Imported> {
+    let external = new
+        .external_number
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(str::to_owned);
+    let key = external
+        .as_deref()
+        .and_then(external_key)
+        .filter(|_| config_of(state).unique_external_order_number);
+    let duplicate = |found: SalesOrder| Imported::Duplicate {
+        id: found.id,
+        number: found.number,
+    };
+    if let Some(key) = &key
+        && let Some(found) = SalesOrder::of_external(&state.db, &new.channel, key).await?
+    {
+        return Ok(duplicate(found));
+    }
+    let promo = match new.promo_code.as_deref().map(str::trim) {
+        Some(code) if !code.is_empty() => Some(promo_of(state, code).await?),
+        _ => None,
+    };
     let number = ORDER_SERIES
         .next_allowing_gaps(&state.db, None, None, wl_kernel::documents::today())
         .await?;
-    SalesOrder::create(
+    let created = SalesOrder::create(
         &state.db,
         SalesOrder {
             number,
             party_id: new.party.0,
             legal_entity_id: new.legal_entity,
-            channel: new.channel,
+            channel: new.channel.clone(),
             payment_mode: new.payment_mode,
             currency: DEFAULT_CURRENCY.to_owned(),
             revision: 1,
             created_by: by,
+            external_number: external,
+            external_key: key.clone(),
+            promo_code_id: promo.map(|p| p.id),
             ..SalesOrder::default()
         },
     )
-    .await
+    .await;
+    match created {
+        Ok(order) => Ok(Imported::Created(order)),
+        Err(error) if error.is_unique_violation() => {
+            // The other of two imports at the same moment won the key.
+            if let Some(key) = &key
+                && let Some(found) = SalesOrder::of_external(&state.db, &new.channel, key).await?
+            {
+                return Ok(duplicate(found));
+            }
+            Err(error)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Enters a draft order; `by` is the user id.
+///
+/// # Errors
+///
+/// 409 naming the existing order when the channel used the external number
+/// before ([`import`] returns that case as a value); 422 for a bad promo code.
+pub async fn create(state: &AppState, by: Option<i64>, new: NewSalesOrder) -> Result<SalesOrder> {
+    match import(state, by, new).await? {
+        Imported::Created(order) => Ok(order),
+        Imported::Duplicate { id, number } => Err(Error::Status(
+            StatusCode::CONFLICT,
+            english(
+                "wl_sales.orders.problem.duplicate_external",
+                &[("number", &number), ("id", &id)],
+            ),
+        )),
+    }
 }
 
 /// Adds `line` to the draft order `id` and refreshes its totals.
@@ -150,8 +288,8 @@ pub async fn add_line(state: &AppState, id: i64, line: NewLine) -> Result<SalesO
 }
 
 /// Submits the draft order `id` as `by`: `awaiting_payment` for an online
-/// payment, `pending_acceptance` for a channel that needs acceptance, else
-/// `confirmed`.
+/// payment not yet confirmed, `pending_acceptance` for a channel that needs
+/// acceptance, else `confirmed`. A promo code of the order has a use taken.
 pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrder> {
     // A redemption that was not confirmed, or whose hold lapsed, goes before
     // the total is read.
@@ -159,14 +297,18 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
     let order = SalesOrder::find_or_404(&state.db, id).await?;
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
     let t = totals(&lines);
+    let config = config_of(state);
+    let online = order.payment_mode == PAYMENT_ONLINE;
+    // Paid already (the gateway answered before the order was placed): no wait.
+    let prepaid = online && crate::online_payment::paid_before_submit(state, &order, t.gross).await?;
     let input = SubmitInput {
         line_count: lines.len() as i64,
         net: t.net,
         vat: t.vat,
         gross: t.gross,
+        window_minutes: config.online_payment_window_minutes,
     };
-    let config = config_of(state);
-    let name = if order.payment_mode == PAYMENT_ONLINE {
+    let name = if online && !prepaid {
         SUBMIT_ONLINE
     } else if config.order_acceptance_channels.contains(&order.channel) {
         SUBMIT_FOR_ACCEPTANCE
@@ -180,6 +322,12 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
+    if name == SUBMIT_ONLINE {
+        // The customer pays through the link until the window ends.
+        crate::online_payment::open_link(state, id).await?;
+    } else if prepaid {
+        crate::online_payment::mark_prepaid(state, id).await?;
+    }
     // The points held for the order stay held until it resolves.
     crate::redeem::order_placed(state, &Subject::new(SALES_ORDER_SUBJECT_TYPE, id)).await?;
     SalesOrder::find_or_404(&state.db, id).await
@@ -597,4 +745,6 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<SalesOrder>, state: AppState| async move {
         announce(&state, &event).await
     });
+    // The online payment: `PaymentReceived`, `PaymentFailed` and the window.
+    crate::online_payment::register(app);
 }

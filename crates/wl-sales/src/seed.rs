@@ -89,6 +89,104 @@ pub async fn demo_campaigns(db: &Db) -> Result<usize> {
     Ok(made)
 }
 
+/// Stores three demo orders for the customer `party` so a person can click
+/// through the online-payment stories (BL-SAL-01 to BL-SAL-03): a website
+/// order that waits for the gateway (`awaiting_payment`, ten minutes left),
+/// a website order cancelled because its payment failed, and an aggregator
+/// order `TB-555` on channel `talabat` whose number a second import is
+/// refused. Each is found by channel and external number, so a re-run adds
+/// nothing. Returns how many it made.
+pub async fn demo_online_orders(db: &Db, party: i64) -> Result<usize> {
+    use renox::db::now;
+    use wl_kernel::documents::today;
+
+    use crate::sale_line::{NewLine, SaleLine, totals};
+    use crate::sales_order::{
+        ORDER_SERIES, OrderPaymentStatus, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
+    };
+    use crate::sales_orders::external_key;
+
+    let demos = [
+        (
+            "website",
+            "WEB-1001",
+            SalesOrderStatus::AwaitingPayment,
+            PAYMENT_ONLINE,
+            OrderPaymentStatus::Pending,
+        ),
+        (
+            "website",
+            "WEB-1002",
+            SalesOrderStatus::Cancelled,
+            PAYMENT_ONLINE,
+            OrderPaymentStatus::Failed,
+        ),
+        (
+            "talabat",
+            "TB-555",
+            SalesOrderStatus::Confirmed,
+            "on_account",
+            OrderPaymentStatus::NotRequired,
+        ),
+    ];
+    let mut made = 0;
+    for (channel, external, status, mode, payment_status) in demos {
+        let key = external_key(external);
+        if let Some(key) = &key
+            && SalesOrder::of_external(db, channel, key).await?.is_some()
+        {
+            continue;
+        }
+        let number = ORDER_SERIES
+            .next_allowing_gaps(db, None, None, today())
+            .await?;
+        let mut order = SalesOrder {
+            number,
+            party_id: party,
+            channel: channel.to_owned(),
+            payment_mode: mode.to_owned(),
+            currency: "AED".to_owned(),
+            revision: 1,
+            external_number: Some(external.to_owned()),
+            external_key: key,
+            payment_status,
+            ..SalesOrder::default()
+        };
+        match status {
+            SalesOrderStatus::AwaitingPayment => {
+                order.payment_due_at = Some(now() + renox::chrono::TimeDelta::minutes(10));
+            }
+            SalesOrderStatus::Cancelled => {
+                order.reason = Some(crate::texts::english(
+                    "wl_sales.orders.payment_failed_reason",
+                    &[],
+                ));
+            }
+            _ => order.confirmed_at = Some(now()),
+        }
+        let mut tx = db.begin().await?;
+        order.insert_in_state(&mut tx, status, "demo").await?;
+        tx.commit().await?;
+        let order = SalesOrder::find_or_404(db, order.id).await?;
+        SaleLine::add(db, &order.subject(), NewLine::new("MEAL", 10_000)).await?;
+        let lines = SaleLine::of(db, &order.subject()).await?;
+        let t = totals(&lines);
+        SalesOrder::query()
+            .where_(SalesOrder::ID.eq(order.id))
+            .update(
+                db,
+                &[
+                    ("net_total", &t.net),
+                    ("vat_total", &t.vat),
+                    ("gross_total", &t.gross),
+                ],
+            )
+            .await?;
+        made += 1;
+    }
+    Ok(made)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -69,6 +69,10 @@ pub const DEFAULT_LOST_REASONS: &[&str] = &[
     "other",
 ];
 
+/// The minutes an online-paid order waits for the gateway before it is
+/// cancelled as *payment failed* (§7 *Online payment window*: 15).
+pub const DEFAULT_ONLINE_PAYMENT_WINDOW_MINUTES: i64 = 15;
+
 /// The settings of the sales module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SalesConfig {
@@ -136,6 +140,15 @@ pub struct SalesConfig {
     /// The days after the programme is turned off that points can still be
     /// redeemed.
     pub programme_closing_days: i64,
+    /// Whether an external order number may be used once per channel (§7
+    /// *Unique external order number per channel*, BL-SAL-01: on).
+    pub unique_external_order_number: bool,
+    /// The minutes an order paid online waits in `awaiting_payment`
+    /// (§7 *Online payment window*, BL-SAL-03: 15).
+    pub online_payment_window_minutes: i64,
+    /// The role told of a payment refunded as late (`SAL.RUL.06`: the outlet
+    /// or sales manager); the company admin when empty.
+    pub order_manager_role: String,
 }
 
 impl Default for SalesConfig {
@@ -172,6 +185,9 @@ impl Default for SalesConfig {
             segment_clinical_rules: false,
             programme_notice_days: DEFAULT_PROGRAMME_NOTICE_DAYS,
             programme_closing_days: DEFAULT_PROGRAMME_CLOSING_DAYS,
+            unique_external_order_number: true,
+            online_payment_window_minutes: DEFAULT_ONLINE_PAYMENT_WINDOW_MINUTES,
+            order_manager_role: String::new(),
         }
     }
 }

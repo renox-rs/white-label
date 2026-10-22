@@ -30,6 +30,10 @@
 //! `close` are system transitions (the gateway, the hand-over, the invoicing
 //! state); the rest are by users.
 //!
+//! `submit_online` also stamps the payment window (`payment_due_at`) and
+//! every submit takes one use of the order's promo code; `payment_failed`
+//! gives that use back (BL-SAL-02, BL-SAL-03).
+//!
 //! The inputs carry what a guard needs and an effect cannot fetch (no
 //! `AppState`): the line count and totals, the amount paid, and for a
 //! hand-over the problem the service found with the quantities.
@@ -43,7 +47,8 @@ use wl_kernel::sales::{FulfilledLine, SALES_ORDER_SUBJECT_TYPE};
 
 use crate::permissions;
 use crate::sale_line::SaleLine;
-use crate::sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
+use crate::promo_code::PromoCode;
+use crate::sales_order::{FulfilmentRecord, OrderPaymentStatus, SalesOrder, SalesOrderStatus};
 use crate::texts::english;
 
 /// `draft → confirmed`: a channel with no acceptance and no prepayment.
@@ -95,6 +100,10 @@ pub struct SubmitInput {
     pub vat: i64,
     /// Net plus VAT, in fils.
     pub gross: i64,
+    /// The minutes the gateway has to confirm an online payment
+    /// (`submit_online` only); 0 for the other submits.
+    #[serde(default)]
+    pub window_minutes: i64,
 }
 
 /// What `confirm_payment` takes.
@@ -292,6 +301,7 @@ impl StateMachine for SalesOrder {
 /// the totals stored.
 fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
     let confirms = to == SalesOrderStatus::Confirmed;
+    let online = to == SalesOrderStatus::AwaitingPayment;
     Transition::new(name)
         .label(label)
         .tone("primary")
@@ -309,6 +319,7 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
         })
         .effect(move |order: &SalesOrder, ctx, tx| {
             let id = order.id;
+            let promo = order.promo_code_id;
             let input = ctx.input_as::<SubmitInput>().ok();
             Box::pin(async move {
                 let Some(input) = input else {
@@ -327,9 +338,61 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
                         ],
                     )
                     .await?;
+                if online {
+                    // The gateway has the payment window from now (BL-SAL-03).
+                    let due = Some(now() + renox::chrono::TimeDelta::minutes(input.window_minutes));
+                    SalesOrder::query()
+                        .where_(SalesOrder::ID.eq(id))
+                        .update(
+                            &mut *tx,
+                            &[
+                                ("payment_status", &OrderPaymentStatus::Pending.as_str().to_owned()),
+                                ("payment_due_at", &due),
+                            ],
+                        )
+                        .await?;
+                }
+                if let Some(promo) = promo {
+                    take_promo_use(tx, promo).await?;
+                }
                 Ok(())
             })
         })
+}
+
+/// Takes one use of the promo code `promo` in one statement; fails (422) when
+/// its uses are used up (BL-SAL-02: usage is recorded at `submit`).
+async fn take_promo_use(tx: &mut renox::db::Transaction, promo: i64) -> Result {
+    let changed = renox::db::sql(format!(
+        "UPDATE {} SET uses = uses + 1, updated_at = ? \
+         WHERE id = ? AND (max_uses IS NULL OR uses < max_uses)",
+        PromoCode::TABLE
+    ))
+    .bind(now())
+    .bind(promo)
+    .execute(&mut *tx)
+    .await?;
+    if changed == 0 {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            english("wl_sales.orders.problem.promo_used_up", &[]),
+        ));
+    }
+    Ok(())
+}
+
+/// Gives the use of the promo code `promo` back, in one statement (BL-SAL-03:
+/// the use is available again at once).
+async fn release_promo_use(tx: &mut renox::db::Transaction, promo: i64) -> Result {
+    renox::db::sql(format!(
+        "UPDATE {} SET uses = uses - 1, updated_at = ? WHERE id = ? AND uses > 0",
+        PromoCode::TABLE
+    ))
+    .bind(now())
+    .bind(promo)
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
 }
 
 /// `confirm_payment`, `confirm_payment_for_acceptance`: the gateway
@@ -355,6 +418,10 @@ fn confirm_payment(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
         .effect(move |order: &SalesOrder, _ctx, tx| {
             let id = order.id;
             Box::pin(async move {
+                SalesOrder::query()
+                    .where_(SalesOrder::ID.eq(id))
+                    .update(&mut *tx, &[("payment_status", &OrderPaymentStatus::Received.as_str().to_owned())])
+                    .await?;
                 if confirms {
                     let stamp = Some(now());
                     SalesOrder::query()
@@ -377,12 +444,23 @@ fn payment_failed() -> Transition<SalesOrder> {
         .to(SalesOrderStatus::Cancelled)
         .effect(|order: &SalesOrder, _ctx, tx| {
             let id = order.id;
+            let promo = order.promo_code_id;
             Box::pin(async move {
                 let reason = Some(english("wl_sales.orders.payment_failed_reason", &[]));
                 SalesOrder::query()
                     .where_(SalesOrder::ID.eq(id))
-                    .update(&mut *tx, &[("reason", &reason)])
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("reason", &reason),
+                            ("payment_status", &OrderPaymentStatus::Failed.as_str().to_owned()),
+                        ],
+                    )
                     .await?;
+                // The failed order does not consume the promo code.
+                if let Some(promo) = promo {
+                    release_promo_use(tx, promo).await?;
+                }
                 Ok(())
             })
         })

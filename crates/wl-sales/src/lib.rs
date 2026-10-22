@@ -36,6 +36,7 @@ pub mod loyalty_rules;
 pub mod machine;
 pub mod merge;
 pub mod notices;
+pub mod online_payment;
 pub mod package;
 pub mod package_machine;
 pub mod package_reopen;
@@ -90,7 +91,9 @@ pub use promo_code::PromoCode;
 pub use redemption::{Redemption, RedemptionStatus};
 pub use retention::{BroadcastState, CampaignBroadcast, CampaignGuard, CampaignGuards};
 pub use sale_line::SaleLine;
-pub use sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
+pub use sales_order::{
+    FulfilmentRecord, OrderPayment, OrderPaymentStatus, SalesOrder, SalesOrderStatus,
+};
 pub use sales_return::{ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, SalesReturnLine};
 pub use segment::{MatchMode, Rule, Segment, SegmentRefused};
 pub use segments::{SegmentRule, SegmentRules};
@@ -357,6 +360,28 @@ impl WlSales {
     /// default `website` and `portal`).
     pub fn order_acceptance_channels(mut self, channels: &[&str]) -> Self {
         self.config.order_acceptance_channels = channels.iter().map(|c| (*c).to_owned()).collect();
+        self
+    }
+
+    /// Whether an external order number (an aggregator's, a website's) may be
+    /// used once per channel (§7, default on). Off, no check is made.
+    pub fn unique_external_order_number(mut self, on: bool) -> Self {
+        self.config.unique_external_order_number = on;
+        self
+    }
+
+    /// The minutes an order paid online waits for the gateway before it is
+    /// cancelled as *payment failed* (§7, default 15).
+    pub fn online_payment_window_minutes(mut self, minutes: i64) -> Self {
+        assert!(minutes >= 1, "the payment window is at least a minute");
+        self.config.online_payment_window_minutes = minutes;
+        self
+    }
+
+    /// The role told when a payment is refunded as late (`SAL.RUL.06`; 06: the
+    /// outlet manager). The company admin when not set.
+    pub fn order_manager_role(mut self, role: &str) -> Self {
+        self.config.order_manager_role = role.to_owned();
         self
     }
 
