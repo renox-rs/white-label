@@ -113,6 +113,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.payroll.limit", "Cap (AED)"),
     ("wl_hr.payroll.cap", "Cap"),
     ("wl_hr.payroll.approve", "Approve"),
+    ("wl_hr.payroll.submit", "Submit"),
     ("wl_hr.payroll.exceptions", "Lines above the Art. 25 caps"),
     (
         "wl_hr.payroll.exceptions_hint",
@@ -121,6 +122,14 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_hr.payroll.approve_blocked",
         "A line is above the Art. 25 caps. Reschedule its recoveries first.",
+    ),
+    (
+        "wl_hr.payroll.submit_no_wps_account",
+        "The run cannot be submitted: no active WPS pay account for :employees. Add or activate their pay accounts, or hold their lines.",
+    ),
+    (
+        "wl_hr.payroll.submit_blocked",
+        "No active WPS pay account for: :employees.",
     ),
     (
         "wl_hr.payroll.caps_exceeded",

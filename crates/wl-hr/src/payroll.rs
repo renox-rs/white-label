@@ -39,8 +39,8 @@
 //!   only the lines that were fixed and are `included` again
 //!   ([`fix_line`]); a `failed` line left refuses it, a `held` line stays out.
 //!
-//! `submit` is a `system` transition run by [`submit`] (the user-facing one
-//! comes with the submit guard of the payroll base). `record_partial` and
+//! `submit` is a user transition of `payroll.prepare` with the WPS account
+//! check; [`submit`] runs its system twin ([`SUBMIT_BY_SYSTEM`]). `record_partial` and
 //! `regenerate` are user transitions of `payroll.prepare` since BL-HRM-13
 //! ([`crate::wps_partial`], which also holds `confirm_paid`); the functions
 //! [`record_partial`] and [`regenerate`] run their system twins
@@ -88,6 +88,9 @@ pub const RECORD_REJECTION: &str = "record_rejection";
 pub const RESUBMIT: &str = "resubmit";
 /// The run is ready to be sent.
 pub const SUBMIT: &str = "submit";
+/// The system's twin of [`SUBMIT`], for the code paths that send a run without
+/// a user (same effect, no WPS account check).
+pub const SUBMIT_BY_SYSTEM: &str = "submit_by_system";
 /// The bank's result file shows failed lines (`payroll.prepare`).
 pub const RECORD_PARTIAL: &str = "record_partial";
 /// The same as [`RECORD_PARTIAL`], run by the system (a bank result that
@@ -423,28 +426,62 @@ impl StateMachine for PayrollRun {
             .transition(return_run())
             .transition(wps_rejection::record_rejection())
             .transition(wps_rejection::resubmit())
-            .transition(
-                Transition::new(SUBMIT)
-                    .label("Submit")
-                    .system()
-                    .from([Approved])
-                    .to(Submitted)
-                    .effect(|run: &PayrollRun, _ctx, tx| {
-                        let id = run.id;
-                        Box::pin(async move {
-                            // A line whose account is closed, with the new one
-                            // still cooling, goes into no file.
-                            crate::pay_account_use::hold_closed_in(tx, id).await?;
-                            generate_sif_in(tx, id).await
-                        })
-                    }),
-            )
+            .transition(submit_transition(false))
+            .transition(submit_transition(true))
             .transition(wps_partial::record_partial(false))
             .transition(wps_partial::record_partial(true))
             .transition(wps_partial::regenerate(false))
             .transition(wps_partial::regenerate(true))
             .transition(wps_partial::confirm_paid())
     }
+}
+
+/// `submit` (approved -> submitted), as the user's transition
+/// (`payroll.prepare`, BL-HRM-12) or the system's twin ([`SUBMIT_BY_SYSTEM`]).
+///
+/// The user's one is refused unless every line that goes into the file (an
+/// `included` line with a net above zero) has a WPS-eligible pay account:
+/// one that is `active` (a bank account or a salary card; a `cooling` one is
+/// never used). The refusal lists the employees by number and nothing
+/// changes. A line whose active account the bank reported closed while a new
+/// one is cooling is held instead ([`crate::pay_account_use::hold_closed_in`])
+/// and needs none. The effect is that of the twin: the closed-account lines
+/// are held, then SIF version 1 is made from the lines still `included`.
+/// The system's twin (the absence and exit code paths) does not check, as
+/// before.
+fn submit_transition(by_system: bool) -> Transition<PayrollRun> {
+    let transition: Transition<PayrollRun> = if by_system {
+        Transition::new(SUBMIT_BY_SYSTEM).system()
+    } else {
+        Transition::new(SUBMIT)
+            .tone("primary")
+            .permission(permissions::PAYROLL_PREPARE)
+    };
+    transition
+        .label("Submit")
+        .from([PayrollRunStatus::Approved])
+        .to(PayrollRunStatus::Submitted)
+        .effect(move |run: &PayrollRun, _ctx, tx| {
+            let id = run.id;
+            Box::pin(async move {
+                if !by_system {
+                    let missing = crate::pay_account_use::without_wps_account_in(tx, id).await?;
+                    if !missing.is_empty() {
+                        return Err(Error::Status(
+                            StatusCode::UNPROCESSABLE_ENTITY,
+                            english(
+                                "wl_hr.payroll.submit_no_wps_account",
+                                &[("employees", &missing.join(", "))],
+                            ),
+                        ));
+                    }
+                }
+                // A line whose account is closed, with the new one still
+                // cooling, goes into no file.
+                crate::pay_account_use::hold_closed_in(tx, id).await?;
+                generate_sif_in(tx, id).await
+            })
+        })
 }
 
 /// `calculate` (draft, calculated -> calculated, `payroll.prepare`): the user
@@ -783,9 +820,11 @@ async fn run_system(
         .map_err(TransitionError::Failed)
 }
 
-/// Sends run `id`: SIF version 1 with the lines that are `included`.
+/// Sends run `id` as the system: SIF version 1 with the lines that are
+/// `included`. The user's `submit` ([`SUBMIT`]) is the route
+/// `POST /hr/payroll/{id}/transitions/submit`.
 pub async fn submit(state: &AppState, id: i64) -> std::result::Result<PayrollRun, TransitionError> {
-    run_system(state, id, SUBMIT, &PartialInput::default()).await
+    run_system(state, id, SUBMIT_BY_SYSTEM, &PartialInput::default()).await
 }
 
 /// Records the bank's result for run `id`: `failed` lines with their reason.
@@ -837,13 +876,13 @@ mod tests {
     }
 
     #[test]
-    fn the_three_transitions_are_system_transitions_of_the_spec() {
+    fn the_system_twins_are_system_transitions_of_the_spec() {
         // `record_partial` and `regenerate` are user transitions of
         // `payroll.prepare` since BL-HRM-13 ([`crate::wps_partial`]); the
         // system runs their twins, with the same states.
         let machine = PayrollRun::machine();
         let table = [
-            (SUBMIT, "approved", "submitted"),
+            (SUBMIT_BY_SYSTEM, "approved", "submitted"),
             (RECORD_PARTIAL_BY_SYSTEM, "submitted", "partially_rejected"),
             (REGENERATE_BY_SYSTEM, "partially_rejected", "submitted"),
         ];
