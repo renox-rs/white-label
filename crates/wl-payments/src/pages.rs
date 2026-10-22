@@ -788,12 +788,11 @@ async fn show(
         ("allocated", money(allocated)),
         ("unallocated", money(unallocated)),
     ]);
-    let allocations = Allocation::all_of(&db, payment.id)
-        .await?
-        .into_iter()
-        .map(|a| AllocationRow {
+    let mut allocations = Vec::new();
+    for a in Allocation::all_of(&db, payment.id).await? {
+        allocations.push(AllocationRow {
             id: a.id,
-            target: a.target().to_string(),
+            target: wl_kernel::documents::subject_text(&db, &a.target()).await?,
             amount: money(a.amount),
             allocated_at: a.allocated_at,
             removed: !a.is_active(),
@@ -803,8 +802,8 @@ async fn show(
                 .as_deref()
                 .map(|code| t(&format!("reason.{code}")))
                 .unwrap_or_default(),
-        })
-        .collect();
+        });
+    }
     let tasks = task_rows(
         &state,
         &t,

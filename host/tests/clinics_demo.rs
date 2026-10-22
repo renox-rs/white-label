@@ -445,3 +445,37 @@ async fn the_tickets_name_the_record_they_are_about() {
         .assert_ok()
         .assert_dont_see("clinics.visit:");
 }
+
+/// The money pages name the documents they link: an invoice shows the receipt
+/// that paid it (`RCT-2026-0011`), a payment the invoice it paid, never
+/// `payments.payment:11` or `invoicing.invoice:6`.
+#[renox::test]
+async fn the_money_pages_name_the_documents_they_link() {
+    let app = booted().await;
+    host::clinics_demo::seed(app.kernel()).await.unwrap();
+    let admin = User::find_by_email(app.db(), "admin@palmgrove.example")
+        .await
+        .unwrap()
+        .expect("the demo administrator");
+    app.acting_as(&admin);
+    let invoice = count(
+        &app,
+        "select min(invoice_id) from wl_invoicing_allocations where removed_at is null",
+    )
+    .await;
+    assert!(invoice > 0, "the demo has an allocated invoice");
+    app.get(&format!("/invoices/{invoice}"))
+        .await
+        .assert_ok()
+        .assert_see("RCT-")
+        .assert_dont_see("payments.payment:");
+    let payment = count(
+        &app,
+        "select min(payment_id) from wl_payments_allocations where removed_at is null",
+    )
+    .await;
+    app.get(&format!("/payments/{payment}"))
+        .await
+        .assert_ok()
+        .assert_dont_see("invoicing.invoice:");
+}
