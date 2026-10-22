@@ -1166,6 +1166,7 @@ pub(crate) struct CheckoutPage {
     online: bool,
     cash_on_delivery: bool,
     closed: bool,
+    gateway_down: bool,
 }
 
 /// `GET /checkout/payment`: what the signed-in customer can pay with. With
@@ -1206,11 +1207,23 @@ async fn checkout_payment(
         },
         None => false,
     };
+    // With the payment gateway `down` the checkout hides online payment and
+    // offers cash on delivery where the customer is allowed it; a pickup order
+    // pays at the counter (06 §4.1, wl-kernel §5.14).
+    let gateway_down = matches!(
+        wl_kernel::integrations::IntegrationConnection::by_key(
+            &state.db,
+            wl_kernel::integrations::PAYMENT_GATEWAY
+        )
+        .await?,
+        Some(connection) if connection.status == wl_kernel::integrations::ConnectionStatus::Down
+    );
     Ok(View::typed(CheckoutPage {
         tx: tx(&lang),
-        online: options.online && !closed,
+        online: options.online && !closed && !gateway_down,
         cash_on_delivery: options.cash_on_delivery && !closed,
         closed,
+        gateway_down,
     })
     .into_response())
 }

@@ -18,6 +18,10 @@ const TEXTS: &[(&str, &str)] = &[
     // The notices.
     ("fnb.notice.subject", "{{ title }}"),
     ("fnb.notice.body", "{{ body }}"),
+    (
+        "fnb.login_otp.body",
+        "{{ code }} is your code to sign in. It is valid for {{ minutes }} minutes. Do not share it.",
+    ),
     // Toasts of the screens.
     ("fnb.accepted", "Order accepted."),
     ("fnb.rejected", "Order rejected."),

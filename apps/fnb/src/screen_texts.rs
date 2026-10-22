@@ -284,6 +284,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.checkout_title", "Payment"),
     ("fnb.screen.checkout_subtitle", "How you can pay for this order."),
     ("fnb.screen.checkout_methods", "Payment methods"),
+    (
+        "fnb.screen.checkout_gateway_down",
+        "Online payment is not available right now. Pay in cash on delivery, or pay at the counter when you collect.",
+    ),
     ("fnb.screen.pay_online", "Pay online"),
     ("fnb.screen.pay_cash", "Pay cash on delivery"),
     ("fnb.screen.online_only", "Online payment only for this order"),

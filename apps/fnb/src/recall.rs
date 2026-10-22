@@ -51,7 +51,7 @@ use wl_kernel::inventory::{
     TracedHolder, lot_trace, provide_trace_party_resolver,
 };
 use wl_kernel::notify::{
-    self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
+    self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
 };
 use wl_kernel::parties::{PartyStatus, directory};
 use wl_kernel::role_tasks::{self, RoleTask};
@@ -663,10 +663,14 @@ pub fn notice_types() -> Vec<NotificationTypeDef> {
     let subject = english("fnb.recall.subject", &[]);
     let body = english("fnb.recall.body", &[]);
     vec![
+        // No group of the module's (06 §7.2): urgent, and a notice that gives
+        // up gives the recall owner (the operations director) a task.
         NotificationTypeDef::new(NOTICE_TYPE, "fnb")
             .group("recalls")
             .category(Category::Transactional)
             .urgency(Urgency::Urgent)
+            .give_up(&[GiveUpReaction::StaffTask])
+            .staff_role(permissions::OPERATIONS_DIRECTOR_ROLE)
             .channels(&[NotifyChannel::Sms, NotifyChannel::Whatsapp, NotifyChannel::Email])
             .template(NotifyChannel::Email, "en", Some(&subject), &body)
             .template(
