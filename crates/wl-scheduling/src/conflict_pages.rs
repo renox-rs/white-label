@@ -219,6 +219,13 @@ async fn resolve(
     Form(pairs): Form<Vec<(String, String)>>,
 ) -> Result<Response> {
     let form = ResolveForm::from_pairs(pairs);
+    if form.bookings.is_empty() {
+        return Ok((
+            Toast::warning(texts::t(&lang, "wl_scheduling.conflicts.none_selected")),
+            Redirect::route("wl_scheduling.conflicts", &[])?,
+        )
+            .into_response());
+    }
     let action = match form.action.as_str() {
         "reassign" => BulkAction::Reassign {
             to: form.to.trim().parse().ok(),

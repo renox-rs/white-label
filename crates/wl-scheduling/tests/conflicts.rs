@@ -291,6 +291,16 @@ async fn a_bulk_reassign_clears_the_conflicts_and_tells_each_party_once() {
     let first = s.a11.id.to_string();
     let second = s.a12.id.to_string();
     let to = s.b.id.to_string();
+    // Nothing ticked: the desk is told so (a toast) and nothing is done.
+    t.app
+        .htmx()
+        .post(
+            "/scheduling/conflicts/resolve",
+            &[("action", "reassign"), ("to", to.as_str())],
+        )
+        .await
+        .assert_status(303);
+    assert!(t.reload(s.a11.id).await.has_conflict());
     t.app
         .htmx()
         .post(

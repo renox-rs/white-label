@@ -116,6 +116,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_scheduling.problem.field.action", "Choose what to do."),
     (
+        "wl_scheduling.conflicts.none_selected",
+        "Tick at least one booking first.",
+    ),
+    (
         "wl_scheduling.problem.no_check_in",
         "This service does not need a check-in.",
     ),
