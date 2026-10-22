@@ -71,7 +71,7 @@ async fn cancelling_a_started_order_waits_for_a_manager_and_changes_nothing() {
         .get(&format!("/sales-orders/{}", order.id))
         .await
         .assert_ok()
-        .assert_see("cancel-order");
+        .assert_see("Cancel the order");
 
     cancel(&t, &order, &[(outcome.as_str(), "scrap"), (fee.as_str(), "0")])
         .await
@@ -280,7 +280,7 @@ async fn cancel_is_not_offered_once_something_was_handed_over() {
         .await
         .assert_ok()
         .assert_see("Cancel the remaining lines instead")
-        .assert_dont_see("id=\"cancel-order\"");
+        .assert_dont_see("Cancel the order");
     t.app
         .post(
             &format!("/sales-orders/{}/transitions/cancel", order.id),
