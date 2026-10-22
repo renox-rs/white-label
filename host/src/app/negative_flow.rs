@@ -178,6 +178,8 @@ pub fn delivery_for(client_app: &str) -> wl_delivery::WlDelivery {
     let module = wl_delivery::WlDelivery::new();
     match client_app {
         "logistics" => super::logistics_seed::delivery(module),
+        // 06: own-rider deliveries are perishable (`WRK.RUL.16`), BL-DLV-10.
+        "fnb" => super::fnb_seed::delivery(module),
         _ => module,
     }
 }

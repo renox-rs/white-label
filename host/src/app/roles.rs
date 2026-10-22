@@ -6,6 +6,7 @@
 use accounting::permissions as acc;
 use clinics::permissions as cln;
 use construction::permissions as con;
+use fnb::permissions as fnb_perm;
 use logistics::permissions as log;
 use manpower::permissions as mpw;
 use property::permissions as prp;
@@ -173,6 +174,22 @@ pub const ACCOUNT_MANAGER: &str = mpw::ACCOUNT_MANAGER_ROLE;
 /// The PRO (visa officer): works the visa cases of the workers and is told
 /// when a step passes its target (09 Manpower `MPW.RUL.14`).
 pub const PRO: &str = mpw::PRO_ROLE;
+/// The owner / operations director of an F&B client: sees every brand, outlet
+/// and margin, approves refunds and write-offs (06 §3.1).
+pub const OPERATIONS_DIRECTOR: &str = fnb_perm::OPERATIONS_DIRECTOR_ROLE;
+/// The area manager of an F&B client: oversees several outlets, their orders,
+/// food cost and approvals (06 §3.1).
+pub const AREA_MANAGER: &str = fnb_perm::AREA_MANAGER_ROLE;
+/// The outlet / kitchen manager: runs one kitchen, accepts and dispatches
+/// orders, closes a failed delivery, approves a refund and turns cash on
+/// delivery back on (06 §3.1, `FNB.ACL.17`, `FNB.RUL.14`).
+pub const KITCHEN_MANAGER: &str = fnb_perm::KITCHEN_MANAGER_ROLE;
+/// The head chef: recipes, production, quality (06 §3.1).
+pub const HEAD_CHEF: &str = fnb_perm::HEAD_CHEF_ROLE;
+/// The line cook: sees and bumps the tickets of their station (06 §3.1).
+pub const LINE_COOK: &str = fnb_perm::LINE_COOK_ROLE;
+/// The menu manager: menus, prices and promotions (06 §3.1).
+pub const MENU_MANAGER: &str = fnb_perm::MENU_MANAGER_ROLE;
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -364,6 +381,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // approved by a second user (`LOG.ACL.13`).
             log::REMITTANCES_REQUEST_ACCOUNT,
             log::REMITTANCES_DISPUTE,
+            // 06: the company admin holds the order, kitchen and cash on
+            // delivery permissions too.
+            fnb_perm::ORDERS_VIEW,
+            fnb_perm::ORDERS_MANAGE,
+            fnb_perm::ORDERS_REFUND_REQUEST,
+            fnb_perm::KDS_WORK,
+            fnb_perm::CUSTOMERS_COD,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -1281,6 +1305,120 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::REMITTANCES_REQUEST_ACCOUNT,
             // It disputes a paid statement in the portal (`LOG.ACL.12`).
             log::REMITTANCES_DISPUTE,
+        ],
+    ),
+    (
+        OPERATIONS_DIRECTOR,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::ORDERS_VIEW,
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_APPROVE,
+            delivery::VIEW,
+            delivery::RUNS_VIEW,
+            delivery::POD_VIEW,
+            payments::VIEW,
+            payments::REFUNDS_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_WRITE_OFF,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_APPROVE,
+            invoices::VIEW,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_APPROVE,
+            wl_kernel::permissions::APPROVALS_VIEW,
+        ],
+    ),
+    (
+        AREA_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::ORDERS_VIEW,
+            fnb_perm::ORDERS_MANAGE,
+            fnb_perm::CUSTOMERS_COD,
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_APPROVE,
+            delivery::VIEW,
+            delivery::RUNS_VIEW,
+            delivery::POD_VIEW,
+            payments::VIEW,
+            payments::REFUNDS_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            payments::CASH_WRITE_OFF,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_APPROVE,
+            wl_kernel::permissions::APPROVALS_VIEW,
+        ],
+    ),
+    (
+        KITCHEN_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::ORDERS_VIEW,
+            fnb_perm::ORDERS_MANAGE,
+            fnb_perm::KDS_WORK,
+            fnb_perm::CUSTOMERS_COD,
+            // Accepts and amends orders, cancels and approves a started line
+            // (`SAL.ACL.05`), approves a return and a refund above the limit
+            // (`SAL.ACL.06`).
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_CREATE,
+            sales::SALES_ORDERS_ACCEPT,
+            sales::SALES_ORDERS_CANCEL,
+            sales::SALES_ORDERS_AMEND,
+            sales::SALES_ORDERS_APPROVE,
+            sales::RETURNS_REQUEST,
+            sales::RETURNS_HANDLE,
+            sales::RETURNS_APPROVE,
+            sales::POS_SELL,
+            // The rider's runs and deliveries: assigns, dispatches, returns a
+            // failed delivery's food, approves a cash difference.
+            delivery::VIEW,
+            delivery::DISPATCH,
+            delivery::MANAGE,
+            delivery::RUNS_VIEW,
+            delivery::RUNS_DISPATCH,
+            delivery::POD_VIEW,
+            delivery::REVERSE,
+            delivery::APPROVE_COD_DIFFERENCE,
+            // Approves a refund a cashier asked for (`FNB.ACL.17`,
+            // `FIN.ACL.04`) and counts the rider's cash.
+            payments::VIEW,
+            payments::REFUNDS_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            // Stock of the kitchen: wastage above the limit needs this role
+            // (`STK.ACL.02`); the dispatcher task of a cancelled line is theirs.
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_ADJUST,
+            inventory::STOCK_HOLD,
+            inventory::STOCK_APPROVE,
+            inventory::DISPATCH_MANAGE,
+        ],
+    ),
+    (
+        HEAD_CHEF,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::ORDERS_VIEW,
+            fnb_perm::KDS_WORK,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_HOLD,
+            inventory::LOTS_RELEASE,
+        ],
+    ),
+    (LINE_COOK, &[hr::LEAVE_REQUEST, fnb_perm::KDS_WORK]),
+    (
+        MENU_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::ORDERS_VIEW,
+            inventory::ITEMS_VIEW,
         ],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),

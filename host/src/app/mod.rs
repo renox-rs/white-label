@@ -11,6 +11,8 @@ pub mod construction_seed;
 pub mod dashboard;
 pub mod demo;
 pub mod demo_data;
+pub mod fnb_demo;
+pub mod fnb_seed;
 pub mod home;
 pub mod logistics_demo;
 pub mod logistics_rules;

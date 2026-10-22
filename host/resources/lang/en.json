@@ -107,7 +107,10 @@
     "app": "App",
     "log_in": "Log in",
     "log_out": "Log out",
-    "sections": "Sections"
+    "sections": "Sections",
+    "orders": "Orders",
+    "kitchen": "Kitchen",
+    "cod_customers": "Customers without cash on delivery"
   },
   "patterns": {
     "art": {
