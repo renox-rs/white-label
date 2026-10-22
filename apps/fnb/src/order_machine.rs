@@ -11,6 +11,10 @@
 //! delivery_failed --close_failed (system: DeliveryReturned or DeliveryDiscarded; or orders.manage)--> cancelled
 //! ready | dispatched --complete (orders.manage, or system: DeliveryDelivered)--> completed
 //! placed | accepted | preparing | ready --cancel_system (the sales order was cancelled)--> cancelled
+//! placed --amend_placed (orders.amend)--> placed
+//! accepted --amend (orders.amend)--> accepted
+//! accepted --cancel_line (orders.cancel)--> accepted
+//! preparing --cancel_line_preparing (orders.cancel)--> preparing
 //! ```
 //!
 //! Every state of §7.1 is declared with its tone, so the diagram is whole.
@@ -64,9 +68,21 @@ pub const CLOSE_FAILED_SYSTEM: &str = "close_failed_system";
 pub const COMPLETE: &str = "complete";
 /// `complete`, run by the system on `DeliveryDelivered`.
 pub const COMPLETE_SYSTEM: &str = "complete_system";
+/// `amend`: placed → placed, a new revision of the sales order (BL-FNB-05).
+pub const AMEND_PLACED: &str = "amend_placed";
+/// `amend`: accepted → accepted.
+pub const AMEND: &str = "amend";
+/// `cancel_line`: accepted → accepted.
+pub const CANCEL_LINE: &str = "cancel_line";
+/// `cancel_line`: preparing → preparing.
+pub const CANCEL_LINE_PREPARING: &str = "cancel_line_preparing";
 /// `cancel`: placed, accepted, preparing, ready → cancelled, run by the system
 /// when the sales order was cancelled (BL-FNB-04).
 pub const CANCEL_SYSTEM: &str = "cancel_system";
+
+/// Why a line is cancelled (`cancel_line`): an item ran out, or the customer
+/// asked.
+pub const LINE_REASONS: [&str; 2] = ["item_unavailable", "customer_request"];
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,6 +131,24 @@ pub struct OrderInput {
     /// Whether the customer cancelled it (`cancel_system`).
     #[serde(default)]
     pub by_customer: bool,
+    /// Whether the order came through an aggregator's channel: it is changed
+    /// on the aggregator's tablet, never amended here (`amend`).
+    #[serde(default)]
+    pub aggregator: bool,
+    /// The "customer agreed" tick of the call (`amend`).
+    #[serde(default)]
+    pub customer_agreed: bool,
+    /// Whether the line the amendment changes was started by the kitchen
+    /// (`amend`).
+    #[serde(default)]
+    pub started_changed: bool,
+    /// Why a line is cancelled: `item_unavailable` or `customer_request`
+    /// (`cancel_line`).
+    #[serde(default)]
+    pub line_reason_code: Option<String>,
+    /// Whether the line's ticket was bumped already (`cancel_line`).
+    #[serde(default)]
+    pub line_bumped: bool,
 }
 
 /// The input of a run; the default without one.
@@ -426,6 +460,85 @@ fn cancel_system() -> Transition<FnbOrder> {
     })
 }
 
+/// `amend`: a direct order's lines change after the cashier called the
+/// customer (`orders.amend`). The sales order's amendment did it (revision,
+/// money, kitchen tickets); this is the order's record of who and why.
+fn amend(name: &'static str, state: FnbOrderStatus) -> Transition<FnbOrder> {
+    Transition::new(name)
+        .label("Amend")
+        .tone("primary")
+        .permission(permissions::ORDERS_AMEND)
+        .reason_required()
+        .from([state])
+        .to(state)
+        .guard("direct_order", |_order: &FnbOrder, ctx| {
+            let aggregator = input_of(ctx).aggregator;
+            Box::pin(async move {
+                if aggregator {
+                    Err(english("fnb.amend.aggregator", &[]))
+                } else {
+                    Ok(())
+                }
+            })
+        })
+        .guard("customer_agreed", |_order: &FnbOrder, ctx| {
+            let agreed = input_of(ctx).customer_agreed;
+            Box::pin(async move {
+                if agreed {
+                    Ok(())
+                } else {
+                    Err(english("fnb.amend.agreed", &[]))
+                }
+            })
+        })
+        .guard("changed_lines_not_started", |_order: &FnbOrder, ctx| {
+            let started = input_of(ctx).started_changed;
+            Box::pin(async move {
+                if started {
+                    Err(english("fnb.amend.started", &[]))
+                } else {
+                    Ok(())
+                }
+            })
+        })
+}
+
+/// `cancel_line`: a line is dropped because an item ran out or the customer
+/// asked (`orders.cancel`); the sales order's `cancel_line` did it (refund,
+/// wastage, tickets), and a started line needed a manager (`SAL.ACL.05`).
+fn cancel_line(name: &'static str, state: FnbOrderStatus) -> Transition<FnbOrder> {
+    Transition::new(name)
+        .label("Cancel line")
+        .tone("danger")
+        .permission(permissions::ORDERS_CANCEL)
+        .reason_required()
+        .from([state])
+        .to(state)
+        .guard("item_unavailable_or_customer_request", |_order: &FnbOrder, ctx| {
+            let ok = input_of(ctx)
+                .line_reason_code
+                .as_deref()
+                .is_some_and(|code| LINE_REASONS.contains(&code));
+            Box::pin(async move {
+                if ok {
+                    Ok(())
+                } else {
+                    Err(english("fnb.line.reason", &[]))
+                }
+            })
+        })
+        .guard("line_not_bumped", |_order: &FnbOrder, ctx| {
+            let bumped = input_of(ctx).line_bumped;
+            Box::pin(async move {
+                if bumped {
+                    Err(english("fnb.line.bumped", &[]))
+                } else {
+                    Ok(())
+                }
+            })
+        })
+}
+
 /// The transitions of the base and of the failed delivery.
 pub(crate) fn transitions() -> Vec<Transition<FnbOrder>> {
     vec![
@@ -451,6 +564,10 @@ pub(crate) fn transitions() -> Vec<Transition<FnbOrder>> {
         complete(COMPLETE, true),
         complete(COMPLETE_SYSTEM, false),
         cancel_system(),
+        amend(AMEND_PLACED, FnbOrderStatus::Placed),
+        amend(AMEND, FnbOrderStatus::Accepted),
+        cancel_line(CANCEL_LINE, FnbOrderStatus::Accepted),
+        cancel_line(CANCEL_LINE_PREPARING, FnbOrderStatus::Preparing),
     ]
 }
 
@@ -520,6 +637,10 @@ mod tests {
             COMPLETE,
             COMPLETE_SYSTEM,
             CANCEL_SYSTEM,
+            AMEND_PLACED,
+            AMEND,
+            CANCEL_LINE,
+            CANCEL_LINE_PREPARING,
         ] {
             assert!(machine.find(name).is_ok(), "{name}");
         }
@@ -539,7 +660,15 @@ mod tests {
         ] {
             assert!(machine.find(name).unwrap().is_system(), "{name}");
         }
-        for name in [DISPATCH, CLOSE_FAILED, COMPLETE] {
+        for name in [
+            DISPATCH,
+            CLOSE_FAILED,
+            COMPLETE,
+            AMEND_PLACED,
+            AMEND,
+            CANCEL_LINE,
+            CANCEL_LINE_PREPARING,
+        ] {
             assert!(!machine.find(name).unwrap().is_system(), "{name}");
         }
     }

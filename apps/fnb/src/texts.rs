@@ -166,6 +166,48 @@ const TEXTS: &[(&str, &str)] = &[
         "fnb.cancel.customer_body_refund",
         "Your order {{ number }} is cancelled. {{ amount }} is refunded to the way you paid.",
     ),
+    // Amending an order and cancelling a line (BL-FNB-05).
+    ("fnb.order_amended", "Order amended. The kitchen tickets are updated."),
+    ("fnb.order_amend_waiting", "The amendment waits for a manager's approval."),
+    ("fnb.line_cancelled", "Line cancelled. The kitchen ticket is removed."),
+    ("fnb.line_cancel_waiting", "The cancellation of the line waits for a manager's approval."),
+    (
+        "fnb.amend.aggregator",
+        "An aggregator's order is changed on the aggregator's tablet. Record the result here: cancel the line, or cancel the order.",
+    ),
+    (
+        "fnb.amend.agreed",
+        "Call the customer first and tick that the customer agreed to the change.",
+    ),
+    (
+        "fnb.amend.started",
+        "The kitchen started this line, so it is not amended. Cancel the line and take a new order, or ask the kitchen manager.",
+    ),
+    (
+        "fnb.amend.state",
+        "Only a placed or accepted order is amended.",
+    ),
+    ("fnb.amend.call_time", "Give the time of the call, as hours and minutes, e.g. 18:45."),
+    ("fnb.amend.reason", "Say why the order is amended."),
+    ("fnb.amend.line", "Choose a line of the order that is still open."),
+    ("fnb.amend.quantity", "The quantity is a whole number above zero."),
+    ("fnb.amend.price", "Give the price of one unit, in dirhams, above zero."),
+    ("fnb.amend.history", "Amended after calling the customer at {{ time }}: {{ reason }}"),
+    (
+        "fnb.line.reason",
+        "A line is cancelled because an item is not available or the customer asked.",
+    ),
+    ("fnb.line.reason.item_unavailable", "Item not available"),
+    ("fnb.line.reason.customer_request", "The customer asked"),
+    (
+        "fnb.line.bumped",
+        "The kitchen already bumped this line, so it is not cancelled. Refund it after the order is completed instead.",
+    ),
+    ("fnb.line.state", "A line is cancelled while the order is accepted or being prepared."),
+    (
+        "fnb.line.last",
+        "This is the last open line. Cancel the whole order instead.",
+    ),
     (
         "fnb.cancel.withdrawn",
         "The kitchen started order {{ number }} while the change waited for a manager: ask again.",

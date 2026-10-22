@@ -3,6 +3,7 @@
 
 pub mod cancel;
 pub mod catalogue;
+pub mod changes;
 pub mod close;
 pub mod cod;
 mod events;
@@ -29,6 +30,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use catalogue::{Brand, MenuItem, Outlet, RecipeLine};
+pub use changes::{ChangeNote, ExpectedRefund};
 pub use cod::{CustomerFlag, PaymentOptions};
 pub use order::{FnbOrder, FnbOrderStatus, SUBJECT_TYPE};
 pub use order_machine::OrderInput;
@@ -118,6 +120,8 @@ impl Module for Fnb {
             .model::<RecipeLine>()
             .model::<FnbOrder>()
             .model::<KitchenTicket>()
+            .model::<ChangeNote>()
+            .model::<ExpectedRefund>()
             .model::<RefundAsk>()
             .model::<CustomerFlag>();
         // The order and the ticket have machines of their own.

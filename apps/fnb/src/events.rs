@@ -4,7 +4,8 @@
 //!
 //! - `SalesOrderPlaced`, `SalesOrderConfirmed` and `SalesOrderRejected` start
 //!   and follow the order ([`crate::placing`]), `SalesOrderCancelled` cancels it
-//!   ([`crate::cancel`]);
+//!   ([`crate::cancel`]); `SalesOrderAmended` and `SalesOrderLineCancelled`
+//!   bring the tickets in line ([`crate::changes`]);
 //! - after `accept` the tickets are made, after `mark_ready` the delivery is
 //!   requested, after `fail_delivery` the customer is told and `FNB.RUL.14`
 //!   counts, after `close_failed` the sales order is cancelled and the refund
@@ -24,7 +25,8 @@ use wl_kernel::delivery::{
 };
 use wl_kernel::payments::RefundApproved;
 use wl_kernel::sales::{
-    SalesOrderCancelled, SalesOrderConfirmed, SalesOrderPlaced, SalesOrderRejected,
+    SalesOrderAmended, SalesOrderCancelled, SalesOrderConfirmed, SalesOrderLineCancelled,
+    SalesOrderPlaced, SalesOrderRejected,
 };
 
 use crate::order::FnbOrder;
@@ -33,7 +35,7 @@ use crate::order_machine::{
     FAIL_DELIVERY, MARK_READY,
 };
 use crate::ticket::KitchenTicket;
-use crate::{cancel, close, failed, fulfilment, kitchen, placing, refunds};
+use crate::{cancel, changes, close, failed, fulfilment, kitchen, placing, refunds};
 
 /// What follows a committed transition of an order.
 async fn after_order(state: &AppState, event: &Transitioned<FnbOrder>) -> Result {
@@ -64,6 +66,12 @@ pub(crate) fn register(app: &mut Registry) {
     });
     app.listen(|event: SalesOrderCancelled, state: AppState| async move {
         cancel::on_cancelled(&state, event).await
+    });
+    app.listen(|event: SalesOrderAmended, state: AppState| async move {
+        changes::on_amended(&state, event).await
+    });
+    app.listen(|event: SalesOrderLineCancelled, state: AppState| async move {
+        changes::on_line_cancelled(&state, event).await
     });
     app.listen(
         |event: Transitioned<FnbOrder>, state: AppState| async move {
