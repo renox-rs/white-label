@@ -301,7 +301,7 @@ async fn set(
     Ok(())
 }
 
-fn devices_back() -> Transition<Outage> {
+fn devices_back_transition() -> Transition<Outage> {
     Transition::new(DEVICES_BACK)
         .label("Devices answer")
         .system()
@@ -316,7 +316,7 @@ fn devices_back() -> Transition<Outage> {
         })
 }
 
-fn devices_down() -> Transition<Outage> {
+fn devices_down_transition() -> Transition<Outage> {
     Transition::new(DEVICES_DOWN)
         .label("Devices silent again")
         .system()
@@ -336,7 +336,7 @@ fn devices_down() -> Transition<Outage> {
         })
 }
 
-fn resume() -> Transition<Outage> {
+fn resume_transition() -> Transition<Outage> {
     Transition::new(RESUME)
         .label("Resume the channels")
         .tone("success")
@@ -386,9 +386,9 @@ impl StateMachine for Outage {
             .state(Resumed)
             .tone("success")
             .terminal()
-            .transition(devices_back())
-            .transition(devices_down())
-            .transition(resume())
+            .transition(devices_back_transition())
+            .transition(devices_down_transition())
+            .transition(resume_transition())
     }
 }
 

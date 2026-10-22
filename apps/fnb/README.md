@@ -137,6 +137,35 @@ every status change goes through a state machine that leaves a history row.
   notification is open item AU-20, not built (setting `authority_notice_task`
   gives the owner a task to do it by hand); the recall report is exported from
   the recall page.
+- **Outage and channels** (`outage`, `paper_order`, `outage_pages`, BL-FNB-14,
+  `FNB.RUL.15`): the kitchen devices of an outlet are a device connection
+  `fnb.devices.<code>` (`Fnb::kitchen_devices("marina", "11:00", "02:00",
+  &["kds-1", "kds-2"])`), active in the opening hours and `down` after 5
+  minutes. When it goes `down` with the silence inside the opening hours, an
+  outage opens: the outlet's brands on the ordering site show "temporarily
+  closed" (a brand also cooked by another outlet stays open there), the holders
+  of `outlet_channels.manage` are told to pause the aggregators on their tablets
+  and the kitchen manager has a task. Silence outside the opening hours is
+  ignored and a second `down` does nothing new. When the devices answer again
+  the kitchen manager is asked to resume and to enter the paper orders, every 15
+  minutes; **the system never resumes**, only a manager does (`/outlet-channels`,
+  which also pauses by hand and marks an aggregator's tablet paused). The paper
+  orders are late entries with their business time and the late-entry flag
+  (`PLT.ACL.10`); `/ordering/{brand}` shows each kitchen as taking orders or
+  temporarily closed. A brand's delivery areas are not a record yet: the pause is
+  per outlet and brand.
+- **Daily closing** (`business_day`, `closing`, `closings`, `closing_pages`,
+  BL-FNB-15): an order gets the business date of its outlet's cut-off (default
+  04:00; a change applies from the next business day) and appears in that day's
+  closing. The closing is `open`, `submitted`, `reopened` or `approved`; `submit`
+  needs the checklist, the cash counted and the cut-off of the next morning
+  passed, counts the outlet's wl-sales till session (opened here when nobody
+  opened it) and so makes the till's cash handover of a shortage. The area
+  manager reopens (the accountant approves but does not reopen). A late entry
+  into a submitted closing waits for the area manager (`late_entries.approve`)
+  and reopens the closing on approval, telling the kitchen manager; into an
+  approved closing it is refused and the area manager gets a task to record it
+  in the next day's closing.
 - **Catalogue** (`catalogue`): brands, outlets and menu items with recipes, as
   far as the orders need them. `progress` gives the shared modules the
   kitchen's `FulfilmentProgress` and `SaleLineStockSource`.
@@ -147,7 +176,9 @@ every status change goes through a state machine that leaves a history row.
 `kds.work`, `customers.cod`, `reconciliation.view` and `.manage`,
 `orders.late_entry`, `fnb_reports.view`, `rider_faults.view`, `production.view`
 and `.manage`, `temperature.view` and `.log`, `cold_units.manage`,
-`fnb_recalls.view` and `.decide` (`permissions`). The host maps them to the roles of 06 §3.1:
+`fnb_recalls.view` and `.decide`, `outlet_channels.view` and `.manage`,
+`paper_orders.enter`, `closing.view`, `.submit`, `.approve`, `.reopen` and
+`.cutoff` (`permissions`). The host maps them to the roles of 06 §3.1:
 the kitchen manager, the cashier, the line cook, the area manager, the
 operations director and the rider; the company admin holds everything.
 
