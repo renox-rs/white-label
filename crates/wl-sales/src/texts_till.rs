@@ -34,7 +34,7 @@ pub(crate) const TILL_TEXTS: &[(&str, &str)] = &[
     ("wl_sales.till.history.opened", "Till session opened"),
     // Toasts.
     ("wl_sales.till.opened", "Till session opened."),
-    ("wl_sales.till.counted", "Till counted and closed."),
+    ("wl_sales.till.counted_toast", "Till counted and closed."),
     ("wl_sales.till.reopened", "Till session reopened."),
     ("wl_sales.till.reviewed", "Till session marked reviewed."),
     // The screens.

@@ -151,6 +151,7 @@ pub async fn demo_online_orders(db: &Db, party: i64) -> Result<usize> {
             external_number: Some(external.to_owned()),
             external_key: key,
             payment_status,
+            status,
             ..SalesOrder::default()
         };
         match status {
@@ -253,6 +254,7 @@ pub async fn demo_order_changes(db: &Db, party: i64) -> Result<usize> {
             external_number: Some(external.to_owned()),
             external_key: key,
             payment_status: paid,
+            status,
             confirmed_at: Some(now()),
             ..SalesOrder::default()
         };
@@ -593,6 +595,7 @@ pub async fn demo_order_cancellations(db: &Db, party: i64) -> Result<usize> {
             external_number: Some(external.to_owned()),
             external_key: key,
             payment_status: paid,
+            status,
             confirmed_at: Some(now()),
             fulfilled_at: fulfilled.then(now),
             ..SalesOrder::default()
@@ -665,6 +668,7 @@ pub async fn demo_order_cancellations(db: &Db, party: i64) -> Result<usize> {
             gross_value: value,
             complaint_category: Some(category.to_owned()),
             responsible_party: Some(party.to_owned()),
+            status: ReturnStatus::Resolved,
             resolved_at: Some(now()),
             ..SalesReturn::default()
         };

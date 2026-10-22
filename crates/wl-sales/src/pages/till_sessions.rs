@@ -252,7 +252,7 @@ async fn count(
         })?;
     till_sessions::submit_count(&state, Some(&user), id, counted).await?;
     Ok((
-        Toast::success(text(&lang, "till.counted")),
+        Toast::success(text(&lang, "till.counted_toast")),
         Redirect::route("wl_sales.till_session", &[&id])?,
     )
         .into_response())
