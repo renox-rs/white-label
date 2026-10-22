@@ -811,7 +811,7 @@ impl Module for WlSales {
         app.nav(
             "app",
             NavLink::route("wl_sales.till_sessions", "nav.till_sessions")
-                .icon("wallet")
+                .icon("banknote")
                 .group("nav.app")
                 .order(56)
                 .permission(permissions::POS_OPEN_TILL),
