@@ -395,6 +395,15 @@ pub fn action_of(kind: CancelKind) -> &'static str {
     }
 }
 
+/// Whether two plans cancel the same quantities of the same lines: what a
+/// manager approved must be what is cancelled.
+fn same_quantities(a: &[CancelledLine], b: &[CancelledLine]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(x, y)| x.line == y.line && x.quantity_milli == y.quantity_milli)
+}
+
 /// The input of the run, if it carries one.
 fn input_of(ctx: &TransitionCtx) -> Option<CancelInput> {
     ctx.input_as::<CancelInput>().ok()
@@ -508,7 +517,7 @@ async fn cancel_in(
     if let Some(problem) = found.problem.clone() {
         return Err(refused(problem));
     }
-    if found.complete != to_fulfilled {
+    if found.complete != to_fulfilled || !same_quantities(&found.lines, &run.lines) {
         return Err(refused(english("wl_sales.cancelling.problem.moved", &[])));
     }
     let stamp = renox::db::now();
@@ -711,7 +720,7 @@ pub async fn recheck(tx: &mut Transaction, request: &ApprovalRequest) -> Result<
     if found.problem.is_some() {
         return Ok(found.problem);
     }
-    if found.complete != asked.complete {
+    if found.complete != asked.complete || !same_quantities(&found.lines, &asked.lines) {
         return Ok(Some(english("wl_sales.cancelling.problem.moved", &[])));
     }
     Ok(None)
