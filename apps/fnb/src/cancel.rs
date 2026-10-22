@@ -79,7 +79,7 @@ pub struct StaffCancel {
 }
 
 /// The reason in words, with the note after a colon.
-pub(crate) fn reason_text(code: &str, note: &str) -> String {
+pub fn reason_text(code: &str, note: &str) -> String {
     let label = english(&format!("fnb.cancel.reason.{code}"), &[]);
     if note.trim().is_empty() {
         label

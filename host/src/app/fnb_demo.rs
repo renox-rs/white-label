@@ -22,7 +22,7 @@
 //! `wl-payments` (one short, one balanced). The rows they make for the first
 //! customer get their kitchen record here.
 
-use fnb::order::{decision, kind, party, reason, side};
+use fnb::order::{cancel_reason, decision, party, reason, side};
 use fnb::ticket::{KitchenTicket, TicketStatus};
 use fnb::{CustomerFlag, FnbOrder, FnbOrderStatus, Outlet};
 use renox::Environment;
@@ -37,6 +37,7 @@ use wl_kernel::delivery::{DeliveryItem, DeliveryRequest};
 use wl_kernel::documents::today;
 use wl_kernel::sales::SalesOrderId;
 use wl_kernel::{PartyId, PartyKind, Subject};
+use wl_portal::{AccessGrant, GrantStatus};
 use wl_sales::sale_line::{NewLine, SaleLine, totals};
 use wl_sales::sales_order::{
     ORDER_SERIES, OrderPaymentStatus, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
@@ -45,7 +46,7 @@ use wl_sales::sales_orders::external_key;
 
 use super::roles::{
     self, ACCOUNTANT, AREA_MANAGER, CASHIER, DRIVER, HEAD_CHEF, KITCHEN_MANAGER, LINE_COOK,
-    MENU_MANAGER, OPERATIONS_DIRECTOR, STOREKEEPER,
+    MEMBER, MENU_MANAGER, OPERATIONS_DIRECTOR, STOREKEEPER,
 };
 use super::seed::PASSWORD;
 
@@ -127,7 +128,17 @@ pub const LOGINS: &[Login] = &[
         role: DRIVER,
         label: "Rider (own fleet)",
     },
+    Login {
+        name: "Layla Mansoori",
+        email: CUSTOMER_EMAIL,
+        role: MEMBER,
+        label: "Customer (follows and cancels her own order)",
+    },
 ];
+
+/// The sign-in of the first demo customer, who acts for herself in the
+/// portal: `/my/orders/{id}` is hers.
+const CUSTOMER_EMAIL: &str = "layla@customer.example";
 
 /// The customers of the demo: name, and whether they get the failed cash
 /// orders of the cash-on-delivery story.
@@ -212,6 +223,7 @@ async fn run(state: AppState, forced: bool) -> Result {
     for name in CUSTOMERS {
         customers.push(customer(&state, name).await?);
     }
+    customer_access(&state, customers[0]).await?;
     // The helper seeds of the modules, for the first customer.
     let first = customers[0].0;
     wl_sales::seed::demo_online_orders(db, first).await?;
@@ -223,6 +235,39 @@ async fn run(state: AppState, forced: bool) -> Result {
     }
     let made = orders(&state, &customers).await?;
     println!("{made} demo orders made for the Zaatar & Co. kitchen.");
+    Ok(())
+}
+
+/// The first customer's portal access to herself: with it she follows her
+/// orders and cancels a placed one (`cod::customer_of`).
+async fn customer_access(state: &AppState, party: PartyId) -> Result {
+    let db = &state.db;
+    let Some(user) = User::find_by_email(db, CUSTOMER_EMAIL).await? else {
+        return Ok(());
+    };
+    let granted = AccessGrant::query()
+        .where_(AccessGrant::USER_ID.eq(Some(user.id)))
+        .first(db)
+        .await?;
+    if granted.is_some() {
+        return Ok(());
+    }
+    let mut grant = AccessGrant {
+        user_id: Some(user.id),
+        person_party_id: party.0,
+        party_id: party.0,
+        audience: "tenant".to_owned(),
+        roles: "owner".to_owned(),
+        source: "self_registration".to_owned(),
+        valid_from: today() - TimeDelta::days(1),
+        status: GrantStatus::Active,
+        ..AccessGrant::default()
+    };
+    let mut tx = db.begin().await?;
+    grant
+        .insert_in_state(&mut tx, GrantStatus::Active, "demo seed")
+        .await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -344,7 +389,7 @@ struct Story {
     placed_hours_ago: i64,
 }
 
-const STORIES: [Story; 9] = [
+const STORIES: [Story; 12] = [
     Story {
         key: "FNBD-1",
         channel: "website",
@@ -435,6 +480,42 @@ const STORIES: [Story; 9] = [
         status: FnbOrderStatus::DeliveryFailed,
         placed_hours_ago: 1,
     },
+    // BL-FNB-04: accepted and not started, above AED 50: the cashier's cancel
+    // waits for the kitchen manager.
+    Story {
+        key: "FNBD-10",
+        channel: "website",
+        customer: 0,
+        mode: "online",
+        lines: &[("shawarma-plate", 2), ("hummus-bowl", 1)],
+        sales: SalesOrderStatus::Confirmed,
+        status: FnbOrderStatus::Accepted,
+        placed_hours_ago: 0,
+    },
+    // BL-FNB-04: cancelled by the customer from the order page while it was
+    // placed, refunded in full.
+    Story {
+        key: "FNBD-11",
+        channel: "website",
+        customer: 0,
+        mode: "online",
+        lines: &[("falafel-wrap", 2)],
+        sales: SalesOrderStatus::Cancelled,
+        status: FnbOrderStatus::Cancelled,
+        placed_hours_ago: 5,
+    },
+    // BL-FNB-04: an aggregator's order cancelled with the aggregator
+    // responsible: no refund, compensation expected on the payout.
+    Story {
+        key: "FNBD-12",
+        channel: "aggregator_a",
+        customer: 2,
+        mode: "on_account",
+        lines: &[("shawarma-plate", 1)],
+        sales: SalesOrderStatus::Cancelled,
+        status: FnbOrderStatus::Cancelled,
+        placed_hours_ago: 6,
+    },
 ];
 
 /// Makes the orders of the stories that are not there yet; returns how many.
@@ -453,7 +534,7 @@ async fn orders(state: &AppState, customers: &[PartyId]) -> Result<usize> {
         let sales = sales_order(state, story, party).await?;
         let order = kitchen_record(state, story, &sales, party, name).await?;
         tickets_for(state, story, &order, &sales).await?;
-        if story.status == FnbOrderStatus::Ready {
+        if story.status == FnbOrderStatus::Ready && order.is_delivery() {
             ask_delivery(state, &order).await?;
         }
         made += 1;
@@ -505,8 +586,13 @@ async fn sales_order(state: &AppState, story: &Story, party: PartyId) -> Result<
         status: story.sales,
         ..SalesOrder::default()
     };
+    let why = match story.key {
+        "FNBD-11" => "Cancelled by the customer",
+        "FNBD-12" => "Cancelled by the aggregator",
+        _ => "failed delivery",
+    };
     if story.sales == SalesOrderStatus::Cancelled {
-        order.reason = Some("failed delivery".to_owned());
+        order.reason = Some(why.to_owned());
     }
     let mut tx = db.begin().await?;
     order.insert_in_state(&mut tx, story.sales, "demo").await?;
@@ -535,7 +621,7 @@ async fn sales_order(state: &AppState, story: &Story, party: PartyId) -> Result<
             }
             SalesOrderStatus::Cancelled => {
                 let outcome = Some("scrap".to_owned());
-                let why = Some("failed delivery".to_owned());
+                let why = Some(why.to_owned());
                 SaleLine::query()
                     .where_(SaleLine::ID.eq(line.id))
                     .update(
@@ -596,7 +682,7 @@ async fn kitchen_record(
         brand_id: brand,
         outlet_id: outlet.map(|outlet| outlet.id),
         channel: story.channel.to_owned(),
-        kind: kind::DELIVERY.to_owned(),
+        kind: fnb::placing::kind_for(story.channel).to_owned(),
         payment_mode: story.mode.to_owned(),
         paid_amount: if prepaid { sales.gross_total } else { 0 },
         total: sales.gross_total,
@@ -627,6 +713,10 @@ async fn kitchen_record(
         }
         "FNBD-9" => failed(&mut order, "refused", reason::REFUSED, side::CUSTOMER, party::CUSTOMER),
         "FNBD-4" => order.completed_at = Some(placed + TimeDelta::minutes(40)),
+        // Cancelled by the customer from the order page, refunded in full.
+        "FNBD-11" => cancelled(&mut order, cancel_reason::CUSTOMER_REQUEST, party::CUSTOMER, true, 5),
+        // The aggregator cancelled it: no refund, the aggregator pays.
+        "FNBD-12" => cancelled(&mut order, cancel_reason::AGGREGATOR_CANCELLED, party::AGGREGATOR, false, 6),
         _ => {}
     }
     let mut tx = db.begin().await?;
@@ -645,6 +735,24 @@ fn failed(order: &mut FnbOrder, delivery_reason: &str, why: &str, on: &str, to_b
         .placed_at
         .map(|placed| placed + TimeDelta::minutes(55));
     order.responsible_party = Some(to_blame.to_owned());
+}
+
+/// Marks `order` as cancelled `hours_ago` hours ago with `why` (BL-FNB-04).
+fn cancelled(order: &mut FnbOrder, why: &str, to_blame: &str, by_customer: bool, hours_ago: i64) {
+    order.cancel_reason_code = Some(why.to_owned());
+    order.cancel_party = Some(to_blame.to_owned());
+    order.cancelled_by_customer = by_customer;
+    order.cancelled_at = Some(renox::db::now() - TimeDelta::hours(hours_ago));
+    order.close_reason = Some(
+        fnb::cancel::reason_text(why, "")
+    );
+    order.compensation_expected = to_blame == party::AGGREGATOR;
+    if order.paid_amount > 0 {
+        order.refund_decision = Some(decision::FULL_REFUND.to_owned());
+        order.refund_amount = order.paid_amount;
+    } else {
+        order.refund_decision = Some(decision::NOT_APPLICABLE.to_owned());
+    }
 }
 
 /// Marks `order` as closed `hours_ago` hours ago with `chosen`.
@@ -667,6 +775,11 @@ async fn tickets_for(
 ) -> Result {
     let wanted = match story.status {
         FnbOrderStatus::Placed => return Ok(()),
+        // The customer cancelled before the kitchen had it; the aggregator
+        // cancelled after: its tickets were voided.
+        FnbOrderStatus::Cancelled if story.key == "FNBD-11" => return Ok(()),
+        FnbOrderStatus::Cancelled if story.key == "FNBD-12" => TicketStatus::Voided,
+        FnbOrderStatus::Accepted => TicketStatus::Queued,
         FnbOrderStatus::Preparing => TicketStatus::InPrep,
         _ => TicketStatus::Done,
     };
@@ -678,7 +791,8 @@ async fn tickets_for(
             station: fnb::ticket::DEFAULT_STATION.to_owned(),
             description: line.description.clone(),
             quantity_milli: line.quantity_milli,
-            started_at: Some(at + TimeDelta::minutes(5)),
+            started_at: matches!(wanted, TicketStatus::InPrep | TicketStatus::Done)
+                .then_some(at + TimeDelta::minutes(5)),
             bumped_at: (wanted == TicketStatus::Done).then_some(at + TimeDelta::minutes(25)),
             status: wanted,
             ..KitchenTicket::default()

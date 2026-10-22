@@ -385,6 +385,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // delivery permissions too.
             fnb_perm::ORDERS_VIEW,
             fnb_perm::ORDERS_MANAGE,
+            fnb_perm::ORDERS_CANCEL,
+            fnb_perm::ORDERS_AMEND,
             fnb_perm::ORDERS_REFUND_REQUEST,
             fnb_perm::KDS_WORK,
             fnb_perm::CUSTOMERS_COD,
@@ -1359,6 +1361,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::LEAVE_REQUEST,
             fnb_perm::ORDERS_VIEW,
             fnb_perm::ORDERS_MANAGE,
+            fnb_perm::ORDERS_CANCEL,
+            fnb_perm::ORDERS_AMEND,
             fnb_perm::KDS_WORK,
             fnb_perm::CUSTOMERS_COD,
             // Accepts and amends orders, cancels and approves a started line

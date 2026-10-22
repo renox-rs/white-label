@@ -126,9 +126,15 @@ pub fn grant_roles(client_app: &str) {
         &[
             fnb_perm::ORDERS_VIEW,
             fnb_perm::ORDERS_REFUND_REQUEST,
+            // Cancels an order, or a line, and amends a direct order after
+            // calling the customer (`SAL.ACL.01`, `SAL.ACL.05`: a manager
+            // approves above AED 50 or for a started line).
+            fnb_perm::ORDERS_CANCEL,
+            fnb_perm::ORDERS_AMEND,
             sales::SALES_ORDERS_VIEW,
             sales::SALES_ORDERS_CREATE,
             sales::SALES_ORDERS_CANCEL,
+            sales::SALES_ORDERS_AMEND,
             sales::RETURNS_REQUEST,
             sales::RETURNS_HANDLE,
             sales::POS_SELL,

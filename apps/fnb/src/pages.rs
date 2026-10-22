@@ -14,6 +14,9 @@
 //! | `POST /orders/{id}/close` | `fnb.order_close` | `orders.manage` |
 //! | `POST /orders/{id}/responsible` | `fnb.order_responsible` | `orders.manage`, fields `party`, `note` |
 //! | `POST /orders/{id}/refund` | `fnb.order_refund` | `orders.refund_request`, fields `amount`, `reason` |
+//! | `POST /orders/{id}/cancel` | `fnb.order_cancel` | `orders.cancel`, fields `reason`, `party`, `note`, `outcome_<line>` |
+//! | `GET /my/orders/{id}` | `fnb.my_order` | the order's customer |
+//! | `POST /my/orders/{id}/cancel` | `fnb.my_order_cancel` | the order's customer, while it is `placed` |
 //! | `GET /kitchen` | `fnb.kitchen` | `kds.work` |
 //! | `POST /tickets/{id}/start` | `fnb.ticket_start` | `kds.work` |
 //! | `POST /tickets/{id}/bump` | `fnb.ticket_bump` | `kds.work` |
@@ -32,11 +35,12 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::Serialize;
 use wl_kernel::PartyId;
-use wl_kernel::sales::order_desk;
+use wl_kernel::sales::{ChangeOutcome, order_desk};
 
+use crate::cancel::{self, StaffCancel};
 use crate::cod::{self, CustomerFlag};
 use crate::money::parse_dirhams;
-use crate::order::{FnbOrder, FnbOrderStatus, kind, party};
+use crate::order::{FnbOrder, FnbOrderStatus, cancel_reason, kind, party};
 use crate::permissions;
 use crate::placing::{Details, refused};
 use crate::refunds::{self, RefundAsk};
@@ -64,6 +68,10 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
     (
         "fnb/checkout_payment.html",
         include_str!("../views/fnb/checkout_payment.html"),
+    ),
+    (
+        "fnb/my_order.html",
+        include_str!("../views/fnb/my_order.html"),
     ),
 ];
 
@@ -123,6 +131,12 @@ pub fn routes() -> Routes {
         .name("fnb.order_responsible")
         .post("/orders/{id}/refund", refund)
         .name("fnb.order_refund")
+        .post("/orders/{id}/cancel", cancel_order)
+        .name("fnb.order_cancel")
+        .get("/my/orders/{id}", my_order)
+        .name("fnb.my_order")
+        .post("/my/orders/{id}/cancel", my_order_cancel)
+        .name("fnb.my_order_cancel")
         .get("/kitchen", kitchen)
         .name("fnb.kitchen")
         .post("/tickets/{id}/start", ticket_start)
@@ -200,11 +214,13 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             total: o.total,
             status: status_word(&lang, o.status),
             status_kind: status_kind(o.status),
-            failure: o
-                .failure_reason
-                .as_deref()
-                .map(|reason| t(&lang, &format!("fnb.screen.reason.{reason}")))
-                .unwrap_or_default(),
+            failure: match (&o.failure_reason, &o.cancel_reason_code) {
+                (Some(reason), _) => t(&lang, &format!("fnb.screen.reason.{reason}")),
+                (None, Some(code)) if o.status == FnbOrderStatus::Cancelled => {
+                    t(&lang, &format!("fnb.cancel.reason.{code}"))
+                }
+                _ => String::new(),
+            },
             url: format!("/orders/{}", o.id),
         })
         .collect();
@@ -276,10 +292,25 @@ pub(crate) struct ShowPage {
     can_close: bool,
     can_party: bool,
     can_refund: bool,
+    can_cancel: bool,
     parties: Vec<[String; 2]>,
     kinds: Vec<[String; 2]>,
+    cancel_reasons: Vec<[String; 2]>,
+    cancel_parties: Vec<[String; 2]>,
+    outcomes: Vec<[String; 2]>,
+    started: Vec<StartedRow>,
+    cancel_reason_label: String,
+    cancel_party_label: String,
+    cancelled_by_label: String,
     notes: Vec<String>,
     refund_left: i64,
+}
+
+/// A started line of the cancel sheet: it needs an outcome.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct StartedRow {
+    id: i64,
+    description: String,
 }
 
 async fn show(
@@ -318,7 +349,8 @@ async fn show(
     if let Some(problem) = &refund_problem {
         notes.push(problem.clone());
     }
-    let lines = match order_desk(&state).find(&state, order.sales_order()).await? {
+    let view = order_desk(&state).find(&state, order.sales_order()).await?;
+    let lines = match &view {
         Some(view) => view
             .lines
             .iter()
@@ -330,6 +362,35 @@ async fn show(
             })
             .collect(),
         None => Vec::new(),
+    };
+    // Cancel: a request that waits for a manager says so instead.
+    let cancellable = matches!(order.status, Placed | Accepted | Preparing | Ready);
+    let holds_cancel = user.has_permission(permissions::ORDERS_CANCEL);
+    let cancel_waiting = holds_cancel && cancellable && cancel::waiting(&state.db, &order).await?;
+    if cancel_waiting {
+        notes.push(t(&lang, "fnb.cancel.pending"));
+    }
+    let can_cancel = holds_cancel && cancellable && !cancel_waiting;
+    let aggregator = view.as_ref().is_some_and(|view| view.aggregator);
+    let mut started = Vec::new();
+    if can_cancel && let Some(view) = &view {
+        for line in cancel::started_lines(&state.db, &order, view).await? {
+            started.push(StartedRow {
+                id: line.id,
+                description: line.description.clone(),
+            });
+        }
+    }
+    let cancelled_by_label = if order.cancelled_by_customer {
+        t(&lang, "fnb.screen.cancelled_by_customer")
+    } else {
+        match order.cancel_requested_by {
+            Some(id) if order.cancelled_at.is_some() => User::find(&state.db, id)
+                .await?
+                .map(|found| found.name)
+                .unwrap_or_default(),
+            _ => String::new(),
+        }
     };
     let tickets = KitchenTicket::of_order(&state.db, order.id)
         .await?
@@ -392,6 +453,28 @@ async fn show(
         can_close: manages && order.status == DeliveryFailed,
         can_party: manages && order.failure_reason.is_some(),
         can_refund,
+        can_cancel,
+        cancel_reasons: cancel_reason::CHOICES
+            .iter()
+            .map(|c| [(*c).to_owned(), t(&lang, &format!("fnb.cancel.reason.{c}"))])
+            .collect(),
+        cancel_parties: party::CANCEL
+            .iter()
+            .filter(|p| aggregator || **p != party::AGGREGATOR)
+            .map(|p| [(*p).to_owned(), t(&lang, &format!("fnb.screen.party.{p}"))])
+            .collect(),
+        outcomes: ["return_to_stock", "scrap"]
+            .iter()
+            .map(|o| [(*o).to_owned(), t(&lang, &format!("fnb.screen.outcome.{o}"))])
+            .collect(),
+        started,
+        cancel_reason_label: order
+            .cancel_reason_code
+            .as_deref()
+            .map(|code| t(&lang, &format!("fnb.cancel.reason.{code}")))
+            .unwrap_or_default(),
+        cancel_party_label: word("party", &order.cancel_party),
+        cancelled_by_label,
         parties: party::ALL
             .iter()
             .map(|p| [(*p).to_owned(), t(&lang, &format!("fnb.screen.party.{p}"))])
@@ -540,6 +623,109 @@ async fn refund(
     };
     refunds::request(&state, &user, id, amount, &field(&form, "reason")).await?;
     back_to(&lang, "fnb.refund_asked", id)
+}
+
+/// `POST /orders/{id}/cancel`: fields `reason`, `party`, `note` and
+/// `outcome_<line>` for each line the kitchen started.
+async fn cancel_order(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Fields,
+) -> Result<Response> {
+    let outcomes = form
+        .iter()
+        .filter_map(|(name, value)| {
+            let line = name.strip_prefix("outcome_")?.parse::<i64>().ok()?;
+            Some((line, value.clone()))
+        })
+        .collect();
+    let ask = StaffCancel {
+        reason_code: field(&form, "reason"),
+        party: field(&form, "party"),
+        note: field(&form, "note"),
+        outcomes,
+    };
+    match cancel::by_staff(&state, &user, id, ask).await? {
+        ChangeOutcome::Done => back_to(&lang, "fnb.order_cancelled", id),
+        ChangeOutcome::Waiting { .. } => Ok((
+            Toast::info(t(&lang, "fnb.order_cancel_waiting")),
+            Redirect::route("fnb.order", &[&id])?,
+        )
+            .into_response()),
+    }
+}
+
+/// What the customer's page of an order needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "fnb/my_order.html")]
+pub(crate) struct MyOrderPage {
+    tx: Texts,
+    order: FnbOrder,
+    status_label: String,
+    status_kind: &'static str,
+    lines: Vec<LineRow>,
+    can_cancel: bool,
+    accepted: bool,
+}
+
+/// `GET /my/orders/{id}`: the signed-in customer's own order, with Cancel
+/// while it is `placed`; once the outlet accepts it the page says so.
+async fn my_order(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let order = FnbOrder::find_or_404(&state.db, id).await?;
+    let customer = cod::customer_of(&state, &user).await?;
+    if customer.map(|party| party.0) != Some(order.party_id) {
+        return Err(Error::NotFound);
+    }
+    let lines = match order_desk(&state).find(&state, order.sales_order()).await? {
+        Some(view) => view
+            .lines
+            .iter()
+            .filter(|line| line.is_item)
+            .map(|line| LineRow {
+                description: line.description.clone(),
+                quantity: format!("{}", line.quantity_milli / 1_000),
+                gross: line.gross,
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+    Ok(View::typed(MyOrderPage {
+        tx: tx(&lang),
+        status_label: status_word(&lang, order.status),
+        status_kind: status_kind(order.status),
+        lines,
+        can_cancel: order.status == FnbOrderStatus::Placed,
+        accepted: matches!(
+            order.status,
+            FnbOrderStatus::Accepted | FnbOrderStatus::Preparing | FnbOrderStatus::Ready
+        ),
+        order,
+    })
+    .into_response())
+}
+
+/// `POST /my/orders/{id}/cancel`: the customer cancels a `placed` order. An
+/// order the outlet accepted meanwhile answers 422 "order already accepted"
+/// and the page is drawn again.
+async fn my_order_cancel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    cancel::by_customer(&state, &user, id).await?;
+    Ok((
+        Toast::success(t(&lang, "fnb.my_order_cancelled")),
+        Redirect::route("fnb.my_order", &[&id])?,
+    )
+        .into_response())
 }
 
 /// A ticket of the kitchen board.

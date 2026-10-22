@@ -2,7 +2,7 @@
     what happened when the delivery failed and how it was closed, the refunds
     asked for it, and the actions the person may run (accept, reject, set the
     delivery details, dispatch, complete, close a failed delivery, change the
-    responsible party, ask for a refund). What an action cannot do yet is said
+    responsible party, ask for a refund, cancel the order). What an action cannot do yet is said
     in the notes. Replace it with resources/views/fnb/order.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="order.number">
   <rx-stack>
@@ -32,6 +32,13 @@
                        :title="tx['party_title']" :description="tx['party_description']" :submit-label="tx['party_save']" icon="user-round">
         <rx-select name="party" :label="tx['party']" :id="'party-party-' ~ order.id" :selected="order.responsible_party" :options="parties"/>
         <rx-textarea name="note" :label="tx['note']" :id="'party-note-' ~ order.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_cancel" :id="'cancel-' ~ order.id" :label="tx['cancel']" :action="route('fnb.order_cancel', order.id)"
+                       :title="tx['cancel_title']" :description="tx['cancel_description']" :submit-label="tx['cancel_submit']" icon="ban" variant="danger" danger>
+        <rx-select name="reason" :label="tx['reason']" :id="'cancel-reason-' ~ order.id" :selected="'customer_request'" :options="cancel_reasons"/>
+        <rx-select name="party" :label="tx['party']" :id="'cancel-party-' ~ order.id" :selected="'business'" :options="cancel_parties"/>
+        <rx-textarea name="note" :label="tx['note']" :id="'cancel-note-' ~ order.id"/>
+        <rx-select rx-for="line in started" :name="'outcome_' ~ line.id" :label="tx['cancel_outcome'] ~ ': ' ~ line.description" :id="'cancel-outcome-' ~ line.id" :selected="'scrap'" :options="outcomes"/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_refund" :id="'refund-' ~ order.id" :label="tx['refund_action']" :action="route('fnb.order_refund', order.id)"
                        :title="tx['refund_title']" :description="tx['refund_description']" :submit-label="tx['refund_ask']" icon="banknote">
@@ -77,6 +84,18 @@
         <rx-entry :label="tx['closed_at']" :value="order.closed_at"/>
         <rx-entry :label="tx['wastage']" :value="order.wastage_ref" :placeholder="tx['none']"/>
         <rx-entry :label="tx['refund_left']" rx-if="can_refund" :value="refund_left" format="money"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="order.cancel_reason_code" :title="tx['cancellation']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['reason']" :value="cancel_reason_label"/>
+        <rx-entry :label="tx['party']" :value="cancel_party_label"/>
+        <rx-entry :label="tx['cancelled_by']" :value="cancelled_by_label" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['cancelled_at']" :value="order.cancelled_at"/>
+        <rx-entry :label="tx['decision']" rx-if="order.refund_decision" :value="decision_label"/>
+        <rx-entry :label="tx['refunded']" :value="order.refund_amount" format="money"/>
+        <rx-entry :label="tx['wastage']" rx-if="order.wastage_posted" :value="tx['yes']"/>
+        <rx-entry :label="tx['compensation']" rx-if="order.compensation_expected" :value="tx['compensation_yes']" span="full"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="lines" as="line" :key="line.description" :caption="tx['lines']" card>

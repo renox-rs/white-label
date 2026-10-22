@@ -119,6 +119,40 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.refund_amount", "Amount (AED)"),
     ("fnb.screen.refund_ask", "Ask"),
     ("fnb.screen.refund_left", "Still refundable"),
+    // Cancelling an order (BL-FNB-04).
+    ("fnb.screen.cancel", "Cancel the order"),
+    ("fnb.screen.cancel_title", "Cancel the order"),
+    (
+        "fnb.screen.cancel_description",
+        "The sales order is cancelled and a paid order is refunded. A paid order above AED 50, or food the kitchen started, needs a manager's approval. Entered in error is always the business's.",
+    ),
+    ("fnb.screen.cancel_submit", "Cancel the order"),
+    ("fnb.screen.cancel_outcome", "The kitchen started"),
+    ("fnb.screen.cancellation", "Cancellation"),
+    ("fnb.screen.cancelled_by", "Cancelled by"),
+    ("fnb.screen.cancelled_by_customer", "The customer, from the order page"),
+    ("fnb.screen.cancelled_at", "Cancelled at"),
+    ("fnb.screen.compensation", "Compensation expected"),
+    (
+        "fnb.screen.compensation_yes",
+        "Yes: the aggregator is expected to pay for the food on its payout statement",
+    ),
+    ("fnb.screen.compensation_no", "No"),
+    ("fnb.screen.my_title", "Your order"),
+    (
+        "fnb.screen.my_subtitle",
+        "Where your order is. You can cancel it until the kitchen accepts it.",
+    ),
+    ("fnb.screen.my_cancel", "Cancel my order"),
+    ("fnb.screen.my_cancel_title", "Cancel your order"),
+    (
+        "fnb.screen.my_cancel_message",
+        "Nothing reaches the kitchen and you are refunded in full.",
+    ),
+    (
+        "fnb.screen.my_accepted",
+        "The kitchen accepted your order, so it can no longer be cancelled here.",
+    ),
     // The kitchen board.
     ("fnb.screen.kitchen_title", "Kitchen"),
     (
@@ -194,6 +228,9 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.party.customer", "Customer"),
     ("fnb.screen.party.rider", "Rider"),
     ("fnb.screen.party.business", "Business"),
+    ("fnb.screen.party.aggregator", "Aggregator"),
+    ("fnb.screen.outcome.return_to_stock", "Return to stock"),
+    ("fnb.screen.outcome.scrap", "Scrap (posted as wastage)"),
     ("fnb.screen.decision.full_refund", "Full refund"),
     ("fnb.screen.decision.no_refund", "No refund"),
     ("fnb.screen.decision.manager_approved", "Manager-approved refund"),

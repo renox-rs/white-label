@@ -1,0 +1,18 @@
+{#- fnb: the customer's own order: where it is, what it holds, and Cancel while
+    the outlet has not accepted it (full refund, nothing reaches the kitchen).
+    Once it is accepted the page says it can no longer be cancelled here.
+    Replace it with resources/views/fnb/my_order.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['my_title']">
+  <rx-stack>
+    <rx-page-header :title="order.number" :subtitle="tx['my_subtitle']" :badge="status_label" :badge-kind="status_kind">
+      <rx-confirm rx-if="can_cancel" :id="'my-cancel-' ~ order.id" :label="tx['my_cancel']" :action="route('fnb.my_order_cancel', order.id)" method="POST"
+                  :title="tx['my_cancel_title']" :message="tx['my_cancel_message']" :confirm-label="tx['my_cancel']"/>
+    </rx-page-header>
+    <rx-alert rx-if="accepted" kind="info" :message="tx['my_accepted']"/>
+    <rx-table :rows="lines" as="line" :key="line.description" :caption="tx['lines']" card>
+      <rx-column :label="tx['item']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['quantity']" align="num">{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['amount']" align="num">{{ line.gross | money(currency='AED') }}</rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>

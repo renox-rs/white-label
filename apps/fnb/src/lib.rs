@@ -101,7 +101,8 @@ impl Module for Fnb {
             .view_data::<pages::ShowPage>()
             .view_data::<pages::KitchenPage>()
             .view_data::<pages::CodPage>()
-            .view_data::<pages::CheckoutPage>();
+            .view_data::<pages::CheckoutPage>()
+            .view_data::<pages::MyOrderPage>();
         app.templates(|env| {
             for (name, source) in pages::VIEWS {
                 // The app's own file of that name wins.
