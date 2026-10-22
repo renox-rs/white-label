@@ -131,6 +131,40 @@ pub async fn create_from_session(
     CashHandover::find_or_404(db, handover.id).await
 }
 
+/// Demo rows (DEMO-DATA.md §06): two closed till sessions of till `T1` for
+/// the cashier `cashier_user`: session 9001 AED 50.00 short (a `short`
+/// handover to recover or write off) and session 9002 balanced (`counted`).
+/// Idempotent: a session that has its handover is skipped. Returns how many
+/// handovers were made.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn demo(state: &AppState, cashier_user: i64, date: renox::chrono::NaiveDate) -> Result<usize> {
+    let mut made = 0;
+    for (session, expected, counted) in [(9_001, 400_000, 395_000), (9_002, 250_000, 250_000)] {
+        if of_session(&state.db, session).await?.is_some() {
+            continue;
+        }
+        create_from_session(
+            state,
+            &TillSessionClosed {
+                session,
+                till: "T1".to_owned(),
+                cashier_user,
+                date,
+                expected,
+                counted,
+                location: None,
+                legal_entity_id: None,
+            },
+        )
+        .await?;
+        made += 1;
+    }
+    Ok(made)
+}
+
 /// Registers the listener of `TillSessionClosed`.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: TillSessionClosed, state: AppState| async move {
