@@ -21,12 +21,16 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manpower.problems.site_name", "Give the site a name."),
     (
+        "manpower.problems.site_duplicate",
+        "This client already has a site with that name.",
+    ),
+    (
         "manpower.problems.reference",
         "Give the contract a reference.",
     ),
     (
         "manpower.problems.dates",
-        "The contract must end after it starts.",
+        "The end date must be after the start date.",
     ),
     (
         "manpower.problems.payment_terms",
@@ -46,7 +50,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "manpower.problems.signed_document",
-        "Attach the signed contract.",
+        "Attach the signed contract first.",
     ),
     (
         "manpower.problems.not_draft",
@@ -59,7 +63,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "manpower.contract.no_rate_card",
-        "No rate card version accepted by the client is in force on the start date of the contract.",
+        "Accept a rate card version first: no rate card version accepted by the client is in force on the start date of the contract.",
     ),
     (
         "manpower.contract.over",
@@ -77,6 +81,10 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "manpower.hold.text_required",
         "Write what the other reason is.",
+    ),
+    (
+        "manpower.hold.already_held",
+        "The contract is already on hold for that reason.",
     ),
     (
         "manpower.hold.not_holdable",
@@ -136,7 +144,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "manpower.terminate.short_notice",
-        "The notice period of the contract is {{ days }} days: the contract can end on {{ earliest }} at the earliest, unless the other side's waiver is attached.",
+        "The end date is inside the notice period of {{ days }} days: the contract can end on {{ earliest }} at the earliest, unless the other side's waiver is attached.",
     ),
     ("manpower.terminate.cancel_reason", "contract terminated"),
     (
@@ -714,7 +722,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.contracts.cover", "Cover"),
     ("manpower.screen.contracts.cover_required", "Cover required"),
     ("manpower.screen.contracts.cover_none", "Not required"),
-    ("manpower.screen.open_ended", "open-ended"),
+    ("manpower.screen.open_ended", "Open-ended"),
     (
         "manpower.screen.contracts.held_since",
         "On credit hold since",
@@ -767,6 +775,512 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.billing.weekly", "Weekly"),
     ("manpower.screen.billing.fortnightly", "Every two weeks"),
     ("manpower.screen.billing.monthly", "Monthly"),
+    (
+        "manpower.problems.client_missing",
+        "Pick the client company.",
+    ),
+    (
+        "manpower.problems.contract_missing",
+        "Pick the client contract.",
+    ),
+    (
+        "manpower.problems.dates_missing",
+        "Give the start date and the end date.",
+    ),
+    (
+        "manpower.problems.headcount_missing",
+        "Say how many workers are asked for.",
+    ),
+    (
+        "manpower.problems.signed_date_missing",
+        "Give the day the client signed.",
+    ),
+    ("manpower.problems.site_missing", "Pick the site."),
+    ("manpower.problems.start_missing", "Give the first day."),
+    ("manpower.screen.not_set", "Not set"),
+    ("manpower.screen.fields.status", "Status"),
+    ("manpower.screen.action.sign", "Mark signed"),
+    (
+        "manpower.screen.action.sign_hint",
+        "Record the day the client signed and the signed contract. The contract stays a draft until it is activated.",
+    ),
+    ("manpower.screen.action.activate", "Activate"),
+    (
+        "manpower.screen.action.activate_hint",
+        "The contract comes into force: requests and deployments can start under it.",
+    ),
+    ("manpower.screen.action.cancel", "Cancel"),
+    (
+        "manpower.screen.action.cancel_hint",
+        "A contract that was never signed into force is cancelled. This cannot be undone.",
+    ),
+    ("manpower.screen.action.hold", "Put on hold"),
+    (
+        "manpower.screen.action.hold_hint",
+        "No new request, activation or extension goes through while the contract is on credit hold. The workers on site stay.",
+    ),
+    ("manpower.screen.action.release", "Release"),
+    (
+        "manpower.screen.action.release_hint",
+        "End the credit hold. While a hold condition remains, the MD decides.",
+    ),
+    ("manpower.screen.action.renew", "Renew"),
+    (
+        "manpower.screen.action.renew_hint",
+        "Move the end date later with the signed renewal. Changed rates need a rate card version accepted by the client.",
+    ),
+    ("manpower.screen.action.terminate", "Terminate early"),
+    (
+        "manpower.screen.action.terminate_hint",
+        "Ask to end the contract before its end date. The MD approves.",
+    ),
+    ("manpower.screen.action.terms", "Timesheet terms"),
+    (
+        "manpower.screen.action.terms_hint",
+        "The days after which a timesheet the client does not answer counts as approved, and who the reminders go to.",
+    ),
+    ("manpower.screen.action.submit", "Submit"),
+    (
+        "manpower.screen.action.submit_hint",
+        "Send the request to the agency: workers can then be found for it.",
+    ),
+    ("manpower.screen.action.plan", "Plan a deployment"),
+    (
+        "manpower.screen.action.plan_hint",
+        "Choose the worker for this request. The request, the contract, the site and the shift are already set.",
+    ),
+    ("manpower.screen.tab.overview", "Overview"),
+    ("manpower.screen.tab.deployments", "Deployments"),
+    ("manpower.screen.tab.rates", "Rate cards"),
+    ("manpower.screen.tab.approvals", "Approvals"),
+    ("manpower.screen.tab.activity", "Activity"),
+    ("manpower.screen.contract.title", "Contract"),
+    ("manpower.screen.contract.period", "Period"),
+    ("manpower.screen.contract.payment_terms", "Payment terms"),
+    ("manpower.screen.contract.days", "{{ days }} days"),
+    ("manpower.screen.contract.notice", "Notice period"),
+    (
+        "manpower.screen.contract.deemed",
+        "Timesheet deemed approved",
+    ),
+    ("manpower.screen.contract.no_deemed", "No deemed approval"),
+    ("manpower.screen.contract.escalation", "Escalation contact"),
+    ("manpower.screen.contract.manager", "Account manager"),
+    ("manpower.screen.contract.signed", "Signature"),
+    ("manpower.screen.contract.signed_on", "Signed on {{ date }}"),
+    ("manpower.screen.contract.not_signed", "Not signed yet"),
+    ("manpower.screen.contract.document", "Signed contract"),
+    ("manpower.screen.contract.no_document", "Not attached"),
+    ("manpower.screen.contract.activated", "Active since"),
+    (
+        "manpower.screen.contract.cancel_reason",
+        "Cancelled because",
+    ),
+    ("manpower.screen.contract.termination", "Early termination"),
+    (
+        "manpower.screen.contract.terminating_line",
+        "Ended by {{ by }}: {{ reason }}. Notice given on {{ notice }}. The end date was {{ was }}.",
+    ),
+    ("manpower.screen.contract.renewal", "Latest renewal"),
+    (
+        "manpower.screen.contract.renewed_line",
+        "Renewed on {{ on }} to {{ end }} (it ended on {{ was }}). New rates from {{ rates }}.",
+    ),
+    (
+        "manpower.screen.contract.checks",
+        "Before it can be activated",
+    ),
+    (
+        "manpower.screen.contract.deployments_empty",
+        "The workers placed under this contract show here.",
+    ),
+    (
+        "manpower.screen.contract.no_licences",
+        "No licence asked for",
+    ),
+    (
+        "manpower.screen.hold.banner",
+        "This contract is on credit hold. No new request, activation or extension goes through; the workers on site stay.",
+    ),
+    ("manpower.screen.hold.title", "Credit hold"),
+    ("manpower.screen.hold.since", "On hold since"),
+    ("manpower.screen.hold.before", "State before the hold"),
+    ("manpower.screen.hold.by", "Held by"),
+    ("manpower.screen.hold.by_rule", "The daily check"),
+    ("manpower.screen.hold.reasons", "Reasons"),
+    (
+        "manpower.screen.hold.overdue",
+        "Invoice overdue {{ what }} {{ amount }}",
+    ),
+    (
+        "manpower.screen.hold.cheque",
+        "Bounced cheque {{ what }} {{ amount }}",
+    ),
+    ("manpower.screen.hold.other", "{{ text }}"),
+    (
+        "manpower.screen.hold.line",
+        "{{ cause }}, since {{ since }}",
+    ),
+    ("manpower.screen.hold_reason.overdue", "Invoice overdue"),
+    (
+        "manpower.screen.hold_reason.bounced_cheque",
+        "Bounced cheque",
+    ),
+    ("manpower.screen.hold_reason.other", "Another reason"),
+    ("manpower.screen.initiator.client", "the client"),
+    ("manpower.screen.initiator.agency", "the agency"),
+    ("manpower.screen.sites.title", "Sites of the client"),
+    ("manpower.screen.sites.new", "New site"),
+    ("manpower.screen.sites.edit", "Edit"),
+    ("manpower.screen.sites.save", "Save the site"),
+    ("manpower.screen.sites.name", "Name"),
+    ("manpower.screen.sites.address", "Address"),
+    ("manpower.screen.sites.licences", "Required licences"),
+    (
+        "manpower.screen.sites.licences_hint",
+        "In words, for example: SIRA licence, site pass.",
+    ),
+    ("manpower.screen.sites.actions", "Actions"),
+    ("manpower.screen.sites.empty", "No site yet"),
+    ("manpower.screen.rates.version", "Version"),
+    ("manpower.screen.rates.effective", "Prices from"),
+    ("manpower.screen.rates.accepted", "Accepted"),
+    ("manpower.screen.rates.lines", "Roles priced"),
+    ("manpower.screen.rates.empty", "No rate card yet"),
+    (
+        "manpower.screen.rates.empty_text",
+        "The rate card of the contract and its versions show here.",
+    ),
+    (
+        "manpower.screen.rate_status.pending",
+        "Waiting for the client",
+    ),
+    (
+        "manpower.screen.rate_status.awaiting_approval",
+        "Waiting for the MD",
+    ),
+    ("manpower.screen.rate_status.accepted", "Accepted"),
+    ("manpower.screen.rate_status.rejected", "Rejected"),
+    ("manpower.screen.approval.request", "Request"),
+    ("manpower.screen.approval.requester", "Asked by"),
+    ("manpower.screen.approval.requested", "Asked on"),
+    ("manpower.screen.approval.decided", "Decided on"),
+    ("manpower.screen.approval.decision", "Decision"),
+    ("manpower.screen.approval.approve", "Approve"),
+    ("manpower.screen.approval.reject", "Reject"),
+    ("manpower.screen.approval.comment", "Comment"),
+    ("manpower.screen.approval.comment_optional", "Optional."),
+    (
+        "manpower.screen.approval.comment_required",
+        "Say why. Required.",
+    ),
+    ("manpower.screen.approval.waiting", "Waiting for the MD"),
+    (
+        "manpower.screen.approval.waiting_for",
+        "Waiting for the MD: {{ action }}.",
+    ),
+    ("manpower.screen.approval.empty", "No approval asked"),
+    (
+        "manpower.screen.approval.empty_text",
+        "A release of a credit hold or an early termination waits here for the MD.",
+    ),
+    ("manpower.screen.approval.approved", "Approved"),
+    ("manpower.screen.approval.rejected", "Rejected"),
+    ("manpower.screen.approval.returned", "Sent back"),
+    ("manpower.screen.approval.withdrawn", "Withdrawn"),
+    ("manpower.screen.approval.expired", "Expired"),
+    (
+        "manpower.screen.approval.failed",
+        "Could not be carried out",
+    ),
+    ("manpower.screen.approval.pending", "Waiting for the MD"),
+    ("manpower.screen.activity.when", "When"),
+    ("manpower.screen.activity.what", "What"),
+    ("manpower.screen.activity.by", "By"),
+    ("manpower.screen.activity.reason", "Reason"),
+    ("manpower.screen.activity.system", "The system"),
+    ("manpower.screen.activity.empty", "Nothing yet"),
+    ("manpower.screen.transition.insert", "Recorded"),
+    ("manpower.screen.transition.activate", "Activated"),
+    ("manpower.screen.transition.cancel", "Cancelled"),
+    ("manpower.screen.transition.hold", "Put on hold"),
+    (
+        "manpower.screen.transition.auto_hold",
+        "Put on hold by the daily check",
+    ),
+    (
+        "manpower.screen.transition.release",
+        "Released from the hold",
+    ),
+    (
+        "manpower.screen.transition.release_terminating",
+        "Released from the hold",
+    ),
+    (
+        "manpower.screen.transition.release_approved",
+        "Released from the hold, approved",
+    ),
+    (
+        "manpower.screen.transition.release_terminating_approved",
+        "Released from the hold, approved",
+    ),
+    (
+        "manpower.screen.transition.auto_release",
+        "Released from the hold by the daily check",
+    ),
+    (
+        "manpower.screen.transition.auto_release_terminating",
+        "Released from the hold by the daily check",
+    ),
+    (
+        "manpower.screen.transition.terminate",
+        "Early termination asked",
+    ),
+    (
+        "manpower.screen.transition.terminate_approved",
+        "Early termination approved",
+    ),
+    ("manpower.screen.transition.renew", "Renewed"),
+    (
+        "manpower.screen.transition.renew_on_hold",
+        "Renewed while on hold",
+    ),
+    ("manpower.screen.transition.end", "Ended"),
+    ("manpower.screen.transition.submit", "Submitted"),
+    ("manpower.screen.transition.fill", "Filled"),
+    ("manpower.screen.transition.fill_partly", "Partly filled"),
+    (
+        "manpower.screen.transition.auto_cancel",
+        "Cancelled by the system",
+    ),
+    ("manpower.screen.done.created", "The contract was created."),
+    ("manpower.screen.done.signed", "The signature was recorded."),
+    ("manpower.screen.done.activated", "The contract is active."),
+    (
+        "manpower.screen.done.cancelled",
+        "The contract was cancelled.",
+    ),
+    ("manpower.screen.done.held", "The contract is on hold."),
+    (
+        "manpower.screen.done.release_asked",
+        "Waiting for the MD to approve the release.",
+    ),
+    ("manpower.screen.done.released", "The contract is released."),
+    (
+        "manpower.screen.done.terminate_asked",
+        "Waiting for the MD to approve the early termination.",
+    ),
+    (
+        "manpower.screen.done.terminated",
+        "The contract is ending early.",
+    ),
+    ("manpower.screen.done.renewed", "The contract was renewed."),
+    (
+        "manpower.screen.done.terms",
+        "The timesheet terms were saved.",
+    ),
+    ("manpower.screen.done.site_created", "The site was added."),
+    ("manpower.screen.done.site_updated", "The site was saved."),
+    (
+        "manpower.screen.done.request_created",
+        "The request was saved as a draft.",
+    ),
+    (
+        "manpower.screen.done.request_submitted",
+        "The request was submitted.",
+    ),
+    (
+        "manpower.screen.done.request_cancelled",
+        "The request was cancelled.",
+    ),
+    (
+        "manpower.screen.done.cover_asked",
+        "The cover request was opened.",
+    ),
+    ("manpower.screen.form.client", "Client company"),
+    (
+        "manpower.screen.form.client_placeholder",
+        "Search the client by name",
+    ),
+    ("manpower.screen.form.reference", "Reference"),
+    (
+        "manpower.screen.form.reference_hint",
+        "The number the agency gives the contract, for example CC-2026-004.",
+    ),
+    ("manpower.screen.form.start_date", "First day"),
+    ("manpower.screen.form.end_date", "Last day"),
+    (
+        "manpower.screen.form.end_date_hint",
+        "Leave empty when there is no end date.",
+    ),
+    ("manpower.screen.form.billing", "Billing cycle"),
+    ("manpower.screen.form.payment_terms", "Days to pay"),
+    ("manpower.screen.form.notice_days", "Notice days"),
+    (
+        "manpower.screen.form.cover_required",
+        "The agency must cover absent workers",
+    ),
+    ("manpower.screen.form.deemed_days", "Deemed-approval days"),
+    (
+        "manpower.screen.form.deemed_days_hint",
+        "A timesheet the client does not answer in this many days counts as approved. Empty for none.",
+    ),
+    ("manpower.screen.form.escalation", "Escalation contact"),
+    (
+        "manpower.screen.form.escalation_placeholder",
+        "Search the contact by name",
+    ),
+    ("manpower.screen.form.signed_on", "Signed on"),
+    ("manpower.screen.form.document", "Signed contract"),
+    (
+        "manpower.screen.form.document_hint",
+        "The file name or number of the signed contract.",
+    ),
+    ("manpower.screen.form.hold_reason", "Reason"),
+    ("manpower.screen.form.hold_text", "Details"),
+    (
+        "manpower.screen.form.hold_text_hint",
+        "The invoice or cheque number, or what the other reason is.",
+    ),
+    ("manpower.screen.form.new_end", "New end date"),
+    (
+        "manpower.screen.form.renewal_signed_on",
+        "Renewal signed on",
+    ),
+    ("manpower.screen.form.renewal_document", "Signed renewal"),
+    ("manpower.screen.form.rates_from", "New rates from"),
+    (
+        "manpower.screen.form.rates_from_hint",
+        "Only when the rates change: the day the new rate card version takes effect.",
+    ),
+    ("manpower.screen.form.initiated_by", "Ended by"),
+    ("manpower.screen.form.terminate_reason", "Reason"),
+    ("manpower.screen.form.notice_on", "Notice given on"),
+    ("manpower.screen.form.last_day", "Last day of the contract"),
+    ("manpower.screen.form.waiver", "Waiver"),
+    (
+        "manpower.screen.form.waiver_hint",
+        "The signed waiver when the notice is shorter than the notice period.",
+    ),
+    ("manpower.screen.form.cancel_reason", "Reason"),
+    ("manpower.screen.form.contract", "Contract"),
+    ("manpower.screen.form.site", "Site"),
+    ("manpower.screen.form.role", "Job role"),
+    ("manpower.screen.form.positions", "Positions"),
+    ("manpower.screen.form.shift", "Shift"),
+    ("manpower.screen.form.shift_start", "Shift starts"),
+    ("manpower.screen.form.shift_end", "Shift ends"),
+    ("manpower.screen.form.worker", "Worker"),
+    ("manpower.screen.form.worker_placeholder", "Pick the worker"),
+    ("manpower.screen.shift.day", "Day shift"),
+    ("manpower.screen.shift.night", "Night shift"),
+    ("manpower.screen.contracts.new", "New contract"),
+    (
+        "manpower.screen.contracts.new_hint",
+        "A draft contract for a client. It comes into force once it is signed and has an accepted rate card version.",
+    ),
+    ("manpower.screen.contracts.new_save", "Create the contract"),
+    ("manpower.screen.requests.new", "New request"),
+    (
+        "manpower.screen.requests.new_hint",
+        "A client's order for workers. It stays a draft until it is submitted.",
+    ),
+    ("manpower.screen.requests.new_save", "Save the request"),
+    (
+        "manpower.screen.requests.contract_option",
+        "{{ reference }}, {{ client }}",
+    ),
+    ("manpower.screen.deployments.role", "Role"),
+    ("manpower.screen.deployments.site", "Site"),
+    ("manpower.screen.request.title", "Request"),
+    ("manpower.screen.request.contract", "Contract"),
+    ("manpower.screen.request.cause", "Why this request exists"),
+    (
+        "manpower.screen.request.cause_link",
+        "Open the deployment it stands in for",
+    ),
+    ("manpower.screen.request.deployments", "Deployments"),
+    ("manpower.screen.request.no_deployments", "No worker yet"),
+    (
+        "manpower.screen.request.no_deployments_text",
+        "The workers planned for this request show here.",
+    ),
+    ("manpower.screen.requests.site", "Site"),
+    ("manpower.screen.requests.shift", "Shift"),
+    (
+        "manpower.screen.requests.shift_hours",
+        "{{ shift }}, {{ start }} to {{ end }}",
+    ),
+    ("manpower.screen.requests.submitted", "Submitted on"),
+    (
+        "manpower.screen.requests.cancel_reason",
+        "Cancelled because",
+    ),
+    (
+        "manpower.screen.requests.positions",
+        "{{ filled }} of {{ headcount }} filled, {{ missing }} missing",
+    ),
+    (
+        "manpower.screen.requests.suspended",
+        "{{ count }} suspended",
+    ),
+    (
+        "manpower.screen.requests.active_one",
+        "{{ count }} deployment is still active.",
+    ),
+    (
+        "manpower.screen.requests.active_many",
+        "{{ count }} deployments are still active.",
+    ),
+    (
+        "manpower.screen.requests.on_hold_blocked",
+        "The contract is on hold. New requests wait for the release.",
+    ),
+    (
+        "manpower.screen.requests.contract_blocked",
+        "The contract does not take new requests now.",
+    ),
+    (
+        "manpower.screen.requests.plan_blocked",
+        "Submit the request first.",
+    ),
+    (
+        "manpower.screen.requests.an_absent_worker",
+        "an absent worker",
+    ),
+    (
+        "manpower.screen.requests.cause_rejection",
+        "Replacement for {{ worker }}, ended by client rejection on {{ date }}",
+    ),
+    (
+        "manpower.screen.requests.cause_leave",
+        "Cover for {{ worker }} on leave",
+    ),
+    (
+        "manpower.screen.requests.cause_suspension",
+        "Cover for {{ worker }}, whose deployment is suspended",
+    ),
+    (
+        "manpower.screen.requests.cause_absence",
+        "Cover for an absent worker, {{ worker }}",
+    ),
+    (
+        "manpower.screen.requests.cause_manual",
+        "Cover asked for by hand for {{ worker }}",
+    ),
+    (
+        "manpower.screen.requests.client_note",
+        "The client wrote: {{ note }}",
+    ),
+    ("manpower.screen.request_status.draft", "Draft"),
+    ("manpower.screen.request_status.open", "Submitted"),
+    (
+        "manpower.screen.request_status.partially_filled",
+        "Partly filled",
+    ),
+    ("manpower.screen.request_status.filled", "Filled"),
+    ("manpower.screen.request_status.cancelled", "Cancelled"),
+    ("manpower.screen.request_status.closed", "Closed"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
@@ -826,6 +1340,34 @@ pub(crate) fn screen_texts(lang: &Lang) -> std::collections::BTreeMap<&'static s
     TEXTS
         .iter()
         .filter_map(|(key, _)| Some((key.strip_prefix("manpower.screen.")?, t(lang, key))))
+        .collect()
+}
+
+/// The text for `key` in the viewer's language with `params` filled in as
+/// `{{ name }}`: the app's translation when it has one, else the English one.
+pub(crate) fn tf(lang: &Lang, key: &str, params: &[(&str, &(dyn Display + Sync))]) -> String {
+    let found = lang.t(key, &[]);
+    let text = if found == key { template(key) } else { &found };
+    if text.is_empty() {
+        return key.to_owned();
+    }
+    let mut data = renox::serde_json::Map::new();
+    for (name, value) in params {
+        data.insert(
+            (*name).to_owned(),
+            renox::serde_json::Value::String(value.to_string()),
+        );
+    }
+    wl_kernel::notify::fill(text, &renox::serde_json::Value::Object(data))
+}
+
+/// The names of the screen texts (`tx['contracts.title']`), for the test that
+/// every text a template reads exists.
+#[cfg(test)]
+pub(crate) fn screen_text_keys() -> Vec<&'static str> {
+    TEXTS
+        .iter()
+        .filter_map(|(key, _)| key.strip_prefix("manpower.screen."))
         .collect()
 }
 

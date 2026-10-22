@@ -6,10 +6,12 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use wl_kernel::PartyId;
+use wl_kernel::block_guard::ActionKind;
 use wl_kernel::documents::today;
 use wl_kernel::parties::directory;
 use wl_kernel::rate_cards::rate_cards;
 
+use crate::blocked;
 use crate::contract::{
     ACTIVATE, BillingCycle, CANCEL, ClientContract, ContractInput, ContractStatus,
 };
@@ -103,6 +105,7 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewContract) -> Result
     if new.reference.trim().is_empty() {
         return Err(refused(english("manpower.problems.reference", &[])));
     }
+    blocked::ensure(state, Some(by), new.client, ActionKind::Start).await?;
     if new.end_date <= new.start_date {
         return Err(refused(english("manpower.problems.dates", &[])));
     }
@@ -182,7 +185,7 @@ pub async fn record_signed(
 /// The checks that fail for `contract` on `on`, one English line each: the
 /// contract signed, a rate card version accepted by the client and in force
 /// on the start date, the end date not past.
-async fn readiness(
+pub(crate) async fn readiness(
     state: &AppState,
     contract: &ClientContract,
     on: NaiveDate,
@@ -212,6 +215,9 @@ async fn readiness(
 /// `contracts.manage` for the client.
 pub async fn activate(state: &AppState, by: &AuthUser, id: i64) -> Result<ClientContract> {
     let contract = load(state, id).await?;
+    require_manage(by, &contract)?;
+    // A blocked client starts nothing new (BL-MPW-15).
+    blocked::ensure(state, Some(by), contract.client(), ActionKind::Start).await?;
     let on = today();
     let input = ContractInput {
         problems: readiness(state, &contract, on).await?,
