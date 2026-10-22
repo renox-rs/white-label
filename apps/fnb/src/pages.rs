@@ -28,6 +28,12 @@
 //! | `POST /customers/{party}/cod` | `fnb.cod_on` | `customers.cod` |
 //! | `GET /checkout/payment` | `fnb.checkout_payment` | signed in (the customer; staff give `party`) |
 //!
+//! The order page also posts to wl-delivery's own routes for a delivered
+//! order the customer says never arrived: `POST /deliveries/{id}/open-review`
+//! (`deliveries.manage`), `POST /deliveries/{id}/close-review`
+//! (`deliveries.manage`) and `POST /deliveries/{id}/reverse`
+//! (`deliveries.reverse`, a second holder approves on the delivery page).
+//!
 //! A successful action answers a redirect (303) with a toast. A refused
 //! action answers 422 with the reason (403 without the permission). No page
 //! offers `fail_delivery`, a reattempt or a manual failure: a failed delivery
@@ -84,6 +90,14 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
 pub(crate) type Texts = BTreeMap<&'static str, String>;
 
 const PREFIX: &str = "fnb.screen.";
+
+/// wl-delivery's permission to put a delivery under review and close the
+/// review (`WRK.ACL.10` is `deliveries.reverse`).
+const DELIVERIES_MANAGE: &str = "deliveries.manage";
+
+/// wl-delivery's permission to reverse a delivery: the kitchen manager, never
+/// the rider.
+const DELIVERIES_REVERSE: &str = "deliveries.reverse";
 
 /// Every text of the screens, by the name a template reads.
 pub(crate) fn tx(lang: &Lang) -> Texts {
@@ -317,6 +331,13 @@ pub(crate) struct ShowPage {
     cancelled_by_label: String,
     can_amend: bool,
     can_cancel_line: bool,
+    can_review: bool,
+    can_reverse: bool,
+    reverse_reasons: Vec<[String; 2]>,
+    liabilities: Vec<[String; 2]>,
+    refunded_after: i64,
+    reversal_resolution_label: String,
+    reversal_party_label: String,
     aggregator_waiting: bool,
     can_pickup_late: bool,
     can_pickup_cancel: bool,
@@ -509,6 +530,14 @@ async fn show(
         })
         .collect();
     let revision = view.as_ref().map_or(1, |view| view.revision);
+    let refunded_after = view.as_ref().map_or(0, |view| view.refunded_amount);
+    // A delivered order the customer says never arrived: review it, and the
+    // kitchen manager reverses the delivery (`WRK.ACL.10`).
+    let delivered_order = order.status == FnbOrderStatus::Completed
+        && order.is_delivery()
+        && order.delivery_id.is_some();
+    let can_review = delivered_order && user.has_permission(DELIVERIES_MANAGE);
+    let can_reverse = delivered_order && user.has_permission(DELIVERIES_REVERSE);
     // An aggregator's order waiting at the pass: the kitchen manager records
     // what happened to its rider (`FNB.RUL.16`).
     let aggregator_waiting = aggregator && order.status == Ready;
@@ -601,6 +630,27 @@ async fn show(
         started,
         can_amend,
         can_cancel_line,
+        can_review,
+        can_reverse,
+        reverse_reasons: ["marked_by_mistake", "recipient_denies", "wrong_recipient"]
+            .iter()
+            .map(|r| [(*r).to_owned(), t(&lang, &format!("fnb.screen.reverse_reason.{r}"))])
+            .collect(),
+        liabilities: ["driver", "business", "client", "none"]
+            .iter()
+            .map(|l| [(*l).to_owned(), t(&lang, &format!("fnb.screen.liability.{l}"))])
+            .collect(),
+        refunded_after,
+        reversal_resolution_label: order
+            .reversal_resolution
+            .as_deref()
+            .map(|how| t(&lang, &format!("fnb.screen.resolution.{how}")))
+            .unwrap_or_default(),
+        reversal_party_label: order
+            .reversal_party
+            .as_deref()
+            .map(|who| t(&lang, &format!("fnb.screen.return_party.{who}")))
+            .unwrap_or_default(),
         aggregator_waiting,
         can_pickup_late: manages && aggregator_waiting,
         can_pickup_cancel: manages && holds_cancel && aggregator_waiting,

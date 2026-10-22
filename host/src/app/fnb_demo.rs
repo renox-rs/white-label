@@ -29,7 +29,7 @@ use renox::Environment;
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
-use wl_delivery::Deliveries;
+use wl_delivery::{Attempt, AttemptOutcome, Deliveries, Delivery, DeliveryStatus, Proof};
 use wl_inventory::item::value_of;
 use wl_inventory::location::NegativeStockPolicy;
 use wl_inventory::{Item, Location, StockMovement};
@@ -400,7 +400,7 @@ struct Story {
     ready_minutes_ago: i64,
 }
 
-const STORIES: [Story; 15] = [
+const STORIES: [Story; 16] = [
     Story {
         key: "FNBD-1",
         channel: "website",
@@ -579,6 +579,21 @@ const STORIES: [Story; 15] = [
         placed_hours_ago: 1,
         ready_minutes_ago: 50,
     },
+    // BL-FNB-07: a completed cash order whose delivery is delivered with the
+    // cash recorded: the customer says it never arrived, and the kitchen
+    // manager reverses the delivery (credit note only: nobody handed the cash
+    // over).
+    Story {
+        key: "FNBD-16",
+        channel: "phone",
+        customer: 2,
+        mode: "cash_on_delivery",
+        lines: &[("hummus-bowl", 3)],
+        sales: SalesOrderStatus::Fulfilled,
+        status: FnbOrderStatus::Completed,
+        placed_hours_ago: 3,
+        ready_minutes_ago: 0,
+    },
 ];
 
 /// Makes the orders of the stories that are not there yet; returns how many.
@@ -599,6 +614,11 @@ async fn orders(state: &AppState, customers: &[PartyId]) -> Result<usize> {
         tickets_for(state, story, &order, &sales).await?;
         if story.status == FnbOrderStatus::Ready && order.is_delivery() {
             ask_delivery(state, &order).await?;
+        }
+        // The completed orders were delivered: their deliveries can be put
+        // under review and reversed.
+        if story.status == FnbOrderStatus::Completed && order.is_delivery() {
+            delivered_delivery(state, &order).await?;
         }
         made += 1;
     }
@@ -866,6 +886,59 @@ async fn tickets_for(
         ticket.insert_in_state(&mut tx, wanted, "demo").await?;
         tx.commit().await?;
     }
+    Ok(())
+}
+
+/// The delivered delivery of a completed order: the stop was handed over 20
+/// minutes ago with a photo (and the cash of a cash order). A seed has no
+/// signed-in rider, so the rows are stored in the state of the story, the way
+/// the orders are; the delivery has no run.
+async fn delivered_delivery(state: &AppState, order: &FnbOrder) -> Result {
+    let db = &state.db;
+    let collected = if order.is_cash_on_delivery() { order.total } else { 0 };
+    let request = DeliveryRequest::new(order.subject(), &order.recipient_name)
+        .address(&order.address, &order.area)
+        .phone(&order.recipient_phone)
+        .perishable()
+        .partial_acceptance(false)
+        .promise(order.placed_at.unwrap_or_else(renox::db::now), 45)
+        .collect(collected)
+        .item(DeliveryItem::new(&format!("Order {}", order.number), 1_000));
+    let delivery = Deliveries::request(state, request).await?;
+    let mut attempt = Attempt {
+        delivery_id: delivery.id,
+        number: 1,
+        outcome: AttemptOutcome::Delivered,
+        counts: true,
+        occurred_at: renox::db::now() - TimeDelta::minutes(20),
+        ..Attempt::default()
+    };
+    attempt.insert(db).await?;
+    let mut proof = Proof {
+        delivery_id: delivery.id,
+        attempt_id: attempt.id,
+        methods: "photo".to_owned(),
+        recipient_name: order.recipient_name.clone(),
+        photo_ref: Some("demo-photo".to_owned()),
+        cash_expected: collected,
+        cash_collected: collected,
+        ..Proof::default()
+    };
+    proof.insert(db).await?;
+    Delivery::query()
+        .where_(Delivery::ID.eq(delivery.id))
+        .update(
+            db,
+            &[
+                ("status", &DeliveryStatus::Delivered),
+                ("attempts", &1_i64),
+            ],
+        )
+        .await?;
+    FnbOrder::query()
+        .where_(FnbOrder::ID.eq(order.id))
+        .update(db, &[("delivery_id", &Some(delivery.id))])
+        .await?;
     Ok(())
 }
 

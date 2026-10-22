@@ -37,6 +37,20 @@
                   :title="tx['picked_up_late_title']" :message="tx['picked_up_late_message']" :confirm-label="tx['picked_up_late']"/>
       <rx-confirm rx-if="can_pickup_cancel" :id="'agg-cancel-' ~ order.id" :label="tx['aggregator_cancelled']" :action="route('fnb.order_aggregator_cancelled', order.id)" method="POST"
                   :title="tx['aggregator_cancelled_title']" :message="tx['aggregator_cancelled_message']" :confirm-label="tx['aggregator_cancelled']"/>
+      <rx-action-sheet rx-if="can_review" :id="'review-' ~ order.id" :label="tx['review']" :action="'/deliveries/' ~ order.delivery_id ~ '/open-review'"
+                       :title="tx['review_title']" :description="tx['review_description']" :submit-label="tx['review_submit']" icon="search">
+        <rx-textarea name="reason" :label="tx['reason']" :id="'review-reason-' ~ order.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_review" :id="'close-review-' ~ order.id" :label="tx['close_review']" :action="'/deliveries/' ~ order.delivery_id ~ '/close-review'"
+                       :title="tx['close_review_title']" :description="tx['close_review_description']" :submit-label="tx['close_review_submit']" icon="check">
+        <rx-textarea name="note" :label="tx['note']" :id="'close-review-note-' ~ order.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_reverse" :id="'reverse-' ~ order.id" :label="tx['reverse']" :action="'/deliveries/' ~ order.delivery_id ~ '/reverse'"
+                       :title="tx['reverse_title']" :description="tx['reverse_description']" :submit-label="tx['reverse_submit']" icon="undo-2" variant="danger" danger>
+        <rx-select name="reason" :label="tx['reverse_reason']" :id="'reverse-reason-' ~ order.id" :selected="'recipient_denies'" :options="reverse_reasons"/>
+        <rx-select name="liability" :label="tx['reverse_liability']" :id="'reverse-liability-' ~ order.id" :selected="'driver'" :options="liabilities"/>
+        <rx-textarea name="note" :label="tx['note']" :id="'reverse-note-' ~ order.id"/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_amend" :id="'amend-' ~ order.id" :label="tx['amend']" :action="route('fnb.order_amend', order.id)"
                        :title="tx['amend_title']" :description="tx['amend_description']" :submit-label="tx['amend_submit']" icon="pencil">
         <rx-select name="line" :label="tx['amend_line']" :id="'amend-line-' ~ order.id" :options="amend_lines" required/>
@@ -113,6 +127,16 @@
         <rx-entry :label="tx['ready_at']" :value="order.ready_at" :placeholder="tx['none']"/>
         <rx-entry :label="tx['pickup_alert_at']" :value="order.pickup_alert_at" :placeholder="tx['none']"/>
         <rx-entry :label="tx['pickup_task_at']" :value="order.pickup_task_at" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="order.reversal_return_id" :title="tx['reversal']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['reversal_return']" :value="order.reversal_return_id"/>
+        <rx-entry :label="tx['reversal_resolution']" :value="reversal_resolution_label"/>
+        <rx-entry :label="tx['party']" :value="reversal_party_label"/>
+        <rx-entry :label="tx['reversal_amount']" :value="order.reversal_amount" format="money"/>
+        <rx-entry :label="tx['reversed_at']" :value="order.reversed_at"/>
+        <rx-entry :label="tx['refunded_after']" :value="refunded_after" format="money"/>
       </rx-infolist>
     </rx-card>
     <rx-card rx-if="order.cancel_reason_code" :title="tx['cancellation']">
