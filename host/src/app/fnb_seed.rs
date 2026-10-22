@@ -65,7 +65,9 @@ pub const AGGREGATOR_CHANNELS: [&str; 3] = ["aggregator_a", "aggregator_b", "agg
 /// The F&B module with the 06 values (the defaults of the spec; open item L-33
 /// keeps a customer-side failure unrefunded until the lawyer answers).
 pub fn module() -> fnb::Fnb {
-    fnb::Fnb::new()
+    // A completed order consumes its recipe from the outlet's stock, so a
+    // recall of an ingredient lot finds the orders that may have used it.
+    fnb::Fnb::new().recipe_consumption(true)
 }
 
 /// The sales module with the 06 client's settings (06 §7.1, §3.3).
@@ -114,7 +116,8 @@ pub const TEMPERATURE_HOLD_REMINDER_HOURS: i64 = 2;
 /// reminded after 2 hours and escalated to the kitchen manager after 4
 /// (`STK.RUL.07`), only a recall hold needs a second holder of `lots.release`
 /// to release (`STK.ACL.05`), a goods receipt rejection for `temperature`
-/// needs the reading (BL-FNB-12).
+/// needs the reading (BL-FNB-12), and the customers of a recall are told on
+/// the F&B page of the recall (BL-FNB-13).
 pub fn inventory(module: WlInventory) -> WlInventory {
     module
         .wastage_approval_fils(WASTAGE_APPROVAL_FILS)
@@ -122,6 +125,9 @@ pub fn inventory(module: WlInventory) -> WlInventory {
         .hold_escalation_role_for_reason("temperature", KITCHEN_MANAGER)
         .hold_second_person_reasons(&["recall"])
         .rejection_reason("temperature", true)
+        // The customers of a recall are listed and told on the F&B page of
+        // the recall (BL-FNB-13).
+        .recall_notices_route("fnb.recall_trace")
 }
 
 /// The stock module for a client: the 06 values for F&B, the given module for

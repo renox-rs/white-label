@@ -246,6 +246,10 @@ async fn run(state: AppState, forced: bool) -> Result {
     // (BL-FNB-12).
     let units = cold_units(&state).await?;
     println!("{units} cold units made for the Marina kitchen.");
+    // The recalled tomato lot traced through the sauce batch to the orders and
+    // customers it may have reached (BL-FNB-13).
+    let recalls = recall_story(&state).await?;
+    println!("{recalls} recall opened and traced to orders and customers.");
     // The rider who does not arrive (`FNB.RUL.16`): the kitchen manager is
     // told for the order ready for 20 minutes and has the task for the one
     // ready for 50.
@@ -1498,4 +1502,114 @@ async fn cold_units(state: &AppState) -> Result<usize> {
         }
     }
     Ok(made.len())
+}
+
+/// The tomato lot T5 is recalled by the supplier (BL-FNB-13). The sauce lot of
+/// the batch made from it was moved to the Marina kitchen three days ago, and
+/// every menu item uses 40 g of the sauce, so the completed orders (two direct
+/// orders of customers, two of an aggregator) consumed it by recipe: the trace
+/// lists the customers with their possible orders and the sales without a
+/// known customer per day, and the owner has the task to decide the public
+/// notice. Returns how many recalls it opened.
+async fn recall_story(state: &AppState) -> Result<usize> {
+    use fnb::{MenuItem, RecipeLine};
+    use wl_inventory::recall::{NewRecall, ScopeEntry, open_for};
+    use wl_inventory::{Lot, MovementType, Recall, RecallSource};
+    let db = &state.db;
+    if Recall::query().count(db).await? > 0 {
+        return Ok(0);
+    }
+    let Some(tomato) = Item::query().where_(Item::CODE.eq("TOMATO")).first(db).await? else {
+        return Ok(0);
+    };
+    let Some(sauce) = Item::query()
+        .where_(Item::CODE.eq("TOMATO-SAUCE"))
+        .first(db)
+        .await?
+    else {
+        return Ok(0);
+    };
+    let marina = kitchen_stock(state).await?;
+    let central = central_stock(state).await?;
+    // Every menu item uses the sauce.
+    for code in ["shawarma-plate", "falafel-wrap", "hummus-bowl", "kunafa-tray"] {
+        let Some(item) = MenuItem::by_code(db, code).await? else {
+            continue;
+        };
+        let used = RecipeLine::query()
+            .where_(RecipeLine::MENU_ITEM_ID.eq(item.id))
+            .where_(RecipeLine::ITEM_ID.eq(sauce.id))
+            .exists(db)
+            .await?;
+        if !used {
+            let mut line = RecipeLine {
+                menu_item_id: item.id,
+                item_id: sauce.id,
+                per_unit_milli: 40,
+                ..RecipeLine::default()
+            };
+            line.insert(db).await?;
+        }
+    }
+    // The sauce lot of the batch made from T5 goes to Marina three days ago.
+    let batches = fnb::ProductionBatch::query()
+        .order_by(fnb::ProductionBatch::ID)
+        .get(db)
+        .await?;
+    let t5 = Lot::query()
+        .where_(Lot::ITEM_ID.eq(tomato.id))
+        .where_(Lot::NUMBER.eq("T5"))
+        .first(db)
+        .await?;
+    let made_from_t5 = match &t5 {
+        Some(t5) => {
+            let mut found = None;
+            for batch in &batches {
+                if batch.inputs(db).await?.iter().any(|input| input.lot_id == t5.id) {
+                    found = batch.lot_id;
+                }
+            }
+            found
+        }
+        None => None,
+    };
+    let Some(sauce_lot) = made_from_t5 else {
+        return Ok(0);
+    };
+    let source = Subject::new("inventory.transfer", 9_300);
+    let mut moved = StockMovement::moving(
+        MovementType::TransferIn,
+        sauce.id,
+        Some(sauce_lot),
+        Some(central.id),
+        Some(marina.id),
+        6_000,
+        sauce.average_cost,
+        value_of(6_000, sauce.average_cost),
+        &source,
+        None,
+    );
+    moved.moved_at = renox::db::now() - TimeDelta::days(3);
+    moved.save(db).await?;
+    // The completed orders consumed the sauce by recipe.
+    for order in FnbOrder::query()
+        .where_(FnbOrder::STATUS.eq(FnbOrderStatus::Completed))
+        .order_by(FnbOrder::ID)
+        .get(db)
+        .await?
+    {
+        fnb::consumption::post(state, order.id).await?;
+    }
+    open_for(
+        state,
+        None,
+        NewRecall {
+            source: RecallSource::Supplier,
+            reason: "The supplier found contamination in tomato lot T5".to_owned(),
+            supplier_party_id: None,
+            scope: vec![ScopeEntry::lot(tomato.id, "T5")],
+        },
+    )
+    .await?;
+    Ok(1)
 }
