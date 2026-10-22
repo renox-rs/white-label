@@ -13,6 +13,17 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "edtech.enrolments.on_hold",
         "This enrolment is on hold. The seat is kept and the centre manager decides what happens to it.",
     ),
+    // The membership follows the freeze and the freeze follows the membership.
+    (
+        "edtech.linked.pause_reason",
+        "Enrolment :enrolment is frozen",
+    ),
+    ("edtech.enrolments.membership", "Membership"),
+    ("edtech.enrolments.membership_state.active", "Billing"),
+    ("edtech.enrolments.membership_state.past_due", "Billing, a cycle is overdue"),
+    ("edtech.enrolments.membership_state.paused", "Paused"),
+    ("edtech.enrolments.membership_state.suspended", "Suspended for non-payment"),
+    ("edtech.enrolments.membership_state.cancelled", "Cancelled"),
     // The package follows the freeze.
     (
         "edtech.frozen.package_reason",

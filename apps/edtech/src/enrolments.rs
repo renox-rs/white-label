@@ -37,6 +37,7 @@ use wl_kernel::documents::today;
 use wl_kernel::invoicing::{InvoiceId, InvoicePaid, invoicer};
 use wl_kernel::parties::directory;
 use wl_kernel::sales::{lead_conversion, package_ledger};
+use wl_kernel::subscriptions::{SubscriptionPaused, SubscriptionResumed};
 
 use crate::batch::{Batch, BatchStatus};
 use crate::db::refused;
@@ -715,6 +716,21 @@ pub async fn withdraw(
     Ok(request_withdrawal(state, by, id, reason).await?.enrolment)
 }
 
+/// The freeze cause a run carried in its metadata ([`run`]).
+fn cause_of(meta: &renox::serde_json::Value) -> Option<FreezeCause> {
+    meta.get("cause")
+        .and_then(renox::serde_json::Value::as_str)
+        .and_then(FreezeCause::parse)
+}
+
+/// The day a run carried in its metadata ([`run`]), else today.
+fn day_of(meta: &renox::serde_json::Value) -> NaiveDate {
+    meta.get("on")
+        .and_then(renox::serde_json::Value::as_str)
+        .and_then(|text| text.parse::<NaiveDate>().ok())
+        .unwrap_or_else(today)
+}
+
 /// What follows a transition once it committed: a lead is won and a
 /// membership starts when the enrolment activates, the subscription ends when
 /// the student withdraws, the certificate is evaluated when it completes.
@@ -735,14 +751,17 @@ async fn after(state: &AppState, event: &Transitioned<Enrolment>) -> Result {
             // on the enrolment and repeated, it does not undo the withdrawal.
             crate::settlement::settle_quietly(state, enrolment.id).await;
         }
+        FREEZE | FREEZE_SYSTEM => {
+            // The membership follows a freeze of the student's (`EDU.RUL.14`).
+            crate::linked::after_freeze(state, &enrolment, cause_of(&event.meta), day_of(&event.meta))
+                .await;
+        }
         UNFREEZE | UNFREEZE_SYSTEM => {
-            let on = event
-                .meta
-                .get("on")
-                .and_then(renox::serde_json::Value::as_str)
-                .and_then(|text| text.parse::<NaiveDate>().ok())
-                .unwrap_or_else(today);
+            // The last cause ended: the package gets the frozen days back and
+            // the membership resumes.
+            let on = day_of(&event.meta);
             crate::frozen::after_unfreeze(state, &enrolment, on).await;
+            crate::linked::after_unfreeze(state, &enrolment, on).await;
         }
         LAPSE => {
             crate::lapse::after_lapse(state, &enrolment).await?;
@@ -788,6 +807,12 @@ pub(crate) fn register(app: &mut Registry) {
     crate::lapse::register(app);
     crate::blocked::register();
     crate::blocked::listen(app);
+    app.listen(|event: SubscriptionPaused, state: AppState| async move {
+        crate::linked::on_paused(&state, &event).await
+    });
+    app.listen(|event: SubscriptionResumed, state: AppState| async move {
+        crate::linked::on_resumed(&state, &event).await
+    });
     app.listen(|event: Transitioned<Enrolment>, state: AppState| async move {
         after(&state, &event).await
     });

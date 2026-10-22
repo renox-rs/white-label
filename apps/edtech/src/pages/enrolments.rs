@@ -391,6 +391,7 @@ pub(crate) struct ShowPage {
     payment_link: String,
     hold_reason: String,
     on_hold: bool,
+    membership: String,
     preview_refund: String,
     preview_owed: String,
     withdrawn_refund: String,
@@ -524,6 +525,14 @@ async fn show(
     // A blocked payer or student: only the centre manager withdraws.
     let may_withdraw = !crate::blocked::is_blocked(&state, &e).await?
         || user.has_permission(permissions::ENROLMENTS_APPROVE);
+    // The membership's subscription, paused with a freeze and resumed with it.
+    let membership = match crate::linked::membership_of(&state, &e).await? {
+        Some(found) => text(
+            &lang,
+            &format!("enrolments.membership_state.{}", found.status.as_str()),
+        ),
+        None => none.clone(),
+    };
     let (preview_refund, preview_owed) = preview
         .as_ref()
         .map_or((String::new(), String::new()), |r| {
@@ -572,6 +581,7 @@ async fn show(
             .unwrap_or_else(|| none.clone()),
         hold_reason,
         on_hold,
+        membership,
         preview_refund,
         preview_owed,
         withdrawn_refund: money_text(e.refund_amount),

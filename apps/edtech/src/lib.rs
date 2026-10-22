@@ -18,6 +18,7 @@ pub mod exit;
 pub mod fees;
 pub mod frozen;
 pub mod lapse;
+pub mod linked;
 pub mod notices;
 pub mod pages;
 pub mod permissions;
