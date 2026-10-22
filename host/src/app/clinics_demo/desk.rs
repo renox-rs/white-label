@@ -18,6 +18,7 @@ use renox::chrono::{Duration, NaiveDateTime, Timelike};
 use renox::db::DateTime;
 use renox::prelude::*;
 use wl_kernel::BusinessCalendar;
+use wl_kernel::payments::{PaymentMethod, RecordPayment, payment_recorder};
 use wl_scheduling::service::{self, Actor, CancelRequest, NewBooking};
 use wl_scheduling::waiting::{self, NewEntry};
 use wl_scheduling::{AvailabilityRule, Booking, Resource, ResourceType, ServiceType, resource};
@@ -301,8 +302,27 @@ impl Seed {
             at,
         )
         .await;
-        self.refused(&format!("the booking of patient {} at {start}", story.patient), booked)
-            .await
+        let booking = self
+            .refused(&format!("the booking of patient {} at {start}", story.patient), booked)
+            .await?;
+        // The desk took the deposit of the service on the card terminal; the
+        // payment is recorded against the booking, so a refund can follow it.
+        let deposit = ServiceType::find_or_404(self.db(), story.service).await?.deposit_amount;
+        if deposit > 0 {
+            let payment = RecordPayment::new(
+                self.patients[story.patient],
+                self.entity,
+                PaymentMethod::Card,
+                deposit,
+            )
+            .reference(&format!("POS-{}", booking.number))
+            .prepaid(booking.subject())
+            .collected_by(desk);
+            payment_recorder(&self.state)
+                .record(&self.state, payment, Some(desk))
+                .await?;
+        }
+        Ok(booking)
     }
 
     async fn refused<T>(
