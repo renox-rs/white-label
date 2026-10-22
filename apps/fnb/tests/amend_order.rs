@@ -520,7 +520,18 @@ async fn the_delivery_of_a_cash_order_collects_only_what_is_still_open() {
     .assert_status(303);
     assert_eq!(w.reload(&accepted).await.total, 3_000);
 
-    let ready = w.cook(&accepted).await;
+    // The cook works the tickets still on the screen (the voided one is gone).
+    for ticket in tickets_of(&w, &accepted).await {
+        if ticket.status != TicketStatus::Queued {
+            continue;
+        }
+        start(&w, &ticket).await;
+        w.post(&w.cook, &format!("/tickets/{}/bump", ticket.id), &[("x", "")])
+            .await
+            .assert_status(303);
+    }
+    let ready = w.reload(&accepted).await;
+    assert_eq!(ready.status, FnbOrderStatus::Ready);
     let delivery = w.delivery_of(&ready).await;
     assert_eq!(delivery.amount_to_collect, 3_000);
 }
