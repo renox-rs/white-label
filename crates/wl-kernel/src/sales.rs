@@ -1448,6 +1448,23 @@ pub struct NoGoodsRefund {
     pub credit_only: bool,
 }
 
+/// A refund an aggregator made to its customer itself and deducted from its
+/// payout, recorded by the vertical as the system (BL-SAL-14, resolution
+/// *refunded by the channel*): no approval, no refund payment, no credit note.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelRefund {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The sale lines and the amount with VAT refunded of each, in fils.
+    pub lines: Vec<(i64, i64)>,
+    /// The complaint category (a stored name of the sales settings).
+    pub category: String,
+    /// The responsible party (a stored name of the sales settings).
+    pub party: String,
+    /// Why, in words (the aggregator's reason).
+    pub reason: String,
+}
+
 /// What a vertical may ask of the sales orders without depending on
 /// `wl-sales`: read an order with its lines, accept or reject it as a user,
 /// cancel it as the system, change it as a user (amend, cancel a line or the
@@ -1537,6 +1554,40 @@ pub trait SalesOrderDesk: Send + Sync + 'static {
         _state: &'a AppState,
         _request: NoGoodsRefund,
     ) -> SalesFuture<'a, i64> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// The order of `channel` whose number in the channel's own system is
+    /// `number` (trimmed, case-insensitive), with its lines, or `None`.
+    fn find_external<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _channel: &'a str,
+        _number: &'a str,
+    ) -> SalesFuture<'a, Option<OrderView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Records a refund the aggregator made itself: raises a *no goods* return
+    /// of the order and resolves it *refunded by the channel* as the system.
+    /// Returns the return's id.
+    fn refund_by_channel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ChannelRefund,
+    ) -> SalesFuture<'a, i64> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Takes the channel refund `sales_return` back as the system (a voided
+    /// statement, or a refund the aggregator reversed): the order's amount
+    /// refunded goes down; no money moves.
+    fn reverse_by_channel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _sales_return: i64,
+        _reason: &'a str,
+    ) -> SalesFuture<'a, ()> {
         Box::pin(async { Err(Error::NotFound) })
     }
 }

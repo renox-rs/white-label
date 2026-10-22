@@ -32,7 +32,7 @@ use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
     AmendOrder, CancelByVertical, CancelLine, CancelOrder, ChangeOutcome, FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment,
-    NoGoodsRefund, OrderLineView, OrderView, ReverseFulfilment, SALES_ORDER_SUBJECT_TYPE, SalesFuture,
+    ChannelRefund, NoGoodsRefund, OrderLineView, OrderView, ReverseFulfilment, SALES_ORDER_SUBJECT_TYPE, SalesFuture,
     SalesOrderCancelled, SalesOrderClosed, SalesOrderConfirmed, SalesOrderDesk,
     SalesOrderFulfilled, SalesOrderFulfilmentReversed, SalesOrderId, SalesOrderPlaced,
     SalesOrderRejected,
@@ -829,6 +829,53 @@ impl SalesOrderDesk for Desk {
             let done =
                 crate::sales_returns::refund_by_vertical(state, new, request.credit_only).await?;
             Ok(done.id)
+        })
+    }
+
+    fn find_external<'a>(
+        &'a self,
+        state: &'a AppState,
+        channel: &'a str,
+        number: &'a str,
+    ) -> SalesFuture<'a, Option<OrderView>> {
+        Box::pin(async move {
+            let Some(key) = external_key(number) else {
+                return Ok(None);
+            };
+            match SalesOrder::of_external(&state.db, channel, &key).await? {
+                Some(order) => view_of(state, order.id).await,
+                None => Ok(None),
+            }
+        })
+    }
+
+    fn refund_by_channel<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: ChannelRefund,
+    ) -> SalesFuture<'a, i64> {
+        Box::pin(async move {
+            let sale = Subject::new(SALES_ORDER_SUBJECT_TYPE, request.order.0);
+            let mut new = crate::sales_returns::NewReturn::no_goods(sale)
+                .reason(&request.reason)
+                .complaint(&request.category, &request.party);
+            for (line, fils) in &request.lines {
+                new = new.refund_line(*line, *fils);
+            }
+            let done = crate::sales_returns::refund_by_channel(state, new).await?;
+            Ok(done.id)
+        })
+    }
+
+    fn reverse_by_channel<'a>(
+        &'a self,
+        state: &'a AppState,
+        sales_return: i64,
+        reason: &'a str,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async move {
+            crate::sales_returns::reverse_by_channel(state, sales_return, reason).await?;
+            Ok(())
         })
     }
 }
