@@ -35,6 +35,7 @@ use wl_sales::permissions as sperm;
 use wl_sales::{SalesOrder, WlSales};
 
 pub mod notices;
+pub mod ops;
 pub mod payouts;
 pub mod stock;
 pub mod tickets;
