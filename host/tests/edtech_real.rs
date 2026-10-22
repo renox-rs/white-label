@@ -2842,3 +2842,105 @@ async fn edu_18_a_membership_pause_of_30_days_is_allowed_and_the_31st_day_is_ref
     .await;
     assert!(again.is_err(), "the year's 30 days are used");
 }
+
+// ---- #453: a desk cash shortage, through the real wl-payments cash pages -------------------------
+
+/// #453 point 5, run: the counsellor Dina took AED 2,250.00 in cash at the desk
+/// (the handover is made as the delivery of cash into custody, which the app does
+/// not do yet, see the deferred line); the accountant counts AED 2,230.00: AED 20.00
+/// short. The accountant cannot write it off; the centre manager asks to, and
+/// since the limit is AED 0 it waits for the company admin, not for the
+/// requester; the holder may not approve. Salary recovery is not offered: no sheet
+/// on the page and the route refuses; after the approval the shortage is written off.
+#[renox::test]
+async fn edu_18_a_desk_shortage_of_aed_20_waits_for_approval_and_never_comes_off_the_salary() {
+    use wl_kernel::custody::{CashCollection, HandoverPeriod, custody};
+    let w = boot().await;
+    let (dina, _) = w.staff("Dina", COUNSELLOR).await;
+    let (rita, _) = w.staff("Rita", host::roles::ACCOUNTANT).await;
+    let (mona, _) = w.staff("Mona", host::roles::CENTRE_MANAGER).await;
+    let (ada, _) = w.staff("Ada", host::roles::ADMIN).await;
+    let id = custody(w.state())
+        .collect(
+            w.state(),
+            CashCollection::new(
+                dina.id,
+                HandoverPeriod::day(wl_kernel::documents::today()),
+                225_000,
+                wl_kernel::Subject::new("edtech.enrolment", 1),
+            )
+            .location("Dubai desk"),
+        )
+        .await
+        .expect("the cash is collected")
+        .expect("payments is on");
+    let handover = wl_payments::CashHandover::find_or_404(w.db(), id.0).await.unwrap();
+
+    let post = |user: &User, path: String, pairs: Vec<(&'static str, &'static str)>| {
+        let w = &w;
+        let user = user.clone();
+        async move {
+            w.app.acting_as(&user);
+            w.app.htmx().post(&path, &pairs).await
+        }
+    };
+    post(&rita, format!("/cash/{}/count", handover.id), vec![("counted", "2230.00")])
+        .await
+        .assert_ok();
+    let short = wl_payments::CashHandover::find_or_404(w.db(), id.0).await.unwrap();
+    assert_eq!(short.status, wl_kernel::custody::HandoverStatus::Short);
+    assert_eq!(short.difference, 2_000, "AED 20.00 short");
+
+    // Salary recovery is not offered: no sheet, and the route refuses.
+    w.app.acting_as(&rita);
+    let page = w.app.get(&format!("/cash/{}", handover.id)).await;
+    page.assert_ok();
+    assert!(
+        !page.text().to_lowercase().contains("salary"),
+        "no salary deduction sheet"
+    );
+    let deduction = post(
+        &rita,
+        format!("/cash/{}/deductions", handover.id),
+        vec![("amount", "20.00"), ("note", "from the salary")],
+    )
+    .await;
+    assert_eq!(deduction.status.as_u16(), 422, "salary recovery is off");
+
+    // The accountant counts but does not write off; the manager asks.
+    post(&rita, format!("/cash/{}/write-off", handover.id), vec![("reason", "Till error")])
+        .await
+        .assert_forbidden();
+    post(&mona, format!("/cash/{}/write-off", handover.id), vec![("reason", "Till error")])
+        .await
+        .assert_ok();
+    assert_eq!(
+        wl_payments::CashHandover::find_or_404(w.db(), id.0).await.unwrap().status,
+        wl_kernel::custody::HandoverStatus::Short,
+        "AED 20 needs an approval"
+    );
+    let request = wl_kernel::approvals::ApprovalRequest::pending_about(w.db(), &short.subject())
+        .await
+        .unwrap()
+        .pop()
+        .expect("an approval waits");
+    assert_eq!(request.requester_id, mona.id);
+    assert!(
+        wl_kernel::approvals::approve(w.state(), request.id, &mona, "mine")
+            .await
+            .is_err(),
+        "the requester does not approve"
+    );
+    assert!(
+        wl_kernel::approvals::approve(w.state(), request.id, &dina, "mine")
+            .await
+            .is_err(),
+        "the holder does not approve"
+    );
+    wl_kernel::approvals::approve(w.state(), request.id, &ada, "agreed")
+        .await
+        .expect("the company admin approves");
+    let after = wl_payments::CashHandover::find_or_404(w.db(), id.0).await.unwrap();
+    assert_eq!(after.status, wl_kernel::custody::HandoverStatus::WrittenOff);
+    assert_eq!(after.written_off, 2_000);
+}
