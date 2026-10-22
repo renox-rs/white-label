@@ -235,6 +235,9 @@ async fn run(state: AppState, forced: bool) -> Result {
     }
     let made = orders(&state, &customers).await?;
     println!("{made} demo orders made for the Zaatar & Co. kitchen.");
+    let refunds = complaint_refund(&state).await?;
+    let statements = payout_statements(&state).await?;
+    println!("{refunds} refund after completion and {statements} payout statements made.");
     // The rider who does not arrive (`FNB.RUL.16`): the kitchen manager is
     // told for the order ready for 20 minutes and has the task for the one
     // ready for 50.
@@ -400,7 +403,7 @@ struct Story {
     ready_minutes_ago: i64,
 }
 
-const STORIES: [Story; 16] = [
+const STORIES: [Story; 18] = [
     Story {
         key: "FNBD-1",
         channel: "website",
@@ -592,6 +595,33 @@ const STORIES: [Story; 16] = [
         sales: SalesOrderStatus::Fulfilled,
         status: FnbOrderStatus::Completed,
         placed_hours_ago: 3,
+        ready_minutes_ago: 0,
+    },
+    // BL-FNB-10: an aggregator's completed order whose payout statement has
+    // a refund line of AED 25.00 ("Food was cold"): a sales return refunded by
+    // the channel.
+    Story {
+        key: "FNBD-17",
+        channel: "aggregator_a",
+        customer: 2,
+        mode: "on_account",
+        lines: &[("shawarma-plate", 1)],
+        sales: SalesOrderStatus::Fulfilled,
+        status: FnbOrderStatus::Completed,
+        placed_hours_ago: 30,
+        ready_minutes_ago: 0,
+    },
+    // BL-FNB-10: another completed aggregator order on the same statement,
+    // with no refund.
+    Story {
+        key: "FNBD-18",
+        channel: "aggregator_a",
+        customer: 1,
+        mode: "on_account",
+        lines: &[("falafel-wrap", 2)],
+        sales: SalesOrderStatus::Fulfilled,
+        status: FnbOrderStatus::Completed,
+        placed_hours_ago: 29,
         ready_minutes_ago: 0,
     },
 ];
@@ -797,7 +827,9 @@ async fn kitchen_record(
             closed(&mut order, decision::NOT_APPLICABLE, 0, 24 * 40 - 1);
         }
         "FNBD-9" => failed(&mut order, "refused", reason::REFUSED, side::CUSTOMER, party::CUSTOMER),
-        "FNBD-4" => order.completed_at = Some(placed + TimeDelta::minutes(40)),
+        "FNBD-4" | "FNBD-17" | "FNBD-18" => {
+            order.completed_at = Some(placed + TimeDelta::minutes(40));
+        }
         // Cancelled by the customer from the order page, refunded in full.
         "FNBD-11" => cancelled(&mut order, cancel_reason::CUSTOMER_REQUEST, party::CUSTOMER, true, 5),
         // The aggregator cancelled it: no refund, the aggregator pays.
@@ -959,4 +991,160 @@ async fn ask_delivery(state: &AppState, order: &FnbOrder) -> Result {
         .update(&state.db, &[("delivery_id", &Some(delivery.id))])
         .await?;
     Ok(())
+}
+
+/// BL-FNB-08: the customer of the delivered prepaid order FNBD-4 complained
+/// that the food was cold; the rider was at fault. The sales return is raised
+/// and resolved as the system, by credit note only: the demo order has no
+/// payment record a refund could be paid from. The refunds report shows AED
+/// 30.00 under *cold* / *rider* and the rider has a fault entry. Returns how
+/// many it made.
+async fn complaint_refund(state: &AppState) -> Result<usize> {
+    let db = &state.db;
+    let Some(sales) = SalesOrder::query()
+        .where_(SalesOrder::EXTERNAL_KEY.eq("fnbd-4"))
+        .first(db)
+        .await?
+    else {
+        return Ok(0);
+    };
+    if fnb::RefundFact::query()
+        .where_(fnb::RefundFact::SALES_ORDER_ID.eq(sales.id))
+        .first(db)
+        .await?
+        .is_some()
+    {
+        return Ok(0);
+    }
+    let Some(order) = FnbOrder::of_sales_order(db, sales.id).await? else {
+        return Ok(0);
+    };
+    // The rider of the order's last run.
+    if let Some(rider) = User::find_by_email(db, "rider@zaatar.example").await? {
+        FnbOrder::query()
+            .where_(FnbOrder::ID.eq(order.id))
+            .update(db, &[("rider_user_id", &Some(rider.id))])
+            .await?;
+    }
+    let Some(line) = SaleLine::of(db, &sales.subject()).await?.into_iter().next() else {
+        return Ok(0);
+    };
+    let new = wl_sales::sales_returns::NewReturn::no_goods(sales.subject())
+        .reason("The food arrived cold")
+        .complaint("cold", "driver_or_rider")
+        .refund_line(line.id, 3_000);
+    wl_sales::sales_returns::refund_by_vertical(state, new, true).await?;
+    Ok(1)
+}
+
+/// The statement of the week the demo company imported and matched: one
+/// refund line of AED 25.00 for FNBD-17 ("Food was cold", mapped to *cold* and
+/// *business*), the aggregator's compensation for the order it cancelled
+/// (FNBD-12) and a plain order.
+const MATCHED_STATEMENT: &str = "Order ID,Gross,Commission,Promo,Refund,Net,Refund reason\n\
+FNBD-17,31.50,6.30,0,25.00,0.20,Food was cold\n\
+FNBD-18,37.80,7.56,0,0,30.24,\n\
+FNBD-12,31.50,6.30,0,0,25.20,\n";
+
+/// A statement imported and not yet matched: it names FNBD-99, an order the
+/// kitchen never recorded (the cashier enters it as a late entry), and has a
+/// refund of a reason nobody mapped ("Customer changed mind"): the accountant
+/// sets its party before Match is allowed. Importing `AGG-A-2026-W41` again is
+/// refused, naming the statement that exists.
+const OPEN_STATEMENT: &str = "Order ID,Gross,Commission,Promo,Refund,Net,Refund reason\n\
+FNBD-14,31.50,6.30,0,0,25.20,\n\
+FNBD-99,42.00,8.40,0,0,33.60,\n\
+FNBD-18,37.80,7.56,0,10.00,20.24,Customer changed mind\n";
+
+/// The statements of the demo (BL-FNB-09, BL-FNB-10): `AGG-A-2026-W41`
+/// matched with a refund line, `AGG-A-2026-W42` imported with a missing order
+/// and an unmapped refund, and a wrong file `AGG-A-2026-W40` that was voided
+/// and imported again under the same reference. Returns how many it made.
+async fn payout_statements(state: &AppState) -> Result<usize> {
+    use fnb::payout::{PayoutLine, PayoutStatement, PayoutStatus, line_state};
+    use fnb::payouts::{ImportAsk, import_as, match_statement};
+    let db = &state.db;
+    // The column presets and the refund reasons the statements are read with.
+    fnb::seed::install_payouts(db).await?;
+    let accountant = User::find_by_email(db, "accounts@zaatar.example")
+        .await?
+        .map(|user| user.id);
+    let mut made = 0;
+    let day = today();
+    let ask = |reference: &str, content: &str, back: i64| ImportAsk {
+        aggregator: "aggregator_a".to_owned(),
+        reference: reference.to_owned(),
+        file_name: format!("{reference}.csv"),
+        period_from: Some(day - TimeDelta::days(back + 6)),
+        period_to: Some(day - TimeDelta::days(back)),
+        content: content.to_owned(),
+    };
+    // The week that was matched: the receivable is booked and the refund
+    // line is a sales return, refunded by the channel.
+    if PayoutStatement::using(db, "aggregator_a", "AGG-A-2026-W41")
+        .await?
+        .is_none()
+    {
+        let statement =
+            import_as(state, accountant, &ask("AGG-A-2026-W41", MATCHED_STATEMENT, 14)).await?;
+        match_statement(state, None, statement.id).await?;
+        made += 1;
+    }
+    // The week still open.
+    if PayoutStatement::using(db, "aggregator_a", "AGG-A-2026-W42")
+        .await?
+        .is_none()
+    {
+        import_as(state, accountant, &ask("AGG-A-2026-W42", OPEN_STATEMENT, 7)).await?;
+        made += 1;
+    }
+    // A wrong file, voided before it was settled; its reference was imported
+    // again with the right content. The wrong one is stored in its state, as
+    // a seed has no signed-in accountant to void it.
+    if PayoutStatement::using(db, "aggregator_a", "AGG-A-2026-W40")
+        .await?
+        .is_none()
+    {
+        let number = fnb::STATEMENT_SERIES
+            .next_allowing_gaps(db, None, None, today())
+            .await?;
+        let mut wrong = PayoutStatement {
+            number,
+            aggregator: "aggregator_a".to_owned(),
+            reference: "AGG-A-2026-W40".to_owned(),
+            reference_key: "agg-a-2026-w40".to_owned(),
+            file_name: "AGG-A-2026-W40-wrong.csv".to_owned(),
+            preset: "Aggregator A weekly CSV".to_owned(),
+            period_from: Some(day - TimeDelta::days(27)),
+            period_to: Some(day - TimeDelta::days(21)),
+            line_count: 1,
+            gross_total: 3_150,
+            commission_total: 630,
+            net_total: 2_520,
+            void_reason: Some("wrong week".to_owned()),
+            voided_at: Some(renox::db::now() - TimeDelta::days(20)),
+            imported_by: accountant,
+            status: PayoutStatus::Voided,
+            ..PayoutStatement::default()
+        };
+        let mut tx = db.begin().await?;
+        wrong.insert_in_state(&mut tx, PayoutStatus::Voided, "demo seed").await?;
+        let mut line = PayoutLine {
+            statement_id: wrong.id,
+            line_no: 1,
+            order_number: "FNBD-17".to_owned(),
+            order_key: "fnbd-17".to_owned(),
+            gross: 3_150,
+            commission: 630,
+            net: 2_520,
+            match_state: line_state::UNMATCHED.to_owned(),
+            ..PayoutLine::default()
+        };
+        line.insert(&mut tx).await?;
+        tx.commit().await?;
+        let content = "Order ID,Gross,Commission,Promo,Refund,Net,Refund reason\nFNBD-18,37.80,7.56,0,0,30.24,\n";
+        import_as(state, accountant, &ask("AGG-A-2026-W40", content, 21)).await?;
+        made += 2;
+    }
+    Ok(made)
 }
