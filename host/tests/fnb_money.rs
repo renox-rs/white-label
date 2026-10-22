@@ -75,13 +75,6 @@ async fn a_failed_delivery_returns_or_discards_and_is_never_reattempted() {
         assert!(!reason.allows_reattempt, "{code} is never reattempted");
         assert_eq!(reason.counts, code != "rider_issue", "{code}");
     }
-    for code in ["refused_to_pay", "no_cash", "wrong_address"] {
-        let reason = reasons.iter().find(|r| r.code == code).expect(code);
-        assert!(
-            !reason.allows_reattempt,
-            "{code}: cooked food is not reattempted"
-        );
-    }
 }
 
 /// AC (Delivery 2): a COD order of AED 80.00 paid AED 76.00 needs no approval
