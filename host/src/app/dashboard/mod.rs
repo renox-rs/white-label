@@ -8,8 +8,9 @@
 //!
 //! The figures depend on the client's vertical app (`[client] app`):
 //! [`property_tiles`] (units, leases, compliance), [`construction_tiles`]
-//! (projects, IPAs, guarantees, variations, absence, permits, orders, budget)
-//! and, for any other app, [`generic_tiles`] (the shared modules' figures
+//! (projects, IPAs, guarantees, variations, absence, permits, orders, budget),
+//! [`manpower_tiles`] (contracts, requests, documents, deployments, absence,
+//! timesheets, payroll) and, for any other app, [`generic_tiles`] (the shared modules' figures
 //! only: no Property table is read). The decisions and the activity are the same for all.
 
 mod activity_label;
@@ -111,6 +112,9 @@ pub struct Figures {
     pub expiring: Vec<::property::dashboard::ExpiringLease>,
     /// The person's open tasks (tickets assigned to them), newest first.
     pub tasks: Vec<TaskRow>,
+    /// Whether the person may open tiles that all count nothing (Manpower):
+    /// the page then says nothing needs their action.
+    pub quiet: bool,
 }
 
 /// An open task of the person.
@@ -164,6 +168,7 @@ pub async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures> {
     match app_of(state).as_str() {
         "property" => property_tiles::figures(state, user).await,
         "construction" => construction_tiles::figures(state, user).await,
+        "manpower" => manpower_tiles::figures(state, user).await,
         _ => generic_tiles::figures(state, user).await,
     }
 }
@@ -328,6 +333,7 @@ async fn show(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Resu
             tiles => figures.tiles,
             expiring => figures.expiring,
             tasks => figures.tasks,
+            quiet => figures.quiet,
         },
     ))
 }

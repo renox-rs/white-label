@@ -289,11 +289,24 @@ pub(crate) async fn party_name(state: &AppState, lang: &Lang, id: i64) -> String
 }
 
 /// `GET /manpower/contracts`.
+/// What a list may be narrowed to (`?status=on_hold`, `?ending=60`): the links
+/// of the dashboard tiles. A value nobody knows narrows to nothing.
+#[derive(serde::Deserialize, Default)]
+pub struct ListFilter {
+    /// A status key; for requests `missing` is the open and part-filled ones.
+    #[serde(default)]
+    status: String,
+    /// Contracts that end within this many days.
+    #[serde(default)]
+    ending: Option<i64>,
+}
+
 async fn contracts_index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
+    Query(filter): Query<ListFilter>,
 ) -> Result<Response> {
     let mut rows = Vec::new();
     for contract in ClientContract::query()
@@ -306,6 +319,22 @@ async fn contracts_index(
             || user.has_permission_in(permissions::CONTRACTS_MANAGE, &scope);
         if !may {
             continue;
+        }
+        if !filter.status.is_empty() && contract.status.as_str() != filter.status {
+            continue;
+        }
+        if let Some(days) = filter.ending {
+            let day = today();
+            let running = matches!(
+                contract.status,
+                ContractStatus::Active | ContractStatus::OnHold
+            );
+            if !(running
+                && contract.end_date >= day
+                && contract.end_date <= day + renox::chrono::Duration::days(days))
+            {
+                continue;
+            }
         }
         let hold = if contract.status == ContractStatus::OnHold {
             let open = ContractHold::open_of(&state.db, contract.id).await?;
@@ -704,6 +733,7 @@ async fn requests_index(
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
+    Query(filter): Query<ListFilter>,
 ) -> Result<Response> {
     let mut rows = Vec::new();
     let mut any = false;
@@ -727,6 +757,14 @@ async fn requests_index(
             continue;
         }
         any = true;
+        let wanted = match filter.status.as_str() {
+            "" => true,
+            "missing" => request.status.takes_workers(),
+            key => request.status.as_str() == key,
+        };
+        if !wanted {
+            continue;
+        }
         let site = Site::find(&state.db, request.site_id)
             .await?
             .map(|site| site.name)
@@ -978,6 +1016,7 @@ async fn deployments_index(
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
+    Query(filter): Query<ListFilter>,
 ) -> Result<Response> {
     let wants_page = wl_kernel::negotiate::wants_html(&headers);
     let mut staff = Vec::new();
@@ -1000,6 +1039,9 @@ async fn deployments_index(
             && deployment.shown_to_client()
             && crate::access::may_see(&state, &user, deployment.client(), &[]).await?;
         if !by_staff && !by_client {
+            continue;
+        }
+        if !filter.status.is_empty() && deployment.status.as_str() != filter.status {
             continue;
         }
         let site = Site::find(&state.db, deployment.site_id)

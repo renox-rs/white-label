@@ -257,15 +257,8 @@ async fn a_hold_shows_its_reason_its_author_and_the_state_before() {
 #[renox::test]
 async fn releasing_a_hold_with_an_overdue_invoice_waits_for_the_md() {
     let app = demo().await;
+    // The demo seed has already run the credit hold job on the overdue invoice.
     let id = contract(&app, "CC-DEMO-003").await;
-    post(
-        &app,
-        AMAL,
-        &format!("/manpower/contracts/{id}/hold"),
-        &[("reason", "overdue"), ("text", "INV-DEMO")],
-    )
-    .await
-    .assert_status(303);
     post(
         &app,
         AMAL,

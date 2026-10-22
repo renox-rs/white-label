@@ -42,18 +42,11 @@ async fn request_of(app: &TestApp, action: &str) -> i64 {
     .await
 }
 
-/// The account manager holds Al Quoz's contract for its overdue invoice and
-/// asks for the release: the MD must decide.
+/// Al Quoz's contract is on hold for its overdue invoice (the demo seed ran the
+/// credit hold job); the account manager asks for the release: the MD must
+/// decide.
 async fn release_asked(app: &TestApp) -> i64 {
     let id = contract(app, "CC-DEMO-003").await;
-    post(
-        app,
-        AMAL,
-        &format!("/manpower/contracts/{id}/hold"),
-        &[("reason", "overdue"), ("text", "INV-DEMO")],
-    )
-    .await
-    .assert_status(303);
     post(app, AMAL, &format!("/manpower/contracts/{id}/release"), &[])
         .await
         .assert_status(303);

@@ -58,6 +58,8 @@
     <app-stat-card rx-for="tile in tiles" :icon="tile.icon" :label="t(tile.label)" :value="tile.value" :tone="tile.tone" :url="tile.url" :hint="(t('dashboard.tiles.invoices_one') if tile.count == 1 else t('dashboard.tiles.invoices_many', count=tile.count)) if tile.count is not none else none"/>
   </rx-stats>
 
+  <app-empty-state rx-if="quiet" icon="check" :title="t('dashboard.quiet')" :text="t('dashboard.quiet_text')"/>
+
   <rx-dashboard columns="2" rx-if="expiring or tasks">
     <rx-widget rx-if="expiring" title="{{ t('dashboard.expiring.title') }}" description="{{ t('dashboard.expiring.description') }}">
       <rx-list label="{{ t('dashboard.expiring.title') }}">

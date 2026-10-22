@@ -1429,6 +1429,9 @@ impl Seed {
             )
             .await?;
         wl_invoicing::overdue::run(&self.state).await?;
+        // The credit hold job (`MPW.RUL.10`) runs on the overdue invoice: the
+        // contract of Al Quoz is on hold the moment the demo is made.
+        manpower::hold::run_client(&self.state, quoz, wl_kernel::documents::today()).await?;
         // A timesheet an invoice used: locked, with the invoice it was billed
         // on, and a worker's hours that a correction would have to reverse.
         let billed_on = Deployment::query()
