@@ -52,4 +52,21 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "Tutor not available or not eligible",
     ),
     ("edtech.sessions.flag_column", "Flag"),
+    // The documents flagged at the attendance (`session.submit_attendance`).
+    ("edtech.sessions.doc_flags", "Documents flagged"),
+    ("edtech.sessions.doc_flag", "Flag"),
+    ("edtech.sessions.flag_open", "Open"),
+    ("edtech.sessions.flag_closed_status", "Closed"),
+    ("edtech.sessions.flag_reviewed_by", "Closed by"),
+    ("edtech.sessions.flag_note", "Note"),
+    ("edtech.sessions.close_flag", "Close the flag"),
+    (
+        "edtech.sessions.close_flag_description",
+        "The attendance stays as it was submitted. The flag stays in the history with your note and your name.",
+    ),
+    ("edtech.sessions.flag_closed", "Flag closed."),
+    (
+        "edtech.sessions.problem.flag_note",
+        "A note is needed to close the flag.",
+    ),
 ];

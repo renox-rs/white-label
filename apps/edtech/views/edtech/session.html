@@ -8,6 +8,13 @@
         <rx-confirm :id="'session-attendance-' ~ id" :label="tx['sessions.attendance']" :action="route('edtech.session_attendance', id)" method="POST"
                     :title="tx['sessions.attendance']" :message="tx['sessions.attendance_message']" :confirm-label="tx['sessions.attendance']" :cancel-label="tx['button_cancel']" icon="check"/>
       </template>
+      <template rx-if="can_close_flag">
+        <rx-action-sheet :id="'session-flag-' ~ id" :label="tx['sessions.close_flag']" :action="route('edtech.session_flag', id)"
+                         :title="tx['sessions.close_flag']" :description="tx['sessions.close_flag_description']" :submit-label="tx['sessions.close_flag']" icon="check">
+          <rx-select name="flag" :label="tx['sessions.doc_flag']" :options="flag_options" :id="'session-flag-select-' ~ id" required/>
+          <rx-input name="note" :label="tx['sessions.flag_note']" :id="'session-flag-note-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_change">
         <rx-action-sheet :id="'session-reschedule-' ~ id" :label="tx['sessions.reschedule']" :action="route('edtech.session_reschedule', id)"
                          :title="tx['sessions.reschedule']" :description="tx['sessions.reschedule_description']" :submit-label="tx['sessions.reschedule']" icon="calendar">
@@ -37,5 +44,14 @@
         <rx-entry :label="tx['sessions.cancel_reason']" :value="cancel_reason"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="show_doc_flags">
+      <rx-table :rows="doc_flags" as="row" :key="row.id" :caption="tx['sessions.doc_flags']" card>
+        <rx-column :label="tx['sessions.doc_flag']">{{ row.label }}</rx-column>
+        <rx-column :label="tx['sessions.date']">{{ row.on_date }}</rx-column>
+        <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+        <rx-column :label="tx['sessions.flag_reviewed_by']" hide-narrow>{{ row.reviewed_by }}</rx-column>
+        <rx-column :label="tx['sessions.flag_note']" hide-narrow>{{ row.note }}</rx-column>
+      </rx-table>
+    </template>
   </rx-stack>
 </rx-page>

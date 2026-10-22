@@ -19,7 +19,7 @@ use renox::db::{DateTime, Executor, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::calendar::BusinessCalendar;
-use wl_kernel::documents::{dubai_date, today};
+use wl_kernel::documents::{FlagFailure, RecordFlag, dubai_date, guard, today};
 use wl_kernel::scheduling::{
     AvailabilitySource, SchedulingFuture, SourceBlock, provide_availability_source,
 };
@@ -502,8 +502,40 @@ pub async fn change_tutor(
     run(state, by, &session, CHANGE_TUTOR, input).await
 }
 
+/// The record type of the flags of a session (the entity of `session.submit_attendance`).
+pub const FLAG_RECORD_TYPE: &str = "session";
+
+/// The flags the documents module finds for the attendance of `session`: the
+/// tutor's police clearance or permit (flag mode, §9), judged on the day of the
+/// session, whoever submits. A refusal of a client that switched a kind to block
+/// is none here: a session that took place cannot be undone, so the attendance
+/// is never refused.
+async fn attendance_flags(
+    state: &AppState,
+    by: &AuthUser,
+    session: &Session,
+) -> Result<Vec<FlagFailure>> {
+    let documents = guard(state);
+    let checked = documents
+        .check_as(
+            state,
+            crate::documents::GUARDED_SESSION_SUBMIT_ATTENDANCE,
+            session.id,
+            session.session_date,
+            Some(by.id),
+        )
+        .await?;
+    Ok(match checked {
+        Ok(outcome) => outcome.flags,
+        Err(_) => Vec::new(),
+    })
+}
+
 /// `submit_attendance`: the session took place. The batch completes when this
-/// was its last open session ([`on_closed`]).
+/// was its last open session ([`on_closed`]). It is **always accepted**: when
+/// the session's tutor did not hold the documents their batch needs on that day
+/// (`EDU.ACL.14`, flag mode of §9) the session is flagged for the centre manager
+/// ([`close_flag`]); the flag changes neither the credits nor the tutor's pay.
 ///
 /// # Errors
 ///
@@ -511,12 +543,66 @@ pub async fn change_tutor(
 /// `scheduled` or has not started.
 pub async fn submit_attendance(state: &AppState, by: &AuthUser, id: i64) -> Result<Session> {
     let session = load(state, by, id, permissions::SESSIONS_TEACH).await?;
+    let flags = attendance_flags(state, by, &session).await?;
     let input = SessionInput {
         by: Some(by.id),
         on: Some(today()),
         ..SessionInput::default()
     };
-    run(state, by, &session, SUBMIT_ATTENDANCE, input).await
+    let held = run(state, by, &session, SUBMIT_ATTENDANCE, input).await?;
+    if !flags.is_empty() {
+        guard(state)
+            .record_flags(
+                &state.db,
+                crate::documents::GUARDED_SESSION_SUBMIT_ATTENDANCE,
+                session.id,
+                &flags,
+            )
+            .await?;
+    }
+    Ok(held)
+}
+
+/// The flags of the documents of session `id`, oldest first, closed or not.
+///
+/// # Errors
+///
+/// The documents module's errors.
+pub async fn document_flags(state: &AppState, id: i64) -> Result<Vec<RecordFlag>> {
+    guard(state)
+        .flags_for(&state.db, FLAG_RECORD_TYPE, id)
+        .await
+}
+
+/// Closes flag `flag_id` of session `session_id` with a note: the centre manager
+/// (`batches.approve`) has looked at it. The flag stays in the history with the
+/// note and the name of whoever closed it.
+///
+/// # Errors
+///
+/// A 403 without `batches.approve`; a 404 for a flag that is not the session's;
+/// a 422 without a note or for a flag already closed.
+pub async fn close_flag(
+    state: &AppState,
+    by: &AuthUser,
+    session_id: i64,
+    flag_id: i64,
+    note: &str,
+) -> Result<RecordFlag> {
+    if !by.has_permission(permissions::BATCHES_APPROVE) {
+        return Err(Error::Forbidden);
+    }
+    let found = document_flags(state, session_id).await?;
+    if !found.iter().any(|flag| flag.id == flag_id) {
+        return Err(Error::NotFound);
+    }
+    let note = note.trim();
+    if note.is_empty() {
+        return Err(refused(english("edtech.sessions.problem.flag_note", &[])));
+    }
+    guard(state)
+        .review_flag(&state.db, flag_id, by.id, note)
+        .await
 }
 
 /// `cancel`: the session did not take place, for `reason`. With `make_up_on`,

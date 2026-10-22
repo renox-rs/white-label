@@ -8,6 +8,7 @@
 //! | `POST /edtech/sessions/{id}/reschedule` | `edtech.session_reschedule` | `batches.manage` |
 //! | `POST /edtech/sessions/{id}/tutor` | `edtech.session_tutor` | `batches.manage` |
 //! | `POST /edtech/sessions/{id}/cancel` | `edtech.session_cancel` | `batches.manage` |
+//! | `POST /edtech/sessions/{id}/flag` | `edtech.session_flag` | `batches.approve` |
 //!
 //! The list shows the sessions from today, soonest first. The transitions are
 //! the machine's: the pages only read the form and call [`crate::sessions`].
@@ -39,6 +40,8 @@ pub fn routes() -> Routes {
         .name("edtech.session_tutor")
         .post("/edtech/sessions/{id}/cancel", cancel)
         .name("edtech.session_cancel")
+        .post("/edtech/sessions/{id}/flag", close_flag)
+        .name("edtech.session_flag")
         .require_auth()
 }
 
@@ -185,6 +188,29 @@ pub(crate) struct ShowPage {
     flagged: bool,
     flag: String,
     flag_reason: String,
+    show_doc_flags: bool,
+    doc_flags: Vec<DocFlagRow>,
+    can_close_flag: bool,
+    flag_options: Vec<[String; 2]>,
+}
+
+/// One flag of the documents of a session, closed or not.
+#[derive(Serialize, Debug, Clone)]
+pub struct DocFlagRow {
+    /// The flag's number.
+    pub id: i64,
+    /// "Police clearance expired on 2026-12-15".
+    pub label: String,
+    /// The day it was judged on.
+    pub on_date: String,
+    /// Open or closed.
+    pub status: String,
+    /// The badge kind.
+    pub status_kind: &'static str,
+    /// Who closed it.
+    pub reviewed_by: String,
+    /// The note it was closed with.
+    pub note: String,
 }
 
 /// `GET /edtech/sessions/{id}`.
@@ -198,6 +224,32 @@ async fn show(
     let session = Session::find_or_404(&state.db, id).await?;
     let batch = Batch::find_or_404(&state.db, session.batch_id).await?;
     let scheduled = session.status == SessionStatus::Scheduled;
+    let found = sessions::document_flags(&state, session.id).await?;
+    let none = text(&lang, "none");
+    let doc_flags: Vec<DocFlagRow> = found
+        .iter()
+        .map(|flag| DocFlagRow {
+            id: flag.id,
+            label: flag.label.clone(),
+            on_date: flag.on_date.to_string(),
+            status: text(
+                &lang,
+                if flag.is_reviewed() {
+                    "sessions.flag_closed_status"
+                } else {
+                    "sessions.flag_open"
+                },
+            ),
+            status_kind: if flag.is_reviewed() { "success" } else { "warning" },
+            reviewed_by: flag.reviewer_name.clone().unwrap_or_else(|| none.clone()),
+            note: flag.review_note.clone().unwrap_or_else(|| none.clone()),
+        })
+        .collect();
+    let flag_options: Vec<[String; 2]> = found
+        .iter()
+        .filter(|flag| !flag.is_reviewed())
+        .map(|flag| [flag.id.to_string(), flag.label.clone()])
+        .collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: session.id,
@@ -226,6 +278,11 @@ async fn show(
             .as_deref()
             .map(crate::tutor_alerts::reason_text)
             .unwrap_or_default(),
+        show_doc_flags: !doc_flags.is_empty(),
+        doc_flags,
+        can_close_flag: !flag_options.is_empty()
+            && user.has_permission(permissions::BATCHES_APPROVE),
+        flag_options,
     }))
 }
 
@@ -292,6 +349,30 @@ async fn tutor(
     let employee = super::parse_optional_id(&form.employee)?;
     sessions::change_tutor(&state, &user, id, resource, employee).await?;
     done(&lang, "sessions.tutor_changed")
+}
+
+/// The form of the closing of a flag.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct FlagForm {
+    /// The flag's number.
+    #[serde(default)]
+    pub flag: String,
+    /// The note it is closed with.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /edtech/sessions/{id}/flag`.
+async fn close_flag(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<FlagForm>,
+) -> Result<Response> {
+    let flag = parse_number(&form.flag)?;
+    sessions::close_flag(&state, &user, id, flag, &form.note).await?;
+    done(&lang, "sessions.flag_closed")
 }
 
 /// The form of `cancel`.
