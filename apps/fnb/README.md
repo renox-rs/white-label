@@ -170,6 +170,29 @@ every status change goes through a state machine that leaves a history row.
   far as the orders need them. `progress` gives the shared modules the
   kitchen's `FulfilmentProgress` and `SaleLineStockSource`.
 
+## A line refused at the door
+
+With partial acceptance on (a setting of the host, `fnb_seed::delivery`), the
+customer may refuse one line at proof of delivery. On `DeliveryDelivered`
+`refused::after_delivered` refunds a prepaid order's refused line by a *no
+goods* return (category *wrong item*, party *business*) resolved at once up to
+`Fnb::refused_refund_limit` (AED 50, the `SAL.ACL.06` limit); above it the
+kitchen managers are told and a manager files the refund on the order. Cash on
+delivery collects the accepted lines only: the delivery request carries each
+line's amount. The refused food posted as wastage on `DeliveryRefusedReceived`
+is not built (the stock module offers no posting by sale line yet).
+
+## Settings of the deployment
+
+The values of 06 for the shared mechanisms (delivery, sales, payments, cash,
+cash-flow and budget; stock, documents, rules, connections, notices, loyalty,
+onboarding and SOPs) are set by the host, never in this crate: see
+`host/src/app/fnb_seed.rs` and `fnb_compliance.rs`. The pages
+`/settings/negative-flow` and `/settings/compliance` read them back from the
+modules for the operations director and the company admin. The two answers still
+open with the lawyer stay settings with the documented default: `L-20` (salary
+deduction of a shortage, off) and `L-33` (`Fnb::customer_side_refund`, off).
+
 ## Permissions
 
 `orders.view`, `.manage`, `.cancel`, `.amend` and `.refund_request`,
