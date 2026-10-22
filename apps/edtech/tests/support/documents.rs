@@ -14,8 +14,8 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::{
     BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome,
-    DocumentFuture, DocumentGuard, FlagFailure, InvalidReason, OverrideMode, RecordFlag, Validity,
-    block_subjects,
+    DocumentFuture, DocumentGuard, FlagFailure, FlagReason, InvalidReason, OverrideMode,
+    RecordFlag, Validity, block_subjects,
 };
 
 /// The expiry date of each `(subject, kind)` document.
@@ -27,6 +27,7 @@ pub struct Documents {
     entries: Arc<Mutex<Vec<BlockEntry>>>,
     expiries: Arc<Mutex<Expiries>>,
     types: Arc<Mutex<BTreeMap<String, Vec<String>>>>,
+    flags: Arc<Mutex<Vec<RecordFlag>>>,
 }
 
 /// The name of a kind in a refusal.
@@ -63,6 +64,39 @@ impl Documents {
         ));
         self.attached("centre_permit", &["kernel.legal_entity"]);
         self.attached("course_approval", &["edtech.course"]);
+    }
+
+    /// 10's tutor kinds (§9): the police clearance and the permit or visa block
+    /// the assignments (`batch.open`, `batch.change_tutor`, `session.change_tutor`,
+    /// `session.reschedule`) and **flag** the attendance (`session.submit_attendance`);
+    /// both are attached to employees.
+    pub fn tutor_blocks(&self) {
+        for kind in ["police_clearance", "tutor_permit"] {
+            for guarded in [
+                "batch.open",
+                "batch.change_tutor",
+                "session.change_tutor",
+                "session.reschedule",
+            ] {
+                self.block(BlockEntry {
+                    kind: kind.into(),
+                    guarded: guarded.into(),
+                    mode: BlockMode::Block,
+                    override_mode: OverrideMode::Never,
+                    condition: None,
+                    locked: false,
+                });
+            }
+            self.block(BlockEntry {
+                kind: kind.into(),
+                guarded: "session.submit_attendance".into(),
+                mode: BlockMode::Flag,
+                override_mode: OverrideMode::Never,
+                condition: None,
+                locked: false,
+            });
+            self.attached(kind, &["hr.employee"]);
+        }
     }
 
     /// Adds `entry` to the kinds' `blocks`.
@@ -194,6 +228,7 @@ impl DocumentGuard for Documents {
                 )));
             };
             let mut failures = Vec::new();
+            let mut outcome = CheckOutcome::default();
             for entry in entries {
                 for subject in provider.subjects(state, &entry, record_id).await? {
                     let validity = self.validity_of(&subject, &entry.kind, on_date);
@@ -201,13 +236,29 @@ impl DocumentGuard for Documents {
                         continue;
                     }
                     let name = kind_name(&entry.kind);
-                    let what = match &validity {
+                    let (what, expired_on, reason) = match &validity {
                         Validity::Invalid {
                             expired_on: Some(date),
                             ..
-                        } => format!("{name} expired on {date}"),
-                        _ => format!("{name} missing"),
+                        } => (
+                            format!("{name} expired on {date}"),
+                            Some(*date),
+                            FlagReason::Expired,
+                        ),
+                        _ => (format!("{name} missing"), None, FlagReason::Missing),
                     };
+                    if entry.mode == BlockMode::Flag {
+                        outcome.flags.push(FlagFailure {
+                            entry: entry.clone(),
+                            subject,
+                            reason,
+                            document: None,
+                            expired_on,
+                            on_date,
+                            label: what,
+                        });
+                        continue;
+                    }
                     failures.push(BlockFailure {
                         entry: entry.clone(),
                         subject,
@@ -217,7 +268,7 @@ impl DocumentGuard for Documents {
                 }
             }
             if failures.is_empty() {
-                Ok(Ok(CheckOutcome::default()))
+                Ok(Ok(outcome))
             } else {
                 Ok(Err(BlockRefusal {
                     guarded: guarded.to_owned(),
@@ -231,38 +282,108 @@ impl DocumentGuard for Documents {
     fn record_flags<'a>(
         &'a self,
         _db: &'a Db,
-        _guarded: &'a str,
-        _record_id: i64,
-        _flags: &'a [FlagFailure],
+        guarded: &'a str,
+        record_id: i64,
+        flags: &'a [FlagFailure],
     ) -> DocumentFuture<'a, Vec<RecordFlag>> {
-        Box::pin(async { Ok(Vec::new()) })
+        let mut all = self.flags.lock().unwrap();
+        let mut written = Vec::new();
+        for flag in flags {
+            let repeats = all.iter().any(|old| {
+                old.guarded == guarded
+                    && old.record_id == record_id
+                    && old.kind == flag.entry.kind
+                    && old.subject == flag.subject
+                    && old.reason == flag.reason
+                    && !old.is_reviewed()
+            });
+            if repeats {
+                continue;
+            }
+            let row = RecordFlag {
+                id: i64::try_from(all.len()).unwrap() + 1,
+                record_type: guarded.split_once('.').map_or(guarded, |(entity, _)| entity).to_owned(),
+                record_id,
+                guarded: guarded.to_owned(),
+                kind: flag.entry.kind.clone(),
+                subject: flag.subject.clone(),
+                document: None,
+                reason: flag.reason,
+                expires_on: flag.expired_on,
+                on_date: flag.on_date,
+                label: flag.label.clone(),
+                created_at: renox::db::now(),
+                reviewed_at: None,
+                reviewed_by: None,
+                reviewer_name: None,
+                review_note: None,
+            };
+            all.push(row.clone());
+            written.push(row);
+        }
+        Box::pin(async move { Ok(written) })
     }
 
     fn flags_for<'a>(
         &'a self,
         _db: &'a Db,
-        _record_type: &'a str,
-        _record_id: i64,
+        record_type: &'a str,
+        record_id: i64,
     ) -> DocumentFuture<'a, Vec<RecordFlag>> {
-        Box::pin(async { Ok(Vec::new()) })
+        let found: Vec<RecordFlag> = self
+            .flags
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|flag| flag.record_type == record_type && flag.record_id == record_id)
+            .cloned()
+            .collect();
+        Box::pin(async move { Ok(found) })
     }
 
     fn open_flag_counts<'a>(
         &'a self,
         _db: &'a Db,
-        _record_type: &'a str,
-        _ids: &'a [i64],
+        record_type: &'a str,
+        ids: &'a [i64],
     ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
-        Box::pin(async { Ok(BTreeMap::new()) })
+        let mut counts: BTreeMap<i64, u64> = ids.iter().map(|id| (*id, 0)).collect();
+        for flag in self.flags.lock().unwrap().iter() {
+            if flag.record_type == record_type && !flag.is_reviewed() {
+                if let Some(count) = counts.get_mut(&flag.record_id) {
+                    *count += 1;
+                }
+            }
+        }
+        Box::pin(async move { Ok(counts) })
     }
 
     fn review_flag<'a>(
         &'a self,
         _db: &'a Db,
-        _flag_id: i64,
-        _reviewer: i64,
-        _note: &'a str,
+        flag_id: i64,
+        reviewer: i64,
+        note: &'a str,
     ) -> DocumentFuture<'a, RecordFlag> {
-        Box::pin(async { Err(Error::NotFound) })
+        let mut all = self.flags.lock().unwrap();
+        let outcome = match all.iter_mut().find(|flag| flag.id == flag_id) {
+            None => Err(Error::NotFound),
+            Some(_) if note.trim().is_empty() => Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "A note is needed".to_owned(),
+            )),
+            Some(flag) if flag.is_reviewed() => Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "The flag is already reviewed".to_owned(),
+            )),
+            Some(flag) => {
+                flag.reviewed_at = Some(renox::db::now());
+                flag.reviewed_by = Some(reviewer);
+                flag.reviewer_name = Some(format!("Reviewer {reviewer}"));
+                flag.review_note = Some(note.trim().to_owned());
+                Ok(flag.clone())
+            }
+        };
+        Box::pin(async move { outcome })
     }
 }
