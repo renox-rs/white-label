@@ -308,6 +308,9 @@ pub struct CashShortage {
     pub period: Option<Subject>,
     /// The till session, in till mode.
     pub till_session: Option<Subject>,
+    /// The till that holds the cash, in till mode (the holder is the till).
+    #[serde(default)]
+    pub holder_till: Option<String>,
     /// The difference, in fils.
     pub difference: i64,
     /// The cheques missing (their ids); empty until cheques are in handovers.

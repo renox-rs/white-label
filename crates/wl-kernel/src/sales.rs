@@ -696,6 +696,8 @@ pub const SALES_ORDER_SUBJECT_TYPE: &str = "sales.sales_order";
 pub const SALES_RETURN_SUBJECT_TYPE: &str = "sales.sales_return";
 /// The subject type of a loyalty account, for [`Subject`] references.
 pub const LOYALTY_ACCOUNT_SUBJECT_TYPE: &str = "sales.loyalty_account";
+/// The subject type of a till session, for [`Subject`] references.
+pub const TILL_SESSION_SUBJECT_TYPE: &str = "sales.till_session";
 
 /// Defines a typed id of a sales record: a plain number in JSON, a
 /// [`Subject`] on demand.
@@ -769,6 +771,42 @@ pub struct CounterSaleCompleted {
 }
 
 impl Event for CounterSaleCompleted {}
+
+/// A till session was counted and closed (`close`, wl-sales §4.3,
+/// `SAL.POS.01`). `wl-payments` creates the till's cash handover from it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TillSessionClosed {
+    /// The till session (`sales.till_session:<id>`).
+    pub session: i64,
+    /// The till (register) the session ran on, e.g. `T1`. The cash holder.
+    pub till: String,
+    /// The session's cashier: the person recoveries are taken from.
+    pub cashier_user: i64,
+    /// The trading day of the session (Asia/Dubai).
+    pub date: NaiveDate,
+    /// The cash the till should hold, in fils.
+    pub expected: i64,
+    /// The cash counted in the session, in fils.
+    pub counted: i64,
+    /// The outlet or branch of the till, which bears a written-off loss.
+    pub location: Option<String>,
+    /// The legal entity of the cash.
+    pub legal_entity_id: Option<i64>,
+}
+
+impl TillSessionClosed {
+    /// The session as a [`Subject`].
+    pub fn session_subject(&self) -> Subject {
+        Subject::new(TILL_SESSION_SUBJECT_TYPE, self.session)
+    }
+
+    /// Counted less expected (negative: a shortage), in fils.
+    pub fn variance(&self) -> i64 {
+        self.counted - self.expected
+    }
+}
+
+impl Event for TillSessionClosed {}
 
 /// A sales order reached `confirmed` for the first time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

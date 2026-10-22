@@ -147,6 +147,7 @@ pub async fn raise_shortage(
         responsible_user_id: first
             .as_ref()
             .map_or(request.holder_user, |h| h.responsible_user_id),
+        holder_till: first.as_ref().and_then(|h| h.holder_till.clone()),
         period_kind: first.as_ref().map_or(PeriodKind::Day, |h| h.period_kind),
         period_type: first.as_ref().and_then(|h| h.period_type.clone()),
         period_id: first.as_ref().and_then(|h| h.period_id),
