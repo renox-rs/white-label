@@ -175,34 +175,61 @@ impl Centre {
     }
 
     /// The academic coordinator: plans and opens batches.
+    pub async fn coordinator_user(&self) -> User {
+        self.user(
+            "Amal",
+            &[
+                edtech::permissions::COURSES_VIEW,
+                edtech::permissions::COURSES_MANAGE,
+                edtech::permissions::BATCHES_VIEW,
+                edtech::permissions::BATCHES_MANAGE,
+                edtech::permissions::SESSIONS_VIEW,
+            ],
+        )
+        .await
+    }
+
+    /// The academic coordinator as the signed-in user the services take.
     pub async fn coordinator(&self) -> renox::AuthUser {
-        let user = self
-            .user(
-                "Amal",
-                &[
-                    edtech::permissions::COURSES_VIEW,
-                    edtech::permissions::COURSES_MANAGE,
-                    edtech::permissions::BATCHES_VIEW,
-                    edtech::permissions::BATCHES_MANAGE,
-                    edtech::permissions::SESSIONS_VIEW,
-                ],
-            )
-            .await;
+        let user = self.coordinator_user().await;
         self.auth(&user).await
     }
 
-    /// A tutor: teaches the sessions assigned.
-    pub async fn tutor_user(&self) -> renox::AuthUser {
-        let user = self
-            .user(
-                "Tariq",
-                &[
-                    edtech::permissions::BATCHES_VIEW,
-                    edtech::permissions::SESSIONS_VIEW,
-                    edtech::permissions::SESSIONS_TEACH,
-                ],
-            )
-            .await;
+    /// A tutor: teaches the sessions assigned, plans nothing.
+    pub async fn teacher_user(&self) -> User {
+        self.user(
+            "Tariq",
+            &[
+                edtech::permissions::BATCHES_VIEW,
+                edtech::permissions::SESSIONS_VIEW,
+                edtech::permissions::SESSIONS_TEACH,
+            ],
+        )
+        .await
+    }
+
+    /// A tutor as the signed-in user the services take.
+    pub async fn teacher(&self) -> renox::AuthUser {
+        let user = self.teacher_user().await;
+        self.auth(&user).await
+    }
+
+    /// The counsellor: looks at courses, batches and sessions.
+    pub async fn counsellor_user(&self) -> User {
+        self.user(
+            "Cara",
+            &[
+                edtech::permissions::COURSES_VIEW,
+                edtech::permissions::BATCHES_VIEW,
+                edtech::permissions::SESSIONS_VIEW,
+            ],
+        )
+        .await
+    }
+
+    /// The counsellor as the signed-in user the services take.
+    pub async fn counsellor(&self) -> renox::AuthUser {
+        let user = self.counsellor_user().await;
         self.auth(&user).await
     }
 

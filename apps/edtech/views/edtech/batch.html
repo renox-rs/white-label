@@ -1,0 +1,24 @@
+{#- edtech: one batch: its status, dates, weekly pattern, seats, tutor and
+    room, and the actions of the coordinator. Replace it with
+    resources/views/edtech/batch.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="course" :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_open">
+        <rx-confirm :id="'batch-open-' ~ id" :label="tx['batches.open']" :action="route('edtech.batch_open', id)" method="POST"
+                    :title="tx['batches.open']" :message="tx['batches.open_message']" :confirm-label="tx['batches.open']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['batches.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['batches.course']" :value="course"/>
+        <rx-entry :label="tx['batches.dates']" :value="dates"/>
+        <rx-entry :label="tx['batches.pattern']" :value="pattern"/>
+        <rx-entry :label="tx['batches.seats']" :value="seats"/>
+        <rx-entry :label="tx['batches.free_seats']" :value="free_seats"/>
+        <rx-entry :label="tx['batches.tutor']" :value="tutor"/>
+        <rx-entry :label="tx['batches.room']" :value="room"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

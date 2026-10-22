@@ -1,0 +1,35 @@
+{#- edtech: the courses and programmes, with the regulator approval of each
+    and the action that defines one. Replace it with
+    resources/views/edtech/courses.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['courses.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['courses.title']" :subtitle="tx['courses.subtitle']">
+      <template rx-if="can_manage">
+        <rx-action-sheet id="course-new" :label="tx['courses.new']" :action="route('edtech.course_create')"
+                         :title="tx['courses.new']" :description="tx['courses.new_description']" :submit-label="tx['courses.new']" icon="plus">
+          <rx-input name="code" :label="tx['courses.code']" id="course-new-code" required/>
+          <rx-input name="name_en" :label="tx['courses.name_en']" id="course-new-name-en" required/>
+          <rx-input name="name_ar" :label="tx['courses.name_ar']" id="course-new-name-ar"/>
+          <rx-input name="programme" :label="tx['courses.programme']" id="course-new-programme"/>
+          <rx-input name="level" :label="tx['courses.level']" id="course-new-level"/>
+          <rx-input name="hours" type="number" :label="tx['courses.hours']" value="0" id="course-new-hours"/>
+          <rx-select name="delivery" :label="tx['courses.delivery']" :options="delivery_options" :selected="'in_person'" id="course-new-delivery"/>
+          <rx-checkbox name="for_minors" :label="tx['courses.for_minors']" id="course-new-minors"/>
+          <rx-checkbox name="approval_required" :label="tx['courses.approval_required']" id="course-new-approval-required"/>
+          <rx-input name="approval_no" :label="tx['courses.approval_no']" id="course-new-approval-no"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="courses" as="row" :key="row.id" :caption="tx['courses.title']" card>
+      <rx-column :label="tx['courses.code']">{{ row.code }}</rx-column>
+      <rx-column :label="tx['courses.name']">{{ row.name }}</rx-column>
+      <rx-column :label="tx['courses.programme']" hide-narrow>{{ row.programme }}</rx-column>
+      <rx-column :label="tx['courses.level']" hide-narrow>{{ row.level }}</rx-column>
+      <rx-column :label="tx['courses.hours']" hide-narrow>{{ row.hours }}</rx-column>
+      <rx-column :label="tx['courses.delivery']" hide-narrow>{{ row.delivery }}</rx-column>
+      <rx-column :label="tx['courses.for_minors']" hide-narrow>{{ row.for_minors }}</rx-column>
+      <rx-column :label="tx['courses.approval']"><rx-badge :kind="row.approval_kind" :text="row.approval"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['courses.empty']" icon="book-open"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

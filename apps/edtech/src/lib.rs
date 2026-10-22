@@ -1,12 +1,43 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod batch;
+pub mod batch_machine;
+pub mod batches;
+pub mod course;
+pub mod courses;
+mod db;
+pub mod pages;
 pub mod permissions;
+pub mod plan;
 pub mod reasons;
+pub mod seats;
 pub mod seed;
 mod texts;
 
+use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
+
+pub use batch::{Batch, BatchStatus};
+pub use course::{Course, DeliveryMode};
+
+/// The templates of the pages, under the names the pages ask for. An app
+/// replaces one by putting a file of that name in its own views.
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "edtech/courses.html",
+        include_str!("../views/edtech/courses.html"),
+    ),
+    (
+        "edtech/batches.html",
+        include_str!("../views/edtech/batches.html"),
+    ),
+    (
+        "edtech/batch.html",
+        include_str!("../views/edtech/batch.html"),
+    ),
+];
 
 /// Dirhams as text from fils: `AED 1,250.00`.
 pub fn money_text(fils: i64) -> String {
@@ -31,7 +62,49 @@ impl Module for EdTech {
         "edtech"
     }
 
-    fn register(&self, _app: &mut Registry) {}
+    fn routes(&self) -> Routes {
+        pages::routes()
+    }
+
+    fn migrations(&self) -> &'static [Migration] {
+        renox::migrations!()
+    }
+
+    fn register(&self, app: &mut Registry) {
+        app.view_data::<pages::courses::IndexPage>()
+            .view_data::<pages::batches::IndexPage>()
+            .view_data::<pages::batches::ShowPage>();
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
+        app.model::<Course>().model::<Batch>();
+        // The batch: its machine, its start when the first session date comes.
+        batches::register(app);
+        // In the app group of the staff sidebar; the labels are the host's
+        // `nav.courses` and `nav.batches` texts.
+        app.nav(
+            "app",
+            NavLink::route("edtech.courses", "nav.courses")
+                .icon("book-open")
+                .group("nav.app")
+                .order(80)
+                .permission(permissions::COURSES_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("edtech.batches", "nav.batches")
+                .icon("users")
+                .group("nav.app")
+                .order(81)
+                .permission(permissions::BATCHES_VIEW),
+        );
+    }
 }
 
 #[cfg(test)]
