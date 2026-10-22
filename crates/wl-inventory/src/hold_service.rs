@@ -23,7 +23,7 @@ use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::inventory::{
     HeldLine, HoldDecision, HoldLineView, HoldView, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE,
-    LOT_SUBJECT_TYPE, STOCK_HOLD_LINE_SUBJECT_TYPE, STOCK_HOLD_SUBJECT_TYPE, StockHoldPlaced,
+    LocationInfo, LOT_SUBJECT_TYPE, STOCK_HOLD_LINE_SUBJECT_TYPE, STOCK_HOLD_SUBJECT_TYPE, StockHoldPlaced,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 
@@ -598,6 +598,25 @@ impl wl_kernel::inventory::StockHoldService for InventoryHolds {
                 open: found.status == HoldStatus::Open,
                 lines,
             }))
+        })
+    }
+
+    fn locations<'a>(
+        &'a self,
+        state: &'a AppState,
+    ) -> wl_kernel::inventory::StockFuture<'a, Vec<LocationInfo>> {
+        Box::pin(async move {
+            Ok(Location::query()
+                .order_by(Location::CODE)
+                .get(&state.db)
+                .await?
+                .into_iter()
+                .map(|location| LocationInfo {
+                    location: location.subject(),
+                    code: location.code,
+                    name: location.name_en,
+                })
+                .collect())
         })
     }
 

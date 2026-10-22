@@ -1126,6 +1126,13 @@ pub trait StockHoldService: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// The stock locations of the deployment, by code: what a vertical lets
+    /// its user pick when a unit (a fridge) is a location of its own. Empty
+    /// when the module is off.
+    fn locations<'a>(&'a self, _state: &'a AppState) -> StockFuture<'a, Vec<LocationInfo>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// `user` decides a line of a hold (`release`, `discard` or
     /// `return_to_supplier`). The module's own rules apply: the permission in
     /// the location's scope, a second person for a listed reason or a
@@ -1139,6 +1146,17 @@ pub trait StockHoldService: Send + Sync + 'static {
     ) -> StockFuture<'a, Option<HoldDecision>> {
         Box::pin(async { Ok(None) })
     }
+}
+
+/// A stock location, as another module reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocationInfo {
+    /// The location, `inventory.location:2`.
+    pub location: Subject,
+    /// Its code, e.g. `OUT1-F2`.
+    pub code: String,
+    /// Its name.
+    pub name: String,
 }
 
 /// One line of a stock hold, as another module reads it.
