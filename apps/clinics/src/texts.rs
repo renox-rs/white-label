@@ -658,6 +658,20 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.contract.valid_from", "From"),
     ("clinics.contract.valid_to", "To"),
     ("clinics.contract.created", "Contract recorded."),
+    ("clinics.contract.updated", "Contract changed."),
+    ("clinics.contract.edit", "Change the terms"),
+    (
+        "clinics.contract.edit_description",
+        "The payer, the plan and the first day stay; a different one is a new contract. Charges already split keep the terms they were split under.",
+    ),
+    (
+        "clinics.contract.agreement_placeholder",
+        "Search by agreement or payer name",
+    ),
+    (
+        "clinics.contract.problem.identity",
+        "The payer, the plan and the first day of a contract cannot change: make a new contract.",
+    ),
     ("clinics.contract.empty", "No payer contract yet"),
     ("clinics.contract.tariff", "Set a tariff"),
     (

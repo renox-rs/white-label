@@ -542,3 +542,27 @@ async fn the_money_pages_name_the_documents_they_link() {
         .assert_ok()
         .assert_dont_see("invoicing.invoice:");
 }
+
+/// A payer contract names the agreement it is billed under (`Gulf Shield
+/// Gold`), never `#3`, and the coordinator can change its terms.
+#[renox::test]
+async fn the_contracts_name_their_agreement_and_can_be_changed() {
+    let app = booted().await;
+    host::clinics_demo::seed(app.kernel()).await.unwrap();
+    let billing = User::find_by_email(app.db(), "billing@palmgrove.example")
+        .await
+        .unwrap()
+        .expect("the demo billing coordinator");
+    app.acting_as(&billing);
+    app.get("/clinics/contracts")
+        .await
+        .assert_ok()
+        .assert_see("Gulf Shield Gold")
+        .assert_see("Change the terms")
+        .assert_dont_see(">#1<");
+    // The picker of the agreement answers for the coordinator.
+    app.get("/payer-agreements/options?q=gold")
+        .await
+        .assert_ok()
+        .assert_see("Gulf Shield Gold");
+}
