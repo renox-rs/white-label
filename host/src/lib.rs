@@ -31,6 +31,7 @@ pub use app::clinics_seed;
 pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
+pub use app::edtech_money;
 pub use app::edtech_seed;
 pub use app::edtech_settings;
 pub use app::logistics_demo;

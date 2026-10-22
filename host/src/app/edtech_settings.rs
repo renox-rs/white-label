@@ -79,7 +79,8 @@ pub fn register_critical(client_app: &str) {
 }
 
 /// Gives the company owner of an EdTech deployment what deciding an override
-/// needs besides the role: reading the approvals and the documents. The
+/// needs besides the role: reading the approvals and the documents; and the
+/// centre manager what approving a cash shortage needs. The
 /// approval policy itself is the app's ([`edtech::defaults::override_policy`]).
 /// The roles table is shared by every vertical, so this is a grant of this
 /// client only.
@@ -92,6 +93,17 @@ pub fn grant_roles(client_app: &str) {
         &[
             wl_kernel::permissions::APPROVALS_VIEW,
             wl_documents::permissions::VIEW,
+        ],
+    );
+    // The centre manager approves a desk cash shortage and the write-offs
+    // (`FIN.ACL.06`, `FIN.ACL.15`): `cash.write_off` is what the approval of
+    // a shortage asks for, and the approvals page shows what waits.
+    super::roles::grant_extra(
+        super::roles::CENTRE_MANAGER,
+        &[
+            wl_kernel::permissions::APPROVALS_VIEW,
+            wl_payments::permissions::CASH_VIEW,
+            wl_payments::permissions::CASH_WRITE_OFF,
         ],
     );
 }
@@ -118,6 +130,10 @@ pub fn sales(module: WlSales) -> WlSales {
         .expiry_reminder_days(defaults::LOYALTY_REMINDER_DAYS)
         .adjustment_limit(defaults::LOYALTY_ADJUSTMENT_LIMIT)
         .confirm_redemption_by_code(true)
+        // A package whose invoice was reopened stays active and the counsellor
+        // is told to collect; consumption is not suspended (BL-EDU-18).
+        .package_seller_role(edtech::money_defaults::PACKAGE_COLLECT_ROLE)
+        .suspend_package_consumption_while_unpaid(edtech::money_defaults::SUSPEND_PACKAGE_WHILE_UNPAID)
 }
 
 /// The send handler of a connection nothing is queued for: the manual way is
@@ -190,6 +206,8 @@ pub struct Installed {
     pub loyalty: usize,
     /// Notification types given their 10 reactions.
     pub notification_types: usize,
+    /// Budget categories added or given the accountant as owner role.
+    pub budget_categories: usize,
 }
 
 impl Installed {
@@ -201,6 +219,7 @@ impl Installed {
             + self.send_windows
             + self.loyalty
             + self.notification_types
+            + self.budget_categories
     }
 }
 
@@ -224,6 +243,10 @@ pub async fn install_for(
     }
     if on("documents") {
         installed.sops = install_sops(&state.db).await?;
+    }
+    if on("invoicing") {
+        installed.budget_categories =
+            super::edtech_money::install_budget_categories(&state.db).await?;
     }
     if on("notify") {
         installed.send_windows = install_send_windows(&state.db).await?;
@@ -765,6 +788,8 @@ mod tests {
         assert_eq!(config.expiry_reminder_days, 30);
         assert_eq!(config.adjustment_limit, 500);
         assert!(config.confirm_redemption_by_code);
+        assert!(!config.suspend_package_consumption_while_unpaid);
+        assert_eq!(config.package_seller_role, "counsellor");
     }
 
     #[test]
