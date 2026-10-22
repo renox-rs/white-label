@@ -101,6 +101,26 @@ pub const DEFAULT_CANCELLATION_FEE_VAT: &str = "standard";
 /// (`SAL.ACL.01`; F&B: AED 50).
 pub const DEFAULT_CANCEL_APPROVAL_LIMIT: i64 = 5_000;
 
+/// A refund or credit after completion with nothing returned worth more than
+/// this (fils) needs a manager (`SAL.ACL.06`: AED 50).
+pub const DEFAULT_REFUND_APPROVAL_LIMIT: i64 = 5_000;
+
+/// The complaint categories of a *no goods* return (§7 *Refund after
+/// completion*).
+pub const DEFAULT_COMPLAINT_CATEGORIES: &[&str] = &[
+    "cold",
+    "late",
+    "missing_item",
+    "wrong_item",
+    "quality",
+    "service_not_delivered",
+    "other",
+];
+
+/// The responsible parties of a *no goods* return (§7).
+pub const DEFAULT_RESPONSIBLE_PARTIES: &[&str] =
+    &["business", "driver_or_rider", "aggregator", "supplier", "customer"];
+
 /// The outcomes a cancellation after fulfilment started may choose from,
 /// before the vertical narrows them (§7).
 pub const DEFAULT_CANCEL_OUTCOMES: &[&str] = &["return_to_stock", "finish_to_stock", "scrap"];
@@ -211,6 +231,14 @@ pub struct SalesConfig {
     /// A paid order above this value, in fils, needs a manager to cancel it
     /// (`SAL.ACL.01`, §7: AED 50).
     pub cancel_approval_limit: i64,
+    /// A refund or credit after completion with nothing returned above this
+    /// value, in fils, needs a manager who is not the recorder
+    /// (`SAL.ACL.06`, §7: AED 50).
+    pub refund_approval_limit: i64,
+    /// The complaint categories a *no goods* return can name (stored names).
+    pub complaint_categories: Vec<String>,
+    /// The responsible parties a *no goods* return can name (stored names).
+    pub responsible_parties: Vec<String>,
 }
 
 impl Default for SalesConfig {
@@ -266,6 +294,15 @@ impl Default for SalesConfig {
             cancellation_fee_amount: 0,
             cancellation_fee_vat: DEFAULT_CANCELLATION_FEE_VAT.to_owned(),
             cancel_approval_limit: DEFAULT_CANCEL_APPROVAL_LIMIT,
+            refund_approval_limit: DEFAULT_REFUND_APPROVAL_LIMIT,
+            complaint_categories: DEFAULT_COMPLAINT_CATEGORIES
+                .iter()
+                .map(|c| (*c).to_owned())
+                .collect(),
+            responsible_parties: DEFAULT_RESPONSIBLE_PARTIES
+                .iter()
+                .map(|c| (*c).to_owned())
+                .collect(),
         }
     }
 }
@@ -290,6 +327,12 @@ impl SalesConfig {
             .aggregator_channels
             .iter()
             .any(|c| c.eq_ignore_ascii_case(channel.trim()))
+    }
+
+    /// Whether the orders of `channel` come from an aggregator that can
+    /// refund its customer itself (*refunded by the channel*, BL-SAL-14).
+    pub fn is_aggregator_channel(&self, channel: &str) -> bool {
+        !self.amendments_allowed(channel)
     }
 
     /// Whether `outcome` (a stored name) is offered when a started line is

@@ -41,6 +41,14 @@ pub fn order_change_policies() -> Vec<PolicyDefault> {
     .collect()
 }
 
+/// The default policy of a refund or credit after completion with nothing
+/// returned above the limit (`SAL.ACL.06`): one step by a holder of
+/// `returns.approve`, never the recorder.
+pub fn refund_policy() -> PolicyDefault {
+    PolicyDefault::new(crate::sales_returns::ACTION_REFUND)
+        .step_permission(permissions::RETURNS_APPROVE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,6 +67,14 @@ mod tests {
         assert_eq!(
             policies[0],
             PolicyDefault::new("sales.order_amend").step_permission("sales_orders.approve")
+        );
+    }
+
+    #[test]
+    fn a_refund_after_completion_is_decided_by_a_holder_of_the_returns_approve_permission() {
+        assert_eq!(
+            refund_policy(),
+            PolicyDefault::new("sales.return_refund").step_permission("returns.approve")
         );
     }
 

@@ -244,6 +244,9 @@ pub mod permissions {
     pub const SALES_ORDERS_APPROVE: &str = "sales_orders.approve";
     /// Request a sales return.
     pub const RETURNS_REQUEST: &str = "returns.request";
+    /// Approve a refund or credit after completion with nothing returned above
+    /// the limit (`SAL.ACL.06`); never the person who recorded it.
+    pub const RETURNS_APPROVE: &str = "returns.approve";
     /// Receive, resolve, reject and reverse sales returns.
     pub const RETURNS_HANDLE: &str = "returns.handle";
     /// See the loyalty programme, its accounts and the review list.
@@ -459,6 +462,31 @@ impl WlSales {
     pub fn cancel_approval_limit(mut self, fils: i64) -> Self {
         assert!(fils >= 0, "a limit is zero or more");
         self.config.cancel_approval_limit = fils;
+        self
+    }
+
+    /// The value, in fils, above which a refund or credit after completion
+    /// with nothing returned needs a manager (`SAL.ACL.06`; default AED 50).
+    pub fn refund_approval_limit(mut self, fils: i64) -> Self {
+        assert!(fils >= 0, "a limit is zero or more");
+        self.config.refund_approval_limit = fils;
+        self
+    }
+
+    /// The complaint categories of a *no goods* return (stored names; default
+    /// cold, late, missing_item, wrong_item, quality, service_not_delivered,
+    /// other).
+    pub fn complaint_categories(mut self, categories: &[&str]) -> Self {
+        self.config.complaint_categories =
+            categories.iter().map(|c| c.trim().to_lowercase()).collect();
+        self
+    }
+
+    /// The responsible parties of a *no goods* return (stored names; default
+    /// business, driver_or_rider, aggregator, supplier, customer).
+    pub fn responsible_parties(mut self, parties: &[&str]) -> Self {
+        self.config.responsible_parties =
+            parties.iter().map(|c| c.trim().to_lowercase()).collect();
         self
     }
 

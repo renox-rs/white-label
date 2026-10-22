@@ -181,6 +181,107 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
         "wl_sales.cancelling.problem.moved",
         "The order changed while the request waited: ask again.",
     ),
+    // Refund after completion with nothing returned (BL-SAL-14).
+    ("wl_sales.returns.refund", "Refund after completion"),
+    (
+        "wl_sales.returns.refund_description",
+        "Food that arrived cold or wrong, a missing item or a service not delivered: nothing comes back, the customer is refunded. Give the amount for each line, the complaint and who is responsible. Above the limit a manager approves; you cannot approve your own refund.",
+    ),
+    ("wl_sales.returns.refund_line", "Refund for line"),
+    (
+        "wl_sales.returns.refund_line_hint",
+        "An amount with VAT, such as 60.00. Leave empty for a line that is not refunded.",
+    ),
+    ("wl_sales.returns.refund_ticket", "Complaint ticket (number, optional)"),
+    ("wl_sales.returns.refund_done", "The refund is requested."),
+    (
+        "wl_sales.returns.refund_waiting",
+        "A manager must approve this refund first. The return stays requested until then.",
+    ),
+    (
+        "wl_sales.returns.refund_recorded",
+        "The return is recorded. A returns handler resolves it.",
+    ),
+    (
+        "wl_sales.returns.refund_blocked",
+        "A refund after completion is offered once the order was handed over.",
+    ),
+    ("wl_sales.returns.refunded", "Refunded so far"),
+    ("wl_sales.returns.ticket", "Complaint ticket"),
+    (
+        "wl_sales.returns.waiting_alert",
+        "A manager must approve this return before it is resolved. The person who recorded it cannot approve it.",
+    ),
+    (
+        "wl_sales.returns.reverse_hint",
+        "Only a refund made by the channel can be reversed. A credit note, a refund or a replacement is corrected with a new document.",
+    ),
+    (
+        "wl_sales.returns.ticket_comment",
+        "Return :number is resolved (:resolution, :value).",
+    ),
+    ("wl_sales.returns.category", "Complaint category"),
+    ("wl_sales.returns.party", "Responsible party"),
+    ("wl_sales.returns.category.cold", "Arrived cold"),
+    ("wl_sales.returns.category.late", "Late"),
+    ("wl_sales.returns.category.missing_item", "Missing item"),
+    ("wl_sales.returns.category.wrong_item", "Wrong item"),
+    ("wl_sales.returns.category.quality", "Quality"),
+    ("wl_sales.returns.category.service_not_delivered", "Service not delivered"),
+    ("wl_sales.returns.category.other", "Other"),
+    ("wl_sales.returns.party.business", "The business"),
+    ("wl_sales.returns.party.driver_or_rider", "Driver or rider"),
+    ("wl_sales.returns.party.aggregator", "Aggregator"),
+    ("wl_sales.returns.party.supplier", "Supplier"),
+    ("wl_sales.returns.party.customer", "Customer"),
+    (
+        "wl_sales.returns.problem.category",
+        "Choose a complaint category from the list.",
+    ),
+    (
+        "wl_sales.returns.problem.party",
+        "Choose a responsible party from the list.",
+    ),
+    (
+        "wl_sales.returns.problem.amounts_for_goods",
+        "A refund by amount is for a return with no goods.",
+    ),
+    (
+        "wl_sales.returns.problem.amount",
+        "Give an amount above zero, once for each line.",
+    ),
+    (
+        "wl_sales.returns.problem.cap_line",
+        "That is more than the line is worth less what earlier returns took.",
+    ),
+    (
+        "wl_sales.returns.problem.cap_order",
+        "That is more than the order was worth less what was already refunded.",
+    ),
+    (
+        "wl_sales.returns.problem.channel_order",
+        "Refunded by the channel is only for an order of an aggregator channel.",
+    ),
+    (
+        "wl_sales.returns.problem.channel_only",
+        "Only a refund made by the channel is resolved by the system.",
+    ),
+    (
+        "wl_sales.returns.problem.needs_approval",
+        "A refund above the limit needs a manager's approval first.",
+    ),
+    (
+        "wl_sales.returns.problem.state",
+        "The return is not open any more.",
+    ),
+    (
+        "wl_sales.returns.problem.pending",
+        "A manager is already asked to approve this return.",
+    ),
+    (
+        "wl_sales.returns.problem.no_policy",
+        "This refund needs a manager, but no approval policy exists for it.",
+    ),
     // The credit check an amendment re-runs.
     ("wl_sales.credit.hold_reason", "Credit limit exceeded by an amendment."),
     ("wl_sales.credit.task_title", "Order :number is on credit hold"),
@@ -231,6 +332,7 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
     ("wl_sales.settle.reason_amended", "order amended"),
     ("wl_sales.settle.reason_cancelled", "order line cancelled"),
     ("wl_sales.settle.reason_order_cancelled", "order cancelled"),
+    ("wl_sales.settle.reason_return", "refund after completion"),
     (
         "wl_sales.settle.amend_back_reason",
         "The payment link of the increase expired unpaid.",

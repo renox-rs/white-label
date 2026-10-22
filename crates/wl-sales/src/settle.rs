@@ -352,7 +352,7 @@ async fn amendment_invoice(
 }
 
 /// Asks wl-payments for the refund of `amount` fils from the order, once.
-async fn refund(
+pub(crate) async fn refund(
     state: &AppState,
     order: &SalesOrder,
     change: Option<i64>,

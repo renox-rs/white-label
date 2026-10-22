@@ -12,6 +12,7 @@
 //! | `POST /sales-orders/{id}/cancel` | `wl_sales.sales_order_cancel` | `sales_orders.cancel` (fields `reason`, `line_<id>_outcome`, `line_<id>_fee`, `line_<id>_waive`): the whole order |
 //! | `POST /sales-orders/{id}/cancel-line` | `wl_sales.sales_order_cancel_line` | `sales_orders.cancel` (fields `line_no`, `quantity`, `reason`, `outcome`, `fee`, `waive_fee`) |
 //! | `POST /sales-orders/{id}/cancel-remaining` | `wl_sales.sales_order_cancel_remaining` | `sales_orders.cancel` (fields `reason`, `line_<id>_outcome`, `line_<id>_fee`, `line_<id>_waive`) |
+//! | `POST /sales-orders/{id}/refund` | `wl_sales.sales_order_refund` | `returns.request` (fields `reason`, `category`, `party`, `ticket`, `line_<id>_refund`): a refund after completion with nothing returned (`SAL.ACL.06`) |
 //! | `POST /sales-orders/{id}/amend` | `wl_sales.sales_order_amend` | `sales_orders.amend` (fields `revision`, `reason`, `line_<id>_quantity`, `_price`, `_discount`, `add_item`, `add_quantity`, `add_price`) |
 //! | `GET /sales-orders/{id}/revisions/{revision}` | `wl_sales.sales_order_revision` | `sales_orders.view`: an earlier revision, read-only |
 //! | `POST /sales-orders/{id}/resend-link` | `wl_sales.sales_order_resend_link` | `sales_orders.amend` |
@@ -89,6 +90,12 @@ pub fn routes() -> Routes {
                 .post("/sales-orders/{id}/cancel-remaining", cancel_remaining)
                 .name("wl_sales.sales_order_cancel_remaining")
                 .require_permission(permissions::SALES_ORDERS_CANCEL),
+        )
+        .merge(
+            Routes::new()
+                .post("/sales-orders/{id}/refund", refund_order)
+                .name("wl_sales.sales_order_refund")
+                .require_permission(permissions::RETURNS_REQUEST),
         )
         .merge(
             Routes::new()
@@ -309,6 +316,11 @@ pub(crate) struct ShowPage {
     can_cancel_remaining: bool,
     can_cancel_order: bool,
     cancel_blocked: String,
+    can_refund: bool,
+    refund_blocked: String,
+    refunded: String,
+    category_options: Vec<[String; 2]>,
+    party_options: Vec<[String; 2]>,
     remaining_blocked: String,
     can_resolve_link: bool,
     expired_hint: String,
@@ -431,6 +443,10 @@ async fn show(
         .first()
         .map(|o| o[0].clone())
         .unwrap_or_default();
+    let handed_over = matches!(
+        order.status,
+        SalesOrderStatus::PartiallyFulfilled | SalesOrderStatus::Fulfilled | SalesOrderStatus::Closed
+    );
     let member =
         crate::loyalty_account::label_of(&state, order.loyalty_account_id, &lang.locale).await?;
     let redeem = crate::pages::redeem::view_of(
@@ -499,6 +515,25 @@ async fn show(
         ) && user.has_permission(permissions::SALES_ORDERS_CANCEL),
         can_cancel_remaining: order.status == SalesOrderStatus::PartiallyFulfilled
             && user.has_permission(permissions::SALES_ORDERS_CANCEL),
+        can_refund: handed_over && user.has_permission(permissions::RETURNS_REQUEST),
+        refund_blocked: if !handed_over && user.has_permission(permissions::RETURNS_REQUEST)
+            && matches!(order.status, SalesOrderStatus::Confirmed)
+        {
+            text(&lang, "returns.refund_blocked")
+        } else {
+            String::new()
+        },
+        refunded: money(order.refunded_amount),
+        category_options: crate::pages::sales_returns::options(
+            &lang,
+            "returns.category",
+            &config.complaint_categories,
+        ),
+        party_options: crate::pages::sales_returns::options(
+            &lang,
+            "returns.party",
+            &config.responsible_parties,
+        ),
         // `cancel` leaves the states before anything is handed over; once it
         // was, the page says why it is not offered.
         can_cancel_order: matches!(
@@ -738,6 +773,59 @@ async fn cancel_whole(
     }
     let outcome = cancel_lines::cancel_order(&state, &user, order.id, reason, choices).await?;
     cancel_answer(&lang, order.id, &outcome, "cancelling.order_done")
+}
+
+/// `POST /sales-orders/{id}/refund`: raises a *no goods* return from the
+/// completed order and resolves it with a refund (`SAL.ACL.06`). Fields:
+/// `reason`, `category`, `party`, `ticket` (optional) and, per line,
+/// `line_<id>_refund` (AED with VAT). Above the limit a manager approves.
+async fn refund_order(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    if get("category").is_empty() {
+        return Err(invalid("category", text(&lang, "returns.problem.complaint"), &form));
+    }
+    if get("party").is_empty() {
+        return Err(invalid("party", text(&lang, "returns.problem.complaint"), &form));
+    }
+    let mut new = crate::sales_returns::NewReturn::no_goods(order.subject())
+        .reason(get("reason"))
+        .complaint(get("category"), get("party"));
+    if !get("ticket").is_empty() {
+        let ticket: i64 = get("ticket")
+            .parse()
+            .map_err(|_| invalid("ticket", text(&lang, "orders.errors.number"), &form))?;
+        new = new.ticket(ticket);
+    }
+    let lines = SaleLine::of(&state.db, &order.subject()).await?;
+    for line in lines.iter().filter(|l| l.kind == KIND_ITEM) {
+        let key = format!("line_{}_refund", line.id);
+        if get(&key).is_empty() {
+            continue;
+        }
+        let amount = parse_fils(get(&key))
+            .filter(|a| *a > 0)
+            .ok_or_else(|| invalid(&key, text(&lang, "orders.errors.amount"), &form))?;
+        new = new.refund_line(line.id, amount);
+    }
+    let (toast, to) = match crate::sales_returns::refund_after_completion(&state, &user, new).await?
+    {
+        crate::sales_returns::RefundOutcome::Resolved(done) => {
+            (Toast::success(text(&lang, "returns.refund_done")), done.id)
+        }
+        crate::sales_returns::RefundOutcome::Waiting(created, _) => {
+            (Toast::info(text(&lang, "returns.refund_waiting")), created.id)
+        }
+        crate::sales_returns::RefundOutcome::Requested(created) => {
+            (Toast::info(text(&lang, "returns.refund_recorded")), created.id)
+        }
+    };
+    Ok((toast, Redirect::route("wl_sales.sales_return", &[&to])?).into_response())
 }
 
 /// `POST /sales-orders/{id}/cancel-line`: cancels open quantity of one line.

@@ -71,6 +71,16 @@
           <rx-checkbox :name="'line_' ~ line.id ~ '_waive'" :label="tx['cancelling.waive_fee']" :id="'cancel-order-remaining-waive-' ~ line.id"/>
         </rx-stack>
       </rx-action-sheet>
+      <rx-action-sheet rx-if="can_refund" id="refund-order" :label="tx['returns.refund']" :action="route('wl_sales.sales_order_refund', order.id)"
+                       :title="tx['returns.refund']" :description="tx['returns.refund_description']" :submit-label="tx['returns.refund']" icon="refresh-cw">
+        <rx-textarea name="reason" :label="tx['orders.reason']" id="refund-order-reason" required/>
+        <rx-select name="category" :label="tx['returns.category']" :options="category_options" :selected="''" :placeholder="tx['returns.category']" id="refund-order-category" required/>
+        <rx-select name="party" :label="tx['returns.party']" :options="party_options" :selected="''" :placeholder="tx['returns.party']" id="refund-order-party" required/>
+        <rx-stack rx-for="line in lines">
+          <rx-input :name="'line_' ~ line.id ~ '_refund'" :label="tx['returns.refund_line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ line.gross ~ ')'" :hint="tx['returns.refund_line_hint']" :id="'refund-order-line-' ~ line.id"/>
+        </rx-stack>
+        <rx-input name="ticket" :label="tx['returns.refund_ticket']" id="refund-order-ticket"/>
+      </rx-action-sheet>
       <template rx-if="can_resolve_link">
         <rx-confirm :id="'resend-link-' ~ order.id" :label="tx['settle.resend']" :action="route('wl_sales.sales_order_resend_link', order.id)" method="POST"
                     :title="tx['settle.resend']" :message="tx['settle.resend_message']" :confirm-label="tx['settle.resend']" :cancel-label="tx['cancel']" icon="refresh-cw"/>
@@ -86,6 +96,7 @@
     <rx-alert rx-if="amend_blocked" kind="info" :message="amend_blocked"/>
     <rx-alert rx-if="remaining_blocked" kind="info" :message="remaining_blocked"/>
     <rx-alert rx-if="cancel_blocked" kind="info" :message="cancel_blocked"/>
+    <rx-alert rx-if="refund_blocked" kind="info" :message="refund_blocked"/>
     <rx-alert rx-if="expired_hint" kind="warning" :message="expired_hint"/>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['counter.lines']" card>
       <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>
@@ -104,6 +115,7 @@
         <rx-entry :label="tx['counter.vat']" :value="vat"/>
         <rx-entry :label="tx['counter.total']" :value="gross"/>
         <rx-entry :label="tx['amend.revision']" :value="order.revision"/>
+        <rx-entry rx-if="order.refunded_amount" :label="tx['returns.refunded']" :value="refunded"/>
         <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
         <rx-entry :label="tx['orders.payment_mode']" :value="order.payment_mode"/>
         <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>

@@ -882,6 +882,12 @@ pub struct ReturnResolved {
     pub value: i64,
     /// The credit note issued for it, when there is one.
     pub credit_note: Option<i64>,
+    /// The complaint category of a *no goods* return (BL-SAL-14).
+    #[serde(default)]
+    pub complaint_category: Option<String>,
+    /// The responsible party of a *no goods* return (BL-SAL-14).
+    #[serde(default)]
+    pub responsible_party: Option<String>,
 }
 
 impl Event for ReturnResolved {}

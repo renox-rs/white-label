@@ -154,6 +154,9 @@ pub struct SalesOrder {
     pub payment_link: Option<String>,
     /// The promo code a use of which the order holds (BL-SAL-02, BL-SAL-03).
     pub promo_code_id: Option<i64>,
+    /// What the returns of the order refunded so far, in fils: the order's
+    /// *amount refunded* (BL-SAL-14). Never above what was paid for it.
+    pub refunded_amount: i64,
     /// Where it is; changed only by the machine.
     pub status: SalesOrderStatus,
     /// When the row was created.
