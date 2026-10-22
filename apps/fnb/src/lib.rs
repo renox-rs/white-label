@@ -11,6 +11,8 @@ pub mod catalogue;
 pub mod changes;
 pub mod close;
 pub mod cod;
+pub mod cold;
+pub mod cold_pages;
 mod cold_texts;
 mod events;
 pub mod failed;
@@ -53,6 +55,7 @@ pub use batch::{
 pub use catalogue::{Brand, MenuItem, Outlet, RecipeLine};
 pub use changes::{ChangeNote, ExpectedRefund};
 pub use cod::{CustomerFlag, PaymentOptions};
+pub use cold::{ColdUnit, HoldDecisionRecord, TemperatureReading};
 pub use order::{FnbOrder, FnbOrderStatus, SUBJECT_TYPE};
 pub use order_machine::OrderInput;
 pub use payout::{
@@ -162,6 +165,7 @@ impl Module for Fnb {
             .merge(payout_pages::routes())
             .merge(report_pages::routes())
             .merge(batch_pages::routes())
+            .merge(cold_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -181,13 +185,16 @@ impl Module for Fnb {
             .view_data::<report_pages::FailedPage>()
             .view_data::<report_pages::RiderFaultsPage>()
             .view_data::<batch_pages::BatchesPage>()
-            .view_data::<batch_pages::ShowBatchPage>();
+            .view_data::<batch_pages::ShowBatchPage>()
+            .view_data::<cold_pages::ColdUnitsPage>()
+            .view_data::<cold_pages::ShowColdUnitPage>();
         app.templates(|env| {
             for (name, source) in pages::VIEWS
                 .iter()
                 .chain(payout_pages::VIEWS)
                 .chain(report_pages::VIEWS)
                 .chain(batch_pages::VIEWS)
+                .chain(cold_pages::VIEWS)
             {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
@@ -217,7 +224,10 @@ impl Module for Fnb {
             .model::<BatchRecipeLine>()
             .model::<ProductionBatch>()
             .model::<BatchInput>()
-            .model::<BatchWastage>();
+            .model::<BatchWastage>()
+            .model::<ColdUnit>()
+            .model::<TemperatureReading>()
+            .model::<HoldDecisionRecord>();
         // The order and the ticket have machines of their own.
         renox::state_machine::register::<FnbOrder>();
         renox::state_machine::register::<KitchenTicket>();
@@ -241,6 +251,7 @@ impl Module for Fnb {
         events::register(app);
         pickup::register(app);
         batches::register(app);
+        cold::register(app);
         // In the app group of the staff sidebar; the labels are the host's
         // `nav.orders`, `nav.kitchen` and `nav.cod_customers` texts.
         app.nav(
@@ -298,6 +309,14 @@ impl Module for Fnb {
                 .group("nav.app")
                 .order(15)
                 .permission(permissions::PRODUCTION_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("fnb.cold_units", "nav.cold_units")
+                .icon("thermometer")
+                .group("nav.app")
+                .order(16)
+                .permission(permissions::TEMPERATURE_VIEW),
         );
         app.nav(
             "app",

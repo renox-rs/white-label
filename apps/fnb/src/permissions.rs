@@ -59,6 +59,10 @@ pub const PRODUCTION_MANAGE: &str = "production.manage";
 /// limit (`STK.ACL.02`), the kitchen manager. The name is the stock module's;
 /// the app only names the approval step of a batch discard with it.
 pub const STOCK_APPROVE: &str = "stock.approve";
+/// wl-inventory's `lots.release`: the chef (and the kitchen manager as the
+/// deputy) who decides the lines of a stock hold. The name is the stock
+/// module's; the app tells its holders when a reading puts a unit on hold.
+pub const LOTS_RELEASE: &str = "lots.release";
 /// See the cold units, their readings and holds (§4.6, `FNB.RUL.05`).
 pub const TEMPERATURE_VIEW: &str = "temperature.view";
 /// Record a temperature reading of a cold unit (`WRK.CHK.01`, `FNB.FSF.01`):
