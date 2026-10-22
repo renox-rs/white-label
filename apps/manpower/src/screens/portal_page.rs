@@ -428,10 +428,6 @@ pub(crate) async fn cancel(
 ) -> Result<Response> {
     let request = ManpowerRequest::find_or_404(&state.db, id).await?;
     own_approver(&state, &user, request.client()).await?;
-    let active = request_page::active_count(&state, id).await?;
-    if active > 0 {
-        return Err(refused(request_page::active_text(&lang, active)));
-    }
     requests::cancel(&state, &user, id, &field(&form, "reason")).await?;
     Ok(done(
         &lang,

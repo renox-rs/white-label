@@ -12,7 +12,7 @@ mod support;
 use manpower::{ManpowerRequest, RequestStatus};
 use manpower_screens_support::{
     AMAL, SUPERVISOR, browse, contract, day, demo, landed, no_raw_words, page, person, post, says,
-    scalar, words,
+    scalar, words, worker_of,
 };
 use renox::prelude::*;
 use renox::testing::TestApp;
@@ -252,12 +252,15 @@ async fn a_replacement_request_shows_the_rejection_that_opened_it() {
         "select max(id) from manpower_requests where kind = 'replacement'",
     )
     .await;
+    let former = worker_of(&app, deployment).await;
     let html = page(&app, AMAL, &format!("/manpower/requests/{replacement}")).await;
     says(
         &html,
         &[
-            "Replacement for ",
-            &format!(", ended by client rejection on {}", words(day(0))),
+            &format!(
+                "Replacement for {former}, ended by client rejection on {}",
+                words(day(0))
+            ),
             "The client wrote: Late three times this week",
             &format!("/manpower/deployments/{deployment}\""),
             "Open the deployment it stands in for",
@@ -266,7 +269,8 @@ async fn a_replacement_request_shows_the_rejection_that_opened_it() {
     no_raw_words(&html);
 }
 
-/// AC5: cancelling a request with an active deployment is refused with the
+/// AC5: cancelling a request with an active deployment is refused, by a plain
+/// post too (the rule is the service's), with the
 /// count (the button says it too); a request with none is cancelled and the
 /// page shows *Cancelled* and the reason.
 #[renox::test]
@@ -279,10 +283,7 @@ async fn cancel_is_refused_while_a_worker_is_on_site_and_works_without() {
         &app,
         AMAL,
         &format!("/manpower/requests/{busy}/cancel"),
-        &[
-            ("reason", "The client changed its mind"),
-            ("check_active", "1"),
-        ],
+        &[("reason", "The client changed its mind")],
     )
     .await;
     refused.assert_status(422);
@@ -292,12 +293,43 @@ async fn cancel_is_refused_while_a_worker_is_on_site_and_works_without() {
         refused.text()
     );
 
+    // With one worker ended, the singular is used.
+    let first = scalar(
+        &app,
+        &format!("select min(id) from manpower_deployments where request_id = {busy} and status = 'active'"),
+    )
+    .await;
+    post(
+        &app,
+        AMAL,
+        &format!("/manpower/deployments/{first}/end"),
+        &[("reason", "client_rejected"), ("note", "Not suitable")],
+    )
+    .await
+    .assert_status(303);
+    let one = post(
+        &app,
+        AMAL,
+        &format!("/manpower/requests/{busy}/cancel"),
+        &[("reason", "The client changed its mind")],
+    )
+    .await;
+    one.assert_status(422);
+    assert!(
+        one.text().contains("1 deployment is still active"),
+        "{}",
+        one.text()
+    );
+    assert!(!one.text().contains("1 deployments"), "{}", one.text());
+    let page_one = page(&app, AMAL, &format!("/manpower/requests/{busy}")).await;
+    says(&page_one, &["1 deployment is still active."]);
+
     let draft = new_request(&app, &day(60).to_string()).await;
     post(
         &app,
         AMAL,
         &format!("/manpower/requests/{draft}/cancel"),
-        &[("reason", "Ordered twice"), ("check_active", "1")],
+        &[("reason", "Ordered twice")],
     )
     .await
     .assert_status(303);

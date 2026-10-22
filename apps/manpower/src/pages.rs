@@ -877,10 +877,8 @@ async fn submit_request(
     }
 }
 
-/// `POST /manpower/requests/{id}/cancel`: `reason`. The sheet of the page also
-/// sends `check_active`: then a request with a deployment still `active` is
-/// refused with their count (BL-MPW-23); without it the service cancels the
-/// planned deployments and leaves the active ones on site, as it always did.
+/// `POST /manpower/requests/{id}/cancel`: `reason`. The service refuses while
+/// a deployment of the request is active (BL-MPW-23), whoever asks.
 async fn cancel_request(
     State(state): State<AppState>,
     user: AuthUser,
@@ -888,13 +886,6 @@ async fn cancel_request(
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    if flag(&form, "check_active") {
-        let request = ManpowerRequest::find_or_404(&state.db, id).await?;
-        let active = request_page::active_count(&state, id).await?;
-        if active > 0 && user.has_permission_in(permissions::REQUESTS_MANAGE, &request.scope()) {
-            return Err(refused(request_page::active_text(&lang, active)));
-        }
-    }
     requests::cancel(&state, &user, id, &field(&form, "reason")).await?;
     Ok(done(
         &lang,

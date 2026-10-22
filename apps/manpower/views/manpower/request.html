@@ -56,7 +56,6 @@
         <template rx-else>
           <rx-action-sheet id="cancel-request" :label="tx['action.cancel']" :action="route('manpower.request_cancel', id)"
                            :title="tx['action.cancel']" :description="tx['action.cancel_hint']" :submit-label="tx['action.cancel']" variant="plain-danger" icon="circle-x" danger>
-            <input type="hidden" name="check_active" value="1">
             <rx-textarea name="reason" :label="tx['form.cancel_reason']" id="cancel-request-reason" required/>
           </rx-action-sheet>
         </template>

@@ -225,16 +225,6 @@ pub(crate) async fn new_request_form(
     Ok(form)
 }
 
-/// How many deployments of request `id` are `active`: workers on site.
-pub(crate) async fn active_count(state: &AppState, id: i64) -> Result<usize> {
-    Ok(Deployment::query()
-        .where_(Deployment::REQUEST_ID.eq(id))
-        .where_(Deployment::STATUS.eq(DeploymentStatus::Active))
-        .get(&state.db)
-        .await?
-        .len())
-}
-
 /// `1 deployment is still active`, `2 deployments are still active`.
 pub(crate) fn active_text(lang: &Lang, active: usize) -> String {
     let key = if active == 1 {

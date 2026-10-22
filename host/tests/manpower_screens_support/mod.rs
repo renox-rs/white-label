@@ -108,6 +108,26 @@ pub async fn scalar(app: &TestApp, query: &str) -> i64 {
         .unwrap()
 }
 
+/// A text from a query.
+pub async fn text(app: &TestApp, query: &str) -> String {
+    renox::db::sql(query.to_owned())
+        .scalar::<String>(app.db())
+        .await
+        .unwrap()
+}
+
+/// The legal name of the worker of deployment `id`.
+pub async fn worker_of(app: &TestApp, id: i64) -> String {
+    text(
+        app,
+        &format!(
+            "select p.legal_name_en from manpower_deployments d join wl_hr_employees e on e.id = d.employee_id \
+             join wl_parties_parties p on p.id = e.party_id where d.id = {id}"
+        ),
+    )
+    .await
+}
+
 /// The id of the demo contract `reference` (`CC-DEMO-001`).
 pub async fn contract(app: &TestApp, reference: &str) -> i64 {
     scalar(
