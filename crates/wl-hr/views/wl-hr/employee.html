@@ -27,183 +27,267 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
-    <rx-card :title="tx['employees.details']">
-      <rx-infolist columns="2">
-        <rx-entry :label="tx['employees.number']" :value="employee.number" :placeholder="tx['none']"/>
-        <rx-entry :label="tx['employees.job_title']" :value="job_title" :placeholder="tx['none']"/>
-        <rx-entry :label="tx['employees.employment_type']" :value="employment_type"/>
-        <rx-entry :label="tx['employees.hire_date']" :value="employee.hire_date"/>
-        <rx-entry :label="tx['employees.scopes']" :value="scopes" :placeholder="tx['none']"/>
-      </rx-infolist>
-    </rx-card>
-    <template rx-if="settlements">
-      <rx-card :title="tx['settlement.settlements']">
-        <rx-table :rows="settlements" as="settlement" :key="settlement.id" :caption="tx['settlement.settlements']">
-          <rx-column :label="tx['settlement.reason']"><a href="{{ route('wl_hr.settlement', settlement.id) }}">{{ settlement.reason }}</a></rx-column>
-          <rx-column :label="tx['settlement.net']" hide-narrow>{{ settlement.net }}</rx-column>
-          <rx-column :label="tx['fields.status']"><rx-badge :kind="settlement.status_kind" :text="settlement.status"/></rx-column>
-        </rx-table>
-      </rx-card>
-    </template>
-    <template rx-if="pay_accounts or can_request_pay_account">
-      <rx-card :title="tx['pay_account.accounts']">
+    <rx-tabs id="employee-tabs" :items="tab_list" :selected="selected_tab" :label="employee.name">
+      <rx-tab-panel id="employee-tabs" key="overview" :selected="selected_tab == 'overview'">
         <rx-stack>
-          <rx-table :rows="pay_accounts" as="account" :key="account.id" :caption="tx['pay_account.accounts']" rx-if="pay_accounts">
-            <rx-column :label="tx['pay_account.number']"><a href="{{ route('wl_hr.pay_account', account.id) }}">{{ account.number }}</a></rx-column>
-            <rx-column :label="tx['pay_account.holder']" hide-narrow>{{ account.holder }}</rx-column>
-            <rx-column :label="tx['fields.status']"><rx-badge :kind="account.status_kind" :text="account.status"/></rx-column>
-          </rx-table>
-          <template rx-if="can_request_pay_account">
-            <rx-action-sheet id="request-pay-account" :label="tx['pay_account.request']" :action="route('wl_hr.pay_account_request', employee.id)"
-                             :title="tx['pay_account.request']" :description="tx['pay_account.request_hint']" :submit-label="tx['pay_account.request']" icon="plus">
-              <rx-select name="channel" :label="tx['pay_account.channel_label']" :options="pay_channels" :selected="pay_channel_selected"/>
-              <rx-input name="account_number" :label="tx['pay_account.account_number']" id="request-pay-account-number" required/>
-              <rx-input name="routing_code" :label="tx['pay_account.routing_code']" id="request-pay-account-routing" required/>
-              <rx-input name="holder_name" :label="tx['pay_account.holder']" id="request-pay-account-holder" required/>
-              <rx-textarea name="mismatch_explanation" :label="tx['pay_account.explanation']" id="request-pay-account-explanation"/>
-            </rx-action-sheet>
-          </template>
-        </rx-stack>
-      </rx-card>
-    </template>
-    <template rx-if="attempts or report or can_record_attempt">
-      <rx-card :title="tx['absence.title']">
-        <rx-stack>
-          <rx-infolist columns="2" rx-if="report">
-            <rx-entry :label="tx['exits.report_number']" :value="report"/>
+        <rx-card :title="tx['employees.details']">
+          <rx-infolist columns="2">
+            <rx-entry :label="tx['employees.number']" :value="employee.number" :placeholder="tx['none']"/>
+            <rx-entry :label="tx['employees.job_title']" :value="job_title" :placeholder="tx['none']"/>
+            <rx-entry :label="tx['employees.employment_type']" :value="employment_type"/>
+            <rx-entry :label="tx['employees.hire_date']" :value="employee.hire_date"/>
+            <rx-entry :label="tx['employees.scopes']" :value="scopes" :placeholder="tx['none']"/>
           </rx-infolist>
-          <rx-table :rows="attempts" as="attempt" :key="attempt.date ~ attempt.method" :caption="tx['absence.attempts']" rx-if="attempts">
-            <rx-column :label="tx['absence.date']">{{ attempt.date }}</rx-column>
-            <rx-column :label="tx['absence.method']">{{ attempt.method }}</rx-column>
-            <rx-column :label="tx['absence.outcome']">{{ attempt.outcome }}</rx-column>
-            <rx-column :label="tx['absence.by']" hide-narrow>{{ attempt.by }}</rx-column>
-            <rx-column :label="tx['absence.note']" hide-narrow>{{ attempt.note }}</rx-column>
-          </rx-table>
-          <template rx-if="can_record_attempt">
-            <rx-action-sheet id="record-attempt" :label="tx['absence.record']" :action="route('wl_hr.contact_attempt', employee.id)"
-                             :title="tx['absence.record']" :submit-label="tx['absence.submit']" icon="phone">
-              <rx-input name="attempted_on" type="date" :label="tx['absence.date']" :value="today" id="record-attempt-date"/>
-              <rx-input name="method" :label="tx['absence.method']" id="record-attempt-method" required/>
-              <rx-select name="outcome" :label="tx['absence.outcome']" :options="outcomes" :selected="outcome_selected"/>
-              <rx-textarea name="note" :label="tx['absence.note']" id="record-attempt-note"/>
-            </rx-action-sheet>
-          </template>
-        </rx-stack>
-      </rx-card>
-    </template>
-    <template rx-if="leaves or can_record_sick">
-      <rx-card :title="tx['sick.title']">
-        <rx-stack>
-          <rx-table :rows="leaves" as="leave" :key="leave.id" :caption="tx['sick.title']" rx-if="leaves">
-            <rx-column :label="tx['sick.type']">{{ leave.leave_type }}</rx-column>
-            <rx-column :label="tx['sick.period']">{{ leave.period }}</rx-column>
-            <rx-column :label="tx['fields.status']">{{ leave.status }}</rx-column>
-            <rx-column :label="tx['sick.unpaid']" hide-narrow>{{ leave.unpaid }}</rx-column>
-            <rx-column :label="tx['sick.note']" hide-narrow>{{ leave.note }}</rx-column>
-          </rx-table>
-          <template rx-if="can_record_sick">
-            <rx-action-sheet id="record-sick" :label="tx['sick.record']" :action="route('wl_hr.sick_leave', employee.id)"
-                             :title="tx['sick.record']" :submit-label="tx['sick.submit']" icon="clipboard-list">
-              <rx-input name="from_date" type="date" :label="tx['sick.from']" :value="today" id="record-sick-from"/>
-              <rx-input name="to_date" type="date" :label="tx['sick.to']" :value="today" id="record-sick-to"/>
-            </rx-action-sheet>
-          </template>
-          <template rx-if="note_requests">
-            <rx-action-sheet id="attach-sick-note" :label="tx['sick.attach']" :action="route('wl_hr.sick_note', note_selected)"
-                             :title="tx['sick.attach']" :submit-label="tx['sick.attach_submit']" icon="paperclip">
-              <rx-input name="document" type="number" :label="tx['sick.document']" id="attach-sick-note-document" required/>
-            </rx-action-sheet>
-          </template>
-        </rx-stack>
-      </rx-card>
-    </template>
-    <template rx-if="pending_exit or can_request_exit">
-      <rx-card :title="tx['exits.title']">
-        <rx-stack>
-          <template rx-if="pending_exit">
-            <rx-badge kind="warning" :text="tx['exits.pending'] ~ ': ' ~ pending_exit.action"/>
-            <rx-infolist columns="2">
-              <rx-entry :label="tx['exits.pending_by']" :value="pending_exit.requested_by"/>
-              <rx-entry :label="tx['exits.reason']" :value="pending_exit.reason"/>
-            </rx-infolist>
-          </template>
-          <template rx-if="can_request_exit">
-            <rx-action-sheet id="request-exit" :label="tx['exits.request']" :action="route('wl_hr.exit_request', employee.id)"
-                             :title="tx['exits.request']" :submit-label="tx['exits.submit']" icon="log-out">
-              <rx-select name="transition" :label="tx['exits.action']" :options="exit_actions" :selected="exit_selected" required/>
-              <rx-textarea name="reason" :label="tx['exits.reason']" id="request-exit-reason" required/>
-              <rx-input name="agreement" :label="tx['exits.agreement']" id="request-exit-agreement"/>
-              <rx-input name="report_number" :label="tx['exits.report_number']" id="request-exit-report-number"/>
-              <rx-input name="report_date" type="date" :label="tx['exits.report_date']" id="request-exit-report-date"/>
-              <rx-input name="report_file" type="number" :label="tx['exits.report_file']" id="request-exit-report-file"/>
-              <rx-input name="reference" :label="tx['exits.reference']" id="request-exit-reference"/>
-              <rx-input name="return_date" type="date" :label="tx['exits.return_date']" id="request-exit-return-date"/>
-              <rx-input name="death_certificate" :label="tx['exits.death_document']" id="request-exit-death-certificate"/>
-              <rx-input name="authority_notice" :label="tx['exits.authority_notice']" id="request-exit-authority-notice"/>
-              <rx-show-when field="transition" values="record_death">
-                <rx-input name="death_date" type="date" :label="tx['exits.death_date']" id="request-exit-death-date" required/>
-              </rx-show-when>
-            </rx-action-sheet>
-          </template>
-        </rx-stack>
-      </rx-card>
-    </template>
-    <rx-card rx-for="onboarding in onboardings" :title="tx['onboarding.title'] ~ ' · ' ~ onboarding.started_on">
-      <rx-stack>
-        <rx-infolist columns="4">
-          <rx-entry :label="tx['onboarding.trigger']" :value="onboarding.trigger"/>
-          <rx-entry :label="tx['fields.status']" :value="onboarding.status"/>
-          <rx-entry :label="tx['employees.progress']" :value="onboarding.progress"/>
-          <rx-entry :label="tx['onboarding.reason']" :value="onboarding.cancel_reason" :placeholder="tx['none']"/>
-        </rx-infolist>
-        <template rx-if="onboarding.can_cancel">
-          <rx-action-sheet :id="'cancel-onboarding-' ~ onboarding.id" :label="tx['onboarding.cancel']" :action="route('wl_hr.onboarding_cancel', onboarding.id)"
-                           :title="tx['onboarding.cancel_title']" :submit-label="tx['onboarding.cancel']" icon="x" danger>
-            <rx-textarea name="reason" :label="tx['onboarding.reason']" :id="'cancel-onboarding-reason-' ~ onboarding.id" required/>
-          </rx-action-sheet>
+        </rx-card>
+        <template rx-if="settlements">
+          <rx-card :title="tx['settlement.settlements']">
+            <rx-table :rows="settlements" as="settlement" :key="settlement.id" :caption="tx['settlement.settlements']">
+              <rx-column :label="tx['settlement.reason']"><a href="{{ route('wl_hr.settlement', settlement.id) }}">{{ settlement.reason }}</a></rx-column>
+              <rx-column :label="tx['settlement.net']" hide-narrow>{{ settlement.net }}</rx-column>
+              <rx-column :label="tx['fields.status']"><rx-badge :kind="settlement.status_kind" :text="settlement.status"/></rx-column>
+            </rx-table>
+          </rx-card>
         </template>
-        <rx-table :rows="onboarding.steps" as="step" :key="step.id" :caption="tx['templates.steps']">
-          <rx-column :label="tx['steps.title']">{{ step.title }}</rx-column>
-          <rx-column :label="tx['templates.kind']" hide-narrow>{{ step.detail }}</rx-column>
-          <rx-column :label="tx['steps.assignees']" hide-narrow>{{ step.owner }}: {{ step.assignees }}</rx-column>
-          <rx-column :label="tx['steps.due']">{{ step.due }}</rx-column>
-          <rx-column :label="tx['fields.status']"><rx-badge :kind="step.status_kind" :text="step.status"/></rx-column>
-          <rx-column :label="tx['steps.done_by']" hide-narrow>{{ step.done }}</rx-column>
-          <rx-row-actions>
-            <template rx-if="step.can_mark_done">
-              <rx-action-sheet :id="'done-step-' ~ step.id" :label="tx['steps.mark_done']" :action="route('wl_hr.step_done', step.id)"
-                               :title="tx['steps.mark_done_title']" :submit-label="tx['steps.mark_done']" icon="check">
-                <rx-textarea name="note" :label="tx['steps.note']" :id="'done-step-note-' ~ step.id"/>
-                <rx-input name="document" type="number" :label="tx['steps.document']" :id="'done-step-document-' ~ step.id"/>
+        <template rx-if="attempts or report or can_record_attempt">
+          <rx-card :title="tx['absence.title']">
+            <rx-stack>
+              <rx-infolist columns="2" rx-if="report">
+                <rx-entry :label="tx['exits.report_number']" :value="report"/>
+              </rx-infolist>
+              <rx-table :rows="attempts" as="attempt" :key="attempt.date ~ attempt.method" :caption="tx['absence.attempts']" rx-if="attempts">
+                <rx-column :label="tx['absence.date']">{{ attempt.date }}</rx-column>
+                <rx-column :label="tx['absence.method']">{{ attempt.method }}</rx-column>
+                <rx-column :label="tx['absence.outcome']">{{ attempt.outcome }}</rx-column>
+                <rx-column :label="tx['absence.by']" hide-narrow>{{ attempt.by }}</rx-column>
+                <rx-column :label="tx['absence.note']" hide-narrow>{{ attempt.note }}</rx-column>
+              </rx-table>
+              <template rx-if="can_record_attempt">
+                <rx-action-sheet id="record-attempt" :label="tx['absence.record']" :action="route('wl_hr.contact_attempt', employee.id)"
+                                 :title="tx['absence.record']" :submit-label="tx['absence.submit']" icon="phone">
+                  <rx-input name="attempted_on" type="date" :label="tx['absence.date']" :value="today" id="record-attempt-date"/>
+                  <rx-input name="method" :label="tx['absence.method']" id="record-attempt-method" required/>
+                  <rx-select name="outcome" :label="tx['absence.outcome']" :options="outcomes" :selected="outcome_selected"/>
+                  <rx-textarea name="note" :label="tx['absence.note']" id="record-attempt-note"/>
+                </rx-action-sheet>
+              </template>
+            </rx-stack>
+          </rx-card>
+        </template>
+        <template rx-if="leaves or can_record_sick">
+          <rx-card :title="tx['sick.title']">
+            <rx-stack>
+              <rx-table :rows="leaves" as="leave" :key="leave.id" :caption="tx['sick.title']" rx-if="leaves">
+                <rx-column :label="tx['sick.type']">{{ leave.leave_type }}</rx-column>
+                <rx-column :label="tx['sick.period']">{{ leave.period }}</rx-column>
+                <rx-column :label="tx['fields.status']">{{ leave.status }}</rx-column>
+                <rx-column :label="tx['sick.unpaid']" hide-narrow>{{ leave.unpaid }}</rx-column>
+                <rx-column :label="tx['sick.note']" hide-narrow>{{ leave.note }}</rx-column>
+              </rx-table>
+              <template rx-if="can_record_sick">
+                <rx-action-sheet id="record-sick" :label="tx['sick.record']" :action="route('wl_hr.sick_leave', employee.id)"
+                                 :title="tx['sick.record']" :submit-label="tx['sick.submit']" icon="clipboard-list">
+                  <rx-input name="from_date" type="date" :label="tx['sick.from']" :value="today" id="record-sick-from"/>
+                  <rx-input name="to_date" type="date" :label="tx['sick.to']" :value="today" id="record-sick-to"/>
+                </rx-action-sheet>
+              </template>
+              <template rx-if="note_requests">
+                <rx-action-sheet id="attach-sick-note" :label="tx['sick.attach']" :action="route('wl_hr.sick_note', note_selected)"
+                                 :title="tx['sick.attach']" :submit-label="tx['sick.attach_submit']" icon="paperclip">
+                  <rx-input name="document" type="number" :label="tx['sick.document']" id="attach-sick-note-document" required/>
+                </rx-action-sheet>
+              </template>
+            </rx-stack>
+          </rx-card>
+        </template>
+        <template rx-if="pending_exit or can_request_exit">
+          <rx-card :title="tx['exits.title']">
+            <rx-stack>
+              <template rx-if="pending_exit">
+                <rx-badge kind="warning" :text="tx['exits.pending'] ~ ': ' ~ pending_exit.action"/>
+                <rx-infolist columns="2">
+                  <rx-entry :label="tx['exits.pending_by']" :value="pending_exit.requested_by"/>
+                  <rx-entry :label="tx['exits.reason']" :value="pending_exit.reason"/>
+                </rx-infolist>
+              </template>
+              <template rx-if="can_request_exit">
+                <rx-action-sheet id="request-exit" :label="tx['exits.request']" :action="route('wl_hr.exit_request', employee.id)"
+                                 :title="tx['exits.request']" :submit-label="tx['exits.submit']" icon="log-out">
+                  <rx-select name="transition" :label="tx['exits.action']" :options="exit_actions" :selected="exit_selected" required/>
+                  <rx-textarea name="reason" :label="tx['exits.reason']" id="request-exit-reason" required/>
+                  <rx-input name="agreement" :label="tx['exits.agreement']" id="request-exit-agreement"/>
+                  <rx-input name="report_number" :label="tx['exits.report_number']" id="request-exit-report-number"/>
+                  <rx-input name="report_date" type="date" :label="tx['exits.report_date']" id="request-exit-report-date"/>
+                  <rx-input name="report_file" type="number" :label="tx['exits.report_file']" id="request-exit-report-file"/>
+                  <rx-input name="reference" :label="tx['exits.reference']" id="request-exit-reference"/>
+                  <rx-input name="return_date" type="date" :label="tx['exits.return_date']" id="request-exit-return-date"/>
+                  <rx-input name="death_certificate" :label="tx['exits.death_document']" id="request-exit-death-certificate"/>
+                  <rx-input name="authority_notice" :label="tx['exits.authority_notice']" id="request-exit-authority-notice"/>
+                  <rx-show-when field="transition" values="record_death">
+                    <rx-input name="death_date" type="date" :label="tx['exits.death_date']" id="request-exit-death-date" required/>
+                  </rx-show-when>
+                </rx-action-sheet>
+              </template>
+            </rx-stack>
+          </rx-card>
+        </template>
+        <rx-card rx-for="onboarding in onboardings" :title="tx['onboarding.title'] ~ ' · ' ~ onboarding.started_on">
+          <rx-stack>
+            <rx-infolist columns="4">
+              <rx-entry :label="tx['onboarding.trigger']" :value="onboarding.trigger"/>
+              <rx-entry :label="tx['fields.status']" :value="onboarding.status"/>
+              <rx-entry :label="tx['employees.progress']" :value="onboarding.progress"/>
+              <rx-entry :label="tx['onboarding.reason']" :value="onboarding.cancel_reason" :placeholder="tx['none']"/>
+            </rx-infolist>
+            <template rx-if="onboarding.can_cancel">
+              <rx-action-sheet :id="'cancel-onboarding-' ~ onboarding.id" :label="tx['onboarding.cancel']" :action="route('wl_hr.onboarding_cancel', onboarding.id)"
+                               :title="tx['onboarding.cancel_title']" :submit-label="tx['onboarding.cancel']" icon="x" danger>
+                <rx-textarea name="reason" :label="tx['onboarding.reason']" :id="'cancel-onboarding-reason-' ~ onboarding.id" required/>
               </rx-action-sheet>
             </template>
-            <template rx-if="step.can_in_person">
-              <rx-action-sheet :id="'in-person-step-' ~ step.id" :label="tx['steps.in_person']" :action="route('wl_hr.step_in_person', step.id)"
-                               :title="tx['steps.in_person_title']" :description="tx['steps.in_person_description']" :submit-label="tx['steps.in_person']" icon="pen-line">
-                <rx-textarea name="signature" :label="tx['steps.signature']" :id="'in-person-step-signature-' ~ step.id" required/>
-                <rx-textarea name="note" :label="tx['steps.note']" :id="'in-person-step-note-' ~ step.id"/>
-              </rx-action-sheet>
+            <rx-table :rows="onboarding.steps" as="step" :key="step.id" :caption="tx['templates.steps']">
+              <rx-column :label="tx['steps.title']">{{ step.title }}</rx-column>
+              <rx-column :label="tx['templates.kind']" hide-narrow>{{ step.detail }}</rx-column>
+              <rx-column :label="tx['steps.assignees']" hide-narrow>{{ step.owner }}: {{ step.assignees }}</rx-column>
+              <rx-column :label="tx['steps.due']">{{ step.due }}</rx-column>
+              <rx-column :label="tx['fields.status']"><rx-badge :kind="step.status_kind" :text="step.status"/></rx-column>
+              <rx-column :label="tx['steps.done_by']" hide-narrow>{{ step.done }}</rx-column>
+              <rx-row-actions>
+                <template rx-if="step.can_mark_done">
+                  <rx-action-sheet :id="'done-step-' ~ step.id" :label="tx['steps.mark_done']" :action="route('wl_hr.step_done', step.id)"
+                                   :title="tx['steps.mark_done_title']" :submit-label="tx['steps.mark_done']" icon="check">
+                    <rx-textarea name="note" :label="tx['steps.note']" :id="'done-step-note-' ~ step.id"/>
+                    <rx-input name="document" type="number" :label="tx['steps.document']" :id="'done-step-document-' ~ step.id"/>
+                  </rx-action-sheet>
+                </template>
+                <template rx-if="step.can_in_person">
+                  <rx-action-sheet :id="'in-person-step-' ~ step.id" :label="tx['steps.in_person']" :action="route('wl_hr.step_in_person', step.id)"
+                                   :title="tx['steps.in_person_title']" :description="tx['steps.in_person_description']" :submit-label="tx['steps.in_person']" icon="pen-line">
+                    <rx-textarea name="signature" :label="tx['steps.signature']" :id="'in-person-step-signature-' ~ step.id" required/>
+                    <rx-textarea name="note" :label="tx['steps.note']" :id="'in-person-step-note-' ~ step.id"/>
+                  </rx-action-sheet>
+                </template>
+                <template rx-if="step.can_checklist">
+                  <rx-confirm :id="'checklist-step-' ~ step.id" :label="tx['steps.start_checklist']" :action="route('wl_hr.step_checklist', step.id)" method="POST"
+                              :title="tx['steps.start_checklist']" :message="step.title" :confirm-label="tx['steps.start_checklist']" :cancel-label="tx['cancel']" icon="list-checks"/>
+                </template>
+                <template rx-if="step.can_waive">
+                  <rx-action-sheet :id="'waive-step-' ~ step.id" :label="tx['steps.waive']" :action="route('wl_hr.step_waive', step.id)"
+                                   :title="tx['steps.waive']" :submit-label="tx['steps.waive']" icon="ban">
+                    <rx-textarea name="reason" :label="tx['steps.reason']" :id="'waive-step-reason-' ~ step.id" required/>
+                  </rx-action-sheet>
+                </template>
+                <template rx-if="step.can_reopen">
+                  <rx-action-sheet :id="'reopen-step-' ~ step.id" :label="tx['steps.reopen']" :action="route('wl_hr.step_reopen', step.id)"
+                                   :title="tx['steps.reopen']" :submit-label="tx['steps.reopen']" icon="rotate-ccw">
+                    <rx-textarea name="reason" :label="tx['steps.reason']" :id="'reopen-step-reason-' ~ step.id" required/>
+                  </rx-action-sheet>
+                </template>
+              </rx-row-actions>
+            </rx-table>
+          </rx-stack>
+        </rx-card>
+        <rx-empty rx-if="staff and not onboardings" :title="tx['onboarding.empty']" icon="list-checks"/>
+        </rx-stack>
+      </rx-tab-panel>
+      <template rx-if="show_documents">
+        <rx-tab-panel id="employee-tabs" key="documents">
+          <rx-stack>
+            <rx-row>
+              <rx-link-button :href="documents_url" :label="tx['documents.open_all']" icon="file-text"/>
+            </rx-row>
+            <rx-table :rows="documents" as="document" :key="document.url" :caption="tx['tabs.documents']" card>
+              <rx-column :label="tx['documents.kind']"><a href="{{ document.url }}">{{ document.kind }}</a></rx-column>
+              <rx-column :label="tx['documents.number']" hide-narrow>{{ document.number }}</rx-column>
+              <rx-column :label="tx['documents.valid_to']">{{ document.valid_to }}</rx-column>
+              <rx-column :label="tx['documents.validity']"><rx-badge :kind="document.validity_kind" :text="document.validity"/></rx-column>
+              <rx-column :label="tx['documents.role']" hide-narrow>{{ document.role }}</rx-column>
+              <rx-slot name="empty"><rx-empty :title="tx['documents.empty']" :message="tx['documents.empty_hint']" icon="file"/></rx-slot>
+            </rx-table>
+          </rx-stack>
+        </rx-tab-panel>
+      </template>
+      <template rx-if="show_deployments">
+        <rx-tab-panel id="employee-tabs" key="deployments">
+          <rx-table :rows="deployments" as="deployment" :key="deployment.url" :caption="tx['tabs.deployments']" card>
+            <rx-column :label="tx['deployments.client']"><a href="{{ deployment.url }}">{{ deployment.client }}</a></rx-column>
+            <rx-column :label="tx['deployments.site']" hide-narrow>{{ deployment.site }}</rx-column>
+            <rx-column :label="tx['deployments.role']" hide-narrow>{{ deployment.role }}</rx-column>
+            <rx-column :label="tx['deployments.period']">{{ deployment.period }}</rx-column>
+            <rx-column :label="tx['fields.status']"><rx-badge :kind="deployment.status_kind" :text="deployment.status"/></rx-column>
+            <rx-slot name="empty"><rx-empty :title="tx['deployments.bench']" :message="tx['deployments.bench_hint']" icon="users"/></rx-slot>
+          </rx-table>
+        </rx-tab-panel>
+      </template>
+      <template rx-if="show_timesheets">
+        <rx-tab-panel id="employee-tabs" key="timesheets">
+          <rx-table :rows="timesheets" as="sheet" :key="sheet.url" :caption="tx['tabs.timesheets']" card>
+            <rx-column :label="tx['sheets.month']"><a href="{{ sheet.url }}">{{ sheet.month }}</a></rx-column>
+            <rx-column :label="tx['sheets.hours']">{{ sheet.hours }}</rx-column>
+            <rx-column :label="tx['sheets.kind']" hide-narrow>{{ sheet.kind }}</rx-column>
+            <rx-column :label="tx['fields.status']"><rx-badge :kind="sheet.status_kind" :text="sheet.status"/></rx-column>
+            <rx-slot name="empty"><rx-empty :title="tx['sheets.empty']" icon="clock"/></rx-slot>
+          </rx-table>
+        </rx-tab-panel>
+      </template>
+      <template rx-if="show_salary">
+        <rx-tab-panel id="employee-tabs" key="salary" :selected="selected_tab == 'salary'">
+          <rx-stack>
+            <template rx-if="salary.revealed">
+              <rx-card :title="tx['tabs.salary']">
+                <rx-alert rx-if="salary.none" kind="info" :message="tx['salary.none']"/>
+                <rx-infolist columns="2" rx-if="not salary.none">
+                  <rx-entry :label="tx['salary.since']" :value="salary.since"/>
+                  <rx-entry :label="tx['salary.basic']" :value="salary.basic"/>
+                  <rx-entry :label="tx['salary.housing']" :value="salary.housing"/>
+                  <rx-entry :label="tx['salary.transport']" :value="salary.transport"/>
+                  <rx-entry :label="tx['salary.other']" :value="salary.other"/>
+                  <rx-entry :label="tx['salary.fixed']" :value="salary.fixed"/>
+                  <rx-entry :label="tx['salary.hourly']" :value="salary.hourly"/>
+                </rx-infolist>
+              </rx-card>
             </template>
-            <template rx-if="step.can_checklist">
-              <rx-confirm :id="'checklist-step-' ~ step.id" :label="tx['steps.start_checklist']" :action="route('wl_hr.step_checklist', step.id)" method="POST"
-                          :title="tx['steps.start_checklist']" :message="step.title" :confirm-label="tx['steps.start_checklist']" :cancel-label="tx['cancel']" icon="list-checks"/>
+            <template rx-if="not salary.revealed">
+              <rx-card :title="tx['tabs.salary']">
+                <rx-stack>
+                  <rx-alert kind="info" :message="tx['salary.hidden']"/>
+                  <rx-row>
+                    <rx-link-button :href="route('wl_hr.employee', employee.id) ~ '?reveal=salary'" :label="tx['salary.reveal']" icon="eye"/>
+                  </rx-row>
+                </rx-stack>
+              </rx-card>
             </template>
-            <template rx-if="step.can_waive">
-              <rx-action-sheet :id="'waive-step-' ~ step.id" :label="tx['steps.waive']" :action="route('wl_hr.step_waive', step.id)"
-                               :title="tx['steps.waive']" :submit-label="tx['steps.waive']" icon="ban">
-                <rx-textarea name="reason" :label="tx['steps.reason']" :id="'waive-step-reason-' ~ step.id" required/>
-              </rx-action-sheet>
-            </template>
-            <template rx-if="step.can_reopen">
-              <rx-action-sheet :id="'reopen-step-' ~ step.id" :label="tx['steps.reopen']" :action="route('wl_hr.step_reopen', step.id)"
-                               :title="tx['steps.reopen']" :submit-label="tx['steps.reopen']" icon="rotate-ccw">
-                <rx-textarea name="reason" :label="tx['steps.reason']" :id="'reopen-step-reason-' ~ step.id" required/>
-              </rx-action-sheet>
-            </template>
-          </rx-row-actions>
-        </rx-table>
-      </rx-stack>
-    </rx-card>
-    <rx-empty rx-if="not onboardings" :title="tx['onboarding.empty']" icon="list-checks"/>
+          </rx-stack>
+        </rx-tab-panel>
+      </template>
+      <template rx-if="show_pay_accounts">
+        <rx-tab-panel id="employee-tabs" key="pay_accounts">
+          <rx-stack>
+          <template rx-if="pay_accounts or can_request_pay_account">
+            <rx-card :title="tx['pay_account.accounts']">
+              <rx-stack>
+                <rx-table :rows="pay_accounts" as="account" :key="account.id" :caption="tx['pay_account.accounts']" rx-if="pay_accounts">
+                  <rx-column :label="tx['pay_account.number']"><a href="{{ route('wl_hr.pay_account', account.id) }}">{{ account.number }}</a></rx-column>
+                  <rx-column :label="tx['pay_account.bank']" hide-narrow>{{ account.channel }} {{ account.routing_code }}</rx-column>
+                <rx-column :label="tx['pay_account.holder']" hide-narrow>{{ account.holder }}</rx-column>
+                  <rx-column :label="tx['fields.status']"><rx-badge :kind="account.status_kind" :text="account.status"/></rx-column>
+                <rx-column :label="tx['pay_account.cooling_text']">{{ account.cooling_text }}</rx-column>
+                </rx-table>
+                <template rx-if="can_request_pay_account">
+                  <rx-action-sheet id="request-pay-account" :label="tx['pay_account.request']" :action="route('wl_hr.pay_account_request', employee.id)"
+                                   :title="tx['pay_account.request']" :description="tx['pay_account.request_hint']" :submit-label="tx['pay_account.request']" icon="plus">
+                    <rx-select name="channel" :label="tx['pay_account.channel_label']" :options="pay_channels" :selected="pay_channel_selected"/>
+                    <rx-input name="account_number" :label="tx['pay_account.account_number']" id="request-pay-account-number" required/>
+                    <rx-input name="routing_code" :label="tx['pay_account.routing_code']" id="request-pay-account-routing" required/>
+                    <rx-input name="holder_name" :label="tx['pay_account.holder']" id="request-pay-account-holder" required/>
+                    <rx-textarea name="mismatch_explanation" :label="tx['pay_account.explanation']" id="request-pay-account-explanation"/>
+                  </rx-action-sheet>
+                </template>
+              </rx-stack>
+            </rx-card>
+          </template>
+          </rx-stack>
+        </rx-tab-panel>
+      </template>
+    </rx-tabs>
   </rx-stack>
 </rx-page>

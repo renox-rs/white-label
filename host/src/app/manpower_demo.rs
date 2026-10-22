@@ -900,6 +900,8 @@ impl Seed {
                 approved_by,
                 approved_on: approved_by.map(|_| day(-30)),
                 cooling_days: 5,
+                // Ravi's account is cooling: it may be used from in 3 days.
+                cooling_ends_on: (status == PayAccountStatus::Cooling).then(|| day(3)),
                 status,
                 ..PayAccount::default()
             };

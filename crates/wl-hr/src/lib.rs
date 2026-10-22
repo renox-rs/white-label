@@ -144,6 +144,9 @@ const VIEWS: &[(&str, &str)] = &[
 pub mod permissions {
     /// See employee records in scope.
     pub const EMPLOYEES_VIEW: &str = "employees.view";
+    /// See salary, pay accounts and the other sensitive fields of an employee;
+    /// each view is audited (`HRM.ACL.03`).
+    pub const EMPLOYEES_SENSITIVE_VIEW: &str = "employees.sensitive.view";
     /// Create and edit employees; activate them.
     pub const EMPLOYEES_MANAGE: &str = "employees.manage";
     /// See onboardings in scope.

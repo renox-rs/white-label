@@ -229,6 +229,9 @@ pub fn grant_roles(client_app: &str) {
             wl_attendance::permissions::TIMESHEETS_SUBMIT,
             wl_attendance::permissions::TIMESHEETS_APPROVE_ON_BEHALF,
             wl_attendance::permissions::TIMESHEETS_ADJUST,
+            // The worker's page: the deployments and timesheets of the
+            // clients they look after (#511); no salary, no pay accounts.
+            wl_hr::permissions::EMPLOYEES_VIEW,
         ],
     );
     // The accountant sees the rate cards (`MPW.ACL.04`): the rates are for the
@@ -266,7 +269,7 @@ pub fn grant_roles(client_app: &str) {
 /// alert's forecast and the confidential tickets. The admin keeps all of it and
 /// stays the fallback of every `[md, admin]` approval step; segregation of
 /// duties applies to both (never the requester).
-const MD_PERMISSIONS: [&str; 33] = [
+const MD_PERMISSIONS: [&str; 34] = [
     wl_kernel::permissions::APPROVALS_VIEW,
     wl_kernel::permissions::LATE_ENTRIES_APPROVE,
     wl_parties::permissions::VIEW,
@@ -282,6 +285,7 @@ const MD_PERMISSIONS: [&str; 33] = [
     wl_invoicing::permissions::RATE_CARDS_VIEW,
     wl_invoicing::permissions::RATE_CARDS_APPROVE,
     wl_hr::permissions::EMPLOYEES_VIEW,
+    wl_hr::permissions::EMPLOYEES_SENSITIVE_VIEW,
     wl_hr::permissions::EMPLOYEES_EXIT_APPROVE,
     wl_hr::permissions::PAY_ACCOUNTS_APPROVE,
     wl_hr::permissions::PAYROLL_VIEW,
