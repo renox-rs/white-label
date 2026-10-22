@@ -12,8 +12,8 @@ mod manpower_screens_support;
 mod support;
 
 use manpower_screens_support::{
-    ADMIN, AMAL, HR, SUPERVISOR, browse, day, demo, employee, fits_a_phone, no_raw_words, page,
-    person, post, says, scalar, visible,
+    ADMIN, AMAL, HR, SUPERVISOR, browse, cells_of_row, day, demo, employee, fits_a_phone,
+    no_raw_words, page, person, post, says, scalar, visible, words,
 };
 use renox::prelude::*;
 use renox::testing::TestApp;
@@ -163,6 +163,14 @@ async fn submitting_a_draft_with_too_many_hours_is_refused_with_both_figures() {
     assert!(sent.status.is_success() || sent.status.is_redirection());
     let html = page(&app, AMAL, &path(id)).await;
     says(&html, &["Submitted", "Amal Youssef"]);
+    // The history row of the submit: when (today, with the time), what, who.
+    let submitted = cells_of_row(&html, "Amal Youssef");
+    assert!(
+        submitted[0].starts_with(&words(day(0))),
+        "when: {submitted:?}"
+    );
+    assert_eq!(submitted[1], "Submitted", "what: {submitted:?}");
+    assert_eq!(submitted[2], "Amal Youssef", "who: {submitted:?}");
     assert_eq!(stored(&app, id).await.status, TimesheetStatus::Submitted);
 }
 

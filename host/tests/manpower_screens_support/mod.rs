@@ -306,6 +306,33 @@ pub async fn deployment_of(app: &TestApp, name: &str) -> i64 {
     .await
 }
 
+/// The visible text of each cell of the table row of `html` that holds `name`.
+pub fn cells_of_row(html: &str, name: &str) -> Vec<String> {
+    let row = html
+        .split("<tr>")
+        .find(|row| row.contains(name) && row.contains("<td"))
+        .unwrap_or_else(|| panic!("no table row for {name}"));
+    let row = row.split("</tr>").next().unwrap_or_default();
+    row.split("<td")
+        .skip(1)
+        .map(|cell| {
+            let cell = cell.split_once('>').map_or("", |(_, rest)| rest);
+            let cell = cell.split("</td>").next().unwrap_or_default();
+            let mut text = String::new();
+            let mut in_tag = false;
+            for c in cell.chars() {
+                match c {
+                    '<' => in_tag = true,
+                    '>' => in_tag = false,
+                    c if !in_tag => text.push(c),
+                    _ => {}
+                }
+            }
+            text.split_whitespace().collect::<Vec<_>>().join(" ")
+        })
+        .collect()
+}
+
 /// Asserts the phone structure of `html`: every table scrolls inside its own
 /// box (the kit's table wrapper), so nothing widens the page.
 pub fn fits_a_phone(html: &str) {
