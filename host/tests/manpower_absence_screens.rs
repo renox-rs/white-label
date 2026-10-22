@@ -71,7 +71,13 @@ async fn the_list_shows_the_case_of_the_absent_worker_in_a_table() {
             "Not recorded",
         ],
     );
-    assert!(visible_row_has_days(&html, 9), "nine days absent");
+    assert_eq!(
+        cells_of_row(&html, "Kamal Hossain")
+            .get(1)
+            .map(String::as_str),
+        Some("9"),
+        "nine days absent, in the cell of the days column"
+    );
     no_raw_words(&html);
     // At 390 px the table scrolls inside its box.
     says(&html, &["rx-table-wrap"]);
@@ -84,9 +90,31 @@ async fn the_list_shows_the_case_of_the_absent_worker_in_a_table() {
     assert!(json.text().starts_with('['), "{}", json.text());
 }
 
-/// Whether the text of `html` has the number of days in a cell of its own.
-fn visible_row_has_days(html: &str, days: i64) -> bool {
-    html.contains(&format!(">{days}</td>")) || html.contains(&format!(">{days}<"))
+/// The visible text of each cell of the table row of `html` that holds `name`.
+fn cells_of_row(html: &str, name: &str) -> Vec<String> {
+    let row = html
+        .split("<tr>")
+        .find(|row| row.contains(name) && row.contains("<td"))
+        .unwrap_or_else(|| panic!("no table row for {name}"));
+    let row = row.split("</tr>").next().unwrap_or_default();
+    row.split("<td")
+        .skip(1)
+        .map(|cell| {
+            let cell = cell.split_once('>').map_or("", |(_, rest)| rest);
+            let cell = cell.split("</td>").next().unwrap_or_default();
+            let mut text = String::new();
+            let mut in_tag = false;
+            for c in cell.chars() {
+                match c {
+                    '<' => in_tag = true,
+                    '>' => in_tag = false,
+                    c if !in_tag => text.push(c),
+                    _ => {}
+                }
+            }
+            text.split_whitespace().collect::<Vec<_>>().join(" ")
+        })
+        .collect()
 }
 
 /// AC2 and the tickets: with one failed contact day the page says *1 of 2
@@ -114,6 +142,14 @@ async fn one_failed_contact_day_keeps_the_absconding_link_disabled() {
             "Absence: Kamal Hossain",
             "Not recorded",
         ],
+    );
+    // The ticket row: number, title, and the status word (not the key).
+    let ticket = cells_of_row(&html, "TKT-");
+    assert!(ticket[0].starts_with("TKT-"), "{ticket:?}");
+    assert_eq!(
+        ticket.last().map(String::as_str),
+        Some("Assigned"),
+        "{ticket:?}"
     );
     let employee = employee(&app, "Kamal Hossain").await;
     assert!(
@@ -325,11 +361,19 @@ async fn only_hr_sees_the_cases_and_a_client_never_does() {
     .await;
     direct.assert_status(403);
 
-    let portal = page(&app, APPROVER, "/manpower/requests").await;
-    assert!(
-        !portal.contains("/manpower/absence"),
-        "the client sees no link to the cases"
-    );
+    for own in [
+        "/dashboard",
+        "/manpower/requests",
+        "/portal/manpower/requests",
+        "/portal/manpower/deployments",
+        "/portal/manpower/timesheets",
+    ] {
+        let portal = page(&app, APPROVER, own).await;
+        assert!(
+            !portal.contains("/manpower/absence"),
+            "{own}: the client sees no link to the cases"
+        );
+    }
     browse(&app, APPROVER, "/manpower/absence")
         .await
         .assert_status(403);
