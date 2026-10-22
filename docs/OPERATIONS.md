@@ -220,6 +220,15 @@ run, and the note says where. Nothing is marked tested that was not run.
 | Capacity figure (12 MiB per process) | no | no | Still to be measured. |
 | Production hardening of the host | yes | yes (tests and a debug run) | `db:seed`, `migrate:fresh` and `property:demo` refuse to run when `APP_ENV` is production (`host/tests/production_guard.rs`). There is no public sign-up: `/register` is gone, users are added on `/users` or with `users:invite` (a mail that fails leaves the user and no 500: `host/tests/users_invite.rs`). `/` redirects to `/dashboard` or `/login` (no starter-kit page). `CSP=strict` was tried in a browser on the main pages with no violation; the default stays `relaxed` ([deploy/README.md](../deploy/README.md) section 8). Not covered: portal pages, PDFs, uploads under `strict`. |
 
+**The EdTech client (F10).** `apps/edtech` is built and boots from `clients/demo-edtech/client.toml`
+like the other verticals. `edtech:install` (also run by the seeders after `wl:install`) stores the
+service types, ticket categories, lead sources, loyalty programme, send windows, onboarding
+checklists, SOPs, budget category and notification reactions the 10 settings ask for; it adds what is
+missing and keeps what the client changed, so it is safe to run on a live database. There is no
+`edtech:demo` command yet (see [DEMO-DATA.md](DEMO-DATA.md)), so `db:seed` is the only demo data and
+it is refused in production. Nothing of F10 has been run in production: the release checks above
+apply to it as to the others.
+
 ## Sources
 
 Checked 2026-10-15. *Official* = government or legislation; others are secondary.

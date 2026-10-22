@@ -503,5 +503,23 @@ a tutor permit expiring · 3 leads with no follow-up for a week · a batch below
 5. Manager dashboard: batch fill rates, lead conversion, revenue per course.
    **Wow 3:** which courses actually make money.
 
+**Implemented as** `clients/demo-edtech/client.toml` (*Gulf Skills Training Centre LLC*, one legal
+entity, the modules parties, documents, notify, invoicing, ticketing, payments, sales, hr, attendance,
+scheduling and portal) and the seeds of `host/src/app/edtech_seed.rs`, `edtech_settings.rs` and
+`edtech_money.rs`: a fresh deployment starts with the three service types (trial class, placement test,
+one-to-one), the ticket categories, the document kinds (centre permit, course approval, police clearance,
+tutor permit or freelance visa, student ID, guardian consent, trademark registration, other certification),
+the lead sources, the loyalty programme, the onboarding checklists, the SOP library and the budget
+categories. `APP_ENV=local CLIENT_CONFIG=clients/demo-edtech/client.toml cargo run -p host -- migrate`,
+then `-- serve`.
+
+**The demo company (`edtech:demo`) is future work.** The table, the triggers and the script above are
+the target; no command makes the *Noor Learning Centre* data yet, so the volumes are not built. Until
+then the app is tried with the pages under `/edtech/...` and the tests of `apps/edtech/tests` and
+`host/tests/edtech_*.rs`, which build their own small centre (a few batches, tutors, enrolments and
+certificates) through the real services. When the command is written it follows the other verticals:
+every date relative to today, records made through the services as the user who does them, and the
+login names above on the login page.
+
 **Must not appear.** Real students or minors' photos, real school names, real KHDA permit
 numbers.
