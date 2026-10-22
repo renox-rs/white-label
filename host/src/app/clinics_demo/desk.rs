@@ -35,10 +35,8 @@ pub(crate) struct Kit {
     pub(crate) nadia: i64,
     pub(crate) yara: i64,
     pub(crate) samir: i64,
-    pub(crate) room_consult: i64,
     pub(crate) room_physio: i64,
     pub(crate) room_dental: i64,
-    pub(crate) ultrasound: i64,
     pub(crate) xray: i64,
     pub(crate) consultation: i64,
     pub(crate) follow_up: i64,
@@ -159,7 +157,13 @@ impl Seed {
     /// A service type of the clinic added to the seeded ones: it checks the
     /// patient in, tracks the visit and needs the licence and the privileges
     /// like they do.
-    async fn extra_service(&self, code: &str, name: &str, minutes: i64, needs: &str) -> Result<i64> {
+    async fn extra_service(
+        &self,
+        code: &str,
+        name: &str,
+        minutes: i64,
+        needs: &str,
+    ) -> Result<i64> {
         let mut service = ServiceType::new_in(&self.state, code, name, minutes);
         service.check_in_required = true;
         service.track_in_progress = true;
@@ -209,20 +213,26 @@ impl Seed {
                     Some("practitioner"),
                 )
                 .await?,
-            room_consult: self
-                .resource("Consultation room 1", ResourceType::Room, JUMEIRAH, None, None)
-                .await?,
             room_physio: self
                 .resource("Physio studio", ResourceType::Room, JUMEIRAH, None, None)
                 .await?,
             room_dental: self
-                .resource("Dental surgery 1", ResourceType::Room, BUSINESS_BAY, None, None)
-                .await?,
-            ultrasound: self
-                .resource("Ultrasound unit", ResourceType::Equipment, JUMEIRAH, None, None)
+                .resource(
+                    "Dental surgery 1",
+                    ResourceType::Room,
+                    BUSINESS_BAY,
+                    None,
+                    None,
+                )
                 .await?,
             xray: self
-                .resource("Dental X-ray unit", ResourceType::Equipment, BUSINESS_BAY, None, None)
+                .resource(
+                    "Dental X-ray unit",
+                    ResourceType::Equipment,
+                    BUSINESS_BAY,
+                    None,
+                    None,
+                )
                 .await?,
             ..Kit::default()
         };
@@ -258,6 +268,23 @@ impl Seed {
             .await?;
         resource::offer(self.db(), kit.dental_xray, kit.samir).await?;
         resource::offer(self.db(), kit.dental_xray, kit.xray).await?;
+        // A consulting room and an ultrasound unit complete the Jumeirah floor.
+        self.resource(
+            "Consultation room 1",
+            ResourceType::Room,
+            JUMEIRAH,
+            None,
+            None,
+        )
+        .await?;
+        self.resource(
+            "Ultrasound unit",
+            ResourceType::Equipment,
+            JUMEIRAH,
+            None,
+            None,
+        )
+        .await?;
         self.kit = kit;
         Ok(())
     }
@@ -303,11 +330,16 @@ impl Seed {
         )
         .await;
         let booking = self
-            .refused(&format!("the booking of patient {} at {start}", story.patient), booked)
+            .refused(
+                &format!("the booking of patient {} at {start}", story.patient),
+                booked,
+            )
             .await?;
         // The desk took the deposit of the service on the card terminal; the
         // payment is recorded against the booking, so a refund can follow it.
-        let deposit = ServiceType::find_or_404(self.db(), story.service).await?.deposit_amount;
+        let deposit = ServiceType::find_or_404(self.db(), story.service)
+            .await?
+            .deposit_amount;
         if deposit > 0 {
             let payment = RecordPayment::new(
                 self.patients[story.patient],
@@ -373,16 +405,18 @@ impl Seed {
                         service::confirm(state, id, Actor::party(None), renox::db::now()).await;
                     self.refused("a confirmation", done).await?;
                 }
-                return Ok(Booking::find_or_404(self.db(), id).await?);
+                return Booking::find_or_404(self.db(), id).await;
             }
             End::CancelledLate | End::CancelledInTime | End::CancelledByClinic => {
                 let (request, when) = match story.end {
-                    End::CancelledLate => {
-                        (CancelRequest::new("party_request"), start - Duration::hours(3))
-                    }
-                    End::CancelledInTime => {
-                        (CancelRequest::new("party_request"), start - Duration::days(2))
-                    }
+                    End::CancelledLate => (
+                        CancelRequest::new("party_request"),
+                        start - Duration::hours(3),
+                    ),
+                    End::CancelledInTime => (
+                        CancelRequest::new("party_request"),
+                        start - Duration::days(2),
+                    ),
                     _ => (
                         CancelRequest::new("equipment_failure")
                             .note("The ultrasound unit was out of service for the day."),
@@ -397,17 +431,19 @@ impl Seed {
                     })
                     .await;
                 self.refused("a cancellation", cancelled).await?;
-                return Ok(Booking::find_or_404(self.db(), id).await?);
+                return Booking::find_or_404(self.db(), id).await;
             }
             End::NoShow => {
                 let when = start + Duration::minutes(30);
                 let at = self.utc(when);
                 let marked = self
                     .clock
-                    .at_time(when, async { service::mark_no_show(state, id, actor, at).await })
+                    .at_time(when, async {
+                        service::mark_no_show(state, id, actor, at).await
+                    })
                     .await;
                 self.refused("a no-show", marked).await?;
-                return Ok(Booking::find_or_404(self.db(), id).await?);
+                return Booking::find_or_404(self.db(), id).await;
             }
             End::CheckedIn | End::InProgress | End::Completed => {}
         }
@@ -421,7 +457,10 @@ impl Seed {
                         .post(
                             story.desk,
                             &format!("/clinics/appointments/{id}/eligibility"),
-                            &[("result", "positive"), ("reference", &format!("ELG-{id:05}"))],
+                            &[
+                                ("result", "positive"),
+                                ("reference", &format!("ELG-{id:05}")),
+                            ],
                         )
                         .await?;
                 }
@@ -430,7 +469,7 @@ impl Seed {
             })
             .await?;
         if story.end == End::CheckedIn {
-            return Ok(Booking::find_or_404(self.db(), id).await?);
+            return Booking::find_or_404(self.db(), id).await;
         }
         let started = start + Duration::minutes(5);
         self.clock
@@ -440,29 +479,44 @@ impl Seed {
             })
             .await?;
         if story.end == End::InProgress {
-            return Ok(Booking::find_or_404(self.db(), id).await?);
+            return Booking::find_or_404(self.db(), id).await;
         }
         let over = start + Duration::minutes(25);
         self.clock
             .at_time(over, async {
                 let visit = clinics::Visit::of_booking(self.db(), id)
                     .await?
-                    .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no visit for booking {id}"))?;
+                    .ok_or_else(|| {
+                        renox::anyhow::anyhow!("demo seed: no visit for booking {id}")
+                    })?;
                 if story.lines.is_empty() {
                     self.driver
-                        .post(story.doctor, &format!("/clinics/visits/{}/none", visit.id), &[])
+                        .post(
+                            story.doctor,
+                            &format!("/clinics/visits/{}/none", visit.id),
+                            &[],
+                        )
                         .await?;
                 }
                 for (line, units, consumable) in &story.lines {
                     // `CODE@LOT` names the lot of a tracked consumable.
                     let (code, lot) = line.split_once('@').unwrap_or((line, ""));
                     let kind = if *consumable { "consumable" } else { "service" };
-                    let who = if *consumable { story.desk } else { story.doctor };
+                    let who = if *consumable {
+                        story.desk
+                    } else {
+                        story.doctor
+                    };
                     self.driver
                         .post(
                             who,
                             &format!("/clinics/visits/{}/charges", visit.id),
-                            &[("code", code), ("units", &units.to_string()), ("kind", kind), ("lot", lot)],
+                            &[
+                                ("code", code),
+                                ("units", &units.to_string()),
+                                ("kind", kind),
+                                ("lot", lot),
+                            ],
                         )
                         .await?;
                 }
@@ -470,7 +524,7 @@ impl Seed {
                 self.refused("a completion", done).await.map(|_| ())
             })
             .await?;
-        Ok(Booking::find_or_404(self.db(), id).await?)
+        Booking::find_or_404(self.db(), id).await
     }
 
     /// The appointments of the clinic, in their states.
@@ -511,11 +565,29 @@ impl Seed {
                 End::Completed,
                 vec![("consultation", 1, false)],
             ),
-            consult(MOHAMMED, When::Day(-5, 9, 30), false, End::Completed, vec![]),
-            consult(YOUSEF, When::Day(-3, 10, 0), true, End::Completed, vec![("consultation", 1, false)]),
+            consult(
+                MOHAMMED,
+                When::Day(-5, 9, 30),
+                false,
+                End::Completed,
+                vec![],
+            ),
+            consult(
+                YOUSEF,
+                When::Day(-3, 10, 0),
+                true,
+                End::Completed,
+                vec![("consultation", 1, false)],
+            ),
             Story {
                 service: k.follow_up,
-                ..consult(KHALID, When::Day(-9, 15, 0), true, End::Completed, vec![("follow_up", 1, false), ("SYRINGE-5ML", 1, true)])
+                ..consult(
+                    KHALID,
+                    When::Day(-9, 15, 0),
+                    true,
+                    End::Completed,
+                    vec![("follow_up", 1, false), ("SYRINGE-5ML", 1, true)],
+                )
             },
             Story {
                 service: k.dental,
@@ -528,7 +600,10 @@ impl Seed {
                     When::Day(-11, 11, 0),
                     true,
                     End::Completed,
-                    vec![("dental_checkup", 1, false), ("ANAES-CART@L-A2199", 1, true)],
+                    vec![
+                        ("dental_checkup", 1, false),
+                        ("ANAES-CART@L-A2199", 1, true),
+                    ],
                 )
             },
             Story {
@@ -537,7 +612,13 @@ impl Seed {
                 branch: BUSINESS_BAY,
                 doctor: SAMIR_LOGIN,
                 desk: BAY_DESK,
-                ..consult(FATIMA, When::Day(-2, 16, 0), true, End::Completed, vec![("dental_xray", 1, false)])
+                ..consult(
+                    FATIMA,
+                    When::Day(-2, 16, 0),
+                    true,
+                    End::Completed,
+                    vec![("dental_xray", 1, false)],
+                )
             },
             Story {
                 service: k.physio,
@@ -556,13 +637,31 @@ impl Seed {
             },
             Story {
                 service: k.procedure,
-                ..consult(ELENA, When::Day(-3, 13, 0), false, End::CancelledLate, vec![])
+                ..consult(
+                    ELENA,
+                    When::Day(-3, 13, 0),
+                    false,
+                    End::CancelledLate,
+                    vec![],
+                )
             },
             Story {
                 service: k.procedure,
-                ..consult(JOHN, When::Day(-2, 12, 0), false, End::CancelledByClinic, vec![])
+                ..consult(
+                    JOHN,
+                    When::Day(-2, 12, 0),
+                    false,
+                    End::CancelledByClinic,
+                    vec![],
+                )
             },
-            consult(MOHAMMED, When::Day(-1, 9, 0), false, End::CancelledInTime, vec![]),
+            consult(
+                MOHAMMED,
+                When::Day(-1, 9, 0),
+                false,
+                End::CancelledInTime,
+                vec![],
+            ),
             // Today.
             consult(PRIYA, When::Minutes(-25), true, End::CheckedIn, vec![]),
             Story {

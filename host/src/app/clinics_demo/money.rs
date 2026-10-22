@@ -9,10 +9,9 @@
 //! no payment link can be made; the chargeback is recorded on a payment that
 //! came through the gateway.
 
-use wl_invoicing::Invoice;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
-use wl_payments::Payment;
+use wl_invoicing::Invoice;
 use wl_kernel::invoicing::{
     DraftLine, InvoiceDraft, InvoiceId, InvoiceStatus, VatCategory, invoicer,
 };
@@ -21,11 +20,12 @@ use wl_kernel::payments::{
     payment_recorder,
 };
 use wl_kernel::{PartyId, Subject};
+use wl_payments::Payment;
 use wl_sales::packages::{self, NewPackage};
 
 use super::super::demo_data::day;
-use super::people::{DANIEL, ELENA, SOFIA};
 use super::Seed;
+use super::people::{DANIEL, ELENA, SOFIA};
 
 const ACCOUNTANT: &str = "accountant@palmgrove.example";
 const ADMIN: &str = "admin@palmgrove.example";
@@ -41,9 +41,10 @@ impl Seed {
         on: Option<renox::chrono::NaiveDate>,
     ) -> Result {
         let user = self.user(ACCOUNTANT).id;
-        let mut request = RecordPayment::new(PartyId(invoice.party_id), self.entity, method, amount)
-            .reference(reference)
-            .collected_by(user);
+        let mut request =
+            RecordPayment::new(PartyId(invoice.party_id), self.entity, method, amount)
+                .reference(reference)
+                .collected_by(user);
         if let Some(on) = on {
             request = request.date(on);
         }
@@ -90,10 +91,18 @@ impl Seed {
             .await?
             .ok_or_else(|| renox::anyhow::anyhow!("invoicing is off"))?;
         packages::link_invoice(&self.state, package.id, id).await?;
-        self.driver.post(ADMIN, &format!("/invoices/{}/issue", id.0), &[]).await?;
+        self.driver
+            .post(ADMIN, &format!("/invoices/{}/issue", id.0), &[])
+            .await?;
         let invoice = Invoice::find_or_404(self.db(), id.0).await?;
-        self.pay(&invoice, PaymentMethod::Cash, invoice.gross_total, "", Some(day(paid_on)))
-            .await
+        self.pay(
+            &invoice,
+            PaymentMethod::Cash,
+            invoice.gross_total,
+            "",
+            Some(day(paid_on)),
+        )
+        .await
     }
 
     pub(crate) async fn money(&mut self) -> Result {
@@ -107,10 +116,19 @@ impl Seed {
         for (index, invoice) in issued.iter().enumerate() {
             match index {
                 0 => {
-                    self.pay(invoice, PaymentMethod::Card, invoice.balance, &format!("POS-{:05}", invoice.id), None)
-                        .await?;
+                    self.pay(
+                        invoice,
+                        PaymentMethod::Card,
+                        invoice.balance,
+                        &format!("POS-{:05}", invoice.id),
+                        None,
+                    )
+                    .await?;
                 }
-                1 => self.pay(invoice, PaymentMethod::Cash, invoice.balance, "", None).await?,
+                1 => {
+                    self.pay(invoice, PaymentMethod::Cash, invoice.balance, "", None)
+                        .await?
+                }
                 2 => {
                     self.pay(invoice, PaymentMethod::Cash, invoice.balance / 2, "", None)
                         .await?;
@@ -119,10 +137,24 @@ impl Seed {
             }
         }
         // Packages: six physiotherapy sessions, and one that ends this week.
-        self.package(SOFIA, ("physio_session", "Physiotherapy, 6 sessions"), 6, 150_000, 3, -12)
-            .await?;
-        self.package(ELENA, ("iv_vitamin", "Vitamin drip, 4 sessions"), 4, 120_000, 1, -26)
-            .await?;
+        self.package(
+            SOFIA,
+            ("physio_session", "Physiotherapy, 6 sessions"),
+            6,
+            150_000,
+            3,
+            -12,
+        )
+        .await?;
+        self.package(
+            ELENA,
+            ("iv_vitamin", "Vitamin drip, 4 sessions"),
+            4,
+            120_000,
+            1,
+            -26,
+        )
+        .await?;
         // A card payment through the gateway that the cardholder disputes.
         // No gateway adapter is installed in the demo (the method is not
         // enabled for the desk), so the payment the gateway would have made

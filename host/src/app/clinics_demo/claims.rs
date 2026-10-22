@@ -8,8 +8,8 @@ use clinics::{Claim, ClaimLine};
 use renox::prelude::*;
 
 use super::super::demo_data::day;
-use super::people::{AHMED, FATIMA, LAYAN, PRIYA};
 use super::Seed;
+use super::people::{AHMED, FATIMA, LAYAN, PRIYA};
 
 const BILLING: &str = "billing@palmgrove.example";
 const MANAGER: &str = "manager.jumeirah@palmgrove.example";
@@ -33,7 +33,13 @@ impl Seed {
             })
     }
 
-    async fn claim_post(&self, who: &str, claim: &Claim, action: &str, form: &[(&str, &str)]) -> Result {
+    async fn claim_post(
+        &self,
+        who: &str,
+        claim: &Claim,
+        action: &str,
+        form: &[(&str, &str)],
+    ) -> Result {
         self.driver
             .post(who, &format!("/clinics/claims/{}/{action}", claim.id), form)
             .await?;
@@ -79,8 +85,12 @@ impl Seed {
         // Denied: the payer does not cover the service for the plan.
         let denied = self.claim_of(PRIYA, -10).await?;
         self.send_claim(&denied, "OM-SUB-5530").await?;
-        self.remit(&denied, "OM-RA-3302", Some(("E104", "Service not covered under the plan")))
-            .await?;
+        self.remit(
+            &denied,
+            "OM-RA-3302",
+            Some(("E104", "Service not covered under the plan")),
+        )
+        .await?;
         // Ready to send: validated, not yet submitted.
         let ready = self.claim_of(super::people::YOUSEF, -3).await?;
         self.claim_post(BILLING, &ready, "validate", &[]).await?;

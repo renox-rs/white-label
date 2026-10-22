@@ -9,8 +9,8 @@ use wl_kernel::tickets::{Assignee, OpenTicket, task_creator};
 use wl_kernel::{PartyId, Subject};
 
 use super::super::demo_data::day;
-use super::people::{FATIMA, MOHAMMED};
 use super::Seed;
+use super::people::{FATIMA, MOHAMMED};
 
 impl Seed {
     async fn ticket(&self, ticket: OpenTicket) -> Result {
@@ -36,7 +36,9 @@ impl Seed {
                 "general",
                 "Complaint: waited 50 minutes at Business Bay (2-star feedback)",
             )
-            .description("The patient waited 50 minutes after her check-up and asked for a call back.")
+            .description(
+                "The patient waited 50 minutes after her check-up and asked for a call back.",
+            )
             .requester_party(fatima)
             .assign_to(self.assignee("manager.bay@palmgrove.example"))
             .due_at(wl_kernel::BusinessCalendar::default().from_local(self.local(2, 12, 0))),

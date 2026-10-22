@@ -386,7 +386,8 @@ impl Seed {
         // that runs on the clock of a day in the past.
         *super::demo_data::REAL_TODAY
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(wl_kernel::documents::today());
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(wl_kernel::documents::today());
         let done = self.story().await;
         *super::demo_data::REAL_TODAY
             .lock()

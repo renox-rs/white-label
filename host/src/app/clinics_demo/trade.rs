@@ -9,12 +9,12 @@
 //! lapsed-patients segment are the ones the clinic installs.
 
 use renox::prelude::*;
-use wl_sales::{CounterSale, LoyaltyAccount, SaleLine, SalesReturn};
 use wl_kernel::Subject;
+use wl_sales::{CounterSale, LoyaltyAccount, SaleLine, SalesReturn};
 
 use super::super::demo_data::day;
-use super::people::{AHMED, DANIEL, ELENA, FATIMA, PRIYA, SOFIA};
 use super::Seed;
+use super::people::{AHMED, DANIEL, ELENA, FATIMA, PRIYA, SOFIA};
 
 const DESK: &str = "reception.jumeirah@palmgrove.example";
 const MANAGER: &str = "manager.jumeirah@palmgrove.example";
@@ -37,19 +37,34 @@ impl Seed {
     }
 
     /// Rings up a counter sale of one line paid in cash; the sale.
-    async fn counter_sale(&self, item: &str, price: i64, member: Option<&str>) -> Result<CounterSale> {
-        self.driver.post(DESK, "/counter-sales", &[("x", "")]).await?;
+    async fn counter_sale(
+        &self,
+        item: &str,
+        price: i64,
+        member: Option<&str>,
+    ) -> Result<CounterSale> {
+        self.driver
+            .post(DESK, "/counter-sales", &[("x", "")])
+            .await?;
         let sale = self.latest_sale().await?;
         self.driver
             .post(
                 DESK,
                 &format!("/counter-sales/{}/lines", sale.id),
-                &[("item_code", item), ("unit_price", &aed(price)), ("quantity", "1")],
+                &[
+                    ("item_code", item),
+                    ("unit_price", &aed(price)),
+                    ("quantity", "1"),
+                ],
             )
             .await?;
         if let Some(code) = member {
             self.driver
-                .post(DESK, &format!("/counter-sales/{}/member", sale.id), &[("code", code)])
+                .post(
+                    DESK,
+                    &format!("/counter-sales/{}/member", sale.id),
+                    &[("code", code)],
+                )
                 .await?;
         }
         let priced = CounterSale::find_or_404(self.db(), sale.id).await?;
@@ -60,7 +75,7 @@ impl Seed {
                 &[("cash", &aed(priced.gross_total))],
             )
             .await?;
-        Ok(CounterSale::find_or_404(self.db(), sale.id).await?)
+        CounterSale::find_or_404(self.db(), sale.id).await
     }
 
     async fn account_of(&self, patient: usize) -> Result<LoyaltyAccount> {
@@ -68,7 +83,9 @@ impl Seed {
             .where_(LoyaltyAccount::PARTY_ID.eq(self.patients[patient].0))
             .first(self.db())
             .await?
-            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: patient {patient} is no member").into())
+            .ok_or_else(|| {
+                renox::anyhow::anyhow!("demo seed: patient {patient} is no member").into()
+            })
     }
 
     pub(crate) async fn trade(&mut self) -> Result {
@@ -96,9 +113,13 @@ impl Seed {
         // third sale is returned.
         let elena = self.account_of(ELENA).await?;
         let sofia = self.account_of(SOFIA).await?;
-        self.counter_sale("Skin care serum", 22_000, Some(&elena.code)).await?;
-        let band = self.counter_sale("Resistance band set", 6_000, Some(&sofia.code)).await?;
-        self.counter_sale("Face masks (pack of 10)", 2_500, None).await?;
+        self.counter_sale("Skin care serum", 22_000, Some(&elena.code))
+            .await?;
+        let band = self
+            .counter_sale("Resistance band set", 6_000, Some(&sofia.code))
+            .await?;
+        self.counter_sale("Face masks (pack of 10)", 2_500, None)
+            .await?;
         let returned = self.counter_sale("Compression sleeve", 9_500, None).await?;
         let line = SaleLine::of(self.db(), &Subject::new("sales.counter_sale", returned.id))
             .await?
@@ -124,7 +145,11 @@ impl Seed {
             .await?
             .ok_or_else(|| renox::anyhow::anyhow!("demo seed: the return was not requested"))?;
         self.driver
-            .post(ADMIN, &format!("/sales-returns/{}/receive", request.id), &[("approved", "1")])
+            .post(
+                ADMIN,
+                &format!("/sales-returns/{}/receive", request.id),
+                &[("approved", "1")],
+            )
             .await?;
         let _ = band;
         // Goodwill points for a patient who waited: below 500, so at once.
@@ -143,7 +168,10 @@ impl Seed {
     /// patients who have not been for six months.
     async fn campaigns(&self) -> Result {
         let owner = self.user(MARKETING).id.to_string();
-        let dates = [("start_date", day(-10).to_string()), ("end_date", day(20).to_string())];
+        let dates = [
+            ("start_date", day(-10).to_string()),
+            ("end_date", day(20).to_string()),
+        ];
         let mut form: Vec<(&str, String)> = vec![
             ("name", "Smile month".into()),
             ("code", "SMILE-OCT".into()),
@@ -174,7 +202,11 @@ impl Seed {
             )
             .await?;
         self.driver
-            .post(MARKETING, &format!("/campaigns/{}/transitions/activate", smile.id), &[])
+            .post(
+                MARKETING,
+                &format!("/campaigns/{}/transitions/activate", smile.id),
+                &[],
+            )
             .await?;
         // A retention campaign stays a draft: its message is not written.
         self.driver

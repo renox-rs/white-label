@@ -35,7 +35,14 @@ impl Seed {
         Ok(item)
     }
 
-    async fn receive(&self, item: &Item, store: &Location, lot: Option<i64>, units: i64, cost: i64) -> Result {
+    async fn receive(
+        &self,
+        item: &Item,
+        store: &Location,
+        lot: Option<i64>,
+        units: i64,
+        cost: i64,
+    ) -> Result {
         let quantity = units * 1_000;
         let mut movement = StockMovement::receive(
             item.id,
@@ -62,24 +69,38 @@ impl Seed {
             ..Lot::default()
         };
         let mut tx = self.db().begin().await?;
-        lot.insert_in_state(&mut tx, LotStatus::Released, "opening stock").await?;
+        lot.insert_in_state(&mut tx, LotStatus::Released, "opening stock")
+            .await?;
         tx.commit().await?;
         Ok(lot)
     }
 
     pub(crate) async fn stock(&mut self) -> Result {
-        let jumeirah = self
-            .store("JUM-STORE", "Jumeirah store", JUMEIRAH)
+        let jumeirah = self.store("JUM-STORE", "Jumeirah store", JUMEIRAH).await?;
+        let bay = self
+            .store("BAY-STORE", "Business Bay store", BUSINESS_BAY)
             .await?;
-        let bay = self.store("BAY-STORE", "Business Bay store", BUSINESS_BAY).await?;
         let gloves = self
-            .item(Item::new("GLOVES-M", "Nitrile gloves, medium (box of 100)", "box").reordered(10_000, 60_000))
+            .item(
+                Item::new("GLOVES-M", "Nitrile gloves, medium (box of 100)", "box")
+                    .reordered(10_000, 60_000),
+            )
             .await?;
         let syringes = self
-            .item(Item::new("SYRINGE-5ML", "Syringes 5 ml (box of 100)", "box").reordered(5_000, 20_000))
+            .item(
+                Item::new("SYRINGE-5ML", "Syringes 5 ml (box of 100)", "box")
+                    .reordered(5_000, 20_000),
+            )
             .await?;
         let cartridges = self
-            .item(Item::new("ANAES-CART", "Local anaesthetic cartridges (box of 50)", "box").lot_tracked())
+            .item(
+                Item::new(
+                    "ANAES-CART",
+                    "Local anaesthetic cartridges (box of 50)",
+                    "box",
+                )
+                .lot_tracked(),
+            )
             .await?;
         self.receive(&gloves, &jumeirah, None, 40, 1_200).await?;
         self.receive(&gloves, &bay, None, 4, 1_200).await?;
@@ -95,7 +116,8 @@ impl Seed {
             (RECALLED_LOT, 45, 10),
         ] {
             let lot = self.lot(&cartridges, number, left).await?;
-            self.receive(&cartridges, &bay, Some(lot.id), units, 4_500).await?;
+            self.receive(&cartridges, &bay, Some(lot.id), units, 4_500)
+                .await?;
         }
         self.stores = vec![jumeirah.id, bay.id];
         self.items = vec![gloves.id, syringes.id, cartridges.id];
@@ -146,7 +168,11 @@ impl Seed {
             .post(
                 BAY_MANAGER,
                 "/stock-holds",
-                &[("reason", "quality"), ("reference", "ticketing.ticket:1"), ("lots", &suspect.id.to_string())],
+                &[
+                    ("reason", "quality"),
+                    ("reference", "ticketing.ticket:1"),
+                    ("lots", &suspect.id.to_string()),
+                ],
             )
             .await?;
         // The supplier recalls a lot: it is held everywhere, traced to the
@@ -157,7 +183,10 @@ impl Seed {
                 "/recalls",
                 &[
                     ("source", "supplier"),
-                    ("reason", "The supplier found particles in lot L-A2199 of anaesthetic cartridges."),
+                    (
+                        "reason",
+                        "The supplier found particles in lot L-A2199 of anaesthetic cartridges.",
+                    ),
                     ("items", &cartridges.to_string()),
                     ("lot_numbers", RECALLED_LOT),
                 ],
@@ -172,7 +201,11 @@ impl Seed {
             .post(OWNER, &format!("/recalls/{}/trace", recall.id), &[])
             .await?;
         self.driver
-            .post(BAY_MANAGER, &format!("/clinics/recalls/{}/notices", recall.id), &[])
+            .post(
+                BAY_MANAGER,
+                &format!("/clinics/recalls/{}/notices", recall.id),
+                &[],
+            )
             .await?;
         self.recall_id = recall.id;
         Ok(())

@@ -9,9 +9,9 @@ use renox::prelude::*;
 use wl_invoicing::{PayerAgreement, VatRecipient};
 
 use super::super::demo_data::day;
+use super::Seed;
 use super::people::{AHMED, FATIMA, JOHN, KHALID, LAYAN, PRIYA, YOUSEF};
 use clinics::authorisations::{self, NewAuthorisation};
-use super::Seed;
 
 /// The payers' prices of the services, in fils.
 const TARIFF: &[(&str, i64)] = &[
@@ -28,6 +28,17 @@ const TARIFF: &[(&str, i64)] = &[
 
 /// A policy: patient, payer, plan, member id, first day, last day.
 type PolicySpec = (usize, usize, &'static str, &'static str, i64, Option<i64>);
+
+/// A payer contract: name, copay in basis points, deductible, plan, windows
+/// (first submission, resubmission, limit) and whether late claims are taken.
+type Terms = (
+    &'static str,
+    i64,
+    i64,
+    Option<&'static str>,
+    (i64, i64, i64),
+    bool,
+);
 
 const POLICIES: &[PolicySpec] = &[
     (AHMED, 0, "Gold", "GS-100234", -300, Some(65)),
@@ -52,8 +63,15 @@ impl Seed {
     pub(crate) async fn insurance(&mut self) -> Result {
         let billing = self.user("billing@palmgrove.example").id;
         // (name, copay bp, deductible, plan, windows, late claims)
-        let terms: [(&str, i64, i64, Option<&str>, (i64, i64, i64), bool); 3] = [
-            ("Gulf Shield Gold", 2_000, 5_000, Some("Gold"), (30, 30, 2), false),
+        let terms: [Terms; 3] = [
+            (
+                "Gulf Shield Gold",
+                2_000,
+                5_000,
+                Some("Gold"),
+                (30, 30, 2),
+                false,
+            ),
             ("Crescent Basic", 1_000, 0, Some("Basic"), (14, 21, 1), true),
             ("Oasis Select", 3_000, 0, None, (21, 14, 1), false),
         ];
@@ -135,14 +153,21 @@ impl Seed {
             .await?;
             let id = created.id;
             self.driver
-                .post(email, &format!("/clinics/authorisations/{id}/request"), &[("reference", "")])
+                .post(
+                    email,
+                    &format!("/clinics/authorisations/{id}/request"),
+                    &[("reference", "")],
+                )
                 .await?;
             if approve {
                 self.driver
                     .post(
                         email,
                         &format!("/clinics/authorisations/{id}/approve"),
-                        &[("reference", reference), ("valid_until", &day(30).to_string())],
+                        &[
+                            ("reference", reference),
+                            ("valid_until", &day(30).to_string()),
+                        ],
                     )
                     .await?;
             }

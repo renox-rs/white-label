@@ -150,10 +150,6 @@ pub(crate) struct Doctor {
     pub(crate) licence_no: &'static str,
 }
 
-pub(crate) const NADIA: usize = 0;
-pub(crate) const SAMIR: usize = 1;
-pub(crate) const YARA: usize = 2;
-
 pub(crate) const DOCTORS: &[Doctor] = &[
     Doctor {
         email: "nadia@palmgrove.example",
@@ -206,7 +202,9 @@ impl Seed {
                     user
                 }
             };
-            self.driver.sign_in(&self.state.db, login.email, &user).await?;
+            self.driver
+                .sign_in(&self.state.db, login.email, &user)
+                .await?;
             self.users.push((login.email, user));
         }
         Ok(())
@@ -233,7 +231,10 @@ impl Seed {
                 }],
                 contacts: vec![
                     contact(ContactType::Mobile, patient.mobile),
-                    contact(ContactType::Email, &format!("{key}@patients.palmgrove.example")),
+                    contact(
+                        ContactType::Email,
+                        &format!("{key}@patients.palmgrove.example"),
+                    ),
                 ],
                 source: "seed".to_owned(),
                 ..NewParty::default()
@@ -302,7 +303,10 @@ impl Seed {
         // The Emirates IDs on file, one of them ending in 25 days.
         for (index, left) in [(AHMED, 400), (FATIMA, 310), (PRIYA, 25), (KHALID, 180)] {
             self.document(
-                Subject::new(wl_kernel::parties::PARTY_SUBJECT_TYPE, self.patients[index].0),
+                Subject::new(
+                    wl_kernel::parties::PARTY_SUBJECT_TYPE,
+                    self.patients[index].0,
+                ),
                 clinics::seed::EMIRATES_ID_KIND,
                 &format!("784-19{}-{:07}-1", 80 + index, 1_234_000 + index * 111),
                 day(left),
@@ -396,7 +400,8 @@ impl Seed {
             new.user_id = Some(user.id);
             new.legal_entity_id = Some(self.entity);
             new.employee_number = format!("PGC-{number:04}");
-            new.job_title = doctor.map_or_else(|| login.label.to_owned(), |d| d.role_title.to_owned());
+            new.job_title =
+                doctor.map_or_else(|| login.label.to_owned(), |d| d.role_title.to_owned());
             if let Some(id) = login.branch {
                 new = new.scope(branch(id));
             }
@@ -425,7 +430,12 @@ impl Seed {
     async fn practitioner(&mut self, employee: EmployeeId, doctor: &Doctor) -> Result {
         let subject = employee.subject();
         for (kind, number, label, left) in [
-            (LICENCE_KIND, doctor.licence_no.to_owned(), "Practitioner licence", doctor.licence_days),
+            (
+                LICENCE_KIND,
+                doctor.licence_no.to_owned(),
+                "Practitioner licence",
+                doctor.licence_days,
+            ),
             (
                 PRIVILEGES_KIND,
                 format!("{}-PRV", doctor.licence_no),
@@ -433,7 +443,9 @@ impl Seed {
                 doctor.licence_days + 200,
             ),
         ] {
-            let document = self.document(subject.clone(), kind, &number, day(left)).await?;
+            let document = self
+                .document(subject.clone(), kind, &number, day(left))
+                .await?;
             let mut qualification = NewQualification::new(employee, kind)
                 .number(&number)
                 .scope(branch(doctor.branch))
