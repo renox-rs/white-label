@@ -381,6 +381,42 @@ pub fn work_done_status(state: &AppState) -> Arc<dyn WorkDoneStatus> {
     }
 }
 
+/// The names of the services a module books, by code, in a language: what a
+/// vertical shows where it has only a booking's service code
+/// (`dental_checkup` is *Dental check-up*). The default knows none, so a code
+/// is shown as it is.
+pub trait ServiceNames: Send + Sync + 'static {
+    /// The name of every service by its code, in `locale` (`en`, `ar`).
+    fn names<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _locale: &'a str,
+    ) -> SchedulingFuture<'a, std::collections::BTreeMap<String, String>> {
+        Box::pin(async { Ok(std::collections::BTreeMap::new()) })
+    }
+}
+
+/// The strategy when no module provides one: no names.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoServiceNames;
+
+impl ServiceNames for NoServiceNames {}
+
+/// Makes `names` the app's [`ServiceNames`]; the scheduling module calls it
+/// in `register`.
+pub fn provide_service_names(app: &mut Registry, names: impl ServiceNames) {
+    let names: Arc<dyn ServiceNames> = Arc::new(names);
+    app.provide(names);
+}
+
+/// The app's [`ServiceNames`], or [`NoServiceNames`].
+pub fn service_names(state: &AppState) -> Arc<dyn ServiceNames> {
+    match state.provided::<Arc<dyn ServiceNames>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoServiceNames),
+    }
+}
+
 /// What a [`ResourceEligibility`] asks about.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EligibilityQuery {

@@ -90,6 +90,36 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.reason.other", "Other"),
     ("wl_scheduling.problem.reason_needed", "Give a reason."),
     (
+        "wl_scheduling.problem.field",
+        "Check the form: a value is missing or wrong.",
+    ),
+    (
+        "wl_scheduling.problem.field.starts_at",
+        "Give the date and the time, for example 2026-11-03 10:30.",
+    ),
+    (
+        "wl_scheduling.problem.field.from",
+        "Choose the resource to replace.",
+    ),
+    (
+        "wl_scheduling.problem.field.to",
+        "Choose the resource that takes over. None of the others can take this booking.",
+    ),
+    (
+        "wl_scheduling.problem.field.party",
+        "Give the party's number.",
+    ),
+    ("wl_scheduling.problem.field.service", "Choose the service."),
+    (
+        "wl_scheduling.problem.field.resource",
+        "Choose the resource.",
+    ),
+    ("wl_scheduling.problem.field.action", "Choose what to do."),
+    (
+        "wl_scheduling.conflicts.none_selected",
+        "Tick at least one booking first.",
+    ),
+    (
         "wl_scheduling.problem.no_check_in",
         "This service does not need a check-in.",
     ),

@@ -469,6 +469,39 @@ impl Module for WlSales {
     }
 
     fn register(&self, app: &mut Registry) {
+        // A page that holds only a campaign's id (a permit, a document) shows
+        // `SMILE-OCT · Smile month`.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::sales::CAMPAIGN_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(Campaign::find(db, id)
+                        .await?
+                        .map(|campaign| format!("{} · {}", campaign.code, campaign.name)))
+                })
+            },
+        );
+        // A return names the sale it is about (`RCPT-2026-0004`).
+        for subject_type in [
+            wl_kernel::sales::COUNTER_SALE_SUBJECT_TYPE,
+            wl_kernel::sales::SALES_ORDER_SUBJECT_TYPE,
+        ] {
+            wl_kernel::documents::register_subject_label(subject_type, move |db, id| {
+                Box::pin(async move {
+                    Ok(
+                        if subject_type == wl_kernel::sales::COUNTER_SALE_SUBJECT_TYPE {
+                            counter_sale::CounterSale::find(db, id)
+                                .await?
+                                .map(|sale| sale.number)
+                        } else {
+                            sales_order::SalesOrder::find(db, id)
+                                .await?
+                                .map(|order| order.number)
+                        },
+                    )
+                })
+            });
+        }
         app.view_data::<pages::lead_sources::IndexPage>()
             .view_data::<pages::acquisition::ExceptionsPage>()
             .view_data::<pages::report::ReportPage>()

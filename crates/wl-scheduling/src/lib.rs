@@ -10,6 +10,7 @@ pub mod deposit;
 pub mod eligibility;
 pub mod events;
 pub mod links;
+pub mod names;
 pub mod notices;
 pub mod pages;
 pub mod prepaid;
@@ -219,6 +220,18 @@ impl Module for WlScheduling {
     }
 
     fn register(&self, app: &mut Registry) {
+        // A page that holds only a booking's id (a ticket, a task) shows its
+        // number.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::scheduling::BOOKING_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(booking::Booking::find(db, id)
+                        .await?
+                        .map(|booking| booking.number))
+                })
+            },
+        );
         app.model::<Resource>()
             .model::<ServiceType>()
             .model::<ServiceResource>()
@@ -295,6 +308,8 @@ impl Module for WlScheduling {
         });
         // wl-payments asks whether a booking still waits for its money.
         wl_kernel::payments::provide_prepaid_subjects(app, prepaid::PrepaidBookings);
+        // A vertical shows a booking's service by its name, not its code.
+        wl_kernel::scheduling::provide_service_names(app, names::ServiceTypeNames);
         // In the app group of the staff sidebar; the label is the app's
         // `nav.bookings` text.
         app.nav(

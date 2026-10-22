@@ -11,8 +11,8 @@
           <rx-input name="payer" :label="tx['policies.payer_party']" id="contract-new-payer" required/>
           <rx-input name="plan" :label="tx['contract.plan']" id="contract-new-plan"/>
           <rx-input name="agreement" type="number" :label="tx['contract.agreement']" id="contract-new-agreement"/>
-          <rx-input name="copay_bp" type="number" :label="tx['contract.copay']" value="0" id="contract-new-copay"/>
-          <rx-input name="deductible" type="number" :label="tx['contract.deductible']" value="0" id="contract-new-deductible"/>
+          <rx-input name="copay" type="text" inputmode="decimal" :label="tx['contract.copay']" value="0" id="contract-new-copay"/>
+          <rx-input name="deductible" type="text" inputmode="decimal" :label="tx['contract.deductible']" value="0" id="contract-new-deductible"/>
           <rx-input name="valid_from" type="date" :label="tx['contract.valid_from']" :value="today" id="contract-new-from"/>
           <rx-input name="valid_to" type="date" :label="tx['contract.valid_to']" id="contract-new-to"/>
           <rx-input name="first_submission_days" type="number" :label="tx['contract.first_submission_days']" value="30" id="contract-new-first-days"/>
@@ -25,7 +25,7 @@
                          :title="tx['contract.tariff']" :description="tx['contract.tariff_description']" :submit-label="tx['contract.tariff']" icon="receipt">
           <rx-select name="contract" :label="tx['contract.contract']" :options="contract_options" :selected="contract_selected" id="contract-tariff-contract"/>
           <rx-input name="code" :label="tx['contract.service']" id="contract-tariff-code" required/>
-          <rx-input name="price" type="number" :label="tx['contract.price']" id="contract-tariff-price"/>
+          <rx-input name="price" type="text" inputmode="decimal" :label="tx['contract.price']" id="contract-tariff-price"/>
           <rx-select name="covered" :label="tx['contract.covered']" :options="covered_options" :selected="'yes'" id="contract-tariff-covered"/>
         </rx-action-sheet>
       </template>

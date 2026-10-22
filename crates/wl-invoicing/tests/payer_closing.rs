@@ -162,6 +162,22 @@ async fn a_write_off_above_the_limit_waits_for_approval() {
         Err(Error::Forbidden)
     ));
 
+    // The second person decides on the bill's page: its card has the button
+    // for them and not for the one who asked.
+    let approve = format!("/approvals/{}/approve", requests[0].id);
+    t.app.acting_as(&b);
+    t.app
+        .get(&format!("/payer-bills/{}", bill.id))
+        .await
+        .assert_ok()
+        .assert_see(&approve);
+    t.app.acting_as(&a);
+    t.app
+        .get(&format!("/payer-bills/{}", bill.id))
+        .await
+        .assert_ok()
+        .assert_dont_see(&approve);
+
     approvals::approve(t.state(), requests[0].id, &b, "ok")
         .await
         .unwrap();

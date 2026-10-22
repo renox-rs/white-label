@@ -126,3 +126,48 @@ async fn the_actions_run_the_transitions() {
     assert_eq!(cancelled.status, BookingStatus::Cancelled);
     assert_eq!(cancelled.cancel_code.as_deref(), Some("site_closed"));
 }
+
+/// A form that is wrong answers in words, not with the name of its field
+/// (`starts_at`, `to`).
+#[renox::test]
+async fn a_wrong_form_is_answered_in_words() {
+    let t = boot().await;
+    let doctor = t.doctor("Dr A").await;
+    let service = t.service(&doctor).await;
+    let desk = t.front_desk().await;
+    t.app.acting_as(&desk);
+    let (party, svc, resources, at) = (
+        PATIENT.0.to_string(),
+        service.id.to_string(),
+        doctor.id.to_string(),
+        local(in_hours(48)),
+    );
+    t.app
+        .htmx()
+        .post(
+            "/scheduling/bookings",
+            &[
+                ("party", party.as_str()),
+                ("service", svc.as_str()),
+                ("resources", resources.as_str()),
+                ("starts_at", at.as_str()),
+            ],
+        )
+        .await
+        .assert_status(303);
+    t.app
+        .htmx()
+        .post("/scheduling/bookings/1/reschedule", &[("starts_at", "")])
+        .await
+        .assert_status(422)
+        .assert_see("Give the date and the time");
+    t.app
+        .htmx()
+        .post(
+            "/scheduling/bookings/1/reassign",
+            &[("from", "1"), ("reason_code", "other")],
+        )
+        .await
+        .assert_status(422)
+        .assert_see("Choose the resource that takes over");
+}

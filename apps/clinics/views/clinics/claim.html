@@ -80,6 +80,7 @@
     <rx-include template="wl-kernel/integration_banner.html"/>
     <rx-alert rx-if="held" kind="warning" :message="held_text"/>
     <rx-alert rx-if="held_result" kind="info" :message="held_result"/>
+    <rx-include template="wl-kernel/approval_card.html"/>
     <rx-alert rx-if="void_info" kind="warning" :message="void_info"/>
     <rx-alert rx-if="links" kind="info" :message="links"/>
     <rx-alert rx-if="to_resolve" kind="warning" :message="tx['claim.coverage_to_resolve']"/>

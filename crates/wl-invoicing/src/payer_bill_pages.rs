@@ -29,6 +29,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::payer_bills::{
     PayerAnswer, PayerBillStatus, Recoupment, Remittance, RemittanceLine,
 };
@@ -157,6 +158,15 @@ pub(crate) struct IndexPage {
     rows: Vec<Row>,
 }
 
+/// The record a bill comes from, named for people (`VIS-0009`) when its module
+/// registered a label for the type, else `type:id`.
+async fn source_label(state: &AppState, bill: &PayerBill) -> Result<String> {
+    let source = bill.source();
+    Ok(wl_kernel::documents::subject_label(&state.db, &source)
+        .await?
+        .unwrap_or_else(|| source.to_string()))
+}
+
 /// `GET /payer-bills`: every payer bill, newest first.
 async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
     let all = PayerBill::query()
@@ -171,7 +181,7 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
             number: number_text(&lang, &bill),
             payer: party_name(&state, bill.payer()).await?,
             customer: party_name(&state, bill.customer()).await?,
-            source: bill.source().to_string(),
+            source: source_label(&state, &bill).await?,
             status: text(
                 &lang,
                 &format!("payer_bill.status.{}", bill.status.as_str()),
@@ -271,6 +281,9 @@ pub(crate) struct ShowPage {
     recoupments: Vec<RecoupmentRow>,
     credit: String,
     credit_movements: Vec<CreditRow>,
+    /// The approval cards of the requests about the bill (a remittance above
+    /// what is open, a write-off, a void): where the second person decides.
+    approvals: Vec<ApprovalCard>,
     can_issue: bool,
     can_resubmit: bool,
     can_reject: bool,
@@ -386,6 +399,7 @@ async fn show(
     }
     let can_reconcile = user.has_permission(permissions::PAYER_BILLS_RECONCILE);
     let can_issue = user.has_permission(permissions::PAYER_BILLS_ISSUE);
+    let approval_cards = approvals::cards_for(&state.db, &bill.subject(), &user, &lang).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: number_text(&lang, &bill),
@@ -401,7 +415,7 @@ async fn show(
             &lang,
             &format!("payer_bill.recipient.{}", bill.vat_recipient.as_str()),
         ),
-        source: bill.source().to_string(),
+        source: source_label(&state, &bill).await?,
         reference: bill.payer_reference.clone().unwrap_or_default(),
         service_date: day(Some(bill.service_date)),
         claimed: amount_text(&bill.currency, bill.claimed_total),
@@ -414,6 +428,7 @@ async fn show(
         recoupments,
         credit: amount_text(&bill.currency, credit),
         credit_movements,
+        approvals: approval_cards,
         can_close: user.has_permission(permissions::PAYER_BILLS_WRITE_OFF)
             && matches!(
                 bill.status,

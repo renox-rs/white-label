@@ -41,6 +41,7 @@ pub mod reasons;
 pub mod recall_notice;
 pub mod recalls;
 pub mod seed;
+pub mod service_names;
 pub mod split;
 mod texts;
 pub mod visit;
@@ -206,9 +207,22 @@ impl Module for Clinics {
             .model::<ClaimAttempt>()
             .model::<ClaimRemittance>();
         visit_machine::register();
+        // A bill or a document that names the visit it comes from shows
+        // `VIS-0009`, not `clinics.visit:9`.
+        wl_kernel::documents::register_subject_label(claim::CLAIM_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move { Ok(Claim::find(db, id).await?.map(|claim| claim.number())) })
+        });
+        wl_kernel::documents::register_subject_label(visit::VISIT_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move { Ok(Visit::find(db, id).await?.map(|visit| visit.number())) })
+        });
         // The claim: its machine, its subject (`clinics.claim`) with the
         // void's own approval action, and voidable (`CLN.ACL.14`).
         claim_machine::register();
+        // The dashboard's "Decide: Void a claim" opens the claim, whose page
+        // carries the approval card.
+        wl_kernel::approvals::register_subject_link(claim::CLAIM_SUBJECT_TYPE, |id| {
+            format!("/clinics/claims/{id}")
+        });
         // The clinic's record follows the booking (`BookingBooked`,
         // `BookingRescheduled`, `BookingCancelled`).
         appointments::register(app);

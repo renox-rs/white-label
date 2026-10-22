@@ -480,6 +480,18 @@ pub async fn subject_label(db: &Db, subject: &Subject) -> Result<Option<String>>
     }
 }
 
+/// `subject` for people: its registered label ([`subject_label`], like
+/// `INV-2026-0003`), else `type:id`.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn subject_text(db: &Db, subject: &Subject) -> Result<String> {
+    Ok(subject_label(db, subject)
+        .await?
+        .unwrap_or_else(|| subject.to_string()))
+}
+
 /// The label of a subject without a [`BlockSubjects::label`]:
 /// `<subject_type> #<id>`.
 pub fn default_subject_label(subject: &Subject) -> String {

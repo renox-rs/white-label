@@ -1479,7 +1479,7 @@ async fn the_approval_card_shows_each_viewer_their_buttons() {
     w.app.acting_as(&w.b);
     let res = w.app.get(&page).await;
     res.assert_ok()
-        .assert_see("Approval: payments.refund")
+        .assert_see("Approval: Pay a refund")
         .assert_see("Pending approval")
         .assert_see("Aisha")
         .assert_see(&approve)
@@ -1500,7 +1500,7 @@ async fn the_approval_card_shows_each_viewer_their_buttons() {
         .get(&page)
         .await
         .assert_ok()
-        .assert_see("Approval: payments.refund")
+        .assert_see("Approval: Pay a refund")
         .assert_dont_see(&approve)
         .assert_dont_see(&withdraw);
 
@@ -1513,7 +1513,7 @@ async fn the_approval_card_shows_each_viewer_their_buttons() {
         .get(&page)
         .await
         .assert_ok()
-        .assert_dont_see("Approval: payments.refund");
+        .assert_dont_see("Approval: Pay a refund");
 }
 
 // ---------------------------------------------------------------------------
@@ -1865,7 +1865,7 @@ async fn ac4_a_rejected_refund_is_linked_when_it_is_asked_for_again() {
     w.card_page(&refund, &w.b)
         .await
         .assert_ok()
-        .assert_see("Approval: payments.refund")
+        .assert_see("Approval: Pay a refund")
         .assert_dont_see("Earlier decisions")
         .assert_dont_see("rejected on");
 }

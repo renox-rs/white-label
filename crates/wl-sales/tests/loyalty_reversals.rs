@@ -60,6 +60,13 @@ async fn give_back(t: &Booted, sale: &CounterSale, quantity: &str) -> SalesRetur
         )
         .await
         .assert_status(303);
+    // The list names the sale by its receipt, not by `sales.counter_sale:7`.
+    t.app
+        .get("/sales-returns")
+        .await
+        .assert_ok()
+        .assert_see(&sale.number)
+        .assert_dont_see("sales.counter_sale");
     let r = SalesReturn::query()
         .order_by_desc(SalesReturn::ID)
         .first(t.db())

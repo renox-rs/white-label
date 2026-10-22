@@ -25,6 +25,7 @@ use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
 pub use app::accounting_seed::parties_for;
+pub use app::clinics_demo;
 pub use app::clinics_money;
 pub use app::clinics_seed;
 pub use app::construction_demo;
@@ -80,6 +81,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     construction_demo::COMMAND,
     app::logistics_demo::COMMAND,
     app::manpower_demo::COMMAND,
+    app::clinics_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.
@@ -213,6 +215,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The Clinics client's service types (BL-CLN-12).
     if client_app == app::clinics_seed::CLINICS {
         app = app.module(app::clinics_seed::ClinicsSeed);
+        // The demo clinic, after the installs: `clinics:demo`, and `db:seed`
+        // in local (never in production).
+        app = app.module(app::clinics_demo::ClinicsDemo::new(demo_client.clone()));
     }
     // The Construction client's categories, checklists and SOPs (BL-CON-17,
     // BL-CON-18).
