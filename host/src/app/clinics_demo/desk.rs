@@ -433,14 +433,16 @@ impl Seed {
                         .post(story.doctor, &format!("/clinics/visits/{}/none", visit.id), &[])
                         .await?;
                 }
-                for (code, units, consumable) in &story.lines {
+                for (line, units, consumable) in &story.lines {
+                    // `CODE@LOT` names the lot of a tracked consumable.
+                    let (code, lot) = line.split_once('@').unwrap_or((line, ""));
                     let kind = if *consumable { "consumable" } else { "service" };
                     let who = if *consumable { story.desk } else { story.doctor };
                     self.driver
                         .post(
                             who,
                             &format!("/clinics/visits/{}/charges", visit.id),
-                            &[("code", code), ("units", &units.to_string()), ("kind", kind)],
+                            &[("code", code), ("units", &units.to_string()), ("kind", kind), ("lot", lot)],
                         )
                         .await?;
                 }
@@ -493,7 +495,7 @@ impl Seed {
             consult(YOUSEF, When::Day(-3, 10, 0), true, End::Completed, vec![("consultation", 1, false)]),
             Story {
                 service: k.follow_up,
-                ..consult(KHALID, When::Day(-9, 15, 0), true, End::Completed, vec![("follow_up", 1, false)])
+                ..consult(KHALID, When::Day(-9, 15, 0), true, End::Completed, vec![("follow_up", 1, false), ("SYRINGE-5ML", 1, true)])
             },
             Story {
                 service: k.dental,
@@ -506,7 +508,7 @@ impl Seed {
                     When::Day(-11, 11, 0),
                     true,
                     End::Completed,
-                    vec![("dental_checkup", 1, false), ("ANAES-CART", 1, true)],
+                    vec![("dental_checkup", 1, false), ("ANAES-CART@L-A2199", 1, true)],
                 )
             },
             Story {

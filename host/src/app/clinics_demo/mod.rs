@@ -337,6 +337,11 @@ pub(crate) struct Seed {
     pub(crate) policies: Vec<(usize, i64)>,
     /// The contract of a payer (an index of [`people::PAYERS`]).
     pub(crate) contracts: Vec<i64>,
+    /// The stores of the branches and the items, in the order of their creation.
+    pub(crate) stores: Vec<i64>,
+    pub(crate) items: Vec<i64>,
+    /// The recall of the lot.
+    pub(crate) recall_id: i64,
     /// The appointments made: patient, booking and how it ended.
     pub(crate) bookings: Vec<(usize, i64, desk::End)>,
 }
@@ -357,6 +362,9 @@ impl Seed {
             policies: Vec::new(),
             contracts: Vec::new(),
             bookings: Vec::new(),
+            stores: Vec::new(),
+            items: Vec::new(),
+            recall_id: 0,
         }
     }
 

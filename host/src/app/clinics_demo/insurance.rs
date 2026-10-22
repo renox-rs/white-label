@@ -23,6 +23,7 @@ const TARIFF: &[(&str, i64)] = &[
     ("dental_xray", 15_000),
     ("GLOVES-M", 1_500),
     ("ANAES-CART", 4_000),
+    ("SYRINGE-5ML", 800),
 ];
 
 /// A policy: patient, payer, plan, member id, first day, last day.
