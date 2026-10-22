@@ -441,6 +441,7 @@ impl Centre {
                 edtech::permissions::ENROLMENTS_VIEW,
                 edtech::permissions::ENROLMENTS_MANAGE,
                 edtech::permissions::ENROLMENTS_APPROVE,
+                edtech::permissions::ENROLMENTS_REFUND_APPROVE,
                 edtech::permissions::CERTIFICATES_VIEW,
                 edtech::permissions::CERTIFICATES_ISSUE,
             ],

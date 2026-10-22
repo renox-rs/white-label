@@ -13,6 +13,7 @@
 //! | `POST /edtech/enrolments/{id}/unfreeze` | `edtech.enrolment_unfreeze` | `enrolments.manage` |
 //! | `POST /edtech/enrolments/{id}/withdraw` | `edtech.enrolment_withdraw` | `enrolments.manage` |
 //! | `POST /edtech/enrolments/{id}/transfer` | `edtech.enrolment_transfer` | `enrolments.manage` |
+//! | `POST /edtech/enrolments/{id}/settle` | `edtech.enrolment_settle` | `enrolments.manage` |
 //!
 //! The list shows each enrolment with the student, what it is for, the fee and
 //! its status in words. The new enrolment form picks the student, the guardian
@@ -24,6 +25,7 @@
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::dubai_text;
 use wl_kernel::parties::directory;
 
@@ -69,6 +71,8 @@ pub fn routes() -> Routes {
         .name("edtech.enrolment_withdraw")
         .post("/edtech/enrolments/{id}/transfer", transfer)
         .name("edtech.enrolment_transfer")
+        .post("/edtech/enrolments/{id}/settle", settle)
+        .name("edtech.enrolment_settle")
         .require_auth()
 }
 
@@ -400,6 +404,13 @@ pub(crate) struct ShowPage {
     can_unfreeze: bool,
     can_withdraw: bool,
     can_transfer: bool,
+    can_settle: bool,
+    pending: bool,
+    approvals: Vec<ApprovalCard>,
+    settle_state: String,
+    credit_notes: String,
+    refunds_asked: String,
+    owed_invoice: String,
     show_preview: bool,
     show_withdrawn: bool,
     has_batch: bool,
@@ -476,6 +487,27 @@ async fn show(
     } else {
         (none.clone(), none.clone())
     };
+    let subject = e.subject();
+    let waiting = !approvals::pending_for(&state.db, &subject).await?.is_empty();
+    let approval_cards = approvals::cards_for(&state.db, &subject, &user, &lang).await?;
+    let settlement = &e.settlement.0;
+    let withdrawn = e.status == EnrolmentStatus::Withdrawn;
+    let joined = |ids: &[i64]| {
+        if ids.is_empty() {
+            none.clone()
+        } else {
+            ids.iter().map(i64::to_string).collect::<Vec<_>>().join(", ")
+        }
+    };
+    let settle_state = if !withdrawn {
+        none.clone()
+    } else if settlement.done {
+        text(&lang, "enrolments.settled")
+    } else if let Some(problem) = &settlement.problem {
+        format!("{} {problem}", text(&lang, "enrolments.not_settled"))
+    } else {
+        text(&lang, "enrolments.settling")
+    };
     let (preview_refund, preview_owed) = preview
         .as_ref()
         .map_or((String::new(), String::new()), |r| {
@@ -538,6 +570,15 @@ async fn show(
         can_freeze: matches!(e.status, EnrolmentStatus::Active) && manage,
         can_unfreeze: e.status == EnrolmentStatus::Frozen && manage,
         can_withdraw: live && manage,
+        can_settle: withdrawn && !settlement.done && manage,
+        pending: waiting,
+        approvals: approval_cards,
+        settle_state,
+        credit_notes: joined(&settlement.credit_notes),
+        refunds_asked: joined(&settlement.refunds),
+        owed_invoice: settlement
+            .owed_invoice
+            .map_or_else(|| none.clone(), |id| id.to_string()),
         can_transfer: manage
             && e.kind == EnrolmentKind::Course
             && matches!(e.status, EnrolmentStatus::Active | EnrolmentStatus::Frozen),
@@ -633,8 +674,24 @@ async fn withdraw(
     Path(id): Path<i64>,
     Form(form): Form<WithdrawForm>,
 ) -> Result<Response> {
-    enrolments::withdraw(&state, Some(&user), id, &form.reason).await?;
+    let request = enrolments::request_withdrawal(&state, Some(&user), id, &form.reason).await?;
+    if request.approval_request.is_some() {
+        return done(&lang, "enrolments.withdrawal_sent");
+    }
     done(&lang, "enrolments.withdrawn")
+}
+
+/// `POST /edtech/enrolments/{id}/settle`: repeats the money steps of a
+/// withdrawal that stopped.
+async fn settle(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    require(&user, permissions::ENROLMENTS_MANAGE)?;
+    crate::settlement::settle(&state, id).await?;
+    done(&lang, "enrolments.settled_now")
 }
 
 /// The form of `transfer`.

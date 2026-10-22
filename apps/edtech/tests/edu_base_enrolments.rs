@@ -7,7 +7,7 @@ mod support;
 
 use edtech::batches::{self, NewBatch};
 use edtech::enrolment::{EnrolmentFreeze, Instalment};
-use edtech::enrolment_machine::{ACTIVATE_SYSTEM, FREEZE_ALLOWANCE_DAYS, WITHDRAW};
+use edtech::enrolment_machine::{ACTIVATE_SYSTEM, FREEZE_ALLOWANCE_DAYS, WITHDRAW_APPROVED};
 use edtech::enrolments::{self, NewEnrolment};
 use edtech::refund::{RefundOutcome, ratio};
 use edtech::{
@@ -472,9 +472,18 @@ async fn edu_base_withdrawing_stores_the_refund_and_frees_the_seat() {
 
     let blank = enrolments::withdraw(t.state(), Some(&desk), e.id, " ").await;
     assert!(blank.is_err());
-    let gone = enrolments::withdraw(t.state(), Some(&desk), e.id, "moved abroad")
+    // A refund waits for another user: the enrolment stays as it is until the
+    // centre manager approves it (`FIN.ACL.04`).
+    let asked = enrolments::request_withdrawal(t.state(), Some(&desk), e.id, "moved abroad")
         .await
         .unwrap();
+    assert_eq!(asked.enrolment.status, EnrolmentStatus::Active);
+    let request = asked.approval_request.expect("the refund waits for approval");
+    let manager = t.manager_user().await;
+    wl_kernel::approvals::approve(t.state(), request, &manager, "")
+        .await
+        .unwrap();
+    let gone = Enrolment::find_or_404(t.db(), e.id).await.unwrap();
     assert_eq!(gone.status, EnrolmentStatus::Withdrawn);
     assert_eq!(gone.refund_amount, PRICE - ratio(PRICE, 3, 8) - 10_500);
     assert_eq!(gone.refund_amount, preview.refund);
@@ -487,7 +496,10 @@ async fn edu_base_withdrawing_stores_the_refund_and_frees_the_seat() {
         0
     );
     let rows = history(t.db(), "edtech_enrolments", gone.id).await.unwrap();
-    assert_eq!(rows.last().map(|r| r.transition.as_str()), Some(WITHDRAW));
+    assert_eq!(
+        rows.last().map(|r| r.transition.as_str()),
+        Some(WITHDRAW_APPROVED)
+    );
     assert!(enrolments::withdraw(t.state(), Some(&desk), e.id, "again").await.is_err());
 }
 

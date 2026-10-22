@@ -440,6 +440,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::ENROLMENTS_VIEW,
             edu::ENROLMENTS_MANAGE,
             edu::ENROLMENTS_APPROVE,
+            edu::ENROLMENTS_REFUND_APPROVE,
             edu::CERTIFICATES_VIEW,
             edu::CERTIFICATES_ISSUE,
             edu::CERTIFICATES_REVOKE,
@@ -739,6 +740,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::BATCHES_VIEW,
             edu::SESSIONS_VIEW,
             edu::ENROLMENTS_VIEW,
+            // Decides the refund of a withdrawal, never the one who asked
+            // (`FIN.ACL.04`).
+            edu::ENROLMENTS_REFUND_APPROVE,
             acc::AML_RAISE,
             sales::LOYALTY_VIEW,
             // Told of WPS rejections (`HRM.RUL.11`), reads the run.
@@ -1210,6 +1214,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::ENROLMENTS_VIEW,
             edu::ENROLMENTS_MANAGE,
             edu::ENROLMENTS_APPROVE,
+            edu::ENROLMENTS_REFUND_APPROVE,
             edu::CERTIFICATES_VIEW,
             edu::CERTIFICATES_ISSUE,
             // The owner of the front desk and refunds SOPs publishes their

@@ -39,6 +39,8 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
+    <rx-alert rx-if="pending" kind="warning" :message="tx['enrolments.pending_approval']"/>
+    <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card :title="tx['enrolments.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['enrolments.student']" :value="student"/>
@@ -78,7 +80,15 @@
           <rx-entry :label="tx['enrolments.reason']" :value="withdrawn_reason"/>
           <rx-entry :label="tx['enrolments.refund']" :value="withdrawn_refund"/>
           <rx-entry :label="tx['enrolments.owed']" :value="withdrawn_owed"/>
+          <rx-entry :label="tx['enrolments.settlement']" :value="settle_state"/>
+          <rx-entry :label="tx['enrolments.credit_notes']" :value="credit_notes"/>
+          <rx-entry :label="tx['enrolments.refunds_asked']" :value="refunds_asked"/>
+          <rx-entry :label="tx['enrolments.owed_invoice']" :value="owed_invoice"/>
         </rx-infolist>
+        <template rx-if="can_settle">
+          <rx-confirm :id="'enrolment-settle-' ~ id" :label="tx['enrolments.settle']" :action="route('edtech.enrolment_settle', id)" method="POST"
+                      :title="tx['enrolments.settle']" :message="tx['enrolments.settle_message']" :confirm-label="tx['enrolments.settle']" :cancel-label="tx['button_cancel']" icon="check"/>
+        </template>
       </rx-card>
     </template>
     <rx-table :rows="instalments" as="row" :key="row.number" :caption="tx['enrolments.instalment_plan']" card>

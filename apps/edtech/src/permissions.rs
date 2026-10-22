@@ -32,6 +32,9 @@ pub const ENROLMENTS_VIEW: &str = "enrolments.view";
 pub const ENROLMENTS_MANAGE: &str = "enrolments.manage";
 /// Approve a discount above the limit (the centre manager's).
 pub const ENROLMENTS_APPROVE: &str = "enrolments.approve";
+/// Decide the refund of a withdrawal (`FIN.ACL.04`: the centre manager and the
+/// accountant, never the user who asked for it).
+pub const ENROLMENTS_REFUND_APPROVE: &str = "enrolments.approve_refund";
 /// See the certificates in scope.
 pub const CERTIFICATES_VIEW: &str = "certificates.view";
 /// Issue and reissue a certificate (`certificates.issue` of §7.1).

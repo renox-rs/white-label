@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::{PartyId, Subject};
 
 use crate::refund::RefundPolicy;
+use crate::settlement::Settlement;
 
 /// The subject type of an enrolment.
 pub const ENROLMENT_SUBJECT_TYPE: &str = "edtech.enrolment";
@@ -191,6 +192,9 @@ pub struct Enrolment {
     pub transferred_from_id: Option<i64>,
     /// The enrolment that replaces this one (`transfer`).
     pub transferred_to_id: Option<i64>,
+    /// What the withdrawal has done about the money so far
+    /// ([`crate::settlement`]).
+    pub settlement: Json<Settlement>,
     /// The lifecycle state; changed only by a transition.
     pub status: EnrolmentStatus,
     /// The user who created it.

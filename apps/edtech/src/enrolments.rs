@@ -30,13 +30,13 @@
 use renox::chrono::{Duration, NaiveDate};
 use renox::db::{Json, now};
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError, Transitioned};
+use renox::state_machine::{Outcome, StateMachine, TransitionError, Transitioned};
+use wl_kernel::approvals::{announce, submit::REQUEST_KEY};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{InvoiceId, InvoicePaid, invoicer};
 use wl_kernel::parties::directory;
 use wl_kernel::sales::{lead_conversion, package_ledger};
-use wl_kernel::subscriptions::{CancelSubscription, subscriptions};
 
 use crate::batch::{Batch, BatchStatus};
 use crate::db::refused;
@@ -45,7 +45,7 @@ use crate::enrolment::{
 };
 use crate::enrolment_machine::{
     ACTIVATE, ACTIVATE_SYSTEM, COMPLETE, EnrolmentInput, FREEZE, FREEZE_SYSTEM, LAPSE, UNFREEZE,
-    UNFREEZE_SYSTEM, WITHDRAW, WITHDRAW_SYSTEM, end_cause,
+    UNFREEZE_SYSTEM, WITHDRAW, WITHDRAW_APPROVED, WITHDRAW_SYSTEM, end_cause,
 };
 use crate::fees;
 use crate::permissions;
@@ -625,43 +625,84 @@ pub async fn refund_for(state: &AppState, enrolment: &Enrolment, on: NaiveDate) 
     }))
 }
 
+/// What a request to withdraw came to.
+#[derive(Debug, Clone)]
+pub struct Withdrawal {
+    /// The enrolment as it is now: `withdrawn`, or unchanged while another
+    /// user decides the refund.
+    pub enrolment: Enrolment,
+    /// The approval request that waits for the refund's approval
+    /// (`FIN.ACL.04`), when there is one.
+    pub approval_request: Option<i64>,
+}
+
 /// `withdraw`: the student leaves for `reason`. The refund the policy gives
-/// is calculated and stored, the instalments not yet invoiced are cancelled,
-/// the seat is released and a membership is cancelled at once. A user needs
-/// `enrolments.manage`; `by` is `None` for a batch `terminate` or `cancel`.
-///
-/// BL-EDU-03 puts the approval (`FIN.ACL.04`) before the state change and
-/// adds the credit note, the credited instalment invoices, the invoice for an
-/// amount owed and the package `refund`; BL-EDU-04 the blocked-party rule.
+/// (`EDU.REF.01`) is calculated and kept in the input. A user needs
+/// `enrolments.manage`; when the refund is above nothing the kernel defers the
+/// run as a request another user approves (`FIN.ACL.04`, [`withdraw_policy`]
+/// in the machine) and the enrolment stays as it is; the run at the approval,
+/// or at once when nothing is refunded, stores the refund, cancels the
+/// instalments not yet invoiced and releases the seat, and
+/// [`crate::settlement::settle`] makes the money documents after the commit.
+/// `by` is `None` for a system withdrawal.
 ///
 /// # Errors
 ///
 /// The machine's: a 403 without `enrolments.manage`, a 422 without a reason or
 /// unless the enrolment is `pending_payment`, `active` or `frozen`.
-pub async fn withdraw(
+pub async fn request_withdrawal(
     state: &AppState,
     by: Option<&AuthUser>,
     id: i64,
     reason: &str,
-) -> Result<Enrolment> {
+) -> Result<Withdrawal> {
     let enrolment = Enrolment::find_or_404(&state.db, id).await?;
     let on = today();
     let refund = refund_for(state, &enrolment, on).await?;
     let input = EnrolmentInput {
         on: Some(on),
         by: by.map(|user| user.id),
+        amount: refund.refund,
+        reason: Some(reason.trim().to_owned()),
         refund: Some(refund),
         ..EnrolmentInput::default()
     };
-    run(
-        state,
-        by,
-        id,
-        (WITHDRAW, WITHDRAW_SYSTEM),
-        Some(reason),
-        input,
-    )
-    .await
+    let builder = match by {
+        Some(user) => enrolment.transition(WITHDRAW).by(user),
+        None => enrolment.transition(WITHDRAW_SYSTEM).by_system(),
+    };
+    let outcome = builder
+        .reason(reason)
+        .input(&input)
+        .run(state)
+        .await
+        .map_err(TransitionError::into_error)?;
+    announce(state, &outcome).await?;
+    let approval_request = match &outcome {
+        Outcome::Pending(pending) => pending
+            .data
+            .get(REQUEST_KEY)
+            .and_then(renox::serde_json::Value::as_i64),
+        Outcome::Done(_) => None,
+    };
+    Ok(Withdrawal {
+        enrolment: Enrolment::find_or_404(&state.db, id).await?,
+        approval_request,
+    })
+}
+
+/// [`request_withdrawal`], answering the enrolment.
+///
+/// # Errors
+///
+/// As [`request_withdrawal`].
+pub async fn withdraw(
+    state: &AppState,
+    by: Option<&AuthUser>,
+    id: i64,
+    reason: &str,
+) -> Result<Enrolment> {
+    Ok(request_withdrawal(state, by, id, reason).await?.enrolment)
 }
 
 /// What follows a transition once it committed: a lead is won and a
@@ -679,13 +720,10 @@ async fn after(state: &AppState, event: &Transitioned<Enrolment>) -> Result {
                 .await?;
             fees::start_membership(state, &enrolment).await?;
         }
-        WITHDRAW | WITHDRAW_SYSTEM => {
-            if enrolment.kind == EnrolmentKind::Membership {
-                let on = enrolment.withdrawn_on.unwrap_or_else(today);
-                let _ended = subscriptions(state)
-                    .cancel(state, &enrolment.subject(), CancelSubscription::new(on))
-                    .await?;
-            }
+        WITHDRAW | WITHDRAW_SYSTEM | WITHDRAW_APPROVED => {
+            // The money documents follow the commit; a step that fails is kept
+            // on the enrolment and repeated, it does not undo the withdrawal.
+            crate::settlement::settle_quietly(state, enrolment.id).await;
         }
         LAPSE => {
             crate::lapse::after_lapse(state, &enrolment).await?;

@@ -107,6 +107,11 @@ pub enum RefundOutcome {
     Package,
     /// A membership: settled by the subscription's own pro rata credit.
     Membership,
+    /// A batch `terminate`: the unused sessions pro rata, no admin fee, no
+    /// no-refund tier, the registration fee not refunded.
+    Termination,
+    /// A batch `cancel`: everything paid, the registration fee included.
+    Cancellation,
 }
 
 /// The result of [`calculate`].
@@ -218,6 +223,48 @@ pub fn calculate(input: &RefundInput) -> Refund {
                 },
             }
         }
+    }
+}
+
+/// The refund of a batch `terminate` (10 §7.1 *Batch* `terminate`): what was
+/// paid for the course (`paid` less the registration fee, which is only
+/// refunded by a `cancel`) divided by the sessions, times the sessions not
+/// used, half-up, never more than was paid; no admin fee and no no-refund tier.
+/// Nothing was paid, nothing is refunded. Money in fils with VAT.
+pub fn for_termination(
+    paid: i64,
+    registration_fee: i64,
+    sessions_total: i64,
+    sessions_held: i64,
+) -> Refund {
+    let course_paid = (paid - registration_fee.min(paid)).max(0);
+    let unused = (sessions_total - sessions_held).clamp(0, sessions_total.max(0));
+    let refund = if sessions_total <= 0 {
+        0
+    } else {
+        ratio(course_paid, unused, sessions_total).min(course_paid)
+    };
+    Refund {
+        refund,
+        owed: 0,
+        used_value: course_paid - refund,
+        kept_fees: registration_fee.min(paid),
+        vat: vat_share(refund),
+        outcome: RefundOutcome::Termination,
+    }
+}
+
+/// The refund of a batch `cancel` (10 §7.1 *Batch* `cancel`): everything paid,
+/// the registration fee included; no policy tier and no fee is deducted.
+pub fn for_cancellation(paid: i64) -> Refund {
+    let refund = paid.max(0);
+    Refund {
+        refund,
+        owed: 0,
+        used_value: 0,
+        kept_fees: 0,
+        vat: vat_share(refund),
+        outcome: RefundOutcome::Cancellation,
     }
 }
 
@@ -340,6 +387,31 @@ mod tests {
         let mut input = course(10_000, 1, true);
         input.basis = RefundBasis::Membership;
         assert_eq!(calculate(&input), Refund::zero(RefundOutcome::Membership));
+    }
+
+    #[test]
+    fn a_termination_refunds_the_unused_sessions_pro_rata_without_fees() {
+        // AED 2,520.00 paid for 12 sessions, 5 held: 7/12 = AED 1,470.00.
+        let r = for_termination(252_000, 0, 12, 5);
+        assert_eq!((r.refund, r.owed), (147_000, 0));
+        assert_eq!(r.outcome, RefundOutcome::Termination);
+        // Past half the course there is still a refund, and no admin fee.
+        assert_eq!(for_termination(252_000, 0, 12, 9).refund, 63_000);
+        // The registration fee is not refunded.
+        assert_eq!(for_termination(262_500, 10_500, 12, 5).refund, 147_000);
+        // Never above what was paid, nothing for nothing paid.
+        assert_eq!(for_termination(0, 0, 12, 5).refund, 0);
+        assert_eq!(for_termination(252_000, 0, 12, 0).refund, 252_000);
+        assert_eq!(for_termination(252_000, 0, 0, 0).refund, 0);
+    }
+
+    #[test]
+    fn a_cancellation_refunds_everything_paid_with_its_vat() {
+        let r = for_cancellation(273_000);
+        assert_eq!(r.refund, 273_000);
+        assert_eq!(r.vat, 13_000);
+        assert_eq!(r.outcome, RefundOutcome::Cancellation);
+        assert_eq!(for_cancellation(-5).refund, 0);
     }
 
     #[test]

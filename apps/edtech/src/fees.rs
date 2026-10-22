@@ -58,14 +58,14 @@ pub fn due_date(start: NaiveDate, number: i64) -> NaiveDate {
 }
 
 /// One line of an enrolment's invoice: `gross` with VAT.
-fn line(description: &str, gross: i64, enrolment: &Enrolment) -> DraftLine {
+pub(crate) fn line(description: &str, gross: i64, enrolment: &Enrolment) -> DraftLine {
     DraftLine::new(description, net_of_gross(gross), VatCategory::Standard)
         .origin(enrolment.subject())
 }
 
 /// Drafts, and tries to issue, an invoice to the payer of `enrolment` with
 /// `lines`; `None` when invoicing is off or there is nothing to bill.
-async fn bill(
+pub(crate) async fn bill(
     state: &AppState,
     enrolment: &Enrolment,
     lines: Vec<DraftLine>,

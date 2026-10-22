@@ -7,7 +7,7 @@
 //! | [`FREEZE`] / [`FREEZE_SYSTEM`] | active, frozen | frozen | `enrolments.manage` / system | `cause_given`, `within_allowance` |
 //! | [`UNFREEZE`] / [`UNFREEZE_SYSTEM`] | frozen | active | `enrolments.manage` / system | `cause_given`, `no_cause_left` |
 //! | [`COMPLETE`] | active | completed | system | — |
-//! | [`WITHDRAW`] / [`WITHDRAW_SYSTEM`] | pending_payment, active, frozen | withdrawn | `enrolments.manage` / system | a reason, `refund_calculated` |
+//! | [`WITHDRAW`] / [`WITHDRAW_SYSTEM`] / [`WITHDRAW_APPROVED`] | pending_payment, active, frozen | withdrawn | `enrolments.manage` (approved by another user, `FIN.ACL.04`) / system / the kernel after the approval | a reason, `refund_calculated` |
 //! | [`TRANSFER`] / [`TRANSFER_SYSTEM`] | active, frozen | transferred | `enrolments.manage` / system | `target_batch_given`, `target_has_seat` |
 //!
 //! Decisions:
@@ -33,25 +33,32 @@
 //!   effect and creates the enrolment that replaces the old one (BL-EDU-02,
 //!   [`crate::transfer`]). The package `extend` by the frozen
 //!   days and the membership `pause`/`resume` (`EDU.RUL.14`) are BL-EDU-05's;
-//!   the money documents of `withdraw` (credit note, cancelled instalment
-//!   invoices, refund payment, approval) are BL-EDU-03's. Here `withdraw`
-//!   stores the refund the policy gives, cancels the instalments not yet
-//!   invoiced and releases the seat.
+//!   the money documents of `withdraw` follow its commit ([`crate::settlement`]).
+//! - `withdraw` by a user is the action `edtech.withdraw` of the kernel's
+//!   approvals (`FIN.ACL.04`, [`withdraw_policy`]): when the refund is above
+//!   nothing the run is deferred as a request that another user decides, the
+//!   enrolment stays as it is, and the kernel runs [`WITHDRAW_APPROVED`] (the
+//!   same guards and effects) after the last approval, with the input the
+//!   request kept, so the figures are those the approver saw. A withdrawal with
+//!   no refund (from `pending_payment`, or an amount owed) runs at once.
 
 use renox::chrono::NaiveDate;
-use renox::db::{DateTime, now};
+use renox::db::{DateTime, Json, now};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
+use wl_kernel::approvals::{self, PolicyDefault};
+use wl_kernel::SubjectMachine;
 
 use crate::db::set_enrolment;
 use crate::batch::Batch;
 use crate::enrolment::{
-    Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
+    ENROLMENT_SUBJECT_TYPE, Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
     InstalmentStatus,
 };
 use crate::permissions;
-use crate::refund::Refund;
+use crate::refund::{Refund, RefundOutcome};
+use crate::settlement::Settlement;
 use crate::seats;
 use crate::texts::english;
 
@@ -80,6 +87,8 @@ pub const WITHDRAW_SYSTEM: &str = "withdraw_system";
 pub const WITHDRAW_APPROVED: &str = "withdraw_approved";
 /// `active | frozen → transferred`: moved to another batch.
 pub const TRANSFER: &str = "transfer";
+/// The approval action of a user's `withdraw` (`FIN.ACL.04`).
+pub const WITHDRAW_ACTION: &str = "edtech.withdraw";
 /// `active | frozen → transferred`: moved by a batch `terminate`.
 pub const TRANSFER_SYSTEM: &str = "transfer_system";
 
@@ -133,6 +142,13 @@ pub struct EnrolmentInput {
     /// The facts a `lapse` needs ([`LAPSE`]).
     #[serde(default)]
     pub lapse: Option<LapseFacts>,
+    /// What the refund policy gives back, in fils: the amount the approval
+    /// policy of `withdraw` reads (`FIN.ACL.04`); 0 asks for no approval.
+    #[serde(default)]
+    pub amount: i64,
+    /// Why the student leaves; the kernel hands it to the approved run.
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 /// What the service found out before it ran `lapse` (`EDU.RUL.11`): the guard
@@ -222,6 +238,7 @@ impl StateMachine for Enrolment {
             .transition(complete())
             .transition(withdraw(WITHDRAW, false))
             .transition(withdraw(WITHDRAW_SYSTEM, true))
+            .transition(withdraw(WITHDRAW_APPROVED, true))
             .transition(transfer(TRANSFER, false))
             .transition(transfer(TRANSFER_SYSTEM, true))
     }
@@ -426,7 +443,17 @@ fn withdraw(name: &'static str, system: bool) -> Transition<Enrolment> {
         let reason = ctx.reason().map(str::to_owned);
         Box::pin(async move {
             let (refund, owed) = input.refund.as_ref().map_or((0, 0), |r| (r.refund, r.owed));
+            let full = input
+                .refund
+                .as_ref()
+                .is_some_and(|r| r.outcome == RefundOutcome::Cancellation);
             let on = input.on.unwrap_or_else(wl_kernel::documents::today);
+            let settlement = Json(Settlement {
+                requested_by: input.by,
+                from_pending: e.status == EnrolmentStatus::PendingPayment,
+                full_refund: full,
+                ..Settlement::default()
+            });
             set_enrolment(
                 tx,
                 e.id,
@@ -435,6 +462,7 @@ fn withdraw(name: &'static str, system: bool) -> Transition<Enrolment> {
                     ("amount_owed", &owed),
                     ("withdrawn_on", &Some(on)),
                     ("withdrawal_reason", &reason),
+                    ("settlement", &settlement),
                 ],
             )
             .await?;
@@ -551,9 +579,31 @@ async fn move_to_target(
     set_enrolment(tx, old.id, &[("transferred_to_id", &Some(next.id))]).await
 }
 
-/// Registers the machine for `rnx state:diagram`.
+/// The default approval policy of a user's `withdraw` (`FIN.ACL.04`): a
+/// withdrawal that gives a refund above nothing is decided by a holder of
+/// `enrolments.approve_refund` (the centre manager, the accountant), never the
+/// user who asked.
+pub fn withdraw_policy() -> PolicyDefault {
+    PolicyDefault::new(WITHDRAW_ACTION)
+        .amount_above(0)
+        .step_permission(permissions::ENROLMENTS_REFUND_APPROVE)
+}
+
+/// The enrolment in the kernel's registry, so the approvals can run
+/// [`WITHDRAW_APPROVED`] after the last approval.
+pub fn subject_machine() -> SubjectMachine {
+    SubjectMachine::of::<Enrolment>(ENROLMENT_SUBJECT_TYPE).build()
+}
+
+/// Registers the machine for `rnx state:diagram` and with the kernel, the
+/// approval policy of `withdraw` and the page the approvals link to.
 pub(crate) fn register() {
+    subject_machine().register();
     renox::state_machine::register::<Enrolment>();
+    withdraw_policy().register();
+    approvals::register_subject_link(ENROLMENT_SUBJECT_TYPE, |id| {
+        format!("/edtech/enrolments/{id}")
+    });
 }
 
 #[cfg(test)]
@@ -601,6 +651,12 @@ mod tests {
                 "withdrawn",
                 true,
             ),
+            (
+                WITHDRAW_APPROVED,
+                vec!["pending_payment", "active", "frozen"],
+                "withdrawn",
+                true,
+            ),
             (TRANSFER, vec!["active", "frozen"], "transferred", false),
             (TRANSFER_SYSTEM, vec!["active", "frozen"], "transferred", true),
         ];
@@ -636,7 +692,7 @@ mod tests {
             assert_eq!(guards(name), ["cause_given", "no_cause_left"]);
         }
         assert!(guards(COMPLETE).is_empty());
-        for name in [WITHDRAW, WITHDRAW_SYSTEM] {
+        for name in [WITHDRAW, WITHDRAW_SYSTEM, WITHDRAW_APPROVED] {
             assert_eq!(guards(name), ["refund_calculated"]);
             assert!(machine.find(name).unwrap().needs_reason(), "{name}");
         }

@@ -115,7 +115,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("edtech.enrolments.withdraw", "Withdraw"),
     (
         "edtech.enrolments.withdraw_description",
-        "The student leaves. The refund or the amount owed follows the refund policy accepted at enrolment.",
+        "The student leaves. The refund or the amount owed follows the refund policy accepted at enrolment; a refund waits for another user to approve it before the enrolment is withdrawn.",
     ),
     ("edtech.enrolments.withdrawn", "Enrolment withdrawn."),
     (
