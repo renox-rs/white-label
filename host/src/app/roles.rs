@@ -404,6 +404,20 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::COLD_UNITS_MANAGE,
             fnb_perm::RECALL_TRACE_VIEW,
             fnb_perm::RECALL_TRACE_DECIDE,
+            // The outlet channels, the paper orders and the daily closing
+            // (BL-FNB-14, BL-FNB-15), and the till sessions they count in.
+            fnb_perm::OUTLET_CHANNELS_VIEW,
+            fnb_perm::OUTLET_CHANNELS_MANAGE,
+            fnb_perm::PAPER_ORDERS_ENTER,
+            fnb_perm::CLOSING_VIEW,
+            fnb_perm::CLOSING_SUBMIT,
+            fnb_perm::CLOSING_APPROVE,
+            fnb_perm::CLOSING_REOPEN,
+            fnb_perm::CLOSING_CUTOFF,
+            sales::POS_OPEN_TILL,
+            sales::POS_CLOSE_TILL,
+            sales::POS_REOPEN_TILL,
+            sales::POS_REVIEW,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -1340,6 +1354,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::TEMPERATURE_VIEW,
             fnb_perm::RECALL_TRACE_VIEW,
             fnb_perm::RECALL_TRACE_DECIDE,
+            // Sees the outlets' channels and closings.
+            fnb_perm::OUTLET_CHANNELS_VIEW,
+            fnb_perm::CLOSING_VIEW,
             inventory::RECALLS_VIEW,
             inventory::RECALLS_MANAGE,
             sales::SALES_ORDERS_VIEW,
@@ -1372,6 +1389,19 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::PRODUCTION_VIEW,
             fnb_perm::TEMPERATURE_VIEW,
             fnb_perm::RECALL_TRACE_VIEW,
+            // Resumes an outlet's channels, reopens and approves the daily
+            // closing, changes the cut-off, approves a late entry into a
+            // submitted closing (`PLT.ACL.10`) and reviews the till sessions
+            // (BL-FNB-14, BL-FNB-15).
+            fnb_perm::OUTLET_CHANNELS_VIEW,
+            fnb_perm::OUTLET_CHANNELS_MANAGE,
+            fnb_perm::CLOSING_VIEW,
+            fnb_perm::CLOSING_APPROVE,
+            fnb_perm::CLOSING_REOPEN,
+            fnb_perm::CLOSING_CUTOFF,
+            wl_kernel::permissions::LATE_ENTRIES_APPROVE,
+            sales::POS_REOPEN_TILL,
+            sales::POS_REVIEW,
             sales::SALES_ORDERS_VIEW,
             sales::SALES_ORDERS_APPROVE,
             delivery::VIEW,
@@ -1411,6 +1441,14 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::TEMPERATURE_LOG,
             fnb_perm::COLD_UNITS_MANAGE,
             fnb_perm::RECALL_TRACE_VIEW,
+            // Resumes the outlet's channels after an outage, enters the paper
+            // orders as late entries and submits the daily closing after the
+            // cut-off (BL-FNB-14, BL-FNB-15).
+            fnb_perm::OUTLET_CHANNELS_VIEW,
+            fnb_perm::OUTLET_CHANNELS_MANAGE,
+            fnb_perm::PAPER_ORDERS_ENTER,
+            fnb_perm::CLOSING_VIEW,
+            fnb_perm::CLOSING_SUBMIT,
             inventory::LOTS_RELEASE,
             // Accepts and amends orders, cancels and approves a started line
             // (`SAL.ACL.05`), approves a return and a refund above the limit

@@ -67,8 +67,39 @@ pub const AGGREGATOR_CHANNELS: [&str; 3] = ["aggregator_a", "aggregator_b", "agg
 pub fn module() -> fnb::Fnb {
     // A completed order consumes its recipe from the outlet's stock, so a
     // recall of an ingredient lot finds the orders that may have used it.
-    fnb::Fnb::new().recipe_consumption(true)
+    // The kitchen devices of each outlet are a device connection active in its
+    // opening hours and `down` after 5 minutes (`FNB.RUL.15`, BL-FNB-14); the
+    // outlets named here also get their own paper-order late-entry type.
+    fnb::Fnb::new()
+        .recipe_consumption(true)
+        .kitchen_devices(
+            "marina",
+            MARINA_OPENS,
+            MARINA_CLOSES,
+            &["kds-marina-1", "kds-marina-2", "till-marina"],
+        )
+        .kitchen_devices(
+            "sharjah",
+            "10:00",
+            "23:00",
+            &["kds-sharjah-1", "till-sharjah"],
+        )
+        .outage_down_minutes(OUTAGE_DOWN_MINUTES)
+        .outage_prompt_minutes(OUTAGE_PROMPT_MINUTES)
 }
+
+/// Marina Kitchen opens at 11:00 and closes at 02:00 the next night.
+pub const MARINA_OPENS: &str = "11:00";
+
+/// See [`MARINA_OPENS`].
+pub const MARINA_CLOSES: &str = "02:00";
+
+/// N: minutes of silence before an outlet's kitchen devices are `down`
+/// (`FNB.RUL.15`).
+pub const OUTAGE_DOWN_MINUTES: i64 = 5;
+
+/// R: minutes between the prompts to resume the channels (`FNB.RUL.15`).
+pub const OUTAGE_PROMPT_MINUTES: i64 = 15;
 
 /// The sales module with the 06 client's settings (06 §7.1, §3.3).
 pub fn sales(module: WlSales) -> WlSales {
@@ -168,6 +199,14 @@ pub fn grant_roles(client_app: &str) {
             // recorded, as a late entry (BL-FNB-10).
             fnb_perm::LATE_ORDERS_ENTER,
             fnb_perm::RECONCILIATION_VIEW,
+            // Enters the paper orders of an outage as late entries, sees the
+            // channels and the closings, and keeps the till: opens it with a
+            // float and counts it (BL-FNB-14, BL-FNB-15).
+            fnb_perm::PAPER_ORDERS_ENTER,
+            fnb_perm::OUTLET_CHANNELS_VIEW,
+            fnb_perm::CLOSING_VIEW,
+            sales::POS_OPEN_TILL,
+            sales::POS_CLOSE_TILL,
             sales::SALES_ORDERS_VIEW,
             sales::SALES_ORDERS_CREATE,
             sales::SALES_ORDERS_CANCEL,
@@ -188,6 +227,10 @@ pub fn grant_roles(client_app: &str) {
             fnb_perm::RECONCILIATION_MANAGE,
             fnb_perm::LATE_ORDERS_ENTER,
             fnb_perm::REPORTS_VIEW,
+            // Reviews the daily closings and the till sessions.
+            fnb_perm::CLOSING_VIEW,
+            fnb_perm::CLOSING_APPROVE,
+            sales::POS_REVIEW,
             sales::SALES_ORDERS_VIEW,
             payments::VIEW,
             delivery::VIEW,

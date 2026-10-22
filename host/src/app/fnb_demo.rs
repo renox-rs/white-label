@@ -233,6 +233,9 @@ async fn run(state: AppState, forced: bool) -> Result {
     if let Some(cashier) = cashier {
         wl_payments::cash_till::demo(&state, cashier, today()).await?;
     }
+    // The channels of the two kitchens (BL-FNB-14).
+    let channels = fnb::seed::demo_channels(db).await?;
+    println!("{channels} outlet channels added.");
     let made = orders(&state, &customers).await?;
     println!("{made} demo orders made for the Zaatar & Co. kitchen.");
     let refunds = complaint_refund(&state).await?;
@@ -250,6 +253,13 @@ async fn run(state: AppState, forced: bool) -> Result {
     // customers it may have reached (BL-FNB-13).
     let recalls = recall_story(&state).await?;
     println!("{recalls} recall opened and traced to orders and customers.");
+    // Marina Kitchen in an outage with its channels paused, a paper order, and
+    // the closings of earlier days: a submitted one with a till shortage and a
+    // late entry the area manager approved, an approved one that refused a
+    // late entry (BL-FNB-14, BL-FNB-15, BL-PAY-19).
+    let area = User::find_by_email(db, "area@zaatar.example").await?;
+    let days = outage_and_closings(&state, cashier, area.as_ref()).await?;
+    println!("{days} outage and closing stories made.");
     // The rider who does not arrive (`FNB.RUL.16`): the kitchen manager is
     // told for the order ready for 20 minutes and has the task for the one
     // ready for 50.
@@ -799,6 +809,11 @@ async fn kitchen_record(
         None => None,
     };
     let placed = renox::db::now() - TimeDelta::hours(story.placed_hours_ago);
+    // The trading day by the outlet's cut-off, and that day's closing.
+    let business_date = outlet.as_ref().map(|outlet| outlet.business_date(placed));
+    if let (Some(outlet), Some(date)) = (&outlet, business_date) {
+        fnb::closings::ensure(db, outlet.id, date).await?;
+    }
     let prepaid = story.mode == PAYMENT_ONLINE;
     let mut order = FnbOrder {
         number: sales.number.clone(),
@@ -806,6 +821,7 @@ async fn kitchen_record(
         party_id: party.0,
         brand_id: brand,
         outlet_id: outlet.map(|outlet| outlet.id),
+        business_date,
         channel: story.channel.to_owned(),
         kind: fnb::placing::kind_for(story.channel).to_owned(),
         payment_mode: story.mode.to_owned(),
@@ -1612,4 +1628,181 @@ async fn recall_story(state: &AppState) -> Result<usize> {
     )
     .await?;
     Ok(1)
+}
+
+/// The local date and `HH:MM` of `at`, as the paper-order form takes them.
+fn local_parts(at: renox::db::DateTime) -> (renox::chrono::NaiveDate, String) {
+    let local = fnb::business_day::local(at);
+    (local.date(), local.format("%H:%M").to_string())
+}
+
+/// A paper order of `outlet` that happened at `at`.
+fn paper_ask(
+    outlet: &Outlet,
+    reference: &str,
+    amount: i64,
+    at: renox::db::DateTime,
+    reason: &str,
+) -> fnb::paper_order::PaperAsk {
+    let (day, time) = local_parts(at);
+    fnb::paper_order::PaperAsk {
+        outlet_id: outlet.id,
+        channel: "counter".to_owned(),
+        reference: reference.to_owned(),
+        amount,
+        method: "cash".to_owned(),
+        note: String::new(),
+        occurred_on: Some(day),
+        occurred_time: time,
+        reason: reason.to_owned(),
+        outage_reference: String::new(),
+    }
+}
+
+/// The outage and closing stories (BL-FNB-14, BL-FNB-15):
+///
+/// - **Marina Kitchen** lost its devices 12 minutes ago: its two brands show
+///   temporarily closed (Habibi Bowls stays open at Sharjah), the managers have
+///   the notice and the kitchen manager the task, and a paper order of 50
+///   minutes ago is entered with the late-entry flag;
+/// - **Marina, three business days ago**: its closing was submitted and the area
+///   manager approved it; a paper order for that day is refused and the area
+///   manager has the task to record it in the next day's closing;
+/// - **Sharjah, two business days ago**: the closing was submitted with a till
+///   short by AED 35.00 (the cash handover of the shortage is made), a paper
+///   order of 21:00 that day was entered a day later, the area manager approved
+///   it and the closing is reopened, waiting to be counted and submitted again.
+///
+/// Idempotent: it returns 0 when Marina has an outage already. Returns how many
+/// stories it made.
+async fn outage_and_closings(
+    state: &AppState,
+    cashier: Option<i64>,
+    area: Option<&User>,
+) -> Result<usize> {
+    use fnb::closings::{self, SubmitAsk};
+    use fnb::{Outage, paper_order};
+    let db = &state.db;
+    // The late entries that wait for the area manager need the default approval
+    // policy of the kernel.
+    wl_kernel::approvals::install(db).await?;
+    let (Some(cashier), Some(marina), Some(sharjah)) = (
+        cashier,
+        Outlet::by_code(db, "marina").await?,
+        Outlet::by_code(db, "sharjah").await?,
+    ) else {
+        return Ok(0);
+    };
+    if Outage::query()
+        .where_(Outage::OUTLET_ID.eq(marina.id))
+        .exists(db)
+        .await?
+    {
+        return Ok(0);
+    }
+    let now = renox::db::now();
+    let mut made = 0;
+
+    // Marina, three business days ago: approved, and a refused late entry.
+    let old = marina.business_date(now - TimeDelta::days(3));
+    let closing = closings::ensure(db, marina.id, old).await?;
+    let till = wl_kernel::sales::till_desk(state);
+    till.open(
+        state,
+        None,
+        wl_kernel::sales::OpenTill {
+            till: marina.till_key(),
+            location: Some(marina.code.clone()),
+            legal_entity_id: marina.legal_entity_id,
+            business_date: old,
+            cashier_user: cashier,
+            float: 20_000,
+        },
+    )
+    .await?;
+    closings::submit(
+        state,
+        None,
+        closing.id,
+        &SubmitAsk {
+            counted: 20_000,
+            checklist_done: true,
+            cashier: Some(cashier),
+        },
+    )
+    .await?;
+    closings::approve(state, None, closing.id).await?;
+    let late_at = fnb::business_day::at_local(old, "22:00").unwrap_or(now);
+    // The refusal is the story: the task is made before the error.
+    let refused = paper_order::enter_as(
+        state,
+        cashier,
+        &paper_ask(&marina, "P-0099", 8_400, late_at, "Printout found after the outage"),
+    )
+    .await;
+    println!(
+        "Marina {old}: closing approved, late entry {}.",
+        if refused.is_err() { "refused" } else { "recorded" }
+    );
+    made += 1;
+
+    // Sharjah, two business days ago: AED 35.00 short, a late entry approved.
+    let day = sharjah.business_date(now - TimeDelta::days(2));
+    let closing = closings::ensure(db, sharjah.id, day).await?;
+    till.open(
+        state,
+        None,
+        wl_kernel::sales::OpenTill {
+            till: sharjah.till_key(),
+            location: Some(sharjah.code.clone()),
+            legal_entity_id: sharjah.legal_entity_id,
+            business_date: day,
+            cashier_user: cashier,
+            float: 30_000,
+        },
+    )
+    .await?;
+    closings::submit(
+        state,
+        None,
+        closing.id,
+        &SubmitAsk {
+            counted: 26_500,
+            checklist_done: true,
+            cashier: Some(cashier),
+        },
+    )
+    .await?;
+    let at = fnb::business_day::at_local(day, "21:00").unwrap_or(now);
+    let entered = paper_order::enter_as(
+        state,
+        cashier,
+        &paper_ask(&sharjah, "P-0107", 12_600, at, "Terminal was down, ticket found next morning"),
+    )
+    .await;
+    match (entered, area) {
+        (Ok(wl_kernel::late_entries::Entered::Pending { approval_request_id, .. }), Some(area)) => {
+            if let Err(error) =
+                wl_kernel::approvals::approve(state, approval_request_id, area, "").await
+            {
+                println!("The late entry of Sharjah waits for the area manager: {error}");
+            }
+        }
+        (Ok(_), _) => {}
+        (Err(error), _) => println!("The late entry of Sharjah was not made: {error}"),
+    }
+    made += 1;
+
+    // Marina now: devices silent 12 minutes ago, channels paused, a paper order.
+    let silent_since = now - TimeDelta::minutes(12);
+    fnb::outage::open_by_devices(state, &marina, silent_since).await?;
+    let before = now - TimeDelta::minutes(50);
+    paper_order::enter_as(
+        state,
+        cashier,
+        &paper_ask(&marina, "P-0108", 4_200, before, "Devices were down"),
+    )
+    .await?;
+    made += 1;
+    Ok(made)
 }

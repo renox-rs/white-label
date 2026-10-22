@@ -6,7 +6,9 @@ use std::fmt::Display;
 use renox::prelude::*;
 
 use crate::batch_texts::BATCH_TEXTS;
+use crate::closing_texts::CLOSING_TEXTS;
 use crate::cold_texts::COLD_TEXTS;
+use crate::outage_texts::OUTAGE_TEXTS;
 use crate::payout_texts::PAYOUT_TEXTS;
 use crate::recall_texts::RECALL_TEXTS;
 use crate::screen_texts::SCREEN_TEXTS;
@@ -291,6 +293,8 @@ pub(crate) fn every() -> impl Iterator<Item = &'static (&'static str, &'static s
         .chain(BATCH_TEXTS)
         .chain(COLD_TEXTS)
         .chain(RECALL_TEXTS)
+        .chain(OUTAGE_TEXTS)
+        .chain(CLOSING_TEXTS)
 }
 
 /// The English text for `key` with `params` filled in as `{{ name }}`; the

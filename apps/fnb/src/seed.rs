@@ -142,6 +142,47 @@ pub async fn demo_catalogue(
     Ok(installed)
 }
 
+/// The brands each outlet cooks (the D2C channels): outlet code, brand codes.
+/// Habibi Bowls is cooked by both kitchens, so a pause at one leaves it
+/// orderable at the other (`FNB.RUL.15`).
+pub const OUTLET_BRANDS: [(&str, &[&str]); 2] = [
+    ("marina", &["zaatar", "habibi"]),
+    ("sharjah", &["habibi", "sweet"]),
+];
+
+/// Adds the channels of the two kitchens: the brands they cook on the ordering
+/// site and the three aggregators' tablets. Idempotent. Returns how many it
+/// added.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn demo_channels(db: &Db) -> Result<usize> {
+    use crate::outage::{OutletChannel, channel_kind};
+    let mut added = 0;
+    for (outlet_code, brands) in OUTLET_BRANDS {
+        let Some(outlet) = Outlet::by_code(db, outlet_code).await? else {
+            continue;
+        };
+        for brand_code in brands {
+            let Some(brand) = Brand::by_code(db, brand_code).await? else {
+                continue;
+            };
+            let before = OutletChannel::of_outlet(db, outlet.id).await?.len();
+            OutletChannel::ensure(db, outlet.id, channel_kind::D2C, Some(brand.id), "website")
+                .await?;
+            added += OutletChannel::of_outlet(db, outlet.id).await?.len() - before;
+        }
+        for aggregator in ["aggregator_a", "aggregator_b", "aggregator_c"] {
+            let before = OutletChannel::of_outlet(db, outlet.id).await?.len();
+            OutletChannel::ensure(db, outlet.id, channel_kind::AGGREGATOR, None, aggregator)
+                .await?;
+            added += OutletChannel::of_outlet(db, outlet.id).await?.len() - before;
+        }
+    }
+    Ok(added)
+}
+
 /// The column presets of the aggregators' payout files: aggregator, name,
 /// delimiter and the headers of the order number, gross, commission,
 /// promotions, refund, net and refund reason. The real files are not
