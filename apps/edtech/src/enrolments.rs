@@ -414,8 +414,14 @@ async fn run(
         Some(reason) => builder.reason(reason),
         None => builder,
     };
+    // What the listeners after the commit need to know: which cause, which day.
+    let meta = renox::serde_json::json!({
+        "cause": input.cause.map(FreezeCause::as_str),
+        "on": input.on.map(|day| day.to_string()),
+    });
     let _outcome = builder
         .input(&input)
+        .meta(meta)
         .run(state)
         .await
         .map_err(TransitionError::into_error)?;
@@ -657,6 +663,10 @@ pub async fn request_withdrawal(
     reason: &str,
 ) -> Result<Withdrawal> {
     let enrolment = Enrolment::find_or_404(&state.db, id).await?;
+    // A blocked payer or student: only the centre manager withdraws (BL-EDU-04).
+    if let Some(user) = by {
+        crate::blocked::check_withdraw(state, user, &enrolment).await?;
+    }
     let on = today();
     let refund = refund_for(state, &enrolment, on).await?;
     let input = EnrolmentInput {
@@ -725,6 +735,15 @@ async fn after(state: &AppState, event: &Transitioned<Enrolment>) -> Result {
             // on the enrolment and repeated, it does not undo the withdrawal.
             crate::settlement::settle_quietly(state, enrolment.id).await;
         }
+        UNFREEZE | UNFREEZE_SYSTEM => {
+            let on = event
+                .meta
+                .get("on")
+                .and_then(renox::serde_json::Value::as_str)
+                .and_then(|text| text.parse::<NaiveDate>().ok())
+                .unwrap_or_else(today);
+            crate::frozen::after_unfreeze(state, &enrolment, on).await;
+        }
         LAPSE => {
             crate::lapse::after_lapse(state, &enrolment).await?;
         }
@@ -767,6 +786,8 @@ pub(crate) fn register(app: &mut Registry) {
     crate::enrolment_machine::register();
     fees::register(app);
     crate::lapse::register(app);
+    crate::blocked::register();
+    crate::blocked::listen(app);
     app.listen(|event: Transitioned<Enrolment>, state: AppState| async move {
         after(&state, &event).await
     });

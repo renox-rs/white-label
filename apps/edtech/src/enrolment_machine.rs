@@ -342,7 +342,7 @@ fn freeze(name: &'static str, system: bool) -> Transition<Enrolment> {
         Box::pin(async move { check(ok, "edtech.enrolments.problem.allowance") })
     })
     .effect(|e: &Enrolment, ctx, tx| {
-        let id = e.id;
+        let (id, was) = (e.id, e.status);
         let input = input_of(ctx);
         Box::pin(async move {
             let Some(cause) = input.cause else {
@@ -353,6 +353,12 @@ fn freeze(name: &'static str, system: bool) -> Transition<Enrolment> {
             } else {
                 0
             };
+            // The first cause freezes it: the days to give the package back
+            // run from here to the day the last cause ends.
+            if was == EnrolmentStatus::Active {
+                let from = input.on.unwrap_or_else(wl_kernel::documents::today);
+                set_enrolment(tx, id, &[("frozen_on", &Some(from))]).await?;
+            }
             let mut row = EnrolmentFreeze {
                 enrolment_id: id,
                 cause,

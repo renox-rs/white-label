@@ -389,6 +389,8 @@ pub(crate) struct ShowPage {
     paid: String,
     balance: String,
     payment_link: String,
+    hold_reason: String,
+    on_hold: bool,
     preview_refund: String,
     preview_owed: String,
     withdrawn_refund: String,
@@ -508,6 +510,20 @@ async fn show(
     } else {
         text(&lang, "enrolments.settling")
     };
+    // Why it is frozen now: the open causes in words ("On hold" for a block).
+    let open = EnrolmentFreeze::open_of(&state.db, e.id).await?;
+    let hold_reason = if open.is_empty() {
+        none.clone()
+    } else {
+        open.iter()
+            .map(|row| text(&lang, &format!("enrolments.cause.{}", row.cause.as_str())))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let on_hold = open.iter().any(|row| row.cause == FreezeCause::Block);
+    // A blocked payer or student: only the centre manager withdraws.
+    let may_withdraw = !crate::blocked::is_blocked(&state, &e).await?
+        || user.has_permission(permissions::ENROLMENTS_APPROVE);
     let (preview_refund, preview_owed) = preview
         .as_ref()
         .map_or((String::new(), String::new()), |r| {
@@ -554,6 +570,8 @@ async fn show(
             .clone()
             .filter(|_| pending)
             .unwrap_or_else(|| none.clone()),
+        hold_reason,
+        on_hold,
         preview_refund,
         preview_owed,
         withdrawn_refund: money_text(e.refund_amount),
@@ -569,7 +587,7 @@ async fn show(
             && user.has_permission(permissions::ENROLMENTS_APPROVE),
         can_freeze: matches!(e.status, EnrolmentStatus::Active) && manage,
         can_unfreeze: e.status == EnrolmentStatus::Frozen && manage,
-        can_withdraw: live && manage,
+        can_withdraw: live && manage && may_withdraw,
         can_settle: withdrawn && !settlement.done && manage,
         pending: waiting,
         approvals: approval_cards,

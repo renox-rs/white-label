@@ -75,7 +75,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("edtech.enrolments.cause", "Cause"),
     ("edtech.enrolments.cause.student", "The student asked"),
     ("edtech.enrolments.cause.linked", "The membership is paused"),
-    ("edtech.enrolments.cause.block", "The payer is on hold"),
+    ("edtech.enrolments.cause.block", "On hold"),
     ("edtech.enrolments.since", "From"),
     ("edtech.enrolments.ended", "Ended"),
     ("edtech.enrolments.no_freezes", "Never frozen"),

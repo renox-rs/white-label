@@ -40,6 +40,7 @@
       </template>
     </rx-page-header>
     <rx-alert rx-if="pending" kind="warning" :message="tx['enrolments.pending_approval']"/>
+    <rx-alert rx-if="on_hold" kind="info" :message="tx['enrolments.on_hold']"/>
     <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card :title="tx['enrolments.details']">
       <rx-infolist columns="2">
@@ -49,6 +50,7 @@
         <rx-entry :label="tx['enrolments.kind']" :value="kind"/>
         <rx-entry :label="tx['enrolments.subject']" :value="subject"/>
         <rx-entry :label="tx['enrolments.terms']" :value="terms"/>
+        <rx-entry :label="tx['enrolments.hold_reason']" :value="hold_reason"/>
         <rx-entry :label="tx['enrolments.seat_hold_until']" :value="seat_hold_until"/>
         <rx-entry :label="tx['enrolments.paid']" :value="paid"/>
         <rx-entry :label="tx['enrolments.balance']" :value="balance"/>

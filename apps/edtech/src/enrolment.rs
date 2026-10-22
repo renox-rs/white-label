@@ -184,6 +184,10 @@ pub struct Enrolment {
     pub withdrawal_reason: Option<String>,
     /// The day the enrolment was completed.
     pub completed_on: Option<NaiveDate>,
+    /// The day it became `frozen`, whatever the causes that held it since;
+    /// the package is given back the days from then to the day the last cause
+    /// ended (`freeze`, `unfreeze`).
+    pub frozen_on: Option<NaiveDate>,
     /// What moved here from the enrolment this one replaces, in fils: the
     /// value of the sessions the student had paid for and not used. It counts
     /// as paid (`transfer`, `EDU.ACL.17`).
@@ -297,6 +301,13 @@ impl FreezeCause {
     /// Whether the days count against the allowance.
     pub fn counts_against_allowance(self) -> bool {
         matches!(self, FreezeCause::Student)
+    }
+
+    /// The cause stored under `name`.
+    pub fn parse(name: &str) -> Option<FreezeCause> {
+        [FreezeCause::Student, FreezeCause::Linked, FreezeCause::Block]
+            .into_iter()
+            .find(|cause| cause.as_str() == name)
     }
 }
 
