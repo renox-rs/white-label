@@ -16,6 +16,7 @@ pub mod order;
 pub mod order_machine;
 pub mod pages;
 pub mod permissions;
+pub mod pickup;
 pub mod placing;
 pub mod progress;
 pub mod refunds;
@@ -78,6 +79,21 @@ impl Fnb {
         self
     }
 
+    /// The minutes after an aggregator order is `ready` when the kitchen
+    /// manager is told to chase the aggregator, and when the task to record
+    /// what happened opens (`FNB.RUL.16`, default 15 and 45).
+    pub fn aggregator_pickup(mut self, chase_minutes: i64, task_minutes: i64) -> Self {
+        self.settings.pickup_chase_minutes = chase_minutes;
+        self.settings.pickup_task_minutes = task_minutes;
+        self
+    }
+
+    /// Turns `FNB.RUL.16` on or off (default on).
+    pub fn aggregator_pickup_rule(mut self, on: bool) -> Self {
+        self.settings.pickup_rule = on;
+        self
+    }
+
     /// Turns `FNB.RUL.14` on or off (default on).
     pub fn cod_rule(mut self, on: bool) -> Self {
         self.settings.cod_rule = on;
@@ -136,6 +152,7 @@ impl Module for Fnb {
         notices::register_types();
         // The order follows the sales order and the delivery.
         events::register(app);
+        pickup::register(app);
         // In the app group of the staff sidebar; the labels are the host's
         // `nav.orders`, `nav.kitchen` and `nav.cod_customers` texts.
         app.nav(

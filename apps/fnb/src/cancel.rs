@@ -336,6 +336,64 @@ pub async fn by_staff(
     }
 }
 
+/// The kitchen manager records that the aggregator cancelled a `ready` order
+/// whose rider never came (`FNB.RUL.16`): the order is cancelled with the
+/// party *aggregator*, every open line scrapped as wastage, *compensation
+/// expected* set, and nobody refunded. The choice is the `SAL.ACL.05`
+/// approval, so no second one is asked.
+///
+/// # Errors
+///
+/// `Forbidden` without `orders.manage` and `orders.cancel`; 422 unless the
+/// order is an aggregator's and `ready`.
+pub async fn by_aggregator(state: &AppState, user: &AuthUser, id: i64) -> Result {
+    if !user.has_permission(permissions::ORDERS_MANAGE)
+        || !user.has_permission(permissions::ORDERS_CANCEL)
+    {
+        return Err(Error::Forbidden);
+    }
+    let order = FnbOrder::find_or_404(&state.db, id).await?;
+    crate::pickup::ensure_waiting_aggregator(state, &order).await?;
+    let Some(view) = order_desk(state).find(state, order.sales_order()).await? else {
+        return Err(Error::NotFound);
+    };
+    let outcomes: Vec<(i64, LineOutcomeKind)> = view
+        .lines
+        .iter()
+        .filter(|line| line.is_item && line.open_milli() > 0)
+        .map(|line| (line.id, LineOutcomeKind::Scrap))
+        .collect();
+    let text = english("fnb.pickup.cancel_reason", &[]);
+    mark(
+        state,
+        id,
+        Some(user.id),
+        party::AGGREGATOR,
+        cancel_reason::AGGREGATOR_CANCELLED,
+        &text,
+        false,
+    )
+    .await?;
+    let cancelled = order_desk(state)
+        .cancel(
+            state,
+            CancelByVertical {
+                order: order.sales_order(),
+                reason: text,
+                outcomes,
+                // The aggregator holds the customer's money: nobody is refunded.
+                keep_payment: true,
+                by: Some(user.id),
+            },
+        )
+        .await;
+    if let Err(error) = cancelled {
+        unmark(state, id).await?;
+        return Err(error);
+    }
+    Ok(())
+}
+
 /// `SalesOrderCancelled`: the order follows the sales order. The reason, the
 /// party and who asked were kept on the order when the cancel was asked; a
 /// cancellation nobody asked through here (the sales module's own screen, a

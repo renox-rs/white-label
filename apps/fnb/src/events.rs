@@ -35,7 +35,7 @@ use crate::order_machine::{
     FAIL_DELIVERY, MARK_READY,
 };
 use crate::ticket::KitchenTicket;
-use crate::{cancel, changes, close, failed, fulfilment, kitchen, placing, refunds};
+use crate::{cancel, changes, close, failed, fulfilment, kitchen, pickup, placing, refunds};
 
 /// What follows a committed transition of an order.
 async fn after_order(state: &AppState, event: &Transitioned<FnbOrder>) -> Result {
@@ -47,8 +47,14 @@ async fn after_order(state: &AppState, event: &Transitioned<FnbOrder>) -> Result
         MARK_READY => fulfilment::request_delivery(state, event.key).await,
         FAIL_DELIVERY => failed::after_failed(state, event.key).await,
         CLOSE_FAILED | CLOSE_FAILED_SYSTEM => close::after_closed(state, event.key).await,
-        COMPLETE | COMPLETE_SYSTEM => fulfilment::after_completed(state, event.key).await,
-        CANCEL_SYSTEM => cancel::after_cancelled(state, event.key).await,
+        COMPLETE | COMPLETE_SYSTEM => {
+            pickup::close_task(state, event.key).await?;
+            fulfilment::after_completed(state, event.key).await
+        }
+        CANCEL_SYSTEM => {
+            pickup::close_task(state, event.key).await?;
+            cancel::after_cancelled(state, event.key).await
+        }
         _ => Ok(()),
     }
 }

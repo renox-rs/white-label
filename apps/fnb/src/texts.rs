@@ -208,6 +208,33 @@ const TEXTS: &[(&str, &str)] = &[
         "fnb.line.last",
         "This is the last open line. Cancel the whole order instead.",
     ),
+    // The aggregator's rider who does not arrive (BL-FNB-06).
+    ("fnb.picked_up_late", "Recorded: the aggregator's rider collected the order late. The order is completed."),
+    (
+        "fnb.aggregator_cancelled",
+        "Recorded: the aggregator cancelled the order. The food is logged as wastage and compensation is expected.",
+    ),
+    (
+        "fnb.pickup.alert_title",
+        "Chase the aggregator for order {{ number }}",
+    ),
+    (
+        "fnb.pickup.alert_body",
+        "Order {{ number }} has been ready for {{ minutes }} minutes and the aggregator's rider has not collected it. Chase the aggregator on its tablet.",
+    ),
+    (
+        "fnb.pickup.task_title",
+        "Record what happened to order {{ number }}",
+    ),
+    (
+        "fnb.pickup.task_body",
+        "Order {{ number }} has been ready for {{ minutes }} minutes. Record whether the rider picked it up late or the aggregator cancelled it, on {{ link }}.",
+    ),
+    ("fnb.pickup.task_closed", "Order {{ number }} left the pass."),
+    ("fnb.pickup.late_history", "Order {{ number }} collected late by the aggregator's rider"),
+    ("fnb.pickup.cancel_reason", "Cancelled by the aggregator: its rider never arrived"),
+    ("fnb.pickup.not_ready", "Only an order that is ready and waiting at the pass is recorded here."),
+    ("fnb.pickup.not_aggregator", "Only an aggregator's order is recorded here."),
     (
         "fnb.cancel.withdrawn",
         "The kitchen started order {{ number }} while the change waited for a manager: ask again.",

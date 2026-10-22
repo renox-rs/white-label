@@ -555,7 +555,11 @@ pub(crate) fn transitions() -> Vec<Transition<FnbOrder>> {
             "Ready",
             &[FnbOrderStatus::Preparing],
             FnbOrderStatus::Ready,
-        ),
+        )
+        .effect(|order: &FnbOrder, _ctx, tx| {
+            let id = order.id;
+            Box::pin(async move { stamp(&mut *tx, id, "ready_at").await })
+        }),
         dispatch(DISPATCH, true),
         dispatch(DISPATCH_SYSTEM, false),
         fail_delivery(),

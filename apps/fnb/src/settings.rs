@@ -16,6 +16,14 @@ pub const DEFAULT_COD_WINDOW_DAYS: i64 = 90;
 /// a manager-approved refund (`FNB.ACL.17`).
 pub const DEFAULT_REFUND_REQUEST_DAYS: i64 = 7;
 
+/// Minutes after an aggregator order is `ready` when the kitchen manager is
+/// told to chase the aggregator (`FNB.RUL.16`, N).
+pub const DEFAULT_PICKUP_CHASE_MINUTES: i64 = 15;
+
+/// Minutes after it is `ready` when the kitchen manager gets the task to
+/// record what happened (`FNB.RUL.16`, M).
+pub const DEFAULT_PICKUP_TASK_MINUTES: i64 = 45;
+
 /// The settings. `Default` is the spec's defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnbSettings {
@@ -31,6 +39,14 @@ pub struct FnbSettings {
     pub cod_window_days: i64,
     /// Whether `FNB.RUL.14` is on.
     pub cod_rule: bool,
+    /// Minutes after `ready` when the kitchen manager is told to chase the
+    /// aggregator (`FNB.RUL.16`, N).
+    pub pickup_chase_minutes: i64,
+    /// Minutes after `ready` when the task to record the outcome opens
+    /// (`FNB.RUL.16`, M).
+    pub pickup_task_minutes: i64,
+    /// Whether `FNB.RUL.16` is on.
+    pub pickup_rule: bool,
 }
 
 impl Default for FnbSettings {
@@ -41,6 +57,9 @@ impl Default for FnbSettings {
             cod_failures: DEFAULT_COD_FAILURES,
             cod_window_days: DEFAULT_COD_WINDOW_DAYS,
             cod_rule: true,
+            pickup_chase_minutes: DEFAULT_PICKUP_CHASE_MINUTES,
+            pickup_task_minutes: DEFAULT_PICKUP_TASK_MINUTES,
+            pickup_rule: true,
         }
     }
 }
@@ -63,5 +82,10 @@ mod tests {
         assert_eq!(settings.refund_request_days, 7);
         assert_eq!((settings.cod_failures, settings.cod_window_days), (2, 90));
         assert!(settings.cod_rule);
+        assert_eq!(
+            (settings.pickup_chase_minutes, settings.pickup_task_minutes),
+            (15, 45)
+        );
+        assert!(settings.pickup_rule);
     }
 }

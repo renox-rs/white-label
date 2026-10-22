@@ -279,6 +279,15 @@ pub struct FnbOrder {
     pub accepted_at: Option<DateTime>,
     /// When it was completed.
     pub completed_at: Option<DateTime>,
+    /// When all its tickets were bumped and it became `ready` (the clock of
+    /// `FNB.RUL.16`).
+    pub ready_at: Option<DateTime>,
+    /// When the kitchen manager was told to chase the aggregator's rider.
+    pub pickup_alert_at: Option<DateTime>,
+    /// When the task to record what happened was opened.
+    pub pickup_task_at: Option<DateTime>,
+    /// The task opened for the kitchen manager.
+    pub pickup_task_id: Option<i64>,
     /// Whether the kitchen's consumption of the recipe was posted.
     pub consumption_posted: bool,
     /// The order's failure reason, one of [`reason`] (BL-FNB-01).
