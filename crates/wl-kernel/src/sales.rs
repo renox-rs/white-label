@@ -1052,6 +1052,10 @@ pub struct ReturnResolved {
     pub resolution: String,
     /// The value returned with VAT, in fils.
     pub value: i64,
+    /// The same value without VAT, in fils, as the lines returned carry it
+    /// (a zero-rated line has none).
+    #[serde(default)]
+    pub net_value: i64,
     /// The credit note issued for it, when there is one.
     pub credit_note: Option<i64>,
     /// The complaint category of a *no goods* return (BL-SAL-14).

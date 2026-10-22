@@ -32,7 +32,6 @@ use wl_kernel::documents::dubai_date;
 use wl_kernel::sales::{ReturnResolved, ReturnReversed, SALES_ORDER_SUBJECT_TYPE};
 use wl_kernel::workforce::workforce;
 
-use crate::money::net_of;
 use crate::order::{FnbOrder, party};
 
 /// The responsible parties that stand for the rider: the order's word and the
@@ -214,7 +213,7 @@ pub(crate) async fn on_return_resolved(state: &AppState, event: ReturnResolved) 
             party: responsible.clone(),
             resolution: event.resolution.clone(),
             gross: event.value,
-            net: net_of(event.value),
+            net: event.net_value,
             occurred_on: dubai_date(renox::db::now()),
             ..RefundFact::default()
         };

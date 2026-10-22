@@ -802,6 +802,7 @@ async fn announce(state: &AppState, event: &Transitioned<SalesReturn>) -> Result
                     .map(|x| x.as_str().to_owned())
                     .unwrap_or_default(),
                 value: r.gross_value,
+                net_value: r.net_value,
                 credit_note: r.credit_note_id,
                 complaint_category: r.complaint_category.clone(),
                 responsible_party: r.responsible_party.clone(),
