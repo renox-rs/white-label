@@ -344,6 +344,18 @@ async fn the_pages_name_a_service_in_words() {
         .await
         .assert_see("Dental check-up")
         .assert_see("Follow-up visit");
+    // The prior authorisations list a service by name with the code its forms
+    // take, and its page says Services, not "Service codes, comma separated".
+    let authorisation = count(&app, "select min(id) from clinics_prior_authorisations").await;
+    app.get("/clinics/authorisations")
+        .await
+        .assert_ok()
+        .assert_see("Procedure (procedure)");
+    app.get(&format!("/clinics/authorisations/{authorisation}"))
+        .await
+        .assert_ok()
+        .assert_see("Procedure (procedure)")
+        .assert_dont_see("comma separated");
     app.get(&format!("/clinics/visits/{visit}"))
         .await
         .assert_see("Checked in")

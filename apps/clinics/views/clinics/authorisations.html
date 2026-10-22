@@ -23,7 +23,7 @@
       <rx-column :label="tx['authorisation.number']"><a href="{{ route('clinics.authorisation', row.id) }}">{{ row.number }}</a></rx-column>
       <rx-column :label="tx['policies.patient']">{{ row.patient }}</rx-column>
       <rx-column :label="tx['policies.payer']" hide-narrow>{{ row.payer }}</rx-column>
-      <rx-column :label="tx['authorisation.services']" hide-narrow>{{ row.services }}</rx-column>
+      <rx-column :label="tx['authorisation.services_shown']" hide-narrow>{{ row.services }}</rx-column>
       <rx-column :label="tx['authorisation.units']">{{ row.units }}</rx-column>
       <rx-column :label="tx['authorisation.valid_until']" hide-narrow>{{ row.valid_until }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>

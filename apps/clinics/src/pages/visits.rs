@@ -308,7 +308,9 @@ async fn show(
             .map(|hold| {
                 format!(
                     "{}: PA-{:04} ({})",
-                    hold.service_code, hold.authorisation_id, hold.units
+                    service_names::name_of(&service_names, &hold.service_code),
+                    hold.authorisation_id,
+                    hold.units
                 )
             })
             .collect::<Vec<_>>()

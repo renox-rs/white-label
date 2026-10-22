@@ -224,6 +224,7 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.authorisation.services",
         "Service codes, comma separated",
     ),
+    ("clinics.authorisation.services_shown", "Services"),
     ("clinics.authorisation.units", "Units left"),
     ("clinics.authorisation.of", "of"),
     ("clinics.authorisation.units_asked", "Units asked for"),

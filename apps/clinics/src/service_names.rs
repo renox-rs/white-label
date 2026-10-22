@@ -26,6 +26,16 @@ pub fn name_of(names: &BTreeMap<String, String>, code: &str) -> String {
     names.get(code).cloned().unwrap_or_else(|| code.to_owned())
 }
 
+/// The name of `code` with the code the forms take (`Dental X-ray
+/// (dental_xray)`), else the code alone.
+#[must_use]
+pub fn name_with_code(names: &BTreeMap<String, String>, code: &str) -> String {
+    match names.get(code) {
+        Some(name) => format!("{name} ({code})"),
+        None => code.to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -35,5 +45,10 @@ mod tests {
         let names = BTreeMap::from([("follow_up".to_owned(), "Follow-up visit".to_owned())]);
         assert_eq!(name_of(&names, "follow_up"), "Follow-up visit");
         assert_eq!(name_of(&names, "GLOVES-M"), "GLOVES-M");
+        assert_eq!(
+            name_with_code(&names, "follow_up"),
+            "Follow-up visit (follow_up)"
+        );
+        assert_eq!(name_with_code(&names, "GLOVES-M"), "GLOVES-M");
     }
 }

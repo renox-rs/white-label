@@ -30,6 +30,7 @@ use crate::authorisation::{AuthStatus, PriorAuthService, PriorAuthorisation};
 use crate::authorisations::{self, NewAuthorisation};
 use crate::permissions;
 use crate::policy::InsurancePolicy;
+use crate::service_names;
 use crate::texts;
 
 /// The routes of the pages.
@@ -154,6 +155,16 @@ fn units_text(lang: &Lang, a: &PriorAuthorisation) -> String {
     }
 }
 
+/// The services of an authorisation for people: names with the codes the
+/// forms take.
+fn services_text(names: &std::collections::BTreeMap<String, String>, codes: &[String]) -> String {
+    codes
+        .iter()
+        .map(|code| service_names::name_with_code(names, code))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// `GET /clinics/authorisations`.
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     require(&user, permissions::POLICIES_VIEW)?;
@@ -162,6 +173,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .get(&state.db)
         .await?;
     let dash = text(&lang, "none");
+    let service_names = service_names::names(&state, &lang.locale).await?;
     let mut rows = Vec::with_capacity(all.len());
     for a in &all {
         rows.push(AuthRow {
@@ -169,7 +181,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             number: a.number(),
             patient: party_name(&state, &lang, PartyId(a.patient_party_id)).await,
             payer: party_name(&state, &lang, PartyId(a.payer_party_id)).await,
-            services: a.services.0.join(", "),
+            services: services_text(&service_names, &a.services.0),
             units: units_text(&lang, a),
             valid_until: a
                 .valid_until
@@ -188,7 +200,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         required.push(RequiredRow {
             id: row.id,
             payer: party_name(&state, &lang, PartyId(row.payer_party_id)).await,
-            code: row.service_code.clone(),
+            code: service_names::name_with_code(&service_names, &row.service_code),
         });
     }
     let policies = InsurancePolicy::query()
@@ -287,6 +299,7 @@ async fn show(
 ) -> Result<View> {
     require(&user, permissions::POLICIES_VIEW)?;
     let a = PriorAuthorisation::find_or_404(&state.db, id).await?;
+    let service_names = service_names::names(&state, &lang.locale).await?;
     let dash = text(&lang, "none");
     let manage = user.has_permission(permissions::AUTHORISATIONS_MANAGE);
     Ok(View::typed(ShowPage {
@@ -295,7 +308,7 @@ async fn show(
         number: a.number(),
         patient: party_name(&state, &lang, PartyId(a.patient_party_id)).await,
         payer: party_name(&state, &lang, PartyId(a.payer_party_id)).await,
-        services: a.services.0.join(", "),
+        services: services_text(&service_names, &a.services.0),
         status: status_text(&lang, a.status),
         status_kind: status_kind(a.status),
         units_requested: a.units_requested.to_string(),
