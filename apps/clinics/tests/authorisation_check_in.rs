@@ -311,7 +311,7 @@ async fn units_above_the_units_left_go_self_pay_with_consent() {
         .get(&format!("/clinics/visits/{}", visit.id))
         .await
         .assert_ok()
-        .assert_see("procedure: PA-")
+        .assert_see("Procedure: PA-")
         .assert_see("procedure x 1");
 }
 
