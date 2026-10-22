@@ -603,6 +603,31 @@ pub struct BookingConflict {
 
 impl Event for BookingConflict {}
 
+/// A new availability block was added to a resource (a manual *sick* or
+/// *away* block, a leave, a roster, a holiday), whether or not it overlaps a
+/// booking. A vertical that has its own work on the resource, such as the
+/// class sessions of a tutor (10 `EDU.RUL.12`), reads it to find that work.
+/// [`BookingConflict`] says only which bookings the block overlaps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AvailabilityBlockAdded {
+    /// The resource that is not available.
+    pub resource: i64,
+    /// The employee behind the resource, if it is a person.
+    pub employee: Option<i64>,
+    /// The block.
+    pub block: i64,
+    /// `manual`, `leave`, `roster` or `holiday`.
+    pub source: String,
+    /// Why, e.g. `sick`.
+    pub reason: String,
+    /// The start.
+    pub starts_at: DateTime,
+    /// The end.
+    pub ends_at: DateTime,
+}
+
+impl Event for AvailabilityBlockAdded {}
+
 /// A stretch of time a source says a resource is not bookable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceBlock {
