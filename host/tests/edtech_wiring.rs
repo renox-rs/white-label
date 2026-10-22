@@ -111,3 +111,33 @@ async fn edu_base_a_tutor_signs_in() {
     app.acting_as(&tutor);
     app.get("/dashboard").await.assert_ok();
 }
+
+/// A withdrawal that gives a refund is decided by a holder of
+/// `enrolments.approve_refund` (the centre manager, the accountant), never by
+/// the counsellor who asked (BL-EDU-03, `FIN.ACL.04`): the client stores the
+/// policy, shows it in words on the dashboard and links the enrolment page.
+#[renox::test]
+async fn edu_03_the_withdrawal_policy_is_stored_in_words_and_decided_by_the_centre() {
+    use wl_kernel::approvals::{ApprovalPolicy, Step, action_is_labelled, subject_url};
+
+    let app = edtech_booted().await;
+    let policies = ApprovalPolicy::query()
+        .where_(ApprovalPolicy::ACTION.eq("edtech.withdraw"))
+        .get(app.db())
+        .await
+        .unwrap();
+    assert_eq!(policies.len(), 1);
+    assert!(policies[0].sod, "the requester never approves");
+    assert_eq!(
+        policies[0].steps.0,
+        [Step::holders_of(edu::ENROLMENTS_REFUND_APPROVE)]
+    );
+    assert!(action_is_labelled("edtech.withdraw"));
+    assert_eq!(
+        subject_url("edtech.enrolment", 4).as_deref(),
+        Some("/edtech/enrolments/4")
+    );
+    assert!(grants(roles::CENTRE_MANAGER).contains(&edu::ENROLMENTS_REFUND_APPROVE));
+    assert!(grants(roles::ACCOUNTANT).contains(&edu::ENROLMENTS_REFUND_APPROVE));
+    assert!(!grants(roles::COUNSELLOR).contains(&edu::ENROLMENTS_REFUND_APPROVE));
+}
