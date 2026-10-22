@@ -27,7 +27,8 @@ use wl_kernel::sales::{
     PackageConsumption, PackageId, PackageLedger, PackageSales, SalesFuture, SellPackage,
 };
 use wl_kernel::subscriptions::{
-    CancelSubscription, StartSubscription, SubscriptionFuture, SubscriptionId,
+    CancelSubscription, PauseCause, PauseSubscription, StartSubscription, SubscriptionFuture,
+    SubscriptionId, SubscriptionPaused, SubscriptionResumed, SubscriptionStatus,
     SubscriptionSummary, Subscriptions,
 };
 use wl_kernel::{PartyId, Subject};
@@ -732,22 +733,187 @@ impl Notifier for Messages {
     }
 }
 
-/// The subscriptions started and cancelled.
+/// One subscription of the stand-in.
+#[derive(Clone)]
+struct Sub {
+    id: i64,
+    start: StartSubscription,
+    status: SubscriptionStatus,
+    causes: Vec<PauseCause>,
+    cancelled_on: Option<NaiveDate>,
+}
+
+impl Sub {
+    fn summary(&self) -> SubscriptionSummary {
+        SubscriptionSummary {
+            id: SubscriptionId(self.id),
+            party: self.start.party,
+            source: self.start.source.clone(),
+            status: self.status,
+            cycle: self.start.cycle,
+            next_cycle_date: self.start.start,
+            pause_causes: self.causes.clone(),
+            cancelled_on: self.cancelled_on,
+            final_credit_note: None,
+            final_invoice: None,
+        }
+    }
+
+    fn live(&self) -> bool {
+        self.status != SubscriptionStatus::Cancelled
+    }
+}
+
+/// The subscriptions as wl-invoicing keeps them: started, paused and resumed
+/// per cause (a cause already open is not added twice, a subscription resumes
+/// when none is left) and cancelled, with the events it emits after a pause
+/// cause is added and removed (`SubscriptionPaused`, `SubscriptionResumed`).
+/// The calls through the contract are recorded; `user_pauses`, `user_resumes`
+/// and `block_pauses` do what the guardian, staff and wl-parties do on the
+/// other side.
 #[derive(Clone, Default)]
 pub struct Subs {
-    started: Arc<Mutex<Vec<StartSubscription>>>,
+    all: Arc<Mutex<Vec<Sub>>>,
     cancelled: Arc<Mutex<Vec<(Subject, NaiveDate)>>>,
+    pauses: Arc<Mutex<Vec<(Subject, PauseCause)>>>,
+    resumes: Arc<Mutex<Vec<(Subject, PauseCause)>>>,
 }
 
 impl Subs {
     /// The subscriptions started, oldest first.
     pub fn started(&self) -> Vec<StartSubscription> {
-        self.started.lock().unwrap().clone()
+        self.all
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|sub| sub.start.clone())
+            .collect()
     }
 
     /// The agreements whose subscriptions were cancelled, with the day.
     pub fn cancelled(&self) -> Vec<(Subject, NaiveDate)> {
         self.cancelled.lock().unwrap().clone()
+    }
+
+    /// The pauses the enrolment asked of the contract, with their cause.
+    pub fn pauses(&self) -> Vec<(Subject, PauseCause)> {
+        self.pauses.lock().unwrap().clone()
+    }
+
+    /// The resumes the enrolment asked of the contract, with their cause.
+    pub fn resumes(&self) -> Vec<(Subject, PauseCause)> {
+        self.resumes.lock().unwrap().clone()
+    }
+
+    /// Where the live subscription of `agreement` stands.
+    pub fn status_of(&self, agreement: &Subject) -> Option<SubscriptionStatus> {
+        self.all
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|sub| sub.live() && sub.start.source == *agreement)
+            .map(|sub| sub.status)
+    }
+
+    /// The pause causes open on the live subscription of `agreement`.
+    pub fn causes_of(&self, agreement: &Subject) -> Vec<PauseCause> {
+        self.all
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|sub| sub.live() && sub.start.source == *agreement)
+            .map(|sub| sub.causes.clone())
+            .unwrap_or_default()
+    }
+
+    /// Adds `cause` to the live subscription of `agreement`; the event to emit
+    /// when it was added.
+    fn add_cause(
+        &self,
+        agreement: &Subject,
+        cause: PauseCause,
+        until: Option<NaiveDate>,
+    ) -> Option<SubscriptionPaused> {
+        let mut all = self.all.lock().unwrap();
+        let sub = all
+            .iter_mut()
+            .rev()
+            .find(|sub| sub.live() && sub.start.source == *agreement)?;
+        if sub.status == SubscriptionStatus::Suspended || sub.causes.contains(&cause) {
+            return None;
+        }
+        let first = sub.status != SubscriptionStatus::Paused;
+        sub.causes.push(cause);
+        sub.status = SubscriptionStatus::Paused;
+        Some(SubscriptionPaused {
+            subscription: SubscriptionId(sub.id),
+            party: sub.start.party,
+            source: sub.start.source.clone(),
+            cause,
+            until,
+            first,
+        })
+    }
+
+    /// Removes `cause` from the live subscription of `agreement`; the event to
+    /// emit when it was open. `past_due` says where it goes back to.
+    fn remove_cause(
+        &self,
+        agreement: &Subject,
+        cause: PauseCause,
+        past_due: bool,
+    ) -> Option<SubscriptionResumed> {
+        let mut all = self.all.lock().unwrap();
+        let sub = all
+            .iter_mut()
+            .rev()
+            .find(|sub| sub.live() && sub.start.source == *agreement)?;
+        if !sub.causes.contains(&cause) {
+            return None;
+        }
+        sub.causes.retain(|open| *open != cause);
+        let resumed = sub.causes.is_empty() && sub.status == SubscriptionStatus::Paused;
+        if resumed {
+            sub.status = if past_due {
+                SubscriptionStatus::PastDue
+            } else {
+                SubscriptionStatus::Active
+            };
+        }
+        Some(SubscriptionResumed {
+            subscription: SubscriptionId(sub.id),
+            party: sub.start.party,
+            source: sub.start.source.clone(),
+            cause,
+            resumed,
+            to_past_due: resumed && past_due,
+        })
+    }
+
+    /// The guardian (or staff) pauses the membership of `agreement` until
+    /// `until`: wl-invoicing adds the cause `user` and tells the vertical.
+    pub async fn user_pauses(&self, state: &AppState, agreement: &Subject, until: NaiveDate) {
+        if let Some(event) = self.add_cause(agreement, PauseCause::User, Some(until)) {
+            state.emit(event).await.expect("the pause is heard");
+        }
+    }
+
+    /// The user's pause of the membership of `agreement` ends; it goes back to
+    /// `past_due` instead of `active` when a cycle invoice is still overdue.
+    pub async fn user_resumes(&self, state: &AppState, agreement: &Subject, past_due: bool) {
+        if let Some(event) = self.remove_cause(agreement, PauseCause::User, past_due) {
+            state.emit(event).await.expect("the resume is heard");
+        }
+    }
+
+    /// wl-parties blocks the payer: wl-invoicing pauses the membership of
+    /// `agreement` with the cause `party_block` by itself.
+    pub async fn block_pauses(&self, state: &AppState, agreement: &Subject) {
+        if let Some(event) = self.add_cause(agreement, PauseCause::PartyBlock, None) {
+            state.emit(event).await.expect("the pause is heard");
+        }
     }
 }
 
@@ -757,10 +923,71 @@ impl Subscriptions for Subs {
         _state: &'a AppState,
         start: StartSubscription,
     ) -> SubscriptionFuture<'a, Option<SubscriptionId>> {
-        let mut all = self.started.lock().unwrap();
-        all.push(start);
-        let id = i64::try_from(all.len()).unwrap();
+        let mut all = self.all.lock().unwrap();
+        let id = i64::try_from(all.len()).unwrap() + 1;
+        all.push(Sub {
+            id,
+            start,
+            status: SubscriptionStatus::Active,
+            causes: Vec::new(),
+            cancelled_on: None,
+        });
         Box::pin(async move { Ok(Some(SubscriptionId(id))) })
+    }
+
+    fn of_agreement<'a>(
+        &'a self,
+        _db: &'a Db,
+        agreement: &'a Subject,
+    ) -> SubscriptionFuture<'a, Vec<SubscriptionSummary>> {
+        let found: Vec<SubscriptionSummary> = self
+            .all
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|sub| sub.start.source == *agreement)
+            .map(Sub::summary)
+            .collect();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn pause<'a>(
+        &'a self,
+        state: &'a AppState,
+        agreement: &'a Subject,
+        pause: PauseSubscription,
+    ) -> SubscriptionFuture<'a, Vec<SubscriptionSummary>> {
+        self.pauses
+            .lock()
+            .unwrap()
+            .push((agreement.clone(), pause.cause));
+        let event = self.add_cause(agreement, pause.cause, pause.until);
+        Box::pin(async move {
+            if let Some(event) = event {
+                state.emit(event).await?;
+            }
+            Ok(self.of_agreement_now(agreement))
+        })
+    }
+
+    fn resume<'a>(
+        &'a self,
+        state: &'a AppState,
+        agreement: &'a Subject,
+        cause: PauseCause,
+        _on: NaiveDate,
+    ) -> SubscriptionFuture<'a, Vec<SubscriptionSummary>> {
+        self.resumes
+            .lock()
+            .unwrap()
+            .push((agreement.clone(), cause));
+        let event = self.remove_cause(agreement, cause, false);
+        Box::pin(async move {
+            if let Some(event) = event {
+                state.emit(event).await?;
+            }
+            Ok(self.of_agreement_now(agreement))
+        })
     }
 
     fn cancel<'a>(
@@ -773,7 +1000,25 @@ impl Subscriptions for Subs {
             .lock()
             .unwrap()
             .push((agreement.clone(), cancel.on));
+        for sub in self.all.lock().unwrap().iter_mut() {
+            if sub.start.source == *agreement && sub.live() {
+                sub.status = SubscriptionStatus::Cancelled;
+                sub.cancelled_on = Some(cancel.on);
+            }
+        }
         Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+impl Subs {
+    fn of_agreement_now(&self, agreement: &Subject) -> Vec<SubscriptionSummary> {
+        self.all
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|sub| sub.start.source == *agreement)
+            .map(Sub::summary)
+            .collect()
     }
 }
 
