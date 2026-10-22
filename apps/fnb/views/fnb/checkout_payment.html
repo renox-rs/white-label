@@ -5,8 +5,8 @@
 <rx-page layout="layouts/app.html" :title="tx['checkout_title']">
   <rx-stack>
     <rx-page-header :title="tx['checkout_title']" :subtitle="tx['checkout_subtitle']"/>
-    <rx-alert rx-if="closed" id="kitchen-closed" kind="error" :message="tx['ordering.closed_text']"/>
-    <rx-alert rx-if="gateway_down and not closed" id="gateway-down" kind="warning" :message="tx['checkout_gateway_down']"/>
+    <div rx-if="closed" id="kitchen-closed"><rx-alert kind="error" :message="tx['ordering.closed_text']"/></div>
+    <div rx-if="gateway_down and not closed" id="gateway-down"><rx-alert kind="warning" :message="tx['checkout_gateway_down']"/></div>
     <rx-card rx-if="not closed" :title="tx['checkout_methods']">
       <rx-stack>
         <p rx-if="online" id="pay-online">{{ tx['pay_online'] }}</p>
