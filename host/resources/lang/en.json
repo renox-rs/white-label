@@ -48,6 +48,8 @@
     "portal_timesheets": "Timesheets",
     "deployments": "Deployments",
     "absence": "Absence cases",
+    "payroll": "Payroll runs",
+    "settlements": "Final settlements",
     "shipments": "Shipments",
     "remittances": "COD remittances",
     "crew": "Crew list",
@@ -301,6 +303,7 @@
     "not_found": "That page isn't here. The link may be old or mistyped.",
     "other": "Sorry, that didn't work.",
     "forbidden": "You do not have permission for this action.",
-    "home": "Go to the home page"
+    "home": "Go to the home page",
+    "refused": "This could not be done"
   }
 }
