@@ -2,8 +2,13 @@
 //! code, set on [`WlAttendance`](crate::WlAttendance) with builder calls; a
 //! settings page comes later.
 
+use std::fmt;
+
 use renox::chrono::NaiveTime;
 use renox::prelude::AppState;
+
+use crate::texts::english;
+use crate::timesheet::ApproverKind;
 
 /// How far back a supervisor may mark attendance (`HRM.ACL.01`): 1 day.
 pub const DEFAULT_LATE_ENTRY_DAYS: i64 = 1;
@@ -24,6 +29,10 @@ pub const DEFAULT_OVERTIME_WINDOW_MINUTES: i64 = 144 * 60;
 
 /// The rolling window of the overtime cap: three weeks.
 pub const DEFAULT_OVERTIME_WINDOW_DAYS: i64 = 21;
+
+/// The days after `submit` at which `HRM.RUL.15` escalates an unanswered
+/// external timesheet (E): 6.
+pub const DEFAULT_ESCALATION_DAYS: i64 = 6;
 
 /// The document kinds `HRM.RUL.14` checks by default (wl-attendance §7).
 pub const DEFAULT_PERMIT_KINDS: [&str; 2] = ["work_permit", "residence_visa"];
@@ -53,6 +62,31 @@ impl Default for MiddayDefault {
     }
 }
 
+/// What payroll pays for a timesheet that is not approved at the cut-off
+/// (wl-attendance §5.7, §7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PayrollBasis {
+    /// The accepted attendance hours, marked provisional: salary does not
+    /// wait for the client. The default.
+    #[default]
+    Attendance,
+    /// Nothing until the timesheet is approved. Only for approvers who are
+    /// the employer's own staff.
+    Wait,
+}
+
+/// A setting that was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingRefused(pub String);
+
+impl fmt::Display for SettingRefused {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for SettingRefused {}
+
 /// The settings of the attendance module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttendanceConfig {
@@ -74,6 +108,13 @@ pub struct AttendanceConfig {
     pub permit_kinds: Vec<String>,
     /// The midday break when a scope has none of its own.
     pub midday: MiddayDefault,
+    /// Days after `submit` at which an unanswered external timesheet is
+    /// escalated (`HRM.RUL.15`, E).
+    pub escalation_days: i64,
+    /// What payroll pays at the cut-off for a timesheet that an internal
+    /// approver has not approved yet. An external approver's timesheet is
+    /// always paid on attendance ([`AttendanceConfig::payroll_basis_for`]).
+    pub payroll_basis_internal: PayrollBasis,
 }
 
 impl Default for AttendanceConfig {
@@ -91,6 +132,44 @@ impl Default for AttendanceConfig {
                 .map(|k| (*k).to_owned())
                 .collect(),
             midday: MiddayDefault::default(),
+            escalation_days: DEFAULT_ESCALATION_DAYS,
+            payroll_basis_internal: PayrollBasis::Attendance,
+        }
+    }
+}
+
+impl AttendanceConfig {
+    /// The payroll basis for a timesheet that `kind` approves: `wait` is only
+    /// for approvers who are the employer's own staff, so an external
+    /// approver's timesheet is always paid on attendance hours.
+    pub fn payroll_basis_for(&self, kind: ApproverKind) -> PayrollBasis {
+        match kind {
+            ApproverKind::Internal => self.payroll_basis_internal,
+            ApproverKind::External => PayrollBasis::Attendance,
+        }
+    }
+
+    /// Sets the payroll basis for the timesheets that `kind` approves.
+    ///
+    /// # Errors
+    ///
+    /// [`SettingRefused`] for `wait` with an external approver: salary does
+    /// not wait for a client.
+    pub fn set_payroll_basis(
+        &mut self,
+        kind: ApproverKind,
+        basis: PayrollBasis,
+    ) -> Result<(), SettingRefused> {
+        match (kind, basis) {
+            (ApproverKind::External, PayrollBasis::Wait) => Err(SettingRefused(english(
+                "wl_attendance.config.wait_for_external",
+                &[],
+            ))),
+            (ApproverKind::External, PayrollBasis::Attendance) => Ok(()),
+            (ApproverKind::Internal, basis) => {
+                self.payroll_basis_internal = basis;
+                Ok(())
+            }
         }
     }
 }

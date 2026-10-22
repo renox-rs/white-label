@@ -630,6 +630,21 @@ pub trait Notifier: Send + Sync + 'static {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>>;
 
+    /// Stops every message to `recipients`: the ones still waiting (`queued`
+    /// or `deferred`) are cancelled with `reason` and nothing new is sent to
+    /// them (wl-hr `record_death`: the employee dies, so no payslip or pay
+    /// account SMS is sent any more). A message already sent stays. Returns
+    /// how many waiting messages were cancelled. The default, and
+    /// [`NoNotifier`], stop nothing.
+    fn stop_messages_to<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _recipients: Vec<NotifyRecipient>,
+        _reason: &'a str,
+    ) -> NotifyFuture<'a, usize> {
+        Box::pin(async { Ok(0) })
+    }
+
     /// Whether the statutory notice of `type_key` about `subject` reached
     /// its recipient. The default, and [`NoNotifier`], answer
     /// [`NoticeStatus::NotDelivered`], so a notice is never read as

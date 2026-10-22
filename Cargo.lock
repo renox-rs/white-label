@@ -942,6 +942,7 @@ dependencies = [
  "construction",
  "http-body-util",
  "logistics",
+ "manpower",
  "property",
  "renox",
  "serde",
@@ -1463,6 +1464,16 @@ dependencies = [
  "wl-kernel",
  "wl-parties",
  "wl-payments",
+]
+
+[[package]]
+name = "manpower"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
 ]
 
 [[package]]
@@ -3499,6 +3510,7 @@ dependencies = [
  "renox",
  "serde",
  "tempfile",
+ "wl-invoicing",
  "wl-kernel",
 ]
 
@@ -3534,7 +3546,11 @@ dependencies = [
  "renox",
  "serde",
  "tempfile",
+ "wl-attendance",
  "wl-kernel",
+ "wl-notify",
+ "wl-payments",
+ "wl-ticketing",
 ]
 
 [[package]]

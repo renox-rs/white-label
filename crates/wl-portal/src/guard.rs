@@ -134,6 +134,9 @@ impl PortalAction {
 pub enum Refused {
     /// The user has no `active` grant for the party.
     NoAccess,
+    /// The user's account belongs to an employee who has exited: the portal
+    /// is read-only until it closes, so no action works (`POR.ACL.01`).
+    ReadOnly,
     /// The party is blocked and the action starts new business or moves money
     /// out: the neutral text, whatever the reason.
     Blocked,
@@ -145,7 +148,8 @@ pub struct PortalGuard;
 impl PortalGuard {
     /// Checks that `user` may do `action` for the party `acting_for`: they
     /// hold an `active` grant for it (the acting-for party of the current
-    /// grant, not the user's own party), and the party is not blocked for an
+    /// grant, not the user's own party), their account is not read-only after
+    /// an exit, and the party is not blocked for an
     /// action that starts new business or moves money out. A refusal because
     /// of the block is logged.
     pub async fn check(
@@ -160,6 +164,10 @@ impl PortalGuard {
                 .is_none()
         {
             return Ok(Err(Refused::NoAccess));
+        }
+        // Every portal action writes; reading a page is not guarded here.
+        if PortalAccess::read_only(state, user).await? {
+            return Ok(Err(Refused::ReadOnly));
         }
         Self::block_check(state, user, acting_for, action).await
     }
@@ -222,7 +230,7 @@ impl PortalGuard {
     ) -> Result {
         match Self::check(state, user.id, acting_for, action).await? {
             Ok(()) => Ok(()),
-            Err(Refused::NoAccess) => Err(Error::Forbidden),
+            Err(Refused::NoAccess | Refused::ReadOnly) => Err(Error::Forbidden),
             Err(Refused::Blocked) => Err(Error::Status(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 crate::texts::neutral(lang),

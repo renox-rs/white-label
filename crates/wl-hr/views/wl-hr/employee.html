@@ -11,6 +11,14 @@
         <rx-confirm :id="'activate-employee-' ~ employee.id" :label="tx['employees.activate']" :action="'/hr/employees/' ~ employee.id ~ '/transitions/activate'" method="POST"
                     :title="tx['employees.activate']" :message="employee.name" :confirm-label="tx['employees.activate']" :cancel-label="tx['cancel']" icon="check"/>
       </template>
+      <template rx-if="can_exit">
+        <rx-action-sheet id="cancellation-reference" :label="tx['exit.reference_label']" :action="route('wl_hr.cancellation_reference', employee.id)"
+                         :title="tx['exit.reference_label']" :submit-label="tx['exit.reference_label']" icon="file-text">
+          <rx-input name="reference" :label="tx['exit.reference_label']" :value="cancellation_reference" id="cancellation-reference-value" required/>
+        </rx-action-sheet>
+        <rx-confirm :id="'exit-employee-' ~ employee.id" :label="tx['exit.label']" :action="'/hr/employees/' ~ employee.id ~ '/transitions/exit'" method="POST"
+                    :title="tx['exit.label']" :message="employee.name" :confirm-label="tx['exit.label']" :cancel-label="tx['cancel']" icon="log-out"/>
+      </template>
       <template rx-if="can_manage">
         <rx-action-sheet id="start-onboarding" :label="tx['onboarding.start']" :action="route('wl_hr.onboarding_start', employee.id)"
                          :title="tx['onboarding.start_title']" :description="tx['onboarding.start_description']" :submit-label="tx['onboarding.start']" variant="primary" icon="plus">
@@ -28,6 +36,36 @@
         <rx-entry :label="tx['employees.scopes']" :value="scopes" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="settlements">
+      <rx-card :title="tx['settlement.settlements']">
+        <rx-table :rows="settlements" as="settlement" :key="settlement.id" :caption="tx['settlement.settlements']">
+          <rx-column :label="tx['settlement.reason']"><a href="{{ route('wl_hr.settlement', settlement.id) }}">{{ settlement.reason }}</a></rx-column>
+          <rx-column :label="tx['settlement.net']" hide-narrow>{{ settlement.net }}</rx-column>
+          <rx-column :label="tx['fields.status']"><rx-badge :kind="settlement.status_kind" :text="settlement.status"/></rx-column>
+        </rx-table>
+      </rx-card>
+    </template>
+    <template rx-if="pay_accounts or can_request_pay_account">
+      <rx-card :title="tx['pay_account.accounts']">
+        <rx-stack>
+          <rx-table :rows="pay_accounts" as="account" :key="account.id" :caption="tx['pay_account.accounts']" rx-if="pay_accounts">
+            <rx-column :label="tx['pay_account.number']"><a href="{{ route('wl_hr.pay_account', account.id) }}">{{ account.number }}</a></rx-column>
+            <rx-column :label="tx['pay_account.holder']" hide-narrow>{{ account.holder }}</rx-column>
+            <rx-column :label="tx['fields.status']"><rx-badge :kind="account.status_kind" :text="account.status"/></rx-column>
+          </rx-table>
+          <template rx-if="can_request_pay_account">
+            <rx-action-sheet id="request-pay-account" :label="tx['pay_account.request']" :action="route('wl_hr.pay_account_request', employee.id)"
+                             :title="tx['pay_account.request']" :description="tx['pay_account.request_hint']" :submit-label="tx['pay_account.request']" icon="plus">
+              <rx-select name="channel" :label="tx['pay_account.channel_label']" :options="pay_channels" :selected="pay_channel_selected"/>
+              <rx-input name="account_number" :label="tx['pay_account.account_number']" id="request-pay-account-number" required/>
+              <rx-input name="routing_code" :label="tx['pay_account.routing_code']" id="request-pay-account-routing" required/>
+              <rx-input name="holder_name" :label="tx['pay_account.holder']" id="request-pay-account-holder" required/>
+              <rx-textarea name="mismatch_explanation" :label="tx['pay_account.explanation']" id="request-pay-account-explanation"/>
+            </rx-action-sheet>
+          </template>
+        </rx-stack>
+      </rx-card>
+    </template>
     <template rx-if="attempts or report or can_record_attempt">
       <rx-card :title="tx['absence.title']">
         <rx-stack>
@@ -76,7 +114,9 @@
               <rx-input name="return_date" type="date" :label="tx['exits.return_date']" id="request-exit-return-date"/>
               <rx-input name="death_certificate" :label="tx['exits.death_document']" id="request-exit-death-certificate"/>
               <rx-input name="authority_notice" :label="tx['exits.authority_notice']" id="request-exit-authority-notice"/>
-              <rx-input name="death_date" type="date" :label="tx['exits.death_date']" id="request-exit-death-date"/>
+              <rx-show-when field="transition" values="record_death">
+                <rx-input name="death_date" type="date" :label="tx['exits.death_date']" id="request-exit-death-date" required/>
+              </rx-show-when>
             </rx-action-sheet>
           </template>
         </rx-stack>

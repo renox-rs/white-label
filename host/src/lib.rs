@@ -32,6 +32,7 @@ pub use app::logistics_demo;
 pub use app::logistics_rules;
 pub use app::logistics_seed;
 pub use app::logistics_settings;
+pub use app::manpower_seed;
 pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
 pub use app::roles;
 
@@ -155,6 +156,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::negative_flow::register_block_effects(&client_app);
     app::accounting_seed::register_block_effects(&client_app);
     app::accounting_seed::register_integrations(&client_app);
+    // The manual fallbacks of the integrations of a manpower agency (BL-MPW-20).
+    app::manpower_seed::register_integrations(&client_app);
+    // HR and the accountant see the confidential labour cases and grievances
+    // of a manpower agency (BL-MPW-20); the accountant of 04 does not.
+    app::manpower_seed::grant_roles(&client_app);
     app::logistics_seed::register_integrations(&client_app);
     app::logistics_rules::register_critical(&client_app);
     app::negative_flow::register_approvals(&client_app);
@@ -196,6 +202,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         // `db:seed` in local (never in production).
         app = app.module(app::construction_demo::DemoSeed::new(demo_client));
     }
+    // The Manpower client's ticket categories (BL-MPW-14, BL-MPW-17).
+    if client_app == app::manpower_seed::MANPOWER {
+        app = app.module(app::manpower_seed::ManpowerSeed);
+    }
     // The Logistics client's demo company, in local only (`logistics:demo`,
     // and `db:seed`).
     if client_app == "logistics" {
@@ -236,12 +246,18 @@ fn with_brand(app: renox::App, name: &str) -> renox::App {
 }
 
 /// The vertical apps built so far, as `[client] app` names them.
-pub const VERTICALS: &[&str] = &["property", "accounting", "construction", "logistics"];
+pub const VERTICALS: &[&str] = &[
+    "property",
+    "accounting",
+    "construction",
+    "manpower",
+    "logistics",
+];
 
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction` and `logistics`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `manpower` and `logistics`"
     ))
 }
 
@@ -261,6 +277,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "property" => Ok(app.module(property::Property)),
         "accounting" => Ok(app.module(accounting::Accounting)),
         "construction" => Ok(app.module(construction::Construction)),
+        "manpower" => Ok(app.module(manpower::Manpower)),
         "logistics" => Ok(app.module(logistics::Logistics)),
         other => Err(unbuilt_vertical(other)),
     }
@@ -284,6 +301,9 @@ fn enable(
             app::logistics_seed::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
+            }
+            if client_app == app::manpower_seed::MANPOWER {
+                app::manpower_seed::register_documents();
             }
             Ok(app.module(wl_documents::WlDocuments))
         }

@@ -83,6 +83,7 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
             module
         }
         "construction" => super::construction_seed::invoicing(module, entities),
+        "manpower" => super::manpower_seed::invoicing(module, entities),
         // 03 `FIN.ACL.15`, `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23`,
         // `FIN.RUL.24`, `FIN.ACL.21` and the e-invoicing scope (BL-LOG-26,
         // BL-LOG-25): see [`super::logistics_seed::invoicing`].
@@ -153,6 +154,7 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // deduction stays off (`FIN.ACL.19`, open item L-20).
         "logistics" => super::logistics_seed::payments(module),
         "construction" => super::construction_seed::payments(module),
+        "manpower" => super::manpower_seed::payments(module),
         // 04: a bounced cheque adds no fee; the billing role decides with the
         // engagement manager (BL-ACC-24).
         "accounting" => super::accounting_seed::payments(module),

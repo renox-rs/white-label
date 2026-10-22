@@ -14,6 +14,7 @@ http-body-util = "0.1"
 wl-kernel = { path = "../crates/wl-kernel" }
 property = { path = "../apps/property" }
 construction = { path = "../apps/construction" }
+manpower = { path = "../apps/manpower" }
 accounting = { path = "../apps/accounting" }
 logistics = { path = "../apps/logistics" }
 wl-parties = { path = "../crates/wl-parties" }

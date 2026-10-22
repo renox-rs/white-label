@@ -14,3 +14,13 @@ wl-kernel = { path = "../wl-kernel" }
 
 [dev-dependencies]
 tempfile = "3"
+# The real payments module in the test that records a payroll line paid another way.
+wl-payments = { path = "../wl-payments" }
+# The real attendance module in the test that marks a timesheet paid provisionally.
+wl-attendance = { path = "../wl-attendance" }
+# The real ticketing module in the tests that open the labour case, the
+# security task and the HR tasks.
+wl-ticketing = { path = "../wl-ticketing" }
+# The real notify module in the test that stops the messages to an employee
+# who died.
+wl-notify = { path = "../wl-notify" }

@@ -1,10 +1,12 @@
 //! Approving a timesheet (wl-attendance §4 `approve`, `approve_on_behalf`,
-//! `reject`, §5.8; `HRM.ACL.08`, BL-ATT-08).
+//! `reject`, `deem_approve`, §5.8; `HRM.ACL.08`, BL-ATT-08, BL-ATT-11, BL-ATT-13).
 //!
 //! ```text
 //! submitted --approve--------------> approved
 //! submitted --approve_on_behalf----> approved
 //! submitted --reject---------------> open
+//! submitted --deem_approve---------> approved   (system, BL-ATT-11)
+//! submitted --approve_by_system----> approved   (system, BL-ATT-13)
 //! ```
 //!
 //! **Who approves.** A timesheet has an approver kind. An `internal` one is
@@ -41,32 +43,42 @@
 //!   a transaction is open. A failure after the commit leaves the timesheet
 //!   approved; the idempotent keys make a retry of the posting safe
 //!   ([`post_labour_cost`]).
-//! - `deem_approve` (`HRM.RUL.15`, needs the contract's `ApproverResolver`) and
-//!   the system approval of a `provisional_reconciliation` adjustment
-//!   (BL-ATT-13) are not here; the event already has room for the basis
-//!   `deemed`.
+//! - `deem_approve` (`HRM.RUL.15` at N, BL-ATT-11) is the system transition
+//!   [`DEEM_APPROVE`], run by [`crate::deem`]: the guards check that the
+//!   approver is external and that N days have passed since the latest
+//!   `submit` (the days come in the input, read from the contract's
+//!   `ApproverResolver` when the rule runs); it is approved with the basis
+//!   `deemed` and no approver, and everything after the commit is that of
+//!   `approve` (labour cost, `TimesheetApproved`, the reconciliation of
+//!   provisional hours). The system approval of a `provisional_reconciliation` adjustment is the
+//!   transition [`APPROVE_BY_SYSTEM`] (BL-ATT-13): it copies the approver and
+//!   the basis of the original's approval and is refused for any other
+//!   timesheet.
 //! - Whoever may approve may reject. The permission of `reject` follows the
 //!   approver kind as for `approve`.
 
 use std::collections::BTreeMap;
 
 use renox::auth::permissions::users_with_role;
-use renox::chrono::NaiveDate;
+use renox::chrono::{Duration, NaiveDate};
 use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::attendance::{CategoryMinutes, TimesheetApproved, cost_rates};
+use wl_kernel::documents::dubai_date;
 use wl_kernel::invoicing::{PostCost, post_cost};
 
 use crate::access;
 use crate::entry::{Category, TimesheetEntry};
+use crate::escalation;
 use crate::notices;
+use crate::payroll;
 use crate::permissions;
 use crate::record::{AttendanceRecord, AttendanceStatus};
 use crate::review;
 use crate::texts::english;
-use crate::timesheet::{ApprovalBasis, ApproverKind, Timesheet, TimesheetStatus};
+use crate::timesheet::{AdjustmentOrigin, ApprovalBasis, ApproverKind, Timesheet, TimesheetStatus};
 
 /// The approver approves a submitted timesheet.
 pub const APPROVE: &str = "approve";
@@ -74,6 +86,12 @@ pub const APPROVE: &str = "approve";
 pub const APPROVE_ON_BEHALF: &str = "approve_on_behalf";
 /// The approver sends a submitted timesheet back to `open` with a reason.
 pub const REJECT: &str = "reject";
+/// The system approves an external timesheet nobody answered, as the
+/// contract's deemed-approval clause says (`HRM.RUL.15` at N, BL-ATT-11).
+pub const DEEM_APPROVE: &str = "deem_approve";
+/// The system approves a `provisional_reconciliation` adjustment in the same
+/// step as the approval of its original (BL-ATT-13).
+pub const APPROVE_BY_SYSTEM: &str = "approve_by_system";
 
 /// The proof of an approval given outside the system: the signed sheet.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
@@ -120,6 +138,16 @@ pub struct Evidence {
     pub signed_on: NaiveDate,
 }
 
+/// The input of [`DEEM_APPROVE`]: the days of the contract's clause as the
+/// resolver gave them when the rule ran, and the day it ran.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DeemInput {
+    /// N, the days after `submit` at which silence is approval.
+    pub days: i64,
+    /// The day the rule runs, in Asia/Dubai.
+    pub on: NaiveDate,
+}
+
 /// The input of the approving transitions.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ApproveInput {
@@ -144,6 +172,22 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
             .guard("creator_is_not_approver", |sheet: &Timesheet, ctx| {
                 let checked = check_creator(sheet, ctx);
                 Box::pin(async move { checked })
+            })
+            .guard("dispute_not_upheld", |sheet: &Timesheet, _ctx| {
+                // An adjustment of a client dispute that ended `upheld` has
+                // no payroll or billing effect and is not approved either
+                // (`crate::dispute`, BL-ATT-09).
+                let upheld = sheet.dispute_upheld_at.is_some();
+                Box::pin(async move {
+                    if upheld {
+                        Err(english(
+                            "wl_attendance.adjustment.dispute_upheld_approve",
+                            &[],
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                })
             })
             .effect(|sheet: &Timesheet, ctx, tx| {
                 let sheet = sheet.clone();
@@ -181,6 +225,22 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
                 let checked = check_creator(sheet, ctx);
                 Box::pin(async move { checked })
             })
+            .guard("dispute_not_upheld", |sheet: &Timesheet, _ctx| {
+                // An adjustment of a client dispute that ended `upheld` has
+                // no payroll or billing effect and is not approved either
+                // (`crate::dispute`, BL-ATT-09).
+                let upheld = sheet.dispute_upheld_at.is_some();
+                Box::pin(async move {
+                    if upheld {
+                        Err(english(
+                            "wl_attendance.adjustment.dispute_upheld_approve",
+                            &[],
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                })
+            })
             .effect(|sheet: &Timesheet, ctx, tx| {
                 let sheet = sheet.clone();
                 let by = ctx.actor().map(|user| user.id);
@@ -188,6 +248,68 @@ pub(crate) fn transitions() -> Vec<Transition<Timesheet>> {
                 Box::pin(async move {
                     approve_in(tx, &sheet, by, ApprovalBasis::OnBehalf, evidence).await
                 })
+            }),
+        Transition::new(DEEM_APPROVE)
+            .label("Deem approved")
+            .system()
+            .from([TimesheetStatus::Submitted])
+            .to(TimesheetStatus::Approved)
+            .guard("external_only", |sheet: &Timesheet, _ctx| {
+                let external = sheet.approver_kind == ApproverKind::External;
+                Box::pin(async move {
+                    if external {
+                        Ok(())
+                    } else {
+                        Err(english("wl_attendance.deem.not_external", &[]))
+                    }
+                })
+            })
+            .guard("clause_elapsed", |sheet: &Timesheet, ctx| {
+                // N days since the latest `submit`, calendar days in
+                // Asia/Dubai; the state `submitted` says nobody approved or
+                // rejected since.
+                let input = ctx.input_as::<DeemInput>().ok();
+                let submitted = sheet.submitted_at.map(dubai_date);
+                Box::pin(async move {
+                    match (input, submitted) {
+                        (Some(input), Some(submitted))
+                            if input.days >= 1
+                                && submitted + Duration::days(input.days) <= input.on =>
+                        {
+                            Ok(())
+                        }
+                        _ => Err(english("wl_attendance.deem.not_due", &[])),
+                    }
+                })
+            })
+            .effect(|sheet: &Timesheet, _ctx, tx| {
+                let sheet = sheet.clone();
+                Box::pin(
+                    async move { approve_in(tx, &sheet, None, ApprovalBasis::Deemed, None).await },
+                )
+            }),
+        Transition::new(APPROVE_BY_SYSTEM)
+            .label("Approve")
+            .system()
+            .from([TimesheetStatus::Submitted])
+            .to(TimesheetStatus::Approved)
+            .guard("reconciliation_only", |sheet: &Timesheet, _ctx| {
+                let allowed = sheet.is_adjustment()
+                    && sheet.origin == Some(AdjustmentOrigin::ProvisionalReconciliation);
+                Box::pin(async move {
+                    if allowed {
+                        Ok(())
+                    } else {
+                        Err(english(
+                            "wl_attendance.approval.system_reconciliation_only",
+                            &[],
+                        ))
+                    }
+                })
+            })
+            .effect(|sheet: &Timesheet, _ctx, tx| {
+                let sheet = sheet.clone();
+                Box::pin(async move { copy_approval_in(tx, &sheet).await })
             }),
         Transition::new(REJECT)
             .label("Reject")
@@ -225,7 +347,7 @@ fn check_creator(sheet: &Timesheet, ctx: &TransitionCtx) -> std::result::Result<
     }
 }
 
-fn kind_text(kind: ApproverKind) -> &'static str {
+pub(crate) fn kind_text(kind: ApproverKind) -> &'static str {
     match kind {
         ApproverKind::Internal => "internal",
         ApproverKind::External => "external",
@@ -287,6 +409,35 @@ async fn approve_in(
             }
         }
     }
+    Ok(())
+}
+
+/// The effect of [`APPROVE_BY_SYSTEM`]: the approver and the approval basis
+/// are those of the original's approval, since the original's approval
+/// already covers these hours.
+async fn copy_approval_in(tx: &mut Transaction, sheet: &Timesheet) -> Result {
+    let original = match sheet.adjusts_id {
+        Some(id) => Timesheet::find(&mut *tx, id).await?,
+        None => None,
+    };
+    let (by, basis) = original.map_or((None, ApprovalBasis::Approved), |original| {
+        (
+            original.approved_by,
+            original.approval_basis.unwrap_or(ApprovalBasis::Approved),
+        )
+    });
+    Timesheet::query()
+        .where_(Timesheet::ID.eq(sheet.id))
+        .update(
+            &mut *tx,
+            &[
+                ("approval_basis", &Some(basis.as_str().to_owned())),
+                ("approved_by", &by),
+                ("approved_at", &Some(now())),
+                ("updated_at", &now()),
+            ],
+        )
+        .await?;
     Ok(())
 }
 
@@ -404,7 +555,7 @@ pub async fn post_labour_cost(state: &AppState, sheet: &Timesheet) -> Result<usi
 
 /// The minutes per category over the entries of `sheet`, signed; categories
 /// that add up to nothing are left out.
-async fn totals_of(db: &Db, sheet: &Timesheet) -> Result<Vec<CategoryMinutes>> {
+pub(crate) async fn totals_of(db: &Db, sheet: &Timesheet) -> Result<Vec<CategoryMinutes>> {
     let mut sums: BTreeMap<usize, i64> = BTreeMap::new();
     for entry in TimesheetEntry::of_timesheet(db, sheet.id).await? {
         for (n, category) in Category::ALL.iter().enumerate() {
@@ -458,11 +609,16 @@ pub async fn approved_event(state: &AppState, sheet: &Timesheet) -> Result<Times
 }
 
 /// After the commit: the labour cost, then `TimesheetApproved`.
-async fn approved(state: &AppState, timesheet_id: i64) -> Result<Timesheet> {
+pub(crate) async fn approved(state: &AppState, timesheet_id: i64) -> Result<Timesheet> {
     let sheet = Timesheet::find_or_404(&state.db, timesheet_id).await?;
+    // Paid on provisional hours: payroll is its first consumer, so it is
+    // locked at once (§5.7 step 3).
+    let sheet = payroll::lock_when_paid_provisionally(state, sheet).await?;
     post_labour_cost(state, &sheet).await?;
     let event = approved_event(state, &sheet).await?;
     state.emit(event).await?;
+    // The task to collect a signed sheet has done its work.
+    escalation::close_task(state, timesheet_id).await?;
     Ok(sheet)
 }
 
@@ -567,6 +723,8 @@ pub async fn reject(
     let _outcome = run.run(state).await.map_err(|e| e.into_error())?;
     let stored = Timesheet::find_or_404(&state.db, timesheet_id).await?;
     notices::timesheet_rejected(state, &stored, reason.trim()).await?;
+    // It no longer waits for the client: the task to collect a sheet closes.
+    escalation::close_task(state, timesheet_id).await?;
     Ok(stored)
 }
 

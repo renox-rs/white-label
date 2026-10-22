@@ -162,6 +162,7 @@ pub fn sales_for(client_app: &str) -> WlSales {
     match client_app {
         PROPERTY => module.over_budget_approval(true).campaign_required_for(&[]),
         super::construction_seed::CONSTRUCTION => super::construction_seed::sales(module),
+        super::manpower_seed::MANPOWER => super::manpower_seed::sales(module),
         "accounting" => super::accounting_seed::sales_for(client_app),
         super::logistics_seed::LOGISTICS => super::logistics_seed::sales(module),
         _ => module,
@@ -176,6 +177,7 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
     match client_app {
         PROPERTY => module.manager_role(PROPERTY_MANAGER).owner_role(owner_role),
         super::construction_seed::CONSTRUCTION => super::construction_seed::hr(module, owner_role),
+        super::manpower_seed::MANPOWER => super::manpower_seed::hr(module, owner_role),
         "accounting" => super::accounting_seed::hr_for(client_app, owner_role),
         super::logistics_seed::LOGISTICS => super::logistics_seed::hr(module),
         _ => module,
@@ -188,6 +190,9 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
 pub fn attendance_for(client_app: &str) -> wl_attendance::WlAttendance {
     if client_app == super::construction_seed::CONSTRUCTION {
         return super::construction_seed::attendance(wl_attendance::WlAttendance::new());
+    }
+    if client_app == super::manpower_seed::MANPOWER {
+        return super::manpower_seed::attendance(wl_attendance::WlAttendance::new());
     }
     wl_attendance::WlAttendance::new().hr_role(super::roles::HR)
 }

@@ -1,0 +1,37 @@
+-- The credit hold of a client contract (09 Manpower §7.1 *Client contract*
+-- `hold`, §7.2 `MPW.RUL.10`, BL-MPW-01): the state before the hold, when and
+-- by whom it was held, and one row per hold reason (an overdue invoice, a
+-- bounced cheque, or a reason the account manager gave).
+ALTER TABLE "manpower_client_contracts" ADD COLUMN status_before_hold TEXT;
+ALTER TABLE "manpower_client_contracts" ADD COLUMN held_at TEXT;
+-- The user who held it; none when the rule did.
+ALTER TABLE "manpower_client_contracts" ADD COLUMN held_by INTEGER;
+
+CREATE TABLE "manpower_contract_holds" (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_contract_id INTEGER NOT NULL REFERENCES "manpower_client_contracts" (id),
+    -- `overdue`, `bounced_cheque` or `other`.
+    reason TEXT NOT NULL,
+    -- `other`: what the account manager wrote.
+    reason_text TEXT,
+    -- `overdue`: the invoice; `bounced_cheque`: the cheque.
+    invoice_id INTEGER,
+    cheque_id INTEGER,
+    -- The invoice number or the cheque number, for the messages.
+    label TEXT,
+    -- The open balance of the invoice or the open amount of the cheque, in fils.
+    amount INTEGER NOT NULL DEFAULT 0,
+    -- The user who added it; none when the rule did.
+    held_by INTEGER,
+    -- Set when the cause is gone or the hold was released; `resolution`
+    -- says how (`payment`, `cheque_resolved`, `released`, `terminated`).
+    resolved_at TEXT,
+    resolution TEXT,
+    -- Set when an MD-approved release covered it: the rule does not hold
+    -- again for the same invoice or cheque.
+    covered INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT,
+    updated_at TEXT
+);
+
+CREATE INDEX "manpower_contract_holds_contract" ON "manpower_contract_holds" (client_contract_id);

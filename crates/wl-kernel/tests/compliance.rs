@@ -52,6 +52,8 @@ struct Recorded {
     notices: Vec<NotifyRequest>,
     opened: Vec<OpenTicket>,
     completed: Vec<(i64, String)>,
+    /// While set, the notifier fails.
+    notifier_down: bool,
 }
 
 impl Doubles {
@@ -83,6 +85,10 @@ impl Doubles {
         ids
     }
 
+    fn set_notifier_down(&self, down: bool) {
+        self.0.lock().unwrap().notifier_down = down;
+    }
+
     fn opened(&self) -> Vec<OpenTicket> {
         self.0.lock().unwrap().opened.clone()
     }
@@ -99,7 +105,13 @@ impl Notifier for Doubles {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         Box::pin(async move {
-            self.0.lock().unwrap().notices.push(request);
+            let mut recorded = self.0.lock().unwrap();
+            if recorded.notifier_down {
+                return Err(Error::Internal(renox::anyhow::anyhow!(
+                    "the notifier is down"
+                )));
+            }
+            recorded.notices.push(request);
             Ok(Vec::new())
         })
     }
@@ -700,6 +712,46 @@ async fn an_occurrence_is_raised_once() {
             .is_none()
     );
     assert_eq!(w.alerts().await.len(), 1);
+    assert_eq!(w.doubles.alerts_sent(), 1);
+    assert_eq!(w.doubles.opened().len(), 1);
+}
+
+/// Regression: the alert row is stored before the notice. A notifier that
+/// fails then must not leave the occurrence "raised" with nobody told and no
+/// task: the next raise for the same occurrence finishes the job, once.
+#[renox::test]
+async fn a_raise_whose_notice_failed_is_finished_by_the_next_raise() {
+    let w = world().await;
+    let raised = || {
+        compliance::Raised::new(
+            WPS,
+            Subject::new("hr.payroll_run", 4),
+            "k",
+            AlertKind::Failed,
+        )
+    };
+    w.doubles.set_notifier_down(true);
+    assert!(compliance::raise(w.app.state(), raised()).await.is_err());
+    assert_eq!(w.doubles.alerts_sent(), 0);
+    assert!(w.doubles.opened().is_empty());
+
+    w.doubles.set_notifier_down(false);
+    let alert = compliance::raise(w.app.state(), raised())
+        .await
+        .unwrap()
+        .expect("the retry finishes the alert");
+    assert!(alert.ticket_number.is_some(), "the task is opened");
+    assert_eq!(w.alerts().await.len(), 1, "still one alert");
+    assert_eq!(w.doubles.alerted_users().len(), 2, "the MD and the admin");
+    assert_eq!(w.doubles.opened().len(), 1);
+
+    assert!(
+        compliance::raise(w.app.state(), raised())
+            .await
+            .unwrap()
+            .is_none(),
+        "a third call does nothing"
+    );
     assert_eq!(w.doubles.alerts_sent(), 1);
     assert_eq!(w.doubles.opened().len(), 1);
 }

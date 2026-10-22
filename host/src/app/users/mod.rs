@@ -8,7 +8,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::roles::{ADMIN, ROLES, USERS};
+use super::roles::{ADMIN, USERS, role_names};
 
 pub struct Users;
 
@@ -102,7 +102,7 @@ async fn index(State(db): State<Db>, request: GridRequest) -> Result<View> {
         .collect();
     let users =
         page.extend(|user| json!({ "roles": roles.get(&user.id).cloned().unwrap_or_default() }));
-    let role_names: Vec<&str> = ROLES.iter().map(|(name, _)| *name).collect();
+    let role_names: Vec<&str> = role_names();
     // The figures over the grid.
     let people = User::query().count(&db).await?;
     let verified = User::query()
@@ -137,7 +137,7 @@ async fn update_roles(
     let chosen: Vec<&str> = form.roles.iter().map(String::as_str).collect();
     if let Some(unknown) = chosen
         .iter()
-        .find(|r| !ROLES.iter().any(|(name, _)| name == *r))
+        .find(|r| !role_names().iter().any(|n| *n == **r))
     {
         let mut errors = Errors::new();
         errors.add("roles", format!("There is no role called {unknown}."));

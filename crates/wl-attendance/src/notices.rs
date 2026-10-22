@@ -22,7 +22,7 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use wl_kernel::documents::dubai_text;
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
-use wl_kernel::workforce::{StaffProfile, workforce};
+use wl_kernel::workforce::{EmployeeId, StaffProfile, workforce};
 
 use crate::config::config_of;
 use crate::flags::{Added, FlagType};
@@ -41,8 +41,41 @@ pub const OVER_CAP: &str = "attendance.over_cap";
 /// The user who submitted a timesheet is told it was sent back.
 pub const TIMESHEET_REJECTED: &str = "attendance.timesheet_rejected";
 
+/// The creator of an adjustment is told that the invoice dispute it was
+/// opened for ended `upheld` (BL-ATT-09).
+pub const ADJUSTMENT_DISPUTE_UPHELD: &str = "attendance.adjustment_dispute_upheld";
+
+/// The client's escalation contact and the account manager's manager are told
+/// that a timesheet has had no answer (`HRM.RUL.15` at E days).
+pub const TIMESHEET_ESCALATED: &str = "attendance.timesheet_escalated";
+
+/// The client's approvers and the account manager are told the hours and
+/// that an unanswered timesheet was deemed approved (`HRM.RUL.15` at N).
+pub const TIMESHEET_DEEMED: &str = "attendance.timesheet_deemed";
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
+    let subject = english("wl_attendance.notices.deemed_subject", &[]);
+    let body = english("wl_attendance.notices.deemed_body", &[]);
+    notify::register_type(
+        NotificationTypeDef::new(TIMESHEET_DEEMED, "attendance")
+            .group("attendance")
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+    );
+    let subject = english("wl_attendance.notices.escalated_subject", &[]);
+    let body = english("wl_attendance.notices.escalated_body", &[]);
+    notify::register_type(
+        NotificationTypeDef::new(TIMESHEET_ESCALATED, "attendance")
+            .group("attendance")
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+    );
+    let subject = english("wl_attendance.notices.dispute_upheld_subject", &[]);
+    let body = english("wl_attendance.notices.dispute_upheld_body", &[]);
+    notify::register_type(
+        NotificationTypeDef::new(ADJUSTMENT_DISPUTE_UPHELD, "attendance")
+            .group("attendance")
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+    );
     let subject = english("wl_attendance.notices.rejected_subject", &[]);
     let body = english("wl_attendance.notices.rejected_body", &[]);
     notify::register_type(
@@ -219,6 +252,129 @@ pub(crate) async fn timesheet_rejected(
             "reason": reason,
         }))
         .to_user(user);
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// The name of `employee` for staff-facing text: the party's display name,
+/// else `#7`.
+pub(crate) async fn employee_name(state: &AppState, employee: EmployeeId) -> Result<String> {
+    let profile = workforce(state).staff(state, employee).await?;
+    let name = match &profile {
+        Some(profile) => wl_kernel::parties::directory(state)
+            .display_name(&state.db, profile.party, "en")
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    };
+    Ok(name.unwrap_or_else(|| format!("#{}", employee.0)))
+}
+
+/// Tells the creator of the adjustment `sheet` that its dispute ended
+/// `upheld`. Nobody is told when the creator is not known.
+pub(crate) async fn adjustment_dispute_upheld(
+    state: &AppState,
+    sheet: &crate::timesheet::Timesheet,
+) -> Result {
+    let Some(user) = sheet.created_by else {
+        return Ok(());
+    };
+    let employee = employee_name(state, sheet.owner()).await?;
+    let request = NotifyRequest::new(ADJUSTMENT_DISPUTE_UPHELD, sheet.subject())
+        .subject_label(&format!("{employee} {}", sheet.period_from))
+        .data(json!({
+            "employee": employee,
+            "from": sheet.period_from.to_string(),
+            "to": sheet.period_to.to_string(),
+        }))
+        .to_user(user);
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the audience of an escalation (`HRM.RUL.15` at E days) that the
+/// timesheet of `employee` has had no answer for `days` days.
+pub(crate) async fn timesheet_escalated(
+    state: &AppState,
+    sheet: &crate::timesheet::Timesheet,
+    employee: &str,
+    submitted: renox::chrono::NaiveDate,
+    days: i64,
+    audience: &crate::escalation::Audience,
+) -> Result {
+    let mut request = NotifyRequest::new(TIMESHEET_ESCALATED, sheet.subject())
+        .subject_label(&format!("{employee} {}", sheet.period_from))
+        .data(json!({
+            "employee": employee,
+            "from": sheet.period_from.to_string(),
+            "to": sheet.period_to.to_string(),
+            "submitted": submitted.to_string(),
+            "days": days,
+        }));
+    for contact in &audience.contacts {
+        request = request.to(contact.clone());
+    }
+    for user in &audience.staff {
+        request = request.to_user(*user);
+    }
+    if request.recipients.is_empty() {
+        return Ok(());
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// The hours of `totals` in words: `152 h normal, 8 h overtime`.
+fn hours_summary(totals: &[wl_kernel::attendance::CategoryMinutes]) -> String {
+    if totals.is_empty() {
+        return english("wl_attendance.deem.no_hours", &[]);
+    }
+    totals
+        .iter()
+        .map(|total| {
+            format!(
+                "{} {}",
+                crate::entry::hours_text(total.minutes),
+                total.category
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Tells the client's approvers and the account manager the hours of `sheet`,
+/// that they were deemed approved after `days` days without an answer, and
+/// the dispute route. Nobody is told when the resolver knows nobody.
+pub(crate) async fn timesheet_deemed(
+    state: &AppState,
+    sheet: &crate::timesheet::Timesheet,
+    days: i64,
+) -> Result {
+    let context = sheet.context();
+    let resolver = wl_kernel::timesheets::approver_resolver(state);
+    let mut request = NotifyRequest::new(TIMESHEET_DEEMED, sheet.subject());
+    for client in resolver.client_approvers(state, context.as_ref()).await? {
+        request = request.to(client);
+    }
+    if let Some(user) = resolver.account_manager(state, context.as_ref()).await? {
+        request = request.to_user(user);
+    }
+    if request.recipients.is_empty() {
+        return Ok(());
+    }
+    let employee = employee_name(state, sheet.owner()).await?;
+    let totals = crate::approval::totals_of(&state.db, sheet).await?;
+    let request = request
+        .subject_label(&format!("{employee} {}", sheet.period_from))
+        .data(json!({
+            "employee": employee,
+            "from": sheet.period_from.to_string(),
+            "to": sheet.period_to.to_string(),
+            "days": days,
+            "hours": hours_summary(&totals),
+            "dispute_route": english("wl_attendance.deem.dispute_route", &[]),
+        }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }

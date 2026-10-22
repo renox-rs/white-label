@@ -32,6 +32,7 @@ use wl_kernel::documents::today;
 
 use crate::absence::{self, AbsenceReport, ContactAttempt, ContactOutcome};
 use crate::employee::{Employee, EmployeeStatus};
+use crate::exit;
 use crate::exits::{
     self, ExitDocument, ExitInput, KIND_AGREEMENT, KIND_AUTHORITY_NOTICE, KIND_DEATH_CERTIFICATE,
 };
@@ -69,6 +70,11 @@ pub fn routes() -> Routes {
                 .name("wl_hr.onboarding_start")
                 .post("/hr/employees/{id}/exits", request_exit)
                 .name("wl_hr.exit_request")
+                .post(
+                    "/hr/employees/{id}/cancellation-reference",
+                    cancellation_reference,
+                )
+                .name("wl_hr.cancellation_reference")
                 .post("/hr/employees/{id}/contact-attempts", record_attempt)
                 .name("wl_hr.contact_attempt")
                 .post("/hr/onboardings/{id}/cancel", cancel_manual)
@@ -102,7 +108,7 @@ async fn user_name(db: &Db, id: i64) -> String {
 }
 
 /// The employee's name, else `#id`.
-async fn employee_name(state: &AppState, lang: &Lang, employee: &Employee) -> String {
+pub(crate) async fn employee_name(state: &AppState, lang: &Lang, employee: &Employee) -> String {
     wl_kernel::parties::directory(state)
         .display_name(&state.db, employee.party(), &lang.locale)
         .await
@@ -318,7 +324,14 @@ pub(crate) struct ShowPage {
     templates: Vec<(String, String)>,
     can_manage: bool,
     can_activate: bool,
+    can_exit: bool,
+    cancellation_reference: String,
     today: String,
+    pay_accounts: Vec<crate::pages::pay_accounts::AccountView>,
+    settlements: Vec<crate::pages::settlements::RowView>,
+    can_request_pay_account: bool,
+    pay_channels: Vec<(String, String)>,
+    pay_channel_selected: String,
 }
 
 /// `GET /hr/employees/{id}`.
@@ -542,6 +555,25 @@ async fn show(
             | EmployeeStatus::Notice
             | EmployeeStatus::Absconded
     ) && exits::holds_manage(&state, user.id, &employee).await?;
+    let mut pay_accounts = Vec::new();
+    if can_manage || user.has_permission(permissions::PAY_ACCOUNTS_APPROVE) {
+        for account in crate::pay_account::PayAccount::of_employee(&state.db, id).await? {
+            pay_accounts.push(crate::pages::pay_accounts::view_of(&state, &lang, &account).await?);
+        }
+    }
+    let mut settlements = Vec::new();
+    if [
+        permissions::SETTLEMENTS_PREPARE,
+        permissions::SETTLEMENTS_APPROVE,
+        permissions::SETTLEMENTS_PAY,
+    ]
+    .iter()
+    .any(|permission| user.has_permission(permission))
+    {
+        for settlement in crate::settlement::FinalSettlement::of_employee(&state.db, id).await? {
+            settlements.push(crate::pages::settlements::row_of(&lang, &settlement));
+        }
+    }
     Ok(View::typed(ShowPage {
         attempts,
         report,
@@ -575,7 +607,25 @@ async fn show(
         can_manage,
         can_activate: employee.status == EmployeeStatus::Onboarding
             && user.has_permission(permissions::EMPLOYEES_MANAGE),
+        can_exit: exit::route_of(employee.status).is_some() && can_manage,
+        cancellation_reference: employee.cancellation_reference.clone().unwrap_or_default(),
         today: day.to_string(),
+        pay_accounts,
+        settlements,
+        can_request_pay_account: can_manage,
+        pay_channels: [
+            crate::pay_account::BANK_ACCOUNT,
+            crate::pay_account::SALARY_CARD,
+        ]
+        .iter()
+        .map(|c| {
+            (
+                (*c).to_owned(),
+                text(&lang, &format!("pay_account.channel.{c}")),
+            )
+        })
+        .collect(),
+        pay_channel_selected: crate::pay_account::BANK_ACCOUNT.to_owned(),
     }))
 }
 
@@ -729,6 +779,7 @@ async fn request_exit(
         report_date: date_field("report_date", &form.report_date)?,
         report_file: form.report_file.trim().parse().ok(),
         absence_days: None,
+        has_attendance: None,
         death_date: date_field("death_date", &form.death_date)?,
         return_date: date_field("return_date", &form.return_date)?,
         withdrawal_reference: Some(form.reference.trim().to_owned()).filter(|r| !r.is_empty()),
@@ -737,6 +788,33 @@ async fn request_exit(
         .await?
         .map_err(exits::ExitRefused::into_error)?;
     Ok((Toast::success(text(&lang, "exits.sent")), renox::HxRefresh).into_response())
+}
+
+/// The form that records the authority's cancellation reference.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ReferenceForm {
+    /// The authority's reference.
+    #[validate(max = 100)]
+    #[serde(default)]
+    pub reference: String,
+}
+
+/// `POST /hr/employees/{id}/cancellation-reference`: HR records the
+/// authority's reference of the cancellation of the residence visa, which lets
+/// an absconded or deceased employee exit without a completed case.
+async fn cancellation_reference(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ReferenceForm>,
+) -> Result<Response> {
+    exit::record_cancellation_reference(&state, &user, id, &form.reference).await?;
+    Ok((
+        Toast::success(text(&lang, "exit.reference_saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records an attempt to reach an absent worker.

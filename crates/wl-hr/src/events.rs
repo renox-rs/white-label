@@ -8,25 +8,39 @@
 //! - `EmployeeAssignmentChanged`: the open steps get their current assignees
 //!   ([`crate::onboarding::re_resolve`]).
 //! - `AbsenceCaseOpened` and `AbsenceCaseClosed`: the absence cases the
-//!   verticals keep, which `report_absconding` needs ([`crate::absence`]).
+//!   verticals keep, which `report_absconding` needs ([`crate::absence`]); a
+//!   closed case releases the lines held for it ([`crate::release`]).
 //! - `DocumentExpired` and `DocumentExpiring` of an employee: the qualification
 //!   events of `HRM.RUL.10` ([`crate::qualification_expiry`]).
+//! - `Transitioned<PayrollRun>`: the notices and events that follow a payroll
+//!   run's `return`, rejections and escalation ([`crate::payroll_events`]).
+//! - `TimesheetApproved` (adjustments that affect payroll) and
+//!   `TimesheetReconciliationNeeded`: the hours that enter the next regular run
+//!   ([`crate::differences`]).
+//! - `AttendanceRecorded`: the first attended day of the employee, which the
+//!   approval of `cancel_onboarding` re-reads ([`crate::exit_effects`]).
 //! - `ChecklistCompleted`, `DocumentAccepted`, `SopPublished`,
 //!   `SopAcknowledged`, `SopWithdrawn`, `SopReadersChanged`: the steps of
 //!   [`crate::steps`].
 
 use renox::prelude::*;
+use renox::state_machine::Transitioned;
+use wl_kernel::attendance::{AttendanceRecorded, TimesheetApproved};
 use wl_kernel::documents::{
     DocumentAccepted, DocumentExpired, DocumentExpiring, SopAcknowledged, SopPublished,
     SopReadersChanged, SopWithdrawn,
 };
 use wl_kernel::tickets::ChecklistCompleted;
+use wl_kernel::timesheets::TimesheetReconciliationNeeded;
 use wl_kernel::workforce::{
     AbsenceCaseClosed, AbsenceCaseOpened, EmployeeAssignmentChanged, EmployeeDeceased,
     EmployeeExited, EmployeeOnboardingCancelled,
 };
 
-use crate::{absence, onboarding, qualification_expiry, steps};
+use crate::payroll::PayrollRun;
+use crate::{
+    absence, differences, onboarding, payroll_events, qualification_expiry, release, steps,
+};
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
@@ -54,6 +68,22 @@ pub(crate) fn register(app: &mut Registry) {
             onboarding::re_resolve(&state, event.employee.0).await
         },
     );
+    app.listen(
+        |event: Transitioned<PayrollRun>, state: AppState| async move {
+            payroll_events::on_transitioned(&state, &event).await
+        },
+    );
+    app.listen(|event: AttendanceRecorded, state: AppState| async move {
+        crate::exit_effects::on_attendance_recorded(&state, &event).await
+    });
+    app.listen(|event: TimesheetApproved, state: AppState| async move {
+        differences::on_approved(&state, &event).await
+    });
+    app.listen(
+        |event: TimesheetReconciliationNeeded, state: AppState| async move {
+            differences::on_reconciliation(&state, &event).await
+        },
+    );
     app.listen(|event: ChecklistCompleted, state: AppState| async move {
         steps::on_checklist_completed(&state, &event).await
     });
@@ -64,7 +94,9 @@ pub(crate) fn register(app: &mut Registry) {
         absence::on_case_opened(&state, &event).await
     });
     app.listen(|event: AbsenceCaseClosed, state: AppState| async move {
-        absence::on_case_closed(&state, &event).await
+        absence::on_case_closed(&state, &event).await?;
+        // `HRM.RUL.12`: the lines held for the case are released.
+        release::on_case_closed(&state, &event).await
     });
     app.listen(|event: DocumentExpired, state: AppState| async move {
         qualification_expiry::on_expired(&state, &event).await

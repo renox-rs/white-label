@@ -830,3 +830,18 @@ pub async fn accounting_booted_with_mail(mail: BouncingMail) -> TestApp {
     app.kernel().seed().await.unwrap();
     app
 }
+
+/// Drops the document kinds the host seeded for the client and their `blocks`:
+/// a test of a mechanism that is not about the kinds (or that installs its own
+/// fixtures) starts from a database without them. The kinds of a vertical are
+/// the client's data (BL-MPW-20); their own tests are `manpower_settings.rs`.
+pub async fn without_document_kinds(app: &TestApp) {
+    wl_documents::KindBlock::query()
+        .delete(app.db())
+        .await
+        .unwrap();
+    wl_documents::DocumentKind::query()
+        .delete(app.db())
+        .await
+        .unwrap();
+}

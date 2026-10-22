@@ -103,6 +103,55 @@ async fn att01_the_late_entry_window_is_one_day() {
     .await;
 }
 
+/// §5.1 point 5: a day entered after it is over carries the `late_entry` note
+/// (with the day it was entered) and holds nothing; the record of the same day
+/// has none, and neither has a day entered at once.
+#[renox::test]
+async fn att01_a_record_entered_a_day_late_carries_the_late_entry_flag() {
+    use wl_attendance::{AttendanceFlag, FlagType};
+
+    let t = boot().await;
+    let boss = t.user_with("Bashir", "supervisor").await;
+    let a = t.employee(1, &[]);
+    let b = t.employee(2, &[]);
+    let site1 = t.location("Site 1").await;
+    t.on(nov(4), async {
+        let late = service::record(
+            t.state(),
+            NewRecord::supervisor(a, site1.id, at(3, 7, 0), Some(at(3, 15, 0)), boss.id),
+        )
+        .await
+        .unwrap();
+        let on_time = service::record(
+            t.state(),
+            NewRecord::supervisor(b, site1.id, at(4, 7, 0), Some(at(4, 15, 0)), boss.id),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(t.flags_of(&late).await, ["late_entry"]);
+        assert!(t.flags_of(&on_time).await.is_empty());
+        let flag = AttendanceFlag::of_record(t.db(), late.id)
+            .await
+            .unwrap()
+            .remove(0);
+        assert_eq!(flag.flag_type, FlagType::LateEntry);
+        assert!(flag.note.contains("2026-11-04"), "{}", flag.note);
+        assert!(flag.note.contains("2026-11-03"), "{}", flag.note);
+        assert!(flag.resolved_at.is_some(), "it holds nothing for review");
+        assert_eq!(
+            t.reload(&late).await.status,
+            AttendanceStatus::Recorded,
+            "the record is not held back"
+        );
+        assert!(
+            t.flagged.all().is_empty(),
+            "nobody is asked to review a note"
+        );
+    })
+    .await;
+}
+
 /// The window is a setting.
 #[renox::test]
 async fn att01_the_window_follows_the_setting() {
