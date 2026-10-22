@@ -657,6 +657,11 @@ async fn a_contract_on_hold_reads_on_hold_and_no_reason() {
         &html,
         &["On hold", "The contract is on hold. New requests wait."],
     );
+    // The reason of the disabled Submit is text on the page, not a tooltip only.
+    assert!(
+        visible(&html).contains("The contract is on hold. New requests wait."),
+        "the reason of the disabled submit is visible"
+    );
 }
 
 /// The framework's section page lists the same rows in words for the company

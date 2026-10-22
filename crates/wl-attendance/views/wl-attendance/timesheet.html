@@ -10,6 +10,9 @@
                     :back="back_url" :back-label="tx['back']"/>
     <rx-form-errors/>
     <rx-alert rx-for="note in notes" kind="info" :message="note"/>
+    {#- A disabled button says why only in a tooltip, which a phone never shows: say it in words too. -#}
+    <rx-alert rx-if="actions.approve and actions.approve_blocked" kind="warning" :message="actions.approve_blocked"/>
+    <rx-alert rx-if="actions.on_behalf and actions.on_behalf_blocked" kind="warning" :message="actions.on_behalf_blocked"/>
     <rx-row>
       <template rx-if="actions.submit">
         <rx-action-sheet id="submit-timesheet" :label="tx['action.submit']" :action="route('wl_attendance.timesheet_submit', id)"

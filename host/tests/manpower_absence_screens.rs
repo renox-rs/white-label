@@ -10,7 +10,7 @@ mod support;
 
 use manpower_screens_support::{
     AMAL, HR, browse, cells_of_row, day, demo, employee, fits_a_phone, no_raw_words, page, person,
-    post, says, scalar, words,
+    post, says, scalar, visible, words,
 };
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
@@ -123,6 +123,10 @@ async fn one_failed_contact_day_keeps_the_absconding_link_disabled() {
         ticket.last().map(String::as_str),
         Some("Assigned"),
         "{ticket:?}"
+    );
+    assert!(
+        visible(&html).contains("Two failed contact days and the MoHRE number are needed"),
+        "the reason of the disabled link is visible text"
     );
     let employee = employee(&app, "Kamal Hossain").await;
     assert!(

@@ -9,6 +9,8 @@
                     :back="card_url" :back-label="back_label"/>
     <rx-form-errors/>
     <rx-alert rx-if="approval" kind="warning" :message="tx['screen.waiting_banner']"/>
+    {#- A disabled button says why only in a tooltip, which a phone never shows: say it in words too. -#}
+    <rx-alert rx-if="can_accept and accept_blocked" kind="warning" :message="accept_blocked"/>
     <rx-row>
       <template rx-if="can_add_line">
         <rx-action-sheet id="add-rate-line" :label="tx['screen.add_line']" :action="route('wl_invoicing.rate_card_line_add', id)"

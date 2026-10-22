@@ -61,6 +61,7 @@
             </rx-action-sheet>
           </template>
         </rx-row>
+        <span rx-if="request.submit.shown and request.submit.blocked" class="rx-subtitle">{{ request.submit.blocked }}</span>
       </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['portal.requests.empty']" :message="tx['portal.requests.empty_text']" icon="users"/></rx-slot>
     </rx-table>

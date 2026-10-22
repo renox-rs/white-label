@@ -10,6 +10,8 @@
                     :back="route('manpower.absence')" :back-label="tx['absence.title']"/>
     <rx-form-errors/>
     <rx-alert kind="info" :message="contacts_text"/>
+    {#- A disabled button says why only in a tooltip, which a phone never shows: say it in words too. -#}
+    <rx-alert rx-if="actions.abscond.shown and actions.abscond.blocked" kind="warning" :message="actions.abscond.blocked"/>
     <rx-row>
       <template rx-if="actions.report.shown">
         <rx-action-sheet id="record-report" :label="tx['absence.record_report']" :action="route('manpower.absence_report', id)"
