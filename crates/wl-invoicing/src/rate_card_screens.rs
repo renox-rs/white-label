@@ -192,6 +192,8 @@ struct VersionRowView {
 pub(crate) struct CardPage {
     tx: Texts,
     id: i64,
+    /// *Rate card of Gulf Tower Facilities LLC*.
+    title: String,
     back: String,
     back_label: String,
     can_manage: bool,
@@ -233,9 +235,19 @@ pub(crate) async fn card_page(
         });
     }
     let back = source_link(card);
+    let client = wl_kernel::parties::directory(state)
+        .display_name(&state.db, wl_kernel::PartyId(card.party_id), &lang.locale)
+        .await
+        .ok()
+        .flatten();
+    let title = match client {
+        Some(client) => filled(lang, "screen.card_title_of", &[("client", &client)]),
+        None => text(lang, "screen.card_title"),
+    };
     Ok(View::typed(CardPage {
         tx: screen_texts(lang),
         id: card.id,
+        title,
         back_label: if back.is_some() {
             text(lang, "screen.back_contract")
         } else {

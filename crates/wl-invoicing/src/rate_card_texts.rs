@@ -7,6 +7,10 @@
 pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.rate_card.screen.card_title", "Rate card"),
     (
+        "wl_invoicing.rate_card.screen.card_title_of",
+        "Rate card of {{ client }}",
+    ),
+    (
         "wl_invoicing.rate_card.screen.version_title",
         "Version {{ version }}",
     ),

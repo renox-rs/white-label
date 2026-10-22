@@ -91,7 +91,8 @@ async fn the_card_lists_the_versions_with_their_status_in_words() {
     says(
         &html,
         &[
-            "Rate card",
+            "Rate card of Gulf Tower Facilities LLC",
+            "<title>Rate card of Gulf Tower Facilities LLC",
             "v1",
             "v2",
             "In force",

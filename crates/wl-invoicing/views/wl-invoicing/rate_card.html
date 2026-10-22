@@ -2,9 +2,9 @@
     versions with the day they take effect, where each stands in words and who
     accepted it, and the sheet that makes the next version. Replace it with
     resources/views/wl-invoicing/rate_card.html in the app. -#}
-<rx-page layout="layouts/app.html" :title="tx['screen.card_title']">
+<rx-page layout="layouts/app.html" :title="title">
   <rx-stack>
-    <rx-page-header :title="tx['screen.card_title']" :subtitle="tx['screen.new_version_hint']"
+    <rx-page-header :title="title" :subtitle="tx['screen.new_version_hint']"
                     :back="back" :back-label="back_label"/>
     <rx-form-errors/>
     <rx-row rx-if="can_manage">
