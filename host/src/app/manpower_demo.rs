@@ -430,6 +430,8 @@ struct Seed {
     parties: Vec<PartyId>,
 }
 
+// The plans of the story are rows of a table, written as tuples.
+#[allow(clippy::type_complexity)]
 impl Seed {
     fn new(state: AppState, driver: Driver) -> Self {
         Self {

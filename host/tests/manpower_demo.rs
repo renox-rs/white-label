@@ -245,11 +245,48 @@ async fn the_main_pages_answer_for_the_roles_of_the_demo_agency() {
         for path in paths {
             app.acting_as(&user);
             let page = app.get(&path).await;
-            assert_eq!(
-                page.status.as_u16(),
-                200,
-                "{path} answers 200 for {email}"
-            );
+            assert_eq!(page.status.as_u16(), 200, "{path} answers 200 for {email}");
         }
     }
+}
+
+/// The pages show a role in words (`Security guard`, not `security_guard`), a
+/// request without an end date as open-ended (not `None`), a contract without a
+/// cover obligation without a stray full stop, and a settlement in dirhams
+/// with its reason in words.
+#[renox::test]
+async fn the_demo_pages_show_words_not_keys() {
+    let app = booted().await;
+    host::manpower_demo::seed(app.kernel()).await.unwrap();
+    let admin = User::find_by_email(app.db(), "admin@desertstar.example")
+        .await
+        .unwrap()
+        .unwrap();
+    app.acting_as(&admin);
+    for (path, wanted) in [
+        ("/manpower/requests", "Security guard"),
+        ("/manpower/deployments", "Security guard"),
+        ("/hr/employees", "Security guard"),
+        ("/manpower/contracts", "Not required"),
+    ] {
+        let page = app
+            .request()
+            .header("accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+            .get(path)
+            .await;
+        page.assert_ok();
+        let html = page.text();
+        assert!(html.contains(wanted), "{path} has no `{wanted}`");
+        assert!(!html.contains("security_guard"), "{path} shows a key");
+        assert!(!html.contains("None."), "{path} shows `None.`");
+    }
+    let settlement = count(&app, "select min(id) from wl_hr_final_settlements").await;
+    let page = app.get(&format!("/hr/settlements/{settlement}")).await;
+    page.assert_ok();
+    let html = page.text();
+    assert!(html.contains("Resignation"), "the reason is in words");
+    assert!(
+        html.contains("Gratuity (AED)"),
+        "the amounts say the currency"
+    );
 }
