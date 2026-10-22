@@ -808,6 +808,11 @@ impl Booted {
         self.user_with(name, "recall_manager").await
     }
 
+    /// A user who may see the recalls (`recalls.view`) everywhere.
+    pub async fn recall_viewer(&self, name: &str) -> User {
+        self.user_with(name, "recall_viewer").await
+    }
+
     /// `POST /recalls` as `by` with `form`.
     pub async fn recall_as(&self, by: &User, form: &[(&str, &str)]) -> TestResponse {
         self.app.acting_as(by);
@@ -1828,6 +1833,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         .await
         .unwrap();
     permissions::define_role(app.db(), "recall_manager", &[perm::RECALLS_MANAGE])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "recall_viewer", &[perm::RECALLS_VIEW])
         .await
         .unwrap();
     Booted {

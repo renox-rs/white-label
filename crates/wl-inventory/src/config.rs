@@ -153,6 +153,11 @@ pub struct InventoryConfig {
     pub hold_escalation_role_by_reason: Vec<(String, String)>,
     /// The role told for the holds on a location: `(location code, role)`.
     pub hold_escalation_role_by_location: Vec<(String, String)>,
+    /// The name of the route of a vertical's page of a recall (`clinics.recall`,
+    /// taking the recall's id): where its patients or customers are listed
+    /// and told. Set, the recall page links to it and does not offer the
+    /// module's own notice templates.
+    pub recall_notices_route: Option<String>,
 }
 
 impl InventoryConfig {
@@ -229,6 +234,7 @@ impl Default for InventoryConfig {
             hold_escalation_role: None,
             hold_escalation_role_by_reason: Vec::new(),
             hold_escalation_role_by_location: Vec::new(),
+            recall_notices_route: None,
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {

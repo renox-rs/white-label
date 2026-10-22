@@ -8,13 +8,18 @@
 //! | `POST /clinics/recall-calls/{id}` | `clinics.recall_call` | `recalls.call` in the notice's branch |
 //!
 //! The trace list shows patient name, visit day and branch, never why the
-//! patient came; a line that cannot prove the lot says *lot uncertain*.
+//! patient came; a line that cannot prove the lot says *lot uncertain*. It
+//! names the lot of each line (its number, never the product) and, for the
+//! recall's owner (`recalls.manage`), a *Waive* button per line still to tell,
+//! which posts to wl-inventory's route. The recall itself (its reason, its
+//! lots, the hold, the close and the report) is wl-inventory's page, which
+//! links here for the patients.
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 
-use super::{Texts, party_name, require, text};
+use super::{Texts, party_name, require, text, text_with};
 use crate::permissions;
 use crate::recall_notice::RecallNotice;
 use crate::recalls;
@@ -43,6 +48,10 @@ pub fn routes() -> Routes {
 /// One line of the trace list.
 #[derive(Serialize, Debug, Clone)]
 pub struct TraceLine {
+    /// The line of the recall (what *Waive* posts to).
+    pub line: i64,
+    /// The recalled lot's number, never the product.
+    pub lot: String,
     /// The patient.
     pub patient: String,
     /// The visit day.
@@ -53,8 +62,21 @@ pub struct TraceLine {
     pub uncertain: String,
     /// Not told, sent or waived.
     pub notice: String,
+    /// The badge colour of the notice.
+    pub notice_kind: &'static str,
+    /// Whether the owner may waive the line: it is not told yet.
+    pub can_waive: bool,
     /// Who the notice goes to when it is not the patient (the guardian).
     pub told_through: String,
+}
+
+/// The badge colour of a notice status.
+fn notice_kind(notice: &str) -> &'static str {
+    match notice {
+        "sent" => "success",
+        "waived" => "info",
+        _ => "warning",
+    }
 }
 
 /// What the recall page needs.
@@ -65,6 +87,8 @@ pub(crate) struct ShowPage {
     id: i64,
     lines: Vec<TraceLine>,
     can_notify: bool,
+    can_waive: bool,
+    progress: String,
 }
 
 /// `GET /clinics/recalls/{id}`.
@@ -99,7 +123,15 @@ async fn show(
             } else {
                 text(&lang, "none")
             };
+        let lot = match &row.lot {
+            Some(lot) => wl_kernel::documents::subject_label(&state.db, lot)
+                .await?
+                .unwrap_or_else(|| text(&lang, "none")),
+            None => text(&lang, "none"),
+        };
         lines.push(TraceLine {
+            line: row.line.subject_id,
+            lot,
             patient,
             visit_date: row
                 .on
@@ -111,14 +143,28 @@ async fn show(
                 String::new()
             },
             notice: text(&lang, &format!("recall.notice.{}", row.notice)),
+            notice_kind: notice_kind(&row.notice),
+            can_waive: row.notice == "pending",
             told_through,
         });
     }
+    let count = |wanted: &str| rows.iter().filter(|row| row.notice == wanted).count() as i64;
+    let progress = text_with(
+        &lang,
+        "recall.progress",
+        &[
+            ("told", &count("sent")),
+            ("waived", &count("waived")),
+            ("to_tell", &count("pending")),
+        ],
+    );
     Ok(View::typed(ShowPage {
+        progress,
         tx: texts::all(&lang),
         id,
         lines,
         can_notify: user.has_permission(permissions::RECALLS_NOTIFY),
+        can_waive: user.has_permission(permissions::RECALLS_MANAGE),
     }))
 }
 

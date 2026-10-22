@@ -123,6 +123,8 @@ pub struct TraceRow {
     pub line: Subject,
     /// The visit.
     pub visit: i64,
+    /// The recalled lot, `inventory.lot:4`, when the line names one.
+    pub lot: Option<Subject>,
     /// The patient.
     pub patient: Option<i64>,
     /// The party the notice goes to: the patient, or the guardian.
@@ -179,6 +181,7 @@ pub async fn trace(state: &AppState, recall: i64) -> Result<Vec<TraceRow>> {
         rows.push(TraceRow {
             line: holder.line.clone(),
             visit: visit.id,
+            lot: holder.lot.clone(),
             patient: visit.patient_party_id,
             addressee: holder.party.map_or(0, |party| party.0),
             on: Some(visit.visit_date).or(holder.on),

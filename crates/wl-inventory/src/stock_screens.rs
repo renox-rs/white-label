@@ -850,17 +850,10 @@ pub(crate) fn register_labels() {
         PENDING_ISSUE_SUBJECT_TYPE, PURCHASE_ORDER_SUBJECT_TYPE, STOCK_HOLD_LINE_SUBJECT_TYPE,
         STOCK_HOLD_SUBJECT_TYPE, TRANSFER_SUBJECT_TYPE,
     };
+    // The number alone: a page that names a lot (a recall's trace) never
+    // names the product.
     register(LOT_SUBJECT_TYPE, |db, id| {
-        Box::pin(async move {
-            let Some(lot) = Lot::find(db, id).await? else {
-                return Ok(None);
-            };
-            let item = Item::find(db, lot.item_id).await?;
-            Ok(Some(match item {
-                Some(item) => format!("{} · {}", item.name_en, lot.number),
-                None => lot.number,
-            }))
-        })
+        Box::pin(async move { Ok(Lot::find(db, id).await?.map(|lot| lot.number)) })
     });
     register(LOCATION_SUBJECT_TYPE, |db, id| {
         Box::pin(async move { Ok(Location::find(db, id).await?.map(|row| row.name_en)) })
@@ -922,7 +915,7 @@ mod tests {
     /// one would show as a raw key on the page.
     #[test]
     fn every_text_a_template_reads_exists() {
-        for (name, source) in VIEWS {
+        for (name, source) in VIEWS.iter().chain(crate::recall_screens::VIEWS) {
             let mut rest = *source;
             while let Some(at) = rest.find("tx['") {
                 rest = &rest[at + 4..];

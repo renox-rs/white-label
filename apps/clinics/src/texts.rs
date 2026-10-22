@@ -1182,6 +1182,21 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.recall.subtitle",
         "The patients who got a recalled product: name, visit day and branch only. Each view is recorded.",
     ),
+    ("clinics.recall.back", "Recall"),
+    ("clinics.recall.lot", "Lot"),
+    (
+        "clinics.recall.progress",
+        "Told: :told. Waived: :waived. Still to tell: :to_tell.",
+    ),
+    ("clinics.recall.waive", "Waive"),
+    (
+        "clinics.recall.waive_description",
+        "The patient need not be told.",
+    ),
+    (
+        "clinics.recall.waive_reason",
+        "Why the patient need not be told",
+    ),
     ("clinics.recall.patient", "Patient"),
     ("clinics.recall.visit_date", "Visit date"),
     ("clinics.recall.branch", "Branch"),

@@ -32,6 +32,7 @@ pub mod recall_close;
 pub mod recall_line;
 pub mod recall_notice;
 mod recall_pages;
+mod recall_screens;
 pub mod recall_trace;
 pub mod receipt_post;
 pub mod receipt_reverse;
@@ -150,6 +151,9 @@ pub mod permissions {
     pub const LOTS_RELEASE: &str = "lots.release";
     /// Open, trace, notify and close recalls.
     pub const RECALLS_MANAGE: &str = "recalls.manage";
+    /// See the recalls and how far each is (the lots, where they are, the
+    /// hold, how many were told), without naming anyone.
+    pub const RECALLS_VIEW: &str = "recalls.view";
 }
 
 /// The inventory module. The host adds it with
@@ -298,6 +302,14 @@ impl WlInventory {
         self
     }
 
+    /// The route of the vertical's page of a recall (taking the recall's id):
+    /// where its patients or customers are named and told (05 `clinics.recall`).
+    /// The recall page links to it and leaves the notices to it.
+    pub fn recall_notices_route(mut self, route: &str) -> Self {
+        self.config.recall_notices_route = Some(route.trim().to_owned());
+        self
+    }
+
     /// The settings of the supplier score: weights, caps, grace days, window,
     /// minimum receipts and the threshold (defaults in [`ScoreSettings`]).
     pub fn supplier_score(mut self, settings: ScoreSettings) -> Self {
@@ -354,6 +366,7 @@ impl Module for WlInventory {
             .merge(stock_pages::routes())
             .merge(recall_pages::routes())
             .merge(stock_screens::routes())
+            .merge(recall_screens::routes())
             .merge(transfer_screens::routes())
             .merge(receipt_screens::routes())
     }
@@ -372,12 +385,18 @@ impl Module for WlInventory {
             .view_data::<stock_screens::LotPage>()
             .view_data::<stock_screens::HoldsPage>()
             .view_data::<stock_screens::PendingPage>()
+            .view_data::<recall_screens::RecallsPage>()
+            .view_data::<recall_screens::RecallPage>()
             .view_data::<transfer_screens::TransfersPage>()
             .view_data::<receipt_screens::OrdersPage>()
             .view_data::<receipt_screens::ReceiptsPage>()
             .view_data::<receipt_screens::ReceiptPage>();
         app.templates(|env| {
-            for (name, source) in screens::VIEWS.iter().chain(stock_screens::VIEWS) {
+            for (name, source) in screens::VIEWS
+                .iter()
+                .chain(stock_screens::VIEWS)
+                .chain(recall_screens::VIEWS)
+            {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
                     renox::view::add_template(env, *name, *source)
@@ -443,6 +462,13 @@ impl Module for WlInventory {
                 "clipboard-list",
                 68,
                 &[permissions::STOCK_ADJUST][..],
+            ),
+            (
+                "wl_inventory.recalls",
+                "nav.recalls",
+                "triangle-alert",
+                69,
+                &[permissions::RECALLS_VIEW, permissions::RECALLS_MANAGE][..],
             ),
         ] {
             app.nav(
