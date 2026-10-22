@@ -539,10 +539,14 @@ pub fn rows(owner_role: &str) -> Vec<Row> {
         edtech::notices::FAMILY_NOTICE,
         edtech::notices::TERMS_REQUEST,
         edtech::notices::NOTICE,
+        edtech::notices::PACKAGE_REMINDER,
+        edtech::notices::PAYMENT_LINK,
         "invoice.reminder_before_due",
         "invoice.reminder_after_due",
         "invoicing.subscription_past_due",
         "invoicing.subscription_retry",
+        "invoicing.subscription_paused",
+        "payments.payment_returned",
         wl_scheduling::notices::REMINDER,
     ]
     .iter()

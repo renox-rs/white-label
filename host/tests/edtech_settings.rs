@@ -394,11 +394,27 @@ async fn edu_17_the_registered_types_carry_their_groups_and_reactions() {
     );
     assert_eq!(request.staff_role.as_deref(), Some(COUNSELLOR));
 
+    // The package reminder is a guardian message; the payment link is an invoice
+    // message (a task to the accountant when it gives up).
+    let reminder = row(&app, edtech::notices::PACKAGE_REMINDER).await;
+    assert_eq!(reminder.group_key, GROUP_GUARDIAN);
+    assert_eq!(
+        reminder.give_up.0,
+        [
+            GiveUpReaction::AlternativeRecipient,
+            GiveUpReaction::StaffTask
+        ]
+    );
+    assert_eq!(reminder.staff_role.as_deref(), Some(COUNSELLOR));
+
     for key in [
         "invoice.reminder_before_due",
         "invoice.reminder_after_due",
         "invoicing.subscription_past_due",
         "invoicing.subscription_retry",
+        "invoicing.subscription_paused",
+        "payments.payment_returned",
+        edtech::notices::PAYMENT_LINK,
     ] {
         let t = row(&app, key).await;
         assert_eq!(t.group_key, GROUP_INVOICES, "{key}");

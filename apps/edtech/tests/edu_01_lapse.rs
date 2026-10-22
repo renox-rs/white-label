@@ -197,8 +197,9 @@ async fn edu_01_a_failed_payment_gives_a_new_link_and_does_not_extend_the_hold()
         "it ends with the hold"
     );
     assert_eq!(now.payment_link_path.as_deref(), Some("/pay/link-901"));
-    let family = t.messages.of_type(FAMILY_NOTICE);
-    assert_eq!(family.len(), 1);
+    let family = t.messages.of_type(edtech::notices::PAYMENT_LINK);
+    assert_eq!(family.len(), 1, "the link goes as a payment link message");
+    assert!(t.messages.of_type(FAMILY_NOTICE).is_empty());
     let text = Messages::text(&family[0]);
     assert!(text.contains("payment did not go through"), "{text}");
     assert!(

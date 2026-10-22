@@ -301,7 +301,7 @@ pub async fn on_payment_failed(state: &AppState, event: &PaymentFailed) -> Resul
         "edtech.lapse.retry_body",
         &[("enrolment", &number), ("until", &until), ("link", &path)],
     );
-    notices::tell_family(state, &renewed, &title, &body).await
+    notices::tell_family_as(state, notices::PAYMENT_LINK, &renewed, &title, &body).await
 }
 
 /// `RefundApproved` for a late payment (the system approved it at once): the

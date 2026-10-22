@@ -46,6 +46,15 @@ pub const FAMILY_NOTICE: &str = "edtech.family_notice";
 /// requests.
 pub const TERMS_REQUEST: &str = "edtech.terms_request";
 
+/// The notification type of a payment link sent to the payer: the group
+/// *Invoices, statements, payment reminders*, a task to the accountant when it
+/// gives up.
+pub const PAYMENT_LINK: &str = "edtech.payment_link";
+
+/// The notification type of a reminder about a package (credits running out,
+/// the end date near): the group *Guardian messages*.
+pub const PACKAGE_REMINDER: &str = "edtech.package_reminder";
+
 /// The types of this module.
 pub fn notification_types() -> Vec<NotificationTypeDef> {
     let subject = english("edtech.notice.subject", &[]);
@@ -68,6 +77,19 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
             .category(Category::Transactional)
             .give_up(&defaults::REQUEST_GIVE_UP)
             .staff_role(defaults::REQUEST_TASK_ROLE)
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+        NotificationTypeDef::new(PAYMENT_LINK, "edtech")
+            .group(defaults::INVOICE_GROUP)
+            .category(Category::Transactional)
+            .give_up(&defaults::INVOICE_GIVE_UP)
+            .staff_role(defaults::INVOICE_TASK_ROLE)
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+        NotificationTypeDef::new(PACKAGE_REMINDER, "edtech")
+            .group(defaults::GUARDIAN_GROUP)
+            .category(Category::Reminder)
+            .give_up(&defaults::GUARDIAN_GIVE_UP)
+            .staff_role(defaults::GUARDIAN_TASK_ROLE)
+            .channels(&defaults::FAMILY_CHANNELS)
             .template(NotifyChannel::Email, "en", Some(&subject), &body),
     ]
 }
@@ -136,7 +158,23 @@ pub async fn tell_family(
     title: &str,
     body: &str,
 ) -> Result {
-    let mut request = NotifyRequest::new(FAMILY_NOTICE, enrolment.subject())
+    tell_family_as(state, FAMILY_NOTICE, enrolment, title, body).await
+}
+
+/// Tells the family of `enrolment` something under the notification type
+/// `type_key` ([`FAMILY_NOTICE`], [`PAYMENT_LINK`] or [`PACKAGE_REMINDER`]).
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub async fn tell_family_as(
+    state: &AppState,
+    type_key: &str,
+    enrolment: &Enrolment,
+    title: &str,
+    body: &str,
+) -> Result {
+    let mut request = NotifyRequest::new(type_key, enrolment.subject())
         .subject_label(&enrolment.number())
         .data(renox::serde_json::json!({ "title": title, "body": body }));
     for party in family_of(enrolment) {

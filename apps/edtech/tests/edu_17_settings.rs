@@ -79,7 +79,7 @@ fn edu_17_the_requests_go_to_the_counsellor_and_staff_types_take_none() {
 /// and the other guardian or payer contact is tried.
 #[test]
 fn edu_17_an_invoice_message_that_gives_up_ends_in_an_accountant_task() {
-    assert_eq!(defaults::NOTIFICATION_TYPES.len(), 4);
+    assert_eq!(defaults::NOTIFICATION_TYPES.len(), 6);
     for spec in &defaults::NOTIFICATION_TYPES {
         assert_eq!(spec.group, GROUP_INVOICES, "{}", spec.key);
         assert_eq!(

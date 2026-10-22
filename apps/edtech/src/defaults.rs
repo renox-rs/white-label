@@ -79,9 +79,12 @@ pub const REQUEST_GIVE_UP: [GiveUpReaction; 2] = [
 /// The role that gets the task of a request that gave up.
 pub const REQUEST_TASK_ROLE: &str = COUNSELLOR_ROLE;
 
-/// The reactions when an invoice, a membership charge or a reminder gives up:
-/// the contact is marked invalid, the other guardian or payer contact is tried,
-/// then the accountant gets a task.
+/// The group of the invoices, membership charges, payment links and reminders.
+pub const INVOICE_GROUP: &str = GROUP_INVOICES;
+
+/// The reactions when an invoice, a membership charge, a payment link or a
+/// reminder gives up: the contact is marked invalid, the other guardian or payer
+/// contact is tried, then the accountant gets a task.
 pub const INVOICE_GIVE_UP: [GiveUpReaction; 3] = [
     GiveUpReaction::MarkContactInvalid,
     GiveUpReaction::AlternativeRecipient,
@@ -108,7 +111,7 @@ pub struct TypeSpec {
 /// invoice reminders and the membership notices go to the accountant when they
 /// give up. (The types 10 registers itself carry theirs in [`crate::notices`];
 /// the booking types keep the wl-scheduling group; none is statutory.)
-pub const NOTIFICATION_TYPES: [TypeSpec; 4] = [
+pub const NOTIFICATION_TYPES: [TypeSpec; 6] = [
     TypeSpec {
         key: "invoice.reminder_before_due",
         group: GROUP_INVOICES,
@@ -129,6 +132,20 @@ pub const NOTIFICATION_TYPES: [TypeSpec; 4] = [
     },
     TypeSpec {
         key: "invoicing.subscription_retry",
+        group: GROUP_INVOICES,
+        give_up: &INVOICE_GIVE_UP,
+        role: Some(INVOICE_TASK_ROLE),
+    },
+    // The membership is paused (its charge failed on every retry).
+    TypeSpec {
+        key: "invoicing.subscription_paused",
+        group: GROUP_INVOICES,
+        give_up: &INVOICE_GIVE_UP,
+        role: Some(INVOICE_TASK_ROLE),
+    },
+    // The failed payment notice: the payment came back.
+    TypeSpec {
+        key: "payments.payment_returned",
         group: GROUP_INVOICES,
         give_up: &INVOICE_GIVE_UP,
         role: Some(INVOICE_TASK_ROLE),

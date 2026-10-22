@@ -441,7 +441,7 @@ pub async fn send_link(state: &AppState, by: &AuthUser, id: i64) -> Result<Strin
             ("link", &link.path),
         ],
     );
-    notices::tell_family(state, &enrolment, &title, &body).await?;
+    notices::tell_family_as(state, notices::PAYMENT_LINK, &enrolment, &title, &body).await?;
     Ok(link.path)
 }
 
