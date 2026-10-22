@@ -12,7 +12,9 @@ mod support;
 
 use host::roles::{ACCOUNTANT, ADMIN};
 use manpower::{ClientContract, ContractStatus, Deployment, DeploymentStatus};
-use manpower_support::{account, all_valid_except, boot, deployment, document, worker};
+use manpower_support::{
+    account, all_valid_except, boot, deployment, document, portal_grant, worker,
+};
 use renox::chrono::{Days, NaiveDate, NaiveDateTime};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
@@ -146,11 +148,13 @@ async fn client_invoices(app: &TestApp, client: PartyId) -> Vec<Invoice> {
         .unwrap()
 }
 
-async fn client_approver(app: &TestApp) -> User {
+async fn client_approver(app: &TestApp, client: PartyId) -> User {
     renox::auth::permissions::define_role(app.db(), "client_approver", &[])
         .await
         .unwrap();
-    person(app, "Carl", "client_approver").await
+    let carl = person(app, "Carl", "client_approver").await;
+    portal_grant(app, &carl, client, "approver").await;
+    carl
 }
 
 /// AC2 (#420), (#421 `MPW.ACL.16`) and the retry: contract K ended yesterday;
@@ -167,7 +171,7 @@ async fn the_last_timesheet_of_an_ended_contract_is_billed_as_a_draft_after_its_
     let rana = person(&app, "Rana", ADMIN).await;
     let mona = person(&app, "Mona", ADMIN).await;
     let accountant = person(&app, "Aziz", ACCOUNTANT).await;
-    let carl = client_approver(&app).await;
+    let carl = client_approver(&app, a.client).await;
     let last_day = today() - Days::new(1);
     ClientContract::query()
         .where_(ClientContract::ID.eq(a.contract.id))
@@ -337,7 +341,7 @@ async fn novembers_invoice_bills_the_suspended_deployments_only_to_the_twentieth
     let a = account(&app).await;
     let rana = person(&app, "Rana", ADMIN).await;
     let accountant = person(&app, "Aziz", ACCOUNTANT).await;
-    let carl = client_approver(&app).await;
+    let carl = client_approver(&app, a.client).await;
     let w1 = worker(&app, "Wasim Khan").await;
     let w2 = worker(&app, "Wajid Ali").await;
     for w in [w1, w2] {
@@ -467,7 +471,7 @@ async fn a_resumed_deployment_is_billed_except_for_the_days_it_was_suspended() {
     let app = boot().await;
     let a = account(&app).await;
     let rana = person(&app, "Rana", ADMIN).await;
-    let carl = client_approver(&app).await;
+    let carl = client_approver(&app, a.client).await;
     let w = worker(&app, "Wasim Khan").await;
     let d = deployment(
         &app,
