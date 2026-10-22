@@ -29,8 +29,7 @@
   {#- A guest sees this layout only on an error page. -#}
   <rx-let name="tabs" :value="(
     [{'href': route('dashboard'), 'label': t('nav.dashboard'), 'icon': 'layout-dashboard', 'active': route_is('dashboard')}]
-    + ([{'href': route('users.index'), 'label': t('nav.users'), 'icon': 'users', 'active': route_is('users.*')}] if can('users.manage') else [])
-    + ([{'href': route('activity.index'), 'label': t('nav.activity'), 'icon': 'history', 'active': route_is('activity.*')}] if can('activity.view') else [])
+    + [{'href': route('menu'), 'label': t('nav.menu'), 'icon': 'menu', 'active': route_is('menu')}]
     + [
       {'href': route('notifications.index'), 'label': t('nav.notifications'), 'icon': 'bell', 'badge': unread_notifications or none, 'active': route_is('notifications.*')},
       {'href': route('account.show'), 'label': t('nav.account'), 'icon': 'circle-user', 'active': route_is('account.*')},

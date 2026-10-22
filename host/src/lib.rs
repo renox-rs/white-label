@@ -372,6 +372,7 @@ fn base() -> renox::App {
         .module(app::dashboard::Dashboard)
         .module(app::users::Users)
         .module(app::activity::Activity)
+        .module(app::menu::Menu)
         .command(
             "users:invite",
             "Add a user and mail them the link to choose a password",

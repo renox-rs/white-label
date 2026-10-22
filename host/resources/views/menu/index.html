@@ -1,0 +1,13 @@
+{#- Every link of the sidebar, grouped as there, for the phone's tab bar. -#}
+<rx-page layout="layouts/app.html" title="{{ t('menu.title') }}">
+  <rx-stack>
+    <rx-page-header title="{{ t('menu.title') }}" subtitle="{{ t('menu.subtitle') }}"/>
+    <template rx-for="group in nav('app')">
+      <rx-card :title="group.label or t('menu.title')">
+        <rx-list>
+          <li rx-for="item in group['items']"><div class="rx-list__main"><a href="{{ item.url }}">{{ item.label }}</a></div></li>
+        </rx-list>
+      </rx-card>
+    </template>
+  </rx-stack>
+</rx-page>
