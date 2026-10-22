@@ -217,6 +217,37 @@ impl Tickets {
             .collect())
     }
 
+    /// Every ticket of the category `category_key` about `subject`, oldest
+    /// first, open or not.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn tickets_of(
+        state: &AppState,
+        subject: &Subject,
+        category_key: &str,
+    ) -> Result<Vec<wl_kernel::tickets::TicketSummary>> {
+        let Some(category) = Category::by_key(&state.db, category_key).await? else {
+            return Ok(Vec::new());
+        };
+        Ok(Ticket::query()
+            .where_(Ticket::SUBJECT_TYPE.eq(subject.subject_type.as_str()))
+            .where_(Ticket::SUBJECT_ID.eq(subject.subject_id))
+            .where_(Ticket::CATEGORY_ID.eq(category.id))
+            .order_by(Ticket::ID)
+            .get(&state.db)
+            .await?
+            .into_iter()
+            .map(|ticket| wl_kernel::tickets::TicketSummary {
+                id: ticket.reference().id,
+                number: ticket.number.clone(),
+                title: ticket.title.clone(),
+                status: ticket.status.as_str().to_owned(),
+            })
+            .collect())
+    }
+
     /// Resolves ticket `id` for the record that opened it, with `note` as the
     /// resolution. `false` when the ticket is unknown or already resolved,
     /// closed or cancelled.
@@ -305,6 +336,15 @@ impl TaskCreator for Tickets {
         category_key: &'a str,
     ) -> TicketFuture<'a, Vec<TicketRef>> {
         Box::pin(Tickets::open_of(state, subject, category_key))
+    }
+
+    fn tickets_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: &'a Subject,
+        category_key: &'a str,
+    ) -> TicketFuture<'a, Vec<wl_kernel::tickets::TicketSummary>> {
+        Box::pin(Tickets::tickets_of(state, subject, category_key))
     }
 
     fn resolve_from_source<'a>(

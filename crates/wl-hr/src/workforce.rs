@@ -185,6 +185,32 @@ impl Workforce for Staff {
         })
     }
 
+    fn released_pay_paths<'a>(
+        &'a self,
+        db: &'a Db,
+        employee: EmployeeId,
+    ) -> WorkforceFuture<'a, Vec<String>> {
+        Box::pin(async move {
+            let mut runs: Vec<i64> = crate::payroll::PayrollLine::query()
+                .where_(crate::payroll::PayrollLine::EMPLOYEE_ID.eq(employee.0))
+                .where_(crate::payroll::PayrollLine::RELEASED_INTO.is_not_null())
+                .order_by(crate::payroll::PayrollLine::ID)
+                .get(db)
+                .await?
+                .into_iter()
+                .filter(|line| {
+                    line.held_reason.as_deref() == Some(crate::payroll::HELD_ABSENCE_CASE)
+                })
+                .filter_map(|line| line.released_into)
+                .collect();
+            runs.dedup();
+            Ok(runs
+                .into_iter()
+                .map(|id| format!("/hr/payroll/{id}"))
+                .collect())
+        })
+    }
+
     fn access_disabled<'a>(&'a self, db: &'a Db, user_id: i64) -> WorkforceFuture<'a, bool> {
         Box::pin(async move {
             let employees = Employee::query()

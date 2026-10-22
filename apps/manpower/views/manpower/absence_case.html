@@ -1,0 +1,66 @@
+{#- manpower: one absence case: the worker, the days absent, the failed contact
+    days, the MoHRE report, the tickets of the case and the actions *Record
+    report* and *Close case*; *Report as absconded* is a link to the
+    employee's page, disabled with its reason until two failed contact days
+    and the report number are recorded. Replace it with
+    resources/views/manpower/absence_case.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['absence.case'] ~ ': ' ~ title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="subtitle" :badge="status" :badge-kind="status_kind"
+                    :back="route('manpower.absence')" :back-label="tx['absence.title']"/>
+    <rx-form-errors/>
+    <rx-alert kind="info" :message="contacts_text"/>
+    <rx-row>
+      <template rx-if="actions.report.shown">
+        <rx-action-sheet id="record-report" :label="tx['absence.record_report']" :action="route('manpower.absence_report', id)"
+                         :title="tx['absence.record_report']" :description="tx['absence.record_report_hint']" :submit-label="tx['absence.record_report']" icon="file-check">
+          <rx-input name="number" :label="tx['absence.report_number']" :value="report_number" id="record-report-number" required/>
+          <rx-input name="date" type="date" :label="tx['absence.report_date']" :value="today" id="record-report-date" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.abscond.shown">
+        <template rx-if="actions.abscond.blocked">
+          <rx-button :label="tx['absence.abscond']" icon="user-x" :disabled-reason="actions.abscond.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-link-button :href="employee_url" :label="tx['absence.abscond']" icon="user-x"/>
+        </template>
+      </template>
+      <template rx-if="actions.close.shown">
+        <rx-action-sheet id="close-case" :label="tx['absence.close']" :action="route('manpower.absence_close', id)"
+                         :title="tx['absence.close']" :description="tx['absence.close_hint']" :submit-label="tx['absence.close']" variant="primary" icon="check">
+          <rx-textarea name="reason" :label="tx['absence.close_reason']" id="close-case-reason" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-row>
+    <rx-card rx-if="closed" :title="tx['absence.closed_title']">
+      <rx-stack>
+        <span>{{ closed.text }}</span>
+        <span>{{ closed.pay }}</span>
+        <a rx-for="run in closed.runs" href="{{ run }}">{{ tx['absence.run_link'] }}</a>
+      </rx-stack>
+    </rx-card>
+    <rx-card :title="tx['absence.case']">
+      <rx-stack>
+        <rx-infolist columns="2">
+          <rx-entry rx-for="fact in facts" :label="fact.label" :value="fact.value"/>
+          <rx-entry :label="tx['absence.contacts']" :value="contacts_text"/>
+          <rx-entry :label="tx['absence.report']" :value="report"/>
+        </rx-infolist>
+        <a href="{{ employee_url }}">{{ tx['absence.employee_link'] }}</a>
+        <a rx-if="deployment_url" href="{{ deployment_url }}">{{ tx['absence.deployment_link'] }}</a>
+      </rx-stack>
+    </rx-card>
+    <rx-table :rows="contacts" as="contact" :key="contact.day" :caption="tx['absence.contact_days']" card>
+      <rx-column :label="tx['absence.contact_day']">{{ contact.day }}</rx-column>
+      <rx-column :label="tx['absence.contact_outcome']">{{ contact.outcome }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['absence.contacts_empty']" icon="phone"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="tickets" as="ticket" :key="ticket.number" :caption="tx['absence.tickets']" card>
+      <rx-column :label="tx['absence.ticket']"><a href="{{ ticket.url }}">{{ ticket.number }}</a></rx-column>
+      <rx-column :label="tx['absence.ticket_title']" hide-narrow>{{ ticket.title }}</rx-column>
+      <rx-column :label="tx['absence.status']">{{ ticket.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['absence.tickets_empty']" icon="ticket"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

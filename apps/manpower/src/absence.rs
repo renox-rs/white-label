@@ -534,7 +534,7 @@ pub async fn daily(state: &AppState) -> Result {
 }
 
 /// `Forbidden` unless `by` holds `absence.manage`.
-fn require_manage(by: &AuthUser) -> Result {
+pub(crate) fn require_manage(by: &AuthUser) -> Result {
     if by.has_permission(permissions::ABSENCE_MANAGE) {
         Ok(())
     } else {
@@ -563,8 +563,11 @@ pub async fn record_report(
         return Err(refused(english("manpower.absence.closed", &[])));
     }
     let number = number.trim();
-    if number.is_empty() || date > today() {
-        return Err(refused(english("manpower.absence.report", &[])));
+    if number.is_empty() {
+        return Err(refused(english("manpower.absence.report_number", &[])));
+    }
+    if date > today() {
+        return Err(refused(english("manpower.absence.report_date", &[])));
     }
     AbsenceCase::query()
         .where_(AbsenceCase::ID.eq(id))
@@ -710,6 +713,19 @@ pub async fn open_cases(state: &AppState, by: &AuthUser) -> Result<Vec<AbsenceCa
     AbsenceCase::query()
         .where_(AbsenceCase::CLOSED_ON.is_null())
         .order_by(AbsenceCase::ID)
+        .get(&state.db)
+        .await
+}
+
+/// Every case, open and closed, newest first, for HR.
+///
+/// # Errors
+///
+/// `Forbidden` without `absence.manage`.
+pub async fn all_cases(state: &AppState, by: &AuthUser) -> Result<Vec<AbsenceCase>> {
+    require_manage(by)?;
+    AbsenceCase::query()
+        .order_by_desc(AbsenceCase::ID)
         .get(&state.db)
         .await
 }

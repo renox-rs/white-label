@@ -23,6 +23,7 @@
 //! - **The templates** are compiled in ([`VIEWS`]) and an app replaces one by a
 //!   file of the same name under its own `resources/views/manpower/`.
 
+pub(crate) mod absence_page;
 pub(crate) mod contract_page;
 pub(crate) mod deployment_page;
 pub(crate) mod request_page;
@@ -45,6 +46,14 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
     (
         "manpower/contract.html",
         include_str!("../../views/manpower/contract.html"),
+    ),
+    (
+        "manpower/absence_cases.html",
+        include_str!("../../views/manpower/absence_cases.html"),
+    ),
+    (
+        "manpower/absence_case.html",
+        include_str!("../../views/manpower/absence_case.html"),
     ),
     (
         "manpower/deployment.html",

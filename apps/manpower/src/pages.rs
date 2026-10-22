@@ -29,6 +29,10 @@
 //! | `POST /manpower/deployments/{id}/suspend` | `manpower.deployment_suspend` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/resume` | `manpower.deployment_resume` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/end` | `manpower.deployment_end` | `deployments.manage` for the client |
+//! | `GET /manpower/absence` | `manpower.absence` | `absence.manage` (BL-MPW-25) |
+//! | `GET /manpower/absence/{id}` | `manpower.absence_case` | `absence.manage` |
+//! | `POST /manpower/absence/{id}/report` | `manpower.absence_report` | `absence.manage` |
+//! | `POST /manpower/absence/{id}/close` | `manpower.absence_close` | `absence.manage` |
 //! | `POST /manpower/deployments/{id}/cancel` | `manpower.deployment_cancel` | `deployments.manage` for the client |
 //!
 //! The lists and the record pages answer a page when the request names
@@ -129,8 +133,10 @@ pub fn routes() -> Routes {
         .name("manpower.deployment_cancel")
         .post("/manpower/deployments/{id}/cover", cover_deployment)
         .name("manpower.deployment_cover")
-        .get("/manpower/absence", absence_index)
+        .get("/manpower/absence", screens::absence_page::list)
         .name("manpower.absence")
+        .get("/manpower/absence/{id}", screens::absence_page::show)
+        .name("manpower.absence_case")
         .post("/manpower/absence/{id}/report", absence_report)
         .name("manpower.absence_report")
         .post("/manpower/absence/{id}/close", absence_close)
@@ -1296,9 +1302,9 @@ struct AbsenceRow {
     report_date: Option<NaiveDate>,
 }
 
-/// `GET /manpower/absence`: the open absence cases, for HR (`absence.manage`).
-async fn absence_index(State(state): State<AppState>, user: AuthUser) -> Result<Response> {
-    let rows: Vec<AbsenceRow> = absence::open_cases(&state, &user)
+/// The open absence cases as JSON, for HR (`absence.manage`).
+pub(crate) async fn absence_json(state: &AppState, user: &AuthUser) -> Result<Response> {
+    let rows: Vec<AbsenceRow> = absence::open_cases(state, user)
         .await?
         .into_iter()
         .map(|case| AbsenceRow {
@@ -1325,16 +1331,25 @@ async fn absence_report(
 ) -> Result<Response> {
     let date = date(&lang, &form, "date")?.unwrap_or_else(today);
     absence::record_report(&state, &user, id, &field(&form, "number"), date).await?;
-    Ok(back("/manpower/absence"))
+    Ok(done(
+        &lang,
+        &screens::absence_page::url(id),
+        "manpower.screen.done.absence_reported",
+    ))
 }
 
 /// `POST /manpower/absence/{id}/close`: `reason`.
 async fn absence_close(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     absence::close(&state, &user, id, &field(&form, "reason")).await?;
-    Ok(back("/manpower/absence"))
+    Ok(done(
+        &lang,
+        &screens::absence_page::url(id),
+        "manpower.screen.done.absence_closed",
+    ))
 }

@@ -105,7 +105,9 @@ impl Module for Manpower {
             .view_data::<pages::DeploymentsPage>()
             .view_data::<screens::contract_page::ContractPage>()
             .view_data::<screens::request_page::RequestPage>()
-            .view_data::<screens::deployment_page::DeploymentPage>();
+            .view_data::<screens::deployment_page::DeploymentPage>()
+            .view_data::<screens::absence_page::CasesPage>()
+            .view_data::<screens::absence_page::CasePage>();
         // An approval of a contract or a request links to its page.
         wl_kernel::approvals::register_subject_link(contract::SUBJECT_TYPE, |id| {
             screens::contract_page::url(id)
@@ -150,6 +152,14 @@ impl Module for Manpower {
                 .group("nav.app")
                 .order(11)
                 .permission(permissions::DEPLOYMENTS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("manpower.absence", "nav.absence")
+                .icon("user-x")
+                .group("nav.app")
+                .order(12)
+                .permission(permissions::ABSENCE_MANAGE),
         );
         app.model::<Site>()
             .model::<ClientContract>()
