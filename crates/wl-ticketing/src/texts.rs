@@ -68,7 +68,11 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.fields.subject_type_hint",
         "For example property.unit.",
     ),
-    ("wl_ticketing.fields.subject_id", "Subject id"),
+    ("wl_ticketing.fields.subject_id", "Number of the record"),
+    (
+        "wl_ticketing.fields.subject_id_hint",
+        "The record's number, as its own page shows it in the address.",
+    ),
     ("wl_ticketing.fields.category", "Category"),
     ("wl_ticketing.fields.priority", "Priority"),
     ("wl_ticketing.fields.status", "Status"),

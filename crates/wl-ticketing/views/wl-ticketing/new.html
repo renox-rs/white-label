@@ -7,8 +7,9 @@
       <rx-card>
         <rx-form-errors/>
         <rx-form-grid columns="2">
-          <rx-input name="subject_type" :label="tx['fields.subject_type']" :hint="tx['fields.subject_type_hint']" required/>
-          <rx-input name="subject_id" type="number" :label="tx['fields.subject_id']" required/>
+          <rx-select rx-if="subject_types" name="subject_type" :label="tx['fields.subject_type']" :options="subject_types" :selected="''" required/>
+          <rx-input rx-else name="subject_type" :label="tx['fields.subject_type']" :hint="tx['fields.subject_type_hint']" required/>
+          <rx-input name="subject_id" type="number" :label="tx['fields.subject_id']" :hint="tx['fields.subject_id_hint']" required/>
           <rx-select name="category" :label="tx['fields.category']" :options="categories" :selected="'general'" required/>
           <rx-input name="requester_code" :label="tx['fields.requester_code']" :hint="tx['fields.requester_code_hint']"/>
           <rx-input name="title" :label="tx['fields.title']" span="full" required/>
