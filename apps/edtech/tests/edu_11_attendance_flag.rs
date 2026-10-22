@@ -258,3 +258,44 @@ async fn edu_11_the_flag_does_not_change_the_tutor_pay() {
     assert_eq!(taught.len(), 1, "the flagged session is paid like any other");
     assert_eq!(taught[0].id, session.id);
 }
+
+/// The flag leaves the credits alone: a package student who attended a flagged
+/// session uses a credit as in any other (BL-EDU-15).
+#[renox::test]
+async fn edu_11_a_flagged_session_still_uses_the_credit_of_a_student_who_came() {
+    let t = boot().await;
+    t.documents.tutor_blocks();
+    let tutor = t.employed_tutor("Layla Hassan", false).await;
+    t.documents.set(
+        &Centre::employee_subject(tutor.1),
+        "police_clearance",
+        Some(day(-5)),
+    );
+    let batch = batch_of(&t, &tutor, true).await;
+    let session = past_session(&t, &batch, day(-3), &tutor).await;
+    let child = t.person(7, "Omar Child");
+    let enrolment = t.package_in(child, "pack10", 10, edtech::EnrolmentStatus::Active).await;
+    let desk = t.desk().await;
+    edtech::roster::add_student(t.state(), &desk, session.id, enrolment.id)
+        .await
+        .unwrap();
+    let tariq = t.teacher().await;
+
+    let held = sessions::submit_attendance_marked(
+        t.state(),
+        &tariq,
+        session.id,
+        &[(enrolment.id, edtech::Mark::Present)],
+        false,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(held.status, SessionStatus::Held);
+    assert_eq!(sessions::document_flags(t.state(), session.id).await.unwrap().len(), 1);
+    assert_eq!(
+        t.packages.left(wl_kernel::PartyId(child), "pack10"),
+        9,
+        "the credit is used whatever the flag says"
+    );
+}
