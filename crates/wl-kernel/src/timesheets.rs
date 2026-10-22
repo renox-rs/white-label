@@ -388,6 +388,17 @@ pub trait ApproverResolver: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// The context in words and the client it is for, for the list and the
+    /// page of a timesheet (09 Manpower BL-MPW-27). The default knows
+    /// nothing, and the screens show the context's type and id.
+    fn describe_context<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: &'a Subject,
+    ) -> LabourFuture<'a, Option<ContextInfo>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// The days in force when the timesheet was submitted, at `submitted_at`
     /// (`HRM.RUL.15` at N: a change of the contract after the `submit` does not
     /// change a timesheet that waits, 09 §4.3). The default is
@@ -401,6 +412,18 @@ pub trait ApproverResolver: Send + Sync + 'static {
     ) -> LabourFuture<'a, Option<i64>> {
         self.deemed_approval_days(state, context)
     }
+}
+
+/// What a timesheet's context is, in words, for the timesheet screens
+/// ([`ApproverResolver::describe_context`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextInfo {
+    /// The context in words: `Security guard at Marina Tower, CC-2026-001`.
+    pub label: String,
+    /// The client the hours are for, as a party; none when there is no client.
+    pub client_party: Option<i64>,
+    /// The client's name.
+    pub client: String,
 }
 
 /// The resolver when none is provided: nobody is known and no contract has a

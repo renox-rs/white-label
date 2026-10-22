@@ -345,7 +345,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_attendance.approval.evidence_required",
-        "Attach the signed sheet: the document, the name of the approver who signed and the day.",
+        "Attach the client's signed sheet: the document, the name of the approver who signed and the day.",
     ),
     ("wl_attendance.approval.approved", "Timesheet approved."),
     ("wl_attendance.approval.rejected", "Timesheet sent back."),
@@ -456,6 +456,7 @@ pub(crate) fn t(lang: &Lang, key: &str) -> String {
 pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
     let text = TEXTS
         .iter()
+        .chain(crate::timesheet_texts::TEXTS)
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
     let params: Vec<(&str, String)> = params.iter().map(|(k, v)| (*k, v.to_string())).collect();
@@ -468,7 +469,11 @@ mod tests {
 
     #[test]
     fn keys_are_unique_and_prefixed() {
-        let mut keys: Vec<&str> = TEXTS.iter().map(|(key, _)| *key).collect();
+        let mut keys: Vec<&str> = TEXTS
+            .iter()
+            .chain(crate::timesheet_texts::TEXTS)
+            .map(|(key, _)| *key)
+            .collect();
         assert!(keys.iter().all(|key| key.starts_with("wl_attendance.")));
         let count = keys.len();
         keys.sort_unstable();

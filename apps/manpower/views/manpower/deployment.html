@@ -101,7 +101,7 @@
       </rx-tab>
       <rx-tab key="timesheets" :label="tx['deployment.timesheets']">
         <rx-table :rows="timesheets" as="sheet" :key="sheet.period ~ sheet.kind" :caption="tx['deployment.timesheets']" card>
-          <rx-column :label="tx['deployments.period']">{{ sheet.period }}</rx-column>
+          <rx-column :label="tx['deployments.period']"><a rx-if="sheet.url" href="{{ sheet.url }}">{{ sheet.period }}</a><span rx-if="not sheet.url">{{ sheet.period }}</span></rx-column>
           <rx-column :label="tx['deployment.sheet_kind']" hide-narrow>{{ sheet.kind }}</rx-column>
           <rx-column :label="tx['fields.status']">{{ sheet.status }}</rx-column>
           <rx-slot name="empty"><rx-empty :title="tx['deployment.timesheets_empty']" icon="clock"/></rx-slot>

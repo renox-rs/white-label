@@ -22,8 +22,8 @@
 //!   own words for the documents, which existing tests pin); the page card
 //!   *Why it cannot start yet* says the same checks with the worker and the
 //!   date in words and links *Request override* where one is possible.
-//! - The timesheets are listed without a link until the timesheet screens
-//!   (BL-MPW-27) exist.
+//! - Each timesheet links to its page (`/timesheets/{id}`, BL-MPW-27) for the
+//!   people who may see attendance.
 
 use renox::axum::http::HeaderMap;
 use renox::prelude::*;
@@ -117,6 +117,8 @@ pub(crate) struct DocumentLine {
 /// A timesheet of the deployment.
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct SheetLine {
+    /// The page of the timesheet, empty when the person may not open it.
+    url: String,
     period: String,
     kind: String,
     status: String,
@@ -488,6 +490,11 @@ async fn build(
         .await?
     {
         sheets.push(SheetLine {
+            url: if user.has_permission_anywhere("attendance.view") {
+                format!("/timesheets/{}", sheet.subject.subject_id)
+            } else {
+                String::new()
+            },
             period: format!("{} - {}", date_text(sheet.from), date_text(sheet.to)),
             kind: word(lang, "sheet_kind", &sheet.kind),
             status: word(lang, "sheet_status", &sheet.status),

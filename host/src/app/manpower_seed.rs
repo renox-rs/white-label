@@ -212,6 +212,18 @@ pub fn grant_roles(client_app: &str) {
         return;
     }
     super::roles::grant_extra(manpower::permissions::MD_ROLE, &MD_PERMISSIONS);
+    // The account manager submits the timesheets of the clients they look
+    // after, approves for the client with the signed sheet (`MPW.ACL.09`) and
+    // opens the adjustment of a locked one. Reopening an approved timesheet is
+    // the admin's: the transition checks `timesheets.reopen` globally.
+    super::roles::grant_extra(
+        manpower::permissions::ACCOUNT_MANAGER_ROLE,
+        &[
+            wl_attendance::permissions::TIMESHEETS_SUBMIT,
+            wl_attendance::permissions::TIMESHEETS_APPROVE_ON_BEHALF,
+            wl_attendance::permissions::TIMESHEETS_ADJUST,
+        ],
+    );
     // The accountant sees the rate cards (`MPW.ACL.04`): the rates are for the
     // account manager, the accountant and the MD.
     super::roles::grant_extra(

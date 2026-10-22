@@ -1266,21 +1266,59 @@ impl Seed {
         };
         // Wasim: this week, still open.
         let open = sheet(&deployments[0], -6, 0);
-        fixture!(self.db(), open, TimesheetStatus::Open);
+        let open = fixture!(self.db(), open, TimesheetStatus::Open);
+        self.hours(&open, &deployments[0], -6..=0, None).await?;
         // Ravi and Bilal: submitted two and four days ago, waiting for the
         // client approver.
         for (index, ago) in [(1, 2), (3, 4)] {
             let mut waiting = sheet(&deployments[index], -6, 0);
             waiting.status = TimesheetStatus::Submitted;
             waiting.submitted_at = Some(renox::db::now() - renox::chrono::Duration::days(ago));
-            fixture!(self.db(), waiting, TimesheetStatus::Submitted);
+            let waiting = fixture!(self.db(), waiting, TimesheetStatus::Submitted);
+            // Ravi worked two hours of overtime on the third day.
+            let overtime = (index == 1).then_some(-4);
+            self.hours(&waiting, &deployments[index], -6..=0, overtime)
+                .await?;
         }
         // Joseph: last week, approved by the client.
         let mut approved = sheet(&deployments[2], -13, -7);
         approved.status = TimesheetStatus::Approved;
         approved.approval_basis = Some(ApprovalBasis::Approved);
         approved.submitted_at = Some(renox::db::now() - renox::chrono::Duration::days(6));
-        fixture!(self.db(), approved, TimesheetStatus::Approved);
+        let approved = fixture!(self.db(), approved, TimesheetStatus::Approved);
+        self.hours(&approved, &deployments[2], -13..=-7, None)
+            .await?;
+        Ok(())
+    }
+
+    /// The hours of `sheet`: eight regular hours on each day of `days`
+    /// against the deployment, and two hours of overtime on `overtime`.
+    async fn hours(
+        &self,
+        sheet: &Timesheet,
+        deployment: &Deployment,
+        days: std::ops::RangeInclusive<i64>,
+        overtime: Option<i64>,
+    ) -> Result {
+        let cost = Subject::new(manpower::deployment::SUBJECT_TYPE, deployment.id);
+        for n in days {
+            let extra = overtime == Some(n);
+            wl_attendance::TimesheetEntry::create(
+                self.db(),
+                wl_attendance::TimesheetEntry {
+                    timesheet_id: sheet.id,
+                    employee_id: sheet.owner_employee_id,
+                    date: day(n),
+                    cost_object_type: Some(cost.subject_type.clone()),
+                    cost_object_id: Some(cost.subject_id),
+                    normal_minutes: 480,
+                    overtime_minutes: if extra { 120 } else { 0 },
+                    billable: true,
+                    ..wl_attendance::TimesheetEntry::default()
+                },
+            )
+            .await?;
+        }
         Ok(())
     }
 
@@ -1387,6 +1425,28 @@ impl Seed {
             )
             .await?;
         wl_invoicing::overdue::run(&self.state).await?;
+        // A timesheet an invoice used: locked, with the invoice it was billed
+        // on, and a worker's hours that a correction would have to reverse.
+        let billed_on = Deployment::query()
+            .where_(Deployment::CLIENT_CONTRACT_ID.eq(contract.id))
+            .order_by(Deployment::ID)
+            .first(self.db())
+            .await?;
+        if let Some(deployment) = billed_on {
+            let context = Subject::new(manpower::deployment::SUBJECT_TYPE, deployment.id);
+            let mut billed =
+                Timesheet::regular(EmployeeId(deployment.employee_id), day(-40), day(-34))
+                    .in_context(&context);
+            billed.approver_kind = ApproverKind::External;
+            billed.approver_role = Some("client_approver".into());
+            billed.status = TimesheetStatus::Locked;
+            billed.approval_basis = Some(ApprovalBasis::Approved);
+            billed.submitted_at = Some(renox::db::now() - renox::chrono::Duration::days(33));
+            billed.approved_at = Some(renox::db::now() - renox::chrono::Duration::days(31));
+            billed.billed_by = Some(format!("invoicing.invoice:{}", id.0));
+            let billed = fixture!(self.db(), billed, TimesheetStatus::Locked);
+            self.hours(&billed, &deployment, -40..=-34, None).await?;
+        }
         cheques(&self.state)
             .register(
                 &self.state,
