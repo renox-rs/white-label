@@ -2944,3 +2944,111 @@ async fn edu_18_a_desk_shortage_of_aed_20_waits_for_approval_and_never_comes_off
     assert_eq!(after.status, wl_kernel::custody::HandoverStatus::WrittenOff);
     assert_eq!(after.written_off, 2_000);
 }
+
+// ---- #446 / EDU.ACL.03: a tutor marks only the sessions of their own batches --------------------
+
+/// A tutor with an account: a wl-hr employee linked to a user holding the tutor
+/// role, and the person resource behind them.
+async fn tutor_with_account(
+    w: &World,
+    name: &str,
+) -> (wl_scheduling::Resource, i64, User, AuthUser) {
+    let (user, auth) = w.staff(name, host::roles::TUTOR).await;
+    let party = tenant(&w.app, name).await;
+    let hired = wl_hr::employee::create(
+        w.state(),
+        wl_hr::employee::NewEmployee::new(party, "tutor", day(-400))
+            .user(user.id)
+            .status(wl_hr::employee::EmployeeStatus::Active),
+    )
+    .await
+    .expect("the tutor is hired");
+    (tutor_resource(w, name, Some(hired.id)).await, hired.id, user, auth)
+}
+
+/// `EDU.ACL.03`: Layla teaches the batch; Omar, another tutor of the centre, may
+/// neither submit its attendance nor correct it, by the service or by the page;
+/// Layla does both, and the coordinator corrects any session.
+#[renox::test]
+async fn edu_14_a_tutor_marks_and_corrects_only_the_sessions_of_their_own_batch() {
+    use edtech::attendance::Mark;
+    let w = boot().await;
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (_, desk) = w.staff("Dina", COUNSELLOR).await;
+    w.permit_until(day(400)).await;
+    let (layla, layla_employee, _, layla_auth) = tutor_with_account(&w, "Layla Hassan").await;
+    let (_, _, omar_user, omar_auth) = tutor_with_account(&w, "Omar Nasser").await;
+    let course = w.course(&coordinator).await;
+    let batch = planned_of(&w, &coordinator, &course, "A", (layla.id, Some(layla_employee))).await;
+    let batch = batches::open(w.state(), &coordinator, batch.id).await.unwrap();
+    let (e, _) = package_student(&w, &desk, "Sara Ali", 10, None).await;
+    let ended = renox::db::now() - TimeDelta::hours(2);
+    let session = session_at(&w, &batch, 0, ended - TimeDelta::minutes(90)).await;
+    edtech::roster::add_student(w.state(), &desk, session.id, e.id)
+        .await
+        .unwrap();
+
+    // Omar is refused, by the service and by the page; nothing changed.
+    let refused = edtech::sessions::submit_attendance_marked(
+        w.state(),
+        &omar_auth,
+        session.id,
+        &[(e.id, Mark::Absent)],
+        false,
+    )
+    .await;
+    assert!(matches!(refused, Err(Error::Forbidden)), "{refused:?}");
+    w.app.acting_as(&omar_user);
+    w.app
+        .htmx()
+        .post(
+            &format!("/edtech/sessions/{}/attendance", session.id),
+            &[("x", "y")],
+        )
+        .await
+        .assert_forbidden();
+    assert_eq!(
+        edtech::Session::find_or_404(w.db(), session.id).await.unwrap().status,
+        edtech::SessionStatus::Scheduled
+    );
+
+    // Layla marks, then Omar may not correct, and Layla and the coordinator may.
+    edtech::sessions::submit_attendance_marked(
+        w.state(),
+        &layla_auth,
+        session.id,
+        &[(e.id, Mark::Absent)],
+        false,
+    )
+    .await
+    .expect("the assigned tutor marks");
+    let wrong = edtech::corrections::correct_attendance(
+        w.state(),
+        &omar_auth,
+        session.id,
+        &[(e.id, Mark::Present)],
+        "not mine",
+    )
+    .await;
+    assert!(matches!(wrong, Err(Error::Forbidden)), "{wrong:?}");
+    assert_eq!(mark_row(&w, &session, &e).await.mark, Mark::Absent);
+    edtech::corrections::correct_attendance(
+        w.state(),
+        &layla_auth,
+        session.id,
+        &[(e.id, Mark::Present)],
+        "she came",
+    )
+    .await
+    .expect("the assigned tutor corrects");
+    edtech::corrections::correct_attendance(
+        w.state(),
+        &coordinator,
+        session.id,
+        &[(e.id, Mark::Late)],
+        "arrived late",
+    )
+    .await
+    .expect("the coordinator corrects any session");
+    assert_eq!(mark_row(&w, &session, &e).await.mark, Mark::Late);
+}

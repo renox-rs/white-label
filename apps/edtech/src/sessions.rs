@@ -388,6 +388,28 @@ async fn load(state: &AppState, by: &AuthUser, id: i64, permission: &str) -> Res
     Session::find_or_404(&state.db, id).await
 }
 
+/// Whether `by` may mark the attendance of `session` (`EDU.ACL.03`): the
+/// coordinator (`batches.manage`) always; a tutor only for the sessions of the
+/// batches assigned to them, that is where the session's tutor is the employee
+/// whose account is theirs in wl-hr. An account that belongs to no employee
+/// cannot be matched to a tutor and keeps the reach of its permission.
+///
+/// # Errors
+///
+/// The workforce contract's errors.
+pub async fn may_mark(state: &AppState, by: &AuthUser, session: &Session) -> Result<bool> {
+    if by.has_permission(permissions::BATCHES_MANAGE) {
+        return Ok(true);
+    }
+    let Some(own) = wl_kernel::workforce::workforce(state)
+        .employee_of_user(&state.db, by.id)
+        .await?
+    else {
+        return Ok(true);
+    };
+    Ok(session.tutor_employee_id == Some(own.0))
+}
+
 /// Runs the transition `name` of the user `by` on `session`.
 async fn run(
     state: &AppState,
@@ -575,6 +597,9 @@ pub async fn submit_attendance_marked(
     default_present: bool,
 ) -> Result<Session> {
     let session = load(state, by, id, permissions::SESSIONS_TEACH).await?;
+    if !may_mark(state, by, &session).await? {
+        return Err(Error::Forbidden);
+    }
     let flags = attendance_flags(state, by, &session).await?;
     let marks = roster::prepare(state, &session, given, default_present).await?;
     let input = SessionInput {

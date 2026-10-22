@@ -86,6 +86,9 @@ pub async fn correct_attendance(
     if !coordinator && !by.has_permission(permissions::SESSIONS_TEACH) {
         return Err(Error::Forbidden);
     }
+    if !crate::sessions::may_mark(state, by, &session).await? {
+        return Err(Error::Forbidden);
+    }
     if session.status != SessionStatus::Held {
         return Err(refused(english("edtech.corrections.problem.not_held", &[])));
     }

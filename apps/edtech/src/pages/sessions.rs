@@ -346,6 +346,7 @@ async fn show(
         })
         .collect();
     let found = sessions::document_flags(&state, session.id).await?;
+    let assigned = sessions::may_mark(&state, &user, &session).await?;
     let none = text(&lang, "none");
     let doc_flags: Vec<DocFlagRow> = found
         .iter()
@@ -394,7 +395,8 @@ async fn show(
         start_time: sessions::time_text(session.starts_at),
         can_attend: scheduled
             && session.starts_at <= now()
-            && user.has_permission(permissions::SESSIONS_TEACH),
+            && user.has_permission(permissions::SESSIONS_TEACH)
+            && assigned,
         can_change: scheduled && user.has_permission(permissions::BATCHES_MANAGE),
         flagged: session.is_flagged(),
         flag: flag_text(&lang, &session),
@@ -417,7 +419,7 @@ async fn show(
             && (user.has_permission(permissions::ENROLMENTS_MANAGE)
                 || user.has_permission(permissions::BATCHES_MANAGE)),
         can_excuse: scheduled && user.has_permission(permissions::BATCHES_MANAGE),
-        can_correct: crate::corrections::may_correct(&user, &session),
+        can_correct: crate::corrections::may_correct(&user, &session) && assigned,
         integration_banner: banner_for(&state.db, defaults::SESSION_SCREEN, &lang).await?,
     }))
 }
