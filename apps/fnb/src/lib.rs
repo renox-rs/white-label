@@ -10,6 +10,7 @@ pub mod cancel;
 pub mod catalogue;
 pub mod changes;
 pub mod close;
+pub mod consumption;
 pub mod cod;
 pub mod cold;
 pub mod cold_pages;
@@ -33,6 +34,8 @@ pub mod permissions;
 pub mod pickup;
 pub mod placing;
 pub mod progress;
+pub mod recall;
+pub mod recall_pages;
 pub mod refunds;
 mod recall_texts;
 mod report_pages;
@@ -63,6 +66,7 @@ pub use payout::{
     STATEMENT_SERIES,
 };
 pub use payout_machine::PayoutInput;
+pub use recall::{RecallDecision, RecallNotice};
 pub use refunds::RefundAsk;
 pub use reports::{RefundFact, RiderFault};
 pub use settings::FnbSettings;
@@ -140,6 +144,22 @@ impl Fnb {
         self
     }
 
+    /// The channels whose sales have no known customer besides the
+    /// aggregators' (default `pos` and `counter`): a recall counts them per
+    /// outlet and day instead of naming a customer.
+    pub fn walk_in_channels(mut self, channels: &[&str]) -> Self {
+        self.settings.walk_in_channels = channels.iter().map(|c| (*c).to_owned()).collect();
+        self
+    }
+
+    /// Whether a completed order consumes its recipe from the outlet's stock
+    /// (default off; the 06 client turns it on). It is what lets a recall of
+    /// an ingredient lot find the orders that may have used it.
+    pub fn recipe_consumption(mut self, on: bool) -> Self {
+        self.settings.recipe_consumption = on;
+        self
+    }
+
     /// Whether a recall gives the owner a task to notify the authority
     /// (open item AU-20; default off: nothing is built for the authority, the
     /// recall report is exported and sent by hand).
@@ -166,6 +186,7 @@ impl Module for Fnb {
             .merge(report_pages::routes())
             .merge(batch_pages::routes())
             .merge(cold_pages::routes())
+            .merge(recall_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -187,7 +208,8 @@ impl Module for Fnb {
             .view_data::<batch_pages::BatchesPage>()
             .view_data::<batch_pages::ShowBatchPage>()
             .view_data::<cold_pages::ColdUnitsPage>()
-            .view_data::<cold_pages::ShowColdUnitPage>();
+            .view_data::<cold_pages::ShowColdUnitPage>()
+            .view_data::<recall_pages::RecallTracePage>();
         app.templates(|env| {
             for (name, source) in pages::VIEWS
                 .iter()
@@ -195,6 +217,7 @@ impl Module for Fnb {
                 .chain(report_pages::VIEWS)
                 .chain(batch_pages::VIEWS)
                 .chain(cold_pages::VIEWS)
+                .chain(recall_pages::VIEWS)
             {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
@@ -227,7 +250,9 @@ impl Module for Fnb {
             .model::<BatchWastage>()
             .model::<ColdUnit>()
             .model::<TemperatureReading>()
-            .model::<HoldDecisionRecord>();
+            .model::<HoldDecisionRecord>()
+            .model::<RecallNotice>()
+            .model::<RecallDecision>();
         // The order and the ticket have machines of their own.
         renox::state_machine::register::<FnbOrder>();
         renox::state_machine::register::<KitchenTicket>();
@@ -252,6 +277,7 @@ impl Module for Fnb {
         pickup::register(app);
         batches::register(app);
         cold::register(app);
+        recall::register(app);
         // In the app group of the staff sidebar; the labels are the host's
         // `nav.orders`, `nav.kitchen` and `nav.cod_customers` texts.
         app.nav(

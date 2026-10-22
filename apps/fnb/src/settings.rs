@@ -63,6 +63,14 @@ pub struct FnbSettings {
     /// The wastage value above which a discard of a batch needs a second
     /// holder of `stock.approve` (`STK.ACL.02`), in fils.
     pub wastage_approval_fils: i64,
+    /// The channels whose sales have no known customer besides the
+    /// aggregators' (the counter): a recall counts them per outlet and day.
+    pub walk_in_channels: Vec<String>,
+    /// Whether a completed order consumes its recipe from the outlet's stock
+    /// (theoretical consumption: it keeps the stock balances right and lets a
+    /// recall trace list the order as *possible*). Off in the library; the
+    /// 06 client turns it on.
+    pub recipe_consumption: bool,
     /// Whether the owner is told that the authority is to be notified of a
     /// recall (open item AU-20, authority notification). Off until the lawyer
     /// answers: the recall report is exported and sent by hand.
@@ -83,6 +91,8 @@ impl Default for FnbSettings {
             payout_task_fils: DEFAULT_PAYOUT_TASK_FILS,
             payout_rule: true,
             wastage_approval_fils: DEFAULT_WASTAGE_APPROVAL_FILS,
+            walk_in_channels: vec!["pos".to_owned(), "counter".to_owned()],
+            recipe_consumption: false,
             authority_notice_task: false,
         }
     }

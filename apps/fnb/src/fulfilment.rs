@@ -26,6 +26,7 @@ use wl_kernel::delivery::{
 use wl_kernel::sales::{FulfilOrder, FulfilledLine, order_desk, order_fulfilment};
 
 use crate::catalogue::{Brand, DEFAULT_PROMISE_MINUTES};
+use crate::consumption;
 use crate::notices::tell_customer;
 use crate::order::{FnbOrder, FnbOrderStatus};
 use crate::order_machine::{
@@ -271,6 +272,9 @@ pub(crate) async fn after_completed(state: &AppState, id: i64) -> Result {
     let Some(order) = FnbOrder::find(&state.db, id).await? else {
         return Ok(());
     };
+    // The recipe is consumed from the outlet's stock (a setting, off until the
+    // client turns it on).
+    consumption::post(state, order.id).await?;
     let Some(view) = order_desk(state).find(state, order.sales_order()).await? else {
         return Ok(());
     };

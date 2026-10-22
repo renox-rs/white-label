@@ -1,0 +1,71 @@
+{#- fnb: a recalled ingredient lot traced to the kitchen's customers: one line
+    per customer of a direct order with their possible orders (an order is only
+    ever *possible*: the recipe is consumed without scanning the lot), one line
+    per outlet and day for the sales without a known customer (aggregators and
+    the counter), the button that tells the customers (one notice each), the
+    owner's decision on a public notice, and the link to the recall report. The
+    authority's notification is not built (open item AU-20).
+    Replace it with resources/views/fnb/recall_trace.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['recall.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['recall.title']" :subtitle="tx['recall.subtitle']" :back="route('wl_inventory.recall', recall_id)" :back-label="tx['recall.back']">
+      <rx-confirm rx-if="can_notify" id="recall-notify" :label="tx['recall.notify']" :action="route('fnb.recall_notify', recall_id)" method="POST"
+                  :title="tx['recall.notify_title']" :message="tx['recall.notify_message']" :confirm-label="tx['recall.notify']"/>
+      <rx-action-sheet rx-if="can_decide_public" id="recall-public" :label="tx['recall.public']" :action="route('fnb.recall_public', recall_id)"
+                       :title="tx['recall.public_title']" :description="tx['recall.public_description']" :submit-label="tx['recall.public_submit']" icon="megaphone">
+        <rx-select name="decision" :label="tx['recall.decision']" id="recall-public-decision" :options="decisions" :selected="'no_public_notice'"/>
+        <rx-checkbox name="aggregators" :label="tx['recall.aggregators_told']" id="recall-public-aggregators"/>
+        <rx-textarea name="note" :label="tx['note']" :hint="tx['recall.note_hint']" id="recall-public-note"/>
+      </rx-action-sheet>
+      <rx-link-button :href="route('wl_inventory.recall_report', recall_id)" :label="tx['recall.report']" icon="download"/>
+    </rx-page-header>
+    <rx-card :title="tx['notes']">
+      <rx-stack>
+        <p rx-for="note in notes">{{ note }}</p>
+      </rx-stack>
+    </rx-card>
+    <rx-card rx-if="decision" :title="tx['recall.decision_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['recall.decision']" :value="decision.decision"/>
+        <rx-entry :label="tx['recall.decided_at']" :value="decision.decided_at"/>
+        <rx-entry :label="tx['recall.aggregators_told']" :value="tx['yes'] if decision.aggregators_told else tx['none']"/>
+        <rx-entry :label="tx['note']" :value="decision.note" :placeholder="tx['none']" span="full"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['recall.customers']">
+      <rx-table :rows="customers" as="customer" :key="customer.name" :caption="tx['recall.customers']">
+        <rx-column :label="tx['recall.customer']">
+          <rx-stack>
+            <span>{{ customer.name }}</span>
+            <span rx-if="customer.no_contact" class="rx-subtitle">{{ tx['recall.no_contact'] }}</span>
+          </rx-stack>
+        </rx-column>
+        <rx-column :label="tx['recall.possible_orders']">
+          <rx-stack>
+            <span rx-for="order in customer.orders"><a href="{{ order.url }}">{{ order.number }}</a> / {{ order.outlet }} / {{ order.day }} / {{ order.mark }}</span>
+          </rx-stack>
+        </rx-column>
+        <rx-column :label="tx['recall.orders_count']" align="num" hide-narrow>{{ customer.count }}</rx-column>
+        <rx-column :label="tx['state']"><rx-badge :kind="customer.status_kind" :text="customer.status"/></rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['recall.no_customers']" :message="tx['recall.no_customers_text']" icon="users"/></rx-slot>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['recall.unknown']">
+      <rx-table :rows="groups" as="group" :key="group.outlet ~ group.day" :caption="tx['recall.unknown']">
+        <rx-column :label="tx['recall.outlet']">{{ group.outlet }}</rx-column>
+        <rx-column :label="tx['recall.day']">{{ group.day }}</rx-column>
+        <rx-column :label="tx['recall.sales']" align="num">{{ group.sales }}</rx-column>
+        <rx-column :label="tx['recall.channels']" hide-narrow>{{ group.channels }}</rx-column>
+        <rx-column :label="tx['state']"><rx-badge :kind="group.status_kind" :text="group.status"/></rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['recall.no_unknown']" :message="tx['recall.no_unknown_text']" icon="users"/></rx-slot>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="notices" :title="tx['recall.notices']">
+      <rx-table :rows="notices" as="notice" :key="notice.party ~ notice.orders" :caption="tx['recall.notices']">
+        <rx-column :label="tx['recall.customer']">{{ notice.party }}</rx-column>
+        <rx-column :label="tx['recall.possible_orders']">{{ notice.orders }}</rx-column>
+        <rx-column :label="tx['recall.sent_at']" hide-narrow>{{ notice.sent_at }}</rx-column>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>
