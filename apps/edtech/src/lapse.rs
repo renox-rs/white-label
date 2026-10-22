@@ -51,15 +51,26 @@ pub const TASK: &str = "edtech:lapse";
 /// The minutes between two runs.
 pub const TASK_EVERY_MINUTES: u64 = 15;
 
-/// Whether the enrolment `subject` still waits for the money paid for it: only
-/// an enrolment in `pending_payment` does. wl-payments asks this when a gateway
+/// Whether the enrolment `subject` still waits for the money paid for it: an
+/// enrolment in `pending_payment` does, and so does one with a reopened invoice
+/// to collect. wl-payments asks this when a gateway
 /// confirms a payment late; a `lapsed` enrolment is never an active subject, so
 /// the late payment is refunded.
 pub fn enrolment_active<'a>(state: &'a AppState, subject: &'a Subject) -> PaymentFuture<'a, bool> {
     Box::pin(async move {
-        Ok(Enrolment::find(&state.db, subject.subject_id)
-            .await?
-            .is_some_and(|e| e.status == EnrolmentStatus::PendingPayment))
+        let Some(enrolment) = Enrolment::find(&state.db, subject.subject_id).await? else {
+            return Ok(false);
+        };
+        if enrolment.status == EnrolmentStatus::PendingPayment {
+            return Ok(true);
+        }
+        // An enrolment whose paid invoice was reopened by a reversed payment
+        // takes the money paid on the link sent to collect it (BL-EDU-06).
+        let collecting = matches!(
+            enrolment.status,
+            EnrolmentStatus::Active | EnrolmentStatus::Frozen | EnrolmentStatus::Completed
+        );
+        Ok(collecting && crate::chargebacks::is_outstanding(&state.db, enrolment.id).await?)
     })
 }
 

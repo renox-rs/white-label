@@ -246,6 +246,7 @@ fn entries() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
         .chain(crate::texts_lapse::TEXTS.iter())
         .chain(crate::texts_exit::TEXTS.iter())
         .chain(crate::texts_hold::TEXTS.iter())
+        .chain(crate::texts_chargeback::TEXTS.iter())
 }
 
 /// The text for `key`: the app's translation when it has one, else the

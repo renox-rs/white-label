@@ -14,6 +14,8 @@
 //! | `POST /edtech/enrolments/{id}/withdraw` | `edtech.enrolment_withdraw` | `enrolments.manage` |
 //! | `POST /edtech/enrolments/{id}/transfer` | `edtech.enrolment_transfer` | `enrolments.manage` |
 //! | `POST /edtech/enrolments/{id}/settle` | `edtech.enrolment_settle` | `enrolments.manage` |
+//! | `GET /edtech/enrolments/{id}/collect` | `edtech.enrolment_collect` | `enrolments.view` |
+//! | `POST /edtech/enrolments/{id}/payment-link` | `edtech.enrolment_payment_link` | `enrolments.manage` |
 //!
 //! The list shows each enrolment with the student, what it is for, the fee and
 //! its status in words. The new enrolment form picks the student, the guardian
@@ -73,6 +75,10 @@ pub fn routes() -> Routes {
         .name("edtech.enrolment_transfer")
         .post("/edtech/enrolments/{id}/settle", settle)
         .name("edtech.enrolment_settle")
+        .get("/edtech/enrolments/{id}/collect", collect)
+        .name("edtech.enrolment_collect")
+        .post("/edtech/enrolments/{id}/payment-link", payment_link)
+        .name("edtech.enrolment_payment_link")
         .require_auth()
 }
 
@@ -392,6 +398,9 @@ pub(crate) struct ShowPage {
     hold_reason: String,
     on_hold: bool,
     membership: String,
+    collecting: bool,
+    to_collect: String,
+    collect_url: String,
     preview_refund: String,
     preview_owed: String,
     withdrawn_refund: String,
@@ -533,6 +542,14 @@ async fn show(
         ),
         None => none.clone(),
     };
+    // A payment charged back: the money to collect, with the page that sends
+    // the payment link.
+    let collecting = crate::chargebacks::is_outstanding(&state.db, e.id).await?;
+    let to_collect = if collecting {
+        money_text(crate::chargebacks::outstanding(&state, e.id).await?)
+    } else {
+        none.clone()
+    };
     let (preview_refund, preview_owed) = preview
         .as_ref()
         .map_or((String::new(), String::new()), |r| {
@@ -582,6 +599,9 @@ async fn show(
         hold_reason,
         on_hold,
         membership,
+        collecting,
+        to_collect,
+        collect_url: crate::chargebacks::collect_path(e.id),
         preview_refund,
         preview_owed,
         withdrawn_refund: money_text(e.refund_amount),
@@ -745,4 +765,94 @@ async fn transfer(
         renox::HxRedirect(format!("/edtech/enrolments/{}", moved.id)),
     )
         .into_response())
+}
+
+/// One reopened invoice of the page that collects.
+#[derive(Serialize, Debug, Clone)]
+pub struct CollectRow {
+    /// The invoice's number.
+    pub invoice: String,
+    /// What is open on it, `AED 2,520.00`.
+    pub balance: String,
+    /// The day it was reopened.
+    pub reopened: String,
+    /// Why the payment was reversed.
+    pub reason: String,
+}
+
+/// What the page that collects a reversed payment needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "edtech/collect.html")]
+pub(crate) struct CollectPage {
+    tx: Texts,
+    id: i64,
+    number: String,
+    student: String,
+    payer: String,
+    amount: String,
+    rows: Vec<CollectRow>,
+    can_send: bool,
+    withdraw_url: String,
+    enrolment_url: String,
+}
+
+/// `GET /edtech/enrolments/{id}/collect`: the money to collect after a payment
+/// was charged back, with *send payment link* and the way to withdraw.
+async fn collect(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    require(&user, permissions::ENROLMENTS_VIEW)?;
+    let e = Enrolment::find_or_404(&state.db, id).await?;
+    let books = wl_kernel::invoicing::invoicer(&state);
+    let none = text(&lang, "none");
+    let mut rows = Vec::new();
+    for row in crate::chargeback::Chargeback::outstanding_of(&state.db, e.id).await? {
+        let summary = books
+            .find(&state.db, wl_kernel::invoicing::InvoiceId(row.invoice_id))
+            .await?;
+        let (invoice, balance) = match summary {
+            Some(found) => (
+                found.number.unwrap_or_else(|| format!("#{}", row.invoice_id)),
+                found.balance.max(0),
+            ),
+            None => (format!("#{}", row.invoice_id), row.amount),
+        };
+        rows.push(CollectRow {
+            invoice,
+            balance: money_text(balance),
+            reopened: row.reopened_on.to_string(),
+            reason: row
+                .reversal_reason
+                .clone()
+                .unwrap_or_else(|| none.clone()),
+        });
+    }
+    let amount = crate::chargebacks::outstanding(&state, e.id).await?;
+    Ok(View::typed(CollectPage {
+        tx: texts::all(&lang),
+        id: e.id,
+        number: e.number(),
+        student: party_name(&state, &lang.locale, e.student_party_id).await,
+        payer: party_name(&state, &lang.locale, e.payer_party_id).await,
+        amount: money_text(amount),
+        can_send: amount > 0 && user.has_permission(permissions::ENROLMENTS_MANAGE),
+        rows,
+        withdraw_url: crate::chargebacks::withdraw_path(e.id),
+        enrolment_url: crate::chargebacks::withdraw_path(e.id),
+    }))
+}
+
+/// `POST /edtech/enrolments/{id}/payment-link`: makes the payment link for the
+/// money to collect and sends it to the payer.
+async fn payment_link(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    crate::chargebacks::send_link(&state, &user, id).await?;
+    done(&lang, "chargeback.link_sent")
 }

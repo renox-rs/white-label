@@ -750,6 +750,13 @@ async fn after(state: &AppState, event: &Transitioned<Enrolment>) -> Result {
             // The money documents follow the commit; a step that fails is kept
             // on the enrolment and repeated, it does not undo the withdrawal.
             crate::settlement::settle_quietly(state, enrolment.id).await;
+            // A task to collect a reversed payment ends with the withdrawal.
+            if let Err(error) = crate::chargebacks::on_withdrawn(state, &enrolment).await {
+                eprintln!(
+                    "edtech: the task to collect on {} is not closed: {error:?}",
+                    enrolment.number()
+                );
+            }
         }
         FREEZE | FREEZE_SYSTEM => {
             // The membership follows a freeze of the student's (`EDU.RUL.14`).
@@ -807,6 +814,7 @@ pub(crate) fn register(app: &mut Registry) {
     crate::lapse::register(app);
     crate::blocked::register();
     crate::blocked::listen(app);
+    crate::chargebacks::listen(app);
     app.listen(|event: SubscriptionPaused, state: AppState| async move {
         crate::linked::on_paused(&state, &event).await
     });

@@ -8,6 +8,8 @@ pub mod blocked;
 pub mod certificate;
 pub mod certificate_machine;
 pub mod certificates;
+pub mod chargeback;
+pub mod chargebacks;
 pub mod course;
 pub mod courses;
 mod db;
@@ -32,6 +34,7 @@ pub mod session_machine;
 pub mod sessions;
 pub mod settlement;
 mod texts;
+mod texts_chargeback;
 mod texts_exit;
 mod texts_hold;
 mod texts_lapse;
@@ -48,6 +51,7 @@ use renox::prelude::*;
 
 pub use batch::{Batch, BatchStatus};
 pub use certificate::{Certificate, CertificateStatus};
+pub use chargeback::Chargeback;
 pub use course::{Course, DeliveryMode};
 pub use enrolment::{
     Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
@@ -87,6 +91,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "edtech/enrolment.html",
         include_str!("../views/edtech/enrolment.html"),
+    ),
+    (
+        "edtech/collect.html",
+        include_str!("../views/edtech/collect.html"),
     ),
     (
         "edtech/certificates.html",
@@ -141,6 +149,7 @@ impl Module for EdTech {
             .view_data::<pages::sessions::ShowPage>()
             .view_data::<pages::enrolments::IndexPage>()
             .view_data::<pages::enrolments::ShowPage>()
+            .view_data::<pages::enrolments::CollectPage>()
             .view_data::<pages::certificates::IndexPage>()
             .view_data::<pages::certificates::ShowPage>()
             .view_data::<pages::certificates::VerifyPage>();
@@ -161,7 +170,8 @@ impl Module for EdTech {
             .model::<Instalment>()
             .model::<Certificate>()
             .model::<TutorAssignment>()
-            .model::<BatchWaiting>();
+            .model::<BatchWaiting>()
+            .model::<Chargeback>();
         // The batch and its sessions: the machines, the start of a batch on its
         // first session date, its completion after the last session, and the
         // blocks the sessions make in wl-scheduling.

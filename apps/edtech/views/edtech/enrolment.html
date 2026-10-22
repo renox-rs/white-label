@@ -26,6 +26,9 @@
         <rx-confirm :id="'enrolment-unfreeze-' ~ id" :label="tx['enrolments.unfreeze']" :action="route('edtech.enrolment_unfreeze', id)" method="POST"
                     :title="tx['enrolments.unfreeze']" :message="tx['enrolments.unfreeze_message']" :confirm-label="tx['enrolments.unfreeze']" :cancel-label="tx['button_cancel']" icon="check"/>
       </template>
+      <template rx-if="collecting">
+        <rx-link-button :href="collect_url" :label="tx['chargeback.open']" icon="receipt" variant="secondary"/>
+      </template>
       <template rx-if="can_transfer">
         <rx-action-sheet :id="'enrolment-transfer-' ~ id" :label="tx['transfer.action']" :action="route('edtech.enrolment_transfer', id)"
                          :title="tx['transfer.action']" :description="tx['transfer.description']" :submit-label="tx['transfer.action']" icon="users">
@@ -41,6 +44,7 @@
     </rx-page-header>
     <rx-alert rx-if="pending" kind="warning" :message="tx['enrolments.pending_approval']"/>
     <rx-alert rx-if="on_hold" kind="info" :message="tx['enrolments.on_hold']"/>
+    <rx-alert rx-if="collecting" kind="warning" :message="tx['chargeback.alert']"/>
     <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card :title="tx['enrolments.details']">
       <rx-infolist columns="2">
@@ -56,6 +60,7 @@
         <rx-entry :label="tx['enrolments.paid']" :value="paid"/>
         <rx-entry :label="tx['enrolments.balance']" :value="balance"/>
         <rx-entry :label="tx['enrolments.payment_link']" :value="payment_link"/>
+        <rx-entry :label="tx['chargeback.to_collect']" :value="to_collect"/>
       </rx-infolist>
     </rx-card>
     <rx-card :title="tx['enrolments.fees']">
