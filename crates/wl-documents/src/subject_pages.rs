@@ -99,8 +99,7 @@ pub(crate) async fn label_of(state: &AppState, subject: &Subject) -> (String, Op
                 .display_name(&state.db, profile.party, "en")
                 .await
         {
-            let back =
-                wl_kernel::approvals::subject_url(&subject.subject_type, subject.subject_id);
+            let back = wl_kernel::approvals::subject_url(&subject.subject_type, subject.subject_id);
             return (name, back);
         }
     }
