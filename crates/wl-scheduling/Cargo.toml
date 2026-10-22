@@ -1,0 +1,21 @@
+[package]
+name = "wl-scheduling"
+description = "Scheduling: bookable resources and their availability, bookings with their lifecycle, and the guarantee that nobody is double-booked."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real parties and payments modules in the deposit refund test (no cycle: neither uses wl-scheduling).
+wl-parties = { path = "../wl-parties" }
+wl-payments = { path = "../wl-payments" }
+# The real HR module in the licence tests (no cycle: wl-hr depends on the kernel only).
+wl-hr = { path = "../wl-hr" }

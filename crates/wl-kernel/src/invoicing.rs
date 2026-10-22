@@ -754,6 +754,13 @@ pub trait Invoicer: Send + Sync + 'static {
     /// The invoice with this id.
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>>;
 
+    /// The total of invoice `id` before VAT, in fils: what a loyalty
+    /// programme counts of a paid invoice (wl-sales `SAL.RUL.07`). `None`
+    /// for an unknown invoice, and by default (invoicing is off).
+    fn net_total<'a>(&'a self, _db: &'a Db, _id: InvoiceId) -> InvoiceFuture<'a, Option<i64>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// The invoices, oldest first, with a line that bills `origin` (the
     /// record a [`DraftLine::origin`] names, e.g. a lease charge
     /// `property.lease_charge:12`); drafts are left out. A payment for such a

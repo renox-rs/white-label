@@ -1,0 +1,12 @@
+{#- wl-payments: the "record a chargeback" action on a gateway payment's
+    page, a sheet with the acquirer's dispute reference, the day the evidence
+    is due and the dispute fee (N-Genius has no disputes API, so the
+    accountant enters them from its notice). Replace it with
+    resources/views/wl-payments/_chargeback_sheet.html in the app. -#}
+<rx-action-sheet :id="'chargeback-payment-' ~ payment.id" :label="tx['chargeback.action']" :action="route('wl_payments.chargeback', payment.id)"
+                 :title="tx['chargeback.title']" :description="tx['chargeback.description']" :submit-label="tx['chargeback.submit']"
+                 icon="triangle-alert" variant="danger" danger>
+  <rx-input name="reference" :label="tx['chargeback.reference']" :id="'chargeback-reference-' ~ payment.id" required/>
+  <rx-input name="deadline" type="date" :label="tx['chargeback.deadline']" :id="'chargeback-deadline-' ~ payment.id" required/>
+  <rx-input name="fee" :label="tx['chargeback.fee']" :hint="tx['fields.amount_hint']" :id="'chargeback-fee-' ~ payment.id"/>
+</rx-action-sheet>

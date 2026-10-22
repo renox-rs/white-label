@@ -631,6 +631,318 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.review.block_body",
         "Procurement asks for a decision on blocking the supplier after review {{ review }}. Nothing is blocked until a holder of parties.block does it.",
     ),
+    // Manual issues of stock.
+    (
+        "wl_inventory.issue.bad_quantity",
+        "Enter a quantity above zero.",
+    ),
+    (
+        "wl_inventory.issue.wrong_lot",
+        "The lot is not a lot of that item.",
+    ),
+    (
+        "wl_inventory.issue.lot_not_released",
+        "Lot {{ lot }} is not released; only released lots can be issued.",
+    ),
+    (
+        "wl_inventory.issue.held",
+        "{{ item }} has {{ held }} on hold here; held quantity cannot be issued.",
+    ),
+    (
+        "wl_inventory.issue.not_available",
+        "Only {{ available }} of {{ item }} is available here, {{ quantity }} is needed.",
+    ),
+    ("wl_inventory.issue.done", "Stock issued."),
+    // `STK.RUL.06`: stock that is short.
+    (
+        "wl_inventory.short.subject",
+        "{{ item }} is short at {{ location }}",
+    ),
+    (
+        "wl_inventory.short.body",
+        "{{ quantity }} of {{ item }} could not be taken at {{ location }} for {{ source }} and is a pending issue. It posts by itself when stock arrives, or clear it after a count.",
+    ),
+    (
+        "wl_inventory.short.overdue_subject",
+        "{{ item }} still short at {{ location }}",
+    ),
+    (
+        "wl_inventory.short.overdue_body",
+        "{{ item }} has been short at {{ location }} for {{ hours }} hours or more. The storekeeper has a task to count or clear it.",
+    ),
+    (
+        "wl_inventory.short.task_title",
+        "Count or clear {{ item }} at {{ location }}",
+    ),
+    (
+        "wl_inventory.short.task_body",
+        "{{ item }} has been short at {{ location }} for {{ hours }} hours or more. Count the stock, or clear the pending issues with a reason.",
+    ),
+    ("wl_inventory.short.task_done", "The shortage is over."),
+    // Pending issues.
+    (
+        "wl_inventory.pending.not_covered",
+        "The stock that arrived does not cover the pending issue.",
+    ),
+    (
+        "wl_inventory.pending.not_open",
+        "Only an open pending issue can be posted or cleared.",
+    ),
+    (
+        "wl_inventory.pending.lot_needed",
+        "Name the lot the stock is entered in: the item is lot-tracked.",
+    ),
+    (
+        "wl_inventory.pending.wrong_lot",
+        "The lot is not a lot of that item.",
+    ),
+    (
+        "wl_inventory.pending.reason_needed",
+        "Give the reason: why the stock was used but never on the books.",
+    ),
+    ("wl_inventory.pending.cleared", "Pending issue cleared."),
+    (
+        "wl_inventory.pending.waiting",
+        "The value needs a second person's approval before it clears.",
+    ),
+    // Transfers between two locations.
+    (
+        "wl_inventory.transfer.same_location",
+        "A transfer needs two different locations.",
+    ),
+    (
+        "wl_inventory.transfer.no_lines",
+        "A transfer needs at least one line.",
+    ),
+    (
+        "wl_inventory.transfer.bad_line",
+        "Line {{ position }}: enter a quantity above zero.",
+    ),
+    (
+        "wl_inventory.transfer.lot_needed",
+        "Line {{ position }}: {{ item }} is lot-tracked; name the lot.",
+    ),
+    (
+        "wl_inventory.transfer.not_draft",
+        "Only a draft transfer can be sent.",
+    ),
+    (
+        "wl_inventory.transfer.not_released",
+        "Line {{ position }}: lot {{ lot }} is not released; only released lots can be transferred.",
+    ),
+    (
+        "wl_inventory.transfer.held",
+        "Line {{ position }}: {{ item }} has {{ held }} on hold at the source; held quantity cannot be transferred.",
+    ),
+    (
+        "wl_inventory.transfer.not_available",
+        "Line {{ position }}: only {{ available }} of {{ item }} is available at the source, {{ quantity }} is needed.",
+    ),
+    (
+        "wl_inventory.transfer.not_in_transit",
+        "The transfer is not on its way.",
+    ),
+    ("wl_inventory.transfer.sent", "Transfer sent."),
+    ("wl_inventory.transfer.received", "Transfer received."),
+    // Stock holds.
+    (
+        "wl_inventory.hold.bad_reason",
+        "The reason of a hold is recall, quality, temperature, complaint or other.",
+    ),
+    (
+        "wl_inventory.hold.no_scope",
+        "Name the lots or the location to hold.",
+    ),
+    (
+        "wl_inventory.hold.no_balance",
+        "There is no stock in that scope to hold.",
+    ),
+    (
+        "wl_inventory.hold.bad_form",
+        "Give a reason, a reference like ticketing.ticket:5 and either lots or one location.",
+    ),
+    ("wl_inventory.hold.placed", "Stock hold placed."),
+    (
+        "wl_inventory.hold.warning",
+        "{{ location }} is on {{ reason }} hold.",
+    ),
+    (
+        "wl_inventory.hold.go_on",
+        "Go on to receive anyway: the quantity joins the hold and stays unavailable.",
+    ),
+    (
+        "wl_inventory.hold.not_location_scope",
+        "Lines are added to an open hold on a location, at that location.",
+    ),
+    (
+        "wl_inventory.hold.item_not_in_scope",
+        "The item is not in the scope of the hold.",
+    ),
+    (
+        "wl_inventory.hold.no_quantity",
+        "Enter a quantity above zero.",
+    ),
+    (
+        "wl_inventory.hold.placed_subject",
+        "Stock hold {{ number }} placed ({{ reason }})",
+    ),
+    (
+        "wl_inventory.hold.placed_body",
+        "Stock hold {{ number }} was placed for {{ reason }} with {{ lines }} line(s). Each line needs a decision.",
+    ),
+    (
+        "wl_inventory.hold.lines_subject",
+        "Stock hold {{ number }}: new stock held",
+    ),
+    (
+        "wl_inventory.hold.lines_body",
+        "{{ added }} line(s) of stock moved into a held location and joined hold {{ number }} ({{ reason }}). They stay unavailable until decided.",
+    ),
+    // Deciding the lines of a stock hold, closing and cancelling it.
+    (
+        "wl_inventory.hold.not_open",
+        "The hold is not open: its lines can no longer be decided.",
+    ),
+    (
+        "wl_inventory.hold.expired_lot",
+        "The lot has expired: its stock can only be discarded or returned to the supplier.",
+    ),
+    (
+        "wl_inventory.hold.no_supplier",
+        "The lot has no supplier to return it to.",
+    ),
+    (
+        "wl_inventory.hold.stock_moved",
+        "The held quantity is no longer all at the location; count the stock before deciding.",
+    ),
+    (
+        "wl_inventory.hold.lines_undecided",
+        "A hold closes only when every line is decided.",
+    ),
+    (
+        "wl_inventory.hold.recall_cannot_cancel",
+        "A recall's hold cannot be cancelled: it closes with the recall.",
+    ),
+    (
+        "wl_inventory.hold.line_decided",
+        "A hold with a decided line cannot be cancelled.",
+    ),
+    ("wl_inventory.hold.decided", "The line is decided."),
+    (
+        "wl_inventory.hold.waiting",
+        "A second person must approve first; the line stays undecided until then.",
+    ),
+    ("wl_inventory.hold.cancelled", "The hold is cancelled."),
+    ("wl_inventory.hold.cancel_reason", "placed in error"),
+    // `STK.RUL.07`: the reminder and the escalation of an open hold.
+    (
+        "wl_inventory.hold.reminder_subject",
+        "Stock hold {{ number }} still waits for a decision",
+    ),
+    (
+        "wl_inventory.hold.reminder_body",
+        "Stock hold {{ number }} ({{ reason }}) has {{ lines }} line(s) nobody has decided, {{ hours }} hours after it was placed. Release, discard or return the stock.",
+    ),
+    (
+        "wl_inventory.hold.escalation_subject",
+        "Stock hold {{ number }} has waited {{ hours }} hours",
+    ),
+    (
+        "wl_inventory.hold.escalation_body",
+        "Stock hold {{ number }} ({{ reason }}) still has {{ lines }} line(s) to decide, {{ hours }} hours after it was placed. The people who decide it have been reminded.",
+    ),
+    // Opening a recall.
+    ("wl_inventory.recall.no_reason", "A recall needs a reason."),
+    (
+        "wl_inventory.recall.bad_scope",
+        "A recall needs a scope: the items, with the lot numbers or the supplier lot numbers recalled.",
+    ),
+    (
+        "wl_inventory.recall.bad_source",
+        "The source of a recall is supplier, authority, internal or complaint.",
+    ),
+    (
+        "wl_inventory.recall.bad_form",
+        "A recall takes a source, a reason, the item ids and lot numbers or supplier lot numbers.",
+    ),
+    (
+        "wl_inventory.recall.no_lot",
+        "No lot matches the scope of the recall: check the item and the lot numbers.",
+    ),
+    ("wl_inventory.recall.opened", "Recall opened."),
+    (
+        "wl_inventory.recall.opened_subject",
+        "Recall {{ number }}: stock is on hold",
+    ),
+    (
+        "wl_inventory.recall.opened_body",
+        "Recall {{ number }} ({{ source }}) was opened: {{ reason }}. {{ lots }} lot(s) are on hold at every location and cannot be picked, issued, consumed, transferred or dispatched.",
+    ),
+    // The trace, the notices and the close of a recall.
+    ("wl_inventory.recall.traced", "Trace run again."),
+    ("wl_inventory.recall.notices_sent", "Notices sent."),
+    ("wl_inventory.recall.waived", "Line waived."),
+    ("wl_inventory.recall.closed", "Recall closed."),
+    (
+        "wl_inventory.recall.no_template",
+        "Choose the notice template: customer, patient or internal.",
+    ),
+    (
+        "wl_inventory.recall.no_lines",
+        "Select the affected lines to tell.",
+    ),
+    (
+        "wl_inventory.recall.hold_open",
+        "The stock hold of this recall is still open: decide every line (a release waits for a second person) before closing.",
+    ),
+    (
+        "wl_inventory.recall.lines_pending",
+        "{{ count }} affected line(s) are still pending: send the notice or waive each with a reason before closing.",
+    ),
+    (
+        "wl_inventory.recall.line_unknown",
+        "A selected line does not belong to this recall.",
+    ),
+    (
+        "wl_inventory.recall.line_not_pending",
+        "Only a pending line can be sent or waived.",
+    ),
+    (
+        "wl_inventory.recall.line_no_party",
+        "A line with no known party cannot be sent a notice: waive it with a reason.",
+    ),
+    (
+        "wl_inventory.recall.waive_reason",
+        "Give the reason the party need not be told.",
+    ),
+    (
+        "wl_inventory.recall.not_traced",
+        "Only a traced recall has lines to send or waive.",
+    ),
+    (
+        "wl_inventory.recall.notice_subject",
+        "Safety notice: recall {{ number }}",
+    ),
+    (
+        "wl_inventory.recall.notice_body_customer",
+        "We are recalling {{ item }} (lot {{ lot }}), which you received. {{ reason }}. Please stop using it and contact us.",
+    ),
+    (
+        "wl_inventory.recall.notice_body_patient",
+        "A product used in your care on {{ date }} ({{ item }}, lot {{ lot }}) is being recalled. {{ reason }}. Please contact the clinic to arrange a check.",
+    ),
+    (
+        "wl_inventory.recall.notice_body_internal",
+        "Recall {{ number }}: {{ item }}, lot {{ lot }}, was used for {{ subject }} on {{ date }}. {{ reason }}. Please check and act.",
+    ),
+    (
+        "wl_inventory.recall.notice_task_title",
+        "Recall {{ number }}: a notice could not be delivered",
+    ),
+    (
+        "wl_inventory.recall.notice_task_body",
+        "The notice about {{ subject }} to party {{ party }} could not be delivered after every retry. The line is pending again: send it again with another template or channel, or waive it with a reason.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

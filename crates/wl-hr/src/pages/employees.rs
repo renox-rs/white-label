@@ -8,6 +8,8 @@
 //! | `POST /hr/employees/{id}/transitions/{name}` | `wl_hr.employee_transitions.*` | `employees.view` and the transition's permission |
 //! | `POST /hr/employees/{id}/exits` | `wl_hr.exit_request` | `employees.manage` in the employee's scope |
 //! | `POST /hr/employees/{id}/contact-attempts` | `wl_hr.contact_attempt` | `employees.manage` in the employee's scope |
+//! | `POST /hr/employees/{id}/sick-leave` | `wl_hr.sick_leave` | `leave.approve` in the employee's scope, or their manager |
+//! | `POST /hr/leave/{id}/sick-note` | `wl_hr.sick_note` | the employee, `leave.approve`, or their manager |
 //! | `POST /hr/employees/{id}/onboardings` | `wl_hr.onboarding_start` | `onboarding.manage` in the employee's scope |
 //! | `POST /hr/onboardings/{id}/cancel` | `wl_hr.onboarding_cancel` | `onboarding.manage` in the employee's scope |
 //! | `POST /hr/steps/{id}/done` | `wl_hr.step_done` | an assignee of the step |
@@ -36,6 +38,7 @@ use crate::exit;
 use crate::exits::{
     self, ExitDocument, ExitInput, KIND_AGREEMENT, KIND_AUTHORITY_NOTICE, KIND_DEATH_CERTIFICATE,
 };
+use crate::leave::{LeaveRequest, LeaveStatus};
 use crate::onboarding::{
     Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest, StartTrigger,
     StepStatus,
@@ -43,7 +46,7 @@ use crate::onboarding::{
 use crate::pages::templates::{kind_label, owner_label};
 use crate::steps::{self, DoneInput, InPerson};
 use crate::template::{OWNER_EMPLOYEE, OnboardingTemplate, StepKind};
-use crate::{onboarding, permissions, texts};
+use crate::{leave_service, onboarding, permissions, sick_leave, texts};
 
 /// The texts a template reads as `tx['employees.title']`.
 type Texts = BTreeMap<&'static str, String>;
@@ -77,6 +80,10 @@ pub fn routes() -> Routes {
                 .name("wl_hr.cancellation_reference")
                 .post("/hr/employees/{id}/contact-attempts", record_attempt)
                 .name("wl_hr.contact_attempt")
+                .post("/hr/employees/{id}/sick-leave", record_sick)
+                .name("wl_hr.sick_leave")
+                .post("/hr/leave/{id}/sick-note", attach_sick_note)
+                .name("wl_hr.sick_note")
                 .post("/hr/onboardings/{id}/cancel", cancel_manual)
                 .name("wl_hr.onboarding_cancel")
                 .post("/hr/steps/{id}/in-person", in_person)
@@ -302,6 +309,23 @@ pub struct AttemptView {
     pub note: String,
 }
 
+/// One leave request on the employee page.
+#[derive(Serialize)]
+pub struct LeaveView {
+    /// The request number.
+    pub id: i64,
+    /// The leave type.
+    pub leave_type: String,
+    /// The first and last day.
+    pub period: String,
+    /// Where it stands.
+    pub status: String,
+    /// Unpaid working days.
+    pub unpaid: i64,
+    /// The sick note: attached, or the day it is due by.
+    pub note: String,
+}
+
 /// The employee page.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-hr/employee.html")]
@@ -315,6 +339,10 @@ pub(crate) struct ShowPage {
     exit_actions: Vec<(String, String)>,
     exit_selected: String,
     can_request_exit: bool,
+    leaves: Vec<LeaveView>,
+    can_record_sick: bool,
+    note_requests: Vec<(String, String)>,
+    note_selected: String,
     tx: Texts,
     employee: EmployeeRow,
     job_title: String,
@@ -555,6 +583,45 @@ async fn show(
             | EmployeeStatus::Notice
             | EmployeeStatus::Absconded
     ) && exits::holds_manage(&state, user.id, &employee).await?;
+    let acts_on_leave = leave_service::holds_approve(&state, user.id, &employee).await?
+        || leave_service::is_manager_of(&state, user.id, &employee).await?;
+    let mut leaves = Vec::new();
+    let mut note_requests = Vec::new();
+    if acts_on_leave {
+        for request in LeaveRequest::query()
+            .where_(LeaveRequest::EMPLOYEE_ID.eq(id))
+            .order_by_desc(LeaveRequest::FROM_DATE)
+            .get(&state.db)
+            .await?
+        {
+            let note = match (request.sick_note_attached_on, request.sick_note_due_on) {
+                (Some(_), _) => text(&lang, "sick.note_attached"),
+                (None, Some(due)) => texts::t_with(&lang, "wl_hr.sick.note_due", &[("date", &due)]),
+                (None, None) => String::new(),
+            };
+            if request.leave_type == sick_leave::SICK
+                && request.sick_note_document_id.is_none()
+                && !matches!(
+                    request.status,
+                    LeaveStatus::Rejected | LeaveStatus::Cancelled
+                )
+            {
+                note_requests.push((
+                    request.id.to_string(),
+                    format!("{} - {}", request.from_date, request.to_date),
+                ));
+            }
+            leaves.push(LeaveView {
+                id: request.id,
+                leave_type: request.leave_type.clone(),
+                period: format!("{} - {}", request.from_date, request.to_date),
+                status: request.status.as_str().to_owned(),
+                unpaid: request.unpaid_days,
+                note,
+            });
+        }
+    }
+    let can_record_sick = acts_on_leave && EmployeeStatus::WORKING.contains(&employee.status);
     let mut pay_accounts = Vec::new();
     if can_manage || user.has_permission(permissions::PAY_ACCOUNTS_APPROVE) {
         for account in crate::pay_account::PayAccount::of_employee(&state.db, id).await? {
@@ -575,6 +642,13 @@ async fn show(
         }
     }
     Ok(View::typed(ShowPage {
+        leaves,
+        can_record_sick,
+        note_selected: note_requests
+            .first()
+            .map(|(key, _)| key.clone())
+            .unwrap_or_default(),
+        note_requests,
         attempts,
         report,
         can_record_attempt,
@@ -788,6 +862,68 @@ async fn request_exit(
         .await?
         .map_err(exits::ExitRefused::into_error)?;
     Ok((Toast::success(text(&lang, "exits.sent")), renox::HxRefresh).into_response())
+}
+
+/// The form that records same-day sick leave.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct SickForm {
+    /// The first day; today when blank. Only today is accepted.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub from_date: String,
+    /// The last day, the first day when blank.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub to_date: String,
+}
+
+/// `POST /hr/employees/{id}/sick-leave`: records the employee's sick leave
+/// from today as approved at once (`record_sick`).
+async fn record_sick(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<SickForm>,
+) -> Result<Response> {
+    let from = date_field("from_date", &form.from_date)?.unwrap_or_else(today);
+    let to = date_field("to_date", &form.to_date)?.unwrap_or(from);
+    sick_leave::record(&state, user.id, id, from, to).await?;
+    Ok((
+        Toast::success(text(&lang, "sick.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that attaches a sick note.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct SickNoteForm {
+    /// The number of the stored sick note.
+    #[validate(required, max = 20)]
+    pub document: String,
+}
+
+/// `POST /hr/leave/{id}/sick-note`: attaches the sick note to a sick leave;
+/// the HR task for the missing note closes.
+async fn attach_sick_note(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<SickNoteForm>,
+) -> Result<Response> {
+    let document: i64 = form
+        .document
+        .trim()
+        .parse()
+        .map_err(|_| Error::BadRequest("document".to_owned()))?;
+    sick_leave::attach_note(&state, user.id, id, document).await?;
+    Ok((
+        Toast::success(text(&lang, "sick.attached")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records the authority's cancellation reference.

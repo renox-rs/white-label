@@ -58,6 +58,14 @@ impl CampaignAttribution for Attribution {
     fn sale_gone<'a>(&'a self, state: &'a AppState, sale: Subject) -> SalesFuture<'a, ()> {
         Box::pin(async move { acquisition::sale_gone(state, &sale).await })
     }
+
+    fn campaign_exists<'a>(
+        &'a self,
+        state: &'a AppState,
+        campaign: wl_kernel::sales::CampaignId,
+    ) -> SalesFuture<'a, bool> {
+        Box::pin(async move { Ok(Campaign::find(&state.db, campaign.0).await?.is_some()) })
+    }
 }
 
 /// Sets the source and campaign of an open lead. A won lead is changed

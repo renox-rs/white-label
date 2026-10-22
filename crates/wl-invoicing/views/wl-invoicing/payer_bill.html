@@ -1,0 +1,108 @@
+{#- wl-invoicing: one payer bill: its terms, its lines with what the payer
+    paid and denied, and the actions the user may run. Replace it with
+    resources/views/wl-invoicing/payer_bill.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="payer" :back="route('wl_invoicing.payer_bills')" :back-label="tx['payer_bill.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-confirm rx-if="can_issue" :id="'issue-payer-bill-' ~ bill.id" :label="tx['payer_bill.issue.action']" :action="route('wl_invoicing.payer_bill_issue', bill.id)" method="POST"
+                  :title="tx['payer_bill.issue.title']" :message="tx['payer_bill.issue.message']" :confirm-label="tx['payer_bill.issue.action']" icon="send"/>
+      <rx-action-sheet rx-if="can_resubmit" :id="'resubmit-payer-bill-' ~ bill.id" :label="tx['payer_bill.resubmit.action']" :action="route('wl_invoicing.payer_bill_resubmit', bill.id)"
+                       :title="tx['payer_bill.resubmit.title']" :description="tx['payer_bill.resubmit.description']" :submit-label="tx['payer_bill.resubmit.submit']" icon="send">
+        <rx-textarea name="corrections" :label="tx['payer_bill.resubmit.corrections']" :id="'resubmit-payer-bill-corrections-' ~ bill.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_reject" :id="'reject-payer-bill-' ~ bill.id" :label="tx['payer_bill.reject.action']" :action="route('wl_invoicing.payer_bill_rejected', bill.id)"
+                       :title="tx['payer_bill.reject.title']" :description="tx['payer_bill.reject.description']" :submit-label="tx['payer_bill.reject.submit']" icon="x">
+        <rx-textarea name="errors" :label="tx['payer_bill.reject.errors']" :id="'reject-payer-bill-errors-' ~ bill.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_remit" :id="'remit-payer-bill-' ~ bill.id" :label="tx['payer_bill.remit.action']" :action="route('wl_invoicing.payer_bill_remittance', bill.id)"
+                       :title="tx['payer_bill.remit.title']" :description="tx['payer_bill.remit.description']" :submit-label="tx['payer_bill.remit.submit']" icon="banknote">
+        <rx-input name="reference" :label="tx['payer_bill.remit.reference']" :id="'remit-reference-' ~ bill.id" required/>
+        <rx-input name="date" :label="tx['payer_bill.remit.date']" :hint="tx['payer_bill.remit.date_hint']" :id="'remit-date-' ~ bill.id"/>
+        <rx-input name="payment" :label="tx['payer_bill.remit.payment']" :hint="tx['payer_bill.remit.payment_hint']" :id="'remit-payment-' ~ bill.id"/>
+        <rx-stack rx-for="line in lines">
+          <rx-input :name="'line_' ~ line.id ~ '_paid'" :label="line.description ~ ': ' ~ tx['payer_bill.remit.paid']" :hint="tx['payer_bill.lines.open'] ~ ': ' ~ line.open" :id="'remit-paid-' ~ line.id"/>
+          <rx-input :name="'line_' ~ line.id ~ '_denied'" :label="tx['payer_bill.remit.denied']" :id="'remit-denied-' ~ line.id"/>
+          <rx-input :name="'line_' ~ line.id ~ '_code'" :label="tx['payer_bill.remit.code']" :id="'remit-code-' ~ line.id"/>
+          <rx-input :name="'line_' ~ line.id ~ '_reason'" :label="tx['payer_bill.remit.reason']" :id="'remit-reason-' ~ line.id"/>
+        </rx-stack>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_recoup" :id="'recoup-payer-bill-' ~ bill.id" :label="tx['payer_bill.recoup.action']" :action="route('wl_invoicing.payer_bill_recoupment', bill.id)"
+                       :title="tx['payer_bill.recoup.title']" :description="tx['payer_bill.recoup.description']" :submit-label="tx['payer_bill.recoup.submit']" icon="history">
+        <rx-input name="code" :label="tx['payer_bill.recoup.code']" :id="'recoup-code-' ~ bill.id"/>
+        <rx-input name="reason" :label="tx['payer_bill.recoup.reason']" :id="'recoup-reason-' ~ bill.id"/>
+        <rx-input name="carrier_reference" :label="tx['payer_bill.recoup.carrier']" :id="'recoup-carrier-' ~ bill.id"/>
+        <rx-input name="carrier_date" :label="tx['payer_bill.recoup.carrier_date']" :hint="tx['payer_bill.remit.date_hint']" :id="'recoup-carrier-date-' ~ bill.id"/>
+        <rx-stack rx-for="line in lines">
+          <rx-input :name="'line_' ~ line.id ~ '_recouped'" :label="line.description ~ ': ' ~ tx['payer_bill.recoup.amount']" :hint="tx['payer_bill.lines.paid'] ~ ': ' ~ line.paid" :id="'recoup-amount-' ~ line.id"/>
+        </rx-stack>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_close" :id="'write-off-payer-bill-' ~ bill.id" :label="tx['payer_bill.write_off.action']" :action="route('wl_invoicing.payer_bill_write_off', bill.id)"
+                       :title="tx['payer_bill.write_off.title']" :description="tx['payer_bill.write_off.description']" :submit-label="tx['payer_bill.write_off.submit']" icon="x" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['payer_bill.close.reason']" :id="'write-off-payer-bill-reason-' ~ bill.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_close" :id="'transfer-payer-bill-' ~ bill.id" :label="tx['payer_bill.transfer.action']" :action="route('wl_invoicing.payer_bill_transfer', bill.id)"
+                       :title="tx['payer_bill.transfer.title']" :description="tx['payer_bill.transfer.description']" :submit-label="tx['payer_bill.transfer.submit']" icon="send">
+        <rx-textarea name="reason" :label="tx['payer_bill.close.reason']" :id="'transfer-payer-bill-reason-' ~ bill.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_void" :id="'void-payer-bill-' ~ bill.id" :label="tx['payer_bill.void.action']" :action="void_action"
+                       :title="tx['payer_bill.void.title']" :description="tx['payer_bill.void.description']" :submit-label="tx['payer_bill.void.submit']" icon="x" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['payer_bill.void.reason']" :id="'void-payer-bill-reason-' ~ bill.id" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card :title="tx['payer_bill.sections.summary']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['payer_bill.fields.payer']" :value="payer"/>
+        <rx-entry :label="tx['payer_bill.fields.customer']" :value="customer"/>
+        <rx-entry :label="tx['payer_bill.fields.agreement']" :value="agreement" placeholder="-"/>
+        <rx-entry :label="tx['payer_bill.fields.recipient']" :value="recipient"/>
+        <rx-entry :label="tx['payer_bill.fields.source']" :value="source"/>
+        <rx-entry :label="tx['payer_bill.fields.reference']" :value="reference" placeholder="-"/>
+        <rx-entry :label="tx['payer_bill.fields.service_date']" :value="service_date"/>
+        <rx-entry :label="tx['payer_bill.fields.resubmissions']" :value="bill.resubmission_count"/>
+        <rx-entry :label="tx['payer_bill.fields.claimed']" :value="claimed"/>
+        <rx-entry :label="tx['payer_bill.fields.paid']" :value="paid"/>
+        <rx-entry :label="tx['payer_bill.fields.denied']" :value="denied"/>
+        <rx-entry :label="tx['payer_bill.fields.open']" :value="open"/>
+        <rx-entry :label="tx['payer_bill.fields.credit']" :value="credit"/>
+        <rx-entry rx-if="bill.not_submitted_in_time" :label="tx['payer_bill.fields.not_in_time']" :value="tx['payer_bill.yes']"/>
+        <rx-entry rx-if="bill.close_reason" :label="tx['payer_bill.fields.close_reason']" :value="bill.close_reason"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['payer_bill.sections.lines']" card>
+      <rx-column :label="tx['payer_bill.lines.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['payer_bill.lines.claimed']" hide-narrow>{{ line.claimed }}</rx-column>
+      <rx-column :label="tx['payer_bill.lines.paid']" hide-narrow>{{ line.paid }}</rx-column>
+      <rx-column :label="tx['payer_bill.lines.denied']" hide-narrow>{{ line.denied }}</rx-column>
+      <rx-column :label="tx['payer_bill.lines.open']">{{ line.open }}</rx-column>
+      <rx-column :label="tx['payer_bill.lines.code']" hide-narrow>{{ line.code }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['payer_bill.lines.empty']" icon="list"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="errors" :rows="errors" as="error" :key="error.id" :caption="tx['payer_bill.sections.errors']" card>
+      <rx-column :label="tx['payer_bill.errors_table.attempt']" hide-narrow>{{ error.attempt }}</rx-column>
+      <rx-column :label="tx['payer_bill.errors_table.code']">{{ error.code }}</rx-column>
+      <rx-column :label="tx['payer_bill.errors_table.message']">{{ error.message }}</rx-column>
+      <rx-column :label="tx['payer_bill.errors_table.date']" hide-narrow>{{ error.date }}</rx-column>
+    </rx-table>
+    <rx-table rx-if="remittances" :rows="remittances" as="item" :key="item.id" :caption="tx['payer_bill.sections.remittances']" card>
+      <rx-column :label="tx['payer_bill.remit.reference']">{{ item.reference }}</rx-column>
+      <rx-column :label="tx['payer_bill.remit.date']" hide-narrow>{{ item.date }}</rx-column>
+      <rx-column :label="tx['payer_bill.lines.paid']">{{ item.paid }}</rx-column>
+      <rx-column :label="tx['payer_bill.lines.denied']" hide-narrow>{{ item.denied }}</rx-column>
+      <rx-column :label="tx['payer_bill.remit.overpayment']" hide-narrow>{{ item.overpayment }}</rx-column>
+    </rx-table>
+    <rx-table rx-if="recoupments" :rows="recoupments" as="item" :key="item.id" :caption="tx['payer_bill.sections.recoupments']" card>
+      <rx-column :label="tx['payer_bill.recoup.code']">{{ item.code }}</rx-column>
+      <rx-column :label="tx['payer_bill.recoup.amount']">{{ item.amount }}</rx-column>
+      <rx-column :label="tx['payer_bill.recoup.from_credit']" hide-narrow>{{ item.from_credit }}</rx-column>
+      <rx-column :label="tx['payer_bill.recoup.deducted']" hide-narrow>{{ item.deducted }}</rx-column>
+      <rx-column :label="tx['payer_bill.recoup.carrier']" hide-narrow>{{ item.carrier }}</rx-column>
+    </rx-table>
+    <rx-table rx-if="credit_movements" :rows="credit_movements" as="item" :key="item.id" :caption="tx['payer_bill.sections.credit']" card>
+      <rx-column :label="tx['payer_bill.credit.kind']">{{ item.kind }}</rx-column>
+      <rx-column :label="tx['payer_bill.credit.amount']">{{ item.amount }}</rx-column>
+      <rx-column :label="tx['payer_bill.credit.refund']" hide-narrow><a rx-if="item.refund" href="{{ item.refund }}">{{ item.refund }}</a></rx-column>
+      <rx-column :label="tx['payer_bill.credit.approved_by']" hide-narrow>{{ item.approved_by }}</rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>

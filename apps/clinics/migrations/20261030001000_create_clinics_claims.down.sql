@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS "clinics_claim_remittances_claim_id";
+DROP TABLE IF EXISTS "clinics_claim_remittances";
+DROP INDEX IF EXISTS "clinics_claim_attempts_claim_id_number";
+DROP TABLE IF EXISTS "clinics_claim_attempts";
+DROP INDEX IF EXISTS "clinics_claim_lines_claim_id";
+DROP TABLE IF EXISTS "clinics_claim_lines";
+DROP INDEX IF EXISTS "clinics_claims_status";
+DROP INDEX IF EXISTS "clinics_claims_visit_id";
+DROP INDEX IF EXISTS "clinics_claims_payer_bill_id";
+DROP TABLE IF EXISTS "clinics_claims";

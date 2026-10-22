@@ -12,6 +12,7 @@
 //! | `POST /campaigns/{id}/delete` | `wl_sales.campaign_delete` | `campaigns.manage` |
 //! | `POST /campaigns/{id}/reopen` | `wl_sales.campaign_reopen` | `campaigns.manage` |
 //! | `POST /campaigns/{id}/costs` | `wl_sales.campaign_cost_store` | `campaigns.manage` |
+//! | `POST /campaigns/{id}/broadcast` | `wl_sales.campaign_broadcast` | `campaigns.manage` |
 //!
 //! The list is a `renox::grid`. The page of one campaign shows its fields,
 //! the transition buttons (`reopen` has a sheet for the new end date), the
@@ -43,9 +44,11 @@ use crate::campaign::{self, Campaign, CampaignRefused, CampaignStatus, Marketing
 use crate::cost_entry::{CostEntry, CostStatus};
 use crate::costs::{self, CostInput};
 use crate::lead_source::LeadSource;
-use crate::machine::{REOPEN, ReopenInput};
+use crate::machine::{ACTIVATE, REOPEN, ReopenInput};
 use crate::notices::aed;
 use crate::promo_code::PromoCode;
+use crate::retention::{self, BroadcastState};
+use crate::segment::Segment;
 use crate::{permissions, texts};
 
 /// The texts a template reads as `tx['campaigns.title']`.
@@ -60,6 +63,10 @@ pub fn routes() -> Routes {
                 .name("wl_sales.campaigns")
                 .get("/campaigns/{id}", show)
                 .name("wl_sales.campaign")
+                // `activate` asks the vertical's guards first (`CLN.ACL.13`);
+                // the other transitions are the kernel's route.
+                .post("/campaigns/{id}/transitions/activate", activate)
+                .name("wl_sales.campaign_activate")
                 .group(
                     "/campaigns",
                     "wl_sales.campaign_transitions.",
@@ -83,6 +90,8 @@ pub fn routes() -> Routes {
                 .name("wl_sales.campaign_reopen")
                 .post("/campaigns/{id}/costs", store_cost)
                 .name("wl_sales.campaign_cost_store")
+                .post("/campaigns/{id}/broadcast", request_again)
+                .name("wl_sales.campaign_broadcast")
                 .require_permission(permissions::CAMPAIGNS_MANAGE),
         )
 }
@@ -254,6 +263,24 @@ pub(crate) struct PromoRow {
     uses: String,
 }
 
+/// The retention part of a campaign's page: the segment, how the broadcast
+/// stands and what it brought. It shows counts, never names.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct RetentionCard {
+    segment: String,
+    requester: Option<String>,
+    state: String,
+    not_sent: Option<String>,
+    recipients: Option<i64>,
+    delivered: i64,
+    opted_out: i64,
+    excluded: Vec<(String, i64)>,
+    returned: i64,
+    returned_value: String,
+    cost: String,
+    response_days: i64,
+}
+
 /// What the campaign page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/show.html")]
@@ -281,6 +308,10 @@ pub(crate) struct ShowPage {
     can_delete: bool,
     can_reopen: bool,
     can_add_cost: bool,
+    /// The retention card of a retention campaign.
+    retention: Option<RetentionCard>,
+    /// Whether the campaign can ask for a new broadcast now.
+    can_request_broadcast: bool,
     /// Whether invoicing provides supplier bills (the sheet then takes a line).
     bills_enabled: bool,
     today: NaiveDate,
@@ -378,6 +409,11 @@ async fn show(
         .collect();
     let manage = user.has_permission(permissions::CAMPAIGNS_MANAGE);
     let status = campaign.status;
+    let retention = retention_card(&state, &lang, &campaign).await?;
+    let can_request_broadcast = manage
+        && status == CampaignStatus::Active
+        && campaign.purpose == Some(Purpose::Retention)
+        && retention.as_ref().is_some_and(|c| c.can_request);
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: format!("{} - {}", campaign.code, campaign.name),
@@ -405,6 +441,8 @@ async fn show(
         can_delete: manage && status == CampaignStatus::Draft,
         can_reopen: manage && status == CampaignStatus::Ended,
         can_add_cost: manage,
+        retention: retention.map(|c| c.card),
+        can_request_broadcast,
         bills_enabled: state.provided::<Arc<dyn SupplierBills>>().is_some(),
         today: today(),
         costs: rows,
@@ -417,6 +455,81 @@ async fn show(
 /// The stored name of a cost status.
 fn cost_status_key(status: CostStatus) -> &'static str {
     status.as_str()
+}
+
+/// The card and whether a new request can be made.
+struct CardAndAsk {
+    card: RetentionCard,
+    can_request: bool,
+}
+
+/// The retention card of a retention campaign; `None` for any other.
+async fn retention_card(
+    state: &AppState,
+    lang: &Lang,
+    campaign: &Campaign,
+) -> Result<Option<CardAndAsk>> {
+    if campaign.purpose != Some(Purpose::Retention) {
+        return Ok(None);
+    }
+    let report = retention::report(state, campaign).await?;
+    let segment = match campaign.segment_id {
+        Some(id) => Segment::find(&state.db, id)
+            .await?
+            .map(|s| s.name)
+            .unwrap_or_else(|| id.to_string()),
+        None => String::new(),
+    };
+    let state_text = match report.state {
+        None => text(lang, "retention.state.none"),
+        Some(s) => text(lang, &format!("retention.state.{}", s.as_str())),
+    };
+    let not_sent = report.not_sent.as_ref().map(|reason| {
+        let known = format!("retention.reason.{reason}");
+        let shown = text(lang, &known);
+        if shown.ends_with(&known) {
+            reason.clone()
+        } else {
+            shown
+        }
+    });
+    let excluded = report
+        .excluded
+        .iter()
+        .map(|(reason, count)| {
+            let key = format!("retention.excluded.{reason}");
+            let shown = text(lang, &key);
+            (
+                if shown.ends_with(&key) {
+                    reason.clone()
+                } else {
+                    shown
+                },
+                *count,
+            )
+        })
+        .collect();
+    let can_request = !matches!(
+        report.state,
+        Some(BroadcastState::Requested | BroadcastState::Completed)
+    );
+    Ok(Some(CardAndAsk {
+        can_request,
+        card: RetentionCard {
+            segment,
+            requester: user_name(&state.db, campaign.retention_set_by).await,
+            state: state_text,
+            not_sent,
+            recipients: report.recipients,
+            delivered: report.delivered,
+            opted_out: report.opted_out,
+            excluded,
+            returned: report.returned,
+            returned_value: money(report.returned_value),
+            cost: money(report.cost),
+            response_days: report.response_days,
+        },
+    }))
 }
 
 /// A moment as Asia/Dubai wall time, `2026-03-10 08:00`.
@@ -434,7 +547,7 @@ fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
 }
 
 /// `text` ("150", "1,500.5") as fils; `None` for anything else.
-fn parse_fils(text: &str) -> Option<i64> {
+pub(crate) fn parse_fils(text: &str) -> Option<i64> {
     let text = text.trim().replace(',', "");
     let (sign, text) = match text.strip_prefix('-') {
         Some(rest) => (-1, rest.to_owned()),
@@ -458,7 +571,7 @@ fn parse_fils(text: &str) -> Option<i64> {
 }
 
 /// `text` as a date (`2026-03-01`).
-fn parse_date(text: &str) -> Option<NaiveDate> {
+pub(crate) fn parse_date(text: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(text.trim(), "%Y-%m-%d").ok()
 }
 
@@ -482,6 +595,7 @@ pub(crate) struct FormPage {
     lead_sources: Vec<(String, String)>,
     entities: Vec<(String, String)>,
     owners: Vec<(String, String)>,
+    segments: Vec<(String, String)>,
 }
 
 /// The form page for a new campaign (`campaign` is `None`) or to change one.
@@ -571,6 +685,14 @@ async fn form_page(db: &Db, lang: &Lang, campaign: Option<&Campaign>) -> Result<
         .into_iter()
         .map(|u| (u.id.to_string(), u.name))
         .collect();
+    let segments = Segment::query()
+        .order_by(Segment::NAME)
+        .get(db)
+        .await?
+        .into_iter()
+        .filter(|s| !s.archived || Some(s.id) == campaign.and_then(|c| c.segment_id))
+        .map(|s| (s.id.to_string(), s.name))
+        .collect();
     let (title, action, cancel) = match campaign {
         Some(c) => (
             text(lang, "campaigns.form.edit_title"),
@@ -594,6 +716,7 @@ async fn form_page(db: &Db, lang: &Lang, campaign: Option<&Campaign>) -> Result<
         lead_sources,
         entities,
         owners,
+        segments,
     }))
 }
 
@@ -692,18 +815,39 @@ async fn campaign_of_form(
         ),
     };
     c.promo_code = optional("promo_code");
+    // The send time is compared by the minute, as the form shows it.
+    let minute = |at: Option<renox::db::DateTime>| at.map(|at| at.timestamp() / 60);
+    let before = (
+        c.segment_id,
+        c.template_key.clone(),
+        c.message_channel.clone(),
+        minute(c.send_at),
+    );
     c.segment_id = number("segment_id")?;
+    if let Some(id) = c.segment_id
+        && Segment::find(&state.db, id).await?.is_none()
+    {
+        return Err(error("segment_id", "campaigns.errors.choice"));
+    }
     c.template_key = optional("template_key");
     c.message_channel = optional("message_channel");
     c.send_at = match get("send_at") {
         "" => None,
         v => Some(parse_moment(v).ok_or_else(|| error("send_at", "campaigns.errors.date"))?),
     };
-    let retention_set = c.segment_id.is_some()
-        || c.template_key.is_some()
-        || c.message_channel.is_some()
-        || c.send_at.is_some();
-    c.retention_set_by = retention_set.then_some(user.id);
+    // The requester of the broadcast is the user who last set one of the four
+    // retention fields (`NTF.ACL.04`): saving other fields keeps it.
+    let after = (
+        c.segment_id,
+        c.template_key.clone(),
+        c.message_channel.clone(),
+        minute(c.send_at),
+    );
+    if before != after {
+        let retention_set =
+            after.0.is_some() || after.1.is_some() || after.2.is_some() || after.3.is_some();
+        c.retention_set_by = retention_set.then_some(user.id);
+    }
     Ok(c)
 }
 
@@ -778,6 +922,29 @@ async fn destroy(
         .into_response())
 }
 
+/// `POST /campaigns/{id}/transitions/activate`: makes a draft campaign
+/// active unless a guard of the vertical refuses (05: no advertising permit
+/// recorded, `CLN.ACL.13`), in which case the answer is a 422 with the
+/// guard's words and the campaign stays a draft.
+async fn activate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    back: renox::Back,
+    Found(campaign): Found<Campaign>,
+) -> Result<Response> {
+    if let Some(why) = retention::activation_refusal(&state, &campaign).await? {
+        return Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, why));
+    }
+    let outcome = campaign
+        .transition(ACTIVATE)
+        .by(&user)
+        .run(&state)
+        .await
+        .map_err(state_machine::TransitionError::into_error)?;
+    wl_kernel::approvals::announce(&state, &outcome).await?;
+    Ok(back.into_response())
+}
+
 /// `POST /campaigns/{id}/reopen`: an ended campaign runs again until the
 /// new end date, which must be after today.
 async fn reopen(
@@ -801,6 +968,29 @@ async fn reopen(
     outcome.emit(&state).await?;
     Ok((
         Toast::success(text(&lang, "campaigns.reopen.done")),
+        Redirect::route("wl_sales.campaign", &[&campaign.id])?,
+    )
+        .into_response())
+}
+
+/// `POST /campaigns/{id}/broadcast`: asks `wl-notify` for the broadcast again
+/// after the last one was rejected, cancelled or refused. A campaign with a
+/// completed broadcast, or an open request, is refused.
+async fn request_again(
+    State(state): State<AppState>,
+    lang: Lang,
+    Found(campaign): Found<Campaign>,
+) -> Result<Response> {
+    let asked = retention::request_broadcast(&state, campaign.id)
+        .await?
+        .map_err(retention::RetentionRefused::into_error)?;
+    let toast = if asked.status == BroadcastState::Failed {
+        Toast::info(text(&lang, "retention.not_sent_toast"))
+    } else {
+        Toast::success(text(&lang, "retention.requested"))
+    };
+    Ok((
+        toast,
         Redirect::route("wl_sales.campaign", &[&campaign.id])?,
     )
         .into_response())

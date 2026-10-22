@@ -149,24 +149,24 @@ Visit fields (§6): "coverage outcome (insured, re-split, self-pay with consent 
 - Must not show the visit reason or codes to the receptionist while doing this (`CLN.ACL.02`).
 
 #### Done when
-- [ ] Given an insured appointment for 2026-11-10 09:00 and eligibility recorded *negative*, when
+- [x] Given an insured appointment for 2026-11-10 09:00 and eligibility recorded *negative*, when
       receptionist A tries `check_in` without an outcome, it is refused with "coverage outcome
       required".
-- [ ] Given policy P1 expired 2026-11-09 and policy P2 valid to 2027-03-31 with positive
+- [x] Given policy P1 expired 2026-11-09 and policy P2 valid to 2027-03-31 with positive
       eligibility, when A records `re_split` to P2, `check_in` succeeds, the visit shows outcome
       `re_split` with P2 and the patient share is recalculated from P2's contract.
-- [ ] Given eligibility negative and the patient signs a self-pay consent showing estimated
+- [x] Given eligibility negative and the patient signs a self-pay consent showing estimated
       price AED 450.00, `check_in` succeeds with outcome `self_pay` and the consent reference.
-- [ ] `self_pay` without a signed consent is refused.
-- [ ] Given a service with no self-pay price on 2026-11-10, `self_pay` is refused with "no
+- [x] `self_pay` without a signed consent is refused.
+- [x] Given a service with no self-pay price on 2026-11-10, `self_pay` is refused with "no
       self-pay price for <service>".
-- [ ] Pending check-in data for an appointment not checked in by 23:59 on its day is discarded.
-- [ ] Given a deposit of AED 100.00, when A cancels with `coverage_not_confirmed`, initiated by is
+- [x] Pending check-in data for an appointment not checked in by 23:59 on its day is discarded.
+- [x] Given a deposit of AED 100.00, when A cancels with `coverage_not_confirmed`, initiated by is
       `business` and AED 100.00 is refunded; when A reschedules instead, the AED 100.00 is linked
       to the new appointment.
-- [ ] On a `self_pay` visit, adding a service not on the consent in charge capture is refused
+- [x] On a `self_pay` visit, adding a service not on the consent in charge capture is refused
       until an updated consent is signed.
-- [ ] Given a policy valid to 2026-11-10 and a visit on 2026-11-10, no outcome other than
+- [x] Given a policy valid to 2026-11-10 and a visit on 2026-11-10, no outcome other than
       `insured` is asked after a positive eligibility result.
 
 #### Out of scope
@@ -249,19 +249,19 @@ the authorisation."
 - Must not consume units at check-in (consumption stays at charge capture).
 
 #### Done when
-- [ ] Given a procedure needing authorisation and authorisation A1 `approved` for 3 units, 3
+- [x] Given a procedure needing authorisation and authorisation A1 `approved` for 3 units, 3
       consumed, when receptionist A checks in with 1 unit needed and no outcome, it is refused
       with "prior authorisation required: self-pay with consent or reschedule" and the
       appointment stays `confirmed`; with a signed self-pay consent for the procedure, check-in
       succeeds.
-- [ ] Given A1 valid until 2026-11-10 and a visit on 2026-11-11, check-in is refused the same way.
-- [ ] Given A1 with 1 unit left and visit V1 already checked in with 1 unit needed, a second visit
+- [x] Given A1 valid until 2026-11-10 and a visit on 2026-11-11, check-in is refused the same way.
+- [x] Given A1 with 1 unit left and visit V1 already checked in with 1 unit needed, a second visit
       V2 the same day sees 0 units left.
-- [ ] Given A1 with 2 units left and 3 units needed, 2 units stay in the payer split and 1 unit
+- [x] Given A1 with 2 units left and 3 units needed, 2 units stay in the payer split and 1 unit
       goes self-pay with consent.
-- [ ] With a covered consultation and an unauthorised procedure, the consent lists only the
+- [x] With a covered consultation and an unauthorised procedure, the consent lists only the
       procedure and the consultation stays in the payer split.
-- [ ] On reschedule, the billing coordinator gets a task to request a new authorisation.
+- [x] On reschedule, the billing coordinator gets a task to request a new authorisation.
 
 #### Out of scope
 Look-ahead flags (BL-CLN-03); the coverage outcome mechanics and consent (BL-CLN-01).
@@ -334,15 +334,15 @@ check-in. This gives the clinic time to get cover before the patient arrives.
 - Must not cancel or reschedule appointments automatically.
 
 #### Done when
-- [ ] Given authorisation A1 (patient P, laser, valid until 2026-11-30) and P's appointments on
+- [x] Given authorisation A1 (patient P, laser, valid until 2026-11-30) and P's appointments on
       2026-11-20 and 2026-12-05, when A1 is denied, both are flagged and the coordinator gets one task.
-- [ ] Given A1 valid until 2026-11-30, on 2026-11-27 at 02:00 the 2026-12-05 appointment is
+- [x] Given A1 valid until 2026-11-30, on 2026-11-27 at 02:00 the 2026-12-05 appointment is
       flagged; the 2026-11-20 one is not.
-- [ ] When A1's last unit is consumed on 2026-11-20, A1 is `used` and the 2026-12-05 appointment
+- [x] When A1's last unit is consumed on 2026-11-20, A1 is `used` and the 2026-12-05 appointment
       is flagged.
-- [ ] Given another authorisation A2 valid on 2026-12-05 with units left, nothing is flagged.
-- [ ] Running the rule twice creates one flag and one task.
-- [ ] When A3 is approved covering 2026-12-05, the flag is cleared.
+- [x] Given another authorisation A2 valid on 2026-12-05 with units left, nothing is flagged.
+- [x] Running the rule twice creates one flag and one task.
+- [x] When A3 is approved covering 2026-12-05, the flag is cleared.
 
 #### Out of scope
 `CLN.RUL.07` itself (base); the check at check-in (BL-CLN-02).
@@ -405,12 +405,12 @@ expired card.
 - Must not show card images to roles without `patients.sensitive.view` (`CLN.ACL.12`).
 
 #### Done when
-- [ ] Given an insured appointment on 2026-11-12 and policy valid to 2026-11-10, on 2026-11-10 at
+- [x] Given an insured appointment on 2026-11-12 and policy valid to 2026-11-10, on 2026-11-10 at
       02:00 the appointment is flagged and the upload message is deferred and sent at 08:00.
-- [ ] Given a card expiring 2026-11-11 and a policy valid to 2027-06-30, the same happens.
-- [ ] Given a valid policy and card, nothing happens.
-- [ ] After staff accept an uploaded card valid to 2027-11-11, the flag is cleared.
-- [ ] The message text contains no service name.
+- [x] Given a card expiring 2026-11-11 and a policy valid to 2027-06-30, the same happens.
+- [x] Given a valid policy and card, nothing happens.
+- [x] After staff accept an uploaded card valid to 2027-11-11, the flag is cleared.
+- [x] The message text contains no service name.
 
 #### Out of scope
 What happens at the desk if the card is still expired (BL-CLN-01).
@@ -505,20 +505,20 @@ refunded); work done billed through charge capture".
 - Must not let the patient cancel after check-in.
 
 #### Done when
-- [ ] Given a checked-in appointment with deposit AED 200.00, a filler syringe issued (price AED
+- [x] Given a checked-in appointment with deposit AED 200.00, a filler syringe issued (price AED
       150.00) and no service delivered, when staff cancel with `walked_out`, the visit bills AED
       150.00, the deposit settles it and AED 50.00 is refunded.
-- [ ] Given the practitioner marked the consultation (AED 300.00) delivered, a walk-out bills AED
+- [x] Given the practitioner marked the consultation (AED 300.00) delivered, a walk-out bills AED
       300.00; the deposit AED 200.00 settles part and AED 100.00 is due from the patient.
-- [ ] Given an `in_progress` visit stopped for `equipment_failure` with a consumable issued and no
+- [x] Given an `in_progress` visit stopped for `equipment_failure` with a consumable issued and no
       acceptance, nothing is charged, the consumable shows price 0, and AED 200.00 is refunded.
-- [ ] With acceptance recorded, the same stop bills the consumable and still refunds the deposit
+- [x] With acceptance recorded, the same stop bills the consumable and still refunds the deposit
       in full.
-- [ ] An insured walk-out with a delivered consultation creates a draft claim for the payer share.
-- [ ] An insured visit stopped for `equipment_failure` with a delivered consultation and no
+- [x] An insured walk-out with a delivered consultation creates a draft claim for the payer share.
+- [x] An insured visit stopped for `equipment_failure` with a delivered consultation and no
       acceptance creates no claim and no patient charge; with acceptance a draft claim is
       created for the payer share.
-- [ ] Setting *none* while a consumable was issued is refused.
+- [x] Setting *none* while a consumable was issued is refused.
 
 #### Out of scope
 The booking `cancel` mechanics and deposit engine (BL-SCH-02, BL-SCH-03); procedure not
@@ -584,12 +584,12 @@ not charged, and a deposit taken for the procedure is applied to the consultatio
 - Must not forfeit the procedure deposit.
 
 #### Done when
-- [ ] Given a booked laser procedure (AED 1,200.00) with deposit AED 300.00, when the practitioner
+- [x] Given a booked laser procedure (AED 1,200.00) with deposit AED 300.00, when the practitioner
       records "not suitable" and a consultation (AED 250.00, self-pay), the visit bills AED 250.00,
       the deposit covers it and AED 50.00 is refunded.
-- [ ] Recording "not suitable" without picking a consultation service is refused.
-- [ ] The appointment is `completed`, not `cancelled`.
-- [ ] No prior-authorisation unit and no package session is consumed for the laser.
+- [x] Recording "not suitable" without picking a consultation service is refused.
+- [x] The appointment is `completed`, not `cancelled`.
+- [x] No prior-authorisation unit and no package session is consumed for the laser.
 
 #### Out of scope
 Cancellation after check-in (BL-CLN-05).
@@ -676,16 +676,16 @@ first-submission window."
 - Must not allow `resubmit` beyond the payer's limit or window.
 
 #### Done when
-- [ ] Given claim CLM-0101 `submitted` on 2026-11-03 for a visit on 2026-11-01, when coordinator A
+- [x] Given claim CLM-0101 `submitted` on 2026-11-03 for a visit on 2026-11-01, when coordinator A
       records rejection "E104 invalid member ID", the claim is `draft`, the attempt shows E104, the
       count stays 0, payer bill `submission_rejected` ran, and A gets a task with the
       first-submission deadline.
-- [ ] After fixing, `validate` and `submit` send it again as CLM-0101 with the same payer bill
+- [x] After fixing, `validate` and `submit` send it again as CLM-0101 with the same payer bill
       number.
-- [ ] Given a claim with count 1 in `resubmitted`, a technical rejection returns it to `draft`
+- [x] Given a claim with count 1 in `resubmitted`, a technical rejection returns it to `draft`
       with count 1; it can be validated within the resubmission window and submitted again.
-- [ ] Given a payer limit of 2 and count 2, `resubmit` is refused.
-- [ ] `reject_submission` on a claim with a recorded remittance is refused.
+- [x] Given a payer limit of 2 and count 2, `resubmit` is refused.
+- [x] `reject_submission` on a claim with a recorded remittance is refused.
 
 #### Out of scope
 Integrated channel responses (`CLN.CLM.02`, Later); payer bill effects (BL-INV-16).
@@ -771,19 +771,19 @@ claims are no longer final: only `record_recoupment` leaves them. The denial tas
 - Must not leave `paid` or `written_off` by any transition other than `record_recoupment`.
 
 #### Done when
-- [ ] Given claim line open AED 400.00 and a remittance paying AED 450.00, the advice is held;
+- [x] Given claim line open AED 400.00 and a remittance paying AED 450.00, the advice is held;
       user B approves; AED 400.00 is allocated and AED 50.00 goes to the payer credit balance;
       user A (recorder) cannot approve.
-- [ ] Given claim CLM-0200 `paid` (one line AED 400.00) and a later advice recouping AED 400.00
+- [x] Given claim CLM-0200 `paid` (one line AED 400.00) and a later advice recouping AED 400.00
       with code "R07" on an advice dated 2026-12-10, and a payer resubmission window of 30
       days, after user B approves CLM-0200 is `denied`, the line shows R07, and the coordinator
       has a task with resubmission deadline 2027-01-09.
-- [ ] Given a `written_off` claim with a line paid AED 300.00, a recoupment of AED 100.00 makes it
+- [x] Given a `written_off` claim with a line paid AED 300.00, a recoupment of AED 100.00 makes it
       `partially_paid` and the write-off amount is still shown.
-- [ ] A `PaymentReversed` for a payment allocated to the claim's payer bill runs
+- [x] A `PaymentReversed` for a payment allocated to the claim's payer bill runs
       `record_recoupment` without approval.
-- [ ] A recoupment of AED 500.00 on lines paid AED 400.00 is refused.
-- [ ] From `paid`, `write_off` and `resubmit` are not offered.
+- [x] A recoupment of AED 500.00 on lines paid AED 400.00 is refused.
+- [x] From `paid`, `write_off` and `resubmit` are not offered.
 
 #### Out of scope
 Payer credit balance mechanics and refunds to the payer (BL-INV-17, BL-PAY-08).
@@ -868,15 +868,15 @@ payer."
 - Must not let the clinic manager approve above AED 1,000.
 
 #### Done when
-- [ ] Given a draft claim AED 600.00 for a visit on 2026-09-01, a 30-day window (ended 2026-10-01),
+- [x] Given a draft claim AED 600.00 for a visit on 2026-09-01, a 30-day window (ended 2026-10-01),
       a payer that does not accept late claims and the flag off, when clinic manager A writes it
       off with reason "missed window" on 2026-10-05, it is `written_off`, payer bill `write_off`
       ran and the KPI shows AED 600.00 *not submitted in time*.
-- [ ] With the flag on, the same action runs `transfer_to_customer` and the patient share rises by
+- [x] With the flag on, the same action runs `transfer_to_customer` and the patient share rises by
       AED 600.00.
-- [ ] AED 1,500.00 creates an approval request to the owner; the claim stays `draft` until approved.
-- [ ] On 2026-09-30 (window open) `write_off` from `draft` is refused.
-- [ ] For a payer that accepts late claims, `write_off` from `draft` is refused and `validate`
+- [x] AED 1,500.00 creates an approval request to the owner; the claim stays `draft` until approved.
+- [x] On 2026-09-30 (window open) `write_off` from `draft` is refused.
+- [x] For a payer that accepts late claims, `write_off` from `draft` is refused and `validate`
       without a late reason is refused; with "system outage" it passes.
 
 #### Out of scope
@@ -947,14 +947,14 @@ A claim that was ever submitted is never voided.
 - Must not void a claim with any recorded submission attempt.
 
 #### Done when
-- [ ] Given claim CLM-0300 `ready` for visit V1 with payer X, when coordinator A voids it with
+- [x] Given claim CLM-0300 `ready` for visit V1 with payer X, when coordinator A voids it with
       `wrong_payer` and V1 is re-split to payer Y, CLM-0300 is `voided`, its payer bill is
       `voided`, and a new claim exists for payer Y.
-- [ ] Given CLM-0301 back in `draft` after a technical rejection, `void` is refused.
-- [ ] Given no other policy, V1 has no payer split and the coordinator gets a "coverage to
+- [x] Given CLM-0301 back in `draft` after a technical rejection, `void` is refused.
+- [x] Given no other policy, V1 has no payer split and the coordinator gets a "coverage to
       resolve" task.
-- [ ] CLM-0300 still appears in lists, marked void.
-- [ ] Voiding CLM-0302 with `duplicate` without picking a claim is refused; the picker lists only
+- [x] CLM-0300 still appears in lists, marked void.
+- [x] Voiding CLM-0302 with `duplicate` without picking a claim is refused; the picker lists only
       the same patient's claims that are not `voided`.
 
 #### Out of scope
@@ -1017,13 +1017,13 @@ and `DOC.RUL.03` for practitioner licences and the facility licence."
 - Must not be switchable off by the client (compliance-critical, set by us).
 
 #### Done when
-- [ ] Given a visit on 2026-11-01 with a draft claim and a 30-day window, on 2026-11-08 the
+- [x] Given a visit on 2026-11-01 with a draft claim and a 30-day window, on 2026-11-08 the
       coordinator is notified; on 2026-11-29 the clinic manager gets a task.
-- [ ] A claim submitted on 2026-11-05 gets neither.
-- [ ] Saving a payer contract with a 30-day window and N = 30 is refused.
-- [ ] Given a payer contract with a 1-day window and N = 0, and a visit on 2026-11-01, the
+- [x] A claim submitted on 2026-11-05 gets neither.
+- [x] Saving a payer contract with a 30-day window and N = 30 is refused.
+- [x] Given a payer contract with a 1-day window and N = 0, and a visit on 2026-11-01, the
       2026-11-02 02:00 run notifies the coordinator and creates the clinic manager task.
-- [ ] Given the 2026-11-08 02:00 run ends `failed` (test: a forced error in the rule job), the owner
+- [x] Given the 2026-11-08 02:00 run ends `failed` (test: a forced error in the rule job), the owner
       / medical director gets the owner alert at once; given no run exists for 02:00 (test: the
       scheduler paused until 03:00), the alert comes at the 03:00 missed-run check (BL-KRN-08).
 
@@ -1091,12 +1091,12 @@ alerted when they expire with appointments affected (`DOC.RUL.03`)."
 - Must not offer an override of the block.
 
 #### Done when
-- [ ] Given Dr K's DHA licence expiring 2026-11-30 and 4 appointments in December, on 2026-12-01
+- [x] Given Dr K's DHA licence expiring 2026-11-30 and 4 appointments in December, on 2026-12-01
       a new booking for Dr K at Branch 1 is refused, the clinic manager of Branch 1 and the owner
       each get one message listing 4 affected appointments, and the 4 appointments have a conflict.
-- [ ] On 2026-11-30 Dr K can still be checked in.
-- [ ] Given privileges expired only at Branch 2, Branch 1 bookings still work.
-- [ ] If the run fails, the owner alert (`PLT.RUL.04`) is raised.
+- [x] On 2026-11-30 Dr K can still be checked in.
+- [x] Given privileges expired only at Branch 2, Branch 1 bookings still work.
+- [x] If the run fails, the owner alert (`PLT.RUL.04`) is raised.
 
 #### Out of scope
 Look-ahead 30 days before expiry (BL-SCH-07); check-in re-check (BL-SCH-08).
@@ -1163,14 +1163,14 @@ movement."
 - Must not allow check-out with a lot-tracked line without lot or pending issue.
 
 #### Done when
-- [ ] Given filler lots L1 (expiry 2027-01-31) and L2 (2027-03-31) at Branch 1, the issue screen
+- [x] Given filler lots L1 (expiry 2027-01-31) and L2 (2027-03-31) at Branch 1, the issue screen
       proposes L1.
-- [ ] A line for filler without a lot blocks check-out with "lot required".
-- [ ] Given 1 unit at the store and 2 used, one line posts with L1 and 1 unit becomes a pending
+- [x] A line for filler without a lot blocks check-out with "lot required".
+- [x] Given 1 unit at the store and 2 used, one line posts with L1 and 1 unit becomes a pending
       issue shown as "lot uncertain"; check-out succeeds.
-- [ ] Given L1 with 1 unit and L2 with 1 unit and 3 used, lines post 1 unit from L1 and 1 unit
+- [x] Given L1 with 1 unit and L2 with 1 unit and 3 used, lines post 1 unit from L1 and 1 unit
       from L2, and 1 unit becomes a pending issue.
-- [ ] Scanning held lot L3 is refused.
+- [x] Scanning held lot L3 is refused.
 
 #### Out of scope
 Pending-issue mechanics and alerts (BL-STK-18, BL-STK-20); recalls (BL-CLN-14).
@@ -1246,15 +1246,15 @@ becomes a call task for the front desk."
 - Must not show the trace list to roles without health data access.
 
 #### Done when
-- [ ] Given lot L9 issued to visits V1 (patient P1, 2026-10-02) and V2 (P2, 2026-10-09), opening a
+- [x] Given lot L9 issued to visits V1 (patient P1, 2026-10-02) and V2 (P2, 2026-10-09), opening a
       recall lists V1/P1 and V2/P2.
-- [ ] Given L9 received at Branch 1 on 2026-10-01 and held by the recall on 2026-10-12, a pending
+- [x] Given L9 received at Branch 1 on 2026-10-01 and held by the recall on 2026-10-12, a pending
       issue of the item at Branch 1 on 2026-10-05 for P3 is listed *possible*, "lot uncertain";
       one on 2026-09-28 for P5 is not listed.
-- [ ] P1 gets one notice with the clinic name and phone and no product name.
-- [ ] When P2's notice gives up, the Branch 1 front desk gets a call task due next working day.
-- [ ] For dependant P4 the notice goes to the guardian.
-- [ ] A receptionist without health data access cannot open the trace list.
+- [x] P1 gets one notice with the clinic name and phone and no product name.
+- [x] When P2's notice gives up, the Branch 1 front desk gets a call task due next working day.
+- [x] For dependant P4 the notice goes to the guardian.
+- [x] A receptionist without health data access cannot open the trace list.
 
 #### Out of scope
 Recall opening, holds and decisions (BL-STK-14, BL-STK-12, BL-STK-16); authority notification
@@ -1360,51 +1360,52 @@ services keep the advertising permit guard (`CLN.ACL.13`).
 
 #### Done when
 - Licences and bookings
-  - [ ] A 05 deployment has practitioner licence and branch privileges kinds with the three
+  - [x] A 05 deployment has practitioner licence and branch privileges kinds with the three
         `blocks` entries and override `never`; the override action is not offered.
-  - [ ] `SCH.RUL.05` runs daily with D = 30; `SCH.RUL.06` with H = 2.
-  - [ ] The practitioner licence kind has responsible role clinic manager; the facility licence
+  - [x] `SCH.RUL.05` runs daily with D = 30; `SCH.RUL.06` with H = 2.
+  - [x] The practitioner licence kind has responsible role clinic manager; the facility licence
         kind, owner / medical director; the insurance card kind, receptionist with *notify party*.
 - Deposits and reason codes
-  - [ ] A walk-out refunds the deposit remainder; a waiver needs `bookings.waive_deposit` held by
+  - [x] A walk-out refunds the deposit remainder; a waiver needs `bookings.waive_deposit` held by
         the clinic manager.
-  - [ ] `coverage_not_confirmed` exists with initiator `business`.
+  - [x] `coverage_not_confirmed` exists with initiator `business`.
 - Alerts and void
-  - [ ] Failing `CLN.RUL.03` alerts the owner / medical director; the client cannot switch it off.
-  - [ ] `void` is offered on a draft claim and not on an appointment.
+  - [x] Failing `CLN.RUL.03` alerts the owner / medical director; the client cannot switch it off.
+  - [x] `void` is offered on a draft claim and not on an appointment.
 - Connections and messages
-  - [ ] With the SMS connection `down`, the front desk sees the 24-hour call list.
-  - [ ] With the claims channel `down`, the claim screen shows "submit through the payer portal
+  - [x] With the SMS connection `down`, the front desk sees the 24-hour call list.
+  - [x] With the claims channel `down`, the claim screen shows "submit through the payer portal
         and record the reference".
-  - [ ] A reminder that gives up creates no task; a recall notice that gives up creates a call task.
-  - [ ] The reassignment, clinic-cancel and recall templates (EN/AR) contain no reason field.
-  - [ ] The four 05 notification types are registered with the groups and urgency of §7.2; a
+  - [x] A reminder that gives up creates no task; a recall notice that gives up creates a call task.
+  - [x] The reassignment, clinic-cancel and recall templates (EN/AR) contain no reason field.
+  - [x] The four 05 notification types are registered with the groups and urgency of §7.2; a
         card upload request that gives up creates a task for the receptionist.
 - Late entry
   - [ ] Check-in time, check-out time, cash payments and consumables issued accept a business time
         with the late-entry flag.
 - Sales, finance, staff and registrations
-  - [ ] a new lead or party offers the sources referral, walk-in, website, social, paid ads,
+  - [x] a new lead or party offers the sources referral, walk-in, website, social, paid ads,
         aggregator, partner, event and other; a campaign with channel *Instagram*, a budget and
         cost entries reports leads, conversion, cost per lead, CAC and ROAS; a lead with source
         *paid ads* and no campaign is refused; a cost entry over the budget waits for a manager
         (`SAL.ACL.07`); a campaign promoting services without a permit number cannot be
-        activated (`CLN.ACL.13`); one whose permit is valid to 2026-12-31 is ended on that day,
+        activated (`CLN.ACL.13`); one whose permit is valid to 2026-12-31 is ended on that day
+        (it runs through it; the first daily run after it ends it),
         and its retention broadcast scheduled for 2027-01-02 is cancelled (`NTF.ACL.04`).
-  - [ ] a self-pay invoice of AED 200 paid by the patient earns 20 points and the insurer's share
+  - [x] a self-pay invoice of AED 200 paid by the patient earns 20 points and the insurer's share
         earns none; redeeming 100 points adds an AED 10 discount line; points earned on 2026-11-01
         expire on 2027-11-01 with a reminder on 2027-10-02 (`SAL.RUL.08`); an adjustment of 600
         points needs a manager (`SAL.ACL.07`); a patient without marketing consent is left out of
         a campaign; a retention message queued at 22:00 is deferred to 07:00, a third marketing
         message in 7 days is suppressed (`NTF.RUL.02`); a send to 201 patients needs a second
         approver (`NTF.ACL.03`); a segment cannot use a clinical service as a rule.
-  - [ ] hiring a receptionist creates the receptionist checklist with tasks to the clinic manager,
+  - [x] hiring a receptionist creates the receptionist checklist with tasks to the clinic manager,
         the line manager and the employee, and the role is active before it is complete; a step
         still open on the first run after its due date reminds its assignees, and again 2 days later
         (`HRM.RUL.17`); a new version of an SOP owned by the clinic manager asks every required
         reader to acknowledge again within 7 days (`DOC.RUL.04`), and no one else can acknowledge
         for them (`HRM.ACL.10`).
-  - [ ] a fresh 05 deployment lists *Trademark registration* and *Other certification* with
+  - [x] a fresh 05 deployment lists *Trademark registration* and *Other certification* with
         responsible role owner / medical director; a trademark registration expiring in 90 days
         notifies the owner / medical director.
 
@@ -1496,27 +1497,27 @@ company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL
 
 #### Done when
 - Invoices and disputes
-  - [ ] Every patient invoice write-off creates an approval request (AED 0 limit).
+  - [x] Every patient invoice write-off creates an approval request (AED 0 limit).
   - [ ] A patient submits a *billing* complaint in the portal for invoice INV-0042: the invoice is
         `disputed`, reminders stop, and after 14 days the escalation runs.
 - Claims
-  - [ ] A claim write-off of AED 1,000.01 needs the owner; AED 1,000.00 does not.
+  - [x] A claim write-off of AED 1,000.01 needs the owner; AED 1,000.00 does not.
 - Payments
-  - [ ] A deposit payment pending 30 minutes is checked with the gateway.
-  - [ ] A failed refund is retried once after 24 hours.
-  - [ ] A reversed payment on package PKG-7 leaves it `active` and gives the front desk a collect task.
+  - [x] A deposit payment pending 30 minutes is checked with the gateway.
+  - [x] A failed refund is retried once after 24 hours.
+  - [x] A reversed payment on package PKG-7 leaves it `active` and gives the front desk a collect task.
 - Cash
   - [ ] Receptionist A has one handover for 2026-11-10 at Branch 1; it cannot be counted by A; a AED 10.00 shortage needs
         approval to write off; salary recovery is not offered.
 - Stock
-  - [ ] An issue to a visit beyond stock at a branch store creates a pending issue; after 24 hours
+  - [x] An issue to a visit beyond stock at a branch store creates a pending issue; after 24 hours
         the clinic manager is told.
-  - [ ] Releasing a recall-held lot needs a second `lots.release` holder.
+  - [x] Releasing a recall-held lot needs a second `lots.release` holder.
 - Cash-flow forecast and budget
-  - [ ] in a fresh 05 deployment, a projected balance of AED 49,999 in week 5 alerts the owner /
+  - [x] in a fresh 05 deployment, a projected balance of AED 49,999 in week 5 alerts the owner /
         medical director and the accountant once (`FIN.RUL.23`, 06:00 run); AED 50,000 or more in
         every week alerts no one; the forecast shows 13 weekly buckets from Monday.
-  - [ ] a monthly budget for a legal entity prepared by the accountant needs approval by the owner
+  - [x] a monthly budget for a legal entity prepared by the accountant needs approval by the owner
         / medical director; an expense with category *owner drawings* is left out of operating
         cost and profit reports, and the user who records it cannot approve it (`FIN.ACL.21`); an
         expense line reaching 100% of its month's budget line warns the category's owner role and

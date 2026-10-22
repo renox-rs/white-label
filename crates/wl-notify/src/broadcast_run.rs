@@ -32,7 +32,7 @@ use wl_kernel::broadcast::{BroadcastCancelReason, BroadcastCompleted, RequesterC
 use wl_kernel::notify::NotifyRecipient;
 
 use crate::broadcast::{Broadcast, BroadcastStatus, ExcludedCounts};
-use crate::broadcast_machine::{CANCEL, CANCEL_SYSTEM, COMPLETE, CompleteInput, START};
+use crate::broadcast_machine::{CANCEL, CANCEL_SYSTEM, COMPLETE, CompleteInput, START, StartInput};
 use crate::broadcast_recipients::{Recipient, resolve};
 use crate::broadcast_results;
 use crate::broadcasts::announce_cancelled;
@@ -110,7 +110,7 @@ pub async fn run_due_with(state: &AppState, now: DateTime, batching: Batching) -
 
 /// Takes the broadcast lock inside `tx` and returns the row as it is now;
 /// `None` when another run took it first or the row is gone.
-async fn lock(tx: &mut renox::db::Transaction, id: i64) -> Result<Option<Broadcast>> {
+pub(crate) async fn lock(tx: &mut renox::db::Transaction, id: i64) -> Result<Option<Broadcast>> {
     let Some(current) = Broadcast::find(&mut *tx, id).await? else {
         return Ok(None);
     };
@@ -139,7 +139,7 @@ pub async fn run_one(state: &AppState, id: i64, now: DateTime, batching: Batchin
         let check = requesters(state)
             .check(state, &seen.requester(), now)
             .await?;
-        match start(state, id, !matches!(check, RequesterCheck::Active)).await? {
+        match start(state, id, now, !matches!(check, RequesterCheck::Active)).await? {
             Started::Skipped => return Ok(Ran::Skipped),
             Started::Cancelled => return Ok(Ran::Cancelled),
             Started::Sending => {}
@@ -157,7 +157,12 @@ enum Started {
 }
 
 /// `start`, or `cancel_system` when the requester check failed.
-async fn start(state: &AppState, id: i64, requester_failed: bool) -> Result<Started> {
+async fn start(
+    state: &AppState,
+    id: i64,
+    now: DateTime,
+    requester_failed: bool,
+) -> Result<Started> {
     let mut tx = state.db.begin().await?;
     let Some(locked) = lock(&mut tx, id).await? else {
         return Ok(Started::Skipped);
@@ -171,7 +176,10 @@ async fn start(state: &AppState, id: i64, requester_failed: bool) -> Result<Star
             .by_system()
             .reason(REQUESTER_GUARD_FAILED)
     } else {
-        locked.transition(START).by_system()
+        locked
+            .transition(START)
+            .by_system()
+            .input(&json!(StartInput { at: now }))
     };
     let outcome = run
         .run_in(&mut tx)
@@ -246,6 +254,10 @@ async fn send_all(state: &AppState, id: i64, now: DateTime, batching: Batching) 
         };
         if locked.status != BroadcastStatus::Sending {
             return Ok(Ran::Skipped);
+        }
+        // A stopped broadcast queues nothing more (`NTF.RUL.03`).
+        if locked.stopped_at.is_some() {
+            break;
         }
         for recipient in batch {
             let queued = Message::query()

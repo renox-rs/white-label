@@ -2,12 +2,12 @@
 //! issue #218): the approved days of leave move the due dates of the open
 //! steps of the employee.
 //!
-//! Only the record is here. The leave lifecycle (`approve`, `record_sick`,
-//! `reject`, `cancel`, `complete`, balances and calendars) is the base of
-//! BL-HRM-01; it writes [`LeaveRequest`] rows and calls
-//! [`sync_due_dates`] after each change, so a leave shortened, extended or
-//! cancelled moves the due dates again. The daily run of `HRM.RUL.17`
-//! ([`crate::reminders`]) calls it too, so no change is missed.
+//! The record is here; its lifecycle (`approve`, `reject`, `cancel`,
+//! `complete`) is [`crate::leave_machine`] and the services that run it are
+//! [`crate::leave_service`]. Each change calls [`sync_due_dates`], so a leave
+//! shortened, extended or cancelled moves the due dates again. The daily run
+//! of `HRM.RUL.17` ([`crate::reminders`]) calls it too, so no change is
+//! missed.
 
 use renox::chrono::{Days, NaiveDate};
 use renox::db::{DateTime, now};
@@ -45,7 +45,11 @@ impl LeaveStatus {
 
 /// One absence of an employee.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_hr_leave_requests", index(employee_id, status))]
+#[model(
+    table = "wl_hr_leave_requests",
+    state_machine,
+    index(employee_id, status)
+)]
 pub struct LeaveRequest {
     /// The primary key.
     pub id: i64,
@@ -58,15 +62,52 @@ pub struct LeaveRequest {
     pub from_date: NaiveDate,
     /// The last day of leave, included.
     pub to_date: NaiveDate,
-    /// Where it stands.
+    /// Where it stands; changed only by the machine.
     pub status: LeaveStatus,
+    /// Working days of the leave that are unpaid (beyond the balance or the
+    /// paid bands of sick leave).
+    pub unpaid_days: i64,
+    /// The user who asked, when a user did.
+    pub requested_by: Option<i64>,
+    /// The user who approved, rejected or cancelled it.
+    pub decided_by: Option<i64>,
+    /// When it was decided.
+    pub decided_at: Option<DateTime>,
+    /// The reason given with a rejection or a cancellation.
+    pub decision_reason: Option<String>,
+    /// Whether it was recorded as approved at once (`record_sick`).
+    pub recorded_sick: bool,
+    /// The number of the stored sick note.
+    pub sick_note_document_id: Option<i64>,
+    /// The day the sick note was attached.
+    pub sick_note_attached_on: Option<NaiveDate>,
+    /// The last day the sick note may follow (`record_sick`).
+    pub sick_note_due_on: Option<NaiveDate>,
+    /// The HR task raised when the note did not follow in time.
+    pub sick_note_task_id: Option<i64>,
+    /// The day that task was raised.
+    pub sick_note_task_raised_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
     pub updated_at: Option<DateTime>,
 }
 
+/// The subject type of a leave request.
+pub const LEAVE_SUBJECT_TYPE: &str = "hr.leave_request";
+
 impl LeaveRequest {
+    /// The leave request as a [`Subject`](wl_kernel::Subject):
+    /// `hr.leave_request:7`.
+    pub fn subject(&self) -> wl_kernel::Subject {
+        wl_kernel::Subject::new(LEAVE_SUBJECT_TYPE, self.id)
+    }
+
+    /// The employee as an id.
+    pub fn employee(&self) -> wl_kernel::workforce::EmployeeId {
+        wl_kernel::workforce::EmployeeId(self.employee_id)
+    }
+
     /// The calendar days of the leave, both ends included; 0 when the dates
     /// are the wrong way round.
     pub fn days(&self) -> i64 {

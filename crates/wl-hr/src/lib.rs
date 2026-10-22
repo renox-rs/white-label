@@ -20,6 +20,8 @@ pub mod exit_effects;
 pub mod exits;
 pub mod hours;
 pub mod leave;
+pub mod leave_machine;
+pub mod leave_service;
 mod notices;
 pub mod onboarding;
 pub mod onboarding_machine;
@@ -46,6 +48,7 @@ mod settlement_events;
 pub mod settlement_offset;
 pub mod settlement_pay;
 pub mod settlement_payment;
+pub mod sick_leave;
 pub mod sif;
 pub mod steps;
 pub mod supplementary;
@@ -71,7 +74,7 @@ pub use employee::{
     correct_hire_date, set_scope,
 };
 pub use establishment::Establishment;
-pub use leave::{LeaveRequest, LeaveStatus};
+pub use leave::{LEAVE_SUBJECT_TYPE, LeaveRequest, LeaveStatus};
 pub use onboarding::{
     AppliedTemplate, Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest,
     StartTrigger, StepAssignee, StepStatus,
@@ -150,6 +153,12 @@ pub mod permissions {
     pub const SETTLEMENTS_PAY: &str = "settlements.pay";
     /// Manage visa cases, and cancel one.
     pub const VISAS_MANAGE: &str = "visas.manage";
+    /// See leave requests in scope.
+    pub const LEAVE_VIEW: &str = "leave.view";
+    /// Request leave for oneself (also a portal ability for employees).
+    pub const LEAVE_REQUEST: &str = "leave.request";
+    /// Approve and reject leave in scope; record same-day sick leave.
+    pub const LEAVE_APPROVE: &str = "leave.approve";
     /// See payroll runs, their lines and SIF files.
     pub const PAYROLL_VIEW: &str = "payroll.view";
     /// Calculate, submit and record the bank's results of a payroll run
@@ -198,6 +207,14 @@ impl WlHr {
     /// Absence days before `report_absconding` is allowed (default 7).
     pub fn absence_days(mut self, days: i64) -> Self {
         self.config.absence_days = days;
+        self
+    }
+
+    /// Working days after the start of a same-day sick leave in which the
+    /// sick note may follow (default 2).
+    pub fn sick_note_days(mut self, days: i64) -> Self {
+        assert!(days >= 0, "the sick note days cannot be negative");
+        self.config.sick_note_days = days;
         self
     }
 
@@ -341,12 +358,16 @@ impl Module for WlHr {
         app.model::<PayAccount>();
         app.provide(self.config.clone());
         employee_machine::register(app);
+        renox::state_machine::register::<LeaveRequest>();
         renox::state_machine::register::<Onboarding>();
         renox::state_machine::register::<OnboardingStep>();
         renox::state_machine::register::<PayrollRun>();
         renox::state_machine::register::<FinalSettlement>();
         renox::state_machine::register::<VisaCase>();
         events::register(app);
+        leave_service::register(app);
+        // The daily run at 00:00 Asia/Dubai: the HR task of a missing sick note.
+        sick_leave::schedule(app);
         visa::register(app);
         settlement_events::register(app);
         // `HRM.ACL.05`: the pay account's machine, the MD's waiver policy, its
@@ -408,6 +429,7 @@ mod tests {
         assert_eq!(module.config().manager_role, "manager");
         assert_eq!(module.config().owner_role, "owner");
         assert_eq!(module.config().absence_days, 7);
+        assert_eq!(module.config().sick_note_days, 2);
         assert_eq!(module.config().md_role, "owner");
         assert_eq!(module.config().accountant_role, "accountant");
         assert_eq!(module.config().wps_escalation_days, 1);

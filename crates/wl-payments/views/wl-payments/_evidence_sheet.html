@@ -1,0 +1,8 @@
+{#- wl-payments: the "evidence submitted" action on a charged-back payment's
+    page: the accountant noted that the evidence went to the gateway, so the
+    deadline reminder and the deadline rule leave the dispute alone. Replace
+    it with resources/views/wl-payments/_evidence_sheet.html in the app. -#}
+<rx-action-sheet :id="'evidence-payment-' ~ payment.id" :label="tx['evidence.action']" :action="route('wl_payments.chargeback_evidence', payment.id)"
+                 :title="tx['evidence.title']" :description="tx['evidence.description']" :submit-label="tx['evidence.submit']"
+                 icon="check">
+</rx-action-sheet>

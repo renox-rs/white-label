@@ -115,7 +115,7 @@ pub(crate) fn document(lines: &[(i64, String)]) -> String {
         }
         y -= size + 8;
     }
-    let objects = [
+    assemble(&[
         "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_owned(),
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R \
@@ -126,10 +126,59 @@ pub(crate) fn document(lines: &[(i64, String)]) -> String {
             content.len()
         ),
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
+    ])
+}
+
+/// A PDF document of `lines`, each a font size and its text, top to bottom,
+/// over as many pages as they need (the recall report).
+pub(crate) fn pages_document(lines: &[(i64, String)]) -> String {
+    let mut pages: Vec<String> = vec![String::new()];
+    let mut y = 800;
+    for (size, line) in lines {
+        if y < 60 {
+            pages.push(String::new());
+            y = 800;
+        }
+        if !line.is_empty()
+            && let Some(page) = pages.last_mut()
+        {
+            page.push_str(&format!(
+                "BT /F1 {size} Tf 50 {y} Td ({}) Tj ET\n",
+                pdf_text(line)
+            ));
+        }
+        y -= size + 6;
+    }
+    let count = pages.len();
+    let kids: Vec<String> = (0..count).map(|i| format!("{} 0 R", 4 + 2 * i)).collect();
+    let mut objects = vec![
+        "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {count} >>",
+            kids.join(" ")
+        ),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
     ];
+    for (i, content) in pages.iter().enumerate() {
+        objects.push(format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents {} 0 R \
+             /Resources << /Font << /F1 3 0 R >> >> >>",
+            5 + 2 * i
+        ));
+        objects.push(format!(
+            "<< /Length {} >>\nstream\n{content}endstream",
+            content.len()
+        ));
+    }
+    assemble(&objects)
+}
+
+/// The PDF file of `objects`, numbered from 1, with its cross-reference
+/// table; object 1 is the catalog.
+fn assemble(objects: &[String]) -> String {
     let mut pdf = String::from("%PDF-1.4\n");
     let mut offsets = Vec::new();
-    for (number, body) in (1..).zip(&objects) {
+    for (number, body) in (1..).zip(objects) {
         offsets.push(pdf.len());
         pdf.push_str(&format!("{number} 0 obj\n{body}\nendobj\n"));
     }

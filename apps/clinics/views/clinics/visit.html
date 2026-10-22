@@ -1,0 +1,144 @@
+{#- clinics: a visit: its status, the cover the check-in recorded (the
+    eligibility result, the outcome, the policy of the split, the self-pay
+    consent), its charge capture (the services delivered, the consumables
+    issued, the work done, what the bill came to) and its history. Replace it with
+    resources/views/clinics/visit.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="patient" :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_insure">
+        <rx-action-sheet :id="'visit-insured-' ~ id" :label="tx['coverage.change_to_insured']" :action="route('clinics.visit_insured', id)"
+                         :title="tx['coverage.change_to_insured']" :description="tx['coverage.change_to_insured_description']" :submit-label="tx['coverage.change_to_insured']" icon="shield-check">
+          <rx-input name="reference" :label="tx['coverage.reference']" :id="'visit-insured-reference-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+        <template rx-if="can_capture_open">
+          <rx-action-sheet :id="'visit-charge-' ~ id" :label="tx['charges.add']" :action="route('clinics.visit_charge', id)"
+                           :title="tx['charges.add']" :description="tx['charges.add_description']" :submit-label="tx['charges.add']" icon="plus">
+            <rx-select name="kind" :label="tx['charges.kind']" :options="kind_options" :selected="'service'" :id="'visit-charge-kind-' ~ id"/>
+            <rx-input name="code" :label="tx['charges.code']" :id="'visit-charge-code-' ~ id" required/>
+            <rx-input name="units" type="number" :label="tx['charges.units']" value="1" :id="'visit-charge-units-' ~ id" required/>
+            <rx-input name="lot" :label="tx['lots.lot_field']" :id="'visit-charge-lot-' ~ id"/>
+            <rx-select name="vat" :label="tx['charges.vat']" :options="vat_options" :selected="'zero'" :id="'visit-charge-vat-' ~ id"/>
+          </rx-action-sheet>
+          <rx-action-sheet :id="'visit-not-suitable-' ~ id" :label="tx['charges.not_suitable']" :action="route('clinics.visit_not_suitable', id)"
+                           :title="tx['charges.not_suitable']" :description="tx['charges.not_suitable_description']" :submit-label="tx['charges.not_suitable']" icon="clipboard-list">
+            <rx-input name="consultation" :label="tx['charges.consultation']" :id="'visit-not-suitable-code-' ~ id" required/>
+            <rx-select name="vat" :label="tx['charges.vat']" :options="vat_options" :selected="'zero'" :id="'visit-not-suitable-vat-' ~ id"/>
+          </rx-action-sheet>
+        </template>
+        <template rx-if="can_desk_open">
+          <template rx-if="can_desk_only">
+          <rx-action-sheet :id="'visit-charge-desk-' ~ id" :label="tx['charges.add']" :action="route('clinics.visit_charge', id)"
+                           :title="tx['charges.add']" :description="tx['charges.add_description']" :submit-label="tx['charges.add']" icon="plus">
+            <rx-select name="kind" :label="tx['charges.kind']" :options="kind_options" :selected="'consumable'" :id="'visit-charge-desk-kind-' ~ id"/>
+            <rx-input name="code" :label="tx['charges.code']" :id="'visit-charge-desk-code-' ~ id" required/>
+            <rx-input name="units" type="number" :label="tx['charges.units']" value="1" :id="'visit-charge-desk-units-' ~ id" required/>
+            <rx-input name="lot" :label="tx['lots.lot_field']" :id="'visit-charge-desk-lot-' ~ id"/>
+            <rx-select name="vat" :label="tx['charges.vat']" :options="vat_options" :selected="'zero'" :id="'visit-charge-desk-vat-' ~ id"/>
+          </rx-action-sheet>
+          </template>
+          <rx-confirm :id="'visit-none-' ~ id" :label="tx['charges.none']" :action="route('clinics.visit_none', id)" method="POST"
+                      :title="tx['charges.none']" :message="tx['charges.none_description']" :confirm-label="tx['charges.none']" :cancel-label="tx['button_cancel']" icon="clipboard-list"/>
+          <rx-confirm :id="'visit-accept-work-' ~ id" :label="tx['charges.accept']" :action="route('clinics.visit_accept_work', id)" method="POST"
+                      :title="tx['charges.accept']" :message="tx['charges.accept_description']" :confirm-label="tx['charges.accept']" :cancel-label="tx['button_cancel']" icon="check"/>
+          <rx-confirm :id="'visit-refund-deposit-' ~ id" :label="tx['charges.refund_deposit']" :action="route('clinics.visit_refund_deposit', id)" method="POST"
+                      :title="tx['charges.refund_deposit']" :message="tx['charges.refund_deposit_description']" :confirm-label="tx['charges.refund_deposit']" :cancel-label="tx['button_cancel']" icon="history"/>
+        </template>
+        <template rx-if="can_update_consent">
+          <rx-action-sheet :id="'visit-consent-' ~ id" :label="tx['consent.update']" :action="route('clinics.visit_consent', id)"
+                           :title="tx['consent.update']" :description="tx['consent.update_description']" :submit-label="tx['consent.update']" icon="signature">
+            <rx-input name="signer_name" :label="tx['consent.signer']" :id="'visit-consent-name-' ~ id" required/>
+            <rx-input name="services" :label="tx['consent.more_services']" :id="'visit-consent-services-' ~ id" required/>
+          </rx-action-sheet>
+        </template>
+    <template rx-if="can_set_lot">
+      <rx-action-sheet :id="'visit-lot-' ~ id" :label="tx['lots.assign']" :action="route('clinics.visit_lot', id)"
+                       :title="tx['lots.assign']" :description="tx['lots.assign_description']" :submit-label="tx['lots.assign']" icon="clipboard-list">
+        <rx-select name="line" :label="tx['lots.line']" :options="lines" :selected="''" :id="'visit-lot-line-' ~ id"/>
+        <rx-input name="lot" :label="tx['lots.lot_field']" :id="'visit-lot-number-' ~ id"/>
+      </rx-action-sheet>
+    </template>
+    <template rx-if="can_retry_issue">
+      <rx-confirm :id="'visit-issue-' ~ id" :label="tx['lots.issue_retry']" :action="route('clinics.visit_issue', id)" method="POST"
+                  :title="tx['lots.issue_retry']" :message="stock_issue" :confirm-label="tx['lots.issue_retry']" :cancel-label="tx['button_cancel']" icon="refresh-cw"/>
+    </template>
+    <template rx-if="can_bill">
+      <rx-confirm :id="'visit-bill-' ~ id" :label="tx['charges.bill']" :action="route('clinics.visit_bill', id)" method="POST"
+                  :title="tx['charges.bill']" :message="tx['charges.bill']" :confirm-label="tx['charges.bill']" :cancel-label="tx['button_cancel']" icon="receipt"/>
+    </template>
+      <template rx-if="can_enter_time">
+        <rx-action-sheet :id="'visit-times-' ~ id" :label="tx['late.enter']" :action="route('clinics.visit_times', id)"
+                         :title="tx['late.enter']" :description="tx['late.enter_description']" :submit-label="tx['late.enter']" icon="history">
+          <rx-select name="kind" :label="tx['late.kind']" :options="time_kinds" :selected="'check_in'" :id="'visit-times-kind-' ~ id"/>
+          <rx-input name="time" type="datetime-local" :label="tx['late.time']" :id="'visit-times-time-' ~ id" required/>
+          <rx-input name="reason" :label="tx['late.reason']" :hint="tx['late.reason_hint']" :id="'visit-times-reason-' ~ id"/>
+          <rx-input name="line" type="number" :label="tx['late.line']" :id="'visit-times-line-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-include template="wl-kernel/integration_banner.html"/>
+    <rx-card :title="tx['visits.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['appointments.patient']" :value="patient"/>
+        <rx-entry :label="tx['appointments.service']" :value="service"/>
+        <rx-entry :label="tx['appointments.visit_date']" :value="visit_date"/>
+        <rx-entry :label="tx['coverage.policy']" :value="policy"/>
+        <rx-entry :label="tx['coverage.outcome']" :value="outcome"/>
+        <rx-entry :label="tx['coverage.split_policy']" :value="split_policy"/>
+        <rx-entry :label="tx['consent.title']" :value="consent"/>
+        <rx-entry :label="tx['consent.estimate']" :value="estimate"/>
+        <rx-entry :label="tx['authorisation.holds']" :value="holds"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['charges.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['charges.work']" :value="work"/>
+        <rx-entry :label="tx['charges.patient_total']" :value="patient_total"/>
+        <rx-entry :label="tx['charges.payer_total']" :value="payer_total"/>
+        <rx-entry :label="tx['charges.invoice']" :value="invoice"/>
+        <rx-entry :label="tx['charges.payer_bill']" :value="payer_bill"/>
+        <rx-entry :label="tx['charges.deposit_applied']" :value="deposit_applied"/>
+        <rx-entry :label="tx['charges.deposit_refunded']" :value="deposit_refunded"/>
+        <rx-entry :label="tx['lots.issue_pending']" :value="stock_issue"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="charges" as="row" :key="row.code ~ row.kind ~ row.units" :caption="tx['charges.title']" card>
+      <rx-column :label="tx['charges.kind']" hide-narrow>{{ row.kind }}</rx-column>
+      <rx-column :label="tx['charges.code']">{{ row.code }}</rx-column>
+      <rx-column :label="tx['charges.units']">{{ row.units }}</rx-column>
+      <rx-column :label="tx['charges.price']" hide-narrow>{{ row.price }}</rx-column>
+      <rx-column :label="tx['charges.patient_share']">{{ row.patient }}</rx-column>
+      <rx-column :label="tx['charges.payer_share']" hide-narrow>{{ row.payer }}</rx-column>
+      <rx-column :label="tx['lots.lot']">{{ row.lot }}</rx-column>
+      <rx-column :label="tx['charges.note']" hide-narrow>{{ row.note }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['charges.empty']" icon="receipt"/></rx-slot>
+    </rx-table>
+    <rx-card :title="tx['lots.proposed']" rx-if="proposal_code">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['lots.code']" :value="proposal_code"/>
+        <rx-entry :label="tx['lots.proposed']" :value="proposal"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="issues" as="row" :key="row.code ~ row.lot ~ row.quantity" :caption="tx['lots.title']" card>
+      <rx-column :label="tx['charges.code']">{{ row.code }}</rx-column>
+      <rx-column :label="tx['lots.lot']">{{ row.lot }}</rx-column>
+      <rx-column :label="tx['lots.expiry']" hide-narrow>{{ row.expiry }}</rx-column>
+      <rx-column :label="tx['lots.quantity']">{{ row.quantity }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['lots.none_yet']" icon="clipboard-list"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="times" :rows="times" as="row" :key="row.kind ~ row.occurred ~ row.entered" :caption="tx['late.title']" card>
+      <rx-column :label="tx['late.kind']">{{ row.kind }}</rx-column>
+      <rx-column :label="tx['late.time']">{{ row.occurred }}</rx-column>
+      <rx-column :label="tx['late.entered_at']" hide-narrow>{{ row.entered }}</rx-column>
+      <rx-column :label="tx['late.flag']" hide-narrow>{{ row.flag }}</rx-column>
+      <rx-column :label="tx['late.reason']" hide-narrow>{{ row.reason }}</rx-column>
+    </rx-table>
+    <rx-table :rows="history" as="row" :key="row.at ~ row.action" :caption="tx['visits.history']" card>
+      <rx-column :label="tx['visits.history_at']">{{ row.at }}</rx-column>
+      <rx-column :label="tx['visits.history_action']">{{ row.action }}</rx-column>
+      <rx-column :label="tx['visits.history_by']" hide-narrow>{{ row.by }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['visits.history_empty']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

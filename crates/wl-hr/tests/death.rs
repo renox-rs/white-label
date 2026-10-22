@@ -10,6 +10,7 @@ mod support;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_hr::{
     Employee, EmployeeStatus, FinalSettlement, LeaveRequest, LeaveStatus, LineStatus, PayrollLine,
     PayrollRun, PayrollRunStatus, SettlementStatus, VisaCase, VisaCaseStatus, release,
@@ -531,7 +532,15 @@ async fn hrm09_leave_that_has_not_started_is_cancelled() {
         leave("annual", 15, 20, LeaveStatus::Requested),
         leave("annual", 21, 25, LeaveStatus::Rejected),
     ] {
-        ids.push(LeaveRequest::create(w.t.db(), request).await.unwrap().id);
+        let mut request = request;
+        let status = request.status;
+        let mut tx = w.t.db().begin().await.unwrap();
+        request
+            .insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        ids.push(request.id);
     }
     let started = LeaveRequest::create(
         w.t.db(),

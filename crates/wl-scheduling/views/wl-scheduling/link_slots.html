@@ -1,0 +1,15 @@
+{#- wl-scheduling: the page of the link "pick another time" in a change
+    message: the nearest free times of the booking's resources, each with a
+    button that moves the booking there. Replace it with
+    resources/views/wl-scheduling/link_slots.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['link.pick_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['link.pick_title']" :subtitle="summary"/>
+    <rx-alert rx-if="message" kind="success" :message="message"/>
+    <rx-empty rx-if="no_slots" :title="tx['link.no_slots']" icon="calendar-check"/>
+    <rx-form rx-for="slot in slots" :action="action">
+      <input type="hidden" name="starts_at" value="{{ slot.value }}"/>
+      <rx-button :label="slot.label"/>
+    </rx-form>
+  </rx-stack>
+</rx-page>

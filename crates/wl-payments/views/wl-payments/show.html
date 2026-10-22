@@ -8,6 +8,10 @@
                     :badge="status_label" :badge-kind="status_kind">
       <template rx-if="can_allocate"><rx-include template="wl-payments/_allocate_sheet.html"/></template>
       <template rx-if="can_reverse"><rx-include template="wl-payments/_reverse_sheet.html"/></template>
+      <template rx-if="can_chargeback"><rx-include template="wl-payments/_chargeback_sheet.html"/></template>
+      <template rx-if="can_evidence"><rx-include template="wl-payments/_evidence_sheet.html"/></template>
+      <template rx-if="can_close_chargeback"><rx-include template="wl-payments/_accept_chargeback_sheet.html"/></template>
+      <template rx-if="can_close_chargeback"><rx-include template="wl-payments/_lose_chargeback_sheet.html"/></template>
       <template rx-if="actions">
         <rx-transition-actions :actions="actions" action="/payments/{{ payment.id }}/transitions"/>
       </template>
@@ -25,6 +29,16 @@
         <rx-entry :label="tx['fields.unallocated']" :value="amounts['unallocated']"/>
         <rx-entry :label="tx['fields.reference']" :value="payment.reference" copyable/>
         <rx-entry :label="tx['fields.source']" :value="source_label"/>
+        <rx-entry rx-if="payment.failure_reason" :label="tx['online.failure']" :value="payment.failure_reason"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="payment.dispute_reference" :title="tx['sections.dispute']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['chargeback.reference']" :value="payment.dispute_reference" copyable/>
+        <rx-entry :label="tx['dispute.status']" :value="dispute_label"/>
+        <rx-entry :label="tx['chargeback.deadline']" :value="payment.dispute_evidence_due" format="date"/>
+        <rx-entry :label="tx['chargeback.fee']" :value="dispute_fee"/>
+        <rx-entry rx-if="payment.dispute_evidence_submitted_on" :label="tx['dispute.evidence_submitted']" :value="payment.dispute_evidence_submitted_on" format="date"/>
       </rx-infolist>
     </rx-card>
     <rx-card rx-if="payment.reversed_on" :title="tx['sections.reversal']">

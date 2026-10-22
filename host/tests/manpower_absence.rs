@@ -17,6 +17,7 @@ use manpower_support::{
     account, all_valid, boot, deployment, draft_run, post, reload, run_transition, salary, worker,
 };
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use support::{day, messages_to, messages_to_party, person};
 use wl_hr::{LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
 use wl_kernel::Subject;
@@ -366,19 +367,20 @@ async fn approved_leave_in_wl_hr_counts_as_present() {
         // Not approved: it counts for nothing.
         (nobody, day(-15), day(-5), LeaveStatus::Requested),
     ] {
-        LeaveRequest::create(
-            app.db(),
-            LeaveRequest {
-                employee_id: who.0,
-                leave_type: "annual".into(),
-                from_date: from,
-                to_date: to,
-                status,
-                ..LeaveRequest::default()
-            },
-        )
-        .await
-        .unwrap();
+        let mut request = LeaveRequest {
+            employee_id: who.0,
+            leave_type: "annual".into(),
+            from_date: from,
+            to_date: to,
+            status,
+            ..LeaveRequest::default()
+        };
+        let mut tx = app.db().begin().await.unwrap();
+        request
+            .insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
     }
 
     absence::run_on(app.state(), today()).await.unwrap();

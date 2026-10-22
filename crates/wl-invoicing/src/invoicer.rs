@@ -47,6 +47,10 @@ impl Invoicer for Invoices {
         Box::pin(async move { Ok(Invoice::find(db, id.0).await?.map(|i| i.summary())) })
     }
 
+    fn net_total<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<i64>> {
+        Box::pin(async move { Ok(Invoice::find(db, id.0).await?.map(|i| i.net_total)) })
+    }
+
     fn billing<'a>(
         &'a self,
         db: &'a Db,

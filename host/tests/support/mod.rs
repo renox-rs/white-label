@@ -104,6 +104,61 @@ async fn confirm_match(
     Ok("done".to_owned())
 }
 
+/// The signed-in user approves the refund `id` (what the refund page does).
+async fn approve_refund(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let refund = wl_payments::Refund::find_or_404(&state.db, id).await?;
+    let done = wl_payments::refund::approve(&state, &user, &refund)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok(format!("{:?}", done.status))
+}
+
+/// The signed-in user sends the approved gateway refund `id` to the gateway;
+/// the gateway's reference of the attempt.
+async fn send_refund(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let refund = wl_payments::Refund::find_or_404(&state.db, id).await?;
+    let attempt = wl_payments::refund::send_to_gateway(&state, &user, &refund)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok(attempt.gateway_ref.unwrap_or_default())
+}
+
+#[derive(serde::Deserialize)]
+struct WriteOffForm {
+    reason: String,
+}
+
+/// The signed-in user writes off the open amount of the payer bill `id`
+/// (what the claim page does through the kernel contract): `done`, or
+/// `pending:<approval request>` above the agreement's limit.
+async fn write_off_payer_bill(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<WriteOffForm>,
+) -> Result<String> {
+    let answer = wl_kernel::payer_bills::payer_bills(&state)
+        .write_off(
+            &state,
+            wl_kernel::payer_bills::PayerBillId(id),
+            &form.reason,
+            &user,
+        )
+        .await?;
+    Ok(match answer {
+        wl_kernel::payer_bills::PayerAnswer::Done => "done".to_owned(),
+        wl_kernel::payer_bills::PayerAnswer::Pending { request } => format!("pending:{request}"),
+    })
+}
+
 impl Module for Probe {
     fn name(&self) -> &'static str {
         "probe"
@@ -111,6 +166,9 @@ impl Module for Probe {
 
     fn routes(&self) -> Routes {
         Routes::new()
+            .post("/probe/refunds/{id}/approve", approve_refund)
+            .post("/probe/refunds/{id}/send", send_refund)
+            .post("/probe/payer-bills/{id}/write-off", write_off_payer_bill)
             .post("/probe/confirm/{id}", confirm_match)
             .post("/probe/deposits", hold_deposit)
             .post("/probe/deposits/{id}/start-settlement", start_settlement)
@@ -139,6 +197,30 @@ const ACCOUNTING_CLIENT: &str = concat!(
 /// The accounting host, with `wl:install` and the seeds run as the demo does.
 pub async fn accounting_booted() -> TestApp {
     let config = wl_kernel::ClientConfig::load(ACCOUNTING_CLIENT).expect("the accounting client");
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+/// The demo clinic (05 Clinics).
+const CLINICS_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-clinics/client.toml"
+);
+
+/// The clinics host, with `wl:install` and the seeds run as the demo does.
+pub async fn clinics_booted() -> TestApp {
+    let config = wl_kernel::ClientConfig::load(CLINICS_CLIENT).expect("the clinics client");
     let app = TestApp::new(
         host::app_for(config)
             .expect("the app")
@@ -829,6 +911,177 @@ pub async fn accounting_booted_with_mail(mail: BouncingMail) -> TestApp {
         .unwrap();
     app.kernel().seed().await.unwrap();
     app
+}
+
+/// The clinics host with [`BouncingMail`] as the e-mail provider.
+pub async fn clinics_booted_with_mail(mail: BouncingMail) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(CLINICS_CLIENT).expect("the clinics client");
+    let app = TestApp::new(
+        host::app_for_tuned(
+            config,
+            host::Tuning::default().notify(move |n| n.provider(mail)),
+        )
+        .expect("the app")
+        .provide(noon_clock())
+        .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+/// The clinics host with `gateway` as the payment gateway (the adapter of a
+/// real gateway is not built; online payments are off without one).
+pub async fn clinics_booted_with_gateway(gateway: wl_payments::gateway::FakeGateway) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(CLINICS_CLIENT).expect("the clinics client");
+    let app = TestApp::new(
+        host::app_for_tuned(
+            config,
+            host::Tuning::default().payments(move |p| p.gateway(gateway)),
+        )
+        .expect("the app")
+        .provide(noon_clock())
+        .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+// ---- Bookings of the clinics host ----------------------------------------
+
+/// A practitioner of the clinics host: a person resource at a branch, open
+/// every day all day. It has no wl-hr employee, so no licence or privileges
+/// are asked (the documents are not what these tests are about).
+pub async fn clinic_doctor(app: &TestApp, name: &str) -> wl_scheduling::Resource {
+    let mut resource = wl_scheduling::Resource::new(name, wl_scheduling::ResourceType::Person)
+        .role("practitioner")
+        .at(&Subject::new("clinics.branch", 1));
+    resource.save(app.db()).await.unwrap();
+    for weekday in 1..=7 {
+        let mut rule = wl_scheduling::AvailabilityRule::new(resource.id, weekday, 0, 1440);
+        rule.save(app.db()).await.unwrap();
+    }
+    resource
+}
+
+/// A service type of `code` added after the seed, made with the client's
+/// settings (`ServiceType::new_in`): checked in and tracked, with a deposit of
+/// `deposit` fils, offered by `doctor`.
+pub async fn clinic_service(
+    app: &TestApp,
+    code: &str,
+    deposit: i64,
+    doctor: &wl_scheduling::Resource,
+) -> wl_scheduling::ServiceType {
+    let mut service = wl_scheduling::ServiceType::new_in(app.state(), code, code, 30);
+    service.check_in_required = true;
+    service.track_in_progress = true;
+    service.deposit_amount = deposit;
+    service.deposit_forfeit_hours = 24;
+    service.cancel_cutoff_hours = 2;
+    service.save(app.db()).await.unwrap();
+    wl_scheduling::resource::offer(app.db(), service.id, doctor.id)
+        .await
+        .unwrap();
+    service
+}
+
+/// A booking of `service` with `doctor` from `start` for `patient`, made by
+/// staff; the clinic's appointment follows from the event.
+pub async fn clinic_booking(
+    app: &TestApp,
+    patient: PartyId,
+    service: &wl_scheduling::ServiceType,
+    doctor: &wl_scheduling::Resource,
+    start: renox::db::DateTime,
+) -> wl_scheduling::Booking {
+    wl_scheduling::service::book(
+        app.state(),
+        wl_scheduling::NewBooking::new(patient, service.id, &[doctor.id], start)
+            .for_subject(patient.subject()),
+        wl_scheduling::service::Actor::staff(1),
+        renox::db::now(),
+    )
+    .await
+    .expect("the booking is made")
+}
+
+/// The clinics host with the notification module changed by `tune` and
+/// `module` added (consents, a clock of its own): nothing else is faked.
+pub async fn clinics_booted_with(
+    tune: impl FnOnce(wl_notify::WlNotify) -> wl_notify::WlNotify + 'static,
+    module: impl Module,
+) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(CLINICS_CLIENT).expect("the clinics client");
+    let app = TestApp::new(
+        host::app_for_tuned(config, host::Tuning::default().notify(tune))
+            .expect("the app")
+            .module(module)
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+/// A provider for one channel that accepts everything and keeps what it was
+/// given (the SMS of a one-time code, the e-mail of a reminder).
+#[derive(Clone)]
+pub struct Wire {
+    channel: wl_kernel::notify::NotifyChannel,
+    sent: std::sync::Arc<std::sync::Mutex<Vec<wl_notify::Outgoing>>>,
+}
+
+impl Wire {
+    /// A provider for `channel`.
+    pub fn new(channel: wl_kernel::notify::NotifyChannel) -> Self {
+        Wire {
+            channel,
+            sent: std::sync::Arc::default(),
+        }
+    }
+
+    /// Everything it was given.
+    pub fn sent(&self) -> Vec<wl_notify::Outgoing> {
+        self.sent.lock().unwrap().clone()
+    }
+}
+
+impl wl_notify::ChannelProvider for Wire {
+    fn name(&self) -> &'static str {
+        "test-wire"
+    }
+
+    fn channel(&self) -> wl_kernel::notify::NotifyChannel {
+        self.channel
+    }
+
+    fn available(&self, _state: &AppState) -> bool {
+        true
+    }
+
+    fn send<'a>(
+        &'a self,
+        _state: &'a AppState,
+        outgoing: &'a wl_notify::Outgoing,
+    ) -> wl_notify::channels::ProviderFuture<'a, std::result::Result<String, wl_notify::SendError>>
+    {
+        self.sent.lock().unwrap().push(outgoing.clone());
+        Box::pin(async { Ok("wire-1".to_owned()) })
+    }
 }
 
 /// Drops the document kinds the host seeded for the client and their `blocks`:

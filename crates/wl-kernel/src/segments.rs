@@ -53,6 +53,19 @@ pub trait Segments: Send + Sync + 'static {
         segment: SegmentId,
         at: DateTime,
     ) -> SegmentFuture<'a, Vec<PartyId>>;
+
+    /// As [`members`](Segments::members), for a provider that needs the
+    /// whole app state (the party directory, to leave out blocked, archived
+    /// and merged parties). `wl-notify` asks this one; the default asks
+    /// [`members`](Segments::members) with the state's database.
+    fn members_in<'a>(
+        &'a self,
+        state: &'a AppState,
+        segment: SegmentId,
+        at: DateTime,
+    ) -> SegmentFuture<'a, Vec<PartyId>> {
+        self.members(&state.db, segment, at)
+    }
 }
 
 /// The segments when no module provides them: every segment is empty.

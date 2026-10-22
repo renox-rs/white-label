@@ -1,0 +1,63 @@
+{#- wl-sales: a counter sale: the cart while it is open, the receipt once it
+    is completed. A completed sale is never edited (SAL.ACL.04). Replace it
+    with resources/views/wl-sales/counter_sale.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="tx['counter.subtitle']" :back="route('wl_sales.counter_sales')" :back-label="tx['counter.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="redeem.can_redeem" id="redeem-counter_sale" :label="tx['redeem.redeem']" :action="route('wl_sales.counter_sale_redeem', sale.id)"
+                       :title="tx['redeem.redeem']" :description="tx['redeem.redeem_description']" :submit-label="tx['redeem.redeem']" icon="gift">
+        <rx-input name="points" :label="tx['redeem.points']" id="redeem-counter_sale-points" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="redeem.can_confirm" id="redeem-counter_sale-confirm" :label="tx['redeem.confirm']" :action="route('wl_sales.counter_sale_redeem_confirm', sale.id)"
+                       :title="tx['redeem.confirm']" :submit-label="tx['redeem.confirm']" variant="primary" icon="check">
+        <rx-input name="code" :label="tx['redeem.code']" id="redeem-counter_sale-code" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_attach" id="attach-counter-member" :label="tx['loyalty.attach']" :action="route('wl_sales.counter_sale_member', sale.id)"
+                       :title="tx['loyalty.attach']" :description="tx['loyalty.attach_description']" :submit-label="tx['loyalty.attach']" icon="gift">
+        <rx-input name="code" :label="tx['loyalty.code']" id="attach-counter-member-code"/>
+        <rx-input name="mobile" :label="tx['loyalty.mobile']" id="attach-counter-member-mobile"/>
+        <rx-input name="party_id" :label="tx['loyalty.party']" id="attach-counter-member-party"/>
+      </rx-action-sheet>
+      <template rx-if="can_edit">
+        <rx-action-sheet id="add-counter-line" :label="tx['counter.add_line']" :action="route('wl_sales.counter_sale_line', sale.id)"
+                         :title="tx['counter.add_line']" :submit-label="tx['counter.add_line']" icon="plus">
+          <rx-input name="item_code" :label="tx['counter.item']" id="add-counter-line-item" required/>
+          <rx-input name="description" :label="tx['counter.description']" id="add-counter-line-description"/>
+          <rx-input name="quantity" :label="tx['counter.quantity']" id="add-counter-line-quantity"/>
+          <rx-input name="unit_price" :label="tx['counter.unit_price']" id="add-counter-line-price" required/>
+          <rx-input name="discount" :label="tx['counter.discount']" id="add-counter-line-discount"/>
+          <rx-checkbox name="loyalty_excluded" :label="tx['counter.loyalty_excluded']" id="add-counter-line-excluded"/>
+        </rx-action-sheet>
+        <rx-action-sheet id="complete-counter-sale" :label="tx['counter.complete']" :action="route('wl_sales.counter_sale_complete', sale.id)"
+                         :title="tx['counter.complete']" :description="tx['counter.complete_description']" :submit-label="tx['counter.complete']" variant="primary" icon="check">
+          <rx-input name="cash" :label="tx['counter.method.cash']" id="complete-counter-cash"/>
+          <rx-input name="card" :label="tx['counter.method.card']" id="complete-counter-card"/>
+          <rx-input name="card_payment" :label="tx['counter.card_payment']" id="complete-counter-card-payment"/>
+          <rx-input name="account" :label="tx['counter.method.account']" id="complete-counter-account"/>
+          <rx-input name="other" :label="tx['counter.method.other']" id="complete-counter-other"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['counter.lines']" card>
+      <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['counter.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['counter.total']">{{ line.gross }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['counter.no_lines']" icon="inbox"/></rx-slot>
+    </rx-table>
+    <rx-card :title="tx['counter.totals']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['counter.net']" :value="net"/>
+        <rx-entry :label="tx['counter.vat']" :value="vat"/>
+        <rx-entry :label="tx['counter.total']" :value="gross"/>
+        <rx-entry rx-if="member" :label="tx['loyalty.member']" :value="member"/>
+        <rx-entry rx-if="redeem.summary" :label="tx['redeem.redeem']" :value="redeem.summary"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="payments" as="payment" :key="payment.id" :caption="tx['counter.payments']" card>
+      <rx-column :label="tx['counter.method']">{{ payment.method }}</rx-column>
+      <rx-column :label="tx['counter.total']">{{ payment.amount }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['counter.no_payments']" icon="wallet"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -37,6 +37,9 @@ use crate::refund_recover;
 pub const APPROVE: &str = "approve";
 /// The `reject` transition's name.
 pub const REJECT: &str = "reject";
+/// The system's `approve_by_system` transition's name: a late payment refund
+/// that meets the strict conditions is approved without a second person.
+pub const APPROVE_BY_SYSTEM: &str = "approve_by_system";
 /// The `pay` transition's name.
 pub const PAY: &str = "pay";
 
@@ -108,7 +111,13 @@ impl StateMachine for Refund {
 }
 
 fn transitions() -> Vec<Transition<Refund>> {
-    let mut all = vec![approve(), reject(), pay(), pay_by_system()];
+    let mut all = vec![
+        approve(),
+        approve_by_system(),
+        reject(),
+        pay(),
+        pay_by_system(),
+    ];
     all.extend(refund_fail::transitions());
     all.extend(refund_recover::transitions());
     all
@@ -140,6 +149,56 @@ fn approve() -> Transition<Refund> {
                         &mut *tx,
                         &[
                             ("approved_by", &approver),
+                            ("approved_at", &Some(renox::db::now())),
+                            ("updated_at", &renox::db::now()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// `approve_by_system`: requested → approved for a refund the system
+/// requested for a late payment, equal to the payment and going back to the
+/// same card (wl-payments §4 `request`). Nobody requested it, so `FIN.ACL.04`
+/// has no one to separate; the service checks the setting and that the prepaid
+/// record is no longer active, and the guard keeps the shape.
+fn approve_by_system() -> Transition<Refund> {
+    Transition::new(APPROVE_BY_SYSTEM)
+        .label("Approve (late payment)")
+        .tone("primary")
+        .system()
+        .from([RefundStatus::Requested])
+        .to(RefundStatus::Approved)
+        .guard("late_payment_to_same_card", |refund: &Refund, _ctx| {
+            let fits = refund.requested_by.is_none()
+                && refund.reason == crate::late::REASON
+                && refund.source_kind == "payment"
+                && refund.method == Some(PaymentMethod::Gateway)
+                && refund
+                    .gateway_txn
+                    .as_deref()
+                    .is_some_and(|txn| !txn.trim().is_empty());
+            Box::pin(async move {
+                if fits {
+                    Ok(())
+                } else {
+                    Err(
+                        "Only a late payment refund to the same card is approved by the system."
+                            .to_owned(),
+                    )
+                }
+            })
+        })
+        .effect(|refund: &Refund, _ctx, tx| {
+            let id = refund.id;
+            Box::pin(async move {
+                Refund::query()
+                    .where_(Refund::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
                             ("approved_at", &Some(renox::db::now())),
                             ("updated_at", &renox::db::now()),
                         ],

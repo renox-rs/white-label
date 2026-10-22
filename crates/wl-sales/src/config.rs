@@ -14,6 +14,49 @@ pub const LOST_DUPLICATE: &str = "duplicate";
 /// See [`LOST_DUPLICATE`].
 pub const LOST_SPAM: &str = "spam_or_invalid";
 
+/// The months a package is valid after activation (§7: 6).
+pub const DEFAULT_PACKAGE_VALIDITY_MONTHS: i64 = 6;
+
+/// How many times a package may be extended (§7: one extension).
+pub const DEFAULT_PACKAGE_EXTENSION_LIMIT: i64 = 1;
+
+/// The days after a sale within which goods can come back (§7: 14).
+pub const DEFAULT_RETURN_WINDOW_DAYS: i64 = 14;
+
+/// The channels whose orders wait for the seller to accept them (§7: website
+/// and portal).
+pub const DEFAULT_ACCEPTANCE_CHANNELS: &[&str] = &["website", "portal"];
+
+/// The earning sales per member per day before the account is listed for
+/// the manager's review (§7, `SAL.ACL.08`).
+pub const DEFAULT_LOYALTY_DAILY_SALES_LIMIT: i64 = 5;
+
+/// The minutes points are held for an open sale once the member confirmed
+/// (§7: 30).
+pub const DEFAULT_REDEMPTION_HOLD_MINUTES: i64 = 30;
+
+/// The days points given back after their expiry are valid (§7: 30).
+pub const DEFAULT_GIVE_BACK_DAYS: i64 = 30;
+
+/// The days before an earn lot expires that its member is reminded
+/// (`SAL.RUL.08`, §7: 30).
+pub const DEFAULT_EXPIRY_REMINDER_DAYS: i64 = 30;
+
+/// The points above which a manual adjustment needs a manager (`SAL.ACL.07`,
+/// §7: 500).
+pub const DEFAULT_ADJUSTMENT_LIMIT: i64 = 500;
+
+/// The days after a retention campaign's send within which a purchase makes
+/// the member count as returned (§7: 30).
+pub const DEFAULT_RETENTION_RESPONSE_DAYS: i64 = 30;
+
+/// The days before a change of the loyalty terms takes effect that members
+/// must be told (§7: 30).
+pub const DEFAULT_PROGRAMME_NOTICE_DAYS: i64 = 30;
+
+/// The days members can redeem after the programme is turned off (§7: 90).
+pub const DEFAULT_PROGRAMME_CLOSING_DAYS: i64 = 90;
+
 /// The lost reasons a lead can be closed with (§7: the starter list, always
 /// with *duplicate* and *spam or invalid*).
 pub const DEFAULT_LOST_REASONS: &[&str] = &[
@@ -46,6 +89,53 @@ pub struct SalesConfig {
     /// Whether changing the attribution of an acquired party or a won lead
     /// needs a second person (`SAL.ACL.09`).
     pub acquisition_change_approval: bool,
+    /// The months a package is valid after activation.
+    pub package_validity_months: i64,
+    /// How many times a package may be extended.
+    pub package_extension_limit: i64,
+    /// Whether `consume` is refused while a reopened invoice balance of the
+    /// package is unpaid (§7: off; 05, 10: a task to collect only).
+    pub suspend_package_consumption_while_unpaid: bool,
+    /// The role told to collect a reopened balance when the package has no
+    /// seller user (05: front desk; 10: counsellor); the company admin when
+    /// empty.
+    pub package_seller_role: String,
+    /// Whether a counter sale may be charged to the customer account (§7:
+    /// off; 08: on).
+    pub counter_sales_on_account: bool,
+    /// The days after a sale within which goods can come back (§7: 14).
+    pub return_window_days: i64,
+    /// The order channels that need the seller to accept an order (§7).
+    pub order_acceptance_channels: Vec<String>,
+    /// The earning sales per member per day before the account is listed for
+    /// review (`SAL.ACL.08`).
+    pub loyalty_daily_sales_limit: i64,
+    /// Whether a redemption is confirmed by a one-time code to the member's
+    /// mobile (§7: on). Off, a cashier's redemption is held at once; a
+    /// member logged in to the portal never needs the code.
+    pub confirm_redemption_by_code: bool,
+    /// The minutes points are held for an open sale once confirmed.
+    pub redemption_hold_minutes: i64,
+    /// The days points given back after their expiry are valid.
+    pub give_back_days: i64,
+    /// The days before an earn lot expires that its member is reminded.
+    pub expiry_reminder_days: i64,
+    /// The points above which a manual adjustment needs a manager.
+    pub adjustment_limit: i64,
+    /// The days after a retention campaign's send within which a purchase
+    /// counts as the member returning.
+    pub retention_response_days: i64,
+    /// The item codes of clinical services (05). A segment rule on one is
+    /// refused, and the segment editor does not offer them, unless
+    /// [`segment_clinical_rules`](Self::segment_clinical_rules) is on.
+    pub clinical_items: Vec<String>,
+    /// Whether segment rules may use clinical items (§7: off).
+    pub segment_clinical_rules: bool,
+    /// The least days ahead a change of the loyalty terms may take effect.
+    pub programme_notice_days: i64,
+    /// The days after the programme is turned off that points can still be
+    /// redeemed.
+    pub programme_closing_days: i64,
 }
 
 impl Default for SalesConfig {
@@ -61,6 +151,27 @@ impl Default for SalesConfig {
             campaign_required_sources: Vec::new(),
             attribution_window_months: None,
             acquisition_change_approval: true,
+            package_validity_months: DEFAULT_PACKAGE_VALIDITY_MONTHS,
+            package_extension_limit: DEFAULT_PACKAGE_EXTENSION_LIMIT,
+            suspend_package_consumption_while_unpaid: false,
+            package_seller_role: String::new(),
+            counter_sales_on_account: false,
+            return_window_days: DEFAULT_RETURN_WINDOW_DAYS,
+            order_acceptance_channels: DEFAULT_ACCEPTANCE_CHANNELS
+                .iter()
+                .map(|c| (*c).to_owned())
+                .collect(),
+            loyalty_daily_sales_limit: DEFAULT_LOYALTY_DAILY_SALES_LIMIT,
+            confirm_redemption_by_code: true,
+            redemption_hold_minutes: DEFAULT_REDEMPTION_HOLD_MINUTES,
+            give_back_days: DEFAULT_GIVE_BACK_DAYS,
+            expiry_reminder_days: DEFAULT_EXPIRY_REMINDER_DAYS,
+            adjustment_limit: DEFAULT_ADJUSTMENT_LIMIT,
+            retention_response_days: DEFAULT_RETENTION_RESPONSE_DAYS,
+            clinical_items: Vec::new(),
+            segment_clinical_rules: false,
+            programme_notice_days: DEFAULT_PROGRAMME_NOTICE_DAYS,
+            programme_closing_days: DEFAULT_PROGRAMME_CLOSING_DAYS,
         }
     }
 }
@@ -77,6 +188,15 @@ impl SalesConfig {
     /// Whether a lead or first sale with the source `code` needs a campaign.
     pub fn campaign_required_for(&self, code: &str) -> bool {
         self.campaign_required_sources.iter().any(|c| c == code)
+    }
+
+    /// Whether the item `code` is a clinical service a segment may not use.
+    pub fn is_blocked_clinical(&self, code: &str) -> bool {
+        !self.segment_clinical_rules
+            && self
+                .clinical_items
+                .iter()
+                .any(|c| c.eq_ignore_ascii_case(code.trim()))
     }
 
     /// Whether `reason` is one of the lost reasons.
@@ -97,5 +217,22 @@ mod tests {
         assert!(!config.is_lost_reason("because"));
         assert_eq!(config.attribution_window_months, None);
         assert!(config.acquisition_change_approval);
+    }
+
+    #[test]
+    fn clinical_items_are_left_out_of_segments_unless_the_setting_is_on() {
+        let mut config = SalesConfig {
+            clinical_items: vec!["XRAY".into()],
+            ..SalesConfig::default()
+        };
+        assert!(config.is_blocked_clinical("xray"));
+        assert!(!config.is_blocked_clinical("shampoo"));
+        config.segment_clinical_rules = true;
+        assert!(!config.is_blocked_clinical("xray"));
+        assert_eq!(config.retention_response_days, 30);
+        assert_eq!(
+            (config.programme_notice_days, config.programme_closing_days),
+            (30, 90)
+        );
     }
 }

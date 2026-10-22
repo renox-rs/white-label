@@ -1,0 +1,33 @@
+[package]
+name = "clinics"
+description = "Clinics: the vertical app for private outpatient clinics (visits, insurance policies and coverage at check-in, practitioner licences)."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real modules in the integration tests: scheduling (the bookings the
+# visits come from, check-in, cancel), payments (the stand-in gateway its
+# support brings) and HR (the practitioner licences behind `qualification_valid`).
+wl-parties = { path = "../../crates/wl-parties" }
+wl-scheduling = { path = "../../crates/wl-scheduling" }
+wl-payments = { path = "../../crates/wl-payments" }
+wl-hr = { path = "../../crates/wl-hr" }
+# The real notifier, for the tests that prove the quiet hours.
+wl-notify = { path = "../../crates/wl-notify" }
+# The real payer bills in the claim tests (no cycle: wl-invoicing does not use
+# the clinics app): the technical rejection, the held overpayment and the
+# recoupment run against the module that owns the money.
+wl-invoicing = { path = "../../crates/wl-invoicing" }
+# The real stock in the lot and recall tests (no cycle: wl-inventory does not
+# use the clinics app): the lot a consumable is issued from, the pending issue
+# for the short part and the recall trace run against the module that owns them.
+wl-inventory = { path = "../../crates/wl-inventory" }

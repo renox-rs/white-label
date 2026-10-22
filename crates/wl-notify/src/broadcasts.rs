@@ -19,15 +19,17 @@ use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::broadcast::{
-    BroadcastCancelReason, BroadcastCancelled, BroadcastId, BroadcastRequest, RequesterCheck,
-    requesters,
+    BroadcastCancelReason, BroadcastCancelled, BroadcastId, BroadcastReport, BroadcastRequest,
+    RequesterCheck, requesters,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 
-use crate::broadcast::{Broadcast, settings};
-use crate::broadcast_machine::{REQUEST, REQUEST_OVER_LIMIT, RequestInput};
+use crate::broadcast::{Broadcast, BroadcastStatus, settings};
+use crate::broadcast_machine::{CANCEL_SYSTEM, REQUEST, REQUEST_OVER_LIMIT, RequestInput};
 use crate::broadcast_recipients::resolve;
+use crate::broadcast_results;
 use crate::clock::clock;
+use crate::message::MessageStatus;
 use crate::texts::{english, english_with};
 use crate::types::NotificationType;
 
@@ -144,6 +146,95 @@ pub async fn request(state: &AppState, request: BroadcastRequest) -> Result<Broa
         approvals::announce_request(state, &approval).await?;
     }
     Ok(row.broadcast_id())
+}
+
+/// Cancels broadcast `id` because its requester ended, when it has not
+/// started (`pending_approval` or `scheduled`): the stored reason is `reason`.
+/// Returns whether it was cancelled; a broadcast that started, ended or does
+/// not exist is left alone.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn cancel_for_requester(state: &AppState, id: i64, reason: &str) -> Result<bool> {
+    let Some(broadcast) = Broadcast::find(&state.db, id).await? else {
+        return Ok(false);
+    };
+    if !matches!(
+        broadcast.status,
+        BroadcastStatus::PendingApproval | BroadcastStatus::Scheduled
+    ) {
+        return Ok(false);
+    }
+    let outcome = match broadcast
+        .transition(CANCEL_SYSTEM)
+        .by_system()
+        .reason(reason)
+        .run(state)
+        .await
+    {
+        Ok(outcome) => outcome,
+        Err(TransitionError::NotFrom(_)) => return Ok(false),
+        Err(other) => return Err(other.into_error()),
+    };
+    let _ = outcome;
+    let cancelled = Broadcast::find_or_404(&state.db, id).await?;
+    announce_cancelled(
+        state,
+        &cancelled,
+        BroadcastCancelReason::RequesterGuardFailed,
+    )
+    .await?;
+    Ok(true)
+}
+
+/// How broadcast `id` stands, for its requester's report: the counts and the
+/// parties whose message was sent. `None` for an unknown broadcast.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn report(state: &AppState, id: i64) -> Result<Option<BroadcastReport>> {
+    let Some(broadcast) = Broadcast::find(&state.db, id).await? else {
+        return Ok(None);
+    };
+    let messages = broadcast_results::messages_of(&state.db, id).await?;
+    let results = broadcast_results::tally(
+        messages
+            .iter()
+            .map(|m| (m.status, m.suppress_reason.as_deref())),
+    );
+    let excluded = broadcast_results::excluded_with_cap(
+        &broadcast.excluded.0,
+        messages
+            .iter()
+            .map(|m| (m.status, m.suppress_reason.as_deref())),
+    );
+    let reached = messages
+        .iter()
+        .filter(|m| {
+            matches!(
+                m.status,
+                MessageStatus::Sent | MessageStatus::Delivered | MessageStatus::Read
+            )
+        })
+        .filter_map(|m| m.party_id)
+        .map(wl_kernel::PartyId)
+        .collect();
+    Ok(Some(BroadcastReport {
+        broadcast: broadcast.broadcast_id(),
+        status: broadcast.status.as_str().to_owned(),
+        send_at: broadcast.send_at,
+        estimate: broadcast.estimate,
+        recipients: broadcast
+            .recipients_resolved
+            .or((!messages.is_empty()).then_some(messages.len() as i64)),
+        excluded: excluded.0,
+        delivered: results.delivered,
+        opted_out: results.opted_out,
+        cancel_reason: broadcast.cancel_reason.clone(),
+        reached,
+    }))
 }
 
 /// Emits [`BroadcastCancelled`] for `broadcast` (already `cancelled`) and

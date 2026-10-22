@@ -4,6 +4,7 @@
 //! (it runs on every sign-up, seed and `users:admin`).
 
 use accounting::permissions as acc;
+use clinics::permissions as cln;
 use construction::permissions as con;
 use logistics::permissions as log;
 use manpower::permissions as mpw;
@@ -22,6 +23,7 @@ use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
 use wl_payments::permissions as payments;
 use wl_sales::permissions as sales;
+use wl_scheduling::permissions as scheduling;
 use wl_ticketing::permissions as tickets;
 
 /// Manages users and their roles.
@@ -88,6 +90,25 @@ pub const TAX_SPECIALIST: &str = acc::TAX_SPECIALIST_ROLE;
 /// Billing and admin: proposals, retainers, invoices and collections
 /// (04 §3.1).
 pub const BILLING: &str = acc::BILLING_ROLE;
+/// The clinic manager of a branch (05 §3.1): runs the branch's bookings and
+/// deposits, sees its visits and insurance policies, and is told when a
+/// practitioner licence expires (`CLN.RUL.01`).
+pub const CLINIC_MANAGER: &str = cln::CLINIC_MANAGER_ROLE;
+/// The receptionist of a branch (05 §3.1): books, checks in and records the
+/// coverage outcome of an insured visit (`CLN.ACL.15`).
+pub const RECEPTIONIST: &str = cln::RECEPTIONIST_ROLE;
+/// The practitioner of a branch (05 §3.1): records the services delivered on
+/// a visit and the consumables used (`CLN.ENC.01`).
+pub const PRACTITIONER: &str = cln::PRACTITIONER_ROLE;
+/// The billing coordinator (05 §3.1): prepares and follows the prior
+/// authorisations and is asked to request a new one when one stops covering
+/// an appointment (`CLN.RUL.07`, `CLN.RUL.09`).
+pub const BILLING_COORDINATOR: &str = cln::BILLING_COORDINATOR_ROLE;
+/// The call-centre agent (05 §3.1): books and reschedules for all branches
+/// and follows up leads.
+pub const CALL_CENTRE_AGENT: &str = cln::CALL_CENTRE_ROLE;
+/// The nurse or assistant (05 §3.1): records the consumables used.
+pub const NURSE: &str = cln::NURSE_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
@@ -223,6 +244,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::EINVOICES_MANAGE,
             invoices::SUBSCRIPTIONS_VIEW,
             invoices::SUBSCRIPTIONS_MANAGE,
+            invoices::PAYER_BILLS_VIEW,
+            invoices::PAYER_BILLS_ISSUE,
+            invoices::PAYER_BILLS_RECONCILE,
+            invoices::PAYER_BILLS_WRITE_OFF,
             // The MD approves a rate card version dated in the past
             // (`MPW.ACL.16`).
             invoices::RATE_CARDS_VIEW,
@@ -245,6 +270,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::RECORD,
             payments::REVERSE,
             payments::CHARGEBACK,
+            payments::LINKS,
             payments::REFUNDS_REQUEST,
             payments::REFUNDS_APPROVE,
             payments::REFUNDS_PAY,
@@ -268,12 +294,33 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::ACQUISITION_REPORTS_VIEW,
             sales::LEADS_VIEW,
             sales::LEADS_MANAGE,
+            sales::PACKAGES_VIEW,
+            sales::PACKAGES_SELL,
+            sales::PACKAGES_EXTEND,
+            sales::PACKAGES_ADJUST,
+            sales::POS_SELL,
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_CREATE,
+            sales::SALES_ORDERS_ACCEPT,
+            sales::SALES_ORDERS_CANCEL,
+            sales::RETURNS_REQUEST,
+            sales::RETURNS_HANDLE,
+            sales::LOYALTY_VIEW,
+            sales::LOYALTY_ENROL,
+            sales::LOYALTY_REDEEM,
+            sales::LOYALTY_ADJUST,
+            sales::LOYALTY_MANAGE,
+            sales::SEGMENTS_MANAGE,
+            sales::SEGMENTS_EXPORT,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
             hr::EMPLOYEES_EXIT_APPROVE,
             hr::PAY_ACCOUNTS_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_REQUEST,
+            hr::LEAVE_APPROVE,
             hr::PAYROLL_VIEW,
             hr::PAYROLL_PREPARE,
             hr::PAYROLL_APPROVE,
@@ -337,6 +384,36 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::LANDED_COSTS_POST,
             inventory::ITEM_SUPPLIERS_MANAGE,
             inventory::ITEM_SUPPLIERS_APPROVE,
+            inventory::STOCK_ISSUE,
+            inventory::STOCK_TRANSFER,
+            inventory::STOCK_ADJUST,
+            inventory::STOCK_HOLD,
+            inventory::LOTS_RELEASE,
+            scheduling::VIEW,
+            scheduling::VIEW_DETAILS,
+            scheduling::MANAGE,
+            scheduling::CHECKIN,
+            scheduling::WAIVE_DEPOSIT,
+            scheduling::RESOURCES_MANAGE,
+            // 05: the visits, the insurance policies and the coverage recorded
+            // before check-in (`CLN.ACL.15`).
+            cln::VISITS_VIEW,
+            cln::POLICIES_VIEW,
+            cln::POLICIES_MANAGE,
+            cln::COVERAGE_RECORD,
+            cln::AUTHORISATIONS_MANAGE,
+            cln::CHARGES_CAPTURE,
+            cln::CHARGES_DESK,
+            cln::CLAIMS_MANAGE,
+            cln::CLAIMS_WRITEOFF,
+            cln::MISSED_WINDOW_BILLING,
+            cln::RECALLS_TRACE,
+            cln::RECALLS_NOTIFY,
+            cln::RECALLS_CALL,
+            cln::PERMITS_VIEW,
+            cln::PERMITS_MANAGE,
+            cln::APPOINTMENTS_CALL,
+            inventory::RECALLS_MANAGE,
             // The last prices and the supplier scores (`STK.SUP.01`).
             inventory::STOCK_COST_VIEW,
             inventory::SUPPLIER_SCORES_VIEW,
@@ -583,6 +660,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_APPROVE,
             parties::VIEW,
             invoices::VIEW,
             // 04 `FIN.ACL.15`: billing asks for the write-off (a partner
@@ -626,6 +705,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
         ACCOUNTANT,
         &[
             acc::AML_RAISE,
+            sales::LOYALTY_VIEW,
             // Told of WPS rejections (`HRM.RUL.11`), reads the run.
             hr::PAYROLL_VIEW,
             // Pays the final settlements and records their payments.
@@ -659,6 +739,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::EINVOICES_MANAGE,
             invoices::SUBSCRIPTIONS_VIEW,
             invoices::SUBSCRIPTIONS_MANAGE,
+            invoices::PAYER_BILLS_VIEW,
+            invoices::PAYER_BILLS_ISSUE,
+            invoices::PAYER_BILLS_RECONCILE,
+            invoices::PAYER_BILLS_WRITE_OFF,
             // 03: prepares and pays COD remittances; a second accountant
             // approves them and the adjustment lines (`LOG.ACL.07`,
             // `LOG.ACL.12`).
@@ -695,6 +779,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::RECORD,
             payments::REVERSE,
             payments::CHARGEBACK,
+            payments::LINKS,
             payments::REFUNDS_REQUEST,
             payments::REFUNDS_APPROVE,
             payments::REFUNDS_PAY,
@@ -746,6 +831,22 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::PAY_ACCOUNTS_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            scheduling::VIEW,
+            cln::VISITS_VIEW,
+            cln::MISSED_WINDOW_BILLING,
+            cln::RECALLS_TRACE,
+            // The recall owner (05 §7.2): opens a recall, decides the lines of
+            // a hold, and approves the advertising permit of a campaign.
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_HOLD,
+            inventory::LOTS_RELEASE,
+            inventory::RECALLS_MANAGE,
+            cln::PERMITS_VIEW,
+            cln::PERMITS_MANAGE,
+            // The owner of the clinical and infection control SOPs publishes
+            // their versions (`DOC.RUL.04`, 05 §7.2).
+            documents::SOPS_MANAGE,
             hr::PAYROLL_VIEW,
             hr::PAYROLL_APPROVE,
             // The MD approves the final settlements and resolves their disputes
@@ -763,6 +864,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mpw::ABSENCE_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_APPROVE,
             // HR prepares payroll; the MD approves it (`HRM.ACL.04`).
             hr::PAYROLL_VIEW,
             hr::PAYROLL_PREPARE,
@@ -817,6 +920,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_VIEW,
             inventory::PURCHASE_ORDERS_VIEW,
             inventory::GOODS_RECEIPTS_POST,
+            inventory::STOCK_ISSUE,
+            inventory::STOCK_TRANSFER,
+            inventory::STOCK_ADJUST,
+            inventory::STOCK_HOLD,
+            inventory::LOTS_RELEASE,
         ],
     ),
     (
@@ -829,6 +937,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::SUPPLIER_RETURNS_MANAGE,
             inventory::LANDED_COSTS_POST,
             inventory::ITEM_SUPPLIERS_MANAGE,
+            inventory::RECALLS_MANAGE,
             inventory::STOCK_COST_VIEW,
             inventory::SUPPLIER_SCORES_VIEW,
         ],
@@ -897,22 +1006,130 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         MARKETING,
         &[
+            cln::PERMITS_VIEW,
             sales::CAMPAIGNS_VIEW,
             sales::CAMPAIGNS_MANAGE,
+            sales::SEGMENTS_MANAGE,
             sales::LEADS_VIEW,
             sales::LEADS_MANAGE,
+            // Sends the campaign's broadcast (`CLN.ACL.13`, `NTF.ACL.03`).
+            notify::MARKETING_SEND,
         ],
     ),
     (
         MARKETING_MANAGER,
         &[
+            cln::PERMITS_VIEW,
             sales::CAMPAIGNS_VIEW,
             sales::CAMPAIGNS_MANAGE,
             sales::CAMPAIGNS_COSTS_MANAGE,
             sales::ACQUISITION_REPORTS_VIEW,
             sales::LEADS_VIEW,
             sales::LEADS_MANAGE,
+            sales::SEGMENTS_MANAGE,
+            sales::SEGMENTS_EXPORT,
+            // The second person who approves a broadcast above the limit
+            // (`NTF.ACL.03`), never the one who asked for it.
+            notify::MARKETING_SEND,
         ],
+    ),
+    (
+        CLINIC_MANAGER,
+        &[
+            scheduling::VIEW,
+            scheduling::VIEW_DETAILS,
+            scheduling::MANAGE,
+            scheduling::CHECKIN,
+            scheduling::WAIVE_DEPOSIT,
+            scheduling::RESOURCES_MANAGE,
+            cln::VISITS_VIEW,
+            cln::POLICIES_VIEW,
+            cln::POLICIES_MANAGE,
+            cln::COVERAGE_RECORD,
+            cln::AUTHORISATIONS_MANAGE,
+            cln::CHARGES_CAPTURE,
+            cln::CHARGES_DESK,
+            cln::CLAIMS_MANAGE,
+            cln::CLAIMS_WRITEOFF,
+            cln::RECALLS_TRACE,
+            cln::RECALLS_NOTIFY,
+            cln::RECALLS_CALL,
+            cln::APPOINTMENTS_CALL,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_HOLD,
+            inventory::LOTS_RELEASE,
+            // `STK.RUL.06`: told when a pending issue stays open for 24
+            // hours (the holders of `stock.approve` in the branch).
+            inventory::STOCK_APPROVE,
+            // The owner of the front desk, billing and complaints SOPs
+            // publishes their versions (`DOC.RUL.04`, 05 §7.2).
+            documents::SOPS_MANAGE,
+            invoices::PAYER_BILLS_VIEW,
+            invoices::PAYER_BILLS_WRITE_OFF,
+            // Adjusts points and decides an adjustment above 500 (`SAL.ACL.07`).
+            sales::LOYALTY_VIEW,
+            sales::LOYALTY_ADJUST,
+            sales::LOYALTY_MANAGE,
+        ],
+    ),
+    (
+        PRACTITIONER,
+        &[
+            scheduling::VIEW,
+            cln::VISITS_VIEW,
+            cln::CHARGES_CAPTURE,
+            cln::CHARGES_DESK,
+        ],
+    ),
+    (
+        BILLING_COORDINATOR,
+        &[
+            scheduling::VIEW,
+            cln::VISITS_VIEW,
+            cln::POLICIES_VIEW,
+            cln::POLICIES_MANAGE,
+            cln::AUTHORISATIONS_MANAGE,
+            cln::CLAIMS_MANAGE,
+            invoices::PAYER_BILLS_VIEW,
+            invoices::PAYER_BILLS_ISSUE,
+            invoices::PAYER_BILLS_RECONCILE,
+        ],
+    ),
+    (
+        RECEPTIONIST,
+        &[
+            scheduling::VIEW,
+            scheduling::MANAGE,
+            scheduling::CHECKIN,
+            cln::VISITS_VIEW,
+            cln::POLICIES_VIEW,
+            cln::POLICIES_MANAGE,
+            cln::COVERAGE_RECORD,
+            cln::CHARGES_DESK,
+            cln::RECALLS_CALL,
+            cln::APPOINTMENTS_CALL,
+            // The desk enrols members, rings up counter sales and redeems points with the patient's code (`SAL.LOY.01`).
+            sales::LOYALTY_VIEW,
+            sales::LOYALTY_ENROL,
+            sales::LOYALTY_REDEEM,
+            sales::POS_SELL,
+        ],
+    ),
+    (
+        CALL_CENTRE_AGENT,
+        &[
+            scheduling::VIEW,
+            scheduling::MANAGE,
+            cln::VISITS_VIEW,
+            cln::APPOINTMENTS_CALL,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
+        ],
+    ),
+    (
+        NURSE,
+        &[scheduling::VIEW, cln::VISITS_VIEW, cln::CHARGES_DESK],
     ),
     (
         DISPATCHER,

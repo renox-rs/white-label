@@ -1,0 +1,54 @@
+{#- clinics: the payer contracts, newest first, with the terms the charge
+    split reads (copay, deductible), the payer agreement the claims are
+    billed under and the tariff of the services; and the actions that record
+    one. Replace it with resources/views/clinics/contracts.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['contract.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['contract.title']" :subtitle="tx['contract.subtitle']">
+      <template rx-if="can_manage">
+        <rx-action-sheet id="contract-new" :label="tx['contract.new']" :action="route('clinics.contract_create')"
+                         :title="tx['contract.new']" :description="tx['contract.new_description']" :submit-label="tx['contract.new']" icon="plus">
+          <rx-input name="payer" :label="tx['policies.payer_party']" id="contract-new-payer" required/>
+          <rx-input name="plan" :label="tx['contract.plan']" id="contract-new-plan"/>
+          <rx-input name="agreement" type="number" :label="tx['contract.agreement']" id="contract-new-agreement"/>
+          <rx-input name="copay_bp" type="number" :label="tx['contract.copay']" value="0" id="contract-new-copay"/>
+          <rx-input name="deductible" type="number" :label="tx['contract.deductible']" value="0" id="contract-new-deductible"/>
+          <rx-input name="valid_from" type="date" :label="tx['contract.valid_from']" :value="today" id="contract-new-from"/>
+          <rx-input name="valid_to" type="date" :label="tx['contract.valid_to']" id="contract-new-to"/>
+          <rx-input name="first_submission_days" type="number" :label="tx['contract.first_submission_days']" value="30" id="contract-new-first-days"/>
+          <rx-input name="resubmission_days" type="number" :label="tx['contract.resubmission_days']" value="30" id="contract-new-resubmission-days"/>
+          <rx-input name="resubmission_limit" type="number" :label="tx['contract.resubmission_limit']" value="2" id="contract-new-resubmission-limit"/>
+          <rx-input name="reminder_days" type="number" :label="tx['contract.reminder_days']" value="7" id="contract-new-reminder-days"/>
+          <rx-select name="accepts_late_claims" :label="tx['contract.accepts_late_claims']" :options="late_options" :selected="'no'" id="contract-new-late"/>
+        </rx-action-sheet>
+        <rx-action-sheet id="contract-tariff" :label="tx['contract.tariff']" :action="route('clinics.contract_tariff')"
+                         :title="tx['contract.tariff']" :description="tx['contract.tariff_description']" :submit-label="tx['contract.tariff']" icon="receipt">
+          <rx-select name="contract" :label="tx['contract.contract']" :options="contract_options" :selected="contract_selected" id="contract-tariff-contract"/>
+          <rx-input name="code" :label="tx['contract.service']" id="contract-tariff-code" required/>
+          <rx-input name="price" type="number" :label="tx['contract.price']" id="contract-tariff-price"/>
+          <rx-select name="covered" :label="tx['contract.covered']" :options="covered_options" :selected="'yes'" id="contract-tariff-covered"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_set_missed_billing">
+        <rx-action-sheet id="contract-missed-window" :label="tx['contract.missed_billing']" :action="route('clinics.contract_missed_window')"
+                         :title="tx['contract.missed_billing']" :description="tx['contract.missed_billing_description']" :submit-label="tx['contract.missed_billing']" icon="receipt">
+          <rx-select name="contract" :label="tx['contract.contract']" :options="contract_options" :selected="contract_selected" id="contract-missed-contract"/>
+          <rx-select name="allowed" :label="tx['contract.missed_billing']" :options="allowed_options" :selected="'no'" id="contract-missed-allowed"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="contracts" as="row" :key="row.id" :caption="tx['contract.title']" card>
+      <rx-column :label="tx['policies.payer']">{{ row.payer }}</rx-column>
+      <rx-column :label="tx['contract.plan']" hide-narrow>{{ row.plan }}</rx-column>
+      <rx-column :label="tx['contract.agreement']" hide-narrow>{{ row.agreement }}</rx-column>
+      <rx-column :label="tx['contract.copay']">{{ row.copay }}</rx-column>
+      <rx-column :label="tx['contract.deductible']" hide-narrow>{{ row.deductible }}</rx-column>
+      <rx-column :label="tx['contract.valid_from']" hide-narrow>{{ row.valid_from }}</rx-column>
+      <rx-column :label="tx['contract.valid_to']" hide-narrow>{{ row.valid_to }}</rx-column>
+      <rx-column :label="tx['contract.windows']" hide-narrow>{{ row.windows }}</rx-column>
+      <rx-column :label="tx['contract.missed_billing']" hide-narrow>{{ row.missed_billing }}</rx-column>
+      <rx-column :label="tx['contract.tariffs']" hide-narrow>{{ row.tariffs }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['contract.empty']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

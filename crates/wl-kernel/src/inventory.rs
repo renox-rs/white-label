@@ -57,6 +57,24 @@ pub const LANDED_COST_ADJUSTMENT_SUBJECT_TYPE: &str = "inventory.landed_cost_adj
 /// The subject type of a Return to supplier.
 pub const SUPPLIER_RETURN_SUBJECT_TYPE: &str = "inventory.supplier_return";
 
+/// The subject type of a stock hold.
+pub const STOCK_HOLD_SUBJECT_TYPE: &str = "inventory.stock_hold";
+
+/// The subject type of one line of a stock hold.
+pub const STOCK_HOLD_LINE_SUBJECT_TYPE: &str = "inventory.stock_hold_line";
+
+/// The subject type of a recall.
+pub const RECALL_SUBJECT_TYPE: &str = "inventory.recall";
+
+/// The subject type of a transfer between two locations.
+pub const TRANSFER_SUBJECT_TYPE: &str = "inventory.transfer";
+
+/// The subject type of an affected line of a recall.
+pub const RECALL_LINE_SUBJECT_TYPE: &str = "inventory.recall_line";
+
+/// The subject type of a pending issue.
+pub const PENDING_ISSUE_SUBJECT_TYPE: &str = "inventory.pending_issue";
+
 /// One line of a posted goods receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GoodsReceivedLine {
@@ -611,6 +629,30 @@ mod tests {
     }
 
     #[test]
+    fn a_traced_holder_round_trips_through_json_with_its_mark() {
+        let holder = TracedHolder {
+            line: Subject::new(RECALL_LINE_SUBJECT_TYPE, 7),
+            subject: Some(Subject::new("clinics.visit", 3)),
+            party: Some(PartyId(11)),
+            lot: Some(Subject::new(LOT_SUBJECT_TYPE, 9)),
+            location: None,
+            quantity_milli: 2_000,
+            on: None,
+            kind: "possible".into(),
+            mark: TraceMark::Possible,
+            sales: 1,
+            delivery_status: None,
+            notice: "pending".into(),
+        };
+        let json = renox::serde_json::to_string(&holder).unwrap();
+        assert!(json.contains("\"possible\""), "{json}");
+        assert_eq!(
+            renox::serde_json::from_str::<TracedHolder>(&json).unwrap(),
+            holder
+        );
+    }
+
+    #[test]
     fn the_dispatched_event_round_trips_through_json() {
         let dispatched = SupplierReturnDispatched {
             supplier_return: Subject::new(SUPPLIER_RETURN_SUBJECT_TYPE, 4),
@@ -718,3 +760,617 @@ mod tests {
         );
     }
 }
+
+/// One line of a stock hold: a quantity of an item at a location, of a lot
+/// when the item is lot-tracked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeldLine {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location the quantity is at, `inventory.location:2`.
+    pub location: Subject,
+    /// The lot, `inventory.lot:4`.
+    pub lot: Option<Subject>,
+    /// The quantity held, in thousandths of the base unit.
+    pub quantity_milli: i64,
+}
+
+/// A stock hold was placed (wl-inventory §6 `StockHoldPlaced`): the quantity
+/// in its scope is blocked until someone decides it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockHoldPlaced {
+    /// The hold, `inventory.stock_hold:3`.
+    pub hold: Subject,
+    /// Its number, `HLD-2026-0001`.
+    pub number: String,
+    /// `recall`, `quality`, `temperature`, `complaint` or `other`.
+    pub reason: String,
+    /// The record that caused it: a recall, a ticket, an NCR, a reading.
+    pub reference: Option<Subject>,
+    /// The lines the hold was placed with.
+    pub lines: Vec<HeldLine>,
+}
+
+impl Event for StockHoldPlaced {}
+
+/// A whole lot was put on hold (wl-inventory §6 `LotHeld`, §4 *Lot* `hold`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LotHeld {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// Why: the reason of the hold.
+    pub reason: String,
+    /// What is left of the lot in all locations, in thousandths.
+    pub quantity_milli: i64,
+}
+
+impl Event for LotHeld {}
+
+/// Automatic consumption was short, or a balance went below zero (wl-inventory
+/// §6 `StockNegative`): a pending issue was recorded for the short quantity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockNegative {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location, `inventory.location:2`.
+    pub location: Subject,
+    /// The short quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The record that consumed: a visit, a sale, a work order.
+    pub source: Option<Subject>,
+    /// The pending issue that holds the short quantity.
+    pub pending_issue: Option<Subject>,
+}
+
+impl Event for StockNegative {}
+
+/// The future a [`StockService`] or [`StockHoldService`] method returns.
+pub type StockFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// Consumption another module posts automatically (wl-inventory §3 *Negative
+/// stock*, the `ConsumptionSource` extension): a clinic visit, an F&B sale, a
+/// work order backflush.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsumeRequest {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location it is taken from, `inventory.location:2`.
+    pub location: Subject,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The record that consumes: a visit, a sale, a work order.
+    pub source: Subject,
+    /// The record the cost is charged to.
+    pub cost_object: Option<Subject>,
+    /// When the consumption happened; now when `None`.
+    pub at: Option<renox::db::DateTime>,
+    /// Derived from a recipe or a bill of materials without a scan (06: an
+    /// F&B sale): the lot it posts against keeps the lot balances right but
+    /// is no proof of what was used, so a recall trace lists the subject as
+    /// *possible* ([`TraceMark::Possible`]).
+    #[serde(default)]
+    pub theoretical: bool,
+    /// The lot (`inventory.lot:4`) the user picked or scanned: it is taken
+    /// first, the rest of a larger quantity follows first expiry first out.
+    /// A lot that cannot be taken (held, not released, empty) is skipped.
+    #[serde(default)]
+    pub lot: Option<Subject>,
+}
+
+impl ConsumeRequest {
+    /// `quantity_milli` of `item` taken from `location` for `source`.
+    pub fn new(item: Subject, location: Subject, quantity_milli: i64, source: Subject) -> Self {
+        ConsumeRequest {
+            item,
+            location,
+            quantity_milli,
+            source,
+            cost_object: None,
+            at: None,
+            theoretical: false,
+            lot: None,
+        }
+    }
+
+    /// Takes from `lot` first (the lot the user picked or scanned).
+    pub fn lot(mut self, lot: Subject) -> Self {
+        self.lot = Some(lot);
+        self
+    }
+
+    /// Derived from a recipe or bill of materials, not scanned.
+    pub fn theoretical(mut self) -> Self {
+        self.theoretical = true;
+        self
+    }
+
+    /// Charged to `cost_object`.
+    pub fn cost_object(mut self, cost_object: Subject) -> Self {
+        self.cost_object = Some(cost_object);
+        self
+    }
+
+    /// Happened at `at`.
+    pub fn at(mut self, at: renox::db::DateTime) -> Self {
+        self.at = Some(at);
+        self
+    }
+}
+
+/// The part of a consumption that posted against one lot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsumedLot {
+    /// The lot, `inventory.lot:4`; `None` for an item that is not
+    /// lot-tracked.
+    pub lot: Option<Subject>,
+    /// The quantity taken from it, in thousandths.
+    pub quantity_milli: i64,
+}
+
+/// What a consumption did: the part that posted now, and the pending issue
+/// for the short part.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Consumed {
+    /// The quantity that posted now, in thousandths.
+    pub posted_milli: i64,
+    /// The quantity that became a pending issue, in thousandths.
+    pub short_milli: i64,
+    /// The pending issue, `inventory.pending_issue:5`, when part was short.
+    pub pending_issue: Option<Subject>,
+    /// The lots the posted part came from, first expiry first.
+    #[serde(default)]
+    pub lots: Vec<ConsumedLot>,
+}
+
+/// A lot that can be taken from now (`STK.MOV.01`, `STK.LOT.01`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockLot {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// Its number, as printed on the pack.
+    pub number: String,
+    /// The last day it can be used.
+    pub expiry_date: Option<NaiveDate>,
+    /// What can be taken from it at the location, in thousandths: not held,
+    /// not reserved.
+    pub available_milli: i64,
+}
+
+/// What can be taken of an item at a location.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockChoice {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// Whether the item is tracked by lot.
+    pub lot_tracked: bool,
+    /// The lots that can be taken from, first expiry first: released, not
+    /// held, not expired, with a quantity. Empty for an item that is not
+    /// lot-tracked.
+    pub lots: Vec<StockLot>,
+}
+
+/// The stock service other modules call (wl-inventory §6 `StockService`).
+/// Without the inventory module [`stock_service`] gives [`NoStockService`],
+/// which posts nothing.
+pub trait StockService: Send + Sync + 'static {
+    /// Consumes automatically: posts what is available and records a pending
+    /// issue for the short part, so the business event is never blocked.
+    fn consume<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ConsumeRequest,
+    ) -> StockFuture<'a, Consumed> {
+        Box::pin(async { Ok(Consumed::default()) })
+    }
+
+    /// The store of the scope `kind`/`id` (a branch): the location the scope
+    /// issues from, `inventory.location:2`. `None` when it has none.
+    fn store_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _scope_kind: &'a str,
+        _scope_id: i64,
+    ) -> StockFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// What can be taken of the item with `code` at `location`: whether it is
+    /// lot-tracked and, if so, its lots first expiry first (the lot an issue
+    /// screen proposes is the first). `None` when no such item exists.
+    fn choices<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _code: &'a str,
+        _location: &'a Subject,
+    ) -> StockFuture<'a, Option<StockChoice>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The `source` that consumed (a visit, a sale) was cancelled before its
+    /// pending issues posted: each one still open is cleared with the reason
+    /// *source cancelled*, without a movement. Returns how many were cleared.
+    fn source_cancelled<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source: &'a Subject,
+    ) -> StockFuture<'a, usize> {
+        Box::pin(async { Ok(0) })
+    }
+}
+
+/// The stock service when `inventory` is off: nothing is posted.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoStockService;
+
+impl StockService for NoStockService {}
+
+/// Makes `service` the app's [`StockService`]; `wl-inventory` calls it in
+/// `register`.
+pub fn provide_stock_service(app: &mut Registry, service: impl StockService) {
+    let service: Arc<dyn StockService> = Arc::new(service);
+    app.provide(service);
+}
+
+/// The app's [`StockService`], or [`NoStockService`] when none is provided.
+pub fn stock_service(state: &AppState) -> Arc<dyn StockService> {
+    match state.provided::<Arc<dyn StockService>>() {
+        Some(service) => Arc::clone(&service),
+        None => Arc::new(NoStockService),
+    }
+}
+
+/// A hold a vertical automation (06: the out-of-range reading) places on the
+/// stock at one location.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlaceHold {
+    /// `recall`, `quality`, `temperature`, `complaint` or `other`.
+    pub reason: String,
+    /// The record that caused it: a checklist reading, a ticket.
+    pub reference: Subject,
+    /// The location whose stock is held, `inventory.location:2`.
+    pub location: Subject,
+    /// The items held; every item at the location when empty.
+    pub items: Vec<Subject>,
+}
+
+/// The stock hold service (wl-inventory §6 `StockHoldService`). Without the
+/// inventory module [`stock_hold_service`] gives [`NoStockHoldService`],
+/// which holds nothing.
+pub trait StockHoldService: Send + Sync + 'static {
+    /// Places a hold on the stock at a location as the system. Returns the
+    /// hold, or `None` when the module is off.
+    fn place<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _hold: PlaceHold,
+    ) -> StockFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The hold service when `inventory` is off: nothing is held.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoStockHoldService;
+
+impl StockHoldService for NoStockHoldService {}
+
+/// Makes `service` the app's [`StockHoldService`]; `wl-inventory` calls it in
+/// `register`.
+pub fn provide_stock_hold_service(app: &mut Registry, service: impl StockHoldService) {
+    let service: Arc<dyn StockHoldService> = Arc::new(service);
+    app.provide(service);
+}
+
+/// The app's [`StockHoldService`], or [`NoStockHoldService`] when none is
+/// provided.
+pub fn stock_hold_service(state: &AppState) -> Arc<dyn StockHoldService> {
+    match state.provided::<Arc<dyn StockHoldService>>() {
+        Some(service) => Arc::clone(&service),
+        None => Arc::new(NoStockHoldService),
+    }
+}
+
+/// What was decided for one line of a closed stock hold.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeldOutcome {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location the quantity was at, `inventory.location:2`.
+    pub location: Subject,
+    /// The lot, `inventory.lot:4`.
+    pub lot: Option<Subject>,
+    /// The quantity held, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// `release`, `discard` or `return_to_supplier`.
+    pub outcome: String,
+}
+
+/// A stock hold closed because its last line was decided (wl-inventory §6
+/// `StockHoldClosed`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StockHoldClosed {
+    /// The hold, `inventory.stock_hold:3`.
+    pub hold: Subject,
+    /// Its number, `HLD-2026-0001`.
+    pub number: String,
+    /// `recall`, `quality`, `temperature`, `complaint` or `other`.
+    pub reason: String,
+    /// The record that caused it.
+    pub reference: Option<Subject>,
+    /// What was decided for each line.
+    pub outcomes: Vec<HeldOutcome>,
+}
+
+impl Event for StockHoldClosed {}
+
+/// A lot left its hold and can be used again (wl-inventory §6 `LotReleased`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LotReleased {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+}
+
+impl Event for LotReleased {}
+
+/// A lot was discarded (wl-inventory §6 `LotDiscarded`): what was left of it
+/// went to wastage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LotDiscarded {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// Why: the hold or expiry reason.
+    pub reason: String,
+    /// The quantity of the lot that went to wastage, in thousandths: what
+    /// the lines of the hold discarded and what the lot's own discard wrote
+    /// off after them.
+    pub quantity_milli: i64,
+}
+
+impl Event for LotDiscarded {}
+
+/// A recall was opened (wl-inventory §6 `RecallOpened`): every lot in its
+/// scope is on hold, wherever it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecallOpened {
+    /// The recall, `inventory.recall:2`.
+    pub recall: Subject,
+    /// Its number, `RCL-2026-0001`.
+    pub number: String,
+    /// `supplier`, `authority`, `internal` or `complaint`.
+    pub source: String,
+    /// Why it was opened.
+    pub reason: String,
+    /// The lots in its scope, `inventory.lot:4`.
+    pub lots: Vec<Subject>,
+    /// The stock hold that blocks them, `inventory.stock_hold:3`.
+    pub stock_hold: Subject,
+}
+
+impl Event for RecallOpened {}
+
+/// How sure a recall trace is that a subject got the recalled lot (§4
+/// *Recall*, forward trace).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TraceMark {
+    /// A movement of the lot to the subject proves it.
+    Confirmed,
+    /// A pending issue whose lot was assigned when stock arrived: it may
+    /// have been any lot of the item at the location (*lot uncertain*).
+    Uncertain,
+    /// Theoretical consumption, or an item not tracked by lot: the unit used
+    /// cannot be proven to come from the recalled lot.
+    Possible,
+}
+
+/// The party behind a subject in a recall trace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TraceParty {
+    /// The patient, customer, vehicle owner or fleet of the subject.
+    Party(PartyId),
+    /// A sale without a known party (walk-in POS): the trace lists a count
+    /// per outlet and day instead of a line per sale.
+    WalkIn,
+    /// The vertical does not know: the line is listed with the party
+    /// *unknown* for manual handling.
+    Unknown,
+}
+
+/// The future a [`TracePartyResolver`] or [`LotTrace`] method returns.
+pub type TraceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// The party behind a subject in a recall trace (wl-inventory §6
+/// `TracePartyResolver`), provided by the vertical: 05 visit to patient, 06
+/// order to customer, 07 sales order or dispatch to customer, 08 job card to
+/// vehicle owner or fleet. Without one [`trace_party_resolver`] gives
+/// [`NoTraceParties`]: every party is unknown.
+pub trait TracePartyResolver: Send + Sync + 'static {
+    /// The party of `subject`.
+    fn party<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+    ) -> TraceFuture<'a, TraceParty> {
+        Box::pin(async { Ok(TraceParty::Unknown) })
+    }
+
+    /// The delivery status of a dispatched `subject` (`wl-delivery`), when
+    /// the deployment has one: an undelivered delivery can still be stopped.
+    fn delivery_status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+    ) -> TraceFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The resolver when no vertical provides one: nobody is known.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoTraceParties;
+
+impl TracePartyResolver for NoTraceParties {}
+
+/// Makes `resolver` the app's [`TracePartyResolver`]; a vertical calls it in
+/// `register`.
+pub fn provide_trace_party_resolver(app: &mut Registry, resolver: impl TracePartyResolver) {
+    let resolver: Arc<dyn TracePartyResolver> = Arc::new(resolver);
+    app.provide(resolver);
+}
+
+/// The app's [`TracePartyResolver`], or [`NoTraceParties`] when none is
+/// provided.
+pub fn trace_party_resolver(state: &AppState) -> Arc<dyn TracePartyResolver> {
+    match state.provided::<Arc<dyn TracePartyResolver>>() {
+        Some(resolver) => Arc::clone(&resolver),
+        None => Arc::new(NoTraceParties),
+    }
+}
+
+/// One line of a recall's trace: who got the goods (wl-inventory §3 *Recall*,
+/// affected line).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TracedHolder {
+    /// The line itself, `inventory.recall_line:7` (the subject of its
+    /// notices).
+    pub line: Subject,
+    /// The visit, order, job card, dispatch or work order that used the lot;
+    /// `None` for a count of walk-in sales.
+    pub subject: Option<Subject>,
+    /// The patient, customer or other party to tell; `None` when the vertical
+    /// does not know (or for walk-in sales).
+    pub party: Option<PartyId>,
+    /// The lot, `inventory.lot:4`.
+    pub lot: Option<Subject>,
+    /// Where it was used: the location it left, `inventory.location:2`.
+    pub location: Option<Subject>,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The day it was used (Asia/Dubai).
+    pub on: Option<NaiveDate>,
+    /// `confirmed`, `uncertain`, `possible`, `dispatch` or `walk_in`.
+    pub kind: String,
+    /// How sure the trace is.
+    pub mark: TraceMark,
+    /// The sales counted, for `walk_in` (else 1).
+    pub sales: i64,
+    /// The delivery status of a dispatch.
+    pub delivery_status: Option<String>,
+    /// `pending`, `sent` or `waived`.
+    pub notice: String,
+}
+
+/// Where a lot of a recall is now: the stock the recall's holds block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TracedPlace {
+    /// The lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// The location it is at (the in-transit one included).
+    pub location: Subject,
+    /// The quantity held there, in thousandths.
+    pub quantity_milli: i64,
+}
+
+/// The forward trace of a recall, for other modules (wl-inventory §6
+/// `LotTrace`): the clinics vertical reads the patients to call back, 06 the
+/// customers. Without the inventory module [`lot_trace`] gives [`NoLotTrace`],
+/// which knows nothing.
+pub trait LotTrace: Send + Sync + 'static {
+    /// The affected lines of `recall` (`inventory.recall:2`): subject, party,
+    /// lot, quantity and notice status of each.
+    fn holders<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _recall: &'a Subject,
+    ) -> TraceFuture<'a, Vec<TracedHolder>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Where each lot of `recall` is, as its holds block it.
+    fn places<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _recall: &'a Subject,
+    ) -> TraceFuture<'a, Vec<TracedPlace>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+    /// A vertical that sends its own notice (05: a neutral text with no
+    /// product) tells the recall which line it told: `sent` marks the
+    /// `pending` line `line` (`inventory.recall_line:7`) as sent, and `false`
+    /// takes a `sent` line back to `pending` (the notice gave up). `by` is
+    /// the user who sent it. Returns whether the line changed; a line that
+    /// was waived, a closed recall or a line in the other state change
+    /// nothing.
+    fn set_notice<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _line: &'a Subject,
+        _sent: bool,
+        _by: Option<i64>,
+    ) -> TraceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// The trace when `inventory` is off: nothing is known.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoLotTrace;
+
+impl LotTrace for NoLotTrace {}
+
+/// Makes `trace` the app's [`LotTrace`]; `wl-inventory` calls it in
+/// `register`.
+pub fn provide_lot_trace(app: &mut Registry, trace: impl LotTrace) {
+    let trace: Arc<dyn LotTrace> = Arc::new(trace);
+    app.provide(trace);
+}
+
+/// The app's [`LotTrace`], or [`NoLotTrace`] when none is provided.
+pub fn lot_trace(state: &AppState) -> Arc<dyn LotTrace> {
+    match state.provided::<Arc<dyn LotTrace>>() {
+        Some(trace) => Arc::clone(&trace),
+        None => Arc::new(NoLotTrace),
+    }
+}
+
+/// A recall was traced (wl-inventory §6 `RecallTraced`): the affected lines
+/// exist and the lots made from the recalled ones are in its scope and held.
+/// A re-run emits it again with every line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecallTraced {
+    /// The recall, `inventory.recall:2`.
+    pub recall: Subject,
+    /// Its number, `RCL-2026-0001`.
+    pub number: String,
+    /// Every lot in its scope now, the output lots included.
+    pub lots: Vec<Subject>,
+    /// The affected lines.
+    pub lines: Vec<TracedHolder>,
+}
+
+impl Event for RecallTraced {}
+
+/// A recall was closed (wl-inventory §6 `RecallClosed`): every lot has an
+/// outcome and every affected party was told or waived.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecallClosed {
+    /// The recall, `inventory.recall:2`.
+    pub recall: Subject,
+    /// Its number, `RCL-2026-0001`.
+    pub number: String,
+    /// The lots in its scope.
+    pub lots: Vec<Subject>,
+    /// The affected lines with their notice status.
+    pub lines: Vec<TracedHolder>,
+    /// What was decided for each held line.
+    pub outcomes: Vec<HeldOutcome>,
+}
+
+impl Event for RecallClosed {}

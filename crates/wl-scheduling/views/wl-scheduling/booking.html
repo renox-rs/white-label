@@ -1,0 +1,80 @@
+{#- wl-scheduling: one booking: who, what, when, with what, and what the
+    signed-in user may do next. Replace it with
+    resources/views/wl-scheduling/booking.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="booking.number">
+  <rx-stack>
+    <rx-page-header :title="booking.number" :subtitle="booking.service" :back="route('wl_scheduling.bookings')" :back-label="tx['bookings.title']"
+                    :badge="booking.status" :badge-kind="booking.status_kind">
+      <template rx-if="is_requested">
+        <rx-confirm id="accept-booking" :label="tx['booking.accept']" :action="route('wl_scheduling.booking_accept', booking.id)" method="POST"
+                    :title="tx['booking.accept']" :message="booking.number" :confirm-label="tx['booking.accept']" :cancel-label="tx['cancel']" icon="check"/>
+        <rx-action-sheet id="decline-booking" :label="tx['booking.decline']" :action="route('wl_scheduling.booking_decline', booking.id)"
+                         :title="tx['booking.decline']" :submit-label="tx['booking.decline']" icon="x">
+          <rx-textarea name="reason" :label="tx['booking.reason']" id="decline-booking-reason"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="is_booked">
+        <rx-confirm id="confirm-booking" :label="tx['booking.confirm']" :action="route('wl_scheduling.booking_confirm', booking.id)" method="POST"
+                    :title="tx['booking.confirm']" :message="booking.number" :confirm-label="tx['booking.confirm']" :cancel-label="tx['cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_check_in">
+        <rx-confirm id="check-in-booking" :label="tx['booking.check_in']" :action="route('wl_scheduling.booking_check_in', booking.id)" method="POST"
+                    :title="tx['booking.check_in']" :message="booking.number" :confirm-label="tx['booking.check_in']" :cancel-label="tx['cancel']" icon="calendar-check"/>
+      </template>
+      <template rx-if="can_start">
+        <rx-confirm id="start-booking" :label="tx['booking.start']" :action="route('wl_scheduling.booking_start', booking.id)" method="POST"
+                    :title="tx['booking.start']" :message="booking.number" :confirm-label="tx['booking.start']" :cancel-label="tx['cancel']" icon="clock"/>
+      </template>
+      <template rx-if="can_complete">
+        <rx-confirm id="complete-booking" :label="tx['booking.complete']" :action="route('wl_scheduling.booking_complete', booking.id)" method="POST"
+                    :title="tx['booking.complete']" :message="booking.number" :confirm-label="tx['booking.complete']" :cancel-label="tx['cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_no_show">
+        <rx-confirm id="no-show-booking" :label="tx['booking.no_show']" :action="route('wl_scheduling.booking_no_show', booking.id)" method="POST"
+                    :title="tx['booking.no_show']" :message="booking.number" :confirm-label="tx['booking.no_show']" :cancel-label="tx['cancel']" icon="x"/>
+      </template>
+      <template rx-if="can_reschedule">
+        <rx-action-sheet id="reschedule-booking" :label="tx['booking.reschedule']" :action="route('wl_scheduling.booking_reschedule', booking.id)"
+                         :title="tx['booking.reschedule']" :submit-label="tx['booking.reschedule']" icon="refresh-cw">
+          <rx-input name="starts_at" type="datetime-local" :label="tx['booking.starts_at']" :value="starts_input" id="reschedule-booking-start" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_reassign">
+        <rx-action-sheet id="reassign-booking" :label="tx['booking.reassign']" :action="route('wl_scheduling.booking_reassign', booking.id)"
+                         :title="tx['booking.reassign']" :submit-label="tx['booking.reassign']" icon="refresh-cw">
+          <rx-select name="from" :label="tx['booking.reassign_from']" :options="on_booking" :selected="''"/>
+          <rx-select name="to" :label="tx['booking.reassign_to']" :options="others" :selected="''"/>
+          <rx-select name="reason_code" :label="tx['booking.reason_code']" :options="reasons" :selected="'resource_unavailable'"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_waive">
+        <rx-action-sheet id="waive-deposit" :label="tx['deposit.waive']" :action="route('wl_scheduling.booking_waive_deposit', booking.id)"
+                         :title="tx['deposit.waive']" :submit-label="tx['deposit.waive']" icon="refresh-cw">
+          <rx-textarea name="reason" :label="tx['booking.reason']" id="waive-deposit-reason"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_cancel">
+        <rx-action-sheet id="cancel-booking" :label="tx['booking.cancel']" :action="route('wl_scheduling.booking_cancel', booking.id)"
+                         :title="tx['booking.cancel']" :submit-label="tx['booking.cancel']" icon="x">
+          <rx-select name="reason_code" :label="tx['booking.reason_code']" :options="reasons" :selected="'other'"/>
+          <rx-select name="initiated_by" :label="tx['booking.side']" :options="sides" :selected="''"/>
+          <rx-textarea name="note" :label="tx['booking.reason']" id="cancel-booking-note"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['booking.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['bookings.party']" :value="booking.party"/>
+        <rx-entry :label="tx['bookings.service']" :value="booking.service"/>
+        <rx-entry :label="tx['bookings.when']" :value="booking.when"/>
+        <rx-entry :label="tx['booking.ends']" :value="ends"/>
+        <rx-entry :label="tx['bookings.resources']" :value="booking.resources"/>
+        <rx-entry :label="tx['booking.source']" :value="source"/>
+        <rx-entry :label="tx['booking.notes']" :value="notes" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['booking.cancel_reason']" :value="cancel_reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['deposit.title']" :value="deposit" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['booking.work_done']" :value="work_done" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

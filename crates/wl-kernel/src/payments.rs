@@ -27,6 +27,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use renox::chrono::NaiveDate;
+use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -979,6 +980,242 @@ pub struct RefundFailed {
 
 impl Event for RefundFailed {}
 
+/// A refund was approved, or went back to `approved` for a retry or a new
+/// method (`approve`, `retry`, `change_method`): it now claims its source.
+/// The owner of a source outside `wl-payments` takes the amount from it: the
+/// payer credit balance records a *refund* movement with the approval
+/// (`FIN.ACL.16`: the refund's approval is the movement's approval). It is
+/// idempotent on the owner's side; [`RefundFailed`] gives the amount back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefundApproved {
+    /// The refund.
+    pub refund: RefundId,
+    /// Who is to be paid.
+    pub party: PartyId,
+    /// The legal entity paying.
+    pub legal_entity_id: i64,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// What the refund is paid out of.
+    pub source: RefundSource,
+    /// The user who approved it; `None` when the system did (a late payment
+    /// refund) or the refund goes back to `approved` after a failure.
+    pub approved_by: Option<i64>,
+}
+
+impl Event for RefundApproved {}
+
+/// The subject type of a payment link, for [`Subject`] references.
+pub const PAYMENT_LINK_SUBJECT_TYPE: &str = "payments.payment_link";
+
+/// Why an online payment failed (wl-payments §4 `fail`).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum PaymentFailureKind {
+    /// The gateway declined it; the reason is the gateway's.
+    #[default]
+    Declined,
+    /// The payer cancelled or let the hosted session expire.
+    Abandoned,
+    /// The gateway gave no final answer within the timeout (`FIN.RUL.19`).
+    Timeout,
+}
+
+/// An online payment failed (`fail`). The payment link stays `open` so the
+/// party can retry; a subscription retries its charge (`FIN.RUL.06`); a
+/// prepaid booking or order is not confirmed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentFailed {
+    /// The payment.
+    pub payment: PaymentId,
+    /// Who was paying.
+    pub party: PartyId,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// Why, as a kind.
+    pub kind: PaymentFailureKind,
+    /// The gateway's reason, or `timeout` / `abandoned` in words.
+    pub reason: String,
+    /// The subscription it was a charge for, if any.
+    pub subscription: Option<Subject>,
+    /// The payment link it was paid through (`payments.payment_link`), if any.
+    pub payment_link: Option<Subject>,
+    /// The record paid in advance for (a booking, an order), if any.
+    pub prepaid: Option<Subject>,
+}
+
+impl Event for PaymentFailed {}
+
+/// A payment link expired unpaid (`expire`): wl-scheduling releases an unpaid
+/// booking hold.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentLinkExpired {
+    /// The payment link (`payments.payment_link`).
+    pub payment_link: Subject,
+    /// Who was asked to pay.
+    pub party: PartyId,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The record paid in advance for (a booking, an order), if any.
+    pub prepaid: Option<Subject>,
+}
+
+impl Event for PaymentLinkExpired {}
+
+/// A payment link another module asks of `wl-payments`: the party pays
+/// `amount` in advance for `prepaid` (a booking) until `expires_at`
+/// (wl-scheduling §5.2: the prepayment hold and the link's expiry are one
+/// timer).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentLinkRequest {
+    /// Who is asked to pay.
+    pub party: PartyId,
+    /// The legal entity whose books it belongs to.
+    pub legal_entity_id: i64,
+    /// The amount, in fils; above 0.
+    pub amount: i64,
+    /// The ISO currency code, e.g. `AED`.
+    pub currency: String,
+    /// The record paid in advance for (a booking).
+    pub prepaid: Subject,
+    /// When the link expires.
+    pub expires_at: DateTime,
+    /// The staff user who asked, when a user did.
+    pub created_by: Option<i64>,
+}
+
+/// A payment link that was made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentLinkRef {
+    /// The link (`payments.payment_link`).
+    pub link: Subject,
+    /// The path of its public page, e.g. `/pay/ab12…`.
+    pub path: String,
+}
+
+/// Makes payment links for other modules. `wl-payments` provides it; without
+/// that module, [`payment_links`] gives [`NoPaymentLinks`].
+pub trait PaymentLinks: Send + Sync + 'static {
+    /// Makes an `open` link for `request`. `None` when online payment is not
+    /// available (the module is off or no gateway is installed); the default.
+    /// An error when the request is refused (an unknown party, an amount of 0
+    /// or less, an expiry in the past).
+    fn create<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: PaymentLinkRequest,
+    ) -> PaymentFuture<'a, Option<PaymentLinkRef>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Withdraws the `open` link `link` as the system, because what it was
+    /// asked for no longer exists (an unpaid booking hold was released). A
+    /// party who opens it afterwards can no longer pay. `true` when this call
+    /// closed it; `false` when it was not open (paid, expired or cancelled
+    /// already) or unknown. The default does nothing.
+    fn cancel<'a>(&'a self, _state: &'a AppState, _link: &'a Subject) -> PaymentFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// The links when `payments` is off: none can be made.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPaymentLinks;
+
+impl PaymentLinks for NoPaymentLinks {}
+
+/// Makes `links` the app's [`PaymentLinks`]; `wl-payments` calls it in
+/// `register`.
+pub fn provide_payment_links(app: &mut Registry, links: impl PaymentLinks) {
+    let links: Arc<dyn PaymentLinks> = Arc::new(links);
+    app.provide(links);
+}
+
+/// The app's [`PaymentLinks`], or [`NoPaymentLinks`] when none is provided.
+pub fn payment_links(state: &AppState) -> Arc<dyn PaymentLinks> {
+    match state.provided::<Arc<dyn PaymentLinks>>() {
+        Some(links) => Arc::clone(&links),
+        None => Arc::new(NoPaymentLinks),
+    }
+}
+
+/// How a chargeback that was not won ended (wl-payments §4).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ChargebackOutcome {
+    /// The gateway ruled for the card holder, or the evidence deadline
+    /// passed without a submission (`lose_chargeback`).
+    #[default]
+    Lost,
+    /// The accountant chose not to contest it, with another person's
+    /// approval (`accept_chargeback`, `FIN.ACL.18`).
+    Accepted,
+}
+
+/// A chargeback ended lost or accepted (`lose_chargeback`,
+/// `accept_chargeback`): the payment is `reversed`. A won dispute emits
+/// [`PaymentReceived`] instead.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChargebackClosed {
+    /// The payment.
+    pub payment: PaymentId,
+    /// Who paid.
+    pub party: PartyId,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// How it ended.
+    pub outcome: ChargebackOutcome,
+    /// The documents the payment had paid, which stay open: collect the
+    /// amount again, or write them off through invoice `write_off`.
+    pub reopened: Vec<PaymentAllocation>,
+}
+
+impl Event for ChargebackClosed {}
+
+/// Whether the record a payment was made in advance for still waits for the
+/// money. The owner of the record (wl-scheduling for a booking, wl-sales for
+/// an order) provides it. A prepaid subject is **not** active once it is
+/// cancelled, rejected, or its slot is gone (the booking hold was released,
+/// for example on [`PaymentLinkExpired`]); wl-payments adds "already paid by
+/// another payment" itself. Without a provider every subject counts as
+/// active, so no refund is approved on a guess.
+pub trait PrepaidSubjects: Send + Sync + 'static {
+    /// Whether `subject` can still take the money of a payment.
+    fn is_active<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+    ) -> PaymentFuture<'a, bool> {
+        Box::pin(async { Ok(true) })
+    }
+}
+
+/// The prepaid subjects when no module provides them: all are active.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPrepaidSubjects;
+
+impl PrepaidSubjects for NoPrepaidSubjects {}
+
+/// Makes `subjects` the app's [`PrepaidSubjects`]; the module that owns
+/// prepaid records calls it in `register`.
+pub fn provide_prepaid_subjects(app: &mut Registry, subjects: impl PrepaidSubjects) {
+    let subjects: Arc<dyn PrepaidSubjects> = Arc::new(subjects);
+    app.provide(subjects);
+}
+
+/// The app's [`PrepaidSubjects`], or [`NoPrepaidSubjects`] when none is
+/// provided.
+pub fn prepaid_subjects(state: &AppState) -> Arc<dyn PrepaidSubjects> {
+    match state.provided::<Arc<dyn PrepaidSubjects>>() {
+        Some(subjects) => Arc::clone(&subjects),
+        None => Arc::new(NoPrepaidSubjects),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1276,5 +1513,70 @@ mod tests {
         assert_eq!(json["outgoing_payment"], renox::serde_json::Value::Null);
         let back: RefundFailed = renox::serde_json::from_value(json).unwrap();
         assert_eq!(back, e);
+    }
+    #[test]
+    fn the_refund_approved_event_names_its_source_and_approver() {
+        let e = RefundApproved {
+            refund: RefundId(9),
+            party: PartyId(4),
+            legal_entity_id: 1,
+            amount: 120_000,
+            currency: "AED".into(),
+            source: RefundSource::PayerCredit(Subject::new("invoicing.payer_credit", 4)),
+            approved_by: Some(7),
+        };
+        let json = renox::serde_json::to_value(&e).unwrap();
+        assert_eq!(json["source"]["kind"], "payer_credit");
+        assert_eq!(json["approved_by"], 7);
+        let back: RefundApproved = renox::serde_json::from_value(json).unwrap();
+        assert_eq!(back, e);
+    }
+
+    #[test]
+    fn a_chargeback_ends_lost_or_accepted() {
+        let outcomes: Vec<_> = ChargebackOutcome::ALL.iter().map(|o| o.as_str()).collect();
+        assert_eq!(outcomes, ["lost", "accepted"]);
+        let closed = ChargebackClosed {
+            payment: PaymentId(4),
+            party: PartyId(2),
+            amount: 80_000,
+            currency: "AED".into(),
+            outcome: ChargebackOutcome::Accepted,
+            reopened: vec![PaymentAllocation {
+                target: Subject::new("invoicing.invoice", 9),
+                amount: 80_000,
+            }],
+        };
+        let json = renox::serde_json::to_value(&closed).unwrap();
+        assert_eq!(json["outcome"], "accepted");
+        assert_eq!(json["reopened"][0]["amount"], 80_000);
+        let back: ChargebackClosed = renox::serde_json::from_value(json).unwrap();
+        assert_eq!(back, closed);
+    }
+
+    #[test]
+    fn a_payment_failure_is_declined_abandoned_or_a_timeout() {
+        let kinds: Vec<_> = PaymentFailureKind::ALL.iter().map(|k| k.as_str()).collect();
+        assert_eq!(kinds, ["declined", "abandoned", "timeout"]);
+        assert_eq!(PAYMENT_LINK_SUBJECT_TYPE, "payments.payment_link");
+    }
+
+    #[test]
+    fn the_failed_and_expired_events_carry_the_link_and_the_prepaid_record() {
+        let failed = PaymentFailed {
+            payment: PaymentId(4),
+            party: PartyId(2),
+            amount: 25_000,
+            kind: PaymentFailureKind::Timeout,
+            reason: "timeout".into(),
+            subscription: None,
+            payment_link: Some(Subject::new(PAYMENT_LINK_SUBJECT_TYPE, 9)),
+            prepaid: Some(Subject::new("scheduling.booking", 3)),
+        };
+        let json = renox::serde_json::to_value(&failed).unwrap();
+        assert_eq!(json["kind"], "timeout");
+        assert_eq!(json["payment_link"]["subject_id"], 9);
+        let back: PaymentFailed = renox::serde_json::from_value(json).unwrap();
+        assert_eq!(back, failed);
     }
 }

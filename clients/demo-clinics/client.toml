@@ -1,0 +1,36 @@
+# The demo client of F5 (05 Clinics): a private outpatient clinic with two
+# branches. Data is fictional. Boot it with
+# CLIENT_CONFIG=clients/demo-clinics/client.toml.
+
+[client]
+name    = "Palm Grove Clinic LLC"
+app     = "clinics"
+domain  = "demo.palmgroveclinic.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#0E7490"
+second       = "#B45309"
+display_font = "Poppins"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "scheduling", "inventory", "portal"]
+
+[roles]
+# `PLT.RUL.04`: a compliance-critical rule that fails alerts the owner role
+# (the owner / medical director) and the company admin (05 §7.2).
+owner = "owner"
+
+# The number the product recall notice asks patients to call (BL-CLN-14).
+[clinics]
+phone = "+971 4 555 0100"
+
+[[legal_entities]]
+code      = "PGC"
+name_en   = "Palm Grove Clinic LLC"
+emirate   = "dubai"
+licensing_authority = "Dubai Health Authority"
+trade_licence_no = "8765432"
+trn       = "100000000000003"
+address_en = "Clinic 3, Jumeirah, Dubai"
+default   = true

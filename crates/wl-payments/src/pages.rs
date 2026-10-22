@@ -711,6 +711,18 @@ pub(crate) struct ShowPage {
     actions: Vec<Available>,
     can_allocate: bool,
     can_reverse: bool,
+    /// Whether the chargeback sheet is offered: a received gateway payment.
+    can_chargeback: bool,
+    /// Whether "evidence submitted" is offered: a charged-back payment whose
+    /// evidence was not noted yet.
+    can_evidence: bool,
+    /// Whether "accept" and "dispute lost" are offered: a charged-back
+    /// payment, for a holder of the chargeback permission.
+    can_close_chargeback: bool,
+    /// The state of the dispute in words.
+    dispute_label: String,
+    /// The gateway's dispute fee, formatted.
+    dispute_fee: String,
     /// The reasons a user may give, `(code, label)`.
     reasons: Vec<(String, String)>,
     allocate_description: String,
@@ -804,7 +816,16 @@ async fn show(
         .available(&user, &db)
         .await?
         .into_iter()
-        .filter(|a| a.name != crate::reverse::REVERSE && a.name != crate::record::RECORD)
+        .filter(|a| {
+            ![
+                crate::reverse::REVERSE,
+                crate::record::RECORD,
+                crate::chargeback::CHARGE_BACK,
+                crate::chargeback_close::LOSE_CHARGEBACK,
+                crate::chargeback_close::ACCEPT_CHARGEBACK,
+            ]
+            .contains(&a.name.as_str())
+        })
         .collect();
     let received = payment.status.is_received();
     let can_allocate = received
@@ -812,6 +833,22 @@ async fn show(
         && unallocated > 0
         && user.has_permission(permissions::RECORD);
     let can_reverse = received && user.has_permission(permissions::REVERSE);
+    let can_chargeback = received
+        && payment.direction == Direction::In
+        && payment.method == wl_kernel::payments::PaymentMethod::Gateway
+        && user.has_permission(permissions::CHARGEBACK);
+    let charged_back = payment.status == PaymentStatus::ChargedBack;
+    let can_evidence = charged_back
+        && payment.dispute_evidence_submitted_on.is_none()
+        && user.has_permission(permissions::CHARGEBACK);
+    let can_close_chargeback = charged_back && user.has_permission(permissions::CHARGEBACK);
+    let dispute_label = payment
+        .dispute_outcome
+        .clone()
+        .or_else(|| payment.dispute_status.clone())
+        .map(|code| t(&format!("dispute.{code}")))
+        .unwrap_or_default();
+    let dispute_fee = payment.dispute_fee.map(money).unwrap_or_default();
     let reasons = options(&t, "reason", &["entered_in_error", "bank_return"]);
     let entity_name = match LegalEntity::find(&db, payment.legal_entity_id).await? {
         Some(entity) => entity.code,
@@ -848,6 +885,11 @@ async fn show(
         actions,
         can_allocate,
         can_reverse,
+        can_chargeback,
+        can_evidence,
+        can_close_chargeback,
+        dispute_label,
+        dispute_fee,
         reasons,
         payment,
     }))

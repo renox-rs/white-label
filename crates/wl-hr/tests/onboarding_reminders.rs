@@ -7,6 +7,8 @@
 mod support;
 
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
+use wl_hr::leave_machine::{self, LeaveInput};
 use wl_hr::onboarding::{self, StartRequest, StartTrigger};
 use wl_hr::reminders;
 use wl_hr::steps::{self, DoneInput};
@@ -254,8 +256,16 @@ async fn hrm_rul_17_leave_moves_the_due_date_and_pauses_the_reminders() {
     );
 
     // Cancelled: the date is back.
-    leave.status = LeaveStatus::Cancelled;
-    leave.save(t.db()).await.unwrap();
+    let _outcome = leave
+        .transition(leave_machine::CANCEL)
+        .by_system()
+        .input(&LeaveInput {
+            today: Some(nov(6)),
+            ..LeaveInput::default()
+        })
+        .run(t.state())
+        .await
+        .unwrap();
     reminders::run(t.state(), nov(14)).await.unwrap();
     assert_eq!(
         step_of(&t, &onboarding, "Return the access card")

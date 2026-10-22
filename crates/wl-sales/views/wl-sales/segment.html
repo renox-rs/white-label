@@ -1,0 +1,44 @@
+{#- wl-sales: the segment editor: one question for each kind of rule, the
+    ones answered are kept. Items offered are those that were sold, without
+    the clinical services of 05 unless the setting allows them. The count is
+    an estimate. Replace it with resources/views/wl-sales/segment.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :back="route('wl_sales.segments')" :back-label="tx['segments.title']"/>
+    <template rx-if="segment_id">
+      <rx-card :title="tx['segments.members']">
+        <rx-stack>
+          <rx-alert rx-if="count" kind="info" :message="tx['segments.estimate'] ~ ' ' ~ count"/>
+          <rx-form method="POST" :action="route('wl_sales.segment_preview', segment_id)">
+            <rx-button type="submit" :label="tx['segments.preview']" variant="secondary" icon="eye"/>
+          </rx-form>
+          <rx-link-button rx-if="can_export" :href="route('wl_sales.segment_export', segment_id)" :label="tx['segments.export']" variant="secondary" icon="download"/>
+        </rx-stack>
+      </rx-card>
+    </template>
+    <rx-form :action="action" novalidate>
+      <rx-card :title="tx['segments.rules']">
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="name" :label="tx['segments.name']" :value="values['name']" required/>
+          <rx-select name="match_mode" :label="tx['segments.match']" :options="modes" :selected="values['match_mode']"/>
+          <rx-input name="no_sale_days" type="number" :label="tx['segments.q.no_sale_days']" :value="values['no_sale_days']"/>
+          <rx-input name="spend_amount" :label="tx['segments.q.spend_amount']" :value="values['spend_amount']"/>
+          <rx-input name="spend_days" type="number" :label="tx['segments.q.spend_days']" :value="values['spend_days']"/>
+          <rx-input name="sales_count" type="number" :label="tx['segments.q.sales_count']" :value="values['sales_count']"/>
+          <rx-input name="sales_days" type="number" :label="tx['segments.q.sales_days']" :value="values['sales_days']"/>
+          <rx-select name="item" :label="tx['segments.q.item']" :options="items" :selected="values['item']" :placeholder="tx['segments.q.any']"/>
+          <rx-input name="item_days" type="number" :label="tx['segments.q.item_days']" :value="values['item_days']"/>
+          <rx-input name="balance" type="number" :label="tx['segments.q.balance']" :value="values['balance']"/>
+          <rx-input name="credits" type="number" :label="tx['segments.q.credits']" :value="values['credits']"/>
+          <rx-select name="enrolled" :label="tx['segments.q.enrolled']" :options="enrolled" :selected="values['enrolled']" :placeholder="tx['segments.q.any']"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-link-button :href="route('wl_sales.segments')" :label="tx['cancel']" variant="plain"/>
+          <rx-button :label="tx['segments.save']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

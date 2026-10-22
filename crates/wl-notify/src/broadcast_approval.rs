@@ -3,9 +3,9 @@
 //! listener.
 //!
 //! The policy asks one holder of `notifications.marketing.send`, never the
-//! requester (segregation of duties on, so not even as admin), and lets a
-//! request wait 24 hours (the kernel expiry is a fixed duration; #63 closes
-//! the exact rule). The final re-check runs at the last yes before the
+//! requester (segregation of duties on, so not even as admin). It has no
+//! expiry of its own: `NTF.RUL.03` ends a request 24 hours after the
+//! broadcast's send time ([`crate::stale`], #63). The final re-check runs at the last yes before the
 //! broadcast is scheduled: it checks that the broadcast and its type, channel
 //! and text are still there. The requester check needs the app state, which
 //! the kernel hook does not have, so it is run again by `start` (#61 part 5).
@@ -27,15 +27,15 @@ use crate::permissions;
 use crate::texts::english;
 use crate::types::NotificationType;
 
-/// Hours a request may wait for a decision.
-pub const APPROVAL_EXPIRY_HOURS: i64 = 24;
-
 /// The default policy: always one step by a holder of
 /// `notifications.marketing.send`, never the requester.
 pub fn policy() -> PolicyDefault {
     PolicyDefault::new(ACTION)
         .step_permission(permissions::MARKETING_SEND)
-        .expiry_hours(Some(APPROVAL_EXPIRY_HOURS))
+        // Decision: no expiry from the request's own time. `NTF.RUL.03`
+        // counts from the broadcast's send time ([`crate::stale`]) and ends
+        // the request itself.
+        .expiry_hours(None)
 }
 
 /// Why the approval ended, as the broadcast's cancel reason; `None` for an
@@ -124,10 +124,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_policy_is_one_step_by_the_holders_with_sod_and_a_day() {
+    fn the_policy_is_one_step_by_the_holders_with_sod_and_no_expiry_of_its_own() {
         let expected = PolicyDefault::new("notifications.broadcast_approval")
             .step_permission("notifications.marketing.send")
-            .expiry_hours(Some(24));
+            .expiry_hours(None);
         assert_eq!(policy(), expected);
     }
 

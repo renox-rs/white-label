@@ -1,0 +1,69 @@
+{#- clinics: the pre-check-in screen of an appointment: the patient, the
+    service, the policy, the eligibility result and the coverage outcome, with
+    the actions that record them and Check in. It shows no visit reason and no
+    codes (CLN.ACL.02) and no card image (CLN.ACL.12). Replace it with
+    resources/views/clinics/appointment.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['appointments.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['appointments.title']" :subtitle="patient">
+      <template rx-if="can_record">
+        <rx-action-sheet :id="'appointment-policy-' ~ booking" :label="tx['coverage.attach_policy']" :action="route('clinics.appointment_policy', booking)"
+                         :title="tx['coverage.attach_policy']" :description="tx['coverage.attach_policy_description']" :submit-label="tx['coverage.attach_policy']" icon="shield-check">
+          <rx-select name="policy" :label="tx['coverage.policy']" :options="policy_options" :selected="policy_selected" :id="'appointment-policy-select-' ~ booking"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_cover">
+        <rx-action-sheet :id="'appointment-eligibility-' ~ booking" :label="tx['coverage.record_eligibility']" :action="route('clinics.appointment_eligibility', booking)"
+                         :title="tx['coverage.record_eligibility']" :description="tx['coverage.record_eligibility_description']" :submit-label="tx['coverage.record_eligibility']" icon="clipboard-list">
+          <rx-select name="result" :label="tx['coverage.result']" :options="result_options" :selected="'positive'" :id="'appointment-eligibility-result-' ~ booking"/>
+          <rx-input name="reference" :label="tx['coverage.reference']" :id="'appointment-eligibility-reference-' ~ booking"/>
+          <rx-input name="note" :label="tx['coverage.note']" :id="'appointment-eligibility-note-' ~ booking"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'appointment-outcome-' ~ booking" :label="tx['coverage.record_outcome']" :action="route('clinics.appointment_outcome', booking)"
+                         :title="tx['coverage.record_outcome']" :description="tx['coverage.record_outcome_description']" :submit-label="tx['coverage.record_outcome']" icon="clipboard-list">
+          <rx-select name="outcome" :label="tx['coverage.outcome']" :options="outcome_options" :selected="'insured'" :id="'appointment-outcome-select-' ~ booking"/>
+          <rx-select name="policy" :label="tx['coverage.resplit_policy']" :options="policy_options" :selected="policy_selected" :id="'appointment-outcome-policy-' ~ booking"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'appointment-consent-' ~ booking" :label="tx['consent.sign']" :action="route('clinics.appointment_consent', booking)"
+                         :title="tx['consent.sign']" :description="tx['consent.sign_description']" :submit-label="tx['consent.sign']" icon="signature">
+          <rx-input name="signer_name" :label="tx['consent.signer']" :id="'appointment-consent-name-' ~ booking" required/>
+          <rx-input name="services" :label="tx['consent.more_services']" :id="'appointment-consent-services-' ~ booking"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_cover">
+        <rx-action-sheet :id="'appointment-services-' ~ booking" :label="tx['authorisation.services_action']" :action="route('clinics.appointment_services', booking)"
+                         :title="tx['authorisation.services_action']" :description="tx['authorisation.services_description']" :submit-label="tx['authorisation.services_action']" icon="clipboard-list">
+          <rx-input name="services" :label="tx['authorisation.services_field']" :value="services_text" :id="'appointment-services-input-' ~ booking" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="needs_consent">
+        <rx-action-sheet :id="'appointment-auth-consent-' ~ booking" :label="tx['authorisation.consent_action']" :action="route('clinics.appointment_authorisation_consent', booking)"
+                         :title="tx['authorisation.consent_action']" :description="tx['authorisation.consent_description']" :submit-label="tx['authorisation.consent_action']" icon="signature">
+          <rx-input name="signer_name" :label="tx['consent.signer']" :id="'appointment-auth-consent-name-' ~ booking" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_check_in">
+        <rx-confirm :id="'appointment-check-in-' ~ booking" :label="tx['coverage.check_in']" :action="route('wl_scheduling.booking_check_in', booking)" method="POST"
+                    :title="tx['coverage.check_in']" :message="tx['coverage.check_in_message']" :confirm-label="tx['coverage.check_in']" :cancel-label="tx['button_cancel']" icon="calendar-check"/>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="cancelled" kind="warning" :message="tx['appointments.cancelled']"/>
+    <rx-alert rx-for="flag in flags" kind="warning" :message="flag"/>
+    <rx-alert rx-for="line in auth_lines" kind="info" :message="line"/>
+    <rx-card :title="tx['appointments.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['appointments.patient']" :value="patient"/>
+        <rx-entry :label="tx['appointments.service']" :value="service"/>
+        <rx-entry :label="tx['appointments.visit_date']" :value="visit_date"/>
+        <rx-entry :label="tx['coverage.policy']" :value="policy"/>
+        <rx-entry :label="tx['coverage.eligibility']" :value="eligibility"/>
+        <rx-entry :label="tx['coverage.outcome']" :value="outcome"/>
+        <rx-entry :label="tx['consent.title']" :value="consent"/>
+        <rx-entry :label="tx['consent.estimate']" :value="estimate"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="checked_in" :title="tx['coverage.checked_in']">
+      <a href="{{ route('clinics.visit', visit_id) }}">{{ tx['coverage.open_visit'] }}</a>
+    </rx-card>
+  </rx-stack>
+</rx-page>

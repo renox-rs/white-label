@@ -29,9 +29,11 @@ use wl_kernel::documents::{
     NoDocuments, RecordFlag, Validity,
 };
 use wl_kernel::inventory::{
-    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, PreferredSupplierChanged,
-    PurchaseOrderRevised, SupplierReturnCredited, SupplierReturnDispatched,
-    SupplierScoreBelowThreshold,
+    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
+    PreferredSupplierChanged, PurchaseOrderRevised, RecallClosed, RecallOpened, RecallTraced,
+    StockHoldClosed, StockHoldPlaced, StockNegative, SupplierReturnCredited,
+    SupplierReturnDispatched, SupplierScoreBelowThreshold, TraceFuture, TraceParty,
+    TracePartyResolver,
 };
 use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
@@ -96,6 +98,61 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
             Ok(())
         }
     });
+}
+
+/// A vertical's `TracePartyResolver`: the party of each subject the test sets,
+/// and the subject types whose sales are walk-in.
+#[derive(Clone, Default)]
+pub struct TraceParties {
+    parties: Arc<Mutex<std::collections::BTreeMap<Subject, PartyId>>>,
+    walk_in: Arc<Mutex<Vec<String>>>,
+    delivery: Arc<Mutex<std::collections::BTreeMap<Subject, String>>>,
+}
+
+impl TraceParties {
+    /// `party` is behind `subject`.
+    pub fn set(&self, subject: &Subject, party: PartyId) {
+        self.parties.lock().unwrap().insert(subject.clone(), party);
+    }
+
+    /// Every subject of `subject_type` is a walk-in sale.
+    pub fn walk_in(&self, subject_type: &str) {
+        self.walk_in.lock().unwrap().push(subject_type.to_owned());
+    }
+
+    /// The delivery of `subject` is `status`.
+    pub fn delivery(&self, subject: &Subject, status: &str) {
+        self.delivery
+            .lock()
+            .unwrap()
+            .insert(subject.clone(), status.to_owned());
+    }
+}
+
+impl TracePartyResolver for TraceParties {
+    fn party<'a>(
+        &'a self,
+        _state: &'a AppState,
+        subject: &'a Subject,
+    ) -> TraceFuture<'a, TraceParty> {
+        Box::pin(async move {
+            if self.walk_in.lock().unwrap().contains(&subject.subject_type) {
+                return Ok(TraceParty::WalkIn);
+            }
+            Ok(match self.parties.lock().unwrap().get(subject) {
+                Some(party) => TraceParty::Party(*party),
+                None => TraceParty::Unknown,
+            })
+        })
+    }
+
+    fn delivery_status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        subject: &'a Subject,
+    ) -> TraceFuture<'a, Option<String>> {
+        Box::pin(async move { Ok(self.delivery.lock().unwrap().get(subject).cloned()) })
+    }
 }
 
 /// A `TaskCreator` that records the tickets it opens; a ticket opened with
@@ -531,6 +588,16 @@ struct Fakes {
     tickets: TicketDesk,
     costs: CostDesk,
     notices: Recording,
+    holds: Arc<Mutex<Vec<StockHoldPlaced>>>,
+    lots_held: Arc<Mutex<Vec<LotHeld>>>,
+    negative: Arc<Mutex<Vec<StockNegative>>>,
+    closed: Arc<Mutex<Vec<StockHoldClosed>>>,
+    released: Arc<Mutex<Vec<LotReleased>>>,
+    discarded: Arc<Mutex<Vec<LotDiscarded>>>,
+    recalls: Arc<Mutex<Vec<RecallOpened>>>,
+    traced: Arc<Mutex<Vec<RecallTraced>>>,
+    recall_closed: Arc<Mutex<Vec<RecallClosed>>>,
+    trace_parties: TraceParties,
 }
 
 impl Module for Fakes {
@@ -558,6 +625,16 @@ impl Module for Fakes {
         record(app, &self.received);
         record(app, &self.dispatched);
         record(app, &self.credited);
+        record(app, &self.holds);
+        record(app, &self.lots_held);
+        record(app, &self.negative);
+        record(app, &self.closed);
+        record(app, &self.released);
+        record(app, &self.discarded);
+        record(app, &self.recalls);
+        record(app, &self.traced);
+        record(app, &self.recall_closed);
+        wl_kernel::inventory::provide_trace_party_resolver(app, self.trace_parties.clone());
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
@@ -600,6 +677,26 @@ pub struct Booted {
     pub costs: CostDesk,
     /// The notifications asked for.
     pub notices: Recording,
+    /// Every `StockHoldPlaced`.
+    pub holds: Recorded<StockHoldPlaced>,
+    /// Every `LotHeld`.
+    pub lots_held: Recorded<LotHeld>,
+    /// Every `StockNegative`.
+    pub negative: Recorded<StockNegative>,
+    /// Every `StockHoldClosed`.
+    pub closed: Recorded<StockHoldClosed>,
+    /// Every `LotReleased`.
+    pub released: Recorded<LotReleased>,
+    /// Every `LotDiscarded`.
+    pub discarded: Recorded<LotDiscarded>,
+    /// Every `RecallOpened`.
+    pub recalls: Recorded<RecallOpened>,
+    /// Every `RecallTraced`.
+    pub traced: Recorded<RecallTraced>,
+    /// Every `RecallClosed`.
+    pub recall_closed: Recorded<RecallClosed>,
+    /// The parties behind the subjects of a trace.
+    pub trace_parties: TraceParties,
     /// The days the clock was moved forward.
     clock_days: std::sync::atomic::AtomicI64,
     /// Keeps the views directory alive.
@@ -630,6 +727,11 @@ impl Booted {
     /// A user holding the role `role` everywhere.
     pub async fn user_with(&self, name: &str, role: &str) -> User {
         let email = format!("{}@example.com", name.to_lowercase());
+        // The same name is the same person: a helper that opens a recall as
+        // Rita and a test that asks for Rita again share the user.
+        if let Some(user) = User::find_by_email(self.db(), &email).await.unwrap() {
+            return user;
+        }
         let user = User::register(self.db(), name, &email, "password123")
             .await
             .unwrap();
@@ -684,6 +786,413 @@ impl Booted {
     /// A procurement officer (`purchase_orders.issue`) everywhere.
     pub async fn procurement(&self, name: &str) -> User {
         self.user_with(name, "procurement").await
+    }
+
+    /// A user who sends and receives transfers and issues stock everywhere.
+    pub async fn mover(&self, name: &str) -> User {
+        self.user_with(name, "stock_mover").await
+    }
+
+    /// A user who places stock holds everywhere.
+    pub async fn holder(&self, name: &str) -> User {
+        self.user_with(name, "stock_holder").await
+    }
+
+    /// A user who decides the lines of a hold (`lots.release`) everywhere.
+    pub async fn releaser(&self, name: &str) -> User {
+        self.user_with(name, "lot_releaser").await
+    }
+
+    /// A user who opens recalls (`recalls.manage`) everywhere.
+    pub async fn recaller(&self, name: &str) -> User {
+        self.user_with(name, "recall_manager").await
+    }
+
+    /// `POST /recalls` as `by` with `form`.
+    pub async fn recall_as(&self, by: &User, form: &[(&str, &str)]) -> TestResponse {
+        self.app.acting_as(by);
+        self.app.htmx().post("/recalls", form).await
+    }
+
+    /// `POST /recalls/{id}/trace` as `by`.
+    pub async fn trace_as(&self, by: &User, recall: &wl_inventory::Recall) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/recalls/{}/trace", recall.id), &[])
+            .await
+    }
+
+    /// `POST /recalls/{id}/notices` as `by`: the `template` to the lines
+    /// `lines`.
+    pub async fn notices_as(
+        &self,
+        by: &User,
+        recall: &wl_inventory::Recall,
+        template: &str,
+        lines: &[&wl_inventory::RecallLine],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        let ids: Vec<String> = lines.iter().map(|line| line.id.to_string()).collect();
+        let ids = ids.join(", ");
+        self.app
+            .htmx()
+            .post(
+                &format!("/recalls/{}/notices", recall.id),
+                &[("template", template), ("lines", ids.as_str())],
+            )
+            .await
+    }
+
+    /// `POST /recall-lines/{id}/waive` as `by` with `reason`.
+    pub async fn waive_as(
+        &self,
+        by: &User,
+        line: &wl_inventory::RecallLine,
+        reason: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                &format!("/recall-lines/{}/waive", line.id),
+                &[("reason", reason)],
+            )
+            .await
+    }
+
+    /// `POST /recalls/{id}/close` as `by`.
+    pub async fn close_recall_as(&self, by: &User, recall: &wl_inventory::Recall) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/recalls/{}/close", recall.id), &[])
+            .await
+    }
+
+    /// The affected lines of `recall`, oldest first.
+    pub async fn recall_lines(
+        &self,
+        recall: &wl_inventory::Recall,
+    ) -> Vec<wl_inventory::RecallLine> {
+        wl_inventory::recall_line::lines_of(self.db(), recall.id)
+            .await
+            .unwrap()
+    }
+
+    /// The recall as stored now.
+    pub async fn recall_now(&self, recall: &wl_inventory::Recall) -> wl_inventory::Recall {
+        wl_inventory::Recall::find_or_404(self.db(), recall.id)
+            .await
+            .unwrap()
+    }
+
+    /// A movement of `movement_type` of `quantity_milli` of `item` (of `lot`)
+    /// at `at`, caused by `source` and charged to `cost_object`: from
+    /// `from`, to `to`. A fixture of what other modules would post.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn movement(
+        &self,
+        movement_type: wl_inventory::MovementType,
+        item: &Item,
+        lot: Option<&Lot>,
+        from: Option<&Location>,
+        to: Option<&Location>,
+        quantity_milli: i64,
+        source: &Subject,
+        cost_object: Option<&Subject>,
+        at: DateTime,
+        theoretical: bool,
+    ) {
+        let mut moved = StockMovement::moving(
+            movement_type,
+            item.id,
+            lot.map(|l| l.id),
+            from.map(|l| l.id),
+            to.map(|l| l.id),
+            quantity_milli,
+            0,
+            0,
+            source,
+            None,
+        );
+        moved.moved_at = at;
+        moved.theoretical = theoretical;
+        moved.cost_object_type = cost_object.map(|s| s.subject_type.clone());
+        moved.cost_object_id = cost_object.map(|s| s.subject_id);
+        moved.save(self.db()).await.unwrap();
+    }
+
+    /// Tells the recall module a notice of `line` could not be delivered:
+    /// the `MessageGaveUp` of wl-notify.
+    pub async fn gave_up(&self, line: &wl_inventory::RecallLine, template: &str) {
+        self.state()
+            .emit(wl_kernel::notify::MessageGaveUp {
+                message: MessageId(1),
+                type_key: format!("inventory.recall_notice_{template}"),
+                subject: line.subject(),
+                subject_label: None,
+                recipient: wl_kernel::notify::NotifyRecipient::Party {
+                    id: PartyId(line.party_id.unwrap_or_default()),
+                },
+                gave_up_at: renox::db::now(),
+                contact_point: None,
+                channels_tried: Vec::new(),
+                statutory: false,
+                reactions: Vec::new(),
+                alternative_of: None,
+                contact_of: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    /// The recalls opened, oldest first.
+    pub async fn all_recalls(&self) -> Vec<wl_inventory::Recall> {
+        wl_inventory::Recall::query()
+            .order_by(wl_inventory::Recall::ID)
+            .get(self.db())
+            .await
+            .unwrap()
+    }
+
+    /// A storekeeper who clears pending issues (`stock.adjust`).
+    pub async fn clerk(&self, name: &str) -> User {
+        self.user_with(name, "stock_clerk").await
+    }
+
+    /// A location `code` named `name`.
+    pub async fn named_location(&self, code: &str, name: &str) -> Location {
+        let mut location = Location::new(code, name);
+        location.save(self.db()).await.unwrap();
+        location
+    }
+
+    /// A draft transfer of `lines` (item, lot, quantity in thousandths).
+    pub async fn transfer(
+        &self,
+        from: &Location,
+        to: &Location,
+        lines: Vec<wl_inventory::transfer::NewTransferLine>,
+    ) -> wl_inventory::Transfer {
+        wl_inventory::transfer::create_draft(
+            self.db(),
+            None,
+            wl_inventory::transfer::NewTransfer {
+                from_location_id: from.id,
+                to_location_id: to.id,
+                lines,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// `POST /transfers/{id}/send` as `by`.
+    pub async fn send_as(&self, by: &User, transfer: &wl_inventory::Transfer) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/transfers/{}/send", transfer.id), &[])
+            .await
+    }
+
+    /// `POST /transfers/{id}/receive` as `by`; `go_on` is `held_ok=1`.
+    pub async fn receive_as(
+        &self,
+        by: &User,
+        transfer: &wl_inventory::Transfer,
+        go_on: bool,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        let form: Vec<(&str, &str)> = if go_on {
+            vec![("held_ok", "1")]
+        } else {
+            vec![]
+        };
+        self.app
+            .htmx()
+            .post(&format!("/transfers/{}/receive", transfer.id), &form)
+            .await
+    }
+
+    /// The transfer as stored now.
+    pub async fn transfer_now(&self, transfer: &wl_inventory::Transfer) -> wl_inventory::Transfer {
+        wl_inventory::Transfer::find_or_404(self.db(), transfer.id)
+            .await
+            .unwrap()
+    }
+
+    /// `POST /stock-holds` as `by` with `form`.
+    pub async fn hold_as(&self, by: &User, form: &[(&str, &str)]) -> TestResponse {
+        self.app.acting_as(by);
+        self.app.htmx().post("/stock-holds", form).await
+    }
+
+    /// `POST /stock-hold-lines/{id}/{action}` as `by`; `action` is `release`,
+    /// `discard` or `return-to-supplier`.
+    pub async fn decide_as(
+        &self,
+        by: &User,
+        line: &wl_inventory::StockHoldLine,
+        action: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/stock-hold-lines/{}/{action}", line.id), &[])
+            .await
+    }
+
+    /// `POST /stock-holds/{id}/cancel` as `by` with `reason`.
+    pub async fn cancel_hold_as(
+        &self,
+        by: &User,
+        hold: &wl_inventory::StockHold,
+        reason: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                &format!("/stock-holds/{}/cancel", hold.id),
+                &[("reason", reason)],
+            )
+            .await
+    }
+
+    /// The holds placed, oldest first.
+    pub async fn all_holds(&self) -> Vec<wl_inventory::StockHold> {
+        wl_inventory::StockHold::query()
+            .order_by(wl_inventory::StockHold::ID)
+            .get(self.db())
+            .await
+            .unwrap()
+    }
+
+    /// The hold as stored now.
+    pub async fn hold_now(&self, hold: &wl_inventory::StockHold) -> wl_inventory::StockHold {
+        wl_inventory::StockHold::find_or_404(self.db(), hold.id)
+            .await
+            .unwrap()
+    }
+
+    /// The lines of `hold` as stored now, oldest first.
+    pub async fn hold_lines(
+        &self,
+        hold: &wl_inventory::StockHold,
+    ) -> Vec<wl_inventory::StockHoldLine> {
+        wl_inventory::stock_hold::lines_of(self.db(), hold.id)
+            .await
+            .unwrap()
+    }
+
+    /// `POST /stock-issues` as `by`: `quantity` in base units like `5`.
+    pub async fn issue_as_user(
+        &self,
+        by: &User,
+        item: &Item,
+        location: &Location,
+        quantity: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                "/stock-issues",
+                &[
+                    ("item", item.id.to_string().as_str()),
+                    ("location", location.id.to_string().as_str()),
+                    ("quantity", quantity),
+                ],
+            )
+            .await
+    }
+
+    /// `POST /pending-issues/{id}/clear` as `by` with `reason` (and `lot`).
+    pub async fn clear_as(
+        &self,
+        by: &User,
+        pending: &wl_inventory::PendingIssue,
+        reason: &str,
+        lot: Option<&Lot>,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        let lot_id = lot.map(|l| l.id.to_string()).unwrap_or_default();
+        let mut form = vec![("reason", reason)];
+        if lot.is_some() {
+            form.push(("lot", lot_id.as_str()));
+        }
+        self.app
+            .htmx()
+            .post(&format!("/pending-issues/{}/clear", pending.id), &form)
+            .await
+    }
+
+    /// The pending issue as stored now.
+    pub async fn pending_now(
+        &self,
+        pending: &wl_inventory::PendingIssue,
+    ) -> wl_inventory::PendingIssue {
+        wl_inventory::PendingIssue::find_or_404(self.db(), pending.id)
+            .await
+            .unwrap()
+    }
+
+    /// Consumes `quantity_milli` of `item` at `location` for `source`
+    /// (charged to it too) through the kernel's `StockService`, as another
+    /// module would.
+    pub async fn consume(
+        &self,
+        item: &Item,
+        location: &Location,
+        quantity_milli: i64,
+        source: &Subject,
+    ) -> wl_kernel::inventory::Consumed {
+        wl_kernel::inventory::stock_service(self.state())
+            .consume(
+                self.state(),
+                wl_kernel::inventory::ConsumeRequest::new(
+                    item.subject(),
+                    location.subject(),
+                    quantity_milli,
+                    source.clone(),
+                )
+                .cost_object(source.clone()),
+            )
+            .await
+            .unwrap()
+    }
+
+    /// Every movement of `item`, oldest first.
+    pub async fn movements_of(&self, item: &Item) -> Vec<StockMovement> {
+        StockMovement::query()
+            .where_(StockMovement::ITEM_ID.eq(item.id))
+            .order_by(StockMovement::ID)
+            .get(self.db())
+            .await
+            .unwrap()
+    }
+
+    /// The open pending issues, oldest first.
+    pub async fn open_pending(&self) -> Vec<wl_inventory::PendingIssue> {
+        wl_inventory::pending_issue::open_of(self.db())
+            .await
+            .unwrap()
+    }
+
+    /// The quantity of `item` available at `location` (of `lot` when given),
+    /// in thousandths.
+    pub async fn available(&self, item: &Item, location: &Location, lot: Option<&Lot>) -> i64 {
+        wl_inventory::balance::balance(self.db(), item.id, location.id, lot.map(|l| l.id))
+            .await
+            .unwrap()
+            .available_milli()
+    }
+
+    /// The lot as stored now.
+    pub async fn lot_now(&self, lot: &Lot) -> Lot {
+        Lot::find_or_404(self.db(), lot.id).await.unwrap()
     }
 
     /// An item `code` in `kg`.
@@ -1161,6 +1670,27 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
     let notices = Recording::default();
+    let holds = Arc::new(Mutex::new(Vec::new()));
+    let lots_held = Arc::new(Mutex::new(Vec::new()));
+    let negative = Arc::new(Mutex::new(Vec::new()));
+    let closed = Arc::new(Mutex::new(Vec::new()));
+    let released = Arc::new(Mutex::new(Vec::new()));
+    let discarded = Arc::new(Mutex::new(Vec::new()));
+    let recalls = Arc::new(Mutex::new(Vec::new()));
+    let traced = Arc::new(Mutex::new(Vec::new()));
+    let recall_closed = Arc::new(Mutex::new(Vec::new()));
+    let trace_parties = TraceParties::default();
+    // What wl-parties registers: an exception to a block is decided by the
+    // finance manager (screening off). The defaults are process-wide and
+    // `wl:install` stores the ones registered by then, so this comes before
+    // the install: after it, the first test of a binary to boot would find
+    // no policy and the request would answer 500.
+    wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
+        .with_step(
+            wl_kernel::approvals::Step::one_of(["finance_manager"])
+                .requiring(wl_kernel::BLOCK_EXCEPTION_ACTION),
+        )
+        .register();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1194,6 +1724,16 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         tickets: tickets.clone(),
         costs: costs.clone(),
         notices: notices.clone(),
+        holds: holds.clone(),
+        lots_held: lots_held.clone(),
+        negative: negative.clone(),
+        closed: closed.clone(),
+        released: released.clone(),
+        discarded: discarded.clone(),
+        recalls: recalls.clone(),
+        traced: traced.clone(),
+        recall_closed: recall_closed.clone(),
+        trace_parties: trace_parties.clone(),
     });
     let client = if with_invoicing {
         CLIENT_WITH_INVOICING
@@ -1223,14 +1763,6 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
             .await
             .expect("the demo parties seed");
     }
-    // What wl-parties registers: an exception to a block is decided by the
-    // finance manager (screening off).
-    wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
-        .with_step(
-            wl_kernel::approvals::Step::one_of(["finance_manager"])
-                .requiring(wl_kernel::BLOCK_EXCEPTION_ACTION),
-        )
-        .register();
     permissions::define_role(
         app.db(),
         "finance_manager",
@@ -1279,6 +1811,25 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     permissions::define_role(app.db(), "party_blocker", &["parties.block"])
         .await
         .unwrap();
+    permissions::define_role(
+        app.db(),
+        "stock_mover",
+        &[perm::STOCK_TRANSFER, perm::STOCK_ISSUE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(app.db(), "stock_holder", &[perm::STOCK_HOLD])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "lot_releaser", &[perm::LOTS_RELEASE])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "stock_clerk", &[perm::STOCK_ADJUST])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "recall_manager", &[perm::RECALLS_MANAGE])
+        .await
+        .unwrap();
     Booted {
         app,
         received: Recorded(received),
@@ -1297,6 +1848,16 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         tickets,
         costs,
         notices,
+        holds: Recorded(holds),
+        lots_held: Recorded(lots_held),
+        negative: Recorded(negative),
+        closed: Recorded(closed),
+        released: Recorded(released),
+        discarded: Recorded(discarded),
+        recalls: Recorded(recalls),
+        traced: Recorded(traced),
+        recall_closed: Recorded(recall_closed),
+        trace_parties,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         _views: views,
     }

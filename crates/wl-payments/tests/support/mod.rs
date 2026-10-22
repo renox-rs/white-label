@@ -43,14 +43,18 @@ use wl_kernel::invoicing::{
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
+use wl_kernel::payer_bills::{PayerBillFuture, PayerCredits};
 use wl_kernel::payments::{
-    AllocationTarget, PaymentId, PaymentMethod, PaymentReceived, PaymentReversed, PaymentSummary,
-    RecordPayment, RefundFailed, RefundFailureKind, RefundPaid, payment_recorder,
+    AllocationTarget, ChargebackClosed, PaymentFailed, PaymentFuture, PaymentId,
+    PaymentLinkExpired, PaymentMethod, PaymentReceived, PaymentReversed, PaymentSummary,
+    PrepaidSubjects, RecordPayment, RefundApproved, RefundFailed, RefundFailureKind, RefundPaid,
+    payment_recorder,
 };
 use wl_kernel::tickets::TaskCreator;
 use wl_kernel::{ClientConfig, LegalEntity, PartyId, Subject};
 use wl_payments::deposit::HoldDeposit;
 use wl_payments::gateway::FakeGateway;
+use wl_payments::payment_link::{self, NewLink, PaymentLink};
 use wl_payments::refund::{RefundRequest, RefundSource, RequestRefund};
 use wl_payments::{
     Allocation, Cheque, Deposit, FollowupTask, Payment, Refund, WlPayments, permissions as perm,
@@ -573,6 +577,64 @@ fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
     })
 }
 
+/// The owner of the records paid in advance for (wl-scheduling for a booking,
+/// wl-sales for an order), scripted by the test: a subject is active until the
+/// test releases it (cancelled, rejected, or its slot gone).
+#[derive(Clone, Default)]
+pub struct PrepaidBook(Arc<Mutex<Vec<Subject>>>);
+
+impl PrepaidBook {
+    /// The subject is no longer active.
+    pub fn release(&self, subject: &Subject) {
+        self.0.lock().unwrap().push(subject.clone());
+    }
+}
+
+impl PrepaidSubjects for PrepaidBook {
+    fn is_active<'a>(
+        &'a self,
+        _state: &'a AppState,
+        subject: &'a Subject,
+    ) -> PaymentFuture<'a, bool> {
+        let active = !self.0.lock().unwrap().contains(subject);
+        Box::pin(async move { Ok(active) })
+    }
+}
+
+/// The payer credit balances wl-invoicing holds, scripted by the test:
+/// (payer, legal entity, balance in fils of AED).
+#[derive(Clone, Default)]
+pub struct PayerCreditBook(Arc<Mutex<Vec<(PartyId, i64, i64)>>>);
+
+impl PayerCreditBook {
+    /// The payer has `balance` fils of credit with the legal entity.
+    pub fn set(&self, payer: PartyId, legal_entity_id: i64, balance: i64) {
+        let mut book = self.0.lock().unwrap();
+        book.retain(|(p, e, _)| (*p, *e) != (payer, legal_entity_id));
+        book.push((payer, legal_entity_id, balance));
+    }
+}
+
+impl PayerCredits for PayerCreditBook {
+    fn balance<'a>(
+        &'a self,
+        _db: &'a Db,
+        payer: PartyId,
+        legal_entity_id: i64,
+        currency: &'a str,
+    ) -> PayerBillFuture<'a, i64> {
+        let balance = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(p, e, _)| (*p, *e) == (payer, legal_entity_id))
+            .filter(|_| currency == "AED")
+            .map_or(0, |(_, _, balance)| *balance);
+        Box::pin(async move { Ok(balance) })
+    }
+}
+
 /// The owner drawings approval wl-invoicing provides, scripted by the test: the
 /// category `owner_drawings` has an owner party (Quiet Sands unless changed),
 /// and a request waits for the approvers unless the desk approves at once.
@@ -975,6 +1037,18 @@ pub struct Booted {
     pub charges: RecordingCharges,
     /// The owner drawings approval.
     pub drawings: DrawingsDesk,
+    /// `PaymentFailed`.
+    pub failed: Recorded<PaymentFailed>,
+    /// `PaymentLinkExpired`.
+    pub link_expired: Recorded<PaymentLinkExpired>,
+    /// The records paid in advance for.
+    pub prepaid: PrepaidBook,
+    /// `ChargebackClosed`.
+    pub chargeback_closed: Recorded<ChargebackClosed>,
+    /// `RefundApproved`.
+    pub refund_approved: Recorded<RefundApproved>,
+    /// The payer credit balances.
+    pub payer_credits: PayerCreditBook,
     /// The tickets asked of the task creator.
     pub cash_tickets: cash::CashTickets,
     /// The salary deductions passed to wl-hr.
@@ -1721,6 +1795,81 @@ impl Booted {
             .expect("the event is handled");
     }
 
+    /// A payment link of PGP asking `party` for `amount` fils (AED), paying
+    /// `invoice` with all of it when given, paid in advance for `prepaid`
+    /// when given, sent by the staff user `by` when given.
+    pub async fn link(
+        &self,
+        party: PartyId,
+        amount: i64,
+        invoice: Option<InvoiceId>,
+        prepaid: Option<Subject>,
+        by: Option<&User>,
+    ) -> PaymentLink {
+        let entity = self.entity("PGP").await;
+        let mut new = NewLink::new(party, entity.id, amount, "AED");
+        if let Some(invoice) = invoice {
+            new = new.target(&invoice.subject(), amount);
+        }
+        if let Some(prepaid) = prepaid {
+            new = new.prepaid(prepaid);
+        }
+        if let Some(by) = by {
+            new = new.created_by(by.id);
+        }
+        payment_link::create(self.state(), new)
+            .await
+            .expect("the link is made")
+    }
+
+    /// The link `id`, as stored now.
+    pub async fn link_row(&self, id: i64) -> PaymentLink {
+        PaymentLink::find_or_404(self.db(), id).await.unwrap()
+    }
+
+    /// `link`, as stored now.
+    pub async fn link_now(&self, link: &PaymentLink) -> PaymentLink {
+        self.link_row(link.id).await
+    }
+
+    /// The public path of `link`.
+    pub fn link_path(&self, link: &PaymentLink) -> String {
+        payment_link::path(self.state(), link.id)
+    }
+
+    /// The party presses the button on the public page of `link`.
+    pub async fn press_pay(&self, link: &PaymentLink) -> TestResponse {
+        self.app.logout();
+        self.app
+            .htmx()
+            .post(&format!("{}/start", self.link_path(link)), &[])
+            .await
+    }
+
+    /// The newest payment on `link`.
+    pub async fn latest_on(&self, link: &PaymentLink) -> Payment {
+        Payment::query()
+            .where_(Payment::PAYMENT_LINK_ID.eq(link.id))
+            .order_by_desc(Payment::ID)
+            .first(self.db())
+            .await
+            .unwrap()
+            .expect("a payment on the link")
+    }
+
+    /// Starts an online payment on `link` as the party does, through the
+    /// public page's button; the `pending` payment.
+    pub async fn start_online(&self, link: &PaymentLink) -> Payment {
+        self.press_pay(link).await;
+        let payment = self.latest_on(link).await;
+        assert_eq!(
+            payment.status,
+            wl_kernel::payments::PaymentStatus::Pending,
+            "the payment is pending"
+        );
+        payment
+    }
+
     /// Moves the clock forward to `date` at `hour:minute` UTC.
     pub fn travel_to(&self, date: &str, hour: u32, minute: u32) {
         let target = date
@@ -1760,6 +1909,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
+    // The public page of a payment link has a layout of its own.
+    std::fs::write(views.path().join("layouts/public.html"), LAYOUT).unwrap();
 
     let received = Recorded::new();
     let reversed = Recorded::new();
@@ -1793,6 +1944,14 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let charge_invoicer: Arc<dyn ChargeInvoicer> = Arc::new(charges.clone());
     let drawings = DrawingsDesk::default();
     let owner_drawings: Arc<dyn OwnerDrawings> = Arc::new(drawings.clone());
+    let failed = Recorded::new();
+    let link_expired = Recorded::new();
+    let chargeback_closed = Recorded::new();
+    let refund_approved = Recorded::new();
+    let payer_credits = PayerCreditBook::default();
+    let payer_credit_provider: Arc<dyn PayerCredits> = Arc::new(payer_credits.clone());
+    let prepaid = PrepaidBook::default();
+    let prepaid_subjects: Arc<dyn PrepaidSubjects> = Arc::new(prepaid.clone());
     let blocked = BlockedParties::default();
     let block_guard: Arc<dyn wl_kernel::block_guard::BlockGuard> = Arc::new(blocked.clone());
     // What wl-parties registers: an exception is decided by the compliance role.
@@ -1814,6 +1973,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         .provide(charge_invoicer)
         .provide(top_up_provider)
         .provide(owner_drawings)
+        .provide(prepaid_subjects)
+        .provide(payer_credit_provider)
         .provide(task_creator)
         .provide(shortage_recovery)
         .provide(block_guard);
@@ -1826,6 +1987,10 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let app = record(app, &cheque_referred);
     let app = record(app, &deposit_settled);
     let app = record(app, &deposit_adjusted);
+    let app = record(app, &failed);
+    let app = record(app, &link_expired);
+    let app = record(app, &chargeback_closed);
+    let app = record(app, &refund_approved);
     let app = record(app, &cash_shortage);
     let app = record(app, &cash_counted);
     let app = record(app, &cash_settled);
@@ -1870,6 +2035,12 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         fees,
         charges,
         drawings,
+        failed,
+        link_expired,
+        prepaid,
+        chargeback_closed,
+        refund_approved,
+        payer_credits,
         cash_tickets,
         hr,
         cash_shortage,

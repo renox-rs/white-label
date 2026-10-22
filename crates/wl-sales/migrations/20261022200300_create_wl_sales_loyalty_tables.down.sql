@@ -1,0 +1,17 @@
+DROP INDEX IF EXISTS "wl_sales_loyalty_reviews_day";
+DROP TABLE IF EXISTS "wl_sales_loyalty_reviews";
+DROP INDEX IF EXISTS "wl_sales_points_movements_earning";
+DROP INDEX IF EXISTS "wl_sales_points_movements_source";
+DROP INDEX IF EXISTS "wl_sales_points_movements_account";
+DROP TABLE IF EXISTS "wl_sales_points_movements";
+DROP INDEX IF EXISTS "wl_sales_loyalty_earnings_account";
+DROP INDEX IF EXISTS "wl_sales_loyalty_earnings_source";
+DROP TABLE IF EXISTS "wl_sales_loyalty_earnings";
+DROP INDEX IF EXISTS "wl_sales_loyalty_accounts_one_mobile";
+DROP INDEX IF EXISTS "wl_sales_loyalty_accounts_one_party";
+DROP INDEX IF EXISTS "wl_sales_loyalty_accounts_mobile";
+DROP INDEX IF EXISTS "wl_sales_loyalty_accounts_party";
+DROP INDEX IF EXISTS "wl_sales_loyalty_accounts_code";
+DROP TABLE IF EXISTS "wl_sales_loyalty_accounts";
+DROP INDEX IF EXISTS "wl_sales_loyalty_programmes_active";
+DROP TABLE IF EXISTS "wl_sales_loyalty_programmes";

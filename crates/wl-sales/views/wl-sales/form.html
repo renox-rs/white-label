@@ -30,7 +30,7 @@
       </rx-card>
       <rx-card :title="tx['campaigns.sections.retention']">
         <rx-form-grid columns="2">
-          <rx-input name="segment_id" type="number" :label="tx['campaigns.fields.segment']" :value="values['segment_id']"/>
+          <rx-select name="segment_id" :label="tx['campaigns.fields.segment']" :options="segments" :selected="values['segment_id']" :placeholder="tx['campaigns.form.none']"/>
           <rx-input name="template_key" :label="tx['campaigns.fields.template']" :value="values['template_key']"/>
           <rx-input name="message_channel" :label="tx['campaigns.fields.message_channel']" :value="values['message_channel']"/>
           <rx-input name="send_at" type="datetime-local" :label="tx['campaigns.fields.send_at']" :hint="tx['campaigns.form.send_at_hint']" :value="values['send_at']"/>

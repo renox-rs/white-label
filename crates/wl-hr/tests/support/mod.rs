@@ -46,10 +46,10 @@ use wl_kernel::timesheets::{
 use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
     EmployeeDeceased, EmployeeExited, EmployeeId, EmployeeNoticeWithdrawn,
-    EmployeeOnboardingCancelled, EmployeeReinstated, OnboardingCompleted, OnboardingStarted,
-    PayAccountChanged, PayrollLinesFailed, PayrollRunPaid, PayrollRunReturned,
-    QualificationExpired, QualificationExpiring, SettlementDisputed, SettlementPaid,
-    VisaCaseRejected,
+    EmployeeOnboardingCancelled, EmployeeReinstated, LeaveApproved, LeaveCancelled,
+    OnboardingCompleted, OnboardingStarted, PayAccountChanged, PayrollLinesFailed, PayrollRunPaid,
+    PayrollRunReturned, QualificationExpired, QualificationExpiring, SettlementDisputed,
+    SettlementPaid, VisaCaseRejected,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -628,6 +628,8 @@ struct Fakes {
     settlement_disputed: Arc<Mutex<Vec<SettlementDisputed>>>,
     tasks: TicketDesk,
     calendar: Option<Arc<dyn wl_kernel::payroll_calendar::PayrollCalendar>>,
+    leave_approved: Arc<Mutex<Vec<LeaveApproved>>>,
+    leave_cancelled: Arc<Mutex<Vec<LeaveCancelled>>>,
 }
 
 /// A `TaskCreator` that records the tickets it opens. A ticket opened with a
@@ -636,6 +638,7 @@ struct Fakes {
 pub struct TicketDesk {
     opened: Arc<Mutex<Vec<OpenTicket>>>,
     completed: Arc<Mutex<Vec<(i64, String)>>>,
+    resolved: Arc<Mutex<Vec<i64>>>,
 }
 
 impl TicketDesk {
@@ -647,6 +650,12 @@ impl TicketDesk {
     /// `(ticket, note)` of each ticket closed on behalf of its source.
     pub fn completed(&self) -> Vec<(i64, String)> {
         self.completed.lock().unwrap().clone()
+    }
+
+    /// Whether ticket number `id` (1 for the first opened) was resolved from
+    /// its source.
+    pub fn is_resolved(&self, id: i64) -> bool {
+        self.resolved.lock().unwrap().contains(&id)
     }
 
     /// The tickets opened with a source key that starts with `prefix`.
@@ -694,6 +703,22 @@ impl TaskCreator for TicketDesk {
         })
     }
 
+    fn resolve_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        _note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            let mut resolved = self.resolved.lock().unwrap();
+            if resolved.contains(&ticket.0) {
+                return Ok(false);
+            }
+            resolved.push(ticket.0);
+            Ok(true)
+        })
+    }
+
     fn find_open<'a>(
         &'a self,
         _state: &'a AppState,
@@ -701,9 +726,11 @@ impl TaskCreator for TicketDesk {
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(async move {
             let opened = self.opened.lock().unwrap();
+            let resolved = self.resolved.lock().unwrap();
             Ok(opened
                 .iter()
                 .position(|t| t.source_key.as_deref() == Some(source_key))
+                .filter(|n| !resolved.contains(&(i64::try_from(*n).unwrap() + 1)))
                 .map(|n| TicketRef {
                     id: TicketId(n as i64 + 1),
                     number: format!("TKT-{}", n + 1),
@@ -846,6 +873,8 @@ impl Module for Fakes {
         record(app, &self.qualification_expired);
         record(app, &self.qualification_expiring);
         record(app, &self.absconded);
+        record(app, &self.leave_approved);
+        record(app, &self.leave_cancelled);
         record(app, &self.onboarding_cancelled);
         record(app, &self.notice_withdrawn);
         record(app, &self.reinstated);
@@ -931,6 +960,10 @@ pub struct Booted {
     pub settlement_disputed: Recorded<SettlementDisputed>,
     /// The tasks (tickets) opened for staff.
     pub tasks: TicketDesk,
+    /// `LeaveApproved`.
+    pub leave_approved: Recorded<LeaveApproved>,
+    /// `LeaveCancelled`.
+    pub leave_cancelled: Recorded<LeaveCancelled>,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// The absence cases opened so far.
@@ -1775,6 +1808,8 @@ async fn boot_full(
         settlement_disputed: Arc::default(),
         tasks: TicketDesk::default(),
         calendar,
+        leave_approved: Arc::default(),
+        leave_cancelled: Arc::default(),
     };
     let (qualification_expired, qualification_expiring, absconded, returned, failed, paid, tasks) = (
         Recorded(fakes.qualification_expired.clone()),
@@ -1784,6 +1819,10 @@ async fn boot_full(
         Recorded(fakes.failed.clone()),
         Recorded(fakes.paid.clone()),
         fakes.tasks.clone(),
+    );
+    let (leave_approved, leave_cancelled) = (
+        Recorded(fakes.leave_approved.clone()),
+        Recorded(fakes.leave_cancelled.clone()),
     );
     let (deceased, exited) = (
         Recorded(fakes.deceased.clone()),
@@ -1875,6 +1914,8 @@ async fn boot_full(
         perm::EMPLOYEES_MANAGE,
         perm::ONBOARDING_VIEW,
         perm::ONBOARDING_MANAGE,
+        perm::LEAVE_VIEW,
+        perm::LEAVE_APPROVE,
     ];
     permissions::define_role(app.db(), "hr", &hr).await.unwrap();
     permissions::define_role(
@@ -2038,6 +2079,8 @@ async fn boot_full(
         settlement_paid,
         settlement_disputed,
         tasks,
+        leave_approved,
+        leave_cancelled,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         cases: std::sync::atomic::AtomicI64::new(0),
     }

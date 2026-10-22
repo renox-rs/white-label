@@ -8,7 +8,7 @@ use renox::state_machine::Transitioned;
 use wl_kernel::sales::{CampaignActivated, CampaignEnded};
 
 use crate::campaign::Campaign;
-use crate::machine::{ACTIVATE, ACTIVATE_ON_START, END, END_ON_END_DATE};
+use crate::machine::{ACTIVATE, ACTIVATE_ON_START, END, END_BY_RULE, END_ON_END_DATE};
 use crate::notices;
 
 /// The stored name of the purpose, `acquisition` if (wrongly) unset.
@@ -54,7 +54,7 @@ pub(crate) fn register(app: &mut Registry) {
         |event: Transitioned<Campaign>, state: AppState| async move {
             let name = event.transition.as_str();
             let is_start = [ACTIVATE, ACTIVATE_ON_START].contains(&name);
-            let is_end = [END, END_ON_END_DATE].contains(&name);
+            let is_end = [END, END_ON_END_DATE, END_BY_RULE].contains(&name);
             if !is_start && !is_end {
                 return Ok(());
             }

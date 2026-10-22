@@ -4,27 +4,61 @@
 pub mod acquisition;
 pub mod acquisition_change;
 pub mod acquisition_daily;
+pub mod adjustment;
+pub mod adjustment_machine;
+pub mod adjustments;
 pub mod attribution;
 pub mod bill_links;
+pub mod block;
 pub mod budget;
 pub mod campaign;
+pub mod closure;
 pub mod config;
 pub mod cost_entry;
 pub mod cost_machine;
 pub mod costs;
+pub mod counter_sale;
+pub mod counter_sale_machine;
+pub mod counter_sales;
 pub mod daily;
 mod events;
+pub mod expiry;
 pub mod lead;
 mod lead_events;
 pub mod lead_machine;
 pub mod lead_source;
+pub mod liability;
+pub mod loyalty_account;
+pub mod loyalty_attach;
+pub mod loyalty_points;
+pub mod loyalty_programme;
+pub mod loyalty_rules;
 pub mod machine;
+pub mod merge;
 pub mod notices;
+pub mod package;
+pub mod package_machine;
+pub mod package_reopen;
+pub mod packages;
 pub mod pages;
 pub mod policy;
 pub mod promo_code;
+pub mod redeem;
+pub mod redemption;
+pub mod redemption_machine;
 pub mod report;
+pub mod retention;
+pub mod sale_line;
+pub mod sales_order;
+pub mod sales_order_machine;
+pub mod sales_orders;
+pub mod sales_return;
+pub mod sales_return_machine;
+pub mod sales_returns;
 pub mod seed;
+pub mod segment;
+pub mod segments;
+pub mod terms;
 mod texts;
 pub mod voids;
 
@@ -36,15 +70,31 @@ pub use acquisition::{AcquisitionRefused, AcquisitionSale, PartyAcquisition};
 pub use acquisition_change::{
     AcquisitionChange, ChangeRefused, ChangeRequest, ChangeStatus, ChangeTarget,
 };
+pub use adjustment::{AdjustmentStatus, PointsAdjustment};
 pub use budget::BudgetAlert;
 pub use campaign::{
     Campaign, CampaignCode, CampaignRefused, CampaignStatus, MarketingChannel, Purpose,
 };
 pub use config::SalesConfig;
 pub use cost_entry::{CostEntry, CostRefused, CostStatus};
+pub use counter_sale::{CounterSale, CounterSalePayment, CounterSaleStatus};
 pub use lead::{Captured, Lead, LeadNote, LeadRefused, LeadStatus, NewLead};
 pub use lead_source::{LeadSource, LeadSourceRefused};
+pub use loyalty_account::{AccountStatus, Enrolment, LoyaltyAccount};
+pub use loyalty_attach::MemberRef;
+pub use loyalty_points::{LoyaltyEarning, LoyaltyReview, PointsKind, PointsMovement};
+pub use loyalty_programme::{EarnKind, LoyaltyProgramme, NewProgramme};
+pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
+pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
+pub use redemption::{Redemption, RedemptionStatus};
+pub use retention::{BroadcastState, CampaignBroadcast, CampaignGuard, CampaignGuards};
+pub use sale_line::SaleLine;
+pub use sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
+pub use sales_return::{ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, SalesReturnLine};
+pub use segment::{MatchMode, Rule, Segment, SegmentRefused};
+pub use segments::{SegmentRule, SegmentRules};
+pub use terms::{LoyaltyTermsChange, TermsChange};
 
 /// The campaign services under the names of the plan: `campaigns::delete`
 /// and `campaigns::run_daily`.
@@ -84,6 +134,58 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-sales/_cost_sheet.html",
         include_str!("../views/wl-sales/_cost_sheet.html"),
     ),
+    (
+        "wl-sales/counter_sales.html",
+        include_str!("../views/wl-sales/counter_sales.html"),
+    ),
+    (
+        "wl-sales/counter_sale.html",
+        include_str!("../views/wl-sales/counter_sale.html"),
+    ),
+    (
+        "wl-sales/sales_orders.html",
+        include_str!("../views/wl-sales/sales_orders.html"),
+    ),
+    (
+        "wl-sales/sales_order.html",
+        include_str!("../views/wl-sales/sales_order.html"),
+    ),
+    (
+        "wl-sales/sales_returns.html",
+        include_str!("../views/wl-sales/sales_returns.html"),
+    ),
+    (
+        "wl-sales/sales_return.html",
+        include_str!("../views/wl-sales/sales_return.html"),
+    ),
+    (
+        "wl-sales/loyalty.html",
+        include_str!("../views/wl-sales/loyalty.html"),
+    ),
+    (
+        "wl-sales/loyalty_review.html",
+        include_str!("../views/wl-sales/loyalty_review.html"),
+    ),
+    (
+        "wl-sales/adjustments.html",
+        include_str!("../views/wl-sales/adjustments.html"),
+    ),
+    (
+        "wl-sales/liability.html",
+        include_str!("../views/wl-sales/liability.html"),
+    ),
+    (
+        "wl-sales/portal_loyalty.html",
+        include_str!("../views/wl-sales/portal_loyalty.html"),
+    ),
+    (
+        "wl-sales/segments.html",
+        include_str!("../views/wl-sales/segments.html"),
+    ),
+    (
+        "wl-sales/segment.html",
+        include_str!("../views/wl-sales/segment.html"),
+    ),
 ];
 
 /// The module's permissions (wl-sales §6).
@@ -96,10 +198,48 @@ pub mod permissions {
     pub const CAMPAIGNS_COSTS_MANAGE: &str = "campaigns.costs.manage";
     /// See the acquisition reports.
     pub const ACQUISITION_REPORTS_VIEW: &str = "acquisition.reports.view";
+    /// See packages and their movements.
+    pub const PACKAGES_VIEW: &str = "packages.view";
+    /// Sell a package and cancel one nothing was paid for.
+    pub const PACKAGES_SELL: &str = "packages.sell";
+    /// Extend a package's end date.
+    pub const PACKAGES_EXTEND: &str = "packages.extend";
+    /// Give credits of a package back by hand.
+    pub const PACKAGES_ADJUST: &str = "packages.adjust";
     /// See leads.
     pub const LEADS_VIEW: &str = "leads.view";
     /// Contact, qualify, lose and reopen leads.
     pub const LEADS_MANAGE: &str = "leads.manage";
+    /// Ring up and complete counter sales.
+    pub const POS_SELL: &str = "pos.sell";
+    /// See sales orders.
+    pub const SALES_ORDERS_VIEW: &str = "sales_orders.view";
+    /// Enter, edit and submit sales orders.
+    pub const SALES_ORDERS_CREATE: &str = "sales_orders.create";
+    /// Accept or reject an order that waits for the seller.
+    pub const SALES_ORDERS_ACCEPT: &str = "sales_orders.accept";
+    /// Cancel a sales order.
+    pub const SALES_ORDERS_CANCEL: &str = "sales_orders.cancel";
+    /// Request a sales return.
+    pub const RETURNS_REQUEST: &str = "returns.request";
+    /// Receive, resolve, reject and reverse sales returns.
+    pub const RETURNS_HANDLE: &str = "returns.handle";
+    /// See the loyalty programme, its accounts and the review list.
+    pub const LOYALTY_VIEW: &str = "loyalty.view";
+    /// Enrol a member and attach a member to a sale.
+    pub const LOYALTY_ENROL: &str = "loyalty.enrol";
+    /// Redeem a member's points on a sale (the cashier asks for the code).
+    pub const LOYALTY_REDEEM: &str = "loyalty.redeem";
+    /// Correct a member's points by hand, with a reason (`SAL.ACL.07`).
+    pub const LOYALTY_ADJUST: &str = "loyalty.adjust";
+    /// Turn the loyalty programme on, review accounts and approve a large
+    /// adjustment.
+    pub const LOYALTY_MANAGE: &str = "loyalty.manage";
+    /// Define customer segments and preview their size.
+    pub const SEGMENTS_MANAGE: &str = "segments.manage";
+    /// Export the members of a segment: a sensitive export, audited
+    /// (`NTF.ACL.01`).
+    pub const SEGMENTS_EXPORT: &str = "segments.export";
 }
 
 /// The sales module. The host adds it with
@@ -107,6 +247,8 @@ pub mod permissions {
 #[derive(Default)]
 pub struct WlSales {
     config: SalesConfig,
+    segment_rules: Vec<std::sync::Arc<dyn SegmentRule>>,
+    campaign_guards: Vec<std::sync::Arc<dyn CampaignGuard>>,
 }
 
 impl WlSales {
@@ -176,6 +318,137 @@ impl WlSales {
         self
     }
 
+    /// The months a package is valid after activation (§7, default 6).
+    pub fn package_validity_months(mut self, months: i64) -> Self {
+        assert!(months >= 1, "a package is valid for at least a month");
+        self.config.package_validity_months = months;
+        self
+    }
+
+    /// How many times a package may be extended (§7, default 1).
+    pub fn package_extension_limit(mut self, limit: i64) -> Self {
+        self.config.package_extension_limit = limit.max(0);
+        self
+    }
+
+    /// Whether `consume` is refused while the reopened balance of the
+    /// package's invoice is unpaid (§7 *Package: suspend consumption…*, off by
+    /// default).
+    pub fn suspend_package_consumption_while_unpaid(mut self, on: bool) -> Self {
+        self.config.suspend_package_consumption_while_unpaid = on;
+        self
+    }
+
+    /// The role that gets the "collect before next use" task of a package
+    /// with no seller user (05: `front_desk`; 10: `counsellor`).
+    pub fn package_seller_role(mut self, role: &str) -> Self {
+        self.config.package_seller_role = role.to_owned();
+        self
+    }
+
+    /// Whether a counter sale may be charged to the customer account (§7,
+    /// off by default; 08: on).
+    pub fn counter_sales_on_account(mut self, on: bool) -> Self {
+        self.config.counter_sales_on_account = on;
+        self
+    }
+
+    /// The order channels that wait for the seller to accept an order (§7,
+    /// default `website` and `portal`).
+    pub fn order_acceptance_channels(mut self, channels: &[&str]) -> Self {
+        self.config.order_acceptance_channels = channels.iter().map(|c| (*c).to_owned()).collect();
+        self
+    }
+
+    /// The earning sales per member per day before the account is listed
+    /// for the manager's review (§7, default 5).
+    pub fn loyalty_daily_sales_limit(mut self, limit: i64) -> Self {
+        assert!(limit >= 1, "the daily limit is at least one sale");
+        self.config.loyalty_daily_sales_limit = limit;
+        self
+    }
+
+    /// Whether a redemption is confirmed by a one-time code to the member's
+    /// mobile (§7, default on).
+    pub fn confirm_redemption_by_code(mut self, on: bool) -> Self {
+        self.config.confirm_redemption_by_code = on;
+        self
+    }
+
+    /// The minutes points are held for an open sale (§7, default 30).
+    pub fn redemption_hold_minutes(mut self, minutes: i64) -> Self {
+        assert!(minutes >= 1, "a hold lasts at least a minute");
+        self.config.redemption_hold_minutes = minutes;
+        self
+    }
+
+    /// The days points given back after their expiry are valid (§7, default
+    /// 30).
+    pub fn give_back_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "given back points are valid for at least a day");
+        self.config.give_back_days = days;
+        self
+    }
+
+    /// The days before an earn lot expires that its member is reminded
+    /// (`SAL.RUL.08`, default 30).
+    pub fn expiry_reminder_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "the reminder goes at least a day ahead");
+        self.config.expiry_reminder_days = days;
+        self
+    }
+
+    /// The points above which a manual adjustment needs a manager
+    /// (`SAL.ACL.07`, default 500).
+    pub fn adjustment_limit(mut self, points: i64) -> Self {
+        assert!(points >= 0, "the limit cannot be negative");
+        self.config.adjustment_limit = points;
+        self
+    }
+
+    /// The days after a sale within which goods can come back (§7, default
+    /// 14).
+    pub fn return_window_days(mut self, days: i64) -> Self {
+        assert!(days >= 0, "the return window cannot be negative");
+        self.config.return_window_days = days;
+        self
+    }
+
+    /// The days after a retention campaign's send within which a purchase
+    /// makes the member count as returned (§7, default 30).
+    pub fn retention_response_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "the response period is at least a day");
+        self.config.retention_response_days = days;
+        self
+    }
+
+    /// The item codes of clinical services (05). A segment rule on one is
+    /// refused and the segment editor does not offer them, unless
+    /// [`segment_clinical_rules`](Self::segment_clinical_rules) is on.
+    pub fn clinical_items(mut self, codes: &[&str]) -> Self {
+        self.config.clinical_items = codes.iter().map(|c| (*c).to_owned()).collect();
+        self
+    }
+
+    /// Whether segment rules may use clinical items (§7, off by default).
+    pub fn segment_clinical_rules(mut self, on: bool) -> Self {
+        self.config.segment_clinical_rules = on;
+        self
+    }
+
+    /// Adds a segment rule kind of the vertical (§8 `SegmentRule`).
+    pub fn segment_rule(mut self, rule: impl SegmentRule) -> Self {
+        self.segment_rules.push(std::sync::Arc::new(rule));
+        self
+    }
+
+    /// Adds a guard of the vertical that stops a retention campaign sending
+    /// (05 `CLN.ACL.13`).
+    pub fn campaign_guard(mut self, guard: impl CampaignGuard) -> Self {
+        self.campaign_guards.push(std::sync::Arc::new(guard));
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &SalesConfig {
         &self.config
@@ -201,7 +474,20 @@ impl Module for WlSales {
             .view_data::<pages::report::ReportPage>()
             .view_data::<pages::campaigns::IndexPage>()
             .view_data::<pages::campaigns::FormPage>()
-            .view_data::<pages::campaigns::ShowPage>();
+            .view_data::<pages::campaigns::ShowPage>()
+            .view_data::<pages::counter_sales::IndexPage>()
+            .view_data::<pages::counter_sales::ShowPage>()
+            .view_data::<pages::sales_orders::IndexPage>()
+            .view_data::<pages::sales_orders::ShowPage>()
+            .view_data::<pages::sales_returns::IndexPage>()
+            .view_data::<pages::sales_returns::ShowPage>()
+            .view_data::<pages::loyalty::IndexPage>()
+            .view_data::<pages::loyalty::ReviewPage>()
+            .view_data::<pages::adjustments::IndexPage>()
+            .view_data::<pages::liability::ShowPage>()
+            .view_data::<pages::segments::IndexPage>()
+            .view_data::<pages::segments::EditPage>()
+            .view_data::<pages::membership::PortalPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -220,13 +506,61 @@ impl Module for WlSales {
         app.model::<Campaign>();
         app.model::<CampaignCode>();
         app.model::<PromoCode>();
+        app.model::<Package>();
+        app.model::<PackageMovement>();
+        app.model::<PackageReopening>();
+        app.model::<PackageRefusal>();
+        app.model::<SaleLine>();
+        app.model::<CounterSale>();
+        app.model::<CounterSalePayment>();
+        app.model::<SalesOrder>();
+        app.model::<FulfilmentRecord>();
+        app.model::<SalesReturn>();
+        app.model::<SalesReturnLine>();
+        app.model::<LoyaltyProgramme>();
+        app.model::<LoyaltyAccount>();
+        app.model::<LoyaltyEarning>();
+        app.model::<PointsMovement>();
+        app.model::<LoyaltyReview>();
+        app.model::<Redemption>();
+        app.model::<PointsAdjustment>();
+        app.model::<LoyaltyTermsChange>();
+        app.model::<Segment>();
+        app.model::<CampaignBroadcast>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
+        app.provide(SegmentRules(self.segment_rules.clone()));
+        app.provide(CampaignGuards(self.campaign_guards.clone()));
         renox::state_machine::register::<Lead>();
         lead_events::register(app);
         acquisition_change::register(app);
         acquisition_daily::schedule(app);
+        // Prepaid packages: the ledger, the listeners and the daily expiry.
+        packages::register(app);
+        package_reopen::register(app);
+        // The counter sale: its machine and the `CounterSaleCompleted` event.
+        counter_sales::register(app);
+        // The sales order: its machine, its events and the kernel's
+        // `OrderFulfilment`.
+        sales_orders::register(app);
+        // The sales return: its machine and the `ReturnResolved` event.
+        sales_returns::register(app);
+        // Loyalty points: `SAL.RUL.07` earning and `SAL.RUL.09` reversals.
+        loyalty_rules::register(app);
+        // Redeeming points on a sale: the code, the hold, the spending and the
+        // giving back; and the module's `DiscountEngine`.
+        redeem::register(app);
+        // Manual adjustments with approval (`SAL.ACL.07`) and the daily
+        // expiry and reminder (`SAL.RUL.08`).
+        adjustments::register(app);
+        expiry::schedule(app);
+        // Retention campaigns: the broadcast asked on `activate`, the
+        // segments for `wl-notify` and the campaign as a requester.
+        retention::register(app);
+        // BL-SAL-26: a merge moves the points, a block pauses the account.
+        merge::register(app);
+        block::register(app);
         // Verticals report first sales and win leads through the kernel.
         wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
         wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);
@@ -260,6 +594,46 @@ impl Module for WlSales {
                 .group("nav.app")
                 .order(50)
                 .permission(permissions::CAMPAIGNS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.counter_sales", "nav.counter_sales")
+                .icon("shopping-cart")
+                .group("nav.app")
+                .order(51)
+                .permission(permissions::POS_SELL),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.sales_orders", "nav.sales_orders")
+                .icon("clipboard-list")
+                .group("nav.app")
+                .order(52)
+                .permission(permissions::SALES_ORDERS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.sales_returns", "nav.sales_returns")
+                .icon("refresh-cw")
+                .group("nav.app")
+                .order(53)
+                .permission(permissions::RETURNS_REQUEST),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.loyalty", "nav.loyalty")
+                .icon("gift")
+                .group("nav.app")
+                .order(54)
+                .permission(permissions::LOYALTY_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.segments", "nav.segments")
+                .icon("users")
+                .group("nav.app")
+                .order(55)
+                .permission(permissions::SEGMENTS_MANAGE),
         );
     }
 }

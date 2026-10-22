@@ -31,6 +31,7 @@ pub mod render;
 pub mod send;
 pub mod send_window;
 pub mod staff_task;
+pub mod stale;
 pub mod statutory_notice;
 pub mod stopped;
 pub mod suppressions;
@@ -65,7 +66,7 @@ pub use notices::{
 };
 pub use notifier::Messages;
 pub use opt_out::{ReplyOutcome, handle_reply};
-pub use otp::{OtpFailure, failure_notice};
+pub use otp::{OtpCode, OtpFailure, OtpSettings, OtpStatus, failure_notice};
 pub use reactions::{
     GiveUpContext, GiveUpHandler, ReactionOutcome, Reactions, RecordingHandler, StepOutcome,
 };
@@ -147,6 +148,8 @@ pub struct WlNotify {
     reactions: Reactions,
     broadcast: BroadcastSettings,
     cap: cap::CapSettings,
+    stale: stale::StaleSettings,
+    otp: otp::OtpSettings,
 }
 
 impl WlNotify {
@@ -174,6 +177,37 @@ impl WlNotify {
     /// `frequency_cap` (default 2).
     pub fn marketing_frequency_cap(mut self, n: i64) -> Self {
         self.cap.max = n;
+        self
+    }
+
+    /// A broadcast still waiting for its approval `hours` after its send time
+    /// is cancelled by `NTF.RUL.03` (default 24).
+    pub fn broadcast_expiry_hours(mut self, hours: i64) -> Self {
+        assert!(hours >= 1, "the approval expiry is at least one hour");
+        self.stale.approval_expiry_hours = hours;
+        self
+    }
+
+    /// A marketing message of a broadcast still queued or deferred `hours`
+    /// after the broadcast started is suppressed as `expired` by `NTF.RUL.03`
+    /// (default 48).
+    pub fn stale_message_hours(mut self, hours: i64) -> Self {
+        assert!(hours >= 1, "the stale limit is at least one hour");
+        self.stale.stale_hours = hours;
+        self
+    }
+
+    /// A one-time code (`send_otp`) is valid for `minutes` (default 5).
+    pub fn otp_validity_minutes(mut self, minutes: i64) -> Self {
+        assert!(minutes >= 1, "a code is valid for at least a minute");
+        self.otp.validity_minutes = minutes;
+        self
+    }
+
+    /// A one-time code is voided after `tries` wrong codes (default 3).
+    pub fn otp_wrong_tries(mut self, tries: i64) -> Self {
+        assert!(tries >= 1, "a code allows at least one try");
+        self.otp.wrong_tries = tries;
         self
     }
 
@@ -217,6 +251,7 @@ impl Module for WlNotify {
             .model::<StatutoryNotice>()
             .model::<SendWindow>()
             .model::<Broadcast>()
+            .model::<OtpCode>()
             .view_data::<pages::TypesPage>()
             .view_data::<pages::TypeEditPage>()
             .view_data::<pages::LogPage>()
@@ -237,11 +272,18 @@ impl Module for WlNotify {
         app.provide(self.broadcast.clone());
         // The marketing frequency cap.
         app.provide(self.cap);
+        // Stale broadcasts and messages (`NTF.RUL.03`), every 15 minutes.
+        app.provide(self.stale);
+        stale::register_type();
+        stale::schedule(app);
         broadcast_machine::register();
         // Above the limit: the approval policy, its re-check and listener.
         broadcast_approval::register(app);
         // The requester's notice that a broadcast was cancelled.
         broadcasts::register_type();
+        // One-time codes: the settings and the message type that carries one.
+        app.provide(self.otp);
+        otp::register_type();
         channels::register(app);
         app.job::<SendMessage>();
         // Deferred messages whose time has come go back to the queue.

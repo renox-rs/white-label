@@ -1,0 +1,18 @@
+ALTER TABLE "clinics_visits" DROP COLUMN scheduling_applied;
+ALTER TABLE "clinics_visits" DROP COLUMN clinic_stop;
+ALTER TABLE "clinics_visits" DROP COLUMN deposit_refunded;
+ALTER TABLE "clinics_visits" DROP COLUMN deposit_applied;
+ALTER TABLE "clinics_visits" DROP COLUMN payer_total;
+ALTER TABLE "clinics_visits" DROP COLUMN patient_total;
+ALTER TABLE "clinics_visits" DROP COLUMN deposit_settled_at;
+ALTER TABLE "clinics_visits" DROP COLUMN authorisations_consumed_at;
+ALTER TABLE "clinics_visits" DROP COLUMN payer_bill_id;
+ALTER TABLE "clinics_visits" DROP COLUMN invoice_id;
+ALTER TABLE "clinics_visits" DROP COLUMN billed_at;
+ALTER TABLE "clinics_visits" DROP COLUMN deposit_refund_full;
+ALTER TABLE "clinics_visits" DROP COLUMN not_suitable;
+ALTER TABLE "clinics_visits" DROP COLUMN work_accepted_at;
+ALTER TABLE "clinics_visits" DROP COLUMN work_accepted_by;
+ALTER TABLE "clinics_visits" DROP COLUMN work_none;
+DROP INDEX IF EXISTS "clinics_charge_lines_visit_id";
+DROP TABLE IF EXISTS "clinics_charge_lines";

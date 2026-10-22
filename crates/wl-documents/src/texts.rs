@@ -169,6 +169,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.kinds.override_locked",
         ":kind is a legal block: its override mode is locked to never",
     ),
+    (
+        "wl_documents.kinds.override_fixed",
+        "The override mode of :kind is fixed to never for this deployment",
+    ),
     ("wl_documents.kinds.remove", "Remove"),
     ("wl_documents.kinds.remove_title", "Stop guarding :guarded?"),
     (

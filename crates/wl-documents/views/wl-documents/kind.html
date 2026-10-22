@@ -24,7 +24,7 @@
         <rx-entry :label="tx['fields.override_mode']" :value="override_label"/>
         <rx-entry :label="tx['fields.responsible_role']" :value="responsible_role"/>
       </rx-infolist>
-      <rx-action-sheet rx-if="not legal_block" id="override-mode" :label="tx['kinds.override_change']" :action="route('wl_documents.kinds.override_mode', key)"
+      <rx-action-sheet rx-if="not override_locked" id="override-mode" :label="tx['kinds.override_change']" :action="route('wl_documents.kinds.override_mode', key)"
                        :title="tx['kinds.override_title']" :description="tx['kinds.override_description']" :submit-label="tx['kinds.override_change']" icon="refresh">
         <rx-select name="mode" :label="tx['fields.override_mode']" :options="override_modes" :selected="override_mode" id="override-mode-select"/>
       </rx-action-sheet>

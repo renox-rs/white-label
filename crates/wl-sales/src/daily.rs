@@ -13,7 +13,8 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 
 use crate::campaign::{Campaign, CampaignStatus};
-use crate::machine::{ACTIVATE_ON_START, END_ON_END_DATE, today_meta};
+use crate::machine::{ACTIVATE_ON_START, END_BY_RULE, END_ON_END_DATE, rule_meta, today_meta};
+use crate::retention;
 
 /// The daily scheduled task, and the command, that run [`run_daily`].
 pub const TASK: &str = "sales:campaigns";
@@ -55,6 +56,40 @@ pub async fn run_daily(state: &AppState, today: NaiveDate) -> Result<Report> {
         }
     }
 
+    // A campaign a rule of the vertical no longer lets run (05: its
+    // advertising permit's validity ended the day before) ends with the
+    // reason, and its waiting broadcast is cancelled by the listener.
+    let running = Campaign::query()
+        .where_(Campaign::STATUS.eq(CampaignStatus::Active))
+        .order_by(Campaign::ID)
+        .get(&state.db)
+        .await?;
+    for campaign in running {
+        let Some(last) = retention::last_day(state, &campaign).await? else {
+            continue;
+        };
+        if last >= today {
+            continue;
+        }
+        let meta = rule_meta(today, &format!("last day {last}"));
+        match campaign
+            .transition(END_BY_RULE)
+            .by_system()
+            .meta(meta)
+            .run(state)
+            .await
+        {
+            Ok(_) => report.ended += 1,
+            Err(error) => {
+                eprintln!(
+                    "{TASK}: ending campaign by rule failed: {}",
+                    error.into_error()
+                );
+                report.failed += 1;
+            }
+        }
+    }
+
     let to_start = Campaign::query()
         .where_(Campaign::STATUS.eq(CampaignStatus::Draft))
         .where_(Campaign::START_DATE.lte(today))
@@ -64,6 +99,12 @@ pub async fn run_daily(state: &AppState, today: NaiveDate) -> Result<Report> {
     for campaign in to_start {
         // Past its end date: left alone (A8).
         if campaign.end_date.is_some_and(|end| end < today) {
+            continue;
+        }
+        // A guard of the vertical (the advertising permit) keeps the draft.
+        if let Some(why) = retention::activation_refusal(state, &campaign).await? {
+            eprintln!("{TASK}: campaign {} not activated: {why}", campaign.code);
+            report.failed += 1;
             continue;
         }
         match step(state, campaign, ACTIVATE_ON_START, today).await {

@@ -1,0 +1,17 @@
+{#- wl-sales: the customer segments: saved rules that pick parties for a
+    retention campaign. The count is the last preview, an estimate. Replace it
+    with resources/views/wl-sales/segments.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['segments.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['segments.title']" :subtitle="tx['segments.subtitle']" :back="route('wl_sales.campaigns')" :back-label="tx['campaigns.title']">
+      <rx-link-button :href="route('wl_sales.segment_new')" :label="tx['segments.new_title']" icon="plus"/>
+    </rx-page-header>
+    <rx-table :rows="segments" as="segment" :key="segment.id" :caption="tx['segments.title']" card>
+      <rx-column :label="tx['segments.name']"><a href="{{ route('wl_sales.segment', segment.id) }}">{{ segment.name }}</a></rx-column>
+      <rx-column :label="tx['segments.match']" hide-narrow>{{ segment.mode }}</rx-column>
+      <rx-column :label="tx['segments.rules']" hide-narrow>{{ segment.rules }}</rx-column>
+      <rx-column :label="tx['segments.count']">{{ segment.count }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['segments.empty']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -391,6 +391,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
+name = "clinics"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-hr",
+ "wl-inventory",
+ "wl-invoicing",
+ "wl-kernel",
+ "wl-notify",
+ "wl-parties",
+ "wl-payments",
+ "wl-scheduling",
+]
+
+[[package]]
 name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -939,6 +956,7 @@ name = "host"
 version = "0.1.0"
 dependencies = [
  "accounting",
+ "clinics",
  "construction",
  "http-body-util",
  "logistics",
@@ -960,6 +978,7 @@ dependencies = [
  "wl-payments",
  "wl-portal",
  "wl-sales",
+ "wl-scheduling",
  "wl-ticketing",
 ]
 
@@ -3638,7 +3657,22 @@ dependencies = [
  "renox",
  "serde",
  "tempfile",
+ "wl-invoicing",
  "wl-kernel",
+ "wl-notify",
+]
+
+[[package]]
+name = "wl-scheduling"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-hr",
+ "wl-kernel",
+ "wl-parties",
+ "wl-payments",
 ]
 
 [[package]]

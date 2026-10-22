@@ -26,10 +26,12 @@ What is here so far:
 | The give-up reactions: `staff_task` (with an in-app alert when urgent), `alternative_recipient`, `mark_contact_invalid`, the OTP failure notice, the "not delivered" query for a record | §5.4 | `reactions`, `staff_task`, `alert`, `alternative`, `contact_invalid`, `otp`, `delivered`, `mask` |
 | Send windows and quiet hours (`NTF.RUL.02`), deferred messages released when the window opens (`notify:release`) | §4.1, §7 | `window`, `send_window`, `release` |
 | Broadcasts (`NTF.ACL.04`): one marketing message to a segment asked for by a campaign through `Notifier::broadcast`, approval above the size limit, the scheduled run every minute (`notify:broadcasts`), results, opt-out of marketing | §3, §4.3 | `broadcast`, `broadcast_machine`, `broadcasts`, `broadcast_approval`, `broadcast_recipients`, `broadcast_run`, `broadcast_results`, `opt_out` |
+| One-time codes: `Notifier::send_otp` and `verify_otp` (6 digits through Renox's `OneTimeCode`, 5 minutes and 3 wrong tries, `valid`/`wrong`/`expired`/`locked`; `WlNotify::otp_validity_minutes`, `otp_wrong_tries`) | §6, §7 | `otp` |
 | Statutory notice records, `notice_status`, `undelivered_notices` | §5.4, §6 | `notices` |
 | The `statutory_notice` give-up reaction and its task | §5.4 | `statutory_notice` |
 | Proof of delivery: form, attachment, `StatutoryNoticeProofRecorded` (`notifications.notices.record_proof`) | §5.4 | `pages` |
 | Marketing frequency cap: `WlNotify::marketing_frequency_cap(n)` (default 2 per 7 days, any channel and broadcast), `FREQUENCY_CAP` suppression under a lock per party | §6 `NTF.RUL.02`, §7 | `cap`, `send` |
+| Stale broadcasts (`NTF.RUL.03`, every 15 minutes): an unapproved broadcast is cancelled 24 hours after its send time, marketing messages still queued or deferred 48 hours after the start are suppressed `expired`; the stop of a sending or completed broadcast with `BroadcastStopped` (`WlNotify::broadcast_expiry_hours`, `stale_message_hours`) | §4.3, §6 `NTF.RUL.03` | `stale`, `pages` |
 
 `types::install` also fills the default give-up reaction (kernel `default_give_up`, §5.4) into a
 stored type whose reactions are empty and which the client never edited; edited rows are kept.

@@ -25,6 +25,7 @@ fn leave(
     LeaveApproved {
         leave: Subject::new("hr.leave_request", 5),
         employee: EmployeeId(employee),
+        leave_type: "annual".to_owned(),
         from,
         to,
         unpaid: false,

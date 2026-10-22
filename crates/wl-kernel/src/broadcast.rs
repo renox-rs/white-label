@@ -11,7 +11,8 @@
 //! marketing request (`NTF.ACL.04`: nobody starts a broadcast outside a
 //! campaign).
 //!
-//! `wl-notify` emits [`BroadcastCompleted`] and [`BroadcastCancelled`], so the
+//! `wl-notify` emits [`BroadcastCompleted`], [`BroadcastCancelled`] and
+//! [`BroadcastStopped`], so the
 //! requester's module can listen. Neither carries a party name.
 
 use std::collections::BTreeMap;
@@ -231,6 +232,52 @@ pub struct BroadcastCancelled {
 }
 
 impl Event for BroadcastCancelled {}
+
+/// A broadcast was stopped: its messages not yet sent were suppressed with
+/// the reason `broadcast_stopped` (wl-notify §4.3 *Stop*). The broadcast keeps
+/// its state. Emitted once per stop.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BroadcastStopped {
+    /// The broadcast.
+    pub broadcast: BroadcastId,
+    /// Its requester.
+    pub requester: Subject,
+    /// The user who stopped it.
+    pub stopped_by: i64,
+    /// The messages suppressed by the stop.
+    pub suppressed: i64,
+}
+
+impl Event for BroadcastStopped {}
+
+/// How a broadcast stands, for the module that asked for it (a campaign's
+/// report in `wl-sales`): the counts `wl-notify` keeps, and the parties whose
+/// message was sent. It holds no names and no addresses.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BroadcastReport {
+    /// The broadcast.
+    pub broadcast: BroadcastId,
+    /// Its state: `pending_approval`, `scheduled`, `sending`, `completed` or
+    /// `cancelled`.
+    pub status: String,
+    /// When it goes (or went) out.
+    pub send_at: DateTime,
+    /// The estimate at the request: members who would pass the checks.
+    pub estimate: i64,
+    /// The messages queued; `None` until it started.
+    pub recipients: Option<i64>,
+    /// The members left out, counted by reason (`no_consent`, `opted_out`,
+    /// `frequency_cap`, ...), the messages suppressed at send time included.
+    pub excluded: BTreeMap<String, i64>,
+    /// The messages delivered to the device or mailbox.
+    pub delivered: i64,
+    /// The recipients who opted out of this broadcast.
+    pub opted_out: i64,
+    /// Why it was cancelled (the approver's comment, or a code).
+    pub cancel_reason: Option<String>,
+    /// The parties whose message reached `sent` or later.
+    pub reached: Vec<crate::parties::PartyId>,
+}
 
 /// The 422 of a broadcast request while the notify module is off.
 pub(crate) fn broadcasts_off() -> Error {

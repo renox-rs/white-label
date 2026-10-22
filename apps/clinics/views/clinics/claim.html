@@ -1,0 +1,135 @@
+{#- clinics: one claim: its state, its lines with what the payer paid and
+    denied, the attempts with the channel's errors, the payer's answers and
+    the actions the billing coordinator may run. Replace it with
+    resources/views/clinics/claim.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="patient" :back="route('clinics.claims')" :back-label="tx['claim.title']" :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_validate">
+        <rx-action-sheet :id="'claim-validate-' ~ id" :label="tx['claim.validate']" :action="route('clinics.claim_validate', id)"
+                         :title="tx['claim.validate']" :description="tx['claim.validate_description']" :submit-label="tx['claim.validate']" icon="clipboard-list">
+          <rx-input name="late_reason" :label="tx['claim.late_reason']" :hint="tx['claim.late_reason_hint']" :id="'claim-validate-late-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_submit">
+        <rx-action-sheet :id="'claim-submit-' ~ id" :label="tx['claim.submit']" :action="route('clinics.claim_submit', id)"
+                         :title="tx['claim.submit']" :description="tx['claim.submit_description']" :submit-label="tx['claim.submit']" icon="send">
+          <rx-input name="reference" :label="tx['claim.submission_reference']" :id="'claim-submit-reference-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_reject">
+        <rx-action-sheet :id="'claim-reject-' ~ id" :label="tx['claim.reject']" :action="route('clinics.claim_reject', id)"
+                         :title="tx['claim.reject']" :description="tx['claim.reject_description']" :submit-label="tx['claim.reject']" icon="x">
+          <rx-textarea name="errors" :label="tx['claim.reject_errors']" :id="'claim-reject-errors-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_remit">
+        <rx-action-sheet :id="'claim-remit-' ~ id" :label="tx['claim.remit']" :action="route('clinics.claim_remittance', id)"
+                         :title="tx['claim.remit']" :description="tx['claim.remit_description']" :submit-label="tx['claim.remit']" icon="receipt">
+          <rx-input name="reference" :label="tx['claim.advice_reference']" :id="'claim-remit-reference-' ~ id" required/>
+          <rx-input name="date" type="date" :label="tx['claim.advice_date']" :value="today" :id="'claim-remit-date-' ~ id"/>
+          <rx-stack rx-for="line in lines">
+            <rx-input :name="'line_' ~ line.id ~ '_paid'" :label="line.description ~ ': ' ~ tx['claim.advice_paid']" :hint="tx['claim.line_open'] ~ ': ' ~ line.open" :id="'claim-remit-paid-' ~ line.id"/>
+            <rx-input :name="'line_' ~ line.id ~ '_denied'" :label="tx['claim.advice_denied']" :id="'claim-remit-denied-' ~ line.id"/>
+            <rx-input :name="'line_' ~ line.id ~ '_code'" :label="tx['claim.advice_code']" :id="'claim-remit-code-' ~ line.id"/>
+            <rx-input :name="'line_' ~ line.id ~ '_reason'" :label="tx['claim.advice_reason']" :id="'claim-remit-reason-' ~ line.id"/>
+          </rx-stack>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_recoup">
+        <rx-action-sheet :id="'claim-recoup-' ~ id" :label="tx['claim.recoup']" :action="route('clinics.claim_recoupment', id)"
+                         :title="tx['claim.recoup']" :description="tx['claim.recoup_description']" :submit-label="tx['claim.recoup']" icon="history">
+          <rx-input name="code" :label="tx['claim.recoup_code']" :id="'claim-recoup-code-' ~ id" required/>
+          <rx-input name="reason" :label="tx['claim.advice_reason']" :id="'claim-recoup-reason-' ~ id"/>
+          <rx-input name="reference" :label="tx['claim.advice_reference']" :id="'claim-recoup-reference-' ~ id"/>
+          <rx-input name="date" type="date" :label="tx['claim.advice_date']" :value="today" :id="'claim-recoup-date-' ~ id"/>
+          <rx-stack rx-for="line in lines">
+            <rx-input :name="'line_' ~ line.id ~ '_recouped'" :label="line.description ~ ': ' ~ tx['claim.recoup_amount']" :hint="tx['claim.line_paid'] ~ ': ' ~ line.paid" :id="'claim-recoup-amount-' ~ line.id"/>
+          </rx-stack>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_void">
+        <rx-action-sheet :id="'claim-void-' ~ id" :label="tx['claim.void']" :action="route('clinics.claim_void', id)"
+                         :title="tx['claim.void']" :description="tx['claim.void_description']" :submit-label="tx['claim.void']" icon="x">
+          <rx-select name="code" :label="tx['claim.void_code']" :options="void_codes" :selected="'wrong_payer'" :id="'claim-void-code-' ~ id"/>
+          <rx-select name="duplicate_of" :label="tx['claim.void_duplicate_of']" :options="duplicate_options" :selected="''" :id="'claim-void-duplicate-' ~ id"/>
+          <rx-select name="policy" :label="tx['claim.void_policy']" :options="policy_options" :selected="''" :id="'claim-void-policy-' ~ id"/>
+          <rx-input name="note" :label="tx['claim.void_note']" :id="'claim-void-note-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="to_resolve">
+        <rx-action-sheet :id="'claim-resolve-' ~ id" :label="tx['claim.resolve']" :action="route('clinics.claim_resolve', id)"
+                         :title="tx['claim.resolve']" :description="tx['claim.resolve_description']" :submit-label="tx['claim.resolve']" icon="refresh-cw">
+          <rx-select name="policy" :label="tx['claim.void_policy']" :options="policy_options" :selected="''" :id="'claim-resolve-policy-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_write_off">
+        <rx-action-sheet :id="'claim-write-off-' ~ id" :label="tx['claim.write_off']" :action="route('clinics.claim_write_off', id)"
+                         :title="tx['claim.write_off']" :description="tx['claim.write_off_description']" :submit-label="tx['claim.write_off']" icon="x">
+          <rx-textarea name="reason" :label="tx['claim.close_reason']" :id="'claim-write-off-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_resubmit">
+        <rx-action-sheet :id="'claim-resubmit-' ~ id" :label="tx['claim.resubmit']" :action="route('clinics.claim_resubmit', id)"
+                         :title="tx['claim.resubmit']" :description="tx['claim.resubmit_description']" :submit-label="tx['claim.resubmit']" icon="send">
+          <rx-textarea name="corrections" :label="tx['claim.corrections']" :id="'claim-resubmit-corrections-' ~ id" required/>
+          <rx-input name="reference" :label="tx['claim.submission_reference']" :id="'claim-resubmit-reference-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-include template="wl-kernel/integration_banner.html"/>
+    <rx-alert rx-if="held" kind="warning" :message="held_text"/>
+    <rx-alert rx-if="held_result" kind="info" :message="held_result"/>
+    <rx-alert rx-if="void_info" kind="warning" :message="void_info"/>
+    <rx-alert rx-if="links" kind="info" :message="links"/>
+    <rx-alert rx-if="to_resolve" kind="warning" :message="tx['claim.coverage_to_resolve']"/>
+    <rx-card :title="tx['claim.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['policies.patient']" :value="patient"/>
+        <rx-entry :label="tx['policies.payer']" :value="payer"/>
+        <rx-entry :label="tx['claim.visit']" :value="visit_number"/>
+        <rx-entry :label="tx['claim.visit_date']" :value="visit_date"/>
+        <rx-entry :label="tx['claim.payer_bill']" :value="payer_bill"/>
+        <rx-entry :label="tx['claim.payer_reference']" :value="payer_reference"/>
+        <rx-entry :label="tx['claim.claimed']" :value="claimed"/>
+        <rx-entry :label="tx['claim.paid']" :value="paid"/>
+        <rx-entry :label="tx['claim.denied']" :value="denied"/>
+        <rx-entry :label="tx['claim.written_off']" :value="written_off"/>
+        <rx-entry :label="tx['claim.closed']" :value="closed"/>
+        <rx-entry :label="tx['claim.resubmissions']" :value="resubmissions"/>
+        <rx-entry :label="tx['claim.submission_reference']" :value="submission_reference"/>
+        <rx-entry :label="tx['claim.submitted_on']" :value="submitted_on"/>
+        <rx-entry :label="tx['claim.late_reason']" :value="late_reason"/>
+        <rx-entry :label="tx['claim.deadline']" :value="deadline"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['claim.lines']" card>
+      <rx-column :label="tx['claim.line_description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['claim.line_code']" hide-narrow>{{ line.code }}</rx-column>
+      <rx-column :label="tx['claim.claimed']" hide-narrow>{{ line.claimed }}</rx-column>
+      <rx-column :label="tx['claim.paid']" hide-narrow>{{ line.paid }}</rx-column>
+      <rx-column :label="tx['claim.denied']">{{ line.denied }}</rx-column>
+      <rx-column :label="tx['claim.recouped']" hide-narrow>{{ line.recouped }}</rx-column>
+      <rx-column :label="tx['claim.payer_code']" hide-narrow>{{ line.payer_code }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['claim.lines_empty']" icon="receipt"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="attempts" as="attempt" :key="attempt.number" :caption="tx['claim.attempts']" card>
+      <rx-column :label="tx['claim.attempt_number']" hide-narrow>{{ attempt.number }}</rx-column>
+      <rx-column :label="tx['claim.attempt_kind']">{{ attempt.kind }}</rx-column>
+      <rx-column :label="tx['claim.submission_reference']" hide-narrow>{{ attempt.reference }}</rx-column>
+      <rx-column :label="tx['claim.submitted_on']" hide-narrow>{{ attempt.submitted_on }}</rx-column>
+      <rx-column :label="tx['claim.attempt_errors']">{{ attempt.errors }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['claim.attempts_empty']" icon="send"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="answers" as="answer" :key="answer.id" :caption="tx['claim.answers']" card>
+      <rx-column :label="tx['claim.answer_kind']">{{ answer.kind }}</rx-column>
+      <rx-column :label="tx['claim.advice_reference']" hide-narrow>{{ answer.reference }}</rx-column>
+      <rx-column :label="tx['claim.advice_date']" hide-narrow>{{ answer.date }}</rx-column>
+      <rx-column :label="tx['claim.paid']" hide-narrow>{{ answer.paid }}</rx-column>
+      <rx-column :label="tx['claim.denied']" hide-narrow>{{ answer.denied }}</rx-column>
+      <rx-column :label="tx['claim.answer_amount']">{{ answer.amount }}</rx-column>
+      <rx-column :label="tx['claim.recoup_code']" hide-narrow>{{ answer.code }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['claim.answers_empty']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

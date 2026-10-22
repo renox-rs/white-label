@@ -89,11 +89,11 @@ pub struct SetOffRequest {
 #[derive(Debug, Clone)]
 pub enum SetOffOutcome {
     /// The set-off was recorded and allocated to both documents.
-    Recorded(Payment),
+    Recorded(Box<Payment>),
     /// The party is blocked (`PTY.ACL.03`): nothing was recorded or
     /// allocated. A `pending` payment holds the request and an exception
     /// was requested from the approver the block guard names.
-    ExceptionRequested(ApprovalRequest),
+    ExceptionRequested(Box<ApprovalRequest>),
 }
 
 /// Why the set-off cannot be recorded for `invoice` and `bill`, if it cannot.
@@ -257,9 +257,9 @@ pub async fn record(
     // `Transitioned<Payment>` -> `PaymentReceived` (crate::events).
     outcome.emit(state).await.map_err(TransitionError::Failed)?;
     complete(state, payment.id).await?;
-    Ok(SetOffOutcome::Recorded(
+    Ok(SetOffOutcome::Recorded(Box::new(
         Payment::find_or_404(&state.db, payment.id).await?,
-    ))
+    )))
 }
 
 /// The party is blocked: the `pending` payment is kept as the request's
@@ -286,7 +286,7 @@ async fn ask_exception(
     .await?;
     tx.commit().await?;
     approvals::announce_request(state, &request).await?;
-    Ok(SetOffOutcome::ExceptionRequested(request))
+    Ok(SetOffOutcome::ExceptionRequested(Box::new(request)))
 }
 
 /// Allocates the recorded set-off `payment_id` to its invoice and its

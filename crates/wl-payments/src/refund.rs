@@ -38,7 +38,9 @@ use crate::permissions;
 use crate::record;
 use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
 use crate::refund_fail::{FAIL, FAIL_BY_SYSTEM, FailInput};
-use crate::refund_machine::{APPROVE, PAY, PAY_BY_SYSTEM, PayBySystemInput, PayInput, REJECT};
+use crate::refund_machine::{
+    APPROVE, APPROVE_BY_SYSTEM, PAY, PAY_BY_SYSTEM, PayBySystemInput, PayInput, REJECT,
+};
 use crate::reverse;
 
 /// The refunds of `legal_entity_id` that are `approved` or `failed`: money
@@ -597,6 +599,11 @@ pub async fn request_for_source_as(
             let balance = resolved.refundable;
             (resolved, balance)
         }
+        KernelRefundSource::PayerCredit(subject) => {
+            let resolved = resolve_payer_credit(state, subject, request).await?;
+            let balance = resolved.refundable;
+            (resolved, balance)
+        }
         _ => (resolve_vouched(state, request).await?, i64::MAX),
     };
     if resolved.party != request.party {
@@ -659,6 +666,45 @@ async fn resolve_deposit(
     })
 }
 
+/// The payer credit balance a refund goes back to, checked against the
+/// request: the credit must be the party's own, and no more than the balance
+/// wl-invoicing holds for the party, the legal entity and the currency, less
+/// the refunds still `requested` against it, is refundable. An approved refund
+/// has already taken its amount from the balance
+/// ([`wl_kernel::RefundApproved`]), so it is not counted twice.
+async fn resolve_payer_credit(
+    state: &AppState,
+    subject: &Subject,
+    request: &RefundRequest,
+) -> std::result::Result<Resolved, TransitionError> {
+    if subject.subject_type != wl_kernel::payer_bills::PAYER_CREDIT_SUBJECT_TYPE
+        || subject.subject_id != request.party.0
+    {
+        return Err(guard(
+            "The payer credit balance does not belong to the party.",
+        ));
+    }
+    let mut resolved = resolve_vouched(state, request).await?;
+    let balance = wl_kernel::payer_bills::payer_credits(state)
+        .balance(
+            &state.db,
+            request.party,
+            request.legal_entity_id,
+            &resolved.currency,
+        )
+        .await?;
+    let waiting = Refund::query()
+        .where_(Refund::PARTY_ID.eq(request.party.0))
+        .where_(Refund::LEGAL_ENTITY_ID.eq(request.legal_entity_id))
+        .where_(Refund::CURRENCY.eq(resolved.currency.as_str()))
+        .where_(Refund::SOURCE_KIND.eq("payer_credit"))
+        .where_(Refund::STATUS.eq(RefundStatus::Requested))
+        .sum::<i64, _>(&state.db, "amount")
+        .await?;
+    resolved.refundable = (balance - waiting).max(0);
+    Ok(resolved)
+}
+
 /// The party and legal entity of a source another module vouches for.
 async fn resolve_vouched(
     state: &AppState,
@@ -694,6 +740,26 @@ pub async fn approve(
     refund: &Refund,
 ) -> std::result::Result<Refund, TransitionError> {
     let _outcome = refund.transition(APPROVE).by(user).run(state).await?;
+    reload(state, refund).await
+}
+
+/// The system approves the late payment `refund` it requested (`late_confirm`,
+/// wl-payments §4 `request`): equal to the payment, back to the same card. The
+/// caller checked the setting and that the prepaid record is no longer active.
+///
+/// # Errors
+///
+/// `NotFrom` unless `requested`; `Guard` (422) for a refund that is not a
+/// system request of a late payment to the same card.
+pub(crate) async fn approve_late(
+    state: &AppState,
+    refund: &Refund,
+) -> std::result::Result<Refund, TransitionError> {
+    let _outcome = refund
+        .transition(APPROVE_BY_SYSTEM)
+        .by_system()
+        .run(state)
+        .await?;
     reload(state, refund).await
 }
 
@@ -851,6 +917,23 @@ pub async fn send_to_gateway(
     if !user.has_permission(permissions::REFUNDS_PAY) {
         return Err(TransitionError::Forbidden);
     }
+    send_to_gateway_inner(state, refund).await
+}
+
+/// [`send_to_gateway`] for the system: the approved refund of a late payment
+/// goes back to the card at once ([`crate::late`]). The block guard of money
+/// out still applies.
+pub(crate) async fn send_to_gateway_as_system(
+    state: &AppState,
+    refund: &Refund,
+) -> std::result::Result<RefundAttempt, TransitionError> {
+    send_to_gateway_inner(state, refund).await
+}
+
+async fn send_to_gateway_inner(
+    state: &AppState,
+    refund: &Refund,
+) -> std::result::Result<RefundAttempt, TransitionError> {
     let refund = reload(state, refund).await?;
     if refund.status != RefundStatus::Approved {
         return Err(TransitionError::NotFrom(refund.status.as_str().to_owned()));

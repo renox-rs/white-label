@@ -1,0 +1,23 @@
+{#- clinics: the trace of a recalled lot: the patients who got it, by name,
+    visit day and branch only, never why they came. A line that cannot prove
+    the lot says so. Replace it with resources/views/clinics/recall.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['recall.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['recall.title']" :subtitle="tx['recall.subtitle']">
+      <template rx-if="can_notify">
+        <rx-confirm :id="'recall-notices-' ~ id" :label="tx['recall.send']" :action="route('clinics.recall_notices', id)" method="POST"
+                    :title="tx['recall.send']" :message="tx['recall.send_description']" :confirm-label="tx['recall.send']" :cancel-label="tx['button_cancel']" icon="clipboard-list"/>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="lines" as="row" :key="row.patient ~ row.visit_date ~ row.branch" :caption="tx['recall.title']" card>
+      <rx-column :label="tx['recall.patient']">{{ row.patient }}</rx-column>
+      <rx-column :label="tx['recall.visit_date']">{{ row.visit_date }}</rx-column>
+      <rx-column :label="tx['recall.branch']" hide-narrow>{{ row.branch }}</rx-column>
+      <rx-column :label="tx['recall.lot_uncertain']" hide-narrow>{{ row.uncertain }}</rx-column>
+      <rx-column :label="tx['recall.notice']">{{ row.notice }}</rx-column>
+      <rx-column :label="tx['recall.told_party']" hide-narrow>{{ row.told_through }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['recall.empty']" icon="clipboard-list"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

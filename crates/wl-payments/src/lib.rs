@@ -20,6 +20,9 @@ pub mod cash_notices;
 pub mod cash_pages;
 pub mod cash_recovery;
 pub mod cash_settle;
+pub mod chargeback;
+pub mod chargeback_close;
+pub mod chargeback_pages;
 pub mod cheque;
 pub mod cheque_bounce;
 pub mod cheque_chase;
@@ -52,13 +55,18 @@ pub mod expense_claim;
 pub mod expense_claim_pages;
 pub mod followup;
 pub mod gateway;
+pub mod late;
 mod machine;
 pub mod notices;
+pub mod online;
+pub mod online_pages;
 pub mod pages;
 pub mod payment;
+pub mod payment_link;
 pub mod record;
 pub mod recorder;
 pub mod refund;
+mod refund_approved;
 pub mod refund_attempt;
 mod refund_fail;
 mod refund_machine;
@@ -210,6 +218,26 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-payments/_write_off_sheet.html"),
     ),
     (
+        "wl-payments/pay.html",
+        include_str!("../views/wl-payments/pay.html"),
+    ),
+    (
+        "wl-payments/_chargeback_sheet.html",
+        include_str!("../views/wl-payments/_chargeback_sheet.html"),
+    ),
+    (
+        "wl-payments/_evidence_sheet.html",
+        include_str!("../views/wl-payments/_evidence_sheet.html"),
+    ),
+    (
+        "wl-payments/_accept_chargeback_sheet.html",
+        include_str!("../views/wl-payments/_accept_chargeback_sheet.html"),
+    ),
+    (
+        "wl-payments/_lose_chargeback_sheet.html",
+        include_str!("../views/wl-payments/_lose_chargeback_sheet.html"),
+    ),
+    (
         "wl-payments/cash.html",
         include_str!("../views/wl-payments/cash.html"),
     ),
@@ -237,6 +265,8 @@ pub mod permissions {
     pub const REVERSE: &str = "payments.reverse";
     /// Handle chargebacks.
     pub const CHARGEBACK: &str = "payments.chargeback";
+    /// Cancel a payment link.
+    pub const LINKS: &str = "payments.links";
     /// Request a refund.
     pub const REFUNDS_REQUEST: &str = "refunds.request";
     /// Approve or reject a refund (`FIN.ACL.04`).
@@ -417,6 +447,57 @@ impl WlPayments {
         self
     }
 
+    /// Sets how long an online payment may stay `pending` before the gateway
+    /// is asked for its final state (`FIN.RUL.19`, §7: 30 minutes).
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one minute: a programming error.
+    pub fn pending_timeout(mut self, minutes: i64) -> Self {
+        assert!(minutes >= 1, "the timeout is at least one minute");
+        self.config.pending_timeout_minutes = minutes;
+        self
+    }
+
+    /// Sets how many days a payment link stays open (§7: 7).
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one day: a programming error.
+    pub fn link_expiry_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "a link stays open at least one day");
+        self.config.link_expiry_days = days;
+        self
+    }
+
+    /// Names the party the gateway's dispute fees are paid to: the gateway
+    /// provider as a supplier party (`charge_back` records the fee as an
+    /// outgoing payment to it). Without one the fee stays on the payment.
+    pub fn gateway_party(mut self, party: wl_kernel::PartyId) -> Self {
+        self.config.gateway_party = Some(party.0);
+        self
+    }
+
+    /// Sets how many days before the evidence deadline of a chargeback the
+    /// accountant is reminded (`FIN.RUL.20`, §7: 2).
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one day: a programming error.
+    pub fn chargeback_reminder(mut self, days: i64) -> Self {
+        assert!(days >= 1, "a reminder comes at least one day before");
+        self.config.chargeback_reminder_days = days;
+        self
+    }
+
+    /// Turns on or off the automatic approval of the refund of a late payment
+    /// that equals the payment, goes back to the same card and whose prepaid
+    /// record is no longer active (§7, on unless set).
+    pub fn late_refunds_auto(mut self, on: bool) -> Self {
+        self.config.late_refund_auto = on;
+        self
+    }
+
     /// Turns the recovery of a cash shortage by a salary deduction on or off
     /// (`FIN.ACL.19`, off unless set: recovery in cash only; `⚠ open: lawyer
     /// L-20`). When on, a deduction always needs the approval of another user
@@ -490,6 +571,8 @@ impl Module for WlPayments {
             .merge(cheque_pages::routes())
             .merge(bank_statement_pages::routes())
             .merge(expense_claim_pages::routes())
+            .merge(online_pages::routes())
+            .merge(chargeback_pages::routes())
             .merge(cash_pages::routes())
     }
 
@@ -516,7 +599,12 @@ impl Module for WlPayments {
                 |payment: &Payment| Some(wl_kernel::PartyId(payment.party_id)),
             )
             .register();
+        // `accept_chargeback` needs another person's approval (`FIN.ACL.18`)
+        // and tells the gateway at the final approval; this replaces the
+        // final re-check the machine above registered, and keeps its guard.
+        chargeback_close::register_approval();
         app.model::<Payment>();
+        app.model::<payment_link::PaymentLink>();
         app.model::<Allocation>();
         app.model::<Refund>();
         app.model::<RefundAttempt>();
@@ -547,6 +635,7 @@ impl Module for WlPayments {
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<pages::DrawingPage>()
+            .view_data::<online_pages::PayPage>()
             .view_data::<pages::TasksPage>()
             .view_data::<refund_pages::IndexPage>()
             .view_data::<refund_pages::ShowPage>()
@@ -634,6 +723,7 @@ impl Module for WlPayments {
         );
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
+        renox::state_machine::register::<payment_link::PaymentLink>();
         renox::state_machine::register::<Refund>();
         renox::state_machine::register::<Deposit>();
         renox::state_machine::register::<Cheque>();
@@ -647,10 +737,19 @@ impl Module for WlPayments {
         app.provide(self.config.clone());
         // The gateway the services ask about disputes (`gateway::gateway_of`).
         if let Some(gateway) = &self.gateway {
+            gateway::remember(gateway);
             app.provide(gateway::Installed(gateway.clone()));
         }
+        // `confirm`, `fail` and `late_confirm` of an online payment, and
+        // `FIN.RUL.19`; the expiry of payment links.
+        online::register(app);
+        // `charge_back` and `FIN.RUL.20`.
+        chargeback::register(app);
+        chargeback_close::register(app);
+        payment_link::register(app);
         // How other modules record, allocate and read payments.
         wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
+        wl_kernel::payments::provide_payment_links(app, payment_link::Links);
         // How a vertical registers the post-dated cheques of an agreement.
         wl_kernel::cheques::provide_cheques(app, chequer::ChequeBook);
         // The latest closing balance of each bank account (`FIN.CFL.01`).
@@ -684,6 +783,8 @@ impl Module for WlPayments {
         wl_kernel::deposits::provide_deposit_deductions(app, deposit_deductions::Deductions);
         // `RefundPaid` after a commit.
         refund_machine::register(app);
+        // `RefundApproved` after a commit: the owner of the source takes the amount.
+        refund_approved::register(app);
         // `RefundFailed` and its notices after a commit.
         refund_fail::register(app);
         // Cash custody (`FIN.CSH.01`): how other modules put cash into a

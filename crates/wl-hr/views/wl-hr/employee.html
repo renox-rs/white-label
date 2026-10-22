@@ -91,6 +91,32 @@
         </rx-stack>
       </rx-card>
     </template>
+    <template rx-if="leaves or can_record_sick">
+      <rx-card :title="tx['sick.title']">
+        <rx-stack>
+          <rx-table :rows="leaves" as="leave" :key="leave.id" :caption="tx['sick.title']" rx-if="leaves">
+            <rx-column :label="tx['sick.type']">{{ leave.leave_type }}</rx-column>
+            <rx-column :label="tx['sick.period']">{{ leave.period }}</rx-column>
+            <rx-column :label="tx['fields.status']">{{ leave.status }}</rx-column>
+            <rx-column :label="tx['sick.unpaid']" hide-narrow>{{ leave.unpaid }}</rx-column>
+            <rx-column :label="tx['sick.note']" hide-narrow>{{ leave.note }}</rx-column>
+          </rx-table>
+          <template rx-if="can_record_sick">
+            <rx-action-sheet id="record-sick" :label="tx['sick.record']" :action="route('wl_hr.sick_leave', employee.id)"
+                             :title="tx['sick.record']" :submit-label="tx['sick.submit']" icon="clipboard-list">
+              <rx-input name="from_date" type="date" :label="tx['sick.from']" :value="today" id="record-sick-from"/>
+              <rx-input name="to_date" type="date" :label="tx['sick.to']" :value="today" id="record-sick-to"/>
+            </rx-action-sheet>
+          </template>
+          <template rx-if="note_requests">
+            <rx-action-sheet id="attach-sick-note" :label="tx['sick.attach']" :action="route('wl_hr.sick_note', note_selected)"
+                             :title="tx['sick.attach']" :submit-label="tx['sick.attach_submit']" icon="paperclip">
+              <rx-input name="document" type="number" :label="tx['sick.document']" id="attach-sick-note-document" required/>
+            </rx-action-sheet>
+          </template>
+        </rx-stack>
+      </rx-card>
+    </template>
     <template rx-if="pending_exit or can_request_exit">
       <rx-card :title="tx['exits.title']">
         <rx-stack>

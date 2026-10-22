@@ -14,6 +14,7 @@
 //! | `GET /notify/broadcasts` | `wl_notify.broadcasts` | signed in; a holder of `notifications.marketing.send` sees all, anyone else the ones they asked for |
 //! | `GET /notify/broadcasts/{id}` | `wl_notify.broadcast` | the requester or a holder of `notifications.marketing.send` (others 403, unknown 404); no party names |
 //! | `POST /notify/broadcasts/{id}/cancel` | `wl_notify.broadcast_cancel` | the same (a broadcast that cannot be cancelled is a 422) |
+//! | `POST /notify/broadcasts/{id}/stop` | `wl_notify.broadcast_stop` | a holder of `notifications.marketing.send` (others 403); nothing left to stop is a 422 |
 //! | `GET /unsubscribe/{token}` | `wl_notify.unsubscribe` | nobody: public, the signed token is the key (a bad token shows a neutral page) |
 //! | `POST /unsubscribe/{token}` | `wl_notify.unsubscribe_confirm` | the same (withdraws the e-mail marketing consent, idempotent) |
 //!
@@ -44,6 +45,7 @@ use crate::notifier::type_def;
 use crate::opt_out;
 use crate::permissions;
 use crate::send_window::SendWindow;
+use crate::stale;
 use crate::texts;
 use crate::types::NotificationType;
 use crate::window::Window;
@@ -103,7 +105,9 @@ pub fn routes() -> Routes {
                 .get("/notify/broadcasts/{id}", broadcast_show)
                 .name("wl_notify.broadcast")
                 .post("/notify/broadcasts/{id}/cancel", broadcast_cancel)
-                .name("wl_notify.broadcast_cancel"),
+                .name("wl_notify.broadcast_cancel")
+                .post("/notify/broadcasts/{id}/stop", broadcast_stop)
+                .name("wl_notify.broadcast_stop"),
         )
         // Public: a recipient opens it from an e-mail, signed out. No
         // guard; the token is the proof.
@@ -1060,6 +1064,7 @@ pub(crate) struct BroadcastPage {
     results: Vec<CountRow>,
     approvals: Vec<ApprovalCard>,
     can_cancel: bool,
+    can_stop: bool,
 }
 
 /// The rule text: the segment of the requester, as words.
@@ -1136,6 +1141,7 @@ async fn broadcast_show(
         b.status,
         BroadcastStatus::PendingApproval | BroadcastStatus::Scheduled
     );
+    let can_stop = stale::may_stop(&db, &user, &b).await?;
     Ok(View::typed(BroadcastPage {
         tx: texts::all(&lang),
         status: t(broadcast_status_key(b.status)),
@@ -1147,6 +1153,7 @@ async fn broadcast_show(
         results,
         approvals,
         can_cancel,
+        can_stop,
         broadcast: b,
     }))
 }
@@ -1172,6 +1179,23 @@ async fn broadcast_cancel(
     broadcast_run::cancel(&state, id, &user, &form.reason).await?;
     Ok((
         Toast::success(texts::t(&lang, "wl_notify.broadcasts.cancelled")),
+        Redirect::route("wl_notify.broadcast", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `POST /notify/broadcasts/{id}/stop`: suppresses the messages of a sending
+/// or completed broadcast that are not sent yet (`NTF.RUL.03`).
+async fn broadcast_stop(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    broadcast_for(&state.db, &user, id).await?;
+    stale::stop(&state, id, &user).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_notify.broadcasts.stopped")),
         Redirect::route("wl_notify.broadcast", &[&id])?,
     )
         .into_response())

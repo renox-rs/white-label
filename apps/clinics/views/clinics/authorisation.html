@@ -1,0 +1,50 @@
+{#- clinics: one prior authorisation: its status, the units, the payer's
+    reference and the actions of the billing coordinator. Replace it with
+    resources/views/clinics/authorisation.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="patient" :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_request">
+        <rx-action-sheet :id="'authorisation-request-' ~ id" :label="tx['authorisation.request']" :action="route('clinics.authorisation_request', id)"
+                         :title="tx['authorisation.request']" :description="tx['authorisation.request_description']" :submit-label="tx['authorisation.request']" icon="clipboard-list">
+          <rx-input name="reference" :label="tx['authorisation.reference']" :id="'authorisation-request-reference-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_decide">
+        <rx-action-sheet :id="'authorisation-approve-' ~ id" :label="tx['authorisation.approve']" :action="route('clinics.authorisation_approve', id)"
+                         :title="tx['authorisation.approve']" :description="tx['authorisation.approve_description']" :submit-label="tx['authorisation.approve']" icon="shield-check">
+          <rx-input name="reference" :label="tx['authorisation.reference']" :id="'authorisation-approve-reference-' ~ id"/>
+          <rx-input name="valid_until" type="date" :label="tx['authorisation.valid_until']" :id="'authorisation-approve-until-' ~ id" required/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'authorisation-partly-' ~ id" :label="tx['authorisation.approve_partially']" :action="route('clinics.authorisation_approve_partially', id)"
+                         :title="tx['authorisation.approve_partially']" :description="tx['authorisation.approve_partially_description']" :submit-label="tx['authorisation.approve_partially']" icon="shield-check">
+          <rx-input name="units" type="number" :label="tx['authorisation.units_approved']" :id="'authorisation-partly-units-' ~ id" required/>
+          <rx-input name="reference" :label="tx['authorisation.reference']" :id="'authorisation-partly-reference-' ~ id"/>
+          <rx-input name="valid_until" type="date" :label="tx['authorisation.valid_until']" :id="'authorisation-partly-until-' ~ id" required/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'authorisation-deny-' ~ id" :label="tx['authorisation.deny']" :action="route('clinics.authorisation_deny', id)"
+                         :title="tx['authorisation.deny']" :description="tx['authorisation.deny_description']" :submit-label="tx['authorisation.deny']" icon="clipboard-list">
+          <rx-input name="reason" :label="tx['authorisation.denial_reason']" :id="'authorisation-deny-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_cancel">
+        <rx-confirm :id="'authorisation-cancel-' ~ id" :label="tx['authorisation.cancel']" :action="route('clinics.authorisation_cancel', id)" method="POST"
+                    :title="tx['authorisation.cancel']" :message="tx['authorisation.cancel_message']" :confirm-label="tx['authorisation.cancel']" :cancel-label="tx['button_cancel']" icon="trash"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['authorisation.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['policies.patient']" :value="patient"/>
+        <rx-entry :label="tx['policies.payer']" :value="payer"/>
+        <rx-entry :label="tx['authorisation.services']" :value="services"/>
+        <rx-entry :label="tx['authorisation.reference']" :value="reference"/>
+        <rx-entry :label="tx['authorisation.valid_until']" :value="valid_until"/>
+        <rx-entry :label="tx['authorisation.units_asked']" :value="units_requested"/>
+        <rx-entry :label="tx['authorisation.units_approved']" :value="units_approved"/>
+        <rx-entry :label="tx['authorisation.units_consumed']" :value="units_consumed"/>
+        <rx-entry :label="tx['authorisation.units_left']" :value="units_left"/>
+        <rx-entry :label="tx['authorisation.denial_reason']" :value="denial_reason"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

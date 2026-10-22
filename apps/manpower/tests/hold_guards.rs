@@ -393,6 +393,7 @@ async fn the_cover_a_contract_requires_still_opens_while_it_is_held() {
         .emit(wl_kernel::LeaveApproved {
             leave: wl_kernel::Subject::new("hr.leave_request", 5),
             employee: worker,
+            leave_type: "annual".to_owned(),
             from: date(2027, 3, 1),
             to: date(2027, 3, 10),
             unpaid: false,

@@ -1,0 +1,184 @@
+//! The visit: what happened at an appointment (05 §6 *Visit*, `CLN.ENC.01`).
+//!
+//! A visit is opened by the check-in of its booking ([`crate::visits::open`],
+//! from `BookingCheckedIn`) and follows the booking: the service starting
+//! ([`crate::visit_machine::START`]), taking place
+//! ([`crate::visit_machine::COMPLETE`]) or being cancelled after the
+//! check-in ([`crate::visit_machine::CANCEL`]). The status moves only through
+//! the machine in [`crate::visit_machine`].
+//!
+//! Decision: the visit is built to be extended. Charge capture, the patient
+//! share, the claims and the lots of the consumables hang on `visit_id`
+//! later. The coverage columns (the eligibility result, the outcome, the
+//! policy of the split, the self-pay consent) are moved to it by the check-in
+//! from what the receptionist recorded ([`crate::coverage`]).
+
+use renox::chrono::NaiveDate;
+use renox::db::DateTime;
+use renox::prelude::*;
+use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
+use wl_kernel::scheduling::BookingId;
+
+use crate::coverage::CoverageOutcome;
+
+/// The subject type of a visit.
+pub const VISIT_SUBJECT_TYPE: &str = "clinics.visit";
+
+/// Where a visit stands.
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum VisitStatus {
+    /// The patient is checked in and waits.
+    #[default]
+    CheckedIn,
+    /// The patient is with the practitioner.
+    InProgress,
+    /// Seen (terminal).
+    Completed,
+    /// Stopped after the check-in: a walk-out or the clinic's stop (terminal).
+    Cancelled,
+}
+
+impl VisitStatus {
+    /// Whether the visit can still change: `checked_in` or `in_progress`.
+    pub fn is_open(self) -> bool {
+        matches!(self, VisitStatus::CheckedIn | VisitStatus::InProgress)
+    }
+}
+
+/// A visit.
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[model(
+    table = "clinics_visits",
+    state_machine,
+    unique(booking_id),
+    index(patient_party_id),
+    index(status)
+)]
+pub struct Visit {
+    /// The primary key.
+    pub id: i64,
+    /// The wl-scheduling booking (`scheduling.booking`).
+    pub booking_id: i64,
+    /// The clinic's record of the booking, when it has one.
+    pub appointment_id: Option<i64>,
+    /// The patient, a party.
+    pub patient_party_id: Option<i64>,
+    /// The insurance policy of an insured visit.
+    pub policy_id: Option<i64>,
+    /// The key of the booked service type.
+    pub service_code: String,
+    /// The day of the visit (Asia/Dubai).
+    pub visit_date: NaiveDate,
+    /// When the patient was checked in.
+    pub checked_in_at: DateTime,
+    /// When the service started.
+    pub started_at: Option<DateTime>,
+    /// When the visit was completed or cancelled.
+    pub ended_at: Option<DateTime>,
+    /// The cancellation reason code of the booking.
+    pub cancel_reason: Option<String>,
+    /// The eligibility result the receptionist recorded for the policy
+    /// (`CLN.INS.02`).
+    pub eligibility_check_id: Option<i64>,
+    /// Whether that result is positive.
+    pub eligibility_positive: Option<bool>,
+    /// What the cover of an insured visit turned out to be (`CLN.ACL.15`);
+    /// `None` for a visit that is not insured.
+    pub coverage_outcome: Option<CoverageOutcome>,
+    /// The policy the visit's charge split reads: the appointment's own for
+    /// *insured*, the other one for *re-split*, none for *self-pay*.
+    pub coverage_policy_id: Option<i64>,
+    /// The signed self-pay consent of a *self-pay* visit.
+    pub consent_id: Option<i64>,
+    /// The practitioner or the desk set the work done to *none* (nothing was
+    /// delivered and no consumable issued): `SCH.ACL.06`.
+    pub work_none: bool,
+    /// The user who recorded that the patient accepts the work done after
+    /// the clinic stopped the visit.
+    pub work_accepted_by: Option<i64>,
+    /// When the patient's acceptance was recorded.
+    pub work_accepted_at: Option<DateTime>,
+    /// The practitioner decided the planned procedure is not suitable
+    /// (BL-CLN-06); the app keeps the outcome, never the clinical reason.
+    pub not_suitable: bool,
+    /// The receptionist chose to refund the deposit in full instead of
+    /// applying it to the patient share (BL-CLN-06).
+    pub deposit_refund_full: bool,
+    /// When the visit was billed; `None` until it is.
+    pub billed_at: Option<DateTime>,
+    /// The patient's invoice (`invoicing.invoice`), when there was a patient
+    /// share.
+    pub invoice_id: Option<i64>,
+    /// The draft payer bill (`invoicing.payer_bill`), when there was a payer
+    /// share.
+    pub payer_bill_id: Option<i64>,
+    /// When the prior-authorisation units of the bill were consumed.
+    pub authorisations_consumed_at: Option<DateTime>,
+    /// When the deposit was applied and the remainder refunded.
+    pub deposit_settled_at: Option<DateTime>,
+    /// The patient share of the bill, in fils.
+    pub patient_total: i64,
+    /// The payer share of the bill, in fils.
+    pub payer_total: i64,
+    /// The part of the deposit applied to the patient share, in fils.
+    pub deposit_applied: i64,
+    /// The part of the deposit the app asked back on completion, in fils.
+    pub deposit_refunded: i64,
+    /// The cancellation was the clinic's side (a business-initiated reason),
+    /// as the bill saw it.
+    pub clinic_stop: bool,
+    /// The part of the deposit wl-scheduling applied to the work done when
+    /// it cancelled the booking, in fils.
+    pub scheduling_applied: i64,
+    /// The payer split was taken away (the claim was voided) and no right
+    /// policy was named: the billing coordinator has to resolve the
+    /// coverage (`CLN.ACL.14`).
+    pub coverage_to_resolve: bool,
+    /// When the stock issue of the consumables stopped without issuing
+    /// everything (the stock refused, or the store or item is unknown); a
+    /// retry clears it (`STK.MOV.01`, BL-CLN-13).
+    pub issue_pending_at: Option<DateTime>,
+    /// Why the issue is pending: `stock: <the error>` or `unknown_store`.
+    pub issue_pending_reason: Option<String>,
+    /// The lifecycle state; changed only by a transition.
+    pub status: VisitStatus,
+    /// When the row was created.
+    pub created_at: Option<DateTime>,
+    /// When the row was last changed.
+    pub updated_at: Option<DateTime>,
+}
+
+impl Visit {
+    /// The visit of booking `booking`.
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub async fn of_booking(db: &Db, booking: i64) -> Result<Option<Visit>> {
+        Visit::query()
+            .where_(Visit::BOOKING_ID.eq(booking))
+            .first(db)
+            .await
+    }
+
+    /// The visit as a [`Subject`]: `clinics.visit:7`.
+    pub fn subject(&self) -> Subject {
+        Subject::new(VISIT_SUBJECT_TYPE, self.id)
+    }
+
+    /// The booking as a [`BookingId`].
+    pub fn booking(&self) -> BookingId {
+        BookingId(self.booking_id)
+    }
+
+    /// The number shown to staff: `VIS-0007`.
+    pub fn number(&self) -> String {
+        format!("VIS-{:04}", self.id)
+    }
+
+    /// Whether the visit was booked with an insurance policy.
+    pub fn is_insured(&self) -> bool {
+        self.policy_id.is_some()
+    }
+}

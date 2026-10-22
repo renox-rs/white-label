@@ -51,6 +51,11 @@ const TEXTS: &[(&str, &str)] = &[
         "No contact point",
     ),
     ("wl_notify.broadcast.excluded.opted_out", "Opted out"),
+    ("wl_notify.broadcast.excluded.expired", "Not sent in time"),
+    (
+        "wl_notify.broadcast.excluded.broadcast_stopped",
+        "Broadcast stopped",
+    ),
     (
         "wl_notify.broadcast.excluded.suppressed",
         "Address suppressed",
@@ -301,6 +306,12 @@ const TEXTS: &[(&str, &str)] = &[
         "Reason (optional)",
     ),
     ("wl_notify.broadcasts.cancelled", "Broadcast cancelled"),
+    ("wl_notify.broadcasts.stop", "Stop sending"),
+    (
+        "wl_notify.broadcasts.stop_hint",
+        "Messages not sent yet are dropped. Messages already sent stay sent.",
+    ),
+    ("wl_notify.broadcasts.stopped", "Broadcast stopped"),
     ("wl_notify.broadcasts.back", "All broadcasts"),
     ("wl_notify.broadcasts.count", "Count"),
     ("wl_notify.send_windows.title", "Marketing send windows"),
@@ -388,6 +399,22 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_notify.broadcast.problem.not_found",
         "The broadcast no longer exists.",
+    ),
+    (
+        "wl_notify.broadcast.problem.cannot_stop",
+        "Only a broadcast that is sending, or completed with messages still waiting, can be stopped.",
+    ),
+    (
+        "wl_notify.broadcast.problem.nothing_left",
+        "Nothing left to stop.",
+    ),
+    (
+        "wl_notify.broadcast.stopped.subject",
+        "Your broadcast was stopped",
+    ),
+    (
+        "wl_notify.broadcast.stopped.body",
+        "Broadcast {{ broadcast }} on {{ channel }} was stopped; {{ suppressed }} messages not yet sent were dropped.",
     ),
     (
         "wl_notify.broadcast.cancelled.subject",

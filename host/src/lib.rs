@@ -25,6 +25,8 @@ use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
 pub use app::accounting_seed::parties_for;
+pub use app::clinics_money;
+pub use app::clinics_seed;
 pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
@@ -39,6 +41,7 @@ pub use app::roles;
 use wl_invoicing::WlInvoicing;
 use wl_kernel::{ClientConfig, ConfigError};
 use wl_notify::WlNotify;
+use wl_payments::WlPayments;
 
 /// The variable naming the client's `client.toml`.
 pub const CLIENT_CONFIG: &str = "CLIENT_CONFIG";
@@ -124,12 +127,20 @@ pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
 pub struct Tuning {
     invoicing: Option<Box<dyn FnOnce(WlInvoicing) -> WlInvoicing>>,
     notify: Option<Box<dyn FnOnce(WlNotify) -> WlNotify>>,
+    payments: Option<Box<dyn FnOnce(WlPayments) -> WlPayments>>,
 }
 
 impl Tuning {
     /// Changes the invoicing module.
     pub fn invoicing(mut self, tune: impl FnOnce(WlInvoicing) -> WlInvoicing + 'static) -> Self {
         self.invoicing = Some(Box::new(tune));
+        self
+    }
+
+    /// Changes the payments module (the gateway adapter of a client, or a
+    /// fake in a test).
+    pub fn payments(mut self, tune: impl FnOnce(WlPayments) -> WlPayments + 'static) -> Self {
+        self.payments = Some(Box::new(tune));
         self
     }
 
@@ -156,6 +167,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::negative_flow::register_block_effects(&client_app);
     app::accounting_seed::register_block_effects(&client_app);
     app::accounting_seed::register_integrations(&client_app);
+    // The connections of the Clinics client and their manual fallbacks
+    // (BL-CLN-15).
+    app::clinics_seed::register_integrations(&client_app);
     // The manual fallbacks of the integrations of a manpower agency (BL-MPW-20).
     app::manpower_seed::register_integrations(&client_app);
     // HR and the accountant see the confidential labour cases and grievances
@@ -193,6 +207,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The 04 client's lead sources, checklists and SOPs (BL-ACC-23).
     if client_app == "accounting" {
         app = app.module(app::accounting_seed::AccountingSeed);
+    }
+    // The Clinics client's service types (BL-CLN-12).
+    if client_app == app::clinics_seed::CLINICS {
+        app = app.module(app::clinics_seed::ClinicsSeed);
     }
     // The Construction client's categories, checklists and SOPs (BL-CON-17,
     // BL-CON-18).
@@ -250,6 +268,7 @@ pub const VERTICALS: &[&str] = &[
     "property",
     "accounting",
     "construction",
+    "clinics",
     "manpower",
     "logistics",
 ];
@@ -257,7 +276,7 @@ pub const VERTICALS: &[&str] = &[
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `manpower` and `logistics`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower` and `logistics`"
     ))
 }
 
@@ -277,6 +296,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "property" => Ok(app.module(property::Property)),
         "accounting" => Ok(app.module(accounting::Accounting)),
         "construction" => Ok(app.module(construction::Construction)),
+        "clinics" => Ok(app.module(clinics::Clinics)),
         "manpower" => Ok(app.module(manpower::Manpower)),
         "logistics" => Ok(app.module(logistics::Logistics)),
         other => Err(unbuilt_vertical(other)),
@@ -298,6 +318,7 @@ fn enable(
         "documents" => {
             app::property_seed::register_documents(client_app);
             app::accounting_seed::register_documents(client_app);
+            app::clinics_seed::register_documents(client_app);
             app::logistics_seed::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
@@ -308,7 +329,7 @@ fn enable(
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
-            let module = WlNotify::new();
+            let module = app::clinics_seed::notify_for(client_app);
             Ok(app.module(match tuning.notify.take() {
                 Some(tune) => tune(module),
                 None => module,
@@ -322,7 +343,13 @@ fn enable(
             }))
         }
         "ticketing" => Ok(app.module(app::property_seed::ticketing_for(client_app))),
-        "payments" => Ok(app.module(app::negative_flow::payments_for(client_app))),
+        "payments" => {
+            let module = app::negative_flow::payments_for(client_app);
+            Ok(app.module(match tuning.payments.take() {
+                Some(tune) => tune(module),
+                None => module,
+            }))
+        }
         "sales" => Ok(app.module(app::property_seed::sales_for(client_app))),
         "hr" => Ok(app.module(app::property_seed::hr_for(client_app, owner_role))),
         "attendance" => Ok(app.module(app::property_seed::attendance_for(client_app))),
@@ -332,11 +359,12 @@ fn enable(
                 app.module(if client_app == app::construction_seed::CONSTRUCTION {
                     app::construction_seed::inventory(module)
                 } else {
-                    module
+                    app::clinics_money::inventory(client_app, module)
                 }),
             )
         }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
+        "scheduling" => Ok(app.module(app::clinics_seed::scheduling_for(client_app))),
         "delivery" => Ok(app.module(app::negative_flow::delivery_for(client_app))),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"

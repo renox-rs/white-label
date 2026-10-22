@@ -81,6 +81,23 @@ pub mod owner;
 pub mod owner_drawings;
 pub mod pages;
 pub mod payables;
+pub mod payer_agreement;
+pub mod payer_bill;
+pub mod payer_bill_machine;
+mod payer_bill_pages;
+pub mod payer_closing;
+pub mod payer_contract;
+pub mod payer_credit;
+pub mod payer_credit_refund;
+pub mod payer_issue;
+mod payer_notices;
+pub mod payer_policy;
+pub mod payer_recoupment;
+pub mod payer_rejection;
+pub mod payer_remittance;
+pub mod payer_split;
+pub mod payer_tax;
+mod payer_texts;
 pub mod period_locks;
 pub mod policy;
 pub mod rate_card;
@@ -153,6 +170,9 @@ pub use escalation_log::EscalationLog;
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
 pub use line::InvoiceLine;
+pub use payer_agreement::{PayerAgreement, VatRecipient};
+pub use payer_bill::{PayerBill, PayerBillLine};
+pub use payer_contract::PayerBilling;
 pub use recovery::Recovery;
 pub use reminders::ReminderLog;
 pub use subscription::{Subscription, SubscriptionCycle, SubscriptionPause};
@@ -296,6 +316,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-invoicing/subscription.html",
         include_str!("../views/wl-invoicing/subscription.html"),
     ),
+    (
+        "wl-invoicing/payer_bills.html",
+        include_str!("../views/wl-invoicing/payer_bills.html"),
+    ),
+    (
+        "wl-invoicing/payer_bill.html",
+        include_str!("../views/wl-invoicing/payer_bill.html"),
+    ),
 ];
 
 /// The module's settings in `state`: those `register` provided, else the
@@ -359,6 +387,17 @@ pub mod permissions {
     pub const SUBSCRIPTIONS_VIEW: &str = "subscriptions.view";
     /// Pause, resume and cancel a subscription in the back office.
     pub const SUBSCRIPTIONS_MANAGE: &str = "subscriptions.manage";
+    /// See payer bills, their lines, remittances and the payer credit
+    /// balance.
+    pub const PAYER_BILLS_VIEW: &str = "payer_bills.view";
+    /// Issue a payer bill, send it again, record its technical rejection and
+    /// void one created in error.
+    pub const PAYER_BILLS_ISSUE: &str = "payer_bills.issue";
+    /// Record the payer's remittances and recoupments (`FIN.ACL.16`).
+    pub const PAYER_BILLS_RECONCILE: &str = "payer_bills.reconcile";
+    /// Write off the open amount of a payer bill, or move it to the customer
+    /// (`FIN.ACL.14`).
+    pub const PAYER_BILLS_WRITE_OFF: &str = "payer_bills.write_off";
     /// See the rate cards, their versions and lines (`FIN.RAT.01`).
     pub const RATE_CARDS_VIEW: &str = "rate_cards.view";
     /// Make rate cards, new versions and their lines, and record the
@@ -773,6 +812,51 @@ impl WlInvoicing {
         self
     }
 
+    /// The role whose holder gets the task of a payer bill the submission
+    /// channel rejected (default `billing_coordinator`).
+    pub fn payer_bill_task_role(mut self, role: &str) -> Self {
+        self.config.payer_bill_task_role = role.to_owned();
+        self
+    }
+
+    /// The roles whose holders alone approve the write-off of a payer bill
+    /// above the payer agreement's limit (`FIN.ACL.14`). By default any
+    /// `admin` or holder of `payer_bills.write_off` may. The setting is read
+    /// when this module registers its own default policy, so it belongs to the
+    /// app that builds the module: no other default is registered over it, and
+    /// the order modules register in does not matter. A database that already
+    /// holds the policy keeps its row (policies changed in the admin are kept):
+    /// change the stored `invoicing.payer_write_off` policy there.
+    pub fn payer_write_off_approvers(mut self, roles: &[&str]) -> Self {
+        self.config.payer_write_off_approvers = roles.iter().map(|r| (*r).to_owned()).collect();
+        self
+    }
+
+    /// The write-off limit, in fils, a new payer agreement starts with
+    /// (`FIN.ACL.14`; default 0: every write-off is approved; 05: 100000,
+    /// AED 1,000). Read by [`PayerAgreement::create`] and [`PayerAgreement::with_defaults`]; an agreement
+    /// that exists keeps its own limit.
+    pub fn payer_write_off_limit(mut self, fils: i64) -> Self {
+        self.config.payer_write_off_limit = fils.max(0);
+        self
+    }
+
+    /// The owner role of every seeded budget category and the default of a
+    /// category made later without one (`FIN.BUD.01`; 05: the accountant).
+    /// Owner drawings never get one.
+    pub fn budget_category_owner(mut self, role: &str) -> Self {
+        self.config.budget_category_owner = Some(role.to_owned());
+        self
+    }
+
+    /// The days after a payer bill is issued when `FIN.RUL.13` follows up a
+    /// bill with no remittance (default 30; 05: 45). A value below 1 is
+    /// read as 1.
+    pub fn payer_follow_up_days(mut self, days: i64) -> Self {
+        self.config.payer_follow_up_days = days.max(1);
+        self
+    }
+
     /// What extra hours of an adjustment timesheet on invoiced hours become
     /// (default an extra line on the next usage invoice).
     pub fn adjustment_plus(mut self, plus: AdjustmentPlus) -> Self {
@@ -872,6 +956,7 @@ impl Module for WlInvoicing {
             .merge(drawing_pages::routes())
             .merge(einvoice_pages::routes())
             .merge(subscription_pages::routes())
+            .merge(payer_bill_pages::routes())
             .merge(rate_card_pages::routes())
     }
 
@@ -992,8 +1077,18 @@ impl Module for WlInvoicing {
             .model::<Subscription>()
             .model::<SubscriptionPause>()
             .model::<SubscriptionCycle>()
+            .model::<PayerAgreement>()
+            .model::<PayerBill>()
+            .model::<PayerBillLine>()
+            .model::<payer_rejection::PayerSubmissionError>()
+            .model::<payer_remittance::PayerRemittance>()
+            .model::<payer_remittance::PayerAllocation>()
+            .model::<payer_recoupment::PayerRecoupment>()
+            .model::<payer_credit::PayerCreditMovement>()
             .view_data::<subscription_pages::IndexPage>()
             .view_data::<subscription_pages::ShowPage>()
+            .view_data::<payer_bill_pages::IndexPage>()
+            .view_data::<payer_bill_pages::ShowPage>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<vat_pages::IndexPage>()
@@ -1033,6 +1128,16 @@ impl Module for WlInvoicing {
         bill_machine::register();
         // The supplier debit note machine, as `invoicing.supplier_debit_note`.
         debit_note_machine::register();
+        // The payer bill machine, as `invoicing.payer_bill`, and what follows
+        // its committed transitions (tax documents, tasks, events).
+        payer_bill_machine::register(&self.config);
+        payer_bill_machine::register_events(app);
+        // Verticals make and drive payer bills through the kernel (§6).
+        wl_kernel::payer_bills::provide_payer_bills(app, PayerBilling);
+        // The balance wl-payments reads before a refund of it is asked, and
+        // the refund movements that follow its approval or its failure.
+        wl_kernel::payer_bills::provide_payer_credits(app, payer_credit_refund::Credits);
+        payer_credit_refund::register(app);
         // `FIN.RUL.17`, the cost reversal and the supplier notice of `issue`,
         // and the debit notes other modules draft and read through the kernel.
         debit_note_events::register_types();
@@ -1058,16 +1163,27 @@ impl Module for WlInvoicing {
         // `db:seed`: the demo invoices, as drafts.
         app.seeder(|state: AppState| async move { seed::run(&state).await.map(|_| ()) });
         // The seeded budget categories (§7), kept as the client changed them.
-        app.seeder(|state: AppState| async move {
-            budget_category::install(&state.db).await.map(|_| ())
+        let owner = self.config.budget_category_owner.clone();
+        app.seeder(move |state: AppState| {
+            let owner = owner.clone();
+            async move {
+                budget_category::install_owned(&state.db, owner.as_deref())
+                    .await
+                    .map(|_| ())
+            }
         });
+        let owner = self.config.budget_category_owner.clone();
         app.command(
             "invoicing:install",
             "Store the seeded budget categories and their mapping, where the database lacks them",
-            |_args, state: AppState| async move {
-                let created = budget_category::install(&state.db).await?;
-                println!("{created} budget categories created.");
-                Ok(())
+            move |_args, state: AppState| {
+                let owner = owner.clone();
+                async move {
+                    let created =
+                        budget_category::install_owned(&state.db, owner.as_deref()).await?;
+                    println!("{created} budget categories created.");
+                    Ok(())
+                }
             },
         );
         // In the app group of the staff sidebar; the label is the app's
@@ -1162,6 +1278,15 @@ impl Module for WlInvoicing {
                 .group("nav.app")
                 .order(44)
                 .permission(permissions::SUPPLIER_BILLS_VIEW),
+        );
+        // The payer bills (`nav.payer_bills`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.payer_bills", "nav.payer_bills")
+                .icon("clipboard-list")
+                .group("nav.app")
+                .order(49)
+                .permission(permissions::PAYER_BILLS_VIEW),
         );
         // `FIN.RUL.02`: the daily `invoicing:mark-overdue` task.
         overdue::schedule(app);

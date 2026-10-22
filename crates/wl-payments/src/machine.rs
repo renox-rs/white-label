@@ -3,6 +3,12 @@
 //! ```text
 //! [*] --> pending --record--> received
 //! [*] --> received            (inserted by the cheque register and others)
+//! [*] --> pending             (start_online)
+//! pending --confirm--> received
+//! pending --fail--> failed --late_confirm--> received
+//! received --charge_back--> charged_back
+//! charged_back --win_chargeback--> received
+//! charged_back --lose_chargeback, accept_chargeback--> reversed
 //! received --reverse--> reversed (terminal)
 //! ```
 //!
@@ -10,8 +16,10 @@
 //! inserted only as `received` or `pending`. The transitions are added by
 //! the issues that build them, all in this `machine()`: `record` and
 //! `record_by_system` ([`crate::record`]); `reverse` and
-//! `reverse_by_system` ([`crate::reverse`]), the gateway
-//! transitions and the chargeback ones later. `Payment` is
+//! `reverse_by_system` ([`crate::reverse`]); the online payment ones,
+//! `confirm`, `fail` and `late_confirm` ([`crate::online`]); and the
+//! chargeback ones, `charge_back` ([`crate::chargeback`]), `win_chargeback`,
+//! `lose_chargeback` and `accept_chargeback` ([`crate::chargeback_close`]). `Payment` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
 use renox::state_machine::{Machine, StateMachine};
@@ -41,6 +49,9 @@ impl StateMachine for Payment {
         crate::record::transitions()
             .into_iter()
             .chain(crate::reverse::transitions())
+            .chain(crate::online::transitions())
+            .chain(crate::chargeback::transitions())
+            .chain(crate::chargeback_close::transitions())
             .fold(machine, Machine::transition)
     }
 }

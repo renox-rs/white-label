@@ -1,0 +1,19 @@
+{#- wl-sales: the portal page of a loyalty member: the points that leaving
+    forfeits and the button that confirms it. It is never refused and needs
+    no approval. Replace it with resources/views/wl-sales/portal_loyalty.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['closure.portal_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['closure.portal_title']" :subtitle="code"/>
+    <rx-card rx-if="open" :title="tx['closure.leave']">
+      <rx-stack>
+        <rx-alert kind="warning" :message="tx['closure.forfeit'] ~ ' ' ~ points ~ ' (' ~ value ~ ')'"/>
+        <rx-form method="POST" :action="route('wl_sales.portal_loyalty_leave', account_id)">
+          <rx-checkbox name="confirm" :label="tx['closure.confirm']" id="portal-leave-confirm"/>
+          <rx-button type="submit" :label="tx['closure.leave']" variant="primary" icon="x"/>
+        </rx-form>
+      </rx-stack>
+    </rx-card>
+    <rx-alert rx-else kind="info" :message="tx['closure.closed']"/>
+  </rx-stack>
+</rx-page>

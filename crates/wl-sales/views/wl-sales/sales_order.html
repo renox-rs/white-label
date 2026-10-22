@@ -1,0 +1,65 @@
+{#- wl-sales: a sales order: its lines, its totals and the transitions the
+    viewer may run. Replace it with resources/views/wl-sales/sales_order.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="tx['orders.subtitle']" :back="route('wl_sales.sales_orders')" :back-label="tx['orders.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="can_edit">
+        <rx-action-sheet id="add-order-line" :label="tx['orders.add_line']" :action="route('wl_sales.sales_order_line', order.id)"
+                         :title="tx['orders.add_line']" :submit-label="tx['orders.add_line']" icon="plus">
+          <rx-input name="item_code" :label="tx['counter.item']" id="add-order-line-item" required/>
+          <rx-input name="description" :label="tx['counter.description']" id="add-order-line-description"/>
+          <rx-input name="quantity" :label="tx['counter.quantity']" id="add-order-line-quantity"/>
+          <rx-input name="unit_price" :label="tx['counter.unit_price']" id="add-order-line-price" required/>
+          <rx-checkbox name="loyalty_excluded" :label="tx['counter.loyalty_excluded']" id="add-order-line-excluded"/>
+        </rx-action-sheet>
+        <rx-confirm :id="'submit-order-' ~ order.id" :label="tx['orders.submit']" :action="route('wl_sales.sales_order_submit', order.id)" method="POST"
+                    :title="tx['orders.submit']" :message="tx['orders.submit_message']" :confirm-label="tx['orders.submit']" :cancel-label="tx['cancel']" icon="check"/>
+      </template>
+      <rx-action-sheet rx-if="redeem.can_redeem" id="redeem-sales_order" :label="tx['redeem.redeem']" :action="route('wl_sales.sales_order_redeem', order.id)"
+                       :title="tx['redeem.redeem']" :description="tx['redeem.redeem_description']" :submit-label="tx['redeem.redeem']" icon="gift">
+        <rx-input name="points" :label="tx['redeem.points']" id="redeem-sales_order-points" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="redeem.can_confirm" id="redeem-sales_order-confirm" :label="tx['redeem.confirm']" :action="route('wl_sales.sales_order_redeem_confirm', order.id)"
+                       :title="tx['redeem.confirm']" :submit-label="tx['redeem.confirm']" variant="primary" icon="check">
+        <rx-input name="code" :label="tx['redeem.code']" id="redeem-sales_order-code" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_attach" id="attach-order-member" :label="tx['loyalty.attach']" :action="route('wl_sales.sales_order_member', order.id)"
+                       :title="tx['loyalty.attach']" :description="tx['loyalty.attach_description']" :submit-label="tx['loyalty.attach']" icon="gift">
+        <rx-input name="code" :label="tx['loyalty.code']" id="attach-order-member-code"/>
+        <rx-input name="mobile" :label="tx['loyalty.mobile']" id="attach-order-member-mobile"/>
+        <rx-input name="party_id" :label="tx['loyalty.party']" id="attach-order-member-party"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_cancel_line" id="cancel-order-line" :label="tx['orders.cancel_line']" :action="route('wl_sales.sales_order_cancel_line', order.id)"
+                       :title="tx['orders.cancel_line']" :description="tx['orders.cancel_line_description']" :submit-label="tx['orders.cancel_line']" icon="x" danger>
+        <rx-input name="line_no" :label="tx['orders.line_no']" id="cancel-order-line-no" required/>
+        <rx-input name="quantity" :label="tx['counter.quantity']" id="cancel-order-line-quantity" required/>
+        <rx-textarea name="reason" :label="tx['orders.reason']" id="cancel-order-line-reason" required/>
+      </rx-action-sheet>
+      <template rx-if="actions">
+        <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['counter.lines']" card>
+      <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>
+      <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['counter.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['orders.fulfilled']" hide-narrow>{{ line.fulfilled }}</rx-column>
+      <rx-column :label="tx['counter.total']">{{ line.gross }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['counter.no_lines']" icon="inbox"/></rx-slot>
+    </rx-table>
+    <rx-card :title="tx['counter.totals']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['counter.net']" :value="net"/>
+        <rx-entry :label="tx['counter.vat']" :value="vat"/>
+        <rx-entry :label="tx['counter.total']" :value="gross"/>
+        <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
+        <rx-entry :label="tx['orders.payment_mode']" :value="order.payment_mode"/>
+        <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>
+        <rx-entry rx-if="member" :label="tx['loyalty.member']" :value="member"/>
+        <rx-entry rx-if="redeem.summary" :label="tx['redeem.redeem']" :value="redeem.summary"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

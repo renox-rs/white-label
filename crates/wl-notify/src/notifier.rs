@@ -16,10 +16,11 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::Subject;
-use wl_kernel::broadcast::{BroadcastId, BroadcastRequest};
+use wl_kernel::broadcast::{BroadcastId, BroadcastReport, BroadcastRequest};
 use wl_kernel::notify::{
     self, FALLBACK_KIND, MessageId, NoticeStatus, NotificationTypeDef, Notifier, NotifyChannel,
-    NotifyFuture, NotifyRecipient, NotifyRequest, UndeliveredNotice,
+    NotifyFuture, NotifyRecipient, NotifyRequest, OtpRequest, OtpSent, OtpVerdict,
+    UndeliveredNotice,
 };
 
 use crate::broadcasts;
@@ -60,6 +61,41 @@ impl Notifier for Messages {
         request: BroadcastRequest,
     ) -> NotifyFuture<'a, BroadcastId> {
         Box::pin(broadcasts::request(state, request))
+    }
+
+    fn cancel_broadcast<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: BroadcastId,
+        reason: &'a str,
+    ) -> NotifyFuture<'a, bool> {
+        Box::pin(broadcasts::cancel_for_requester(state, id.0, reason))
+    }
+
+    fn broadcast_report<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: BroadcastId,
+    ) -> NotifyFuture<'a, Option<BroadcastReport>> {
+        Box::pin(broadcasts::report(state, id.0))
+    }
+
+    fn send_otp<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: OtpRequest,
+    ) -> NotifyFuture<'a, OtpSent> {
+        Box::pin(crate::otp::send(state, request))
+    }
+
+    fn verify_otp<'a>(
+        &'a self,
+        state: &'a AppState,
+        purpose: &'a str,
+        subject: &'a Subject,
+        code: &'a str,
+    ) -> NotifyFuture<'a, OtpVerdict> {
+        Box::pin(crate::otp::verify(state, purpose, subject, code))
     }
 
     fn notice_status<'a>(

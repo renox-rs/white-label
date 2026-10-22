@@ -16,6 +16,7 @@ property = { path = "../apps/property" }
 construction = { path = "../apps/construction" }
 manpower = { path = "../apps/manpower" }
 accounting = { path = "../apps/accounting" }
+clinics = { path = "../apps/clinics" }
 logistics = { path = "../apps/logistics" }
 wl-parties = { path = "../crates/wl-parties" }
 wl-documents = { path = "../crates/wl-documents" }
@@ -29,3 +30,4 @@ wl-hr = { path = "../crates/wl-hr" }
 wl-attendance = { path = "../crates/wl-attendance" }
 wl-inventory = { path = "../crates/wl-inventory" }
 wl-portal = { path = "../crates/wl-portal" }
+wl-scheduling = { path = "../crates/wl-scheduling" }

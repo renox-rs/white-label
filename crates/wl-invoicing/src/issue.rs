@@ -304,6 +304,31 @@ pub async fn issue_by_system(
     Ok(())
 }
 
+/// Issues the draft tax invoice of a payer bill (the payer's own invoice, or
+/// an extra one for a corrected amount) on behalf of the user who issued the
+/// payer bill: the payer bill's own permission (`payer_bills.issue`) covers
+/// the tax documents it needs, so no `invoices.issue` is asked and the
+/// source needs no entry in the automatic-issue list. Every guard of
+/// `issue` still applies.
+///
+/// # Errors
+///
+/// The guards of [`issue`]; nothing is written then and no number is used.
+pub(crate) async fn issue_for_payer_bill(
+    state: &AppState,
+    invoice: &Invoice,
+) -> std::result::Result<(), TransitionError> {
+    let mut input = gather(state, invoice).await?;
+    input.auto_issue = true;
+    let _outcome = invoice
+        .transition(ISSUE_SYSTEM)
+        .by_system()
+        .input(&input)
+        .run(state)
+        .await?;
+    Ok(())
+}
+
 /// `user` issues the draft `invoice` (`issue`), in its own transaction.
 ///
 /// # Errors

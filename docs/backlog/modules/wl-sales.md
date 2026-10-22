@@ -1123,9 +1123,9 @@ Setting: suspend consumption while a reopened invoice balance is unpaid: off (05
 - Must not change the package state or remove used credits.
 
 #### Done when
-- [ ] Given an `active` package (10 credits, 4 used) whose invoice is reopened, it stays `active` with 6 left, the seller has a "collect before next use" task, and the holder gets a balance-due message.
-- [ ] With the setting off, the next `consume` succeeds.
-- [ ] With the setting on, `consume` is refused until the invoice is paid, then succeeds.
+- [x] Given an `active` package (10 credits, 4 used) whose invoice is reopened, it stays `active` with 6 left, the seller has a "collect before next use" task, and the holder gets a balance-due message.
+- [x] With the setting off, the next `consume` succeeds.
+- [x] With the setting on, `consume` is refused until the invoice is paid, then succeeds.
 
 #### Out of scope
 Payment reversal and invoice reopening (Epic wl-payments, Epic wl-invoicing).
@@ -1891,26 +1891,26 @@ and programme changes: BL-SAL-26.)
 - Must not let points stay earned on a sale whose payment was reversed or written off.
 
 #### Done when
-- [ ] Given programme 1 point per AED 1 and member M, a counter sale of AED 105 incl. 5% VAT
+- [x] Given programme 1 point per AED 1 and member M, a counter sale of AED 105 incl. 5% VAT
       earns 100 points expiring 12 months later.
-- [ ] Given an invoice of AED 1,000 excl. VAT (AED 1,050 incl. 5% VAT) with an insurer share of
+- [x] Given an invoice of AED 1,000 excl. VAT (AED 1,050 incl. 5% VAT) with an insurer share of
       AED 800 excl. VAT (AED 840 incl.), M pays AED 210 and earns 200 points.
-- [ ] An on-account sales order of AED 300 excl. VAT for M earns 300 points on `fulfilled`,
+- [x] An on-account sales order of AED 300 excl. VAT for M earns 300 points on `fulfilled`,
       before its invoice is paid; writing the invoice off reverses the 300.
-- [ ] A sales order invoiced on fulfilment earns once (on `fulfilled`), not again on `InvoicePaid`.
-- [ ] Returning half of the AED 100 eligible amount reverses 50 points; with a balance of 20 the
+- [x] A sales order invoiced on fulfilment earns once (on `fulfilled`), not again on `InvoicePaid`.
+- [x] Returning half of the AED 100 eligible amount reverses 50 points; with a balance of 20 the
       balance becomes −30.
-- [ ] Given per-visit with 10 visits per reward, the 10th sale makes the reward available and
+- [x] Given per-visit with 10 visits per reward, the 10th sale makes the reward available and
       M is told; visits restart at 0.
-- [ ] Enrolment records the terms version and does not create a marketing consent.
-- [ ] M earns 100 points on a card counter sale of AED 105; a chargeback of the full payment
+- [x] Enrolment records the terms version and does not create a marketing consent.
+- [x] M earns 100 points on a card counter sale of AED 105; a chargeback of the full payment
       reverses 100 points and M is told; winning the chargeback earns 100 again.
-- [ ] An invoice of AED 1,000 that earned 1,000 points is reopened after its cheque bounced:
+- [x] An invoice of AED 1,000 that earned 1,000 points is reopened after its cheque bounced:
       1,000 points are reversed; paid again, 1,000 are earned with a new lot.
-- [ ] A cashier attaching a sale they ring up to their own loyalty account is refused;
+- [x] A cashier attaching a sale they ring up to their own loyalty account is refused;
       attaching M to a sale completed yesterday is refused.
-- [ ] Enrolling a second account with M's mobile number is refused.
-- [ ] Given per-visit, 10 visits per reward, returning the 10th sale before the reward is used
+- [x] Enrolling a second account with M's mobile number is refused.
+- [x] Given per-visit, 10 visits per reward, returning the 10th sale before the reward is used
       withdraws the reward and leaves 9 visits.
 
 #### Out of scope
@@ -2022,22 +2022,22 @@ back.
 - Must not give cash for points.
 
 #### Done when
-- [ ] Given M with 800 points, value AED 0.01, minimum 500, a sale of AED 40 redeems 800 points as
+- [x] Given M with 800 points, value AED 0.01, minimum 500, a sale of AED 40 redeems 800 points as
       an AED 8.00 discount line after M enters the code.
-- [ ] With 06's maximum share 50%, a sale of AED 10 accepts at most AED 5.00 (500 points).
-- [ ] Three wrong codes block redemption for that sale and no new code can be sent for it; the
+- [x] With 06's maximum share 50%, a sale of AED 10 accepts at most AED 5.00 (500 points).
+- [x] Three wrong codes block redemption for that sale and no new code can be sent for it; the
       sale completes without the redemption line. A code entered 6 minutes after sending is
       refused as expired, and a new code can be sent.
-- [ ] M with 400 points cannot redeem (minimum 500).
-- [ ] Returning the sale gives the 800 points back; a lot that expired gets 30 days.
-- [ ] M confirms 800 points on till 1; redeeming the same points on till 2 within 30 minutes is
+- [x] M with 400 points cannot redeem (minimum 500).
+- [x] Returning the sale gives the 800 points back; a lot that expired gets 30 days.
+- [x] M confirms 800 points on till 1; redeeming the same points on till 2 within 30 minutes is
       refused; after the sale on till 1 is abandoned, the hold lapses and they can be used.
-- [ ] A lot expiring at midnight while held is not expired until the hold ends.
-- [ ] An online order paid with 500 points and rejected by the outlet gives the 500 points back
+- [x] A lot expiring at midnight while held is not expired until the hold ends.
+- [x] An online order paid with 500 points and rejected by the outlet gives the 500 points back
       and M is told; one whose payment fails releases the hold and writes no movement.
-- [ ] Cancelling one of two equal lines of a confirmed order that redeemed 500 points gives back
+- [x] Cancelling one of two equal lines of a confirmed order that redeemed 500 points gives back
       250.
-- [ ] With the default treatment, the AED 8.00 redemption on a VAT-inclusive AED 40 sale lowers
+- [x] With the default treatment, the AED 8.00 redemption on a VAT-inclusive AED 40 sale lowers
       the VAT of the sale from AED 1.90 to AED 1.52.
 
 #### Out of scope
@@ -2117,16 +2117,16 @@ a manager. The accountant sees the outstanding points and their value.
 - Must not let the requester approve their own adjustment.
 
 #### Done when
-- [ ] Given a lot of 300 points expiring 30 Nov with 100 used, on 31 Oct M gets one reminder and
+- [x] Given a lot of 300 points expiring 30 Nov with 100 used, on 31 Oct M gets one reminder and
       on 1 Dec at 02:00 200 points expire with `PointsExpired`.
-- [ ] Re-running the job on 1 Dec expires nothing more.
-- [ ] A +400 adjustment by A is saved; a −900 adjustment by A waits for B's approval; A cannot
+- [x] Re-running the job on 1 Dec expires nothing more.
+- [x] A +400 adjustment by A is saved; a −900 adjustment by A waits for B's approval; A cannot
       approve.
-- [ ] Staff closing M's account with 50 points needs approval and writes an `adjust` of −50.
-- [ ] B rejects A's −900 adjustment: no movement is written and A is told.
-- [ ] A reminder that gave up does not stop the lot expiring; the account shows *reminder not
+- [x] Staff closing M's account with 50 points needs approval and writes an `adjust` of −50.
+- [x] B rejects A's −900 adjustment: no movement is written and A is told.
+- [x] A reminder that gave up does not stop the lot expiring; the account shows *reminder not
       delivered*.
-- [ ] The liability report on 31 Dec with 120,000 points at AED 0.01 shows AED 1,200.00.
+- [x] The liability report on 31 Dec with 120,000 points at AED 0.01 shows AED 1,200.00.
 
 #### Out of scope
 How the liability is booked in the accounts (`⚠ open: accountant (A-15)`).
@@ -2236,22 +2236,22 @@ what they spent.
 - Must not show the requester the names of excluded recipients.
 
 #### Done when
-- [ ] Given segment S (no sale for 60 days, spend > AED 500 in 12 months) matching 300 parties of
+- [x] Given segment S (no sale for 60 days, spend > AED 500 in 12 months) matching 300 parties of
       which 180 have SMS marketing consent, activating retention campaign R requests one
       broadcast with an estimate of 180, which is `scheduled` without approval (limit 200); the
       result shows 180 recipients and 120 excluded *no consent*.
-- [ ] Two members of R buy for AED 150 and AED 250 excl. VAT within 30 days: the report shows 2
+- [x] Two members of R buy for AED 150 and AED 250 excl. VAT within 30 days: the report shows 2
       returned and AED 400 against R's cost.
-- [ ] `reopen` of R after `end` sends nothing.
-- [ ] In 05, the segment editor does not offer clinical service items by default.
-- [ ] Exporting S's members without the sensitive export permission is refused.
-- [ ] User A sets R's segment and template and R activates on its start date: the broadcast
+- [x] `reopen` of R after `end` sends nothing.
+- [x] In 05, the segment editor does not offer clinical service items by default.
+- [x] Exporting S's members without the sensitive export permission is refused.
+- [x] User A sets R's segment and template and R activates on its start date: the broadcast
       names A as requester, and A cannot approve it.
-- [ ] B rejects R's broadcast: R shows *not sent*; after A changes the template, R requests a
+- [x] B rejects R's broadcast: R shows *not sent*; after A changes the template, R requests a
       new broadcast, which completes; a third request is refused.
-- [ ] Ending R before its send time cancels its scheduled broadcast.
-- [ ] A blocked party matching S is not in S's members.
-- [ ] Of 180 recipients, 20 had messages suppressed by the frequency cap; a buyer among those 20
+- [x] Ending R before its send time cancels its scheduled broadcast.
+- [x] A blocked party matching S is not in S's members.
+- [x] Of 180 recipients, 20 had messages suppressed by the frequency cap; a buyer among those 20
       is not counted as returned.
 
 #### Out of scope
@@ -2381,18 +2381,18 @@ Earn lots are consumed oldest expiry first by `redeem` and `expire`.
 - Must not show the real block reason to counter staff.
 
 #### Done when
-- [ ] Given P2 (300 points, lot expiring 2027-03-01) merged into P (200 points), P has 500 points
+- [x] Given P2 (300 points, lot expiring 2027-03-01) merged into P (200 points), P has 500 points
       and the moved lot keeps 2027-03-01; P2's account is closed *merged into*; no `adjust`.
-- [ ] Given P2 with an account and P without one, after the merge the account belongs to P.
-- [ ] M asks to leave with 450 points: after M confirms, the account closes with an `adjust` of
+- [x] Given P2 with an account and P without one, after the merge the account belongs to P.
+- [x] M asks to leave with 450 points: after M confirms, the account closes with an `adjust` of
       −450 and no approval.
-- [ ] M's party is blocked: a counter sale earns nothing and redemption is refused with *on
+- [x] M's party is blocked: a counter sale earns nothing and redemption is refused with *on
       hold*; after `unblock`, the next sale earns.
-- [ ] Changing the earn rate on 1 Nov with effect 15 Nov is refused; with effect 1 Dec, members
+- [x] Changing the earn rate on 1 Nov with effect 15 Nov is refused; with effect 1 Dec, members
       are told on 1 Nov; a sale on 30 Nov earns at the old rate and one on 1 Dec at the new rate.
-- [ ] Turning the programme off on 1 Dec sets the closing date to 1 Mar; redemptions on 1 Mar
+- [x] Turning the programme off on 1 Dec sets the closing date to 1 Mar; redemptions on 1 Mar
       still work; at 02:00 on 2 Mar every open lot expires.
-- [ ] Given survivor P blocked, merging P2 (300 points) into P moves the 300 points paused:
+- [x] Given survivor P blocked, merging P2 (300 points) into P moves the 300 points paused:
       redemption is refused *on hold* until P is unblocked.
 
 #### Out of scope

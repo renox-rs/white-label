@@ -277,16 +277,19 @@ pub struct EmployeeActivated {
 
 impl Event for EmployeeActivated {}
 
-/// A leave request was approved (wl-hr §4 *Leave request* `approve`): 09
-/// Manpower opens the cover request for the leave period when the client
-/// contract requires cover (`MPW.RUL.06`). `wl-hr` emits it once the leave
-/// lifecycle is built.
+/// A leave request was approved (wl-hr §4 *Leave request*: `approve`, or
+/// `record_sick` at once). `wl-scheduling` blocks the employee's bookable
+/// time and flags the bookings of the days; 09 Manpower opens the cover
+/// request for the leave period when the client contract requires cover
+/// (`MPW.RUL.06`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeaveApproved {
     /// The leave request, `hr.leave_request:5`.
     pub leave: Subject,
     /// The employee on leave.
     pub employee: EmployeeId,
+    /// `annual`, `sick`, `unpaid`, ...
+    pub leave_type: String,
     /// The first day of the leave.
     pub from: NaiveDate,
     /// The last day of the leave.
@@ -296,6 +299,31 @@ pub struct LeaveApproved {
 }
 
 impl Event for LeaveApproved {}
+
+impl LeaveApproved {
+    /// The id of the leave request.
+    pub fn request(&self) -> i64 {
+        self.leave.subject_id
+    }
+}
+
+/// An approved or requested leave was cancelled before it started
+/// (`cancel`): the calendars it blocked are released.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeaveCancelled {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The leave request.
+    pub request: i64,
+    /// `annual`, `sick`, `unpaid`, ...
+    pub leave_type: String,
+    /// The first day of leave.
+    pub from: NaiveDate,
+    /// The last day of leave, included.
+    pub to: NaiveDate,
+}
+
+impl Event for LeaveCancelled {}
 
 /// An onboarding was cancelled before the employee started
 /// (`cancel_onboarding`, approved under `HRM.ACL.07`).

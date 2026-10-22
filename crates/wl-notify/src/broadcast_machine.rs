@@ -91,6 +91,13 @@ pub struct RequestInput {
     pub limit: i64,
 }
 
+/// The input of `start`: the instant it runs at, on the module's clock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartInput {
+    /// When the broadcast started.
+    pub at: renox::db::DateTime,
+}
+
 /// The input of `complete`: what the run counted.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompleteInput {
@@ -166,11 +173,15 @@ impl StateMachine for Broadcast {
                 .from([Scheduled])
                 .to(Sending)
                 .system()
-                .effect(|b: &Broadcast, _ctx, tx| {
+                .effect(|b: &Broadcast, ctx, tx| {
                     let id = b.id;
-                    Box::pin(async move {
-                        set(&mut *tx, id, &[("started_at", &Some(renox::db::now()))]).await
-                    })
+                    // Decision: the module's clock, so the stale limit
+                    // (`NTF.RUL.03`) is measured on the clock `start` ran on.
+                    let at = ctx
+                        .input_as::<StartInput>()
+                        .map(|i| i.at)
+                        .unwrap_or_else(|_| renox::db::now());
+                    Box::pin(async move { set(&mut *tx, id, &[("started_at", &Some(at))]).await })
                 }),
             complete(),
         ]

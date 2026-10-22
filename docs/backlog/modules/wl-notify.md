@@ -681,7 +681,7 @@ of other types and broadcasts started by staff (Later).
 **Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-NTF-07 · Base: wl-notify Message lifecycle (`defer`, `suppress`) · **Blocks:** BL-NTF-09, BL-SAL-25, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 32)
-**Progress:** parts 1 to 4 of 5 are on main: send window rules, quiet hours and the module clock (5c726b4); send-window settings and page (8a7ff70, test `send_window_page.rs`); defer and release (ed9e72a, test `send_deferral.rs`); frequency cap under a party lock (4b1bc68, test `cap_send.rs`); test fixes e3d1155, 864d513. Open: part 5 of 5, the consolidated acceptance checks (AC1 to AC10) as their own test files.
+**Progress:** parts 1 to 4 of 5 are on main: send window rules, quiet hours and the module clock (5c726b4); send-window settings and page (8a7ff70, test `send_window_page.rs`); defer and release (ed9e72a, test `send_deferral.rs`); frequency cap under a party lock (4b1bc68, test `cap_send.rs`); test fixes e3d1155, 864d513. Part 5 of 5: the six points of "Done when" as one test each in `send_window_acceptance.rs` (page, notifier, send and release jobs, two broadcasts through `run_due`).
 
 #### Goal
 Marketing messages go out only between 07:00 and 21:00 Asia/Dubai (the TDRA hours for
@@ -831,15 +831,15 @@ state stays, stopped by and at are recorded, and `BroadcastStopped` tells the re
 - Must not recall or retry a message suppressed as *expired* or *broadcast stopped*.
 
 #### Done when
-- [ ] A broadcast with send at 10:00 still `pending_approval` at 10:00 the next day becomes
+- [x] A broadcast with send at 10:00 still `pending_approval` at 10:00 the next day becomes
       `cancelled` with *approval expired* at the first 15-minute check at or after 10:00 (by
       10:15 at the latest), the requester is told and `BroadcastCancelled` is emitted once.
-- [ ] With the SMS provider down from `start` for 50 hours, the 100 queued messages are
+- [x] With the SMS provider down from `start` for 50 hours, the 100 queued messages are
       suppressed *expired* at 48 hours and none is sent when the provider recovers.
-- [ ] Stopping a `sending` broadcast with 30 messages sent and 70 queued suppresses the 70 with
+- [x] Stopping a `sending` broadcast with 30 messages sent and 70 queued suppresses the 70 with
       *broadcast stopped* and emits `BroadcastStopped`; the 30 stay sent.
-- [ ] Stopping a `completed` broadcast with 15 messages deferred until 07:00 suppresses the 15.
-- [ ] A user without `notifications.marketing.send` cannot stop a broadcast.
+- [x] Stopping a `completed` broadcast with 15 messages deferred until 07:00 suppresses the 15.
+- [x] A user without `notifications.marketing.send` cannot stop a broadcast.
 
 #### Out of scope
 The broadcast itself (BL-NTF-07); send window and frequency cap (BL-NTF-08); the campaign

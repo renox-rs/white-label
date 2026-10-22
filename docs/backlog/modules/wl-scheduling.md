@@ -111,19 +111,19 @@ Setting: Cancellation reason codes and their *initiated by* = §4.1 list.
 - Must not cancel without a reason code.
 
 #### Done when
-- [ ] Given a `booked` booking, when staff cancel with `site_closed`, then initiated by is
+- [x] Given a `booked` booking, when staff cancel with `site_closed`, then initiated by is
       `business` and `BookingCancelled` carries reason `site_closed`, initiated by `business`,
       stage "before start".
-- [ ] When staff cancel with `site_closed` and override to `party` with note "patient asked to
+- [x] When staff cancel with `site_closed` and override to `party` with note "patient asked to
       close early", initiated by is `party`; without a note it is refused.
-- [ ] When the party cancels from the reminder link, the code is `party_request` and initiated by
+- [x] When the party cancels from the reminder link, the code is `party_request` and initiated by
       `party`.
-- [ ] Given a booking reassigned with `resource_unavailable`, when the party cancels from the
+- [x] Given a booking reassigned with `resource_unavailable`, when the party cancels from the
       reassign message 3 h before the start (cut-off 24 h), the cancel succeeds with code
       `resource_unavailable`, initiated by `business`.
-- [ ] Given deposit forfeit window 12 h and cut-off 24 h, a cancel 10 h before has late = yes and
+- [x] Given deposit forfeit window 12 h and cut-off 24 h, a cancel 10 h before has late = yes and
       one 20 h before has late = no; with no deposit, a cancel 20 h before has late = yes.
-- [ ] Cancel without a code is refused.
+- [x] Cancel without a code is refused.
 
 #### Out of scope
 Deposit outcome (BL-SCH-02); cancel after check-in (BL-SCH-03).
@@ -209,15 +209,15 @@ owed more than the deposit is `⚠ open: lawyer (L-32)`.
 - Must not waive without the permission.
 
 #### Done when
-- [ ] Given deposit AED 200 and a 24 h window, when the party cancels 30 h before, then a refund
+- [x] Given deposit AED 200 and a 24 h window, when the party cancels 30 h before, then a refund
       of AED 200 is requested and the outcome is `refunded`.
-- [ ] When the party cancels 10 h before, the outcome is `forfeited`.
-- [ ] When staff cancel with `equipment_failure` 1 h before, a refund of AED 200 is requested.
-- [ ] When staff reschedule with a business reason, the deposit is carried to the new booking.
-- [ ] Given a `no_show`, the deposit is forfeited; user B with `bookings.waive_deposit` waives it
+- [x] When the party cancels 10 h before, the outcome is `forfeited`.
+- [x] When staff cancel with `equipment_failure` 1 h before, a refund of AED 200 is requested.
+- [x] When staff reschedule with a business reason, the deposit is carried to the new booking.
+- [x] Given a `no_show`, the deposit is forfeited; user B with `bookings.waive_deposit` waives it
       with a reason and a refund of AED 200 is requested; user C without the permission is
       refused.
-- [ ] Given a cancel 10 h before with initiated by `business` and code `resource_unavailable`
+- [x] Given a cancel 10 h before with initiated by `business` and code `resource_unavailable`
       (what BL-SCH-01 records for a party cancelling from a change message), a refund of AED 200
       is requested and the outcome is `refunded`. The end-to-end test from the conflict message
       is in BL-SCH-05.
@@ -310,20 +310,20 @@ after check-in = the vertical record's prices.
 - Must not create charges here: billing stays in the vertical record.
 
 #### Done when
-- [ ] Given a 05 booking `checked_in` and the visit's work done `pending`, staff `cancel` is
+- [x] Given a 05 booking `checked_in` and the visit's work done `pending`, staff `cancel` is
       refused.
-- [ ] Given work done `none`, reason `walked_out`, deposit AED 200, 05 setting refunded, then
+- [x] Given work done `none`, reason `walked_out`, deposit AED 200, 05 setting refunded, then
       the booking is `cancelled` and AED 200 is refunded; `BookingCancelled` has stage "checked
       in", work done none, deposit outcome refunded.
-- [ ] Given work done AED 80, `walked_out`, setting forfeited: AED 80 applied, AED 120 forfeited.
-- [ ] Given `equipment_failure` (business) and work done AED 80 not accepted by the party: no
+- [x] Given work done AED 80, `walked_out`, setting forfeited: AED 80 applied, AED 120 forfeited.
+- [x] Given `equipment_failure` (business) and work done AED 80 not accepted by the party: no
       charge, AED 200 refunded.
-- [ ] Given `equipment_failure` and work done AED 80 accepted by the party: AED 200 refunded in
+- [x] Given `equipment_failure` and work done AED 80 accepted by the party: AED 200 refunded in
       full, deposit outcome refunded; the vertical record bills AED 80 (no deposit applied).
-- [ ] Given work done AED 80, staff cancel with `party_request` (party asked to stop), deposit
+- [x] Given work done AED 80, staff cancel with `party_request` (party asked to stop), deposit
       AED 200, setting forfeited: initiated by `party`, AED 80 applied, AED 120 forfeited.
-- [ ] The party's cancel link on a `checked_in` booking is refused.
-- [ ] Given `in_progress` ending 11:00, cancelled at 10:20, the slot 10:20–11:00 is released.
+- [x] The party's cancel link on a `checked_in` booking is refused.
+- [x] Given `in_progress` ending 11:00, cancelled at 10:20, the slot 10:20–11:00 is released.
 
 #### Out of scope
 Vertical billing of work done (verticals 05, 08); deposit rules before check-in (BL-SCH-02).
@@ -392,14 +392,14 @@ guard on `confirm`, `book` and `reassign`."
 - Must not leave the conflict flag set after a successful reassign.
 
 #### Done when
-- [ ] Given booking K with Dr A at 10:00 and an open conflict, when staff reassign to Dr B (free,
+- [x] Given booking K with Dr A at 10:00 and an open conflict, when staff reassign to Dr B (free,
       licensed) with `resource_unavailable`, K keeps its state, has Dr B, the conflict is cleared,
       Dr A's 10:00 slot is released and `BookingReassigned` is emitted.
-- [ ] The party message names Dr B, has accept / pick another time / cancel links, and does not
+- [x] The party message names Dr B, has accept / pick another time / cancel links, and does not
       contain the reason.
-- [ ] When the party cancels from that message, the code is `resource_unavailable`, initiated by
+- [x] When the party cancels from that message, the code is `resource_unavailable`, initiated by
       is `business` and the AED 200 deposit is refunded in full.
-- [ ] Reassigning to a resource busy at 10:00, or not eligible on that date, is refused.
+- [x] Reassigning to a resource busy at 10:00, or not eligible on that date, is refused.
 
 #### Out of scope
 Bulk actions (BL-SCH-05).
@@ -496,20 +496,20 @@ staff to move (event `BookingConflict`, cause `block`)."
 - Must not disclose the reason (illness) to the party.
 
 #### Done when
-- [ ] Given Dr A with bookings at 11:00, 12:00 and 15:00 today, when same-day sick leave is
+- [x] Given Dr A with bookings at 11:00, 12:00 and 15:00 today, when same-day sick leave is
       recorded at 10:30 (`LeaveApproved`), then all three are flagged (cause `block`) and one
       `BookingConflict` lists them with earliest start 11:00.
-- [ ] `Bookings::conflicts(Dr A, today)` returns the three.
-- [ ] When staff bulk-reassign 11:00 and 12:00 to Dr B, both conflicts clear; each party gets one
+- [x] `Bookings::conflicts(Dr A, today)` returns the three.
+- [x] When staff bulk-reassign 11:00 and 12:00 to Dr B, both conflicts clear; each party gets one
       message with accept, pick another time and cancel links and no reason.
-- [ ] When staff bulk-cancel 15:00 with `resource_unavailable`, it is cancelled with initiated by
+- [x] When staff bulk-cancel 15:00 with `resource_unavailable`, it is cancelled with initiated by
       `business` and its AED 200 deposit refunded in full.
-- [ ] If Dr B became busy at 12:00 meanwhile, 11:00 succeeds and 12:00 is reported failed and
+- [x] If Dr B became busy at 12:00 meanwhile, 11:00 succeeds and 12:00 is reported failed and
       stays conflicted.
-- [ ] Given Dr A free tomorrow at 09:00, 09:30 and 10:00, when staff bulk-reschedule the 15:00
+- [x] Given Dr A free tomorrow at 09:00, 09:30 and 10:00, when staff bulk-reschedule the 15:00
       booking, its party gets those 3 slots, the booking is not moved and stays conflicted; when
       the party picks 09:30, it is rescheduled to 09:30 and the conflict clears.
-- [ ] Given a 15:00 booking with deposit AED 200 (forfeit window 24 h), when its party cancels
+- [x] Given a 15:00 booking with deposit AED 200 (forfeit window 24 h), when its party cancels
       from the conflict message at 10:45, it is cancelled with initiated by `business`, code
       `resource_unavailable`, and AED 200 is refunded.
 
@@ -575,13 +575,13 @@ if nobody holds it, the users with `bookings.manage` in that scope."
 - Must not mark a conflicted booking no-show by any actor.
 
 #### Done when
-- [ ] Given a conflicted booking at 15:00, at 13:00 the branch manager is notified and the party
+- [x] Given a conflicted booking at 15:00, at 13:00 the branch manager is notified and the party
       gets the change message; the 2 h reminder is not sent.
-- [ ] Given a conflict raised at 14:10 for 15:00, escalation is sent at 14:10.
-- [ ] At 15:15 `SCH.RUL.02` does not mark it no-show; a staff `mark_no_show` is refused.
-- [ ] Given a branch with no user in the manager role, the 13:00 escalation goes to the users with
+- [x] Given a conflict raised at 14:10 for 15:00, escalation is sent at 14:10.
+- [x] At 15:15 `SCH.RUL.02` does not mark it no-show; a staff `mark_no_show` is refused.
+- [x] Given a branch with no user in the manager role, the 13:00 escalation goes to the users with
       `bookings.manage` in that branch.
-- [ ] Given the conflict cleared at 12:00, the 13:00 reminder goes out normally.
+- [x] Given the conflict cleared at 12:00, the 13:00 reminder goes out normally.
 
 #### Out of scope
 Raising conflicts (BL-SCH-05, BL-SCH-07).
@@ -669,13 +669,13 @@ the expiry was known or before the item lapsed, i.e. work already planned (wl-do
 - Must not tell the party the reason.
 
 #### Done when
-- [ ] Given Dr A's licence expires 2026-11-20 and bookings on 2026-11-18 and 2026-11-25, the daily
+- [x] Given Dr A's licence expires 2026-11-20 and bookings on 2026-11-18 and 2026-11-25, the daily
       run on 2026-11-01 flags only the 25 November booking (cause `eligibility`) and creates a
       front-desk task.
-- [ ] A booking on 2026-12-15 (beyond 30 days) is not flagged on 2026-11-01.
-- [ ] On `DocumentExpiring` with `affected` = [25 Nov booking], it is flagged once; the next
+- [x] A booking on 2026-12-15 (beyond 30 days) is not flagged on 2026-11-01.
+- [x] On `DocumentExpiring` with `affected` = [25 Nov booking], it is flagged once; the next
       nightly run does not flag it again.
-- [ ] When the renewed licence (valid to 2027-11-20) is accepted, the conflict clears and the
+- [x] When the renewed licence (valid to 2027-11-20) is accepted, the conflict clears and the
       booking is unchanged.
 
 #### Out of scope
@@ -740,13 +740,13 @@ for the booking's start and refuse a time when the resource will be ineligible (
 - Must not show the reason to the party.
 
 #### Done when
-- [ ] Given Dr A's licence expired yesterday and a `confirmed` booking now, `check_in` is refused
+- [x] Given Dr A's licence expired yesterday and a `confirmed` booking now, `check_in` is refused
       with "licence expired on <date>; reassign first".
-- [ ] After reassigning to Dr B, `check_in` succeeds.
-- [ ] Given a booking `checked_in` whose resource's licence expires before `start`, `start` is
+- [x] After reassigning to Dr B, `check_in` succeeds.
+- [x] Given a booking `checked_in` whose resource's licence expires before `start`, `start` is
       refused with the hint "cancel with resource_ineligible and rebook"; the booking stays
       `checked_in`.
-- [ ] Given Dr A's licence expires 2026-11-20, `book` (or `reschedule`, `accept`, `reassign`) to
+- [x] Given Dr A's licence expires 2026-11-20, `book` (or `reschedule`, `accept`, `reassign`) to
       Dr A on 2026-11-25 is refused with the expiry named to staff; on 2026-11-18 it succeeds.
 
 #### Out of scope
@@ -835,17 +835,17 @@ while staff accept or decline; after that the booking stays `requested` without 
 - Must not ignore holds when counting.
 
 #### Done when
-- [ ] Given a group slot with capacity 5 and 4 bookings, when users A and B book at the same
+- [x] Given a group slot with capacity 5 and 4 bookings, when users A and B book at the same
       moment, exactly one succeeds and the other gets "just taken" with nearest slots and a
       waiting-list option. Test harness: two `book` calls on two separate database connections,
       both started behind a barrier so they reach the capacity check together; repeat 50 times;
       every run ends with exactly 5 bookings. The same test with 10 parallel callers on the last
       seat ends with 5 bookings and 9 "just taken". This test is what proves the check is inside
       the transaction: a check outside it lets two win.
-- [ ] Given capacity 1 and a `requested` hold made 10 minutes ago (hold 15 min), a second `book`
+- [x] Given capacity 1 and a `requested` hold made 10 minutes ago (hold 15 min), a second `book`
       is refused; at 16 minutes it succeeds and a later `accept` of the request is refused.
-- [ ] Given that hold expired 1 minute ago (cleanup not run), `book` succeeds.
-- [ ] Given a waiting-list offer holding the slot, a staff `book` is refused until it lapses.
+- [x] Given that hold expired 1 minute ago (cleanup not run), `book` succeeds.
+- [x] Given a waiting-list offer holding the slot, a staff `book` is refused until it lapses.
 
 #### Out of scope
 Payment after an expired hold (BL-SCH-10).
@@ -933,19 +933,19 @@ party is told to book again."
 - Must not reinstate a cancelled booking on late payment.
 
 #### Done when
-- [ ] Given a self-booking with prepayment AED 150 and hold 15 min, the payment link's expiry is
+- [x] Given a self-booking with prepayment AED 150 and hold 15 min, the payment link's expiry is
       15 min after booking; when `PaymentLinkExpired` arrives, the booking is `cancelled` with
       `unpaid`, initiated by `party`, deposit outcome none; `SlotReleased` is emitted and the
       party is told.
-- [ ] A matching waiting-list entry is offered the slot.
-- [ ] When `PaymentReceived` for AED 150 arrives afterwards, a refund of AED 150 with reason
+- [x] A matching waiting-list entry is offered the slot.
+- [x] When `PaymentReceived` for AED 150 arrives afterwards, a refund of AED 150 with reason
       *slot not available* is requested once.
-- [ ] Given `PaymentFailed` at minute 5, the booking stays held; when the party retries and
+- [x] Given `PaymentFailed` at minute 5, the booking stays held; when the party retries and
       `PaymentReceived` arrives at minute 8, the booking is kept and no refund is requested.
-- [ ] Given a `requested` self-booking with prepayment and no payment, at minute 15 exactly one
+- [x] Given a `requested` self-booking with prepayment and no payment, at minute 15 exactly one
       cancel runs (whether `PaymentLinkExpired` or `SCH.RUL.04` arrives first) and one
       `BookingCancelled` is emitted.
-- [ ] Given the slot is still free when the late payment arrives, the refund is still requested and
+- [x] Given the slot is still free when the late payment arrives, the refund is still requested and
       the booking stays `cancelled`.
 
 #### Out of scope

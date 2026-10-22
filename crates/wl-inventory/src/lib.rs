@@ -1,10 +1,16 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+mod arrival;
+pub mod balance;
 pub mod chase;
 pub mod config;
 mod events;
 pub mod goods_receipt;
+pub mod hold_decide;
+pub mod hold_line;
+pub mod hold_reminder;
+pub mod hold_service;
 pub mod item;
 pub mod item_supplier;
 pub mod landed_adjust;
@@ -15,11 +21,18 @@ pub mod lot;
 pub mod match_source;
 pub mod movement;
 pub mod pages;
+pub mod pending_issue;
 pub mod po_issue;
 pub mod po_revise;
 pub mod preferred_change;
 pub mod purchase_order;
 pub mod purchase_request;
+pub mod recall;
+pub mod recall_close;
+pub mod recall_line;
+pub mod recall_notice;
+mod recall_pages;
+pub mod recall_trace;
 pub mod receipt_post;
 pub mod receipt_reverse;
 pub mod reorder;
@@ -29,12 +42,17 @@ pub mod return_note;
 pub mod scope_stock;
 mod screen_texts;
 mod screens;
+pub mod shortage_alert;
 pub mod stock_count;
+pub mod stock_hold;
+mod stock_pages;
+pub mod stock_service;
 mod supplier_pages;
 pub mod supplier_return;
 pub mod supplier_review;
 pub mod supplier_score;
 mod texts;
+pub mod transfer;
 
 use std::sync::Arc;
 
@@ -54,21 +72,30 @@ pub use location::{Location, LocationType, NegativeStockPolicy};
 pub use lot::{Lot, LotStatus};
 pub use match_source::PurchaseMatch;
 pub use movement::{MovementType, StockMovement};
+pub use pending_issue::{PendingIssue, PendingStatus};
 pub use po_issue::{IssueOutcome, issue};
 pub use po_revise::{PurchaseOrderRevision, ReviseInput, ReviseOutcome, revise};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use purchase_request::{PurchaseRequest, PurchaseRequestStatus};
+pub use recall::{Recall, RecallLot, RecallScope, RecallSource, RecallStatus};
+pub use recall_line::{LineKind, NoticeStatus, RecallLine};
 pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
 pub use reorder::{ReorderSuggestion, SuggestionStatus};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
+pub use shortage_alert::ShortageAlert;
 pub use stock_count::{StockCount, StockCountStatus};
+pub use stock_hold::{
+    HoldLineStatus, HoldScope, HoldStatus, StockHold, StockHoldItem, StockHoldLine,
+};
+pub use stock_pages::PendingRow;
 pub use supplier_return::{
     RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome,
 };
 pub use supplier_review::{Decision, ReviewStatus, SupplierReview};
 pub use supplier_score::{Figures, ScoreBand, SupplierScore, SupplierScoreNote};
+pub use transfer::{Transfer, TransferLine, TransferStatus};
 
 /// The module's permissions (wl-inventory §6).
 pub mod permissions {
@@ -107,6 +134,18 @@ pub mod permissions {
     /// Allocate, adjust and cancel landed costs, and approve an adjustment
     /// above the value (`STK.ACL.06`).
     pub const LANDED_COSTS_POST: &str = "landed_costs.post";
+    /// Issue stock to a cost object in the scope of the location.
+    pub const STOCK_ISSUE: &str = "stock.issue";
+    /// Send and receive transfers between locations.
+    pub const STOCK_TRANSFER: &str = "stock.transfer";
+    /// Adjust stock, and clear a pending issue with a reason (`STK.ACL.02`).
+    pub const STOCK_ADJUST: &str = "stock.adjust";
+    /// Place a stock hold on whole lots or on the stock at a location.
+    pub const STOCK_HOLD: &str = "stock.hold";
+    /// Decide the lines of a stock hold, and be told when one is placed.
+    pub const LOTS_RELEASE: &str = "lots.release";
+    /// Open, trace, notify and close recalls.
+    pub const RECALLS_MANAGE: &str = "recalls.manage";
 }
 
 /// The inventory module. The host adds it with
@@ -173,6 +212,88 @@ impl WlInventory {
         self
     }
 
+    /// The hours a pending issue or a negative balance may stay open before
+    /// the storekeeper gets a task and the manager is told (default 24;
+    /// `STK.RUL.06`).
+    pub fn pending_alert_hours(mut self, hours: i64) -> Self {
+        self.config.pending_alert_hours = hours.max(1);
+        self
+    }
+
+    /// The hold reasons whose release needs a second holder of `lots.release`
+    /// (default `recall`; `STK.ACL.05`). Other holds are released by one.
+    pub fn hold_second_person_reasons(mut self, reasons: &[&str]) -> Self {
+        self.config.hold_second_person_reasons = reasons
+            .iter()
+            .map(|reason| (*reason).trim().to_lowercase())
+            .collect();
+        self
+    }
+
+    /// H, the hours between two reminders of an open stock hold to the
+    /// people who decide it, and half the hours between two notices to the
+    /// escalation role (default 24; a vertical may set fewer for food, 06:
+    /// 2; `STK.RUL.07`).
+    pub fn hold_reminder_hours(mut self, hours: i64) -> Self {
+        self.config.hold_reminder_hours = hours.max(1);
+        self
+    }
+
+    /// H for the holds with `reason`; it wins over the default.
+    pub fn hold_reminder_hours_for_reason(mut self, reason: &str, hours: i64) -> Self {
+        let reason = reason.trim().to_lowercase();
+        self.config
+            .hold_reminder_hours_by_reason
+            .retain(|(listed, _)| *listed != reason);
+        self.config
+            .hold_reminder_hours_by_reason
+            .push((reason, hours.max(1)));
+        self
+    }
+
+    /// H for the holds on the location with `code`; it wins over the reason.
+    pub fn hold_reminder_hours_at(mut self, code: &str, hours: i64) -> Self {
+        let code = code.trim().to_owned();
+        self.config
+            .hold_reminder_hours_by_location
+            .retain(|(listed, _)| *listed != code);
+        self.config
+            .hold_reminder_hours_by_location
+            .push((code, hours.max(1)));
+        self
+    }
+
+    /// The role told every 2 x H about a hold nobody has decided (default
+    /// the business owner; 06: the kitchen manager).
+    pub fn hold_escalation_role(mut self, role: &str) -> Self {
+        self.config.hold_escalation_role = Some(role.trim().to_owned());
+        self
+    }
+
+    /// The escalation role for the holds with `reason`.
+    pub fn hold_escalation_role_for_reason(mut self, reason: &str, role: &str) -> Self {
+        let reason = reason.trim().to_lowercase();
+        self.config
+            .hold_escalation_role_by_reason
+            .retain(|(listed, _)| *listed != reason);
+        self.config
+            .hold_escalation_role_by_reason
+            .push((reason, role.trim().to_owned()));
+        self
+    }
+
+    /// The escalation role for the holds on the location with `code`.
+    pub fn hold_escalation_role_at(mut self, code: &str, role: &str) -> Self {
+        let code = code.trim().to_owned();
+        self.config
+            .hold_escalation_role_by_location
+            .retain(|(listed, _)| *listed != code);
+        self.config
+            .hold_escalation_role_by_location
+            .push((code, role.trim().to_owned()));
+        self
+    }
+
     /// The settings of the supplier score: weights, caps, grace days, window,
     /// minimum receipts and the threshold (defaults in [`ScoreSettings`]).
     pub fn supplier_score(mut self, settings: ScoreSettings) -> Self {
@@ -226,6 +347,8 @@ impl Module for WlInventory {
         pages::routes()
             .merge(supplier_pages::routes())
             .merge(preferred_change::routes())
+            .merge(stock_pages::routes())
+            .merge(recall_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -288,6 +411,17 @@ impl Module for WlInventory {
         app.model::<LandedCostAdjustment>();
         app.model::<Lot>();
         app.model::<StockMovement>();
+        app.model::<Transfer>();
+        app.model::<TransferLine>();
+        app.model::<StockHold>();
+        app.model::<StockHoldLine>();
+        app.model::<StockHoldItem>();
+        app.model::<Recall>();
+        app.model::<RecallScope>();
+        app.model::<RecallLot>();
+        app.model::<RecallLine>();
+        app.model::<PendingIssue>();
+        app.model::<ShortageAlert>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
         app.model::<SupplierReturn>();
@@ -298,6 +432,11 @@ impl Module for WlInventory {
         renox::state_machine::register::<StockCount>();
         renox::state_machine::register::<GoodsReceipt>();
         renox::state_machine::register::<Lot>();
+        renox::state_machine::register::<Transfer>();
+        renox::state_machine::register::<StockHold>();
+        renox::state_machine::register::<StockHoldLine>();
+        renox::state_machine::register::<Recall>();
+        renox::state_machine::register::<PendingIssue>();
         renox::state_machine::register::<SupplierReturn>();
         renox::state_machine::register::<LandedCost>();
         renox::state_machine::register::<LandedCostAdjustment>();
@@ -389,7 +528,65 @@ impl Module for WlInventory {
         // A vertical that stops a scope lists its open orders, cancels its
         // open purchase requests and opens the count of its stores.
         wl_kernel::inventory::provide_scope_stock(app, scope_stock::InventoryScopeStock);
+        // `StockHoldService`: a vertical automation places a hold on the
+        // stock at a location (06: an out-of-range reading).
+        wl_kernel::inventory::provide_stock_hold_service(app, hold_service::InventoryHolds);
+        hold_service::register_types();
+        // `STK.RUL.06`: the storekeeper is told when stock runs short, and
+        // after H hours gets a task and the manager is told.
+        shortage_alert::register_types();
+        shortage_alert::schedule(app);
+        // `StockService`: another module consumes stock automatically; the
+        // short part becomes a pending issue. Clearing one above the value
+        // (`STK.ACL.02`) needs a second holder of `stock.approve`.
+        wl_kernel::inventory::provide_stock_service(app, stock_service::InventoryStock);
+        wl_kernel::SubjectMachine::of::<PendingIssue>(
+            wl_kernel::inventory::PENDING_ISSUE_SUBJECT_TYPE,
+        )
+        .action(pending_issue::CLEAR, pending_issue::ACTION)
+        .scope(|_pending: &PendingIssue| renox::auth::permissions::Scope::global())
+        .register();
+        wl_kernel::PolicyDefault::new(pending_issue::ACTION)
+            .amount_above(self.config.wastage_approval_fils)
+            .step_permission(permissions::STOCK_APPROVE)
+            .register();
+        // Each line of a hold is decided by a holder of `lots.release`. A
+        // release for a listed reason (`recall`, `STK.ACL.05`) and a discard
+        // above the wastage value (`STK.ACL.02`) wait for a second holder,
+        // never the decider; the kernel runs `release_approved` or
+        // `discard_approved` on the last yes.
+        wl_kernel::SubjectMachine::of::<StockHoldLine>(
+            wl_kernel::inventory::STOCK_HOLD_LINE_SUBJECT_TYPE,
+        )
+        .action(hold_line::RELEASE, hold_line::RELEASE_ACTION)
+        .action(hold_line::DISCARD, hold_line::DISCARD_ACTION)
+        .scope(|line: &StockHoldLine| line.scope())
+        .register();
+        wl_kernel::PolicyDefault::new(hold_line::RELEASE_ACTION)
+            .amount_above(0)
+            .input_key(hold_line::SECOND_PERSON_KEY)
+            .step_permission(permissions::LOTS_RELEASE)
+            .register();
+        wl_kernel::PolicyDefault::new(hold_line::DISCARD_ACTION)
+            .amount_above(self.config.wastage_approval_fils)
+            .step_permission(permissions::LOTS_RELEASE)
+            .register();
         events::register(app);
+        hold_decide::register(app);
+        // `STK.RUL.07`: the deciders of an open hold are reminded every H
+        // hours and the escalation role told every 2 x H.
+        hold_reminder::register_types();
+        // Opening a recall holds every lot in scope and tells the owner, the
+        // storekeepers and procurement.
+        recall::register_types();
+        // The trace of a recall (who got the goods), its notices to the
+        // parties and its close with the report.
+        recall_notice::register_types();
+        recall_notice::register(app);
+        recall_trace::register(app);
+        recall_close::register(app);
+        wl_kernel::inventory::provide_lot_trace(app, recall_trace::InventoryTrace);
+        hold_reminder::schedule(app);
         // `STK.RUL.08`: the notice type and the daily chase of the returns
         // that stay `dispatched`.
         chase::register_types();
@@ -406,6 +603,11 @@ impl Module for WlInventory {
         // `STK.ACL.07`: the notice to the requester of a preferred supplier
         // change that was decided.
         preferred_change::register_types();
+        app.listen(
+            |event: wl_kernel::inventory::StockNegative, state: AppState| async move {
+                shortage_alert::on_negative(&state, &event).await
+            },
+        );
         app.listen(
             |event: wl_kernel::invoicing::SupplierDebitNoteIssued, state: AppState| async move {
                 supplier_score::on_debit_note_issued(&state, &event).await
@@ -433,6 +635,17 @@ mod tests {
         let module = WlInventory::new();
         assert_eq!(module.config().over_receipt_tolerance_bps, 500);
         assert_eq!(module.config().rejection_reasons.len(), 7);
+    }
+
+    #[test]
+    fn the_reasons_that_need_a_second_person_are_recall_unless_set() {
+        let module = WlInventory::new();
+        assert!(module.config().release_needs_second_person("recall"));
+        assert!(!module.config().release_needs_second_person("quality"));
+        let module = WlInventory::new().hold_second_person_reasons(&[" Quality ", "recall"]);
+        assert!(module.config().release_needs_second_person("quality"));
+        assert!(module.config().release_needs_second_person("recall"));
+        assert!(!module.config().release_needs_second_person("temperature"));
     }
 
     #[test]

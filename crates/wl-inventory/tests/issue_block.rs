@@ -7,10 +7,11 @@
 mod support;
 
 use renox::prelude::*;
+use renox::serde_json::json;
 use wl_inventory::PurchaseOrderStatus;
 use wl_inventory::{DraftLine, Item, Location, PurchaseOrder, PurchaseOrderLine};
 use wl_kernel::BLOCK_EXCEPTION_ACTION;
-use wl_kernel::approvals::{self, ApprovalRequest, ApprovalStatus};
+use wl_kernel::approvals::{self, ApprovalPolicy, ApprovalRequest, ApprovalStatus};
 
 use support::{Booted, SUPPLIER, boot};
 
@@ -51,6 +52,18 @@ async fn a_blocked_supplier_refuses_issue_with_on_hold_and_an_exception_offer() 
     assert_eq!(now.status, PurchaseOrderStatus::Draft);
     assert_eq!(now.number, None);
     assert!(pending(&t, &order).await.is_empty());
+}
+
+/// The exception policy is stored by `wl:install` in every boot, whichever
+/// test of the binary boots first (the defaults are process-wide, so a boot
+/// that registered it after the install depended on a sibling test).
+#[renox::test]
+async fn every_boot_stores_the_exception_policy() {
+    let t = boot().await;
+    let policy = ApprovalPolicy::for_action(t.db(), BLOCK_EXCEPTION_ACTION, &json!({}))
+        .await
+        .unwrap();
+    assert!(policy.is_some());
 }
 
 /// Done when 2: after the finance manager (screening off) approves the
