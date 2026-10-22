@@ -39,7 +39,7 @@ use renox::chrono::Weekday;
 use renox::prelude::*;
 use wl_delivery::reasons::FailureReason;
 use wl_delivery::{PerishableAction, WlDelivery};
-use wl_inventory::WlInventory;
+use wl_inventory::{ScoreSettings, WlInventory};
 use wl_invoicing::budget_category::{self, CategoryInput};
 use wl_invoicing::{BudgetCategory, BudgetKind, MappingKind, WlInvoicing};
 use wl_kernel::approvals::PolicyDefault;
@@ -178,6 +178,15 @@ pub fn sales(module: WlSales) -> WlSales {
         .online_payment_window_minutes(ONLINE_PAYMENT_WINDOW_MINUTES)
         .cancellation_fee_percent(0)
         .cancellation_fee_amount(0)
+        // `SAL.CRM.02`, `SAL.ACL.07`: no lead source requires a campaign (set
+        // above) and a cost entry that takes a campaign over its budget needs
+        // a manager (`over_budget_approval`). `SAL.RUL.08`, `SAL.ACL.07`: a
+        // member is reminded 30 days before points expire, a manual
+        // adjustment above 500 points needs a manager, a redemption is
+        // confirmed by a one-time code (`SAL.LOY.01`).
+        .expiry_reminder_days(super::fnb_compliance::LOYALTY_REMINDER_DAYS)
+        .adjustment_limit(super::fnb_compliance::LOYALTY_ADJUSTMENT_LIMIT)
+        .confirm_redemption_by_code(true)
 }
 
 /// The delivery module with the 06 client's settings (06 §4.2, §7.1;
@@ -286,6 +295,22 @@ pub fn register_approvals() {
         .register();
 }
 
+/// The hours a pending issue or a negative balance may stay open before the
+/// storekeeper gets a task (`STK.RUL.06`, the module's default, set on purpose).
+pub const PENDING_ALERT_HOURS: i64 = 24;
+
+/// The days a return to a supplier may stay uncredited before it is chased
+/// (`STK.RUL.08`).
+pub const RETURN_CHASE_DAYS: i64 = 30;
+
+/// A purchase order above this needs the area manager (`STK.ACL.03`, AED
+/// 5,000), in fils.
+pub const PURCHASE_ORDER_LIMIT_FILS: i64 = 500_000;
+
+/// The calendar months a supplier score snapshot covers (06: 1; the module's
+/// default is 3).
+pub const SUPPLIER_SCORE_WINDOW_MONTHS: u32 = 1;
+
 /// H, the hours before an undecided line of a temperature hold is reminded to
 /// the chef, and half the hours before the kitchen manager is told
 /// (`STK.RUL.07`, lowered from 24 for food).
@@ -308,6 +333,24 @@ pub fn inventory(module: WlInventory) -> WlInventory {
         // The customers of a recall are listed and told on the F&B page of
         // the recall (BL-FNB-13).
         .recall_notices_route("fnb.recall_trace")
+        // `STK.RUL.06`: a pending issue or a negative balance open for 24
+        // hours gives the storekeeper a task and tells the manager.
+        .pending_alert_hours(PENDING_ALERT_HOURS)
+        // `STK.RUL.08`: a return to a supplier not credited is chased after
+        // 30 days.
+        .return_chase_days(RETURN_CHASE_DAYS)
+        // `STK.ACL.03`: a purchase order above AED 5,000 needs the area
+        // manager.
+        .order_limits_fils(&[PURCHASE_ORDER_LIMIT_FILS])
+        // `STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`: the monthly snapshot of
+        // the supplier score is over a 1-month window (the module's default is
+        // 3), below 70 a review task opens; making another supplier the
+        // preferred one needs a second person.
+        .supplier_score(ScoreSettings {
+            window_months: SUPPLIER_SCORE_WINDOW_MONTHS,
+            ..ScoreSettings::default()
+        })
+        .preferred_change_needs_approval(true)
 }
 
 /// The stock module for a client: the 06 values for F&B, the given module for
@@ -434,6 +477,9 @@ pub async fn install(state: &AppState) -> Result<usize> {
     if on("invoicing") {
         added += install_budget_categories(db).await?;
     }
+    // The late-entry limits, checklists, SOPs, send window, loyalty
+    // programme, segments and the stock locations of the outlets.
+    added += super::fnb_compliance::install(state).await?.total();
     Ok(added)
 }
 

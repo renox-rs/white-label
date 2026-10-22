@@ -31,6 +31,7 @@ pub use app::clinics_seed;
 pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
+pub use app::fnb_compliance;
 pub use app::fnb_demo;
 pub use app::fnb_seed;
 pub use app::fnb_settings;
@@ -186,6 +187,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The cashier, accountant and storekeeper of a F&B client hold the 06
     // permissions of the shared roles (06 §3.1).
     app::fnb_seed::grant_roles(&client_app);
+    // The compliance-critical rules and the connections with a manual
+    // fallback of a F&B client (BL-FNB-17).
+    app::fnb_compliance::register_critical(&client_app);
+    app::fnb_compliance::register_integrations(&client_app);
     app::logistics_seed::register_integrations(&client_app);
     app::logistics_rules::register_critical(&client_app);
     app::negative_flow::register_approvals(&client_app);
@@ -346,6 +351,7 @@ fn enable(
             app::accounting_seed::register_documents(client_app);
             app::clinics_seed::register_documents(client_app);
             app::logistics_seed::register_documents(client_app);
+            app::fnb_compliance::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
             }
@@ -355,7 +361,11 @@ fn enable(
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
-            let module = app::clinics_seed::notify_for(client_app);
+            let module = if client_app == app::fnb_seed::FNB {
+                app::fnb_compliance::notify(wl_notify::WlNotify::new())
+            } else {
+                app::clinics_seed::notify_for(client_app)
+            };
             Ok(app.module(match tuning.notify.take() {
                 Some(tune) => tune(module),
                 None => module,

@@ -14,7 +14,7 @@ second       = "#B45309"
 display_font = "Poppins"
 
 [modules]
-enabled = ["parties", "notify", "invoicing", "ticketing", "payments", "sales", "inventory", "delivery", "portal"]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "inventory", "delivery", "portal"]
 
 [roles]
 # `PLT.RUL.04`: a compliance-critical rule that fails alerts the operations

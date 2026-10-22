@@ -90,7 +90,13 @@ pub const LOGINS: &[Login] = &[
         name: "Chef Samir Nasr",
         email: "chef@zaatar.example",
         role: HEAD_CHEF,
-        label: "Head chef",
+        label: "Head chef (Marina Kitchen)",
+    },
+    Login {
+        name: "Chef Hana Saleh",
+        email: "chef.sharjah@zaatar.example",
+        role: HEAD_CHEF,
+        label: "Head chef (Sharjah Kitchen)",
     },
     Login {
         name: "Rizwan Ahmed",
@@ -184,6 +190,10 @@ async fn run(state: AppState, forced: bool) -> Result {
     let db = &state.db;
     roles::define(db).await?;
     let mut cashier = None;
+    // A head chef decides the hold lines of the kitchen they cook in, not of
+    // the other (`STK.ACL.05`, BL-FNB-17): the role is assigned in the scope of
+    // the outlet once the outlets exist (below).
+    let mut chefs = Vec::new();
     for login in LOGINS {
         let user = match User::find_by_email(db, login.email).await? {
             Some(user) => user,
@@ -191,7 +201,11 @@ async fn run(state: AppState, forced: bool) -> Result {
                 let mut user = User::register(db, login.name, login.email, PASSWORD).await?;
                 user.email_verified_at = Some(renox::db::now());
                 user.save(db).await?;
-                user.assign_role(db, login.role).await?;
+                if login.role == HEAD_CHEF {
+                    chefs.push(user.clone());
+                } else {
+                    user.assign_role(db, login.role).await?;
+                }
                 user
             }
         };
@@ -219,6 +233,14 @@ async fn run(state: AppState, forced: bool) -> Result {
         "{} brands, {} outlets and {} menu items added to the Zaatar & Co. demo.",
         installed.brands, installed.outlets, installed.items
     );
+    // Each kitchen has its own stock location, scoped to its outlet, with the
+    // negative stock policy of 06 (`STK.RUL.06`), and each head chef decides
+    // the hold lines of their own outlet only.
+    sharjah_stock(db).await?;
+    central_stock(&state).await?;
+    let located = super::fnb_compliance::outlet_stock(db).await?;
+    println!("{located} outlet stock locations scoped.");
+    scope_chefs(db, &chefs).await?;
     let mut customers = Vec::new();
     for name in CUSTOMERS {
         customers.push(customer(&state, name).await?);
@@ -271,6 +293,46 @@ async fn run(state: AppState, forced: bool) -> Result {
         "{} aggregator orders to chase, {} tasks to record what happened.",
         watched.alerts, watched.tasks
     );
+    Ok(())
+}
+
+/// Sharjah Kitchen's stock location, with the outlet of the same name pointing
+/// at it.
+async fn sharjah_stock(db: &Db) -> Result {
+    let location = match Location::query()
+        .where_(Location::CODE.eq("SHARJAH"))
+        .first(db)
+        .await?
+    {
+        Some(location) => location,
+        None => {
+            let mut location = Location::new("SHARJAH", "Sharjah Kitchen");
+            location.save(db).await?;
+            location
+        }
+    };
+    if let Some(mut outlet) = Outlet::by_code(db, "sharjah").await?
+        && outlet.location_id.is_none()
+    {
+        outlet.location_id = Some(location.id);
+        outlet.save(db).await?;
+    }
+    Ok(())
+}
+
+/// Assigns the head chefs made now their role in the scope of their outlet:
+/// `chef@` cooks at Marina, `chef.sharjah@` at Sharjah.
+async fn scope_chefs(db: &Db, chefs: &[User]) -> Result {
+    for chef in chefs {
+        let code = if chef.email == "chef.sharjah@zaatar.example" {
+            "sharjah"
+        } else {
+            "marina"
+        };
+        if let Some(outlet) = Outlet::by_code(db, code).await? {
+            chef.assign_role_in(db, HEAD_CHEF, &outlet.scope()).await?;
+        }
+    }
     Ok(())
 }
 
