@@ -265,3 +265,56 @@ async fn a_package_needs_credits_and_a_valid_price() {
     );
     t.app.assert_models_match_schema().await;
 }
+
+/// 10 EdTech (#439, #440): the days an enrolment stood frozen are given back
+/// by the system. The end date moves on by the days, the extension limit of a
+/// user's `extend` is not used up, and a package that is not `active` stays.
+#[renox::test]
+async fn the_system_moves_the_end_date_on_by_the_frozen_days_without_using_the_limit() {
+    let (t, _) = boot().await;
+    let package = paid(&t).await;
+    Package::query()
+        .where_(Package::ID.eq(package.id))
+        .update(t.db(), &[("valid_to", &Some(day(2026, 12, 31)))])
+        .await
+        .unwrap();
+
+    let ledger = package_ledger(t.state());
+    let moved = ledger
+        .extend_days(t.state(), package.package_id(), 10, "Enrolment frozen")
+        .await
+        .unwrap();
+    assert_eq!(moved, Some(day(2027, 1, 10)));
+    let after = reload(&t, &package).await;
+    assert_eq!(after.valid_to, Some(day(2027, 1, 10)));
+    assert_eq!(after.status, PackageStatus::Active);
+    assert_eq!(after.extensions, 0, "the limit of a user's extend is untouched");
+    let movements = wl_sales::PackageMovement::query()
+        .where_(wl_sales::PackageMovement::PACKAGE_ID.eq(package.id))
+        .where_(wl_sales::PackageMovement::KIND.eq(MovementKind::Extend))
+        .get(t.db())
+        .await
+        .unwrap();
+    assert_eq!(movements.len(), 1);
+
+    // No days, or a package waiting for payment: nothing moves.
+    assert_eq!(
+        ledger
+            .extend_days(t.state(), package.package_id(), 0, "")
+            .await
+            .unwrap(),
+        None
+    );
+    let waiting = sold(&t).await;
+    assert_eq!(
+        ledger
+            .extend_days(t.state(), waiting.package_id(), 5, "")
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+fn day(year: i32, month: u32, date: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(year, month, date).unwrap()
+}

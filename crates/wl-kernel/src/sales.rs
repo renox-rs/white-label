@@ -622,6 +622,21 @@ pub trait PackageLedger: Send + Sync + 'static {
     fn balance<'a>(&'a self, _db: &'a Db, _party: PartyId, _item: &'a str) -> SalesFuture<'a, i64> {
         Box::pin(async { Ok(0) })
     }
+
+    /// Moves the last day of the `active` package `package` on by `days` as
+    /// the system, with `why` as the reason: the days the agreement it was
+    /// sold for stood frozen are given back (10 `freeze`). It does not count
+    /// against the extension limit of a user's `extend`. Answers the new last
+    /// day, or `None` when nothing moved. The default moves nothing.
+    fn extend_days<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _package: PackageId,
+        _days: i64,
+        _why: &'a str,
+    ) -> SalesFuture<'a, Option<NaiveDate>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 /// The package ledger when the `sales` module is off.

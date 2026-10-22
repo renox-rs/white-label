@@ -26,7 +26,7 @@ use crate::config::config_of;
 use crate::package::{MovementKind, Package, PackageMovement, PackageStatus};
 use crate::package_machine::{
     ACTIVATE, ActivateInput, CANCEL, CONSUME, CONSUME_LAST, CancelInput, ConsumeInput, EXPIRE,
-    EXTEND, ExpireInput, ExtendInput, REVERSE, REVERSE_SYSTEM, ReverseInput,
+    EXTEND, EXTEND_SYSTEM, ExpireInput, ExtendInput, REVERSE, REVERSE_SYSTEM, ReverseInput,
 };
 use crate::package_reopen::record_refusal;
 use crate::texts::english;
@@ -321,6 +321,45 @@ pub async fn extend(
     Package::find_or_404(&state.db, id).await
 }
 
+/// Moves the end date of the `active` package `id` on by `days`, as the system:
+/// the days an agreement of a vertical was frozen are given back (10 `freeze`,
+/// `EDU.RUL.14`). It does not count against the extension limit. Answers the
+/// new last day; `None` when nothing moved (no days, no end date, or the
+/// package is not `active`).
+///
+/// # Errors
+///
+/// The machine's.
+pub async fn extend_by_days(
+    state: &AppState,
+    id: i64,
+    days: i64,
+    why: &str,
+) -> Result<Option<NaiveDate>> {
+    let package = Package::find_or_404(&state.db, id).await?;
+    let Some(end) = package.valid_to else {
+        return Ok(None);
+    };
+    if days < 1 || package.status != PackageStatus::Active {
+        return Ok(None);
+    }
+    let Some(new_end) = end.checked_add_days(renox::chrono::Days::new(u64::try_from(days).unwrap_or(0)))
+    else {
+        return Ok(None);
+    };
+    let input = ExtendInput {
+        new_end,
+        today: wl_kernel::documents::today(),
+        limit: i64::MAX / 2,
+    };
+    let mut run = package.transition(EXTEND_SYSTEM).by_system().input(&input);
+    if !why.trim().is_empty() {
+        run = run.reason(why.trim().to_owned());
+    }
+    let _ = run.run(state).await.map_err(|e| e.into_error())?;
+    Ok(Some(new_end))
+}
+
 /// Cancels package `id` while nothing was paid on its invoice (`cancel`).
 pub async fn cancel(state: &AppState, by: &renox::AuthUser, id: i64) -> Result<Package> {
     let package = Package::find_or_404(&state.db, id).await?;
@@ -460,6 +499,16 @@ impl PackageLedger for Ledger {
         })
     }
 
+    fn extend_days<'a>(
+        &'a self,
+        state: &'a AppState,
+        package: PackageId,
+        days: i64,
+        why: &'a str,
+    ) -> SalesFuture<'a, Option<NaiveDate>> {
+        Box::pin(async move { extend_by_days(state, package.0, days, why).await })
+    }
+
     fn balance<'a>(&'a self, db: &'a Db, party: PartyId, item: &'a str) -> SalesFuture<'a, i64> {
         Box::pin(async move {
             let today = wl_kernel::documents::today();
@@ -492,7 +541,7 @@ async fn on_invoice_paid(state: &AppState, event: &InvoicePaid) -> Result {
 /// Emits the kernel events after a package transition committed.
 async fn announce(state: &AppState, event: &Transitioned<Package>) -> Result {
     let name = event.transition.as_str();
-    if ![ACTIVATE, CONSUME, CONSUME_LAST, EXTEND, EXPIRE].contains(&name) {
+    if ![ACTIVATE, CONSUME, CONSUME_LAST, EXTEND, EXTEND_SYSTEM, EXPIRE].contains(&name) {
         return Ok(());
     }
     let Some(package) = Package::find(&state.db, event.key).await? else {
@@ -510,7 +559,7 @@ async fn announce(state: &AppState, event: &Transitioned<Package>) -> Result {
                 })
                 .await
         }
-        EXTEND => {
+        EXTEND | EXTEND_SYSTEM => {
             let Some(valid_to) = package.valid_to else {
                 return Ok(());
             };

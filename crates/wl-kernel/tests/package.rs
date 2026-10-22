@@ -2209,6 +2209,22 @@ async fn without_sales_no_package_is_sold_and_none_has_credits() {
     );
 }
 
+/// 10 EdTech (#439, #440): without the `sales` module the days an enrolment
+/// stood frozen move no package.
+#[renox::test]
+async fn without_sales_the_frozen_days_move_no_package() {
+    use wl_kernel::package_ledger;
+    use wl_kernel::sales::PackageId;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let moved = package_ledger(app.state())
+        .extend_days(app.state(), PackageId(4), 10, "Enrolment frozen")
+        .await
+        .unwrap();
+    assert!(moved.is_none());
+}
+
 /// #216, #217: without the `hr`, `ticketing` and `documents` modules nobody
 /// works anywhere, no checklist is started and no SOP is pending.
 #[renox::test]

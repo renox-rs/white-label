@@ -9,9 +9,10 @@
 //!                     pending_payment --cancel--> cancelled
 //! ```
 //!
-//! `activate`, `consume`, `consume_last`, `reverse_system` and `expire` are
-//! system transitions: the payment event, the consuming source, the
-//! cancelled source and the daily run. `reverse` (`packages.adjust`),
+//! `activate`, `consume`, `consume_last`, `reverse_system`, `extend_system`
+//! and `expire` are system transitions: the payment event, the consuming
+//! source, the cancelled source, the vertical's extension by the days an
+//! agreement was frozen (10) and the daily run. `reverse` (`packages.adjust`),
 //! `extend` (`packages.extend`) and `cancel` (`packages.sell`) are by users.
 //!
 //! Decisions:
@@ -55,6 +56,9 @@ pub const REVERSE_SYSTEM: &str = "reverse_system";
 pub const EXPIRE: &str = "expire";
 /// `active | expired → active`: a new end date.
 pub const EXTEND: &str = "extend";
+/// `active | expired → active`: a new end date moved by the vertical (10: the
+/// days an enrolment was frozen); it does not count against the limit.
+pub const EXTEND_SYSTEM: &str = "extend_system";
 /// `pending_payment → cancelled`: nothing was paid.
 pub const CANCEL: &str = "cancel";
 
@@ -223,7 +227,8 @@ impl StateMachine for Package {
             .transition(reverse(REVERSE, true))
             .transition(reverse(REVERSE_SYSTEM, false))
             .transition(expire())
-            .transition(extend())
+            .transition(extend(EXTEND, false))
+            .transition(extend(EXTEND_SYSTEM, true))
             .transition(cancel())
     }
 }
@@ -393,13 +398,20 @@ fn expire() -> Transition<Package> {
 
 /// `extend`: active | expired → active with a later end date, within the
 /// limit.
-fn extend() -> Transition<Package> {
-    Transition::new(EXTEND)
+fn extend(name: &'static str, system: bool) -> Transition<Package> {
+    let transition = Transition::new(name)
         .label("Extend")
         .tone("info")
-        .permission(permissions::PACKAGES_EXTEND)
         .from([PackageStatus::Active, PackageStatus::Expired])
-        .to(PackageStatus::Active)
+        .to(PackageStatus::Active);
+    // A user needs `packages.extend`; the twin is the vertical's, for the days
+    // an enrolment was frozen.
+    let transition = if system {
+        transition.system()
+    } else {
+        transition.permission(permissions::PACKAGES_EXTEND)
+    };
+    transition
         .guard("later_end_date", |p: &Package, ctx| {
             let current = p.valid_to;
             let input = ctx.input_as::<ExtendInput>().ok();
@@ -420,7 +432,7 @@ fn extend() -> Transition<Package> {
                 )
             })
         })
-        .effect(|package: &Package, ctx, tx| {
+        .effect(move |package: &Package, ctx, tx| {
             let (id, extensions) = (package.id, package.extensions);
             let input = ctx.input_as::<ExtendInput>().ok();
             let (user, note) = (ctx.actor().map(|u| u.id), reason_of(ctx));
@@ -428,12 +440,15 @@ fn extend() -> Transition<Package> {
                 let Some(input) = input else {
                     return Ok(());
                 };
+                // The days a frozen enrolment is given back are not an
+                // extension the limit counts.
+                let counted = if system { extensions } else { extensions + 1 };
                 set(
                     tx,
                     id,
                     &[
                         ("valid_to", &Some(input.new_end)),
-                        ("extensions", &(extensions + 1)),
+                        ("extensions", &counted),
                     ],
                 )
                 .await?;
@@ -480,6 +495,7 @@ mod tests {
             (REVERSE_SYSTEM, vec!["active", "completed"], "active", true),
             (EXPIRE, vec!["active"], "expired", true),
             (EXTEND, vec!["active", "expired"], "active", false),
+            (EXTEND_SYSTEM, vec!["active", "expired"], "active", true),
             (CANCEL, vec!["pending_payment"], "cancelled", false),
         ];
         assert_eq!(machine.transitions().len(), table.len());
