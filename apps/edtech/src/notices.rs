@@ -174,14 +174,40 @@ pub async fn tell_family_as(
     title: &str,
     body: &str,
 ) -> Result {
-    let mut request = NotifyRequest::new(type_key, enrolment.subject())
+    let request = NotifyRequest::new(type_key, enrolment.subject())
         .subject_label(&enrolment.number())
         .data(renox::serde_json::json!({ "title": title, "body": body }));
-    for party in family_of(enrolment) {
-        request = request.to_party(party);
-    }
+    let request = address(state, request, enrolment, &family_of(enrolment)).await?;
     notify::notifier(state).notify(state, request).await?;
     Ok(())
+}
+
+/// Addresses `request` to `parties` of `enrolment`'s family. The guardian goes
+/// as a rule ("a guardian of the student") when the student has several and the
+/// enrolment's guardian is the first of them, so that a message that cannot be
+/// delivered to guardian 1 is sent to guardian 2 before the counsellor gets a
+/// task (`alternative_recipient`, 10 §4.1); every other party goes as itself.
+async fn address(
+    state: &AppState,
+    mut request: NotifyRequest,
+    enrolment: &Enrolment,
+    parties: &[PartyId],
+) -> Result<NotifyRequest> {
+    let student = PartyId(enrolment.student_party_id);
+    let guardians = wl_kernel::parties::directory(state)
+        .guardians(&state.db, student)
+        .await?;
+    let by_rule = guardians.len() > 1
+        && enrolment.guardian_party_id.is_some()
+        && guardians.first().map(|g| g.0) == enrolment.guardian_party_id;
+    for party in parties {
+        request = if by_rule && Some(party.0) == enrolment.guardian_party_id {
+            request.to_contact(student, notify::ContactPurpose::guardian_of())
+        } else {
+            request.to_party(*party)
+        };
+    }
+    Ok(request)
 }
 
 /// Tells the family of every enrolment in `enrolments` something, each party
@@ -207,12 +233,10 @@ pub async fn tell_families(
         if fresh.is_empty() {
             continue;
         }
-        let mut request = NotifyRequest::new(FAMILY_NOTICE, enrolment.subject())
+        let request = NotifyRequest::new(FAMILY_NOTICE, enrolment.subject())
             .subject_label(&enrolment.number())
             .data(renox::serde_json::json!({ "title": title, "body": body }));
-        for party in &fresh {
-            request = request.to_party(*party);
-        }
+        let request = address(state, request, enrolment, &fresh).await?;
         notify::notifier(state).notify(state, request).await?;
         told.extend(fresh);
     }

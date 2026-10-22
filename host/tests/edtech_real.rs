@@ -63,12 +63,21 @@ struct World {
 
 /// Boots the demo centre with `wl:install` and the seeds, a fake gateway.
 async fn boot() -> World {
+    boot_with(None).await
+}
+
+/// [`boot`] with `mail` as the e-mail provider, when given.
+async fn boot_with(mail: Option<support::BouncingMail>) -> World {
     let gateway = FakeGateway::new();
     let who = Arc::new(Mutex::new(None));
     let config = wl_kernel::ClientConfig::load(CLIENT).expect("the edtech client");
     let tuned = {
         let gateway = gateway.clone();
         host::Tuning::default().payments(move |p| p.gateway(gateway))
+    };
+    let tuned = match mail {
+        Some(mail) => tuned.notify(move |n| n.provider(mail)),
+        None => tuned,
     };
     let app = TestApp::new(
         host::app_for_tuned(config, tuned)
@@ -2001,4 +2010,129 @@ async fn edu_16_only_a_user_who_may_issue_reissues_or_copies() {
             .status,
         edtech::CertificateStatus::Superseded
     );
+}
+
+// ---- #452: a notice that cannot be delivered to guardian 1 goes to guardian 2 -----------------
+
+/// A student whose two guardians are related in wl-parties (the mother is the
+/// primary one) and whose enrolment names the mother.
+async fn family(w: &World, dina: &AuthUser) -> (Enrolment, PartyId, PartyId) {
+    use wl_parties::relationships::{NewRelationship, RelationshipType, relate};
+    let batch = w.open_batch(&person_auth(w).await, "A", day(7)).await;
+    let child = tenant(&w.app, "Omar Khan").await;
+    let mother = tenant(&w.app, "Huda Khan").await;
+    let father = tenant(&w.app, "Khalid Khan").await;
+    for (guardian, primary) in [(mother, true), (father, false)] {
+        relate(
+            w.state(),
+            NewRelationship {
+                from: guardian.0,
+                to: child.0,
+                relation_type: RelationshipType::GuardianOf,
+                primary,
+                ..NewRelationship::default()
+            },
+        )
+        .await
+        .expect("the guardian is related");
+    }
+    let e = enrolments::create(
+        w.state(),
+        dina,
+        NewEnrolment::course(child.0, batch.id, 252_000)
+            .guardian(mother.0)
+            .terms_accepted(),
+    )
+    .await
+    .unwrap();
+    (e, mother, father)
+}
+
+/// A coordinator to open the batch of [`family`].
+async fn person_auth(w: &World) -> AuthUser {
+    w.staff("Amal", ACADEMIC_COORDINATOR).await.1
+}
+
+/// The messages of `type_key`, oldest first.
+async fn sent_of(w: &World, type_key: &str) -> Vec<wl_notify::Message> {
+    wl_notify::Message::query()
+        .where_(wl_notify::Message::TYPE_KEY.eq(type_key))
+        .order_by(wl_notify::Message::ID)
+        .get(w.db())
+        .await
+        .unwrap()
+}
+
+/// The tasks opened for a family notice that gave up.
+async fn give_up_tasks_of_enrolments(w: &World) -> Vec<wl_ticketing::Ticket> {
+    let prefix = "notify.give_up:edtech.enrolment:";
+    wl_ticketing::Ticket::query()
+        .get(w.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|t| t.source_key.as_deref().is_some_and(|k| k.starts_with(prefix)))
+        .collect()
+}
+
+/// #452 point 5, run: a family notice whose e-mail to the mother (guardian 1)
+/// bounces is sent to the father (guardian 2) and, since it arrives, no task is
+/// opened for the counsellor.
+#[renox::test]
+async fn edu_17_a_notice_that_bounces_at_guardian_one_is_delivered_to_guardian_two() {
+    let mail = support::BouncingMail::default();
+    let w = boot_with(Some(mail.clone())).await;
+    let (_, dina) = w.staff("Dina", COUNSELLOR).await;
+    w.staff("Cora", COUNSELLOR).await;
+    let (e, _, _) = family(&w, &dina).await;
+    mail.accept("khalid.khan@parties.example");
+
+    edtech::notices::tell_family(w.state(), &e, "Class moved", "Monday moves to Tuesday")
+        .await
+        .unwrap();
+    w.app.run_all_jobs().await;
+
+    let messages = sent_of(&w, edtech::notices::FAMILY_NOTICE).await;
+    let to_mother = messages
+        .iter()
+        .find(|m| m.address.as_deref() == Some("huda.khan@parties.example"))
+        .expect("guardian 1 was tried first");
+    assert_eq!(to_mother.status, wl_notify::MessageStatus::Abandoned);
+    let to_father = messages
+        .iter()
+        .find(|m| m.address.as_deref() == Some("khalid.khan@parties.example"))
+        .expect("guardian 2 was tried next");
+    assert_eq!(to_father.status, wl_notify::MessageStatus::Sent);
+    assert_eq!(to_father.alternative_of, Some(to_mother.id));
+    assert!(to_father.rendered_body.contains("Monday moves to Tuesday"));
+    assert!(
+        give_up_tasks_of_enrolments(&w).await.is_empty(),
+        "delivered, so no task"
+    );
+}
+
+/// #452 point 5, run: both guardians bounce, then the counsellor has ONE task.
+#[renox::test]
+async fn edu_17_a_notice_that_bounces_at_both_guardians_gives_the_counsellor_one_task() {
+    let mail = support::BouncingMail::default();
+    let w = boot_with(Some(mail.clone())).await;
+    let (counsellor, dina) = w.staff("Dina", COUNSELLOR).await;
+    let (e, _, _) = family(&w, &dina).await;
+
+    edtech::notices::tell_family(w.state(), &e, "Class moved", "Monday moves to Tuesday")
+        .await
+        .unwrap();
+    w.app.run_all_jobs().await;
+
+    let messages = sent_of(&w, edtech::notices::FAMILY_NOTICE).await;
+    let addresses: Vec<_> = messages.iter().filter_map(|m| m.address.clone()).collect();
+    assert!(addresses.contains(&"huda.khan@parties.example".to_owned()), "{addresses:?}");
+    assert!(addresses.contains(&"khalid.khan@parties.example".to_owned()), "{addresses:?}");
+    assert!(
+        messages.iter().all(|m| m.status == wl_notify::MessageStatus::Abandoned),
+        "none arrived"
+    );
+    let tasks = give_up_tasks_of_enrolments(&w).await;
+    assert_eq!(tasks.len(), 1, "one task");
+    assert_eq!(tasks[0].assignee_user_id, Some(counsellor.id));
 }
