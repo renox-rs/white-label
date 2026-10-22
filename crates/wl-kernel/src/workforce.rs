@@ -606,6 +606,18 @@ pub trait Workforce: Send + Sync + 'static {
         Box::pin(async { Ok(Vec::new()) })
     }
 
+    /// Whether `employee` is a freelancer (employment type `freelance`): a
+    /// vertical asks it to know which documents the work needs, such as the
+    /// private tutor permit or freelance visa of a freelance tutor (10
+    /// `EDU.ACL.14`). The default says no, also for an unknown employee.
+    fn is_freelance<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// The employee whose account is the user `user_id`, if any. The default
     /// knows nobody.
     fn employee_of_user<'a>(
