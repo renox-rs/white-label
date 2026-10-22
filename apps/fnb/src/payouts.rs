@@ -237,10 +237,10 @@ pub async fn import_as(
     let mut tx = state.db.begin().await?;
     let history = english("fnb.payout.history.imported", &[("file", &statement.file_name)]);
     // The partial unique index refuses a duplicate that raced this import.
-    if let Err(error) = statement
+    let inserted = statement
         .insert_in_state(&mut tx, PayoutStatus::Imported, &history)
-        .await
-    {
+        .await;
+    if let Err(error) = inserted {
         drop(tx);
         if let Some(existing) = PayoutStatement::using(&state.db, &aggregator, &reference).await? {
             return Err(duplicate(&existing, &reference));
