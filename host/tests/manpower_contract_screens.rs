@@ -641,3 +641,44 @@ async fn the_contract_page_and_its_forms_are_built_to_fit_a_phone() {
         list.matches("rx-table-wrap").count()
     );
 }
+
+/// AC1 (the picker of *New contract*): it offers the client companies only: not
+/// a worker (a person) and not a supplier of the agency, however they are named.
+#[renox::test]
+async fn the_party_picker_of_a_new_contract_lists_clients_only() {
+    use wl_kernel::PartyKind;
+    use wl_parties::{CompanyDetails, NewParty, PartyRole, create};
+    let app = demo().await;
+    create(
+        app.state(),
+        NewParty {
+            kind: PartyKind::Company,
+            legal_name_en: "Gulf Uniform Supplies LLC".into(),
+            company: Some(CompanyDetails::default()),
+            roles: vec![PartyRole {
+                role_key: "supplier".into(),
+                ..PartyRole::default()
+            }],
+            source: "back_office".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let found = page(&app, AMAL, "/manpower/parties/options?q=gulf").await;
+    assert!(found.contains("Gulf Tower Facilities LLC"), "{found}");
+    assert!(
+        !found.contains("Gulf Uniform Supplies"),
+        "a supplier: {found}"
+    );
+    let everyone = page(&app, AMAL, "/manpower/parties/options?q=").await;
+    for client in ["Gulf Tower", "Marina Bay", "Al Quoz"] {
+        assert!(everyone.contains(client), "{client}: {everyone}");
+    }
+    for not_a_client in ["Wasim Khan", "Ravi Kumar", "Carl Whitfield", "Uniform"] {
+        assert!(
+            !everyone.contains(not_a_client),
+            "{not_a_client}: {everyone}"
+        );
+    }
+}

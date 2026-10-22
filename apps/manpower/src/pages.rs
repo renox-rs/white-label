@@ -655,7 +655,9 @@ async fn update_site(
 /// `GET /manpower/parties/options`: the client companies a contract form's
 /// picker offers as the person types (`?q=`), or the labels of the values it
 /// already holds (`?values=`), as `number, name`. For those who manage
-/// contracts, sites or terms.
+/// contracts, sites or terms. A client is a company: a person (a worker, a
+/// contact) is not offered, nor a company that is a supplier, vendor or
+/// subcontractor of the agency.
 async fn party_options(
     State(state): State<AppState>,
     user: AuthUser,
@@ -671,7 +673,22 @@ async fn party_options(
             parties.extend(directory.find(&state.db, PartyId(id)).await?);
         }
     } else {
-        parties = directory.search(&state.db, &query.q, 20).await?;
+        let today = wl_kernel::documents::today();
+        for party in directory.search(&state.db, &query.q, 100).await? {
+            if party.kind != wl_kernel::parties::PartyKind::Company {
+                continue;
+            }
+            let mut supplier = false;
+            for role in ["supplier", "vendor", "subcontractor"] {
+                supplier |= directory.has_role(&state.db, party.id, role, today).await?;
+            }
+            if !supplier {
+                parties.push(party);
+            }
+            if parties.len() == 20 {
+                break;
+            }
+        }
     }
     Ok(Json(
         parties
