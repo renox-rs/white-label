@@ -772,6 +772,15 @@ defaults):**
 | SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: academic coordinator (teaching, assessment, safeguarding) and centre manager (front desk, refunds); required readers by role per campus; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the reader's manager and the SOP's owner role (the SOP owner named above) after 7 days overdue; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement |
 | Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company owner; `DOC.RUL.01` at 180, 90 and 30 days for trademarks and 90, 30 and 7 days for the others; no `blocks` |
 
+**The money settings in the app (BL-EDU-18).** Every write-off, whatever its amount, is
+approved by the centre manager or the company admin, never the user who asked; the centre
+manager also approves a desk cash shortage (`cash.write_off`) and the accountant counts the
+cash. *Tutor costs* is added to the budget categories the module seeds (materials are *Cost
+of sales*, staff *Salaries and staff costs*, rent *Rent and utilities*), and the accountant
+owns them all. The package refund and the catalogue defaults wait for the wl-sales package
+`refund` and the catalogue item; a new enrolment takes the tiered refund policy and the
+absence policy meanwhile.
+
 ## 8. Integrations
 
 | System | Purpose | Required for MVP | Access / notes |
