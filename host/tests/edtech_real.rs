@@ -2375,3 +2375,124 @@ async fn edu_17_a_campaign_reports_its_cost_per_lead_cac_and_roas_and_waits_over
     assert_eq!(cells.cac, "1,500.00");
     assert_eq!(cells.roas, "1.00");
 }
+
+// ---- #452: hiring a tutor starts the onboarding checklist ---------------------------------------
+
+/// #452 point 12, run with the real wl-hr: hiring a tutor in `onboarding` creates
+/// the tutor / trainer checklist with steps for the centre manager, the academic
+/// coordinator and the tutor's own account; the checklist blocks nothing, so the
+/// employee is activated while steps are open; a step still open after its due
+/// date reminds its assignee on the first run after it and again two days later,
+/// and not in between (`HRM.RUL.17`).
+#[renox::test]
+async fn edu_17_hiring_a_tutor_creates_the_checklist_and_reminds_the_open_steps() {
+    let w = boot().await;
+    let (manager, _) = w.staff("Mona", host::roles::CENTRE_MANAGER).await;
+    let (coordinator, _) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (account, _) = w.staff("Tariq Nasser", host::roles::TUTOR).await;
+    let party = tenant(&w.app, "Tariq Nasser").await;
+
+    let hired = wl_hr::employee::create(
+        w.state(),
+        wl_hr::employee::NewEmployee::new(party, "tutor", day(0))
+            .user(account.id)
+            .status(wl_hr::employee::EmployeeStatus::Onboarding),
+    )
+    .await
+    .expect("the tutor is hired");
+
+    let started = wl_hr::Onboarding::query()
+        .where_(wl_hr::Onboarding::EMPLOYEE_ID.eq(hired.id))
+        .get(w.db())
+        .await
+        .unwrap();
+    assert_eq!(started.len(), 1, "one onboarding");
+    assert_eq!(started[0].start_trigger, "hire");
+    let tutor_checklist = wl_hr::OnboardingTemplate::query()
+        .where_(wl_hr::OnboardingTemplate::NAME_EN.eq("Tutor and trainer onboarding"))
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("the tutor checklist is seeded");
+    let applied = started[0].templates(w.db()).await.unwrap();
+    assert!(
+        applied.iter().any(|t| t.template_id == tutor_checklist.id),
+        "the tutor checklist applies"
+    );
+    let steps = started[0].steps(w.db()).await.unwrap();
+    let mut told = Vec::new();
+    for step in &steps {
+        for user in step.assignees(w.db()).await.unwrap() {
+            told.push((user, step.title_en.clone(), step.due_date, step.owner.clone()));
+        }
+    }
+    for (name, user) in [
+        ("the centre manager", manager.id),
+        ("the academic coordinator", coordinator.id),
+        ("the employee", account.id),
+    ] {
+        assert!(told.iter().any(|(u, ..)| *u == user), "{name} has a step: {told:?}");
+    }
+    assert!(
+        told.iter()
+            .filter(|(u, ..)| *u == account.id)
+            .all(|(.., owner)| owner == "employee"),
+        "the employee holds the steps that are theirs"
+    );
+
+    // The role is active before the checklist is complete.
+    let (hr, _) = w.staff("Hana", host::roles::HR).await;
+    w.app.acting_as(&hr);
+    let page = w
+        .app
+        .htmx()
+        .post(
+            &format!("/hr/employees/{}/transitions/activate", hired.id),
+            &[("reason", "")],
+        )
+        .await;
+    assert!(
+        page.status.is_success() || page.status.is_redirection(),
+        "completion blocks nothing: {} {}",
+        page.status,
+        page.text()
+    );
+    assert_eq!(
+        wl_hr::Employee::find_or_404(w.db(), hired.id).await.unwrap().status,
+        wl_hr::employee::EmployeeStatus::Active
+    );
+    assert!(
+        steps.iter().any(|s| s.status == wl_hr::StepStatus::Open),
+        "and steps are still open"
+    );
+
+    // An open step of the employee's own is reminded after its due date.
+    let (_, title, due, _) = told
+        .iter()
+        .find(|(u, title, ..)| *u == account.id && title == "Upload your Emirates ID and your documents")
+        .cloned()
+        .expect("a step of the employee");
+    let reminded = |user: i64| {
+        let title = title.clone();
+        let w = &w;
+        async move {
+            support::messages_to(&w.app, "hr.onboarding_step_reminder", &User::find_or_404(w.db(), user).await.unwrap())
+                .await
+                .into_iter()
+                .filter(|m| m.rendered_body.contains(&title) || m.subject_label.as_deref() == Some(title.as_str()))
+                .count()
+        }
+    };
+    wl_hr::reminders::run(w.state(), due).await.unwrap();
+    w.app.run_all_jobs().await;
+    assert_eq!(reminded(account.id).await, 0, "not on the due date");
+    wl_hr::reminders::run(w.state(), due + TimeDelta::days(1)).await.unwrap();
+    w.app.run_all_jobs().await;
+    assert_eq!(reminded(account.id).await, 1, "the first run after it");
+    wl_hr::reminders::run(w.state(), due + TimeDelta::days(2)).await.unwrap();
+    w.app.run_all_jobs().await;
+    assert_eq!(reminded(account.id).await, 1, "not the next day");
+    wl_hr::reminders::run(w.state(), due + TimeDelta::days(3)).await.unwrap();
+    w.app.run_all_jobs().await;
+    assert_eq!(reminded(account.id).await, 2, "and two days after the first");
+}
