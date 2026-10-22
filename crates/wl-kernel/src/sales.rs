@@ -1243,6 +1243,169 @@ pub fn fulfilment_progress(state: &AppState) -> Arc<dyn FulfilmentProgress> {
     }
 }
 
+/// A sales order was placed through a channel that needs the seller to accept
+/// it, or its online payment was confirmed on such a channel: it waits in
+/// `pending_acceptance` (06: the order is `placed`). `SalesOrderConfirmed`
+/// follows when the seller accepts it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderPlaced {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The channel it came through.
+    pub channel: String,
+}
+
+impl Event for SalesOrderPlaced {}
+
+/// One line of a sales order, as a vertical reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderLineView {
+    /// The sale line (its id in `wl-sales`).
+    pub id: i64,
+    /// The position, from 1.
+    pub line_no: i64,
+    /// The code of the item as sold.
+    pub item_code: String,
+    /// The description as sold.
+    pub description: String,
+    /// Whether the line is an item (a loyalty redemption line is not).
+    pub is_item: bool,
+    /// The quantity, in thousandths.
+    pub quantity_milli: i64,
+    /// The quantity handed over, in thousandths.
+    pub fulfilled_milli: i64,
+    /// The quantity cancelled, in thousandths.
+    pub cancelled_milli: i64,
+    /// The price of one unit before VAT, in fils.
+    pub unit_price: i64,
+    /// The line with VAT, in fils.
+    pub gross: i64,
+}
+
+impl OrderLineView {
+    /// The quantity still open, in thousandths.
+    pub fn open_milli(&self) -> i64 {
+        (self.quantity_milli - self.fulfilled_milli - self.cancelled_milli).max(0)
+    }
+}
+
+/// A sales order, as a vertical reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderView {
+    /// The order.
+    pub id: SalesOrderId,
+    /// The number, e.g. `SO-2026-0001`.
+    pub number: String,
+    /// The customer.
+    pub party: PartyId,
+    /// The channel it came through.
+    pub channel: String,
+    /// The number in the channel's own system (an aggregator's).
+    pub external_number: Option<String>,
+    /// `on_account`, `online`, `cash_on_delivery`, `cash` or `card`.
+    pub payment_mode: String,
+    /// Whether it was paid online in full before it was placed.
+    pub prepaid: bool,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The total with VAT, in fils.
+    pub gross_total: i64,
+    /// The legal entity whose order it is.
+    pub legal_entity: Option<i64>,
+    /// The order's status, by its stored name.
+    pub status: String,
+    /// The lines, in order.
+    pub lines: Vec<OrderLineView>,
+}
+
+/// An order cancelled by its vertical as the system, with no approval: the
+/// vertical decided it (06: a failed own-rider delivery, `close_failed`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelByVertical {
+    /// The order.
+    pub order: SalesOrderId,
+    /// Why; the reason of the events and of the stock movements.
+    pub reason: String,
+    /// What happens to the goods of each line the fulfilment had started.
+    pub outcomes: Vec<(i64, LineOutcomeKind)>,
+    /// Keep what the customer paid: `wl-sales` requests no refund and
+    /// drafts no fee document; the vertical decides the refund itself.
+    pub keep_payment: bool,
+    /// The user the cancellation is on behalf of, if any.
+    pub by: Option<i64>,
+}
+
+/// What a vertical may ask of the sales orders without depending on
+/// `wl-sales`: read an order with its lines, accept or reject it as a user,
+/// and cancel it as the system. `wl-sales` provides it; without that module
+/// [`order_desk`] gives [`NoSalesOrderDesk`], which knows no order.
+pub trait SalesOrderDesk: Send + Sync + 'static {
+    /// The order `order` with its lines, or `None`.
+    fn find<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _order: SalesOrderId,
+    ) -> SalesFuture<'a, Option<OrderView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Accepts the order that waits in `pending_acceptance` as `user`
+    /// (`sales_orders.accept`).
+    fn accept<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _order: SalesOrderId,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Rejects the order that waits in `pending_acceptance` as `user`, with a
+    /// reason (`sales_orders.accept`).
+    fn reject<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _order: SalesOrderId,
+        _reason: &'a str,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Cancels the whole order as the system (see [`CancelByVertical`]).
+    fn cancel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: CancelByVertical,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+}
+
+/// The desk when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSalesOrderDesk;
+
+impl SalesOrderDesk for NoSalesOrderDesk {}
+
+/// Makes `desk` the app's [`SalesOrderDesk`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_order_desk(app: &mut Registry, desk: impl SalesOrderDesk) {
+    let desk: Arc<dyn SalesOrderDesk> = Arc::new(desk);
+    app.provide(desk);
+}
+
+/// The app's [`SalesOrderDesk`], or [`NoSalesOrderDesk`] when none is
+/// provided.
+pub fn order_desk(state: &AppState) -> Arc<dyn SalesOrderDesk> {
+    match state.provided::<Arc<dyn SalesOrderDesk>>() {
+        Some(desk) => Arc::clone(&desk),
+        None => Arc::new(NoSalesOrderDesk),
+    }
+}
+
 /// What a customer account owes and may owe (`SAL.RUL.01`, BL-SAL-10): the
 /// exposure counts the open orders, invoices and cheques, without the order
 /// being checked; the caller adds that order at the total it has now.

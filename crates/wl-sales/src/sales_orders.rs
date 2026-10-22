@@ -31,9 +31,11 @@ use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
-    FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment, ReverseFulfilment,
-    SALES_ORDER_SUBJECT_TYPE, SalesFuture, SalesOrderCancelled, SalesOrderClosed,
-    SalesOrderConfirmed, SalesOrderFulfilled, SalesOrderFulfilmentReversed, SalesOrderRejected,
+    CancelByVertical, FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment,
+    OrderLineView, OrderView, ReverseFulfilment, SALES_ORDER_SUBJECT_TYPE, SalesFuture,
+    SalesOrderCancelled, SalesOrderClosed, SalesOrderConfirmed, SalesOrderDesk,
+    SalesOrderFulfilled, SalesOrderFulfilmentReversed, SalesOrderId, SalesOrderPlaced,
+    SalesOrderRejected,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -594,6 +596,123 @@ impl OrderFulfilment for Fulfilment {
     }
 }
 
+/// The kernel's [`SalesOrderDesk`] for the verticals (06): read an order with
+/// its lines, accept or reject it, cancel it as the system.
+pub(crate) struct Desk;
+
+/// The order `id` as a vertical reads it.
+async fn view_of(state: &AppState, id: i64) -> Result<Option<OrderView>> {
+    let Some(order) = SalesOrder::find(&state.db, id).await? else {
+        return Ok(None);
+    };
+    let lines = SaleLine::of(&state.db, &order.subject()).await?;
+    Ok(Some(OrderView {
+        id: order.order_id(),
+        number: order.number.clone(),
+        party: order.party(),
+        channel: order.channel.clone(),
+        external_number: order.external_number.clone(),
+        payment_mode: order.payment_mode.clone(),
+        prepaid: crate::settle::is_prepaid(&order),
+        currency: order.currency.clone(),
+        gross_total: order.gross_total,
+        legal_entity: order.legal_entity_id,
+        status: order.status.as_str().to_owned(),
+        lines: lines
+            .iter()
+            .map(|line| OrderLineView {
+                id: line.id,
+                line_no: line.line_no,
+                item_code: line.item_code.clone(),
+                description: line.description.clone(),
+                is_item: line.kind == KIND_ITEM,
+                quantity_milli: line.quantity_milli,
+                fulfilled_milli: line.fulfilled_milli,
+                cancelled_milli: line.cancelled_milli,
+                unit_price: line.unit_price,
+                gross: line.gross(),
+            })
+            .collect(),
+    }))
+}
+
+impl SalesOrderDesk for Desk {
+    fn find<'a>(
+        &'a self,
+        state: &'a AppState,
+        order: SalesOrderId,
+    ) -> SalesFuture<'a, Option<OrderView>> {
+        Box::pin(async move { view_of(state, order.0).await })
+    }
+
+    fn accept<'a>(
+        &'a self,
+        state: &'a AppState,
+        user: &'a AuthUser,
+        order: SalesOrderId,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async move {
+            let row = SalesOrder::find_or_404(&state.db, order.0).await?;
+            let _ = row
+                .transition(ACCEPT)
+                .by(user)
+                .run(state)
+                .await
+                .map_err(|e| e.into_error())?;
+            Ok(())
+        })
+    }
+
+    fn reject<'a>(
+        &'a self,
+        state: &'a AppState,
+        user: &'a AuthUser,
+        order: SalesOrderId,
+        reason: &'a str,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async move {
+            let row = SalesOrder::find_or_404(&state.db, order.0).await?;
+            let _ = row
+                .transition(REJECT)
+                .by(user)
+                .reason(reason.to_owned())
+                .run(state)
+                .await
+                .map_err(|e| e.into_error())?;
+            Ok(())
+        })
+    }
+
+    fn cancel<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: CancelByVertical,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async move {
+            let choices = request
+                .outcomes
+                .iter()
+                .map(|(line, kind)| {
+                    // No fee: the vertical decides the money.
+                    crate::cancel_lines::WantedLine::new(*line, 0)
+                        .outcome(*kind)
+                        .fee(0)
+                })
+                .collect();
+            crate::cancel_lines::cancel_as_system(
+                state,
+                request.order.0,
+                &request.reason,
+                choices,
+                request.keep_payment,
+                request.by,
+            )
+            .await
+            .map(|_| ())
+        })
+    }
+}
+
 /// Emits the kernel events after an order transition committed.
 async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result {
     let name = event.transition.as_str();
@@ -602,6 +721,15 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
     };
     let (id, party) = (order.order_id(), order.party());
     match name {
+        SUBMIT_FOR_ACCEPTANCE | CONFIRM_PAYMENT_FOR_ACCEPTANCE => {
+            state
+                .emit(SalesOrderPlaced {
+                    order: id,
+                    party,
+                    channel: order.channel.clone(),
+                })
+                .await
+        }
         SUBMIT | ACCEPT | CONFIRM_PAYMENT => {
             state
                 .emit(SalesOrderConfirmed {
@@ -675,6 +803,7 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
 pub(crate) fn register(app: &mut Registry) {
     renox::state_machine::register::<SalesOrder>();
     wl_kernel::sales::provide_order_fulfilment(app, Fulfilment);
+    wl_kernel::sales::provide_order_desk(app, Desk);
     app.listen(|event: Transitioned<SalesOrder>, state: AppState| async move {
         announce(&state, &event).await
     });

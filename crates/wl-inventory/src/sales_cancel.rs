@@ -67,6 +67,20 @@ use crate::texts::said;
 /// The reason on the wastage movements of a scrapped line.
 pub const SCRAP_REASON: &str = "cancelled order";
 
+/// The cancel reason of a failed own-rider delivery (06 `close_failed`): the
+/// scrapped food is posted as wastage with this reason instead of
+/// [`SCRAP_REASON`] (BL-FNB-02).
+pub const FAILED_DELIVERY_REASON: &str = "failed delivery";
+
+/// The reason on the wastage movements of a scrap cancelled for `cancel_reason`.
+fn scrap_reason(cancel_reason: &str) -> String {
+    if cancel_reason.trim() == FAILED_DELIVERY_REASON {
+        FAILED_DELIVERY_REASON.to_owned()
+    } else {
+        SCRAP_REASON.to_owned()
+    }
+}
+
 /// The reason a dispatch is cancelled with.
 pub const CANCEL_REASON: &str = "sales order line cancelled";
 
@@ -127,6 +141,8 @@ struct LineRequest {
     /// The quantity cancelled; `None` for the whole line of a cancelled order.
     quantity_milli: Option<i64>,
     outcome: Option<LineOutcomeKind>,
+    /// The reason on the wastage movements of a scrap.
+    reason: String,
 }
 
 /// What taking quantity off the dispatch lines of a sale line did.
@@ -155,6 +171,7 @@ async fn take_off_lines(
     line: i64,
     limit: Option<i64>,
     scrap: bool,
+    reason: &str,
 ) -> Result<Taken> {
     let rows = DispatchLine::query()
         .where_(DispatchLine::SALE_LINE_ID.eq(Some(line)))
@@ -195,7 +212,7 @@ async fn take_off_lines(
                 item.average_cost,
                 value,
                 order,
-                Some(SCRAP_REASON.to_owned()),
+                Some(reason.to_owned()),
                 None,
             );
             moved.insert(&mut *tx).await?;
@@ -310,6 +327,7 @@ async fn apply_line(state: &AppState, request: LineRequest) -> Result {
         request.line,
         request.quantity_milli,
         scrap,
+        &request.reason,
     )
     .await?;
     let mut value = taken.value;
@@ -356,7 +374,7 @@ async fn apply_line(state: &AppState, request: LineRequest) -> Result {
                 &location,
                 &recipe.components,
                 left,
-                SCRAP_REASON,
+                &request.reason,
             )
             .await?;
             value += wasted.value;
@@ -475,6 +493,7 @@ pub async fn on_line_cancelled(state: &AppState, event: &SalesOrderLineCancelled
             line: event.line,
             quantity_milli: Some(event.quantity_milli),
             outcome: event.outcome,
+            reason: scrap_reason(&event.reason),
         },
     )
     .await
@@ -502,6 +521,7 @@ pub async fn on_order_cancelled(state: &AppState, event: &SalesOrderCancelled) -
                 line: outcome.line,
                 quantity_milli: None,
                 outcome: Some(outcome.kind),
+                reason: scrap_reason(&event.reason),
             },
         )
         .await?;
@@ -542,6 +562,7 @@ pub async fn on_amended(state: &AppState, event: &SalesOrderAmended) -> Result {
                 line: line.line,
                 quantity_milli: Some(lowered),
                 outcome: None,
+                reason: SCRAP_REASON.to_owned(),
             },
         )
         .await?;

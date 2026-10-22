@@ -156,6 +156,10 @@ pub struct CancelAsk {
     pub reason: String,
     /// The lines and their choices.
     pub lines: Vec<WantedLine>,
+    /// Keep what the customer paid: the cancellation requests no refund and
+    /// drafts no fee document, the caller (06 `close_failed`) decides the
+    /// refund itself.
+    pub keep_payment: bool,
 }
 
 /// What the plan needs from outside the order's rows.
@@ -233,6 +237,9 @@ pub struct CancelDetail {
     pub complete: bool,
     /// Whether the whole order was cancelled (`cancel`, BL-SAL-07).
     pub whole: bool,
+    /// Whether the payment is kept: no refund is requested by the
+    /// cancellation (see [`CancelAsk::keep_payment`]).
+    pub keep_payment: bool,
 }
 
 impl CancelInput {
@@ -646,6 +653,7 @@ async fn cancel_in(
         lines: found.lines.clone(),
         complete: found.complete,
         whole,
+        keep_payment: found.ask.keep_payment,
     };
     OrderChange::record(tx, order.id, kind, &found.ask.reason, run.by, &detail).await?;
     Ok(())
@@ -756,6 +764,7 @@ pub async fn cancel_line(
             kind: CancelKind::Line,
             reason: reason.to_owned(),
             lines: vec![wanted],
+            keep_payment: false,
         },
     )
     .await
@@ -785,6 +794,7 @@ pub async fn cancel_remaining(
             kind: CancelKind::Remaining,
             reason: reason.to_owned(),
             lines: choices,
+            keep_payment: false,
         },
     )
     .await
@@ -816,9 +826,55 @@ pub async fn cancel_order(
             kind: CancelKind::Order,
             reason: reason.to_owned(),
             lines: choices,
+            keep_payment: false,
         },
     )
     .await
+}
+
+/// Cancels the whole order `id` as the system, with no approval: the
+/// vertical decided it (06 `close_failed` after a failed own-rider delivery,
+/// BL-FNB-02). `choices` give the outcome of every line whose fulfilment
+/// started; `keep_payment` leaves the refund to the caller. The `_approved`
+/// twin of `cancel` runs, so the events, the stock outcome and the change
+/// record are the ones of any cancellation.
+///
+/// # Errors
+///
+/// 422 when the order is not in a state `cancel` leaves, something was
+/// fulfilled, a started line has no outcome, or the reason is blank.
+pub async fn cancel_as_system(
+    state: &AppState,
+    id: i64,
+    reason: &str,
+    choices: Vec<WantedLine>,
+    keep_payment: bool,
+    by: Option<i64>,
+) -> Result<SalesOrder> {
+    let order = SalesOrder::find_or_404(&state.db, id).await?;
+    let lines = SaleLine::of(&state.db, &order.subject()).await?;
+    let facts = facts_of(state, &order, &lines).await?;
+    let ask = CancelAsk {
+        kind: CancelKind::Order,
+        reason: reason.to_owned(),
+        lines: choices,
+        keep_payment,
+    };
+    let mut found = plan(&order, &lines, &ask, &facts);
+    found.by = by;
+    if let Some(problem) = found.problem.clone() {
+        return Err(refused(problem));
+    }
+    let name = wl_kernel::machines::approved(CANCEL_ORDER);
+    let _ = order
+        .transition(&name)
+        .by_system()
+        .reason(reason.to_owned())
+        .input(&found)
+        .run(state)
+        .await
+        .map_err(|e| e.into_error())?;
+    SalesOrder::find_or_404(&state.db, id).await
 }
 
 /// The final check of a request for a cancellation: before the approved
@@ -884,6 +940,7 @@ mod tests {
             kind,
             reason: "out of stock".into(),
             lines,
+            keep_payment: false,
         }
     }
 

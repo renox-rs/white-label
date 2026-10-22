@@ -475,6 +475,7 @@ pub async fn demo_order_changes(db: &Db, party: i64) -> Result<usize> {
             }],
             complete: true,
             whole: false,
+            keep_payment: false,
         };
         OrderChange {
             order_id: placed.id,
@@ -747,6 +748,7 @@ pub async fn demo_order_cancellations(db: &Db, party: i64) -> Result<usize> {
             lines: details,
             complete: false,
             whole: true,
+            keep_payment: false,
         };
         OrderChange {
             order_id: cancelled.id,

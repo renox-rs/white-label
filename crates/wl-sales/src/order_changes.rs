@@ -293,6 +293,7 @@ mod tests {
             ],
             complete: false,
             whole: false,
+            keep_payment: false,
         };
         let outcomes = outcomes_of(&detail);
         assert_eq!(outcomes.len(), 1);
