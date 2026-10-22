@@ -75,6 +75,7 @@
     <rx-alert rx-if="awaiting_hint" kind="info" :message="awaiting_hint"/>
     <rx-alert rx-if="waiting_alert" kind="warning" :message="waiting_alert"/>
     <rx-alert rx-if="amend_blocked" kind="info" :message="amend_blocked"/>
+    <rx-alert rx-if="remaining_blocked" kind="info" :message="remaining_blocked"/>
     <rx-alert rx-if="expired_hint" kind="warning" :message="expired_hint"/>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['counter.lines']" card>
       <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>

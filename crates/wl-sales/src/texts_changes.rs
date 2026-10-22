@@ -132,6 +132,10 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
         "wl_sales.cancelling.remaining_done",
         "The remaining lines are cancelled.",
     ),
+    (
+        "wl_sales.cancelling.remaining_blocked",
+        "Cancel the remaining lines is offered once something was handed over. Nothing was yet: cancel the order instead.",
+    ),
     ("wl_sales.cancelling.open", "Open"),
     (
         "wl_sales.cancelling.problem.state",

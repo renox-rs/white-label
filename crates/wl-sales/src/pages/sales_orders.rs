@@ -303,6 +303,7 @@ pub(crate) struct ShowPage {
     amend_blocked: String,
     amend_hint: String,
     can_cancel_remaining: bool,
+    remaining_blocked: String,
     can_resolve_link: bool,
     expired_hint: String,
     waiting_alert: String,
@@ -492,6 +493,14 @@ async fn show(
         ) && user.has_permission(permissions::SALES_ORDERS_CANCEL),
         can_cancel_remaining: order.status == SalesOrderStatus::PartiallyFulfilled
             && user.has_permission(permissions::SALES_ORDERS_CANCEL),
+        // Nothing handed over yet: the whole order is cancelled instead.
+        remaining_blocked: if order.status == SalesOrderStatus::Confirmed
+            && user.has_permission(permissions::SALES_ORDERS_CANCEL)
+        {
+            text(&lang, "cancelling.remaining_blocked")
+        } else {
+            String::new()
+        },
         // `amend` is not offered on an aggregator order: say why instead.
         can_amend: amendable_state && holds_amend && channel_ok,
         amend_blocked: if amendable_state && holds_amend && !channel_ok {
