@@ -34,10 +34,7 @@ use wl_payments::config::PaymentsConfig;
 use support::{company, entity, fnb_booted, messages_to, person};
 
 fn holds(role: &str, permission: &str) -> bool {
-    host::roles::ROLES
-        .iter()
-        .find(|(name, _)| *name == role)
-        .is_some_and(|(_, grants)| grants.contains(&permission))
+    host::roles::grants_of(role).contains(&permission)
 }
 
 fn this_monday() -> NaiveDate {
@@ -330,6 +327,10 @@ async fn scene() -> (TestApp, LegalEntity, User, User) {
     let accountant = person(&app, "Amal", ACCOUNTANT).await;
     SupplierBill::query().delete(app.db()).await.unwrap();
     let zcd = entity(&app, "ZCD").await;
+    // The Sharjah entity has cash of its own, so that it is not below its
+    // threshold and only ZCD is under test.
+    let zcs = entity(&app, "ZCS").await;
+    bank(&app, &zcs, 10_000_000).await;
     (app, zcd, director, accountant)
 }
 

@@ -28,7 +28,15 @@ fn holds(role: &str, permission: &str) -> bool {
 
 async fn booted() -> TestApp {
     let config = ClientConfig::load(DEMO).expect("the demo client");
-    TestApp::new(host::app_for(config).unwrap()).await
+    let app = TestApp::new(host::app_for(config).unwrap()).await;
+    // As a deployment does before the demo: the install, then the seeds (the
+    // ticket categories the demo's tasks are opened in come from them).
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .expect("wl:install runs");
+    app.kernel().seed().await.expect("the seeds run");
+    app
 }
 
 #[test]
