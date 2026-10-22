@@ -297,6 +297,7 @@ async fn an_unpaid_order_with_nothing_started_is_cancelled_at_once() {
 async fn a_blank_reason_is_refused() {
     let (t, _c, order, _items, _sam) = world("on_account").await;
     t.app
+        .htmx()
         .post(
             &format!("/sales-orders/{}/cancel", order.id),
             &[("reason", "")],

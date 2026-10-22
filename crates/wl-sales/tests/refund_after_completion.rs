@@ -278,6 +278,7 @@ async fn without_a_complaint_category_the_refund_is_refused() {
     // Through the order's form: the category is a required field.
     let key = format!("line_{}_refund", items[0].id);
     t.app
+        .htmx()
         .post(
             &format!("/sales-orders/{}/refund", order.id),
             &[
@@ -290,7 +291,18 @@ async fn without_a_complaint_category_the_refund_is_refused() {
         .await
         .assert_status(422);
     // A category outside the list of the settings is refused too.
-    refund(&t, &order, &items[0], "20.00", &[("category", "bad_mood")])
+    let key = format!("line_{}_refund", items[0].id);
+    t.app
+        .htmx()
+        .post(
+            &format!("/sales-orders/{}/refund", order.id),
+            &[
+                ("reason", "arrived cold"),
+                ("category", "bad_mood"),
+                ("party", "driver_or_rider"),
+                (key.as_str(), "20.00"),
+            ],
+        )
         .await
         .assert_status(422);
 

@@ -72,6 +72,7 @@ async fn the_order_form_refuses_a_number_the_channel_used() {
     )
     .await;
     t.app
+        .htmx()
         .post(
             "/sales-orders",
             &[
