@@ -97,6 +97,27 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewPolicy) -> Result
     Ok(policy)
 }
 
+/// Whether the patient has this card on file already: a policy with the same
+/// payer and member id whose days overlap `new`'s. The form of the policies
+/// page asks before it records; the service itself records what it is given
+/// (a clinic may hold the same card on two plans in a test or a migration).
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn is_on_file(state: &AppState, new: &NewPolicy) -> Result<bool> {
+    let on_file = InsurancePolicy::query()
+        .where_(InsurancePolicy::PATIENT_PARTY_ID.eq(new.patient.0))
+        .where_(InsurancePolicy::PAYER_PARTY_ID.eq(new.payer.0))
+        .where_(InsurancePolicy::MEMBER_ID.eq(new.member_id.trim()))
+        .get(&state.db)
+        .await?;
+    Ok(on_file.iter().any(|policy| {
+        policy.valid_to.is_none_or(|to| to >= new.valid_from)
+            && new.valid_to.is_none_or(|to| to >= policy.valid_from)
+    }))
+}
+
 /// An updated card replaces the old one on the same policy: its new
 /// *valid to* date (the image comes with the portal upload).
 ///

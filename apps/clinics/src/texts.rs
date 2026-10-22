@@ -486,6 +486,30 @@ const TEXTS: &[(&str, &str)] = &[
         "clinics.policies.problem.dates",
         "The policy cannot end before it starts.",
     ),
+    (
+        "clinics.policies.problem.duplicate",
+        "This policy is on file already for the patient: same payer and member id, and the dates overlap.",
+    ),
+    (
+        "clinics.policies.problem.patient",
+        "Give the patient's party number, as the Parties list shows it (23 or P-00023).",
+    ),
+    (
+        "clinics.policies.problem.payer",
+        "Give the payer's party number, as the Parties list shows it (25 or P-00025).",
+    ),
+    (
+        "clinics.policies.problem.patient_unknown",
+        "There is no party with the patient's number.",
+    ),
+    (
+        "clinics.policies.problem.payer_unknown",
+        "There is no party with the payer's number.",
+    ),
+    (
+        "clinics.policies.problem.payer_is_patient",
+        "The payer is the patient. Give the number of the insurer or the TPA.",
+    ),
     // Charge capture (CLN.ENC.01, CLN.ENC.02; BL-CLN-05, BL-CLN-06).
     ("clinics.charges.title", "Charge capture"),
     ("clinics.charges.empty", "Nothing recorded yet"),
@@ -623,8 +647,13 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("clinics.contract.plan", "Plan"),
     ("clinics.contract.agreement", "Payer agreement"),
-    ("clinics.contract.copay", "Copay (basis points)"),
-    ("clinics.contract.deductible", "Deductible a visit (fils)"),
+    ("clinics.contract.copay", "Copay (%)"),
+    (
+        "clinics.contract.problem.copay",
+        "The copay is a percentage from 0 to 100, for example 20 or 12.5.",
+    ),
+    ("clinics.contract.problem.contract", "Choose the contract."),
+    ("clinics.contract.deductible", "Deductible a visit (AED)"),
     ("clinics.contract.valid_from", "From"),
     ("clinics.contract.valid_to", "To"),
     ("clinics.contract.created", "Contract recorded."),
@@ -638,7 +667,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("clinics.contract.service", "Service code"),
     (
         "clinics.contract.price",
-        "Payer's price (fils, blank = price list)",
+        "Payer's price (AED, blank = price list)",
     ),
     ("clinics.contract.covered", "Covered"),
     ("clinics.contract.covered_yes", "Covered"),

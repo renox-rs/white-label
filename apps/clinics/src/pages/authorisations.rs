@@ -23,7 +23,9 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 
-use super::{Texts, invalid, parse_date, parse_id, party_name, require, text};
+use super::{
+    Texts, invalid, parse_date, parse_id, parse_party, party_exists, party_name, require, text,
+};
 use crate::authorisation::{AuthStatus, PriorAuthService, PriorAuthorisation};
 use crate::authorisations::{self, NewAuthorisation};
 use crate::permissions;
@@ -431,7 +433,11 @@ async fn service_add(
     Form(form): Form<ServiceForm>,
 ) -> Result<Response> {
     require(&user, permissions::AUTHORISATIONS_MANAGE)?;
-    let payer = parse_id(&form.payer).ok_or_else(|| invalid("payer: 1, 2, 3 ..."))?;
+    let payer =
+        parse_party(&form.payer).ok_or_else(|| invalid(&text(&lang, "policies.problem.payer")))?;
+    if !party_exists(&state, payer).await? {
+        return Err(invalid(&text(&lang, "policies.problem.payer_unknown")));
+    }
     authorisations::require_for(&state, PartyId(payer), &form.code).await?;
     done(&lang, "authorisation.required_added")
 }
