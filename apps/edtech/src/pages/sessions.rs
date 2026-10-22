@@ -23,10 +23,12 @@ use renox::db::now;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
+use wl_kernel::integrations::web::banner_for;
 
 use super::{Texts, invalid, parse_date, parse_local_time, parse_number, require, text};
 use crate::attendance::Mark;
 use crate::batch::Batch;
+use crate::defaults;
 use crate::enrolment::EnrolmentKind;
 use crate::enrolments::party_name;
 use crate::roster;
@@ -218,6 +220,7 @@ pub(crate) struct ShowPage {
     can_roster: bool,
     can_excuse: bool,
     can_correct: bool,
+    integration_banner: Option<renox::serde_json::Value>,
 }
 
 /// One student of the roster of a session.
@@ -411,6 +414,7 @@ async fn show(
                 || user.has_permission(permissions::BATCHES_MANAGE)),
         can_excuse: scheduled && user.has_permission(permissions::BATCHES_MANAGE),
         can_correct: crate::corrections::may_correct(&user, &session),
+        integration_banner: banner_for(&state.db, defaults::SESSION_SCREEN, &lang).await?,
     }))
 }
 

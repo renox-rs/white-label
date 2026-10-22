@@ -64,6 +64,7 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
+    <rx-include template="wl-kernel/integration_banner.html"/>
     <rx-alert rx-if="flagged" kind="warning" :message="flag ~ ': ' ~ flag_reason"/>
     <rx-card :title="tx['sessions.details']">
       <rx-infolist columns="2">

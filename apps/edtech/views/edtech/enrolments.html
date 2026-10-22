@@ -26,6 +26,7 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
+    <rx-include template="wl-kernel/integration_banner.html"/>
     <rx-table :rows="enrolments" as="row" :key="row.id" :caption="tx['enrolments.title']" card>
       <rx-column :label="tx['enrolments.number']"><a href="{{ route('edtech.enrolment', row.id) }}">{{ row.number }}</a></rx-column>
       <rx-column :label="tx['enrolments.student']">{{ row.student }}</rx-column>

@@ -11,6 +11,7 @@
       </template>
       <rx-link-button :href="withdraw_url" :label="tx['chargeback.withdraw']" icon="trash" variant="secondary"/>
     </rx-page-header>
+    <rx-include template="wl-kernel/integration_banner.html"/>
     <rx-alert kind="info" :message="tx['chargeback.subtitle']"/>
     <rx-card :title="tx['chargeback.title']">
       <rx-infolist columns="2">

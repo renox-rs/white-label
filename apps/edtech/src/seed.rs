@@ -34,11 +34,22 @@ pub const STUDENT_ID_KIND: &str = "student_emirates_id";
 /// (`DOC.SIG.01`, `PTY.CNS.01`, §9).
 pub const GUARDIAN_CONSENT_KIND: &str = "guardian_consent";
 
-/// The kinds the tutor documents are guarded by, as wl-scheduling stores them
-/// on a one-to-one service type (`required_qualifications`). BL-EDU-17 sets
-/// the per-student conditions (police clearance only when the student is a
-/// minor); the starter service types ask for none.
+/// The kinds of qualification no service type of the centre starts with (the
+/// trial class and the placement test are not tutor-guarded). The one-to-one
+/// session asks [`ONE_TO_ONE_QUALIFICATIONS`] (BL-EDU-17).
 pub const REQUIRED_QUALIFICATIONS: &str = "";
+
+/// The code of the one-to-one service type.
+pub const ONE_TO_ONE_SERVICE: &str = "one_to_one";
+
+/// The kinds a tutor must hold to take a one-to-one booking, as wl-scheduling
+/// stores them on the service type (`required_qualifications`, `SCH.ACL.04`):
+/// the police clearance. wl-scheduling asks the same kinds whoever the student
+/// is, so an adult student's one-to-one session asks for it too (the spec asks
+/// it only for a minor: `$S/f10/DEFERRED.md`, #452). The private tutor permit
+/// or freelance visa is asked of freelance tutors only, by
+/// [`crate::tutor_bookings`].
+pub const ONE_TO_ONE_QUALIFICATIONS: &str = POLICE_CLEARANCE_KIND;
 
 /// The days before the expiry of a tutor document that `DOC.RUL.01` reminds.
 pub const REMINDER_DAYS: &[i64] = &[90, 60, 30, 7];
@@ -76,6 +87,9 @@ pub struct ServiceSeed {
     pub name_ar: &'static str,
     /// How long it takes.
     pub minutes: i64,
+    /// The qualification kinds the person who delivers it must hold,
+    /// comma separated (`SCH.ACL.04`).
+    pub qualifications: &'static str,
 }
 
 /// The service types the host installs where the database has none of that
@@ -88,18 +102,21 @@ pub const SERVICE_TYPES: &[ServiceSeed] = &[
         name_en: "Trial class",
         name_ar: "حصة تجريبية",
         minutes: 60,
+        qualifications: REQUIRED_QUALIFICATIONS,
     },
     ServiceSeed {
         code: "placement_test",
         name_en: "Placement test",
         name_ar: "اختبار تحديد المستوى",
         minutes: 45,
+        qualifications: REQUIRED_QUALIFICATIONS,
     },
     ServiceSeed {
-        code: "one_to_one",
+        code: ONE_TO_ONE_SERVICE,
         name_en: "One-to-one session",
         name_ar: "حصة فردية",
         minutes: 60,
+        qualifications: ONE_TO_ONE_QUALIFICATIONS,
     },
 ];
 

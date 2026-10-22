@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::dubai_text;
+use wl_kernel::integrations::web::banner_for;
 use wl_kernel::parties::directory;
 
 use super::{
@@ -38,6 +39,7 @@ use super::{
 use crate::batch::{Batch, BatchStatus};
 use crate::certificate::Certificate;
 use crate::course::Course;
+use crate::defaults;
 use crate::enrolment::{
     Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
     InstalmentStatus,
@@ -145,6 +147,7 @@ pub(crate) struct IndexPage {
     batch_options: Vec<[String; 2]>,
     batch_selected: String,
     can_manage: bool,
+    integration_banner: Option<renox::serde_json::Value>,
 }
 
 /// `GET /edtech/enrolments`.
@@ -211,6 +214,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         batch_options,
         batch_selected,
         can_manage: user.has_permission(permissions::ENROLMENTS_MANAGE),
+        integration_banner: banner_for(&state.db, defaults::DESK_SCREEN, &lang).await?,
     }))
 }
 
@@ -794,6 +798,7 @@ pub(crate) struct CollectPage {
     can_send: bool,
     withdraw_url: String,
     enrolment_url: String,
+    integration_banner: Option<renox::serde_json::Value>,
 }
 
 /// `GET /edtech/enrolments/{id}/collect`: the money to collect after a payment
@@ -842,6 +847,7 @@ async fn collect(
         rows,
         withdraw_url: crate::chargebacks::withdraw_path(e.id),
         enrolment_url: crate::chargebacks::withdraw_path(e.id),
+        integration_banner: banner_for(&state.db, defaults::COLLECT_SCREEN, &lang).await?,
     }))
 }
 

@@ -17,6 +17,7 @@ pub mod course;
 pub mod corrections;
 pub mod courses;
 pub mod credits;
+pub mod defaults;
 pub mod documents;
 mod db;
 pub mod eligibility;
@@ -60,6 +61,7 @@ pub mod transfer;
 pub mod tutor_alert;
 pub mod tutor_alerts;
 pub mod tutor_assignment;
+pub mod tutor_bookings;
 pub mod tutors;
 pub mod waiting;
 
@@ -218,6 +220,8 @@ impl Module for EdTech {
         permits::register();
         permits::listen(app);
         notices::register_types();
+        // A freelance tutor of a one-to-one booking holds the permit or visa.
+        tutor_bookings::register(app);
         // A tutor who will not be eligible or available: the sessions flagged,
         // the coordinator's task and the centre manager told a day before
         // (`EDU.RUL.12`).

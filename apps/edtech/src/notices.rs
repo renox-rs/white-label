@@ -2,10 +2,28 @@
 //! a message to the family of an enrolment (the student, or the guardian of a
 //! student under 18, and the payer when that is another party).
 //!
-//! Two notification types carry them, `edtech.notice` for staff and
-//! `edtech.family_notice` for students and guardians. Each has a title and a
-//! body the caller words, in English; the types name no group and take `none`
-//! when a message gives up, so staff keep the item on their list.
+//! Three notification types carry them (10 §7.2 *Notification types*,
+//! BL-EDU-17; the values are [`crate::defaults`]):
+//!
+//! - `edtech.family_notice` for students and guardians (session reminders and
+//!   changes, absence alerts, tutor changes, seat hold and lapse notices,
+//!   package reminders, certificate notices): the group *Guardian messages*,
+//!   WhatsApp then e-mail, and when it gives up the other guardian is tried,
+//!   then the counsellor gets a task (an adult student without a guardian goes
+//!   straight to the task);
+//! - `edtech.terms_request` for the terms, the refund policy and the guardian
+//!   consent request: the group *Portal invitations, document requests,
+//!   signature requests*, the contact marked invalid and a task to the
+//!   counsellor. Nothing sends it yet (`DOC.SIG.01` is deferred); the type is
+//!   registered so that the sender finds it ready;
+//! - `edtech.notice` for staff: no group and no reaction, since staff always
+//!   also get the in-app notification and keep the item on their list.
+//!
+//! Each has a title and a body the caller words, in English. None is
+//! statutory. The invoices, membership charges, payment notices and reminders
+//! are the shared modules' types; the host sets their reactions
+//! (`host/src/app/edtech_settings.rs`), and the trial and one-to-one booking
+//! messages keep the wl-scheduling group.
 
 use renox::auth::permissions::users_with_role;
 use renox::prelude::*;
@@ -14,6 +32,7 @@ use wl_kernel::notify::{
 };
 use wl_kernel::{PartyId, Subject};
 
+use crate::defaults;
 use crate::enrolment::Enrolment;
 use crate::texts::english;
 
@@ -22,6 +41,10 @@ pub const NOTICE: &str = "edtech.notice";
 
 /// The notification type of a notice to the family of an enrolment.
 pub const FAMILY_NOTICE: &str = "edtech.family_notice";
+
+/// The notification type of the terms, refund policy and guardian consent
+/// requests.
+pub const TERMS_REQUEST: &str = "edtech.terms_request";
 
 /// The types of this module.
 pub fn notification_types() -> Vec<NotificationTypeDef> {
@@ -34,9 +57,17 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
             .give_up(&[GiveUpReaction::None])
             .template(NotifyChannel::Email, "en", Some(&subject), &body),
         NotificationTypeDef::new(FAMILY_NOTICE, "edtech")
-            .group("")
+            .group(defaults::GUARDIAN_GROUP)
             .category(Category::Transactional)
-            .give_up(&[GiveUpReaction::None])
+            .give_up(&defaults::GUARDIAN_GIVE_UP)
+            .staff_role(defaults::GUARDIAN_TASK_ROLE)
+            .channels(&defaults::FAMILY_CHANNELS)
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+        NotificationTypeDef::new(TERMS_REQUEST, "edtech")
+            .group(defaults::REQUEST_GROUP)
+            .category(Category::Transactional)
+            .give_up(&defaults::REQUEST_GIVE_UP)
+            .staff_role(defaults::REQUEST_TASK_ROLE)
             .template(NotifyChannel::Email, "en", Some(&subject), &body),
     ]
 }
