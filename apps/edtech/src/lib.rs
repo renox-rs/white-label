@@ -31,6 +31,7 @@ pub mod frozen;
 pub mod lapse;
 pub mod make_up;
 pub mod linked;
+pub mod money_defaults;
 pub mod notices;
 pub mod pages;
 pub mod permits;
