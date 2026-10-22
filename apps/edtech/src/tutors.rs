@@ -1,8 +1,8 @@
 //! Assigning a tutor (10 §7.1 *Batch* `change_tutor`, *Session*
 //! `change_tutor`, `EDU.ACL.14`): the assignments kept as history
 //! ([`crate::tutor_assignment`]), the change of the tutor of a batch from a
-//! date, and the slot [`tutor_eligible`] where BL-EDU-08 puts the guard that
-//! the tutor's documents are valid on every session date.
+//! date, and the guard [`tutor_eligible`] (BL-EDU-08) that the tutor's documents
+//! are valid on every session date ([`crate::eligibility`]).
 //!
 //! Decisions:
 //!
@@ -13,7 +13,7 @@
 //!   batch's tutor from the date to the new one, all or nothing: the new tutor
 //!   must be free for every one of those sessions and eligible on every one of
 //!   those dates, else nothing changes. BL-EDU-09 adds the notification and
-//!   the cases around it; BL-EDU-08 fills [`tutor_eligible`].
+//!   the cases around it; BL-EDU-08's [`tutor_eligible`] is the eligibility check.
 //! - A `planned` batch has no sessions yet: its tutor is replaced in place and
 //!   checked on the dates of its plan.
 
@@ -41,17 +41,22 @@ pub struct Tutor {
     pub employee_id: Option<i64>,
 }
 
-/// The guard slot of `EDU.ACL.14`: the tutor's documents are valid on every
-/// one of `dates` (police clearance when minors are enrolled; the permit or
-/// the freelance visa for a freelance tutor). It passes today; BL-EDU-08 puts
-/// `qualification_valid` here, naming the first failing date.
+/// The guard of `EDU.ACL.14`: the tutor's documents are valid on every one of
+/// `dates` for `batch` (police clearance when minors are enrolled; the permit or
+/// the freelance visa for a freelance tutor), by `qualification_valid`
+/// ([`crate::eligibility`]).
 ///
 /// # Errors
 ///
-/// A 422 naming the missing kind and the first failing date (BL-EDU-08).
-pub async fn tutor_eligible(state: &AppState, tutor: &Tutor, dates: &[NaiveDate]) -> Result {
-    let _ = (state, tutor, dates);
-    Ok(())
+/// A 422 naming the missing kind and the first failing date, and the other
+/// dates it fails on.
+pub async fn tutor_eligible(
+    state: &AppState,
+    tutor: &Tutor,
+    batch: &Batch,
+    dates: &[NaiveDate],
+) -> Result {
+    crate::eligibility::check(state, tutor, batch, dates).await
 }
 
 /// Records `resource` as the tutor of batch `batch_id` from `from`: the open
@@ -158,7 +163,7 @@ pub async fn change_batch_tutor(
                 .collect::<Vec<_>>(),
         )
     };
-    tutor_eligible(state, &tutor, &dates).await?;
+    tutor_eligible(state, &tutor, &batch, &dates).await?;
     let clashes = sessions::conflicts(&state.db, Some(resource), None, &slots, Except::default())
         .await?;
     sessions::no_clash(&clashes)?;

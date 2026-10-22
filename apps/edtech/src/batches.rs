@@ -246,8 +246,8 @@ pub async fn open(state: &AppState, by: &AuthUser, id: i64) -> Result<Batch> {
 /// and the room are free for every session of the plan (all or nothing: the
 /// refusal names the days that fail), and the centre permit and the course
 /// approval, where the course needs one, are valid on the **last session date**
-/// (BL-EDU-07: they must cover the whole batch; no override). BL-EDU-08 adds the
-/// tutor's eligibility on every session date.
+/// (BL-EDU-07: they must cover the whole batch; no override), and the tutor's
+/// documents are valid on **every** session date (BL-EDU-08, `EDU.ACL.14`).
 async fn before_open(
     state: &AppState,
     batch: &Batch,
@@ -255,6 +255,14 @@ async fn before_open(
     actor: i64,
 ) -> Result {
     sessions::check_free(&state.db, batch, plan).await?;
+    if let Some(resource) = batch.tutor_resource_id {
+        let tutor = Tutor {
+            resource_id: resource,
+            employee_id: batch.tutor_employee_id,
+        };
+        let dates: Vec<NaiveDate> = plan.iter().map(|p| p.date).collect();
+        tutors::tutor_eligible(state, &tutor, batch, &dates).await?;
+    }
     if let Some(last) = plan.last() {
         crate::documents::check_batch_open(state, batch, last.date, Some(actor)).await?;
     }

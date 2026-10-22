@@ -392,14 +392,14 @@ async fn run(
 }
 
 /// `reschedule`: the session moves to `date` at `start_time` (`HH:MM`, Dubai
-/// time) and keeps its length. The tutor and the room must be free then.
-///
-/// BL-EDU-08 adds the tutor's eligibility on the new date here.
+/// time) and keeps its length. The tutor and the room must be free then, and
+/// the tutor's documents must be valid on the new date (`EDU.ACL.14`).
 ///
 /// # Errors
 ///
 /// A 403 without `batches.manage`; a 422 for a time that is not `HH:MM`, a
-/// session that is not `scheduled`, or a tutor or room already taken.
+/// session that is not `scheduled`, a tutor or room already taken, or a tutor
+/// whose documents do not cover the new date.
 pub async fn reschedule(
     state: &AppState,
     by: &AuthUser,
@@ -414,6 +414,14 @@ pub async fn reschedule(
     let starts_at = BusinessCalendar::default().from_local(date.and_time(time));
     let ends_at = starts_at + length;
     if session.status == SessionStatus::Scheduled {
+        if let Some(resource) = session.tutor_resource_id {
+            let batch = Batch::find_or_404(&state.db, session.batch_id).await?;
+            let tutor = Tutor {
+                resource_id: resource,
+                employee_id: session.tutor_employee_id,
+            };
+            tutors::tutor_eligible(state, &tutor, &batch, &[date]).await?;
+        }
         let clashes = conflicts(
             &state.db,
             session.tutor_resource_id,
@@ -438,14 +446,14 @@ pub async fn reschedule(
 }
 
 /// `change_tutor`: the session is taught by `resource` (and the employee
-/// behind it). The new tutor must be free then.
-///
-/// BL-EDU-08 and BL-EDU-09 add the tutor's eligibility on the date here.
+/// behind it). The new tutor must be free then and their documents valid on the
+/// date (`EDU.ACL.14`).
 ///
 /// # Errors
 ///
 /// A 403 without `batches.manage`; a 422 for a session that is not
-/// `scheduled` or a tutor already taken.
+/// `scheduled`, a tutor already taken, or a tutor whose documents do not cover
+/// the date.
 pub async fn change_tutor(
     state: &AppState,
     by: &AuthUser,
@@ -458,7 +466,8 @@ pub async fn change_tutor(
         resource_id: resource,
         employee_id: employee,
     };
-    tutors::tutor_eligible(state, &tutor, &[session.session_date]).await?;
+    let batch = Batch::find_or_404(&state.db, session.batch_id).await?;
+    tutors::tutor_eligible(state, &tutor, &batch, &[session.session_date]).await?;
     if session.status == SessionStatus::Scheduled {
         let clashes = conflicts(
             &state.db,
