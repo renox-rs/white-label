@@ -192,13 +192,9 @@ async fn edu_06_a_membership_cycle_invoice_reopened_makes_no_task() {
     );
 }
 
-/// Given E's counsellor C1 deactivated, the task goes to the counsellors of E's
-/// campus (the first holds it, all are told).
-#[renox::test]
-async fn edu_06_the_counsellors_of_the_campus_get_the_task_when_the_counsellor_left() {
-    let t = boot().await;
+/// An open batch of campus 3 (the scope of the campus counsellors below).
+async fn campus_batch(t: &Centre) -> Batch {
     let campus = Subject::new("test.campus", 3);
-    let scope = Scope::new("test.campus", 3);
     let tutor = t.tutor("Layla").await;
     let room = t.room("Room 1", 14).await;
     let course = t.course().await;
@@ -221,8 +217,68 @@ async fn edu_06_the_counsellors_of_the_campus_get_the_task_when_the_counsellor_l
     )
     .await
     .unwrap();
-    let batch = batches::open(t.state(), &amal, batch.id).await.unwrap();
+    batches::open(t.state(), &amal, batch.id).await.unwrap()
+}
 
+/// Two counsellors who work at campus 3: their user numbers.
+async fn campus_counsellors(t: &Centre) -> Vec<i64> {
+    let scope = Scope::new("test.campus", 3);
+    permissions::define_role(
+        t.db(),
+        edtech::permissions::COUNSELLOR_ROLE,
+        &[
+            edtech::permissions::ENROLMENTS_VIEW,
+            edtech::permissions::ENROLMENTS_MANAGE,
+        ],
+    )
+    .await
+    .unwrap();
+    let mut found = Vec::new();
+    for (name, email) in [
+        ("Dina D", "dina.d@example.com"),
+        ("Eman E", "eman.e@example.com"),
+    ] {
+        let user = User::register(t.db(), name, email, "password123")
+            .await
+            .unwrap();
+        user.assign_role_in(t.db(), edtech::permissions::COUNSELLOR_ROLE, &scope)
+            .await
+            .unwrap();
+        found.push(user.id);
+    }
+    found
+}
+
+/// The task of the chargeback goes to the first of `campus` and all of them are
+/// told, `leaver` is not.
+fn assert_campus_task(t: &Centre, e: &Enrolment, campus: &[i64], leaver: i64) {
+    let tasks = t.tasks.about(&e.subject());
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(
+        tasks[0].assignee_user(),
+        Some(campus[0]),
+        "the first counsellor of the campus holds it, not the one who left"
+    );
+    let told: Vec<_> = t
+        .messages
+        .of_type(NOTICE)
+        .into_iter()
+        .filter(|m| Messages::told_user(m, campus[0]))
+        .collect();
+    assert_eq!(told.len(), 1);
+    assert!(
+        campus.iter().all(|id| Messages::told_user(&told[0], *id)),
+        "all the campus counsellors are told"
+    );
+    assert!(!Messages::told_user(&told[0], leaver));
+}
+
+/// Given E's counsellor C1 who no longer holds the role, the task goes to the
+/// counsellors of E's campus (the first holds it, all are told).
+#[renox::test]
+async fn edu_06_the_counsellors_of_the_campus_get_the_task_when_the_counsellor_left() {
+    let t = boot().await;
+    let batch = campus_batch(&t).await;
     // C1 enrols the student, then leaves: their role is taken away.
     let c1_user = t
         .user(
@@ -237,54 +293,73 @@ async fn edu_06_the_counsellors_of_the_campus_get_the_task_when_the_counsellor_l
     let e = paid_by_card(&t, &batch, &c1).await;
     assert_eq!(e.campus_id, Some(3));
     c1_user.remove_role(t.db(), "role_cara").await.unwrap();
-    // Two counsellors work at the campus.
-    permissions::define_role(
-        t.db(),
-        edtech::permissions::COUNSELLOR_ROLE,
-        &[
-            edtech::permissions::ENROLMENTS_VIEW,
-            edtech::permissions::ENROLMENTS_MANAGE,
-        ],
-    )
-    .await
-    .unwrap();
-    let mut campus_counsellors = Vec::new();
-    for (name, email) in [
-        ("Dina D", "dina.d@example.com"),
-        ("Eman E", "eman.e@example.com"),
-    ] {
-        let user = User::register(t.db(), name, email, "password123")
-            .await
-            .unwrap();
-        user.assign_role_in(t.db(), edtech::permissions::COUNSELLOR_ROLE, &scope)
-            .await
-            .unwrap();
-        campus_counsellors.push(user.id);
-    }
+    let campus = campus_counsellors(&t).await;
 
     t.charge_back(&e, e.first_invoice_id.unwrap(), PRICE).await;
 
-    let tasks = t.tasks.about(&e.subject());
-    assert_eq!(tasks.len(), 1);
-    assert_eq!(
-        tasks[0].assignee_user(),
-        Some(campus_counsellors[0]),
-        "the first counsellor of the campus holds it, not the one who left"
-    );
-    let told: Vec<_> = t
-        .messages
-        .of_type(NOTICE)
-        .into_iter()
-        .filter(|m| Messages::told_user(m, campus_counsellors[0]))
-        .collect();
-    assert_eq!(told.len(), 1);
+    assert_campus_task(&t, &e, &campus, c1_user.id);
+}
+
+/// Given E's counsellor C1 deactivated: the employee behind the account has
+/// exited (wl-hr no longer lists them), while the user still holds the role
+/// with the permission. The task goes to the counsellors of the campus all the
+/// same; the same chargeback with C1 still employed goes to C1.
+#[renox::test]
+async fn edu_06_a_deactivated_counsellor_who_still_holds_the_role_gets_no_task() {
+    let t = boot().await;
+    let batch = campus_batch(&t).await;
+    let c1_user = t
+        .user(
+            "Cara",
+            &[
+                edtech::permissions::ENROLMENTS_VIEW,
+                edtech::permissions::ENROLMENTS_MANAGE,
+            ],
+        )
+        .await;
+    let c1 = t.auth(&c1_user).await;
+    let e = paid_by_card(&t, &batch, &c1).await;
+    // C1 is an employee of the centre, in post.
+    t.people.add(900, "Cara Counsellor");
+    let hired = wl_hr::employee::create(
+        t.state(),
+        wl_hr::employee::NewEmployee::new(wl_kernel::PartyId(900), "counsellor", day(-400))
+            .status(wl_hr::employee::EmployeeStatus::Active)
+            .user(c1_user.id),
+    )
+    .await
+    .unwrap();
+    let campus = campus_counsellors(&t).await;
+    let scope = Scope::new("test.campus", 3);
+    c1_user
+        .assign_role_in(t.db(), edtech::permissions::COUNSELLOR_ROLE, &scope)
+        .await
+        .unwrap();
+    let recipients = edtech::chargebacks::recipients(t.state(), &e).await.unwrap();
+    assert_eq!(recipients, vec![c1_user.id], "C1 is in post: C1 gets it");
+
+    // C1 is deactivated: the exit settled, the role and the permission remain.
+    wl_hr::Employee::query()
+        .where_(wl_hr::Employee::ID.eq(hired.id))
+        .update(t.db(), &[("status", &wl_hr::employee::EmployeeStatus::Exited)])
+        .await
+        .unwrap();
     assert!(
-        campus_counsellors
-            .iter()
-            .all(|id| Messages::told_user(&told[0], *id)),
-        "all the campus counsellors are told"
+        permissions::users_with_permission_in(
+            t.db(),
+            edtech::permissions::ENROLMENTS_MANAGE,
+            &Scope::global()
+        )
+        .await
+        .unwrap()
+        .iter()
+        .any(|u| u.id == c1_user.id),
+        "the user still holds the permission"
     );
-    assert!(!Messages::told_user(&told[0], c1_user.id));
+
+    t.charge_back(&e, e.first_invoice_id.unwrap(), PRICE).await;
+
+    assert_campus_task(&t, &e, &campus, c1_user.id);
 }
 
 /// Several reopened invoices of one enrolment: one open task, updated.
