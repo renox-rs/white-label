@@ -341,6 +341,8 @@ pub async fn amend(
             description,
             quantity_milli: quantity,
             unit_price,
+            // A substitute is taxed as the item it replaces.
+            vat_like: Some(line.id),
         });
     }
     let outcome = order_desk(state).amend(state, user, request).await?;

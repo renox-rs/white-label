@@ -1383,6 +1383,9 @@ pub struct AmendAdd {
     pub quantity_milli: i64,
     /// The price of one unit before VAT, in fils.
     pub unit_price: i64,
+    /// The sale line whose VAT category the new line takes (a substitute is
+    /// taxed as the item it replaces); `None`: standard rated.
+    pub vat_like: Option<i64>,
 }
 
 /// An amendment of a placed order as a new revision (BL-SAL-05).

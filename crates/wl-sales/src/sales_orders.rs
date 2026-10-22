@@ -738,6 +738,7 @@ impl SalesOrderDesk for Desk {
                 input = input.add(&added.item_code, added.quantity_milli, added.unit_price);
                 if let Some(line) = input.added.last_mut() {
                     line.description = added.description.clone();
+                    line.vat_like = added.vat_like;
                 }
             }
             match crate::amend::amend(state, user, order.id, input).await? {

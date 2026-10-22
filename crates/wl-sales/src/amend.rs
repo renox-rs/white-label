@@ -112,6 +112,10 @@ pub struct AddedLine {
     pub unit_price: i64,
     /// The discount before VAT, in fils.
     pub discount: i64,
+    /// The sale line whose VAT category the new line takes (a substitute is
+    /// taxed as the item it replaces); `None`: standard rated.
+    #[serde(default)]
+    pub vat_like: Option<i64>,
 }
 
 /// What an amendment carries to its guards and effect: what the user asks
@@ -179,6 +183,7 @@ impl AmendInput {
             quantity_milli,
             unit_price,
             discount: 0,
+            vat_like: None,
         });
         self
     }
@@ -314,11 +319,16 @@ pub fn evaluate(order: &SalesOrder, lines: &[SaleLine], asked: &AmendInput) -> A
             added.quantity_milli,
             added.discount,
         ));
+        let like = added
+            .vat_like
+            .and_then(|id| lines.iter().find(|l| l.id == id))
+            .map(|l| l.vat_category);
         revised.push(SaleLine {
             quantity_milli: added.quantity_milli,
             unit_price: added.unit_price,
             discount: added.discount,
             kind: KIND_ITEM.to_owned(),
+            vat_category: like.unwrap_or_default(),
             ..SaleLine::default()
         });
     }
@@ -518,6 +528,11 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
             held_milli: held,
             ..SaleLine::default()
         };
+        if let Some(like) = added.vat_like
+            && let Some(taken) = before.iter().find(|l| l.id == like)
+        {
+            line.vat_category = taken.vat_category;
+        }
         line.insert(&mut *tx).await?;
         report.push(AmendedLine {
             line: line.id,
