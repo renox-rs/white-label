@@ -192,6 +192,15 @@ impl PartyDirectory for Directory {
         })
     }
 
+    fn guardians<'a>(&'a self, db: &'a Db, party: PartyId) -> PartyFuture<'a, Vec<PartyId>> {
+        Box::pin(async move {
+            let found = self
+                .related_contacts(db, party, &ContactPurpose::guardian_of())
+                .await?;
+            Ok(found.into_iter().map(|contact| contact.party).collect())
+        })
+    }
+
     fn related_contacts<'a>(
         &'a self,
         db: &'a Db,
