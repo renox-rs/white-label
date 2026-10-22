@@ -283,7 +283,10 @@ async fn edu_04_the_page_says_on_hold_and_offers_the_withdrawal_to_the_manager_o
     t.app.acting_as(&desk);
     let page = t.app.get(&path).await;
     page.assert_ok().assert_see("Frozen").assert_see("On hold");
-    assert!(!page.text().contains("enrolment-withdraw-"), "no withdrawal offered");
+    assert!(
+        !page.text().contains("The student leaves."),
+        "no withdrawal offered"
+    );
 
     let manager = t.manager_user().await;
     t.app.acting_as(&manager);
@@ -292,5 +295,5 @@ async fn edu_04_the_page_says_on_hold_and_offers_the_withdrawal_to_the_manager_o
         .await
         .assert_ok()
         .assert_see("On hold")
-        .assert_see("enrolment-withdraw-");
+        .assert_see("The student leaves.");
 }
