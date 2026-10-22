@@ -77,7 +77,6 @@ pub(crate) async fn request_delivery(state: &AppState, id: i64) -> Result {
         .address(&order.address, &order.area)
         .phone(&order.recipient_phone)
         .perishable()
-        .partial_acceptance(false)
         .promise(placed, minutes);
     request.recipient_party = Some(order.party());
     if order.is_cash_on_delivery() {
@@ -85,9 +84,21 @@ pub(crate) async fn request_delivery(state: &AppState, id: i64) -> Result {
         request = request.collect(crate::changes::open_total(&view));
     }
     for line in view.lines.iter().filter(|l| l.is_item && l.open_milli() > 0) {
+        // The amount of the open part of the line, so that cash on delivery
+        // collects the accepted lines only when one is refused at the door.
+        let worth = if line.quantity_milli > 0 {
+            i64::try_from(
+                i128::from(line.gross) * i128::from(line.open_milli())
+                    / i128::from(line.quantity_milli),
+            )
+            .unwrap_or(line.gross)
+        } else {
+            0
+        };
         request = request.item(
             DeliveryItem::new(&line.description, line.open_milli())
-                .source_line(Subject::new(SALE_LINE_SUBJECT_TYPE, line.id)),
+                .source_line(Subject::new(SALE_LINE_SUBJECT_TYPE, line.id))
+                .amount(worth),
         );
     }
     match requester(state).request(state, request).await {
@@ -214,7 +225,8 @@ pub(crate) async fn on_delivered(state: &AppState, event: DeliveryDelivered) -> 
         .run(state)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok(())
+    // A line the customer refused at the door is refunded (BL-FNB-16).
+    crate::refused::after_delivered(state, &order, &event).await
 }
 
 /// A manager dispatches the `ready` order `id`: it goes out with a rider.

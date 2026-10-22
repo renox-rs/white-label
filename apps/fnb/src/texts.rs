@@ -268,6 +268,24 @@ const TEXTS: &[(&str, &str)] = &[
         "fnb.reversal.failed_body",
         "The delivery of order {{ number }} was reversed, but the refund could not be raised: {{ problem }}",
     ),
+    // A line refused at the door (BL-FNB-16).
+    ("fnb.refused.reason", "refused at the door (wrong item)"),
+    (
+        "fnb.refused.waiting_title",
+        "Refund of a refused item of order {{ number }} waits",
+    ),
+    (
+        "fnb.refused.waiting_body",
+        "The customer refused an item of order {{ number }} at the door. {{ amount }} is above the limit for an immediate refund: a kitchen manager files the refund on the order and another manager approves it.",
+    ),
+    (
+        "fnb.refused.failed_title",
+        "No refund was raised for the refused item of order {{ number }}",
+    ),
+    (
+        "fnb.refused.failed_body",
+        "The customer refused an item of order {{ number }} at the door, but the refund could not be raised: {{ problem }}",
+    ),
     (
         "fnb.cancel.withdrawn",
         "The kitchen started order {{ number }} while the change waited for a manager: ask again.",

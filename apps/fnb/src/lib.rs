@@ -49,6 +49,7 @@ pub mod refunds;
 mod recall_texts;
 mod report_pages;
 pub mod reports;
+pub mod refused;
 pub mod reversal;
 mod screen_texts;
 pub mod seed;
@@ -153,6 +154,14 @@ impl Fnb {
     /// 200).
     pub fn wastage_approval(mut self, fils: i64) -> Self {
         self.settings.wastage_approval_fils = fils;
+        self
+    }
+
+    /// The value, in fils, of a line refused at the door up to which the system
+    /// refunds it at once (default AED 50, the `SAL.ACL.06` limit); above it a
+    /// kitchen manager files the refund.
+    pub fn refused_refund_limit(mut self, fils: i64) -> Self {
+        self.settings.refused_refund_limit = fils;
         self
     }
 

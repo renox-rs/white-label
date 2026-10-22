@@ -32,6 +32,10 @@ pub const DEFAULT_PAYOUT_TASK_FILS: i64 = 10_000;
 /// chef who recorded it (`STK.ACL.02`, AED 200), in fils.
 pub const DEFAULT_WASTAGE_APPROVAL_FILS: i64 = 20_000;
 
+/// A refused line up to this value is refunded at once (`SAL.ACL.06`, AED 50),
+/// in fils.
+pub const DEFAULT_REFUSED_REFUND_FILS: i64 = 5_000;
+
 /// Minutes of silence of an outlet's kitchen devices that pause its channels
 /// (`FNB.RUL.15`, N).
 pub const DEFAULT_OUTAGE_DOWN_MINUTES: i64 = 5;
@@ -88,6 +92,10 @@ pub struct FnbSettings {
     /// The wastage value above which a discard of a batch needs a second
     /// holder of `stock.approve` (`STK.ACL.02`), in fils.
     pub wastage_approval_fils: i64,
+    /// The value of a refused line, in fils, up to which the system refunds it
+    /// at once; above it a kitchen manager files the refund (`SAL.ACL.06`,
+    /// the `refund_approval_limit` of the sales settings, AED 50).
+    pub refused_refund_limit: i64,
     /// The channels whose sales have no known customer besides the
     /// aggregators' (the counter): a recall counts them per outlet and day.
     pub walk_in_channels: Vec<String>,
@@ -123,6 +131,7 @@ impl Default for FnbSettings {
             payout_task_fils: DEFAULT_PAYOUT_TASK_FILS,
             payout_rule: true,
             wastage_approval_fils: DEFAULT_WASTAGE_APPROVAL_FILS,
+            refused_refund_limit: DEFAULT_REFUSED_REFUND_FILS,
             walk_in_channels: vec!["pos".to_owned(), "counter".to_owned()],
             recipe_consumption: false,
             authority_notice_task: false,
